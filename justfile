@@ -153,6 +153,30 @@ check-features:
     echo ""
     echo "=== All $passed/$total feature combinations passed ==="
 
+# Update Cargo.lock files across every tracked manifest.
+# rpkg's lock must stay in tarball-shape (no `checksum =` lines, no `path+...`
+# sources for miniextendr-{api,lint,macros}); we move .cargo/config.toml aside
+# so the [patch."git+url"] override doesn't bleed into the lock, then strip
+# checksums after the update. Mirrors what `just vendor` does to the lock,
+# without the vendor/ + inst/vendor.tar.xz regen.
+alias cargo-update := update
+[script("bash")]
+update *cargo_flags:
+    set -euo pipefail
+    cargo update {{cargo_flags}}
+    cargo update --manifest-path=cargo-revendor/Cargo.toml {{cargo_flags}}
+    cargo update --manifest-path=tests/cross-package/shared-traits/Cargo.toml {{cargo_flags}}
+    cargo update --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo update --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo update --manifest-path=tests/model_project/src/rust/Cargo.toml {{cargo_flags}}
+    rust_dir="{{justfile_directory()}}/rpkg/src/rust"
+    cargo_cfg="$rust_dir/.cargo/config.toml"
+    if [[ -f "$cargo_cfg" ]]; then mv "$cargo_cfg" "$cargo_cfg.tmp_just_update"; fi
+    trap "[[ -f '$cargo_cfg.tmp_just_update' ]] && mv '$cargo_cfg.tmp_just_update' '$cargo_cfg'" EXIT
+    cargo update --manifest-path "$rust_dir/Cargo.toml" {{cargo_flags}}
+    sed -i.bak '/^checksum = /d' "$rust_dir/Cargo.lock" && rm -f "$rust_dir/Cargo.lock.bak"
+    just lock-shape-check
+
 # Check all crates
 alias cargo-check := check
 check *cargo_flags:

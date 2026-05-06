@@ -6,6 +6,34 @@
 # nolint start
 # nocov start
 
+# Internal helper: re-raise a tagged Rust error/condition value as an R condition.
+# Generated wrappers call this whenever `.Call()` returns a `rust_condition_value`.
+# `.call_default` is the wrapper's `sys.call()`, used as the fallback when the
+# Rust panic payload didn't carry a captured call (e.g. lambda contexts that
+# pass `.call = NULL` to `.Call`). For error/panic kinds `stop()` longjmps;
+# for warning/message/condition the helper signals and returns invisible(NULL),
+# which the wrapper's surrounding `return(...)` propagates as its result.
+.miniextendr_raise_condition <- function(.val, .call_default) {
+  .msg <- .val$error
+  .call <- .val$call %||% .call_default
+  .class <- .val$class
+  switch(.val$kind,
+    error = stop(structure(list(message = .msg, call = .call, kind = "error"),
+      class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+    warning = warning(structure(list(message = .msg, call = .call, kind = "warning"),
+      class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))),
+    message = message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),
+      class = c(.class, "rust_message", "simpleMessage", "message", "condition"))),
+    condition = signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),
+      class = c(.class, "rust_condition", "simpleCondition", "condition"))),
+    panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),
+      class = c("rust_error", "simpleError", "error", "condition"))),
+    stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+      class = c("rust_error", "simpleError", "error", "condition")))
+  )
+  invisible(NULL)
+}
+
 # Generated from Rust impl `R6Point` (lib.rs:130:6)
 #' @rdname R6Point
 #' @title R6Point (R6-style)
@@ -34,20 +62,7 @@ R6Point <- R6::R6Class("R6Point",
         private$.ptr <- .ptr
       } else {
         .val <- .Call(C_R6Point__new, .call = match.call(), x, y)
-        if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-        }
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
     },
@@ -55,60 +70,21 @@ R6Point <- R6::R6Class("R6Point",
     #' @description Get x coordinate
     x = function() {
       .val <- .Call(C_R6Point__x, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-        .msg <- .val$error
-        .call <- .val$call %||% sys.call()
-        .class <- .val$class
-        switch(.val$kind,
-          error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-          warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-          message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-          condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-          panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-          stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-            class = c("rust_error", "simpleError", "error", "condition")))
-        )
-      }
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
     # R6Point::y (144:12)
     #' @description Get y coordinate
     y = function() {
       .val <- .Call(C_R6Point__y, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-        .msg <- .val$error
-        .call <- .val$call %||% sys.call()
-        .class <- .val$class
-        switch(.val$kind,
-          error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-          warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-          message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-          condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-          panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-          stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-            class = c("rust_error", "simpleError", "error", "condition")))
-        )
-      }
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
     # R6Point::distance_from_origin (149:12)
     #' @description Calculate distance from origin
     distance_from_origin = function() {
       .val <- .Call(C_R6Point__distance_from_origin, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-        .msg <- .val$error
-        .call <- .val$call %||% sys.call()
-        .class <- .val$class
-        switch(.val$kind,
-          error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-          warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-          message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-          condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-          panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-          stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-            class = c("rust_error", "simpleError", "error", "condition")))
-        )
-      }
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
     # R6Point::add (156:12)
@@ -123,20 +99,7 @@ R6Point <- R6::R6Class("R6Point",
         "'dy' must have length 1" = length(dy) == 1L
       )
       .val <- .Call(C_R6Point__add, .call = match.call(), private$.ptr, dx, dy)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-        .msg <- .val$error
-        .call <- .val$call %||% sys.call()
-        .class <- .val$class
-        switch(.val$kind,
-          error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-          warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-          message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-          condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-          panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-          stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-            class = c("rust_error", "simpleError", "error", "condition")))
-        )
-      }
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       invisible(self)
     }
   ),
@@ -166,20 +129,7 @@ new_s3point <- function(x, y) {
     "'y' must have length 1" = length(y) == 1L
   )
   .val <- .Call(C_S3Point__new, .call = match.call(), x, y)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   structure(.val, class = "S3Point")
 }
 
@@ -206,20 +156,7 @@ if (!exists("s3point_x", mode = "function")) {
 #' @export
 s3point_x.S3Point <- function(x, ...) {
   .val <- .Call(C_S3Point__s3point_x, .call = match.call(), x)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -246,20 +183,7 @@ if (!exists("s3point_y", mode = "function")) {
 #' @export
 s3point_y.S3Point <- function(x, ...) {
   .val <- .Call(C_S3Point__s3point_y, .call = match.call(), x)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -286,20 +210,7 @@ if (!exists("s3point_distance", mode = "function")) {
 #' @export
 s3point_distance.S3Point <- function(x, ...) {
   .val <- .Call(C_S3Point__s3point_distance, .call = match.call(), x)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -334,20 +245,7 @@ s3point_add.S3Point <- function(x, dx, dy, ...) {
     "'dy' must have length 1" = length(dy) == 1L
   )
   .val <- .Call(C_S3Point__s3point_add, .call = match.call(), x, dx, dy)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   x
 }
 
@@ -384,20 +282,7 @@ S4Point <- function(x, y) {
     "'y' must have length 1" = length(y) == 1L
   )
   .val <- .Call(C_S4Point__new, .call = match.call(), x, y)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   methods::new("S4Point", ptr = .val)
 }
 
@@ -411,20 +296,7 @@ if (!methods::isGeneric("s4_x")) methods::setGeneric("s4_x", function(x, ...) st
 #' @exportMethod s4_x
 methods::setMethod("s4_x", "S4Point", function(x, ...) {
     .val <- .Call(C_S4Point__x, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   })
 
@@ -438,20 +310,7 @@ if (!methods::isGeneric("s4_y")) methods::setGeneric("s4_y", function(x, ...) st
 #' @exportMethod s4_y
 methods::setMethod("s4_y", "S4Point", function(x, ...) {
     .val <- .Call(C_S4Point__y, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   })
 
@@ -465,20 +324,7 @@ if (!methods::isGeneric("s4_distance")) methods::setGeneric("s4_distance", funct
 #' @exportMethod s4_distance
 methods::setMethod("s4_distance", "S4Point", function(x, ...) {
     .val <- .Call(C_S4Point__distance, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   })
 
@@ -499,20 +345,7 @@ methods::setMethod("s4_add", "S4Point", function(x, dx, dy, ...) {
   )
   {
     .val <- .Call(C_S4Point__add, .call = match.call(), x@ptr, dx, dy)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     x
   }
 })
@@ -546,20 +379,7 @@ S7Point <- S7::new_class("S7Point",
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
       .val <- .Call(C_S7Point__new, .call = match.call(), x, y)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-        .msg <- .val$error
-        .call <- .val$call %||% sys.call()
-        .class <- .val$class
-        switch(.val$kind,
-          error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-          warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-          message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-          condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-          panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-          stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-            class = c("rust_error", "simpleError", "error", "condition")))
-        )
-      }
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       S7::new_object(S7::S7_object(), .ptr = .val)
     }
   }
@@ -577,20 +397,7 @@ if (!exists("s7point_x", mode = "function")) {
 }
 S7::method(s7point_x, S7Point) <- function(x, ...) {
     .val <- .Call(C_S7Point__s7point_x, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   }
 
@@ -606,20 +413,7 @@ if (!exists("s7point_y", mode = "function")) {
 }
 S7::method(s7point_y, S7Point) <- function(x, ...) {
     .val <- .Call(C_S7Point__s7point_y, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   }
 
@@ -635,20 +429,7 @@ if (!exists("s7point_distance", mode = "function")) {
 }
 S7::method(s7point_distance, S7Point) <- function(x, ...) {
     .val <- .Call(C_S7Point__s7point_distance, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   }
 
@@ -671,20 +452,7 @@ S7::method(s7point_add, S7Point) <- function(x, dx, dy, ...) {
   )
   {
     .val <- .Call(C_S7Point__s7point_add, .call = match.call(), x@.ptr, dx, dy)
-    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-          .msg <- .val$error
-          .call <- .val$call %||% sys.call()
-          .class <- .val$class
-          switch(.val$kind,
-            error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-            warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-            message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-            condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-            panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-            stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-              class = c("rust_error", "simpleError", "error", "condition")))
-          )
-    }
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     x
   }
 }
@@ -711,20 +479,7 @@ EnvPoint$new <- function(x, y) {
     "'y' must have length 1" = length(y) == 1L
   )
   .val <- .Call(C_EnvPoint__new, .call = match.call(), x, y)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self <- .val
   class(self) <- "EnvPoint"
   self
@@ -737,20 +492,7 @@ EnvPoint$new <- function(x, y) {
 #' @source Generated by miniextendr from `EnvPoint::x`
 EnvPoint$x <- function() {
   .val <- .Call(C_EnvPoint__x, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -761,20 +503,7 @@ EnvPoint$x <- function() {
 #' @source Generated by miniextendr from `EnvPoint::y`
 EnvPoint$y <- function() {
   .val <- .Call(C_EnvPoint__y, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -785,20 +514,7 @@ EnvPoint$y <- function() {
 #' @source Generated by miniextendr from `EnvPoint::distance_from_origin`
 EnvPoint$distance_from_origin <- function() {
   .val <- .Call(C_EnvPoint__distance_from_origin, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -815,20 +531,7 @@ EnvPoint$add <- function(dx, dy) {
     "'dy' must have length 1" = length(dy) == 1L
   )
   .val <- .Call(C_EnvPoint__add, .call = match.call(), self, dx, dy)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self
 }
 
@@ -897,20 +600,7 @@ SharedData <- new.env(parent = emptyenv())
 #' @source Generated by miniextendr from `SharedData::get_x`
 SharedData$get_x <- function() {
   .val <- .Call(C_SharedData__get_x, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -921,20 +611,7 @@ SharedData$get_x <- function() {
 #' @source Generated by miniextendr from `SharedData::get_y`
 SharedData$get_y <- function() {
   .val <- .Call(C_SharedData__get_y, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -945,20 +622,7 @@ SharedData$get_y <- function() {
 #' @source Generated by miniextendr from `SharedData::get_label`
 SharedData$get_label <- function() {
   .val <- .Call(C_SharedData__get_label, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -977,20 +641,7 @@ SharedData$create <- function(x, y, label) {
     "'label' must have length 1" = length(label) == 1L
   )
   .val <- .Call(C_SharedData__create, .call = match.call(), x, y, label)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   class(.val) <- "SharedData"
   .val
 }
@@ -1059,20 +710,7 @@ SimpleCounter <- new.env(parent = emptyenv())
 #' @source Generated by miniextendr from `SimpleCounter::get_value`
 SimpleCounter$get_value <- function() {
   .val <- .Call(C_SimpleCounter__get_value, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1140,20 +778,7 @@ StatefulCounter <- new.env(parent = emptyenv())
 #' @source Generated by miniextendr from `StatefulCounter::get_value`
 StatefulCounter$get_value <- function() {
   .val <- .Call(C_StatefulCounter__get_value, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1164,20 +789,7 @@ StatefulCounter$get_value <- function() {
 #' @source Generated by miniextendr from `StatefulCounter::history_len`
 StatefulCounter$history_len <- function() {
   .val <- .Call(C_StatefulCounter__history_len, .call = match.call(), self)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    .msg <- .val$error
-    .call <- .val$call %||% sys.call()
-    .class <- .val$class
-    switch(.val$kind,
-      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-        class = c("rust_error", "simpleError", "error", "condition")))
-    )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1238,20 +850,7 @@ StatefulCounter$history_len <- function() {
 #' @source Generated by miniextendr from Rust fn `get_r_class`
 get_r_class <- function(x) {
   .val <- .Call(C_get_r_class, .call = match.call(), x)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-      .msg <- .val$error
-      .call <- .val$call %||% sys.call()
-      .class <- .val$class
-      switch(.val$kind,
-        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-          class = c("rust_error", "simpleError", "error", "condition")))
-      )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1267,20 +866,7 @@ new_counter <- function(initial) {
     "'initial' must have length 1" = length(initial) == 1L
   )
   .val <- .Call(C_new_counter, .call = match.call(), initial)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-      .msg <- .val$error
-      .call <- .val$call %||% sys.call()
-      .class <- .val$class
-      switch(.val$kind,
-        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-          class = c("rust_error", "simpleError", "error", "condition")))
-      )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1292,20 +878,7 @@ new_counter <- function(initial) {
 #' @source Generated by miniextendr from Rust fn `counter_get_value`
 counter_get_value <- function(counter_sexp) {
   .val <- .Call(C_counter_get_value, .call = match.call(), counter_sexp)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-      .msg <- .val$error
-      .call <- .val$call %||% sys.call()
-      .class <- .val$class
-      switch(.val$kind,
-        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-          class = c("rust_error", "simpleError", "error", "condition")))
-      )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1315,20 +888,7 @@ counter_get_value <- function(counter_sexp) {
 #' @source Generated by miniextendr from Rust fn `debug_tag_counter`
 debug_tag_counter <- function() {
   .val <- .Call(C_debug_tag_counter, .call = match.call())
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-      .msg <- .val$error
-      .call <- .val$call %||% sys.call()
-      .class <- .val$class
-      switch(.val$kind,
-        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-          class = c("rust_error", "simpleError", "error", "condition")))
-      )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1338,20 +898,7 @@ debug_tag_counter <- function() {
 #' @source Generated by miniextendr from Rust fn `debug_tag_resettable`
 debug_tag_resettable <- function() {
   .val <- .Call(C_debug_tag_resettable, .call = match.call())
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-      .msg <- .val$error
-      .call <- .val$call %||% sys.call()
-      .class <- .val$class
-      switch(.val$kind,
-        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-          class = c("rust_error", "simpleError", "error", "condition")))
-      )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1367,20 +914,7 @@ new_stateful_counter <- function(initial) {
     "'initial' must have length 1" = length(initial) == 1L
   )
   .val <- .Call(C_new_stateful_counter, .call = match.call(), initial)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-      .msg <- .val$error
-      .call <- .val$call %||% sys.call()
-      .class <- .val$class
-      switch(.val$kind,
-        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-          class = c("rust_error", "simpleError", "error", "condition")))
-      )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -1390,20 +924,7 @@ new_stateful_counter <- function(initial) {
 #' @source Generated by miniextendr from Rust fn `debug_shared_data_type_name`
 debug_shared_data_type_name <- function() {
   .val <- .Call(C_debug_shared_data_type_name, .call = match.call())
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-      .msg <- .val$error
-      .call <- .val$call %||% sys.call()
-      .class <- .val$class
-      switch(.val$kind,
-        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
-        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
-        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
-        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
-        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
-          class = c("rust_error", "simpleError", "error", "condition")))
-      )
-  }
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 

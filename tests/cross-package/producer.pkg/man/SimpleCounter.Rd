@@ -9,6 +9,8 @@
 \alias{SimpleCounter$Counter$value}
 \alias{SimpleCounter$Counter$increment}
 \alias{SimpleCounter$Counter$add}
+\alias{SimpleCounter$Counter$panic_plain}
+\alias{SimpleCounter$Counter$error_with_class}
 \alias{SimpleCounter$Resettable$reset}
 \alias{SimpleCounter$Resettable$is_default}
 \title{SimpleCounter  Class}

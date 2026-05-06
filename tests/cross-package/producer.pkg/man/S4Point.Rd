@@ -55,9 +55,3 @@ Add to coordinates
 \item{\code{ptr}}{External pointer to Rust \code{S4Point} struct}
 }}
 
-\examples{
-p <- S4Point(3.0, 4.0)
-s4point_x(p)
-s4point_y(p)
-s4point_distance(p)
-}

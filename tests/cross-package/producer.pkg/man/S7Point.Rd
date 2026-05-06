@@ -46,9 +46,3 @@ Calculate distance from origin
 
 Add to coordinates
 }
-\examples{
-p <- S7Point(3.0, 4.0)
-s7point_x(p)
-s7point_y(p)
-s7point_distance(p)
-}
