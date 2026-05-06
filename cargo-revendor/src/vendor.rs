@@ -1213,6 +1213,16 @@ pub fn compress_vendor(
         if v.debug() {
             eprintln!("  Blanked .md files in vendor/");
         }
+
+        // Blanking .md invalidates the per-file SHA-256s in
+        // .cargo-checksum.json. Recompute so the tarball ships with hashes
+        // that match the actual blanked contents — otherwise cargo's
+        // DirectorySource::verify() aborts offline install with
+        // "the listed checksum of <crate>/CHANGELOG.md has changed".
+        crate::checksum::recompute_checksums(vendor_dir)?;
+        if v.debug() {
+            eprintln!("  Recomputed .cargo-checksum.json after blanking");
+        }
     }
 
     let vendor_name = vendor_dir
