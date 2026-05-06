@@ -30,10 +30,10 @@ S7Fahrenheit(value, .ptr = NULL)
 S7Fahrenheit_from_celsius(c)
 
 ## S7 method for classes <miniextendr::S7Celsius>, <miniextendr::S7Fahrenheit>
-convert(from, to)
+convert(from, to, ...)
 
 ## S7 method for classes <miniextendr::S7Fahrenheit>, <miniextendr::S7Celsius>
-convert(from, to)
+convert(from, to, ...)
 }
 \arguments{
 \item{value}{Numeric temperature in Fahrenheit.}
@@ -41,6 +41,8 @@ convert(from, to)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{c}{(undocumented)}
+
+\item{...}{Additional arguments passed to the S7 convert generic.}
 }
 \description{
 Get the temperature value.
