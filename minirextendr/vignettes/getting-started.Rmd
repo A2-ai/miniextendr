@@ -259,6 +259,22 @@ miniextendr_repair_lock()
 Sub-second; lock-only. Use `miniextendr_vendor()` only when you also need a
 fresh `inst/vendor.tar.xz` (i.e., before `R CMD build` for CRAN submission).
 
+### Block source-shape commits with the pre-commit hook
+
+`use_miniextendr_git_hooks()` installs a pre-commit hook that, among
+other checks, blocks any commit staging `src/rust/Cargo.lock` when the
+file has drifted into source-shape (`path+...` source entries or
+`checksum = ` lines). The hook prints the recovery command:
+
+```{r}
+# Run once per checkout
+use_miniextendr_git_hooks()
+```
+
+After installation, if you accidentally `git add src/rust/Cargo.lock`
+after a `devtools::install()` rewrote it, the hook stops the commit and
+points you at `miniextendr_repair_lock()`.
+
 ### Upgrading
 
 ```{r}
