@@ -92,6 +92,24 @@ enum EventWithOptX {
     B { x: Option<u64> },
 }
 
+/// For compound-vs-compound different-shapes test.
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct WithOptPoint {
+    id: i32,
+    point: Option<InnerStruct>,
+}
+
+/// Enum with two variants that have different nested struct shapes.
+/// Used to verify existing-wins semantics for compound-vs-compound.
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+#[serde(tag = "kind")]
+enum EventDifferentNested {
+    A { value: f64 },
+    B { value: f64, extra: f64 },
+}
+
 // endregion
 
 // region: All-None fixtures — downgrade fires
@@ -288,11 +306,10 @@ pub fn test_columnar_enum_all_none() -> ColumnarDataFrame {
 
 /// Enum: variant-A rows with `x = None`, then one variant-B row with `x = Some(42)`.
 ///
-/// Schema-discovery limitation: the probe sees `serialize_none` for variant-A's
-/// `x` first, locking the column type to `Generic`.  Variant-B's `x = Some(42)`
-/// then pushes a real SEXP into that `Generic` list buffer.  The column ends up
-/// as `list(NULL, 42L)` rather than a numeric vector.  The all-None downgrade
-/// does **not** fire (one entry is non-null), which is correct behaviour.
+/// With the two-phase discovery, the probe scans all rows before resolving the
+/// schema.  Variant-B's `x = Some(42u64)` contributes a `Scalar(Real)` candidate
+/// which beats the `Scalar(Generic)` from variant-A's `x = None`.  The column
+/// ends up as a numeric vector with `NA` in row 1.
 ///
 /// @export
 #[miniextendr]
@@ -300,6 +317,91 @@ pub fn test_columnar_enum_some_flips_type() -> ColumnarDataFrame {
     let rows = vec![
         EventWithOptX::A { x: None },
         EventWithOptX::B { x: Some(42) },
+    ];
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+}
+
+// endregion
+
+// region: Schema upgrade — first-row-None then Some
+
+/// First-row `x = None`, second row `x = Some(42u64)`.
+///
+/// Two-phase discovery: the `Scalar(Real)` candidate from row 2 beats
+/// `Scalar(Generic)` from row 1.  Result: numeric column with NA at index 1.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_schema_upgrade_scalar() -> ColumnarDataFrame {
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        x: Option<u64>,
+    }
+    let rows = vec![Row { x: None }, Row { x: Some(42) }];
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+}
+
+/// First-row `point = None`, second row `point = Some(Point{x:1.0, y:2.0})`.
+///
+/// Two-phase discovery: `Compound` candidate from row 2 beats `Scalar(Generic)`
+/// from row 1.  Result: columns `point_x` and `point_y`, with NA in row 1.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_schema_upgrade_nested() -> ColumnarDataFrame {
+    let rows = vec![
+        WithOptPoint { id: 1, point: None },
+        WithOptPoint { id: 2, point: Some(InnerStruct { x: 1.0, y: 2.0 }) },
+    ];
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+}
+
+/// Multiple leading None rows before a Some value.
+///
+/// Rows: None, None, Some(42u64), None.  Two-phase discovery resolves the
+/// column to `Scalar(Real)`.  Result: numeric column with NA at positions 1, 2, 4.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_schema_upgrade_multi_none_first() -> ColumnarDataFrame {
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        x: Option<u64>,
+    }
+    let rows = vec![
+        Row { x: None },
+        Row { x: None },
+        Row { x: Some(42) },
+        Row { x: None },
+    ];
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+}
+
+/// Compound-vs-compound with different struct shapes: existing-wins semantics.
+///
+/// Rows alternate between variant A (has `value` only) and variant B (has `value`
+/// and `extra`).  The `extra` field only appears in B rows; `value` appears in both.
+/// Because both rows contribute scalar candidates for `value`, the first non-Generic
+/// wins.  The schema discovers both `value` and `extra` fields (from their respective
+/// rows) because they are distinct keys — they are *not* the same compound key.
+///
+/// This fixture tests that the per-key candidate accumulation works correctly for
+/// an enum with fields that differ between variants.
+///
+/// # TODO: union recursion
+/// When a single *key* maps to two different Compound shapes (e.g. two variant
+/// rows of an internally-tagged enum where the nested struct differs per variant),
+/// the first Compound wins silently.  Recursive Compound union is tracked as a
+/// separate follow-up issue.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_compound_different_shapes() -> ColumnarDataFrame {
+    let rows = vec![
+        EventDifferentNested::A { value: 1.0 },
+        EventDifferentNested::B { value: 2.0, extra: 3.0 },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }

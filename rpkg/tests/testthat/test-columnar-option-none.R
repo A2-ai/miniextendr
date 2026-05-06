@@ -128,21 +128,16 @@ test_that("enum all-variant-A with x=None: x column is logical NA", {
   expect_true(all(is.na(df$x)))
 })
 
-test_that("enum with one variant-B x=Some(42): x column is a list (schema-discovery limit)", {
-  # Schema-discovery limitation: when the first row is variant-A with x = None,
-  # the probe calls serialize_none → column type stays Generic.  Subsequent rows
-  # with x = Some(42) push a real SEXP into the Generic list buffer.  The
-  # assembly-time all-None downgrade does NOT fire here (one entry is non-null),
-  # so the column comes back as a list, not numeric.  Mixed-variant enum rows
-  # where an optional field flips from None to Some are a known probe-order
-  # limitation; users who need typed columns should put Some-valued rows first or
-  # reassemble the column in R.
+test_that("enum with one variant-B x=Some(42): x column is numeric with NA in row 1", {
+  # Two-phase discovery: the probe scans ALL rows before resolving the schema.
+  # Variant-B's x=Some(42u64) contributes Scalar(Real), which beats Scalar(Generic)
+  # from variant-A's x=None.  The column is numeric, not a list.
   df <- test_columnar_enum_some_flips_type()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
-  expect_true(is.list(df$x))
-  expect_null(df$x[[1]])
-  expect_equal(df$x[[2]], 42L)
+  expect_true(is.numeric(df$x))
+  expect_true(is.na(df$x[[1]]))
+  expect_equal(df$x[[2]], 42)
 })
 
 # endregion
@@ -198,6 +193,63 @@ test_that("logical NA column coerces to character when combined with character v
     expect_true(is.character(coerced))
     expect_equal(sum(is.na(coerced)), 3L)
   }
+})
+
+# endregion
+
+# region: Schema upgrade — first-row-None then Some
+
+test_that("first-row-None scalar upgrades to numeric when later row has Some(42u64)", {
+  df <- test_columnar_schema_upgrade_scalar()
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 2L)
+  expect_true(is.numeric(df$x))
+  expect_true(is.na(df$x[[1]]))
+  expect_equal(df$x[[2]], 42)
+})
+
+test_that("first-row-None nested struct: columns point_x and point_y appear, row 1 has NA", {
+  df <- test_columnar_schema_upgrade_nested()
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 2L)
+  # Must have per-subfield columns, NOT a single "point" column
+  expect_true("point_x" %in% names(df))
+  expect_true("point_y" %in% names(df))
+  expect_false("point" %in% names(df))
+  # Row 1 had point=None, so both subfields are NA
+  expect_true(is.na(df$point_x[[1]]))
+  expect_true(is.na(df$point_y[[1]]))
+  # Row 2 has the actual values
+  expect_equal(df$point_x[[2]], 1.0)
+  expect_equal(df$point_y[[2]], 2.0)
+})
+
+test_that("multiple leading None rows then Some(42): numeric column with NAs at 1,2,4", {
+  df <- test_columnar_schema_upgrade_multi_none_first()
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 4L)
+  expect_true(is.numeric(df$x))
+  expect_true(is.na(df$x[[1]]))
+  expect_true(is.na(df$x[[2]]))
+  expect_equal(df$x[[3]], 42)
+  expect_true(is.na(df$x[[4]]))
+})
+
+test_that("compound-vs-compound different shapes: both field sets discovered", {
+  # Variant A has only 'value'; variant B has 'value' and 'extra'.
+  # Both are distinct top-level keys in the struct (not nested under a single key),
+  # so both 'value' and 'extra' are found regardless of order.
+  # TODO: union recursion — when one key maps to two different Compound shapes, only
+  # the first Compound wins.  This test verifies existing-wins semantics remain stable.
+  df <- test_columnar_compound_different_shapes()
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 2L)
+  expect_true("value" %in% names(df))
+  expect_true("extra" %in% names(df))
+  # variant A (row 1) has no 'extra', so it should be NA
+  expect_true(is.na(df$extra[[1]]))
+  # variant B (row 2) has extra=3.0
+  expect_equal(df$extra[[2]], 3.0)
 })
 
 # endregion

@@ -414,74 +414,148 @@ struct Schema {
     field_map: FieldMap,
 }
 
-/// Discover schema by probing rows and taking the union of field sets.
+/// A candidate mapping for a single key, extracted from one probe row.
+enum Candidate {
+    Scalar(ColumnType),
+    Compound {
+        fields: Vec<FieldInfo>,
+        sub_map: FieldMap,
+    },
+}
+
+/// Resolve a slice of candidates for one key into the best single candidate.
+///
+/// Lattice (highest wins):
+/// - `Compound` beats everything (has concrete shape).
+/// - `Scalar(non-Generic)` beats `Scalar(Generic)`.
+/// - `Scalar(Generic)` is the bottom (None-only probes land here).
+///
+/// Two `Scalar(non-Generic)` of different types: keep the first seen (no widening).
+/// Two `Compound` of different shapes: keep the first seen (recursive union is out of scope).
+fn resolve_candidates(candidates: &mut Vec<Candidate>) -> Candidate {
+    // Walk candidates and pick the best.
+    // We need to own the winner, so find its index then swap-remove.
+    let mut best_idx = 0;
+    for (i, c) in candidates.iter().enumerate() {
+        match (&candidates[best_idx], c) {
+            // Compound is always at least as good as what we have.
+            (_, Candidate::Compound { .. }) => {
+                best_idx = i;
+                break; // Compound is the top of the lattice — no need to look further.
+            }
+            // Scalar(non-Generic) beats Scalar(Generic).
+            (Candidate::Scalar(ColumnType::Generic), Candidate::Scalar(t))
+                if *t != ColumnType::Generic =>
+            {
+                best_idx = i;
+            }
+            _ => {}
+        }
+    }
+    candidates.swap_remove(best_idx)
+}
+
+/// Discover schema by probing all rows and taking the union of field sets.
+///
+/// Two limitations vs. a fully-typed schema:
+///
+/// - **Truly-all-None nested Option<Struct>**: when every row has `None` for an
+///   `Option<UserStruct>`, the probe never sees the inner struct's fields. The key lands
+///   as `Scalar(Generic)` (no Compound ever seen), which the assembly-time all-None
+///   downgrade converts to a single logical-NA column. Structurally unfixable without a
+///   type-level hint on stable Rust.
+///
+/// - **Compound-vs-Compound recursive union**: when two rows produce different Compound
+///   shapes for the same key (e.g., enum variants with different nested structs), the
+///   first Compound wins and the second is silently discarded. Recursive union is tracked
+///   as a separate follow-up.
 ///
 /// Different rows may serialize different fields (e.g., enum variants).
 /// The unified schema contains every field seen in any row. During filling,
 /// fields absent from a particular row get NA via the padding mechanism.
 fn discover_schema_union<T: Serialize>(rows: &[T]) -> Result<Schema, RSerdeError> {
-    let mut unified_fields: Vec<FieldInfo> = Vec::new();
-    let mut unified_mappings: HashMap<String, FieldMapping> = HashMap::new();
+    // Phase A — probe every row, accumulate per-key candidates.
+    let mut key_order: Vec<String> = Vec::new();
+    let mut per_key_candidates: HashMap<String, Vec<Candidate>> = HashMap::new();
 
-    for (row_idx, row) in rows.iter().enumerate() {
-        let fields_before = unified_fields.len();
-
+    for row in rows {
         let mut discoverer = SchemaDiscoverer::new(0);
         if row.serialize(&mut discoverer).is_err() {
-            continue; // skip rows that fail discovery (e.g., None-only)
+            continue; // skip rows that fail discovery (e.g., top-level None)
         }
 
-        // Iterate over key_order (preserves struct field order) instead of HashMap
         for key in &discoverer.key_order {
-            if unified_mappings.contains_key(key) {
-                continue; // already have this field's schema
+            // Register key order on first appearance.
+            if !per_key_candidates.contains_key(key) {
+                key_order.push(key.clone());
+                per_key_candidates.insert(key.clone(), Vec::new());
             }
 
             let Some(mapping) = discoverer.mappings.remove(key) else {
                 continue;
             };
 
-            let new_start = unified_fields.len();
-
-            match mapping {
+            let candidate = match mapping {
                 FieldMapping::Scalar { col_idx } => {
-                    let field = &discoverer.fields[col_idx];
-                    unified_fields.push(FieldInfo {
-                        name: field.name.clone(),
-                        col_type: field.col_type,
-                    });
-                    unified_mappings
-                        .insert(key.clone(), FieldMapping::Scalar { col_idx: new_start });
+                    Candidate::Scalar(discoverer.fields[col_idx].col_type)
                 }
                 FieldMapping::Compound {
                     col_start,
                     col_count,
                     sub_fields,
                 } => {
-                    for i in col_start..col_start + col_count {
-                        let field = &discoverer.fields[i];
-                        unified_fields.push(FieldInfo {
-                            name: field.name.clone(),
-                            col_type: field.col_type,
-                        });
+                    let fields: Vec<FieldInfo> = (col_start..col_start + col_count)
+                        .map(|i| FieldInfo {
+                            name: discoverer.fields[i].name.clone(),
+                            col_type: discoverer.fields[i].col_type,
+                        })
+                        .collect();
+                    Candidate::Compound {
+                        fields,
+                        sub_map: sub_fields,
                     }
-                    let remapped = remap_field_map(sub_fields, col_start, new_start);
-                    unified_mappings.insert(
-                        key.clone(),
-                        FieldMapping::Compound {
-                            col_start: new_start,
-                            col_count,
-                            sub_fields: remapped,
-                        },
-                    );
                 }
-            }
+            };
+            per_key_candidates.get_mut(key).unwrap().push(candidate);
         }
+    }
 
-        // Short-circuit: if this row contributed no new fields and it's not the first row,
-        // the schema is complete (all distinct field sets have been seen).
-        if row_idx > 0 && unified_fields.len() == fields_before {
-            break;
+    // Phase B — resolve each key into a single best candidate, build unified schema.
+    let mut unified_fields: Vec<FieldInfo> = Vec::new();
+    let mut unified_mappings: HashMap<String, FieldMapping> = HashMap::new();
+
+    for key in &key_order {
+        let candidates = per_key_candidates.get_mut(key).unwrap();
+        if candidates.is_empty() {
+            continue;
+        }
+        let new_start = unified_fields.len();
+        match resolve_candidates(candidates) {
+            Candidate::Scalar(col_type) => {
+                unified_fields.push(FieldInfo {
+                    name: key.clone(),
+                    col_type,
+                });
+                unified_mappings.insert(key.clone(), FieldMapping::Scalar { col_idx: new_start });
+            }
+            Candidate::Compound { fields, sub_map } => {
+                let col_count = fields.len();
+                // sub_map indices were relative to col_offset=0 in the per-row probe;
+                // remap them to the actual position in the unified layout.
+                let old_base = sub_map.col_start;
+                for field in fields {
+                    unified_fields.push(field);
+                }
+                let remapped = remap_field_map(sub_map, old_base, new_start);
+                unified_mappings.insert(
+                    key.clone(),
+                    FieldMapping::Compound {
+                        col_start: new_start,
+                        col_count,
+                        sub_fields: remapped,
+                    },
+                );
+            }
         }
     }
 
