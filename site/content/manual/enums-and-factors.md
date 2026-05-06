@@ -174,7 +174,12 @@ run <- function(mode = c("Fast", "Safe", "Debug")) {
 
 The enum's `CHOICES` are spliced in at cdylib-write time (not stored in an R
 variable), so `?run` and tab-completion both show the real options. If you set
-an explicit `default = "\"Safe\""` it overrides the splice: `function(mode = "Safe")`.
+an explicit `default = "\"Safe\""`, the splice rotates that value to position 1
+of the vector — `match.arg(arg)` returns `arg[1]` when `arg` matches the formal
+default, so the rotated value becomes the effective default while the rest of
+the choices remain visible: `function(mode = c("Safe", "Fast", "Debug"))`. The
+default value must be one of the enum's choices; otherwise the cdylib panics
+at write time.
 
 From R:
 
