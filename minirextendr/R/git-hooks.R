@@ -13,7 +13,9 @@ miniextendr_hook_marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\
 #'
 #' - **pre-commit**: Checks `cargo fmt`, blocks on stale `configure` script
 #'   or stale NAMESPACE (when `*-wrappers.R` changed without `devtools::document()`),
-#'   notes when `inst/vendor.tar.xz` may need updating
+#'   blocks on source-shape `src/rust/Cargo.lock` (recommends
+#'   [miniextendr_repair_lock()]), notes when `inst/vendor.tar.xz` may need
+#'   updating
 #' - **post-merge**: Reminds you to reconfigure after pulling changes to
 #'   build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
 #'

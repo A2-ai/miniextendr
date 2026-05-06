@@ -91,6 +91,36 @@ miniextendr_pre_commit() {
         fi
     fi
 
+    # ── Cargo.lock shape ─────────────────────────────────────────────────────
+    # The committed src/rust/Cargo.lock must be in tarball-shape:
+    #   - no `checksum = "..."` lines (vendored crates ship empty
+    #     .cargo-checksum.json; offline install would refuse to verify)
+    #   - no `source = "path+..."` entries for framework crates (cargo's
+    #     source-replacement matches against the lockfile by source URL;
+    #     path+ would not survive shipping the tarball)
+    # See: https://a2-ai.github.io/miniextendr/manual/cargo-lock-shape/
+    STAGED_LOCK=$(echo "$STAGED" | grep -E "^${PREFIX}src/rust/Cargo\.lock$" || true)
+    if [ -n "$STAGED_LOCK" ]; then
+        LOCK_PATH="${RPKG_DIR}/src/rust/Cargo.lock"
+        if [ -f "$LOCK_PATH" ]; then
+            BAD_PATH=$(grep -c '^source = "path+' "$LOCK_PATH" || true)
+            BAD_SUMS=$(grep -c '^checksum = ' "$LOCK_PATH" || true)
+            if [ "${BAD_PATH:-0}" -gt 0 ] || [ "${BAD_SUMS:-0}" -gt 0 ]; then
+                echo "BLOCKED: src/rust/Cargo.lock is in source-shape, not tarball-shape."
+                if [ "${BAD_PATH:-0}" -gt 0 ]; then
+                    echo "  ${BAD_PATH} source = \"path+...\" entries for framework crates."
+                fi
+                if [ "${BAD_SUMS:-0}" -gt 0 ]; then
+                    echo "  ${BAD_SUMS} checksum = \"...\" lines."
+                fi
+                echo ""
+                echo "  Recovery (R):  miniextendr_repair_lock()"
+                echo "  Or full vendor refresh: miniextendr_vendor()"
+                return 1
+            fi
+        fi
+    fi
+
     echo "pre-commit: all miniextendr checks passed."
 }
 
