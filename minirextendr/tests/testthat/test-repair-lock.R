@@ -1,9 +1,11 @@
 # Tests for miniextendr_repair_lock()
 
-# Minimal project fixture: DESCRIPTION + NAMESPACE + src/rust/Cargo.toml
+# Build a fake R-package layout. Returns the path to the project root.
+# Use plain tempfile + dir.create (NOT withr::local_tempdir) because the
+# returned dir must survive past this helper's frame.
 make_lock_project <- function(lock_content = NULL) {
-  tmp <- withr::local_tempdir(pattern = "repair-lock-")
-  usethis::proj_set(tmp, force = TRUE)
+  tmp <- tempfile("repair-lock-")
+  dir.create(tmp)
 
   writeLines(
     "Package: testpkg\nTitle: Test\nVersion: 0.1.0\n",
@@ -84,7 +86,7 @@ source_shape_with_path <- c(
 
 test_that("miniextendr_repair_lock returns FALSE invisibly when lock is already in tarball-shape", {
   tmp <- make_lock_project(tarball_shape_lock)
-  on.exit(usethis::proj_set(getwd(), force = TRUE, quiet = TRUE), add = TRUE)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   result <- miniextendr_repair_lock(tmp, quiet = TRUE)
 
@@ -98,23 +100,20 @@ test_that("miniextendr_repair_lock strips checksum lines and returns TRUE", {
   # This test does NOT call cargo — it exercises only the checksum-stripping
   # logic by starting from a lock that already has git+ sources (no path+).
   tmp <- make_lock_project(source_shape_with_checksums)
-  on.exit(usethis::proj_set(getwd(), force = TRUE, quiet = TRUE), add = TRUE)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   lock_path <- file.path(tmp, "src", "rust", "Cargo.lock")
 
-  # Monkeypatch run_with_logging to a no-op that leaves the lock unchanged
+  # Mock run_with_logging as a no-op that leaves the lock unchanged
   # (simulates cargo update completing without touching the file).
-  # We inject a local binding in the package environment for this call.
   local_mocked_bindings(
     run_with_logging = function(command, args, log_prefix, wd) {
       list(status = NULL, output = character(), log_file = "", success = TRUE)
     },
-    .package = "minirextendr",
-    {
-      result <- miniextendr_repair_lock(tmp, quiet = TRUE)
-    }
+    .package = "minirextendr"
   )
 
+  result <- miniextendr_repair_lock(tmp, quiet = TRUE)
   expect_true(result)
 
   remaining <- readLines(lock_path, warn = FALSE)
@@ -125,7 +124,7 @@ test_that("miniextendr_repair_lock strips checksum lines and returns TRUE", {
 
 test_that("miniextendr_repair_lock errors with clear message when lockfile is missing", {
   tmp <- make_lock_project(lock_content = NULL)  # no Cargo.lock written
-  on.exit(usethis::proj_set(getwd(), force = TRUE, quiet = TRUE), add = TRUE)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   expect_error(
     miniextendr_repair_lock(tmp),
@@ -135,7 +134,7 @@ test_that("miniextendr_repair_lock errors with clear message when lockfile is mi
 
 test_that("miniextendr_repair_lock moves .cargo/config.toml aside and restores it", {
   tmp <- make_lock_project(source_shape_with_checksums)
-  on.exit(usethis::proj_set(getwd(), force = TRUE, quiet = TRUE), add = TRUE)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   cargo_dir <- file.path(tmp, "src", "rust", ".cargo")
   dir.create(cargo_dir, recursive = TRUE, showWarnings = FALSE)
@@ -160,11 +159,10 @@ test_that("miniextendr_repair_lock moves .cargo/config.toml aside and restores i
       )
       list(status = NULL, output = character(), log_file = "", success = TRUE)
     },
-    .package = "minirextendr",
-    {
-      miniextendr_repair_lock(tmp, quiet = TRUE)
-    }
+    .package = "minirextendr"
   )
+
+  miniextendr_repair_lock(tmp, quiet = TRUE)
 
   # Config is restored after the call
   expect_true(file.exists(cfg_path))
@@ -175,19 +173,18 @@ test_that("miniextendr_repair_lock errors when path+ entries remain after cargo 
   # Simulate a lock where cargo update didn't remove path+ entries (e.g.,
   # the Cargo.toml itself declares a path dep, not via [patch]).
   tmp <- make_lock_project(source_shape_with_path)
-  on.exit(usethis::proj_set(getwd(), force = TRUE, quiet = TRUE), add = TRUE)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   local_mocked_bindings(
     run_with_logging = function(command, args, log_prefix, wd) {
       # Leave the lock unchanged — path+ entries still present
       list(status = NULL, output = character(), log_file = "", success = TRUE)
     },
-    .package = "minirextendr",
-    {
-      expect_error(
-        miniextendr_repair_lock(tmp, quiet = TRUE),
-        regexp = "path\\+"
-      )
-    }
+    .package = "minirextendr"
+  )
+
+  expect_error(
+    miniextendr_repair_lock(tmp, quiet = TRUE),
+    regexp = "path\\+"
   )
 })
