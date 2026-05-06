@@ -40,36 +40,40 @@ Create a new R6 trait counter.
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-R6TraitCounter-new}{\code{R6TraitCounter$new()}}
-\item \href{#method-R6TraitCounter-get_value}{\code{R6TraitCounter$get_value()}}
-}
+  \itemize{
+    \item \href{#method-R6TraitCounter-initialize}{\code{R6TraitCounter$new()}}
+    \item \href{#method-R6TraitCounter-get_value}{\code{R6TraitCounter$get_value()}}
+  }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-R6TraitCounter-new"></a>}}
-\if{latex}{\out{\hypertarget{method-R6TraitCounter-new}{}}}
-\subsection{Method \code{new()}}{
-Create a new \code{R6TraitCounter}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6TraitCounter$new(.ptr = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<a id="method-R6TraitCounter-initialize"></a>}}
+\if{latex}{\out{\hypertarget{method-R6TraitCounter-initialize}{}}}
+\subsection{\code{R6TraitCounter$new()}}{
+  Create a new \code{R6TraitCounter}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6TraitCounter$new(.ptr = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6TraitCounter-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-R6TraitCounter-get_value}{}}}
-\subsection{Method \code{get_value()}}{
-Get value via inherent method.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6TraitCounter$get_value()}\if{html}{\out{</div>}}
+\subsection{\code{R6TraitCounter$get_value()}}{
+  Get value via inherent method.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6TraitCounter$get_value()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 }
