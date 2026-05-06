@@ -6,6 +6,7 @@ exported_funs <- c(
   "cargo_test", "cargo_update", "create_miniextendr_package", "miniextendr_autoconf",
   "miniextendr_build",
   "miniextendr_check", "miniextendr_check_rust",
+  "miniextendr_clean_vendor_leak",
   "miniextendr_configure", "miniextendr_dev_link",
   "miniextendr_doctor", "miniextendr_validate",
   "miniextendr_vendor",

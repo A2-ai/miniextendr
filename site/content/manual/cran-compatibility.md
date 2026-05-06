@@ -143,6 +143,11 @@ conflicts on every PR that touched a workspace crate, and stale-after-rebase
 drift. CI regenerates the tarball before every R CMD check; release tooling
 regenerates it at version bump time. Don't try to commit it.
 
+If a recipe or workflow leaves a stale `inst/vendor.tar.xz` behind, use
+`just clean-vendor-leak` (monorepo) or `miniextendr_clean_vendor_leak()`
+(scaffolded packages) to remove it and restore source-mode dev iteration.
+`miniextendr_doctor()` flags the presence of this file with a recovery hint.
+
 ## Constraints, in case you're tempted
 
 - `Cargo.toml` must keep miniextendr-{api,lint,macros} declared as `git = "..."`.

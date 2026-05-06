@@ -201,9 +201,16 @@ miniextendr_vendor()
 
 The presence of `inst/vendor.tar.xz` is the single signal that flips
 `./configure` into offline tarball mode. After you've built the
-release tarball, **delete `inst/vendor.tar.xz`** before resuming
-development — otherwise subsequent `R CMD INSTALL` runs stay locked
-to the vendored snapshot and ignore upstream miniextendr updates.
+release tarball with `R CMD build`, run `miniextendr_clean_vendor_leak()`
+to remove it and restore source-mode dev iteration:
+
+```{r}
+# After R CMD build: remove the tarball so dev iteration stays in source mode
+miniextendr_clean_vendor_leak()
+```
+
+If you forget and a subsequent install runs in tarball mode,
+`miniextendr_doctor()` will flag the file and remind you to clean it up.
 
 ### About `src/rust/Cargo.lock` — it's not a vanilla lockfile
 
