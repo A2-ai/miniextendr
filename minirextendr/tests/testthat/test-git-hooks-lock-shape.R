@@ -12,14 +12,20 @@ run_hook_in_repo <- function(repo, staged) {
     system2("git", c("config", "user.email", "test@example.com"))
     system2("git", c("config", "user.name", "Test"))
     system2("git", c("add", staged), stdout = FALSE, stderr = FALSE)
-    system2("bash", hook_path, stdout = TRUE, stderr = TRUE)
+    # Hook returns non-zero on intentional block; suppress R's warning for
+    # that case so testthat doesn't flag every blocked-commit case.
+    suppressWarnings(system2("bash", hook_path, stdout = TRUE, stderr = TRUE))
   })
 }
 
 # Build a fake R-package layout: DESCRIPTION + src/rust/Cargo.toml +
 # src/rust/Cargo.lock with the requested content.
+# NOTE: must use plain tempfile + dir.create so the dir survives past this
+# helper's frame (withr::local_tempdir defaults scope cleanup here, deleting
+# the dir before the test uses it).
 make_lock_repo <- function(lock_lines) {
-  repo <- withr::local_tempdir(pattern = "lock-shape-hook-")
+  repo <- tempfile("lock-shape-hook-")
+  dir.create(repo)
   writeLines("Package: testpkg\nVersion: 0.1.0\n", file.path(repo, "DESCRIPTION"))
   rust <- file.path(repo, "src", "rust")
   dir.create(rust, recursive = TRUE)
@@ -45,6 +51,7 @@ test_that("pre-commit hook accepts a tarball-shape Cargo.lock", {
     'version = "0.1.0"',
     'source = "git+https://github.com/A2-ai/miniextendr#abc123"'
   ))
+  on.exit(unlink(repo, recursive = TRUE), add = TRUE)
 
   out <- run_hook_in_repo(repo, "src/rust/Cargo.lock")
   status <- attr(out, "status")
@@ -63,6 +70,7 @@ test_that("pre-commit hook blocks a path+ source entry", {
     'version = "0.1.0"',
     'source = "path+file:///home/dev/miniextendr/miniextendr-api"'
   ))
+  on.exit(unlink(repo, recursive = TRUE), add = TRUE)
 
   out <- run_hook_in_repo(repo, "src/rust/Cargo.lock")
   status <- attr(out, "status")
@@ -85,6 +93,7 @@ test_that("pre-commit hook blocks a checksum line", {
     'source = "registry+https://github.com/rust-lang/crates.io-index"',
     'checksum = "89d92a4743f9a61002fae18374ed11e7973f530cb3b3e0b4b63760b6d924afb5"'
   ))
+  on.exit(unlink(repo, recursive = TRUE), add = TRUE)
 
   out <- run_hook_in_repo(repo, "src/rust/Cargo.lock")
   status <- attr(out, "status")
@@ -106,6 +115,7 @@ test_that("pre-commit hook does not check Cargo.lock when it is not staged", {
     'version = "0.1.0"',
     'source = "path+file:///home/dev/miniextendr/miniextendr-api"'
   ))
+  on.exit(unlink(repo, recursive = TRUE), add = TRUE)
   # Stage DESCRIPTION instead, leaving Cargo.lock unstaged.
   out <- run_hook_in_repo(repo, "DESCRIPTION")
   status <- attr(out, "status")
