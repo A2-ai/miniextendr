@@ -407,7 +407,25 @@ AC_CONFIG_COMMANDS([cargo-config],
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
  SED="$SED"])
 
-dnl ---- 3) Cargo.lock compatibility ----
+dnl ---- 3) Cargo.lock shape check (tarball mode only) ----
+dnl In tarball mode, the lock must be in tarball-shape: no checksum = lines and
+dnl no path+... sources for framework crates. Drift is fatal at offline install
+dnl time; we catch it here before cargo starts building.
+dnl In source mode, cargo silently rewrites the lock; drift is tolerated.
+AC_CONFIG_COMMANDS([lock-shape-check],
+[
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    if "${R_HOME}/bin/Rscript" tools/lock-shape-check.R "tarball" "src/rust/Cargo.lock"; then
+      echo "configure: lock-shape OK"
+    else
+      AC_MSG_ERROR([Cargo.lock shape drift detected in tarball mode; see message above])
+    fi
+  fi
+],
+[IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
+ R_HOME="$R_HOME"])
+
+dnl ---- 4) Cargo.lock compatibility ----
 dnl Older cargo releases (<1.78) cannot read lockfile version 4. Regenerate
 dnl in-place if the toolchain on this machine can't read what's committed.
 AC_CONFIG_COMMANDS([cargo-lockfile-compat],
@@ -439,7 +457,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 ],
 [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"])
 
-dnl ---- 4) Ensure Cargo.lock exists; touch Cargo.toml to force rebuild ----
+dnl ---- 5) Ensure Cargo.lock exists; touch Cargo.toml to force rebuild ----
 AC_CONFIG_COMMANDS([post-config],
 [
   if test ! -f "src/rust/Cargo.lock"; then
