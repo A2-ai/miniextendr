@@ -13,7 +13,7 @@ use miniextendr_api::miniextendr;
 ///
 /// @param left Ignored.
 /// @param right Ignored.
-/// @export
+/// @keywords internal
 #[miniextendr]
 pub fn call_attr_with(_left: i32, _right: i32) -> i32 {
     panic!("left + right is too risky")
@@ -25,7 +25,7 @@ pub fn call_attr_with(_left: i32, _right: i32) -> i32 {
 ///
 /// @param left Ignored.
 /// @param right Ignored.
-/// @export
+/// @keywords internal
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]

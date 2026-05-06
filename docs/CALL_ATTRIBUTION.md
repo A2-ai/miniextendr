@@ -49,11 +49,13 @@ The `extern "C-unwind"` path is registered directly as the `.Call` symbol, so th
 
 ## The transcript
 
+These two functions are internal demo fixtures (not exported); the `:::` prefix is intentional.
+
 ```r
 > library(miniextendr)
 
-> call_attr_with(1L, 2L)
-Error in call_attr_with(left = 1L, right = 2L) :
+> miniextendr:::call_attr_with(1L, 2L)
+Error in miniextendr:::call_attr_with(left = 1L, right = 2L) :
   left + right is too risky
 
 > miniextendr:::unsafe_C_call_attr_without(1L, 2L)
@@ -64,9 +66,9 @@ Error in miniextendr:::unsafe_C_call_attr_without(1L, 2L) :
 Wrapped inside another function so the difference is sharper:
 
 ```r
-> outer_with <- function(x) call_attr_with(x, x + 1L)
+> outer_with <- function(x) miniextendr:::call_attr_with(x, x + 1L)
 > outer_with(5L)
-Error in call_attr_with(left = x, right = x + 1L) :
+Error in miniextendr:::call_attr_with(left = x, right = x + 1L) :
   left + right is too risky
 
 > outer_without <- function(x) miniextendr:::unsafe_C_call_attr_without(x, x + 1L)
@@ -87,7 +89,7 @@ Programmatic comparison via `tryCatch`:
 [1] "simpleError"  "error"        "condition"
 
 > conditionCall(e_with)
-call_attr_with(left = x, right = x + 1L)
+miniextendr:::call_attr_with(left = x, right = x + 1L)
 > conditionCall(e_without)
 miniextendr:::unsafe_C_call_attr_without(x, x + 1L)
 ```
@@ -162,7 +164,7 @@ just configure
 just rcmdinstall
 Rscript -e '
 library(miniextendr)
-try(call_attr_with(1L, 2L))
+try(miniextendr:::call_attr_with(1L, 2L))
 try(miniextendr:::unsafe_C_call_attr_without(1L, 2L))
 '
 ```
