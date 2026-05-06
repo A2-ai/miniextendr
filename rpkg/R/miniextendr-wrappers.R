@@ -2695,7 +2695,7 @@ new_ascoercetestdata <- function(names, values) {
 
 # AsCoerceTestData::len (44:12)
 #' @title S3 generic for `len`
-#' @description S3 generic for `len`
+#' S3 generic for `len`
 #' @name len.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2722,7 +2722,7 @@ len.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_data_frame (52:12)
 #' @title S3 generic for `as_data_frame`
-#' @description S3 generic for `as_data_frame`
+#' S3 generic for `as_data_frame`
 #' @name as_data_frame.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2749,7 +2749,7 @@ as_data_frame.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_list (87:12)
 #' @title S3 generic for `as_list`
-#' @description S3 generic for `as_list`
+#' S3 generic for `as_list`
 #' @name as_list.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2776,7 +2776,7 @@ as_list.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_character (108:12)
 #' @title S3 generic for `as_character`
-#' @description S3 generic for `as_character`
+#' S3 generic for `as_character`
 #' @name as_character.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2803,7 +2803,7 @@ as_character.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_numeric (127:12)
 #' @title S3 generic for `as_numeric`
-#' @description S3 generic for `as_numeric`
+#' S3 generic for `as_numeric`
 #' @name as_numeric.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2830,7 +2830,7 @@ as_numeric.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_integer (135:12)
 #' @title S3 generic for `as_integer`
-#' @description S3 generic for `as_integer`
+#' S3 generic for `as_integer`
 #' @name as_integer.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2943,7 +2943,7 @@ new_ascoerceerrortest <- function(is_empty) {
 
 # AsCoerceErrorTest::as_data_frame (157:12)
 #' @title S3 generic for `as_data_frame`
-#' @description S3 generic for `as_data_frame`
+#' S3 generic for `as_data_frame`
 #' @name as_data_frame.AsCoerceErrorTest
 #' @rdname AsCoerceErrorTest
 #' @param x An object
@@ -2970,7 +2970,7 @@ as_data_frame.AsCoerceErrorTest <- function(x, ...) {
 
 # AsCoerceErrorTest::as_list (181:12)
 #' @title S3 generic for `as_list`
-#' @description S3 generic for `as_list`
+#' S3 generic for `as_list`
 #' @name as_list.AsCoerceErrorTest
 #' @rdname AsCoerceErrorTest
 #' @param x An object
@@ -2997,7 +2997,7 @@ as_list.AsCoerceErrorTest <- function(x, ...) {
 
 # AsCoerceErrorTest::as_character (190:12)
 #' @title S3 generic for `as_character`
-#' @description S3 generic for `as_character`
+#' S3 generic for `as_character`
 #' @name as_character.AsCoerceErrorTest
 #' @rdname AsCoerceErrorTest
 #' @param x An object
@@ -3451,7 +3451,7 @@ R6TraitCounter$new_r6trait <- function(initial) {
 # Generated from Rust impl `S3TraitCounter` (trait_abi_tests.rs:187:6)
 # S3TraitCounter::get_value (194:8)
 #' @title S3 generic for `get_value`
-#' @description S3 generic for `get_value`
+#' S3 generic for `get_value`
 #' @name get_value.S3TraitCounter
 #' @rdname S3TraitCounter
 #' @param x An object
@@ -4344,7 +4344,7 @@ new_countertraits3 <- function(v) {
 
 # CounterTraitS3::get_value (73:12)
 #' @title S3 generic for `get_value`
-#' @description S3 generic for `get_value`
+#' S3 generic for `get_value`
 #' @name get_value.CounterTraitS3
 #' @rdname CounterTraitS3
 #' @param x An object
@@ -4605,9 +4605,6 @@ methods::setClass("SidecarS4", slots = c(ptr = "externalptr"))
 #' @param prop_flag Logical sidecar field.
 #' @param prop_name Character sidecar field.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
-#' @prop prop_int An integer sidecar property.
-#' @prop prop_flag A logical sidecar property.
-#' @prop prop_name A character sidecar property.
 SidecarS7 <- S7::new_class("SidecarS7",
   properties = c(list(
     .ptr = S7::class_any
@@ -5602,7 +5599,7 @@ new_s3matchargpoint <- function(label = c("alpha", "beta", "gamma")) {
 
 # S3MatchArgPoint::label (134:12)
 #' @title S3 generic for `label`
-#' @description S3 generic for `label`
+#' S3 generic for `label`
 #' @name label.S3MatchArgPoint
 #' @rdname S3MatchArgPoint
 #' @param x An object
@@ -5628,7 +5625,7 @@ label.S3MatchArgPoint <- function(x, ...) {
 
 # S3MatchArgPoint::relabel (139:12)
 #' @title S3 generic for `relabel`
-#' @description S3 generic for `relabel`
+#' S3 generic for `relabel`
 #' @name relabel.S3MatchArgPoint
 #' @rdname S3MatchArgPoint
 #' @param x An object
@@ -5972,13 +5969,15 @@ vec_ptype2.VctrsMatchArgScale.VctrsMatchArgScale <- function(x, y, ...) vctrs::n
 #' @export
 vec_cast.VctrsMatchArgScale.VctrsMatchArgScale <- function(x, to, ...) x
 
-# Generated from Rust impl `DerivedCurrency` (vctrs_derive_example.rs:253:6)
-# DerivedCurrency::new (257:12)
+# Generated from Rust impl `DerivedCurrency` (vctrs_derive_example.rs:254:6)
+# DerivedCurrency::new (263:12)
 #' @name DerivedCurrency
 #' @rdname DerivedCurrency
 #' @title Creates a new currency value
-#' @param symbol Character currency symbol.
+#' @description Returns `Vec<f64>` (the amounts payload). The generated R wrapper wraps this via `vctrs::new_vctr(.data, class = "DerivedCurrency")`.
+#' @param symbol Character currency symbol (informational; not stored in the vector).
 #' @param amounts Numeric vector of currency amounts.
+#' @return A `DerivedCurrency` vctrs vector.
 #' @source Generated by miniextendr from Rust type `DerivedCurrency`
 #' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr
 #' @export
@@ -6015,40 +6014,21 @@ vec_ptype2.DerivedCurrency.DerivedCurrency <- function(x, y, ...) vctrs::new_vct
 #' @export
 vec_cast.DerivedCurrency.DerivedCurrency <- function(x, to, ...) x
 
-# DerivedCurrency::symbol (262:12)
-#' @title S3 generic for `symbol`
-#' @description S3 generic for `symbol`
+# DerivedCurrency::format_amounts (272:12)
+#' @title Format currency amounts with a given symbol prefix
+#' @param symbol Character currency symbol prefix (e.g. `"$"`).
+#' @param amounts Numeric amounts to format.
+#' @return Character vector of formatted values like `"$1.00"`.
+#' @name derivedcurrency_format_amounts
 #' @rdname DerivedCurrency
-#' @name symbol.DerivedCurrency
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @source Generated by miniextendr from `DerivedCurrency::symbol`
-#' @export
-if (!exists("symbol", mode = "function")) {
-  symbol <- function(x, ...) UseMethod("symbol")
-}
-
-#' @description Returns the currency symbol.
-#' @name symbol.DerivedCurrency
-#' @rdname DerivedCurrency
-#' @source Generated by miniextendr from `DerivedCurrency::symbol`
-#' @method symbol DerivedCurrency
-#' @export
-symbol.DerivedCurrency <- function(x, ...) {
-  .val <- .Call(C_DerivedCurrency__symbol, .call = match.call(), x)
-  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  .val
-}
-
-# DerivedCurrency::format_currency (268:12)
-#' @description Rust-backed format method override.
-#' @name format.DerivedCurrency
-#' @rdname DerivedCurrency
-#' @source Generated by miniextendr from `DerivedCurrency::format`
-#' @method format DerivedCurrency
-#' @export
-format.DerivedCurrency <- function(x, ...) {
-  .val <- .Call(C_DerivedCurrency__format_currency, .call = match.call(), x)
+#' @source Generated by miniextendr from `DerivedCurrency::format_amounts`
+derivedcurrency_format_amounts <- function(symbol, amounts) {
+  stopifnot(
+    "'symbol' must be character" = is.character(symbol),
+    "'symbol' must have length 1" = length(symbol) == 1L,
+    "'amounts' must be numeric, logical, or raw" = is.numeric(amounts) || is.logical(amounts) || is.raw(amounts)
+  )
+  .val <- .Call(C_DerivedCurrency__format_amounts, .call = match.call(), symbol, amounts)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -6650,11 +6630,10 @@ R6Raiser <- R6::R6Class("R6Raiser",
 )
 
 # Generated from Rust impl `S3Raiser` (condition_class_system_tests.rs:98:6)
-# S3Raiser::new (100:12)
+# S3Raiser::new (99:12)
 #' @title S3Raiser S3 Class
 #' @name S3Raiser
 #' @rdname S3Raiser
-#' @param id Numeric identifier for this raiser instance.
 #' @source Generated by miniextendr from Rust type `S3Raiser`
 #' @export
 new_s3raiser <- function(id) {
@@ -6667,9 +6646,9 @@ new_s3raiser <- function(id) {
   structure(.val, class = "S3Raiser")
 }
 
-# S3Raiser::s3_id (104:12)
+# S3Raiser::s3_id (103:12)
 #' @title S3 generic for `s3_id`
-#' @description S3 generic for `s3_id`
+#' S3 generic for `s3_id`
 #' @name s3_id.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6693,9 +6672,9 @@ s3_id.S3Raiser <- function(x, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_error (108:12)
+# S3Raiser::s3_raise_error (107:12)
 #' @title S3 generic for `s3_raise_error`
-#' @description S3 generic for `s3_raise_error`
+#' S3 generic for `s3_raise_error`
 #' @name s3_raise_error.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6724,9 +6703,9 @@ s3_raise_error.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_error_classed (112:12)
+# S3Raiser::s3_raise_error_classed (111:12)
 #' @title S3 generic for `s3_raise_error_classed`
-#' @description S3 generic for `s3_raise_error_classed`
+#' S3 generic for `s3_raise_error_classed`
 #' @name s3_raise_error_classed.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6758,9 +6737,9 @@ s3_raise_error_classed.S3Raiser <- function(x, class, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_warning (116:12)
+# S3Raiser::s3_raise_warning (115:12)
 #' @title S3 generic for `s3_raise_warning`
-#' @description S3 generic for `s3_raise_warning`
+#' S3 generic for `s3_raise_warning`
 #' @name s3_raise_warning.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6789,9 +6768,9 @@ s3_raise_warning.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_warning_classed (120:12)
+# S3Raiser::s3_raise_warning_classed (119:12)
 #' @title S3 generic for `s3_raise_warning_classed`
-#' @description S3 generic for `s3_raise_warning_classed`
+#' S3 generic for `s3_raise_warning_classed`
 #' @name s3_raise_warning_classed.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6823,9 +6802,9 @@ s3_raise_warning_classed.S3Raiser <- function(x, class, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_message (124:12)
+# S3Raiser::s3_raise_message (123:12)
 #' @title S3 generic for `s3_raise_message`
-#' @description S3 generic for `s3_raise_message`
+#' S3 generic for `s3_raise_message`
 #' @name s3_raise_message.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6854,9 +6833,9 @@ s3_raise_message.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_condition (128:12)
+# S3Raiser::s3_raise_condition (127:12)
 #' @title S3 generic for `s3_raise_condition`
-#' @description S3 generic for `s3_raise_condition`
+#' S3 generic for `s3_raise_condition`
 #' @name s3_raise_condition.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6885,9 +6864,9 @@ s3_raise_condition.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_condition_classed (132:12)
+# S3Raiser::s3_raise_condition_classed (131:12)
 #' @title S3 generic for `s3_raise_condition_classed`
-#' @description S3 generic for `s3_raise_condition_classed`
+#' S3 generic for `s3_raise_condition_classed`
 #' @name s3_raise_condition_classed.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6925,7 +6904,7 @@ S3Raiser <- new.env(parent = emptyenv())
 
 S3Raiser$new <- new_s3raiser
 
-# Generated from Rust impl `S4Raiser` (condition_class_system_tests.rs:152:6)
+# Generated from Rust impl `S4Raiser` (condition_class_system_tests.rs:151:6)
 #' @title S4Raiser S4 Class
 #' @name S4Raiser
 #' @rdname S4Raiser
@@ -6935,7 +6914,7 @@ S3Raiser$new <- new_s3raiser
 #' @slot ptr External pointer to Rust `S4Raiser` struct
 methods::setClass("S4Raiser", slots = c(ptr = "externalptr"))
 
-# S4Raiser::new (153:12)
+# S4Raiser::new (152:12)
 #' @param id (undocumented)
 #' @name S4Raiser
 #' @rdname S4Raiser
@@ -6950,7 +6929,7 @@ S4Raiser <- function(id) {
   methods::new("S4Raiser", ptr = .val)
 }
 
-# S4Raiser::id (157:12)
+# S4Raiser::id (156:12)
 #' @name S4Raiser-s4_id
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_id`
@@ -6962,7 +6941,7 @@ methods::setMethod("s4_id", "S4Raiser", function(x, ...) {
     .val
   })
 
-# S4Raiser::raise_error (161:12)
+# S4Raiser::raise_error (160:12)
 #' @name S4Raiser-s4_raise_error
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_error`
@@ -6980,7 +6959,7 @@ methods::setMethod("s4_raise_error", "S4Raiser", function(x, msg, ...) {
   }
 })
 
-# S4Raiser::raise_error_classed (165:12)
+# S4Raiser::raise_error_classed (164:12)
 #' @name S4Raiser-s4_raise_error_classed
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_error_classed`
@@ -7000,7 +6979,7 @@ methods::setMethod("s4_raise_error_classed", "S4Raiser", function(x, class, msg,
   }
 })
 
-# S4Raiser::raise_warning (169:12)
+# S4Raiser::raise_warning (168:12)
 #' @name S4Raiser-s4_raise_warning
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_warning`
@@ -7018,7 +6997,7 @@ methods::setMethod("s4_raise_warning", "S4Raiser", function(x, msg, ...) {
   }
 })
 
-# S4Raiser::raise_warning_classed (173:12)
+# S4Raiser::raise_warning_classed (172:12)
 #' @name S4Raiser-s4_raise_warning_classed
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_warning_classed`
@@ -7038,7 +7017,7 @@ methods::setMethod("s4_raise_warning_classed", "S4Raiser", function(x, class, ms
   }
 })
 
-# S4Raiser::raise_message (177:12)
+# S4Raiser::raise_message (176:12)
 #' @name S4Raiser-s4_raise_message
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_message`
@@ -7056,7 +7035,7 @@ methods::setMethod("s4_raise_message", "S4Raiser", function(x, msg, ...) {
   }
 })
 
-# S4Raiser::raise_condition (181:12)
+# S4Raiser::raise_condition (180:12)
 #' @name S4Raiser-s4_raise_condition
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_condition`
@@ -7074,7 +7053,7 @@ methods::setMethod("s4_raise_condition", "S4Raiser", function(x, msg, ...) {
   }
 })
 
-# S4Raiser::raise_condition_classed (185:12)
+# S4Raiser::raise_condition_classed (184:12)
 #' @name S4Raiser-s4_raise_condition_classed
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_condition_classed`
@@ -7094,7 +7073,7 @@ methods::setMethod("s4_raise_condition_classed", "S4Raiser", function(x, class, 
   }
 })
 
-# Generated from Rust impl `S7Raiser` (condition_class_system_tests.rs:200:6)
+# Generated from Rust impl `S7Raiser` (condition_class_system_tests.rs:199:6)
 #' @title S7Raiser S7 Class
 #' @name S7Raiser
 #' @rdname S7Raiser
@@ -7124,7 +7103,7 @@ S7Raiser <- S7::new_class("S7Raiser",
   }
 )
 
-# S7Raiser::s7_id (205:12)
+# S7Raiser::s7_id (204:12)
 #' @name S7Raiser-s7_id
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_id`
@@ -7138,7 +7117,7 @@ S7::method(s7_id, S7Raiser) <- function(x, ...) {
     .val
   }
 
-# S7Raiser::s7_raise_error (209:12)
+# S7Raiser::s7_raise_error (208:12)
 #' @name S7Raiser-s7_raise_error
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_error`
@@ -7158,7 +7137,7 @@ S7::method(s7_raise_error, S7Raiser) <- function(x, msg, ...) {
   }
 }
 
-# S7Raiser::s7_raise_error_classed (213:12)
+# S7Raiser::s7_raise_error_classed (212:12)
 #' @name S7Raiser-s7_raise_error_classed
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_error_classed`
@@ -7180,7 +7159,7 @@ S7::method(s7_raise_error_classed, S7Raiser) <- function(x, class, msg, ...) {
   }
 }
 
-# S7Raiser::s7_raise_warning (217:12)
+# S7Raiser::s7_raise_warning (216:12)
 #' @name S7Raiser-s7_raise_warning
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_warning`
@@ -7200,7 +7179,7 @@ S7::method(s7_raise_warning, S7Raiser) <- function(x, msg, ...) {
   }
 }
 
-# S7Raiser::s7_raise_warning_classed (221:12)
+# S7Raiser::s7_raise_warning_classed (220:12)
 #' @name S7Raiser-s7_raise_warning_classed
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_warning_classed`
@@ -7222,7 +7201,7 @@ S7::method(s7_raise_warning_classed, S7Raiser) <- function(x, class, msg, ...) {
   }
 }
 
-# S7Raiser::s7_raise_message (225:12)
+# S7Raiser::s7_raise_message (224:12)
 #' @name S7Raiser-s7_raise_message
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_message`
@@ -7242,7 +7221,7 @@ S7::method(s7_raise_message, S7Raiser) <- function(x, msg, ...) {
   }
 }
 
-# S7Raiser::s7_raise_condition (229:12)
+# S7Raiser::s7_raise_condition (228:12)
 #' @name S7Raiser-s7_raise_condition
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_condition`
@@ -7262,7 +7241,7 @@ S7::method(s7_raise_condition, S7Raiser) <- function(x, msg, ...) {
   }
 }
 
-# S7Raiser::s7_raise_condition_classed (233:12)
+# S7Raiser::s7_raise_condition_classed (232:12)
 #' @name S7Raiser-s7_raise_condition_classed
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_condition_classed`
@@ -7284,7 +7263,7 @@ S7::method(s7_raise_condition_classed, S7Raiser) <- function(x, class, msg, ...)
   }
 }
 
-# Generated from Rust impl `EnvRaiser` (condition_class_system_tests.rs:248:6)
+# Generated from Rust impl `EnvRaiser` (condition_class_system_tests.rs:247:6)
 #' @title EnvRaiser  Class
 #' @name EnvRaiser
 #' @rdname EnvRaiser
@@ -7292,7 +7271,7 @@ S7::method(s7_raise_condition_classed, S7Raiser) <- function(x, class, msg, ...)
 #' @export
 EnvRaiser <- new.env(parent = emptyenv())
 
-# EnvRaiser::new (249:12)
+# EnvRaiser::new (248:12)
 #' @name EnvRaiser$new
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::new`
@@ -7308,7 +7287,7 @@ EnvRaiser$new <- function(id) {
   self
 }
 
-# EnvRaiser::env_id (253:12)
+# EnvRaiser::env_id (252:12)
 #' @name EnvRaiser$env_id
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_id`
@@ -7318,7 +7297,7 @@ EnvRaiser$env_id <- function() {
   .val
 }
 
-# EnvRaiser::env_raise_error (257:12)
+# EnvRaiser::env_raise_error (256:12)
 #' @name EnvRaiser$env_raise_error
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_error`
@@ -7332,7 +7311,7 @@ EnvRaiser$env_raise_error <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_error_classed (261:12)
+# EnvRaiser::env_raise_error_classed (260:12)
 #' @name EnvRaiser$env_raise_error_classed
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_error_classed`
@@ -7348,7 +7327,7 @@ EnvRaiser$env_raise_error_classed <- function(class, msg) {
   .val
 }
 
-# EnvRaiser::env_raise_warning (265:12)
+# EnvRaiser::env_raise_warning (264:12)
 #' @name EnvRaiser$env_raise_warning
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_warning`
@@ -7362,7 +7341,7 @@ EnvRaiser$env_raise_warning <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_warning_classed (269:12)
+# EnvRaiser::env_raise_warning_classed (268:12)
 #' @name EnvRaiser$env_raise_warning_classed
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_warning_classed`
@@ -7378,7 +7357,7 @@ EnvRaiser$env_raise_warning_classed <- function(class, msg) {
   .val
 }
 
-# EnvRaiser::env_raise_message (273:12)
+# EnvRaiser::env_raise_message (272:12)
 #' @name EnvRaiser$env_raise_message
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_message`
@@ -7392,7 +7371,7 @@ EnvRaiser$env_raise_message <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_condition (277:12)
+# EnvRaiser::env_raise_condition (276:12)
 #' @name EnvRaiser$env_raise_condition
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_condition`
@@ -7406,7 +7385,7 @@ EnvRaiser$env_raise_condition <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_condition_classed (281:12)
+# EnvRaiser::env_raise_condition_classed (280:12)
 #' @name EnvRaiser$env_raise_condition_classed
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_condition_classed`
@@ -8028,7 +8007,7 @@ new_s3counter <- function(initial) {
 
 # S3Counter::s3_value (24:12)
 #' @title S3 generic for `s3_value`
-#' @description S3 generic for `s3_value`
+#' S3 generic for `s3_value`
 #' @name s3_value.S3Counter
 #' @rdname S3Counter
 #' @param x An object
@@ -8055,7 +8034,7 @@ s3_value.S3Counter <- function(x, ...) {
 
 # S3Counter::s3_inc (29:12)
 #' @title S3 generic for `s3_inc`
-#' @description S3 generic for `s3_inc`
+#' S3 generic for `s3_inc`
 #' @name s3_inc.S3Counter
 #' @rdname S3Counter
 #' @param x An object
@@ -8082,7 +8061,7 @@ s3_inc.S3Counter <- function(x, ...) {
 
 # S3Counter::s3_add (36:12)
 #' @title S3 generic for `s3_add`
-#' @description S3 generic for `s3_add`
+#' S3 generic for `s3_add`
 #' @name s3_add.S3Counter
 #' @rdname S3Counter
 #' @param x An object
@@ -8224,8 +8203,6 @@ S4Counter_default_counter <- function() {
 #' @param start Numeric start of the range.
 #' @param end Numeric end of the range.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
-#' @prop length Computed property: read-only length of the range. This becomes an S7 property accessed as `obj@length` in R. Since there's no setter, it's a computed (read-only) property.
-#' @prop midpoint Dynamic property getter: read the midpoint. Combined with set_midpoint, this creates a dynamic property that can be both read and written.
 S7Range <- S7::new_class("S7Range",
   properties = list(
     .ptr = S7::class_any,
@@ -8337,7 +8314,6 @@ S7::method(shape_name, S7Shape) <- function(x, ...) {
 #' @param kind Character kind of animal.
 #' @param legs Integer number of legs.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
-#' @prop legs Computed property: number of legs.
 S7Animal <- S7::new_class("S7Animal",
   abstract = TRUE,
   properties = list(
@@ -8434,9 +8410,6 @@ S7::method(circle_area, S7Circle) <- function(x, ...) {
 #' @param score Numeric score (property with default).
 #' @param version Integer version number.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
-#' @prop name Required property - must be provided.
-#' @prop old_version Deprecated property - emits warning when accessed.
-#' @prop score Property with default value.
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
@@ -8733,7 +8706,6 @@ S7::method(label, S7PropInner) <- function(x, ...) {
 #' @keywords internal
 #' @param inner_label Label used to reconstruct the inner class.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
-#' @prop inner Getter whose return type is another S7 class. The generated `S7::new_property(class = ...)` should resolve to `S7PropInner` (not `S7::class_any`) via the `.__MX_S7_PROP_CLASS_S7PropInner__` write-time placeholder (see `#154`).
 S7PropOuter <- S7::new_class("S7PropOuter",
   properties = list(
     .ptr = S7::class_any,
@@ -8833,9 +8805,7 @@ S7Fahrenheit_from_celsius <- function(c) {
 #' @name convert-S7Celsius-to-S7Fahrenheit
 #' @rdname S7Fahrenheit
 #' @source Generated by miniextendr from `S7Fahrenheit::from_celsius`
-#' @aliases convert
-#' @param ... Additional arguments passed to the S7 convert generic.
-S7::method(convert, list(S7Celsius, S7Fahrenheit)) <- function(from, to, ...) {
+S7::method(convert, list(S7Celsius, S7Fahrenheit)) <- function(from, to) {
     .val <- .Call(C_S7Fahrenheit__from_celsius, .call = match.call(), from@.ptr)
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     S7Fahrenheit(.ptr = .val)
@@ -8844,9 +8814,7 @@ S7::method(convert, list(S7Celsius, S7Fahrenheit)) <- function(from, to, ...) {
 #' @name convert-S7Fahrenheit-to-S7Celsius
 #' @rdname S7Fahrenheit
 #' @source Generated by miniextendr from `S7Fahrenheit::to_celsius`
-#' @aliases convert
-#' @param ... Additional arguments passed to the S7 convert generic.
-S7::method(convert, list(S7Fahrenheit, S7Celsius)) <- function(from, to, ...) {
+S7::method(convert, list(S7Fahrenheit, S7Celsius)) <- function(from, to) {
     .val <- .Call(C_S7Fahrenheit__to_celsius, .call = match.call(), from@.ptr)
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     S7Celsius(.ptr = .val)
@@ -19249,7 +19217,7 @@ uuid_roundtrip_vec <- function(uuids) {
   .val
 }
 
-# Generated from Rust fn `arith_seq` (lib.rs:422:8)
+# Generated from Rust fn `arith_seq` (lib.rs:421:8)
 #' @title arith seq
 #' @param from (no documentation available)
 #' @param step (no documentation available)
@@ -19270,7 +19238,7 @@ arith_seq <- function(from, step, length_out) {
   .val
 }
 
-# Generated from Rust fn `boxed_raw` (lib.rs:1715:8)
+# Generated from Rust fn `boxed_raw` (lib.rs:1714:8)
 #' @title Create a Box<\[u8\]> ALTREP raw vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -19893,20 +19861,6 @@ external_slice_sum <- function(data) {
   .val
 }
 
-# Generated from Rust fn `docs_demo_three_paras` (multi_para_doc_demo.rs:13:8)
-#' @title Three-paragraph doc demo
-#' @description This is the description paragraph (paragraph 2).
-#' @details This is the details paragraph (paragraph 3). It should appear in a `\details{}` block in the generated Rd file.
-#' @return Always returns 0.
-#' @rdname multi_para_doc_demo
-#' @source Generated by miniextendr from Rust fn `docs_demo_three_paras`
-#' @export
-docs_demo_three_paras <- function() {
-  .val <- .Call(C_docs_demo_three_paras, .call = match.call())
-  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  .val
-}
-
 # Generated from Rust fn `rdata_sidecar_r6_new` (rdata_sidecar_tests.rs:113:8)
 #' @title Test creating a SidecarR6 with R6 active binding accessors
 #' @param value Integer sidecar field.
@@ -20374,7 +20328,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `boxed_ints` (lib.rs:1397:8)
+# Generated from Rust fn `boxed_ints` (lib.rs:1396:8)
 #' @title Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -21058,7 +21012,7 @@ derived_rational_class_info <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_reals` (lib.rs:1685:8)
+# Generated from Rust fn `boxed_reals` (lib.rs:1684:8)
 #' @title Create a Box<\[f64\]> ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -21075,7 +21029,7 @@ boxed_reals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `lazy_string` (lib.rs:1030:8)
+# Generated from Rust fn `lazy_string` (lib.rs:1029:8)
 #' @title Create a lazy string ALTREP that computes elements on demand
 #' @rdname lazy_string_altrep
 #' @param prefix String prefix for generated elements.
@@ -21095,7 +21049,7 @@ lazy_string <- function(prefix, n) {
   .val
 }
 
-# Generated from Rust fn `leaked_ints` (lib.rs:1460:8)
+# Generated from Rust fn `leaked_ints` (lib.rs:1459:8)
 #' @title Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -21112,7 +21066,7 @@ leaked_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `static_ints` (lib.rs:1447:8)
+# Generated from Rust fn `static_ints` (lib.rs:1446:8)
 #' @title Create an ALTREP integer vector backed by a static slice (`&'static [i32]`)
 #' @rdname altrep_special
 #' @return An ALTREP integer vector with values 10, 20, 30, 40, 50.
@@ -21124,7 +21078,7 @@ static_ints <- function() {
   .val
 }
 
-# Generated from Rust fn `unit_circle` (lib.rs:1125:8)
+# Generated from Rust fn `unit_circle` (lib.rs:1124:8)
 #' @title Create a complex ALTREP of n points on the unit circle (e^(i*2*pi*k/n))
 #' @rdname altrep_special
 #' @param n Number of points on the unit circle.
@@ -21146,7 +21100,7 @@ unit_circle <- function(n) {
 #' @param left Ignored.
 #' @param right Ignored.
 #' @rdname call_attribution_demo
-#' @keywords internal
+#' @export
 #' @source Generated by miniextendr from Rust fn `call_attr_with`
 call_attr_with <- function(left, right) {
   stopifnot(
@@ -21165,7 +21119,7 @@ call_attr_with <- function(left, right) {
 #' @param left Ignored.
 #' @param right Ignored.
 #' @rdname call_attribution_demo
-#' @keywords internal
+#' @export
 #' @source Generated by miniextendr from Rust fn `C_call_attr_without`
 unsafe_C_call_attr_without <- function(left, right) {
   .val <- .Call(C_call_attr_without, left, right)
@@ -21614,7 +21568,7 @@ arrayvec_roundtrip_int <- function(v) {
   .val
 }
 
-# Generated from Rust fn `constant_int` (lib.rs:338:8)
+# Generated from Rust fn `constant_int` (lib.rs:337:8)
 #' @title Create a constant-value integer ALTREP vector (10 elements, all 42)
 #' @rdname constant_altrep
 #' @return An ALTREP integer vector.
@@ -21626,7 +21580,7 @@ constant_int <- function() {
   .val
 }
 
-# Generated from Rust fn `lazy_int_seq` (lib.rs:645:8)
+# Generated from Rust fn `lazy_int_seq` (lib.rs:644:8)
 #' @title Create a lazy integer sequence ALTREP (like R's `seq()`)
 #' @description Elements are computed on demand; materialization is deferred until R needs the full data pointer.
 #' @rdname altrep_constructors
@@ -21650,7 +21604,7 @@ lazy_int_seq <- function(from, to, by) {
   .val
 }
 
-# Generated from Rust fn `lazy_squares` (lib.rs:806:8)
+# Generated from Rust fn `lazy_squares` (lib.rs:805:8)
 #' @title Example: Lazy computation - compute on demand
 #' @param n Length of the sequence.
 #' @export
@@ -22598,7 +22552,7 @@ streaming_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_complex` (lib.rs:1745:8)
+# Generated from Rust fn `boxed_complex` (lib.rs:1744:8)
 #' @title Create a Box<\[Rcomplex\]> ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -22615,7 +22569,7 @@ boxed_complex <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_strings` (lib.rs:1730:8)
+# Generated from Rust fn `boxed_strings` (lib.rs:1729:8)
 #' @title Create a Box<\[String\]> ALTREP string vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -22632,7 +22586,7 @@ boxed_strings <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_real` (lib.rs:388:8)
+# Generated from Rust fn `constant_real` (lib.rs:387:8)
 #' @title Create a constant-value real ALTREP vector (10 elements, all pi)
 #' @rdname constant_altrep
 #' @return An ALTREP real vector.
@@ -22644,7 +22598,7 @@ constant_real <- function() {
   .val
 }
 
-# Generated from Rust fn `repeating_raw` (lib.rs:1071:8)
+# Generated from Rust fn `repeating_raw` (lib.rs:1070:8)
 #' @title Create a repeating raw byte pattern ALTREP vector
 #' @rdname lazy_string_altrep
 #' @param pattern A raw vector containing the byte pattern to repeat.
@@ -22663,7 +22617,7 @@ repeating_raw <- function(pattern, n) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_copy` (lib.rs:839:8)
+# Generated from Rust fn `bench_vec_copy` (lib.rs:838:8)
 #' @title Create a vector of given size using regular copy (IntoR)
 #' @param n Length of the vector.
 #' @export
@@ -22678,7 +22632,7 @@ bench_vec_copy <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_logicals` (lib.rs:1700:8)
+# Generated from Rust fn `boxed_logicals` (lib.rs:1699:8)
 #' @title Create a Box<\[bool\]> ALTREP logical vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -22695,7 +22649,7 @@ boxed_logicals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_range` (lib.rs:1566:8)
+# Generated from Rust fn `iter_int_range` (lib.rs:1565:8)
 #' @title Create an integer ALTREP from a collected range iterator
 #' @rdname altrep_iterators
 #' @param from Start of range (inclusive).
@@ -22715,7 +22669,7 @@ iter_int_range <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `iter_raw_bytes` (lib.rs:1598:8)
+# Generated from Rust fn `iter_raw_bytes` (lib.rs:1597:8)
 #' @title Create a raw bytes ALTREP via iterator collect (cycling 0..255)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -22732,7 +22686,7 @@ iter_raw_bytes <- function(n) {
   .val
 }
 
-# Generated from Rust fn `small_vec_copy` (lib.rs:787:8)
+# Generated from Rust fn `small_vec_copy` (lib.rs:786:8)
 #' @title Example: Small data - regular copy is fine
 #' @export
 #' @source Generated by miniextendr from Rust fn `small_vec_copy`
@@ -22742,7 +22696,7 @@ small_vec_copy <- function() {
   .val
 }
 
-# Generated from Rust fn `static_strings` (lib.rs:1504:8)
+# Generated from Rust fn `static_strings` (lib.rs:1503:8)
 #' @title Create an ALTREP string vector backed by a static string slice
 #' @rdname altrep_special
 #' @return An ALTREP string vector with 4 static entries.
@@ -22754,7 +22708,7 @@ static_strings <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_int_altrep` (lib.rs:1645:8)
+# Generated from Rust fn `vec_int_altrep` (lib.rs:1644:8)
 #' @title Create a `Vec<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23122,7 +23076,7 @@ json_serialize_point <- function(x, y) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_raw` (lib.rs:745:8)
+# Generated from Rust fn `altrep_from_raw` (lib.rs:744:8)
 #' @title Create an ALTREP raw vector from raw bytes
 #' @rdname altrep_constructors
 #' @param x A raw vector.
@@ -23136,7 +23090,7 @@ altrep_from_raw <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int` (lib.rs:1844:8)
+# Generated from Rust fn `sparse_iter_int` (lib.rs:1843:8)
 #' @title Create a sparse integer iterator ALTREP that skips elements
 #' @description Elements are computed on-demand using Iterator::nth(). Once an element is skipped (a higher index is accessed first), it cannot be retrieved and will return NA.
 #' @rdname sparse_altrep
@@ -23157,7 +23111,7 @@ sparse_iter_int <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_raw` (lib.rs:1993:8)
+# Generated from Rust fn `sparse_iter_raw` (lib.rs:1992:8)
 #' @title Create a sparse raw iterator ALTREP (cycling bytes 0..255)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -23174,7 +23128,7 @@ sparse_iter_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_real_altrep` (lib.rs:1656:8)
+# Generated from Rust fn `vec_real_altrep` (lib.rs:1655:8)
 #' @title Create a `Vec<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23307,7 +23261,7 @@ complex_roundtrip_vec <- function(v) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_list` (lib.rs:765:8)
+# Generated from Rust fn `altrep_from_list` (lib.rs:764:8)
 #' @title Create an ALTREP list from an R list, preserving the original SEXP
 #' @rdname altrep_constructors
 #' @param x An R list (VECSXP).
@@ -23320,7 +23274,7 @@ altrep_from_list <- function(x) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_altrep` (lib.rs:851:8)
+# Generated from Rust fn `bench_vec_altrep` (lib.rs:850:8)
 #' @title Create a vector of given size using ALTREP zero-copy
 #' @param n Length of the vector.
 #' @export
@@ -23335,7 +23289,7 @@ bench_vec_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_logical` (lib.rs:895:8)
+# Generated from Rust fn `constant_logical` (lib.rs:894:8)
 #' @title Create a constant-value logical ALTREP vector
 #' @rdname constant_altrep
 #' @param value Integer encoding of the logical value (0 = FALSE, NA_integer_ = NA, other = TRUE).
@@ -23355,7 +23309,7 @@ constant_logical <- function(value, n) {
   .val
 }
 
-# Generated from Rust fn `large_vec_altrep` (lib.rs:795:8)
+# Generated from Rust fn `large_vec_altrep` (lib.rs:794:8)
 #' @title Example: Large data - ALTREP avoids copy
 #' @export
 #' @source Generated by miniextendr from Rust fn `large_vec_altrep`
@@ -23365,7 +23319,7 @@ large_vec_altrep <- function() {
   .val
 }
 
-# Generated from Rust fn `range_i64_altrep` (lib.rs:1775:8)
+# Generated from Rust fn `range_i64_altrep` (lib.rs:1774:8)
 #' @title Create a `Range<i64>` ALTREP real vector (i64 stored as f64 bit patterns)
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -23385,7 +23339,7 @@ range_i64_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `range_int_altrep` (lib.rs:1764:8)
+# Generated from Rust fn `range_int_altrep` (lib.rs:1763:8)
 #' @title Create a `Range<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -23405,7 +23359,7 @@ range_int_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_real` (lib.rs:1907:8)
+# Generated from Rust fn `sparse_iter_real` (lib.rs:1906:8)
 #' @title Create a sparse real iterator ALTREP with arithmetic progression
 #' @rdname sparse_altrep
 #' @param from Start value.
@@ -23604,7 +23558,7 @@ ptr_pick_larger <- function(a, b) {
   .val
 }
 
-# Generated from Rust fn `boxed_data_altrep` (lib.rs:822:8)
+# Generated from Rust fn `boxed_data_altrep` (lib.rs:821:8)
 #' @title Example: Using into_altrep() to store wrapper
 #' @param n Length of the vector.
 #' @export
@@ -23619,7 +23573,7 @@ boxed_data_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_from_u16` (lib.rs:1623:8)
+# Generated from Rust fn `iter_int_from_u16` (lib.rs:1622:8)
 #' @title Create an integer ALTREP from u16-range values coerced to i32 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -23636,7 +23590,7 @@ iter_int_from_u16 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_real_squares` (lib.rs:1576:8)
+# Generated from Rust fn `iter_real_squares` (lib.rs:1575:8)
 #' @title Create a real ALTREP of squared values (0, 1, 4, 9, ...) via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -23653,7 +23607,7 @@ iter_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_string_items` (lib.rs:1609:8)
+# Generated from Rust fn `iter_string_items` (lib.rs:1608:8)
 #' @title Create a string ALTREP via iterator collect ("item_0", "item_1", ...)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -23670,7 +23624,7 @@ iter_string_items <- function(n) {
   .val
 }
 
-# Generated from Rust fn `range_real_altrep` (lib.rs:1786:8)
+# Generated from Rust fn `range_real_altrep` (lib.rs:1785:8)
 #' @title Create a `Range<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -23805,7 +23759,7 @@ ordered_float_roundtrip_vec <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_compact_int` (lib.rs:696:8)
+# Generated from Rust fn `altrep_compact_int` (lib.rs:695:8)
 #' @title Create a compact integer ALTREP from a lazy arithmetic sequence with printing on materialization
 #' @rdname altrep_constructors
 #' @param n Number of elements.
@@ -23828,7 +23782,7 @@ altrep_compact_int <- function(n, start, step) {
   .val
 }
 
-# Generated from Rust fn `iter_real_from_f32` (lib.rs:1634:8)
+# Generated from Rust fn `iter_real_from_f32` (lib.rs:1633:8)
 #' @title Create a real ALTREP from f32-precision values coerced to f64 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -23845,7 +23799,7 @@ iter_real_from_f32 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_complex_altrep` (lib.rs:1667:8)
+# Generated from Rust fn `vec_complex_altrep` (lib.rs:1666:8)
 #' @title Create a `Vec<Rcomplex>` ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23862,7 +23816,7 @@ vec_complex_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `condition_error_empty` (condition_class_system_tests.rs:314:8)
+# Generated from Rust fn `condition_error_empty` (condition_class_system_tests.rs:313:8)
 #' @title condition class system tests
 #' @rdname condition_class_system_tests
 #' @source Generated by miniextendr from Rust fn `condition_error_empty`
@@ -23873,7 +23827,7 @@ condition_error_empty <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `condition_error_unicode` (condition_class_system_tests.rs:308:8)
+# Generated from Rust fn `condition_error_unicode` (condition_class_system_tests.rs:307:8)
 #' @title condition class system tests
 #' @rdname condition_class_system_tests
 #' @source Generated by miniextendr from Rust fn `condition_error_unicode`
@@ -23884,7 +23838,7 @@ condition_error_unicode <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `condition_error_long_message` (condition_class_system_tests.rs:299:8)
+# Generated from Rust fn `condition_error_long_message` (condition_class_system_tests.rs:298:8)
 #' @title Long message exercises the `CString` + STRSXP encoding path
 #' @param n_chunks (no documentation available)
 #' @rdname condition_class_system_tests
@@ -23900,7 +23854,7 @@ condition_error_long_message <- function(n_chunks) {
   invisible(.val)
 }
 
-# Generated from Rust fn `condition_panic_with_int_payload` (condition_class_system_tests.rs:293:8)
+# Generated from Rust fn `condition_panic_with_int_payload` (condition_class_system_tests.rs:292:8)
 #' @title condition class system tests
 #' @rdname condition_class_system_tests
 #' @source Generated by miniextendr from Rust fn `condition_panic_with_int_payload`
@@ -23911,7 +23865,7 @@ condition_panic_with_int_payload <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `altrep_from_doubles` (lib.rs:715:8)
+# Generated from Rust fn `altrep_from_doubles` (lib.rs:714:8)
 #' @title Create an ALTREP real vector from a double vector
 #' @rdname altrep_constructors
 #' @param x A double vector.
@@ -23925,7 +23879,7 @@ altrep_from_doubles <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_strings` (lib.rs:725:8)
+# Generated from Rust fn `altrep_from_strings` (lib.rs:724:8)
 #' @title Create an ALTREP string vector from a character vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A character vector (may contain NA values).
@@ -23939,7 +23893,7 @@ altrep_from_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_logical` (lib.rs:1948:8)
+# Generated from Rust fn `sparse_iter_logical` (lib.rs:1947:8)
 #' @title Create a sparse logical iterator ALTREP (alternating TRUE/FALSE)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -23956,7 +23910,7 @@ sparse_iter_logical <- function(n) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_integers` (lib.rs:755:8)
+# Generated from Rust fn `altrep_from_integers` (lib.rs:754:8)
 #' @title Create an ALTREP integer vector from an integer vector
 #' @rdname altrep_constructors
 #' @param x An integer vector.
@@ -23970,7 +23924,7 @@ altrep_from_integers <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_logicals` (lib.rs:735:8)
+# Generated from Rust fn `altrep_from_logicals` (lib.rs:734:8)
 #' @title Create an ALTREP logical vector from a logical vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A logical vector (may contain NA values).
@@ -23983,7 +23937,7 @@ altrep_from_logicals <- function(x) {
   .val
 }
 
-# Generated from Rust fn `integer_sequence_list` (lib.rs:1171:8)
+# Generated from Rust fn `integer_sequence_list` (lib.rs:1170:8)
 #' @title Create a list ALTREP where each element is an integer sequence
 #' @param n Number of elements in the list.
 #' @return A list where element i contains the vector 1:i.
@@ -24004,7 +23958,7 @@ integer_sequence_list <- function(n) {
   .val
 }
 
-# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2034:8)
+# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2033:8)
 #' @title Returns a vector of enabled feature names for this build
 #' @description This function is useful for R tests to skip tests when features are not enabled.
 #' @name rpkg_enabled_features
@@ -24030,7 +23984,7 @@ standalone_dataframe_roundtrip <- function() {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1860:8)
+# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1859:8)
 #' @title Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -24047,7 +24001,7 @@ sparse_iter_int_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_logical_alternating` (lib.rs:1587:8)
+# Generated from Rust fn `iter_logical_alternating` (lib.rs:1586:8)
 #' @title Create an alternating TRUE/FALSE logical ALTREP via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -24064,7 +24018,7 @@ iter_logical_alternating <- function(n) {
   .val
 }
 
-# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:670:26)
+# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:669:26)
 #' @title Check if a lazy integer sequence ALTREP has been materialized
 #' @description Takes raw SEXP (extern "C-unwind") because auto-materialization in `TryFromSexp` for SEXP would trigger materialization before we can inspect it.
 #' @rdname altrep_constructors

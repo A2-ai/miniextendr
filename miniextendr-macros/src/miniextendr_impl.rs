@@ -2132,6 +2132,41 @@ impl ParsedImpl {
             }
         }
 
+        // MXL120: For vctrs impls, reject constructors that return Self or the named type.
+        // The generated R wrapper passes the constructor result to vctrs::new_vctr() (or
+        // new_rcrd/new_list_of), which requires a plain vector — not an ExternalPtr.
+        // Returning Self produces an EXTPTRSXP which new_vctr rejects with
+        // ".data must be a vector type".
+        if attrs.class_system == ClassSystem::Vctrs {
+            for method in &methods {
+                // Only check methods that would be treated as the constructor
+                let is_ctor = (method.method_attrs.constructor
+                    || (method.env == ReceiverKind::None && method.ident == "new"))
+                    && method.env != ReceiverKind::Ref
+                    && method.env != ReceiverKind::RefMut;
+                if !is_ctor {
+                    continue;
+                }
+                if vctrs_ctor_returns_self_or_type(&method.sig.output, &type_ident) {
+                    return Err(syn::Error::new_spanned(
+                        &method.sig.output,
+                        format!(
+                            "[MXL120] vctrs constructor `{}` must not return `Self` or `{}`.\n\
+                             \n\
+                             The generated R wrapper passes the constructor result to \
+                             `vctrs::new_vctr()` (or `new_rcrd`/`new_list_of`), which requires a \
+                             plain vector payload — not an ExternalPtr (`EXTPTRSXP`).\n\
+                             \n\
+                             Fix: return the vector payload directly instead of `Self`.\n\
+                             For example, return `Vec<f64>` (for vctr), a `std::collections::HashMap` \
+                             / named-list struct (for rcrd), or a `Vec<Vec<T>>` (for list_of).",
+                            method.ident, type_ident
+                        ),
+                    ));
+                }
+            }
+        }
+
         // Extract cfg attributes
         let cfg_attrs: Vec<_> = item_impl
             .attrs
@@ -2696,6 +2731,54 @@ fn output_is_result(output: &syn::ReturnType) -> bool {
                     .unwrap_or(false)
         ),
         syn::ReturnType::Default => false,
+    }
+}
+
+/// Returns true if a vctrs constructor's return type is `Self`, `&Self`, `&mut Self`,
+/// the named impl type, `Box<Self>`, `Result<Self, _>`, or `Result<NamedType, _>`.
+///
+/// These are all invalid for a vctrs constructor because the generated R wrapper
+/// passes the return value to `vctrs::new_vctr()` / `new_rcrd()` / `new_list_of()`,
+/// which require a plain vector payload — not an `ExternalPtr` (`EXTPTRSXP`).
+fn vctrs_ctor_returns_self_or_type(output: &syn::ReturnType, type_ident: &syn::Ident) -> bool {
+    let syn::ReturnType::Type(_, ty) = output else {
+        return false;
+    };
+    ty_is_self_or_named(ty.as_ref(), type_ident)
+}
+
+/// Recursively checks whether `ty` is `Self`, `&Self`, `&mut Self`, `Box<Self>`,
+/// the named type, or `Result<(Self | NamedType), _>`.
+fn ty_is_self_or_named(ty: &syn::Type, type_ident: &syn::Ident) -> bool {
+    match ty {
+        syn::Type::Path(p) => {
+            let last = match p.path.segments.last() {
+                Some(s) => s,
+                None => return false,
+            };
+            // Plain `Self` or `TypeName`
+            if last.ident == "Self" || last.ident == *type_ident {
+                return true;
+            }
+            // `Result<Self, _>` or `Result<TypeName, _>`
+            if last.ident == "Result"
+                && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
+                && let Some(syn::GenericArgument::Type(first_ty)) = args.args.first()
+            {
+                return ty_is_self_or_named(first_ty, type_ident);
+            }
+            // `Box<Self>` or `Box<TypeName>`
+            if last.ident == "Box"
+                && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
+                && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+            {
+                return ty_is_self_or_named(inner, type_ident);
+            }
+            false
+        }
+        // `&Self` or `&mut Self`
+        syn::Type::Reference(r) => ty_is_self_or_named(r.elem.as_ref(), type_ident),
+        _ => false,
     }
 }
 

@@ -658,7 +658,7 @@ fn parse_impl_vctrs(vctrs_attrs: VctrsAttrs, code: syn::ItemImpl) -> ParsedImpl 
 fn vctrs_wrapper_vctr_full_snapshot() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Percent {
-            pub fn new(x: f64) -> Self { unimplemented!() }
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
             pub fn value(&self) -> f64 { unimplemented!() }
             pub fn scale(&mut self, factor: f64) { unimplemented!() }
         }
@@ -712,7 +712,7 @@ fn vctrs_wrapper_vctr_full_snapshot() {
 fn vctrs_wrapper_rcrd_full_snapshot() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Rational {
-            pub fn new(n: i32, d: i32) -> Self { unimplemented!() }
+            pub fn new(n: i32, d: i32) -> Vec<i32> { unimplemented!() }
             pub fn numerator(&self) -> i32 { unimplemented!() }
             pub fn denominator(&self) -> i32 { unimplemented!() }
         }
@@ -747,7 +747,7 @@ fn vctrs_wrapper_rcrd_full_snapshot() {
 fn vctrs_wrapper_list_of_full_snapshot() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl IntList {
-            pub fn new(data: Vec<Vec<i32>>) -> Self { unimplemented!() }
+            pub fn new(data: Vec<Vec<i32>>) -> Vec<Vec<i32>> { unimplemented!() }
             pub fn len(&self) -> i32 { unimplemented!() }
         }
     };
@@ -781,7 +781,7 @@ fn vctrs_wrapper_list_of_full_snapshot() {
 fn vctrs_wrapper_no_abbr() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Simple {
-            pub fn new(x: f64) -> Self { unimplemented!() }
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
         }
     };
 
@@ -808,7 +808,7 @@ fn vctrs_wrapper_no_abbr() {
 fn vctrs_protocol_method_override() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Currency {
-            pub fn new(amounts: Vec<f64>) -> Self { unimplemented!() }
+            pub fn new(amounts: Vec<f64>) -> Vec<f64> { unimplemented!() }
             pub fn symbol(&self) -> String { unimplemented!() }
 
             #[miniextendr(vctrs(format))]
@@ -1989,7 +1989,7 @@ fn snapshot_s7_documented_props() {
 fn snapshot_vctrs_vctr() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Percent {
-            pub fn new(x: f64) -> Self { unimplemented!() }
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
             pub fn value(&self) -> f64 { unimplemented!() }
             pub fn scale(&mut self, factor: f64) { unimplemented!() }
         }
@@ -2011,7 +2011,7 @@ fn snapshot_vctrs_vctr() {
 fn snapshot_vctrs_rcrd() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Rational {
-            pub fn new(n: i32, d: i32) -> Self { unimplemented!() }
+            pub fn new(n: i32, d: i32) -> Vec<i32> { unimplemented!() }
             pub fn numerator(&self) -> i32 { unimplemented!() }
         }
     };

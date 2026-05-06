@@ -239,36 +239,40 @@ pub fn new_derived_temp(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, Strin
 }
 // endregion
 
-// region: Vctrs impl block with protocol method override: Currency
+// region: Vctrs impl block with vector-payload constructor: Currency
 
-/// A currency type demonstrating Rust-backed vctrs protocol methods.
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct DerivedCurrency {
-    symbol: String,
-    amounts: Vec<f64>,
-}
+/// A currency type demonstrating a `#[miniextendr(vctrs(...))]` impl whose constructor
+/// returns the vector payload (`Vec<f64>`) rather than `Self`.
+///
+/// The generated `new_derivedcurrency()` R wrapper calls `vctrs::new_vctr(.data, ...)`,
+/// so `.data` must be a plain vector. Returning `Self` (an ExternalPtr) from the
+/// constructor would fail at runtime with ".data must be a vector type".
+pub struct DerivedCurrency;
 
-/// Vctrs currency class demonstrating Rust-backed protocol method overrides.
+/// Vctrs currency class with a vector-payload constructor.
 #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "$"))]
 impl DerivedCurrency {
     /// Creates a new currency value.
-    /// @param symbol Character currency symbol.
+    ///
+    /// Returns `Vec<f64>` (the amounts payload). The generated R wrapper wraps this
+    /// via `vctrs::new_vctr(.data, class = "DerivedCurrency")`.
+    ///
+    /// @param symbol Character currency symbol (informational; not stored in the vector).
     /// @param amounts Numeric vector of currency amounts.
-    pub fn new(symbol: String, amounts: Vec<f64>) -> Self {
-        DerivedCurrency { symbol, amounts }
+    /// @return A `DerivedCurrency` vctrs vector.
+    pub fn new(_symbol: String, amounts: Vec<f64>) -> Vec<f64> {
+        amounts
     }
 
-    /// Returns the currency symbol.
-    pub fn symbol(&self) -> String {
-        self.symbol.clone()
-    }
-
-    /// Rust-backed format method override.
-    #[miniextendr(vctrs(format))]
-    pub fn format_currency(&self) -> Vec<String> {
-        self.amounts
+    /// Format currency amounts with a given symbol prefix.
+    ///
+    /// @param symbol Character currency symbol prefix (e.g. `"$"`).
+    /// @param amounts Numeric amounts to format.
+    /// @return Character vector of formatted values like `"$1.00"`.
+    pub fn format_amounts(symbol: String, amounts: Vec<f64>) -> Vec<String> {
+        amounts
             .iter()
-            .map(|a| format!("{}{:.2}", self.symbol, a))
+            .map(|a| format!("{}{:.2}", symbol, a))
             .collect()
     }
 }
