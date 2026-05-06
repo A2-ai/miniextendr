@@ -78,29 +78,19 @@ S3Raiser
 \item{class}{(undocumented)}
 }
 \description{
-S3Raiser S3 Class
-
-S3 generic for \code{s3_id}
 S3 generic for \code{s3_id}
 
 S3 generic for \code{s3_raise_error}
-S3 generic for \code{s3_raise_error}
 
-S3 generic for \code{s3_raise_error_classed}
 S3 generic for \code{s3_raise_error_classed}
 
 S3 generic for \code{s3_raise_warning}
-S3 generic for \code{s3_raise_warning}
 
-S3 generic for \code{s3_raise_warning_classed}
 S3 generic for \code{s3_raise_warning_classed}
 
 S3 generic for \code{s3_raise_message}
-S3 generic for \code{s3_raise_message}
 
 S3 generic for \code{s3_raise_condition}
-S3 generic for \code{s3_raise_condition}
 
-S3 generic for \code{s3_raise_condition_classed}
 S3 generic for \code{s3_raise_condition_classed}
 }

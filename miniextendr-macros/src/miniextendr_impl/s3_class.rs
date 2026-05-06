@@ -92,7 +92,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push("#' @noRd".to_string());
             } else {
                 lines.push(format!("#' @title S3 generic for `{}`", generic_name));
-                lines.push(format!("#' S3 generic for `{}`", generic_name));
+                lines.push(format!("#' @description S3 generic for `{}`", generic_name));
                 // Use class-qualified name to avoid duplicate alias when multiple
                 // classes define the same S3 generic (e.g., get_value).
                 lines.push(format!("#' @name {}.{}", generic_name, class_name));

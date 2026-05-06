@@ -36,11 +36,7 @@ S3MatchArgPoint
 \item{mode}{One of "Fast", "Safe", "Debug".}
 }
 \description{
-S3MatchArgPoint S3 Class
-
-S3 generic for \code{label}
 S3 generic for \code{label}
 
-S3 generic for \code{relabel}
 S3 generic for \code{relabel}
 }

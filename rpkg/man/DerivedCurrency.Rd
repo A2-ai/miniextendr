@@ -45,6 +45,8 @@ new_derivedcurrency(symbol, amounts)
 \item{to}{A DerivedCurrency prototype.}
 }
 \description{
+S3 generic for \code{symbol}
+
 Returns the currency symbol.
 
 Rust-backed format method override.

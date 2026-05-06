@@ -2695,7 +2695,7 @@ new_ascoercetestdata <- function(names, values) {
 
 # AsCoerceTestData::len (44:12)
 #' @title S3 generic for `len`
-#' S3 generic for `len`
+#' @description S3 generic for `len`
 #' @name len.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2722,7 +2722,7 @@ len.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_data_frame (52:12)
 #' @title S3 generic for `as_data_frame`
-#' S3 generic for `as_data_frame`
+#' @description S3 generic for `as_data_frame`
 #' @name as_data_frame.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2749,7 +2749,7 @@ as_data_frame.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_list (87:12)
 #' @title S3 generic for `as_list`
-#' S3 generic for `as_list`
+#' @description S3 generic for `as_list`
 #' @name as_list.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2776,7 +2776,7 @@ as_list.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_character (108:12)
 #' @title S3 generic for `as_character`
-#' S3 generic for `as_character`
+#' @description S3 generic for `as_character`
 #' @name as_character.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2803,7 +2803,7 @@ as_character.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_numeric (127:12)
 #' @title S3 generic for `as_numeric`
-#' S3 generic for `as_numeric`
+#' @description S3 generic for `as_numeric`
 #' @name as_numeric.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2830,7 +2830,7 @@ as_numeric.AsCoerceTestData <- function(x, ...) {
 
 # AsCoerceTestData::as_integer (135:12)
 #' @title S3 generic for `as_integer`
-#' S3 generic for `as_integer`
+#' @description S3 generic for `as_integer`
 #' @name as_integer.AsCoerceTestData
 #' @rdname AsCoerceTestData
 #' @param x An object
@@ -2943,7 +2943,7 @@ new_ascoerceerrortest <- function(is_empty) {
 
 # AsCoerceErrorTest::as_data_frame (157:12)
 #' @title S3 generic for `as_data_frame`
-#' S3 generic for `as_data_frame`
+#' @description S3 generic for `as_data_frame`
 #' @name as_data_frame.AsCoerceErrorTest
 #' @rdname AsCoerceErrorTest
 #' @param x An object
@@ -2970,7 +2970,7 @@ as_data_frame.AsCoerceErrorTest <- function(x, ...) {
 
 # AsCoerceErrorTest::as_list (181:12)
 #' @title S3 generic for `as_list`
-#' S3 generic for `as_list`
+#' @description S3 generic for `as_list`
 #' @name as_list.AsCoerceErrorTest
 #' @rdname AsCoerceErrorTest
 #' @param x An object
@@ -2997,7 +2997,7 @@ as_list.AsCoerceErrorTest <- function(x, ...) {
 
 # AsCoerceErrorTest::as_character (190:12)
 #' @title S3 generic for `as_character`
-#' S3 generic for `as_character`
+#' @description S3 generic for `as_character`
 #' @name as_character.AsCoerceErrorTest
 #' @rdname AsCoerceErrorTest
 #' @param x An object
@@ -3451,7 +3451,7 @@ R6TraitCounter$new_r6trait <- function(initial) {
 # Generated from Rust impl `S3TraitCounter` (trait_abi_tests.rs:187:6)
 # S3TraitCounter::get_value (194:8)
 #' @title S3 generic for `get_value`
-#' S3 generic for `get_value`
+#' @description S3 generic for `get_value`
 #' @name get_value.S3TraitCounter
 #' @rdname S3TraitCounter
 #' @param x An object
@@ -4344,7 +4344,7 @@ new_countertraits3 <- function(v) {
 
 # CounterTraitS3::get_value (73:12)
 #' @title S3 generic for `get_value`
-#' S3 generic for `get_value`
+#' @description S3 generic for `get_value`
 #' @name get_value.CounterTraitS3
 #' @rdname CounterTraitS3
 #' @param x An object
@@ -5599,7 +5599,7 @@ new_s3matchargpoint <- function(label = c("alpha", "beta", "gamma")) {
 
 # S3MatchArgPoint::label (134:12)
 #' @title S3 generic for `label`
-#' S3 generic for `label`
+#' @description S3 generic for `label`
 #' @name label.S3MatchArgPoint
 #' @rdname S3MatchArgPoint
 #' @param x An object
@@ -5625,7 +5625,7 @@ label.S3MatchArgPoint <- function(x, ...) {
 
 # S3MatchArgPoint::relabel (139:12)
 #' @title S3 generic for `relabel`
-#' S3 generic for `relabel`
+#' @description S3 generic for `relabel`
 #' @name relabel.S3MatchArgPoint
 #' @rdname S3MatchArgPoint
 #' @param x An object
@@ -6014,7 +6014,7 @@ vec_cast.DerivedCurrency.DerivedCurrency <- function(x, to, ...) x
 
 # DerivedCurrency::symbol (262:12)
 #' @title S3 generic for `symbol`
-#' S3 generic for `symbol`
+#' @description S3 generic for `symbol`
 #' @rdname DerivedCurrency
 #' @name symbol.DerivedCurrency
 #' @param x An object
@@ -6665,7 +6665,7 @@ new_s3raiser <- function(id) {
 
 # S3Raiser::s3_id (103:12)
 #' @title S3 generic for `s3_id`
-#' S3 generic for `s3_id`
+#' @description S3 generic for `s3_id`
 #' @name s3_id.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6691,7 +6691,7 @@ s3_id.S3Raiser <- function(x, ...) {
 
 # S3Raiser::s3_raise_error (107:12)
 #' @title S3 generic for `s3_raise_error`
-#' S3 generic for `s3_raise_error`
+#' @description S3 generic for `s3_raise_error`
 #' @name s3_raise_error.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6722,7 +6722,7 @@ s3_raise_error.S3Raiser <- function(x, msg, ...) {
 
 # S3Raiser::s3_raise_error_classed (111:12)
 #' @title S3 generic for `s3_raise_error_classed`
-#' S3 generic for `s3_raise_error_classed`
+#' @description S3 generic for `s3_raise_error_classed`
 #' @name s3_raise_error_classed.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6756,7 +6756,7 @@ s3_raise_error_classed.S3Raiser <- function(x, class, msg, ...) {
 
 # S3Raiser::s3_raise_warning (115:12)
 #' @title S3 generic for `s3_raise_warning`
-#' S3 generic for `s3_raise_warning`
+#' @description S3 generic for `s3_raise_warning`
 #' @name s3_raise_warning.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6787,7 +6787,7 @@ s3_raise_warning.S3Raiser <- function(x, msg, ...) {
 
 # S3Raiser::s3_raise_warning_classed (119:12)
 #' @title S3 generic for `s3_raise_warning_classed`
-#' S3 generic for `s3_raise_warning_classed`
+#' @description S3 generic for `s3_raise_warning_classed`
 #' @name s3_raise_warning_classed.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6821,7 +6821,7 @@ s3_raise_warning_classed.S3Raiser <- function(x, class, msg, ...) {
 
 # S3Raiser::s3_raise_message (123:12)
 #' @title S3 generic for `s3_raise_message`
-#' S3 generic for `s3_raise_message`
+#' @description S3 generic for `s3_raise_message`
 #' @name s3_raise_message.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6852,7 +6852,7 @@ s3_raise_message.S3Raiser <- function(x, msg, ...) {
 
 # S3Raiser::s3_raise_condition (127:12)
 #' @title S3 generic for `s3_raise_condition`
-#' S3 generic for `s3_raise_condition`
+#' @description S3 generic for `s3_raise_condition`
 #' @name s3_raise_condition.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -6883,7 +6883,7 @@ s3_raise_condition.S3Raiser <- function(x, msg, ...) {
 
 # S3Raiser::s3_raise_condition_classed (131:12)
 #' @title S3 generic for `s3_raise_condition_classed`
-#' S3 generic for `s3_raise_condition_classed`
+#' @description S3 generic for `s3_raise_condition_classed`
 #' @name s3_raise_condition_classed.S3Raiser
 #' @rdname S3Raiser
 #' @param x An object
@@ -8024,7 +8024,7 @@ new_s3counter <- function(initial) {
 
 # S3Counter::s3_value (24:12)
 #' @title S3 generic for `s3_value`
-#' S3 generic for `s3_value`
+#' @description S3 generic for `s3_value`
 #' @name s3_value.S3Counter
 #' @rdname S3Counter
 #' @param x An object
@@ -8051,7 +8051,7 @@ s3_value.S3Counter <- function(x, ...) {
 
 # S3Counter::s3_inc (29:12)
 #' @title S3 generic for `s3_inc`
-#' S3 generic for `s3_inc`
+#' @description S3 generic for `s3_inc`
 #' @name s3_inc.S3Counter
 #' @rdname S3Counter
 #' @param x An object
@@ -8078,7 +8078,7 @@ s3_inc.S3Counter <- function(x, ...) {
 
 # S3Counter::s3_add (36:12)
 #' @title S3 generic for `s3_add`
-#' S3 generic for `s3_add`
+#' @description S3 generic for `s3_add`
 #' @name s3_add.S3Counter
 #' @rdname S3Counter
 #' @param x An object
