@@ -203,6 +203,29 @@ tarball-mode cleanup in Makevars. Fix: \\
     results$pass <- c(results$pass, "No vendor tarball leak")
   }
 
+  # ── Cargo.lock shape ──
+  cli::cli_h2("Cargo.lock shape")
+
+  lock_path <- tryCatch(usethis::proj_path("src", "rust", "Cargo.lock"), error = function(e) NULL)
+  if (!is.null(lock_path) && fs::file_exists(lock_path)) {
+    lock_lines <- readLines(lock_path, warn = FALSE)
+    n_checksums <- sum(grepl("^checksum = ", lock_lines))
+    n_path <- sum(grepl('^source = "path\\+', lock_lines))
+
+    if (n_checksums > 0L || n_path > 0L) {
+      cli::cli_alert_warning(
+        "{.path src/rust/Cargo.lock} has drifted into source-shape ({n_path} {.code path+} entr{?y/ies}, {n_checksums} {.code checksum =} line{?s})."
+      )
+      cli::cli_alert_info(
+        "Run {.code miniextendr_repair_lock()} to restore tarball-shape."
+      )
+      results$warn <- c(results$warn, "Cargo.lock drifted into source-shape")
+    } else {
+      cli::cli_alert_success("{.path src/rust/Cargo.lock} is in tarball-shape")
+      results$pass <- c(results$pass, "Cargo.lock in tarball-shape")
+    }
+  }
+
   # ── Git Hooks ──
   cli::cli_h2("Git Hooks")
 
