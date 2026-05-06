@@ -71,6 +71,15 @@ pub static MX_MATCH_ARG_PARAM_DOCS: [MatchArgParamDocEntry];
 /// (which may differ when `class = "Override"` is set on the impl block).
 #[distributed_slice]
 pub static MX_CLASS_NAMES: [ClassNameEntry];
+
+/// S7 sidecar property documentation entries.
+///
+/// Each `#[derive(ExternalPtr)] #[externalptr(s7)]` struct with `#[r_data]` fields
+/// emits one entry per public field. During `write_r_wrappers_to_file`, the
+/// `.__MX_S7_SIDECAR_PROP_DOCS_<TypeName>__` placeholder in the S7 class wrapper
+/// is replaced with the formatted `#' @prop {field} {doc}` roxygen lines.
+#[distributed_slice]
+pub static MX_S7_SIDECAR_PROPS: [SidecarPropEntry];
 // endregion
 
 // region: Entry Types
@@ -160,6 +169,24 @@ pub struct ClassNameEntry {
 
 // SAFETY: All fields are &'static str — immutable and valid for program lifetime.
 unsafe impl Sync for ClassNameEntry {}
+
+/// Entry documenting a sidecar (`#[r_data]`) property on an S7 ExternalPtr type.
+///
+/// Emitted by `#[derive(ExternalPtr)] #[externalptr(s7)]` for each public `#[r_data]`
+/// field. Used by `write_r_wrappers_to_file` to substitute the
+/// `.__MX_S7_SIDECAR_PROP_DOCS_<TypeName>__` placeholder with `#' @prop` lines.
+pub struct SidecarPropEntry {
+    /// Rust type name, e.g. `"SidecarS7"`.
+    pub rust_type: &'static str,
+    /// Field name, e.g. `"prop_int"`.
+    pub field_name: &'static str,
+    /// Documentation string for this property.
+    /// Defaults to `"(undocumented sidecar property)"` when no `prop_doc` was supplied.
+    pub prop_doc: &'static str,
+}
+
+// SAFETY: All fields are &'static str — immutable and valid for program lifetime.
+unsafe impl Sync for SidecarPropEntry {}
 
 /// Trait dispatch entry mapping (concrete_tag, trait_tag) → vtable.
 #[repr(C)]
@@ -599,6 +626,48 @@ pub fn write_r_wrappers_to_file(path: &str) {
         };
         let replacement = format!("{prefix} {choices}.");
         content = content.replace(entry.placeholder, &replacement);
+    }
+
+    // Replace .__MX_S7_SIDECAR_PROP_DOCS_<TypeName>__ placeholders with @prop lines.
+    //
+    // Each S7 class wrapper with `r_data_accessors` embeds one placeholder per type.
+    // We collect all entries for each type name and emit `#' @prop field doc` lines.
+    {
+        use std::collections::HashMap;
+        // Group entries by rust_type
+        let mut by_type: HashMap<&'static str, Vec<&SidecarPropEntry>> = HashMap::new();
+        for entry in MX_S7_SIDECAR_PROPS.iter() {
+            by_type.entry(entry.rust_type).or_default().push(entry);
+        }
+
+        const SIDECAR_PREFIX: &str = ".__MX_S7_SIDECAR_PROP_DOCS_";
+        const SIDECAR_SUFFIX: &str = "__";
+        let mut result = String::with_capacity(content.len());
+        let mut remaining = content.as_str();
+        while let Some(start) = remaining.find(SIDECAR_PREFIX) {
+            result.push_str(&remaining[..start]);
+            remaining = &remaining[start + SIDECAR_PREFIX.len()..];
+            if let Some(end) = remaining.find(SIDECAR_SUFFIX) {
+                let rust_name = &remaining[..end];
+                remaining = &remaining[end + SIDECAR_SUFFIX.len()..];
+                // Emit @prop lines for each sidecar field registered for this type
+                if let Some(entries) = by_type.get(rust_name) {
+                    let prop_lines: String = entries
+                        .iter()
+                        .map(|e| format!("#' @prop {} {}", e.field_name, e.prop_doc))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    result.push_str(&prop_lines);
+                }
+                // If no entries, the placeholder is simply removed (empty replacement)
+            } else {
+                // Malformed placeholder — emit prefix and stop
+                result.push_str(SIDECAR_PREFIX);
+                break;
+            }
+        }
+        result.push_str(remaining);
+        content = result;
     }
 
     // Replace .__MX_CLASS_REF_<RustName>__ placeholders with actual R class names.

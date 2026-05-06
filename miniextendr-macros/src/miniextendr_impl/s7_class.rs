@@ -195,6 +195,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         frozen: bool,
         /// If set, a deprecation warning is emitted when the property is accessed or set.
         deprecated: Option<String>,
+        /// Documentation extracted from the getter method's first doc line.
+        /// Used to emit `#' @prop name doc` in the class-level roxygen block.
+        doc: Option<String>,
     }
 
     let mut properties: std::collections::BTreeMap<String, S7Property> =
@@ -229,6 +232,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 required: false,
                 frozen: false,
                 deprecated: None,
+                doc: None,
             });
 
             if attrs.s7.getter {
@@ -250,6 +254,21 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 if let Some(ref msg) = attrs.s7.deprecated {
                     entry.deprecated = Some(msg.clone());
                 }
+                // Extract first description line from getter's doc comment
+                // for @prop documentation in the class-level roxygen block.
+                // Doc comments are auto-converted to @description by the parser,
+                // so check both plain text and @description/@title tags.
+                entry.doc = method.doc_tags.iter().find_map(|t| {
+                    // Plain description text (rare — only if no @tags at all)
+                    if !t.starts_with('@') {
+                        return Some(t.clone());
+                    }
+                    // Auto-converted doc comment: "@description The text."
+                    // Fallback to @title if no @description
+                    t.strip_prefix("@description ")
+                        .or_else(|| t.strip_prefix("@title "))
+                        .map(|rest| rest.lines().next().unwrap_or(rest).to_string())
+                });
             }
             if attrs.s7.setter {
                 entry.setter_method_ident = Some(method_ident.clone());
@@ -372,6 +391,22 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
                     .to_string(),
             );
+        }
+
+        // @prop tags for impl-block S7 properties (getter/setter pairs).
+        // These appear in the class-level @rdname page via roxygen2's @prop tag.
+        for prop in properties.values() {
+            let doc = prop.doc.as_deref().unwrap_or("(undocumented property)");
+            lines.push(format!("#' @prop {} {}", prop.name, doc));
+        }
+
+        // @prop tags for sidecar (r_data_accessors) properties.
+        // Emitted via a write-time placeholder that MX_S7_SIDECAR_PROPS resolves.
+        // The placeholder is replaced in `write_r_wrappers_to_file` with one
+        // `#' @prop field doc` line per registered sidecar field.
+        if parsed_impl.r_data_accessors {
+            let type_name = type_ident.to_string();
+            lines.push(format!(".__MX_S7_SIDECAR_PROP_DOCS_{type_name}__"));
         }
     }
 

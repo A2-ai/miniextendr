@@ -166,6 +166,41 @@ fn has_r_data_attr(field: &Field) -> bool {
     field.attrs.iter().any(|a| a.path().is_ident("r_data"))
 }
 
+/// Parse `prop_doc = "..."` from an `#[r_data(prop_doc = "...")]` attribute.
+///
+/// Returns `None` if the field has no `#[r_data]` attribute, no `prop_doc` key,
+/// or if the attribute has no parenthesized arguments (bare `#[r_data]`).
+fn parse_r_data_prop_doc(field: &Field) -> syn::Result<Option<String>> {
+    for attr in &field.attrs {
+        if !attr.path().is_ident("r_data") {
+            continue;
+        }
+        // `#[r_data]` with no arguments — no prop_doc
+        if matches!(attr.meta, syn::Meta::Path(_)) {
+            return Ok(None);
+        }
+        let mut prop_doc = None;
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("prop_doc") {
+                let value = meta.value()?;
+                let lit: syn::LitStr = value.parse()?;
+                prop_doc = Some(lit.value());
+                Ok(())
+            } else {
+                Err(meta.error(format!(
+                    "unknown key `{}`; supported: `prop_doc`",
+                    meta.path
+                        .get_ident()
+                        .map(|i| i.to_string())
+                        .unwrap_or_default()
+                )))
+            }
+        })?;
+        return Ok(prop_doc);
+    }
+    Ok(None)
+}
+
 /// Check if a field type is `RSidecar`.
 ///
 /// Returns `true` if the last path segment of the field's type is `RSidecar`,
@@ -227,6 +262,10 @@ struct SidecarSlot {
     is_public: bool,
     /// Determines the codegen strategy for reading/writing this slot.
     kind: SlotKind,
+    /// Optional documentation string for the S7 `@prop` tag.
+    /// Sourced from `#[r_data(prop_doc = "...")]`. `None` means no doc was supplied;
+    /// a default fallback string is used at emit time.
+    prop_doc: Option<String>,
 }
 
 /// Aggregated sidecar information extracted from struct field analysis.
@@ -312,12 +351,14 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
         } else if let Some(ref ident) = field.ident {
             // Any other type with #[r_data] becomes a slot
             let kind = slot_kind_for_type(&field.ty);
+            let prop_doc = parse_r_data_prop_doc(field)?;
             slots.push(SidecarSlot {
                 name: ident.clone(),
                 ty: field.ty.clone(),
                 index: slot_index,
                 is_public: is_pub(field),
                 kind,
+                prop_doc,
             });
             slot_index += 1;
         }
@@ -1036,6 +1077,43 @@ NULL
     );
     let source_location_doc = crate::source_location_doc(name.span());
 
+    // For S7 class systems, emit MX_S7_SIDECAR_PROPS entries so the S7 codegen
+    // can substitute @prop lines for sidecar properties at write time.
+    let sidecar_prop_entries = if info.class_system == ClassSystem::S7 {
+        let entries: Vec<_> = pub_slots
+            .iter()
+            .map(|slot| {
+                let field_str = slot.name.to_string();
+                let doc_str = slot
+                    .prop_doc
+                    .as_deref()
+                    .unwrap_or("(undocumented sidecar property)");
+                let entry_ident = Ident::new(
+                    &format!(
+                        "__MX_S7_SIDECAR_PROP_{}_{}",
+                        name_upper,
+                        field_str.to_uppercase()
+                    ),
+                    Span::call_site(),
+                );
+                quote::quote! {
+                    #[doc(hidden)]
+                    #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_S7_SIDECAR_PROPS)]
+                            #[linkme(crate = ::miniextendr_api::linkme)]
+                    static #entry_ident: ::miniextendr_api::registry::SidecarPropEntry =
+                        ::miniextendr_api::registry::SidecarPropEntry {
+                            rust_type: #name_str,
+                            field_name: #field_str,
+                            prop_doc: #doc_str,
+                        };
+                }
+            })
+            .collect();
+        quote::quote! { #(#entries)* }
+    } else {
+        quote::quote! {}
+    };
+
     Ok(quote::quote! {
         #(#c_functions)*
 
@@ -1051,6 +1129,8 @@ NULL
                 source_file: file!(),
                 content: #r_wrappers,
             };
+
+        #sidecar_prop_entries
     })
 }
 
