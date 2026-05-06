@@ -139,10 +139,25 @@ conflicts on every PR that touched a workspace crate, and stale-after-rebase
 drift. CI regenerates the tarball before every R CMD check; release tooling
 regenerates it at version bump time. Don't try to commit it.
 
-If a recipe or workflow leaves a stale `inst/vendor.tar.xz` behind, use
-`just clean-vendor-leak` (monorepo) or `miniextendr_clean_vendor_leak()`
-(scaffolded packages) to remove it and restore source-mode dev iteration.
-`miniextendr_doctor()` flags the presence of this file with a recovery hint.
+## Stale tarball warning
+
+`inst/vendor.tar.xz` must not linger in the source tree after `just r-cmd-build`
+or `just r-cmd-check` finish. Both recipes set `trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT`,
+but the trap does not fire on `SIGKILL`. If the file is left behind:
+
+1. `just configure` sees it and sets `IS_TARBALL_INSTALL=true`.
+2. The next `just rcmdinstall` (or `R CMD INSTALL rpkg`) runs `make` with
+   `IS_TARBALL_INSTALL=true` and `ABS_RPKG_SRCDIR` pointing to the **source**
+   `rpkg/src/`. The tarball-mode cleanup in `Makevars.in` then deletes
+   `src/rust/.cargo/` from the source tree.
+3. The monorepo `[patch."git+url"]` override is gone; cargo silently resolves
+   the three workspace crates from `git+https://...#<sha>` instead of local siblings.
+
+Recovery: use `just clean-vendor-leak` (monorepo) or
+`miniextendr_clean_vendor_leak()` (scaffolded packages) to remove the stale
+tarball, then `just configure` to regenerate `.cargo/config.toml`.
+`miniextendr_doctor()` detects both the stale tarball and a missing
+`config.toml` and prints the fix.
 
 ## Constraints, in case you're tempted
 

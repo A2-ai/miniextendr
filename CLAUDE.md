@@ -195,6 +195,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 - **Permission errors installing**: `R_LIBS=/tmp/claude/R_lib R CMD INSTALL rpkg` or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
 - **Stale `.snap.new`**: diff vs `.snap`; if expected, `mv` over the old snapshot. Re-run `just test`.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
+- **Missing `.cargo/config.toml` / cargo resolves framework crates from git instead of local siblings**: stale `rpkg/inst/vendor.tar.xz` left by an interrupted `just r-cmd-build` or `r-cmd-check`. Fix: `rm rpkg/inst/vendor.tar.xz && just configure`. `minirextendr_doctor()` detects both conditions.
 
 ## Capturing Command Output
 
