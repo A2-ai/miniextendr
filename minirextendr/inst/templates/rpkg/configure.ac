@@ -371,6 +371,15 @@ dnl
 dnl Source install + no monorepo:
 dnl   [build]                                 target-dir = "<rust-target>"
 dnl   (cargo follows the git URL declared in Cargo.toml)
+dnl
+dnl WARNING: stale inst/vendor.tar.xz hazard.
+dnl   `just r-cmd-build` and `just r-cmd-check` create inst/vendor.tar.xz
+dnl   transiently and remove it via `trap ... EXIT`.  If the process is killed
+dnl   before the trap fires, the file is left behind.  Configure then detects
+dnl   it and sets IS_TARBALL_INSTALL=true, which (a) writes a tarball-mode
+dnl   config.toml here and (b) makes Makevars.in's post-build cleanup delete
+dnl   src/rust/.cargo/ from the SOURCE TREE on the next `R CMD INSTALL .`.
+dnl   Recovery: rm inst/vendor.tar.xz && bash ./configure
 AC_CONFIG_COMMANDS([cargo-config],
 [
   RPKG_CFG="src/rust/.cargo/config.toml"
