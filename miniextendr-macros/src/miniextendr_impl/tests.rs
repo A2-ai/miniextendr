@@ -828,13 +828,16 @@ fn vctrs_protocol_method_override() {
 
     // format_currency method should be generated as format.Currency, not format_currency.Currency
     assert!(wrapper.contains("#' @method format Currency"));
-    assert!(wrapper.contains("format.Currency <- function(amounts)"));
+    // Protocol methods get a trailing `...` so `format(x, nsmall = 2)` doesn't error
+    // with "unused argument (nsmall = 2)" when R dispatches to format.Currency.
+    assert!(wrapper.contains("format.Currency <- function(amounts, ...)"));
 
     // Should NOT create a new S3 generic for "format" (it's a base R function)
     assert!(!wrapper.contains("format <- function(x, ...) UseMethod(\"format\")"));
 
-    // symbol static helper should be generated as regular function currency_symbol(amounts)
+    // symbol static helper (non-protocol) should keep fixed formals — no trailing `...`
     assert!(wrapper.contains("currency_symbol <- function(amounts)"));
+    assert!(!wrapper.contains("currency_symbol <- function(amounts, ...)"));
 }
 // endregion
 
