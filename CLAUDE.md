@@ -29,6 +29,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 - **Windows paths in TOML**: forward slashes only. Strip `\\?\` prefix from `canonicalize()` output before writing.
 - **macOS tar xattrs**: set `COPYFILE_DISABLE=1` when creating tarballs to avoid Apple metadata warnings on Linux/Windows GNU tar.
 - **`cargo-revendor`**: standalone workspace (excluded from miniextendr workspace). Build/test via `just revendor-build`/`just revendor-test`. `--freeze` resolves `Cargo.toml` against `vendor/` only.
+- **`ColumnarDataFrame::from_rows`: all-None columns**: columns where every row had `Option<T> = None` land as a logical NA column (LGLSXP), not `list(NULL, NULL, …)`. R coerces logical NA to the surrounding type on first use (`c(NA, 1L)` → integer, `c(NA, "x")` → character). Mixed Some/None columns are unaffected.
 
 ### `just` vs raw `cargo`
 
