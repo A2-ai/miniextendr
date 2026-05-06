@@ -348,7 +348,15 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
 
-        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+        // Protocol methods accept `...` so `format(x, nsmall = 2)` and similar
+        // S3 dispatch calls with extra arguments don't error with "unused argument".
+        // The `...` is silently dropped; the underlying Rust function has a fixed signature.
+        let formals = if is_protocol {
+            format!("{}, ...", ctx.params)
+        } else {
+            ctx.params.to_string()
+        };
+        lines.push(format!("{} <- function({}) {{", fn_name, formals));
 
         // Inject r_entry
         if let Some(ref entry) = ctx.method.method_attrs.r_entry {
