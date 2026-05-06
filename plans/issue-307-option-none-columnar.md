@@ -34,6 +34,48 @@ generic-list path" (`Vec<u8>`, `HashMap<…>`, etc.) — only the first downgrad
 
 No user-side hint, no derive, no wrapper, no proc-macro changes, no API surface change.
 
+### Schema upgrade (two-phase discovery)
+
+The original single-pass `discover_schema_union` had a critical limitation: when the
+first row had `None` for a field, the column type was locked to `Generic` and subsequent
+`Some(value)` rows never got to upgrade it — the `if unified_mappings.contains_key(key)
+{ continue; }` guard short-circuited on the second row.
+
+This was fixed by replacing the single-pass loop with two-phase discovery:
+
+- **Phase A**: probe every row, accumulate per-key candidates
+  (`Candidate::Scalar(ColumnType)` or `Candidate::Compound { fields, sub_map }`).
+- **Phase B**: resolve each key using the type lattice:
+  - `Compound` beats everything (has concrete shape).
+  - `Scalar(non-Generic)` beats `Scalar(Generic)`.
+  - `Scalar(Generic)` is the bottom (all-None probes land here).
+  - Tie between two non-Generic Scalars: existing-wins (no widening).
+  - Tie between two Compounds: existing-wins (recursive union is a follow-up).
+
+This allows `[{x: None}, {x: Some(42u64)}]` to produce a numeric column instead of a
+Generic list, and `[{point: None}, {point: Some(Point{x:1.0,y:2.0})}]` to produce
+`point_x`/`point_y` columns instead of a single Generic column.
+
+The short-circuit ("if this row contributed no new fields and it's not the first row,
+break") was also removed — it was an optimization that was incompatible with the upgrade
+semantics.
+
+#### Remaining limitation: truly-all-None nested Option<Struct>
+
+When **every** row has `None` for an `Option<UserStruct>`, no row ever contributes a
+`Compound` candidate. Phase B resolves the key to `Scalar(Generic)`, which the
+assembly-time all-None downgrade then converts to a single logical-NA column. This is
+structurally unfixable without a type-level hint on stable Rust — `TypeId::of::<T>()`
+requires `T: 'static` which serde's trait bound doesn't carry. The truly-all-None case
+is documented as a known limitation.
+
+#### Remaining limitation: Compound-vs-Compound recursive union
+
+When two rows contribute different `Compound` shapes for the same key (e.g. two enum
+variants where the nested struct differs per variant), the first `Compound` wins and
+the second is silently discarded. Recursive union of field sets is tracked as a separate
+follow-up issue.
+
 ## Anchor points (in `miniextendr-api/src/serde/columnar.rs`)
 
 - `assemble_dataframe` (called at line 171) — phase 4, where each `ColumnBuffer` becomes
