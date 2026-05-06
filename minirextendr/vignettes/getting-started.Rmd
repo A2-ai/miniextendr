@@ -247,6 +247,18 @@ the function automates, see
 
 [cargo-lock-shape]: https://a2-ai.github.io/miniextendr/manual/cargo-lock-shape/
 
+### Recovery from drift
+
+If you see `Cargo.lock` modified after `devtools::install()` or `cargo build`,
+run:
+
+```{r}
+miniextendr_repair_lock()
+```
+
+Sub-second; lock-only. Use `miniextendr_vendor()` only when you also need a
+fresh `inst/vendor.tar.xz` (i.e., before `R CMD build` for CRAN submission).
+
 ### Upgrading
 
 ```{r}

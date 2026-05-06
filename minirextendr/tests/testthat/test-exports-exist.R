@@ -7,7 +7,7 @@ exported_funs <- c(
   "miniextendr_build",
   "miniextendr_check", "miniextendr_check_rust",
   "miniextendr_clean_vendor_leak",
-  "miniextendr_configure", "miniextendr_dev_link",
+  "miniextendr_configure", "miniextendr_repair_lock", "miniextendr_dev_link",
   "miniextendr_doctor", "miniextendr_validate",
   "miniextendr_vendor",
   "miniextendr_config", "miniextendr_config_defaults",
