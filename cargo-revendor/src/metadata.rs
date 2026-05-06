@@ -416,21 +416,84 @@ fn cargo_config_search_paths(manifest_path: &Path) -> Vec<PathBuf> {
     paths
 }
 
-/// Read `[package] version = "..."` from a `Cargo.toml`.
+/// Read `[package] version` from a `Cargo.toml`, resolving `version.workspace = true`
+/// by walking up to the nearest workspace-root manifest's `[workspace.package]`.
 fn read_package_version(manifest: &Path) -> Result<String> {
     let content = std::fs::read_to_string(manifest)
         .with_context(|| format!("failed to read {}", manifest.display()))?;
     let doc: toml_edit::DocumentMut = content
         .parse()
         .with_context(|| format!("failed to parse TOML in {}", manifest.display()))?;
-    let version = doc
+    let version_item = doc
         .get("package")
         .and_then(|p| p.as_table())
         .and_then(|t| t.get("version"))
-        .and_then(|v| v.as_str())
-        .with_context(|| format!("no `[package] version` found in {}", manifest.display()))?
-        .to_string();
-    Ok(version)
+        .with_context(|| format!("no `[package] version` found in {}", manifest.display()))?;
+
+    if let Some(s) = version_item.as_str() {
+        return Ok(s.to_string());
+    }
+
+    // `version.workspace = true` — either inline (`version = { workspace = true }`)
+    // or dotted-key form (`version.workspace = true`, parsed as a sub-table).
+    let inherits_workspace = version_item
+        .as_inline_table()
+        .and_then(|t| t.get("workspace"))
+        .and_then(|v| v.as_bool())
+        == Some(true)
+        || version_item
+            .as_table()
+            .and_then(|t| t.get("workspace"))
+            .and_then(|v| v.as_bool())
+            == Some(true);
+
+    if inherits_workspace {
+        return read_workspace_package_version(manifest);
+    }
+
+    anyhow::bail!(
+        "could not resolve `[package] version` in {} (not a string and not workspace-inherited)",
+        manifest.display()
+    )
+}
+
+/// Walk up from `manifest`'s parent looking for the workspace-root `Cargo.toml`,
+/// then read `[workspace.package].version`.
+fn read_workspace_package_version(manifest: &Path) -> Result<String> {
+    let start = manifest
+        .parent()
+        .with_context(|| format!("manifest {} has no parent", manifest.display()))?;
+    let mut dir: Option<&Path> = start.parent();
+    while let Some(d) = dir {
+        let candidate = d.join("Cargo.toml");
+        if candidate.exists() {
+            let content = std::fs::read_to_string(&candidate)
+                .with_context(|| format!("failed to read {}", candidate.display()))?;
+            if let Ok(doc) = content.parse::<toml_edit::DocumentMut>()
+                && let Some(ws) = doc.get("workspace").and_then(|v| v.as_table())
+            {
+                if let Some(version) = ws
+                    .get("package")
+                    .and_then(|p| p.as_table())
+                    .and_then(|t| t.get("version"))
+                    .and_then(|v| v.as_str())
+                {
+                    return Ok(version.to_string());
+                }
+                anyhow::bail!(
+                    "workspace at {} has no `[workspace.package] version`; \
+                     crate {} declares `version.workspace = true`",
+                    candidate.display(),
+                    manifest.display()
+                );
+            }
+        }
+        dir = d.parent();
+    }
+    anyhow::bail!(
+        "no workspace `Cargo.toml` found above {}; cannot resolve `version.workspace = true`",
+        manifest.display()
+    )
 }
 
 /// Cross-platform home directory. Tries `$HOME` (Unix), `$USERPROFILE` (Windows).
@@ -629,6 +692,86 @@ mod tests {
         let overrides = vec![local_pkg("miniextendr-api", "1.0.0")];
         let result = resolve_git_override("serde", "1.0.0", &overrides).unwrap();
         assert!(result.is_none());
+    }
+
+    // endregion
+
+    // region: read_package_version tests
+
+    #[test]
+    fn read_package_version_string_literal() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let manifest = dir.path().join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"foo\"\nversion = \"1.2.3\"\n",
+        )
+        .unwrap();
+        assert_eq!(read_package_version(&manifest).unwrap(), "1.2.3");
+    }
+
+    #[test]
+    fn read_package_version_workspace_inheritance_inline() {
+        // Workspace root with [workspace.package] version, member declares
+        // `version = { workspace = true }` (inline-table form).
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"member\"]\n\
+             [workspace.package]\nversion = \"4.5.6\"\n",
+        )
+        .unwrap();
+        let member = dir.path().join("member");
+        std::fs::create_dir(&member).unwrap();
+        let manifest = member.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"bar\"\nversion = { workspace = true }\n",
+        )
+        .unwrap();
+        assert_eq!(read_package_version(&manifest).unwrap(), "4.5.6");
+    }
+
+    #[test]
+    fn read_package_version_workspace_inheritance_dotted() {
+        // Same as above but using the dotted-key form
+        // (`version.workspace = true`), which is the canonical style used by
+        // the miniextendr workspace and most cargo workspaces in the wild.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"member\"]\n\
+             [workspace.package]\nversion = \"7.8.9\"\n",
+        )
+        .unwrap();
+        let member = dir.path().join("member");
+        std::fs::create_dir(&member).unwrap();
+        let manifest = member.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"bar\"\nversion.workspace = true\n",
+        )
+        .unwrap();
+        assert_eq!(read_package_version(&manifest).unwrap(), "7.8.9");
+    }
+
+    #[test]
+    fn read_package_version_workspace_missing_root_errors() {
+        // Member declares `version.workspace = true` but no ancestor
+        // Cargo.toml has [workspace] — bail with a clear error.
+        let dir = tempfile::TempDir::new().unwrap();
+        let manifest = dir.path().join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"bar\"\nversion.workspace = true\n",
+        )
+        .unwrap();
+        let err = read_package_version(&manifest).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("no workspace `Cargo.toml` found above"),
+            "unexpected error message: {err}"
+        );
     }
 
     // endregion
