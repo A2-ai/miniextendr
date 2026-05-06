@@ -129,7 +129,205 @@ mod doc_lint_tests {
             Some("Description after multiple blanks.".to_string())
         );
     }
+
+    // region: implicit_details_from_attrs unit tests
+
+    #[test]
+    fn test_implicit_details_none_when_one_paragraph() {
+        let attrs = make_doc_attrs(&["Just a title."]);
+        assert_eq!(implicit_details_from_attrs(&attrs), None);
+    }
+
+    #[test]
+    fn test_implicit_details_none_when_two_paragraphs() {
+        let attrs = make_doc_attrs(&["Title.", "", "Description only."]);
+        assert_eq!(implicit_details_from_attrs(&attrs), None);
+    }
+
+    #[test]
+    fn test_implicit_details_returns_third_paragraph() {
+        let attrs = make_doc_attrs(&["Title.", "", "Description.", "", "Details paragraph."]);
+        assert_eq!(
+            implicit_details_from_attrs(&attrs),
+            Some("Details paragraph.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_details_joins_multiple_detail_paragraphs() {
+        let attrs = make_doc_attrs(&[
+            "Title.",
+            "",
+            "Description.",
+            "",
+            "First details para.",
+            "",
+            "Second details para.",
+        ]);
+        assert_eq!(
+            implicit_details_from_attrs(&attrs),
+            Some("First details para.\n\nSecond details para.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_details_stops_at_tag() {
+        let attrs = make_doc_attrs(&[
+            "Title.",
+            "",
+            "Description.",
+            "",
+            "Details here.",
+            "@param x Something",
+        ]);
+        assert_eq!(
+            implicit_details_from_attrs(&attrs),
+            Some("Details here.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_details_multiline_detail_paragraph() {
+        let attrs = make_doc_attrs(&[
+            "Title.",
+            "",
+            "Description.",
+            "",
+            "First line of details.",
+            "Second line of details.",
+        ]);
+        assert_eq!(
+            implicit_details_from_attrs(&attrs),
+            Some("First line of details. Second line of details.".to_string())
+        );
+    }
+
+    // endregion
 }
+// endregion
+
+// region: @details auto-injection integration tests (via roxygen_tags_from_attrs)
+
+fn make_doc_attrs_plain(lines: &[&str]) -> Vec<syn::Attribute> {
+    lines
+        .iter()
+        .map(|line| syn::parse_quote!(#[doc = #line]))
+        .collect()
+}
+
+#[test]
+fn auto_details_not_injected_for_one_paragraph() {
+    // One paragraph + @param → no @details
+    let attrs = make_doc_attrs_plain(&["Title.", "@param x A value"]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert!(!tags.iter().any(|t| t.starts_with("@details")));
+}
+
+#[test]
+fn auto_details_not_injected_for_two_paragraphs() {
+    // Two paragraphs + @param → @description injected but no @details
+    let attrs = make_doc_attrs_plain(&["Title.", "", "Description.", "@param x A value"]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert!(tags.iter().any(|t| t.starts_with("@description")));
+    assert!(!tags.iter().any(|t| t.starts_with("@details")));
+}
+
+#[test]
+fn auto_details_injected_for_three_paragraphs() {
+    // Three paragraphs + @param → both @description and @details injected
+    let attrs = make_doc_attrs_plain(&[
+        "Title.",
+        "",
+        "Description.",
+        "",
+        "Details paragraph.",
+        "@param x A value",
+    ]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert!(tags.iter().any(|t| t.starts_with("@description")));
+    let details_tag = tags.iter().find(|t| t.starts_with("@details"));
+    assert!(
+        details_tag.is_some(),
+        "expected @details tag in: {:?}",
+        tags
+    );
+    assert!(details_tag.unwrap().contains("Details paragraph."));
+}
+
+#[test]
+fn auto_details_joins_four_paragraphs() {
+    // Four paragraphs → @details joins paragraphs 3 and 4 with \n\n
+    let attrs = make_doc_attrs_plain(&[
+        "Title.",
+        "",
+        "Description.",
+        "",
+        "First details.",
+        "",
+        "Second details.",
+        "@param x A value",
+    ]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let details_tag = tags.iter().find(|t| t.starts_with("@details")).unwrap();
+    assert!(
+        details_tag.contains("First details."),
+        "missing first: {:?}",
+        tags
+    );
+    assert!(
+        details_tag.contains("Second details."),
+        "missing second: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn auto_details_idempotent_when_explicit_details_present() {
+    // Explicit @details → no auto-injection
+    let attrs = make_doc_attrs_plain(&[
+        "Title.",
+        "",
+        "Description.",
+        "",
+        "This would become details.",
+        "@details Explicit details.",
+        "@param x A value",
+    ]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let count = tags.iter().filter(|t| t.starts_with("@details")).count();
+    assert_eq!(count, 1, "expected exactly one @details tag: {:?}", tags);
+    // It should be the explicit one
+    let details_tag = tags.iter().find(|t| t.starts_with("@details")).unwrap();
+    assert!(details_tag.contains("Explicit details."));
+}
+
+#[test]
+fn auto_details_order_is_title_description_details_param() {
+    // Verify order: @title before @description before @details before @param
+    let attrs = make_doc_attrs_plain(&[
+        "Title.",
+        "",
+        "Description.",
+        "",
+        "Details.",
+        "@param x A value",
+    ]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let title_pos = tags.iter().position(|t| t.starts_with("@title"));
+    let desc_pos = tags.iter().position(|t| t.starts_with("@description"));
+    let details_pos = tags.iter().position(|t| t.starts_with("@details"));
+    let param_pos = tags.iter().position(|t| t.starts_with("@param"));
+    assert!(
+        title_pos < desc_pos && desc_pos < details_pos && details_pos < param_pos,
+        "expected title<desc<details<param order, got positions: title={:?} desc={:?} details={:?} param={:?}\ntags={:?}",
+        title_pos,
+        desc_pos,
+        details_pos,
+        param_pos,
+        tags
+    );
+}
+
 // endregion
 
 // region: Tag extraction tests
