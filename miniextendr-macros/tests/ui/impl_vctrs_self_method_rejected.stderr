@@ -1,0 +1,15 @@
+error: [MXL120] vctrs impl method `symbol` uses a `&self` receiver, which is not supported on `#[miniextendr(vctrs(...))]` impls.
+
+       A vctrs object is an S3-classed base vector (REALSXP, INTSXP, etc.). There is no Rust `Self` stored inside the R SEXP — the vector payload IS the R object.  The C wrapper cannot reconstruct `Self` from a base vector, so calling an instance method would panic at runtime.
+
+       Fix: convert this method to a static method whose parameters receive the vector data directly.  For example:
+
+       // Before (broken):
+       // pub fn value(&self) -> f64 { ... }
+
+       // After (correct):
+       // pub fn value(amounts: Vec<f64>) -> Vec<f64> { ... }
+  --> tests/ui/impl_vctrs_self_method_rejected.rs:18:12
+   |
+18 |     pub fn symbol(&self) -> String {
+   |            ^^^^^^
