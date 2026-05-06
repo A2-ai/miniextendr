@@ -22,7 +22,7 @@ cached_strsxp!(pub(crate) fn date_class_sexp() = [c"Date"]);
 cached_strsxp!(pub(crate) fn posixct_class_sexp() = [c"POSIXct", c"POSIXt"]);
 
 // Cache a names vector:
-cached_strsxp!(pub(crate) fn error_names_sexp() = [c"error", c"kind", c"call"]);
+cached_strsxp!(pub(crate) fn condition_names_sexp() = [c"error", c"kind", c"class", c"call"]);
 
 // With feature gates:
 cached_symbol!(
@@ -108,9 +108,9 @@ items use the narrowest `#[cfg]` that covers their callers:
 | Cached value | Feature gate |
 |---|---|
 | `data_frame_class_sexp()` | (none - always available) |
-| `rust_error_class_sexp()` | (none) |
-| `error_names_sexp()` | (none) |
-| `rust_error_attr_symbol()` | (none) |
+| `rust_condition_class_sexp()` | (none) |
+| `condition_names_sexp()` | (none) |
+| `rust_condition_attr_symbol()` | (none) |
 | `posixct_class_sexp()` | `any(time, arrow)` |
 | `date_class_sexp()` | `any(time, arrow)` |
 | `tzone_symbol()` | `any(time, arrow)` |

@@ -468,7 +468,7 @@ where
             // Generic panic path
             let msg = panic_payload_to_string(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
-            crate::error_value::make_rust_error_value(&msg, "panic", None)
+            crate::error_value::make_rust_condition_value(&msg, "panic", None, None)
         }
     }
 }
@@ -517,7 +517,7 @@ where
             // Generic panic path — unchanged
             let msg = panic_payload_to_string(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
-            crate::error_value::make_rust_error_value(&msg, "panic", call)
+            crate::error_value::make_rust_condition_value(&msg, "panic", None, call)
         }
     }
 }

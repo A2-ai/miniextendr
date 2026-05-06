@@ -134,14 +134,9 @@ cached_strsxp!(
 
 cached_strsxp!(
     /// Cached `"rust_condition_value"` class STRSXP — applied to every tagged
-    /// SEXP produced by `make_rust_error_value` / `make_rust_condition_value`
-    /// to identify panic-transport values to the generated R wrappers.
+    /// SEXP produced by `make_rust_condition_value` to identify panic-transport
+    /// values to the generated R wrappers.
     pub(crate) fn rust_condition_class_sexp() = [c"rust_condition_value"]
-);
-
-cached_strsxp!(
-    /// Cached `c("error", "kind", "call")` names STRSXP for error values.
-    pub(crate) fn error_names_sexp() = [c"error", c"kind", c"call"]
 );
 
 cached_strsxp!(
