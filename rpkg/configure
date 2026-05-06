@@ -2561,6 +2561,9 @@ ac_config_commands="$ac_config_commands unpack-vendor-tarball"
 ac_config_commands="$ac_config_commands cargo-config"
 
 
+ac_config_commands="$ac_config_commands lock-shape-check"
+
+
 ac_config_commands="$ac_config_commands cargo-lockfile-compat"
 
 
@@ -3231,6 +3234,8 @@ IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
  VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
  SED="$SED"
+IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
+ R_HOME="$R_HOME"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
 ABS_RPKG_SRC="$abs_rpkg_src" CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"
 
@@ -3246,6 +3251,7 @@ do
     "src/$PACKAGE_NAME-win.def") CONFIG_FILES="$CONFIG_FILES src/$PACKAGE_NAME-win.def:src/win.def.in" ;;
     "unpack-vendor-tarball") CONFIG_COMMANDS="$CONFIG_COMMANDS unpack-vendor-tarball" ;;
     "cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-config" ;;
+    "lock-shape-check") CONFIG_COMMANDS="$CONFIG_COMMANDS lock-shape-check" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "post-config") CONFIG_COMMANDS="$CONFIG_COMMANDS post-config" ;;
 
@@ -3738,6 +3744,15 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
     echo "configure: wrote $RPKG_CFG (source mode, no monorepo siblings)"
+  fi
+ ;;
+    "lock-shape-check":C)
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    if "${R_HOME}/bin/Rscript" tools/lock-shape-check.R "tarball" "src/rust/Cargo.lock"; then
+      echo "configure: lock-shape OK"
+    else
+      as_fn_error $? "Cargo.lock shape drift detected in tarball mode; see message above" "$LINENO" 5
+    fi
   fi
  ;;
     "cargo-lockfile-compat":C)
