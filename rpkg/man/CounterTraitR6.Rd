@@ -28,45 +28,44 @@ r6_trait_MatrixCounter_custom_add(x, n)
 \description{
 CounterTraitR6 R6 Class
 
+CounterTraitR6 R6 Class
+
 Static trait method MatrixCounter::default_value()
 }
 \section{Methods}{
 \subsection{Public methods}{
-  \itemize{
-    \item \href{#method-CounterTraitR6-initialize}{\code{CounterTraitR6$new()}}
-    \item \href{#method-CounterTraitR6-get_value}{\code{CounterTraitR6$get_value()}}
-  }
+\itemize{
+\item \href{#method-CounterTraitR6-new}{\code{CounterTraitR6$new()}}
+\item \href{#method-CounterTraitR6-get_value}{\code{CounterTraitR6$get_value()}}
+}
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-CounterTraitR6-initialize"></a>}}
-\if{latex}{\out{\hypertarget{method-CounterTraitR6-initialize}{}}}
-\subsection{\code{CounterTraitR6$new()}}{
-  Create a new counter with initial value
-  \subsection{Usage}{
-    \if{html}{\out{<div class="r">}}
-    \preformatted{CounterTraitR6$new(v, .ptr = NULL)}
-    \if{html}{\out{</div>}}
-  }
-  \subsection{Arguments}{
-    \if{html}{\out{<div class="arguments">}}
-    \describe{
-      \item{\code{v}}{Initial counter value.}
-      \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
-    }
-    \if{html}{\out{</div>}}
-  }
+\if{html}{\out{<a id="method-CounterTraitR6-new"></a>}}
+\if{latex}{\out{\hypertarget{method-CounterTraitR6-new}{}}}
+\subsection{Method \code{new()}}{
+Create a new counter with initial value
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{CounterTraitR6$new(v, .ptr = NULL)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{v}}{Initial counter value.}
+
+\item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
+}
+\if{html}{\out{</div>}}
+}
+}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-CounterTraitR6-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-CounterTraitR6-get_value}{}}}
-\subsection{\code{CounterTraitR6$get_value()}}{
-  Get the current counter value.
-  \subsection{Usage}{
-    \if{html}{\out{<div class="r">}}
-    \preformatted{CounterTraitR6$get_value()}
-    \if{html}{\out{</div>}}
-  }
+\subsection{Method \code{get_value()}}{
+Get the current counter value.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{CounterTraitR6$get_value()}\if{html}{\out{</div>}}
 }
 
+}
 }
