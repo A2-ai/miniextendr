@@ -24,7 +24,10 @@ pub fn run_cargo_vendor(
     if v.info() {
         eprintln!("  Running cargo vendor...");
         if !sync_manifests.is_empty() {
-            eprintln!("    syncing {} additional manifest(s)", sync_manifests.len());
+            eprintln!(
+                "    syncing {} additional manifest(s)",
+                sync_manifests.len()
+            );
             for m in sync_manifests {
                 eprintln!("      --sync {}", m.display());
             }
@@ -1037,7 +1040,12 @@ fn rewrite_dep_to_vendor(dep: &mut toml_edit::Item, name: &str, vendor_rel: &str
 /// - Falls back to flat `<name>` if only the flat dir exists.
 ///
 /// With `versioned_dirs = false`: always returns `<name>`.
-fn vendor_dir_name_for_pkg(vendor_dir: &Path, name: &str, version: &str, versioned_dirs: bool) -> String {
+fn vendor_dir_name_for_pkg(
+    vendor_dir: &Path,
+    name: &str,
+    version: &str,
+    versioned_dirs: bool,
+) -> String {
     if versioned_dirs {
         if !version.is_empty() {
             let versioned = format!("{}-{}", name, version);
@@ -1504,8 +1512,15 @@ external = { git = "https://example.com/ext" }
         let vendor = dir.path().join("vendor");
         std::fs::create_dir_all(&vendor).unwrap();
 
-        let err = freeze_manifest(&manifest, &vendor, &[], false, /* strict */ true, Verbosity(0))
-            .unwrap_err();
+        let err = freeze_manifest(
+            &manifest,
+            &vendor,
+            &[],
+            false,
+            /* strict */ true,
+            Verbosity(0),
+        )
+        .unwrap_err();
         let msg = format!("{err}");
         assert!(
             msg.contains("--strict-freeze") && msg.contains("external"),
@@ -1535,8 +1550,15 @@ external = { git = "https://example.com/ext" }
         let vendor = dir.path().join("vendor");
         std::fs::create_dir_all(&vendor).unwrap();
 
-        freeze_manifest(&manifest, &vendor, &[], false, /* strict */ false, Verbosity(0))
-            .unwrap();
+        freeze_manifest(
+            &manifest,
+            &vendor,
+            &[],
+            false,
+            /* strict */ false,
+            Verbosity(0),
+        )
+        .unwrap();
     }
 
     // endregion
@@ -1584,7 +1606,12 @@ version = "0.1.0"
     fn freeze_manifest_patch_crates_io_is_alphabetical() {
         let dir = tempfile::tempdir().unwrap();
         let vendor = dir.path().join("vendor");
-        for name in ["miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-macros-core"] {
+        for name in [
+            "miniextendr-api",
+            "miniextendr-macros",
+            "miniextendr-lint",
+            "miniextendr-macros-core",
+        ] {
             std::fs::create_dir_all(vendor.join(name)).unwrap();
         }
         let manifest = dir.path().join("Cargo.toml");
@@ -1613,7 +1640,11 @@ miniextendr-macros-core = { path = "/tmp/mc" }
         let lint = result.find("miniextendr-lint =").unwrap();
         let macros = result.find("miniextendr-macros =").unwrap();
         let macros_core = result.find("miniextendr-macros-core =").unwrap();
-        assert!(api < lint && lint < macros && macros < macros_core, "patch.crates-io entries not alphabetical: {}", result);
+        assert!(
+            api < lint && lint < macros && macros < macros_core,
+            "patch.crates-io entries not alphabetical: {}",
+            result
+        );
     }
 
     #[test]
@@ -1709,7 +1740,10 @@ dependencies = [
         strip_lockfile_inplace(&lockfile, 0).unwrap();
 
         let result = std::fs::read_to_string(&lockfile).unwrap();
-        assert!(result.ends_with('\n'), "trailing newline should be preserved");
+        assert!(
+            result.ends_with('\n'),
+            "trailing newline should be preserved"
+        );
         assert!(!result.contains("checksum = "));
     }
 

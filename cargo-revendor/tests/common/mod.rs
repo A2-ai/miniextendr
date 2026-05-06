@@ -297,14 +297,11 @@ pub fn vendor_has(vendor: &Path, name: &str) -> bool {
     std::fs::read_dir(vendor)
         .ok()
         .map(|entries| {
-            entries
-                .flatten()
-                .filter(|e| e.path().is_dir())
-                .any(|e| {
-                    e.file_name()
-                        .to_str()
-                        .is_some_and(|n| n.starts_with(&prefix))
-                })
+            entries.flatten().filter(|e| e.path().is_dir()).any(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_some_and(|n| n.starts_with(&prefix))
+            })
         })
         .unwrap_or(false)
 }

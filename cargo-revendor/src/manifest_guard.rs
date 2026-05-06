@@ -131,7 +131,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("does-not-exist.toml");
         let result = ManifestGuard::snapshot(&path);
-        assert!(result.is_err(), "expected snapshot of missing file to error");
+        assert!(
+            result.is_err(),
+            "expected snapshot of missing file to error"
+        );
     }
 
     #[test]

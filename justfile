@@ -408,14 +408,15 @@ vendor:
     if [[ -f "$cargo_cfg.tmp_just_vendor" ]]; then
       mv "$cargo_cfg.tmp_just_vendor" "$cargo_cfg"
     fi
-    # `--source-root .` makes cargo-revendor copy miniextendr-{api,lint,macros}
-    # from this workspace checkout instead of fetching them from the git URL
+    # cargo-revendor auto-reads [patch."git+url"] from .cargo/config.toml
+    # (written by `configure` in dev-monorepo mode) to copy miniextendr-{api,
+    # lint,macros} from this workspace checkout instead of fetching the git URL
     # pinned in Cargo.lock. PRs that edit a workspace crate alongside rpkg get
     # their edits reflected in vendor/ and inst/vendor.tar.xz, so
     # `vendor-sync-check` passes and the offline tarball ships the PR's code.
+    # `--source-root` is no longer needed here (kept as CLI flag for back-compat).
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
-      --source-root . \
       --output rpkg/vendor \
       --compress rpkg/inst/vendor.tar.xz \
       --blank-md \

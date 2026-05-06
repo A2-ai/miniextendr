@@ -150,10 +150,7 @@ pub fn verify_lock_matches_vendor(lockfile: &Path, vendor_dir: &Path) -> Result<
         }
     }
     if !mismatched.is_empty() {
-        msg.push_str(&format!(
-            "\n  Version mismatches ({}):\n",
-            mismatched.len()
-        ));
+        msg.push_str(&format!("\n  Version mismatches ({}):\n", mismatched.len()));
         for (name, locked, vendored) in mismatched.iter().take(20) {
             msg.push_str(&format!(
                 "    - {}: Cargo.lock says {}, vendor/ says {}\n",
@@ -161,10 +158,7 @@ pub fn verify_lock_matches_vendor(lockfile: &Path, vendor_dir: &Path) -> Result<
             ));
         }
         if mismatched.len() > 20 {
-            msg.push_str(&format!(
-                "    ... and {} more\n",
-                mismatched.len() - 20
-            ));
+            msg.push_str(&format!("    ... and {} more\n", mismatched.len() - 20));
         }
     }
     msg.push_str(
@@ -292,10 +286,13 @@ fn collect_file_hashes(root: &Path) -> Result<BTreeMap<String, u64>> {
             .unwrap_or(entry.path())
             .to_string_lossy()
             .into_owned();
-        // cache.rs writes `.revendor-cache` at the top of vendor/ AFTER the
-        // tarball is compressed, so it's never in the tarball by design —
-        // skip it to avoid a perpetual false-positive diff.
-        if rel == ".revendor-cache" {
+        // cache.rs writes `.revendor-cache*` files at the top of vendor/ AFTER
+        // the tarball is compressed, so they're never in the tarball by design —
+        // skip them to avoid perpetual false-positive diffs.
+        if rel == ".revendor-cache"
+            || rel == ".revendor-cache-external"
+            || rel == ".revendor-cache-local"
+        {
             continue;
         }
         let bytes = std::fs::read(entry.path())?;

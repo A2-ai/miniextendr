@@ -12,7 +12,7 @@
 mod common;
 
 use common::{
-    create_simple_crate, diff_trees, extract_tarball, revendor_cmd, vendor_dir_for, TreeDiff,
+    TreeDiff, create_simple_crate, diff_trees, extract_tarball, revendor_cmd, vendor_dir_for,
 };
 
 // region: --verify end-to-end (V1-V5)
@@ -167,11 +167,13 @@ fn verify_ignores_revendor_cache_byproduct() {
         .assert()
         .success();
 
-    // The cache file MUST exist after a vendor run, otherwise this test is
-    // a tautology.
+    // At least one cache file MUST exist after a vendor run, otherwise this
+    // test is a tautology.
     assert!(
-        vendor.join(".revendor-cache").exists(),
-        "expected vendor/.revendor-cache to be written after vendor run"
+        vendor.join(".revendor-cache").exists()
+            || vendor.join(".revendor-cache-external").exists()
+            || vendor.join(".revendor-cache-local").exists(),
+        "expected at least one vendor/.revendor-cache* file to be written after vendor run"
     );
 
     revendor_cmd()
@@ -454,11 +456,15 @@ fn compress_roundtrip_matches_vendor() {
         .expect("tarball should have a top-level dir");
 
     let mut diffs = diff_trees(&vendor, &extracted_root);
-    // Filter out `.revendor-cache` — written after compress by design.
-    diffs.retain(|d| !matches!(d,
-        TreeDiff::OnlyInA(p) | TreeDiff::OnlyInB(p) | TreeDiff::ContentDiff(p)
-            if p == ".revendor-cache"
-    ));
+    // Filter out `.revendor-cache*` files — written after compress by design.
+    diffs.retain(|d| {
+        !matches!(d,
+            TreeDiff::OnlyInA(p) | TreeDiff::OnlyInB(p) | TreeDiff::ContentDiff(p)
+                if p == ".revendor-cache"
+                    || p == ".revendor-cache-external"
+                    || p == ".revendor-cache-local"
+        )
+    });
     assert!(
         diffs.is_empty(),
         "vendor/ and tarball should match bit-for-bit (modulo .revendor-cache), diffs:\n{diffs:#?}"

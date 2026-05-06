@@ -91,7 +91,16 @@ struct Cli {
     output: PathBuf,
 
     /// Root of the monorepo/workspace containing path dependencies.
-    /// If not set, auto-detected from workspace metadata.
+    ///
+    /// When omitted, cargo-revendor auto-detects local path overrides from
+    /// `[patch."<url>"]` tables in `.cargo/config.toml` files found by
+    /// walking up from the manifest directory. For a typical miniextendr
+    /// monorepo (where `configure` writes those patch entries), passing this
+    /// flag is no longer necessary.
+    ///
+    /// Pass explicitly for cross-monorepo scenarios where the workspace root
+    /// is not covered by any `.cargo/config.toml` patch table, or to override
+    /// a patch entry detected from config.
     #[arg(long)]
     source_root: Option<PathBuf>,
 
@@ -286,32 +295,22 @@ fn validate_flag_compatibility(cli: &Cli, mode: Mode, output: &std::path::Path) 
                 );
             }
             if cli.source_marker {
-                anyhow::bail!(
-                    "--external-only is incompatible with --source-marker"
-                );
+                anyhow::bail!("--external-only is incompatible with --source-marker");
             }
             if cli.blank_md {
-                anyhow::bail!(
-                    "--external-only is incompatible with --blank-md"
-                );
+                anyhow::bail!("--external-only is incompatible with --blank-md");
             }
             if cli.strict_freeze {
-                anyhow::bail!(
-                    "--external-only is incompatible with --strict-freeze"
-                );
+                anyhow::bail!("--external-only is incompatible with --strict-freeze");
             }
         }
         Mode::LocalOnly => {
             // These flags require a complete vendor/ tree (external + local).
             // Allow them only when externals were previously vendored.
-            let needs_externals = cli.freeze
-                || cli.compress.is_some()
-                || cli.source_marker
-                || cli.blank_md;
+            let needs_externals =
+                cli.freeze || cli.compress.is_some() || cli.source_marker || cli.blank_md;
             if needs_externals {
-                let externals_present = output
-                    .join(cache::CACHE_FILE_EXTERNAL)
-                    .exists();
+                let externals_present = output.join(cache::CACHE_FILE_EXTERNAL).exists();
                 if !externals_present {
                     anyhow::bail!(
                         "--local-only with --freeze/--compress/--source-marker/--blank-md \
@@ -341,13 +340,11 @@ fn merge_copy_vendor(staging: &std::path::Path, output: &std::path::Path) -> Res
         let dst = output.join(&name);
         if dst.exists() {
             if dst.is_dir() {
-                std::fs::remove_dir_all(&dst).with_context(|| {
-                    format!("failed to remove existing {}", dst.display())
-                })?;
+                std::fs::remove_dir_all(&dst)
+                    .with_context(|| format!("failed to remove existing {}", dst.display()))?;
             } else {
-                std::fs::remove_file(&dst).with_context(|| {
-                    format!("failed to remove existing {}", dst.display())
-                })?;
+                std::fs::remove_file(&dst)
+                    .with_context(|| format!("failed to remove existing {}", dst.display()))?;
             }
         }
         std::fs::rename(entry.path(), &dst)
@@ -453,7 +450,8 @@ fn run_full(
     let versioned_dirs = !cli.flat_dirs;
 
     // Step 1a: Pre-seed `vendor/<name>-<version>/` for each workspace member
-    // when `--source-root` is set (dev-monorepo configure path).
+    // when `--source-root` is set (dev-monorepo configure path) OR when
+    // `.cargo/config.toml` nearby contains `[patch."<git-url>"]` path entries.
     //
     // Why: the target manifest ships in vendor-frozen state with `path =
     // "../../vendor/<crate>-<ver>/"` in `[dependencies]`. Those aren't
@@ -474,6 +472,24 @@ fn run_full(
     } else {
         Vec::new()
     };
+
+    // Auto-detect local path overrides from [patch."git+url"] tables in
+    // .cargo/config.toml files found by walking up from the manifest dir.
+    // Explicit --source-root takes precedence: on conflict by crate name, the
+    // --source-root entry is kept and the config.toml entry is dropped.
+    let patch_config_members = metadata::discover_from_patch_config(manifest_path)
+        .context("failed to read [patch] entries from .cargo/config.toml")?;
+
+    // Merge: source_root (explicit) wins, then patch_config entries fill in
+    // anything not already covered.
+    let source_root_members = merge_packages(&source_root_members, &patch_config_members);
+
+    if v.debug() && !patch_config_members.is_empty() {
+        eprintln!(
+            "  Auto-detected {} local crate(s) from .cargo/config.toml [patch] tables",
+            patch_config_members.len()
+        );
+    }
 
     if !source_root_members.is_empty() {
         bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
@@ -497,8 +513,8 @@ fn run_full(
     let (mut local_pkgs, _external_pkgs) =
         metadata::partition_packages(&meta, manifest_path, &source_root_members)?;
 
-    // Fall back to heuristic workspace-root detection only if `--source-root`
-    // wasn't explicitly provided.
+    // Fall back to heuristic workspace-root detection only if neither
+    // --source-root nor patch config entries were provided.
     let all_workspace_members = if !source_root_members.is_empty() {
         source_root_members
     } else if let Some(first_local) = local_pkgs.first() {
@@ -512,7 +528,9 @@ fn run_full(
     // (e.g., [source.vendored-sources] directory = "vendor"), cargo metadata
     // resolves local workspace crate paths to the vendor directory instead of the
     // real workspace source. Detect this and replace with the real workspace path.
-    let canonical_output = output.canonicalize().unwrap_or_else(|_| output.to_path_buf());
+    let canonical_output = output
+        .canonicalize()
+        .unwrap_or_else(|_| output.to_path_buf());
     for pkg in &mut local_pkgs {
         let canonical_pkg = pkg.path.canonicalize().unwrap_or_else(|_| pkg.path.clone());
         if canonical_pkg.starts_with(&canonical_output) {
@@ -768,6 +786,11 @@ fn run_external_only(
         Vec::new()
     };
 
+    // Auto-detect additional local path overrides from [patch."git+url"] tables.
+    let patch_config_members = metadata::discover_from_patch_config(manifest_path)
+        .context("failed to read [patch] entries from .cargo/config.toml")?;
+    let source_root_members = merge_packages(&source_root_members, &patch_config_members);
+
     // Seed stubs for ALL source-root members first so cargo metadata can
     // resolve any frozen path = "../../vendor/<name>" entries in Cargo.toml.
     // After metadata, we know the actual local_pkgs subset; the extra stubs
@@ -780,8 +803,7 @@ fn run_external_only(
     // Step 1b: Load metadata; derive local and patch package lists.
     let meta = metadata::load_metadata(manifest_path)?;
     metadata::check_duplicate_sources(&meta)?;
-    let (local_pkgs, _) =
-        metadata::partition_packages(&meta, manifest_path, &source_root_members)?;
+    let (local_pkgs, _) = metadata::partition_packages(&meta, manifest_path, &source_root_members)?;
 
     let all_workspace_members = if !source_root_members.is_empty() {
         source_root_members
@@ -795,7 +817,10 @@ fn run_external_only(
     let patch_pkgs = merge_packages(&local_pkgs, &all_workspace_members);
 
     if v.info() {
-        eprintln!("cargo-revendor: --external-only: skipping {} local crates", local_pkgs.len());
+        eprintln!(
+            "cargo-revendor: --external-only: skipping {} local crates",
+            local_pkgs.len()
+        );
     }
 
     // Step 3: Run `cargo vendor` for external deps only
@@ -835,29 +860,21 @@ fn run_external_only(
         eprintln!("  Merged external deps into {}", output.display());
     }
 
-    // Step 8.5: Remove bootstrap stubs for non-dep workspace members.
+    // Step 8.5: Remove ALL bootstrap stubs from output.
     // bootstrap_vendor_from_source_root seeds ALL workspace members so that
-    // cargo metadata can resolve frozen path deps. After metadata resolution
-    // we know which subset are actual deps (local_pkgs). Non-dep members
-    // (e.g. bench/cli/engine siblings) are only ever stubs and must not
-    // appear in the external-only output.
-    let non_dep_members: Vec<_> = patch_pkgs
-        .iter()
-        .filter(|p| !local_pkgs.iter().any(|l| l.name == p.name))
-        .collect();
-    for pkg in &non_dep_members {
-        for dir_name in &[
-            pkg.name.clone(),
-            format!("{}-{}", pkg.name, pkg.version),
-        ] {
+    // cargo metadata can resolve frozen path deps. In --external-only mode,
+    // local crates (both non-dep workspace members AND actual local deps like
+    // `myhelper = { path = "../myhelper" }`) must be removed from output so
+    // only external crates remain.
+    for pkg in &patch_pkgs {
+        for dir_name in &[pkg.name.clone(), format!("{}-{}", pkg.name, pkg.version)] {
             let p = output.join(dir_name);
             if p.is_dir() {
                 if v.debug() {
-                    eprintln!("  --external-only: removing non-dep stub {dir_name} from output");
+                    eprintln!("  --external-only: removing local stub {dir_name} from output");
                 }
-                std::fs::remove_dir_all(&p).with_context(|| {
-                    format!("failed to remove non-dep stub {}", p.display())
-                })?;
+                std::fs::remove_dir_all(&p)
+                    .with_context(|| format!("failed to remove local stub {}", p.display()))?;
             }
         }
     }
@@ -910,6 +927,11 @@ fn run_local_only(
         Vec::new()
     };
 
+    // Auto-detect additional local path overrides from [patch."git+url"] tables.
+    let patch_config_members = metadata::discover_from_patch_config(manifest_path)
+        .context("failed to read [patch] entries from .cargo/config.toml")?;
+    let source_root_members = merge_packages(&source_root_members, &patch_config_members);
+
     // Step 0: Cache check using source_root paths — skip bootstrap + metadata
     // on a hit to avoid unnecessary I/O.
     if !cli.force && !source_root_members.is_empty() {
@@ -944,7 +966,9 @@ fn run_local_only(
     };
 
     // Fix vendor-dir-resolved paths (same logic as run_full)
-    let canonical_output = output.canonicalize().unwrap_or_else(|_| output.to_path_buf());
+    let canonical_output = output
+        .canonicalize()
+        .unwrap_or_else(|_| output.to_path_buf());
     for pkg in &mut local_pkgs {
         let canonical_pkg = pkg.path.canonicalize().unwrap_or_else(|_| pkg.path.clone());
         if canonical_pkg.starts_with(&canonical_output)
@@ -1030,7 +1054,11 @@ fn run_local_only(
     // Step 8: Merge into output (only overwrite dirs present in staging)
     merge_copy_vendor(&vendor_staging, output)?;
     if v.info() {
-        eprintln!("  Merged {} local crate(s) into {}", packaged.len(), output.display());
+        eprintln!(
+            "  Merged {} local crate(s) into {}",
+            packaged.len(),
+            output.display()
+        );
     }
 
     // Step 8.5: Remove bootstrap stubs for non-dep workspace members.
@@ -1041,18 +1069,14 @@ fn run_local_only(
         .filter(|p| !local_pkgs.iter().any(|l| l.name == p.name))
         .collect();
     for pkg in &non_dep_members {
-        for dir_name in &[
-            pkg.name.clone(),
-            format!("{}-{}", pkg.name, pkg.version),
-        ] {
+        for dir_name in &[pkg.name.clone(), format!("{}-{}", pkg.name, pkg.version)] {
             let p = output.join(dir_name);
             if p.is_dir() {
                 if v.debug() {
                     eprintln!("  --local-only: removing non-dep stub {dir_name} from output");
                 }
-                std::fs::remove_dir_all(&p).with_context(|| {
-                    format!("failed to remove non-dep stub {}", p.display())
-                })?;
+                std::fs::remove_dir_all(&p)
+                    .with_context(|| format!("failed to remove non-dep stub {}", p.display()))?;
             }
         }
     }
@@ -1101,8 +1125,7 @@ fn remove_flat_dirs(
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         let is_local = local_pkgs.iter().any(|p| {
-            name_str.as_ref() == p.name
-                || name_str.as_ref() == format!("{}-{}", p.name, p.version)
+            name_str.as_ref() == p.name || name_str.as_ref() == format!("{}-{}", p.name, p.version)
         });
         if is_local {
             if v.debug() {
@@ -1137,9 +1160,7 @@ fn resolve_manifest_path(user_path: Option<&std::path::Path>) -> Result<PathBuf>
     }
     // Running from inside the Rust crate itself (has Cargo.toml + src/lib.rs or src/main.rs).
     let in_crate = cwd.join("Cargo.toml");
-    if in_crate.exists()
-        && (cwd.join("src/lib.rs").exists() || cwd.join("src/main.rs").exists())
-    {
+    if in_crate.exists() && (cwd.join("src/lib.rs").exists() || cwd.join("src/main.rs").exists()) {
         return in_crate.canonicalize().context("manifest not found");
     }
     // Subdirectory layout: R package in a subdir (e.g. dvs-rpkg/src/rust/Cargo.toml).
@@ -1188,7 +1209,10 @@ fn run_verify(
     v: Verbosity,
 ) -> Result<()> {
     if v.info() {
-        eprintln!("cargo-revendor: verifying Cargo.lock ↔ {}", vendor_dir.display());
+        eprintln!(
+            "cargo-revendor: verifying Cargo.lock ↔ {}",
+            vendor_dir.display()
+        );
     }
     verify::verify_lock_matches_vendor(lockfile, vendor_dir)?;
     if v.info() {
@@ -1379,7 +1403,10 @@ mod tests {
         let mut cli = base_cli();
         cli.freeze = true;
         let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
-        assert!(err.to_string().contains("--external-only is incompatible with --freeze"));
+        assert!(
+            err.to_string()
+                .contains("--external-only is incompatible with --freeze")
+        );
     }
 
     #[test]
@@ -1388,7 +1415,10 @@ mod tests {
         let mut cli = base_cli();
         cli.compress = Some(std::path::PathBuf::from("vendor.tar.xz"));
         let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
-        assert!(err.to_string().contains("--external-only is incompatible with --compress"));
+        assert!(
+            err.to_string()
+                .contains("--external-only is incompatible with --compress")
+        );
     }
 
     #[test]
@@ -1397,7 +1427,10 @@ mod tests {
         let mut cli = base_cli();
         cli.source_marker = true;
         let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
-        assert!(err.to_string().contains("--external-only is incompatible with --source-marker"));
+        assert!(
+            err.to_string()
+                .contains("--external-only is incompatible with --source-marker")
+        );
     }
 
     #[test]
@@ -1406,7 +1439,10 @@ mod tests {
         let mut cli = base_cli();
         cli.blank_md = true;
         let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
-        assert!(err.to_string().contains("--external-only is incompatible with --blank-md"));
+        assert!(
+            err.to_string()
+                .contains("--external-only is incompatible with --blank-md")
+        );
     }
 
     #[test]

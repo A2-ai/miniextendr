@@ -255,11 +255,7 @@ publish = false
 "#,
     )
     .unwrap();
-    std::fs::write(
-        work_root.join("unused/src/lib.rs"),
-        "pub fn unused() {}\n",
-    )
-    .unwrap();
+    std::fs::write(work_root.join("unused/src/lib.rs"), "pub fn unused() {}\n").unwrap();
 
     common::git_init(&work_root);
 
@@ -419,4 +415,3 @@ path = "src/lib.rs"
         "vendored crate should be the patched local, got:\n{toml}"
     );
 }
-
