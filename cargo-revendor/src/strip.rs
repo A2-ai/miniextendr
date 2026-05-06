@@ -334,6 +334,7 @@ const STRIPABLE_TOP_DIRS: &[&str] = &["tests", "benches", "examples", "bin"];
 ///   2. composed-path macros — scan all string literals in the macro's
 ///      argument span (handles `concat!(...)`) for `<...>tests/`, `benches/`,
 ///      `examples/`, `bin/` substrings and preserve those dirs.
+///
 /// Paths escaping the crate root or referencing files outside it are ignored.
 fn scan_referenced_top_dirs(crate_dir: &Path) -> Vec<String> {
     let crate_root = match crate_dir.canonicalize() {
@@ -365,15 +366,13 @@ fn scan_referenced_top_dirs(crate_dir: &Path) -> Vec<String> {
         for literal in extract_include_arg_literals(&content) {
             // (1) Literal-path resolution: works for `include_str!("...")`.
             let resolved = parent.join(&literal);
-            if let Ok(canon) = resolved.canonicalize() {
-                if let Ok(rel) = canon.strip_prefix(&crate_root) {
-                    if let Some(first) = rel.components().next() {
-                        if let Some(s) = first.as_os_str().to_str() {
-                            top_dirs.insert(s.to_string());
-                            continue;
-                        }
-                    }
-                }
+            if let Ok(canon) = resolved.canonicalize()
+                && let Ok(rel) = canon.strip_prefix(&crate_root)
+                && let Some(first) = rel.components().next()
+                && let Some(s) = first.as_os_str().to_str()
+            {
+                top_dirs.insert(s.to_string());
+                continue;
             }
             // (2) Substring sniff: catches `concat!("../benches/...", x, ".rs")`
             //     where the literal alone doesn't resolve to a real file.
@@ -713,11 +712,20 @@ default = []
         strip_crate_dir(&crate_dir, &StripConfig::all(), Verbosity(0)).unwrap();
 
         let result = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
-        assert!(!result.contains("[dev-dependencies]"), "dev-deps should be removed");
-        assert!(!result.contains("criterion"), "criterion ref should be gone");
+        assert!(
+            !result.contains("[dev-dependencies]"),
+            "dev-deps should be removed"
+        );
+        assert!(
+            !result.contains("criterion"),
+            "criterion ref should be gone"
+        );
         assert!(result.contains("serde"), "regular dep preserved");
         assert!(result.contains("default = []"), "default feature preserved");
-        assert!(result.contains("real_blackbox"), "feature key still present but pruned");
+        assert!(
+            result.contains("real_blackbox"),
+            "feature key still present but pruned"
+        );
     }
 
     #[test]
@@ -877,12 +885,20 @@ default = []
         strip_crate_dir(&crate_dir, &StripConfig::toml_only(), Verbosity(0)).unwrap();
 
         // Source-related dirs preserved (the whole point of --strip-toml-sections)
-        assert!(crate_dir.join("benches/formats/static_size.rs").exists(),
-            "benches/ must survive — referenced by include_str! in some crates");
+        assert!(
+            crate_dir.join("benches/formats/static_size.rs").exists(),
+            "benches/ must survive — referenced by include_str! in some crates"
+        );
         assert!(crate_dir.join("tests").exists(), "tests/ must survive");
-        assert!(crate_dir.join("examples").exists(), "examples/ must survive");
+        assert!(
+            crate_dir.join("examples").exists(),
+            "examples/ must survive"
+        );
         // Always-safe base dirs still go
-        assert!(!crate_dir.join(".github").exists(), ".github/ should still be stripped");
+        assert!(
+            !crate_dir.join(".github").exists(),
+            ".github/ should still be stripped"
+        );
         // TOML surgery still happens
         let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
         assert!(!manifest.contains("[dev-dependencies]"));

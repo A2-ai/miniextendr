@@ -227,9 +227,7 @@ pub fn check_duplicate_sources(meta: &Metadata) -> Result<()> {
 /// Each triple is `(name, version, source)` where `None` source means a
 /// local path dep (skipped — workspace semantics prevent in-workspace
 /// duplicates of the same name+version).
-fn check_duplicate_sources_impl(
-    pkgs: &[(String, String, Option<String>)],
-) -> Result<()> {
+fn check_duplicate_sources_impl(pkgs: &[(String, String, Option<String>)]) -> Result<()> {
     use std::collections::BTreeMap;
 
     let mut seen: BTreeMap<(String, String), String> = BTreeMap::new();
@@ -263,6 +261,185 @@ fn check_duplicate_sources_impl(
     Ok(())
 }
 
+/// Discover local package overrides from `[patch."<url>"]` tables in
+/// `.cargo/config.toml`.
+///
+/// Cargo's config search order walks up from the manifest directory, checking
+/// `<dir>/.cargo/config.toml` at each level, then falls back to
+/// `$HOME/.cargo/config.toml`. This function mirrors that walk.
+///
+/// For each `[patch."<url>"]` table (the URL may have or lack the `git+`
+/// scheme prefix — both forms are accepted), entries of the form
+/// `<crate-name> = { path = "<path>" }` are collected. The `path` is resolved
+/// relative to the config file that declares it. For each entry, the target
+/// crate's `Cargo.toml` is read to extract the version, and a `LocalPackage`
+/// is returned.
+///
+/// Entries where the `path` does not contain a readable `Cargo.toml` are
+/// silently skipped (the dep may not exist yet on this machine).
+///
+/// On TOML parse errors in a config file, returns an error with the file path
+/// and position so the caller can report it loudly.
+pub fn discover_from_patch_config(manifest_path: &Path) -> Result<Vec<LocalPackage>> {
+    let config_files = cargo_config_search_paths(manifest_path);
+    let mut results: Vec<LocalPackage> = Vec::new();
+    // Track by crate name: first config file (closest to manifest) wins.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for config_path in &config_files {
+        if !config_path.exists() {
+            continue;
+        }
+        let content = std::fs::read_to_string(config_path)
+            .with_context(|| format!("failed to read {}", config_path.display()))?;
+
+        let doc: toml_edit::DocumentMut = content
+            .parse()
+            .with_context(|| format!("failed to parse TOML in {}", config_path.display()))?;
+
+        // .cargo/config.toml lives in `<config_dir>/.cargo/config.toml`; the
+        // paths declared inside it resolve relative to `<config_dir>`.
+        let config_dir = config_path
+            .parent() // .cargo/
+            .and_then(|p| p.parent()) // <config_dir>
+            .unwrap_or(config_path.parent().unwrap_or(config_path));
+
+        // Walk every top-level table key that looks like `patch."<url>"`.
+        let Some(patch_tbl) = doc.get("patch").and_then(|v| v.as_table()) else {
+            continue;
+        };
+
+        for (_url_key, url_entries) in patch_tbl.iter() {
+            let Some(entries) = url_entries.as_table() else {
+                continue;
+            };
+            for (crate_name, crate_spec) in entries.iter() {
+                if seen.contains(crate_name) {
+                    continue; // earlier config file already provided this entry
+                }
+
+                // Extract the `path` field from either an inline table
+                // (`{ path = "..." }`) or a regular table (`[patch.url.name]`).
+                let path_val = crate_spec
+                    .as_inline_table()
+                    .and_then(|t| t.get("path"))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        crate_spec
+                            .as_table()
+                            .and_then(|t| t.get("path"))
+                            .and_then(|v| v.as_str())
+                    });
+
+                let Some(path_val) = path_val else {
+                    continue; // not a path-dep override
+                };
+
+                let crate_path = if Path::new(path_val).is_absolute() {
+                    PathBuf::from(path_val)
+                } else {
+                    config_dir.join(path_val)
+                };
+
+                let crate_manifest = crate_path.join("Cargo.toml");
+                if !crate_manifest.exists() {
+                    continue; // path doesn't resolve on this machine — skip
+                }
+
+                // Read the version from the crate's own Cargo.toml.
+                let version = read_package_version(&crate_manifest).with_context(|| {
+                    format!(
+                        "failed to read version from {} (patch entry for `{crate_name}` in {})",
+                        crate_manifest.display(),
+                        config_path.display()
+                    )
+                })?;
+
+                let canonical = crate_path
+                    .canonicalize()
+                    .unwrap_or_else(|_| crate_path.clone());
+
+                seen.insert(crate_name.to_string());
+                results.push(LocalPackage {
+                    name: crate_name.to_string(),
+                    version,
+                    path: canonical.clone(),
+                    manifest_path: canonical.join("Cargo.toml"),
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Return the cargo config search path for a given manifest path, in
+/// priority order (highest priority first). Mirrors cargo's own search:
+/// starting from the manifest's directory, walk up the filesystem checking
+/// `<dir>/.cargo/config.toml` (and legacy `<dir>/.cargo/config`) at each
+/// level, stopping at a filesystem root. `$HOME/.cargo/config.toml` is
+/// appended last.
+fn cargo_config_search_paths(manifest_path: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    // Walk from manifest dir upward.
+    let mut dir = manifest_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    loop {
+        let cargo_dir = dir.join(".cargo");
+        // Prefer config.toml; fall back to legacy `config`.
+        let toml_path = cargo_dir.join("config.toml");
+        let plain_path = cargo_dir.join("config");
+        if toml_path.exists() {
+            paths.push(toml_path);
+        } else if plain_path.exists() {
+            paths.push(plain_path);
+        }
+
+        // Stop at filesystem root.
+        if !dir.pop() {
+            break;
+        }
+    }
+
+    // $HOME/.cargo/config.toml as the global fallback.
+    if let Some(home) = home_dir() {
+        let global = home.join(".cargo").join("config.toml");
+        if global.exists() && !paths.contains(&global) {
+            paths.push(global);
+        }
+    }
+
+    paths
+}
+
+/// Read `[package] version = "..."` from a `Cargo.toml`.
+fn read_package_version(manifest: &Path) -> Result<String> {
+    let content = std::fs::read_to_string(manifest)
+        .with_context(|| format!("failed to read {}", manifest.display()))?;
+    let doc: toml_edit::DocumentMut = content
+        .parse()
+        .with_context(|| format!("failed to parse TOML in {}", manifest.display()))?;
+    let version = doc
+        .get("package")
+        .and_then(|p| p.as_table())
+        .and_then(|t| t.get("version"))
+        .and_then(|v| v.as_str())
+        .with_context(|| format!("no `[package] version` found in {}", manifest.display()))?
+        .to_string();
+    Ok(version)
+}
+
+/// Cross-platform home directory. Tries `$HOME` (Unix), `$USERPROFILE` (Windows).
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
 /// Recursively collect all dependency package IDs
 fn collect_deps(
     resolve: &cargo_metadata::Resolve,
@@ -284,7 +461,11 @@ mod tests {
     use super::*;
 
     fn pkg(name: &str, version: &str, source: Option<&str>) -> (String, String, Option<String>) {
-        (name.to_string(), version.to_string(), source.map(String::from))
+        (
+            name.to_string(),
+            version.to_string(),
+            source.map(String::from),
+        )
     }
 
     fn local_pkg(name: &str, version: &str) -> LocalPackage {
@@ -349,10 +530,7 @@ mod tests {
         // source: None = local path dep. Two local deps with the same
         // (name, version) would be a workspace-level problem, detected
         // elsewhere. Don't double-report here.
-        let pkgs = vec![
-            pkg("local", "0.1.0", None),
-            pkg("local", "0.1.0", None),
-        ];
+        let pkgs = vec![pkg("local", "0.1.0", None), pkg("local", "0.1.0", None)];
         check_duplicate_sources_impl(&pkgs).unwrap();
     }
 
@@ -363,7 +541,11 @@ mod tests {
         // should error — upstream cargo does.
         let pkgs = vec![
             pkg("serde", "1.0.0", Some("registry+https://crates.io")),
-            pkg("serde", "1.0.0", Some("git+https://github.com/serde-rs/serde")),
+            pkg(
+                "serde",
+                "1.0.0",
+                Some("git+https://github.com/serde-rs/serde"),
+            ),
         ];
         let err = check_duplicate_sources_impl(&pkgs).unwrap_err();
         assert!(err.to_string().contains("serde v1.0.0"));
@@ -378,7 +560,10 @@ mod tests {
         // Dep is not in overrides — should stay external.
         let overrides = vec![local_pkg("miniextendr-api", "0.5.0")];
         let result = resolve_git_override("serde", "1.0.0", &overrides).unwrap();
-        assert!(result.is_none(), "unrelated dep should not match any override");
+        assert!(
+            result.is_none(),
+            "unrelated dep should not match any override"
+        );
     }
 
     #[test]
@@ -408,9 +593,18 @@ mod tests {
         let overrides = vec![local_pkg("miniextendr-api", "0.6.0")];
         let err = resolve_git_override("miniextendr-api", "0.5.0", &overrides).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("miniextendr-api"), "error should name the crate");
-        assert!(msg.contains("0.5.0"), "error should mention the git version");
-        assert!(msg.contains("0.6.0"), "error should mention the local version");
+        assert!(
+            msg.contains("miniextendr-api"),
+            "error should name the crate"
+        );
+        assert!(
+            msg.contains("0.5.0"),
+            "error should mention the git version"
+        );
+        assert!(
+            msg.contains("0.6.0"),
+            "error should mention the local version"
+        );
     }
 
     #[test]

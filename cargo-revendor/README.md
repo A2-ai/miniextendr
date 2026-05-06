@@ -172,6 +172,37 @@ same for every invocation; flags toggle individual steps on or off.
 | `--output <DIR>` | Vendor directory (default `vendor`). Relative paths resolve from CWD, not the manifest dir. |
 | `--source-root <DIR>` | Workspace root containing path dependencies. Auto-detected from metadata when omitted. Set explicitly when bootstrapping a frozen tree on a fresh clone. |
 
+### Reading `.cargo/config.toml` patch tables
+
+`--source-root` is optional when the manifest's workspace already carries a
+`.cargo/config.toml` with `[patch."git+<url>"]` (or `[patch."https://<url>"]`)
+entries that redirect git dependencies to local paths.
+
+cargo-revendor searches for `.cargo/config.toml` starting from the manifest
+directory and walking up the filesystem tree — the same search order cargo
+itself uses. `$HOME/.cargo/config.toml` is also checked as a final fallback.
+For each file found it reads every `[patch."<url>"]` table and extracts entries
+with a `path = "..."` key, resolving relative paths against the directory
+containing the `.cargo/` folder. The resulting `LocalPackage` list is merged
+with any packages found via `--source-root` (explicit `--source-root` wins when
+both list the same crate name, so old scripts with an explicit flag continue to
+work unchanged).
+
+**Typical miniextendr monorepo layout:**
+
+```
+repo-root/
+  .cargo/config.toml          ← [patch."git+https://github.com/…"] entries
+  miniextendr-api/             ← local override for the git dep
+  miniextendr-macros/
+  rpkg/src/rust/Cargo.toml     ← the --manifest-path target
+```
+
+With this layout, `cargo revendor --manifest-path rpkg/src/rust/Cargo.toml`
+discovers the `.cargo/config.toml` two directories above the manifest,
+reads the patch entries, and vendors `miniextendr-api` and `miniextendr-macros`
+from their on-disk locations. No `--source-root` flag is required.
+
 ### Trimming
 
 These flags strip code that is not needed at build time. Stripping exists
@@ -347,7 +378,9 @@ path deps on a fresh clone.
 
 Wraps `cargo_metadata::MetadataCommand`. Exposes `LocalPackage` (a thin
 record of name, version, path, manifest path), `discover_workspace_members`
-for source-root walks, `partition_packages` for the local-vs-external
+for source-root walks, `discover_from_patch_config` for reading
+`[patch."<url>"]` entries from `.cargo/config.toml` files found along the
+cargo config search path, `partition_packages` for the local-vs-external
 split, and `check_duplicate_sources`, which mirrors upstream cargo's check
 that two git sources cannot resolve to the same name+version pair.
 

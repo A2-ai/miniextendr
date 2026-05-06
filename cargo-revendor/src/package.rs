@@ -49,8 +49,7 @@ pub fn package_local_crates(
         // Snapshot both the inner crate manifest and the workspace manifest.
         // The guards restore both on drop (scope exits at the end of this
         // iteration, or earlier via `?` / panic unwind).
-        let _inner_guard =
-            crate::manifest_guard::ManifestGuard::snapshot(&pkg.manifest_path)?;
+        let _inner_guard = crate::manifest_guard::ManifestGuard::snapshot(&pkg.manifest_path)?;
         let _ws_guard = crate::manifest_guard::ManifestGuard::snapshot(&ws_manifest)?;
 
         // Temporarily rewrite Cargo.toml to add version = "*" to path-only deps

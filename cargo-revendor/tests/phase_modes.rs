@@ -127,7 +127,9 @@ path = "lib.rs"
         ])
         .assert()
         .failure()
-        .stderr(predicates::str::contains(".revendor-cache-external not found"));
+        .stderr(predicates::str::contains(
+            ".revendor-cache-external not found",
+        ));
 }
 
 /// --external-only and --local-only are mutually exclusive (clap enforces this).
@@ -234,11 +236,7 @@ path = "lib.rs"
     let has_cfg_if = std::fs::read_dir(&vendor)
         .unwrap()
         .flatten()
-        .any(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with("cfg-if-")
-        });
+        .any(|e| e.file_name().to_string_lossy().starts_with("cfg-if-"));
     assert!(has_cfg_if, "cfg-if versioned dir should be in vendor/");
 
     // myhelper (local) must NOT be present (we skipped local packaging).
@@ -309,10 +307,7 @@ path = "lib.rs"
         .find(|e| e.file_name().to_string_lossy().starts_with("cfg-if-"))
         .expect("cfg-if should be vendored")
         .path();
-    let before_mtime = std::fs::metadata(&cfg_if_dir)
-        .unwrap()
-        .modified()
-        .unwrap();
+    let before_mtime = std::fs::metadata(&cfg_if_dir).unwrap().modified().unwrap();
 
     // Step 2: local-only
     revendor_cmd()
@@ -336,10 +331,7 @@ path = "lib.rs"
     );
 
     // cfg-if versioned dir must be untouched.
-    let after_mtime = std::fs::metadata(&cfg_if_dir)
-        .unwrap()
-        .modified()
-        .unwrap();
+    let after_mtime = std::fs::metadata(&cfg_if_dir).unwrap().modified().unwrap();
     assert_eq!(
         before_mtime, after_mtime,
         "cfg-if-* mtime should be unchanged after --local-only"

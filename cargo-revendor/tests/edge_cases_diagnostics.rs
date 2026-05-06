@@ -10,9 +10,7 @@
 
 mod common;
 
-use common::{
-    create_simple_crate, create_workspace, read_vendor_toml, revendor_cmd, vendor_has,
-};
+use common::{create_simple_crate, create_workspace, read_vendor_toml, revendor_cmd, vendor_has};
 
 // region: Edge cases (E1-E5)
 
@@ -371,7 +369,10 @@ cfg-if = "1"
         .success();
 
     let marker = vendor.join(".vendor-source");
-    assert!(marker.exists(), "--source-marker should write .vendor-source");
+    assert!(
+        marker.exists(),
+        "--source-marker should write .vendor-source"
+    );
     let body = std::fs::read_to_string(&marker).unwrap();
     let body = body.trim();
     assert_eq!(

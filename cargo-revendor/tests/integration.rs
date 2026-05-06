@@ -212,36 +212,52 @@ path = "lib.rs"
 #[test]
 #[ignore] // network
 fn patch_cratesio_pattern() {
+    // Use a crate name that is guaranteed not to exist on crates.io so the
+    // version from the local workspace (0.1.0) never conflicts with a
+    // registry resolution.
+    //
+    // The [patch.crates-io] must be placed in the workspace root manifest,
+    // not in a member manifest — cargo ignores member-level [patch] in
+    // workspace context.
+    let crate_name = "zzz-cargo-revendor-test-fixture-mylib";
     let proj = create_workspace(
-        r#"[workspace]
-members = ["rpkg", "mylib"]
-"#,
+        &format!(
+            r#"[workspace]
+members = ["rpkg", "{crate_name}"]
+resolver = "2"
+
+[patch.crates-io]
+{crate_name} = {{ path = "{crate_name}" }}
+"#
+        ),
         &[
             (
                 "rpkg",
-                r#"[package]
+                &format!(
+                    r#"[package]
 name = "rpkg"
 version = "0.1.0"
 edition = "2021"
 [lib]
 path = "lib.rs"
 [dependencies]
-mylib = { version = "*" }
+{crate_name} = {{ version = "0.1.0" }}
 cfg-if = "1"
-[patch.crates-io]
-mylib = { path = "../mylib" }
-"#,
+"#
+                ),
                 "pub fn go() {}",
             ),
             (
-                "mylib",
-                r#"[package]
-name = "mylib"
+                crate_name,
+                &format!(
+                    r#"[package]
+name = "{crate_name}"
 version = "0.1.0"
 edition = "2021"
 [lib]
 path = "lib.rs"
-"#,
+"#
+                ),
                 "pub fn lib_fn() {}",
             ),
         ],
@@ -261,7 +277,7 @@ path = "lib.rs"
         .assert()
         .success();
 
-    assert_vendor_has(&vendor, "mylib");
+    assert_vendor_has(&vendor, crate_name);
     assert_vendor_has(&vendor, "cfg-if");
 }
 
@@ -272,22 +288,26 @@ path = "lib.rs"
 #[test]
 #[ignore] // network
 fn monorepo_nested_rpkg() {
+    // Use a crate name that doesn't exist on crates.io to avoid version
+    // conflicts between the local workspace copy and the registry.
+    let crate_name = "zzz-cargo-revendor-test-fixture-mylib";
     let proj = create_monorepo(
-        r#"[workspace]
-members = ["mylib"]
-"#,
+        &format!("[workspace]\nmembers = [\"{crate_name}\"]\n"),
         &[(
-            "mylib",
-            r#"[package]
-name = "mylib"
+            crate_name,
+            &format!(
+                r#"[package]
+name = "{crate_name}"
 version = "0.1.0"
 edition = "2021"
 [lib]
 path = "lib.rs"
-"#,
+"#
+            ),
             "pub fn lib_fn() {}",
         )],
-        r#"[package]
+        &format!(
+            r#"[package]
 name = "mypkg"
 version = "0.1.0"
 edition = "2021"
@@ -295,11 +315,12 @@ edition = "2021"
 [lib]
 path = "lib.rs"
 [dependencies]
-mylib = { version = "*" }
+{crate_name} = {{ version = "0.1.0" }}
 cfg-if = "1"
 [patch.crates-io]
-mylib = { path = "../../../mylib" }
-"#,
+{crate_name} = {{ path = "../../../{crate_name}" }}
+"#
+        ),
         "pub fn go() {}",
     );
     let vendor = proj.root().join("vendor");
@@ -320,7 +341,7 @@ mylib = { path = "../../../mylib" }
         .assert()
         .success();
 
-    assert_vendor_has(&vendor, "mylib");
+    assert_vendor_has(&vendor, crate_name);
     assert_vendor_has(&vendor, "cfg-if");
 }
 

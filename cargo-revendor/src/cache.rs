@@ -288,11 +288,7 @@ fn collect_crate_files(crate_path: &Path) -> Result<BTreeMap<String, Vec<u8>>> {
     Ok(out)
 }
 
-fn walk_dir(
-    dir: &Path,
-    root: &Path,
-    out: &mut BTreeMap<String, Vec<u8>>,
-) -> Result<()> {
+fn walk_dir(dir: &Path, root: &Path, out: &mut BTreeMap<String, Vec<u8>>) -> Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -401,7 +397,11 @@ mod tests {
         assert!(is_cached(&lockfile, &sync, &vendor, &locals).unwrap());
 
         // Bump the sync manifest; cache should invalidate.
-        std::fs::write(&sync_manifest, "[package]\nname = \"syncpkg\"\nversion = \"0.2.0\"").unwrap();
+        std::fs::write(
+            &sync_manifest,
+            "[package]\nname = \"syncpkg\"\nversion = \"0.2.0\"",
+        )
+        .unwrap();
         assert!(
             !is_cached(&lockfile, &sync, &vendor, &locals).unwrap(),
             "cache should invalidate when a --sync manifest changes"
@@ -444,11 +444,7 @@ mod tests {
         for (input, expected) in cases {
             let mut h = Fnv64::new();
             h.update(input);
-            assert_eq!(
-                h.finish(),
-                *expected,
-                "FNV-1a mismatch for {input:?}"
-            );
+            assert_eq!(h.finish(), *expected, "FNV-1a mismatch for {input:?}");
         }
     }
 
