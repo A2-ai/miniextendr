@@ -37,5 +37,5 @@ Config/testthat/edition: 3
 Config/build/bootstrap: TRUE
 Config/build/never-clean: true
 Config/build/extra-sources: src/rust/Cargo.lock
-Config/roxygen2/version: 7.3.3
+Config/roxygen2/version: 8.0.0
 RoxygenNote: 7.3.3
