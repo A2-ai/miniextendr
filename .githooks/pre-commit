@@ -30,17 +30,12 @@ fi
 # ── Cargo.lock tarball-shape assertion ───────────────────────────────────────
 # rpkg/src/rust/Cargo.lock must stay in "tarball-shape":
 # - miniextendr-{api,lint,macros} as git+url sources (not path+...)
-# - zero checksum = "..." lines
-# Local `cargo build` silently rewrites it; committing that drift breaks CRAN.
+# checksum = "..." lines are now ALLOWED: cargo-revendor writes valid
+# .cargo-checksum.json files whose `package` field matches them.
+# Local `cargo build` silently rewrites path sources; committing that breaks CRAN.
 staged_lock=$(echo "$STAGED" | grep -F 'rpkg/src/rust/Cargo.lock' || true)
 if [ -n "$staged_lock" ]; then
     lock_content=$(git diff --cached -- rpkg/src/rust/Cargo.lock | grep '^+' | grep -v '^+++')
-    if echo "$lock_content" | grep -qE '^\+checksum = '; then
-        echo "pre-commit: rpkg/src/rust/Cargo.lock has checksum lines — wrong shape." >&2
-        echo "  The committed lockfile must be in tarball-shape (no checksums)." >&2
-        echo "  Run: just vendor    # regenerates canonical shape" >&2
-        exit 1
-    fi
     if echo "$lock_content" | grep -qE '^\+source = "path\+'; then
         echo "pre-commit: rpkg/src/rust/Cargo.lock has path+... sources for miniextendr crates." >&2
         echo "  The committed lockfile must use git+url sources for workspace crates." >&2

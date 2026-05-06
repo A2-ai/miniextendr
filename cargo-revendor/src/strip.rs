@@ -328,12 +328,14 @@ const STRIPABLE_TOP_DIRS: &[&str] = &["tests", "benches", "examples", "bin"];
 
 /// Walk every `.rs` file under `crate_dir` and collect the top-level directory
 /// names referenced by `include_str!`/`include_bytes!`/`include!` macros.
+///
 /// Two layers of detection:
-///   1. literal-path macros — resolve relative to the source file (matching
-///      rustc) and read the first component under the crate root.
-///   2. composed-path macros — scan all string literals in the macro's
-///      argument span (handles `concat!(...)`) for `<...>tests/`, `benches/`,
-///      `examples/`, `bin/` substrings and preserve those dirs.
+///
+/// 1. literal-path macros — resolve relative to the source file (matching
+///    rustc) and read the first component under the crate root.
+/// 2. composed-path macros — scan all string literals in the macro's
+///    argument span (handles `concat!(...)`) for `<...>tests/`, `benches/`,
+///    `examples/`, `bin/` substrings and preserve those dirs.
 ///
 /// Paths escaping the crate root or referencing files outside it are ignored.
 fn scan_referenced_top_dirs(crate_dir: &Path) -> Vec<String> {

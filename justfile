@@ -155,11 +155,12 @@ check-features:
     echo "=== All $passed/$total feature combinations passed ==="
 
 # Update Cargo.lock files across every tracked manifest.
-# rpkg's lock must stay in tarball-shape (no `checksum =` lines, no `path+...`
-# sources for miniextendr-{api,lint,macros}); we move .cargo/config.toml aside
-# so the [patch."git+url"] override doesn't bleed into the lock, then strip
-# checksums after the update. Mirrors what `just vendor` does to the lock,
-# without the vendor/ + inst/vendor.tar.xz regen.
+# rpkg's lock must stay in tarball-shape (no `path+...` sources for
+# miniextendr-{api,lint,macros}). We move .cargo/config.toml aside so the
+# [patch."git+url"] override doesn't bleed into the lock.
+# Checksums are NO LONGER stripped: cargo-revendor now writes valid
+# `.cargo-checksum.json` files that match the registry checksums, so the
+# committed lock can retain `checksum = "..."` lines.
 alias cargo-update := update
 [script("bash")]
 update *cargo_flags:
@@ -175,7 +176,6 @@ update *cargo_flags:
     if [[ -f "$cargo_cfg" ]]; then mv "$cargo_cfg" "$cargo_cfg.tmp_just_update"; fi
     trap "[[ -f '$cargo_cfg.tmp_just_update' ]] && mv '$cargo_cfg.tmp_just_update' '$cargo_cfg'" EXIT
     cargo update --manifest-path "$rust_dir/Cargo.toml" {{cargo_flags}}
-    sed -i.bak '/^checksum = /d' "$rust_dir/Cargo.lock" && rm -f "$rust_dir/Cargo.lock.bak"
     just lock-shape-check
 
 # Check all crates
@@ -381,11 +381,11 @@ configure:
 #      so the lockfile entries for miniextendr-{api,lint,macros} carry the
 #      `git+https://...#<commit>` source — required by cargo's source
 #      replacement mechanism when the tarball is later installed offline.
-#   2. Strip the per-crate checksum lines from Cargo.lock. Vendored sources
-#      ship with empty `.cargo-checksum.json` files; cargo refuses to verify
-#      them against the registry checksums otherwise.
-#   3. Run cargo-revendor against the freshly-regenerated lockfile.
-#   4. Compress vendor/ to inst/vendor.tar.xz.
+#   2. Run cargo-revendor against the freshly-regenerated lockfile.
+#      cargo-revendor recomputes `.cargo-checksum.json` with real SHA-256s
+#      after CRAN-trim, so the committed Cargo.lock can retain its registry
+#      `checksum = "..."` lines (no post-vendor sed stripping needed).
+#   3. Compress vendor/ to inst/vendor.tar.xz.
 #
 # --force re-runs the full vendor even when cargo-revendor's cache thinks the
 # output is current. Cheap insurance against a stale committed tarball when
@@ -423,12 +423,6 @@ vendor:
       --source-marker \
       --force \
       -v
-    # Strip per-crate checksums *after* cargo-revendor — cargo vendor
-    # re-resolves the lockfile during vendoring and would re-add checksums
-    # otherwise. The vendored sources have empty `.cargo-checksum.json`
-    # files; cargo refuses to verify them against the registry checksums
-    # during a tarball install if the lockfile carries checksums.
-    sed -i.bak '/^checksum = /d' "$rust_dir/Cargo.lock" && rm -f "$rust_dir/Cargo.lock.bak"
     echo ""
     echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
     echo "(run 'just clean-vendor-leak' or 'unlink(\"rpkg/inst/vendor.tar.xz\")' in R)"
@@ -969,7 +963,13 @@ vendor-sync-diff:
       fi
     done
 
-# Check that rpkg/src/rust/Cargo.lock is in tarball-shape (git sources, no checksums)
+# Check that rpkg/src/rust/Cargo.lock is in tarball-shape.
+#
+# One invariant remains after cargo-revendor item 2:
+#   - miniextendr-{api,lint,macros} must use git+url#<sha> sources, not path+.
+#
+# checksum = "..." lines are now ALLOWED (cargo-revendor writes valid
+# .cargo-checksum.json files whose `package` field matches them).
 [script("bash")]
 lock-shape-check:
     set -euo pipefail
@@ -979,10 +979,6 @@ lock-shape-check:
         exit 0
     fi
     bad=0
-    if grep -q 'checksum = ' "$lock"; then
-        echo "lock-shape-check: $lock has checksum lines (tarball-shape violation)" >&2
-        bad=1
-    fi
     if grep -q 'source = "path+' "$lock"; then
         echo "lock-shape-check: $lock has path+... sources (tarball-shape violation)" >&2
         bad=1

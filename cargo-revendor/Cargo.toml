@@ -21,6 +21,7 @@ clap = { version = "4", default-features = false, features = ["derive", "std", "
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 serde = { version = "1", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
+sha2 = { version = "0.10", default-features = false, features = ["std"] }
 tar = { version = "0.4", default-features = false }
 tempfile = { version = "3", default-features = false }
 toml_edit = { version = "0.22", default-features = false, features = ["parse", "display"] }
