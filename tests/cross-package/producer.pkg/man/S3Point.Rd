@@ -69,10 +69,4 @@ Calculate distance from origin
 
 Add to coordinates
 }
-\examples{
-p <- new_s3point(3.0, 4.0)
-s3point_x(p)
-s3point_y(p)
-s3point_distance(p)
-}
 \keyword{datasets}

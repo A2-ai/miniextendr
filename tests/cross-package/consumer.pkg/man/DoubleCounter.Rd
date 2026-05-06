@@ -10,6 +10,8 @@
 \alias{DoubleCounter$Counter$value}
 \alias{DoubleCounter$Counter$increment}
 \alias{DoubleCounter$Counter$add}
+\alias{DoubleCounter$Counter$panic_plain}
+\alias{DoubleCounter$Counter$error_with_class}
 \title{DoubleCounter  Class}
 \format{
 An object of class \code{environment} of length 3.

@@ -52,10 +52,4 @@ Calculate distance from origin
 
 Add another point's coordinates
 }
-\examples{
-p <- EnvPoint$new(3.0, 4.0)
-p$x()
-p$y()
-p$distance_from_origin()
-}
 \keyword{datasets}

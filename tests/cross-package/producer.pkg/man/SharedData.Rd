@@ -47,10 +47,4 @@ Get the label
 
 Create a new SharedData
 }
-\examples{
-p <- SharedData$create(1.0, 2.0, "origin")
-p$get_x()
-p$get_y()
-p$get_label()
-}
 \keyword{datasets}

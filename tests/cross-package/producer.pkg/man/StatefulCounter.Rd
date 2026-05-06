@@ -10,6 +10,8 @@
 \alias{StatefulCounter$Counter$value}
 \alias{StatefulCounter$Counter$increment}
 \alias{StatefulCounter$Counter$add}
+\alias{StatefulCounter$Counter$panic_plain}
+\alias{StatefulCounter$Counter$error_with_class}
 \alias{StatefulCounter$Resettable$reset}
 \alias{StatefulCounter$Resettable$is_default}
 \title{StatefulCounter  Class}
