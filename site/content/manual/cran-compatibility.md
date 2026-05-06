@@ -86,9 +86,10 @@ artifact for CRAN.
 3. Restore .cargo/config.toml.
 4. Run `cargo revendor` against the freshly regenerated lockfile, producing
    rpkg/vendor/ and rpkg/inst/vendor.tar.xz.
-5. Strip per-crate `checksum = ...` lines from Cargo.lock. Vendored sources
-   ship empty `.cargo-checksum.json` files; cargo refuses to verify them
-   against the registry checksums otherwise.
+   cargo-revendor recomputes `.cargo-checksum.json` after CRAN-trim: the
+   original `package` hash (matching the lockfile's `checksum = ...` line) is
+   preserved and the `files` map is refreshed to reflect the trimmed files.
+   The committed Cargo.lock can therefore retain its `checksum = ...` lines.
 ```
 
 Steps 1–3 ensure the lockfile carries the git source for the workspace crates,
@@ -103,23 +104,22 @@ file to be present first before it can be used against vendored source code".
 > steps `just vendor` / `miniextendr_vendor()` automate. Summary below.
 
 The committed `rpkg/src/rust/Cargo.lock` is in tarball-shape: workspace crates
-have `source = "git+https://github.com/A2-ai/miniextendr#<hash>"` and the file
-contains zero `checksum = ...` lines. This is the shape an offline tarball
-install requires.
+have `source = "git+https://github.com/A2-ai/miniextendr#<hash>"`. Registry
+`checksum = ...` lines are now **retained** — cargo-revendor writes valid
+`.cargo-checksum.json` files that match them.
 
 When you run `cargo build` / `cargo check` in source mode, cargo silently
 rewrites the lockfile in place: it re-resolves the workspace crates through
-the `[patch."git+url"]` override (so they become `path` sources) and re-adds
-checksums for transitive crates.io deps. **This drift is expected and harmless
-for local iteration.** Don't commit it; the canonical shape is regenerated
-from scratch by `just vendor`.
+the `[patch."git+url"]` override (so they become `path` sources). **This drift
+is expected and harmless for local iteration.** Don't commit it; run
+`just vendor` to restore the canonical shape.
 
 If you ever see CI complain that the committed lockfile is in source-shape
 instead of tarball-shape, run `just vendor` and commit the regenerated
 artifact.
 
 The pre-commit hook (`.githooks/pre-commit`) blocks commits that would
-introduce checksum lines or `path+` sources into `rpkg/src/rust/Cargo.lock`.
+introduce `path+` sources into `rpkg/src/rust/Cargo.lock`.
 Run `just lock-shape-check` to verify the committed lockfile is in the correct
 shape at any time.
 

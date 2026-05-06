@@ -22,43 +22,23 @@ it drifts.
 
 ## What "tarball-shape" means
 
-Two invariants on `src/rust/Cargo.lock`:
+One invariant on `src/rust/Cargo.lock`:
 
-1. **No `checksum = "..."` lines anywhere in the file.**
-2. **No `source = "path+..."` entries** for any crate that's published or
+1. **No `source = "path+..."` entries** for any crate that's published or
    workspace-internal to the miniextendr framework
    (`miniextendr-api`, `miniextendr-lint`, `miniextendr-macros`).
    These crates *must* carry `source = "git+https://github.com/A2-ai/miniextendr#<commit>"`.
 
-`just lock-shape-check` (and the equivalent pre-commit hook) asserts both.
+> **Note:** `checksum = "..."` lines are now **allowed** in the committed
+> lock. `cargo-revendor` recomputes valid `.cargo-checksum.json` files
+> after CRAN-trim, with the original `package` field (matching the registry
+> checksum) preserved and the `files` map updated to reflect post-trim disk
+> contents. Cargo's offline source-replacement verifies both successfully.
 
-## Why each invariant
+`just lock-shape-check` (and the equivalent pre-commit hook) asserts the
+`path+` invariant only.
 
-### No `checksum =` lines
-
-When you ship to CRAN, the package install is **offline** — no network, no
-crates.io access. This works because `inst/vendor.tar.xz` ships every
-transitive dependency's source, unpacked at install time into `vendor/`,
-combined with a generated `.cargo/config.toml` that does
-[source replacement][cargo-source-replacement] from `crates-io` to
-`vendored-sources`.
-
-Cargo verifies registry checksums against per-crate `.cargo-checksum.json`
-files. Vendored crates ship with **empty** `.cargo-checksum.json` files
-(deliberately — recomputing them defeats the point of vendoring, and cargo
-can't trust them without re-fetching from the registry anyway). If the
-lockfile carries the registry checksum, cargo at offline-install time
-compares it against the empty vendored one, decides they don't match, and
-errors out:
-
-```
-error: the listed checksum of `serde 1.0.228` has changed:
-       expected: 4ddc6...
-       actual:   <empty>
-```
-
-Stripping `checksum =` lines from the lockfile eliminates this comparison —
-cargo trusts the vendored sources because nothing tells it otherwise.
+## Why the invariant
 
 ### `source = "git+url#commit"` for framework crates
 
@@ -80,7 +60,8 @@ So the regen flow is:
 2. Regenerate the lockfile against the bare git URL — entries for
    miniextendr crates resolve to `source = "git+https://...#<commit>"`.
 3. Restore `.cargo/config.toml`.
-4. Strip the `checksum =` lines.
+4. Run `cargo revendor` — it recomputes `.cargo-checksum.json` for each
+   crate after CRAN-trim, so the lock's `checksum =` lines stay valid.
 
 That's exactly what `just vendor` (in this repo) and
 `miniextendr::miniextendr_vendor()` (for scaffolded packages) do.
@@ -88,7 +69,7 @@ That's exactly what `just vendor` (in this repo) and
 ## When does the lock drift?
 
 Any cargo invocation that runs with the patch override active will rewrite
-the lock in source-shape:
+the lock:
 
 - `just check` / `just clippy` / `just test` (rpkg variants)
 - `cargo build --manifest-path rpkg/src/rust/Cargo.toml`
@@ -98,12 +79,14 @@ the lock in source-shape:
 
 After any of these, you'll see (under `git diff`):
 
-- `+checksum = "..."` lines added back
 - `source = "git+...#<commit>"` lines deleted from
   `miniextendr-{api,lint,macros}` (they become path deps via `[patch]`)
 
+`checksum = "..."` lines may also be added/changed by cargo build, but
+those are now harmless — `just vendor` will put them back in sync.
+
 **This drift is expected and harmless for local iteration. Don't commit it.**
-The pre-commit hook will block the commit anyway. Re-run the canonical
+The pre-commit hook will block the `path+` drift. Re-run the canonical
 regen (`just vendor` or `just update`) before staging.
 
 ## Recovering a drifted lock
@@ -121,8 +104,7 @@ mv rpkg/src/rust/.cargo/config.toml /tmp/cargo-config.toml.bak
 rm rpkg/src/rust/Cargo.lock
 cargo generate-lockfile --manifest-path rpkg/src/rust/Cargo.toml
 mv /tmp/cargo-config.toml.bak rpkg/src/rust/.cargo/config.toml
-sed -i.bak '/^checksum = /d' rpkg/src/rust/Cargo.lock
-rm rpkg/src/rust/Cargo.lock.bak
+# No checksum strip needed — cargo-revendor handles it during `just vendor`
 
 # Verify
 just lock-shape-check
@@ -134,7 +116,6 @@ just lock-shape-check
 
 ```bash
 # Equivalent shell check
-grep -q '^checksum = ' src/rust/Cargo.lock && echo "BAD: contains checksums"
 grep -q 'source = "path+' src/rust/Cargo.lock && echo "BAD: contains path+ sources"
 ```
 

@@ -12,7 +12,7 @@
 mod common;
 
 use common::{
-    assert_empty_checksum, assert_vendor_has, assert_vendor_missing, create_local_git_crate,
+    assert_valid_checksum, assert_vendor_has, assert_vendor_missing, create_local_git_crate,
     create_simple_crate, read_vendor_toml, revendor_cmd,
 };
 
@@ -76,7 +76,9 @@ foo = {{ git = "{}" }}
         toml.contains("version = \"0.1.0\""),
         "vendored Cargo.toml should report version 0.1.0, got:\n{toml}"
     );
-    assert_empty_checksum(&vendor, "foo");
+    // Git-source crates have "package": null (no registry hash) but should
+    // still have a non-empty files map with SHA-256s for all vendored files.
+    assert_valid_checksum(&vendor, "foo");
 }
 
 /// **G2** — pin the dep to a specific commit OID. Verify the pin round-trips

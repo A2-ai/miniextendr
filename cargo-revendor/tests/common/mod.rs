@@ -340,14 +340,77 @@ pub fn read_vendor_toml(vendor: &Path, name: &str) -> String {
         .unwrap_or_else(|_| panic!("failed to read {}/Cargo.toml", crate_dir.display()))
 }
 
+/// Assert that a vendored crate has a valid `.cargo-checksum.json` with a
+/// non-empty `files` map containing SHA-256 hashes.
+///
+/// cargo-revendor now recomputes real checksums after CRAN-trim: the `files`
+/// map has actual per-file SHA-256s and the `package` field (if present) is
+/// preserved from the original registry hash.
+pub fn assert_valid_checksum(vendor: &Path, name: &str) {
+    let crate_dir = vendor_dir_for(vendor, name, None);
+    let cksum = crate_dir.join(".cargo-checksum.json");
+    let content = std::fs::read_to_string(&cksum)
+        .unwrap_or_else(|_| panic!("no .cargo-checksum.json in {}", crate_dir.display()));
+    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap_or_else(|e| {
+        panic!(
+            ".cargo-checksum.json in {} is not valid JSON: {e}",
+            crate_dir.display()
+        )
+    });
+    // `files` key must exist and be an object
+    let files = parsed
+        .get("files")
+        .and_then(|v| v.as_object())
+        .unwrap_or_else(|| {
+            panic!(
+                ".cargo-checksum.json in {} missing `files` object",
+                crate_dir.display()
+            )
+        });
+    // Every file in the crate dir (except .cargo-checksum.json) must appear in files
+    // and every value must look like a 64-char hex SHA-256.
+    for (path_str, hash_val) in files {
+        let hash = hash_val.as_str().unwrap_or_else(|| {
+            panic!(
+                "files[{path_str}] is not a string in {}",
+                crate_dir.display()
+            )
+        });
+        assert_eq!(
+            hash.len(),
+            64,
+            "files[{path_str}] hash has wrong length {} (expected 64-char SHA-256) in {}",
+            hash.len(),
+            crate_dir.display()
+        );
+        assert!(
+            hash.chars().all(|c| c.is_ascii_hexdigit()),
+            "files[{path_str}] hash {hash} is not hex in {}",
+            crate_dir.display()
+        );
+    }
+}
+
 /// Assert a vendored crate's `.cargo-checksum.json` is the empty-files form
-/// (`{"files":{}}`) — what cargo expects from a vendored-sources tree.
+/// (`{"files":{}}`).  Retained for tests that explicitly check that a crate
+/// has NO source files in its checksum map (e.g. path/git-source stubs that
+/// cargo vendor emits with an empty package and empty files).
 pub fn assert_empty_checksum(vendor: &Path, name: &str) {
     let crate_dir = vendor_dir_for(vendor, name, None);
     let cksum = crate_dir.join(".cargo-checksum.json");
     let content = std::fs::read_to_string(&cksum)
         .unwrap_or_else(|_| panic!("no .cargo-checksum.json in {}", crate_dir.display()));
-    assert_eq!(content, "{\"files\":{}}");
+    let parsed: serde_json::Value = serde_json::from_str(&content)
+        .unwrap_or_else(|e| panic!("bad JSON in .cargo-checksum.json: {e}"));
+    let files = parsed
+        .get("files")
+        .and_then(|v| v.as_object())
+        .unwrap_or_else(|| panic!("missing files object in .cargo-checksum.json"));
+    assert!(
+        files.is_empty(),
+        "expected empty files map but found: {:?}",
+        files.keys().collect::<Vec<_>>()
+    );
 }
 
 // endregion

@@ -587,15 +587,30 @@ fn copy_crate_dir(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Clear all .cargo-checksum.json files (vendored sources don't need verification)
-pub fn clear_checksums(vendor_dir: &Path) -> Result<()> {
-    for entry in std::fs::read_dir(vendor_dir)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            let cksum = entry.path().join(".cargo-checksum.json");
-            std::fs::write(&cksum, "{\"files\":{}}")?;
-        }
+/// Copy `Cargo.lock` to the vendor directory for use by `--freeze` /
+/// `regenerate_lockfile`.
+///
+/// Checksums are retained — cargo-revendor now writes valid `.cargo-checksum.json`
+/// files (with `package` fields matching the lockfile's `checksum = "..."` lines),
+/// so the lock no longer needs to be stripped before copying.
+pub fn copy_lock_to_vendor(lockfile: &Path, vendor_dir: &Path, v: crate::Verbosity) -> Result<()> {
+    if !lockfile.exists() {
+        return Ok(());
     }
+
+    let dest = vendor_dir.join("Cargo.lock");
+    std::fs::copy(lockfile, &dest).with_context(|| {
+        format!(
+            "failed to copy {} to {}",
+            lockfile.display(),
+            dest.display()
+        )
+    })?;
+
+    if v.debug() {
+        eprintln!("  Copied Cargo.lock to vendor/ (checksums retained)");
+    }
+
     Ok(())
 }
 
@@ -800,43 +815,6 @@ pub fn generate_cargo_config(
     std::fs::write(&config_path, &config)?;
 
     Ok(config)
-}
-
-/// Filter out `checksum = "..."` lines from a `Cargo.lock`'s contents.
-///
-/// Vendored crates carry empty checksums, so the lockfile's checksum lines
-/// need to be removed for `--locked` builds to work. Preserves the trailing
-/// newline if the source had one.
-fn strip_checksum_lines(content: &str) -> String {
-    let mut stripped: String = content
-        .lines()
-        .filter(|line| !line.starts_with("checksum = "))
-        .collect::<Vec<_>>()
-        .join("\n");
-    if content.ends_with('\n') && !stripped.ends_with('\n') {
-        stripped.push('\n');
-    }
-    stripped
-}
-
-/// Strip checksums from Cargo.lock and copy to vendor dir.
-pub fn strip_lock_checksums(lockfile: &Path, vendor_dir: &Path, v: crate::Verbosity) -> Result<()> {
-    if !lockfile.exists() {
-        return Ok(());
-    }
-
-    let content = std::fs::read_to_string(lockfile)?;
-    let stripped = strip_checksum_lines(&content);
-
-    let dest = vendor_dir.join("Cargo.lock");
-    std::fs::write(&dest, &stripped)?;
-
-    if v.debug() {
-        let removed = content.lines().count() - stripped.lines().count();
-        eprintln!("  Stripped {} checksum lines from Cargo.lock", removed);
-    }
-
-    Ok(())
 }
 
 /// Freeze: rewrite Cargo.toml so all sources resolve from vendor/.
@@ -1124,12 +1102,13 @@ fn pathdiff(target: &Path, base: &Path) -> String {
 
 /// Regenerate Cargo.lock from vendored sources (freeze-consistent copy).
 ///
-/// The vendor/ directory contains a stripped Cargo.lock produced by
-/// `strip_lock_checksums` during the same vendoring run. Copying it directly
-/// to the manifest's Cargo.lock is the most reliable approach: it is exactly
-/// consistent with what was vendored, avoiding version-drift that can occur
-/// when `cargo generate-lockfile --offline` resolves from the local index
-/// cache (which may have been updated by a subsequent `cargo vendor` run).
+/// The vendor/ directory contains a Cargo.lock (with registry checksums
+/// retained) produced by `copy_lock_to_vendor` during the same vendoring run.
+/// Copying it directly to the manifest's Cargo.lock is the most reliable
+/// approach: it is exactly consistent with what was vendored, avoiding
+/// version-drift that can occur when `cargo generate-lockfile --offline`
+/// resolves from the local index cache (which may have been updated by a
+/// subsequent `cargo vendor` run).
 pub fn regenerate_lockfile(
     manifest_path: &Path,
     vendor_dir: &Path,
@@ -1139,8 +1118,9 @@ pub fn regenerate_lockfile(
     let vendor_lock = vendor_dir.join("Cargo.lock");
 
     if vendor_lock.exists() {
-        // Copy the vendor-stripped lockfile directly — it matches exactly what
-        // was vendored, without risk of version drift from the local index cache.
+        // Copy the lock from vendor/ directly — it matches exactly what was
+        // vendored (checksums retained), without risk of version drift from the
+        // local index cache.
         std::fs::copy(&vendor_lock, &lockfile).with_context(|| {
             format!(
                 "failed to copy {} to {}",
@@ -1209,37 +1189,6 @@ pub fn regenerate_lockfile(
     Ok(())
 }
 
-/// Strip checksums from the canonical Cargo.lock in-place.
-///
-/// When `--compress` is used without `--freeze`, `configure` unpacks the
-/// tarball and runs `cargo --offline` against the source-tree `Cargo.lock`.
-/// That lockfile still has registry `checksum = "..."` lines, which cargo
-/// rejects with "unable to verify that `<crate>` is the same as when the
-/// lockfile was generated" because vendored sources have empty checksums.
-///
-/// Filtering checksum lines from the canonical lockfile (the one cargo reads
-/// during the build) fixes the mismatch. `strip_lock_checksums` already does
-/// this for `vendor/Cargo.lock`; this companion strips the source-tree copy.
-pub fn strip_lockfile_inplace(lockfile: &Path, v: u8) -> Result<()> {
-    let content = std::fs::read_to_string(lockfile)
-        .with_context(|| format!("failed to read {}", lockfile.display()))?;
-    let stripped = strip_checksum_lines(&content);
-    std::fs::write(lockfile, &stripped)
-        .with_context(|| format!("failed to write {}", lockfile.display()))?;
-    if v >= 2 {
-        let removed = content
-            .lines()
-            .filter(|l| l.starts_with("checksum = "))
-            .count();
-        eprintln!(
-            "  Stripped {} checksum line(s) from {}",
-            removed,
-            lockfile.display()
-        );
-    }
-    Ok(())
-}
-
 /// Compress vendor/ into a .tar.xz tarball
 pub fn compress_vendor(
     vendor_dir: &Path,
@@ -1263,6 +1212,16 @@ pub fn compress_vendor(
         }
         if v.debug() {
             eprintln!("  Blanked .md files in vendor/");
+        }
+
+        // Blanking .md invalidates the per-file SHA-256s in
+        // .cargo-checksum.json. Recompute so the tarball ships with hashes
+        // that match the actual blanked contents — otherwise cargo's
+        // DirectorySource::verify() aborts offline install with
+        // "the listed checksum of <crate>/CHANGELOG.md has changed".
+        crate::checksum::recompute_checksums(vendor_dir)?;
+        if v.debug() {
+            eprintln!("  Recomputed .cargo-checksum.json after blanking");
         }
     }
 
@@ -1678,89 +1637,4 @@ path = "../sibling"
         // dependency path is stripped
         assert!(!result.contains("../sibling"));
     }
-
-    // region: strip_lockfile_inplace (#321)
-
-    #[test]
-    fn strip_lockfile_inplace_removes_checksum_lines() {
-        let dir = tempfile::tempdir().unwrap();
-        let lockfile = dir.path().join("Cargo.lock");
-        std::fs::write(
-            &lockfile,
-            r#"# This file is automatically @generated by Cargo.
-# It is not intended for manual editing.
-version = 3
-
-[[package]]
-name = "anyhow"
-version = "1.0.75"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4c2163986e4e421ebba33b3f1e3c69dd557c02c441ee2c55c1e5c9960b14c5a"
-
-[[package]]
-name = "mypackage"
-version = "0.1.0"
-
-[[package]]
-name = "serde"
-version = "1.0.193"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25dd0975d2a7b5f592e0ce8ca56ad50f81c9b40b2b6d07c1d7da43e0abf4efb1"
-dependencies = [
-  "serde_derive",
-]
-"#,
-        )
-        .unwrap();
-
-        strip_lockfile_inplace(&lockfile, 0).unwrap();
-
-        let result = std::fs::read_to_string(&lockfile).unwrap();
-        // No checksum lines remain
-        assert!(
-            !result.lines().any(|l| l.starts_with("checksum = ")),
-            "checksum lines should be removed, got:\n{result}"
-        );
-        // Non-checksum content is preserved
-        assert!(result.contains("[[package]]"));
-        assert!(result.contains("name = \"anyhow\""));
-        assert!(result.contains("name = \"mypackage\""));
-        assert!(result.contains("name = \"serde\""));
-        assert!(result.contains("version = \"1.0.75\""));
-        assert!(result.contains("serde_derive"));
-    }
-
-    #[test]
-    fn strip_lockfile_inplace_preserves_trailing_newline() {
-        let dir = tempfile::tempdir().unwrap();
-        let lockfile = dir.path().join("Cargo.lock");
-        let content = "version = 3\n\n[[package]]\nname = \"x\"\nversion = \"0.1.0\"\nchecksum = \"abc123\"\n";
-        std::fs::write(&lockfile, content).unwrap();
-
-        strip_lockfile_inplace(&lockfile, 0).unwrap();
-
-        let result = std::fs::read_to_string(&lockfile).unwrap();
-        assert!(
-            result.ends_with('\n'),
-            "trailing newline should be preserved"
-        );
-        assert!(!result.contains("checksum = "));
-    }
-
-    #[test]
-    fn strip_lockfile_inplace_no_checksums_is_noop() {
-        let dir = tempfile::tempdir().unwrap();
-        let lockfile = dir.path().join("Cargo.lock");
-        let content = "version = 3\n\n[[package]]\nname = \"x\"\nversion = \"0.1.0\"\n";
-        std::fs::write(&lockfile, content).unwrap();
-
-        strip_lockfile_inplace(&lockfile, 0).unwrap();
-
-        let result = std::fs::read_to_string(&lockfile).unwrap();
-        // Should be unchanged (modulo join/newline normalization)
-        assert!(result.contains("name = \"x\""));
-        assert!(!result.contains("checksum = "));
-    }
-
-    // endregion
 }

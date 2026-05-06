@@ -31,6 +31,7 @@
 //! flag reference.
 
 mod cache;
+mod checksum;
 mod manifest_guard;
 mod metadata;
 mod package;
@@ -653,8 +654,17 @@ fn run_full(
     // Step 6: Rewrite inter-crate path deps for local crates
     vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, v)?;
 
-    // Step 7: Clear checksums
-    vendor::clear_checksums(&vendor_staging)?;
+    // Step 7: Recompute .cargo-checksum.json for every vendored crate.
+    //
+    // After CRAN-trim, the per-file `files` map in each `.cargo-checksum.json`
+    // would be stale (files removed by trim are still listed).  We preserve the
+    // original `package` field (which matches the committed Cargo.lock's
+    // `checksum = "..."` line) and recompute the `files` map from actual disk
+    // contents.  This means cargo's offline source-replacement can verify both:
+    //   - lockfile consistency (package field ↔ Cargo.lock checksum)
+    //   - file integrity (files map ↔ actual vendored files)
+    // The canonical Cargo.lock can therefore retain registry `checksum =` lines.
+    checksum::recompute_checksums(&vendor_staging)?;
 
     // Step 8: Move to final output directory (full mode: fast replace)
     if output.exists() {
@@ -674,15 +684,14 @@ fn run_full(
         eprintln!("{}", config_toml);
     }
 
-    // Step 10: Strip checksums from Cargo.lock (vendored crates have empty checksums)
-    vendor::strip_lock_checksums(lockfile, output, v)?;
-
-    // When --compress is given, the canonical Cargo.lock also needs stripped
-    // checksums — cargo --offline refuses to build against vendored sources
-    // if the lockfile still contains registry checksums.
-    if cli.compress.is_some() && !cli.freeze {
-        vendor::strip_lockfile_inplace(lockfile, v.0)?;
-    }
+    // Step 10: Copy Cargo.lock to vendor/ (checksums retained — no stripping).
+    //
+    // cargo-revendor previously stripped `checksum = "..."` lines because the
+    // vendored crates had empty `.cargo-checksum.json` files.  Now that we
+    // recompute valid checksums (step 7), the lock can retain its registry
+    // checksums.  We still copy the lock to vendor/ for use by `--freeze` and
+    // `regenerate_lockfile`.
+    vendor::copy_lock_to_vendor(lockfile, output, v)?;
 
     // Step 11: Write source marker
     if cli.source_marker {
@@ -851,8 +860,8 @@ fn run_external_only(
     // Step 5.5: Strip relative path deps from all vendored external crates
     vendor::strip_vendor_path_deps(&vendor_staging, v)?;
 
-    // Step 7: Clear checksums
-    vendor::clear_checksums(&vendor_staging)?;
+    // Step 7: Recompute .cargo-checksum.json (preserve package hash, refresh files map).
+    checksum::recompute_checksums(&vendor_staging)?;
 
     // Step 8: Merge into output (only overwrite dirs present in staging)
     merge_copy_vendor(&vendor_staging, output)?;
@@ -862,11 +871,15 @@ fn run_external_only(
 
     // Step 8.5: Remove ALL bootstrap stubs from output.
     // bootstrap_vendor_from_source_root seeds ALL workspace members so that
-    // cargo metadata can resolve frozen path deps. In --external-only mode,
-    // local crates (both non-dep workspace members AND actual local deps like
-    // `myhelper = { path = "../myhelper" }`) must be removed from output so
-    // only external crates remain.
-    for pkg in &patch_pkgs {
+    // cargo metadata can resolve frozen path deps. After metadata resolution
+    // we know which subset are actual deps (local_pkgs). Non-dep members
+    // (e.g. bench/cli/engine siblings) are only ever stubs and must not
+    // appear in the external-only output.
+    let non_dep_members: Vec<_> = patch_pkgs
+        .iter()
+        .filter(|p| !local_pkgs.iter().any(|l| l.name == p.name))
+        .collect();
+    for pkg in &non_dep_members {
         for dir_name in &[pkg.name.clone(), format!("{}-{}", pkg.name, pkg.version)] {
             let p = output.join(dir_name);
             if p.is_dir() {
@@ -874,7 +887,7 @@ fn run_external_only(
                     eprintln!("  --external-only: removing local stub {dir_name} from output");
                 }
                 std::fs::remove_dir_all(&p)
-                    .with_context(|| format!("failed to remove local stub {}", p.display()))?;
+                    .with_context(|| format!("failed to remove non-dep stub {}", p.display()))?;
             }
         }
     }
@@ -1048,8 +1061,8 @@ fn run_local_only(
     // Step 6: Rewrite inter-crate path deps for local crates
     vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, v)?;
 
-    // Step 7: Clear checksums
-    vendor::clear_checksums(&vendor_staging)?;
+    // Step 7: Recompute .cargo-checksum.json (preserve package hash, refresh files map).
+    checksum::recompute_checksums(&vendor_staging)?;
 
     // Step 8: Merge into output (only overwrite dirs present in staging)
     merge_copy_vendor(&vendor_staging, output)?;

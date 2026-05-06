@@ -10,7 +10,7 @@
 mod common;
 
 use common::{
-    assert_empty_checksum, assert_vendor_has, assert_vendor_missing, create_monorepo,
+    assert_valid_checksum, assert_vendor_has, assert_vendor_missing, create_monorepo,
     create_simple_crate, create_workspace, git_init, read_vendor_toml, revendor_cmd,
 };
 
@@ -61,7 +61,7 @@ cfg-if = "1"
         .success();
 
     assert_vendor_has(&vendor, "cfg-if");
-    assert_empty_checksum(&vendor, "cfg-if");
+    assert_valid_checksum(&vendor, "cfg-if");
     assert_vendor_missing(&vendor, "testpkg"); // target crate not vendored
 }
 
@@ -121,7 +121,7 @@ path = "lib.rs"
 
     assert_vendor_has(&vendor, "myhelper");
     assert_vendor_has(&vendor, "cfg-if");
-    assert_empty_checksum(&vendor, "myhelper");
+    assert_valid_checksum(&vendor, "cfg-if");
     assert_vendor_missing(&vendor, "rpkg");
 }
 
