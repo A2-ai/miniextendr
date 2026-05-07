@@ -42,14 +42,5 @@ CounterTraitS3
 \item{n}{Amount to add.}
 }
 \description{
-CounterTraitS3 S3 Class
-
 S3 generic for \code{get_value}
-S3 generic for \code{get_value}
-
-S3 generic for \code{custom_get}
-
-S3 generic for \code{custom_add}
-
-Static trait method MatrixCounter::default_value()
 }
