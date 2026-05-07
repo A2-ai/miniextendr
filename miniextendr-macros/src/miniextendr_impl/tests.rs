@@ -658,9 +658,9 @@ fn parse_impl_vctrs(vctrs_attrs: VctrsAttrs, code: syn::ItemImpl) -> ParsedImpl 
 fn vctrs_wrapper_vctr_full_snapshot() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Percent {
-            pub fn new(x: f64) -> Self { unimplemented!() }
-            pub fn value(&self) -> f64 { unimplemented!() }
-            pub fn scale(&mut self, factor: f64) { unimplemented!() }
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
+            // Static helpers — &self is not allowed on vctrs impls (MXL120)
+            pub fn scale(amounts: Vec<f64>, factor: f64) -> Vec<f64> { unimplemented!() }
         }
     };
 
@@ -694,15 +694,8 @@ fn vctrs_wrapper_vctr_full_snapshot() {
     assert!(wrapper.contains("#' @method vec_cast Percent.Percent"));
     assert!(wrapper.contains("vec_cast.Percent.Percent <- function(x, to, ...) x"));
 
-    // Verify S3 generics
-    assert!(wrapper.contains("value <- function(x, ...) UseMethod(\"value\")"));
-    assert!(wrapper.contains("scale <- function(x, ...) UseMethod(\"scale\")"));
-
-    // Verify S3 methods
-    assert!(wrapper.contains("#' @method value Percent"));
-    assert!(wrapper.contains("value.Percent <- function(x, ...)"));
-    assert!(wrapper.contains("#' @method scale Percent"));
-    assert!(wrapper.contains("scale.Percent <- function(x, factor, ...)"));
+    // Verify static helper emitted as regular function
+    assert!(wrapper.contains("percent_scale <- function(amounts, factor)"));
 
     // Verify imports
     assert!(wrapper.contains("@importFrom vctrs"));
@@ -712,9 +705,9 @@ fn vctrs_wrapper_vctr_full_snapshot() {
 fn vctrs_wrapper_rcrd_full_snapshot() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Rational {
-            pub fn new(n: i32, d: i32) -> Self { unimplemented!() }
-            pub fn numerator(&self) -> i32 { unimplemented!() }
-            pub fn denominator(&self) -> i32 { unimplemented!() }
+            pub fn new(n: i32, d: i32) -> Vec<i32> { unimplemented!() }
+            // Static helpers — &self is not allowed on vctrs impls (MXL120)
+            pub fn numerator(n: Vec<i32>, _d: Vec<i32>) -> Vec<i32> { unimplemented!() }
         }
     };
 
@@ -747,8 +740,9 @@ fn vctrs_wrapper_rcrd_full_snapshot() {
 fn vctrs_wrapper_list_of_full_snapshot() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl IntList {
-            pub fn new(data: Vec<Vec<i32>>) -> Self { unimplemented!() }
-            pub fn len(&self) -> i32 { unimplemented!() }
+            pub fn new(data: Vec<Vec<i32>>) -> Vec<Vec<i32>> { unimplemented!() }
+            // Static helper — &self is not allowed on vctrs impls (MXL120)
+            pub fn len(data: Vec<Vec<i32>>) -> i32 { unimplemented!() }
         }
     };
 
@@ -781,7 +775,7 @@ fn vctrs_wrapper_list_of_full_snapshot() {
 fn vctrs_wrapper_no_abbr() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Simple {
-            pub fn new(x: f64) -> Self { unimplemented!() }
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
         }
     };
 
@@ -806,13 +800,18 @@ fn vctrs_wrapper_no_abbr() {
 
 #[test]
 fn vctrs_protocol_method_override() {
+    // vctrs protocol overrides must use static methods (MXL120 rejects &self receivers).
+    // The vctrs(format) attribute maps a static method to the format.<Class> S3 method.
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Currency {
-            pub fn new(amounts: Vec<f64>) -> Self { unimplemented!() }
-            pub fn symbol(&self) -> String { unimplemented!() }
+            pub fn new(amounts: Vec<f64>) -> Vec<f64> { unimplemented!() }
 
+            // Static helper: regular function named currency_symbol
+            pub fn symbol(amounts: Vec<f64>) -> Vec<String> { unimplemented!() }
+
+            // vctrs protocol override: maps to format.Currency
             #[miniextendr(vctrs(format))]
-            pub fn format_currency(&self) -> Vec<String> { unimplemented!() }
+            pub fn format_currency(amounts: Vec<f64>) -> Vec<String> { unimplemented!() }
         }
     };
 
@@ -829,14 +828,13 @@ fn vctrs_protocol_method_override() {
 
     // format_currency method should be generated as format.Currency, not format_currency.Currency
     assert!(wrapper.contains("#' @method format Currency"));
-    assert!(wrapper.contains("format.Currency <- function(x, ...)"));
+    assert!(wrapper.contains("format.Currency <- function(amounts)"));
 
     // Should NOT create a new S3 generic for "format" (it's a base R function)
     assert!(!wrapper.contains("format <- function(x, ...) UseMethod(\"format\")"));
 
-    // symbol method should still get its own S3 generic
-    assert!(wrapper.contains("symbol <- function(x, ...) UseMethod(\"symbol\")"));
-    assert!(wrapper.contains("symbol.Currency <- function(x, ...)"));
+    // symbol static helper should be generated as regular function currency_symbol(amounts)
+    assert!(wrapper.contains("currency_symbol <- function(amounts)"));
 }
 // endregion
 
@@ -1989,9 +1987,10 @@ fn snapshot_s7_documented_props() {
 fn snapshot_vctrs_vctr() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Percent {
-            pub fn new(x: f64) -> Self { unimplemented!() }
-            pub fn value(&self) -> f64 { unimplemented!() }
-            pub fn scale(&mut self, factor: f64) { unimplemented!() }
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
+            // Static methods only — &self not allowed on vctrs impls (MXL120)
+            pub fn value(amounts: Vec<f64>) -> Vec<f64> { unimplemented!() }
+            pub fn scale(amounts: Vec<f64>, factor: f64) -> Vec<f64> { unimplemented!() }
         }
     };
     let vctrs_attrs = VctrsAttrs {
@@ -2011,8 +2010,9 @@ fn snapshot_vctrs_vctr() {
 fn snapshot_vctrs_rcrd() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Rational {
-            pub fn new(n: i32, d: i32) -> Self { unimplemented!() }
-            pub fn numerator(&self) -> i32 { unimplemented!() }
+            pub fn new(n: i32, d: i32) -> Vec<i32> { unimplemented!() }
+            // Static helper — &self not allowed on vctrs impls (MXL120)
+            pub fn numerator(n: Vec<i32>) -> Vec<i32> { unimplemented!() }
         }
     };
     let vctrs_attrs = VctrsAttrs {

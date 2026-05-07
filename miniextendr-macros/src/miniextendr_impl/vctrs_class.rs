@@ -310,19 +310,43 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
-    // Static methods as regular functions
+    // Static methods as regular functions, or as vctrs protocol S3 methods when
+    // `#[miniextendr(vctrs(protocol))]` is set (e.g. `vctrs(format)` → `format.<Class>`).
     for ctx in parsed_impl.static_method_contexts() {
         lines.push(ctx.source_comment(type_ident));
-        let method_name = ctx.method.r_method_name();
-        let fn_name = format!("{}_{}", class_name.to_lowercase(), method_name);
+
+        let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
+        let fn_name = if let Some(ref proto) = ctx.method.method_attrs.vctrs_protocol {
+            // vctrs protocol override: emit as `<protocol>.<Class>` S3 method
+            format!("{}.{}", proto, class_name)
+        } else {
+            let method_name = ctx.method.r_method_name();
+            format!("{}_{}", class_name.to_lowercase(), method_name)
+        };
+        let r_name = fn_name.clone();
 
         let mx_doc = ctx.match_arg_doc_placeholders();
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_r_params(&ctx.params)
-                .with_match_arg_doc_placeholders(&mx_doc)
-                .with_r_name(fn_name.clone());
-        lines.extend(method_doc.build());
+        let method_name = ctx.method.r_method_name();
+        if is_protocol {
+            let proto = ctx.method.method_attrs.vctrs_protocol.as_ref().unwrap();
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_r_params(&ctx.params)
+                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_r_name(r_name.clone());
+            lines.extend(method_doc.build());
+            lines.push(format!("#' @method {} {}", proto, class_name));
+            if should_export {
+                lines.push("#' @export".to_string());
+            }
+        } else {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_r_params(&ctx.params)
+                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_r_name(r_name.clone());
+            lines.extend(method_doc.build());
+        }
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 

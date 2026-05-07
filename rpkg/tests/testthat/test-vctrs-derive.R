@@ -378,38 +378,41 @@ test_that("derived_temp math works", {
 })
 
 # =============================================================================
-# DerivedCurrency tests (Phase B3)
-# ExternalPtr-backed vctrs type (impl DerivedCurrency, not vctrs DerivedCurrency)
+# DerivedCurrency tests (issue #248 fix)
+# vctrs-impl type whose constructor returns Vec<f64> (not Self/ExternalPtr)
 # =============================================================================
 
-test_that("DerivedCurrency .Call constructor returns ExternalPtr", {
+test_that("new_derivedcurrency() returns a proper vctrs vector", {
   skip_if_vctrs_disabled()
 
-  # DerivedCurrency uses `impl` (ExternalPtr-backed), not `vctrs` (base-vector-backed).
-  # The generated new_derivedcurrency() wraps the ExternalPtr in vctrs::new_vctr(),
-  # but vctrs rejects ExternalPtr as .data. Test the raw .Call instead.
-  cl <- quote(.Call(miniextendr:::C_DerivedCurrency__new, "$", c(1.0, 2.5)))
-  ptr <- .Call(miniextendr:::C_DerivedCurrency__new, .call = cl, "$", c(1.0, 2.5))
-  expect_true(is(ptr, "externalptr"))
+  x <- new_derivedcurrency("$", c(1.0, 2.5, 10.0))
+
+  expect_true(vctrs::vec_is(x))
+  expect_s3_class(x, "DerivedCurrency")
+  expect_equal(vctrs::vec_size(x), 3)
 })
 
-test_that("DerivedCurrency symbol() works via .Call", {
+test_that("new_derivedcurrency() underlying data is the amounts vector", {
   skip_if_vctrs_disabled()
 
-  cl_new <- quote(.Call(miniextendr:::C_DerivedCurrency__new, "EUR", c(10.0)))
-  ptr <- .Call(miniextendr:::C_DerivedCurrency__new, .call = cl_new, "EUR", c(10.0))
-  cl_sym <- quote(.Call(miniextendr:::C_DerivedCurrency__symbol, ptr))
-  result <- .Call(miniextendr:::C_DerivedCurrency__symbol, .call = cl_sym, ptr)
-  expect_equal(result, "EUR")
+  x <- new_derivedcurrency("EUR", c(10.0, 20.5))
+
+  expect_equal(vctrs::vec_data(x), c(10.0, 20.5))
 })
 
-test_that("DerivedCurrency format_currency() works via .Call", {
+test_that("vec_ptype_abbr.DerivedCurrency returns '$'", {
   skip_if_vctrs_disabled()
 
-  cl_new <- quote(.Call(miniextendr:::C_DerivedCurrency__new, "$", c(1.0, 2.5)))
-  ptr <- .Call(miniextendr:::C_DerivedCurrency__new, .call = cl_new, "$", c(1.0, 2.5))
-  cl_fmt <- quote(.Call(miniextendr:::C_DerivedCurrency__format_currency, ptr))
-  formatted <- .Call(miniextendr:::C_DerivedCurrency__format_currency, .call = cl_fmt, ptr)
-  expect_type(formatted, "character")
-  expect_equal(formatted, c("$1.00", "$2.50"))
+  x <- new_derivedcurrency("$", c(1.0))
+
+  expect_equal(vctrs::vec_ptype_abbr(x), "$")
+})
+
+test_that("derivedcurrency_format_amounts() formats with symbol prefix", {
+  skip_if_vctrs_disabled()
+
+  result <- derivedcurrency_format_amounts("$", c(1.0, 2.5))
+
+  expect_type(result, "character")
+  expect_equal(result, c("$1.00", "$2.50"))
 })

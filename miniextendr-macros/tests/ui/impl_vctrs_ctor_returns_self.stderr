@@ -1,0 +1,10 @@
+error: [MXL120] vctrs constructor `new` must not return `Self` or `Currency`.
+
+       The generated R wrapper passes the constructor result to `vctrs::new_vctr()` (or `new_rcrd`/`new_list_of`), which requires a plain vector payload — not an ExternalPtr (`EXTPTRSXP`).
+
+       Fix: return the vector payload directly instead of `Self`.
+       For example, return `Vec<f64>` (for vctr), a `std::collections::HashMap` / named-list struct (for rcrd), or a `Vec<Vec<T>>` (for list_of).
+  --> tests/ui/impl_vctrs_ctor_returns_self.rs:12:35
+   |
+12 |     pub fn new(amounts: Vec<f64>) -> Self {
+   |                                   ^^^^^^^
