@@ -152,6 +152,13 @@ impl ColumnarDataFrame {
             .map(|f| ColumnBuffer::new(f.col_type, nrow))
             .collect();
 
+        // Roots every SEXP that lands in a `ColumnBuffer::Generic` (via
+        // `RSerializer::serialize`) for the duration of this call. Without
+        // this, the unprotected SEXPs in the generic-list buffer can be
+        // GC'd before `assemble_dataframe` reads them — surfaced under
+        // `gctorture(TRUE)` and on glibc-strict R runtimes.
+        let scope = unsafe { crate::ProtectScope::new() };
+
         // Phase 3: Fill columns from all rows
         let mut filled = vec![false; ncol];
         for row in rows {
@@ -163,14 +170,20 @@ impl ColumnarDataFrame {
                 col_count: ncol,
                 is_top_level: true,
                 pending_key: None,
+                scope: &scope,
             };
             row.serialize(filler)?;
         }
 
         // Phase 4: Assemble data.frame
-        Ok(ColumnarDataFrame {
+        let df = ColumnarDataFrame {
             sexp: unsafe { assemble_dataframe(&schema.fields, &columns, nrow) },
-        })
+        };
+        // `scope` drops here, after assemble has copied every protected SEXP
+        // into the parent VECSXP via `set_vector_elt`. The parent is then
+        // rooted by the caller's protection of the returned df SEXP.
+        drop(scope);
+        Ok(df)
     }
 
     /// Rename a column. No-op if `from` doesn't match any column name.
@@ -967,7 +980,11 @@ impl ColumnBuffer {
         }
     }
 
-    fn push_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
+    fn push_value<T: ?Sized + Serialize>(
+        &mut self,
+        value: &T,
+        scope: &crate::ProtectScope,
+    ) -> Result<(), RSerdeError> {
         match self {
             ColumnBuffer::Logical(v) => {
                 let mut probe = ValueExtractor::default();
@@ -1007,9 +1024,14 @@ impl ColumnBuffer {
                 });
             }
             ColumnBuffer::Generic(v) => {
-                // Fall back to full serde serialization for this element
+                // Fall back to full serde serialization for this element.
+                // The returned SEXP is freshly allocated and unrooted; root it
+                // in the caller's ProtectScope so it survives the GC pressure
+                // from subsequent rows' fills and from `assemble_dataframe`'s
+                // own allocations.
                 let sexp = value.serialize(super::ser::RSerializer)?;
-                v.push(Some(sexp));
+                let rooted = unsafe { scope.protect_raw(sexp) };
+                v.push(Some(rooted));
             }
         }
         Ok(())
@@ -1219,6 +1241,7 @@ struct ColumnFiller<'a> {
     col_count: usize,
     is_top_level: bool,
     pending_key: Option<String>,
+    scope: &'a crate::ProtectScope,
 }
 
 impl ColumnFiller<'_> {
@@ -1229,7 +1252,7 @@ impl ColumnFiller<'_> {
     ) -> Result<(), RSerdeError> {
         match self.field_map.map.get(key) {
             Some(FieldMapping::Scalar { col_idx }) => {
-                self.columns[*col_idx].push_value(value)?;
+                self.columns[*col_idx].push_value(value, self.scope)?;
                 self.filled[*col_idx] = true;
             }
             Some(FieldMapping::Compound {
@@ -1246,6 +1269,7 @@ impl ColumnFiller<'_> {
                     col_count: *col_count,
                     is_top_level: false,
                     pending_key: None,
+                    scope: self.scope,
                 };
                 value.serialize(sub)?;
             }
