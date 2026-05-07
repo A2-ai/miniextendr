@@ -69,6 +69,8 @@ new_s3raiser(id)
 S3Raiser
 }
 \arguments{
+\item{id}{Numeric identifier for this raiser instance.}
+
 \item{x}{An object.}
 
 \item{...}{Additional arguments.}
