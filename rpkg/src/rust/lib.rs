@@ -159,6 +159,7 @@ mod decimal_adapter_tests;
 mod default_tests;
 mod display_fromstr_tests;
 mod doc_attr_tests;
+mod multi_para_doc_demo;
 mod dots_tests;
 #[cfg(feature = "either")]
 mod either_adapter_tests;

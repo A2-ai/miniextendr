@@ -160,6 +160,22 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
         tags.insert(insert_pos, format!("@description {}", desc));
     }
 
+    // Auto-generate @details from implicit details (paragraphs 3+) if:
+    // - We have @name or any tags but no explicit @details
+    // - There are 3+ free-form paragraphs before the first @tag
+    let has_details = tag_names(&tags).contains("details");
+    if (has_name || has_any_tags)
+        && !has_details
+        && let Some(details) = implicit_details_from_attrs(attrs)
+    {
+        // Insert after @title + @description if present
+        let insert_pos = tags
+            .iter()
+            .take_while(|t| t.starts_with("@title") || t.starts_with("@description"))
+            .count();
+        tags.insert(insert_pos, format!("@details {}", details));
+    }
+
     // Original auto_description behavior for methods without any tags
     if auto_description && tags.is_empty() && !regular_docs.is_empty() {
         let description = regular_docs.join(" ");
@@ -408,6 +424,81 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
         None
     } else {
         Some(lines.join(" "))
+    }
+}
+
+/// Extract the implicit details from doc attributes (paragraphs 3+).
+///
+/// In roxygen2, paragraph 1 is the title, paragraph 2 is the description,
+/// and paragraphs 3+ become `\details{}`. This function skips paragraphs 1 and 2
+/// and returns the remaining free-form paragraphs (before the first `@tag`)
+/// joined with `\n\n`.
+///
+/// Returns `None` if there are fewer than 3 paragraphs, no doc comments, or if
+/// docs start with a `@tag`.
+#[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
+pub(crate) fn implicit_details_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+    // paragraph_index: 0=title, 1=description, 2+=details
+    let mut paragraph_index: usize = 0;
+    let mut in_gap = false;
+    let mut detail_paragraphs: Vec<Vec<String>> = Vec::new();
+    let mut current_paragraph: Vec<String> = Vec::new();
+
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(expr_lit) = &nv.value else {
+            continue;
+        };
+        let syn::Lit::Str(lit) = &expr_lit.lit else {
+            continue;
+        };
+
+        let content = lit.value();
+        let trimmed = content.trim();
+
+        // Stop at the first @tag
+        if trimmed.starts_with('@') {
+            break;
+        }
+
+        if trimmed.is_empty() {
+            // Blank line — paragraph boundary
+            if !in_gap {
+                // End of the current paragraph
+                if paragraph_index >= 2 && !current_paragraph.is_empty() {
+                    detail_paragraphs.push(std::mem::take(&mut current_paragraph));
+                } else {
+                    current_paragraph.clear();
+                }
+                paragraph_index += 1;
+                in_gap = true;
+            }
+            // Multiple blank lines in a row: stay in gap
+        } else {
+            // Non-empty line
+            in_gap = false;
+            if paragraph_index >= 2 {
+                current_paragraph.push(trimmed.to_string());
+            }
+            // paragraphs 0 (title) and 1 (description) are skipped
+        }
+    }
+
+    // Handle a details paragraph that isn't terminated by a blank line / @tag
+    if paragraph_index >= 2 && !current_paragraph.is_empty() {
+        detail_paragraphs.push(current_paragraph);
+    }
+
+    if detail_paragraphs.is_empty() {
+        None
+    } else {
+        let joined: Vec<String> = detail_paragraphs.into_iter().map(|p| p.join(" ")).collect();
+        Some(joined.join("\n\n"))
     }
 }
 
