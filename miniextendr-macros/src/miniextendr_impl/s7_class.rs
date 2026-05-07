@@ -395,7 +395,26 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // @prop tags for impl-block S7 properties (getter/setter pairs).
         // These appear in the class-level @rdname page via roxygen2's @prop tag.
+        //
+        // Properties that ARE constructor formals are already documented above via
+        // @param and must NOT also receive @prop — roxygen2 8.0.0 treats @param /
+        // @prop as disjoint sets (constructor formals → @param; getter/setter-only
+        // props → @prop). Collect the constructor-formal names and skip them here.
+        let constructor_param_names: std::collections::HashSet<String> =
+            if let Some(ctx) = parsed_impl.constructor_context() {
+                ctx.params
+                    .split(", ")
+                    .filter(|p| !p.is_empty())
+                    .map(|p| p.split('=').next().unwrap_or(p).trim().to_string())
+                    .filter(|n| n != ".ptr" && n != "...")
+                    .collect()
+            } else {
+                std::collections::HashSet::new()
+            };
         for prop in properties.values() {
+            if constructor_param_names.contains(&prop.name) {
+                continue; // already documented as @param above
+            }
             let doc = prop.doc.as_deref().unwrap_or("(undocumented property)");
             lines.push(format!("#' @prop {} {}", prop.name, doc));
         }
