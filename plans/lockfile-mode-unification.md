@@ -1,5 +1,14 @@
 # Lockfile + configure + minirextendr unification
 
+> **Status (2026-05-07): DONE.** All nine items shipped between PR #400 and
+> #408 (see Related at bottom for the full mapping). Item 8
+> (`[[patch.unused]]` rule) was added to `lock-shape-check.R`, the
+> `just lock-shape-check` recipe, and both pre-commit hooks in the
+> close-out PR; the same PR removed the obsolete `checksum = ` block from
+> `rpkg/tools/lock-shape-check.R` (and the minirextendr template + scaffold
+> hook) that #408 forgot to update. This file is kept as historical
+> reference.
+
 ## Goal
 
 The committed `src/rust/Cargo.lock` in any miniextendr-based R package (rpkg
