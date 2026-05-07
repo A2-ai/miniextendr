@@ -54,7 +54,7 @@ if (length(path_violations) > 0) {
 # crate the lock doesn't depend on. Not a tarball-shape violation per se, but
 # spurious commit-time diff and a sign that the patch override is wider than
 # the manifest needs.
-unused_re <- "^\\[\\[patch.unused\\]\\]"
+unused_re <- "^\\[\\[patch\\.unused\\]\\]"
 unused_count <- length(grep(unused_re, content))
 if (unused_count > 0) {
   message(sprintf("configure: ERROR — Cargo.lock has %d [[patch.unused]] block(s).", unused_count))

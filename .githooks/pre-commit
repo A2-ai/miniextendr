@@ -43,7 +43,7 @@ if [ -n "$staged_lock" ]; then
         echo "  Run: just vendor    # regenerates canonical shape" >&2
         exit 1
     fi
-    if echo "$lock_content" | grep -qE '^\+\[\[patch.unused\]\]'; then
+    if echo "$lock_content" | grep -qE '^\+\[\[patch\.unused\]\]'; then
         echo "pre-commit: rpkg/src/rust/Cargo.lock has [[patch.unused]] blocks." >&2
         echo "  Narrow the [patch.crates-io] override in .cargo/config.toml." >&2
         echo "  Run: just vendor    # regenerates canonical shape" >&2

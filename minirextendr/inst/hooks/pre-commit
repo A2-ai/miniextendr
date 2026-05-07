@@ -106,7 +106,7 @@ miniextendr_pre_commit() {
         LOCK_PATH="${RPKG_DIR}/src/rust/Cargo.lock"
         if [ -f "$LOCK_PATH" ]; then
             BAD_PATH=$(grep -c '^source = "path+' "$LOCK_PATH" || true)
-            BAD_UNUSED=$(grep -cE '^\[\[patch.unused\]\]' "$LOCK_PATH" || true)
+            BAD_UNUSED=$(grep -cE '^\[\[patch\.unused\]\]' "$LOCK_PATH" || true)
             if [ "${BAD_PATH:-0}" -gt 0 ] || [ "${BAD_UNUSED:-0}" -gt 0 ]; then
                 echo "BLOCKED: src/rust/Cargo.lock is in source-shape, not tarball-shape."
                 if [ "${BAD_PATH:-0}" -gt 0 ]; then

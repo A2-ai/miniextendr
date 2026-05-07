@@ -985,7 +985,7 @@ lock-shape-check:
         echo "lock-shape-check: $lock has path+... sources (tarball-shape violation)" >&2
         bad=1
     fi
-    if grep -qE '^\[\[patch.unused\]\]' "$lock"; then
+    if grep -qE '^\[\[patch\.unused\]\]' "$lock"; then
         echo "lock-shape-check: $lock has [[patch.unused]] blocks (narrow [patch.crates-io])" >&2
         bad=1
     fi
