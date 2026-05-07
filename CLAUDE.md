@@ -120,6 +120,16 @@ The pre-commit hook (`.githooks/pre-commit`) blocks commits where `*-wrappers.R`
 
 Build sequence: `Makevars` → `cargo rustc --crate-type cdylib` → `dyn.load` + `miniextendr_write_wrappers` → `R/miniextendr-wrappers.R` → `cargo rustc --crate-type staticlib` → final `.so`.
 
+### Stress-testing GC discipline
+
+Any change that adds a path holding an SEXP across allocations (typical: storing
+SEXPs in `Vec<SEXP>` / sidecars / generic-list buffers) needs a `gctorture(TRUE)`
+pass before commit. CI's stricter glibc R 4.6 release runner aborts with
+`malloc(): unsorted double linked list corrupted` on these bugs; other runners
+silently corrupt and "pass." See `docs/GCTORTURE_TESTING.md` for the harness
+pattern (load package first, *then* enable gctorture; per-function loop is
+fastest; full `test_dir` sweep is for nightly).
+
 ### Reproducing CI clippy before PR
 
 `just clippy` ≠ CI. Two CI jobs must both pass `-D warnings`:
