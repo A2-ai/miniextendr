@@ -440,7 +440,7 @@ impl DotCallBuilder {
     /// Use for lambda dispatch sites (R6 finalizer/`deep_clone`, S7 property
     /// getter/setter/validator) where `match.call()` captures an internal
     /// dispatch frame instead of the user's call. With `NULL`, the
-    /// `%||% sys.call()` fallback in `error_in_r_check_lines` surfaces the
+    /// `if (is.null(.val$call)) .call_default else .val$call` fallback in `error_in_r_check_lines` surfaces the
     /// nearest meaningful frame instead.
     pub fn null_call_attribution(mut self) -> Self {
         self.call_expr = Some("NULL".to_string());

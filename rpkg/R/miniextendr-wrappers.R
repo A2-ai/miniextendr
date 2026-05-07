@@ -15,7 +15,7 @@
 # which the wrapper's surrounding `return(...)` propagates as its result.
 .miniextendr_raise_condition <- function(.val, .call_default) {
   .msg <- .val$error
-  .call <- .val$call %||% .call_default
+  .call <- (if (is.null(.val$call)) .call_default else .val$call)
   .class <- .val$class
   switch(.val$kind,
     error = stop(structure(list(message = .msg, call = .call, kind = "error"),
