@@ -30,3 +30,11 @@ Regular method: returns the start value.
 Regular method: returns the end value.
 }
 \keyword{internal}
+\section{Additional properties}{
+
+\describe{
+\item{\code{@length}}{Computed property: read-only length of the range. This becomes an S7 property accessed as \code{obj@length} in R. Since there's no setter, it's a computed (read-only) property.}
+
+\item{\code{@midpoint}}{Dynamic property getter: read the midpoint. Combined with set_midpoint, this creates a dynamic property that can be both read and written.}
+}}
+
