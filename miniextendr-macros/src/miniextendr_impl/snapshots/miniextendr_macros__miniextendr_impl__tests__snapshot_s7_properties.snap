@@ -11,6 +11,8 @@ expression: generate_s7_r_wrapper(&parsed)
 #' @param start (undocumented)
 #' @param end (undocumented)
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @prop length (undocumented property)
+#' @prop midpoint (undocumented property)
 Range <- S7::new_class("Range",
   properties = list(
     .ptr = S7::class_any,

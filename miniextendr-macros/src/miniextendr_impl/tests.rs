@@ -1912,6 +1912,79 @@ fn snapshot_s7_properties() {
     insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
 }
 
+/// Snapshot: S7 class with `r_data_accessors` and NO impl-block properties.
+/// Verifies that the sidecar prop docs placeholder is emitted.
+#[test]
+fn snapshot_s7_sidecar_only_props() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl SidecarOnly {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.r_data_accessors = true;
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
+}
+
+/// Snapshot: S7 class with `r_data_accessors` AND impl-block properties.
+/// Verifies impl-block @prop lines come first, then sidecar placeholder.
+#[test]
+fn snapshot_s7_sidecar_and_impl_props() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Mixed {
+            pub fn new(x: f64) -> Self { unimplemented!() }
+
+            /// The computed length.
+            #[miniextendr(s7(getter))]
+            pub fn length(&self) -> f64 { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.r_data_accessors = true;
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
+}
+
+/// Snapshot: S7 class with constructor params that have defaults and varargs.
+/// In-scope NIT from #379: constructor-param @param doc coverage for these cases.
+#[test]
+fn snapshot_s7_prop_tags_with_defaults_and_varargs() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl WithDefaults {
+            /// Constructor with defaults.
+            /// @param name Character name.
+            /// @param ... Additional parameters.
+            pub fn new(name: String, scale: f64, mode: Option<i32>) -> Self { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn name(&self) -> String { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
+}
+
+/// Snapshot: S7 class with documented impl-block properties.
+/// Verifies that getter doc comments are propagated to @prop lines.
+#[test]
+fn snapshot_s7_documented_props() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Documented {
+            pub fn new() -> Self { unimplemented!() }
+
+            /// The integer count value.
+            #[miniextendr(s7(getter))]
+            pub fn count(&self) -> i32 { unimplemented!() }
+
+            #[miniextendr(s7(setter))]
+            pub fn count(&mut self, value: i32) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
+}
+
 #[test]
 fn snapshot_vctrs_vctr() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {

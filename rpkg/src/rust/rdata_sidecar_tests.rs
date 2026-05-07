@@ -200,13 +200,13 @@ pub struct SidecarS7 {
     #[r_data]
     _r: RSidecar,
 
-    #[r_data]
+    #[r_data(prop_doc = "An integer sidecar property.")]
     pub prop_int: i32,
 
-    #[r_data]
+    #[r_data(prop_doc = "A logical sidecar property.")]
     pub prop_flag: bool,
 
-    #[r_data]
+    #[r_data(prop_doc = "A character sidecar property.")]
     pub prop_name: String,
 }
 

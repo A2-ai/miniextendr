@@ -4605,6 +4605,9 @@ methods::setClass("SidecarS4", slots = c(ptr = "externalptr"))
 #' @param prop_flag Logical sidecar field.
 #' @param prop_name Character sidecar field.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @prop prop_int An integer sidecar property.
+#' @prop prop_flag A logical sidecar property.
+#' @prop prop_name A character sidecar property.
 SidecarS7 <- S7::new_class("SidecarS7",
   properties = c(list(
     .ptr = S7::class_any
@@ -8221,6 +8224,8 @@ S4Counter_default_counter <- function() {
 #' @param start Numeric start of the range.
 #' @param end Numeric end of the range.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @prop length Computed property: read-only length of the range. This becomes an S7 property accessed as `obj@length` in R. Since there's no setter, it's a computed (read-only) property.
+#' @prop midpoint Dynamic property getter: read the midpoint. Combined with set_midpoint, this creates a dynamic property that can be both read and written.
 S7Range <- S7::new_class("S7Range",
   properties = list(
     .ptr = S7::class_any,
@@ -8332,6 +8337,7 @@ S7::method(shape_name, S7Shape) <- function(x, ...) {
 #' @param kind Character kind of animal.
 #' @param legs Integer number of legs.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @prop legs Computed property: number of legs.
 S7Animal <- S7::new_class("S7Animal",
   abstract = TRUE,
   properties = list(
@@ -8428,6 +8434,9 @@ S7::method(circle_area, S7Circle) <- function(x, ...) {
 #' @param score Numeric score (property with default).
 #' @param version Integer version number.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @prop name Required property - must be provided.
+#' @prop old_version Deprecated property - emits warning when accessed.
+#' @prop score Property with default value.
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
@@ -8724,6 +8733,7 @@ S7::method(label, S7PropInner) <- function(x, ...) {
 #' @keywords internal
 #' @param inner_label Label used to reconstruct the inner class.
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @prop inner Getter whose return type is another S7 class. The generated `S7::new_property(class = ...)` should resolve to `S7PropInner` (not `S7::class_any`) via the `.__MX_S7_PROP_CLASS_S7PropInner__` write-time placeholder (see `#154`).
 S7PropOuter <- S7::new_class("S7PropOuter",
   properties = list(
     .ptr = S7::class_any,
