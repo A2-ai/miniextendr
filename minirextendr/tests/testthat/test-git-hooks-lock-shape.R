@@ -82,7 +82,9 @@ test_that("pre-commit hook blocks a path+ source entry", {
               info = paste(out, collapse = "\n"))
 })
 
-test_that("pre-commit hook blocks a checksum line", {
+test_that("pre-commit hook accepts a checksum line", {
+  # Post-#408: cargo-revendor recomputes valid .cargo-checksum.json files, so
+  # `checksum = "..."` lines are canonical and the hook no longer blocks them.
   skip_if_no_git_or_bash()
   repo <- make_lock_repo(c(
     'version = 3',
@@ -97,9 +99,32 @@ test_that("pre-commit hook blocks a checksum line", {
 
   out <- run_hook_in_repo(repo, "src/rust/Cargo.lock")
   status <- attr(out, "status")
+  expect_true(is.null(status) || status == 0L,
+              info = paste(out, collapse = "\n"))
+})
+
+test_that("pre-commit hook blocks a [[patch.unused]] block", {
+  skip_if_no_git_or_bash()
+  repo <- make_lock_repo(c(
+    'version = 3',
+    '',
+    '[[package]]',
+    'name = "miniextendr-api"',
+    'version = "0.1.0"',
+    'source = "git+https://github.com/A2-ai/miniextendr#abc123"',
+    '',
+    '[[patch.unused]]',
+    'name = "miniextendr-api"',
+    'version = "0.1.0"',
+    'source = "git+https://github.com/A2-ai/miniextendr#abc123"'
+  ))
+  on.exit(unlink(repo, recursive = TRUE), add = TRUE)
+
+  out <- run_hook_in_repo(repo, "src/rust/Cargo.lock")
+  status <- attr(out, "status")
   expect_true(!is.null(status) && status == 1L,
               info = paste(out, collapse = "\n"))
-  expect_true(any(grepl("checksum", out)),
+  expect_true(any(grepl("patch.unused|narrow", out)),
               info = paste(out, collapse = "\n"))
 })
 
