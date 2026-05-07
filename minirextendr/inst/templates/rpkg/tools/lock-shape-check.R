@@ -10,9 +10,15 @@
 #
 # Tarball-shape (post-#408):
 #   - no `source = "path+..."` for framework crates (must be `git+url#<sha>`)
-#   - no `[[patch.unused]]` blocks
 #   - `checksum = "..."` lines ARE allowed (cargo-revendor recomputes valid
 #     .cargo-checksum.json that matches them)
+#
+# `[[patch.unused]]` blocks are NOT checked here. They are a benign artifact
+# of cargo source-replacement intercepting `[patch."git+url"]` entries during
+# `cargo vendor`, so they show up in tarball-shape locks even when the source-
+# mode patch is correctly used. The over-broad-patch rule lives in
+# `just lock-shape-check` and the pre-commit hooks, which see source-shape
+# locks where the marker actually means something.
 #
 # Usage: Rscript tools/lock-shape-check.R <mode> <lockfile>
 #   mode     : "tarball" | "source"
@@ -49,23 +55,8 @@ if (length(path_violations) > 0) {
   quit("no", status = 1)
 }
 
-# Check 2: no `[[patch.unused]]` blocks.
-# These appear when `[patch.crates-io]` in `.cargo/config.toml` references a
-# crate the lock doesn't depend on. Not a tarball-shape violation per se, but
-# spurious commit-time diff and a sign that the patch override is wider than
-# the manifest needs.
-unused_re <- "^\\[\\[patch\\.unused\\]\\]"
-unused_count <- length(grep(unused_re, content))
-if (unused_count > 0) {
-  message(sprintf("configure: ERROR — Cargo.lock has %d [[patch.unused]] block(s).", unused_count))
-  message("These come from a [patch.crates-io] entry that the manifest doesn't actually use.")
-  message("")
-  message("Recovery: narrow the [patch.crates-io] block in .cargo/config.toml,")
-  message("then run `just vendor` (monorepo) or rebuild the package tarball.")
-  quit("no", status = 1)
-}
-
 # checksum = "..." lines are ALLOWED (cargo-revendor recomputes valid
 # .cargo-checksum.json post-trim, see PR #408).
+# [[patch.unused]] blocks are also allowed in tarball-shape — see header.
 
 quit("no", status = 0)
