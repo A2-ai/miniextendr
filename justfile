@@ -51,30 +51,28 @@
 #     just bench-check        - Check benchmark crate compiles
 #
 #   Documentation site:
-#     just site-docs           - Regenerate site/content/manual/ + site/data/plans.json
-#     just site-build          - Build Zola site (run site-docs first for doc changes)
-#     just site-serve          - Local preview server (run site-docs first for doc changes)
-#     just bump-version <v>    - Bump version across all Cargo.toml + DESCRIPTION files
+#     just site-build          - Build Zola site
+#     just site-serve          - Local preview server
 #
 #   Vendor sync:
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
-#     just lock-shape-check   - Verify Cargo.lock is in tarball-shape (git sources, no checksums)
-#     just clean-vendor-leak  - Remove a leaked inst/vendor.tar.xz that would flip configure into tarball mode
 #
-set shell := ["bash", "-euo", "pipefail", "-c"]
-set windows-shell := ["bash", "-euo", "pipefail", "-c"]
+just_bin_dir := justfile_directory() / "dev" / "just-bin"
+
+set shell := ["./dev/just-bin/bash", "-euo", "pipefail", "-c"]
+set windows-shell := ["./dev/just-bin/bash", "-euo", "pipefail", "-c"]
 
 # On Windows (Git Bash / MSYS2), cargo and R may not be in /bin/bash's PATH.
 # Export CARGO_HOME/bin so recipes can find cargo/rustc.
 export PATH := if os() == "windows" {
-    env("CARGO_HOME", env("USERPROFILE", "") / ".cargo") / "bin" + ":" + env("PATH", "")
+    just_bin_dir + ":" + env("CARGO_HOME", env("USERPROFILE", "") / ".cargo") / "bin" + ":" + env("PATH", "")
 } else {
-    env("PATH", "")
+    just_bin_dir + ":" + env("PATH", "")
 }
 
 # All optional features for testing (excluding nonapi which causes CRAN warnings).
-# This mirrors the default CARGO_FEATURES list in rpkg/configure.ac.
+# This mirrors the list in rpkg/configure.ac for NOT_CRAN=true mode.
 all_features := "worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,log"
 
 # Directory for devtools::check output (preserved for investigation)
@@ -87,7 +85,7 @@ default:
 clean:
     just configure
     just cargo-clean
-    cd rpkg && ./cleanup
+    cd rpkg && NOT_CRAN=false ./cleanup
     cd tests/cross-package && just clean
 
 # Clean build artifacts
@@ -108,8 +106,8 @@ cargo-clean *cargo_flags:
 
 # Check feature combinations compile (F2: feature interaction testing)
 # Tests important feature combos that might interact but are only tested independently.
-[script("bash")]
 check-features:
+    #!/usr/bin/env bash
     set -euo pipefail
     manifest="miniextendr-api/Cargo.toml"
     combos=(
@@ -154,37 +152,13 @@ check-features:
     echo ""
     echo "=== All $passed/$total feature combinations passed ==="
 
-# Update Cargo.lock files across every tracked manifest.
-# rpkg's lock must stay in tarball-shape (no `path+...` sources for
-# miniextendr-{api,lint,macros}). We move .cargo/config.toml aside so the
-# [patch."git+url"] override doesn't bleed into the lock.
-# Checksums are NO LONGER stripped: cargo-revendor now writes valid
-# `.cargo-checksum.json` files that match the registry checksums, so the
-# committed lock can retain `checksum = "..."` lines.
-alias cargo-update := update
-[script("bash")]
-update *cargo_flags:
-    set -euo pipefail
-    cargo update {{cargo_flags}}
-    cargo update --manifest-path=cargo-revendor/Cargo.toml {{cargo_flags}}
-    cargo update --manifest-path=tests/cross-package/shared-traits/Cargo.toml {{cargo_flags}}
-    cargo update --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo update --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo update --manifest-path=tests/model_project/src/rust/Cargo.toml {{cargo_flags}}
-    rust_dir="{{justfile_directory()}}/rpkg/src/rust"
-    cargo_cfg="$rust_dir/.cargo/config.toml"
-    if [[ -f "$cargo_cfg" ]]; then mv "$cargo_cfg" "$cargo_cfg.tmp_just_update"; fi
-    trap "[[ -f '$cargo_cfg.tmp_just_update' ]] && mv '$cargo_cfg.tmp_just_update' '$cargo_cfg'" EXIT
-    cargo update --manifest-path "$rust_dir/Cargo.toml" {{cargo_flags}}
-    just lock-shape-check
-
 # Check all crates
 alias cargo-check := check
 check *cargo_flags:
     cargo check --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo check --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Build all crates
 alias cargo-build := build
@@ -192,7 +166,7 @@ build *cargo_flags:
     cargo build --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
@@ -200,15 +174,15 @@ clippy *cargo_flags:
     cargo clippy --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Run miniextendr-lint on rpkg (checks #[miniextendr] consistency)
 # The lint runs as a build script; this command triggers it via cargo check.
 # Lint output appears as cargo warnings. Errors indicate:
 # - Multiple unlabeled impl blocks for the same type
 # - Class system incompatibilities between inherent and trait impls
-[script("bash")]
 lint:
+    #!/usr/bin/env bash
     set -euo pipefail
     cd rpkg
     output=$(cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
@@ -277,7 +251,7 @@ test *args:
     && cargo test --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo test --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo test --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
-    && root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --workspace --no-fail-fast $cargo_flags --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" -- --no-capture $test_args)
+    && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --manifest-path="$root/rpkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" -- --no-capture $test_args)
 
 # Run benchmarks (miniextendr-bench)
 alias cargo-bench := bench
@@ -326,8 +300,8 @@ bench-full *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,refcount-fast-hash --bench connections --bench rayon --bench refcount_protect {{cargo_flags}}
 
 # Run R-side benchmarks (requires rpkg installed)
-[script("bash")]
 bench-r:
+    #!/usr/bin/env bash
     set -euo pipefail
     for f in rpkg/tests/testthat/bench-*.R; do
       echo "=== Running $f ==="
@@ -353,95 +327,55 @@ expand *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run ./configure
+# Run ./configure for dev mode
 #
-# Generates build configuration files (Makevars, cargo config, etc.) using
-# the unified install-mode detection in configure.ac:
-#   - source mode (default): cargo resolves miniextendr deps from monorepo
-#     siblings via [patch] in .cargo/config.toml. No vendor/.
-#   - tarball mode: kicks in automatically when inst/vendor.tar.xz exists
-#     (i.e. inside R CMD INSTALL <built-tarball>). Configure unpacks the
-#     tarball and writes a vendored source-replacement config.
+# In dev mode, this:
+# 1. Generates build configuration files (Makevars, cargo config, etc.)
+# 2. Syncs vendor/ from the monorepo
+#    (same path end-user scaffolded packages use)
 #
-# See docs/CRAN_COMPATIBILITY.md for the full table.
+# For CRAN release prep, use `just vendor` then `just configure-cran`.
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    bash ./configure
+    NOT_CRAN=true bash ./configure
 
-# Vendor dependencies into inst/vendor.tar.xz for CRAN release preparation.
-# Requires cargo-revendor: `just revendor-install`.
+# Configure in CRAN/offline mode
 #
-# Only needed when producing a build-tarball intended for offline install
-# (i.e. before `R CMD build .` for a CRAN submission). Day-to-day dev
-# (R CMD INSTALL ., devtools::install/test/load) never calls this recipe.
+# Run `just vendor` first to create inst/vendor.tar.xz.
+configure-cran:
+    cd rpkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    NOT_CRAN=false bash ./configure
+
+# Vendor dependencies for CRAN release preparation.
+# Requires cargo-revendor: cargo install --path cargo-revendor (or `just revendor-install`).
 #
-# Steps:
-#   1. Regenerate Cargo.lock against the bare git URL (no [patch] override),
-#      so the lockfile entries for miniextendr-{api,lint,macros} carry the
-#      `git+https://...#<commit>` source — required by cargo's source
-#      replacement mechanism when the tarball is later installed offline.
-#   2. Run cargo-revendor against the freshly-regenerated lockfile.
-#      cargo-revendor recomputes `.cargo-checksum.json` with real SHA-256s
-#      after CRAN-trim, so the committed Cargo.lock can retain its registry
-#      `checksum = "..."` lines (no post-vendor sed stripping needed).
-#   3. Compress vendor/ to inst/vendor.tar.xz.
+# --force bypasses cargo-revendor's cache (#150): source-only edits to workspace
+# crates leave Cargo.lock untouched, so without --force the cache check skips
+# re-vendoring and ships a stale tarball. Once #150's fix lands on main and is
+# installed, --force becomes harmless (re-runs the full vendor when cache is
+# valid but produces identical output).
 #
-# --force re-runs the full vendor even when cargo-revendor's cache thinks the
-# output is current. Cheap insurance against a stale committed tarball when
-# the workspace crates have edits that don't bump Cargo.lock.
-[script("bash")]
+# --source-root points at the monorepo root so cargo-revendor can pre-seed
+# rpkg/vendor/<crate>-<ver>/ before running `cargo metadata`. Required on a
+# fresh clone: rpkg/src/rust/Cargo.toml ships with frozen `path =
+# "../../vendor/..."` deps, and inst/vendor.tar.xz is no longer tracked, so
+# without the source-root pre-seed the first `cargo metadata` call fails
+# with "failed to read .../vendor/miniextendr-api/Cargo.toml" and the
+# whole vendor step aborts. See #280.
 vendor:
-    set -euo pipefail
-    rust_dir="{{justfile_directory()}}/rpkg/src/rust"
-    cargo_cfg="$rust_dir/.cargo/config.toml"
-    # Regenerate lockfile in tarball-shape: temporarily move .cargo aside so
-    # cargo doesn't see the [patch] override and resolves git deps as-is.
-    # Entries for miniextendr-{api,lint,macros} get source = "git+url#<commit>",
-    # which is what cargo's source-replacement mechanism needs at offline
-    # install time.
-    if [[ -f "$cargo_cfg" ]]; then
-      mv "$cargo_cfg" "$cargo_cfg.tmp_just_vendor"
-    fi
-    rm -f "$rust_dir/Cargo.lock"
-    cargo generate-lockfile --manifest-path "$rust_dir/Cargo.toml"
-    if [[ -f "$cargo_cfg.tmp_just_vendor" ]]; then
-      mv "$cargo_cfg.tmp_just_vendor" "$cargo_cfg"
-    fi
-    # cargo-revendor auto-reads [patch."git+url"] from .cargo/config.toml
-    # (written by `configure` in dev-monorepo mode) to copy miniextendr-{api,
-    # lint,macros} from this workspace checkout instead of fetching the git URL
-    # pinned in Cargo.lock. PRs that edit a workspace crate alongside rpkg get
-    # their edits reflected in vendor/ and inst/vendor.tar.xz, so
-    # `vendor-sync-check` passes and the offline tarball ships the PR's code.
-    # `--source-root` is no longer needed here (kept as CLI flag for back-compat).
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
       --output rpkg/vendor \
+      --source-root . \
+      --strip-all \
+      --freeze \
       --compress rpkg/inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
       --force \
       -v
-    echo ""
-    echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
-    echo "(run 'just clean-vendor-leak' or 'unlink(\"rpkg/inst/vendor.tar.xz\")' in R)"
-
-# Remove a leaked rpkg/inst/vendor.tar.xz.
-# inst/vendor.tar.xz is the single signal that flips configure into tarball mode.
-# A leftover tarball makes subsequent dev installs silently use stale vendored
-# sources instead of workspace edits. Run this if you're seeing
-# "tarball install — vendor/ already populated" during dev iteration and you
-# didn't intend to stay in tarball mode.
-[script("bash")]
-clean-vendor-leak:
-    set -euo pipefail
-    if [ -f rpkg/inst/vendor.tar.xz ]; then
-        rm -f rpkg/inst/vendor.tar.xz
-        echo "Removed rpkg/inst/vendor.tar.xz (tarball-mode leak)."
-    else
-        echo "No tarball leak to clean."
-    fi
 
 # Verify committed Cargo.lock, vendor/, and vendor.tar.xz agree (#157).
 # Runs in CI/pre-release to guarantee the offline build artifact is fresh.
@@ -495,15 +429,7 @@ minirextendr-install-deps:
     Rscript -e 'install.packages(c("cli","curl","desc","fs","gh","glue","rappdirs","rlang","rprojroot","usethis","withr","devtools","roxygen2","testthat"), repos = "https://cloud.r-project.org")'
 
 # Build rpkg with devtools::build
-# Depends on `vendor` for the same reason as r-cmd-build — devtools::build
-# wraps R CMD build, and the resulting tarball is meaningful only with
-# inst/vendor.tar.xz inside.
-# Cleanup: inst/vendor.tar.xz is removed on exit so the source tree is never
-# left in tarball mode after this recipe finishes.
-[script("bash")]
-devtools-build: configure vendor
-    set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
+devtools-build: configure
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
@@ -531,58 +457,40 @@ r-cmd-install *args: configure
     R CMD INSTALL {{args}} rpkg 
 
 # Build R package tarball
-# Depends on `vendor` so the tarball ships inst/vendor.tar.xz, which is what
-# triggers tarball-mode install (offline, vendored sources). Without this dep
-# a maintainer can silently produce a tarball that source-mode-installs over
-# the network — defeating the point of `R CMD build` for CRAN submission.
-#
-# Cleanup: rpkg/inst/vendor.tar.xz must be removed after R CMD build copies
-# it into the built tarball. Otherwise the leftover in the source tree makes
-# the next `just rcmdinstall` / `devtools::install("rpkg")` silently switch
-# to tarball mode (configure's only signal is `[ -f inst/vendor.tar.xz ]`),
-# which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
 alias rcmdbuild := r-cmd-build
-[script("bash")]
-r-cmd-build *args: configure vendor
-    set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
+r-cmd-build *args: configure
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
 # Depends on vendor to ensure inst/vendor.tar.xz exists in the tarball.
 # R CMD check copies the tarball to a temp dir where monorepo [patch] paths
 # are unavailable — configure detects this and uses vendored sources instead.
-#
-# Cleanup: same reason as r-cmd-build — see comment there.
 alias rcmdcheck := r-cmd-check
-[script("bash")]
 r-cmd-check *args: vendor
-    set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
-    ERROR_ON="warning"
-    CHECK_DIR=""
-    for arg in {{args}}; do
-      case "$arg" in
-        ERROR_ON=*) ERROR_ON="${arg#ERROR_ON=}" ;;
-        CHECK_DIR=*) CHECK_DIR="${arg#CHECK_DIR=}" ;;
-        *) echo "Ignoring unknown arg '$arg'" ;;
-      esac
-    done
-    CHECK_DIR_ARG="NULL"
-    if [ -n "$CHECK_DIR" ]; then
-      case "$CHECK_DIR" in
-        /*) CHECK_DIR_ARG="'$CHECK_DIR'" ;;
-        *)  CHECK_DIR_ARG="'$(pwd)/$CHECK_DIR'" ;;
-      esac
-    fi
-    Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
+    @ERROR_ON="warning" \
+    CHECK_DIR="" \
+    && for arg in {{args}}; do \
+      case "$arg" in \
+        ERROR_ON=*) ERROR_ON="${arg#ERROR_ON=}" ;; \
+        CHECK_DIR=*) CHECK_DIR="${arg#CHECK_DIR=}" ;; \
+        *) echo "Ignoring unknown arg '$arg'" ;; \
+      esac; \
+    done \
+    && CHECK_DIR_ARG="NULL" \
+    && if [ -n "$CHECK_DIR" ]; then \
+      case "$CHECK_DIR" in \
+        /*) CHECK_DIR_ARG="'$CHECK_DIR'" ;; \
+        *)  CHECK_DIR_ARG="'$(pwd)/$CHECK_DIR'" ;; \
+      esac; \
+    fi \
+    && Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
 
 # Extract and inspect R package tarball contents (for debugging build artifacts)
 #
 # Builds tarball with --compression=none and extracts to rpkg_build/ for inspection.
 # Useful for verifying what gets included in CRAN submissions.
-[script("bash")]
 test-r-build: configure
+    #!/usr/bin/env bash
     set -euo pipefail
     # MSYS2 tar interprets D: as remote host; --force-local treats all as local
     TAR_FORCE_LOCAL=""
@@ -610,8 +518,8 @@ minirextendr-document:
     Rscript -e 'devtools::document("minirextendr")'
 
 # Run tests for minirextendr R package
-[script("bash")]
 minirextendr-test FILTER="":
+    #!/usr/bin/env bash
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr")'
@@ -636,8 +544,8 @@ minirextendr-build:
     R CMD build --no-manual minirextendr
 
 # Run R CMD check on minirextendr package
-[script("bash")]
 minirextendr-rcmdcheck:
+    #!/usr/bin/env bash
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
@@ -696,8 +604,8 @@ patch_file  := "patches/templates.patch"
 # "upstream" source, and templates may have intentional differences like
 # {{package_rs}} placeholders. The patch file captures approved differences.
 
-[script("bash")]
 templates-sources:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     # Two template types exist:
@@ -710,6 +618,8 @@ templates-sources:
     # === R Package Template (rpkg/) ===
     rpkg/bootstrap.R	rpkg/bootstrap.R
     rpkg/build.rs	rpkg/src/rust/build.rs
+    rpkg/dev/just-bin/bash	dev/just-bin/bash
+    rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     rpkg/cleanup	rpkg/cleanup
     rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
@@ -720,12 +630,13 @@ templates-sources:
     rpkg/Makevars.in	rpkg/src/Makevars.in
     rpkg/Makevars.win	rpkg/src/Makevars.win
     rpkg/stub.c	rpkg/src/stub.c
-    rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
     # The embedded R package uses same sources as rpkg/ template
     monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
+    monorepo/dev/just-bin/bash	dev/just-bin/bash
+    monorepo/rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     monorepo/rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     monorepo/rpkg/cleanup	rpkg/cleanup
     monorepo/rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
@@ -736,14 +647,13 @@ templates-sources:
     monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
     monorepo/rpkg/Makevars.win	rpkg/src/Makevars.win
     monorepo/rpkg/stub.c	rpkg/src/stub.c
-    monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     monorepo/rpkg/win.def.in	rpkg/src/win.def.in
     EOF
 
 # Internal helper: populate an upstream snapshot into DEST.
 # The snapshot is a tree laid out to match inst/templates.
-[script("bash")]
 _templates-upstream-populate dest:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     dest="{{dest}}"
@@ -791,8 +701,8 @@ _templates-upstream-populate dest:
 
 # Accept the current delta as approved by regenerating patches/templates.patch
 # (Builds an upstream snapshot from templates-sources before diffing.)
-[script("bash")]
 templates-approve:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     mkdir -p "$(dirname "{{patch_file}}")"
@@ -826,8 +736,8 @@ templates-approve:
 # Verify: upstream snapshot + approved patch == inst/templates
 # - exits nonzero on drift
 # - exits nonzero if the patch no longer applies cleanly
-[script("bash")]
 templates-check:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     test -f "{{patch_file}}"
@@ -863,8 +773,8 @@ templates-check:
     diff -ruN "$tmp" "$tmp2"
 
 # CI-friendly: only prints diff when failing
-[script("bash")]
 templates-check-ci:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     test -f "{{patch_file}}"
@@ -893,8 +803,8 @@ templates-check-ci:
 # Run `just vendor` to refresh if this check fails.
 
 # Check that vendored miniextendr crates match workspace sources
-[script("bash")]
 vendor-sync-check:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     vendor_dir="rpkg/vendor"
@@ -938,8 +848,8 @@ lint-sync-check:
     cargo check --manifest-path=miniextendr-lint/Cargo.toml
 
 # Show diff between workspace and vendored crates
-[script("bash")]
 vendor-sync-diff:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     vendor_dir="rpkg/vendor"
@@ -962,32 +872,6 @@ vendor-sync-diff:
         echo ""
       fi
     done
-
-# Check that rpkg/src/rust/Cargo.lock is in tarball-shape.
-#
-# One invariant remains after cargo-revendor item 2:
-#   - miniextendr-{api,lint,macros} must use git+url#<sha> sources, not path+.
-#
-# checksum = "..." lines are now ALLOWED (cargo-revendor writes valid
-# .cargo-checksum.json files whose `package` field matches them).
-[script("bash")]
-lock-shape-check:
-    set -euo pipefail
-    lock=rpkg/src/rust/Cargo.lock
-    if [ ! -f "$lock" ]; then
-        echo "lock-shape-check: $lock not found — skipping"
-        exit 0
-    fi
-    bad=0
-    if grep -q 'source = "path+' "$lock"; then
-        echo "lock-shape-check: $lock has path+... sources (tarball-shape violation)" >&2
-        bad=1
-    fi
-    if [ $bad -eq 1 ]; then
-        echo "  Run: just vendor    # regenerates canonical shape" >&2
-        exit 1
-    fi
-    echo "lock-shape-check: OK"
 
 # ============================================================================
 # mx CLI (miniextendr-cli)
@@ -1079,21 +963,10 @@ bindgen-corpus-remove-packages:
 
 # ── Documentation site ──────────────────────────────────────────────────────
 
-# Regenerate site/content/manual/ from docs/ and site/data/plans.json from plans/.
-# Run before site-build or site-serve when previewing doc or plan changes locally.
-# CI runs docs-to-site.sh automatically before each deploy.
-site-docs:
-    bash scripts/docs-to-site.sh
-    bash scripts/plans-to-json.sh > site/data/plans.json
-
-# Build Zola site (output in site/public/). Run `just site-docs` first if docs or plans changed.
+# Build Zola site (output in site/public/)
 site-build:
     cd site && zola build
 
-# Local preview server (http://127.0.0.1:1111). Run `just site-docs` first if docs or plans changed.
+# Local preview server (http://127.0.0.1:1111)
 site-serve:
     cd site && zola serve
-
-# Bump version across all Cargo.toml and DESCRIPTION files.
-bump-version version:
-    bash scripts/bump-version.sh {{version}}
