@@ -24,3 +24,4 @@ Wrapped path
 
 Unwrapped path
 }
+\keyword{internal}
