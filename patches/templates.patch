@@ -1,6 +1,21 @@
+diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
+--- a/monorepo/rpkg/Makevars.in	2026-05-08 12:06:43
++++ b/monorepo/rpkg/Makevars.in	2026-05-02 12:32:24
+@@ -19,5 +19,4 @@
+ TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
+ NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
+-EXTRA_PKG_CFLAGS      = @EXTRA_PKG_CFLAGS@
+ 
+ CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
+@@ -27,5 +26,4 @@
+ PKG_LIBS = $(CARGO_AR)
+ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
+-PKG_CFLAGS = $(EXTRA_PKG_CFLAGS)
+ 
+ CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-05-08 09:09:58
-+++ b/monorepo/rpkg/bootstrap.R	2026-05-08 09:09:58
+--- a/monorepo/rpkg/bootstrap.R	2026-04-29 16:30:48
++++ b/monorepo/rpkg/bootstrap.R	2026-04-28 10:42:41
 @@ -4,7 +4,8 @@
  #
  # Install-mode detection is automatic: if inst/vendor.tar.xz exists
@@ -14,8 +29,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
  
  if (.Platform$OS.type == "windows") {
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-05-08 09:16:00
-+++ b/monorepo/rpkg/configure.ac	2026-05-08 09:36:22
+--- a/monorepo/rpkg/configure.ac	2026-05-08 12:06:43
++++ b/monorepo/rpkg/configure.ac	2026-05-08 10:11:01
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -145,7 +160,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -219,18 +247,20 @@
+@@ -219,34 +247,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -163,32 +178,47 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl MINIREXTENDR: native-pkg-cppflags insertion marker
  AC_SUBST([NATIVE_PKG_CPPFLAGS])
  
--AC_CONFIG_SRCDIR([src/rust/lib.rs])
+-dnl ---- Clang-only flag: silence unknown-warning-option ----
+-dnl R 4.5+ Boolean.h has `#pragma clang diagnostic ignored "-Wfixed-enum-extension"`,
+-dnl which clang 21+ no longer recognises and warns about under
+-dnl -Wunknown-warning-option. The pragma is upstream R, not us. Suppressing the
+-dnl meta-warning on clang is harmless; gcc doesn't ship the flag, so we only
+-dnl emit it for clang.
+-EXTRA_PKG_CFLAGS=""
+-CC_FOR_PROBE=$("${R_HOME}/bin/R" CMD config CC 2>/dev/null)
+-if test -n "$CC_FOR_PROBE"; then
+-  if $CC_FOR_PROBE -dM -E - < /dev/null 2>/dev/null | grep -q __clang__; then
+-    EXTRA_PKG_CFLAGS="-Wno-unknown-warning-option"
+-    AC_MSG_NOTICE([clang detected — adding $EXTRA_PKG_CFLAGS])
+-  fi
+-fi
+-AC_SUBST([EXTRA_PKG_CFLAGS])
 +AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
+-AC_CONFIG_SRCDIR([src/rust/lib.rs])
 +dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 +dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
-+
+ 
  dnl ---- vendor directory paths (used in tarball mode only) ----
 +dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
 +dnl thousands of .rs files in vendor/ during needs_compile() checks (same reasoning
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -274,4 +304,5 @@
+@@ -290,4 +304,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -448,5 +479,5 @@
+@@ -464,5 +479,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -464,13 +495,22 @@
+@@ -480,13 +495,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
@@ -214,8 +244,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-05-08 09:16:00
-+++ b/rpkg/configure.ac	2026-05-08 09:36:16
+--- a/rpkg/configure.ac	2026-05-08 12:06:43
++++ b/rpkg/configure.ac	2026-05-08 12:07:04
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -345,7 +375,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -219,18 +247,20 @@
+@@ -219,13 +247,9 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -363,6 +393,9 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl MINIREXTENDR: native-pkg-cppflags insertion marker
  AC_SUBST([NATIVE_PKG_CPPFLAGS])
  
+@@ -246,7 +270,13 @@
+ AC_SUBST([EXTRA_PKG_CFLAGS])
+ 
 -AC_CONFIG_SRCDIR([src/rust/lib.rs])
 +AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
@@ -375,20 +408,20 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -274,4 +304,5 @@
+@@ -290,4 +320,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -448,5 +479,5 @@
+@@ -464,5 +495,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -464,13 +495,22 @@
+@@ -480,13 +511,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
