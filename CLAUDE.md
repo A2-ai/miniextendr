@@ -130,6 +130,17 @@ silently corrupt and "pass." See `docs/GCTORTURE_TESTING.md` for the harness
 pattern (load package first, *then* enable gctorture; per-function loop is
 fastest; full `test_dir` sweep is for nightly).
 
+**Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
+gctorture sweep over `rpkg/`'s exports only exercises functions callable with no
+arguments — argument synthesis for arbitrary `#[miniextendr]` signatures is a
+much bigger project. When you add a new function/method that stores SEXPs
+across allocations (`Vec<SEXP>` / sidecar fields / generic-list buffers / inputs
+to `from_raw_pairs` / `from_raw_values`), pair it with a `gc_stress_<feature>()`
+exported wrapper in `rpkg/src/rust/gc_stress_fixtures.rs` (or a sibling module)
+that synthesizes realistic inputs internally and drives the production code
+path. Reviewer check: "does this PR add SEXP storage? if yes, is there a no-arg
+fixture exercising it?" See #430.
+
 ### Reproducing CI clippy before PR
 
 `just clippy` ≠ CI. Two CI jobs must both pass `-D warnings`:
