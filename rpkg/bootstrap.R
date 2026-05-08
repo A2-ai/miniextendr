@@ -2,10 +2,14 @@
 # Runs ./configure so that Makevars and other generated files exist
 # before R CMD build creates the source tarball.
 #
-# Install-mode detection is automatic: if inst/vendor.tar.xz exists
-# (created by `minirextendr::miniextendr_vendor()` before `R CMD build`
-# when preparing a CRAN submission), configure builds in tarball/offline
-# mode. Otherwise, source/network mode is used.
+# This file is invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package)
+# in the build-staging directory before sealing the source tarball.
+#
+# Vendoring (production of inst/vendor.tar.xz) is handled by configure.ac's
+# auto-vendor block — it fires here (staging dir, no .git ancestor) so the
+# sealed tarball ships with vendor.tar.xz inside, and again at install time
+# if the tarball arrived without one. See rpkg/configure.ac for the
+# self-repair contract.
 
 if (.Platform$OS.type == "windows") {
   if (file.exists("configure.ucrt")) {
