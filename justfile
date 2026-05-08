@@ -965,10 +965,12 @@ vendor-sync-diff:
 
 # Check that rpkg/src/rust/Cargo.lock is in tarball-shape.
 #
-# One invariant remains after cargo-revendor item 2:
+# Tarball-shape (post-#408):
 #   - miniextendr-{api,lint,macros} must use git+url#<sha> sources, not path+.
+#   - no [[patch.unused]] blocks (signals a wider [patch.crates-io] than
+#     the manifest needs; produces spurious commit-time diff).
 #
-# checksum = "..." lines are now ALLOWED (cargo-revendor writes valid
+# checksum = "..." lines are ALLOWED (cargo-revendor writes valid
 # .cargo-checksum.json files whose `package` field matches them).
 [script("bash")]
 lock-shape-check:
@@ -981,6 +983,10 @@ lock-shape-check:
     bad=0
     if grep -q 'source = "path+' "$lock"; then
         echo "lock-shape-check: $lock has path+... sources (tarball-shape violation)" >&2
+        bad=1
+    fi
+    if grep -qE '^\[\[patch\.unused\]\]' "$lock"; then
+        echo "lock-shape-check: $lock has [[patch.unused]] blocks (narrow [patch.crates-io])" >&2
         bad=1
     fi
     if [ $bad -eq 1 ]; then

@@ -8,6 +8,18 @@
 # during `cargo build`. The pre-commit hook + lock-shape-check just-recipe
 # protect commits; this script only fires in tarball mode where drift is fatal.
 #
+# Tarball-shape (post-#408):
+#   - no `source = "path+..."` for framework crates (must be `git+url#<sha>`)
+#   - `checksum = "..."` lines ARE allowed (cargo-revendor recomputes valid
+#     .cargo-checksum.json that matches them)
+#
+# `[[patch.unused]]` blocks are NOT checked here. They are a benign artifact
+# of cargo source-replacement intercepting `[patch."git+url"]` entries during
+# `cargo vendor`, so they show up in tarball-shape locks even when the source-
+# mode patch is correctly used. The over-broad-patch rule lives in
+# `just lock-shape-check` and the pre-commit hooks, which see source-shape
+# locks where the marker actually means something.
+#
 # Usage: Rscript tools/lock-shape-check.R <mode> <lockfile>
 #   mode     : "tarball" | "source"
 #   lockfile : path to Cargo.lock
@@ -43,20 +55,8 @@ if (length(path_violations) > 0) {
   quit("no", status = 1)
 }
 
-# Check 2: no checksum = lines.
-# Vendored crates ship with empty .cargo-checksum.json; cargo 1.95+ refuses to
-# verify registry checksums against vendored sources.
-# NOTE: this rule will be re-evaluated when item 2 of
-# plans/lockfile-mode-unification.md lands (cargo-revendor checksum recompute).
-sum_re <- "^checksum = "
-sum_count <- length(grep(sum_re, content))
-if (sum_count > 0) {
-  message(sprintf("configure: ERROR — Cargo.lock has %d checksum = line(s).", sum_count))
-  message("Vendored crates ship with empty .cargo-checksum.json; cargo offline install")
-  message("refuses to verify registry checksums against them.")
-  message("")
-  message("Recovery: run `just vendor` (monorepo) or rebuild the package tarball.")
-  quit("no", status = 1)
-}
+# checksum = "..." lines are ALLOWED (cargo-revendor recomputes valid
+# .cargo-checksum.json post-trim, see PR #408).
+# [[patch.unused]] blocks are also allowed in tarball-shape — see header.
 
 quit("no", status = 0)
