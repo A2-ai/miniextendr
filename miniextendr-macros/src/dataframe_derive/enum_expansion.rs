@@ -415,8 +415,13 @@ pub(super) fn derive_enum_dataframe(
         quote! { 0usize }
     };
 
+    // Each pair protects its SEXP via `__scope.protect_raw` so previously-built
+    // column SEXPs survive subsequent column allocations. Pre-fix the raw
+    // `vec![(name, into_sexp(...)), ...]` left every SEXP unrooted across the
+    // next column's allocations — UAF under gctorture
+    // (reviews/2026-05-07-gctorture-audit.md).
     let tag_pair = if let Some(ref tag_name) = attrs.tag {
-        quote! { (#tag_name, ::miniextendr_api::IntoR::into_sexp(self._tag)), }
+        quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))), }
     } else {
         TokenStream::new()
     };
@@ -426,7 +431,7 @@ pub(super) fn derive_enum_dataframe(
         .map(|col| {
             let name = &col.col_name;
             let name_str = name.to_string();
-            quote! { (#name_str, ::miniextendr_api::IntoR::into_sexp(self.#name)) }
+            quote! { (#name_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name))) }
         })
         .collect();
 
@@ -455,7 +460,7 @@ pub(super) fn derive_enum_dataframe(
             quote! {
                 __df_pairs.push((
                     #tag_name.to_string(),
-                    ::miniextendr_api::IntoR::into_sexp(self._tag),
+                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag)),
                 ));
             }
         } else {
@@ -470,7 +475,7 @@ pub(super) fn derive_enum_dataframe(
                 quote! {
                     __df_pairs.push((
                         #name_str.to_string(),
-                        ::miniextendr_api::IntoR::into_sexp(self.#name),
+                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name)),
                     ));
                 }
             })
@@ -503,7 +508,7 @@ pub(super) fn derive_enum_dataframe(
                         for (__i, __col) in __cols.into_iter().enumerate() {
                             __df_pairs.push((
                                 format!("{}_{}", #base_name_str, __i + 1),
-                                ::miniextendr_api::IntoR::into_sexp(__col),
+                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
                             ));
                         }
                     }
@@ -516,16 +521,23 @@ pub(super) fn derive_enum_dataframe(
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
-                    let mut __df_pairs: Vec<(
-                        String,
-                        ::miniextendr_api::ffi::SEXP,
-                    )> = Vec::new();
-                    #tag_push_pair
-                    #(#static_pair_pushes)*
-                    #(#auto_expand_pair_pushes)*
-                    ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
-                        .set_class_str(&["data.frame"])
-                        .set_row_names_int(_n_rows)
+                    // SAFETY: into_data_frame only runs on the R main thread.
+                    // ProtectScope keeps each column SEXP rooted across the
+                    // next column's allocations; from_raw_pairs writes them
+                    // into the parent VECSXP before we drop the scope.
+                    unsafe {
+                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                        let mut __df_pairs: Vec<(
+                            String,
+                            ::miniextendr_api::ffi::SEXP,
+                        )> = Vec::new();
+                        #tag_push_pair
+                        #(#static_pair_pushes)*
+                        #(#auto_expand_pair_pushes)*
+                        ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
+                            .set_class_str(&["data.frame"])
+                            .set_row_names_int(_n_rows)
+                    }
                 }
             }
         }
@@ -535,12 +547,16 @@ pub(super) fn derive_enum_dataframe(
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
-                    ::miniextendr_api::list::List::from_raw_pairs(vec![
-                        #tag_pair
-                        #(#col_pairs),*
-                    ])
-                    .set_class_str(&["data.frame"])
-                    .set_row_names_int(_n_rows)
+                    // SAFETY: see auto-expand branch.
+                    unsafe {
+                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                        ::miniextendr_api::list::List::from_raw_pairs(vec![
+                            #tag_pair
+                            #(#col_pairs),*
+                        ])
+                        .set_class_str(&["data.frame"])
+                        .set_row_names_int(_n_rows)
+                    }
                 }
             }
         }
@@ -1250,7 +1266,10 @@ fn generate_split_method(
                         }
                     };
 
-                    // Static pair pushes
+                    // Static pair pushes — wrap each `into_sexp()` in
+                    // `__scope.protect_raw` to keep prior column SEXPs rooted
+                    // across subsequent allocations
+                    // (reviews/2026-05-07-gctorture-audit.md).
                     let static_pushes: Vec<TokenStream> = vi
                         .fields
                         .iter()
@@ -1261,7 +1280,7 @@ fn generate_split_method(
                                 vec![quote! {
                                     #pairs_var.push((
                                         #col_str.to_string(),
-                                        ::miniextendr_api::IntoR::into_sexp(#buf),
+                                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
                                     ));
                                 }]
                             }
@@ -1274,7 +1293,7 @@ fn generate_split_method(
                                     quote! {
                                         #pairs_var.push((
                                             #col_str.to_string(),
-                                            ::miniextendr_api::IntoR::into_sexp(#buf),
+                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }
                                 })
@@ -1288,7 +1307,7 @@ fn generate_split_method(
                                     quote! {
                                         #pairs_var.push((
                                             #col_str.to_string(),
-                                            ::miniextendr_api::IntoR::into_sexp(#buf),
+                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }
                                 })
@@ -1312,7 +1331,7 @@ fn generate_split_method(
                                         for (__ai, __acol) in __auto_cols.into_iter().enumerate() {
                                             #pairs_var.push((
                                                 format!("{}_{}", #base_str, __ai + 1),
-                                                ::miniextendr_api::IntoR::into_sexp(__acol),
+                                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__acol)),
                                             ));
                                         }
                                     }
@@ -1323,11 +1342,16 @@ fn generate_split_method(
 
                     df_constructions.push(quote! {
                         let #n_var = #len_expr;
-                        let mut #pairs_var: Vec<(String, ::miniextendr_api::ffi::SEXP)> = Vec::new();
-                        #(#static_pushes)*
-                        let #df_var = ::miniextendr_api::list::List::from_raw_pairs(#pairs_var)
-                            .set_class_str(&["data.frame"])
-                            .set_row_names_int(#n_var);
+                        // SAFETY: split-method runs on the R main thread; scope
+                        // unprotects after each variant data.frame is built.
+                        let #df_var = unsafe {
+                            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                            let mut #pairs_var: Vec<(String, ::miniextendr_api::ffi::SEXP)> = Vec::new();
+                            #(#static_pushes)*
+                            ::miniextendr_api::list::List::from_raw_pairs(#pairs_var)
+                                .set_class_str(&["data.frame"])
+                                .set_row_names_int(#n_var)
+                        };
                     });
                 } else {
                     // Static path: vec![...] of (&str, SEXP) pairs
@@ -1357,7 +1381,10 @@ fn generate_split_method(
                         quote! { 0usize }
                     };
 
-                    // Collect pairs
+                    // Collect pairs — each `into_sexp()` is rooted via
+                    // `__scope.protect_raw` so prior columns survive the
+                    // next column's allocation
+                    // (reviews/2026-05-07-gctorture-audit.md).
                     let pairs: Vec<TokenStream> = vi
                         .fields
                         .iter()
@@ -1366,7 +1393,7 @@ fn generate_split_method(
                                 let buf = format_ident!("__s_{}_{}", snake, data.col_name);
                                 let col_str = data.col_name.to_string();
                                 vec![quote! {
-                                    (#col_str, ::miniextendr_api::IntoR::into_sexp(#buf))
+                                    (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
                                 }]
                             }
                             EnumResolvedField::ExpandedFixed(data) => (1..=data.len)
@@ -1375,7 +1402,7 @@ fn generate_split_method(
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
-                                        (#col_str, ::miniextendr_api::IntoR::into_sexp(#buf))
+                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
                                     }
                                 })
                                 .collect(),
@@ -1385,7 +1412,7 @@ fn generate_split_method(
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
-                                        (#col_str, ::miniextendr_api::IntoR::into_sexp(#buf))
+                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
                                     }
                                 })
                                 .collect(),
@@ -1395,11 +1422,15 @@ fn generate_split_method(
 
                     df_constructions.push(quote! {
                         let #n_var = #len_expr;
-                        let #df_var = ::miniextendr_api::list::List::from_raw_pairs(vec![
-                            #(#pairs),*
-                        ])
-                        .set_class_str(&["data.frame"])
-                        .set_row_names_int(#n_var);
+                        // SAFETY: see has_auto branch.
+                        let #df_var = unsafe {
+                            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                            ::miniextendr_api::list::List::from_raw_pairs(vec![
+                                #(#pairs),*
+                            ])
+                            .set_class_str(&["data.frame"])
+                            .set_row_names_int(#n_var)
+                        };
                     });
                 }
             } // endregion
@@ -1421,12 +1452,16 @@ fn generate_split_method(
             #df_var
         }
     } else {
-        // Multiple variants: return named list of data.frames
+        // Multiple variants: return named list of data.frames.
+        // Each per-variant data.frame's `into_sexp()` is rooted via
+        // `__outer_scope.protect_raw` so prior variant data.frames survive
+        // the next variant's allocation
+        // (reviews/2026-05-07-gctorture-audit.md).
         let outer_pairs: Vec<TokenStream> = snake_names
             .iter()
             .zip(df_var_names.iter())
             .map(|(name, var)| {
-                quote! { (#name, ::miniextendr_api::IntoR::into_sexp(#var)) }
+                quote! { (#name, __outer_scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#var))) }
             })
             .collect();
 
@@ -1438,9 +1473,13 @@ fn generate_split_method(
                 }
             }
             #(#df_constructions)*
-            ::miniextendr_api::list::List::from_raw_pairs(vec![
-                #(#outer_pairs),*
-            ])
+            // SAFETY: split-method runs on the R main thread.
+            unsafe {
+                let __outer_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                ::miniextendr_api::list::List::from_raw_pairs(vec![
+                    #(#outer_pairs),*
+                ])
+            }
         }
     };
 

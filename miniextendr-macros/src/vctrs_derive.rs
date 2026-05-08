@@ -954,11 +954,19 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             // Get attrs before moving fields out of self
                             let attrs = self.attrs();
 
-                            // Build the fields list from pairs
-                            let pairs: Vec<(&str, ::miniextendr_api::ffi::SEXP)> = vec![
-                                #( (#field_names, self.#field_idents.into_sexp()), )*
-                            ];
-                            let fields = ::miniextendr_api::list::List::from_raw_pairs(pairs);
+                            // Build the fields list from pairs.
+                            // Each `into_sexp()` is rooted via `__scope.protect_raw`
+                            // so prior field SEXPs stay alive across the next
+                            // field's allocations — UAF otherwise
+                            // (reviews/2026-05-07-gctorture-audit.md).
+                            // SAFETY: into_vctrs runs on the R main thread.
+                            let fields = unsafe {
+                                let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                                let pairs: Vec<(&str, ::miniextendr_api::ffi::SEXP)> = vec![
+                                    #( (#field_names, __scope.protect_raw(self.#field_idents.into_sexp())), )*
+                                ];
+                                ::miniextendr_api::list::List::from_raw_pairs(pairs)
+                            };
 
                             ::miniextendr_api::vctrs::new_rcrd(
                                 fields,

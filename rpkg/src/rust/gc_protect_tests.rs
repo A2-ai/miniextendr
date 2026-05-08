@@ -207,5 +207,29 @@ pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
 }
 // endregion
 
+// region: Vec<T>::into_list / List::from_pairs UAF regression
+
+/// Build a list from a Vec of allocating values via the blanket
+/// `IntoList for Vec<T>` impl. Each `String::into_sexp()` allocates a fresh
+/// STRSXP; pre-fix the buffer was held unrooted across allocations and crashed
+/// under `gctorture(TRUE)` (same shape as the columnar UAF, issue #307).
+#[miniextendr]
+pub fn test_list_from_values_strings_gctorture() -> List {
+    let v: Vec<String> = (0..16).map(|i| format!("element-{i}")).collect();
+    List::from_values(v)
+}
+
+/// Build a named list from a Vec of allocating `(name, value)` pairs via
+/// `List::from_pairs`. Same UAF shape as `test_list_from_values_strings_gctorture`.
+#[miniextendr]
+pub fn test_list_from_pairs_strings_gctorture() -> List {
+    let pairs: Vec<(String, String)> = (0..16)
+        .map(|i| (format!("k{i}"), format!("v{i}")))
+        .collect();
+    List::from_pairs(pairs)
+}
+
+// endregion
+
 // region: Module registration
 // endregion

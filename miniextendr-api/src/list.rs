@@ -273,6 +273,10 @@ impl List {
             .try_into()
             .expect("classes length exceeds isize::MAX");
         unsafe {
+            // Protect self across the class-vector allocation; otherwise the
+            // parent list can be freed during `Rf_allocVector` while it sits
+            // unrooted in our Rust handle (UAF under gctorture).
+            let _self_guard = OwnedProtect::new(self.0);
             let class_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, class) in classes.iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
@@ -313,6 +317,8 @@ impl List {
             .try_into()
             .expect("names length exceeds isize::MAX");
         unsafe {
+            // Protect self across the names-vector allocation; see set_class_str.
+            let _self_guard = OwnedProtect::new(self.0);
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in names.iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
@@ -342,6 +348,8 @@ impl List {
     #[inline]
     pub fn set_row_names_int(self, n: usize) -> Self {
         unsafe {
+            // Protect self across the row.names allocation; see set_class_str.
+            let _self_guard = OwnedProtect::new(self.0);
             // R's compact row.names: c(NA_integer_, -n)
             let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
             let _guard = OwnedProtect::new(row_names);
@@ -378,6 +386,8 @@ impl List {
             .try_into()
             .expect("row_names length exceeds isize::MAX");
         unsafe {
+            // Protect self across the row.names allocation; see set_class_str.
+            let _self_guard = OwnedProtect::new(self.0);
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in row_names.iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
@@ -641,18 +651,21 @@ pub trait TryFromList: Sized {
 
 impl<T: IntoR> IntoList for Vec<T> {
     fn into_list(self) -> List {
-        let converted: Vec<SEXP> = self.into_iter().map(|v| v.into_sexp()).collect();
-        let n: isize = converted
+        // Allocate + protect the parent first, then call `into_sexp()` per
+        // element and write straight into the parent. Pre-collecting elements
+        // into `Vec<SEXP>` would leave them unrooted across allocations — same
+        // UAF shape as the columnar `Generic` buffer (PR #424 / issue #307).
+        let n: isize = self
             .len()
             .try_into()
             .expect("list length exceeds isize::MAX");
         unsafe {
-            let list = ffi::Rf_allocVector(VECSXP, n);
-            for (i, val) in converted.into_iter().enumerate() {
+            let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
+            for (i, val) in self.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                list.set_vector_elt(idx, val);
+                list.get().set_vector_elt(idx, val.into_sexp());
             }
-            List(list)
+            List(list.get())
         }
     }
 }
@@ -855,8 +868,27 @@ impl List {
         N: AsRef<str>,
         T: IntoR,
     {
-        let raw: Vec<(N, SEXP)> = pairs.into_iter().map(|(n, v)| (n, v.into_sexp())).collect();
-        Self::from_raw_pairs(raw)
+        // Allocate + protect the parent list and names before calling
+        // `into_sexp()` on each value. Pre-collecting `Vec<(N, SEXP)>` would
+        // leave the value SEXPs unrooted across subsequent `into_sexp()` and
+        // the names allocation — same UAF shape as #307.
+        let n: isize = pairs
+            .len()
+            .try_into()
+            .expect("pairs length exceeds isize::MAX");
+        unsafe {
+            let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
+            let names = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            for (i, (name, val)) in pairs.into_iter().enumerate() {
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                list.get().set_vector_elt(idx, val.into_sexp());
+                names
+                    .get()
+                    .set_string_elt(idx, SEXP::charsxp(name.as_ref()));
+            }
+            list.get().set_names(names.get());
+            List(list.get())
+        }
     }
 
     /// Build an unnamed list from values.
