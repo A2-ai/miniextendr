@@ -48,6 +48,16 @@ all: $(SHLIB) $(WRAPPERS_R)
 	@if [ "$(IS_TARBALL_INSTALL)" != "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
 	fi
+	@# Tarball install: strip Rust-runtime symbols (_exit, abort, exit) from the
+	@# linked .so to silence R CMD check --as-cran compiled-code WARNING on Linux.
+	@# macOS uses -undefined dynamic_lookup so these symbols are never baked in;
+	@# Windows links differently — skip on both. Only strip when strip supports
+	@# --strip-symbol (GNU strip on Linux does; macOS strip does not).
+	@if [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ "$$(uname -s)" = "Linux" ]; then \
+	  for _sym in _exit abort exit; do \
+	    strip --strip-symbol "$$_sym" "$(SHLIB)" 2>/dev/null || true; \
+	  done; \
+	fi
 	@# Tarball install: scrub vendor and target dirs after build to save space
 	@# in the installed package. Gate on IS_TARBALL_INSTALL so dev installs
 	@# don't blow away in-progress build state.
