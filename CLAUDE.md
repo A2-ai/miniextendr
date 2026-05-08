@@ -84,10 +84,10 @@ just site-build / site-serve   # http://127.0.0.1:1111
 ### Configure is mandatory
 
 Always `bash ./configure` (not bare `./configure` — `#!/bin/sh` causes spurious errors in `AC_CONFIG_COMMANDS` passthrough). Configure:
-1. Generates `Makevars` from `.in` templates
-2. Auto-detects install mode (source vs tarball) from `[ -f inst/vendor.tar.xz ]`
-3. Writes `.cargo/config.toml` per mode (source: `[patch."git+url"]` for monorepo siblings or empty; tarball: `[source]` replacement to `vendored-sources`)
-4. Does **not** create `inst/vendor.tar.xz` — that's `just vendor`
+1. **Self-repairs**: if `inst/vendor.tar.xz` is absent AND `cargo-revendor` is on PATH AND no `.git` ancestor exists, runs `cargo-revendor` to produce the tarball before mode detection. Skipped in dev-source trees so `just configure` stays fast.
+2. Generates `Makevars` from `.in` templates
+3. Auto-detects install mode (source vs tarball) from `[ -f inst/vendor.tar.xz ]`
+4. Writes `.cargo/config.toml` per mode (source: `[patch."git+url"]` for monorepo siblings or empty; tarball: `[source]` replacement to `vendored-sources`)
 
 Package loads as `library(miniextendr)`, not `library(rpkg)`. Always check the **built tarball**, not the source dir (R CMD check on a source dir skips `Authors@R` → `Author/Maintainer` conversion).
 
@@ -95,10 +95,15 @@ Package loads as `library(miniextendr)`, not `library(rpkg)`. Always check the *
 
 | Mode | Triggered when | What configure does |
 |---|---|---|
-| **Source** | `inst/vendor.tar.xz` absent | No vendoring. In monorepo: writes `[patch."git+url"]` → workspace siblings. Otherwise: minimal config, cargo follows git URL. |
+| **Source** | `inst/vendor.tar.xz` absent (and auto-vendor skipped/failed) | No vendoring. In monorepo: writes `[patch."git+url"]` → workspace siblings. Otherwise: minimal config, cargo follows git URL. |
 | **Tarball** | `inst/vendor.tar.xz` present | Unpacks tarball, writes `[source]` replacement to `vendored-sources`, build is offline. |
 
-That's the entire decision. No `NOT_CRAN`, no `FORCE_VENDOR`, no `PREPARE_CRAN`, no `BUILD_CONTEXT`. See `docs/CRAN_COMPATIBILITY.md`.
+Three layered triggers all converge on the single `inst/vendor.tar.xz` signal:
+1. Maintainer's explicit `just vendor` / `miniextendr_vendor()` (writes the tarball into the source tree before `R CMD build`).
+2. `bootstrap.R` (run by pkgbuild — `devtools::build()`, `rcmdcheck`, `r-lib/actions/check-r-package`) → `./configure` runs in the build-staging dir → no `.git` ancestor → auto-vendor fires → tarball sealed.
+3. End-user install of a tarball that arrived without vendor → `./configure` runs at install time → no `.git` ancestor → auto-vendor fires → tarball mode → offline build.
+
+CRAN's offline farm has no `cargo-revendor`, so the auto-vendor branch is short-circuited — a maintainer who shipped a tarball without vendor inside fails CRAN's offline check loudly. Intended canary. No `NOT_CRAN`, no `FORCE_VENDOR`, no `PREPARE_CRAN`, no `BUILD_CONTEXT`. See `docs/CRAN_COMPATIBILITY.md`.
 
 ## Development Workflow
 

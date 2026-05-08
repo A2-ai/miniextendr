@@ -2004,6 +2004,36 @@ ABS_RPKG_SRCDIR="$abs_rpkg_src"
 
 RUST_SRC_DIR="$abs_rpkg_src/rust"
 
+SOURCE_IS_GIT=false
+_walk_dir="$abs_top_srcdir"
+while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
+  if test -e "$_walk_dir/.git"; then
+    SOURCE_IS_GIT=true
+    break
+  fi
+  _walk_dir=`dirname "$_walk_dir"`
+done
+
+if test ! -f "$abs_top_srcdir/inst/vendor.tar.xz" \
+   && test "$SOURCE_IS_GIT" = "false" \
+   && command -v cargo-revendor >/dev/null 2>&1; then
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: auto-vendor: inst/vendor.tar.xz absent, running cargo-revendor" >&5
+printf '%s\n' "$as_me: auto-vendor: inst/vendor.tar.xz absent, running cargo-revendor" >&6;}
+  mkdir -p "$abs_top_srcdir/inst"
+  if (cd "$abs_top_srcdir" && cargo revendor \
+        --manifest-path src/rust/Cargo.toml \
+        --output vendor \
+        --compress inst/vendor.tar.xz \
+        --blank-md --source-marker --force) >&2; then
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: auto-vendor: produced inst/vendor.tar.xz" >&5
+printf '%s\n' "$as_me: auto-vendor: produced inst/vendor.tar.xz" >&6;}
+  else
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: WARNING: auto-vendor: cargo-revendor failed; falling through to source mode" >&5
+printf '%s\n' "$as_me: WARNING: auto-vendor: cargo-revendor failed; falling through to source mode" >&2;}
+    rm -f "$abs_top_srcdir/inst/vendor.tar.xz"
+  fi
+fi
+
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then
   IS_TARBALL_INSTALL=true
   _install_mode_label="tarball install (offline, vendored)"
