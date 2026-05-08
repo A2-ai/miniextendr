@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1905
 expression: generate_s3_r_wrapper(&parsed)
 ---
 # Counter::new (1:1)
@@ -20,7 +21,7 @@ new_counter <- function(value) {
 
 # Counter::get (1:1)
 #' @title S3 generic for `get`
-#' S3 generic for `get`
+#' @description S3 generic for `get`
 #' @name get.Counter
 #' @rdname Counter
 #' @param x An object
@@ -46,7 +47,7 @@ get.Counter <- function(x, ...) {
 
 # Counter::increment (1:1)
 #' @title S3 generic for `increment`
-#' S3 generic for `increment`
+#' @description S3 generic for `increment`
 #' @name increment.Counter
 #' @rdname Counter
 #' @param x An object

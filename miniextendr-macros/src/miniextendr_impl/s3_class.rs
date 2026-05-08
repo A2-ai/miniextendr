@@ -28,7 +28,15 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
     let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
         || parsed_impl.internal;
+    // Generic export (NAMESPACE `export(generic_name)`): suppressed by
+    // @noRd / internal / noexport. An internal class doesn't pollute the
+    // package's user-facing surface with a bare generic.
     let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
+    // Method @export (NAMESPACE `S3method(generic, Class)`): only suppressed
+    // by `noexport`. `internal` should keep S3method registration so dispatch
+    // still works for instances of the class — without it, callers (including
+    // the package's own tests) couldn't dispatch on the type at all. See #431.
+    let should_register_s3method = !parsed_impl.noexport;
 
     let mut lines = Vec::new();
 
@@ -142,7 +150,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // so @param x/@param ... must also appear on the method block
             lines.push("#' @param x An object.".to_string());
             lines.push("#' @param ... Additional arguments.".to_string());
-            if should_export {
+            if should_register_s3method {
                 lines.push("#' @export".to_string());
             }
         }
