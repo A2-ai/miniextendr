@@ -364,6 +364,45 @@ fn s3_wrapper_generic_override() {
     assert!(wrapper.contains("#' @method length Counter"));
     assert!(wrapper.contains("length.Counter <- function(x, ...)"));
 }
+
+#[test]
+fn s3_internal_keeps_s3method_export() {
+    // Regression: #431. `internal` on an S3 impl must suppress NAMESPACE
+    // export of the bare generic (so `R CMD check --as-cran` doesn't flag
+    // an exported-but-undocumented generic) while keeping `S3method()`
+    // registration on each method — otherwise dispatch on instances of the
+    // class breaks for the package's own tests and any downstream caller.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn get(&self) -> i32 { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.internal = true;
+    let parsed = ParsedImpl::parse(attrs, item_impl).expect("parse");
+    let wrapper = generate_s3_r_wrapper(&parsed);
+
+    // Generic is defined but NOT exported.
+    assert!(wrapper.contains("get <- function(x, ...) UseMethod(\"get\")"));
+    assert!(
+        !wrapper.contains("#' @export get"),
+        "internal S3 must not export the bare generic"
+    );
+
+    // The method block keeps `#' @method get Counter` + `#' @export` so
+    // roxygen2 emits `S3method(get, Counter)` in NAMESPACE.
+    assert!(wrapper.contains("#' @method get Counter"));
+    let method_export = wrapper
+        .lines()
+        .skip_while(|l| !l.contains("#' @method get Counter"))
+        .take(6)
+        .any(|l| l.trim() == "#' @export");
+    assert!(
+        method_export,
+        "internal S3 must keep S3method() registration\n--- wrapper ---\n{wrapper}"
+    );
+}
 // endregion
 
 // region: S4 class system tests

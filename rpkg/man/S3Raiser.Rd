@@ -96,3 +96,4 @@ S3 generic for \code{s3_raise_condition}
 
 S3 generic for \code{s3_raise_condition_classed}
 }
+\keyword{internal}

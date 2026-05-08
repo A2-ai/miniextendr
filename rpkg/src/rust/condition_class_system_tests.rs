@@ -94,7 +94,7 @@ pub struct S3Raiser {
     id: i32,
 }
 
-#[miniextendr(s3)]
+#[miniextendr(s3, internal)]
 impl S3Raiser {
     /// @param id Numeric identifier for this raiser instance.
     pub fn new(id: i32) -> Self {
