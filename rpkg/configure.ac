@@ -229,6 +229,22 @@ else
 fi
 AC_SUBST([NATIVE_PKG_CPPFLAGS])
 
+dnl ---- Clang-only flag: silence unknown-warning-option ----
+dnl R 4.5+ Boolean.h has `#pragma clang diagnostic ignored "-Wfixed-enum-extension"`,
+dnl which clang 21+ no longer recognises and warns about under
+dnl -Wunknown-warning-option. The pragma is upstream R, not us. Suppressing the
+dnl meta-warning on clang is harmless; gcc doesn't ship the flag, so we only
+dnl emit it for clang.
+EXTRA_PKG_CFLAGS=""
+CC_FOR_PROBE=$("${R_HOME}/bin/R" CMD config CC 2>/dev/null)
+if test -n "$CC_FOR_PROBE"; then
+  if $CC_FOR_PROBE -dM -E - < /dev/null 2>/dev/null | grep -q __clang__; then
+    EXTRA_PKG_CFLAGS="-Wno-unknown-warning-option"
+    AC_MSG_NOTICE([clang detected — adding $EXTRA_PKG_CFLAGS])
+  fi
+fi
+AC_SUBST([EXTRA_PKG_CFLAGS])
+
 AC_CONFIG_SRCDIR([src/rust/lib.rs])
 
 dnl ---- vendor directory paths (used in tarball mode only) ----
