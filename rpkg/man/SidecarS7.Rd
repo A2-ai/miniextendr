@@ -58,13 +58,3 @@ The SidecarS7 pointer (invisibly)
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS7}.
 }
-\section{Additional properties}{
-
-\describe{
-\item{\code{@prop_int}}{An integer sidecar property.}
-
-\item{\code{@prop_flag}}{A logical sidecar property.}
-
-\item{\code{@prop_name}}{A character sidecar property.}
-}}
-
