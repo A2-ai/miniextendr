@@ -12,6 +12,9 @@ rpkg/src/rust/.cargo/
 
 # Cargo build artifacts (workspaces in repo root and subdirectories)
 target/
+# Per-package CARGO_TARGET_DIR set by rpkg/configure.ac (lives outside the
+# package source tree so R CMD check's compiled-code phase doesn't scan it).
+rust-target-*/
 
 # R package build artifacts
 *.Rcheck/

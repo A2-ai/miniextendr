@@ -1301,7 +1301,8 @@ Some influential environment variables:
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
   CARGO_TARGET_DIR
-              Cargo target directory (default: rust-target, outside src/)
+              Cargo target directory (default: ../rust-target-<pkgname>,
+              outside the package tree)
   CARGO_PROFILE
               Cargo build profile (dev or release)
   ENV_RUSTFLAGS
@@ -2405,10 +2406,18 @@ fi
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 
-: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
+_default_cargo_target="$(cd "$abs_top_srcdir/.." && pwd)/rust-target-$PACKAGE_NAME"
+: ${CARGO_TARGET_DIR="$_default_cargo_target"}
 
 
-CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
+CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir_cargo/.." && pwd)/rust-target-$PACKAGE_NAME"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$CARGO_TARGET_DIR_CARGO")"
+    fi
+    ;;
+esac
 
 
 

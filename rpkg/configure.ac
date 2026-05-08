@@ -141,11 +141,28 @@ AC_SUBST([RUST_TOOLCHAIN])
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 dnl ---- Cargo target/profile configuration ----
-AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
-: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
+dnl Place CARGO_TARGET_DIR *outside* the package source tree (one level
+dnl above abs_top_srcdir). R CMD check's compiled-code phase does
+dnl `list.files("..", recursive = TRUE, pattern = "[.]a$")` from src/, so
+dnl any `.a` inside abs_top_srcdir gets scanned and contributes its
+dnl forbidden-symbol attribution (_exit/abort/exit from Rust's runtime)
+dnl to symbols.rds and the WARNING. With the staticlib living in the
+dnl parent directory instead, the scan never sees it and no strip step
+dnl is needed at install time. Tarball install still cleans this dir
+dnl after the .so is linked (see Makevars.in's IS_TARBALL_INSTALL block).
+AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: ../rust-target-<pkgname>, outside the package tree)])
+_default_cargo_target="$(cd "$abs_top_srcdir/.." && pwd)/rust-target-$PACKAGE_NAME"
+: ${CARGO_TARGET_DIR="$_default_cargo_target"}
 AC_SUBST([CARGO_TARGET_DIR])
 
-CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
+CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir_cargo/.." && pwd)/rust-target-$PACKAGE_NAME"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$CARGO_TARGET_DIR_CARGO")"
+    fi
+    ;;
+esac
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])

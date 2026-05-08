@@ -146,15 +146,32 @@ dnl Convenience: cargo command that includes optional toolchain selector
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 dnl ---- Cargo target/profile configuration ----
-dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
-dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
-AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
-: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
+dnl IMPORTANT: target directory MUST be outside the package source tree.
+dnl Two reasons:
+dnl   1. pkgbuild scans `src/` for generated .rs files during needs_compile()
+dnl      — anything under target/build/.../out/ would trip false rebuilds.
+dnl   2. R CMD check's compiled-code phase runs
+dnl      `list.files("..", recursive = TRUE, pattern = "[.]a$")` from src/,
+dnl      and any .a inside abs_top_srcdir gets scanned. Rust's staticlib
+dnl      pulls in `_exit`/`abort`/`exit` from libc, which then attribute to
+dnl      `lib<crate>.a` in symbols.rds and surface as the Linux compiled-
+dnl      code WARNING. Putting CARGO_TARGET_DIR in the parent dir keeps
+dnl      the .a outside the scan path entirely — no strip step needed.
+AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: ../rust-target-<pkgname>, outside the package tree)])
+_default_cargo_target="$(cd "$abs_top_srcdir/.." && pwd)/rust-target-$PACKAGE_NAME"
+: ${CARGO_TARGET_DIR="$_default_cargo_target"}
 AC_SUBST([CARGO_TARGET_DIR])
 
 dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
 dnl These are used in .cargo/config.toml which Cargo reads directly
-CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
+CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir_cargo/.." && pwd)/rust-target-$PACKAGE_NAME"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$CARGO_TARGET_DIR_CARGO")"
+    fi
+    ;;
+esac
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
