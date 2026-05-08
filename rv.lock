@@ -677,7 +677,7 @@ dependencies = [
 
 [[packages]]
 name = "pkgload"
-version = "1.5.0"
+version = "1.5.2"
 source = { repository = "https://cloud.r-project.org/" }
 force_source = false
 dependencies = [
@@ -840,8 +840,8 @@ dependencies = [
 
 [[packages]]
 name = "roxygen2"
-version = "7.3.3"
-source = { repository = "https://cloud.r-project.org/" }
+version = "8.0.0"
+source = { url = "https://cran.r-project.org/src/contrib/roxygen2_8.0.0.tar.gz", sha = "75816bf3a25554f5752254b985b7242490b0fabe68a5ada335c340b820ba34e8" }
 force_source = false
 dependencies = [
     "brew",
@@ -849,12 +849,10 @@ dependencies = [
     "commonmark",
     { name = "desc", requirement = "(>= 1.2.0)" },
     "knitr",
-    { name = "pkgload", requirement = "(>= 1.0.2)" },
-    { name = "purrr", requirement = "(>= 1.0.0)" },
+    "lifecycle",
+    { name = "pkgload", requirement = "(>= 1.5.2)" },
     { name = "R6", requirement = "(>= 2.1.2)" },
-    { name = "rlang", requirement = "(>= 1.0.6)" },
-    "stringi",
-    { name = "stringr", requirement = "(>= 1.0.0)" },
+    { name = "rlang", requirement = "(>= 1.1.0)" },
     "withr",
     "xml2",
     "cpp11",

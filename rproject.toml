@@ -37,7 +37,7 @@ dependencies = [
     "knitr",
     "rcmdcheck",
     "rmarkdown",
-    "roxygen2",
+    {name = "roxygen2", url = "https://cran.r-project.org/src/contrib/roxygen2_8.0.0.tar.gz"},
     "withr",
     "yaml",
     "jsonlite",
