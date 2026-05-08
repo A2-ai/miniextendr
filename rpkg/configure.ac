@@ -300,18 +300,12 @@ AC_CONFIG_COMMANDS([unpack-vendor-tarball],
     else
       echo "configure: tarball install — vendor/ already populated"
     fi
-    dnl Strip checksum lines from Cargo.lock unconditionally in tarball mode.
-    dnl Vendored sources carry no registry checksums, but Cargo.lock can
-    dnl re-acquire them after a cargo update, a fresh git checkout, or any
-    dnl workspace edit that regenerates the lockfile. Cargo 1.95+ refuses to
-    dnl verify checksums against a vendored-sources tree, producing errors like:
-    dnl   error: checksum for `<crate>` could not be calculated, but a checksum
-    dnl          is listed in the existing lock file
-    dnl The sed invocation is idempotent (no-op when no checksum lines exist).
-    if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-      $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && \
-        rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-    fi
+    dnl AUDIT-427: checksum strip removed. PR #408 rewrote cargo-revendor to
+    dnl preserve the original `package` field in each .cargo-checksum.json
+    dnl (matching the lockfile's `checksum = "..."` line). Cargo can therefore
+    dnl verify checksums end-to-end; stripping them discards a valid integrity
+    dnl check. See issue #427 and tools/lock-shape-check.R which explicitly
+    dnl documents that checksum lines are allowed in tarball-shape locks.
   fi
 ],
 [IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
