@@ -229,10 +229,10 @@ fn write_description(root: &Path, pkg_name: &str) -> Result<()> {
          Description: What the package does (one paragraph).\n\
          License: MIT + file LICENSE\n\
          Encoding: UTF-8\n\
-         Roxygen: list(markdown = TRUE)\n\
-         RoxygenNote: 7.3.2\n\
          SystemRequirements: Rust (>= 1.83), Cargo\n\
          Config/build/bootstrap: TRUE\n\
+         Config/roxygen2/markdown: TRUE\n\
+         Config/roxygen2/version: 8.0.0\n\
          NeedsCompilation: yes\n"
     );
     std::fs::write(root.join("DESCRIPTION"), content)?;

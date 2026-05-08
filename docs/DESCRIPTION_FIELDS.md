@@ -8,8 +8,8 @@ This page explains the less-obvious fields, especially the ones that tend to mak
 
 | Field | Who reads it | Why it is there |
 |-------|--------------|-----------------|
-| `Roxygen: list(markdown = TRUE)` | `roxygen2` | Lets roxygen comments use Markdown syntax |
-| `RoxygenNote: 7.3.x` | `roxygen2` and maintainers | Records which roxygen2 version last generated the docs |
+| `Config/roxygen2/markdown: TRUE` | `roxygen2` | Lets roxygen comments use Markdown syntax (replaces legacy `Roxygen: list(markdown = TRUE)`) |
+| `Config/roxygen2/version: 8.0.0` | `roxygen2` and maintainers | Records which roxygen2 version last generated the docs (replaces legacy `RoxygenNote`) |
 | `Config/testthat/edition: 3` | `testthat` | Opts the package into the current testthat behavior |
 | `SystemRequirements: Rust (>= 1.85)` | Humans, CI, package tooling | Declares that the package needs a Rust toolchain outside R |
 | `Config/build/bootstrap: TRUE` | `pkgbuild` / `devtools` workflows | Runs `bootstrap.R` before build steps |
@@ -27,7 +27,7 @@ Only some of these are specific to the Rust-backed package flow:
 
 The roxygen and testthat fields are ordinary R-package tooling settings. They show up in scaffolded projects because miniextendr creates a real R package, not a separate custom package format.
 
-## `Roxygen: list(markdown = TRUE)`
+## `Config/roxygen2/markdown`
 
 This tells `roxygen2` to parse package documentation with Markdown enabled.
 
@@ -40,9 +40,11 @@ Without it, roxygen comments have to stick much more closely to raw Rd syntax. W
 
 This is not a miniextendr requirement. It is just the modern default for many R packages.
 
-## `RoxygenNote`
+`roxygen2` 8.0.0 introduced the `Config/roxygen2/markdown` form to replace the legacy `Roxygen: list(markdown = TRUE)` field. Older roxygen2 still recognises the legacy form, but new packages should use `Config/roxygen2/markdown: TRUE`.
 
-`RoxygenNote` is bookkeeping written by `roxygen2`. It records the roxygen2 version that most recently generated the `man/*.Rd` files and `NAMESPACE`.
+## `Config/roxygen2/version`
+
+`Config/roxygen2/version` is bookkeeping written by `roxygen2`. It records the roxygen2 version that most recently generated the `man/*.Rd` files and `NAMESPACE`.
 
 Practical meaning:
 
@@ -51,6 +53,8 @@ Practical meaning:
 - it helps explain why documentation output changed across machines or commits
 
 It is useful metadata, but it is not part of the Rust build logic.
+
+`roxygen2` 8.0.0 renamed the field from the legacy `RoxygenNote: 7.3.x` form. The first `document()` run under 8.0.0 auto-migrates `RoxygenNote` to `Config/roxygen2/version`.
 
 ## `Config/testthat/edition: 3`
 
@@ -147,7 +151,7 @@ Usually:
 - keep `Config/build/never-clean: true`
 - keep `Config/build/extra-sources` unless your package needs additional tracked inputs
 - update `SystemRequirements` if the required Rust toolchain version changes
-- let `RoxygenNote` update automatically
+- let `Config/roxygen2/version` update automatically
 - leave `Config/testthat/edition: 3` alone unless you have a specific reason to pin older testthat behavior
 
 ## Where these fields show up in this repo
