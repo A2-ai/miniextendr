@@ -102,9 +102,16 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
             } else {
                 quote! { { #(#idents),*, .. } }
             };
-            // Use from_raw_pairs to allow heterogeneous field types
+            // Use from_raw_pairs to allow heterogeneous field types.
+            // Each `into_sexp()` is wrapped in `__scope.protect_raw` so prior
+            // field SEXPs survive subsequent allocations — UAF otherwise
+            // (reviews/2026-05-07-gctorture-audit.md).
             let construction = quote! {
-                ::miniextendr_api::list::List::from_raw_pairs(vec![ #( (#names, #idents.into_sexp()) ),* ])
+                // SAFETY: IntoList runs on the R main thread.
+                unsafe {
+                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                    ::miniextendr_api::list::List::from_raw_pairs(vec![ #( (#names, __scope.protect_raw(#idents.into_sexp())) ),* ])
+                }
             };
             (pat, construction)
         }
@@ -128,7 +135,11 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
 
             let pat = quote! { ( #(#pat_elems),* ) };
             let construction = quote! {
-                ::miniextendr_api::list::List::from_raw_values(vec![ #( #value_idents.into_sexp() ),* ])
+                // SAFETY: see above.
+                unsafe {
+                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                    ::miniextendr_api::list::List::from_raw_values(vec![ #( __scope.protect_raw(#value_idents.into_sexp()) ),* ])
+                }
             };
             (pat, construction)
         }

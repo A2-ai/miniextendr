@@ -796,8 +796,13 @@ fn derive_struct_dataframe(
         quote! { self._len }
     };
 
+    // Each pair protects its SEXP via `__scope.protect_raw` so previously-built
+    // column SEXPs survive subsequent column allocations. Pre-fix the raw
+    // `vec![(name, into_sexp(...)), ...]` left every SEXP unrooted across the
+    // next column's allocations — UAF under gctorture
+    // (reviews/2026-05-07-gctorture-audit.md).
     let tag_pair = if let Some(ref tag_name) = attrs.tag {
-        quote! { (#tag_name, ::miniextendr_api::IntoR::into_sexp(self._tag)), }
+        quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))), }
     } else {
         TokenStream::new()
     };
@@ -807,7 +812,7 @@ fn derive_struct_dataframe(
         .map(|fc| {
             let name = &fc.df_field;
             let name_str = &fc.col_name_str;
-            quote! { (#name_str, ::miniextendr_api::IntoR::into_sexp(self.#name)) }
+            quote! { (#name_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name))) }
         })
         .collect();
 
@@ -835,7 +840,7 @@ fn derive_struct_dataframe(
         // pairs for auto-expand fields.
         let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
             quote! {
-                __df_pairs.push((#tag_name.to_string(), ::miniextendr_api::IntoR::into_sexp(self._tag)));
+                __df_pairs.push((#tag_name.to_string(), __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))));
             }
         } else {
             TokenStream::new()
@@ -850,7 +855,7 @@ fn derive_struct_dataframe(
                     quote! {
                         __df_pairs.push((
                             #col_name_str.to_string(),
-                            ::miniextendr_api::IntoR::into_sexp(self.#col_name),
+                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#col_name)),
                         ));
                     }
                 }
@@ -862,7 +867,7 @@ fn derive_struct_dataframe(
                             quote! {
                                 __df_pairs.push((
                                     #name.to_string(),
-                                    ::miniextendr_api::IntoR::into_sexp(self.#ident),
+                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#ident)),
                                 ));
                             }
                         })
@@ -877,7 +882,7 @@ fn derive_struct_dataframe(
                             quote! {
                                 __df_pairs.push((
                                     #name.to_string(),
-                                    ::miniextendr_api::IntoR::into_sexp(self.#ident),
+                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#ident)),
                                 ));
                             }
                         })
@@ -903,7 +908,7 @@ fn derive_struct_dataframe(
                             for (__i, __col) in __cols.into_iter().enumerate() {
                                 __df_pairs.push((
                                     format!("{}_{}", #col_name_str, __i + 1),
-                                    ::miniextendr_api::IntoR::into_sexp(__col),
+                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
                                 ));
                             }
                         }
@@ -917,15 +922,22 @@ fn derive_struct_dataframe(
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
-                    let mut __df_pairs: Vec<(
-                        String,
-                        ::miniextendr_api::ffi::SEXP,
-                    )> = Vec::new();
-                    #tag_push_pair
-                    #(#pair_pushes)*
-                    ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
-                        .set_class_str(&["data.frame"])
-                        .set_row_names_int(_n_rows)
+                    // SAFETY: into_data_frame only runs on the R main thread.
+                    // ProtectScope keeps each column SEXP rooted across the
+                    // next column's allocations; from_raw_pairs writes them
+                    // into the parent VECSXP before we drop the scope.
+                    unsafe {
+                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                        let mut __df_pairs: Vec<(
+                            String,
+                            ::miniextendr_api::ffi::SEXP,
+                        )> = Vec::new();
+                        #tag_push_pair
+                        #(#pair_pushes)*
+                        ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
+                            .set_class_str(&["data.frame"])
+                            .set_row_names_int(_n_rows)
+                    }
                 }
             }
         }
@@ -935,12 +947,16 @@ fn derive_struct_dataframe(
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
-                    ::miniextendr_api::list::List::from_raw_pairs(vec![
-                        #tag_pair
-                        #(#df_pairs),*
-                    ])
-                    .set_class_str(&["data.frame"])
-                    .set_row_names_int(_n_rows)
+                    // SAFETY: see auto-expand branch.
+                    unsafe {
+                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                        ::miniextendr_api::list::List::from_raw_pairs(vec![
+                            #tag_pair
+                            #(#df_pairs),*
+                        ])
+                        .set_class_str(&["data.frame"])
+                        .set_row_names_int(_n_rows)
+                    }
                 }
             }
         }

@@ -125,6 +125,11 @@ pub fn expand_list(input: ListInput) -> TokenStream {
     // Check if all entries are unnamed
     let all_unnamed = input.entries.iter().all(|e| e.name.is_none());
 
+    // Each entry's `into_sexp()` is wrapped in `__scope.protect_raw(...)` so
+    // earlier entries stay rooted across later allocations. Without this, the
+    // raw `vec![into_sexp(a), into_sexp(b), ...]` form leaves every prior SEXP
+    // unrooted across the next allocation — UAF under gctorture
+    // (reviews/2026-05-07-gctorture-audit.md).
     if all_unnamed {
         // Use from_raw_values for unnamed lists
         let values: Vec<TokenStream> = input
@@ -133,13 +138,19 @@ pub fn expand_list(input: ListInput) -> TokenStream {
             .map(|entry| {
                 let value = entry.value;
                 quote! {
-                    ::miniextendr_api::into_r::IntoR::into_sexp(#value)
+                    __scope.protect_raw(::miniextendr_api::into_r::IntoR::into_sexp(#value))
                 }
             })
             .collect();
 
         quote! {
-            ::miniextendr_api::list::List::from_raw_values(::std::vec![#(#values),*])
+            // SAFETY: list! is invoked from `#[miniextendr]` wrappers, which
+            // run on the R main thread. The scope unprotects on drop after
+            // the parent list has rooted its children via the write barrier.
+            unsafe {
+                let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                ::miniextendr_api::list::List::from_raw_values(::std::vec![#(#values),*])
+            }
         }
     } else {
         // Use from_raw_pairs for named (or mixed) lists
@@ -150,13 +161,17 @@ pub fn expand_list(input: ListInput) -> TokenStream {
                 let name = entry.name.map(|n| n.to_string_value()).unwrap_or_default(); // Empty string for unnamed
                 let value = entry.value;
                 quote! {
-                    (#name, ::miniextendr_api::into_r::IntoR::into_sexp(#value))
+                    (#name, __scope.protect_raw(::miniextendr_api::into_r::IntoR::into_sexp(#value)))
                 }
             })
             .collect();
 
         quote! {
-            ::miniextendr_api::list::List::from_raw_pairs(::std::vec![#(#pairs),*])
+            // SAFETY: see above.
+            unsafe {
+                let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                ::miniextendr_api::list::List::from_raw_pairs(::std::vec![#(#pairs),*])
+            }
         }
     }
 }
