@@ -454,21 +454,19 @@ clean-vendor-leak:
 _assert-no-vendor-leak:
     set -euo pipefail
     if [ -f rpkg/inst/vendor.tar.xz ]; then
-        cat >&2 <<'EOF'
-error: rpkg/inst/vendor.tar.xz is present but not committed.
-
-This usually means a previous build/smoke leaked it into the source
-tree. configure now flips into tarball mode and ignores monorepo
-[patch."git+url"] propagation, so further dev iteration is unreliable.
-
-Fix:
-  just clean-vendor-leak
-
-Or directly:
-  rm rpkg/inst/vendor.tar.xz && just configure
-
-See CLAUDE.md "Vendor tarball is a latch" for context.
-EOF
+        printf '%s\n' \
+          "error: rpkg/inst/vendor.tar.xz is present in the source tree." \
+          "" \
+          "This usually means a previous build/smoke leaked it. configure" \
+          "flips into tarball mode and ignores monorepo [patch] propagation," \
+          "so further dev iteration is unreliable." \
+          "" \
+          "Fix:  just clean-vendor-leak" \
+          "" \
+          "Or:   rm rpkg/inst/vendor.tar.xz && just configure" \
+          "" \
+          "See CLAUDE.md \"Vendor tarball is a latch\" for context." \
+          >&2
         exit 1
     fi
 
