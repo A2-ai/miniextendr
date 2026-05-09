@@ -8,6 +8,7 @@ pub mod export_attrs;
 pub mod ffi_unchecked;
 pub mod fn_visibility;
 pub mod impl_validation;
+pub mod lifetime_param;
 pub mod r_reserved_params;
 pub mod rf_error;
 pub mod s4_method_prefix;
@@ -39,6 +40,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: s4_* method name on #[miniextendr(s4)] impl (MXL111)
     s4_method_prefix::check(index, &mut diagnostics);
+
+    // Per-file: explicit lifetime param on #[miniextendr] fn/impl (MXL112)
+    lifetime_param::check(index, &mut diagnostics);
 
     // Sort by path and line for deterministic output
     diagnostics.sort_by(|a, b| {

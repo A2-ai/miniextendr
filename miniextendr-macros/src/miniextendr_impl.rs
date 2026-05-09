@@ -2132,13 +2132,35 @@ impl ParsedImpl {
         // Reject all generics until codegen fully supports them.
         // The wrapper generation uses `type_ident` without generic args, which would
         // fail to compile or mis-resolve types for generic impls.
-        if !item_impl.generics.params.is_empty() {
-            return Err(syn::Error::new_spanned(
-                &item_impl.generics,
-                "generic impl blocks are not supported by #[miniextendr]. \
-                 R's .Call interface requires monomorphic C symbols, so generic type parameters \
-                 cannot be used. Remove the generic parameters and use a concrete type instead.",
-            ));
+        // Lifetimes and type/const params are rejected for different reasons and get distinct messages.
+        {
+            let params = &item_impl.generics.params;
+            let has_lifetime = params
+                .iter()
+                .any(|p| matches!(p, syn::GenericParam::Lifetime(_)));
+            let has_type_or_const = params
+                .iter()
+                .any(|p| matches!(p, syn::GenericParam::Type(_) | syn::GenericParam::Const(_)));
+
+            if has_lifetime {
+                return Err(syn::Error::new_spanned(
+                    &item_impl.generics,
+                    "#[miniextendr] impl blocks cannot have explicit lifetime parameters. \
+                     The generated `extern \"C-unwind\" #[no_mangle]` C wrappers are \
+                     incompatible with any generic parameter, including lifetimes. \
+                     Use owned types (`Vec<T>` instead of `&[T]`, `String` instead of `&str`) \
+                     or remove the explicit lifetime annotation.",
+                ));
+            }
+            if has_type_or_const {
+                return Err(syn::Error::new_spanned(
+                    &item_impl.generics,
+                    "generic impl blocks are not supported by #[miniextendr]. \
+                     R's .Call interface requires monomorphic C symbols, so generic type \
+                     parameters cannot be used. Remove the generic parameters and use a \
+                     concrete type instead.",
+                ));
+            }
         }
 
         // Reject unsupported attributes on the impl block
