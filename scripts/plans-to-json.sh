@@ -28,15 +28,15 @@ for plan in "$PLANS_DIR"/*.md; do
   title=$(head -1 "$plan" | sed -E 's/^# +//')
 
   summary=$(
-    tail -n +2 "$plan" | awk '
-      BEGIN { capture = 0 }
+    awk '
+      NR == 1 { next }
       /^[[:space:]]*$/ { if (capture) exit; next }
       /^#/            { if (capture) exit; next }
       /^```/          { if (capture) exit; next }
       /^[-*] /        { if (capture) exit; next }
       /^[0-9]+\. /    { if (capture) exit; next }
       { capture = 1; print }
-    ' | tr '\n' ' ' \
+    ' "$plan" | tr '\n' ' ' \
       | sed -E \
         -e 's/[[:space:]]+/ /g' \
         -e 's/^ //; s/ $//' \
