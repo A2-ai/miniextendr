@@ -458,8 +458,8 @@ _assert-no-vendor-leak:
           "error: rpkg/inst/vendor.tar.xz is present in the source tree." \
           "" \
           "This usually means a previous build/smoke leaked it. configure" \
-          "flips into tarball mode and ignores monorepo [patch] propagation," \
-          "so further dev iteration is unreliable." \
+          "now flips into tarball mode and may ignore source edits /" \
+          "monorepo [patch.\"git+url\"] propagation, making dev iteration unreliable." \
           "" \
           "Fix:  just clean-vendor-leak" \
           "" \
