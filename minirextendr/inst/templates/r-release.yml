@@ -1,0 +1,115 @@
+# This template encodes four platform gotchas surfaced by issue #448:
+#   1. LANG=C.UTF-8 scoped to container jobs (AlmaLinux 8 has no UTF-8 locale by default)
+#   2. NOT set workflow-level (macOS rejects C.UTF-8 — glibc-only locale identifier)
+#   3. AlmaLinux minimal needs `dnf install git gh` + `gh auth setup-git`
+#   4. CARGO_NET_GIT_FETCH_WITH_CLI=true for cargo + private git deps on both platforms
+# See docs/RELEASE_WORKFLOW.md for the full rationale.
+#
+# Scaffold this file into your package with:
+#   minirextendr::use_release_workflow()
+
+name: r-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Skip uploads (dry run)"
+        type: boolean
+        default: true
+  push:
+    tags: ["v*"]
+
+# Gotcha 4: set workflow-wide so cargo uses system git on all platforms.
+# Safe on Linux and macOS; has no effect on platforms without git deps.
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  # ── AlmaLinux 8 (RHEL 8 family) ──────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    container: almalinux:8
+    # Gotcha 1: scope LANG/LC_ALL to this job only.
+    # Gotcha 2: do NOT put these at the workflow env: level — macOS rejects C.UTF-8.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    steps:
+      # Gotcha 3: AlmaLinux minimal has no git, gh, or UTF-8 locale pack.
+      - name: Install build tools (AlmaLinux 8 minimal)
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git gh dnf-plugins-core which procps-ng glibc-langpack-en
+
+      - uses: actions/checkout@v4
+
+      # Gotcha 3: configure git credential helper so cargo can fetch private deps.
+      # GH_TOKEN is required — gh errors with "no token" without it.
+      # Cross-org: GITHUB_TOKEN only accesses this repo; use secrets.GH_PAT if
+      # your package depends on private repos in another org or user account.
+      - name: Configure git auth for cargo private deps
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh auth setup-git
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure package (generate Makevars)
+        run: bash ./configure
+
+      - name: Build and check
+        run: |
+          R CMD build .
+          R CMD check --as-cran --no-manual ./*.tar.gz
+
+  # ── macOS arm64 ───────────────────────────────────────────────────────────
+  build-macos:
+    strategy:
+      matrix:
+        r-version: ['release', 'oldrel-1']
+    runs-on: macos-14  # arm64 runner
+
+    # Note: NO LANG/LC_ALL here — macOS runners default to UTF-8 and break
+    # if you force C.UTF-8 (glibc-only). See docs/RELEASE_WORKFLOW.md Gotcha 2.
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gotcha 4: gh is preinstalled on macOS runners; configure credential helper
+      # so cargo (with CARGO_NET_GIT_FETCH_WITH_CLI=true) can fetch private deps.
+      # Cross-org: GITHUB_TOKEN only accesses this repo; use secrets.GH_PAT if
+      # your package depends on private repos in another org or user account.
+      - name: Configure git auth for cargo private deps
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh auth setup-git
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r-version }}
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure package (generate Makevars)
+        run: bash ./configure
+
+      - name: Build and check
+        run: |
+          R CMD build .
+          R CMD check --as-cran --no-manual ./*.tar.gz
