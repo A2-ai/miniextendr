@@ -541,6 +541,9 @@ devtools-build: configure vendor
     trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     Rscript -e 'devtools::build("rpkg")'
 
+# No _assert-no-vendor-leak dep — devtools::check internally calls
+# pkgbuild::build, which legitimately produces inst/vendor.tar.xz mid-run.
+# The guard would fire spuriously. Same for `test-r-build`.
 # Check rpkg with devtools::check
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
