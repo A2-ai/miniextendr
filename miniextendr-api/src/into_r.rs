@@ -1365,6 +1365,7 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
     }
 }
 
+// region: Vec<Option<borrowed string>>
 /// Convert `Vec<Option<&str>>` to R character vector with NA support.
 ///
 /// `None` values become `NA_character_` in R. Borrowed analogue of `Vec<Option<String>>`.
@@ -1417,6 +1418,7 @@ impl IntoR for Vec<Option<&str>> {
         }
     }
 }
+// endregion
 
 /// Convert `Vec<&str>` to R character vector (STRSXP).
 impl IntoR for Vec<&str> {
