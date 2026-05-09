@@ -416,28 +416,35 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Add inline @field documentation for active bindings
             // roxygen2 requires @field tags (not @description) for active bindings
             let method_name = ctx.method.r_method_name();
-            if ctx.method.doc_tags.is_empty() {
+            let method_noexport =
+                ctx.method.method_attrs.noexport || ctx.method.method_attrs.internal;
+            if method_noexport {
+                // roxygen2 8.0.0 opt-out: `@field name NULL` suppresses documentation
+                // for fields and active bindings without excluding the binding itself.
+                lines.push(format!("    #' @field {} NULL", method_name));
+            } else if ctx.method.doc_tags.is_empty() {
                 lines.push(format!("    #' @field {} Active binding.", method_name));
-            }
-            for tag in &ctx.method.doc_tags {
-                for (line_idx, line) in tag.lines().enumerate() {
-                    // Convert @description/@title to @field on first line only
-                    let line = if line_idx == 0 {
-                        if let Some(desc) = line.strip_prefix("@description ") {
-                            format!("@field {} {}", method_name, desc)
-                        } else if let Some(desc) = line.strip_prefix("@title ") {
-                            format!("@field {} {}", method_name, desc)
-                        } else if !line.starts_with('@') {
-                            // Plain doc comment - treat as field description
-                            format!("@field {} {}", method_name, line)
+            } else {
+                for tag in &ctx.method.doc_tags {
+                    for (line_idx, line) in tag.lines().enumerate() {
+                        // Convert @description/@title to @field on first line only
+                        let line = if line_idx == 0 {
+                            if let Some(desc) = line.strip_prefix("@description ") {
+                                format!("@field {} {}", method_name, desc)
+                            } else if let Some(desc) = line.strip_prefix("@title ") {
+                                format!("@field {} {}", method_name, desc)
+                            } else if !line.starts_with('@') {
+                                // Plain doc comment - treat as field description
+                                format!("@field {} {}", method_name, line)
+                            } else {
+                                line.to_string()
+                            }
                         } else {
+                            // Continuation lines stay as-is
                             line.to_string()
-                        }
-                    } else {
-                        // Continuation lines stay as-is
-                        line.to_string()
-                    };
-                    lines.push(format!("    #' {}", line));
+                        };
+                        lines.push(format!("    #' {}", line));
+                    }
                 }
             }
 
