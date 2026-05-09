@@ -18,7 +18,6 @@ CDYLIB_PREFIX         = @CDYLIB_PREFIX@
 CDYLIB_EXT            = @CDYLIB_EXT@
 TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
-EXTRA_PKG_CFLAGS      = @EXTRA_PKG_CFLAGS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # codegen-units = 1 in Cargo.toml ensures the user crate compiles into a single .o
@@ -26,7 +25,6 @@ CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # brings all linkme distributed_slice entries along — no force_load needed.
 PKG_LIBS = $(CARGO_AR)
 PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
-PKG_CFLAGS = $(EXTRA_PKG_CFLAGS)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R

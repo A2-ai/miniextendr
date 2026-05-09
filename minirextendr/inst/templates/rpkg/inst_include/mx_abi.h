@@ -44,7 +44,18 @@
 #define MINIEXTENDR_MX_ABI_H
 
 #include <R.h>
+
+/* Suppress clang 21+'s -Wunknown-warning-option meta-warning for upstream R's
+ * Boolean.h pragma. Out-of-PKG_CFLAGS scoped guard avoids R CMD check WARNING
+ * on non-portable suppressor flags. See miniextendr issue #443. */
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wunknown-warning-option"
+#endif
 #include <Rinternals.h>
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#endif
 #include <stddef.h>
 #include <stdint.h>
 

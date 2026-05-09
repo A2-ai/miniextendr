@@ -45,10 +45,20 @@ use_miniextendr_rust <- function(path = ".") {
 use_miniextendr_stub <- function(path = ".") {
   with_project(path)
   ensure_dir(usethis::proj_path("src"))
+
   stub_src <- template_path("stub.c")
   stub_dest <- usethis::proj_path("src", "stub.c")
   fs::file_copy(stub_src, stub_dest, overwrite = TRUE)
   bullet_created("src/stub.c")
+
+  # r_shim.h wraps <Rinternals.h> in a scoped clang pragma so C TUs avoid
+  # -Wno-unknown-warning-option in PKG_CFLAGS (which triggers an R CMD check
+  # WARNING under --as-cran). See issue #443.
+  shim_src <- template_path("r_shim.h")
+  shim_dest <- usethis::proj_path("src", "r_shim.h")
+  fs::file_copy(shim_src, shim_dest, overwrite = TRUE)
+  bullet_created("src/r_shim.h")
+
   invisible(TRUE)
 }
 
