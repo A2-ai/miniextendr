@@ -29,10 +29,6 @@ Regular getter for version.
 \section{Additional properties}{
 
 \describe{
-\item{\code{@name}}{Required property - must be provided.}
-
 \item{\code{@old_version}}{Deprecated property - emits warning when accessed.}
-
-\item{\code{@score}}{Property with default value.}
 }}
 
