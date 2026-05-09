@@ -419,9 +419,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let method_noexport =
                 ctx.method.method_attrs.noexport || ctx.method.method_attrs.internal;
             if method_noexport {
-                // roxygen2 8.0.0 opt-out: `@field name NULL` suppresses documentation
-                // for fields and active bindings without excluding the binding itself.
-                lines.push(format!("    #' @field {} NULL", method_name));
+                // `@field name NULL` is documented as the roxygen2 8.0.0 opt-out, but
+                // `r6_resolve_fields` still emits "Undocumented R6 active binding"
+                // because `expected` is introspected from the class definition and
+                // is not pruned in sync with the NULL-description discard. Emit a
+                // minimal `(internal)` description: it satisfies the warning, keeps
+                // the binding clearly marked as internal in the rendered docs, and
+                // is short enough not to clutter the help page.
+                lines.push(format!("    #' @field {} (internal)", method_name));
             } else if ctx.method.doc_tags.is_empty() {
                 lines.push(format!("    #' @field {} Active binding.", method_name));
             } else {

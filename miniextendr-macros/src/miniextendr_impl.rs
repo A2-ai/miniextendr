@@ -653,11 +653,14 @@ pub struct MethodAttrs {
     pub r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
     /// Mark this method as internal: adds `@keywords internal`, suppresses export.
     ///
-    /// For R6 active bindings this emits `#' @field name NULL` (roxygen2 8.0.0 opt-out).
+    /// For R6 active bindings this emits `#' @field name (internal)` so the binding
+    /// stays satisfied for roxygen2 (which warns on undocumented R6 bindings even
+    /// when `@field name NULL` is present) but is clearly marked internal in the docs.
     pub internal: bool,
     /// Suppress export for this method without adding `@keywords internal`.
     ///
-    /// For R6 active bindings this emits `#' @field name NULL` (roxygen2 8.0.0 opt-out).
+    /// For R6 active bindings this emits `#' @field name (internal)` (see `internal`
+    /// above for why we don't use roxygen2's `@field name NULL` opt-out).
     pub noexport: bool,
 }
 
@@ -1729,10 +1732,13 @@ impl ParsedMethod {
         method_attrs.error_in_r = resolved_error_in_r;
 
         // Method-level `internal` / `noexport` are currently only honoured by the R6
-        // active-binding doc path (emits `#' @field <name> NULL`, the roxygen2 8.0.0
-        // opt-out). Accepting them silently elsewhere would be a no-op surface: regular
-        // instance methods, static methods, and trait methods don't currently consume
-        // these flags. Reject them at parse time so the failure is loud rather than silent.
+        // active-binding doc path (emits `#' @field <name> (internal)` — the documented
+        // roxygen2 8.0.0 `@field name NULL` opt-out doesn't actually silence
+        // `r6_resolve_fields`'s "Undocumented R6 active binding" warning, so we use a
+        // minimal real description instead). Accepting them silently elsewhere would be a
+        // no-op surface: regular instance methods, static methods, and trait methods don't
+        // currently consume these flags. Reject them at parse time so the failure is loud
+        // rather than silent.
         // Class-level `#[miniextendr(internal)]` / `noexport` continue to work for whole
         // impl blocks via `parsed_impl.internal` / `parsed_impl.noexport`.
         if (method_attrs.internal || method_attrs.noexport) && !method_attrs.r6.active {

@@ -6381,7 +6381,7 @@ R6SensorReading <- R6::R6Class("R6SensorReading",
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    #' @field raw_bytes NULL
+    #' @field raw_bytes (internal)
     raw_bytes = function() {
       .val <- .Call(C_R6SensorReading__raw_bytes, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
