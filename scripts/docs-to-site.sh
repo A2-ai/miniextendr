@@ -16,8 +16,8 @@ extract_description() {
   local raw
 
   raw=$(
-    tail -n +2 "$doc" | awk '
-      BEGIN { capture = 0 }
+    awk '
+      NR == 1 { next }
       /^[[:space:]]*$/ {
         if (capture) exit
         next
@@ -42,7 +42,7 @@ extract_description() {
         capture = 1
         print
       }
-    '
+    ' "$doc"
   )
 
   if [ -z "$raw" ]; then
