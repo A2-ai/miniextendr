@@ -23,15 +23,15 @@ container builds and macOS arm64 runners (issue #448):
 }
 \details{
 \enumerate{
-\item \code{LANG=C.UTF-8} scoped to container jobs — AlmaLinux 8 minimal defaults
+\item \code{LANG=C.UTF-8} scoped to container jobs --- AlmaLinux 8 minimal defaults
 to the \code{C} locale, which fails miniextendr's UTF-8 assertion.
-\item Not set workflow-wide — macOS rejects \code{C.UTF-8} (glibc-only identifier).
+\item Not set workflow-wide --- macOS rejects \code{C.UTF-8} (glibc-only identifier).
 \item \verb{dnf install git gh} + \verb{gh auth setup-git} for AlmaLinux 8 minimal.
 \item \code{CARGO_NET_GIT_FETCH_WITH_CLI=true} workflow-wide so cargo uses the
 system git binary and can authenticate private git dependencies.
 }
 
 See \code{docs/RELEASE_WORKFLOW.md} in the miniextendr repository for the full
-rationale, and \code{?miniextendr_assert_utf8_locale} for why the UTF-8 check
-exists.
+rationale, and \code{\link[miniextendr]{assert_utf8_locale_now}} for why the
+UTF-8 check exists.
 }

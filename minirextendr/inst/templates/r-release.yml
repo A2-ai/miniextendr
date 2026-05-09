@@ -46,6 +46,8 @@ jobs:
 
       # Gotcha 3: configure git credential helper so cargo can fetch private deps.
       # GH_TOKEN is required — gh errors with "no token" without it.
+      # Cross-org: GITHUB_TOKEN only accesses this repo; use secrets.GH_PAT if
+      # your package depends on private repos in another org or user account.
       - name: Configure git auth for cargo private deps
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -85,6 +87,8 @@ jobs:
 
       # Gotcha 4: gh is preinstalled on macOS runners; configure credential helper
       # so cargo (with CARGO_NET_GIT_FETCH_WITH_CLI=true) can fetch private deps.
+      # Cross-org: GITHUB_TOKEN only accesses this repo; use secrets.GH_PAT if
+      # your package depends on private repos in another org or user account.
       - name: Configure git auth for cargo private deps
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

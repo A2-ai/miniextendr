@@ -15,8 +15,8 @@
 #'    system git binary and can authenticate private git dependencies.
 #'
 #' See `docs/RELEASE_WORKFLOW.md` in the miniextendr repository for the full
-#' rationale, and `?miniextendr_assert_utf8_locale` for why the UTF-8 check
-#' exists.
+#' rationale, and \code{\link[miniextendr]{assert_utf8_locale_now}} for why the
+#' UTF-8 check exists.
 #'
 #' @param path Path to the package root. Defaults to `"."`.
 #' @param overwrite If `TRUE`, replace an existing

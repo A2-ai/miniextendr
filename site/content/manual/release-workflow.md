@@ -99,6 +99,12 @@ environment; without it `gh` exits with "no token". Also set
 `CARGO_NET_GIT_FETCH_WITH_CLI=true` (see Gotcha 4) so cargo uses the CLI git
 instead of libgit2.
 
+> **PAT required for cross-org private deps.** `GITHUB_TOKEN` only grants
+> access to the workflow's own repository. If your package depends on private
+> git repos in *another* GitHub organization or user account, `GITHUB_TOKEN`
+> will fail with a 404. Use a fine-grained PAT stored as a repository secret
+> (e.g. `secrets.GH_PAT`) and substitute it in the `GH_TOKEN:` env line.
+
 ### Gotcha 4: macOS needs auth + `CARGO_NET_GIT_FETCH_WITH_CLI`
 
 macOS runners ship with `git` preinstalled, but cargo still uses its built-in

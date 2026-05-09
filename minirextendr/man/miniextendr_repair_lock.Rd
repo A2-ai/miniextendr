@@ -20,18 +20,17 @@ was already in tarball-shape (no action taken).
 \description{
 The committed \code{src/rust/Cargo.lock} must be in \strong{tarball-shape} (no
 \code{checksum = "..."} lines, no \code{path+...} source entries for the
-\verb{miniextendr-\{api,lint,macros\}} framework crates). Day-to-day
-\code{devtools::install()}, \verb{cargo build}, or \code{devtools::document()} silently
+\code{miniextendr-{api,lint,macros}} framework crates). Day-to-day
+\code{devtools::install()}, \code{cargo build}, or \code{devtools::document()} silently
 rewrites the lock in source-shape: checksums come back for crates.io deps
-and framework crates switch to \verb{path+file:///...} entries.
-}
-\details{
+and framework crates switch to \code{path+file:///...} entries.
+
 \code{miniextendr_repair_lock()} is a sub-second lock-only repair:
 \enumerate{
-\item Moves \code{.cargo/config.toml} aside temporarily so \verb{cargo update} runs
-without the \verb{[patch."git+url"]} override that would re-introduce
-\verb{path+} entries.
-\item Runs \verb{cargo update} to resolve the lockfile against the bare git URLs.
+\item Moves \code{.cargo/config.toml} aside temporarily so \code{cargo update} runs
+without the \code{[patch."git+url"]} override that would re-introduce
+\code{path+} entries.
+\item Runs \code{cargo update} to resolve the lockfile against the bare git URLs.
 \item Strips any remaining \code{checksum = "..."} lines.
 \item Restores \code{.cargo/config.toml} on exit (success or error).
 }
@@ -39,7 +38,7 @@ without the \verb{[patch."git+url"]} override that would re-introduce
 This is the lightweight alternative to \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} — use it
 during dev iteration when you only need a clean lock, not a fresh
 \code{inst/vendor.tar.xz}. Use \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} only before
-\verb{R CMD build} for CRAN submission.
+\code{R CMD build} for CRAN submission.
 
 For the full invariants and reasoning, see the
 \href{https://a2-ai.github.io/miniextendr/manual/cargo-lock-shape/}{Cargo.lock shape}

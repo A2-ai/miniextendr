@@ -17,14 +17,13 @@ was already absent.
 \description{
 \code{inst/vendor.tar.xz} is the single signal that flips \code{./configure} into
 offline tarball mode. Once that file exists, every subsequent
-\verb{R CMD INSTALL}, \code{devtools::install()}, or \code{devtools::document()} call
+\code{R CMD INSTALL}, \code{devtools::install()}, or \code{devtools::document()} call
 builds against the vendored snapshot rather than pulling live workspace
 or network sources.
-}
-\details{
+
 This is intentional during CRAN submission prep (run
-\code{\link[=miniextendr_vendor]{miniextendr_vendor()}} first, then \verb{R CMD build}). It becomes a trap
-when a prior \verb{R CMD build} or check run leaves the file behind in your
+\code{\link[=miniextendr_vendor]{miniextendr_vendor()}} first, then \code{R CMD build}). It becomes a trap
+when a prior \code{R CMD build} or check run leaves the file behind in your
 source tree.
 
 Call this function after any unexpected tarball-mode install to restore

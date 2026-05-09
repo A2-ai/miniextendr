@@ -31,9 +31,7 @@ package in a healthy state:
 \itemize{
 \item \strong{pre-commit}: Checks \verb{cargo fmt}, blocks on stale \code{configure} script
 or stale NAMESPACE (when \verb{*-wrappers.R} changed without \code{devtools::document()}),
-blocks on source-shape \code{src/rust/Cargo.lock} (recommends
-\code{\link[=miniextendr_repair_lock]{miniextendr_repair_lock()}}), notes when \code{inst/vendor.tar.xz} may need
-updating
+notes when \code{inst/vendor.tar.xz} may need updating
 \item \strong{post-merge}: Reminds you to reconfigure after pulling changes to
 build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
 }
