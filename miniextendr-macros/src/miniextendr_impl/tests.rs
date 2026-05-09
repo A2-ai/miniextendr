@@ -296,9 +296,14 @@ fn r6_wrapper_defaults_unchanged() {
 }
 
 #[test]
-fn r6_active_binding_noexport_emits_field_null() {
-    // roxygen2 8.0.0: `@field name NULL` suppresses documentation for active bindings
-    // tagged with `#[miniextendr(noexport)]`.
+fn r6_active_binding_noexport_emits_field_internal() {
+    // `#[miniextendr(noexport)]` on an R6 active binding emits a minimal
+    // `#' @field name (internal)` description. The roxygen2 8.0.0 NEWS claims
+    // `@field name NULL` is the opt-out, but in practice `r6_resolve_fields`
+    // still warns "Undocumented R6 active binding" for that form because
+    // `expected` is introspected from the class definition and is not pruned
+    // in sync with the NULL-description discard. A minimal real description
+    // satisfies the warning and keeps the binding clearly marked as internal.
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Sensor {
             pub fn new(v: f64, r: i32) -> Self { unimplemented!() }
@@ -320,24 +325,31 @@ fn r6_active_binding_noexport_emits_field_null() {
         wrapper
     );
 
-    // Noexported active binding: roxygen2 8.0.0 opt-out form.
+    // Noexported active binding: minimal `(internal)` description.
     assert!(
-        wrapper.contains("#' @field raw_bytes NULL"),
-        "noexported active binding must emit '@field raw_bytes NULL'\n{}",
+        wrapper.contains("#' @field raw_bytes (internal)"),
+        "noexported active binding must emit '@field raw_bytes (internal)'\n{}",
         wrapper
     );
 
-    // Must NOT emit "Active binding." for the noexported binding.
+    // Must NOT emit "Active binding." for the noexported binding, and must NOT
+    // emit the old `NULL`-opt-out form.
     assert!(
         !wrapper.contains("#' @field raw_bytes Active binding."),
         "noexported active binding must not have regular description\n{}",
         wrapper
     );
+    assert!(
+        !wrapper.contains("#' @field raw_bytes NULL"),
+        "noexported active binding must not use the (broken) NULL opt-out\n{}",
+        wrapper
+    );
 }
 
 #[test]
-fn r6_active_binding_internal_emits_field_null() {
-    // `#[miniextendr(internal)]` on an active binding also emits `@field name NULL`.
+fn r6_active_binding_internal_emits_field_internal() {
+    // `#[miniextendr(internal)]` on an R6 active binding emits the same
+    // `#' @field name (internal)` form as `noexport`.
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Device {
             pub fn new() -> Self { unimplemented!() }
@@ -352,13 +364,18 @@ fn r6_active_binding_internal_emits_field_null() {
     let wrapper = generate_r6_r_wrapper(&parsed);
 
     assert!(
-        wrapper.contains("#' @field debug_ptr NULL"),
-        "internal active binding must emit '@field debug_ptr NULL'\n{}",
+        wrapper.contains("#' @field debug_ptr (internal)"),
+        "internal active binding must emit '@field debug_ptr (internal)'\n{}",
         wrapper
     );
     assert!(
         !wrapper.contains("#' @field debug_ptr Active binding."),
         "internal active binding must not have regular description\n{}",
+        wrapper
+    );
+    assert!(
+        !wrapper.contains("#' @field debug_ptr NULL"),
+        "internal active binding must not use the (broken) NULL opt-out\n{}",
         wrapper
     );
 }

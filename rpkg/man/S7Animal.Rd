@@ -24,9 +24,3 @@ S7Animal(kind, legs, .ptr = NULL)
 Returns the animal kind - should be callable on all descendants.
 }
 \keyword{internal}
-\section{Additional properties}{
-
-\describe{
-\item{\code{@legs}}{Computed property: number of legs.}
-}}
-

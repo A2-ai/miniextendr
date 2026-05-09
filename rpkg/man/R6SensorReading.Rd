@@ -13,6 +13,8 @@ R6 sensor reading with one documented and one undocumented active binding
   \if{html}{\out{<div class="r6-active-bindings">}}
   \describe{
     \item{\code{value}}{The calibrated sensor value (exported active binding).}
+
+    \item{\code{raw_bytes}}{(internal)}
   }
   \if{html}{\out{</div>}}
 }
