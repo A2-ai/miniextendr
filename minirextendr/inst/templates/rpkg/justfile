@@ -149,6 +149,7 @@ vendor:
 # (configure's only signal is `[ -f inst/vendor.tar.xz ]`), which freezes out
 # any cargo-resolved dependency edits.
 cran-prep: vendor rbuild rcheck
+    # TODO(#454): trap-clean on failure — see issue #454
     rm -f inst/vendor.tar.xz
 
 # ============================================================================
