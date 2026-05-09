@@ -14,15 +14,209 @@
 //!
 //! Map types (HashMap/BTreeMap), nested-enum payloads, and struct-in-variant
 //! payloads are tracked by GH issues #457 / #458 / #459 — not exercised here.
-//! Opaque container fields (Vec<T>, HashSet<T>, BTreeSet<T>) in enum variants
-//! fail to compile on the align path because `Vec<Option<C>>` lacks `IntoR`
-//! impls — tracked by #461. `&[T]` enum payloads are deferred until the
-//! lifetime-support PR lands.
+//! `&[T]` enum payloads are deferred until the lifetime-support PR lands.
 
 #![allow(dead_code)]
 
+use std::collections::{BTreeSet, HashSet};
+
 use miniextendr_api::convert::ToDataFrame;
 use miniextendr_api::{DataFrameRow, List, miniextendr};
+
+// region: 0a. Vec<i32> opaque (no expand/width → list-column) ─────────────────
+
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum VecOpaqueEvent {
+    Items {
+        label: String,
+        items: Vec<i32>,
+    },
+    NoItems {
+        label: String,
+    },
+}
+
+fn vec_opaque_payload(label: &str, items: Vec<i32>) -> VecOpaqueEvent {
+    VecOpaqueEvent::Items {
+        label: label.into(),
+        items,
+    }
+}
+
+#[miniextendr]
+pub fn vec_opaque_split_1v1r() -> List {
+    VecOpaqueEvent::to_dataframe_split(vec![vec_opaque_payload("a", vec![1, 2, 3])])
+}
+
+#[miniextendr]
+pub fn vec_opaque_split_1vnr() -> List {
+    VecOpaqueEvent::to_dataframe_split(vec![
+        vec_opaque_payload("a", vec![1, 2, 3]),
+        vec_opaque_payload("b", vec![4, 5]),
+        vec_opaque_payload("c", vec![]),
+    ])
+}
+
+#[miniextendr]
+pub fn vec_opaque_split_nv1r() -> List {
+    VecOpaqueEvent::to_dataframe_split(vec![
+        vec_opaque_payload("a", vec![1, 2, 3]),
+        VecOpaqueEvent::NoItems { label: "b".into() },
+    ])
+}
+
+#[miniextendr]
+pub fn vec_opaque_align_nvnr() -> ToDataFrame<VecOpaqueEventDataFrame> {
+    ToDataFrame(VecOpaqueEvent::to_dataframe(vec![
+        vec_opaque_payload("a", vec![1, 2, 3]),
+        VecOpaqueEvent::NoItems { label: "b".into() },
+        vec_opaque_payload("c", vec![4, 5]),
+        VecOpaqueEvent::NoItems { label: "d".into() },
+    ]))
+}
+
+#[miniextendr]
+pub fn vec_opaque_split_nvnr() -> List {
+    VecOpaqueEvent::to_dataframe_split(vec![
+        vec_opaque_payload("a", vec![1, 2, 3]),
+        VecOpaqueEvent::NoItems { label: "b".into() },
+        vec_opaque_payload("c", vec![4, 5]),
+        VecOpaqueEvent::NoItems { label: "d".into() },
+    ])
+}
+
+// endregion
+
+// region: 0b. HashSet<String> opaque (list-column, unordered elements) ─────────
+
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum HashSetEvent {
+    Tagged {
+        id: i32,
+        tags: HashSet<String>,
+    },
+    Untagged {
+        id: i32,
+    },
+}
+
+fn hashset_payload(id: i32, tags: &[&str]) -> HashSetEvent {
+    HashSetEvent::Tagged {
+        id,
+        tags: tags.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+#[miniextendr]
+pub fn hashset_split_1v1r() -> List {
+    HashSetEvent::to_dataframe_split(vec![hashset_payload(1, &["a", "b"])])
+}
+
+#[miniextendr]
+pub fn hashset_split_1vnr() -> List {
+    HashSetEvent::to_dataframe_split(vec![
+        hashset_payload(1, &["a", "b"]),
+        hashset_payload(2, &["c"]),
+        hashset_payload(3, &[]),
+    ])
+}
+
+#[miniextendr]
+pub fn hashset_split_nv1r() -> List {
+    HashSetEvent::to_dataframe_split(vec![
+        hashset_payload(1, &["a", "b"]),
+        HashSetEvent::Untagged { id: 2 },
+    ])
+}
+
+#[miniextendr]
+pub fn hashset_align_nvnr() -> ToDataFrame<HashSetEventDataFrame> {
+    ToDataFrame(HashSetEvent::to_dataframe(vec![
+        hashset_payload(1, &["a", "b"]),
+        HashSetEvent::Untagged { id: 2 },
+        hashset_payload(3, &["c"]),
+        HashSetEvent::Untagged { id: 4 },
+    ]))
+}
+
+#[miniextendr]
+pub fn hashset_split_nvnr() -> List {
+    HashSetEvent::to_dataframe_split(vec![
+        hashset_payload(1, &["a", "b"]),
+        HashSetEvent::Untagged { id: 2 },
+        hashset_payload(3, &["c"]),
+        HashSetEvent::Untagged { id: 4 },
+    ])
+}
+
+// endregion
+
+// region: 0c. BTreeSet<i32> opaque (list-column, sorted elements) ──────────────
+
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum BTreeSetEvent {
+    Cats {
+        label: String,
+        cats: BTreeSet<i32>,
+    },
+    NoCats {
+        label: String,
+    },
+}
+
+fn btreeset_payload(label: &str, cats: &[i32]) -> BTreeSetEvent {
+    BTreeSetEvent::Cats {
+        label: label.into(),
+        cats: cats.iter().copied().collect(),
+    }
+}
+
+#[miniextendr]
+pub fn btreeset_split_1v1r() -> List {
+    BTreeSetEvent::to_dataframe_split(vec![btreeset_payload("a", &[3, 1, 2])])
+}
+
+#[miniextendr]
+pub fn btreeset_split_1vnr() -> List {
+    BTreeSetEvent::to_dataframe_split(vec![
+        btreeset_payload("a", &[3, 1, 2]),
+        btreeset_payload("b", &[5, 4]),
+        btreeset_payload("c", &[]),
+    ])
+}
+
+#[miniextendr]
+pub fn btreeset_split_nv1r() -> List {
+    BTreeSetEvent::to_dataframe_split(vec![
+        btreeset_payload("a", &[3, 1, 2]),
+        BTreeSetEvent::NoCats { label: "b".into() },
+    ])
+}
+
+#[miniextendr]
+pub fn btreeset_align_nvnr() -> ToDataFrame<BTreeSetEventDataFrame> {
+    ToDataFrame(BTreeSetEvent::to_dataframe(vec![
+        btreeset_payload("a", &[3, 1, 2]),
+        BTreeSetEvent::NoCats { label: "b".into() },
+        btreeset_payload("c", &[5, 4]),
+        BTreeSetEvent::NoCats { label: "d".into() },
+    ]))
+}
+
+#[miniextendr]
+pub fn btreeset_split_nvnr() -> List {
+    BTreeSetEvent::to_dataframe_split(vec![
+        btreeset_payload("a", &[3, 1, 2]),
+        BTreeSetEvent::NoCats { label: "b".into() },
+        btreeset_payload("c", &[5, 4]),
+        BTreeSetEvent::NoCats { label: "d".into() },
+    ])
+}
+
+// endregion
 
 // region: 1. Vec<T> width = N (pinned expansion) ─────────────────────────────
 

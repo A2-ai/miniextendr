@@ -2077,6 +2077,151 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::ffi::SEXP {
     }
 }
 
+// region: Vec<Option<Collection>> conversions ──────────────────────────────────
+
+/// Helper: convert `Vec<Option<C: IntoR>>` to a VECSXP, with `None` mapping to
+/// `R_NilValue` (NULL) and `Some(v)` mapping to whatever `v.into_sexp()` produces.
+fn vec_option_of_into_r_to_list<T: IntoR>(items: Vec<Option<T>>) -> crate::ffi::SEXP {
+    unsafe {
+        let n = items.len();
+        let list = OwnedProtect::new(crate::ffi::Rf_allocVector(
+            crate::ffi::SEXPTYPE::VECSXP,
+            n as crate::ffi::R_xlen_t,
+        ));
+        for (i, item) in items.into_iter().enumerate() {
+            let elt = match item {
+                Some(v) => v.into_sexp(),
+                None => crate::ffi::SEXP::nil(),
+            };
+            list.get().set_vector_elt(i as crate::ffi::R_xlen_t, elt);
+        }
+        *list
+    }
+}
+
+/// Convert `Vec<Option<Vec<T>>>` to R list where `None` → NULL, `Some(v)` → typed vector.
+impl<T: crate::ffi::RNativeType> IntoR for Vec<Option<Vec<T>>>
+where
+    Vec<T>: IntoR,
+{
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<Vec<String>>>` to R list where `None` → NULL, `Some(v)` → character vector.
+impl IntoR for Vec<Option<Vec<String>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<HashSet<T>>>` to R list where `None` → NULL, `Some(s)` → unordered vector.
+impl<T: crate::ffi::RNativeType + Eq + Hash> IntoR for Vec<Option<HashSet<T>>>
+where
+    HashSet<T>: IntoR,
+{
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<HashSet<String>>>` to R list where `None` → NULL, `Some(s)` → character vector.
+impl IntoR for Vec<Option<HashSet<String>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<BTreeSet<T>>>` to R list where `None` → NULL, `Some(s)` → sorted vector.
+impl<T: crate::ffi::RNativeType + Ord> IntoR for Vec<Option<BTreeSet<T>>>
+where
+    BTreeSet<T>: IntoR,
+{
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<BTreeSet<String>>>` to R list where `None` → NULL, `Some(s)` → sorted character vector.
+impl IntoR for Vec<Option<BTreeSet<String>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<HashMap<String, V>>>` to R list where `None` → NULL, `Some(m)` → named list.
+impl<V: IntoR> IntoR for Vec<Option<HashMap<String, V>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<BTreeMap<String, V>>>` to R list where `None` → NULL, `Some(m)` → named list.
+impl<V: IntoR> IntoR for Vec<Option<BTreeMap<String, V>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+// endregion
+
 /// Convert `Vec<HashSet<T>>` to R list of vectors (for RNativeType elements).
 /// Each HashSet becomes an R vector (unordered).
 impl<T: crate::ffi::RNativeType> IntoR for Vec<std::collections::HashSet<T>>
