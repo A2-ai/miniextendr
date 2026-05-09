@@ -107,3 +107,8 @@ Rows alternate between variant A (has \code{value} only) and variant B (has \cod
 
 Rows: None, None, Some(42u64), None.  Two-phase discovery resolves the column to \code{Scalar(Real)}.  Result: numeric column with NA at positions 1, 2, 4.
 }
+\details{
+This fixture tests that the per-key candidate accumulation works correctly for an enum with fields that differ between variants.
+
+TODO (union recursion): when a single \emph{key} maps to two different Compound shapes (e.g. two variant rows of an internally-tagged enum where the nested struct differs per variant), the first Compound wins silently.  Recursive Compound union is tracked as a separate follow-up issue.
+}

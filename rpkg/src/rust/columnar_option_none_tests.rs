@@ -390,11 +390,10 @@ pub fn test_columnar_schema_upgrade_multi_none_first() -> ColumnarDataFrame {
 /// This fixture tests that the per-key candidate accumulation works correctly for
 /// an enum with fields that differ between variants.
 ///
-/// # TODO: union recursion
-/// When a single *key* maps to two different Compound shapes (e.g. two variant
-/// rows of an internally-tagged enum where the nested struct differs per variant),
-/// the first Compound wins silently.  Recursive Compound union is tracked as a
-/// separate follow-up issue.
+/// TODO (union recursion): when a single *key* maps to two different Compound
+/// shapes (e.g. two variant rows of an internally-tagged enum where the nested
+/// struct differs per variant), the first Compound wins silently.  Recursive
+/// Compound union is tracked as a separate follow-up issue.
 ///
 /// @export
 #[miniextendr]
