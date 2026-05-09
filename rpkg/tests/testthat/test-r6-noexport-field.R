@@ -1,9 +1,13 @@
-# Tests for `@field name NULL` opt-out for noexported R6 active bindings.
+# Tests for the `noexport` / `internal` opt-out on R6 active bindings.
 #
-# roxygen2 8.0.0: `@field name NULL` in an R6 active-binding block tells roxygen2
-# to exclude that binding from the generated `.Rd`.  miniextendr emits this form
-# automatically when the Rust method is tagged `#[miniextendr(noexport)]` or
-# `#[miniextendr(internal)]`.
+# roxygen2 8.0.0's NEWS documents `@field name NULL` as the opt-out for an
+# active binding, but in practice `r6_resolve_fields` still warns "Undocumented
+# R6 active binding" for that form because `expected` is introspected from the
+# class and isn't pruned in sync with the NULL-description discard. miniextendr
+# therefore emits a minimal `#' @field <name> (internal)` description for
+# `#[miniextendr(noexport)]` / `#[miniextendr(internal)]` active bindings —
+# satisfies roxygen2 (no warning), and clearly tags the binding as internal in
+# the rendered Rd.
 
 # region: runtime behaviour
 
@@ -13,8 +17,8 @@ test_that("R6SensorReading exported active binding is accessible", {
 })
 
 test_that("R6SensorReading noexported active binding is still accessible at runtime", {
-  # The binding is excluded from docs but NOT from the R6 object.  Users can
-  # still reach it — suppressing docs does not suppress the binding.
+  # The binding is marked internal in the docs but is still a real public
+  # active binding on the R6 object — users can reach it.
   s <- R6SensorReading$new(2.71, 512L)
   expect_equal(s$raw_bytes, 512L)
 })
@@ -23,9 +27,10 @@ test_that("R6SensorReading noexported active binding is still accessible at runt
 
 # region: documentation opt-out
 
-test_that("noexported active binding is absent from the rendered Rd", {
-  # Read the installed .Rd for R6SensorReading and check that `raw_bytes`
-  # does not appear in the Active bindings section.
+test_that("noexported active binding renders as (internal) in the rendered Rd", {
+  # The binding appears in `\section{Active bindings}` with the description
+  # text `(internal)` — the minimal-real-description form that satisfies
+  # roxygen2 8.0.0 without claiming to be user-facing documentation.
   rd_db <- tryCatch(
     tools::Rd_db("miniextendr"),
     error = function(e) NULL
@@ -37,11 +42,19 @@ test_that("noexported active binding is absent from the rendered Rd", {
   rd <- rd_db[[sensor_rd_name]]
   rd_text <- paste(capture.output(print(rd)), collapse = "\n")
 
-  expect_false(
+  expect_true(
     grepl("raw_bytes", rd_text),
     info = paste(
-      "`raw_bytes` (noexported active binding) must not appear in R6SensorReading.Rd.",
-      "Found in:\n", rd_text
+      "`raw_bytes` (noexported active binding) must appear in R6SensorReading.Rd",
+      "as a marked-internal entry. Got:\n", rd_text
+    )
+  )
+  expect_match(
+    rd_text,
+    "\\\\item\\{\\\\code\\{raw_bytes\\}\\}\\{\\(internal\\)\\}",
+    info = paste(
+      "`raw_bytes` must render as `\\item{\\code{raw_bytes}}{(internal)}` in the",
+      "Active bindings section. Got:\n", rd_text
     )
   )
 })
