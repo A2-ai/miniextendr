@@ -45,6 +45,28 @@ fn vec_opaque_payload(label: &str, items: Vec<i32>) -> VecOpaqueEvent {
 }
 
 #[miniextendr]
+pub fn vec_opaque_split_1v1r() -> List {
+    VecOpaqueEvent::to_dataframe_split(vec![vec_opaque_payload("a", vec![1, 2, 3])])
+}
+
+#[miniextendr]
+pub fn vec_opaque_split_1vnr() -> List {
+    VecOpaqueEvent::to_dataframe_split(vec![
+        vec_opaque_payload("a", vec![1, 2, 3]),
+        vec_opaque_payload("b", vec![4, 5]),
+        vec_opaque_payload("c", vec![]),
+    ])
+}
+
+#[miniextendr]
+pub fn vec_opaque_split_nv1r() -> List {
+    VecOpaqueEvent::to_dataframe_split(vec![
+        vec_opaque_payload("a", vec![1, 2, 3]),
+        VecOpaqueEvent::NoItems { label: "b".into() },
+    ])
+}
+
+#[miniextendr]
 pub fn vec_opaque_align_nvnr() -> ToDataFrame<VecOpaqueEventDataFrame> {
     ToDataFrame(VecOpaqueEvent::to_dataframe(vec![
         vec_opaque_payload("a", vec![1, 2, 3]),
@@ -88,6 +110,28 @@ fn hashset_payload(id: i32, tags: &[&str]) -> HashSetEvent {
 }
 
 #[miniextendr]
+pub fn hashset_split_1v1r() -> List {
+    HashSetEvent::to_dataframe_split(vec![hashset_payload(1, &["a", "b"])])
+}
+
+#[miniextendr]
+pub fn hashset_split_1vnr() -> List {
+    HashSetEvent::to_dataframe_split(vec![
+        hashset_payload(1, &["a", "b"]),
+        hashset_payload(2, &["c"]),
+        hashset_payload(3, &[]),
+    ])
+}
+
+#[miniextendr]
+pub fn hashset_split_nv1r() -> List {
+    HashSetEvent::to_dataframe_split(vec![
+        hashset_payload(1, &["a", "b"]),
+        HashSetEvent::Untagged { id: 2 },
+    ])
+}
+
+#[miniextendr]
 pub fn hashset_align_nvnr() -> ToDataFrame<HashSetEventDataFrame> {
     ToDataFrame(HashSetEvent::to_dataframe(vec![
         hashset_payload(1, &["a", "b"]),
@@ -128,6 +172,28 @@ fn btreeset_payload(label: &str, cats: &[i32]) -> BTreeSetEvent {
         label: label.into(),
         cats: cats.iter().copied().collect(),
     }
+}
+
+#[miniextendr]
+pub fn btreeset_split_1v1r() -> List {
+    BTreeSetEvent::to_dataframe_split(vec![btreeset_payload("a", &[3, 1, 2])])
+}
+
+#[miniextendr]
+pub fn btreeset_split_1vnr() -> List {
+    BTreeSetEvent::to_dataframe_split(vec![
+        btreeset_payload("a", &[3, 1, 2]),
+        btreeset_payload("b", &[5, 4]),
+        btreeset_payload("c", &[]),
+    ])
+}
+
+#[miniextendr]
+pub fn btreeset_split_nv1r() -> List {
+    BTreeSetEvent::to_dataframe_split(vec![
+        btreeset_payload("a", &[3, 1, 2]),
+        BTreeSetEvent::NoCats { label: "b".into() },
+    ])
 }
 
 #[miniextendr]

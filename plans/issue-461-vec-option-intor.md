@@ -196,16 +196,16 @@ Add the `vec_option_of_into_r_to_list` helper and 8 concrete `Vec<Option<C>>` im
 
    All impls use `Error = std::convert::Infallible`. All unchecked variants delegate to `try_into_sexp()` (same as other collection impls). The `std::hash::Hash` bound is already in scope at the top of `into_r.rs` (line 27).
 
-2. **`rpkg/src/rust/dataframe_enum_payload_matrix.rs`** — add the three previously-dropped sections:
-   - **Opaque `Vec<i32>` section**: enum with `items: Vec<i32>` field (no `expand`, no `width`). Expose `#[miniextendr]` functions `vec_opaque_align_nvnr()` and `vec_opaque_split_nvnr()`.
-   - **`HashSet<String>` section**: enum with `tags: HashSet<String>` field. Same pattern.
-   - **`BTreeSet<i32>` section**: enum with `cats: BTreeSet<i32>` field. Same pattern.
+2. **`rpkg/src/rust/dataframe_enum_payload_matrix.rs`** — add the three previously-dropped sections with full four-cell cardinality coverage:
+   - **Opaque `Vec<i32>` section**: enum with `items: Vec<i32>` field (no `expand`, no `width`). Expose `#[miniextendr]` functions `vec_opaque_split_1v1r()`, `vec_opaque_split_1vnr()`, `vec_opaque_split_nv1r()`, `vec_opaque_align_nvnr()`, and `vec_opaque_split_nvnr()`.
+   - **`HashSet<String>` section**: enum with `tags: HashSet<String>` field. Same pattern: `hashset_split_1v1r()`, `hashset_split_1vnr()`, `hashset_split_nv1r()`, `hashset_align_nvnr()`, `hashset_split_nvnr()`.
+   - **`BTreeSet<i32>` section**: enum with `cats: BTreeSet<i32>` field. Same pattern: `btreeset_split_1v1r()`, `btreeset_split_1vnr()`, `btreeset_split_nv1r()`, `btreeset_align_nvnr()`, `btreeset_split_nvnr()`.
    Remove the comment at line 19 that says these are blocked on #461.
 
-3. **`rpkg/tests/testthat/test-dataframe-enum-payload-matrix.R`** — add test blocks for the three new fixtures:
-   - Opaque `Vec<i32>`: verify list-column structure, NULL for absent rows, vector for present rows.
-   - `HashSet<String>`: verify list-column, NULL for absent, character vector for present.
-   - `BTreeSet<i32>`: verify sorted order preserved in list-column elements.
+3. **`rpkg/tests/testthat/test-dataframe-enum-payload-matrix.R`** — add test blocks for all four cardinality cells per new fixture:
+   - Opaque `Vec<i32>`: `1v1r`, `1vNr`, `Nv1r` split tests + the existing `NvNr` align and split tests. Verify list-column structure, NULL for absent rows, vector (including empty) for present rows.
+   - `HashSet<String>`: `1v1r`, `1vNr`, `Nv1r` split tests + `NvNr` tests. Use `expect_setequal` (unordered) for membership checks.
+   - `BTreeSet<i32>`: `1v1r`, `1vNr`, `Nv1r` split tests + `NvNr` tests. Use `expect_equal` to verify sorted order preserved.
    Remove the comment at line 19 mentioning the block on #461.
 
 4. **GC stress fixture** (if the new impls touch SEXP storage across allocations): `vec_option_of_into_r_to_list` calls `item.into_sexp()` inside a loop while the outer VECSXP is `OwnedProtect`-protected. The pattern is safe but should be verified with `gctorture(TRUE)`. Add a no-arg `gc_stress_vec_option_collection()` in `rpkg/src/rust/gc_stress_fixtures.rs` that builds a `Vec<Option<Vec<i32>>>`, `Vec<Option<HashSet<String>>>`, and `Vec<Option<BTreeSet<i32>>>` and calls `into_sexp()` on each.

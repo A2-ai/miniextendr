@@ -18,6 +18,31 @@ expect_split_partition <- function(part, expected_nrow, expected_cols) {
 
 # ── 0a. Vec<i32> opaque (list-column, no expand/width) ───────────────────────
 
+test_that("vec opaque — split 1v1r: one Items row, no_items has 0 rows", {
+  res <- vec_opaque_split_1v1r()
+  expect_setequal(names(res), c("items", "no_items"))
+  expect_split_partition(res$items, 1, c("label", "items"))
+  expect_split_partition(res$no_items, 0, "label")
+  expect_equal(res$items$items[[1]], c(1L, 2L, 3L))
+})
+
+test_that("vec opaque — split 1vNr: multiple Items rows, no_items has 0 rows", {
+  res <- vec_opaque_split_1vnr()
+  expect_split_partition(res$items, 3, c("label", "items"))
+  expect_split_partition(res$no_items, 0, "label")
+  expect_equal(res$items$items[[1]], c(1L, 2L, 3L))
+  expect_equal(res$items$items[[2]], c(4L, 5L))
+  expect_equal(res$items$items[[3]], integer(0))
+})
+
+test_that("vec opaque — split Nv1r: one row each, no_items omits items column", {
+  res <- vec_opaque_split_nv1r()
+  expect_split_partition(res$items, 1, c("label", "items"))
+  expect_split_partition(res$no_items, 1, "label")
+  expect_equal(res$no_items$label, "b")
+  expect_equal(res$items$items[[1]], c(1L, 2L, 3L))
+})
+
 test_that("vec opaque — align NvNr: present rows are integer vectors, absent rows are NULL", {
   df <- vec_opaque_align_nvnr()
   expect_equal(df$`_type`, c("Items", "NoItems", "Items", "NoItems"))
@@ -45,6 +70,32 @@ test_that("vec opaque — split NvNr: items partition has list-column, no_items 
 
 # ── 0b. HashSet<String> opaque (list-column, unordered elements) ──────────────
 
+test_that("hashset — split 1v1r: one Tagged row, untagged has 0 rows", {
+  res <- hashset_split_1v1r()
+  expect_setequal(names(res), c("tagged", "untagged"))
+  expect_split_partition(res$tagged, 1, c("id", "tags"))
+  expect_split_partition(res$untagged, 0, "id")
+  # HashSet is unordered — use setequal
+  expect_setequal(res$tagged$tags[[1]], c("a", "b"))
+})
+
+test_that("hashset — split 1vNr: multiple Tagged rows, untagged has 0 rows", {
+  res <- hashset_split_1vnr()
+  expect_split_partition(res$tagged, 3, c("id", "tags"))
+  expect_split_partition(res$untagged, 0, "id")
+  expect_setequal(res$tagged$tags[[1]], c("a", "b"))
+  expect_setequal(res$tagged$tags[[2]], c("c"))
+  expect_equal(length(res$tagged$tags[[3]]), 0L)
+})
+
+test_that("hashset — split Nv1r: one row each, untagged omits tags column", {
+  res <- hashset_split_nv1r()
+  expect_split_partition(res$tagged, 1, c("id", "tags"))
+  expect_split_partition(res$untagged, 1, "id")
+  expect_equal(res$untagged$id, 2L)
+  expect_setequal(res$tagged$tags[[1]], c("a", "b"))
+})
+
 test_that("hashset — align NvNr: present rows are character vectors, absent rows are NULL", {
   df <- hashset_align_nvnr()
   expect_equal(df$`_type`, c("Tagged", "Untagged", "Tagged", "Untagged"))
@@ -69,6 +120,33 @@ test_that("hashset — split NvNr: tagged partition has tags list-column, untagg
 })
 
 # ── 0c. BTreeSet<i32> opaque (list-column, sorted elements) ──────────────────
+
+test_that("btreeset — split 1v1r: one Cats row, no_cats has 0 rows, sorted order", {
+  res <- btreeset_split_1v1r()
+  expect_setequal(names(res), c("cats", "no_cats"))
+  expect_split_partition(res$cats, 1, c("label", "cats"))
+  expect_split_partition(res$no_cats, 0, "label")
+  # BTreeSet sorts input [3,1,2] → [1,2,3]
+  expect_equal(res$cats$cats[[1]], c(1L, 2L, 3L))
+})
+
+test_that("btreeset — split 1vNr: multiple Cats rows, no_cats has 0 rows, sorted order", {
+  res <- btreeset_split_1vnr()
+  expect_split_partition(res$cats, 3, c("label", "cats"))
+  expect_split_partition(res$no_cats, 0, "label")
+  # BTreeSet sorts [3,1,2] → [1,2,3] and [5,4] → [4,5]
+  expect_equal(res$cats$cats[[1]], c(1L, 2L, 3L))
+  expect_equal(res$cats$cats[[2]], c(4L, 5L))
+  expect_equal(res$cats$cats[[3]], integer(0))
+})
+
+test_that("btreeset — split Nv1r: one row each, no_cats omits cats column", {
+  res <- btreeset_split_nv1r()
+  expect_split_partition(res$cats, 1, c("label", "cats"))
+  expect_split_partition(res$no_cats, 1, "label")
+  expect_equal(res$no_cats$label, "b")
+  expect_equal(res$cats$cats[[1]], c(1L, 2L, 3L))
+})
 
 test_that("btreeset — align NvNr: present rows are sorted integer vectors, absent rows are NULL", {
   df <- btreeset_align_nvnr()
