@@ -1,4 +1,4 @@
-error: #[miniextendr] functions cannot have generic type parameters. Generic functions are incompatible with `extern "C-unwind"` and `#[no_mangle]` required for R FFI. Consider using trait objects or monomorphization instead.
+error: #[miniextendr] functions cannot have generic type or const parameters. Generic functions are incompatible with `extern "C-unwind"` and `#[no_mangle]` required for R FFI. Consider using trait objects or monomorphization instead.
  --> tests/ui/fn_generic.rs:6:15
   |
 6 | fn bad_generic<T>(x: T) -> T {

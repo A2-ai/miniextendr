@@ -228,6 +228,19 @@ pub struct WithSlicePinned<'a> {
     pub coords: &'a [f64],
 }
 
+// Test that DataFrameRow-annotated enums with borrowed fields work when using
+// a struct with a lifetime (issue #460). For enums, use String/owned types
+// instead of &'a str (Vec<Option<&str>> lacks IntoR in enum context).
+// The struct path supports borrowed fields directly (see WithSliceExpand below).
+// This enum uses only owned types to verify the enum expand path compiles.
+#[derive(Clone, Debug, DataFrameRow)]
+pub enum WithLifetimeEnumOwned {
+    Row {
+        label: String,
+        value: f64,
+    },
+}
+
 // Test enum with skip
 #[derive(Clone, Debug, DataFrameRow)]
 pub enum EventWithSkip {
@@ -909,5 +922,30 @@ mod tests {
         assert_eq!(df.code[0], None);
         assert_eq!(df.code[1], Some(1));
         assert_eq!(df.readings_1[1], None);
+    }
+
+    #[test]
+    fn test_lifetime_enum_owned() {
+        // Verify enum DataFrameRow with owned types works end-to-end (issue #460).
+        // Borrowed fields (&'a str) produce Vec<Option<&str>> which lacks IntoR in
+        // enum context — use String instead. The struct path (WithSliceExpand, etc.)
+        // supports borrowed &'a str / &'a [T] fields directly.
+        let rows = vec![
+            WithLifetimeEnumOwned::Row {
+                label: "a".to_string(),
+                value: 1.0,
+            },
+            WithLifetimeEnumOwned::Row {
+                label: "b".to_string(),
+                value: 2.0,
+            },
+        ];
+        let df = WithLifetimeEnumOwned::to_dataframe(rows);
+        assert_eq!(df.label.len(), 2);
+        assert_eq!(df.label[0], Some("a".to_string()));
+        assert_eq!(df.label[1], Some("b".to_string()));
+        assert_eq!(df.value.len(), 2);
+        assert_eq!(df.value[0], Some(1.0));
+        assert_eq!(df.value[1], Some(2.0));
     }
 }

@@ -1,0 +1,5 @@
+error: #[miniextendr] functions cannot have explicit lifetime parameters. The generated `extern "C-unwind" #[no_mangle]` wrapper is incompatible with any generic parameter, including lifetimes. Use owned types (`Vec<T>` instead of `&[T]`, `String` instead of `&str`) or remove the explicit lifetime annotation — `&[T]` and `&str` arguments work without explicit lifetime params.
+ --> tests/ui/miniextendr_fn_lifetime_param.rs:6:7
+  |
+6 | fn foo<'a>(x: &'a [f64]) -> Vec<f64> {
+  |       ^^^^

@@ -31,6 +31,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 - **macOS tar xattrs**: set `COPYFILE_DISABLE=1` when creating tarballs to avoid Apple metadata warnings on Linux/Windows GNU tar.
 - **`cargo-revendor`**: standalone workspace (excluded from miniextendr workspace). Build/test via `just revendor-build`/`just revendor-test`. `--freeze` resolves `Cargo.toml` against `vendor/` only.
 - **`ColumnarDataFrame::from_rows`: all-None columns**: columns where every row had `Option<T> = None` land as a logical NA column (LGLSXP), not `list(NULL, NULL, …)`. R coerces logical NA to the surrounding type on first use (`c(NA, 1L)` → integer, `c(NA, "x")` → character). Mixed Some/None columns are unaffected.
+- **Lifetime parameters in `#[miniextendr]`**: `&[T]` and `&str` arguments work without explicit lifetime annotations — the macro converts them internally via `TryFromSexp`. Explicit lifetime params on `#[miniextendr]` functions or impl blocks are rejected (MXL112) because `extern "C-unwind" #[no_mangle]` is incompatible with any generic parameter. Use `Vec<T>` / `String` instead. For `#[derive(DataFrameRow)]` structs, lifetime params on the struct itself propagate correctly (e.g., `struct Foo<'a> { vals: &'a [f64] }`). For DataFrameRow enums, the macro also accepts lifetime params, but borrowed fields (e.g., `&'a str`) produce `Vec<Option<&str>>` companion columns that currently lack `IntoR` impls — use `String` for text fields in enum DataFrameRow types.
 
 ### `just` vs raw `cargo`
 
@@ -212,6 +213,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 - **MXL106**: non-`pub` function that would get `@export` → make `pub` or add `#[miniextendr(noexport)]`
 - **MXL110**: parameter name is an R reserved word → codegen will break
 - **MXL111**: `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends, you'll get `s4_s4_*`
+- **MXL112**: explicit lifetime parameter on `#[miniextendr]` fn or impl — use `Vec<T>` / `String` instead
 - **MXL203**: redundant `internal` + `noexport`
 - **MXL300**: direct `Rf_error`/`Rf_errorcall` → replace with `panic!()` (framework converts to R error)
 - **MXL301**: `_unchecked` FFI outside known-safe contexts

@@ -25,6 +25,8 @@ pub enum LintCode {
     MXL110,
     /// `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends `s4_`.
     MXL111,
+    /// Explicit lifetime parameter on `#[miniextendr]` fn or impl — use owned types instead.
+    MXL112,
     // endregion
 
     // region: P1: Important
@@ -59,9 +61,12 @@ impl LintCode {
             Self::MXL110 => Severity::Error,
 
             // Everything else is a warning.
-            Self::MXL106 | Self::MXL111 | Self::MXL203 | Self::MXL300 | Self::MXL301 => {
-                Severity::Warning
-            }
+            Self::MXL106
+            | Self::MXL111
+            | Self::MXL112
+            | Self::MXL203
+            | Self::MXL300
+            | Self::MXL301 => Severity::Warning,
         }
     }
 }
