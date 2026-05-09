@@ -69,7 +69,7 @@ jobs:
       - name: Build and check
         run: |
           R CMD build .
-          R CMD check --as-cran --no-manual *.tar.gz
+          R CMD check --as-cran --no-manual ./*.tar.gz
 
   # ── macOS arm64 ───────────────────────────────────────────────────────────
   build-macos:
@@ -108,4 +108,4 @@ jobs:
       - name: Build and check
         run: |
           R CMD build .
-          R CMD check --as-cran --no-manual *.tar.gz
+          R CMD check --as-cran --no-manual ./*.tar.gz
