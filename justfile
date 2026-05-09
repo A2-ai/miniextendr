@@ -443,6 +443,35 @@ clean-vendor-leak:
         echo "No tarball leak to clean."
     fi
 
+# Internal: abort if rpkg/inst/vendor.tar.xz is present.
+# Used as a dep by dev-consume recipes (rcmdinstall, devtools-test,
+# devtools-load, devtools-install) that would silently do the wrong thing
+# in tarball mode. NOT wired to producer recipes (r-cmd-build, r-cmd-check,
+# devtools-build) which intentionally create the tarball and trap-clean it.
+# See CLAUDE.md "Vendor tarball is a latch" for context.
+[private]
+[script("bash")]
+_assert-no-vendor-leak:
+    set -euo pipefail
+    if [ -f rpkg/inst/vendor.tar.xz ]; then
+        cat >&2 <<'EOF'
+error: rpkg/inst/vendor.tar.xz is present but not committed.
+
+This usually means a previous build/smoke leaked it into the source
+tree. configure now flips into tarball mode and ignores monorepo
+[patch."git+url"] propagation, so further dev iteration is unreliable.
+
+Fix:
+  just clean-vendor-leak
+
+Or directly:
+  rm rpkg/inst/vendor.tar.xz && just configure
+
+See CLAUDE.md "Vendor tarball is a latch" for context.
+EOF
+        exit 1
+    fi
+
 # Verify committed Cargo.lock, vendor/, and vendor.tar.xz agree (#157).
 # Runs in CI/pre-release to guarantee the offline build artifact is fresh.
 vendor-verify:
@@ -453,8 +482,16 @@ vendor-verify:
       --compress rpkg/inst/vendor.tar.xz \
       -v
 
+# Regression test: bootstrap.R must produce inst/vendor.tar.xz from a clean
+# source tree. Catches the #439/#440 regression where a leftover tarball was
+# bundled instead of a freshly-bootstrapped one. Requires cargo-revendor on PATH
+# and pkgbuild installed in R; skips with a clear message if either is missing.
+# See tests/bootstrap-produces-vendor.sh and #441.
+test-bootstrap-vendor:
+    bash tests/bootstrap-produces-vendor.sh
+
 # Load and test rpkg with devtools
-devtools-test FILTER="": devtools-document
+devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     if [ -z "{{FILTER}}" ]; then \
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'; \
     else \
@@ -463,11 +500,11 @@ devtools-test FILTER="": devtools-document
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
-devtools-load: devtools-document
+devtools-load: _assert-no-vendor-leak devtools-document
     Rscript -e 'devtools::load_all("rpkg")'
 
 # Install rpkg with devtools::install
-devtools-install: devtools-document
+devtools-install: _assert-no-vendor-leak devtools-document
     Rscript -e 'devtools::install("rpkg")'
 
 # Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, vctrs, etc.)
@@ -527,8 +564,8 @@ document-all: devtools-document minirextendr-document
 configure-all: configure cross-configure
 
 alias rcmdinstall := r-cmd-install
-r-cmd-install *args: configure
-    R CMD INSTALL {{args}} rpkg 
+r-cmd-install *args: _assert-no-vendor-leak configure
+    R CMD INSTALL {{args}} rpkg
 
 # Build R package tarball
 # Depends on `vendor` so the tarball ships inst/vendor.tar.xz, which is what
