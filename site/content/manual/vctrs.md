@@ -399,37 +399,49 @@ This generates coercion methods for both `double` and `integer`.
 
 ## Impl Block Approach (Rust-Backed Protocol Methods)
 
-For types that need Rust-backed vctrs protocol methods (like a custom `format`), use the impl block approach with `#[miniextendr(vctrs(...))]`:
+For types that need Rust-backed vctrs protocol methods (like a custom `format`), use the impl block approach with `#[miniextendr(vctrs(...))]`.
+
+### Constructors and static methods only (MXL120)
+
+A `#[miniextendr(vctrs(...))]` impl may only contain:
+
+- **A constructor** — `pub fn new(...) -> <vector-payload>` (no receiver). The return type must be
+  the vector payload (`Vec<f64>`, `Vec<i32>`, etc.), **not** `Self` or the named type.
+  `new_vctr()` / `new_rcrd()` / `new_list_of()` wrap this value into the S3 class — they
+  require a plain vector, not an `ExternalPtr`.
+- **Static helper methods** — `pub fn helper(args...) -> ...` (no receiver).
+- **vctrs protocol overrides** — static methods annotated with `#[miniextendr(vctrs(format))]`
+  (or other protocol names). These are emitted as `format.<Class>` S3 methods.
+
+`&self`, `&mut self`, `self`, and `self: ExternalPtr<Self>` receivers are **rejected at
+compile time** (MXL120). A vctrs object is an S3-classed base vector — there is no Rust
+`Self` stored in the SEXP. The C wrapper would call `ErasedExternalPtr::from_sexp` on a
+REALSXP/INTSXP and then panic when the downcast fails. Static methods with explicit
+parameters are the correct pattern.
 
 ```rust
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct DerivedCurrency {
-    symbol: String,
-    amounts: Vec<f64>,
-}
+// Zero-sized marker struct (no fields needed — the data is in the R vector)
+pub struct DerivedCurrency;
 
 #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "$"))]
 impl DerivedCurrency {
-    pub fn new(symbol: String, amounts: Vec<f64>) -> Self {
-        DerivedCurrency { symbol, amounts }
+    /// Returns the amounts payload; wrapped by the R constructor as a vctrs vector.
+    pub fn new(_symbol: String, amounts: Vec<f64>) -> Vec<f64> {
+        amounts
     }
 
-    pub fn symbol(&self) -> String {
-        self.symbol.clone()
-    }
-
-    /// Rust-backed format method override.
+    /// Rust-backed format method override — maps to format.DerivedCurrency in R.
     #[miniextendr(vctrs(format))]
-    pub fn format_currency(&self) -> Vec<String> {
-        self.amounts
+    pub fn format_currency(symbol: String, amounts: Vec<f64>) -> Vec<String> {
+        amounts
             .iter()
-            .map(|a| format!("{}{:.2}", self.symbol, a))
+            .map(|a| format!("{}{:.2}", symbol, a))
             .collect()
     }
 }
 ```
 
-This gives you the same vctrs class registration but lets you override specific protocol methods with Rust implementations. The `format_currency` method is called as `format.derived_currency()` from R.
+The `format_currency` method above is emitted as `format.DerivedCurrency <- function(symbol, amounts)`.
 
 ### Non-`Self` constructors in vctrs impl blocks
 
