@@ -49,6 +49,28 @@ clean:
 # R package development
 # ============================================================================
 
+# Internal: abort if inst/vendor.tar.xz is present in the source tree.
+# inst/vendor.tar.xz is the single signal that flips configure into tarball
+# mode. Dev-consume recipes wire this guard to prevent silent tarball-mode
+# iteration when the file is left over from a previous cran-prep run.
+# Producer recipes (cran-prep, rbuild, rcheck) are intentionally excluded.
+[private]
+[script("bash")]
+_assert-no-vendor-leak:
+    set -euo pipefail
+    if [ -f inst/vendor.tar.xz ]; then
+        printf '%s\n' \
+          "error: inst/vendor.tar.xz is present in the source tree." \
+          "" \
+          "This file is produced by 'just vendor' / 'just cran-prep' for CRAN" \
+          "submission. When present, configure flips into tarball/offline mode," \
+          "which ignores cargo's normal dependency resolution." \
+          "" \
+          "Fix:  rm inst/vendor.tar.xz && just configure" \
+          >&2
+        exit 1
+    fi
+
 # Configure the R package (generate Makevars and build files)
 #
 # This must be run before any R CMD operation. It:
@@ -59,11 +81,11 @@ configure:
     bash ./configure
 
 # Build and install R package with R CMD INSTALL
-install *args: configure
+install *args: _assert-no-vendor-leak configure
     R CMD INSTALL {{args}} .
 
 # Run R package tests with devtools
-rtest FILTER="": configure
+rtest FILTER="": _assert-no-vendor-leak configure
     #!/usr/bin/env bash
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'devtools::test(".")'
@@ -76,11 +98,11 @@ rdoc: configure
     Rscript -e 'devtools::document(".")'
 
 # Load package with devtools::load_all (for interactive development)
-load: configure
+load: _assert-no-vendor-leak configure
     Rscript -e 'devtools::load_all(".")'
 
 # Install with devtools::install
-devtools-install: configure
+devtools-install: _assert-no-vendor-leak configure
     Rscript -e 'devtools::install(".")'
 
 # Build R package tarball
@@ -127,6 +149,7 @@ vendor:
 # (configure's only signal is `[ -f inst/vendor.tar.xz ]`), which freezes out
 # any cargo-resolved dependency edits.
 cran-prep: vendor rbuild rcheck
+    # TODO(#454): trap-clean on failure — see issue #454
     rm -f inst/vendor.tar.xz
 
 # ============================================================================
