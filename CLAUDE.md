@@ -224,6 +224,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 - **Stale `.snap.new`**: diff vs `.snap`; if expected, `mv` over the old snapshot. Re-run `just test`.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
 - **Missing `.cargo/config.toml` / cargo resolves framework crates from git instead of local siblings**: stale `rpkg/inst/vendor.tar.xz` left by an interrupted `just r-cmd-build` or `r-cmd-check`. Fix: `rm rpkg/inst/vendor.tar.xz && just configure`. `minirextendr_doctor()` detects both conditions.
+- **Vendor tarball is a latch (#441).** `rpkg/inst/vendor.tar.xz` is the single signal `configure` checks for tarball mode; once present, every subsequent configure honours it. Recipes that *produce* the tarball (`just r-cmd-build`, `just r-cmd-check`, `just devtools-build`) trap-clean on exit. Recipes that *consume* configure state (`just rcmdinstall`, `just devtools-test`, `just devtools-load`, `just devtools-install`) refuse to run if the tarball is present — `just clean-vendor-leak` removes the leak. Symptom of a leaked tarball: monorepo workspace-crate edits are silently ignored (no `[patch."git+url"]`), or `Cargo.lock` mismatch errors during build. Fix: `just clean-vendor-leak`. Regression test: `just test-bootstrap-vendor` (#441). See also `docs/CRAN_COMPATIBILITY.md`.
 
 ## Capturing Command Output
 
