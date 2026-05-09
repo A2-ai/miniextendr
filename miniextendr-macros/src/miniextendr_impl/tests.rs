@@ -294,6 +294,74 @@ fn r6_wrapper_defaults_unchanged() {
     assert!(!wrapper.contains("inherit ="));
     assert!(!wrapper.contains("portable = FALSE"));
 }
+
+#[test]
+fn r6_active_binding_noexport_emits_field_null() {
+    // roxygen2 8.0.0: `@field name NULL` suppresses documentation for active bindings
+    // tagged with `#[miniextendr(noexport)]`.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Sensor {
+            pub fn new(v: f64, r: i32) -> Self { unimplemented!() }
+            #[miniextendr(r6(active))]
+            pub fn value(&self) -> f64 { unimplemented!() }
+            #[miniextendr(r6(active), noexport)]
+            pub fn raw_bytes(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    // Exported active binding: normal `@field name <description>` form.
+    // (Default text when no doc comment provided is "Active binding.")
+    assert!(
+        wrapper.contains("#' @field value Active binding."),
+        "exported active binding must have '@field value Active binding.'\n{}",
+        wrapper
+    );
+
+    // Noexported active binding: roxygen2 8.0.0 opt-out form.
+    assert!(
+        wrapper.contains("#' @field raw_bytes NULL"),
+        "noexported active binding must emit '@field raw_bytes NULL'\n{}",
+        wrapper
+    );
+
+    // Must NOT emit "Active binding." for the noexported binding.
+    assert!(
+        !wrapper.contains("#' @field raw_bytes Active binding."),
+        "noexported active binding must not have regular description\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn r6_active_binding_internal_emits_field_null() {
+    // `#[miniextendr(internal)]` on an active binding also emits `@field name NULL`.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Device {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(r6(active))]
+            pub fn status(&self) -> i32 { unimplemented!() }
+            #[miniextendr(r6(active), internal)]
+            pub fn debug_ptr(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    assert!(
+        wrapper.contains("#' @field debug_ptr NULL"),
+        "internal active binding must emit '@field debug_ptr NULL'\n{}",
+        wrapper
+    );
+    assert!(
+        !wrapper.contains("#' @field debug_ptr Active binding."),
+        "internal active binding must not have regular description\n{}",
+        wrapper
+    );
+}
 // endregion
 
 // region: S3 class system tests
