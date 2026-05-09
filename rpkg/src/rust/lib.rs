@@ -23,6 +23,7 @@
 //!
 //! - [`r6_tests`]: R6 class system tests (including active bindings)
 //! - [`r6_default_tests`]: R6 default parameter tests
+//! - [`r6_noexport_field_tests`]: R6 `@field name NULL` opt-out for noexported active bindings
 //! - [`s3_tests`]: S3 class system tests
 //! - [`s4_tests`]: S4 class system tests
 //! - [`s7_tests`]: S7 class system tests
@@ -216,6 +217,7 @@ mod panic_telemetry_tests;
 mod panic_tests;
 mod protect_pool_tests;
 mod r6_default_tests;
+mod r6_noexport_field_tests;
 mod r6_tests;
 #[cfg(all(feature = "nalgebra", feature = "ndarray"))]
 mod r_backed_tests;
