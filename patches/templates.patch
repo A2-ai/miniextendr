@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-05-08 13:18:09
-+++ b/monorepo/rpkg/Makevars.in	2026-05-02 12:32:24
+--- a/monorepo/rpkg/Makevars.in	2026-05-08 15:38:32
++++ b/monorepo/rpkg/Makevars.in	2026-05-08 15:38:32
 @@ -19,5 +19,4 @@
  TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
  NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
@@ -14,19 +14,63 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-05-08 14:07:00
-+++ b/monorepo/rpkg/bootstrap.R	2026-04-28 10:42:41
-@@ -3,12 +3,9 @@
- # before R CMD build creates the source tarball.
+--- a/monorepo/rpkg/bootstrap.R	2026-05-08 15:39:14
++++ b/monorepo/rpkg/bootstrap.R	2026-05-08 15:38:32
+@@ -1,53 +1,11 @@
+-# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
+-# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
+-# the source directory before R CMD build seals the tarball. Two jobs:
+-#   1. Produce inst/vendor.tar.xz via cargo-revendor, so the sealed
+-#      tarball ships with vendored sources for offline install.
+-#   2. Run ./configure so Makevars and other generated files exist
+-#      before R CMD build collects them.
++# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
++# Runs ./configure so that Makevars and other generated files exist
++# before R CMD build creates the source tarball.
  #
--# This file is invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package)
--# in the build-staging directory before sealing the source tarball.
+-# Why vendoring lives here, not in configure.ac's auto-vendor block:
+-# pkgbuild::build_setup_source uses callr::rscript against the original
+-# source dir (Config/build/copy-method defaults to "none"), so when
+-# configure runs it walks up to the workspace .git and SOURCE_IS_GIT=true
+-# — the .git-walk auto-vendor in configure skips. We do it here, before
+-# ./configure is called, so the tarball gets sealed with vendor.tar.xz
+-# inside.
 -#
--# Vendoring (production of inst/vendor.tar.xz) is handled by configure.ac's
--# auto-vendor block — it fires here (staging dir, no .git ancestor) so the
--# sealed tarball ships with vendor.tar.xz inside, and again at install time
--# if the tarball arrived without one. See rpkg/configure.ac for the
--# self-repair contract.
+-# configure.ac's self-repair block still handles the complementary
+-# install-time case: an end user installs a tarball that arrived
+-# without inst/vendor.tar.xz (no .git in the extracted dir, so
+-# configure fires auto-vendor there).
+-#
+-# At install time bootstrap.R does NOT run (Config/build/bootstrap is
+-# pkgbuild-only). The bundled inst/vendor.tar.xz from step 1 is what
+-# configure detects to build offline.
+-
+-if (!file.exists("inst/vendor.tar.xz")) {
+-  cargo_revendor <- Sys.which("cargo-revendor")
+-  if (!nzchar(cargo_revendor)) {
+-    stop(
+-      "bootstrap.R: cargo-revendor not on PATH. Install with:\n",
+-      "  cargo install --git https://github.com/A2-AI/miniextendr ",
+-      "cargo-revendor --locked",
+-      call. = FALSE
+-    )
+-  }
+-  message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
+-  dir.create("inst", showWarnings = FALSE)
+-  status <- system2("cargo", c(
+-    "revendor",
+-    "--manifest-path", "src/rust/Cargo.toml",
+-    "--output", "vendor",
+-    "--compress", "inst/vendor.tar.xz",
+-    "--blank-md",
+-    "--source-marker",
+-    "--force",
+-    "-v"
+-  ))
+-  if (status != 0) {
+-    stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
+-  }
+-}
 +# Install-mode detection is automatic: if inst/vendor.tar.xz exists
 +# (created by `just vendor` from the workspace root, or
 +# `minirextendr::miniextendr_vendor()` from this package, before
@@ -35,8 +79,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
  
  if (.Platform$OS.type == "windows") {
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-05-08 14:05:09
-+++ b/monorepo/rpkg/configure.ac	2026-05-08 10:11:01
+--- a/monorepo/rpkg/configure.ac	2026-05-08 15:38:32
++++ b/monorepo/rpkg/configure.ac	2026-05-08 15:38:32
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -323,21 +367,9 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl caused warnings on Linux. See #157, #158.
  
  AC_OUTPUT
-diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
---- a/rpkg/bootstrap.R	2026-05-08 14:07:00
-+++ b/rpkg/bootstrap.R	2026-05-08 14:07:14
-@@ -9,6 +9,6 @@
- # auto-vendor block — it fires here (staging dir, no .git ancestor) so the
- # sealed tarball ships with vendor.tar.xz inside, and again at install time
--# if the tarball arrived without one. See rpkg/configure.ac for the
--# self-repair contract.
-+# if the tarball arrived without one. See configure.ac for the self-repair
-+# contract.
- 
- if (.Platform$OS.type == "windows") {
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-05-08 14:05:09
-+++ b/rpkg/configure.ac	2026-05-08 14:05:46
+--- a/rpkg/configure.ac	2026-05-08 15:38:32
++++ b/rpkg/configure.ac	2026-05-08 15:38:32
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
