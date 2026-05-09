@@ -595,7 +595,12 @@ write_wrapper_header_to <- function(path, args) {
     "",
     # R_NO_REMAP must come before Rinternals.h
     paste0("#define ", args$wrapper_defines),
-    "#include <Rinternals.h>",
+    # Use r_shim.h instead of <Rinternals.h> directly: the shim wraps the
+    # include in a scoped #pragma clang diagnostic push/pop to suppress
+    # clang 21+'s -Wunknown-warning-option meta-warning for R's Boolean.h.
+    # Putting -Wno-unknown-warning-option in PKG_CFLAGS triggers an R CMD
+    # check --as-cran WARNING. See issue #443.
+    "#include \"r_shim.h\"",
     "",
     vapply(utils::head(args$headers, 20), function(h) {
       paste0("#include <", h, ">")
