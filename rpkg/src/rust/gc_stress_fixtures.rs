@@ -3,7 +3,10 @@
 //! Provides `SharedData` (R6 class) and `into_sexp_altrep` for the GC stress
 //! and ALTREP serialization test suites.
 
+use std::collections::{BTreeSet, HashSet};
+
 use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
 
 /// Simple R6 class for GC stress tests.
@@ -34,6 +37,41 @@ impl SharedData {
     pub fn get_label(&self) -> String {
         self.label.clone()
     }
+}
+
+/// Exercise `Vec<Option<collection>>` conversions under GC pressure.
+///
+/// Allocates `Vec<Option<Vec<i32>>>`, `Vec<Option<HashSet<String>>>`, and
+/// `Vec<Option<BTreeSet<i32>>>` and converts each to SEXP, verifying that the
+/// `OwnedProtect` in `vec_option_of_into_r_to_list` keeps the outer list live
+/// across inner `into_sexp()` calls.
+#[miniextendr]
+pub fn gc_stress_vec_option_collection() {
+    // Vec<Option<Vec<i32>>>: mix of Some and None
+    let vec_opt: Vec<Option<Vec<i32>>> = vec![
+        Some(vec![1, 2, 3]),
+        None,
+        Some(vec![4, 5]),
+        None,
+        Some(vec![]),
+    ];
+    let _ = vec_opt.into_sexp();
+
+    // Vec<Option<HashSet<String>>>: some with multiple strings, some None
+    let hs_opt: Vec<Option<HashSet<String>>> = vec![
+        Some(["a", "b", "c"].iter().map(|s| s.to_string()).collect()),
+        None,
+        Some(["d"].iter().map(|s| s.to_string()).collect()),
+    ];
+    let _ = hs_opt.into_sexp();
+
+    // Vec<Option<BTreeSet<i32>>>: sorted elements, some None
+    let bt_opt: Vec<Option<BTreeSet<i32>>> = vec![
+        Some([3, 1, 2].iter().copied().collect()),
+        None,
+        Some([5, 4].iter().copied().collect()),
+    ];
+    let _ = bt_opt.into_sexp();
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.

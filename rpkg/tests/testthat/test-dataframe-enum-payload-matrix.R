@@ -16,10 +16,82 @@ expect_split_partition <- function(part, expected_nrow, expected_cols) {
   expect_equal(sort(names(part)), sort(expected_cols))
 }
 
-# Note: opaque container fields (Vec<T>, HashSet<T>, BTreeSet<T>) in enum
-# variants are blocked on issue #461 — IntoR for Vec<Option<C>> is missing,
-# so the align path fails to compile. Once #461 lands, opaque sections will
-# return to this fixture.
+# ── 0a. Vec<i32> opaque (list-column, no expand/width) ───────────────────────
+
+test_that("vec opaque — align NvNr: present rows are integer vectors, absent rows are NULL", {
+  df <- vec_opaque_align_nvnr()
+  expect_equal(df$`_type`, c("Items", "NoItems", "Items", "NoItems"))
+  expect_equal(df$label, c("a", "b", "c", "d"))
+  # items column is a list-column
+  expect_type(df$items, "list")
+  expect_equal(df$items[[1]], c(1L, 2L, 3L))
+  expect_null(df$items[[2]])
+  expect_equal(df$items[[3]], c(4L, 5L))
+  expect_null(df$items[[4]])
+})
+
+test_that("vec opaque — split NvNr: items partition has list-column, no_items partition omits it", {
+  res <- vec_opaque_split_nvnr()
+  expect_setequal(names(res), c("items", "no_items"))
+  expect_s3_class(res$items, "data.frame")
+  expect_s3_class(res$no_items, "data.frame")
+  expect_equal(nrow(res$items), 2)
+  expect_equal(nrow(res$no_items), 2)
+  expect_true("items" %in% names(res$items))
+  expect_false("items" %in% names(res$no_items))
+  expect_equal(res$items$items[[1]], c(1L, 2L, 3L))
+  expect_equal(res$items$items[[2]], c(4L, 5L))
+})
+
+# ── 0b. HashSet<String> opaque (list-column, unordered elements) ──────────────
+
+test_that("hashset — align NvNr: present rows are character vectors, absent rows are NULL", {
+  df <- hashset_align_nvnr()
+  expect_equal(df$`_type`, c("Tagged", "Untagged", "Tagged", "Untagged"))
+  expect_equal(df$id, c(1L, 2L, 3L, 4L))
+  expect_type(df$tags, "list")
+  # HashSet is unordered — use setequal
+  expect_setequal(df$tags[[1]], c("a", "b"))
+  expect_null(df$tags[[2]])
+  expect_setequal(df$tags[[3]], c("c"))
+  expect_null(df$tags[[4]])
+})
+
+test_that("hashset — split NvNr: tagged partition has tags list-column, untagged does not", {
+  res <- hashset_split_nvnr()
+  expect_setequal(names(res), c("tagged", "untagged"))
+  expect_equal(nrow(res$tagged), 2)
+  expect_equal(nrow(res$untagged), 2)
+  expect_true("tags" %in% names(res$tagged))
+  expect_false("tags" %in% names(res$untagged))
+  expect_setequal(res$tagged$tags[[1]], c("a", "b"))
+  expect_setequal(res$tagged$tags[[2]], c("c"))
+})
+
+# ── 0c. BTreeSet<i32> opaque (list-column, sorted elements) ──────────────────
+
+test_that("btreeset — align NvNr: present rows are sorted integer vectors, absent rows are NULL", {
+  df <- btreeset_align_nvnr()
+  expect_equal(df$`_type`, c("Cats", "NoCats", "Cats", "NoCats"))
+  expect_equal(df$label, c("a", "b", "c", "d"))
+  expect_type(df$cats, "list")
+  # BTreeSet is sorted — order is guaranteed
+  expect_equal(df$cats[[1]], c(1L, 2L, 3L))
+  expect_null(df$cats[[2]])
+  expect_equal(df$cats[[3]], c(4L, 5L))
+  expect_null(df$cats[[4]])
+})
+
+test_that("btreeset — split NvNr: cats partition has cats list-column, no_cats does not", {
+  res <- btreeset_split_nvnr()
+  expect_setequal(names(res), c("cats", "no_cats"))
+  expect_equal(nrow(res$cats), 2)
+  expect_equal(nrow(res$no_cats), 2)
+  expect_true("cats" %in% names(res$cats))
+  expect_false("cats" %in% names(res$no_cats))
+  expect_equal(res$cats$cats[[1]], c(1L, 2L, 3L))
+  expect_equal(res$cats$cats[[2]], c(4L, 5L))
+})
 
 # ── Vec<T> width = N ─────────────────────────────────────────────────────────
 
