@@ -152,6 +152,7 @@ mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
 mod dataframe_derive_alignment_tests;
+mod dataframe_enum_payload_matrix;
 mod dataframe_examples;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
