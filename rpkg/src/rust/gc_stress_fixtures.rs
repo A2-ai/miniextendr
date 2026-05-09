@@ -74,6 +74,30 @@ pub fn gc_stress_vec_option_collection() {
     let _ = bt_opt.into_sexp();
 }
 
+/// Exercise `Vec<Option<&str>>` and `Vec<Option<&[T]>>` conversions under GC pressure.
+///
+/// Allocates STRSXP + list-column SEXPs with interleaved None/Some values to verify
+/// PROTECT discipline across string and slice allocations.
+#[miniextendr]
+pub fn gc_stress_vec_option_borrowed() {
+    // Vec<Option<&str>>: STRSXP with NA_character_
+    let str_opt: Vec<Option<&str>> = vec![Some("hello"), None, Some("world"), None];
+    let _ = str_opt.into_sexp();
+
+    // Vec<Option<&[f64]>>: list-column, NULL for None
+    let a: &[f64] = &[1.0, 2.0, 3.0];
+    let b: &[f64] = &[4.0];
+    let slice_opt: Vec<Option<&[f64]>> = vec![Some(a), None, Some(b), None];
+    let _ = slice_opt.into_sexp();
+
+    // Vec<Option<&[String]>>: list-column (character vector per row)
+    let sa: Vec<String> = vec!["x".to_string(), "y".to_string()];
+    let sb: Vec<String> = vec!["z".to_string()];
+    let str_slice_opt: Vec<Option<&[String]>> =
+        vec![Some(sa.as_slice()), None, Some(sb.as_slice())];
+    let _ = str_slice_opt.into_sexp();
+}
+
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
 /// Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
 /// @param x An integer, numeric, or character vector to convert.

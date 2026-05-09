@@ -1365,6 +1365,59 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
     }
 }
 
+/// Convert `Vec<Option<&str>>` to R character vector with NA support.
+///
+/// `None` values become `NA_character_` in R. Borrowed analogue of `Vec<Option<String>>`.
+impl IntoR for Vec<Option<&str>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
+            let sexp =
+                OwnedProtect::new(crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n));
+            for (i, opt_s) in self.iter().enumerate() {
+                let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let charsxp = match opt_s {
+                    Some(s) => str_to_charsxp(s),
+                    None => crate::ffi::SEXP::na_string(),
+                };
+                sexp.set_string_elt(idx, charsxp);
+            }
+            *sexp
+        }
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
+            let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
+                crate::ffi::SEXPTYPE::STRSXP,
+                n,
+            ));
+            for (i, opt_s) in self.iter().enumerate() {
+                let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let charsxp = match opt_s {
+                    Some(s) => str_to_charsxp_unchecked(s),
+                    None => crate::ffi::SEXP::na_string(),
+                };
+                sexp.set_string_elt_unchecked(idx, charsxp);
+            }
+            *sexp
+        }
+    }
+}
+
 /// Convert `Vec<&str>` to R character vector (STRSXP).
 impl IntoR for Vec<&str> {
     type Error = std::convert::Infallible;
@@ -1429,6 +1482,92 @@ where
                 list.set_vector_elt_unchecked(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<&[T]>` to R list of typed vectors (VECSXP).
+///
+/// Borrowed analogue of `Vec<Vec<T>>` — each slice is copied into a fresh R vector.
+impl<T: crate::ffi::RNativeType> IntoR for Vec<&[T]> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+            for (i, inner) in self.into_iter().enumerate() {
+                let inner_sexp = inner.into_sexp();
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list = crate::ffi::Rf_allocVector_unchecked(
+                crate::ffi::SEXPTYPE::VECSXP,
+                n as crate::ffi::R_xlen_t,
+            );
+            crate::ffi::Rf_protect(list);
+            for (i, inner) in self.into_iter().enumerate() {
+                let inner_sexp = inner.into_sexp_unchecked();
+                list.set_vector_elt_unchecked(i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<&[String]>` to R list of character vectors.
+///
+/// Borrowed analogue of `Vec<Vec<String>>`.
+impl IntoR for Vec<&[String]> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+            for (i, inner) in self.into_iter().enumerate() {
+                let inner_sexp = inner.into_sexp();
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list = crate::ffi::Rf_allocVector_unchecked(
+                crate::ffi::SEXPTYPE::VECSXP,
+                n as crate::ffi::R_xlen_t,
+            );
+            crate::ffi::Rf_protect(list);
+            for (i, inner) in self.into_iter().enumerate() {
+                let inner_sexp = inner.into_sexp_unchecked();
+                list.set_vector_elt_unchecked(i as crate::ffi::R_xlen_t, inner_sexp);
+            }
             crate::ffi::Rf_unprotect(1);
             list
         }
@@ -2208,6 +2347,38 @@ impl<V: IntoR> IntoR for Vec<Option<HashMap<String, V>>> {
 
 /// Convert `Vec<Option<BTreeMap<String, V>>>` to R list where `None` → NULL, `Some(m)` → named list.
 impl<V: IntoR> IntoR for Vec<Option<BTreeMap<String, V>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<&[T]>>` to R list where `None` → NULL, `Some(s)` → typed vector.
+///
+/// Borrowed analogue of `Vec<Option<Vec<T>>>` — each slice is copied into a fresh R vector.
+impl<T: crate::ffi::RNativeType> IntoR for Vec<Option<&[T]>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_option_of_into_r_to_list(self)
+    }
+}
+
+/// Convert `Vec<Option<&[String]>>` to R list where `None` → NULL, `Some(s)` → character vector.
+///
+/// Borrowed analogue of `Vec<Option<Vec<String>>>`.
+impl IntoR for Vec<Option<&[String]>> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
         Ok(self.into_sexp())
