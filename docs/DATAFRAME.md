@@ -200,7 +200,32 @@ struct ComplexRow {
 
 In **struct** DataFrameRows the columns land as `Vec<C>` and convert to a VECSXP list-column. In **enum** DataFrameRows they land as `Vec<Option<C>>` with `None` for variants that don't carry the field — these convert to a VECSXP list-column with `NULL` for absent rows. See [`docs/CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md#vecoptionc-for-collection-element-types) for the full set of supported `C`.
 
-`HashMap<K, V>` / `BTreeMap<K, V>` as variant fields, nested enums, and struct-typed fields are tracked by issues #457 / #458 / #459.
+`HashMap<K, V>` / `BTreeMap<K, V>` variant fields are supported and expand to two parallel list-columns (see [Map fields](#map-fields--parallel-list-column-expansion) below). Nested enums and struct-typed fields are tracked by issues #458 / #459.
+
+### Map fields — parallel list-column expansion
+
+`HashMap<K, V>` and `BTreeMap<K, V>` fields on enum variants expand to two parallel list-columns named `<field>_keys` and `<field>_values`. Each cell holds a vector of K and a vector of V respectively, in the same entry order:
+
+```rust
+#[derive(Clone, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+enum Event {
+    Tally { label: String, tally: BTreeMap<String, i32> },
+    Empty { label: String },
+}
+// In R (BTreeMap, sorted key order):
+//   _type   label  tally_keys    tally_values
+//   Tally   "a"    list("a","b") list(1L, 2L)
+//   Empty   "b"    NULL          NULL
+```
+
+Absent-variant rows produce `NULL` in both columns (not NA). An empty map produces `character(0)` / `integer(0)`, not `NULL`.
+
+**HashMap ordering**: `HashMap` iteration order is non-deterministic. Keys and values are parallel within a single row, but the key order may differ across rows and across runs. Use `setequal` or sort-based comparison in R tests, never `expect_equal` on unsorted key vectors.
+
+**BTreeMap ordering**: keys are always in sorted order per the `BTreeMap` contract. `expect_equal` is safe.
+
+**`as_list` opt-out**: annotate the field with `#[dataframe(as_list)]` to keep it as a single opaque named-list column (the pre-expansion behavior). Only use this when the named-list per-row shape is needed directly in R.
 
 ### Enum Align Mode
 
