@@ -6,23 +6,38 @@ Goal: build miniextendr-api (and the rpkg `miniextendr` R package) for the
 
 ## Companion artefacts
 
-This plan is the index. The detailed work is split across three files:
+This plan is the index. The detailed work is split across these files:
+
+**Landed (steps 1–7 + Dockerfile, in #470's stack):**
 
 - **`plans/wasm-registry-codegen.md`** — the linkme replacement. How we
   snapshot the runtime data (`MX_CALL_DEFS`, `MX_ALTREP_REGISTRATIONS`,
   `MX_TRAIT_DISPATCH`) on host and reconstruct it via a generated
   `wasm_registry.rs` on WASM. Owns the macro-emission changes,
-  symbol-name stabilisation, cdylib JSON writer, and `build.rs` codegen.
-  Steps 3-5 below dispatch there.
-- **`plans/webr-dockerfile.md`** — the build environment.
-  `Dockerfile.webr` (inheriting `ghcr.io/r-wasm/webr` digest-pinned),
-  `just docker-webr-*` recipes, CI sequencing (cargo check → R CMD
-  INSTALL → `rwasm::build_pkg` → webR Node smoke test). Step 6 below
-  dispatches there.
+  symbol-name stabilisation, cdylib writer, and the `mod` include in
+  `miniextendr_init!`. Steps 2–5 + 7 dispatched there.
+- **`plans/webr-dockerfile.md`** — local-dev build environment.
+  `Dockerfile.webr` inheriting `ghcr.io/r-wasm/webr` digest-pinned,
+  `just docker-webr-*` recipes. Landed in #476.
 - **`docs/WEBR.md`** — user-facing summary of the toolchain
   requirements (target triple, why nightly, why
-  `-Z build-std=std,panic_abort`). Anything that belongs in long-lived
-  contributor docs goes there, not here.
+  `-Z build-std=std,panic_abort`). Long-lived contributor docs.
+
+**Open follow-ups (still to do):**
+
+- **`plans/webr-ci.md`** — three escalating tiers of CI (cargo check
+  only / Docker `R CMD INSTALL` / webR Node smoke test). Tier 1 is
+  the recommended starting point — small, fast, catches the common
+  cfg-gating regressions. Step 6 of this doc.
+- **`plans/webr-configure-and-build-rs.md`** — `rpkg/configure.ac`
+  detection of `CC=emcc` (sets `CARGO_BUILD_TARGET=wasm32-unknown-emscripten`,
+  nightly `+`, `-Z build-std=std,panic_abort`, side-module RUSTFLAGS,
+  refuses build if `wasm_registry.rs` missing) + `rpkg/build.rs`
+  validation of the snapshot's generator-version. Step 8 of this doc.
+- **`plans/webr-cross-package-stubs.md`** — empty `wasm_registry.rs`
+  stubs in `tests/cross-package/{consumer,producer}.pkg/src/rust/`.
+  Low priority; only matters if cross-package crates ever land in
+  CI's wasm32 path.
 
 When information here goes stale, prefer to delete it and link out
 rather than duplicate.
@@ -170,41 +185,47 @@ Symbol-name stability, vtable encoding, schema versioning,
 cross-crate trait dispatch, and the alternatives we didn't pick (inventory,
 ctor) — all in `plans/wasm-registry-codegen.md`.
 
-## Next concrete steps
+## Steps
 
-1. **Read `r-wasm/rwasm`** — confirm exact cargo invocation, vendoring
-   handling, and Makevars overrides it expects. Update this plan with
-   findings before writing any code.
-2. **Audit proc-macro emission** — list every `#[distributed_slice(...)]`
-   site in `miniextendr-macros`, confirm each emits a corresponding extern
-   "C" symbol (or uniquely-named pub static) usable by name from
-   `wasm_registry.rs`.
-3. **Replace linkme on WASM** — full design in
-   `plans/wasm-registry-codegen.md`. Three sub-steps: stabilise symbol
-   names (altrep + vtable `#[no_mangle]`), `cfg_attr`-gate every
-   `#[distributed_slice]` attribute the macros emit, extend the cdylib
-   write step to serialise a `wasm_registry.json` snapshot.
-4. **`miniextendr-api` build.rs**: read `wasm_registry.json` under
-   `cfg(target_arch = "wasm32")`, emit `wasm_registry.rs` to `OUT_DIR`,
-   `include!` it from `registry.rs`. (Detail in
-   `plans/wasm-registry-codegen.md`.)
-5. **Verify**: `cargo check --target wasm32-unknown-emscripten -Z
-   build-std=std,panic_abort` on `miniextendr-api` and `rpkg/src/rust`.
-   Linker should resolve all wrapper / altrep / vtable extern names
-   from the user crate's `#[no_mangle]` exports.
-6. **Docker + CI**: implement the build environment per
-   `plans/webr-dockerfile.md` — single-stage `Dockerfile.webr` inheriting
-   `ghcr.io/r-wasm/webr` (digest-pinned), layering `just`, `autoconf`,
-   `clang`/`libclang-dev`, `pkg-config`. Add `just docker-webr-build` /
-   `just docker-webr-shell` recipes. The CI job exercises this image
-   through cargo check → R CMD INSTALL → `rwasm::build_pkg` → webR Node
-   smoke test, gated on a `paths:` filter so docs-only PRs don't fire it.
-7. **rpkg `Makevars.in`**: branch on `CARGO_BUILD_TARGET=wasm32-*` to skip
-   cdylib + Rscript wrapper-gen and pass the right `RUSTFLAGS`.
-8. **`configure.ac`**: detect `CC=emcc` (or an explicit `--with-wasm`
-   override) and set `CARGO_BUILD_TARGET=wasm32-unknown-emscripten` +
-   `IS_WASM_INSTALL=true`. Refuse to build if `wasm_registry.rs` /
-   wrappers are missing (with a pointer to `just wasm-prepare`).
+✅ = landed in #470's stack; ⏳ = open follow-up.
+
+1. ✅ **Stabilise symbol names** — closed by #392, #393, #394 (altrep
+   register fn `#[no_mangle]`, trait vtable `#[no_mangle]`, generic
+   vtable name collision via FNV hash suffix).
+2. ✅ **`cfg_attr`-gate `#[distributed_slice]` emissions** — #471.
+3. ✅ **Symbol fields on entry types** — #472. `AltrepRegistration.symbol`
+   + `TraitDispatchEntry.vtable_symbol`. (`MX_CALL_DEFS` already has
+   `name == symbol`, no enrichment needed.)
+4. ✅ **Host-time `wasm_registry.rs` writer** — #473. Pure formatter +
+   C-callable entry point `miniextendr_write_wasm_registry`.
+5. ✅ **Cfg-branch registry slices** — #474. `OnceLock`-backed runtime
+   table on wasm32 + `install_wasm_runtime_slices(...)` public fn.
+   Departure from earlier plan: snapshot lives in user-crate, not
+   miniextendr-api (see commit message for rationale).
+6. ⏳ **CI workflow** — see `plans/webr-ci.md`. Three escalating tiers;
+   tier 1 (cargo check only) is recommended starting point.
+7. ✅ **`miniextendr_init!` + `Makevars.in` wiring** — #475. Macro
+   emits cfg-gated `mod __miniextendr_wasm_registry;` + install call;
+   Makevars co-generates `R/<pkg>-wrappers.R` + `src/rust/wasm_registry.rs`
+   in the same cdylib pass.
+8. ⏳ **`rpkg/configure.ac` `CC=emcc` detection + `rpkg/build.rs`
+   snapshot validation** — see `plans/webr-configure-and-build-rs.md`.
+
+## Other open follow-ups
+
+- ⏳ **Cross-package wasm32 stubs** — `plans/webr-cross-package-stubs.md`.
+  Low priority; only the rpkg path is exercised in practice.
+
+## Stack-ordering gotcha (from the merge cascade)
+
+Step 7's `Makevars` calls `miniextendr_write_wasm_registry` via
+`getNativeSymbolInfo`. For that symbol to appear in the cdylib's
+dynamic symbol table, the `as *const ()` reference in
+`miniextendr_register_routines` (added in step 5) must be present.
+Step 5 must merge before step 7's CI will pass — the linker won't
+pull a Rust dep-crate `#[no_mangle]` fn into a cdylib unless something
+in the final crate's call graph references it. Recorded for future
+reorderings of this plan's steps.
 
 ## Non-goals for this branch
 
