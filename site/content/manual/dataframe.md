@@ -204,7 +204,7 @@ struct ComplexRow {
 
 In **struct** DataFrameRows the columns land as `Vec<C>` and convert to a VECSXP list-column. In **enum** DataFrameRows they land as `Vec<Option<C>>` with `None` for variants that don't carry the field — these convert to a VECSXP list-column with `NULL` for absent rows. See [`docs/CONVERSION_MATRIX.md`](../conversion-matrix/#vecoptionc-for-collection-element-types) for the full set of supported `C`.
 
-`HashMap<K, V>` / `BTreeMap<K, V>` variant fields are supported and expand to two parallel list-columns (see [Map fields](#map-fields--parallel-list-column-expansion) below). Nested enums and struct-typed fields are tracked by issues #458 / #459.
+`HashMap<K, V>` / `BTreeMap<K, V>` variant fields are supported and expand to two parallel list-columns (see [Map fields](#map-fields--parallel-list-column-expansion) below). Struct-typed and nested-enum variant fields are covered in [Nested enum fields](#nested-enum-fields--flatten--opt-outs) below.
 
 ### Map fields — parallel list-column expansion
 
@@ -230,6 +230,90 @@ Absent-variant rows produce `NULL` in both columns (not NA). An empty map produc
 **BTreeMap ordering**: keys are always in sorted order per the `BTreeMap` contract. `expect_equal` is safe.
 
 **`as_list` opt-out**: annotate the field with `#[dataframe(as_list)]` to keep it as a single opaque named-list column (the pre-expansion behavior). Only use this when the named-list per-row shape is needed directly in R.
+
+**Detection caveats**: `classify_field_type` detects `HashMap` / `BTreeMap` by matching the last path segment (`HashMap` or `BTreeMap`) and requiring exactly two generic type arguments. Two shapes are not detected and fall through to `Scalar` (opaque list-column):
+
+- **Type aliases**: `type Counts = HashMap<String, i32>; field: Counts` — the last segment is `Counts`, not `HashMap`, so map expansion is not triggered. Use the concrete type directly, or annotate with `#[dataframe(as_list)]` and handle the named-list in R.
+- **`Option<HashMap<K,V>>`**: the outer segment is `Option` with one type argument, so the two-argument `HashMap`/`BTreeMap` guard is never reached. Unwrap the `Option` before storing (e.g., store `HashMap<K,V>` and push an empty map for the `None` case), or annotate with `#[dataframe(as_list)]`.
+
+### Nested enum fields — flatten + opt-outs
+
+A variant field whose type is itself a `DataFrameRow` enum flattens into prefixed columns by default. The inner enum must `#[derive(DataFrameRow)]`; the outer field's name acts as a prefix. The inner enum should use `#[dataframe(tag = "variant")]` so that its discriminant column merges cleanly as `<field>_variant`:
+
+```rust
+#[derive(Clone, DataFrameRow)]
+#[dataframe(align, tag = "variant")]  // inner enum's own discriminant is "variant"
+enum Status { Ok, Err { code: i32 } }
+
+#[derive(Clone, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+enum Event {
+    Tracked { id: i32, status: Status },
+    Other   { id: i32 },
+}
+// Columns in R:
+//   _type          character ("Tracked" / "Other")
+//   id             integer
+//   status_variant character ("Ok" / "Err" / NA for Other rows)
+//   status_code    integer   (NA for Ok rows and Other rows; error code for Err rows)
+```
+
+Absent-variant rows (e.g. `Other` above, which has no `status` field) produce `NA` in all prefixed columns.
+
+**Inner tag naming**: use `#[dataframe(tag = "variant")]` on the inner enum — the outer prefix then produces `<field>_variant` (single underscore). Using `#[dataframe(tag = "_variant")]` (with leading underscore) produces `<field>__variant` (double underscore). Avoid leading underscores on inner tags.
+
+#### `as_factor` — unit-only inner enum
+
+When the inner enum has only unit variants (no payload), annotate the field with `#[dataframe(as_factor)]` to emit a single R factor column instead of flattening. The inner enum does **not** need `DataFrameRow` for this path — only `UnitEnumFactor`, which is auto-emitted by `#[derive(DataFrameRow)]` for unit-only enums:
+
+```rust
+#[derive(Clone, Copy, DataFrameRow)]
+#[dataframe(tag = "variant")]
+enum Direction { North, South, East, West }
+
+#[derive(Clone, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+enum Move {
+    Step { id: i32, #[dataframe(as_factor)] dir: Direction },
+    Stop { id: i32 },
+}
+// R column: dir — integer factor with levels c("North","South","East","West")
+// Stop rows have NA in dir.
+```
+
+Factor levels are the variant idents in declaration order. `is.factor(df$dir)` returns `TRUE`. Annotating a payload-bearing enum with `as_factor` is a compile error (missing `UnitEnumFactor` implementation).
+
+**Note on generic unit enums**: `#[derive(DataFrameRow)]` auto-emits `UnitEnumFactor` only when the enum has no generic type parameters (`impl_generics.is_empty()`). Generic unit enums must implement `UnitEnumFactor` manually if `as_factor` is needed.
+
+#### `as_list` — opaque list-column
+
+Use `#[dataframe(as_list)]` to keep any inner enum as a single opaque VECSXP list-column. Each present row gets a list cell; absent-variant rows get `NULL`:
+
+```rust
+enum Event {
+    Move { id: i32, #[dataframe(as_list)] dir: Direction },
+    Stop { id: i32 },
+}
+// R column: dir — list-column; Move rows have a list cell, Stop rows have NULL.
+```
+
+`as_list` works for any inner type (unit-only or payload-bearing, with or without `DataFrameRow`).
+
+#### `<field>_variant` collision detection
+
+When a field `kind: Inner` is flattened, the macro detects a compile-time collision if any sibling field in the same variant produces a column named `kind_variant` (the name that the inner enum's discriminant column will receive after prefixing). Rename the colliding field or change the inner enum's tag:
+
+```rust
+// ERROR: kind_variant is both the flatten discriminant and a sibling field name.
+enum Bad {
+    Wrap { kind: Inner, kind_variant: String },
+}
+
+// OK: rename sibling field, or change inner tag.
+enum Good {
+    Wrap { kind: Inner, #[dataframe(rename = "kind_type")] kind_type: String },
+}
+```
 
 ### Enum Align Mode
 
