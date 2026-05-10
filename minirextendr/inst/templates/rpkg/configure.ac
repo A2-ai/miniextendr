@@ -194,6 +194,39 @@ AC_ARG_VAR([RUST_TOOLCHAIN],[Rust toolchain selector like '+stable' or '+nightly
 : ${RUST_TOOLCHAIN=""}
 AC_SUBST([RUST_TOOLCHAIN])
 
+dnl ---- wasm32 / webR install detection ----
+dnl When R CMD INSTALL passes CC=emcc (webR's Makevars injects this), we're
+dnl cross-compiling for wasm32. Override the Cargo target, force nightly only
+dnl if the user hasn't pinned RUST_TOOLCHAIN, and validate that the
+dnl pre-generated wasm_registry.rs is present.
+AC_MSG_CHECKING([whether CC is emscripten (webR/wasm32 install)])
+case "${CC}" in
+  *emcc*|*em++*)
+    is_wasm_install=true
+    CARGO_BUILD_TARGET=wasm32-unknown-emscripten
+    if test -z "$RUST_TOOLCHAIN"; then
+      RUST_TOOLCHAIN="+nightly"
+    fi
+    CARGO_BUILD_STD_FLAG="-Z build-std=std,panic_abort"
+    AC_MSG_RESULT([yes])
+    ;;
+  *)
+    is_wasm_install=false
+    CARGO_BUILD_STD_FLAG=
+    AC_MSG_RESULT([no])
+    ;;
+esac
+if test "$is_wasm_install" = true; then
+  if test ! -f "$srcdir/src/rust/wasm_registry.rs"; then
+    AC_MSG_ERROR([wasm32 install requires src/rust/wasm_registry.rs.
+Run 'R CMD INSTALL' (or 'just rcmdinstall') on the host first to regenerate
+it from the cdylib slice contents, then ship the source tree to the wasm builder.])
+  fi
+fi
+AC_SUBST([IS_WASM_INSTALL], [$is_wasm_install])
+AC_SUBST([CARGO_BUILD_STD_FLAG])
+dnl CARGO_BUILD_TARGET is AC_SUBST'd later in the Cargo target/profile section.
+
 dnl Convenience: cargo command that includes optional toolchain selector
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
@@ -271,6 +304,8 @@ AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 AS_IF([test -n "$CARGO_FEATURES"],
       [AC_MSG_NOTICE([CARGO_FEATURES  = $CARGO_FEATURES])])
+AS_IF([test "$IS_WASM_INSTALL" = "true"],  [AC_MSG_NOTICE([IS_WASM_INSTALL      = true (CC=emcc detected)])])
+AS_IF([test -n "$CARGO_BUILD_STD_FLAG"],   [AC_MSG_NOTICE([CARGO_BUILD_STD_FLAG = $CARGO_BUILD_STD_FLAG])])
 
 dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
