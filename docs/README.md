@@ -113,6 +113,8 @@ framework.
 - **[Engine](ENGINE.md)** -- `miniextendr-engine` for standalone R embedding
 - **[Windows Build Environment](windows-build-environment.md)** -- Reproducing
   the MSYS2 / Rtools environment R uses on Windows
+- **[WebR / WASM](WEBR.md)** -- Building for `wasm32-unknown-emscripten`,
+  why nightly Rust is required, and the linkme cfg-gating story
 
 ### Type system deep dive
 
