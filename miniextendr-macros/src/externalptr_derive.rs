@@ -1020,8 +1020,7 @@ NULL
         );
 
         c_functions.push(quote::quote! {
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
             static #getter_def_ident: ::miniextendr_api::ffi::R_CallMethodDef =
                 ::miniextendr_api::ffi::R_CallMethodDef {
@@ -1031,8 +1030,7 @@ NULL
                 };
         });
         c_functions.push(quote::quote! {
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
             static #setter_def_ident: ::miniextendr_api::ffi::R_CallMethodDef =
                 ::miniextendr_api::ffi::R_CallMethodDef {
@@ -1098,8 +1096,7 @@ NULL
                 );
                 quote::quote! {
                     #[doc(hidden)]
-                    #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_S7_SIDECAR_PROPS)]
-                            #[linkme(crate = ::miniextendr_api::linkme)]
+                    #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_S7_SIDECAR_PROPS), linkme(crate = ::miniextendr_api::linkme))]
                     static #entry_ident: ::miniextendr_api::registry::SidecarPropEntry =
                         ::miniextendr_api::registry::SidecarPropEntry {
                             rust_type: #name_str,
@@ -1121,8 +1118,7 @@ NULL
         #[doc = #source_location_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         static #const_name_wrappers: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Sidecar,

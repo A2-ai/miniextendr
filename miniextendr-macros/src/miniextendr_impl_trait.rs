@@ -842,8 +842,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
         // R wrapper registration via distributed slice
         #[doc(hidden)]
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
@@ -866,8 +865,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
         // Trait dispatch entry for universal_query
         #[doc(hidden)]
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_TRAIT_DISPATCH)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_TRAIT_DISPATCH), linkme(crate = ::miniextendr_api::linkme))]
         static #dispatch_entry_name: ::miniextendr_api::registry::TraitDispatchEntry =
             ::miniextendr_api::registry::TraitDispatchEntry {
                 concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(

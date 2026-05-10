@@ -88,8 +88,7 @@ pub(crate) fn choices_entry_tokens(
 ) -> proc_macro2::TokenStream {
     quote::quote! {
         #(#cfg_attrs)*
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES)]
-        #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
         static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
@@ -120,8 +119,7 @@ pub(crate) fn param_doc_entry_tokens(
 ) -> proc_macro2::TokenStream {
     quote::quote! {
         #(#cfg_attrs)*
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_PARAM_DOCS)]
-        #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_PARAM_DOCS), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
         static #entry_ident: ::miniextendr_api::registry::MatchArgParamDocEntry =

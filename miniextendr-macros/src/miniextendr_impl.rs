@@ -2771,8 +2771,7 @@ fn generate_method_match_arg_helpers(
             }
 
             #(#cfg_attrs)*
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
-            #[linkme(crate = ::miniextendr_api::linkme)]
+            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[allow(non_upper_case_globals)]
             #[allow(non_snake_case)]
             static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
@@ -3222,8 +3221,7 @@ pub fn expand_impl(
         )]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Class,
@@ -3245,8 +3243,7 @@ pub fn expand_impl(
         // Class name registration for cross-reference placeholder resolution.
         // Maps the Rust type name to the R-visible class name at link time.
         #(#cfg_attrs)*
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CLASS_NAMES)]
-        #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CLASS_NAMES), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
         static #class_names_const: ::miniextendr_api::registry::ClassNameEntry =

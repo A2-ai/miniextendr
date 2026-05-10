@@ -417,8 +417,7 @@ fn build_match_arg_helpers(
                 }
 
                 #(#cfg_attrs)*
-                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+                #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
                 #[allow(non_upper_case_globals)]
                 #[allow(non_snake_case)]
                 static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
@@ -1497,8 +1496,7 @@ pub fn miniextendr(
         #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
         static #r_wrapper_generator: ::miniextendr_api::registry::RWrapperEntry =
