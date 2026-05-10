@@ -6,9 +6,13 @@ compiled to WebAssembly via Emscripten.
 **Status: supported for local dev.** `wasm32-unknown-emscripten` cargo-check
 runs on every PR (`.github/workflows/webr.yml`); a local
 `just docker-webr-smoke` recipe drives the full install path inside the
-pinned webR Docker image and runs the testthat suite under wasm. Open
-follow-ups (CI tier 2/3, `link_to_r()` gating, cross-package stubs) are
-tracked in `plans/webr-support.md`.
+pinned webR Docker image and runs the testthat suite under wasm.
+
+Tracking: umbrella #470. Open follow-ups: #482 (gate `link_to_r()` on
+target_arch), #491 (CI tier 2 — Docker `R CMD INSTALL`), #492 (CI tier 3 —
+Node smoke in CI), #493 (cross-package wasm stubs), #494 (verify
+side-module `RUSTFLAGS` against `rwasm`), #495 (cross-crate trait
+dispatch), #496 (mirror webR base image).
 
 ## Target
 
@@ -148,11 +152,10 @@ be exported during the wasm install — `webr-vars.mk` references both.
 - **Worker thread is off.** R-on-WASM is single-threaded; the
   `worker-thread` feature must be disabled. Already feature-gated.
 - **`RUSTFLAGS` for the side-module link** are not yet locked in. The
-  proposed set is `-C relocation-model=pic -C link-args=-s SIDE_MODULE=1`
-  (per `plans/webr-support.md`); `rwasm`'s flags are the canonical
-  reference and the smoke script is the empirical validator. If the wasm
-  side-module fails to link, that's the next thing to verify against
-  `rwasm`. Tracked via #470.
+  proposed set is `-C relocation-model=pic -C link-args=-s SIDE_MODULE=1`;
+  `rwasm`'s flags are the canonical reference and the smoke script is the
+  empirical validator. If the wasm side-module fails to link, that's the
+  next thing to verify against `rwasm`. Tracked via #494.
 
 ## CI
 
@@ -176,16 +179,11 @@ tier 1.
 
 ## See also
 
-- `plans/webr-support.md` — index plan; flags landed (✅) vs still open.
-- `plans/wasm-registry-codegen.md` — design for the linkme replacement on
-  WASM.
-- `plans/webr-dockerfile.md` — `Dockerfile.webr` design.
-- `plans/webr-configure-and-build-rs.md` — `configure.ac` + `build.rs`
-  rationale (now landed in #481).
-- `plans/webr-ci.md` — three-tier CI plan; tier 1 landed in #480, tier 2/3
-  open.
-- `plans/webr-cross-package-stubs.md` — `tests/cross-package/*` stub plan;
-  low priority, only relevant if cross-package crates join wasm32 CI.
+- Issue #470 — umbrella tracking issue for webR/WASM support.
+- `plans/wasm-registry-codegen.md` — design rationale for the linkme
+  replacement on WASM (mostly landed; cross-crate trait dispatch
+  follow-up tracked in #495).
+- `plans/webr-dockerfile.md` — design rationale for `Dockerfile.webr`.
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner.
 - `.webr/` — vendored clone of the webR repo for offline reference.
 - `.webr/Dockerfile` — upstream Rust toolchain install we inherit.
