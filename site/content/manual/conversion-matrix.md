@@ -188,6 +188,9 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `Vec<Option<f64>>` | REALSXP | None -> NA_real_ |
 | `Vec<Option<bool>>` | LGLSXP | None -> NA_logical |
 | `Vec<Option<String>>` | STRSXP | None -> NA_character_ |
+| `Vec<Option<&str>>` | STRSXP | None -> NA_character_ (borrowed strings, mirrors `Vec<Option<String>>`) |
+
+`Vec<Option<scalar>>` lands as a typed R vector with NA sentinels. `Vec<Option<C>>` for collection element types lands as a list-column with `NULL` for `None` (see [Collection Types](#collection-types) below).
 
 ### Smart Vector Conversion (Vec of large integers)
 
@@ -210,7 +213,25 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `VecDeque<T>` | Vector (converted to Vec first) |
 | `BinaryHeap<T>` | Vector (arbitrary order) |
 | `Vec<Vec<T>>` | List of vectors (VECSXP) |
+| `Vec<&[T]>` / `Vec<&[String]>` | List of vectors (VECSXP), borrowed slices |
 | `(A, B, ...)` | Unnamed list (VECSXP), up to 8 elements (IntoR only, no TryFromSexp) |
+
+#### `Vec<Option<C>>` for collection element types
+
+`Vec<Option<C>>` where `C` is a collection lands as a VECSXP list-column. `Some(c)` becomes the element's normal `IntoR` output; `None` becomes `R_NilValue` (NULL). The wrap is required by enum `DataFrameRow` align codegen, which represents every column as `Vec<Option<T>>` so non-payload variants can NA-fill.
+
+| Rust Type | R Output Type | None Behavior |
+|-----------|--------------|----------------|
+| `Vec<Option<Vec<T>>>` (T: RNativeType) | VECSXP of typed vectors | NULL |
+| `Vec<Option<Vec<String>>>` | VECSXP of character vectors | NULL |
+| `Vec<Option<HashSet<T>>>` (T: RNativeType + Eq + Hash) | VECSXP of typed vectors | NULL |
+| `Vec<Option<HashSet<String>>>` | VECSXP of character vectors | NULL |
+| `Vec<Option<BTreeSet<T>>>` (T: RNativeType + Ord) | VECSXP of sorted typed vectors | NULL |
+| `Vec<Option<BTreeSet<String>>>` | VECSXP of sorted character vectors | NULL |
+| `Vec<Option<HashMap<String, V>>>` (V: IntoR) | VECSXP of named lists | NULL |
+| `Vec<Option<BTreeMap<String, V>>>` (V: IntoR) | VECSXP of named lists | NULL |
+| `Vec<Option<&[T]>>` (T: RNativeType) | VECSXP of typed vectors | NULL |
+| `Vec<Option<&[String]>>` | VECSXP of character vectors | NULL |
 | `PathBuf` | STRSXP (lossy UTF-8 conversion) |
 | `OsString` | STRSXP (lossy UTF-8 conversion) |
 

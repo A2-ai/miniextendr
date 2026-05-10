@@ -188,7 +188,7 @@ struct Row {
 
 ### Other Collection Types
 
-Non-expanded collection types (opaque columns) work with manual `IntoList`:
+Non-expanded collection fields work natively for both struct and enum DataFrameRows:
 
 ```rust
 use std::collections::{HashSet, BTreeSet};
@@ -202,7 +202,9 @@ struct ComplexRow {
 }
 ```
 
-**Note:** These need manual `IntoList` implementations (see `rpkg/src/rust/dataframe_collections_test.rs`).
+In **struct** DataFrameRows the columns land as `Vec<C>` and convert to a VECSXP list-column. In **enum** DataFrameRows they land as `Vec<Option<C>>` with `None` for variants that don't carry the field — these convert to a VECSXP list-column with `NULL` for absent rows. See [`docs/CONVERSION_MATRIX.md`](../conversion-matrix/#vecoptionc-for-collection-element-types) for the full set of supported `C`.
+
+`HashMap<K, V>` / `BTreeMap<K, V>` as variant fields, nested enums, and struct-typed fields are tracked by issues #457 / #458 / #459.
 
 ### Enum Align Mode
 
@@ -228,6 +230,7 @@ enum Event {
 - All enum columns are `Vec<Option<T>>` (absent fields get `None`)
 - `tag = "col"` adds a variant discriminator column
 - `align` is implicit for enums (accepted but not required)
+- Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — same lifetime is propagated through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are still rejected (MXL112); see CLAUDE.md.
 
 #### Type Conflicts Across Variants
 
