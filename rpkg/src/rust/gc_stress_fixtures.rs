@@ -3,11 +3,13 @@
 //! Provides `SharedData` (R6 class) and `into_sexp_altrep` for the GC stress
 //! and ALTREP serialization test suites.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
+
+use crate::dataframe_enum_payload_matrix::{BTreeMapEvent, HashMapEvent};
 
 /// Simple R6 class for GC stress tests.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -96,6 +98,64 @@ pub fn gc_stress_vec_option_borrowed() {
     let str_slice_opt: Vec<Option<&[String]>> =
         vec![Some(sa.as_slice()), None, Some(sb.as_slice())];
     let _ = str_slice_opt.into_sexp();
+}
+
+/// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
+///
+/// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both
+/// `to_dataframe` (align) and `to_dataframe_split` (per-variant partition) paths.
+/// Verifies that the `ProtectScope::protect_raw` calls in the generated map-column
+/// code keep each inner `Vec<K>` / `Vec<V>` SEXP live across the subsequent
+/// `into_sexp()` call for the parallel column.
+#[miniextendr]
+pub fn gc_stress_dataframe_map() {
+    // HashMap align path — multiple variants, multiple rows, includes empty map.
+    let hm_rows = vec![
+        HashMapEvent::Tally {
+            label: "a".into(),
+            tally: HashMap::from([
+                ("x".to_string(), 1i32),
+                ("y".to_string(), 2i32),
+                ("z".to_string(), 3i32),
+            ]),
+        },
+        HashMapEvent::Empty { label: "b".into() },
+        HashMapEvent::Tally {
+            label: "c".into(),
+            tally: HashMap::new(), // empty map → Some(vec![]) in both columns
+        },
+        HashMapEvent::Tally {
+            label: "d".into(),
+            tally: HashMap::from([("p".to_string(), 10i32)]),
+        },
+        HashMapEvent::Empty { label: "e".into() },
+    ];
+    let _ = HashMapEvent::to_dataframe(hm_rows.clone());
+    let _ = HashMapEvent::to_dataframe_split(hm_rows);
+
+    // BTreeMap align path — same shape, sorted key order exercised.
+    let bt_rows = vec![
+        BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::from([
+                ("z".to_string(), 3i32),
+                ("a".to_string(), 1i32),
+                ("m".to_string(), 2i32),
+            ]),
+        },
+        BTreeMapEvent::Empty { label: "b".into() },
+        BTreeMapEvent::Tally {
+            label: "c".into(),
+            tally: BTreeMap::new(), // empty map
+        },
+        BTreeMapEvent::Tally {
+            label: "d".into(),
+            tally: BTreeMap::from([("q".to_string(), 99i32)]),
+        },
+        BTreeMapEvent::Empty { label: "e".into() },
+    ];
+    let _ = BTreeMapEvent::to_dataframe(bt_rows.clone());
+    let _ = BTreeMapEvent::to_dataframe_split(bt_rows);
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.

@@ -227,6 +227,11 @@ Absent-variant rows produce `NULL` in both columns (not NA). An empty map produc
 
 **`as_list` opt-out**: annotate the field with `#[dataframe(as_list)]` to keep it as a single opaque named-list column (the pre-expansion behavior). Only use this when the named-list per-row shape is needed directly in R.
 
+**Detection caveats**: `classify_field_type` detects `HashMap` / `BTreeMap` by matching the last path segment (`HashMap` or `BTreeMap`) and requiring exactly two generic type arguments. Two shapes are not detected and fall through to `Scalar` (opaque list-column):
+
+- **Type aliases**: `type Counts = HashMap<String, i32>; field: Counts` — the last segment is `Counts`, not `HashMap`, so map expansion is not triggered. Use the concrete type directly, or annotate with `#[dataframe(as_list)]` and handle the named-list in R.
+- **`Option<HashMap<K,V>>`**: the outer segment is `Option` with one type argument, so the two-argument `HashMap`/`BTreeMap` guard is never reached. Unwrap the `Option` before storing (e.g., store `HashMap<K,V>` and push an empty map for the `None` case), or annotate with `#[dataframe(as_list)]`.
+
 ### Enum Align Mode
 
 Enums derive a companion DataFrame where each variant's fields contribute to a unified schema. Fields absent in a variant are filled with `None` (→ NA in R):

@@ -1235,10 +1235,8 @@ fn generate_split_method(
                             });
                         }
                         EnumResolvedField::Map(data) => {
-                            let keys_buf =
-                                format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                            let vals_buf =
-                                format_ident!("__s_{}_{}_values", snake, data.base_name);
+                            let keys_buf = format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                            let vals_buf = format_ident!("__s_{}_{}_values", snake, data.base_name);
                             let key_ty = &data.key_ty;
                             let val_ty = &data.val_ty;
                             buf_decls.push(quote! {

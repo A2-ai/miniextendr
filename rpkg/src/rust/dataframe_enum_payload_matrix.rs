@@ -692,6 +692,46 @@ pub fn hashmap_split_nv1r() -> List {
     ])
 }
 
+/// 1v1r align: one variant (Tally), one row.
+#[miniextendr]
+pub fn hashmap_align_1v1r() -> ToDataFrame<HashMapEventDataFrame> {
+    ToDataFrame(HashMapEvent::to_dataframe(vec![HashMapEvent::Tally {
+        label: "a".into(),
+        tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+    }]))
+}
+
+/// 1vNr align: one variant (Tally), multiple rows.
+#[miniextendr]
+pub fn hashmap_align_1vnr() -> ToDataFrame<HashMapEventDataFrame> {
+    ToDataFrame(HashMapEvent::to_dataframe(vec![
+        HashMapEvent::Tally {
+            label: "x".into(),
+            tally: HashMap::from([("x".to_string(), 5i32)]),
+        },
+        HashMapEvent::Tally {
+            label: "y".into(),
+            tally: HashMap::new(), // empty map
+        },
+        HashMapEvent::Tally {
+            label: "z".into(),
+            tally: HashMap::from([("p".to_string(), 10i32), ("q".to_string(), 20i32)]),
+        },
+    ]))
+}
+
+/// Nv1r align: both variants, one row each.
+#[miniextendr]
+pub fn hashmap_align_nv1r() -> ToDataFrame<HashMapEventDataFrame> {
+    ToDataFrame(HashMapEvent::to_dataframe(vec![
+        HashMapEvent::Tally {
+            label: "a".into(),
+            tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        HashMapEvent::Empty { label: "b".into() },
+    ]))
+}
+
 /// NvNr align: both variants, multiple rows each.
 #[miniextendr]
 pub fn hashmap_align_nvnr() -> ToDataFrame<HashMapEventDataFrame> {
@@ -768,6 +808,46 @@ pub fn btreemap_split_nv1r() -> List {
         },
         BTreeMapEvent::Empty { label: "b".into() },
     ])
+}
+
+/// 1v1r align: one variant (Tally), one row.
+#[miniextendr]
+pub fn btreemap_align_1v1r() -> ToDataFrame<BTreeMapEventDataFrame> {
+    ToDataFrame(BTreeMapEvent::to_dataframe(vec![BTreeMapEvent::Tally {
+        label: "a".into(),
+        tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+    }]))
+}
+
+/// 1vNr align: one variant (Tally), multiple rows.
+#[miniextendr]
+pub fn btreemap_align_1vnr() -> ToDataFrame<BTreeMapEventDataFrame> {
+    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+        BTreeMapEvent::Tally {
+            label: "x".into(),
+            tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
+        },
+        BTreeMapEvent::Tally {
+            label: "y".into(),
+            tally: BTreeMap::new(), // empty map
+        },
+        BTreeMapEvent::Tally {
+            label: "w".into(),
+            tally: BTreeMap::from([("m".to_string(), 7i32)]),
+        },
+    ]))
+}
+
+/// Nv1r align: both variants, one row each.
+#[miniextendr]
+pub fn btreemap_align_nv1r() -> ToDataFrame<BTreeMapEventDataFrame> {
+    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+        BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        BTreeMapEvent::Empty { label: "b".into() },
+    ]))
 }
 
 /// NvNr align: both variants, multiple rows each.

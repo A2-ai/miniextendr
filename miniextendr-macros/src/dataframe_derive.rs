@@ -293,7 +293,10 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
         if (seg.ident == "HashMap" || seg.ident == "BTreeMap")
             && let Some(syn::GenericArgument::Type(val_ty)) = args.args.iter().nth(1)
         {
-            return FieldTypeKind::Map { key_ty: inner, val_ty };
+            return FieldTypeKind::Map {
+                key_ty: inner,
+                val_ty,
+            };
         }
     }
 
