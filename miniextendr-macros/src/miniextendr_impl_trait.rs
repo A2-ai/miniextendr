@@ -875,6 +875,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 vtable: unsafe {
                     ::std::ptr::from_ref(&#vtable_static_name).cast::<::std::os::raw::c_void>()
                 },
+                vtable_symbol: stringify!(#vtable_static_name),
             };
     };
 

@@ -60,23 +60,35 @@ pub(crate) fn generate_direct_altrep_registration(
         ident
     );
 
-    // For non-generic types, emit a distributed_slice ALTREP registration entry.
+    // For non-generic types, emit a registration fn + a distributed_slice
+    // entry pairing the fn pointer with its `#[no_mangle]` symbol name.
     //
     // The function is `pub extern "C"` with `#[unsafe(no_mangle)]` so that a separate
-    // compilation unit (e.g. a WASM codegen path) can reference it by name via an
-    // `extern { fn __mx_altrep_reg_<Ident>(); }` declaration.
+    // compilation unit (the WASM snapshot codegen path) can reference it by name via
+    // an `extern { fn __mx_altrep_reg_<Ident>(); }` declaration. The entry static
+    // carries the symbol string for the host-time snapshot writer (so it doesn't have
+    // to recover the name from a fn pointer).
     //
     // The ident is used verbatim (no `.to_lowercase()`) to avoid case-collision footguns:
     // `MyType` vs `MYType` would both produce the same symbol name if lowercased.
     let altrep_reg_entry = if generics.params.is_empty() {
         let reg_fn_name = quote::format_ident!("__mx_altrep_reg_{}", ident);
+        let entry_ident = quote::format_ident!("__MX_ALTREP_REG_ENTRY_{}", ident);
         quote::quote! {
-            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALTREP_REGISTRATIONS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub extern "C" fn #reg_fn_name() {
                 <#ident as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
             }
+
+            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALTREP_REGISTRATIONS), linkme(crate = ::miniextendr_api::linkme))]
+            #[doc(hidden)]
+            #[allow(non_upper_case_globals)]
+            static #entry_ident: ::miniextendr_api::registry::AltrepRegistration =
+                ::miniextendr_api::registry::AltrepRegistration {
+                    register: #reg_fn_name,
+                    symbol: stringify!(#reg_fn_name),
+                };
         }
     } else {
         quote::quote! {}
