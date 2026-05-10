@@ -9,8 +9,8 @@ use syn::{DeriveInput, Fields};
 
 use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
-    EnumExpandedVecData, EnumResolvedField, EnumSingleFieldData, FieldTypeKind, VariantInfo,
-    VariantShape, classify_field_type, parse_field_attrs,
+    EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData, FieldTypeKind,
+    VariantInfo, VariantShape, classify_field_type, parse_field_attrs,
 };
 use crate::naming;
 use std::collections::HashMap;
@@ -132,6 +132,27 @@ pub(super) fn derive_enum_dataframe(
                                     )));
                                 }
                             }
+                            FieldTypeKind::Map { key_ty, val_ty } => {
+                                if fa.width.is_some() {
+                                    return Err(syn::Error::new_spanned(
+                                        &f.ty,
+                                        "`width` is not valid on HashMap/BTreeMap fields",
+                                    ));
+                                }
+                                if fa.expand {
+                                    return Err(syn::Error::new_spanned(
+                                        &f.ty,
+                                        "`expand`/`unnest` is not valid on HashMap/BTreeMap fields",
+                                    ));
+                                }
+                                resolved.push(EnumResolvedField::Map(Box::new(EnumMapFieldData {
+                                    base_name: col_name_str,
+                                    binding: binding.clone(),
+                                    rust_name: rust_name.clone(),
+                                    key_ty: key_ty.clone(),
+                                    val_ty: val_ty.clone(),
+                                })));
+                            }
                             FieldTypeKind::Scalar => {
                                 if fa.width.is_some() {
                                     return Err(syn::Error::new_spanned(
@@ -230,6 +251,27 @@ pub(super) fn derive_enum_dataframe(
                                     )));
                                 }
                             }
+                            FieldTypeKind::Map { key_ty, val_ty } => {
+                                if fa.width.is_some() {
+                                    return Err(syn::Error::new_spanned(
+                                        &f.ty,
+                                        "`width` is not valid on HashMap/BTreeMap fields",
+                                    ));
+                                }
+                                if fa.expand {
+                                    return Err(syn::Error::new_spanned(
+                                        &f.ty,
+                                        "`expand`/`unnest` is not valid on HashMap/BTreeMap fields",
+                                    ));
+                                }
+                                resolved.push(EnumResolvedField::Map(Box::new(EnumMapFieldData {
+                                    base_name: col_name_str,
+                                    binding,
+                                    rust_name,
+                                    key_ty: key_ty.clone(),
+                                    val_ty: val_ty.clone(),
+                                })));
+                            }
                             FieldTypeKind::Scalar => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
@@ -298,6 +340,18 @@ pub(super) fn derive_enum_dataframe(
                 // AutoExpandVec: not registered in ColumnRegistry (width is dynamic).
                 // Collected separately below.
                 EnumResolvedField::AutoExpandVec(..) => {}
+                EnumResolvedField::Map(data) => {
+                    let key_ty = &data.key_ty;
+                    let val_ty = &data.val_ty;
+                    let keys_name = format!("{}_keys", data.base_name);
+                    let vals_name = format!("{}_values", data.base_name);
+                    // Column types are Vec<K> and Vec<V> respectively (used as Vec<Option<Vec<K>>>
+                    // / Vec<Option<Vec<V>>> in companion struct via ColumnRegistry wrapping).
+                    let key_vec_ty: syn::Type = syn::parse_quote!(Vec<#key_ty>);
+                    let val_vec_ty: syn::Type = syn::parse_quote!(Vec<#val_ty>);
+                    registry.register(&keys_name, &key_vec_ty, variant_idx, &vi.name, err_span)?;
+                    registry.register(&vals_name, &val_vec_ty, variant_idx, &vi.name, err_span)?;
+                }
             }
         }
     }
@@ -642,6 +696,26 @@ pub(super) fn derive_enum_dataframe(
                                         }
                                     }
                                 }
+                                EnumResolvedField::Map(data) => {
+                                    let keys_name = format!("{}_keys", data.base_name);
+                                    let vals_name = format!("{}_values", data.base_name);
+                                    let binding = &data.binding;
+                                    // Use unzip() to guarantee pairwise alignment of keys and values.
+                                    // Both columns are emitted together when the _keys column is
+                                    // processed; the _values column is skipped (already handled).
+                                    if col_name_str == keys_name {
+                                        let vals_col = format_ident!("{}", vals_name);
+                                        return quote! {
+                                            let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+                                            #col_name.push(Some(__mx_keys));
+                                            #vals_col.push(Some(__mx_vals));
+                                        };
+                                    }
+                                    if col_name_str == vals_name {
+                                        // Already handled when keys col was processed; emit no-op.
+                                        return quote! {};
+                                    }
+                                }
                                 // AutoExpandVec doesn't contribute to static columns
                                 _ => {}
                             }
@@ -864,6 +938,26 @@ pub(super) fn derive_enum_dataframe(
                                                 let get_idx = i - 1;
                                                 return quote! { #w_name.write(__i, #binding.get(#get_idx).cloned()); };
                                             }
+                                        }
+                                    }
+                                    EnumResolvedField::Map(data) => {
+                                        let keys_name = format!("{}_keys", data.base_name);
+                                        let vals_name = format!("{}_values", data.base_name);
+                                        let binding = &data.binding;
+                                        // Combined unzip: emit both key and value writes when the
+                                        // keys column is processed; skip the values column (handled here).
+                                        if col_name_str == keys_name {
+                                            let vals_col = format_ident!("{}", vals_name);
+                                            let w_vals = format_ident!("__w_{}", vals_col);
+                                            return quote! {
+                                                let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+                                                #w_name.write(__i, Some(__mx_keys));
+                                                #w_vals.write(__i, Some(__mx_vals));
+                                            };
+                                        }
+                                        if col_name_str == vals_name {
+                                            // Already handled when keys col was processed.
+                                            return quote! {};
                                         }
                                     }
                                     _ => {}
@@ -1140,6 +1234,16 @@ fn generate_split_method(
                                 let mut #buf: Vec<#container_ty> = Vec::new();
                             });
                         }
+                        EnumResolvedField::Map(data) => {
+                            let keys_buf = format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                            let vals_buf = format_ident!("__s_{}_{}_values", snake, data.base_name);
+                            let key_ty = &data.key_ty;
+                            let val_ty = &data.val_ty;
+                            buf_decls.push(quote! {
+                                let mut #keys_buf: Vec<Vec<#key_ty>> = Vec::new();
+                                let mut #vals_buf: Vec<Vec<#val_ty>> = Vec::new();
+                            });
+                        }
                     }
                 }
 
@@ -1172,6 +1276,18 @@ fn generate_split_method(
                             EnumResolvedField::AutoExpandVec(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                                 vec![quote! { #buf.push(#binding); }]
+                            }
+                            EnumResolvedField::Map(data) => {
+                                let keys_buf =
+                                    format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                                let vals_buf =
+                                    format_ident!("__s_{}_{}_values", snake, data.base_name);
+                                // unzip() guarantees pairwise alignment of keys and values.
+                                vec![quote! {
+                                    let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+                                    #keys_buf.push(__mx_keys);
+                                    #vals_buf.push(__mx_vals);
+                                }]
                             }
                         }
                     })
@@ -1253,6 +1369,11 @@ fn generate_split_method(
                                     quote! { #buf.len() }
                                 }
                                 EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                                EnumResolvedField::Map(data) => {
+                                    let keys_buf =
+                                        format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                                    quote! { #keys_buf.len() }
+                                }
                             }
                         } else {
                             // All fields are AutoExpandVec — use the first auto buf length
@@ -1337,6 +1458,28 @@ fn generate_split_method(
                                     }
                                 }]
                             }
+                            EnumResolvedField::Map(data) => {
+                                let keys_buf =
+                                    format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                                let vals_buf =
+                                    format_ident!("__s_{}_{}_values", snake, data.base_name);
+                                let keys_str = format!("{}_keys", data.base_name);
+                                let vals_str = format!("{}_values", data.base_name);
+                                vec![
+                                    quote! {
+                                        #pairs_var.push((
+                                            #keys_str.to_string(),
+                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#keys_buf)),
+                                        ));
+                                    },
+                                    quote! {
+                                        #pairs_var.push((
+                                            #vals_str.to_string(),
+                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#vals_buf)),
+                                        ));
+                                    },
+                                ]
+                            }
                         })
                         .collect();
 
@@ -1375,6 +1518,11 @@ fn generate_split_method(
                                 quote! { #buf.len() }
                             }
                             EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                            EnumResolvedField::Map(data) => {
+                                let keys_buf =
+                                    format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                                quote! { #keys_buf.len() }
+                            }
                         }
                     } else {
                         // No fields (unexpected for Named/Tuple, but handle it)
@@ -1417,6 +1565,22 @@ fn generate_split_method(
                                 })
                                 .collect(),
                             EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                            EnumResolvedField::Map(data) => {
+                                let keys_buf =
+                                    format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                                let vals_buf =
+                                    format_ident!("__s_{}_{}_values", snake, data.base_name);
+                                let keys_str = format!("{}_keys", data.base_name);
+                                let vals_str = format!("{}_values", data.base_name);
+                                vec![
+                                    quote! {
+                                        (#keys_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#keys_buf)))
+                                    },
+                                    quote! {
+                                        (#vals_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#vals_buf)))
+                                    },
+                                ]
+                            }
                         })
                         .collect();
 

@@ -228,8 +228,15 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `Vec<Option<BTreeMap<String, V>>>` (V: IntoR) | VECSXP of named lists | NULL |
 | `Vec<Option<&[T]>>` (T: RNativeType) | VECSXP of typed vectors | NULL |
 | `Vec<Option<&[String]>>` | VECSXP of character vectors | NULL |
+| `Vec<Option<Vec<K>>>` (K: RNativeType, keys column) | VECSXP of typed vectors | NULL |
+| `Vec<Option<Vec<V>>>` (V: IntoR, values column) | VECSXP | NULL |
 | `PathBuf` | STRSXP (lossy UTF-8 conversion) |
 | `OsString` | STRSXP (lossy UTF-8 conversion) |
+
+> The `Vec<Option<Vec<K>>>` and `Vec<Option<Vec<V>>>` types appear as the companion-struct
+> column types for `HashMap<K,V>` / `BTreeMap<K,V>` enum variant fields, expanded to
+> `<field>_keys` / `<field>_values` columns by `DataFrameRow` derive. No new `IntoR` impls
+> are required beyond those already present.
 
 ### Result and Error Types
 

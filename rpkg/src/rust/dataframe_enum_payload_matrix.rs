@@ -12,13 +12,13 @@
 //! A single-variant enum is also exposed for 1v1r / 1vNr to verify the
 //! bare-data.frame return path of `to_dataframe_split`.
 //!
-//! Map types (HashMap/BTreeMap), nested-enum payloads, and struct-in-variant
-//! payloads are tracked by GH issues #457 / #458 / #459 — not exercised here.
+//! `HashMap`/`BTreeMap` enum payloads are exercised in the map-fields section (issue #457).
+//! Nested-enum payloads and struct-in-variant payloads are tracked by GH issues #458 / #459.
 //! `&str` and `&[T]` enum payloads are exercised in the borrowed-string section below.
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use miniextendr_api::convert::ToDataFrame;
 use miniextendr_api::{DataFrameRow, List, miniextendr};
@@ -618,6 +618,276 @@ pub fn borrowed_slice_split_nvnr() -> List {
 
 // endregion
 
+// region: 8. Map fields (HashMap<K,V> / BTreeMap<K,V>) ─────────────────────────
+//
+// HashMap and BTreeMap fields expand to two parallel list-columns:
+//   `<field>_keys` and `<field>_values`.
+// Absent-variant rows produce NULL in both. An empty map produces integer(0)/character(0).
+// Key order: BTreeMap = sorted; HashMap = non-deterministic.
+// Use setequal/sort checks in R tests for HashMap, exact checks for BTreeMap.
+
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum HashMapEvent {
+    Tally {
+        label: String,
+        tally: HashMap<String, i32>,
+    },
+    Empty {
+        label: String,
+    },
+}
+
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum BTreeMapEvent {
+    Tally {
+        label: String,
+        tally: BTreeMap<String, i32>,
+    },
+    Empty {
+        label: String,
+    },
+}
+
+// region: HashMap fixtures – all 4 cardinality cells
+
+/// 1v1r: one variant (Tally), one row.
+#[miniextendr]
+pub fn hashmap_split_1v1r() -> List {
+    HashMapEvent::to_dataframe_split(vec![HashMapEvent::Tally {
+        label: "a".into(),
+        tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+    }])
+}
+
+/// 1vNr: one variant (Tally), multiple rows.
+#[miniextendr]
+pub fn hashmap_split_1vnr() -> List {
+    HashMapEvent::to_dataframe_split(vec![
+        HashMapEvent::Tally {
+            label: "x".into(),
+            tally: HashMap::from([("x".to_string(), 5i32)]),
+        },
+        HashMapEvent::Tally {
+            label: "y".into(),
+            tally: HashMap::new(), // empty map
+        },
+        HashMapEvent::Tally {
+            label: "z".into(),
+            tally: HashMap::from([("p".to_string(), 10i32), ("q".to_string(), 20i32)]),
+        },
+    ])
+}
+
+/// Nv1r: both variants, one row each.
+#[miniextendr]
+pub fn hashmap_split_nv1r() -> List {
+    HashMapEvent::to_dataframe_split(vec![
+        HashMapEvent::Tally {
+            label: "a".into(),
+            tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        HashMapEvent::Empty { label: "b".into() },
+    ])
+}
+
+/// 1v1r align: one variant (Tally), one row.
+#[miniextendr]
+pub fn hashmap_align_1v1r() -> ToDataFrame<HashMapEventDataFrame> {
+    ToDataFrame(HashMapEvent::to_dataframe(vec![HashMapEvent::Tally {
+        label: "a".into(),
+        tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+    }]))
+}
+
+/// 1vNr align: one variant (Tally), multiple rows.
+#[miniextendr]
+pub fn hashmap_align_1vnr() -> ToDataFrame<HashMapEventDataFrame> {
+    ToDataFrame(HashMapEvent::to_dataframe(vec![
+        HashMapEvent::Tally {
+            label: "x".into(),
+            tally: HashMap::from([("x".to_string(), 5i32)]),
+        },
+        HashMapEvent::Tally {
+            label: "y".into(),
+            tally: HashMap::new(), // empty map
+        },
+        HashMapEvent::Tally {
+            label: "z".into(),
+            tally: HashMap::from([("p".to_string(), 10i32), ("q".to_string(), 20i32)]),
+        },
+    ]))
+}
+
+/// Nv1r align: both variants, one row each.
+#[miniextendr]
+pub fn hashmap_align_nv1r() -> ToDataFrame<HashMapEventDataFrame> {
+    ToDataFrame(HashMapEvent::to_dataframe(vec![
+        HashMapEvent::Tally {
+            label: "a".into(),
+            tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        HashMapEvent::Empty { label: "b".into() },
+    ]))
+}
+
+/// NvNr align: both variants, multiple rows each.
+#[miniextendr]
+pub fn hashmap_align_nvnr() -> ToDataFrame<HashMapEventDataFrame> {
+    ToDataFrame(HashMapEvent::to_dataframe(vec![
+        HashMapEvent::Tally {
+            label: "a".into(),
+            tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        HashMapEvent::Empty { label: "b".into() },
+        HashMapEvent::Tally {
+            label: "c".into(),
+            tally: HashMap::from([("x".to_string(), 5i32)]),
+        },
+        HashMapEvent::Empty { label: "d".into() },
+    ]))
+}
+
+/// NvNr split: both variants, multiple rows each.
+#[miniextendr]
+pub fn hashmap_split_nvnr() -> List {
+    HashMapEvent::to_dataframe_split(vec![
+        HashMapEvent::Tally {
+            label: "a".into(),
+            tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        HashMapEvent::Empty { label: "b".into() },
+        HashMapEvent::Tally {
+            label: "c".into(),
+            tally: HashMap::from([("x".to_string(), 5i32)]),
+        },
+        HashMapEvent::Empty { label: "d".into() },
+    ])
+}
+
+// endregion: HashMap fixtures
+
+// region: BTreeMap fixtures – all 4 cardinality cells
+
+/// 1v1r: one variant (Tally), one row.
+#[miniextendr]
+pub fn btreemap_split_1v1r() -> List {
+    BTreeMapEvent::to_dataframe_split(vec![BTreeMapEvent::Tally {
+        label: "a".into(),
+        tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+    }])
+}
+
+/// 1vNr: one variant (Tally), multiple rows.
+#[miniextendr]
+pub fn btreemap_split_1vnr() -> List {
+    BTreeMapEvent::to_dataframe_split(vec![
+        BTreeMapEvent::Tally {
+            label: "x".into(),
+            tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
+        },
+        BTreeMapEvent::Tally {
+            label: "y".into(),
+            tally: BTreeMap::new(), // empty map
+        },
+        BTreeMapEvent::Tally {
+            label: "w".into(),
+            tally: BTreeMap::from([("m".to_string(), 7i32)]),
+        },
+    ])
+}
+
+/// Nv1r: both variants, one row each.
+#[miniextendr]
+pub fn btreemap_split_nv1r() -> List {
+    BTreeMapEvent::to_dataframe_split(vec![
+        BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        BTreeMapEvent::Empty { label: "b".into() },
+    ])
+}
+
+/// 1v1r align: one variant (Tally), one row.
+#[miniextendr]
+pub fn btreemap_align_1v1r() -> ToDataFrame<BTreeMapEventDataFrame> {
+    ToDataFrame(BTreeMapEvent::to_dataframe(vec![BTreeMapEvent::Tally {
+        label: "a".into(),
+        tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+    }]))
+}
+
+/// 1vNr align: one variant (Tally), multiple rows.
+#[miniextendr]
+pub fn btreemap_align_1vnr() -> ToDataFrame<BTreeMapEventDataFrame> {
+    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+        BTreeMapEvent::Tally {
+            label: "x".into(),
+            tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
+        },
+        BTreeMapEvent::Tally {
+            label: "y".into(),
+            tally: BTreeMap::new(), // empty map
+        },
+        BTreeMapEvent::Tally {
+            label: "w".into(),
+            tally: BTreeMap::from([("m".to_string(), 7i32)]),
+        },
+    ]))
+}
+
+/// Nv1r align: both variants, one row each.
+#[miniextendr]
+pub fn btreemap_align_nv1r() -> ToDataFrame<BTreeMapEventDataFrame> {
+    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+        BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
+        },
+        BTreeMapEvent::Empty { label: "b".into() },
+    ]))
+}
+
+/// NvNr align: both variants, multiple rows each.
+#[miniextendr]
+pub fn btreemap_align_nvnr() -> ToDataFrame<BTreeMapEventDataFrame> {
+    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+        BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
+        },
+        BTreeMapEvent::Empty { label: "b".into() },
+        BTreeMapEvent::Tally {
+            label: "c".into(),
+            tally: BTreeMap::from([("m".to_string(), 7i32)]),
+        },
+        BTreeMapEvent::Empty { label: "d".into() },
+    ]))
+}
+
+/// NvNr split: both variants, multiple rows each.
+#[miniextendr]
+pub fn btreemap_split_nvnr() -> List {
+    BTreeMapEvent::to_dataframe_split(vec![
+        BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
+        },
+        BTreeMapEvent::Empty { label: "b".into() },
+        BTreeMapEvent::Tally {
+            label: "c".into(),
+            tally: BTreeMap::from([("m".to_string(), 7i32)]),
+        },
+        BTreeMapEvent::Empty { label: "d".into() },
+    ])
+}
+
+// endregion: BTreeMap fixtures
+
+// endregion: Map fields
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -708,4 +978,72 @@ mod tests {
         assert_eq!(df.id.len(), 2);
         assert_eq!(df.label.len(), 2);
     }
+
+    // region: Map fields Rust unit tests
+
+    #[test]
+    fn test_hashmap_event_align_companion_shape() {
+        // Verify companion struct has tally_keys and tally_values with correct option shape.
+        let df = HashMapEvent::to_dataframe(vec![
+            HashMapEvent::Tally {
+                label: "a".into(),
+                tally: HashMap::from([("x".to_string(), 1i32)]),
+            },
+            HashMapEvent::Empty { label: "b".into() },
+        ]);
+        assert_eq!(df.tally_keys.len(), 2);
+        assert_eq!(df.tally_values.len(), 2);
+        assert!(df.tally_keys[0].is_some());
+        assert!(df.tally_values[0].is_some());
+        assert!(df.tally_keys[1].is_none());
+        assert!(df.tally_values[1].is_none());
+        // Pairwise alignment: same length within a row.
+        let k = df.tally_keys[0].as_ref().unwrap();
+        let v = df.tally_values[0].as_ref().unwrap();
+        assert_eq!(k.len(), v.len());
+    }
+
+    #[test]
+    fn test_hashmap_empty_map_row() {
+        // An empty HashMap produces Some(vec![]) (not None) in both columns.
+        let df = HashMapEvent::to_dataframe(vec![HashMapEvent::Tally {
+            label: "a".into(),
+            tally: HashMap::new(),
+        }]);
+        assert_eq!(df.tally_keys[0], Some(vec![]));
+        assert_eq!(df.tally_values[0], Some(vec![]));
+    }
+
+    #[test]
+    fn test_btreemap_keys_sorted() {
+        // BTreeMap preserves sorted order: keys should be ["a", "z"], values [1, 3].
+        let df = BTreeMapEvent::to_dataframe(vec![BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
+        }]);
+        assert_eq!(
+            df.tally_keys[0].as_deref(),
+            Some(vec!["a".to_string(), "z".to_string()].as_slice())
+        );
+        assert_eq!(df.tally_values[0].as_deref(), Some(vec![1i32, 3i32].as_slice()));
+    }
+
+    #[test]
+    fn test_btreemap_empty_map_row() {
+        let df = BTreeMapEvent::to_dataframe(vec![BTreeMapEvent::Tally {
+            label: "a".into(),
+            tally: BTreeMap::new(),
+        }]);
+        assert_eq!(df.tally_keys[0], Some(vec![]));
+        assert_eq!(df.tally_values[0], Some(vec![]));
+    }
+
+    #[test]
+    fn test_btreemap_absent_variant_is_none() {
+        let df = BTreeMapEvent::to_dataframe(vec![BTreeMapEvent::Empty { label: "b".into() }]);
+        assert!(df.tally_keys[0].is_none());
+        assert!(df.tally_values[0].is_none());
+    }
+
+    // endregion: Map fields Rust unit tests
 }

@@ -225,6 +225,13 @@ pub(super) enum FieldTypeKind<'a> {
     /// `&[T]` -- borrowed slice, treated like `Vec<T>` for expansion purposes.
     /// Contains the element type.
     BorrowedSlice(&'a syn::Type),
+    /// `HashMap<K, V>` or `BTreeMap<K, V>` -- expands to two parallel list-columns:
+    /// `<field>_keys` and `<field>_values`. Key order follows the map's own iteration
+    /// order: `BTreeMap` yields sorted keys, `HashMap` yields non-deterministic order.
+    Map {
+        key_ty: &'a syn::Type,
+        val_ty: &'a syn::Type,
+    },
 }
 
 /// Classify a field type for DataFrame column expansion.
@@ -280,6 +287,16 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
             && let syn::Type::Slice(slice) = inner
         {
             return FieldTypeKind::BoxedSlice(&slice.elem);
+        }
+
+        // Check for HashMap<K, V> and BTreeMap<K, V>
+        if (seg.ident == "HashMap" || seg.ident == "BTreeMap")
+            && let Some(syn::GenericArgument::Type(val_ty)) = args.args.iter().nth(1)
+        {
+            return FieldTypeKind::Map {
+                key_ty: inner,
+                val_ty,
+            };
         }
     }
 
@@ -466,7 +483,7 @@ fn resolve_struct_field(
                 }))))
             }
         }
-        FieldTypeKind::Scalar => {
+        FieldTypeKind::Scalar | FieldTypeKind::Map { .. } => {
             if field_attrs.width.is_some() {
                 return Err(syn::Error::new_spanned(
                     ty,
@@ -1567,6 +1584,8 @@ pub(super) enum EnumResolvedField {
     ExpandedVec(Box<EnumExpandedVecData>),
     /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime.
     AutoExpandVec(Box<EnumAutoExpandVecData>),
+    /// `HashMap<K,V>` or `BTreeMap<K,V>` → two parallel list-columns: `<field>_keys`, `<field>_values`.
+    Map(Box<EnumMapFieldData>),
 }
 
 impl EnumResolvedField {
@@ -1577,6 +1596,7 @@ impl EnumResolvedField {
             Self::ExpandedFixed(data) => &data.binding,
             Self::ExpandedVec(data) => &data.binding,
             Self::AutoExpandVec(data) => &data.binding,
+            Self::Map(data) => &data.binding,
         }
     }
 
@@ -1587,6 +1607,7 @@ impl EnumResolvedField {
             Self::ExpandedFixed(data) => &data.rust_name,
             Self::ExpandedVec(data) => &data.rust_name,
             Self::AutoExpandVec(data) => &data.rust_name,
+            Self::Map(data) => &data.rust_name,
         }
     }
 }
@@ -1643,6 +1664,26 @@ pub(super) struct EnumAutoExpandVecData {
     pub(super) elem_ty: syn::Type,
     /// Container type for companion struct (Vec<T> or Box<[T]>).
     pub(super) container_ty: syn::Type,
+}
+
+/// Data for [`EnumResolvedField::Map`].
+///
+/// A `HashMap<K,V>` or `BTreeMap<K,V>` field expands to two parallel list-columns:
+/// `<base_name>_keys: Vec<Option<Vec<K>>>` and `<base_name>_values: Vec<Option<Vec<V>>>`.
+/// Absent-variant rows get `None` in both columns. Key order follows the map's own
+/// iteration order: `BTreeMap` yields sorted keys, `HashMap` yields non-deterministic order.
+/// Both are produced via `into_iter().unzip()` which guarantees pairwise alignment.
+pub(super) struct EnumMapFieldData {
+    /// Base column name (field name or `rename` override).
+    pub(super) base_name: String,
+    /// Binding name used in destructure pattern.
+    pub(super) binding: syn::Ident,
+    /// Original Rust field name.
+    pub(super) rust_name: syn::Ident,
+    /// Key type K.
+    pub(super) key_ty: syn::Type,
+    /// Value type V.
+    pub(super) val_ty: syn::Type,
 }
 
 /// Parsed and resolved information about a single enum variant for DataFrame codegen.

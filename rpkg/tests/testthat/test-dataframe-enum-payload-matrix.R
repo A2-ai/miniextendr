@@ -465,3 +465,249 @@ test_that("singleton — split 1vNr returns a bare N-row data.frame", {
   expect_equal(res$id, c(1L, 2L, 3L))
   expect_equal(res$label, c("alpha", "beta", "gamma"))
 })
+
+# ── Map fields (HashMap / BTreeMap) ──────────────────────────────────────────
+#
+# HashMap key order is non-deterministic: always use setequal/sort or position-based
+# lookup when checking keys. BTreeMap keys are sorted: expect_equal is safe.
+# as_list on a map field is valid (keeps map opaque as named-list column) — not
+# tested here since it uses the existing Scalar path.
+
+# ── HashMap ───────────────────────────────────────────────────────────────────
+
+test_that("hashmap — split 1v1r: tally has 1 row with _keys/_values, empty has 0 rows", {
+  res <- hashmap_split_1v1r()
+  expect_setequal(names(res), c("tally", "empty"))
+  expect_s3_class(res$tally, "data.frame")
+  expect_equal(nrow(res$tally), 1L)
+  expect_true(all(c("label", "tally_keys", "tally_values") %in% names(res$tally)))
+  expect_equal(nrow(res$empty), 0L)
+  # Parallel structure: same length within row
+  expect_equal(length(res$tally$tally_keys[[1]]), length(res$tally$tally_values[[1]]))
+  # HashMap: membership check for keys; position-based lookup for values
+  expect_setequal(res$tally$tally_keys[[1]], c("a", "b"))
+  idx_a <- match("a", res$tally$tally_keys[[1]])
+  idx_b <- match("b", res$tally$tally_keys[[1]])
+  expect_equal(res$tally$tally_values[[1]][idx_a], 1L)
+  expect_equal(res$tally$tally_values[[1]][idx_b], 2L)
+})
+
+test_that("hashmap — split 1vNr: three tally rows, empty partition has 0 rows", {
+  res <- hashmap_split_1vnr()
+  expect_setequal(names(res), c("tally", "empty"))
+  expect_equal(nrow(res$tally), 3L)
+  expect_equal(nrow(res$empty), 0L)
+  expect_type(res$tally$tally_keys, "list")
+  expect_type(res$tally$tally_values, "list")
+  # Row 1: single entry
+  expect_setequal(res$tally$tally_keys[[1]], "x")
+  expect_equal(res$tally$tally_values[[1]][match("x", res$tally$tally_keys[[1]])], 5L)
+  # Row 2: empty map — produces integer(0) / character(0), not NULL
+  expect_identical(res$tally$tally_keys[[2]], character(0))
+  expect_identical(res$tally$tally_values[[2]], integer(0))
+  # Row 3: two entries
+  expect_setequal(res$tally$tally_keys[[3]], c("p", "q"))
+})
+
+test_that("hashmap — split Nv1r: tally 1 row, empty 1 row", {
+  res <- hashmap_split_nv1r()
+  expect_setequal(names(res), c("tally", "empty"))
+  expect_equal(nrow(res$tally), 1L)
+  expect_equal(nrow(res$empty), 1L)
+  expect_setequal(res$tally$tally_keys[[1]], c("a", "b"))
+  expect_equal(res$empty$label, "b")
+})
+
+test_that("hashmap — align 1v1r: single Tally row has _keys/_values list-cols", {
+  df <- hashmap_align_1v1r()
+  expect_equal(nrow(df), 1L)
+  expect_type(df$tally_keys, "list")
+  expect_type(df$tally_values, "list")
+  # Single Tally row: keys/values are non-NULL and pairwise aligned
+  expect_false(is.null(df$tally_keys[[1]]))
+  expect_false(is.null(df$tally_values[[1]]))
+  expect_equal(length(df$tally_keys[[1]]), length(df$tally_values[[1]]))
+  # HashMap membership check (order non-deterministic)
+  expect_setequal(df$tally_keys[[1]], c("a", "b"))
+  idx_a <- match("a", df$tally_keys[[1]])
+  idx_b <- match("b", df$tally_keys[[1]])
+  expect_equal(df$tally_values[[1]][idx_a], 1L)
+  expect_equal(df$tally_values[[1]][idx_b], 2L)
+})
+
+test_that("hashmap — align 1vNr: three Tally rows including empty map", {
+  df <- hashmap_align_1vnr()
+  expect_equal(nrow(df), 3L)
+  expect_type(df$tally_keys, "list")
+  expect_type(df$tally_values, "list")
+  # All rows are Tally variant — no NULL cells
+  for (i in seq_len(nrow(df))) {
+    expect_false(is.null(df$tally_keys[[i]]))
+    expect_false(is.null(df$tally_values[[i]]))
+    expect_equal(length(df$tally_keys[[i]]), length(df$tally_values[[i]]))
+  }
+  # Row 2: empty map produces character(0) / integer(0)
+  expect_identical(df$tally_keys[[2]], character(0))
+  expect_identical(df$tally_values[[2]], integer(0))
+  # Row 1: single entry — setequal safe even for one element
+  expect_setequal(df$tally_keys[[1]], "x")
+  expect_equal(df$tally_values[[1]][match("x", df$tally_keys[[1]])], 5L)
+})
+
+test_that("hashmap — align Nv1r: Tally row non-NULL, Empty row NULL", {
+  df <- hashmap_align_nv1r()
+  expect_equal(nrow(df), 2L)
+  tally_rows <- which(df$`_type` == "Tally")
+  empty_rows <- which(df$`_type` == "Empty")
+  expect_length(tally_rows, 1L)
+  expect_length(empty_rows, 1L)
+  # Tally row has aligned keys/values
+  expect_false(is.null(df$tally_keys[[tally_rows]]))
+  expect_equal(
+    length(df$tally_keys[[tally_rows]]),
+    length(df$tally_values[[tally_rows]])
+  )
+  expect_setequal(df$tally_keys[[tally_rows]], c("a", "b"))
+  # Empty row: both columns NULL
+  expect_null(df$tally_keys[[empty_rows]])
+  expect_null(df$tally_values[[empty_rows]])
+})
+
+test_that("hashmap — align NvNr: _keys/_values list-cols; NULL for empty variant rows", {
+  df <- hashmap_align_nvnr()
+  expect_type(df$tally_keys, "list")
+  expect_type(df$tally_values, "list")
+  tally_rows <- which(df$`_type` == "Tally")
+  empty_rows <- which(df$`_type` == "Empty")
+  for (i in tally_rows) {
+    expect_false(is.null(df$tally_keys[[i]]))
+    expect_equal(length(df$tally_keys[[i]]), length(df$tally_values[[i]]))
+  }
+  for (i in empty_rows) {
+    expect_null(df$tally_keys[[i]])
+    expect_null(df$tally_values[[i]])
+  }
+})
+
+test_that("hashmap — split NvNr: tally and empty both have expected row counts", {
+  res <- hashmap_split_nvnr()
+  expect_setequal(names(res), c("tally", "empty"))
+  expect_equal(nrow(res$tally), 2L)
+  expect_equal(nrow(res$empty), 2L)
+  # Pairwise alignment holds for all rows
+  for (i in seq_len(nrow(res$tally))) {
+    expect_equal(
+      length(res$tally$tally_keys[[i]]),
+      length(res$tally$tally_values[[i]])
+    )
+  }
+})
+
+# ── BTreeMap ──────────────────────────────────────────────────────────────────
+
+test_that("btreemap — split 1v1r: keys are sorted, values match positionally", {
+  res <- btreemap_split_1v1r()
+  expect_setequal(names(res), c("tally", "empty"))
+  expect_equal(nrow(res$tally), 1L)
+  expect_equal(nrow(res$empty), 0L)
+  # BTreeMap: sorted order is deterministic
+  expect_equal(res$tally$tally_keys[[1]], c("a", "b"))
+  expect_equal(res$tally$tally_values[[1]], c(1L, 2L))
+  # Sorted invariant
+  expect_equal(res$tally$tally_keys[[1]], sort(res$tally$tally_keys[[1]]))
+})
+
+test_that("btreemap — split 1vNr: sorted keys, empty map gives zero-length vectors", {
+  res <- btreemap_split_1vnr()
+  expect_equal(nrow(res$tally), 3L)
+  # Row 1: keys from BTreeMap::from([("z",3),("a",1)]) → sorted ["a","z"]
+  expect_equal(res$tally$tally_keys[[1]], c("a", "z"))
+  expect_equal(res$tally$tally_values[[1]], c(1L, 3L))
+  # Row 2: empty map
+  expect_identical(res$tally$tally_keys[[2]], character(0))
+  expect_identical(res$tally$tally_values[[2]], integer(0))
+  # Row 3: single entry
+  expect_equal(res$tally$tally_keys[[3]], "m")
+  expect_equal(res$tally$tally_values[[3]], 7L)
+})
+
+test_that("btreemap — split Nv1r: tally 1 row sorted keys, empty 1 row", {
+  res <- btreemap_split_nv1r()
+  expect_equal(nrow(res$tally), 1L)
+  expect_equal(nrow(res$empty), 1L)
+  expect_equal(res$tally$tally_keys[[1]], c("a", "b"))
+  expect_equal(res$tally$tally_values[[1]], c(1L, 2L))
+})
+
+test_that("btreemap — align 1v1r: single Tally row has sorted _keys/_values", {
+  df <- btreemap_align_1v1r()
+  expect_equal(nrow(df), 1L)
+  expect_type(df$tally_keys, "list")
+  expect_type(df$tally_values, "list")
+  # BTreeMap: sorted order is deterministic — expect_equal is safe
+  expect_equal(df$tally_keys[[1]], c("a", "b"))
+  expect_equal(df$tally_values[[1]], c(1L, 2L))
+  expect_equal(df$tally_keys[[1]], sort(df$tally_keys[[1]]))
+})
+
+test_that("btreemap — align 1vNr: three Tally rows including empty map, sorted keys", {
+  df <- btreemap_align_1vnr()
+  expect_equal(nrow(df), 3L)
+  for (i in seq_len(nrow(df))) {
+    expect_false(is.null(df$tally_keys[[i]]))
+    # BTreeMap keys are always sorted
+    expect_equal(df$tally_keys[[i]], sort(df$tally_keys[[i]]))
+  }
+  # Row 1: BTreeMap::from([("z",3),("a",1)]) → sorted ["a","z"]
+  expect_equal(df$tally_keys[[1]], c("a", "z"))
+  expect_equal(df$tally_values[[1]], c(1L, 3L))
+  # Row 2: empty map
+  expect_identical(df$tally_keys[[2]], character(0))
+  expect_identical(df$tally_values[[2]], integer(0))
+  # Row 3: single entry
+  expect_equal(df$tally_keys[[3]], "m")
+  expect_equal(df$tally_values[[3]], 7L)
+})
+
+test_that("btreemap — align Nv1r: Tally row sorted keys, Empty row NULL", {
+  df <- btreemap_align_nv1r()
+  expect_equal(nrow(df), 2L)
+  tally_rows <- which(df$`_type` == "Tally")
+  empty_rows <- which(df$`_type` == "Empty")
+  expect_length(tally_rows, 1L)
+  expect_length(empty_rows, 1L)
+  # Tally row: sorted keys and aligned values
+  expect_equal(df$tally_keys[[tally_rows]], c("a", "b"))
+  expect_equal(df$tally_values[[tally_rows]], c(1L, 2L))
+  expect_equal(df$tally_keys[[tally_rows]], sort(df$tally_keys[[tally_rows]]))
+  # Empty row: both columns NULL
+  expect_null(df$tally_keys[[empty_rows]])
+  expect_null(df$tally_values[[empty_rows]])
+})
+
+test_that("btreemap — align NvNr: sorted keys in tally rows, NULL for empty rows", {
+  df <- btreemap_align_nvnr()
+  tally_rows <- which(df$`_type` == "Tally")
+  empty_rows <- which(df$`_type` == "Empty")
+  for (i in tally_rows) {
+    keys <- df$tally_keys[[i]]
+    expect_equal(keys, sort(keys))
+    expect_equal(length(keys), length(df$tally_values[[i]]))
+  }
+  for (i in empty_rows) {
+    expect_null(df$tally_keys[[i]])
+    expect_null(df$tally_values[[i]])
+  }
+})
+
+test_that("btreemap — split NvNr: tally and empty both have expected row counts and sorted keys", {
+  res <- btreemap_split_nvnr()
+  expect_equal(nrow(res$tally), 2L)
+  expect_equal(nrow(res$empty), 2L)
+  # Row 1: keys from BTreeMap::from([("z",3),("a",1)]) → sorted ["a","z"]
+  expect_equal(res$tally$tally_keys[[1]], c("a", "z"))
+  expect_equal(res$tally$tally_values[[1]], c(1L, 3L))
+  # Row 2: single entry
+  expect_equal(res$tally$tally_keys[[2]], "m")
+  expect_equal(res$tally$tally_values[[2]], 7L)
+})
