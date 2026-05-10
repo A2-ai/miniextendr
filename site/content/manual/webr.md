@@ -151,11 +151,12 @@ be exported during the wasm install — `webr-vars.mk` references both.
   by Phase 1's native build and shipped through into Phase 2's source tree.
 - **Worker thread is off.** R-on-WASM is single-threaded; the
   `worker-thread` feature must be disabled. Already feature-gated.
-- **`RUSTFLAGS` for the side-module link** are not yet locked in — there's
-  a `# TODO(#470)` in `rpkg/src/Makevars.in` flagging
-  `-C relocation-model=pic -C link-args=-s SIDE_MODULE=1` as the proposed
-  set. The smoke script is the empirical validator; if the wasm side-module
-  fails to link, that's the next thing to verify against `rwasm`'s flags.
+- **`RUSTFLAGS` for the side-module link** are not yet locked in. The
+  proposed set is `-C relocation-model=pic -C link-args=-s SIDE_MODULE=1`
+  (per `plans/webr-support.md`); `rwasm`'s flags are the canonical
+  reference and the smoke script is the empirical validator. If the wasm
+  side-module fails to link, that's the next thing to verify against
+  `rwasm`. Tracked via #470.
 
 ## CI
 
