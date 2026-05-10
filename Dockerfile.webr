@@ -1,0 +1,72 @@
+# syntax=docker/dockerfile:1.7
+#
+# Local dev container for testing miniextendr R packages under webR.
+#
+# Inherits the upstream `ghcr.io/r-wasm/webr` image so we don't re-stage
+# Emscripten, flang, nightly Rust + `wasm32-unknown-emscripten` + `rust-src`,
+# or the host/wasm R trees. We layer just enough on top to run `just`-based
+# workflows and have a comfortable interactive shell.
+#
+# Usage (local dev):
+#   just docker-webr-build         # build the image
+#   just docker-webr-shell         # interactive shell, repo bind-mounted at /work
+#
+# Build args:
+#   WEBR_BASE  — pinned base-image digest (default below). Bump deliberately
+#                via PR; webR's `:main` tag rolls without notice.
+#   JUST_VERSION — `just` release to install. Apt's version is too old.
+
+ARG WEBR_BASE=ghcr.io/r-wasm/webr@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
+FROM ${WEBR_BASE}
+
+ARG JUST_VERSION=1.36.0
+
+# OS deps + dev quality-of-life. Single apt block to keep the layer tight.
+# `autoconf` is needed because rpkg/configure is regenerated from configure.ac
+# on fresh checkouts. clang is already on the base; we add `lldb` for native
+# debugging when reproducing CI failures inside the container.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        autoconf \
+        ripgrep \
+        fd-find \
+        lldb \
+    && rm -rf /var/lib/apt/lists/*
+
+# `just`. The apt version on Debian/Ubuntu is too old for our justfiles.
+# Using the prebuilt static-musl tarball so libc bumps in the base don't
+# break it.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in \
+         amd64) JUST_TRIPLE=x86_64-unknown-linux-musl ;; \
+         arm64) JUST_TRIPLE=aarch64-unknown-linux-musl ;; \
+         *) echo "unsupported arch: $ARCH"; exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-${JUST_TRIPLE}.tar.gz" \
+       | tar -xz -C /usr/local/bin just
+
+# `cargo-limit` (the `cargo lcheck/lclippy/ltest/lbuild` aliases the project
+# uses for fast iteration). Build-dep-free — single binary install via cargo.
+RUN cargo install cargo-limit --locked --version "0.0.13"
+
+# Sanity checks — fail the build immediately if the inherited toolchain
+# regressed or our layered tools are missing, instead of debugging a weird
+# later failure inside a working container.
+RUN set -eux \
+    && rustup target list --installed | grep -q wasm32-unknown-emscripten \
+    && rustup component list --installed | grep -q rust-src \
+    && cargo --version \
+    && emcc --version >/dev/null \
+    && /opt/R/current/bin/R --version >/dev/null \
+    && Rscript -e 'stopifnot(requireNamespace("rwasm", quietly=TRUE))' \
+    && just --version >/dev/null \
+    && autoconf --version >/dev/null \
+    && command -v cargo-lcheck >/dev/null \
+    && command -v rg >/dev/null \
+    && command -v fdfind >/dev/null \
+    && command -v lldb >/dev/null
+
+# `/work` is a plain mount point; CI / local dev binds the repo there. We do
+# *not* `COPY` source into the image — keeping it source-free makes it a pure
+# environment artefact and lets `docker run -v $PWD:/work` work without a
+# rebuild for every code change.
+WORKDIR /work

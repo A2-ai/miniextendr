@@ -1,0 +1,29 @@
+# `Dockerfile.webr` doesn't `COPY` source into the image, so the build context
+# is only used by `docker build`'s tar step. Keep that step fast by excluding
+# heavy dirs and generated artefacts.
+
+target/
+**/target/
+rust-target/
+ra-target/
+**/rust-target/
+**/ra-target/
+rpkg/src/rust/target/
+tests/cross-package/*/rust-target/
+
+.claude/
+.webr/
+
+node_modules/
+**/node_modules/
+
+site/public/
+
+rpkg-check-output/
+rpkg/inst/vendor.tar.xz
+**/vendor/
+
+*.log
+*.tmp
+
+.git/

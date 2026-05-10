@@ -1141,3 +1141,42 @@ site-serve:
 # Bump version across all Cargo.toml and DESCRIPTION files.
 bump-version version:
     bash scripts/bump-version.sh {{version}}
+
+# ── Local webR/wasm dev container ────────────────────────────────────────────
+#
+# `Dockerfile.webr` inherits ghcr.io/r-wasm/webr (digest-pinned) and layers
+# `just`, `autoconf`, dev tools. See the Dockerfile header for what's already
+# in the base. Use this when reproducing webR/wasm32 build issues locally.
+
+docker_webr_image := "miniextendr-webr-dev:latest"
+
+# Build the local webR dev image. Re-run when Dockerfile.webr changes.
+docker-webr-build:
+    docker build -f Dockerfile.webr -t {{docker_webr_image}} .
+
+# Drop into an interactive shell in the webR dev container with this repo
+# bind-mounted at /work. From inside, run `just configure / rcmdinstall /
+# devtools-test` etc. as if on Linux. The container is amd64-only (webR
+# upstream); on Apple Silicon Docker emulates via Rosetta — slower but works.
+docker-webr-shell:
+    docker run --rm -it \
+        -v "{{justfile_directory()}}:/work" \
+        -w /work \
+        {{docker_webr_image}} bash
+
+# Non-interactive: run an arbitrary command inside the container with the
+# repo mounted. e.g. `just docker-webr-run "cargo check --target wasm32-unknown-emscripten -p miniextendr-api"`.
+docker-webr-run *cmd:
+    docker run --rm \
+        -v "{{justfile_directory()}}:/work" \
+        -w /work \
+        {{docker_webr_image}} bash -c "{{cmd}}"
+
+# Smoke-test the wasm32 build path inside the container. Checks
+# `miniextendr-api` (no git deps, so works directly). For an rpkg-side
+# wasm32 check, drop into a shell with `just docker-webr-shell` and run
+# `bash ./rpkg/configure && cd rpkg/src/rust && cargo check --target
+# wasm32-unknown-emscripten` — `configure` writes the right `[patch."git+url"]`
+# overrides into `.cargo/config.toml` for the workspace siblings.
+docker-webr-test: docker-webr-build
+    just docker-webr-run "cargo check --target wasm32-unknown-emscripten -p miniextendr-api"
