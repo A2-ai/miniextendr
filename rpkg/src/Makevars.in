@@ -18,6 +18,8 @@ CDYLIB_PREFIX         = @CDYLIB_PREFIX@
 CDYLIB_EXT            = @CDYLIB_EXT@
 TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
+IS_WASM_INSTALL       = @IS_WASM_INSTALL@
+CARGO_BUILD_STD_FLAG  = @CARGO_BUILD_STD_FLAG@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # codegen-units = 1 in Cargo.toml ensures the user crate compiles into a single .o
@@ -45,8 +47,9 @@ CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_
 # all must be defined FIRST to be the default target.
 # Depend on both $(SHLIB) and $(WRAPPERS_R) so that:
 #   1. Staticlib builds first ($(SHLIB) needs $(CARGO_AR)), warming the incremental cache
-#   2. Cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
-#   3. R wrappers are generated from the cdylib
+#   2. On native: cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
+#   3. On native: R wrappers are generated from the cdylib
+#   On wasm32: $(WRAPPERS_R) has no cdylib prereq — pre-generated files are expected.
 all: $(SHLIB) $(WRAPPERS_R)
 	@# Source install: touch Cargo.toml so pkgbuild always thinks sources changed
 	@# (dev iteration with devtools::load_all() / install() relies on this).
@@ -86,7 +89,7 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	cd "$(ABS_RPKG_SRCDIR)/rust"; \
 	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $(CARGO_BUILD_STD_FLAG) $$TARGET_OPT \
 	  --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR); \
@@ -104,6 +107,16 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 # host edits to `#[miniextendr]` items must be matched by a regenerated
 # wasm_registry.rs or the wasm32 build registers stale routines).
 # NAMESPACE is NOT generated here — use devtools::document() for that.
+#
+# The rule is split on IS_WASM_INSTALL so the cdylib prerequisite is
+# conditional: on wasm32 the cdylib is a .wasm SIDE_MODULE that host R
+# cannot dyn.load, so the wasm path has no prereq and expects pre-generated
+# files (written during the host devtools::document() pass).
+ifeq ($(IS_WASM_INSTALL),true)
+$(WRAPPERS_R):
+	@echo "wasm32 install: skipping wrapper-gen (pre-generated R/$(PACKAGE_NAME)-wrappers.R + src/rust/wasm_registry.rs expected)"
+	@touch $(WRAPPERS_R)
+else
 $(WRAPPERS_R): $(CARGO_CDYLIB)
 	@echo "Generating R wrappers + wasm_registry.rs..."
 	@_cdylib='$(CARGO_CDYLIB)'; \
@@ -117,6 +130,7 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); .Call(getNativeSymbolInfo('miniextendr_write_wasm_registry', lib), '$$_wasm_registry'); dyn.unload('$$_cdylib') }))"
 	@echo "Removing cdylib to prevent linker collision with staticlib..."
 	@rm -f '$(CARGO_CDYLIB)'
+endif
 
 # Build cdylib for wrapper generation.
 # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
