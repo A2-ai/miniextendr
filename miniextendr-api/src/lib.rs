@@ -243,6 +243,10 @@ pub mod ffi;
 /// finalize registration with R. Users don't interact with this module.
 pub mod registry;
 
+/// Host-time generator of `wasm_registry.rs` — the WASM-side replacement for
+/// linkme. See the module for full rationale.
+pub mod wasm_registry_writer;
+
 // Re-export high-level ALTREP data traits
 pub use altrep_data::{
     AltComplexData,
