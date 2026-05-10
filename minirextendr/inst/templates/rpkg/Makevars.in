@@ -47,8 +47,9 @@ CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_
 # all must be defined FIRST to be the default target.
 # Depend on both $(SHLIB) and $(WRAPPERS_R) so that:
 #   1. Staticlib builds first ($(SHLIB) needs $(CARGO_AR)), warming the incremental cache
-#   2. Cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
-#   3. R wrappers are generated from the cdylib
+#   2. On native: cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
+#   3. On native: R wrappers are generated from the cdylib
+#   On wasm32: $(WRAPPERS_R) has no cdylib prereq — pre-generated files are expected.
 all: $(SHLIB) $(WRAPPERS_R)
 	@# Source install: touch Cargo.toml so pkgbuild always thinks sources changed
 	@# (dev iteration with devtools::load_all() / install() relies on this).
@@ -106,12 +107,17 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 # host edits to `#[miniextendr]` items must be matched by a regenerated
 # wasm_registry.rs or the wasm32 build registers stale routines).
 # NAMESPACE is NOT generated here — use devtools::document() for that.
-$(WRAPPERS_R): $(CARGO_CDYLIB)
+#
+# The rule is split on IS_WASM_INSTALL so the cdylib prerequisite is
+# conditional: on wasm32 the cdylib is a .wasm SIDE_MODULE that host R
+# cannot dyn.load, so the wasm path has no prereq and expects pre-generated
+# files (written during the host devtools::document() pass).
 ifeq ($(IS_WASM_INSTALL),true)
+$(WRAPPERS_R):
 	@echo "wasm32 install: skipping wrapper-gen (pre-generated R/$(PACKAGE_NAME)-wrappers.R + src/rust/wasm_registry.rs expected)"
-	# TODO(#470): verify exact RUSTFLAGS for SIDE_MODULE link against webR's pinned emscripten
 	@touch $(WRAPPERS_R)
 else
+$(WRAPPERS_R): $(CARGO_CDYLIB)
 	@echo "Generating R wrappers + wasm_registry.rs..."
 	@_cdylib='$(CARGO_CDYLIB)'; \
 	_wrappers='$(WRAPPERS_R)'; \
