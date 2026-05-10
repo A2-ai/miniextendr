@@ -823,39 +823,12 @@ just fmt
 
 ---
 
-## Open questions
+## Design decisions (resolved with user 2026-05-10)
 
-1. **`IntoR` for unit-only enums:** the `as_factor` path emits
-   `Vec<Option<InnerTy>>.into_sexp()`. For a unit-only enum `Direction`, `IntoR`
-   is not automatically derived. The implementer must either add a manual `IntoR`
-   impl in the fixture file, or check whether `#[miniextendr]`-derived `IntoR`
-   covers enums via a `ToString`-based path. If the blanket impl is missing, it
-   should be added to `miniextendr-api/src/into_r.rs` (or documented as out of
-   scope and tracked in a follow-up issue).
+**Q1 — RESOLVED: auto-emit `IntoR` for unit-only enums via `DataFrameRow` derive.** When the inner enum has only unit variants, `#[derive(DataFrameRow)]` also emits `impl IntoR for Inner` (variant ident → string via the same convention used by existing enum→string codegen). Skip this auto-emission if any variant has payload. Zero user boilerplate for the common case. The implementer should add this auto-emission in `derive_enum_dataframe` alongside the missing `DataFrameRow` marker impl flagged in section 7.
 
-2. **Inner tag column naming:** the inner `DataFrameRow` enum emits its own tag
-   column (e.g. `variant` if `#[dataframe(tag = "variant")]`). After outer
-   prefixing this becomes `status_variant`.  If the inner enum uses
-   `#[dataframe(tag = "_variant")]` (leading underscore), the outer column is
-   `status__variant` (double underscore).  The locked design says the outer
-   discriminant column is `<field>_variant` — this is naturally achieved when
-   the inner enum uses `#[dataframe(tag = "variant")]`.  The plan recommends
-   documenting this convention rather than enforcing it in the macro.
+**Q2 — RESOLVED: `<field>_variant` (single underscore) with compile-time collision detection.** The outer-scope discriminant column is `<field>_variant`. If the inner enum's payload contains a field literally named `variant`, the macro must error at compile time pointing at the collision. The error should suggest renaming the inner field or using `#[dataframe(tag = "...")]` on Inner to pick a different inner tag. Naturally achieved when the inner enum uses `#[dataframe(tag = "variant")]` (the recommended convention).
 
-3. **Struct-in-enum vs enum-in-enum — separate `FieldTypeKind`?** The current
-   plan reuses `FieldTypeKind::Struct` for both structs and enums.  If in the
-   future it becomes desirable to distinguish them (e.g. for a different error
-   message or different default behavior), a `FieldTypeKind::NestedEnum` arm
-   could be added. For now, treating them identically is correct and simpler.
-   File a follow-up issue if this distinction is needed.
+**Q3 — RESOLVED: real R factor.** `as_factor` emits a column built as `structure(integer_vec, levels = c("Variant1", "Variant2", ...), class = "factor")`. Levels are enumerated at compile time from the enum's variant idents in declaration order. NA rows get `NA_integer_`. Unit-only enums only — payload-bearing enum used with `as_factor` is a compile error (UI test b in this plan). The auto-emitted `IntoR` from Q1 should produce factor SEXP directly (not a character vector).
 
-4. **`as_factor` producing a factor vs character vector:** R factors require
-   `structure(integer_vec, levels = ..., class = "factor")`.  If `IntoR` for
-   `Direction` produces a character vector, calling it `as_factor` is
-   misleading. Consider whether to actually produce a factor (requires knowing
-   all levels at codegen time, which is impossible for arbitrary enums) or
-   whether to rename the attribute to `as_character` and document that it
-   produces a character column (not a factor). The locked design uses
-   `as_factor` as the name but does not mandate R factor type.  For the initial
-   implementation, producing a character vector is acceptable; true factor
-   production can be a follow-up.
+**Q4 — RESOLVED: keep single `FieldTypeKind::Struct` for both structs and enums.** Treat them identically at the proc-macro level. Codegen dispatches via the runtime `IntoDataFrame::into_named_columns()` trait; `as_factor` is the only differentiator and routes through the existing `Single` path early. No new `FieldTypeKind::NestedEnum` arm.
