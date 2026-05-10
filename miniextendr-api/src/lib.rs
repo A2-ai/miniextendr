@@ -245,6 +245,10 @@ pub mod registry;
 
 /// Host-time generator of `wasm_registry.rs` — the WASM-side replacement for
 /// linkme. See the module for full rationale.
+///
+/// Host-only — the writer reads the live linkme distributed slices to format
+/// `wasm_registry.rs`, and linkme isn't available on wasm32 anyway.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod wasm_registry_writer;
 
 // Re-export high-level ALTREP data traits
