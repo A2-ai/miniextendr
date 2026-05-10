@@ -1,0 +1,75 @@
+name: webR / wasm32
+
+on:
+  pull_request:
+    paths:
+      - 'miniextendr-api/**'
+      - 'miniextendr-macros/**'
+      - 'miniextendr-engine/**'
+      - 'miniextendr-lint/**'
+      - 'rpkg/**'
+      - 'tests/cross-package/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Dockerfile.webr'
+      - '.github/workflows/webr.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'miniextendr-api/**'
+      - 'miniextendr-macros/**'
+      - 'miniextendr-engine/**'
+      - 'miniextendr-lint/**'
+      - 'rpkg/**'
+      - 'tests/cross-package/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Dockerfile.webr'
+      - '.github/workflows/webr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  cargo-check:
+    name: wasm32 check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # build.rs:64 unconditionally runs `R RHOME`; $RUNNER_TEMP is always a
+      # real directory so Path::new(&r_home).is_dir() passes. cargo check never
+      # links, so the dummy value is sufficient. Same pattern as rust-lint in ci.yml.
+      - name: Set dummy R_HOME
+        run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-emscripten
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm32-check
+          cache-on-failure: true
+
+      - name: cargo check (miniextendr-api)
+        run: cargo check -p miniextendr-api --target wasm32-unknown-emscripten
+
+      # rpkg/configure invokes ${R_HOME}/bin/Rscript directly for feature
+      # detection (configure.ac:133, :275, :473). The dummy R_HOME has no
+      # Rscript binary, so configure fails. Deferred to a follow-up that either
+      # adds r-lib/actions/setup-r@v2 or waits for the build.rs wasm32 guard
+      # (see #482). Only miniextendr-api is checked in tier 1.
