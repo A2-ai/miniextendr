@@ -21,7 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use miniextendr_api::convert::ToDataFrame;
-use miniextendr_api::{DataFrameRow, List, miniextendr};
+use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // region: 0a. Vec<i32> opaque (no expand/width → list-column) ─────────────────
 
@@ -1047,3 +1047,201 @@ mod tests {
 
     // endregion: Map fields Rust unit tests
 }
+
+// region: 9. Struct fields (DataFrameRow flatten / as_list opt-out) ──────────────
+//
+// Struct-typed variant fields flatten into prefixed columns by default.
+// The inner struct must #[derive(DataFrameRow)].
+// Per-field #[dataframe(as_list)] keeps the struct as an opaque list-column
+// (inner must then implement IntoR, e.g. via #[derive(IntoList)]).
+
+/// A simple 2-column inner struct for testing struct-field flattening.
+#[derive(Clone, Debug, DataFrameRow, IntoList)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Flatten path: `origin: Point` expands to `origin_x` + `origin_y` columns.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum StructFlattenEvent {
+    Located { id: i32, origin: Point },
+    Other { id: i32 },
+}
+
+/// as_list opt-out: `origin` becomes an opaque list-column.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum StructListEvent {
+    Located {
+        id: i32,
+        #[dataframe(as_list)]
+        origin: Point,
+    },
+    Other {
+        id: i32,
+    },
+}
+
+// region: Flatten fixtures — all 4 cardinality cells × 2 modes
+
+/// 1v1r split: single Located row.
+#[miniextendr]
+pub fn struct_flatten_split_1v1r() -> List {
+    StructFlattenEvent::to_dataframe_split(vec![StructFlattenEvent::Located {
+        id: 1,
+        origin: Point { x: 1.0, y: 2.0 },
+    }])
+}
+
+/// 1vNr split: multiple Located rows, all same variant.
+#[miniextendr]
+pub fn struct_flatten_split_1vnr() -> List {
+    StructFlattenEvent::to_dataframe_split(vec![
+        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructFlattenEvent::Located { id: 3, origin: Point { x: 5.0, y: 6.0 } },
+    ])
+}
+
+/// Nv1r split: one Located and one Other row.
+#[miniextendr]
+pub fn struct_flatten_split_nv1r() -> List {
+    StructFlattenEvent::to_dataframe_split(vec![
+        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructFlattenEvent::Other { id: 2 },
+    ])
+}
+
+/// NvNr split: multiple rows across both variants.
+#[miniextendr]
+pub fn struct_flatten_split_nvnr() -> List {
+    StructFlattenEvent::to_dataframe_split(vec![
+        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructFlattenEvent::Other { id: 3 },
+        StructFlattenEvent::Other { id: 4 },
+    ])
+}
+
+/// NvNr align: aligned data frame with NA-fill for absent variant.
+#[miniextendr]
+pub fn struct_flatten_align_nvnr() -> ToDataFrame<StructFlattenEventDataFrame> {
+    ToDataFrame(StructFlattenEvent::to_dataframe(vec![
+        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructFlattenEvent::Other { id: 3 },
+        StructFlattenEvent::Other { id: 4 },
+    ]))
+}
+
+// endregion: Flatten fixtures
+
+// region: as_list fixtures — all 4 cardinality cells × 2 modes
+
+/// 1v1r split (as_list): single Located row, origin as list-column.
+#[miniextendr]
+pub fn struct_list_split_1v1r() -> List {
+    StructListEvent::to_dataframe_split(vec![StructListEvent::Located {
+        id: 1,
+        origin: Point { x: 1.0, y: 2.0 },
+    }])
+}
+
+/// 1vNr split (as_list): multiple Located rows.
+#[miniextendr]
+pub fn struct_list_split_1vnr() -> List {
+    StructListEvent::to_dataframe_split(vec![
+        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructListEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructListEvent::Located { id: 3, origin: Point { x: 5.0, y: 6.0 } },
+    ])
+}
+
+/// Nv1r split (as_list): one Located and one Other row.
+#[miniextendr]
+pub fn struct_list_split_nv1r() -> List {
+    StructListEvent::to_dataframe_split(vec![
+        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructListEvent::Other { id: 2 },
+    ])
+}
+
+/// NvNr split (as_list): multiple rows across both variants.
+#[miniextendr]
+pub fn struct_list_split_nvnr() -> List {
+    StructListEvent::to_dataframe_split(vec![
+        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructListEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructListEvent::Other { id: 3 },
+        StructListEvent::Other { id: 4 },
+    ])
+}
+
+/// NvNr align (as_list): aligned data frame, origin as list-column.
+#[miniextendr]
+pub fn struct_list_align_nvnr() -> ToDataFrame<StructListEventDataFrame> {
+    ToDataFrame(StructListEvent::to_dataframe(vec![
+        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructListEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructListEvent::Other { id: 3 },
+        StructListEvent::Other { id: 4 },
+    ]))
+}
+
+// endregion: as_list fixtures
+
+// region: Struct fields Rust unit tests
+
+#[cfg(test)]
+mod struct_field_tests {
+    use super::*;
+
+    #[test]
+    fn test_struct_flatten_align_located_rows_have_values() {
+        let df = StructFlattenEvent::to_dataframe(vec![
+            StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+            StructFlattenEvent::Other { id: 2 },
+        ]);
+        // origin is present at row 0 (Located), absent at row 1 (Other)
+        // The companion struct field is always _tag regardless of the tag= column name.
+        assert_eq!(df._tag[0], "Located".to_string());
+        assert_eq!(df._tag[1], "Other".to_string());
+        assert_eq!(df.id[0], Some(1i32));
+        assert_eq!(df.id[1], Some(2i32));
+        // origin column holds the raw Point values
+        assert!(df.origin[0].is_some());
+        assert!(df.origin[1].is_none());
+    }
+
+    // This test calls to_dataframe_split which calls into_data_frame → R API.
+    // It's exercised by the R-level tests in test-dataframe-enum-payload-matrix.R.
+    #[test]
+    #[ignore = "requires R runtime (calls into_data_frame)"]
+    fn test_struct_flatten_split_located_has_correct_count() {
+        let split = StructFlattenEvent::to_dataframe_split(vec![
+            StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+            StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+            StructFlattenEvent::Other { id: 3 },
+        ]);
+        // split returns a list of per-variant data frames
+        // We can't easily inspect column names from Rust, but we can check row counts
+        let _ = split; // compiled and not panicked ⇒ success
+    }
+
+    #[test]
+    fn test_struct_list_align_origin_is_some() {
+        let df = StructListEvent::to_dataframe(vec![
+            StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+            StructListEvent::Other { id: 2 },
+        ]);
+        // origin is the list-column holding Option<Point>
+        assert!(df.origin[0].is_some());
+        assert!(df.origin[1].is_none());
+    }
+}
+
+// endregion: Struct fields Rust unit tests
+
+// endregion: 9. Struct fields

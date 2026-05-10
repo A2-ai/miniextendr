@@ -9,7 +9,9 @@ use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
 
-use crate::dataframe_enum_payload_matrix::{BTreeMapEvent, HashMapEvent};
+use crate::dataframe_enum_payload_matrix::{
+    BTreeMapEvent, HashMapEvent, Point, StructFlattenEvent, StructListEvent,
+};
 
 /// Simple R6 class for GC stress tests.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -156,6 +158,37 @@ pub fn gc_stress_dataframe_map() {
     ];
     let _ = BTreeMapEvent::to_dataframe(bt_rows.clone());
     let _ = BTreeMapEvent::to_dataframe_split(bt_rows);
+}
+
+/// Exercise struct-field DataFrameRow flatten + as_list paths under GC pressure.
+///
+/// Allocates `StructFlattenEvent` and `StructListEvent` rows, calls both
+/// `to_dataframe` (align) and `to_dataframe_split`, and converts to SEXP,
+/// verifying that `ProtectScope` keeps inner column SEXPs live across scatter
+/// allocations.  No arguments required — suitable for the fast gctorture sweep.
+#[miniextendr]
+pub fn gc_stress_dataframe_struct() {
+    use miniextendr_api::into_r::IntoR as _;
+
+    // Flatten path: struct-typed field expands to prefixed columns.
+    let flatten_rows = vec![
+        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructFlattenEvent::Other { id: 2 },
+        StructFlattenEvent::Located { id: 3, origin: Point { x: 3.0, y: 4.0 } },
+        StructFlattenEvent::Other { id: 4 },
+    ];
+    let _ = StructFlattenEvent::to_dataframe(flatten_rows.clone()).into_sexp();
+    let _ = StructFlattenEvent::to_dataframe_split(flatten_rows).into_sexp();
+
+    // as_list path: struct-typed field kept as opaque list-column.
+    let list_rows = vec![
+        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructListEvent::Other { id: 2 },
+        StructListEvent::Located { id: 3, origin: Point { x: 5.0, y: 6.0 } },
+        StructListEvent::Other { id: 4 },
+    ];
+    let _ = StructListEvent::to_dataframe(list_rows.clone()).into_sexp();
+    let _ = StructListEvent::to_dataframe_split(list_rows).into_sexp();
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.

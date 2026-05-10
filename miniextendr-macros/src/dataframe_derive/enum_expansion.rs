@@ -9,8 +9,9 @@ use syn::{DeriveInput, Fields};
 
 use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
-    EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData, FieldTypeKind,
-    VariantInfo, VariantShape, classify_field_type, parse_field_attrs,
+    EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
+    EnumStructFieldData, FieldTypeKind, VariantInfo, VariantShape, classify_field_type,
+    parse_field_attrs,
 };
 use crate::naming;
 use std::collections::HashMap;
@@ -79,11 +80,19 @@ pub(super) fn derive_enum_dataframe(
                     let binding = format_ident!("__v_{}", rust_name);
 
                     if fa.as_list {
+                        // Struct-typed fields with `as_list` must be converted via `into_list()`
+                        // at `into_data_frame` time. We keep the original Rust type in the
+                        // companion struct (so no R API is called during row accumulation) and
+                        // flag `needs_into_list = true` to trigger per-element conversion in the
+                        // dynamic `into_data_frame` path.
+                        let needs_into_list =
+                            matches!(classify_field_type(&f.ty), FieldTypeKind::Struct { .. });
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: format_ident!("{}", col_name_str),
                             binding: binding.clone(),
                             rust_name: rust_name.clone(),
                             ty: f.ty.clone(),
+                            needs_into_list,
                         })));
                     } else {
                         match classify_field_type(&f.ty) {
@@ -128,6 +137,7 @@ pub(super) fn derive_enum_dataframe(
                                             binding: binding.clone(),
                                             rust_name: rust_name.clone(),
                                             ty: f.ty.clone(),
+                                            needs_into_list: false,
                                         },
                                     )));
                                 }
@@ -153,25 +163,38 @@ pub(super) fn derive_enum_dataframe(
                                     val_ty: val_ty.clone(),
                                 })));
                             }
-                            FieldTypeKind::Scalar => {
+                            FieldTypeKind::Struct { inner_ty } => {
                                 if fa.width.is_some() {
                                     return Err(syn::Error::new_spanned(
                                         &f.ty,
-                                        "`width` is only valid on `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
+                                        "`width` is not valid on struct fields; use \
+                                         `#[dataframe(as_list)]` to keep as an opaque list-column",
                                     ));
                                 }
                                 if fa.expand {
                                     return Err(syn::Error::new_spanned(
                                         &f.ty,
-                                        "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
+                                        "`expand`/`unnest` is not valid on struct fields; struct \
+                                         fields flatten by default via their `DataFrameRow` impl",
                                     ));
                                 }
+                                resolved.push(EnumResolvedField::Struct(Box::new(
+                                    EnumStructFieldData {
+                                        base_name: col_name_str,
+                                        binding: binding.clone(),
+                                        rust_name: rust_name.clone(),
+                                        inner_ty: inner_ty.clone(),
+                                    },
+                                )));
+                            }
+                            FieldTypeKind::Scalar => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
                                         col_name: format_ident!("{}", col_name_str),
                                         binding: binding.clone(),
                                         rust_name: rust_name.clone(),
                                         ty: f.ty.clone(),
+                                        needs_into_list: false,
                                     },
                                 )));
                             }
@@ -198,11 +221,14 @@ pub(super) fn derive_enum_dataframe(
 
                     // Tuple enum fields: same expansion logic
                     if fa.as_list {
+                        let needs_into_list =
+                            matches!(classify_field_type(&f.ty), FieldTypeKind::Struct { .. });
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: format_ident!("{}", col_name_str),
                             binding,
                             rust_name,
                             ty: f.ty.clone(),
+                            needs_into_list,
                         })));
                     } else {
                         match classify_field_type(&f.ty) {
@@ -247,6 +273,7 @@ pub(super) fn derive_enum_dataframe(
                                             binding,
                                             rust_name,
                                             ty: f.ty.clone(),
+                                            needs_into_list: false,
                                         },
                                     )));
                                 }
@@ -272,6 +299,30 @@ pub(super) fn derive_enum_dataframe(
                                     val_ty: val_ty.clone(),
                                 })));
                             }
+                            FieldTypeKind::Struct { inner_ty } => {
+                                if fa.width.is_some() {
+                                    return Err(syn::Error::new_spanned(
+                                        &f.ty,
+                                        "`width` is not valid on struct fields; use `#[dataframe(as_list)]` \
+                                         to keep as an opaque list-column",
+                                    ));
+                                }
+                                if fa.expand {
+                                    return Err(syn::Error::new_spanned(
+                                        &f.ty,
+                                        "`expand`/`unnest` is not valid on struct fields; struct fields \
+                                         flatten by default via their DataFrameRow impl",
+                                    ));
+                                }
+                                resolved.push(EnumResolvedField::Struct(Box::new(
+                                    EnumStructFieldData {
+                                        base_name: col_name_str,
+                                        binding,
+                                        rust_name,
+                                        inner_ty: inner_ty.clone(),
+                                    },
+                                )));
+                            }
                             FieldTypeKind::Scalar => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
@@ -279,6 +330,7 @@ pub(super) fn derive_enum_dataframe(
                                         binding,
                                         rust_name,
                                         ty: f.ty.clone(),
+                                        needs_into_list: false,
                                     },
                                 )));
                             }
@@ -352,6 +404,19 @@ pub(super) fn derive_enum_dataframe(
                     registry.register(&keys_name, &key_vec_ty, variant_idx, &vi.name, err_span)?;
                     registry.register(&vals_name, &val_vec_ty, variant_idx, &vi.name, err_span)?;
                 }
+                // Struct: registers one Vec<Option<Inner>> column under base_name.
+                // Flattening into prefixed columns happens at into_data_frame() time, not here.
+                EnumResolvedField::Struct(data) => {
+                    let inner_ty = &data.inner_ty;
+                    // Register as Option<Inner>; the column in the companion struct is Vec<Option<Inner>>.
+                    registry.register(
+                        &data.base_name,
+                        inner_ty,
+                        variant_idx,
+                        &vi.name,
+                        err_span,
+                    )?;
+                }
             }
         }
     }
@@ -419,6 +484,58 @@ pub(super) fn derive_enum_dataframe(
         }
     }
     let has_enum_auto_expand = !auto_expand_cols.is_empty();
+    // endregion
+
+    // region: Collect struct fields (for bespoke into_data_frame flatten)
+    struct EnumStructCol {
+        /// Companion struct field name (matches base_name in registry).
+        df_field: syn::Ident,
+        /// Column prefix (same as df_field, used to prefix inner col names).
+        base_name: String,
+        /// Inner type.
+        inner_ty: syn::Type,
+    }
+
+    let mut struct_cols: Vec<EnumStructCol> = Vec::new();
+    let mut struct_col_index: HashMap<String, bool> = HashMap::new();
+
+    for vi in &variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Struct(data) = erf
+                && !struct_col_index.contains_key(&data.base_name)
+            {
+                struct_col_index.insert(data.base_name.clone(), true);
+                struct_cols.push(EnumStructCol {
+                    df_field: format_ident!("{}", data.base_name),
+                    base_name: data.base_name.clone(),
+                    inner_ty: data.inner_ty.clone(),
+                });
+            }
+        }
+    }
+    let has_struct_cols = !struct_cols.is_empty();
+    // endregion
+
+    // region: Collect as_list struct fields (Single fields that need per-element into_list())
+    //
+    // These are Single fields with `needs_into_list = true`: struct-typed fields that carry
+    // `#[dataframe(as_list)]`. The companion struct stores `Vec<Option<T>>` (raw Rust struct),
+    // but `into_data_frame` must convert each element via `.into_list()` before building the SEXP.
+    // We collect them so we can:
+    //   a) Force the dynamic `into_data_frame` path (they need per-element conversion, not IntoR).
+    //   b) Emit the per-element conversion in the dynamic path.
+    let mut as_list_struct_col_names: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    for vi in &variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Single(data) = erf
+                && data.needs_into_list
+            {
+                as_list_struct_col_names.insert(data.col_name.to_string());
+            }
+        }
+    }
+    let has_as_list_struct_cols = !as_list_struct_col_names.is_empty();
     // endregion
 
     // region: Generate companion struct
@@ -508,8 +625,13 @@ pub(super) fn derive_enum_dataframe(
         })
         .collect();
 
-    let into_dataframe_impl = if has_enum_auto_expand {
-        // Dynamic pair building for auto-expand fields.
+    // Build the set of column names that are struct-col placeholders (to skip in normal push).
+    let struct_col_names: std::collections::HashSet<String> =
+        struct_cols.iter().map(|sc| sc.base_name.clone()).collect();
+
+    let into_dataframe_impl = if has_enum_auto_expand || has_struct_cols || has_as_list_struct_cols
+    {
+        // Dynamic pair building for auto-expand, struct fields, and/or as_list struct fields.
         let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
             quote! {
                 __df_pairs.push((
@@ -521,8 +643,15 @@ pub(super) fn derive_enum_dataframe(
             TokenStream::new()
         };
 
+        // Static columns — skip struct-col placeholders (handled in flatten block below)
+        // and as-list struct fields (handled in the per-element conversion block below).
         let static_pair_pushes: Vec<TokenStream> = columns
             .iter()
+            .filter(|col| {
+                let name_str = col.col_name.to_string();
+                !struct_col_names.contains(&name_str)
+                    && !as_list_struct_col_names.contains(&name_str)
+            })
             .map(|col| {
                 let name = &col.col_name;
                 let name_str = name.to_string();
@@ -531,6 +660,35 @@ pub(super) fn derive_enum_dataframe(
                         #name_str.to_string(),
                         __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name)),
                     ));
+                }
+            })
+            .collect();
+
+        // as_list struct fields: convert each element via into_list() at conversion time
+        // (not during row accumulation), producing a VECSXP list-column with NULL for absent rows.
+        let as_list_struct_pushes: Vec<TokenStream> = columns
+            .iter()
+            .filter(|col| as_list_struct_col_names.contains(&col.col_name.to_string()))
+            .map(|col| {
+                let name = &col.col_name;
+                let name_str = name.to_string();
+                let ty = &col.ty;
+                quote! {
+                    {
+                        // Map Vec<Option<T>> → Vec<Option<List>> then convert to SEXP.
+                        // This is the only R-touching operation for as_list struct fields.
+                        let __as_list_col: Vec<Option<::miniextendr_api::list::List>> =
+                            self.#name
+                                .into_iter()
+                                .map(|__opt: Option<#ty>| {
+                                    __opt.map(|v| ::miniextendr_api::list::IntoList::into_list(v))
+                                })
+                                .collect();
+                        __df_pairs.push((
+                            #name_str.to_string(),
+                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col)),
+                        ));
+                    }
                 }
             })
             .collect();
@@ -570,6 +728,53 @@ pub(super) fn derive_enum_dataframe(
             })
             .collect();
 
+        // Struct field flatten blocks: for each Vec<Option<Inner>> column, collect present
+        // rows into a dense Vec<Inner>, track presence indices, call Inner::to_dataframe,
+        // extract named columns via into_named_columns(), scatter them to full row count
+        // with None-fill, and push with prefixed names.
+        let struct_flatten_pushes: Vec<TokenStream> = struct_cols
+            .iter()
+            .map(|sc| {
+                let df_field = &sc.df_field;
+                let base_name_str = &sc.base_name;
+                let inner_ty = &sc.inner_ty;
+                quote! {
+                    {
+                        // Separate the Some/None rows — collect present rows densely
+                        // (no Clone needed: we consume the Vec<Option<Inner>>).
+                        let mut __present_idx: Vec<usize> = Vec::new();
+                        let mut __inner_rows: Vec<#inner_ty> = Vec::new();
+                        for (__row_i, __opt) in self.#df_field.into_iter().enumerate() {
+                            if let Some(__inner) = __opt {
+                                __present_idx.push(__row_i);
+                                __inner_rows.push(__inner);
+                            }
+                        }
+                        // Call Inner::to_dataframe and extract named column SEXPs.
+                        let __inner_df = <#inner_ty>::to_dataframe(__inner_rows);
+                        // into_named_columns consumes __inner_df and returns (name, SEXP) pairs.
+                        let __inner_cols = ::miniextendr_api::convert::IntoDataFrame::into_named_columns(__inner_df);
+                        // Scatter each column back to full _n_rows with NA/NULL-fill,
+                        // preserving the source column's SEXPTYPE.
+                        for (__inner_col_name, __inner_col_sexp) in __inner_cols {
+                            // Protect the source column across the scatter allocation.
+                            let __src = __scope.protect_raw(__inner_col_sexp);
+                            let __prefixed = format!("{}_{}", #base_name_str, __inner_col_name);
+                            let __scattered = unsafe {
+                                let __out = ::miniextendr_api::convert::scatter_column(
+                                    __src,
+                                    &__present_idx,
+                                    _n_rows,
+                                );
+                                __scope.protect_raw(__out)
+                            };
+                            __df_pairs.push((__prefixed, __scattered));
+                        }
+                    }
+                }
+            })
+            .collect();
+
         quote! {
             impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
                 fn into_data_frame(self) -> ::miniextendr_api::List {
@@ -588,6 +793,8 @@ pub(super) fn derive_enum_dataframe(
                         #tag_push_pair
                         #(#static_pair_pushes)*
                         #(#auto_expand_pair_pushes)*
+                        #(#struct_flatten_pushes)*
+                        #(#as_list_struct_pushes)*
                         ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
                             .set_class_str(&["data.frame"])
                             .set_row_names_int(_n_rows)
@@ -615,6 +822,23 @@ pub(super) fn derive_enum_dataframe(
             }
         }
     };
+
+    // Compile-time assertions: one per struct field, asserting the inner type
+    // implements DataFrameRow.
+    let struct_assertions: Vec<TokenStream> = struct_cols
+        .iter()
+        .map(|sc| {
+            let inner_ty = &sc.inner_ty;
+            quote! {
+                const _: () = {
+                    fn _assert_inner_is_dataframe_row<T: ::miniextendr_api::markers::DataFrameRow>() {}
+                    fn _do_assert #impl_generics () #where_clause {
+                        _assert_inner_is_dataframe_row::<#inner_ty>();
+                    }
+                };
+            }
+        })
+        .collect();
     // endregion
 
     // region: Generate From<Vec<Enum>>
@@ -715,6 +939,13 @@ pub(super) fn derive_enum_dataframe(
                                         // Already handled when keys col was processed; emit no-op.
                                         return quote! {};
                                     }
+                                }
+                                // Struct field: push Some(binding) to the Vec<Option<Inner>> column.
+                                EnumResolvedField::Struct(data)
+                                    if data.base_name == col_name_str =>
+                                {
+                                    let binding = &data.binding;
+                                    return quote! { #col_name.push(Some(#binding)); };
                                 }
                                 // AutoExpandVec doesn't contribute to static columns
                                 _ => {}
@@ -960,6 +1191,13 @@ pub(super) fn derive_enum_dataframe(
                                             return quote! {};
                                         }
                                     }
+                                    // Struct field: write Some(binding) to Vec<Option<Inner>>.
+                                    EnumResolvedField::Struct(data)
+                                        if data.base_name == col_name_str =>
+                                    {
+                                        let binding = &data.binding;
+                                        return quote! { #w_name.write(__i, Some(#binding)); };
+                                    }
                                     _ => {}
                                 }
                             }
@@ -1122,6 +1360,13 @@ pub(super) fn derive_enum_dataframe(
     );
     // endregion
 
+    // Marker trait impl: row type implements DataFrameRow via IntoDataFrame chain.
+    // This is the impl the compile-time assertion checks for struct-typed variant fields.
+    let marker_impl = quote! {
+        impl #impl_generics ::miniextendr_api::markers::DataFrameRow
+            for #row_name #ty_generics #where_clause {}
+    };
+
     Ok(quote! {
         #dataframe_struct
         #into_dataframe_impl
@@ -1129,6 +1374,8 @@ pub(super) fn derive_enum_dataframe(
         #df_methods
         #row_methods
         #split_method
+        #marker_impl
+        #(#struct_assertions)*
     })
     // endregion
 }
@@ -1167,11 +1414,14 @@ fn generate_split_method(
         let df_var = format_ident!("__{}_df", snake);
         df_var_names.push(df_var.clone());
 
-        // Determine if any field is AutoExpandVec
-        let has_auto = vi
-            .fields
-            .iter()
-            .any(|f| matches!(f, EnumResolvedField::AutoExpandVec(_)));
+        // Determine if any field is AutoExpandVec or Struct (both require the dynamic pairs path
+        // because column names are only known at runtime).
+        let has_auto = vi.fields.iter().any(|f| {
+            matches!(
+                f,
+                EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_)
+            )
+        });
 
         match vi.shape {
             // region: Unit variant
@@ -1205,6 +1455,7 @@ fn generate_split_method(
                         EnumResolvedField::Single(data) => {
                             let buf = format_ident!("__s_{}_{}", snake, data.col_name);
                             let ty = &data.ty;
+                            // For needs_into_list fields, ty is already List (the stored type).
                             buf_decls.push(quote! {
                                 let mut #buf: Vec<#ty> = Vec::new();
                             });
@@ -1242,6 +1493,15 @@ fn generate_split_method(
                             buf_decls.push(quote! {
                                 let mut #keys_buf: Vec<Vec<#key_ty>> = Vec::new();
                                 let mut #vals_buf: Vec<Vec<#val_ty>> = Vec::new();
+                            });
+                        }
+                        // Struct field: buffer holds Vec<Inner> (no Option — split only sees
+                        // rows of this variant, so every row has the field present).
+                        EnumResolvedField::Struct(data) => {
+                            let buf = format_ident!("__s_{}_{}", snake, data.base_name);
+                            let inner_ty = &data.inner_ty;
+                            buf_decls.push(quote! {
+                                let mut #buf: Vec<#inner_ty> = Vec::new();
                             });
                         }
                     }
@@ -1288,6 +1548,12 @@ fn generate_split_method(
                                     #keys_buf.push(__mx_keys);
                                     #vals_buf.push(__mx_vals);
                                 }]
+                            }
+                            // Struct field: push binding directly (split only sees this variant's rows,
+                            // so every row has the field — no Option needed).
+                            EnumResolvedField::Struct(data) => {
+                                let buf = format_ident!("__s_{}_{}", snake, data.base_name);
+                                vec![quote! { #buf.push(#binding); }]
                             }
                         }
                     })
@@ -1338,13 +1604,16 @@ fn generate_split_method(
                     let pairs_var = format_ident!("__pairs_{}", snake);
                     let n_var = format_ident!("__n_{}", snake);
 
-                    // Find the first non-auto field for the length expression, or first auto
+                    // Find the first non-dynamic field for the length expression, or first dynamic.
+                    // "Dynamic" = AutoExpandVec or Struct (both use dynamic pairs path).
                     let len_expr: TokenStream = {
-                        let first_non_auto = vi
-                            .fields
-                            .iter()
-                            .find(|f| !matches!(f, EnumResolvedField::AutoExpandVec(_)));
-                        if let Some(f) = first_non_auto {
+                        let first_non_dynamic = vi.fields.iter().find(|f| {
+                            !matches!(
+                                f,
+                                EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_)
+                            )
+                        });
+                        if let Some(f) = first_non_dynamic {
                             match f {
                                 EnumResolvedField::Single(data) => {
                                     let buf = format_ident!("__s_{}_{}", snake, data.col_name);
@@ -1368,7 +1637,8 @@ fn generate_split_method(
                                     );
                                     quote! { #buf.len() }
                                 }
-                                EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                                EnumResolvedField::AutoExpandVec(_)
+                                | EnumResolvedField::Struct(_) => unreachable!(),
                                 EnumResolvedField::Map(data) => {
                                     let keys_buf =
                                         format_ident!("__s_{}_{}_keys", snake, data.base_name);
@@ -1376,11 +1646,19 @@ fn generate_split_method(
                                 }
                             }
                         } else {
-                            // All fields are AutoExpandVec — use the first auto buf length
-                            if let Some(EnumResolvedField::AutoExpandVec(data)) = vi.fields.first()
-                            {
-                                let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                quote! { #buf.len() }
+                            // All fields are dynamic — use the first dynamic buf length
+                            if let Some(first) = vi.fields.first() {
+                                match first {
+                                    EnumResolvedField::AutoExpandVec(data) => {
+                                        let buf = format_ident!("__s_{}_{}", snake, data.base_name);
+                                        quote! { #buf.len() }
+                                    }
+                                    EnumResolvedField::Struct(data) => {
+                                        let buf = format_ident!("__s_{}_{}", snake, data.base_name);
+                                        quote! { #buf.len() }
+                                    }
+                                    _ => quote! { 0usize },
+                                }
                             } else {
                                 quote! { 0usize }
                             }
@@ -1398,12 +1676,28 @@ fn generate_split_method(
                             EnumResolvedField::Single(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, data.col_name);
                                 let col_str = data.col_name.to_string();
-                                vec![quote! {
-                                    #pairs_var.push((
-                                        #col_str.to_string(),
-                                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
-                                    ));
-                                }]
+                                let ty = &data.ty;
+                                if data.needs_into_list {
+                                    vec![quote! {
+                                        {
+                                            let __as_list_col: Vec<::miniextendr_api::list::List> =
+                                                #buf.into_iter()
+                                                    .map(|v: #ty| ::miniextendr_api::list::IntoList::into_list(v))
+                                                    .collect();
+                                            #pairs_var.push((
+                                                #col_str.to_string(),
+                                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col)),
+                                            ));
+                                        }
+                                    }]
+                                } else {
+                                    vec![quote! {
+                                        #pairs_var.push((
+                                            #col_str.to_string(),
+                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
+                                        ));
+                                    }]
+                                }
                             }
                             EnumResolvedField::ExpandedFixed(data) => (1..=data.len)
                                 .map(|i| {
@@ -1480,6 +1774,27 @@ fn generate_split_method(
                                     },
                                 ]
                             }
+                            // Struct field: call Inner::to_dataframe(buf), extract columns,
+                            // push with prefixed names. In the split path, all rows belong to
+                            // this variant so no scatter is needed.
+                            EnumResolvedField::Struct(data) => {
+                                let buf = format_ident!("__s_{}_{}", snake, data.base_name);
+                                let base_str = &data.base_name;
+                                let inner_ty = &data.inner_ty;
+                                vec![quote! {
+                                    {
+                                        let __inner_df = <#inner_ty>::to_dataframe(#buf);
+                                        let __inner_cols = ::miniextendr_api::convert::IntoDataFrame::into_named_columns(__inner_df);
+                                        for (__inner_col_name, __inner_col_sexp) in __inner_cols {
+                                            let __prefixed = format!("{}_{}", #base_str, __inner_col_name);
+                                            #pairs_var.push((
+                                                __prefixed,
+                                                __scope.protect_raw(__inner_col_sexp),
+                                            ));
+                                        }
+                                    }
+                                }]
+                            }
                         })
                         .collect();
 
@@ -1517,7 +1832,11 @@ fn generate_split_method(
                                     format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
                                 quote! { #buf.len() }
                             }
-                            EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                            // AutoExpandVec and Struct both trigger has_auto = true, so these
+                            // branches are unreachable in the non-auto static path.
+                            EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_) => {
+                                unreachable!()
+                            }
                             EnumResolvedField::Map(data) => {
                                 let keys_buf =
                                     format_ident!("__s_{}_{}_keys", snake, data.base_name);
@@ -1540,9 +1859,23 @@ fn generate_split_method(
                             EnumResolvedField::Single(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, data.col_name);
                                 let col_str = data.col_name.to_string();
-                                vec![quote! {
-                                    (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
-                                }]
+                                let ty = &data.ty;
+                                if data.needs_into_list {
+                                    // Convert Vec<T> → Vec<List> → SEXP at split time.
+                                    vec![quote! {
+                                        (#col_str, {
+                                            let __as_list_col: Vec<::miniextendr_api::list::List> =
+                                                #buf.into_iter()
+                                                    .map(|v: #ty| ::miniextendr_api::list::IntoList::into_list(v))
+                                                    .collect();
+                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col))
+                                        })
+                                    }]
+                                } else {
+                                    vec![quote! {
+                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
+                                    }]
+                                }
                             }
                             EnumResolvedField::ExpandedFixed(data) => (1..=data.len)
                                 .map(|i| {
@@ -1564,7 +1897,8 @@ fn generate_split_method(
                                     }
                                 })
                                 .collect(),
-                            EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                            // AutoExpandVec and Struct both trigger has_auto = true.
+                            EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_) => unreachable!(),
                             EnumResolvedField::Map(data) => {
                                 let keys_buf =
                                     format_ident!("__s_{}_{}_keys", snake, data.base_name);

@@ -711,3 +711,119 @@ test_that("btreemap — split NvNr: tally and empty both have expected row count
   expect_equal(res$tally$tally_keys[[2]], "m")
   expect_equal(res$tally$tally_values[[2]], 7L)
 })
+
+# region: 9. Struct fields ─────────────────────────────────────────────────────
+#
+# Struct-typed variant fields flatten into prefixed columns by default
+# (origin: Point → origin_x + origin_y).
+# Per-field #[dataframe(as_list)] keeps the struct as an opaque list-column.
+
+test_that("struct_flatten — split 1v1r: Located row has prefixed x/y columns", {
+  res <- struct_flatten_split_1v1r()
+  located <- res$located
+  expect_true("origin_x" %in% colnames(located))
+  expect_true("origin_y" %in% colnames(located))
+  expect_equal(nrow(located), 1L)
+  expect_equal(located$id, 1L)
+  expect_equal(located$origin_x, 1.0)
+  expect_equal(located$origin_y, 2.0)
+  # Other partition should be empty
+  other <- res$other
+  expect_equal(nrow(other), 0L)
+})
+
+test_that("struct_flatten — split 1vNr: multiple Located rows have correct origin values", {
+  res <- struct_flatten_split_1vnr()
+  located <- res$located
+  expect_equal(nrow(located), 3L)
+  expect_equal(located$origin_x, c(1.0, 3.0, 5.0))
+  expect_equal(located$origin_y, c(2.0, 4.0, 6.0))
+})
+
+test_that("struct_flatten — split Nv1r: Located and Other each have 1 row", {
+  res <- struct_flatten_split_nv1r()
+  expect_equal(nrow(res$located), 1L)
+  expect_equal(nrow(res$other), 1L)
+  expect_equal(res$located$origin_x, 1.0)
+  expect_equal(res$located$origin_y, 2.0)
+})
+
+test_that("struct_flatten — split NvNr: correct partition sizes", {
+  res <- struct_flatten_split_nvnr()
+  expect_equal(nrow(res$located), 2L)
+  expect_equal(nrow(res$other), 2L)
+  expect_equal(res$located$origin_x, c(1.0, 3.0))
+  expect_equal(res$located$origin_y, c(2.0, 4.0))
+})
+
+test_that("struct_flatten — align NvNr: prefixed columns present, NA-fill for absent variant", {
+  df <- struct_flatten_align_nvnr()
+  expect_true("origin_x" %in% colnames(df))
+  expect_true("origin_y" %in% colnames(df))
+  expect_equal(nrow(df), 4L)
+  # Other rows (id == 3 or 4) should have NA in origin_x and origin_y
+  other_rows <- which(df$`_type` == "Other")
+  expect_true(all(is.na(df$origin_x[other_rows])))
+  expect_true(all(is.na(df$origin_y[other_rows])))
+  # Located rows should have non-NA values
+  located_rows <- which(df$`_type` == "Located")
+  expect_false(any(is.na(df$origin_x[located_rows])))
+  expect_false(any(is.na(df$origin_y[located_rows])))
+  expect_equal(df$origin_x[located_rows], c(1.0, 3.0))
+  expect_equal(df$origin_y[located_rows], c(2.0, 4.0))
+})
+
+test_that("struct_list — split 1v1r: origin is an opaque list-column", {
+  res <- struct_list_split_1v1r()
+  located <- res$located
+  # origin should be a list-column (not flattened)
+  expect_true(is.list(located$origin))
+  expect_equal(length(located$origin), 1L)
+  # Each cell is the R list rep of Point (from IntoList derive)
+  pt <- located$origin[[1L]]
+  expect_equal(pt$x, 1.0)
+  expect_equal(pt$y, 2.0)
+  # Should NOT have origin_x or origin_y columns
+  expect_false("origin_x" %in% colnames(located))
+  expect_false("origin_y" %in% colnames(located))
+})
+
+test_that("struct_list — split 1vNr: multiple Located rows, each origin is a list cell", {
+  res <- struct_list_split_1vnr()
+  located <- res$located
+  expect_equal(nrow(located), 3L)
+  expect_true(is.list(located$origin))
+  expect_equal(located$origin[[1L]]$x, 1.0)
+  expect_equal(located$origin[[2L]]$x, 3.0)
+  expect_equal(located$origin[[3L]]$x, 5.0)
+})
+
+test_that("struct_list — split Nv1r: Located and Other each have 1 row", {
+  res <- struct_list_split_nv1r()
+  expect_equal(nrow(res$located), 1L)
+  expect_equal(nrow(res$other), 1L)
+  expect_true(is.list(res$located$origin))
+})
+
+test_that("struct_list — split NvNr: correct partition sizes", {
+  res <- struct_list_split_nvnr()
+  expect_equal(nrow(res$located), 2L)
+  expect_equal(nrow(res$other), 2L)
+})
+
+test_that("struct_list — align NvNr: origin is a list-column, NULL for absent variant rows", {
+  df <- struct_list_align_nvnr()
+  expect_true(is.list(df$origin))
+  expect_equal(nrow(df), 4L)
+  other_rows <- which(df$`_type` == "Other")
+  located_rows <- which(df$`_type` == "Located")
+  # Other rows have NULL origin (absent variant)
+  for (i in other_rows) expect_null(df$origin[[i]])
+  # Located rows have a list cell with x/y
+  for (i in located_rows) {
+    expect_false(is.null(df$origin[[i]]))
+    expect_true(!is.na(df$origin[[i]]$x))
+  }
+})
+
+# endregion: 9. Struct fields

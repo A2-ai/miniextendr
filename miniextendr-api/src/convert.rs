@@ -254,7 +254,162 @@ pub trait IntoDataFrame {
     /// }
     /// ```
     fn into_data_frame(self) -> List;
+
+    /// Extract named column SEXPs from this DataFrame.
+    ///
+    /// Returns a `Vec<(String, SEXP)>` where each entry is a column name and
+    /// the raw SEXP for that column. The SEXPs are owned by the data frame SEXP
+    /// and **must** be protected by the caller before the data frame SEXP is
+    /// released.
+    ///
+    /// Used by `DataFrameRow`-derived enum code to flatten struct-typed fields.
+    /// The default implementation calls `into_data_frame()` and extracts the names
+    /// and elements from the resulting VECSXP. Override only if you need a more
+    /// efficient extraction path.
+    ///
+    /// # Safety
+    ///
+    /// This method calls R API functions and must run on the R main thread.
+    #[doc(hidden)]
+    fn into_named_columns(self) -> Vec<(String, crate::ffi::SEXP)>
+    where
+        Self: Sized,
+    {
+        use crate::ffi::SexpExt as _;
+        let list = self.into_data_frame();
+        let sexp = list.as_sexp();
+        let n = sexp.len();
+        let mut out = Vec::with_capacity(n);
+        let names_sexp = sexp.get_names();
+        let has_names = !names_sexp.is_nil();
+        for i in 0..(n as isize) {
+            let col_sexp = sexp.vector_elt(i);
+            let col_name = if has_names {
+                names_sexp.string_elt_str(i).unwrap_or("").to_string()
+            } else {
+                i.to_string()
+            };
+            out.push((col_name, col_sexp));
+        }
+        out
+    }
 }
+
+// region: Struct-field scatter helper
+
+/// Scatter a typed column SEXP from a dense inner data frame into a new
+/// SEXP of length `n_rows`, placing `NA`/`NULL` at rows not in `present_idx`.
+///
+/// This is called by `DataFrameRow`-derived enum code to flatten struct-typed
+/// variant fields into prefixed columns of the parent data frame.
+///
+/// The output type mirrors the input:
+/// - REALSXP → REALSXP (NA_real_ fill)
+/// - INTSXP  → INTSXP  (NA_integer_ fill)
+/// - LGLSXP  → LGLSXP  (NA_logical fill)
+/// - STRSXP  → STRSXP  (NA_character_ fill)
+/// - VECSXP  → VECSXP  (R_NilValue fill)
+/// - anything else → VECSXP (R_NilValue fill)
+///
+/// # Safety
+///
+/// Must be called on the R main thread. `src` must be a valid SEXP of length
+/// `>= present_idx.len()`. `n_rows` must equal the total row count of the
+/// parent data frame.
+#[doc(hidden)]
+pub unsafe fn scatter_column(
+    src: crate::ffi::SEXP,
+    present_idx: &[usize],
+    n_rows: usize,
+) -> crate::ffi::SEXP {
+    // SAFETY: caller guarantees R main thread; src is valid; n_rows is correct.
+    #[allow(unused_unsafe)]
+    unsafe {
+        use crate::ffi::{SEXPTYPE, SexpExt as _};
+
+        let stype = src.type_of();
+        let n_present = present_idx.len();
+
+        match stype {
+            SEXPTYPE::REALSXP => {
+                let out = crate::ffi::Rf_allocVector(SEXPTYPE::REALSXP, n_rows as isize);
+                // Fill with NA_real_ (R's NA for doubles is a specific NaN bit pattern;
+                // f64::NAN has the correct bit pattern since R uses a quiet NaN sentinel).
+                for i in 0..(n_rows as isize) {
+                    out.set_real_elt(i, f64::NAN);
+                }
+                for (pi, &row_i) in present_idx.iter().enumerate() {
+                    if pi < n_present {
+                        out.set_real_elt(row_i as isize, src.real_elt(pi as isize));
+                    }
+                }
+                out
+            }
+            SEXPTYPE::INTSXP => {
+                let out = crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, n_rows as isize);
+                for i in 0..(n_rows as isize) {
+                    out.set_integer_elt(i, i32::MIN); // NA_integer_
+                }
+                for (pi, &row_i) in present_idx.iter().enumerate() {
+                    if pi < n_present {
+                        out.set_integer_elt(row_i as isize, src.integer_elt(pi as isize));
+                    }
+                }
+                out
+            }
+            SEXPTYPE::LGLSXP => {
+                let out = crate::ffi::Rf_allocVector(SEXPTYPE::LGLSXP, n_rows as isize);
+                for i in 0..(n_rows as isize) {
+                    out.set_logical_elt(i, i32::MIN); // NA_logical
+                }
+                for (pi, &row_i) in present_idx.iter().enumerate() {
+                    if pi < n_present {
+                        out.set_logical_elt(row_i as isize, src.logical_elt(pi as isize));
+                    }
+                }
+                out
+            }
+            SEXPTYPE::STRSXP => {
+                let out = crate::ffi::Rf_allocVector(SEXPTYPE::STRSXP, n_rows as isize);
+                // Fill with NA_character_
+                for i in 0..(n_rows as isize) {
+                    out.set_string_elt(i, crate::ffi::SEXP::na_string());
+                }
+                for (pi, &row_i) in present_idx.iter().enumerate() {
+                    if pi < n_present {
+                        let charsxp = src.string_elt(pi as isize);
+                        out.set_string_elt(row_i as isize, charsxp);
+                    }
+                }
+                out
+            }
+            SEXPTYPE::VECSXP => {
+                let out = crate::ffi::Rf_allocVector(SEXPTYPE::VECSXP, n_rows as isize);
+                // R_NilValue fill is automatic (Rf_allocVector zero-initialises VECSXP slots).
+                for (pi, &row_i) in present_idx.iter().enumerate() {
+                    if pi < n_present {
+                        let elt = src.vector_elt(pi as isize);
+                        out.set_vector_elt(row_i as isize, elt);
+                    }
+                }
+                out
+            }
+            _ => {
+                // Unknown/unsupported type — produce a VECSXP list-column.
+                // Cells for absent rows remain R_NilValue.
+                let out = crate::ffi::Rf_allocVector(SEXPTYPE::VECSXP, n_rows as isize);
+                for (pi, &row_i) in present_idx.iter().enumerate() {
+                    if pi < n_present {
+                        let elt = src.vector_elt(pi as isize);
+                        out.set_vector_elt(row_i as isize, elt);
+                    }
+                }
+                out
+            }
+        }
+    }
+}
+// endregion
 
 // region: Serde Row Wrapper
 

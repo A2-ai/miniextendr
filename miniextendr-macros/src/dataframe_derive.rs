@@ -232,6 +232,19 @@ pub(super) enum FieldTypeKind<'a> {
         key_ty: &'a syn::Type,
         val_ty: &'a syn::Type,
     },
+    /// A struct-typed field whose inner type implements `DataFrameRow`.
+    ///
+    /// Flattened into `<field>_<inner_col>` prefixed columns by default.
+    /// A compile-time assertion against `::miniextendr_api::markers::DataFrameRow`
+    /// is emitted so rustc gives a clear error when the inner type is missing the
+    /// derive.
+    ///
+    /// Suppressed by `#[dataframe(as_list)]` — with as_list the field becomes
+    /// a `Scalar` and uses the ordinary single-column codegen path.
+    Struct {
+        /// The full field type (used for the compile-time DataFrameRow assertion).
+        inner_ty: &'a syn::Type,
+    },
 }
 
 /// Classify a field type for DataFrame column expansion.
@@ -297,6 +310,36 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
                 key_ty: inner,
                 val_ty,
             };
+        }
+    }
+
+    // Any remaining single-segment bare path type that is NOT a known scalar is
+    // treated as a user-defined struct whose `DataFrameRow` derive should be called.
+    // The compile-time assertion `_assert_inner_is_dataframe_row::<Inner>()` in the
+    // generated code surfaces a clear error if the inner type doesn't have the derive.
+    //
+    // Known scalars (i32, f64, String, bool, …) are kept as `Scalar` so that existing
+    // enum variants with primitive fields (e.g. `Click { id: i64, x: f64 }`) are not
+    // misclassified as struct fields.  Multi-segment paths (std::ffi::CString) and
+    // path types with a qualifying `self::`/`super::` prefix fall through to `Scalar`
+    // as well — the user can opt into list-column treatment with `#[dataframe(as_list)]`.
+    if let syn::Type::Path(type_path) = ty {
+        let segs = &type_path.path.segments;
+        // Single-segment, no leading colon (i.e. a bare ident like `Point`)
+        if segs.len() == 1 && type_path.qself.is_none() && type_path.path.leading_colon.is_none() {
+            let seg = segs.last().unwrap();
+            if matches!(seg.arguments, syn::PathArguments::None) {
+                let name = seg.ident.to_string();
+                // Known scalar type names — keep as Scalar so they do not trigger the
+                // struct-flatten path and the DataFrameRow compile-time assertion.
+                const KNOWN_SCALARS: &[&str] = &[
+                    "bool", "char", "str", "f32", "f64", "i8", "i16", "i32", "i64", "i128",
+                    "isize", "u8", "u16", "u32", "u64", "u128", "usize", "String",
+                ];
+                if !KNOWN_SCALARS.contains(&name.as_str()) {
+                    return FieldTypeKind::Struct { inner_ty: ty };
+                }
+            }
         }
     }
 
@@ -483,7 +526,9 @@ fn resolve_struct_field(
                 }))))
             }
         }
-        FieldTypeKind::Scalar | FieldTypeKind::Map { .. } => {
+        // Struct-in-struct flattening is out of scope — treat as a single opaque column.
+        // See issue #459 follow-up note (Q4).
+        FieldTypeKind::Scalar | FieldTypeKind::Map { .. } | FieldTypeKind::Struct { .. } => {
             if field_attrs.width.is_some() {
                 return Err(syn::Error::new_spanned(
                     ty,
@@ -1452,6 +1497,12 @@ fn derive_struct_dataframe(
             TokenStream::new()
         };
 
+    // Marker trait impl: struct type implements DataFrameRow via IntoDataFrame chain.
+    let marker_impl = quote! {
+        impl #impl_generics ::miniextendr_api::markers::DataFrameRow
+            for #row_name #ty_generics #where_clause {}
+    };
+
     Ok(quote! {
         #dataframe_struct
         #into_dataframe_impl
@@ -1460,6 +1511,7 @@ fn derive_struct_dataframe(
         #into_iterator_impl
         #row_methods
         #trait_check
+        #marker_impl
     })
     // endregion
 }
@@ -1586,6 +1638,8 @@ pub(super) enum EnumResolvedField {
     AutoExpandVec(Box<EnumAutoExpandVecData>),
     /// `HashMap<K,V>` or `BTreeMap<K,V>` → two parallel list-columns: `<field>_keys`, `<field>_values`.
     Map(Box<EnumMapFieldData>),
+    /// Struct field whose inner type implements `DataFrameRow` → flattened `<base>_<inner_col>` columns.
+    Struct(Box<EnumStructFieldData>),
 }
 
 impl EnumResolvedField {
@@ -1597,6 +1651,7 @@ impl EnumResolvedField {
             Self::ExpandedVec(data) => &data.binding,
             Self::AutoExpandVec(data) => &data.binding,
             Self::Map(data) => &data.binding,
+            Self::Struct(data) => &data.binding,
         }
     }
 
@@ -1608,6 +1663,7 @@ impl EnumResolvedField {
             Self::ExpandedVec(data) => &data.rust_name,
             Self::AutoExpandVec(data) => &data.rust_name,
             Self::Map(data) => &data.rust_name,
+            Self::Struct(data) => &data.rust_name,
         }
     }
 }
@@ -1620,8 +1676,20 @@ pub(super) struct EnumSingleFieldData {
     pub(super) binding: syn::Ident,
     /// Original Rust field name (for named variants).
     pub(super) rust_name: syn::Ident,
-    /// Column type.
+    /// Column type stored in the companion Vec.
+    ///
+    /// For most fields this is the raw Rust type. When `needs_into_list` is
+    /// `true` (struct-typed fields with `#[dataframe(as_list)]`), this is
+    /// `::miniextendr_api::list::List` — the actual inner type is erased at
+    /// the storage level and each row value is converted via `.into_list()`.
     pub(super) ty: syn::Type,
+    /// Whether the field's value must be converted via `.into_list()` before
+    /// being pushed into the companion `Vec<Option<List>>`.
+    ///
+    /// Set to `true` only for struct-typed fields (`FieldTypeKind::Struct`)
+    /// that carry `#[dataframe(as_list)]`. The companion struct field type is
+    /// `Vec<Option<::miniextendr_api::list::List>>` in this case.
+    pub(super) needs_into_list: bool,
 }
 
 /// Data for [`EnumResolvedField::ExpandedFixed`].
@@ -1684,6 +1752,27 @@ pub(super) struct EnumMapFieldData {
     pub(super) key_ty: syn::Type,
     /// Value type V.
     pub(super) val_ty: syn::Type,
+}
+
+/// Data for [`EnumResolvedField::Struct`].
+///
+/// A field whose inner type implements `DataFrameRow` expands to `<base_name>_<inner_col>`
+/// prefixed columns — one output column per column emitted by the inner type's companion
+/// DataFrame. Absent-variant rows produce `None` in every prefixed column.
+///
+/// The companion struct holds `Vec<Option<Inner>>` (not `Vec<Inner>`). The `into_data_frame`
+/// method collects present rows into a dense `Vec<Inner>` (tracking presence indices),
+/// calls `Inner::to_dataframe(present_rows)`, extracts named column SEXPs, and scatters
+/// them back to the full row count with `None`-fill for absent rows.
+pub(super) struct EnumStructFieldData {
+    /// Base name for column prefixing (field name or `rename` override).
+    pub(super) base_name: String,
+    /// Binding name used in destructure pattern.
+    pub(super) binding: syn::Ident,
+    /// Original Rust field name.
+    pub(super) rust_name: syn::Ident,
+    /// Inner struct type (used for the compile-time DataFrameRow assertion and codegen).
+    pub(super) inner_ty: syn::Type,
 }
 
 /// Parsed and resolved information about a single enum variant for DataFrame codegen.
