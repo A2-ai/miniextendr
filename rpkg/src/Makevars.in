@@ -28,6 +28,11 @@ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
+# wasm32 snapshot — generated alongside WRAPPERS_R from the same cdylib pass.
+# Lives in the user crate's source tree (not target/) because miniextendr_init!
+# expects it at `<crate>/src/rust/wasm_registry.rs` for `mod __miniextendr_wasm_registry;`
+# to resolve when cross-compiling for `wasm32-*`.
+WASM_REGISTRY_RS = $(ABS_RPKG_SRCDIR)/rust/wasm_registry.rs
 
 # cdylib for R wrapper generation (platform-specific extension)
 CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
@@ -89,21 +94,27 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	@# On Windows, remove cdylib .dll.a import lib so MinGW linker uses the staticlib.
 	@rm -f '$(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).dll.a'
 
-# Automatic R wrapper generation.
+# Automatic R wrapper + wasm32 snapshot generation.
 # Builds a cdylib (shared library) containing all linkme distributed_slice
-# entries, loads it in R, and calls miniextendr_write_wrappers() which
-# writes R/*-wrappers.R. The Rust code diffs old vs new and only overwrites
-# when content changes (printing a devtools::document() reminder).
+# entries, loads it in R, and calls (a) miniextendr_write_wrappers() which
+# writes R/*-wrappers.R and (b) miniextendr_write_wasm_registry() which
+# writes src/rust/wasm_registry.rs. Both writers diff old vs new and only
+# overwrite when content changes (the Rust wasm_registry.rs is read by
+# `miniextendr_init!()` macro expansion when cross-compiling for wasm32 —
+# host edits to `#[miniextendr]` items must be matched by a regenerated
+# wasm_registry.rs or the wasm32 build registers stale routines).
 # NAMESPACE is NOT generated here — use devtools::document() for that.
 $(WRAPPERS_R): $(CARGO_CDYLIB)
-	@echo "Generating R wrappers..."
+	@echo "Generating R wrappers + wasm_registry.rs..."
 	@_cdylib='$(CARGO_CDYLIB)'; \
 	_wrappers='$(WRAPPERS_R)'; \
+	_wasm_registry='$(WASM_REGISTRY_RS)'; \
 	if command -v cygpath >/dev/null 2>&1; then \
 	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 	  _wrappers=$$(cygpath -m "$$_wrappers"); \
+	  _wasm_registry=$$(cygpath -m "$$_wasm_registry"); \
 	fi; \
-	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib') }))"
+	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); .Call(getNativeSymbolInfo('miniextendr_write_wasm_registry', lib), '$$_wasm_registry'); dyn.unload('$$_cdylib') }))"
 	@echo "Removing cdylib to prevent linker collision with staticlib..."
 	@rm -f '$(CARGO_CDYLIB)'
 
