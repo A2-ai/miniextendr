@@ -242,6 +242,22 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 > `<field>_keys` / `<field>_values` columns by `DataFrameRow` derive. No new `IntoR` impls
 > are required beyond those already present.
 
+#### Nested `DataFrameRow` enum fields
+
+When an enum variant field is itself a `DataFrameRow` enum, it flattens into prefixed columns at `into_data_frame()` time. The companion struct holds `Vec<Option<Inner>>` and calls `Inner::to_dataframe(dense_rows)` → `into_named_columns()` → scatter to full-length column via `scatter_column`.
+
+| Mode | Rust field annotation | Companion struct type | R column(s) | NA behavior |
+|------|-----------------------|-----------------------|-------------|-------------|
+| **Flatten** (default) | _(none)_ — inner must `impl DataFrameRow` | `Vec<Option<Inner>>` | `<field>_variant` (STRSXP) + all of Inner's other columns, each prefixed with `<field>_` | `NA` in all prefixed columns for absent-variant rows |
+| **`as_factor`** | `#[dataframe(as_factor)]` — inner must be unit-only (`impl UnitEnumFactor`) | `Vec<Option<Inner>>` | `<field>` (INTSXP factor) | `NA_integer_` for absent-variant rows |
+| **`as_list`** | `#[dataframe(as_list)]` | `Vec<Option<Inner>>` | `<field>` (VECSXP list-column) | `NULL` for absent-variant rows |
+
+Notes:
+- **Factor levels**: emitted in enum variant declaration order; `levels(df$field)` returns all variants regardless of which appear in the data.
+- **Inner tag**: use `#[dataframe(tag = "variant")]` on the inner enum so the discriminant column is `<outer_field>_variant` (single underscore). A leading underscore on the inner tag (e.g. `tag = "_variant"`) produces a double underscore in the outer column name.
+- **Auto-emit `UnitEnumFactor`**: `#[derive(DataFrameRow)]` on a unit-only enum also emits `UnitEnumFactor` + `IntoR` (factor SEXP) automatically. Generic unit enums (with type parameters) are excluded from auto-emission; implement `UnitEnumFactor` manually if needed.
+- **Struct fields**: the same flatten / `as_factor` / `as_list` modes apply to struct-typed variant fields that implement `DataFrameRow`.
+
 ### Result and Error Types
 
 | Rust Type | `Ok(val)` | `Err(e)` |
