@@ -827,3 +827,160 @@ test_that("struct_list — align NvNr: origin is a list-column, NULL for absent 
 })
 
 # endregion: 9. Struct fields
+
+# region: 10. Nested enum fields ──────────────────────────────────────────────
+#
+# Three outer enums exercise the three nested-enum field modes:
+#   NestedFlattenEvent: dir: Direction (flatten → dir_variant column)
+#   NestedFactorEvent:  #[dataframe(as_factor)] dir: Direction → factor column
+#   NestedListEvent:    #[dataframe(as_list)] dir: Direction → list column
+
+# ── Flatten path ───────────────────────────────────────────────────────────────
+# Split partition names are the lowercase snake_case of the variant names.
+# The _type column uses the original PascalCase variant name.
+
+test_that("nested_flatten — split 1v1r: move row has dir_variant column", {
+  res <- nested_flatten_split_1v1r()
+  expect_setequal(names(res), c("move", "stop"))
+  move <- res$move
+  expect_equal(nrow(move), 1L)
+  expect_true("dir_variant" %in% colnames(move))
+  expect_equal(move$id, 1L)
+  expect_equal(move$dir_variant, "North")
+  # stop partition is empty
+  expect_equal(nrow(res$stop), 0L)
+})
+
+test_that("nested_flatten — split 1vNr: multiple move rows, correct dir_variant values", {
+  res <- nested_flatten_split_1vnr()
+  move <- res$move
+  expect_equal(nrow(move), 3L)
+  expect_true("dir_variant" %in% colnames(move))
+  expect_equal(move$dir_variant, c("North", "South", "East"))
+})
+
+test_that("nested_flatten — split Nv1r: move and stop each have 1 row", {
+  res <- nested_flatten_split_nv1r()
+  expect_equal(nrow(res$move), 1L)
+  expect_equal(nrow(res$stop), 1L)
+  expect_equal(res$move$dir_variant, "West")
+})
+
+test_that("nested_flatten — split NvNr: correct partition sizes and dir_variant values", {
+  res <- nested_flatten_split_nvnr()
+  expect_equal(nrow(res$move), 2L)
+  expect_equal(nrow(res$stop), 2L)
+  expect_equal(res$move$dir_variant, c("North", "East"))
+})
+
+test_that("nested_flatten — align NvNr: dir_variant column present, NA-fill for Stop rows", {
+  df <- nested_flatten_align_nvnr()
+  expect_true("dir_variant" %in% colnames(df))
+  expect_equal(nrow(df), 4L)
+  stop_rows <- which(df$`_type` == "Stop")
+  move_rows <- which(df$`_type` == "Move")
+  expect_true(all(is.na(df$dir_variant[stop_rows])))
+  expect_false(any(is.na(df$dir_variant[move_rows])))
+  expect_equal(df$dir_variant[move_rows], c("North", "East"))
+})
+
+# ── as_factor path ─────────────────────────────────────────────────────────────
+
+test_that("nested_factor — split 1v1r: move row has dir as factor column", {
+  res <- nested_factor_split_1v1r()
+  expect_setequal(names(res), c("move", "stop"))
+  move <- res$move
+  expect_equal(nrow(move), 1L)
+  expect_true("dir" %in% colnames(move))
+  # dir is a factor column
+  expect_true(is.factor(move$dir))
+  expect_equal(as.character(move$dir), "North")
+  expect_equal(nrow(res$stop), 0L)
+})
+
+test_that("nested_factor — split 1vNr: multiple move rows with correct dir factor values", {
+  res <- nested_factor_split_1vnr()
+  move <- res$move
+  expect_equal(nrow(move), 3L)
+  expect_true(is.factor(move$dir))
+  expect_equal(as.character(move$dir), c("North", "South", "East"))
+})
+
+test_that("nested_factor — split Nv1r: move and stop each have 1 row; stop omits dir column", {
+  res <- nested_factor_split_nv1r()
+  expect_equal(nrow(res$move), 1L)
+  expect_equal(nrow(res$stop), 1L)
+  expect_equal(as.character(res$move$dir), "West")
+  # stop partition has no dir column
+  expect_false("dir" %in% colnames(res$stop))
+})
+
+test_that("nested_factor — split NvNr: correct partition sizes and dir factor values", {
+  res <- nested_factor_split_nvnr()
+  expect_equal(nrow(res$move), 2L)
+  expect_equal(nrow(res$stop), 2L)
+  expect_equal(as.character(res$move$dir), c("North", "East"))
+})
+
+test_that("nested_factor — align NvNr: dir is a factor, NA for Stop rows", {
+  df <- nested_factor_align_nvnr()
+  expect_true("dir" %in% colnames(df))
+  expect_equal(nrow(df), 4L)
+  expect_true(is.factor(df$dir))
+  stop_rows <- which(df$`_type` == "Stop")
+  move_rows <- which(df$`_type` == "Move")
+  expect_true(all(is.na(df$dir[stop_rows])))
+  expect_false(any(is.na(df$dir[move_rows])))
+  expect_equal(as.character(df$dir[move_rows]), c("North", "East"))
+})
+
+# ── as_list path ───────────────────────────────────────────────────────────────
+# Direction's IntoList impl produces a list of a factor (via DataFrameRow derive).
+# Each dir list cell for a present row is non-NULL; absent (Stop) rows have NULL.
+
+test_that("nested_list — split 1v1r: move row has dir as list-column", {
+  res <- nested_list_split_1v1r()
+  expect_setequal(names(res), c("move", "stop"))
+  move <- res$move
+  expect_equal(nrow(move), 1L)
+  expect_true("dir" %in% colnames(move))
+  expect_true(is.list(move$dir))
+  expect_false(is.null(move$dir[[1L]]))
+  expect_equal(nrow(res$stop), 0L)
+})
+
+test_that("nested_list — split 1vNr: multiple move rows, each dir cell is a list", {
+  res <- nested_list_split_1vnr()
+  move <- res$move
+  expect_equal(nrow(move), 3L)
+  expect_true(is.list(move$dir))
+  # Each dir cell is non-NULL
+  for (i in seq_len(nrow(move))) expect_false(is.null(move$dir[[i]]))
+})
+
+test_that("nested_list — split Nv1r: move and stop each have 1 row; stop omits dir column", {
+  res <- nested_list_split_nv1r()
+  expect_equal(nrow(res$move), 1L)
+  expect_equal(nrow(res$stop), 1L)
+  expect_true(is.list(res$move$dir))
+  expect_false("dir" %in% colnames(res$stop))
+})
+
+test_that("nested_list — split NvNr: correct partition sizes", {
+  res <- nested_list_split_nvnr()
+  expect_equal(nrow(res$move), 2L)
+  expect_equal(nrow(res$stop), 2L)
+})
+
+test_that("nested_list — align NvNr: dir is a list-column, NULL for Stop rows", {
+  df <- nested_list_align_nvnr()
+  expect_true("dir" %in% colnames(df))
+  expect_equal(nrow(df), 4L)
+  expect_true(is.list(df$dir))
+  stop_rows <- which(df$`_type` == "Stop")
+  move_rows <- which(df$`_type` == "Move")
+  for (i in stop_rows) expect_null(df$dir[[i]])
+  for (i in move_rows) expect_false(is.null(df$dir[[i]]))
+})
+
+# endregion: 10. Nested enum fields

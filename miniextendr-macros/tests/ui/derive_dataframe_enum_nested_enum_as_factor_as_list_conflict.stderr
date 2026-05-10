@@ -1,0 +1,5 @@
+error: `as_factor` and `as_list` are mutually exclusive
+  --> tests/ui/derive_dataframe_enum_nested_enum_as_factor_as_list_conflict.rs:16:9
+   |
+16 |         dir: Dir,
+   |         ^^^

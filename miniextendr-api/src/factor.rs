@@ -504,21 +504,11 @@ impl<T> std::ops::DerefMut for FactorOptionVec<T> {
     }
 }
 
-impl<T: RFactor> IntoR for FactorOptionVec<T> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        let indices: Vec<i32> = self
-            .0
-            .iter()
-            .map(|v| v.map_or(NA_INTEGER, |x| x.to_level_index()))
-            .collect();
-        build_factor(&indices, build_levels_sexp(T::CHOICES))
+// Blanket: every RFactor type is also a UnitEnumFactor (provides IntoR for FactorOptionVec<T>).
+impl<T: RFactor + crate::match_arg::MatchArg> UnitEnumFactor for T {
+    const FACTOR_LEVELS: &'static [&'static str] = T::CHOICES;
+    fn to_factor_index(self) -> i32 {
+        self.to_level_index()
     }
 }
 
@@ -528,7 +518,57 @@ impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
         factor_option_vec_from_sexp(sexp).map(FactorOptionVec)
     }
 }
-// endregion
+
+// region: UnitEnumFactor — factor trait for DataFrameRow unit-only enums
+
+/// Trait implemented by unit-only enums derived via `#[derive(DataFrameRow)]`.
+///
+/// Provides the level names and 1-based index needed to convert enum values
+/// into R factor SEXPs. Unlike `RFactor`, this trait does **not** require
+/// `Copy` or `MatchArg`, making it usable with `DataFrameRow`-derived types
+/// that only need to participate as factor columns in data frames.
+///
+/// Implemented automatically by `#[derive(DataFrameRow)]` on unit-only enums.
+/// The blanket `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` in
+/// `miniextendr-api` provides the actual SEXP conversion used by the
+/// companion struct's `into_data_frame` method.
+///
+/// # Safety contract
+///
+/// `to_factor_index` must return a value in `1..=FACTOR_LEVELS.len() as i32`
+/// (or `NA_INTEGER` for missing) to produce a valid R factor SEXP.
+pub trait UnitEnumFactor {
+    /// Ordered level names (in the same order as the enum variants).
+    const FACTOR_LEVELS: &'static [&'static str];
+
+    /// Convert `self` to a 1-based R factor level index.
+    fn to_factor_index(self) -> i32;
+}
+
+impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> SEXP {
+        // Note: generic statics are not allowed in Rust, so we build levels on each call.
+        // The levels STRSXP is kept alive by the factor SEXP itself (which R protects).
+        let levels = build_levels_sexp(T::FACTOR_LEVELS);
+        let indices: Vec<i32> = self
+            .0
+            .into_iter()
+            .map(|opt| match opt {
+                None => NA_INTEGER,
+                Some(v) => v.to_factor_index(),
+            })
+            .collect();
+        build_factor(&indices, levels)
+    }
+}
+// endregion: UnitEnumFactor
 
 // region: Tests
 

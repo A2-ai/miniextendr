@@ -1245,3 +1245,293 @@ mod struct_field_tests {
 // endregion: Struct fields Rust unit tests
 
 // endregion: 9. Struct fields
+
+// region: 10. Nested enum fields (as_factor / flatten / as_list) ──────────────
+//
+// Inner enum `Direction` is a unit-only enum that derives `DataFrameRow`.
+// The derive auto-emits `IntoR`, `IntoR for Vec<Option<Self>>`, and `IntoList`
+// so it can be used with `as_factor` (factor column) or `as_list` (list column)
+// in an outer enum's variant fields.
+//
+// Inner enum `Status` has payload variants (not unit-only) and thus implements
+// `DataFrameRow` for flattening only — its variants get prefixed columns.
+//
+// Three outer enums exercise the three field-treatment modes:
+//   - `NestedFlattenEvent`: `dir: Direction` flattens via DataFrameRow (produces
+//     `dir_variant` column from the `tag = "variant"` attribute on Direction)
+//   - `NestedFactorEvent`: `#[dataframe(as_factor)] dir: Direction` → factor column
+//   - `NestedListEvent`: `#[dataframe(as_list)] dir: Direction` → list column
+
+/// Unit-only inner enum — derives `DataFrameRow`, which auto-emits `IntoR` and
+/// `IntoR for Vec<Option<Self>>` as factor SEXPs, and `IntoList`.
+#[derive(Clone, Copy, Debug, DataFrameRow)]
+#[dataframe(tag = "variant")]
+pub enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+
+/// Payload inner enum — derives `DataFrameRow` for flattening only.
+/// `Status` has a payload variant so it is NOT unit-only; no factor impls are emitted.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "variant")]
+pub enum Status {
+    Ok,
+    Err { code: i32 },
+}
+
+/// Outer enum: `dir: Direction` field flattens (DataFrameRow derive on Direction).
+/// The `Direction` columns appear prefixed as `dir_variant`.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum NestedFlattenEvent {
+    Move { id: i32, dir: Direction },
+    Stop { id: i32 },
+}
+
+/// Outer enum: `#[dataframe(as_factor)] dir: Direction` → single factor column.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum NestedFactorEvent {
+    Move {
+        id: i32,
+        #[dataframe(as_factor)]
+        dir: Direction,
+    },
+    Stop {
+        id: i32,
+    },
+}
+
+/// Outer enum: `#[dataframe(as_list)] dir: Direction` → opaque list column.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum NestedListEvent {
+    Move {
+        id: i32,
+        #[dataframe(as_list)]
+        dir: Direction,
+    },
+    Stop {
+        id: i32,
+    },
+}
+
+// region: Flatten fixtures — all 4 cardinality cells × 2 modes
+
+/// 1v1r split (flatten): single Move row.
+#[miniextendr]
+pub fn nested_flatten_split_1v1r() -> List {
+    NestedFlattenEvent::to_dataframe_split(vec![NestedFlattenEvent::Move {
+        id: 1,
+        dir: Direction::North,
+    }])
+}
+
+/// 1vNr split (flatten): multiple Move rows.
+#[miniextendr]
+pub fn nested_flatten_split_1vnr() -> List {
+    NestedFlattenEvent::to_dataframe_split(vec![
+        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
+        NestedFlattenEvent::Move { id: 2, dir: Direction::South },
+        NestedFlattenEvent::Move { id: 3, dir: Direction::East },
+    ])
+}
+
+/// Nv1r split (flatten): one Move and one Stop row.
+#[miniextendr]
+pub fn nested_flatten_split_nv1r() -> List {
+    NestedFlattenEvent::to_dataframe_split(vec![
+        NestedFlattenEvent::Move { id: 1, dir: Direction::West },
+        NestedFlattenEvent::Stop { id: 2 },
+    ])
+}
+
+/// NvNr split (flatten): multiple rows across both variants.
+#[miniextendr]
+pub fn nested_flatten_split_nvnr() -> List {
+    NestedFlattenEvent::to_dataframe_split(vec![
+        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
+        NestedFlattenEvent::Move { id: 2, dir: Direction::East },
+        NestedFlattenEvent::Stop { id: 3 },
+        NestedFlattenEvent::Stop { id: 4 },
+    ])
+}
+
+/// NvNr align (flatten): aligned data frame with NA-fill.
+#[miniextendr]
+pub fn nested_flatten_align_nvnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
+    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
+        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
+        NestedFlattenEvent::Move { id: 2, dir: Direction::East },
+        NestedFlattenEvent::Stop { id: 3 },
+        NestedFlattenEvent::Stop { id: 4 },
+    ]))
+}
+
+// endregion: Flatten fixtures
+
+// region: as_factor fixtures — all 4 cardinality cells × 2 modes
+
+/// 1v1r split (as_factor): single Move row, dir as factor column.
+#[miniextendr]
+pub fn nested_factor_split_1v1r() -> List {
+    NestedFactorEvent::to_dataframe_split(vec![NestedFactorEvent::Move {
+        id: 1,
+        dir: Direction::North,
+    }])
+}
+
+/// 1vNr split (as_factor): multiple Move rows.
+#[miniextendr]
+pub fn nested_factor_split_1vnr() -> List {
+    NestedFactorEvent::to_dataframe_split(vec![
+        NestedFactorEvent::Move { id: 1, dir: Direction::North },
+        NestedFactorEvent::Move { id: 2, dir: Direction::South },
+        NestedFactorEvent::Move { id: 3, dir: Direction::East },
+    ])
+}
+
+/// Nv1r split (as_factor): one Move and one Stop row.
+#[miniextendr]
+pub fn nested_factor_split_nv1r() -> List {
+    NestedFactorEvent::to_dataframe_split(vec![
+        NestedFactorEvent::Move { id: 1, dir: Direction::West },
+        NestedFactorEvent::Stop { id: 2 },
+    ])
+}
+
+/// NvNr split (as_factor): multiple rows across both variants.
+#[miniextendr]
+pub fn nested_factor_split_nvnr() -> List {
+    NestedFactorEvent::to_dataframe_split(vec![
+        NestedFactorEvent::Move { id: 1, dir: Direction::North },
+        NestedFactorEvent::Move { id: 2, dir: Direction::East },
+        NestedFactorEvent::Stop { id: 3 },
+        NestedFactorEvent::Stop { id: 4 },
+    ])
+}
+
+/// NvNr align (as_factor): aligned data frame with NA-fill for dir in Stop rows.
+#[miniextendr]
+pub fn nested_factor_align_nvnr() -> ToDataFrame<NestedFactorEventDataFrame> {
+    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
+        NestedFactorEvent::Move { id: 1, dir: Direction::North },
+        NestedFactorEvent::Move { id: 2, dir: Direction::East },
+        NestedFactorEvent::Stop { id: 3 },
+        NestedFactorEvent::Stop { id: 4 },
+    ]))
+}
+
+// endregion: as_factor fixtures
+
+// region: as_list fixtures — all 4 cardinality cells × 2 modes
+
+/// 1v1r split (as_list): single Move row, dir as list column.
+#[miniextendr]
+pub fn nested_list_split_1v1r() -> List {
+    NestedListEvent::to_dataframe_split(vec![NestedListEvent::Move {
+        id: 1,
+        dir: Direction::North,
+    }])
+}
+
+/// 1vNr split (as_list): multiple Move rows.
+#[miniextendr]
+pub fn nested_list_split_1vnr() -> List {
+    NestedListEvent::to_dataframe_split(vec![
+        NestedListEvent::Move { id: 1, dir: Direction::North },
+        NestedListEvent::Move { id: 2, dir: Direction::South },
+        NestedListEvent::Move { id: 3, dir: Direction::East },
+    ])
+}
+
+/// Nv1r split (as_list): one Move and one Stop row.
+#[miniextendr]
+pub fn nested_list_split_nv1r() -> List {
+    NestedListEvent::to_dataframe_split(vec![
+        NestedListEvent::Move { id: 1, dir: Direction::West },
+        NestedListEvent::Stop { id: 2 },
+    ])
+}
+
+/// NvNr split (as_list): multiple rows across both variants.
+#[miniextendr]
+pub fn nested_list_split_nvnr() -> List {
+    NestedListEvent::to_dataframe_split(vec![
+        NestedListEvent::Move { id: 1, dir: Direction::North },
+        NestedListEvent::Move { id: 2, dir: Direction::East },
+        NestedListEvent::Stop { id: 3 },
+        NestedListEvent::Stop { id: 4 },
+    ])
+}
+
+/// NvNr align (as_list): aligned data frame with NULL-fill for dir in Stop rows.
+#[miniextendr]
+pub fn nested_list_align_nvnr() -> ToDataFrame<NestedListEventDataFrame> {
+    ToDataFrame(NestedListEvent::to_dataframe(vec![
+        NestedListEvent::Move { id: 1, dir: Direction::North },
+        NestedListEvent::Move { id: 2, dir: Direction::East },
+        NestedListEvent::Stop { id: 3 },
+        NestedListEvent::Stop { id: 4 },
+    ]))
+}
+
+// endregion: as_list fixtures
+
+// region: Nested enum Rust unit tests
+#[cfg(test)]
+mod nested_enum_field_tests {
+    use super::*;
+
+    #[test]
+    fn test_direction_is_unit_only() {
+        // DataFrameRow derive emits IntoR for Direction; Direction must compile.
+        // Verify all variants can be constructed (no payload).
+        let _ = Direction::North;
+        let _ = Direction::South;
+        let _ = Direction::East;
+        let _ = Direction::West;
+    }
+
+    #[test]
+    fn test_nested_factor_align_col_types() {
+        let df = NestedFactorEvent::to_dataframe(vec![
+            NestedFactorEvent::Move { id: 1, dir: Direction::North },
+            NestedFactorEvent::Stop { id: 2 },
+        ]);
+        // The companion struct has id: Vec<Option<i32>> and dir: Vec<Option<Direction>>
+        assert_eq!(df.id[0], Some(1i32));
+        assert_eq!(df.id[1], Some(2i32));
+        assert!(df.dir[0].is_some());
+        assert!(df.dir[1].is_none()); // Stop variant has no dir field
+    }
+
+    #[test]
+    fn test_nested_list_align_col_types() {
+        let df = NestedListEvent::to_dataframe(vec![
+            NestedListEvent::Move { id: 1, dir: Direction::North },
+            NestedListEvent::Stop { id: 2 },
+        ]);
+        assert_eq!(df.id[0], Some(1i32));
+        assert!(df.dir[0].is_some());
+        assert!(df.dir[1].is_none());
+    }
+
+    #[test]
+    fn test_nested_flatten_align_col_types() {
+        let df = NestedFlattenEvent::to_dataframe(vec![
+            NestedFlattenEvent::Move { id: 1, dir: Direction::North },
+            NestedFlattenEvent::Stop { id: 2 },
+        ]);
+        assert_eq!(df.id[0], Some(1i32));
+        // dir flattened → dir column holds Option<Direction>
+        assert!(df.dir[0].is_some());
+        assert!(df.dir[1].is_none());
+    }
+}
+// endregion: Nested enum Rust unit tests
+
+// endregion: 10. Nested enum fields

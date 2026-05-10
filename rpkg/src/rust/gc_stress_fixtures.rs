@@ -10,7 +10,8 @@ use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
 
 use crate::dataframe_enum_payload_matrix::{
-    BTreeMapEvent, HashMapEvent, Point, StructFlattenEvent, StructListEvent,
+    BTreeMapEvent, Direction, HashMapEvent, NestedFactorEvent, NestedFlattenEvent, NestedListEvent,
+    Point, Status, StructFlattenEvent, StructListEvent,
 };
 
 /// Simple R6 class for GC stress tests.
@@ -189,6 +190,51 @@ pub fn gc_stress_dataframe_struct() {
     ];
     let _ = StructListEvent::to_dataframe(list_rows.clone()).into_sexp();
     let _ = StructListEvent::to_dataframe_split(list_rows).into_sexp();
+}
+
+/// Exercise nested-enum field DataFrameRow flatten + as_factor + as_list paths
+/// under GC pressure.
+///
+/// Drives both `to_dataframe` (align) and `to_dataframe_split` paths for all
+/// three nested-enum field modes. No arguments — suitable for the fast gctorture
+/// sweep.
+#[miniextendr]
+pub fn gc_stress_dataframe_nested_enum() {
+    use miniextendr_api::into_r::IntoR as _;
+
+    // Flatten path: nested DataFrameRow enum expands to prefixed columns.
+    let flatten_rows = vec![
+        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
+        NestedFlattenEvent::Stop { id: 2 },
+        NestedFlattenEvent::Move { id: 3, dir: Direction::East },
+        NestedFlattenEvent::Stop { id: 4 },
+    ];
+    let _ = NestedFlattenEvent::to_dataframe(flatten_rows.clone()).into_sexp();
+    let _ = NestedFlattenEvent::to_dataframe_split(flatten_rows).into_sexp();
+
+    // as_factor path: unit-only enum field stored as factor column.
+    let factor_rows = vec![
+        NestedFactorEvent::Move { id: 1, dir: Direction::North },
+        NestedFactorEvent::Stop { id: 2 },
+        NestedFactorEvent::Move { id: 3, dir: Direction::East },
+        NestedFactorEvent::Stop { id: 4 },
+    ];
+    let _ = NestedFactorEvent::to_dataframe(factor_rows.clone()).into_sexp();
+    let _ = NestedFactorEvent::to_dataframe_split(factor_rows).into_sexp();
+
+    // as_list path: enum field kept as opaque list-column.
+    let list_rows = vec![
+        NestedListEvent::Move { id: 1, dir: Direction::South },
+        NestedListEvent::Stop { id: 2 },
+        NestedListEvent::Move { id: 3, dir: Direction::West },
+        NestedListEvent::Stop { id: 4 },
+    ];
+    let _ = NestedListEvent::to_dataframe(list_rows.clone()).into_sexp();
+    let _ = NestedListEvent::to_dataframe_split(list_rows).into_sexp();
+
+    // Verify Status (payload enum) flatten path.
+    let _ = Status::Ok;
+    let _ = Status::Err { code: 42 };
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
