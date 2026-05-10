@@ -45,6 +45,9 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 | **MXL107** | Missing `#[miniextendr] impl Trait for Type` | Add the attribute to the trait impl |
 | **MXL108** | Missing registration for trait impl | Add `#[miniextendr]` to the trait impl |
 | **MXL109** | `#[cfg]` mismatch between `mod` declarations | Ensure `#[cfg]` attributes are consistent |
+| **MXL110** | Parameter name is an R reserved word | Rename the parameter — generated R wrapper would fail to parse |
+| **MXL111** | `s4_*` method on `#[miniextendr(s4)]` impl | Drop the `s4_` prefix — codegen auto-prepends it (you'd get `s4_s4_*`) |
+| **MXL112** | Explicit lifetime parameter on `#[miniextendr]` fn or impl | Use owned types (`Vec<T>` / `String`) — `&[T]` and `&str` arguments work without explicit lifetime annotations |
 
 ### Warnings (P1: important)
 

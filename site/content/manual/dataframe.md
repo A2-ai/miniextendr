@@ -258,6 +258,29 @@ enum Observation {
 }
 ```
 
+### Enum Split Mode (`to_dataframe_split`)
+
+Alongside `to_dataframe` (which produces a single aligned data.frame with `NA`/`NULL` fill for variants that don't carry a field), enums also expose `to_dataframe_split` which partitions the rows by variant. Each partition is a data.frame with **only that variant's own columns** — no `NA`-filled columns from sibling variants.
+
+| Variants × rows in input | Return type |
+|--------------------------|-------------|
+| **Single-variant enum**, any number of rows | bare `data.frame` |
+| **Multi-variant enum**, mixed rows | named `list` of data.frames, one per variant in `snake_case` |
+
+```rust
+let rows = vec![
+    Event::Click      { id: 1, x: 1.5, y: 2.5 },
+    Event::Impression { id: 2, slot: "top_banner".to_string() },
+    Event::Error      { id: 3, code: 404, message: "not found".to_string() },
+];
+Event::to_dataframe_split(rows)
+// In R: list(click = <1-row df with id, x, y>,
+//            impression = <1-row df with id, slot>,
+//            error = <1-row df with id, code, message>)
+```
+
+Variants absent from the input still appear in the result as 0-row data.frames carrying that variant's column shape. Unit variants produce a 0-column data.frame with the correct row count. Tuple variants name positional columns `_0`, `_1`, … . See the cardinality matrix in `rpkg/tests/testthat/test-dataframe-enum-payload-matrix.R` for the full set of guarantees (PR #463).
+
 ### With Serde (when `serde` feature enabled)
 
 ```rust
@@ -293,6 +316,16 @@ impl Measurement {
 
     /// Transpose columns back to rows
     pub fn from_dataframe(df: MeasurementDataFrame) -> Vec<Self>;
+}
+```
+
+For enums, the derive additionally generates:
+
+```rust
+impl Event {
+    /// Partition rows by variant. Returns `data.frame` for single-variant enums,
+    /// or a named `list` of per-variant data.frames otherwise. See "Enum Split Mode".
+    pub fn to_dataframe_split(rows: Vec<Self>) -> miniextendr_api::List;
 }
 ```
 
