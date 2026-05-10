@@ -978,27 +978,13 @@ Add to the "Rust/FFI gotchas" section:
 
 ---
 
-## Open questions / risks
+## Design decisions (resolved with user 2026-05-10)
 
-**Q1: `dataframe_columns` API surface.** The helper needs access to the column
-names and SEXPs from a compiled companion DataFrame struct. The cleanest approach
-is to add a `fn into_named_columns(self) -> Vec<(String, SEXP)>` method to the
-`IntoDataFrame` trait (with a default impl via `into_data_frame()`). This is a
-minor trait addition but avoids a raw VECSXP extraction in macro-generated code.
-Consider whether to add it to the trait or keep it as a standalone function.
+**Q1 — RESOLVED: trait method on `IntoDataFrame`.** Add `fn into_named_columns(self) -> Vec<(String, SEXP)>` to the `IntoDataFrame` trait, with a default impl via `into_data_frame()`. Macro-generated code calls this on the inner struct's compiled DataFrame to obtain `(prefix + name, column-SEXP)` pairs.
 
-**Q2: Inner Clone requirement.** The scatter path (`separate Some/None → call
-to_dataframe → scatter back`) requires `Inner: Clone` to extract the `Some` rows
-without consuming the original `Vec<Option<Inner>>`. If `Clone` is too restrictive,
-restructure the companion struct to hold `Vec<Inner>` (no Option) + a parallel
-`Vec<bool>` presence mask. Evaluate based on typical user types (most Rust structs
-implement Clone).
+**Q2 — RESOLVED: avoid Clone via presence mask.** The companion struct holds `Vec<Inner>` (densely packed, only the Some rows) plus a parallel `Vec<bool>` (or bitset) presence mask sized to the full row count. Scatter step reads the mask: present rows pull from the dense Inner DataFrame's columns; absent rows fill with the per-column NA default. No `Inner: Clone` requirement.
 
-**Q3: `rustc_on_unimplemented` hint.** The compile-time assertion produces a
-generic trait-bound error. If the `DataFrameRow` trait can carry
-`#[rustc_on_unimplemented(...)]` (nightly) or a custom wrapper function with a
-readable error (stable), the user experience improves significantly. Evaluate
-at implementation time; document in the PR if this is deferred.
+**Q3 — RESOLVED: use `rustc_on_unimplemented` on the `DataFrameRow` trait.** Stable trait attribute since Rust 1.82. Add `#[rustc_on_unimplemented(message = "..", label = "..", note = "..")]` pointing the user at `#[derive(DataFrameRow)]` on the inner type or `#[dataframe(as_list)]` on the field. Keep the `_assert_inner_is_dataframe_row::<Inner>()` compile-time assertion as belt-and-braces.
 
 **Q4: Struct-in-struct (top-level DataFrameRow struct containing a struct field).**
 Currently out of scope — `resolve_struct_field` treats `Struct` kind as `Single`
