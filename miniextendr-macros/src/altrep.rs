@@ -71,8 +71,7 @@ pub(crate) fn generate_direct_altrep_registration(
     let altrep_reg_entry = if generics.params.is_empty() {
         let reg_fn_name = quote::format_ident!("__mx_altrep_reg_{}", ident);
         quote::quote! {
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALTREP_REGISTRATIONS)]
-            #[linkme(crate = ::miniextendr_api::linkme)]
+            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALTREP_REGISTRATIONS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub extern "C" fn #reg_fn_name() {

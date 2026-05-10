@@ -1113,8 +1113,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         #[doc = #source_location_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
-        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         static #r_wrappers_const_ident: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Vctrs,
