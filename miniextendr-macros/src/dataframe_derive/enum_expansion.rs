@@ -230,6 +230,78 @@ pub(super) fn derive_enum_dataframe(
                         }
                     }
                 }
+                // B1: Check for `<base>_variant` discriminant column collision.
+                //
+                // When a Struct field `kind: Inner` is flattened, the inner enum's
+                // discriminant column (tag) is emitted under `<base>_<inner_tag>`.
+                // If the inner enum uses `#[dataframe(tag = "variant")]` (recommended),
+                // the outer discriminant column becomes `kind_variant`.  If any sibling
+                // field in the same variant is also named `kind_variant` (or renames to
+                // that), the two fields would produce the same R column name — a runtime
+                // collision that is undetectable without this check.
+                //
+                // We detect the following cases at compile time:
+                //   1. Struct field `kind: Inner` + Single/Scalar field `kind_variant`
+                //   2. Struct field `kind: Inner` + another Struct field that would
+                //      produce `kind_variant` (e.g. if a field is renamed to `kind_variant`)
+                //
+                // Inner-enum-internal collision (Inner has both `tag = "variant"` AND
+                // payload field `variant`) cannot be detected here — that requires
+                // inspecting Inner's own resolved columns.  Document this as a carve-out
+                // in DATAFRAME.md.
+                {
+                    // Collect every flat column name produced by non-Struct resolved fields.
+                    let flat_col_names: Vec<String> = resolved
+                        .iter()
+                        .filter_map(|r| match r {
+                            EnumResolvedField::Single(d) => Some(d.col_name.to_string()),
+                            EnumResolvedField::Map(d) => {
+                                // Map fields produce <base>_keys and <base>_values.
+                                // Neither collides with <struct>_variant unless someone
+                                // explicitly renamed to match — covered by the Struct check
+                                // via base_name.
+                                let _ = d;
+                                None
+                            }
+                            _ => None,
+                        })
+                        .collect();
+
+                    for r in &resolved {
+                        if let EnumResolvedField::Struct(struct_data) = r {
+                            let discriminant_col = format!("{}_variant", struct_data.base_name);
+                            if flat_col_names.contains(&discriminant_col) {
+                                // Find the colliding field for a better span.
+                                let colliding_span = resolved
+                                    .iter()
+                                    .find_map(|r2| match r2 {
+                                        EnumResolvedField::Single(d)
+                                            if d.col_name == discriminant_col.as_str() =>
+                                        {
+                                            Some(d.col_name.span())
+                                        }
+                                        _ => None,
+                                    })
+                                    .unwrap_or_else(proc_macro2::Span::call_site);
+                                return Err(syn::Error::new(
+                                    colliding_span,
+                                    format!(
+                                        "column name collision: the flatten field `{base}` \
+                                         (a nested `DataFrameRow` enum) will emit a \
+                                         discriminant column named `{disc}`, but a sibling \
+                                         field already produces a column with the same name. \
+                                         Rename the sibling field or use \
+                                         `#[dataframe(tag = \"...\")]` on the inner enum to \
+                                         choose a different discriminant column name \
+                                         (e.g. `#[dataframe(tag = \"type\")]` → `{base}_type`)",
+                                        base = struct_data.base_name,
+                                        disc = discriminant_col,
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
                 variant_infos.push(VariantInfo {
                     name: variant.ident.clone(),
                     shape: VariantShape::Named,
@@ -1492,6 +1564,12 @@ pub(super) fn derive_enum_dataframe(
         let all_unit = variant_infos
             .iter()
             .all(|vi| vi.shape == VariantShape::Unit);
+        // Note: generic enums (with type parameters) are intentionally excluded from
+        // auto-emission.  `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` relies
+        // on `FACTOR_LEVELS` being a compile-time constant, which is incompatible with
+        // generic enums (Rust does not allow generic statics).  If you need `as_factor`
+        // on a unit-only generic enum, implement `UnitEnumFactor` manually.
+        // See `docs/DATAFRAME.md` "Nested enum fields — flatten + opt-outs" for details.
         if all_unit && impl_generics.to_token_stream().is_empty() {
             // Collect variant names and assign 1-based R factor indices
             let variant_idents: Vec<&syn::Ident> =

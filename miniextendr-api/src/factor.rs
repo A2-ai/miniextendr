@@ -29,7 +29,10 @@ use std::ops::Deref;
 use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::ffi::{INTEGER, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{
+    INTEGER, Rf_allocVector, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SEXP, SEXPTYPE,
+    SexpExt,
+};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
@@ -458,7 +461,15 @@ impl<T: RFactor> IntoR for FactorVec<T> {
     }
     fn into_sexp(self) -> SEXP {
         let indices: Vec<i32> = self.0.iter().map(|v| v.to_level_index()).collect();
-        build_factor(&indices, build_levels_sexp(T::CHOICES))
+        // Protect levels STRSXP before build_factor allocates the integer SEXP.
+        // build_factor's alloc_r_vector call can trigger GC which could collect the
+        // unprotected STRSXP container.
+        unsafe {
+            let levels = Rf_protect(build_levels_sexp(T::CHOICES));
+            let result = build_factor(&indices, levels);
+            Rf_unprotect(1);
+            result
+        }
     }
 }
 
@@ -555,8 +566,9 @@ impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
     }
     fn into_sexp(self) -> SEXP {
         // Note: generic statics are not allowed in Rust, so we build levels on each call.
-        // The levels STRSXP is kept alive by the factor SEXP itself (which R protects).
-        let levels = build_levels_sexp(T::FACTOR_LEVELS);
+        // Protect the levels STRSXP before build_factor allocates the integer SEXP —
+        // build_factor's alloc_r_vector can trigger GC which could collect an unprotected
+        // STRSXP container.  See CLAUDE.md "PROTECT discipline against R-devel GC".
         let indices: Vec<i32> = self
             .0
             .into_iter()
@@ -565,7 +577,12 @@ impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
                 Some(v) => v.to_factor_index(),
             })
             .collect();
-        build_factor(&indices, levels)
+        unsafe {
+            let levels = Rf_protect(build_levels_sexp(T::FACTOR_LEVELS));
+            let result = build_factor(&indices, levels);
+            Rf_unprotect(1);
+            result
+        }
     }
 }
 // endregion: UnitEnumFactor

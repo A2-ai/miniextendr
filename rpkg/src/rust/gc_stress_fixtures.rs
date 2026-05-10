@@ -202,12 +202,13 @@ pub fn gc_stress_dataframe_struct() {
 pub fn gc_stress_dataframe_nested_enum() {
     use miniextendr_api::into_r::IntoR as _;
 
-    // Flatten path: nested DataFrameRow enum expands to prefixed columns.
+    // Flatten path: nested payload-bearing DataFrameRow enum expands to prefixed columns.
+    // Uses Status (Ok / Err { code }) so status_variant + status_code columns are exercised.
     let flatten_rows = vec![
-        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
-        NestedFlattenEvent::Stop { id: 2 },
-        NestedFlattenEvent::Move { id: 3, dir: Direction::East },
-        NestedFlattenEvent::Stop { id: 4 },
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Other { id: 2 },
+        NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Other { id: 4 },
     ];
     let _ = NestedFlattenEvent::to_dataframe(flatten_rows.clone()).into_sexp();
     let _ = NestedFlattenEvent::to_dataframe_split(flatten_rows).into_sexp();
@@ -232,9 +233,7 @@ pub fn gc_stress_dataframe_nested_enum() {
     let _ = NestedListEvent::to_dataframe(list_rows.clone()).into_sexp();
     let _ = NestedListEvent::to_dataframe_split(list_rows).into_sexp();
 
-    // Verify Status (payload enum) flatten path.
-    let _ = Status::Ok;
-    let _ = Status::Err { code: 42 };
+    // Status is already exercised via NestedFlattenEvent above.
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.

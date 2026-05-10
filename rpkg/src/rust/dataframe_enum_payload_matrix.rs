@@ -1282,13 +1282,14 @@ pub enum Status {
     Err { code: i32 },
 }
 
-/// Outer enum: `dir: Direction` field flattens (DataFrameRow derive on Direction).
-/// The `Direction` columns appear prefixed as `dir_variant`.
+/// Outer enum: `status: Status` field flattens via DataFrameRow.
+/// `Status` is a payload-bearing inner enum (has `Ok` and `Err { code }`).
+/// After prefixing: `status_variant` (discriminant), `status_code` (NA for Ok rows).
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum NestedFlattenEvent {
-    Move { id: i32, dir: Direction },
-    Stop { id: i32 },
+    Tracked { id: i32, status: Status },
+    Other { id: i32 },
 }
 
 /// Outer enum: `#[dataframe(as_factor)] dir: Direction` → single factor column.
@@ -1319,33 +1320,37 @@ pub enum NestedListEvent {
     },
 }
 
-// region: Flatten fixtures — all 4 cardinality cells × 2 modes
+// region: Flatten fixtures — all 4 cardinality cells × 2 modes (split + align)
+//
+// Uses the payload-bearing `Status` inner enum so the flatten path exercises:
+//   - `status_variant` discriminant column
+//   - `status_code` payload column (NA for `Status::Ok` rows, Some(i32) for `Status::Err`)
 
-/// 1v1r split (flatten): single Move row.
+/// 1v1r split (flatten): single Tracked/Ok row.
 #[miniextendr]
 pub fn nested_flatten_split_1v1r() -> List {
-    NestedFlattenEvent::to_dataframe_split(vec![NestedFlattenEvent::Move {
+    NestedFlattenEvent::to_dataframe_split(vec![NestedFlattenEvent::Tracked {
         id: 1,
-        dir: Direction::North,
+        status: Status::Ok,
     }])
 }
 
-/// 1vNr split (flatten): multiple Move rows.
+/// 1vNr split (flatten): multiple Tracked rows (mix of Ok and Err).
 #[miniextendr]
 pub fn nested_flatten_split_1vnr() -> List {
     NestedFlattenEvent::to_dataframe_split(vec![
-        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
-        NestedFlattenEvent::Move { id: 2, dir: Direction::South },
-        NestedFlattenEvent::Move { id: 3, dir: Direction::East },
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 500 } },
     ])
 }
 
-/// Nv1r split (flatten): one Move and one Stop row.
+/// Nv1r split (flatten): one Tracked and one Other row.
 #[miniextendr]
 pub fn nested_flatten_split_nv1r() -> List {
     NestedFlattenEvent::to_dataframe_split(vec![
-        NestedFlattenEvent::Move { id: 1, dir: Direction::West },
-        NestedFlattenEvent::Stop { id: 2 },
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Other { id: 2 },
     ])
 }
 
@@ -1353,21 +1358,48 @@ pub fn nested_flatten_split_nv1r() -> List {
 #[miniextendr]
 pub fn nested_flatten_split_nvnr() -> List {
     NestedFlattenEvent::to_dataframe_split(vec![
-        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
-        NestedFlattenEvent::Move { id: 2, dir: Direction::East },
-        NestedFlattenEvent::Stop { id: 3 },
-        NestedFlattenEvent::Stop { id: 4 },
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Other { id: 3 },
+        NestedFlattenEvent::Other { id: 4 },
     ])
 }
 
-/// NvNr align (flatten): aligned data frame with NA-fill.
+/// 1v1r align (flatten): single Tracked row, aligned data frame.
+#[miniextendr]
+pub fn nested_flatten_align_1v1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
+    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+    ]))
+}
+
+/// 1vNr align (flatten): multiple Tracked rows, aligned data frame.
+#[miniextendr]
+pub fn nested_flatten_align_1vnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
+    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 500 } },
+    ]))
+}
+
+/// Nv1r align (flatten): one Tracked, one Other — NA-fill for Other rows.
+#[miniextendr]
+pub fn nested_flatten_align_nv1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
+    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Other { id: 2 },
+    ]))
+}
+
+/// NvNr align (flatten): multiple rows across both variants — NA-fill for Other rows.
 #[miniextendr]
 pub fn nested_flatten_align_nvnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
     ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
-        NestedFlattenEvent::Move { id: 1, dir: Direction::North },
-        NestedFlattenEvent::Move { id: 2, dir: Direction::East },
-        NestedFlattenEvent::Stop { id: 3 },
-        NestedFlattenEvent::Stop { id: 4 },
+        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Other { id: 3 },
+        NestedFlattenEvent::Other { id: 4 },
     ]))
 }
 
@@ -1412,6 +1444,34 @@ pub fn nested_factor_split_nvnr() -> List {
         NestedFactorEvent::Stop { id: 3 },
         NestedFactorEvent::Stop { id: 4 },
     ])
+}
+
+/// 1v1r align (as_factor): single Move row.
+#[miniextendr]
+pub fn nested_factor_align_1v1r() -> ToDataFrame<NestedFactorEventDataFrame> {
+    ToDataFrame(NestedFactorEvent::to_dataframe(vec![NestedFactorEvent::Move {
+        id: 1,
+        dir: Direction::North,
+    }]))
+}
+
+/// 1vNr align (as_factor): multiple Move rows.
+#[miniextendr]
+pub fn nested_factor_align_1vnr() -> ToDataFrame<NestedFactorEventDataFrame> {
+    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
+        NestedFactorEvent::Move { id: 1, dir: Direction::North },
+        NestedFactorEvent::Move { id: 2, dir: Direction::South },
+        NestedFactorEvent::Move { id: 3, dir: Direction::East },
+    ]))
+}
+
+/// Nv1r align (as_factor): one Move and one Stop — NA for Stop's dir.
+#[miniextendr]
+pub fn nested_factor_align_nv1r() -> ToDataFrame<NestedFactorEventDataFrame> {
+    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
+        NestedFactorEvent::Move { id: 1, dir: Direction::West },
+        NestedFactorEvent::Stop { id: 2 },
+    ]))
 }
 
 /// NvNr align (as_factor): aligned data frame with NA-fill for dir in Stop rows.
@@ -1468,6 +1528,34 @@ pub fn nested_list_split_nvnr() -> List {
     ])
 }
 
+/// 1v1r align (as_list): single Move row.
+#[miniextendr]
+pub fn nested_list_align_1v1r() -> ToDataFrame<NestedListEventDataFrame> {
+    ToDataFrame(NestedListEvent::to_dataframe(vec![NestedListEvent::Move {
+        id: 1,
+        dir: Direction::North,
+    }]))
+}
+
+/// 1vNr align (as_list): multiple Move rows.
+#[miniextendr]
+pub fn nested_list_align_1vnr() -> ToDataFrame<NestedListEventDataFrame> {
+    ToDataFrame(NestedListEvent::to_dataframe(vec![
+        NestedListEvent::Move { id: 1, dir: Direction::North },
+        NestedListEvent::Move { id: 2, dir: Direction::South },
+        NestedListEvent::Move { id: 3, dir: Direction::East },
+    ]))
+}
+
+/// Nv1r align (as_list): one Move and one Stop — NULL for Stop's dir.
+#[miniextendr]
+pub fn nested_list_align_nv1r() -> ToDataFrame<NestedListEventDataFrame> {
+    ToDataFrame(NestedListEvent::to_dataframe(vec![
+        NestedListEvent::Move { id: 1, dir: Direction::West },
+        NestedListEvent::Stop { id: 2 },
+    ]))
+}
+
 /// NvNr align (as_list): aligned data frame with NULL-fill for dir in Stop rows.
 #[miniextendr]
 pub fn nested_list_align_nvnr() -> ToDataFrame<NestedListEventDataFrame> {
@@ -1496,6 +1584,44 @@ mod nested_enum_field_tests {
         let _ = Direction::West;
     }
 
+    /// Companion struct for `NestedFlattenEvent` has `status: Vec<Option<Status>>`.
+    /// `Other` rows produce `None`; `Tracked` rows produce `Some(Status::*)`.
+    #[test]
+    fn test_nested_flatten_companion_struct_shape() {
+        let df = NestedFlattenEvent::to_dataframe(vec![
+            NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+            NestedFlattenEvent::Other { id: 2 },
+            NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 404 } },
+        ]);
+        assert_eq!(df.id[0], Some(1i32));
+        assert_eq!(df.id[1], Some(2i32));
+        assert_eq!(df.id[2], Some(3i32));
+        // status field holds Option<Status>
+        assert!(df.status[0].is_some()); // Tracked → Some(Status::Ok)
+        assert!(df.status[1].is_none()); // Other → None (absent variant)
+        assert!(df.status[2].is_some()); // Tracked → Some(Status::Err)
+        // Verify Status discriminator via DataFrameRow
+        let inner_df = Status::to_dataframe(vec![Status::Ok, Status::Err { code: 500 }]);
+        assert!(inner_df.code[0].is_none()); // Ok has no code
+        assert_eq!(inner_df.code[1], Some(500i32)); // Err has code
+    }
+
+    /// Verify payload-flatten partition: inner Status columns are correctly populated.
+    /// `Status::Ok` has no `code` field; `Status::Err` does.
+    #[test]
+    fn test_nested_flatten_status_payload_columns() {
+        // Verify inner Status companion struct has the expected column layout.
+        let inner_df = Status::to_dataframe(vec![
+            Status::Ok,
+            Status::Err { code: 404 },
+            Status::Ok,
+        ]);
+        // `code` column: None for Ok rows, Some(i32) for Err rows.
+        assert!(inner_df.code[0].is_none()); // Ok has no code
+        assert_eq!(inner_df.code[1], Some(404i32));
+        assert!(inner_df.code[2].is_none());
+    }
+
     #[test]
     fn test_nested_factor_align_col_types() {
         let df = NestedFactorEvent::to_dataframe(vec![
@@ -1507,6 +1633,16 @@ mod nested_enum_field_tests {
         assert_eq!(df.id[1], Some(2i32));
         assert!(df.dir[0].is_some());
         assert!(df.dir[1].is_none()); // Stop variant has no dir field
+    }
+
+    /// Factor levels must match Direction's variant order: North, South, East, West.
+    #[test]
+    fn test_direction_factor_levels_match_variant_order() {
+        use miniextendr_api::UnitEnumFactor;
+        // Direction is unit-only → DataFrameRow derive auto-emits UnitEnumFactor.
+        // FACTOR_LEVELS must be in declaration order.
+        let levels = Direction::FACTOR_LEVELS;
+        assert_eq!(levels, &["North", "South", "East", "West"]);
     }
 
     #[test]
@@ -1523,13 +1659,13 @@ mod nested_enum_field_tests {
     #[test]
     fn test_nested_flatten_align_col_types() {
         let df = NestedFlattenEvent::to_dataframe(vec![
-            NestedFlattenEvent::Move { id: 1, dir: Direction::North },
-            NestedFlattenEvent::Stop { id: 2 },
+            NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+            NestedFlattenEvent::Other { id: 2 },
         ]);
         assert_eq!(df.id[0], Some(1i32));
-        // dir flattened → dir column holds Option<Direction>
-        assert!(df.dir[0].is_some());
-        assert!(df.dir[1].is_none());
+        // status flattened → status column holds Option<Status>
+        assert!(df.status[0].is_some());
+        assert!(df.status[1].is_none()); // Other row: status is None
     }
 }
 // endregion: Nested enum Rust unit tests
