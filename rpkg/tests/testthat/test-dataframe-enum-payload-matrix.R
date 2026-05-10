@@ -343,6 +343,110 @@ test_that("boxed slice expand — align NvNr fills NA for NoBuffer rows", {
   expect_equal(df$data_3, c(3.0, NA, NA))
 })
 
+# ── 6. &str field (borrowed text → STRSXP with NA_character_) ────────────────
+
+test_that("borrowed str — split 1v1r: one Named row, bare has 0 rows", {
+  res <- borrowed_str_split_1v1r()
+  expect_setequal(names(res), c("named", "bare"))
+  expect_split_partition(res$named, 1, c("id", "name"))
+  expect_split_partition(res$bare, 0, "id")
+  expect_true(is.character(res$named$name))
+  expect_equal(res$named$name, "alice")
+})
+
+test_that("borrowed str — split 1vNr: multiple Named rows", {
+  res <- borrowed_str_split_1vnr()
+  expect_split_partition(res$named, 3, c("id", "name"))
+  expect_split_partition(res$bare, 0, "id")
+  expect_true(is.character(res$named$name))
+  expect_equal(res$named$name, c("alice", "bob", "carol"))
+})
+
+test_that("borrowed str — split Nv1r: one row each, bare has no name column", {
+  res <- borrowed_str_split_nv1r()
+  expect_split_partition(res$named, 1, c("id", "name"))
+  expect_split_partition(res$bare, 1, "id")
+  expect_false("name" %in% names(res$bare))
+  expect_equal(res$named$name, "alice")
+})
+
+test_that("borrowed str — align NvNr: present rows are character, absent rows are NA_character_", {
+  df <- borrowed_str_align_nvnr()
+  expect_equal(df$`_type`, c("Named", "Bare", "Named", "Bare"))
+  expect_equal(df$id, c(1L, 2L, 3L, 4L))
+  expect_true(is.character(df$name))
+  expect_equal(df$name[[1]], "alice")
+  expect_true(is.na(df$name[[2]]))
+  expect_equal(df$name[[3]], "carol")
+  expect_true(is.na(df$name[[4]]))
+})
+
+test_that("borrowed str — split NvNr: name partition has character column, bare omits it", {
+  res <- borrowed_str_split_nvnr()
+  expect_setequal(names(res), c("named", "bare"))
+  expect_s3_class(res$named, "data.frame")
+  expect_s3_class(res$bare, "data.frame")
+  expect_equal(nrow(res$named), 2)
+  expect_equal(nrow(res$bare), 2)
+  expect_true("name" %in% names(res$named))
+  expect_false("name" %in% names(res$bare))
+  expect_equal(res$named$name, c("alice", "carol"))
+})
+
+# ── 7. &[T] field opaque (borrowed slice → list-column with NULL) ─────────────
+
+test_that("borrowed slice — split 1v1r: one Buffer row, no_buffer has 0 rows", {
+  res <- borrowed_slice_split_1v1r()
+  expect_setequal(names(res), c("buffer", "no_buffer"))
+  expect_split_partition(res$buffer, 1, c("label", "data"))
+  expect_split_partition(res$no_buffer, 0, "label")
+  expect_type(res$buffer$data, "list")
+  expect_equal(res$buffer$data[[1]], c(1.0, 2.0, 3.0))
+})
+
+test_that("borrowed slice — split 1vNr: multiple Buffer rows", {
+  res <- borrowed_slice_split_1vnr()
+  expect_split_partition(res$buffer, 3, c("label", "data"))
+  expect_split_partition(res$no_buffer, 0, "label")
+  expect_type(res$buffer$data, "list")
+  expect_equal(res$buffer$data[[1]], c(1.0, 2.0, 3.0))
+  expect_equal(res$buffer$data[[2]], 4.0)
+  expect_equal(res$buffer$data[[3]], numeric(0))
+})
+
+test_that("borrowed slice — split Nv1r: one row each, no_buffer omits data column", {
+  res <- borrowed_slice_split_nv1r()
+  expect_split_partition(res$buffer, 1, c("label", "data"))
+  expect_split_partition(res$no_buffer, 1, "label")
+  expect_false("data" %in% names(res$no_buffer))
+  expect_equal(res$no_buffer$label, "b")
+  expect_equal(res$buffer$data[[1]], c(1.0, 2.0, 3.0))
+})
+
+test_that("borrowed slice — align NvNr: present rows are numeric vectors, absent rows are NULL", {
+  df <- borrowed_slice_align_nvnr()
+  expect_equal(df$`_type`, c("Buffer", "NoBuffer", "Buffer", "NoBuffer"))
+  expect_equal(df$label, c("a", "b", "c", "d"))
+  expect_type(df$data, "list")
+  expect_equal(df$data[[1]], c(1.0, 2.0, 3.0))
+  expect_null(df$data[[2]])
+  expect_equal(df$data[[3]], 4.0)
+  expect_null(df$data[[4]])
+})
+
+test_that("borrowed slice — split NvNr: buffer partition has list-column, no_buffer omits it", {
+  res <- borrowed_slice_split_nvnr()
+  expect_setequal(names(res), c("buffer", "no_buffer"))
+  expect_s3_class(res$buffer, "data.frame")
+  expect_s3_class(res$no_buffer, "data.frame")
+  expect_equal(nrow(res$buffer), 2)
+  expect_equal(nrow(res$no_buffer), 2)
+  expect_true("data" %in% names(res$buffer))
+  expect_false("data" %in% names(res$no_buffer))
+  expect_equal(res$buffer$data[[1]], c(1.0, 2.0, 3.0))
+  expect_equal(res$buffer$data[[2]], 4.0)
+})
+
 # ── Single-variant enum returns a bare data.frame from split ─────────────────
 
 test_that("singleton — split 1v1r returns a bare 1-row data.frame, not a list", {

@@ -14,7 +14,7 @@
 //!
 //! Map types (HashMap/BTreeMap), nested-enum payloads, and struct-in-variant
 //! payloads are tracked by GH issues #457 / #458 / #459 — not exercised here.
-//! `&[T]` enum payloads are deferred until the lifetime-support PR lands.
+//! `&str` and `&[T]` enum payloads are exercised in the borrowed-string section below.
 
 #![allow(dead_code)]
 
@@ -499,6 +499,121 @@ pub fn singleton_split_1vnr() -> List {
             label: "gamma".into(),
         },
     ])
+}
+
+// endregion
+
+// region: 6. &str field (borrowed text → STRSXP with NA_character_) ──────────
+
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum BorrowedStrEvent<'a> {
+    Named { id: i32, name: &'a str },
+    Bare { id: i32 },
+}
+
+#[miniextendr]
+pub fn borrowed_str_split_1v1r() -> List {
+    let data: Vec<BorrowedStrEvent<'static>> = vec![BorrowedStrEvent::Named { id: 1, name: "alice" }];
+    BorrowedStrEvent::to_dataframe_split(data)
+}
+
+#[miniextendr]
+pub fn borrowed_str_split_1vnr() -> List {
+    let data: Vec<BorrowedStrEvent<'static>> = vec![
+        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Named { id: 2, name: "bob" },
+        BorrowedStrEvent::Named { id: 3, name: "carol" },
+    ];
+    BorrowedStrEvent::to_dataframe_split(data)
+}
+
+#[miniextendr]
+pub fn borrowed_str_split_nv1r() -> List {
+    let data: Vec<BorrowedStrEvent<'static>> = vec![
+        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Bare { id: 2 },
+    ];
+    BorrowedStrEvent::to_dataframe_split(data)
+}
+
+#[miniextendr]
+pub fn borrowed_str_align_nvnr() -> ToDataFrame<BorrowedStrEventDataFrame<'static>> {
+    ToDataFrame(BorrowedStrEvent::to_dataframe(vec![
+        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Bare { id: 2 },
+        BorrowedStrEvent::Named { id: 3, name: "carol" },
+        BorrowedStrEvent::Bare { id: 4 },
+    ]))
+}
+
+#[miniextendr]
+pub fn borrowed_str_split_nvnr() -> List {
+    let data: Vec<BorrowedStrEvent<'static>> = vec![
+        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Bare { id: 2 },
+        BorrowedStrEvent::Named { id: 3, name: "carol" },
+        BorrowedStrEvent::Bare { id: 4 },
+    ];
+    BorrowedStrEvent::to_dataframe_split(data)
+}
+
+// endregion
+
+// region: 7. &[T] field opaque (borrowed slice → list-column with NULL) ──────
+
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum BorrowedSliceEvent<'a> {
+    Buffer { label: String, data: &'a [f64] },
+    NoBuffer { label: String },
+}
+
+#[miniextendr]
+pub fn borrowed_slice_split_1v1r() -> List {
+    let data: Vec<BorrowedSliceEvent<'static>> =
+        vec![BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] }];
+    BorrowedSliceEvent::to_dataframe_split(data)
+}
+
+#[miniextendr]
+pub fn borrowed_slice_split_1vnr() -> List {
+    let data: Vec<BorrowedSliceEvent<'static>> = vec![
+        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
+        BorrowedSliceEvent::Buffer { label: "b".into(), data: &[4.0] },
+        BorrowedSliceEvent::Buffer { label: "c".into(), data: &[] },
+    ];
+    BorrowedSliceEvent::to_dataframe_split(data)
+}
+
+#[miniextendr]
+pub fn borrowed_slice_split_nv1r() -> List {
+    let data: Vec<BorrowedSliceEvent<'static>> = vec![
+        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
+        BorrowedSliceEvent::NoBuffer { label: "b".into() },
+    ];
+    BorrowedSliceEvent::to_dataframe_split(data)
+}
+
+#[miniextendr]
+pub fn borrowed_slice_align_nvnr() -> ToDataFrame<BorrowedSliceEventDataFrame<'static>> {
+    ToDataFrame(BorrowedSliceEvent::to_dataframe(vec![
+        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
+        BorrowedSliceEvent::NoBuffer { label: "b".into() },
+        BorrowedSliceEvent::Buffer { label: "c".into(), data: &[4.0] },
+        BorrowedSliceEvent::NoBuffer { label: "d".into() },
+    ]))
+}
+
+#[miniextendr]
+pub fn borrowed_slice_split_nvnr() -> List {
+    let data: Vec<BorrowedSliceEvent<'static>> = vec![
+        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
+        BorrowedSliceEvent::NoBuffer { label: "b".into() },
+        BorrowedSliceEvent::Buffer { label: "c".into(), data: &[4.0] },
+        BorrowedSliceEvent::NoBuffer { label: "d".into() },
+    ];
+    BorrowedSliceEvent::to_dataframe_split(data)
 }
 
 // endregion
