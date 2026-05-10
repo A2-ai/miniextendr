@@ -229,11 +229,20 @@ phase_wasm_build() {
 #
 # Single-quoted EOF markers prevent the outer shell from interpolating
 # ${...} and backticks — those must reach the container verbatim (for the
-# .mjs file) or be evaluated by bash inside the container (for the
-# package.json, where we want literal $SMOKE_TMP to be already expanded
-# because we pass it as a shell variable).
+# .mjs file) and also prevent host-shell expansion inside the heredoc bodies.
+# Paths are hardcoded as the literal string /tmp/webr-smoke (not $SMOKE_TMP)
+# because single-quoted heredocs do no expansion. The guard below asserts that
+# SMOKE_TMP matches that literal so future refactors that change the variable
+# fail loud rather than silently writing files to the wrong place.
 
 write_runner_files() {
+    # Belt-and-suspenders: single-quoted heredocs hardcode /tmp/webr-smoke.
+    # If SMOKE_TMP ever changes, this blows up immediately instead of silently
+    # writing runner files to the wrong directory inside the container.
+    [[ "${SMOKE_TMP}" == "/tmp/webr-smoke" ]] || {
+        fail "SMOKE_TMP must be /tmp/webr-smoke; heredocs hardcode this path — update write_runner_files if you change it."
+        exit 1
+    }
     # package.json: no shell variables needed in the content; use single-quoted EOF.
     docker_pipe <<'OUTER_EOF'
 set -euo pipefail
@@ -399,7 +408,7 @@ phase_webr_session() {
     docker_run "
         set -euo pipefail
         cd ${SMOKE_TMP}
-        node smoke-runner.mjs
+        timeout 1800 node smoke-runner.mjs
     "
 
     ok "webR session complete."
