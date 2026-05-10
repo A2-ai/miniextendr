@@ -7,22 +7,37 @@
 
 use crate::abi::{mx_erased, mx_tag};
 use crate::ffi::{DllInfo, R_CallMethodDef};
+#[cfg(not(target_arch = "wasm32"))]
 use linkme::distributed_slice;
 use std::os::raw::c_void;
 
 // region: Distributed Slices
+//
+// `linkme::distributed_slice` does not compile for `wasm32-*` targets — the
+// proc macro hits a `compile_error!` arm in `linkme-impl/src/declaration.rs`.
+// On wasm32 we keep the same public surface for the three runtime-critical
+// slices (MX_CALL_DEFS / MX_ALTREP_REGISTRATIONS / MX_TRAIT_DISPATCH) but
+// back them with a `OnceLock` populated from the user crate's
+// `wasm_registry.rs` snapshot at `R_init_*` time (see
+// `install_wasm_runtime_slices` below). The five host-only slices
+// (MX_R_WRAPPERS, MX_MATCH_ARG_*, MX_CLASS_NAMES, MX_S7_SIDECAR_PROPS) are
+// only consumed by the cdylib wrapper-gen pass — that pass is itself
+// native-only, so the slices, their consumers, and the `wasm_registry_writer`
+// module are all `cfg(not(target_arch = "wasm32"))`-gated.
 
 /// R `.Call` method registrations (function + method C wrappers).
 ///
 /// Each `#[miniextendr]` function or method emits an entry here.
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_CALL_DEFS: [R_CallMethodDef];
 
-/// R wrapper code fragments with priority for ordering.
+/// R wrapper code fragments with priority for ordering. **Host-only.**
 ///
 /// Each `#[miniextendr]` function, impl block, or trait impl emits an entry.
 /// Priorities ensure correct evaluation order when R sources the wrapper file
 /// (sidecar helpers must be defined before class definitions that reference them).
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_R_WRAPPERS: [RWrapperEntry];
 
@@ -37,6 +52,7 @@ pub static MX_R_WRAPPERS: [RWrapperEntry];
 /// `extern "C-unwind" fn` entries in `MX_CALL_DEFS`). The `symbol` string is
 /// consumed by the host-time WASM snapshot writer to emit
 /// `extern "C" { fn <symbol>(); }` declarations in `wasm_registry.rs`.
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_ALTREP_REGISTRATIONS: [AltrepRegistration];
 
@@ -44,43 +60,143 @@ pub static MX_ALTREP_REGISTRATIONS: [AltrepRegistration];
 ///
 /// Each `#[miniextendr] impl Trait for Type` emits an entry mapping
 /// `(concrete_tag, trait_tag)` to the trait's vtable pointer.
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_TRAIT_DISPATCH: [TraitDispatchEntry];
 
-/// Match-arg choices entries for R wrapper post-processing.
+/// Match-arg choices entries for R wrapper post-processing. **Host-only.**
 ///
 /// Each `#[miniextendr]` function with `match_arg` params emits an entry.
 /// During `write_r_wrappers_to_file`, the placeholder in the R formal default
 /// is replaced with the actual choices from the enum's `MatchArg::CHOICES`.
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_MATCH_ARG_CHOICES: [MatchArgChoicesEntry];
 
-/// Match-arg `@param` doc entries for R wrapper post-processing.
+/// Match-arg `@param` doc entries for R wrapper post-processing. **Host-only.**
 ///
 /// Each `#[miniextendr]` function with `match_arg` params that has no
 /// user-written `@param` doc emits an entry here. During
 /// `write_r_wrappers_to_file`, the placeholder in the `@param` roxygen tag
 /// is replaced with e.g. `One of "Fast", "Safe", "Debug".`
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_MATCH_ARG_PARAM_DOCS: [MatchArgParamDocEntry];
 
-/// Class name entries mapping Rust type names to R-visible class names.
+/// Class name entries mapping Rust type names to R-visible class names. **Host-only.**
 ///
 /// Each `#[miniextendr]` impl block emits an entry. During
 /// `write_r_wrappers_to_file`, `.__MX_CLASS_REF_<RustName>__` placeholders
 /// in generated R wrapper strings are replaced with the registered R class name
 /// (which may differ when `class = "Override"` is set on the impl block).
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_CLASS_NAMES: [ClassNameEntry];
 
-/// S7 sidecar property documentation entries.
+/// S7 sidecar property documentation entries. **Host-only.**
 ///
 /// Each `#[derive(ExternalPtr)] #[externalptr(s7)]` struct with `#[r_data]` fields
 /// emits one entry per public field. During `write_r_wrappers_to_file`, the
 /// `.__MX_S7_SIDECAR_PROP_DOCS_<TypeName>__` placeholder in the S7 class wrapper
 /// is replaced with the formatted `#' @prop {field} {doc}` roxygen lines.
+#[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_S7_SIDECAR_PROPS: [SidecarPropEntry];
+
+// endregion
+
+// region: Runtime slice access (cfg-uniform)
+
+/// Native: read directly from the linkme distributed slice.
+/// wasm32: read from a `OnceLock` populated by `install_wasm_runtime_slices`.
+#[inline]
+pub(crate) fn call_defs() -> &'static [R_CallMethodDef] {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        &MX_CALL_DEFS
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_runtime::call_defs()
+    }
+}
+
+#[inline]
+pub(crate) fn altrep_regs() -> &'static [AltrepRegistration] {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        &MX_ALTREP_REGISTRATIONS
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_runtime::altrep_regs()
+    }
+}
+
+#[inline]
+pub(crate) fn trait_dispatch() -> &'static [TraitDispatchEntry] {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        &MX_TRAIT_DISPATCH
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_runtime::trait_dispatch()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod wasm_runtime {
+    use super::{AltrepRegistration, R_CallMethodDef, TraitDispatchEntry};
+    use std::sync::OnceLock;
+
+    static CALL_DEFS: OnceLock<&'static [R_CallMethodDef]> = OnceLock::new();
+    static ALTREP_REGS: OnceLock<&'static [AltrepRegistration]> = OnceLock::new();
+    static TRAIT_DISPATCH: OnceLock<&'static [TraitDispatchEntry]> = OnceLock::new();
+
+    pub(super) fn install(
+        c: &'static [R_CallMethodDef],
+        a: &'static [AltrepRegistration],
+        t: &'static [TraitDispatchEntry],
+    ) {
+        // Double-install is a programmer error but not memory-unsafe — silently
+        // ignore so a second `R_init_*` (e.g. dyn.unload + dyn.load) doesn't
+        // panic. The first install wins.
+        let _ = CALL_DEFS.set(c);
+        let _ = ALTREP_REGS.set(a);
+        let _ = TRAIT_DISPATCH.set(t);
+    }
+
+    pub(super) fn call_defs() -> &'static [R_CallMethodDef] {
+        CALL_DEFS.get().copied().unwrap_or(&[])
+    }
+    pub(super) fn altrep_regs() -> &'static [AltrepRegistration] {
+        ALTREP_REGS.get().copied().unwrap_or(&[])
+    }
+    pub(super) fn trait_dispatch() -> &'static [TraitDispatchEntry] {
+        TRAIT_DISPATCH.get().copied().unwrap_or(&[])
+    }
+}
+
+/// Install the runtime-critical slice data on `wasm32-*`.
+///
+/// Called from the user crate's `R_init_<pkg>` (generated by
+/// `miniextendr_init!`) before `package_init` runs. The slices are typically
+/// the `MX_*_WASM` constants emitted into `<crate>/src/rust/<crate>/src/wasm_registry.rs`
+/// by [`crate::wasm_registry_writer::write_wasm_registry_to_file`].
+///
+/// Calling more than once is harmless — the first install wins (the assumption
+/// being all calls supply the same data; second-install is treated as a
+/// re-init from `dyn.unload` + `dyn.load`).
+#[cfg(target_arch = "wasm32")]
+pub fn install_wasm_runtime_slices(
+    call_defs: &'static [R_CallMethodDef],
+    altrep_regs: &'static [AltrepRegistration],
+    trait_dispatch: &'static [TraitDispatchEntry],
+) {
+    wasm_runtime::install(call_defs, altrep_regs, trait_dispatch);
+}
+
 // endregion
 
 // region: Entry Types
@@ -244,7 +360,7 @@ unsafe impl Send for AltrepRegistration {}
 /// - Must be called on R's main thread.
 pub unsafe extern "C" fn universal_query(ptr: *mut mx_erased, trait_tag: mx_tag) -> *const c_void {
     let concrete_tag = unsafe { (*(*ptr).base).concrete_tag };
-    for entry in MX_TRAIT_DISPATCH.iter() {
+    for entry in trait_dispatch().iter() {
         if entry.concrete_tag == concrete_tag && entry.trait_tag == trait_tag {
             return entry.vtable;
         }
@@ -277,7 +393,7 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
     if !wrapper_gen {
         // User-defined ALTREP classes (from #[miniextendr] structs)
-        for reg in MX_ALTREP_REGISTRATIONS.iter() {
+        for reg in altrep_regs().iter() {
             (reg.register)();
         }
         // Built-in ALTREP classes (Vec, Box, Range, Arrow) — must be
@@ -293,21 +409,36 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     }
 
     // 2. Build call method defs with null sentinel
-    let mut call_defs: Vec<R_CallMethodDef> = MX_CALL_DEFS.iter().copied().collect();
-    // Always register miniextendr_write_wrappers so it's visible via
-    // getNativeSymbolInfo even when R_forceSymbols(TRUE) is set.
+    let mut call_defs: Vec<R_CallMethodDef> = self::call_defs().to_vec();
+    // Always register the cdylib wrapper-gen entry points so they're visible
+    // via getNativeSymbolInfo even when R_forceSymbols(TRUE) is set. wasm32
+    // doesn't run wrapper-gen (it's host-only), so these are gated off there.
     // SAFETY: DL_FUNC is Option<extern "C-unwind" fn() -> *mut c_void> — R's
     // standard erased function pointer. The actual signature (SEXP -> SEXP) is
     // ABI-compatible; R dispatches based on numArgs.
-    call_defs.push(R_CallMethodDef {
-        name: c"miniextendr_write_wrappers".as_ptr(),
-        fun: unsafe {
-            std::mem::transmute::<*const (), Option<unsafe extern "C-unwind" fn() -> *mut c_void>>(
-                miniextendr_write_wrappers as *const (),
-            )
-        },
-        numArgs: 1,
-    });
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        call_defs.push(R_CallMethodDef {
+            name: c"miniextendr_write_wrappers".as_ptr(),
+            fun: unsafe {
+                std::mem::transmute::<
+                    *const (),
+                    Option<unsafe extern "C-unwind" fn() -> *mut c_void>,
+                >(miniextendr_write_wrappers as *const ())
+            },
+            numArgs: 1,
+        });
+        call_defs.push(R_CallMethodDef {
+            name: c"miniextendr_write_wasm_registry".as_ptr(),
+            fun: unsafe {
+                std::mem::transmute::<
+                    *const (),
+                    Option<unsafe extern "C-unwind" fn() -> *mut c_void>,
+                >(miniextendr_write_wasm_registry as *const ())
+            },
+            numArgs: 1,
+        });
+    }
     call_defs.push(R_CallMethodDef {
         name: std::ptr::null(),
         fun: None,
@@ -331,6 +462,9 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
 ///
 /// Within each priority group, S7 class definitions are topologically sorted
 /// so parents are defined before children (S7 `parent = X` requires X to exist).
+///
+/// Host-only — wasm32 doesn't run wrapper-gen.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
     let mut entries: Vec<&RWrapperEntry> = MX_R_WRAPPERS.iter().collect();
     entries.sort_by_key(|e| e.priority);
@@ -362,6 +496,7 @@ pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
     result
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Check if an R wrapper fragment already has an `@rdname` tag.
 fn has_rdname_tag(content: &str) -> bool {
     content.lines().any(|line| {
@@ -370,6 +505,7 @@ fn has_rdname_tag(content: &str) -> bool {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Check if an R wrapper fragment has `@noRd`.
 fn has_no_rd_tag(content: &str) -> bool {
     content.lines().any(|line| {
@@ -378,6 +514,7 @@ fn has_no_rd_tag(content: &str) -> bool {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Derive an `@rdname` value from a source file path.
 ///
 /// `"src/rust/zero_copy_tests.rs"` → `"zero_copy_tests"`
@@ -391,6 +528,7 @@ fn rdname_from_source_file(path: &str) -> Option<String> {
     Some(stem.to_string())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Inject `#' @rdname <value>` (and `@title` if missing) into an R wrapper
 /// fragment. Inserts before the first `@export`/`@keywords`/`@source` line,
 /// or after the last roxygen line.
@@ -443,6 +581,7 @@ fn inject_rdname(content: &str, rdname: &str) -> String {
     result.join("\n")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Sort S7 class definitions so parents come before children.
 ///
 /// Detects `S7::new_class()` calls, extracts `parent = ClassName` relationships,
@@ -540,6 +679,7 @@ fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
 }
 // endregion
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Rotate a comma-separated quoted-choice string so `preferred` is first.
 ///
 /// `choices_str` has the shape `"\"a\", \"b\", \"c\""` (already quoted +
@@ -575,6 +715,9 @@ fn rotate_choices_for_default(choices_str: &str, preferred: &str, placeholder: &
 /// Called from [`miniextendr_write_wrappers`] (via cdylib `dyn.load`/`.Call`).
 /// All distributed_slice entries from `#[miniextendr]` items are available
 /// because the cdylib includes all symbols by design.
+///
+/// Host-only — wasm32 doesn't run wrapper-gen.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn write_r_wrappers_to_file(path: &str) {
     // Build the new content in memory
     let mut content = String::from(
@@ -794,6 +937,11 @@ pub fn write_r_wrappers_to_file(path: &str) {
 // endregion
 
 // region: C-Callable Entry Points (cdylib)
+//
+// All cdylib wrapper-gen entry points are host-only — wasm32 builds skip
+// them (the cdylib pass itself doesn't run on wasm32; wrappers and
+// `wasm_registry.rs` are pre-generated on native and shipped into the
+// wasm32 install).
 
 /// C-callable entry point for R wrapper generation via cdylib.
 ///
@@ -805,6 +953,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
 /// # Safety
 ///
 /// `path_sexp` must be a valid STRSXP of length >= 1.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wrappers(
     path_sexp: crate::ffi::SEXP,
@@ -827,13 +976,14 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
 /// C-callable entry point for `wasm_registry.rs` generation via cdylib.
 ///
 /// Pairs with [`miniextendr_write_wrappers`]: same cdylib, separate `.Call`,
-/// independent output path. The generated file is consumed only on `wasm32-*`
-/// targets (gating lands in step 5 of `plans/webr-support.md`); on native
-/// builds it's a static dead-data artefact under git.
+/// independent output path. Host-only; the generated file itself is then
+/// consumed at compile time by the user crate's wasm32 build via
+/// `install_wasm_runtime_slices`.
 ///
 /// # Safety
 ///
 /// `path_sexp` must be a valid STRSXP of length >= 1.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wasm_registry(
     path_sexp: crate::ffi::SEXP,
