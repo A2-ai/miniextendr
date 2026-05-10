@@ -1,4 +1,8 @@
-# WebR / WASM support
++++
+title = "WebR / WASM support"
+weight = 50
+description = "Building miniextendr for webR — R compiled to WebAssembly via Emscripten."
++++
 
 Building miniextendr for [webR](https://docs.r-wasm.org/webr/latest/) — R
 compiled to WebAssembly via Emscripten.
