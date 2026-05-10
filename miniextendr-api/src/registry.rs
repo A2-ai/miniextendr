@@ -26,18 +26,19 @@ pub static MX_CALL_DEFS: [R_CallMethodDef];
 #[distributed_slice]
 pub static MX_R_WRAPPERS: [RWrapperEntry];
 
-/// ALTREP class registration functions, called once at package init.
+/// ALTREP class registration entries, called once at package init.
 ///
-/// Each ALTREP struct or trait impl emits an entry.
-///
-/// The element type is `extern "C" fn()` so that each registration function
-/// can be declared `pub extern "C"` with `#[unsafe(no_mangle)]`, making it
-/// externally addressable from a separate compilation unit (e.g. a WASM
-/// codegen path). The functions are not `unsafe` — R-thread invariants are a
+/// Each ALTREP struct or trait impl emits an entry pairing the registration
+/// function pointer with its `#[no_mangle]` symbol name. The fn is declared
+/// `pub extern "C"` with `#[unsafe(no_mangle)]`, making it externally
+/// addressable from a separate compilation unit (e.g. the WASM snapshot
+/// codegen path). The fn pointer is not `unsafe` — R-thread invariants are a
 /// module-level contract, not encoded in the type (same convention as the
-/// `extern "C-unwind" fn` entries in `MX_CALL_DEFS`).
+/// `extern "C-unwind" fn` entries in `MX_CALL_DEFS`). The `symbol` string is
+/// consumed by the host-time WASM snapshot writer to emit
+/// `extern "C" { fn <symbol>(); }` declarations in `wasm_registry.rs`.
 #[distributed_slice]
-pub static MX_ALTREP_REGISTRATIONS: [extern "C" fn()];
+pub static MX_ALTREP_REGISTRATIONS: [AltrepRegistration];
 
 /// Trait dispatch entries for [`universal_query`].
 ///
@@ -197,12 +198,34 @@ pub struct TraitDispatchEntry {
     pub trait_tag: mx_tag,
     /// Pointer to the trait's vtable (cast from `&'static SomeVTable`).
     pub vtable: *const c_void,
+    /// Symbol name of the `#[no_mangle]` vtable static
+    /// (e.g. `"__VTABLE_COUNTER_FOR_MYTYPE"`). Consumed by the host-time WASM
+    /// snapshot writer to emit `extern "C" { static <symbol>: u8; }`
+    /// declarations in `wasm_registry.rs`.
+    pub vtable_symbol: &'static str,
 }
 
 // SAFETY: vtable points to a static vtable valid for program lifetime.
 // Tags are Copy values. All fields are safe to read from any thread.
 unsafe impl Sync for TraitDispatchEntry {}
 unsafe impl Send for TraitDispatchEntry {}
+
+/// ALTREP class registration entry: fn pointer + `#[no_mangle]` symbol name.
+///
+/// See [`MX_ALTREP_REGISTRATIONS`] for context.
+#[repr(C)]
+pub struct AltrepRegistration {
+    /// Registration function called once at `R_init_*`.
+    pub register: extern "C" fn(),
+    /// Symbol name of `register` (e.g. `"__mx_altrep_reg_MyType"`). Consumed by
+    /// the host-time WASM snapshot writer to emit `extern "C" { fn <symbol>(); }`
+    /// declarations in `wasm_registry.rs`.
+    pub symbol: &'static str,
+}
+
+// SAFETY: register is a static fn pointer; symbol is a `'static` string.
+unsafe impl Sync for AltrepRegistration {}
+unsafe impl Send for AltrepRegistration {}
 // endregion
 
 // region: Universal Query
@@ -254,8 +277,8 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
     if !wrapper_gen {
         // User-defined ALTREP classes (from #[miniextendr] structs)
-        for reg_fn in MX_ALTREP_REGISTRATIONS.iter() {
-            reg_fn();
+        for reg in MX_ALTREP_REGISTRATIONS.iter() {
+            (reg.register)();
         }
         // Built-in ALTREP classes (Vec, Box, Range, Arrow) — must be
         // registered eagerly so readRDS can find them in fresh sessions.

@@ -341,6 +341,7 @@ pub(super) fn generate_vtable_static(
                     // SAFETY: vtable is a static reference valid for program lifetime
                     ::std::ptr::from_ref(&#vtable_static_name).cast::<::std::os::raw::c_void>()
                 },
+                vtable_symbol: stringify!(#vtable_static_name),
             };
     }
 }
