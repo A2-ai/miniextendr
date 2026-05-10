@@ -1,0 +1,21 @@
+error: column name collision: the flatten field `kind` (a nested `DataFrameRow` enum) will emit a discriminant column named `kind_variant`, but a sibling field already produces a column with the same name. Rename the sibling field or use `#[dataframe(tag = "...")]` on the inner enum to choose a different discriminant column name (e.g. `#[dataframe(tag = "type")]` → `kind_type`)
+  --> tests/ui/derive_dataframe_enum_nested_enum_variant_collision.rs:15:10
+   |
+15 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+   |
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `rayon`
+ --> tests/ui/derive_dataframe_enum_nested_enum_variant_collision.rs:6:24
+  |
+6 | #[derive(Clone, Debug, DataFrameRow)]
+  |                        ^^^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `default-coerce`, `default-r6`, `default-s7`, `default-strict`, `default-worker`, `doc-lint`, and `vctrs`
+  = note: using a cfg inside a derive macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `DataFrameRow` crate for guidance on how handle this unexpected cfg
+  = help: the derive macro `DataFrameRow` may come from an old version of the `miniextendr_macros` crate, try updating your dependency with `cargo update -p miniextendr_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+  = note: this warning originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)

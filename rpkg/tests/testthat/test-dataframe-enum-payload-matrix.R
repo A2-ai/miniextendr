@@ -827,3 +827,264 @@ test_that("struct_list — align NvNr: origin is a list-column, NULL for absent 
 })
 
 # endregion: 9. Struct fields
+
+# region: 10. Nested enum fields ──────────────────────────────────────────────
+#
+# Three outer enums exercise the three nested-enum field modes:
+#   NestedFlattenEvent: status: Status (payload inner enum → status_variant + status_code)
+#   NestedFactorEvent:  #[dataframe(as_factor)] dir: Direction → R factor column
+#   NestedListEvent:    #[dataframe(as_list)] dir: Direction → list column
+#
+# Full cardinality matrix: 4 cells × 2 paths (split / align) × 3 modes = 24 fixtures.
+
+# ── Flatten path ───────────────────────────────────────────────────────────────
+# NestedFlattenEvent: Tracked { id, status: Status } / Other { id }
+# Columns (align): _type, id, status_variant, status_code
+# - status_variant: "Ok" or "Err" for Tracked rows; NA for Other rows
+# - status_code:    NA for Ok rows and Other rows; integer for Err rows
+# Split partition names: "tracked" / "other" (lowercase snake_case of PascalCase variant).
+
+test_that("nested_flatten — split 1v1r: tracked row has status_variant column", {
+  res <- nested_flatten_split_1v1r()
+  expect_setequal(names(res), c("tracked", "other"))
+  tracked <- res$tracked
+  expect_equal(nrow(tracked), 1L)
+  expect_true("status_variant" %in% colnames(tracked))
+  expect_equal(tracked$id, 1L)
+  expect_equal(tracked$status_variant, "Ok")
+  expect_true(is.na(tracked$status_code))
+  # other partition is empty
+  expect_equal(nrow(res$other), 0L)
+})
+
+test_that("nested_flatten — split 1vNr: multiple tracked rows, mixed Ok and Err", {
+  res <- nested_flatten_split_1vnr()
+  tracked <- res$tracked
+  expect_equal(nrow(tracked), 3L)
+  expect_true("status_variant" %in% colnames(tracked))
+  expect_true("status_code" %in% colnames(tracked))
+  expect_equal(tracked$status_variant, c("Ok", "Err", "Err"))
+  # Ok row has NA code; Err rows have integer codes
+  expect_true(is.na(tracked$status_code[1L]))
+  expect_equal(tracked$status_code[2L], 404L)
+  expect_equal(tracked$status_code[3L], 500L)
+})
+
+test_that("nested_flatten — split Nv1r: tracked and other each have 1 row", {
+  res <- nested_flatten_split_nv1r()
+  expect_equal(nrow(res$tracked), 1L)
+  expect_equal(nrow(res$other), 1L)
+  expect_equal(res$tracked$status_variant, "Ok")
+})
+
+test_that("nested_flatten — split NvNr: correct partition sizes and status columns", {
+  res <- nested_flatten_split_nvnr()
+  expect_equal(nrow(res$tracked), 2L)
+  expect_equal(nrow(res$other), 2L)
+  expect_equal(res$tracked$status_variant, c("Ok", "Err"))
+  expect_true(is.na(res$tracked$status_code[1L]))
+  expect_equal(res$tracked$status_code[2L], 404L)
+})
+
+test_that("nested_flatten — align 1v1r: single Tracked row, status_variant present", {
+  df <- nested_flatten_align_1v1r()
+  expect_equal(nrow(df), 1L)
+  expect_true("status_variant" %in% colnames(df))
+  expect_equal(df$`_type`, "Tracked")
+  expect_equal(df$status_variant, "Ok")
+})
+
+test_that("nested_flatten — align 1vNr: multiple Tracked rows, mix of Ok and Err", {
+  df <- nested_flatten_align_1vnr()
+  expect_equal(nrow(df), 3L)
+  expect_equal(df$status_variant, c("Ok", "Err", "Err"))
+  expect_true(is.na(df$status_code[1L]))
+  expect_equal(df$status_code[2L], 404L)
+  expect_equal(df$status_code[3L], 500L)
+})
+
+test_that("nested_flatten — align Nv1r: NA-fill for Other rows", {
+  df <- nested_flatten_align_nv1r()
+  expect_equal(nrow(df), 2L)
+  tracked_rows <- which(df$`_type` == "Tracked")
+  other_rows <- which(df$`_type` == "Other")
+  expect_false(is.na(df$status_variant[tracked_rows]))
+  expect_true(is.na(df$status_variant[other_rows]))
+  expect_true(is.na(df$status_code[other_rows]))
+})
+
+test_that("nested_flatten — align NvNr: status_variant and status_code with NA-fill", {
+  df <- nested_flatten_align_nvnr()
+  expect_true("status_variant" %in% colnames(df))
+  expect_equal(nrow(df), 4L)
+  other_rows <- which(df$`_type` == "Other")
+  tracked_rows <- which(df$`_type` == "Tracked")
+  expect_true(all(is.na(df$status_variant[other_rows])))
+  expect_false(any(is.na(df$status_variant[tracked_rows])))
+  expect_equal(df$status_variant[tracked_rows], c("Ok", "Err"))
+  # Ok row has NA code; Err row has integer code
+  expect_true(is.na(df$status_code[tracked_rows[1L]]))
+  expect_equal(df$status_code[tracked_rows[2L]], 404L)
+})
+
+# ── as_factor path ─────────────────────────────────────────────────────────────
+# NestedFactorEvent: Move { id, dir: Direction } / Stop { id }
+# dir is a factor column in all output data frames.
+
+test_that("nested_factor — split 1v1r: move row has dir as factor column", {
+  res <- nested_factor_split_1v1r()
+  expect_setequal(names(res), c("move", "stop"))
+  move <- res$move
+  expect_equal(nrow(move), 1L)
+  expect_true("dir" %in% colnames(move))
+  # dir is a factor column
+  expect_true(is.factor(move$dir))
+  expect_equal(as.character(move$dir), "North")
+  expect_equal(nrow(res$stop), 0L)
+})
+
+test_that("nested_factor — split 1vNr: multiple move rows with correct dir factor values", {
+  res <- nested_factor_split_1vnr()
+  move <- res$move
+  expect_equal(nrow(move), 3L)
+  expect_true(is.factor(move$dir))
+  expect_equal(as.character(move$dir), c("North", "South", "East"))
+  # levels() must match Direction's variant order
+  expect_equal(levels(move$dir), c("North", "South", "East", "West"))
+})
+
+test_that("nested_factor — split Nv1r: move and stop each have 1 row; stop omits dir column", {
+  res <- nested_factor_split_nv1r()
+  expect_equal(nrow(res$move), 1L)
+  expect_equal(nrow(res$stop), 1L)
+  expect_equal(as.character(res$move$dir), "West")
+  # stop partition has no dir column
+  expect_false("dir" %in% colnames(res$stop))
+})
+
+test_that("nested_factor — split NvNr: correct partition sizes and dir factor values", {
+  res <- nested_factor_split_nvnr()
+  expect_equal(nrow(res$move), 2L)
+  expect_equal(nrow(res$stop), 2L)
+  expect_equal(as.character(res$move$dir), c("North", "East"))
+})
+
+test_that("nested_factor — align 1v1r: single Move row, dir is a factor", {
+  df <- nested_factor_align_1v1r()
+  expect_equal(nrow(df), 1L)
+  expect_true("dir" %in% colnames(df))
+  expect_true(is.factor(df$dir))
+  expect_equal(as.character(df$dir), "North")
+  expect_equal(levels(df$dir), c("North", "South", "East", "West"))
+})
+
+test_that("nested_factor — align 1vNr: multiple Move rows", {
+  df <- nested_factor_align_1vnr()
+  expect_equal(nrow(df), 3L)
+  expect_true(is.factor(df$dir))
+  expect_equal(as.character(df$dir), c("North", "South", "East"))
+  expect_equal(levels(df$dir), c("North", "South", "East", "West"))
+})
+
+test_that("nested_factor — align Nv1r: NA for Stop row, factor levels intact", {
+  df <- nested_factor_align_nv1r()
+  expect_equal(nrow(df), 2L)
+  expect_true(is.factor(df$dir))
+  move_rows <- which(df$`_type` == "Move")
+  stop_rows <- which(df$`_type` == "Stop")
+  expect_false(is.na(df$dir[move_rows]))
+  expect_true(is.na(df$dir[stop_rows]))
+  expect_equal(levels(df$dir), c("North", "South", "East", "West"))
+})
+
+test_that("nested_factor — align NvNr: dir is a factor, NA for Stop rows", {
+  df <- nested_factor_align_nvnr()
+  expect_true("dir" %in% colnames(df))
+  expect_equal(nrow(df), 4L)
+  expect_true(is.factor(df$dir))
+  stop_rows <- which(df$`_type` == "Stop")
+  move_rows <- which(df$`_type` == "Move")
+  expect_true(all(is.na(df$dir[stop_rows])))
+  expect_false(any(is.na(df$dir[move_rows])))
+  expect_equal(as.character(df$dir[move_rows]), c("North", "East"))
+  # levels() must contain all Direction variants in declaration order
+  expect_equal(levels(df$dir), c("North", "South", "East", "West"))
+})
+
+# ── as_list path ───────────────────────────────────────────────────────────────
+# Direction's IntoList impl produces a list cell (via DataFrameRow derive).
+# Each dir list cell for a present row is non-NULL; absent (Stop) rows have NULL.
+
+test_that("nested_list — split 1v1r: move row has dir as list-column", {
+  res <- nested_list_split_1v1r()
+  expect_setequal(names(res), c("move", "stop"))
+  move <- res$move
+  expect_equal(nrow(move), 1L)
+  expect_true("dir" %in% colnames(move))
+  expect_true(is.list(move$dir))
+  expect_false(is.null(move$dir[[1L]]))
+  expect_equal(nrow(res$stop), 0L)
+})
+
+test_that("nested_list — split 1vNr: multiple move rows, each dir cell is a list", {
+  res <- nested_list_split_1vnr()
+  move <- res$move
+  expect_equal(nrow(move), 3L)
+  expect_true(is.list(move$dir))
+  # Each dir cell is non-NULL
+  for (i in seq_len(nrow(move))) expect_false(is.null(move$dir[[i]]))
+})
+
+test_that("nested_list — split Nv1r: move and stop each have 1 row; stop omits dir column", {
+  res <- nested_list_split_nv1r()
+  expect_equal(nrow(res$move), 1L)
+  expect_equal(nrow(res$stop), 1L)
+  expect_true(is.list(res$move$dir))
+  expect_false("dir" %in% colnames(res$stop))
+})
+
+test_that("nested_list — split NvNr: correct partition sizes", {
+  res <- nested_list_split_nvnr()
+  expect_equal(nrow(res$move), 2L)
+  expect_equal(nrow(res$stop), 2L)
+})
+
+test_that("nested_list — align 1v1r: single Move row, dir is a list-column", {
+  df <- nested_list_align_1v1r()
+  expect_equal(nrow(df), 1L)
+  expect_true("dir" %in% colnames(df))
+  expect_true(is.list(df$dir))
+  expect_false(is.null(df$dir[[1L]]))
+})
+
+test_that("nested_list — align 1vNr: multiple Move rows, all dir cells non-NULL", {
+  df <- nested_list_align_1vnr()
+  expect_equal(nrow(df), 3L)
+  expect_true(is.list(df$dir))
+  for (i in seq_len(nrow(df))) expect_false(is.null(df$dir[[i]]))
+})
+
+test_that("nested_list — align Nv1r: NULL for Stop row", {
+  df <- nested_list_align_nv1r()
+  expect_equal(nrow(df), 2L)
+  expect_true(is.list(df$dir))
+  move_rows <- which(df$`_type` == "Move")
+  stop_rows <- which(df$`_type` == "Stop")
+  expect_false(is.null(df$dir[[move_rows]]))
+  expect_null(df$dir[[stop_rows]])
+})
+
+test_that("nested_list — align NvNr: dir is a list-column, NULL for Stop rows", {
+  df <- nested_list_align_nvnr()
+  expect_true("dir" %in% colnames(df))
+  expect_equal(nrow(df), 4L)
+  expect_true(is.list(df$dir))
+  stop_rows <- which(df$`_type` == "Stop")
+  move_rows <- which(df$`_type` == "Move")
+  for (i in stop_rows) expect_null(df$dir[[i]])
+  for (i in move_rows) expect_false(is.null(df$dir[[i]]))
+})
+
+# endregion: 10. Nested enum fields
+
+# endregion: 10. Nested enum fields

@@ -122,7 +122,8 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
 /// Parsed field-level `#[dataframe(...)]` attributes.
 ///
 /// These attributes control how individual struct/enum fields map to DataFrame columns.
-/// Mutually exclusive combinations (`as_list` + `expand`, `as_list` + `width`) are
+/// Mutually exclusive combinations (`as_list` + `expand`, `as_list` + `width`,
+/// `as_factor` + `as_list`, `as_factor` + `expand`, `as_factor` + `width`) are
 /// rejected during parsing.
 #[derive(Default)]
 pub(super) struct FieldAttrs {
@@ -132,7 +133,11 @@ pub(super) struct FieldAttrs {
     pub(super) rename: Option<String>,
     /// `#[dataframe(as_list)]` -- keep a collection field as a single R list column
     /// (suppresses automatic expansion into suffixed columns).
-    as_list: bool,
+    pub(super) as_list: bool,
+    /// `#[dataframe(as_factor)]` -- treat a unit-only inner enum field as an R factor column.
+    /// Only valid on bare-ident enum types (no generic parameters). The inner enum must be
+    /// unit-only (`#[derive(DataFrameRow)]` emits `IntoR` and `IntoR for Vec<Option<Self>>`).
+    pub(super) as_factor: bool,
     /// `#[dataframe(expand)]` or `#[dataframe(unnest)]` -- explicitly expand a
     /// collection field into multiple suffixed columns.
     expand: bool,
@@ -143,8 +148,9 @@ pub(super) struct FieldAttrs {
 
 /// Parse field-level `#[dataframe(...)]` attributes from a `syn::Field`.
 ///
-/// Recognizes: `skip`, `rename`, `as_list`, `expand` (alias `unnest`), and `width`.
-/// Validates mutual exclusivity of conflicting options (`as_list` vs `expand`/`width`).
+/// Recognizes: `skip`, `rename`, `as_list`, `as_factor`, `expand` (alias `unnest`), and `width`.
+/// Validates mutual exclusivity of conflicting options (`as_list` vs `expand`/`width`,
+/// `as_factor` vs `as_list`/`expand`/`width`).
 /// Returns `Err` for unknown keys, invalid width values, or conflicting options.
 pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
     let mut attrs = FieldAttrs::default();
@@ -166,6 +172,9 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
             } else if meta.path.is_ident("as_list") {
                 attrs.as_list = true;
                 Ok(())
+            } else if meta.path.is_ident("as_factor") {
+                attrs.as_factor = true;
+                Ok(())
             } else if meta.path.is_ident("expand") || meta.path.is_ident("unnest") {
                 attrs.expand = true;
                 Ok(())
@@ -180,23 +189,43 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
                 Ok(())
             } else {
                 Err(meta.error(
-                    "unknown field attribute; expected `skip`, `rename`, `as_list`, `expand`, `unnest`, or `width`",
+                    "unknown field attribute; expected `skip`, `rename`, `as_list`, `as_factor`, `expand`, `unnest`, or `width`",
                 ))
             }
         })?;
     }
 
+    let span = field.ident.as_ref().map_or(Span::call_site(), |i| i.span());
+
     // Validation: conflicting options
     if attrs.as_list && attrs.expand {
         return Err(syn::Error::new(
-            field.ident.as_ref().map_or(Span::call_site(), |i| i.span()),
+            span,
             "`as_list` and `expand`/`unnest` are mutually exclusive",
         ));
     }
     if attrs.as_list && attrs.width.is_some() {
         return Err(syn::Error::new(
-            field.ident.as_ref().map_or(Span::call_site(), |i| i.span()),
+            span,
             "`as_list` and `width` are mutually exclusive",
+        ));
+    }
+    if attrs.as_factor && attrs.as_list {
+        return Err(syn::Error::new(
+            span,
+            "`as_factor` and `as_list` are mutually exclusive",
+        ));
+    }
+    if attrs.as_factor && attrs.expand {
+        return Err(syn::Error::new(
+            span,
+            "`as_factor` and `expand`/`unnest` are mutually exclusive",
+        ));
+    }
+    if attrs.as_factor && attrs.width.is_some() {
+        return Err(syn::Error::new(
+            span,
+            "`as_factor` and `width` are mutually exclusive",
         ));
     }
 
@@ -1535,6 +1564,10 @@ pub(super) struct ResolvedColumn {
     /// Whether this column was coerced to `String` due to type conflicts.
     /// When true, values are converted via `ToString::to_string()` at push time.
     pub(super) string_coerced: bool,
+    /// Whether this column should be emitted as an R factor (via `as_factor` attribute).
+    /// When `true`, `into_data_frame` wraps the `Vec<Option<T>>` in `FactorOptionVec<T>`
+    /// before calling `IntoR::into_sexp`, using the `UnitEnumFactor` blanket impl.
+    pub(super) is_factor: bool,
 }
 
 /// Accumulates unique columns for an enum-to-dataframe unified schema.
@@ -1603,8 +1636,29 @@ impl<'a> ColumnRegistry<'a> {
                 ty: col_ty.clone(),
                 present_in: vec![variant_idx],
                 string_coerced: false,
+                is_factor: false,
             });
             self.col_index.insert(col_name.to_string(), idx);
+        }
+        Ok(())
+    }
+
+    /// Like `register`, but marks the column as a factor column (`is_factor = true`).
+    ///
+    /// Used for fields annotated with `#[dataframe(as_factor)]`. The companion struct
+    /// field type stays `Vec<Option<T>>`, but `into_data_frame` wraps it in
+    /// `FactorOptionVec<T>` (using the `UnitEnumFactor` blanket `IntoR` impl).
+    pub(super) fn register_factor(
+        &mut self,
+        col_name: &str,
+        col_ty: &syn::Type,
+        variant_idx: usize,
+        variant_name: &syn::Ident,
+        error_span: Span,
+    ) -> syn::Result<()> {
+        self.register(col_name, col_ty, variant_idx, variant_name, error_span)?;
+        if let Some(&idx) = self.col_index.get(col_name) {
+            self.columns[idx].is_factor = true;
         }
         Ok(())
     }
@@ -1690,6 +1744,13 @@ pub(super) struct EnumSingleFieldData {
     /// that carry `#[dataframe(as_list)]`. The companion struct field type is
     /// `Vec<Option<::miniextendr_api::list::List>>` in this case.
     pub(super) needs_into_list: bool,
+    /// Whether the field should be emitted as an R factor column.
+    ///
+    /// Set to `true` for fields annotated with `#[dataframe(as_factor)]`.
+    /// The companion struct field type is `Vec<Option<T>>` (unchanged), but
+    /// `into_data_frame` wraps it in `FactorOptionVec<T>` to use the
+    /// `UnitEnumFactor`-based blanket `IntoR` impl.
+    pub(super) is_factor: bool,
 }
 
 /// Data for [`EnumResolvedField::ExpandedFixed`].

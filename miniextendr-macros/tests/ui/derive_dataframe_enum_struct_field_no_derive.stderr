@@ -60,14 +60,14 @@ error[E0277]: the trait `DataFrameRow` is not implemented for `Point`
   --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:14:32
    |
 14 |     Located { id: i32, origin: Point },
-   |                                ^^^^^ add `#[derive(DataFrameRow)]` to `Point`, or annotate the field with `#[dataframe(as_list)]` to keep it as an opaque list-column
+   |                                ^^^^^ add `#[derive(DataFrameRow)]` to `Point`, annotate the field with `#[dataframe(as_list)]` to keep it as an opaque list-column, or annotate with `#[dataframe(as_factor)]` for unit-only enums
    |
 help: the trait `DataFrameRow` is not implemented for `Point`
   --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:6:1
    |
  6 | struct Point {
    | ^^^^^^^^^^^^
-   = note: struct-typed enum variant fields are flattened by default into prefixed columns; the inner type must implement `DataFrameRow` for this to work
+   = note: struct- and enum-typed variant fields are flattened by default into prefixed columns; the inner type must implement `DataFrameRow` for this to work
 help: the trait `DataFrameRow` is implemented for `Event`
   --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:11:10
    |

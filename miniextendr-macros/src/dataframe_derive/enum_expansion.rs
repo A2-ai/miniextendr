@@ -4,7 +4,7 @@
 //! `None` fill for fields absent in a given variant.
 
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::{DeriveInput, Fields};
 
 use super::{
@@ -93,7 +93,34 @@ pub(super) fn derive_enum_dataframe(
                             rust_name: rust_name.clone(),
                             ty: f.ty.clone(),
                             needs_into_list,
+                            is_factor: false,
                         })));
+                    } else if fa.as_factor {
+                        // `as_factor` is only valid on bare-ident enum types (Struct kind).
+                        // The inner enum must be unit-only and derive DataFrameRow, which
+                        // auto-emits UnitEnumFactor so FactorOptionVec<T> implements IntoR.
+                        match classify_field_type(&f.ty) {
+                            FieldTypeKind::Struct { .. } => {
+                                resolved.push(EnumResolvedField::Single(Box::new(
+                                    EnumSingleFieldData {
+                                        col_name: format_ident!("{}", col_name_str),
+                                        binding: binding.clone(),
+                                        rust_name: rust_name.clone(),
+                                        ty: f.ty.clone(),
+                                        needs_into_list: false,
+                                        is_factor: true,
+                                    },
+                                )));
+                            }
+                            _ => {
+                                return Err(syn::Error::new_spanned(
+                                    &f.ty,
+                                    "`as_factor` is only valid on bare-ident enum/struct types; \
+                                     use `as_list` for generic or complex types, or remove \
+                                     `as_factor` for scalar fields",
+                                ));
+                            }
+                        }
                     } else {
                         match classify_field_type(&f.ty) {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
@@ -138,6 +165,7 @@ pub(super) fn derive_enum_dataframe(
                                             rust_name: rust_name.clone(),
                                             ty: f.ty.clone(),
                                             needs_into_list: false,
+                                            is_factor: false,
                                         },
                                     )));
                                 }
@@ -195,8 +223,81 @@ pub(super) fn derive_enum_dataframe(
                                         rust_name: rust_name.clone(),
                                         ty: f.ty.clone(),
                                         needs_into_list: false,
+                                        is_factor: false,
                                     },
                                 )));
+                            }
+                        }
+                    }
+                }
+                // B1: Check for `<base>_variant` discriminant column collision.
+                //
+                // When a Struct field `kind: Inner` is flattened, the inner enum's
+                // discriminant column (tag) is emitted under `<base>_<inner_tag>`.
+                // If the inner enum uses `#[dataframe(tag = "variant")]` (recommended),
+                // the outer discriminant column becomes `kind_variant`.  If any sibling
+                // field in the same variant is also named `kind_variant` (or renames to
+                // that), the two fields would produce the same R column name — a runtime
+                // collision that is undetectable without this check.
+                //
+                // We detect the following cases at compile time:
+                //   1. Struct field `kind: Inner` + Single/Scalar field `kind_variant`
+                //   2. Struct field `kind: Inner` + another Struct field that would
+                //      produce `kind_variant` (e.g. if a field is renamed to `kind_variant`)
+                //
+                // Inner-enum-internal collision (Inner has both `tag = "variant"` AND
+                // payload field `variant`) cannot be detected here — that requires
+                // inspecting Inner's own resolved columns.  Document this as a carve-out
+                // in DATAFRAME.md.
+                {
+                    // Collect every flat column name produced by non-Struct resolved fields.
+                    let flat_col_names: Vec<String> = resolved
+                        .iter()
+                        .filter_map(|r| match r {
+                            EnumResolvedField::Single(d) => Some(d.col_name.to_string()),
+                            EnumResolvedField::Map(d) => {
+                                // Map fields produce <base>_keys and <base>_values.
+                                // Neither collides with <struct>_variant unless someone
+                                // explicitly renamed to match — covered by the Struct check
+                                // via base_name.
+                                let _ = d;
+                                None
+                            }
+                            _ => None,
+                        })
+                        .collect();
+
+                    for r in &resolved {
+                        if let EnumResolvedField::Struct(struct_data) = r {
+                            let discriminant_col = format!("{}_variant", struct_data.base_name);
+                            if flat_col_names.contains(&discriminant_col) {
+                                // Find the colliding field for a better span.
+                                let colliding_span = resolved
+                                    .iter()
+                                    .find_map(|r2| match r2 {
+                                        EnumResolvedField::Single(d)
+                                            if d.col_name == discriminant_col.as_str() =>
+                                        {
+                                            Some(d.col_name.span())
+                                        }
+                                        _ => None,
+                                    })
+                                    .unwrap_or_else(proc_macro2::Span::call_site);
+                                return Err(syn::Error::new(
+                                    colliding_span,
+                                    format!(
+                                        "column name collision: the flatten field `{base}` \
+                                         (a nested `DataFrameRow` enum) will emit a \
+                                         discriminant column named `{disc}`, but a sibling \
+                                         field already produces a column with the same name. \
+                                         Rename the sibling field or use \
+                                         `#[dataframe(tag = \"...\")]` on the inner enum to \
+                                         choose a different discriminant column name \
+                                         (e.g. `#[dataframe(tag = \"type\")]` → `{base}_type`)",
+                                        base = struct_data.base_name,
+                                        disc = discriminant_col,
+                                    ),
+                                ));
                             }
                         }
                     }
@@ -229,7 +330,31 @@ pub(super) fn derive_enum_dataframe(
                             rust_name,
                             ty: f.ty.clone(),
                             needs_into_list,
+                            is_factor: false,
                         })));
+                    } else if fa.as_factor {
+                        match classify_field_type(&f.ty) {
+                            FieldTypeKind::Struct { .. } => {
+                                resolved.push(EnumResolvedField::Single(Box::new(
+                                    EnumSingleFieldData {
+                                        col_name: format_ident!("{}", col_name_str),
+                                        binding,
+                                        rust_name,
+                                        ty: f.ty.clone(),
+                                        needs_into_list: false,
+                                        is_factor: true,
+                                    },
+                                )));
+                            }
+                            _ => {
+                                return Err(syn::Error::new_spanned(
+                                    &f.ty,
+                                    "`as_factor` is only valid on bare-ident enum/struct types; \
+                                     use `as_list` for generic or complex types, or remove \
+                                     `as_factor` for scalar fields",
+                                ));
+                            }
+                        }
                     } else {
                         match classify_field_type(&f.ty) {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
@@ -274,6 +399,7 @@ pub(super) fn derive_enum_dataframe(
                                             rust_name,
                                             ty: f.ty.clone(),
                                             needs_into_list: false,
+                                            is_factor: false,
                                         },
                                     )));
                                 }
@@ -331,6 +457,7 @@ pub(super) fn derive_enum_dataframe(
                                         rust_name,
                                         ty: f.ty.clone(),
                                         needs_into_list: false,
+                                        is_factor: false,
                                     },
                                 )));
                             }
@@ -369,13 +496,23 @@ pub(super) fn derive_enum_dataframe(
             let err_span = erf.rust_name().span();
             match erf {
                 EnumResolvedField::Single(data) => {
-                    registry.register(
-                        &data.col_name.to_string(),
-                        &data.ty,
-                        variant_idx,
-                        &vi.name,
-                        err_span,
-                    )?;
+                    if data.is_factor {
+                        registry.register_factor(
+                            &data.col_name.to_string(),
+                            &data.ty,
+                            variant_idx,
+                            &vi.name,
+                            err_span,
+                        )?;
+                    } else {
+                        registry.register(
+                            &data.col_name.to_string(),
+                            &data.ty,
+                            variant_idx,
+                            &vi.name,
+                            err_span,
+                        )?;
+                    }
                 }
                 EnumResolvedField::ExpandedFixed(data) => {
                     for i in 1..=data.len {
@@ -536,6 +673,20 @@ pub(super) fn derive_enum_dataframe(
         }
     }
     let has_as_list_struct_cols = !as_list_struct_col_names.is_empty();
+
+    // Collect factor column names (Single fields with `is_factor = true`).
+    // These are emitted via `FactorOptionVec<T>` wrapping in `into_data_frame`.
+    let mut factor_col_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in &variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Single(data) = erf
+                && data.is_factor
+            {
+                factor_col_names.insert(data.col_name.to_string());
+            }
+        }
+    }
+    let has_factor_cols = !factor_col_names.is_empty();
     // endregion
 
     // region: Generate companion struct
@@ -629,9 +780,13 @@ pub(super) fn derive_enum_dataframe(
     let struct_col_names: std::collections::HashSet<String> =
         struct_cols.iter().map(|sc| sc.base_name.clone()).collect();
 
-    let into_dataframe_impl = if has_enum_auto_expand || has_struct_cols || has_as_list_struct_cols
+    let into_dataframe_impl = if has_enum_auto_expand
+        || has_struct_cols
+        || has_as_list_struct_cols
+        || has_factor_cols
     {
-        // Dynamic pair building for auto-expand, struct fields, and/or as_list struct fields.
+        // Dynamic pair building for auto-expand, struct fields, as_list struct fields,
+        // and/or as_factor fields.
         let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
             quote! {
                 __df_pairs.push((
@@ -643,14 +798,16 @@ pub(super) fn derive_enum_dataframe(
             TokenStream::new()
         };
 
-        // Static columns — skip struct-col placeholders (handled in flatten block below)
-        // and as-list struct fields (handled in the per-element conversion block below).
+        // Static columns — skip struct-col placeholders (handled in flatten block below),
+        // as-list struct fields (handled in the per-element conversion block below),
+        // and factor columns (handled in the FactorOptionVec wrapping block below).
         let static_pair_pushes: Vec<TokenStream> = columns
             .iter()
             .filter(|col| {
                 let name_str = col.col_name.to_string();
                 !struct_col_names.contains(&name_str)
                     && !as_list_struct_col_names.contains(&name_str)
+                    && !factor_col_names.contains(&name_str)
             })
             .map(|col| {
                 let name = &col.col_name;
@@ -689,6 +846,26 @@ pub(super) fn derive_enum_dataframe(
                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col)),
                         ));
                     }
+                }
+            })
+            .collect();
+
+        // as_factor columns: wrap Vec<Option<T>> in FactorOptionVec<T> before calling into_sexp.
+        // Uses the UnitEnumFactor blanket impl: impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>.
+        let factor_pair_pushes: Vec<TokenStream> = columns
+            .iter()
+            .filter(|col| factor_col_names.contains(&col.col_name.to_string()))
+            .map(|col| {
+                let name = &col.col_name;
+                let name_str = name.to_string();
+                let ty = &col.ty;
+                quote! {
+                    __df_pairs.push((
+                        #name_str.to_string(),
+                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
+                            ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(self.#name)
+                        )),
+                    ));
                 }
             })
             .collect();
@@ -792,6 +969,7 @@ pub(super) fn derive_enum_dataframe(
                         )> = Vec::new();
                         #tag_push_pair
                         #(#static_pair_pushes)*
+                        #(#factor_pair_pushes)*
                         #(#auto_expand_pair_pushes)*
                         #(#struct_flatten_pushes)*
                         #(#as_list_struct_pushes)*
@@ -1367,6 +1545,88 @@ pub(super) fn derive_enum_dataframe(
             for #row_name #ty_generics #where_clause {}
     };
 
+    // region: unit-only enum factor impls
+    // For a unit-only enum (all variants are unit), auto-emit:
+    //   1. `impl UnitEnumFactor for Self`  — provides FACTOR_LEVELS and to_factor_index()
+    //   2. `impl IntoR for Self`  — produces a single-element factor SEXP (cached levels)
+    //   3. `impl IntoList for Self`  — delegates to vec![self].into_list()
+    //
+    // The `UnitEnumFactor` impl is consumed by the blanket
+    // `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` in miniextendr-api,
+    // which is what `into_data_frame` calls for `as_factor` companion struct columns.
+    //
+    // NOTE: `impl IntoR for Vec<Option<Self>>` violates orphan rules (Vec is foreign),
+    // so we use the `FactorOptionVec<T>` wrapper type (local to miniextendr-api) instead.
+    //
+    // These impls allow `as_factor` and `as_list` to work on the inner type when it
+    // appears as a field of an outer enum or struct DataFrameRow.
+    let unit_only_factor_impls = {
+        let all_unit = variant_infos
+            .iter()
+            .all(|vi| vi.shape == VariantShape::Unit);
+        // Note: generic enums (with type parameters) are intentionally excluded from
+        // auto-emission.  `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` relies
+        // on `FACTOR_LEVELS` being a compile-time constant, which is incompatible with
+        // generic enums (Rust does not allow generic statics).  If you need `as_factor`
+        // on a unit-only generic enum, implement `UnitEnumFactor` manually.
+        // See `docs/DATAFRAME.md` "Nested enum fields — flatten + opt-outs" for details.
+        if all_unit && impl_generics.to_token_stream().is_empty() {
+            // Collect variant names and assign 1-based R factor indices
+            let variant_idents: Vec<&syn::Ident> =
+                variant_infos.iter().map(|vi| &vi.name).collect();
+            let variant_strs: Vec<String> =
+                variant_infos.iter().map(|vi| vi.name.to_string()).collect();
+            let variant_strs_lit: Vec<&str> = variant_strs.iter().map(|s| s.as_str()).collect();
+            let indices: Vec<i32> = (1i32..=(variant_idents.len() as i32)).collect();
+
+            quote! {
+                // impl UnitEnumFactor for Self: provides FACTOR_LEVELS + to_factor_index().
+                // Used by `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` in miniextendr-api
+                // to build factor SEXPs from `Vec<Option<Self>>` companion columns.
+                impl ::miniextendr_api::factor::UnitEnumFactor for #row_name {
+                    const FACTOR_LEVELS: &'static [&'static str] = &[#(#variant_strs_lit),*];
+                    fn to_factor_index(self) -> i32 {
+                        match self {
+                            #(#row_name::#variant_idents => #indices,)*
+                        }
+                    }
+                }
+
+                // impl IntoR for Self: single-element factor SEXP (cached levels via OnceLock).
+                // Used when a unit-only enum value is returned directly from a #[miniextendr] fn.
+                impl ::miniextendr_api::IntoR for #row_name {
+                    type Error = ::std::convert::Infallible;
+                    fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                        use ::std::sync::OnceLock;
+                        const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
+                        static LEVELS_CACHE: OnceLock<::miniextendr_api::ffi::SEXP> =
+                            OnceLock::new();
+                        let levels = *LEVELS_CACHE.get_or_init(|| {
+                            ::miniextendr_api::factor::build_levels_sexp_cached(LEVELS)
+                        });
+                        let idx: i32 = match self {
+                            #(#row_name::#variant_idents => #indices,)*
+                        };
+                        ::std::result::Result::Ok(
+                            ::miniextendr_api::factor::build_factor(&[idx], levels)
+                        )
+                    }
+                }
+
+                // impl IntoList for Self: for as_list path in outer DataFrameRow.
+                // Delegates to Vec<Self>: IntoList (blanket impl via IntoR for Self).
+                impl ::miniextendr_api::list::IntoList for #row_name {
+                    fn into_list(self) -> ::miniextendr_api::list::List {
+                        ::miniextendr_api::list::IntoList::into_list(::std::vec![self])
+                    }
+                }
+            }
+        } else {
+            TokenStream::new()
+        }
+    };
+    // endregion
+
     Ok(quote! {
         #dataframe_struct
         #into_dataframe_impl
@@ -1376,6 +1636,7 @@ pub(super) fn derive_enum_dataframe(
         #split_method
         #marker_impl
         #(#struct_assertions)*
+        #unit_only_factor_impls
     })
     // endregion
 }
@@ -1690,6 +1951,18 @@ fn generate_split_method(
                                             ));
                                         }
                                     }]
+                                } else if data.is_factor {
+                                    // Factor column: convert Vec<T> → FactorOptionVec<T> (all present).
+                                    vec![quote! {
+                                        #pairs_var.push((
+                                            #col_str.to_string(),
+                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
+                                                ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(
+                                                    #buf.into_iter().map(|v| ::std::option::Option::Some(v)).collect::<::std::vec::Vec<_>>()
+                                                )
+                                            )),
+                                        ));
+                                    }]
                                 } else {
                                     vec![quote! {
                                         #pairs_var.push((
@@ -1870,6 +2143,15 @@ fn generate_split_method(
                                                     .collect();
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col))
                                         })
+                                    }]
+                                } else if data.is_factor {
+                                    // Factor: convert Vec<T> → FactorOptionVec<T> (all present).
+                                    vec![quote! {
+                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
+                                            ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(
+                                                #buf.into_iter().map(|v| ::std::option::Option::Some(v)).collect::<::std::vec::Vec<_>>()
+                                            )
+                                        )))
                                     }]
                                 } else {
                                     vec![quote! {

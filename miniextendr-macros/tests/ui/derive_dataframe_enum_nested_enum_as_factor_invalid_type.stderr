@@ -1,0 +1,5 @@
+error: `as_factor` is only valid on bare-ident enum/struct types; use `as_list` for generic or complex types, or remove `as_factor` for scalar fields
+  --> tests/ui/derive_dataframe_enum_nested_enum_as_factor_invalid_type.rs:10:15
+   |
+10 |         vals: Vec<i32>,
+   |               ^^^^^^^^
