@@ -823,6 +823,35 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
         SEXP::nil()
     }
 }
+
+/// C-callable entry point for `wasm_registry.rs` generation via cdylib.
+///
+/// Pairs with [`miniextendr_write_wrappers`]: same cdylib, separate `.Call`,
+/// independent output path. The generated file is consumed only on `wasm32-*`
+/// targets (gating lands in step 5 of `plans/webr-support.md`); on native
+/// builds it's a static dead-data artefact under git.
+///
+/// # Safety
+///
+/// `path_sexp` must be a valid STRSXP of length >= 1.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn miniextendr_write_wasm_registry(
+    path_sexp: crate::ffi::SEXP,
+) -> crate::ffi::SEXP {
+    unsafe {
+        use crate::ffi::{SEXP, SexpExt};
+
+        let char_sexp = path_sexp.string_elt_unchecked(0);
+        let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
+        let path = c_str
+            .to_str()
+            .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
+
+        crate::wasm_registry_writer::write_wasm_registry_to_file(path);
+
+        SEXP::nil()
+    }
+}
 // endregion
 
 // region: Unit tests for class-ref placeholder resolution
