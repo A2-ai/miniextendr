@@ -1,0 +1,70 @@
+name: webR / wasm32
+
+on:
+  pull_request:
+    paths:
+      - 'miniextendr-api/**'
+      - 'miniextendr-macros/**'
+      - 'miniextendr-engine/**'
+      - 'miniextendr-lint/**'
+      - 'rpkg/**'
+      - 'tests/cross-package/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Dockerfile.webr'
+      - '.github/workflows/webr.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'miniextendr-api/**'
+      - 'miniextendr-macros/**'
+      - 'miniextendr-engine/**'
+      - 'miniextendr-lint/**'
+      - 'rpkg/**'
+      - 'tests/cross-package/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Dockerfile.webr'
+      - '.github/workflows/webr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  cargo-check:
+    name: wasm32 check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-emscripten
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm32-check
+          cache-on-failure: true
+
+      - name: cargo check (miniextendr-api)
+        run: cargo check -p miniextendr-api --target wasm32-unknown-emscripten
+
+      - name: Configure rpkg
+        run: bash ./rpkg/configure
+
+      - name: cargo check (rpkg)
+        working-directory: rpkg/src/rust
+        run: cargo check --target wasm32-unknown-emscripten
