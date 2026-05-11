@@ -146,8 +146,9 @@ be exported during the wasm install — `webr-vars.mk` references both.
   `unsupported_platform` compile error for any `target_os` outside its
   whitelist. miniextendr leans on `linkme::distributed_slice` for runtime
   registration of `R_CallMethodDef`s, ALTREP class init, and trait dispatch
-  tables; on WASM that's replaced by a host-generated `wasm_registry.rs` —
-  see `plans/wasm-registry-codegen.md` for the design.
+  tables; on WASM that's replaced by a host-generated `wasm_registry.rs`
+  that pre-bakes the same registrations at build time. Cross-crate trait
+  dispatch on WASM is the remaining follow-up — tracked in #495.
 - **No host execution of WASM during install.** `--no-test-load` and
   `--no-staged-install` are mandatory. Anything that loads the side-module
   on the host (e.g. `dyn.load`-based wrapper-gen) is gated off via
@@ -184,10 +185,7 @@ tier 1.
 ## See also
 
 - Issue #470 — umbrella tracking issue for webR/WASM support.
-- `plans/wasm-registry-codegen.md` — design rationale for the linkme
-  replacement on WASM (mostly landed; cross-crate trait dispatch
-  follow-up tracked in #495).
-- `plans/webr-dockerfile.md` — design rationale for `Dockerfile.webr`.
+- Issue #495 — cross-crate trait dispatch on WASM (follow-up).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner.
 - `.webr/` — vendored clone of the webR repo for offline reference.
 - `.webr/Dockerfile` — upstream Rust toolchain install we inherit.
