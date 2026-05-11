@@ -202,7 +202,7 @@ R CMD INSTALL:
   2. make all:
      a. Compile stub.c → stub.o (R's CC)
      b. cargo build → librpkg.a (Rust staticlib, includes R_init_*)
-     c. $(SHLIB_LINK) -o miniextendr.so stub.o -force_load librpkg.a (R's linker)
+     c. $(SHLIB_LINK) -o miniextendr.so stub.o librpkg.a (R's linker)
   3. Install miniextendr.so to libs/
   4. Install R/ files, man/, etc.
 ```

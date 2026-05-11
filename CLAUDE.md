@@ -50,7 +50,7 @@ mirror it there.
 - **Roxygen warnings are bugs to fix, not silence**: every `roxygen2` diagnostic ("Undocumented R6 active binding", "Empty section", multiline `@title`, etc.) is a real defect — `R CMD check` doesn't introspect R6/S7, so roxygen2 is the only line of defense. Don't reach for `@noRd` / `@keywords internal` / `@field name NULL` as a silencer; they have semantic meaning, change rendered output, and may not even silence the warning. Provide a real (even minimal) description. Specifically: roxygen2 8.0.0's `@field name NULL` is documented as the opt-out but `r6_resolve_fields` still warns "Undocumented R6 active binding" because `expected` is introspected from the class and isn't pruned in sync with the discard — emit `@field name (internal)` (or similar minimal description) instead.
 - **Deferred items = GitHub issues**: any scope cut, known limitation, or partial fix needs `gh issue create` referenced in the PR. No "out of scope" without a tracked issue.
 - **`just` is maintainer-only**: end-user packages must build via `configure.ac` / `tools/*.R` / standard R mechanisms. Never require `just` in scaffolded packages.
-- **`configure.ac` never mutates sources**: don't rewrite Cargo.toml / Cargo.lock / .rs during `./configure` — dirties VCS. Use `cargo revendor --freeze` at vendor time.
+- **`configure.ac` never mutates sources**: don't rewrite Cargo.toml / Cargo.lock / .rs during `./configure` — dirties VCS. Use `just vendor` to regenerate the vendored tarball.
 - **`configure.ac` must not call `minirextendr::*`**: put helpers in `tools/` and invoke via `Rscript tools/foo.R`.
 - **Always check the built tarball, not the source dir.** `R CMD check` on a source dir skips `Authors@R` → `Author/Maintainer` conversion and misses real CRAN-class failures.
 - **Edit `.in` templates, not generated files**:
@@ -72,14 +72,17 @@ mirror it there.
 
 ```
 Makevars
-  → cargo rustc --crate-type cdylib            (links via -Wl,-force_load on macOS / --whole-archive on Linux)
+  → cargo rustc --crate-type cdylib
   → dyn.load + miniextendr_write_wrappers       (cdylib walks linkme #[distributed_slice] tables)
   → R/miniextendr-wrappers.R                    (generated, do not hand-edit)
   → cargo rustc --crate-type staticlib
   → final .so
 ```
 
-`stub.c` is an intentionally empty C file so R's build system produces a `.so`.
+`stub.c` declares `extern const char miniextendr_force_link`, which references a
+symbol emitted by `miniextendr_init!()`. With `codegen-units = 1`, this pulls the
+entire user crate out of the staticlib archive, carrying all `#[distributed_slice]`
+entries — no `-force_load` / `--whole-archive` needed.
 The cdylib→staticlib double link is what makes wrapper generation possible:
 the cdylib boots far enough into R that we can call into Rust to emit the
 R wrappers, then we relink as staticlib for the final installed shared object.
@@ -165,14 +168,6 @@ Fix: `just clean-vendor-leak` (preferred — it's safe and idempotent).
 Regression test: `just test-bootstrap-vendor`.
 
 `minirextendr_doctor()` detects both stale-latch and missing-`.cargo/config.toml`.
-
-### Stale frozen-vendor recovery
-
-`just vendor --freeze` writes `path = "../../vendor/..."` into
-`rpkg/src/rust/Cargo.toml` `[dependencies]` and `[patch.crates-io]`. After
-merging main, frozen vendor/ can go stale and `cargo metadata` fails. Fix:
-reset frozen path deps back to `"*"`, delete `rpkg/vendor/` + `rpkg/src/rust/Cargo.lock`,
-run `just configure`.
 
 ## Development workflow
 
