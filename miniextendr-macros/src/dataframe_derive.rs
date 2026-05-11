@@ -395,6 +395,10 @@ enum ResolvedField {
     ExpandedVec(Box<ExpandedVecData>),
     /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime from max row length.
     AutoExpandVec(Box<AutoExpandVecData>),
+    /// Struct field whose inner type implements `DataFrameRow` (issue #485).
+    /// Companion holds `Vec<Inner>`; `into_data_frame` calls `Inner::to_dataframe`
+    /// and flattens columns under the `<base>_` prefix.
+    Struct(Box<StructFieldData>),
 }
 
 /// Data for [`ResolvedField::Single`].
@@ -405,10 +409,16 @@ struct SingleFieldData {
     col_name: syn::Ident,
     /// Column name string.
     col_name_str: String,
-    /// Field type.
+    /// Field type stored in the companion `Vec<#ty>`. For `#[dataframe(as_list)]`
+    /// on a struct-typed field this is overridden to `::miniextendr_api::list::List`
+    /// — see `needs_into_list`.
     ty: syn::Type,
     /// Index in tuple struct (None for named).
     tuple_index: Option<syn::Index>,
+    /// `#[dataframe(as_list)]` on a struct-typed field (#485 workaround).
+    /// When `true`, the companion field type is overridden to `List` and
+    /// `From<Vec<Row>>` calls `IntoList::into_list()` on each row value.
+    needs_into_list: bool,
 }
 
 /// Data for [`ResolvedField::ExpandedFixed`].
@@ -436,6 +446,26 @@ struct ExpandedVecData {
     /// Pinned width.
     width: usize,
     /// Index in tuple struct.
+    tuple_index: Option<syn::Index>,
+}
+
+/// Data for [`ResolvedField::Struct`].
+///
+/// A struct field whose inner type implements `DataFrameRow`. The companion
+/// struct holds `Vec<Inner>` (the same type users already pass into
+/// `to_dataframe(vec![...])`). At `into_data_frame()` time the inner rows are
+/// converted via `Inner::to_dataframe` → `into_named_columns()`, prefixed with
+/// `<base_name>_`, and pushed into the parent data.frame.
+struct StructFieldData {
+    /// Rust field name (for access on the row type).
+    rust_name: syn::Ident,
+    /// Companion struct field name (ident).
+    col_name: syn::Ident,
+    /// Column name base used as the R-side prefix (`<base>_<inner_col>`).
+    col_name_str: String,
+    /// Inner struct type (used for `to_dataframe` dispatch + DataFrameRow assertion).
+    inner_ty: syn::Type,
+    /// Index in tuple struct (None for named).
     tuple_index: Option<syn::Index>,
 }
 
@@ -499,14 +529,25 @@ fn resolve_struct_field(
     let ty = &field.ty;
     let kind = classify_field_type(ty);
 
-    // as_list suppresses expansion
+    // as_list suppresses expansion. For struct-typed fields (#485 opt-out), the
+    // companion stores `Vec<List>` and From<Vec<Row>> converts each row value
+    // via `IntoList::into_list()`. For non-struct as_list fields, the existing
+    // behavior is preserved: companion stores `Vec<#ty>` and the field type is
+    // serialized natively (this requires `Vec<#ty>: IntoR`).
     if field_attrs.as_list {
+        let (final_ty, needs_into_list) = match classify_field_type(ty) {
+            FieldTypeKind::Struct { .. } => {
+                (syn::parse_quote!(::miniextendr_api::list::List), true)
+            }
+            _ => (ty.clone(), false),
+        };
         return Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
             rust_name,
             col_name,
             col_name_str,
-            ty: ty.clone(),
+            ty: final_ty,
             tuple_index,
+            needs_into_list,
         }))));
     }
 
@@ -552,12 +593,35 @@ fn resolve_struct_field(
                     col_name_str,
                     ty: ty.clone(),
                     tuple_index,
+                    needs_into_list: false,
                 }))))
             }
         }
-        // Struct-in-struct flattening is out of scope — treat as a single opaque column.
-        // See issue #459 follow-up note (Q4).
-        FieldTypeKind::Scalar | FieldTypeKind::Map { .. } | FieldTypeKind::Struct { .. } => {
+        // Struct-in-struct flattening (issue #485): inner type must implement
+        // `DataFrameRow`. Flattening happens at `into_data_frame()` time; the
+        // companion stores `Vec<Inner>`. `as_list` opts out (handled above).
+        FieldTypeKind::Struct { inner_ty } => {
+            if field_attrs.width.is_some() {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "`width` is only valid on `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
+                ));
+            }
+            if field_attrs.expand {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
+                ));
+            }
+            Ok(Some(ResolvedField::Struct(Box::new(StructFieldData {
+                rust_name,
+                col_name,
+                col_name_str,
+                inner_ty: inner_ty.clone(),
+                tuple_index,
+            }))))
+        }
+        FieldTypeKind::Scalar | FieldTypeKind::Map { .. } => {
             if field_attrs.width.is_some() {
                 return Err(syn::Error::new_spanned(
                     ty,
@@ -576,6 +640,7 @@ fn resolve_struct_field(
                 col_name_str,
                 ty: ty.clone(),
                 tuple_index,
+                needs_into_list: false,
             }))))
         }
     }
@@ -807,8 +872,8 @@ fn derive_struct_dataframe(
                     });
                 }
             }
-            // AutoExpandVec does not produce FlatCols — handled separately.
-            ResolvedField::AutoExpandVec(..) => {}
+            // AutoExpandVec / Struct do not produce FlatCols — handled separately.
+            ResolvedField::AutoExpandVec(..) | ResolvedField::Struct(..) => {}
         }
     }
     // endregion
@@ -837,6 +902,43 @@ fn derive_struct_dataframe(
     let has_auto_expand = !auto_expand_cols.is_empty();
     // endregion
 
+    // region: Collect struct (DataFrameRow-flattened) fields (#485)
+    //
+    // Only the codegen-time bits are mirrored here — `rust_name` / `tuple_index`
+    // are read directly off `ResolvedField::Struct` at the per-row pushes site.
+    struct StructCol {
+        df_field: syn::Ident,
+        col_name_str: String,
+        inner_ty: syn::Type,
+    }
+
+    let struct_cols: Vec<StructCol> = resolved
+        .iter()
+        .filter_map(|rf| {
+            if let ResolvedField::Struct(data) = rf {
+                Some(StructCol {
+                    df_field: data.col_name.clone(),
+                    col_name_str: data.col_name_str.clone(),
+                    inner_ty: data.inner_ty.clone(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    let has_struct = !struct_cols.is_empty();
+
+    // Any `#[dataframe(as_list)]` on a struct-typed field stores `List` in the
+    // companion (#485 opt-out). We can't round-trip List back to the inner
+    // struct without a `FromList`-like trait, and `List` doesn't impl
+    // `Default`, so several codegen branches need to suppress themselves:
+    // IntoIterator generation, the `IntoList` compile-time assertion, and
+    // `from_rows_par`.
+    let has_into_list_struct = resolved
+        .iter()
+        .any(|rf| matches!(rf, ResolvedField::Single(d) if d.needs_into_list));
+    // endregion
+
     // region: Companion struct
     let tag_field_decl = if has_tag {
         quote! { pub _tag: Vec<String>, }
@@ -857,8 +959,17 @@ fn derive_struct_dataframe(
         let cty = &ac.container_ty;
         df_fields_tokens.push(quote! { pub #name: Vec<#cty> });
     }
+    for sc in &struct_cols {
+        let name = &sc.df_field;
+        let ity = &sc.inner_ty;
+        df_fields_tokens.push(quote! { pub #name: Vec<#ity> });
+    }
 
-    let len_field_decl = if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
+    let len_field_decl = if flat_cols.is_empty()
+        && auto_expand_cols.is_empty()
+        && struct_cols.is_empty()
+        && !has_tag
+    {
         quote! { pub _len: usize, }
     } else {
         TokenStream::new()
@@ -882,6 +993,9 @@ fn derive_struct_dataframe(
         quote! { self.#first.len() }
     } else if !auto_expand_cols.is_empty() {
         let first = &auto_expand_cols[0].df_field;
+        quote! { self.#first.len() }
+    } else if !struct_cols.is_empty() {
+        let first = &struct_cols[0].df_field;
         quote! { self.#first.len() }
     } else {
         quote! { self._len }
@@ -907,7 +1021,7 @@ fn derive_struct_dataframe(
         })
         .collect();
 
-    let length_checks: Vec<TokenStream> = flat_cols
+    let mut length_checks: Vec<TokenStream> = flat_cols
         .iter()
         .map(|fc| {
             let name = &fc.df_field;
@@ -924,8 +1038,22 @@ fn derive_struct_dataframe(
             }
         })
         .collect();
+    for sc in &struct_cols {
+        let name = &sc.df_field;
+        let name_str = &sc.col_name_str;
+        length_checks.push(quote! {
+            assert!(
+                self.#name.len() == _n_rows,
+                "column length mismatch in {}: struct column `{}` has length {} but expected {}",
+                stringify!(#df_name),
+                #name_str,
+                self.#name.len(),
+                _n_rows,
+            );
+        });
+    }
 
-    let into_dataframe_impl = if has_auto_expand {
+    let into_dataframe_impl = if has_auto_expand || has_struct {
         // Dynamic pair building: iterate resolved fields in order,
         // emitting static pairs for flat columns and runtime-expanded
         // pairs for auto-expand fields.
@@ -1005,6 +1133,27 @@ fn derive_struct_dataframe(
                         }
                     }
                 }
+                ResolvedField::Struct(data) => {
+                    // Issue #485: convert `Vec<Inner>` via Inner::to_dataframe,
+                    // extract its named columns, and push under `<base>_` prefix.
+                    let col_name = &data.col_name;
+                    let base_name_str = &data.col_name_str;
+                    let inner_ty = &data.inner_ty;
+                    quote! {
+                        {
+                            let __inner_df = <#inner_ty>::to_dataframe(self.#col_name);
+                            let __inner_cols = ::miniextendr_api::convert::IntoDataFrame::into_named_columns(__inner_df);
+                            for (__inner_col_name, __inner_col_sexp) in __inner_cols {
+                                // Protect the source column SEXP across subsequent allocations.
+                                let __src = __scope.protect_raw(__inner_col_sexp);
+                                __df_pairs.push((
+                                    format!("{}_{}", #base_name_str, __inner_col_name),
+                                    __src,
+                                ));
+                            }
+                        }
+                    }
+                }
             })
             .collect();
 
@@ -1068,6 +1217,11 @@ fn derive_struct_dataframe(
         let cty = &ac.container_ty;
         col_vec_inits.push(quote! { let mut #name: Vec<#cty> = Vec::with_capacity(len); });
     }
+    for sc in &struct_cols {
+        let name = &sc.df_field;
+        let ity = &sc.inner_ty;
+        col_vec_inits.push(quote! { let mut #name: Vec<#ity> = Vec::with_capacity(len); });
+    }
 
     let tag_init = if has_tag {
         quote! { let mut _tag: Vec<String> = Vec::with_capacity(len); }
@@ -1093,7 +1247,11 @@ fn derive_struct_dataframe(
                     quote! { row.#rust_name }
                 };
                 let col_name = &data.col_name;
-                quote! { #col_name.push(#access); }
+                if data.needs_into_list {
+                    quote! { #col_name.push(::miniextendr_api::list::IntoList::into_list(#access)); }
+                } else {
+                    quote! { #col_name.push(#access); }
+                }
             }
             ResolvedField::ExpandedFixed(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
@@ -1144,6 +1302,16 @@ fn derive_struct_dataframe(
                 let col_name = &data.col_name;
                 quote! { #col_name.push(#access); }
             }
+            ResolvedField::Struct(data) => {
+                let access = if let Some(idx) = &data.tuple_index {
+                    quote! { row.#idx }
+                } else {
+                    let rust_name = &data.rust_name;
+                    quote! { row.#rust_name }
+                };
+                let col_name = &data.col_name;
+                quote! { #col_name.push(#access); }
+            }
         })
         .collect();
 
@@ -1153,7 +1321,11 @@ fn derive_struct_dataframe(
         TokenStream::new()
     };
 
-    let len_struct_field = if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
+    let len_struct_field = if flat_cols.is_empty()
+        && auto_expand_cols.is_empty()
+        && struct_cols.is_empty()
+        && !has_tag
+    {
         quote! { _len: len, }
     } else {
         TokenStream::new()
@@ -1168,6 +1340,10 @@ fn derive_struct_dataframe(
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
+        col_struct_fields.push(quote! { #name });
+    }
+    for sc in &struct_cols {
+        let name = &sc.df_field;
         col_struct_fields.push(quote! { #name });
     }
 
@@ -1199,7 +1375,18 @@ fn derive_struct_dataframe(
     // endregion
 
     // region: Generate from_rows_par (parallel scatter-write via ColumnWriter)
-    let from_rows_par_method = if !flat_cols.is_empty() || !auto_expand_cols.is_empty() || has_tag {
+    //
+    // Skipped in two cases:
+    //   - struct (DataFrameRow-flattened) fields are present (#485): scatter
+    //     into `Vec<Inner>` would require `Inner: Default`.
+    //   - `as_list`-on-struct fields (#485 opt-out) store `Vec<List>` in the
+    //     companion, and `List` doesn't implement `Default`.
+    // Sequential `from_rows` still works for both. Tracked for follow-up if a
+    // rayon path is actually needed.
+    let from_rows_par_method = if (!flat_cols.is_empty() || !auto_expand_cols.is_empty() || has_tag)
+        && !has_struct
+        && !has_into_list_struct
+    {
         // Column declarations: vec![default; len]
         let mut par_col_decls = Vec::new();
         if has_tag {
@@ -1268,7 +1455,11 @@ fn derive_struct_dataframe(
                         quote! { __row.#rust_name }
                     };
                     let w_name = format_ident!("__w_{}", data.col_name);
-                    quote! { #w_name.write(__i, #access); }
+                    if data.needs_into_list {
+                        quote! { #w_name.write(__i, ::miniextendr_api::list::IntoList::into_list(#access)); }
+                    } else {
+                        quote! { #w_name.write(__i, #access); }
+                    }
                 }
                 ResolvedField::ExpandedFixed(data) => {
                     let access = if let Some(idx) = &data.tuple_index {
@@ -1319,6 +1510,9 @@ fn derive_struct_dataframe(
                     let w_name = format_ident!("__w_{}", data.col_name);
                     quote! { #w_name.write(__i, #access); }
                 }
+                // Struct fields (#485) take the sequential path — `from_rows_par`
+                // generation is gated off above, so this arm is never reached.
+                ResolvedField::Struct(_) => unreachable!(),
             })
             .collect();
 
@@ -1377,8 +1571,11 @@ fn derive_struct_dataframe(
     };
 
     // ── IntoIterator (only for named non-empty structs without expansion) ─
-    let can_iterate =
-        !flat_cols.is_empty() && !is_tuple_struct && !is_unit_struct && !has_expansion;
+    let can_iterate = !flat_cols.is_empty()
+        && !is_tuple_struct
+        && !is_unit_struct
+        && !has_expansion
+        && !has_into_list_struct;
     let into_iterator_impl = if can_iterate {
         let iterator_name = format_ident!("{}Iterator", df_name);
 
@@ -1428,7 +1625,9 @@ fn derive_struct_dataframe(
             TokenStream::new()
         };
 
-        // Add default values for skipped fields in the reconstructed struct
+        // Skipped fields are reconstructed via `Default::default()` each time
+        // `next()` yields a row. This is why any field type annotated with
+        // `#[dataframe(skip)]` must implement `Default`.
         let skip_defaults: Vec<TokenStream> = skipped_fields
             .iter()
             .map(|name| quote! { , #name: Default::default() })
@@ -1511,26 +1710,49 @@ fn derive_struct_dataframe(
     };
 
     // Compile-time assertion: row type must implement IntoList
-    // Skip for unit/empty structs, tuple structs, and structs with expansion
-    let trait_check =
-        if !flat_cols.is_empty() && !is_tuple_struct && !is_unit_struct && !has_expansion {
-            quote! {
-                const _: () = {
-                    fn _assert_into_list #impl_generics () #where_clause {
-                        fn _check<T: ::miniextendr_api::list::IntoList>() {}
-                        _check::<#row_name #ty_generics>();
-                    }
-                };
-            }
-        } else {
-            TokenStream::new()
-        };
+    // Skip for unit/empty structs, tuple structs, structs with expansion,
+    // and structs that store `List`-converted struct fields (#485 as_list).
+    let trait_check = if !flat_cols.is_empty()
+        && !is_tuple_struct
+        && !is_unit_struct
+        && !has_expansion
+        && !has_into_list_struct
+    {
+        quote! {
+            const _: () = {
+                fn _assert_into_list #impl_generics () #where_clause {
+                    fn _check<T: ::miniextendr_api::list::IntoList>() {}
+                    _check::<#row_name #ty_generics>();
+                }
+            };
+        }
+    } else {
+        TokenStream::new()
+    };
 
     // Marker trait impl: struct type implements DataFrameRow via IntoDataFrame chain.
     let marker_impl = quote! {
         impl #impl_generics ::miniextendr_api::markers::DataFrameRow
             for #row_name #ty_generics #where_clause {}
     };
+
+    // Compile-time assertions for struct-flattened fields (#485): each inner
+    // type must implement `DataFrameRow`, otherwise users get a confusing
+    // error pointing at the `to_dataframe` call site instead of the field.
+    let struct_assertions: Vec<TokenStream> = struct_cols
+        .iter()
+        .map(|sc| {
+            let inner_ty = &sc.inner_ty;
+            quote! {
+                const _: () = {
+                    fn _assert_inner_is_dataframe_row<T: ::miniextendr_api::markers::DataFrameRow>() {}
+                    fn _do_assert #impl_generics () #where_clause {
+                        _assert_inner_is_dataframe_row::<#inner_ty>();
+                    }
+                };
+            }
+        })
+        .collect();
 
     Ok(quote! {
         #dataframe_struct
@@ -1541,6 +1763,7 @@ fn derive_struct_dataframe(
         #row_methods
         #trait_check
         #marker_impl
+        #(#struct_assertions)*
     })
     // endregion
 }
