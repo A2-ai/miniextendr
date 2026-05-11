@@ -165,14 +165,11 @@ miniextendr_vendor <- function(path = ".") {
   inst_dir <- usethis::proj_path("inst")
   tarball <- fs::path(inst_dir, "vendor.tar.xz")
 
-  # Step 2: strip checksums from Cargo.lock (vendored crates have empty checksums)
-  if (fs::file_exists(lockfile)) {
-    lock_content <- readLines(lockfile, warn = FALSE)
-    lock_content <- lock_content[!grepl("^checksum = ", lock_content)]
-    writeLines(lock_content, lockfile)
-  }
-
-  # Step 3: compress into inst/vendor.tar.xz
+  # Step 2: compress into inst/vendor.tar.xz
+  # Note: Cargo.lock checksum lines are intentionally retained. cargo-revendor
+  # (post PR #408) writes valid .cargo-checksum.json entries with real SHA-256s,
+  # so stripping `checksum = "..."` from Cargo.lock is no longer needed and
+  # would diverge from the `just vendor` reference output.
   cli::cli_h2("Step 2: compress vendor tarball")
   fs::dir_create(inst_dir)
 
