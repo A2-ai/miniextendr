@@ -1512,7 +1512,7 @@ fn derive_struct_dataframe(
                 }
                 // Struct fields (#485) take the sequential path — `from_rows_par`
                 // generation is gated off above, so this arm is never reached.
-                ResolvedField::Struct(_) => quote! { compile_error!("unreachable: struct fields disable from_rows_par"); },
+                ResolvedField::Struct(_) => unreachable!(),
             })
             .collect();
 
@@ -1625,7 +1625,9 @@ fn derive_struct_dataframe(
             TokenStream::new()
         };
 
-        // Add default values for skipped fields in the reconstructed struct
+        // Skipped fields are reconstructed via `Default::default()` each time
+        // `next()` yields a row. This is why any field type annotated with
+        // `#[dataframe(skip)]` must implement `Default`.
         let skip_defaults: Vec<TokenStream> = skipped_fields
             .iter()
             .map(|name| quote! { , #name: Default::default() })
