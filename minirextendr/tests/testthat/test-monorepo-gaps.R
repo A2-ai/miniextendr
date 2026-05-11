@@ -245,7 +245,7 @@ test_that("B3: use_release_workflow() with rpkg_subdir inserts working-directory
 test_that("B3: use_release_workflow() standalone produces no working-directory lines", {
   tmp <- withr::local_tempdir()
 
-  use_release_workflow(path = tmp, rpkg_subdir = "")
+  use_release_workflow(path = tmp, auto_detect_subdir = FALSE)
 
   dest <- file.path(tmp, ".github", "workflows", "r-release.yml")
   expect_true(file.exists(dest))
@@ -259,7 +259,7 @@ test_that("B3: use_release_workflow() standalone produces no working-directory l
 test_that("B3: use_release_workflow() standalone content matches bundled template", {
   tmp <- withr::local_tempdir()
 
-  use_release_workflow(path = tmp, rpkg_subdir = "")
+  use_release_workflow(path = tmp, auto_detect_subdir = FALSE)
 
   written <- readLines(file.path(tmp, ".github", "workflows", "r-release.yml"),
                        warn = FALSE)
@@ -268,6 +268,20 @@ test_that("B3: use_release_workflow() standalone content matches bundled templat
     warn = FALSE
   )
   expect_identical(written, template)
+})
+
+test_that("B3: use_release_workflow() auto_detect_subdir=FALSE on monorepo root produces no working-directory lines", {
+  tmp <- withr::local_tempdir()
+  make_minimal_monorepo(tmp, rpkg_subdir = "rpkg")
+
+  # Even with a detectable monorepo, auto_detect_subdir = FALSE forces standalone.
+  use_release_workflow(path = tmp, auto_detect_subdir = FALSE)
+
+  dest <- file.path(tmp, ".github", "workflows", "r-release.yml")
+  lines <- readLines(dest, warn = FALSE)
+  wd_lines <- grep("working-directory:", lines, value = TRUE)
+  expect_equal(length(wd_lines), 0L,
+               info = "auto_detect_subdir=FALSE should suppress monorepo detection")
 })
 
 test_that("B3: use_release_workflow() auto-detects monorepo and inserts working-directory", {

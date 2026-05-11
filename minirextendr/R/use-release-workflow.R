@@ -22,20 +22,26 @@
 #' `rpkg/`), the `bash ./configure` and `R CMD build` steps must run from inside
 #' that subdirectory. Pass `rpkg_subdir` to activate this; the generated workflow
 #' will add `working-directory: <rpkg_subdir>` to those steps. When `rpkg_subdir`
-#' is `NULL` (default), auto-detection via [detect_project_type()] is attempted.
-#' For a confirmed standalone package, auto-detection is skipped and the plain
-#' template is written unchanged.
+#' is `NULL` (default) and `auto_detect_subdir` is `TRUE` (default),
+#' auto-detection via [detect_project_type()] is attempted.
+#' For a confirmed standalone package, set `auto_detect_subdir = FALSE` to skip
+#' detection and write the plain template unchanged.
 #'
 #' @param path Path to the package root (standalone) or monorepo workspace root.
 #'   Defaults to `"."`.
 #' @param rpkg_subdir For monorepo layouts: name of the R package subdirectory
-#'   (e.g. `"rpkg"`). If `NULL` (default), auto-detected. Pass `""` or `FALSE`
-#'   to force standalone mode and suppress auto-detection.
+#'   (e.g. `"rpkg"`). If `NULL` (default) and `auto_detect_subdir` is `TRUE`,
+#'   the subdirectory is auto-detected. If a string, it is used directly
+#'   regardless of `auto_detect_subdir`.
+#' @param auto_detect_subdir If `TRUE` (default) and `rpkg_subdir` is `NULL`,
+#'   attempts to auto-detect the monorepo layout via [detect_project_type()].
+#'   Set to `FALSE` to force standalone mode and suppress auto-detection.
 #' @param overwrite If `TRUE`, replace an existing
 #'   `.github/workflows/r-release.yml`. Default `FALSE`.
 #' @return The path to the written file, invisibly.
 #' @export
 use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
+                                  auto_detect_subdir = TRUE,
                                   overwrite = FALSE) {
   dest_dir <- file.path(path, ".github", "workflows")
   dest_file <- file.path(dest_dir, "r-release.yml")
@@ -47,9 +53,14 @@ use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
     ))
   }
 
-  # Resolve rpkg_subdir: explicit "" / FALSE → standalone; NULL → auto-detect.
+  # Resolve rpkg_subdir:
+  #   - explicit string → use it directly.
+  #   - NULL + auto_detect_subdir = TRUE → attempt auto-detection.
+  #   - NULL + auto_detect_subdir = FALSE → standalone (no detection).
   resolved_subdir <- NULL
-  if (is.null(rpkg_subdir)) {
+  if (!is.null(rpkg_subdir)) {
+    resolved_subdir <- as.character(rpkg_subdir)
+  } else if (auto_detect_subdir) {
     resolved_path <- normalizePath(path, mustWork = FALSE)
     project_type <- detect_project_type(resolved_path)
     if (identical(project_type, "monorepo") &&
@@ -62,8 +73,6 @@ use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
         ))
       }
     }
-  } else if (nzchar(rpkg_subdir) && !identical(rpkg_subdir, FALSE)) {
-    resolved_subdir <- as.character(rpkg_subdir)
   }
 
   src <- system.file("templates", "r-release.yml", package = "minirextendr",
