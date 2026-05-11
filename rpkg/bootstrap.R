@@ -56,8 +56,24 @@ if (!file.exists("inst/vendor.tar.xz")) {
   cargo_lock <- file.path(rust_dir, "Cargo.lock")
   cargo_manifest <- file.path(rust_dir, "Cargo.toml")
 
+  # file.rename() returns FALSE on failure without throwing — wrap it so any
+  # rename failure is a hard error rather than a silent no-op.
+  safe_rename <- function(from, to, context) {
+    if (!isTRUE(file.rename(from, to))) {
+      stop(
+        "bootstrap.R: failed to rename ", from, " -> ", to,
+        " (", context, ")",
+        call. = FALSE
+      )
+    }
+    invisible()
+  }
+
   if (file.exists(cargo_cfg)) {
-    file.rename(cargo_cfg, cargo_cfg_backup)
+    safe_rename(
+      cargo_cfg, cargo_cfg_backup,
+      "cannot move .cargo/config.toml aside; Cargo.lock regeneration aborted"
+    )
   }
   if (file.exists(cargo_lock)) {
     file.remove(cargo_lock)
@@ -68,7 +84,13 @@ if (!file.exists("inst/vendor.tar.xz")) {
     "--manifest-path", cargo_manifest
   ))
   if (file.exists(cargo_cfg_backup)) {
-    file.rename(cargo_cfg_backup, cargo_cfg)
+    safe_rename(
+      cargo_cfg_backup, cargo_cfg,
+      paste0(
+        "cannot restore .cargo/config.toml from backup; ",
+        "manual fix required: rename ", cargo_cfg_backup, " -> ", cargo_cfg
+      )
+    )
   }
   if (lock_status != 0) {
     stop(
