@@ -17,9 +17,8 @@ minirextendr/         # Pure-R scaffolding helper for end-user packages
 tests/cross-package/  # producer.pkg / consumer.pkg — trait ABI tests
 site/                 # Zola docs → GitHub Pages
 docs/                 # Source for site/content/manual/ (1:1 generated)
-scripts/              # docs-to-site.sh, plans-to-json.sh, bump-version.sh
-plans/                # Forward-looking design notes
-reviews/              # Post-mortems on non-obvious failures (see Reviews & Plans)
+scripts/              # docs-to-site.sh, bump-version.sh
+reviews/              # Post-mortems on non-obvious failures (see Reviews)
 journal/              # Dated narrative entries (audits, sprint notes)
 analysis/             # One-off investigations / benchmarks
 faq/                  # Curated FAQ (linked from MEMORY.md)
@@ -421,8 +420,8 @@ form, search results, anything already in a commit message or memory file.
 
 **Always check `background/` for R API details before guessing.**
 
-### Reviews & Plans
+### Reviews
 
 - **Reviews** (`reviews/*.md`): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.
-- **Plans** (`plans/*.md`): forward-looking design notes. Flat priority order (no phases). Render to `site/data/plans.json` via `just site-docs` for the roadmap page.
-- **Vendor audit**: when deps change, audit `vendor/` for crates worth integrating — write a `plans/` file for any candidate (e.g., R-relevant error types, serialization, data structures).
+- **Forward-looking work lives in GitHub issues**, not plan files. Open a `gh issue create` (with the full design context in the body) for anything that isn't shippable in the current PR. Flat priority order — no phases.
+- **Vendor audit**: when deps change, audit `vendor/` for crates worth integrating — open an issue per candidate (e.g., R-relevant error types, serialization, data structures) with the integration sketch in the body.

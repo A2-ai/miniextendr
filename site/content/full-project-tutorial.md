@@ -184,4 +184,4 @@ Compared with a simple `add(a, b)` tutorial, the model project shows:
 - Read [Package Map](/manual/packages/) for the detailed relationship between workspace crates, R packages, and fixtures.
 - Read [Class Systems](/class-systems/) for env, R6, S3, S4, S7, and vctrs class generation.
 - Browse the [API reference](/api/) for per-crate rustdoc.
-- Check the [Roadmap](/roadmap/) for open issues and planned work.
+- See the [GitHub issues](https://github.com/A2-ai/miniextendr/issues) for open work.

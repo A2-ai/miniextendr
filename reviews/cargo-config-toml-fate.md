@@ -1,6 +1,6 @@
 # Investigation: rpkg/src/rust/.cargo/config.toml deletion fate
 
-Item 7 of `plans/lockfile-mode-unification.md`.
+Item 7 of the lockfile-mode-unification work (the design plan that originally tracked this item has since been retired; work shipped).
 
 ## What was attempted
 
