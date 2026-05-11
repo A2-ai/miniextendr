@@ -33,6 +33,50 @@ if (!file.exists("inst/vendor.tar.xz")) {
       call. = FALSE
     )
   }
+
+  # Regenerate Cargo.lock in tarball-shape before vendoring.
+  #
+  # In a dev monorepo checkout, .cargo/config.toml contains [patch."git+url"]
+  # overrides that redirect miniextendr-{api,lint,macros} to local workspace
+  # paths.  cargo then records `source = "path+file:///..."` entries in
+  # Cargo.lock.  Those path-source entries are invalid at offline install time
+  # (the workspace paths don't exist inside the tarball), so we must regenerate
+  # the lock against the bare git URLs before invoking cargo-revendor.
+  #
+  # Steps mirror `just vendor`:
+  #   1. Move .cargo/config.toml aside (suppress [patch] override).
+  #   2. Delete Cargo.lock so cargo resolves fresh.
+  #   3. `cargo generate-lockfile` — miniextendr-* entries get
+  #      `source = "git+https://...#<commit>"`, which is what cargo's
+  #      source-replacement mechanism needs during offline install.
+  #   4. Restore .cargo/config.toml.
+  rust_dir <- file.path(getwd(), "src", "rust")
+  cargo_cfg <- file.path(rust_dir, ".cargo", "config.toml")
+  cargo_cfg_backup <- paste0(cargo_cfg, ".tmp_bootstrap_vendor")
+  cargo_lock <- file.path(rust_dir, "Cargo.lock")
+  cargo_manifest <- file.path(rust_dir, "Cargo.toml")
+
+  if (file.exists(cargo_cfg)) {
+    file.rename(cargo_cfg, cargo_cfg_backup)
+  }
+  if (file.exists(cargo_lock)) {
+    file.remove(cargo_lock)
+  }
+  message("bootstrap.R: regenerating Cargo.lock in tarball-shape")
+  lock_status <- system2("cargo", c(
+    "generate-lockfile",
+    "--manifest-path", cargo_manifest
+  ))
+  if (file.exists(cargo_cfg_backup)) {
+    file.rename(cargo_cfg_backup, cargo_cfg)
+  }
+  if (lock_status != 0) {
+    stop(
+      "bootstrap.R: cargo generate-lockfile failed (exit ", lock_status, ")",
+      call. = FALSE
+    )
+  }
+
   message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
   dir.create("inst", showWarnings = FALSE)
   status <- system2("cargo", c(
