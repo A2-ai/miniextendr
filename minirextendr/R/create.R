@@ -234,6 +234,11 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   stub_src <- template_path("stub.c", subdir = "rpkg")
   fs::file_copy(stub_src, usethis::proj_path(rpkg_name, "src", "stub.c"), overwrite = TRUE)
   bullet_created(file.path(rpkg_name, "src", "stub.c"))
+  # r_shim.h — wraps <Rinternals.h> in a scoped clang pragma; avoids
+  # -Wno-unknown-warning-option in PKG_CFLAGS (R CMD check --as-cran WARNING)
+  shim_src <- template_path("r_shim.h", subdir = "rpkg")
+  fs::file_copy(shim_src, usethis::proj_path(rpkg_name, "src", "r_shim.h"), overwrite = TRUE)
+  bullet_created(file.path(rpkg_name, "src", "r_shim.h"))
   use_template("win.def.in", save_as = file.path(rpkg_name, "src", "win.def.in"), subdir = "rpkg")
   # cdylib-exports.def: Windows DLL symbol export for wrapper generation
   cdylib_src <- template_path("cdylib-exports.def", subdir = "rpkg")
