@@ -6,6 +6,13 @@
 # pre-seeding `vendor/miniextendr-{api,macros,lint,engine}` from a github
 # download or a local checkout is gone — Cargo.toml uses git-URL deps for
 # those crates, so they get vendored alongside every other transitive dep.
+#
+# Checksum policy (post PR #408): cargo-revendor computes real SHA-256
+# checksums into .cargo-checksum.json after CRAN-trim, and retains
+# `checksum = "..."` lines in Cargo.lock so cargo can verify vendored
+# crates match the registry entries.  Do NOT overwrite .cargo-checksum.json
+# to {"files":{}} and do NOT strip checksum lines from Cargo.lock — both
+# defeat cargo's verification and diverge from `just vendor` output.
 
 #' Run cargo revendor and CRAN-trim the result
 #'
@@ -133,12 +140,8 @@ strip_vendored_dir <- function(vendor_path) {
         fs::file_delete(f)
       }
     }
-
-    # Clear cargo-checksum.json (content was modified by stripping)
-    checksum_file <- fs::path(crate_dir, ".cargo-checksum.json")
-    if (fs::file_exists(checksum_file)) {
-      writeLines('{"files":{}}', checksum_file)
-    }
+    # .cargo-checksum.json: cargo-revendor already wrote valid SHA-256s
+    # (recomputed post-CRAN-trim in PR #408). Do not overwrite it.
   }
 
   invisible()
