@@ -215,6 +215,12 @@ AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
 AC_SUBST([ENV_RUSTFLAGS])
 
+AC_ARG_VAR([CARGO_HOME], [cargo registry/cache directory (defaults to ~/.cargo; \
+  useful in restricted environments where HOME is read-only)])
+: ${CARGO_HOME=""}
+AC_SUBST([CARGO_HOME])
+AS_IF([test -n "$CARGO_HOME"], [AC_MSG_NOTICE([CARGO_HOME           = $CARGO_HOME])])
+
 AC_ARG_VAR([CARGO_BUILD_TARGET], [Cargo build target triple (e.g. aarch64-apple-darwin)])
 if test -z "$CARGO_BUILD_TARGET"; then
   if test -n "$host" && test -n "$build" && test "$host" != "$build"; then
