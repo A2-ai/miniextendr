@@ -11,8 +11,7 @@
 //!
 //! The tagged SEXP is a 4-element named list:
 //! - `error`: error message (character scalar)
-//! - `kind`: condition kind string (`"panic"`, `"result_err"`, `"none_err"`,
-//!   `"conversion"`, `"error"`, `"warning"`, `"message"`, `"condition"`)
+//! - `kind`: condition kind string — one of the constants in [`kind`]
 //! - `class`: optional user-supplied custom class (character scalar or `NULL`)
 //! - `call`: the R call SEXP (or `NULL` if not available)
 //! - class attribute: `"rust_condition_value"`
@@ -22,6 +21,46 @@ use crate::cached_class::{
     condition_names_sexp, rust_condition_attr_symbol, rust_condition_class_sexp,
 };
 use crate::ffi::{self, SEXP, SexpExt};
+
+/// Canonical kind strings for tagged condition values.
+///
+/// These constants are emitted into the `kind` slot of
+/// [`make_rust_condition_value`] and consumed by the R-side
+/// `.miniextendr_raise_condition` switch (see
+/// `registry::write_r_wrappers_to_file`). Reference these constants
+/// from codegen and runtime sites instead of bare string literals so a
+/// typo cannot silently change which switch arm fires.
+///
+/// The constants are kept in lockstep with the generated R helper; if a new
+/// kind is added, both the emission site and the R helper need to learn it.
+pub mod kind {
+    /// Default kind for Rust panics that surface to R via the generic panic
+    /// path (no `RCondition` payload). Layered as `rust_error`.
+    pub const PANIC: &str = "panic";
+    /// `Result<_, E>::Err(...)` formatted via `Debug` (raised when the user
+    /// returns an `Err` from a `#[miniextendr]` fn/method).
+    pub const RESULT_ERR: &str = "result_err";
+    /// `Option<T>::None` reached where a value was required (raised by the
+    /// `NoneOnErr` / required-Option return paths).
+    pub const NONE_ERR: &str = "none_err";
+    /// `TryFromSexp` / coerce / strict-mode conversion failed at argument
+    /// unmarshalling.
+    pub const CONVERSION: &str = "conversion";
+    /// User-raised `error!(...)` condition.
+    pub const ERROR: &str = "error";
+    /// User-raised `warning!(...)` condition.
+    pub const WARNING: &str = "warning";
+    /// User-raised `message!(...)` condition.
+    pub const MESSAGE: &str = "message";
+    /// User-raised `condition!(...)` condition.
+    pub const CONDITION: &str = "condition";
+    /// Fallback kind written by [`super::make_rust_condition_value`] when the
+    /// caller's `kind` argument contained an interior NUL and could not be
+    /// converted to a `CString`. Should not appear in normal flow; the match
+    /// arm in [`crate::condition::RCondition::from_sexp`] handles it
+    /// defensively by degrading to `RCondition::Error`.
+    pub const OTHER_RUST_ERROR: &str = "other_rust_error";
+}
 
 /// Convert a `&str` to a `CString`, falling back to `fallback` on interior NUL bytes.
 ///
@@ -54,8 +93,7 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
 /// # Arguments
 ///
 /// * `message` - Human-readable condition message
-/// * `kind` - Condition kind: `"panic"`, `"result_err"`, `"none_err"`,
-///   `"conversion"`, `"error"`, `"warning"`, `"message"`, or `"condition"`
+/// * `kind` - Condition kind — one of the constants in [`kind`].
 /// * `class` - Optional user-supplied class name to prepend to the layered vector
 /// * `call` - Optional R call SEXP for error context. When `None`, uses `R_NilValue`.
 pub fn make_rust_condition_value(
@@ -83,7 +121,7 @@ pub fn make_rust_condition_value(
         list.set_vector_elt(0, msg_sexp);
 
         // Element 1: kind string
-        let kind_cstr = to_cstring_lossy(kind, "other_rust_error");
+        let kind_cstr = to_cstring_lossy(kind, kind::OTHER_RUST_ERROR);
         let kind_charsxp = ffi::Rf_mkCharCE(kind_cstr.as_ptr(), ffi::CE_UTF8);
         let kind_sexp = SEXP::scalar_string(kind_charsxp);
         ffi::Rf_protect(kind_sexp);

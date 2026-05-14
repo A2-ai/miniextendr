@@ -453,18 +453,19 @@ where
         Err(payload) => {
             // region: RCondition recognition — same as error_in_r path
             if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+                use crate::error_value::kind;
                 let (kind, msg, class) = match cond {
                     crate::condition::RCondition::Error { message, class } => {
-                        ("error", message.as_str(), class.as_deref())
+                        (kind::ERROR, message.as_str(), class.as_deref())
                     }
                     crate::condition::RCondition::Warning { message, class } => {
-                        ("warning", message.as_str(), class.as_deref())
+                        (kind::WARNING, message.as_str(), class.as_deref())
                     }
                     crate::condition::RCondition::Message { message } => {
-                        ("message", message.as_str(), None)
+                        (kind::MESSAGE, message.as_str(), None)
                     }
                     crate::condition::RCondition::Condition { message, class } => {
-                        ("condition", message.as_str(), class.as_deref())
+                        (kind::CONDITION, message.as_str(), class.as_deref())
                     }
                 };
                 return crate::error_value::make_rust_condition_value(msg, kind, class, None);
@@ -474,7 +475,12 @@ where
             // Generic panic path
             let msg = panic_payload_to_string(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
-            crate::error_value::make_rust_condition_value(&msg, "panic", None, None)
+            crate::error_value::make_rust_condition_value(
+                &msg,
+                crate::error_value::kind::PANIC,
+                None,
+                None,
+            )
         }
     }
 }
@@ -501,18 +507,19 @@ where
         Err(payload) => {
             // region: RCondition recognition — must come before generic panic path
             if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+                use crate::error_value::kind;
                 let (kind, msg, class) = match cond {
                     crate::condition::RCondition::Error { message, class } => {
-                        ("error", message.as_str(), class.as_deref())
+                        (kind::ERROR, message.as_str(), class.as_deref())
                     }
                     crate::condition::RCondition::Warning { message, class } => {
-                        ("warning", message.as_str(), class.as_deref())
+                        (kind::WARNING, message.as_str(), class.as_deref())
                     }
                     crate::condition::RCondition::Message { message } => {
-                        ("message", message.as_str(), None)
+                        (kind::MESSAGE, message.as_str(), None)
                     }
                     crate::condition::RCondition::Condition { message, class } => {
-                        ("condition", message.as_str(), class.as_deref())
+                        (kind::CONDITION, message.as_str(), class.as_deref())
                     }
                 };
                 // No panic telemetry for user-raised conditions — they are intentional.
@@ -523,7 +530,12 @@ where
             // Generic panic path — unchanged
             let msg = panic_payload_to_string(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
-            crate::error_value::make_rust_condition_value(&msg, "panic", None, call)
+            crate::error_value::make_rust_condition_value(
+                &msg,
+                crate::error_value::kind::PANIC,
+                None,
+                call,
+            )
         }
     }
 }
