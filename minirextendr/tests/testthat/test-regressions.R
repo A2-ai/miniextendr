@@ -279,6 +279,14 @@ test_that("miniextendr_doctor is exported", {
 # P3: ensure_dir is not duplicated
 # =============================================================================
 
+# =============================================================================
+# #523: miniextendr_vendor() must regenerate Cargo.lock before vendoring
+# (Structural test dropped: deparse(body) tests are brittle per project memory
+# rule — implementation theater, not a real fix. Behavioural coverage provided
+# by CI's functional smoke test via `just minirextendr-test`. A mock-based
+# replacement was not added because `mockery` is not in DESCRIPTION Suggests.)
+# =============================================================================
+
 test_that("ensure_dir is defined only once", {
   # Scan all R files for ensure_dir definitions
   r_dir <- system.file("R", package = "minirextendr")
