@@ -1091,6 +1091,15 @@ jobs:
       - name: Install pkgbuild
         run: Rscript -e 'install.packages("pkgbuild", repos = "https://cloud.r-project.org")'
 
+      - name: Install rv (for .Rprofile activate.R)
+        run: |
+          RV_VERSION=$(curl -sSL https://api.github.com/repos/A2-ai/rv/releases/latest | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p')
+          curl -sSL "https://github.com/A2-ai/rv/releases/download/${RV_VERSION}/rv-${RV_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/rv.tar.gz
+          # Tarball ships a flat `rv` binary at the top level — no subdir.
+          tar -xzf /tmp/rv.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/rv /usr/local/bin/rv
+          rv --version
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
