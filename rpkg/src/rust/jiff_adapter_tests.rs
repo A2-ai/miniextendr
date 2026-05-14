@@ -4,9 +4,11 @@ use miniextendr_api::ffi::{Rf_protect, Rf_unprotect, SEXP};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::{
-    JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, SignedDuration, Span, Timestamp, Zoned,
+    AltRealData, AltrepLen, JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, SignedDuration,
+    Span, Timestamp, Zoned,
 };
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 
 // region: Timestamp (POSIXct UTC)
 
@@ -389,6 +391,151 @@ pub fn jiff_time_minute(t: TimePtrType) -> i32 {
 #[miniextendr]
 pub fn jiff_time_second(t: TimePtrType) -> i32 {
     i32::from(t.0.second())
+}
+
+// endregion
+
+// region: RDate adapter trait — calendar helpers
+
+use miniextendr_api::{RDate, RTimestamp, RZoned};
+
+/// Return the ISO weekday of a civil::Date (1=Mon … 7=Sun).
+/// @param date Date scalar from R.
+#[miniextendr]
+pub fn jiff_date_weekday(date: JiffDate) -> i32 {
+    <JiffDate as RDate>::weekday(&date)
+}
+
+/// Return the ordinal day-of-year of a civil::Date (1–366).
+/// @param date Date scalar from R.
+#[miniextendr]
+pub fn jiff_date_day_of_year(date: JiffDate) -> i32 {
+    <JiffDate as RDate>::day_of_year(&date)
+}
+
+/// Return the first day of the month for a civil::Date.
+/// @param date Date scalar from R.
+#[miniextendr]
+pub fn jiff_date_first_of_month(date: JiffDate) -> JiffDate {
+    <JiffDate as RDate>::first_of_month(&date)
+}
+
+/// Return the last day of the month for a civil::Date.
+/// @param date Date scalar from R.
+#[miniextendr]
+pub fn jiff_date_last_of_month(date: JiffDate) -> JiffDate {
+    <JiffDate as RDate>::last_of_month(&date)
+}
+
+/// Return the day after a civil::Date, or error if out of range.
+/// @param date Date scalar from R.
+#[miniextendr]
+pub fn jiff_date_tomorrow(date: JiffDate) -> Result<JiffDate, String> {
+    <JiffDate as RDate>::tomorrow(&date)
+}
+
+/// Return the day before a civil::Date, or error if out of range.
+/// @param date Date scalar from R.
+#[miniextendr]
+pub fn jiff_date_yesterday(date: JiffDate) -> Result<JiffDate, String> {
+    <JiffDate as RDate>::yesterday(&date)
+}
+
+// endregion
+
+// region: RZoned adapter trait — start_of_day + strftime
+
+/// Return the start of day for a Zoned datetime (preserves timezone).
+/// @param zdt POSIXct with tzone attribute from R.
+#[miniextendr]
+pub fn jiff_zoned_start_of_day(zdt: Zoned) -> Result<Zoned, String> {
+    <Zoned as RZoned>::start_of_day(&zdt)
+}
+
+/// Format a Zoned datetime using a strftime format string.
+/// @param zdt POSIXct with tzone attribute from R.
+/// @param fmt strftime format string.
+#[miniextendr]
+pub fn jiff_zoned_strftime(zdt: Zoned, fmt: &str) -> String {
+    <Zoned as RZoned>::strftime(&zdt, fmt)
+}
+
+// endregion
+
+// region: RTimestamp adapter trait — strftime + as_millisecond
+
+/// Format a Timestamp (UTC) using a strftime format string.
+/// @param ts POSIXct (UTC) scalar from R.
+/// @param fmt strftime format string.
+#[miniextendr]
+pub fn jiff_timestamp_strftime(ts: Timestamp, fmt: &str) -> String {
+    <Timestamp as RTimestamp>::strftime(&ts, fmt)
+}
+
+/// Return the milliseconds-since-Unix-epoch for a Timestamp.
+/// @param ts POSIXct (UTC) scalar from R.
+#[miniextendr]
+pub fn jiff_timestamp_as_millisecond(ts: Timestamp) -> f64 {
+    <Timestamp as RTimestamp>::as_millisecond(&ts) as f64
+}
+
+// endregion
+
+// region: ALTREP laziness counter (item 9)
+
+static ELT_COUNTER: OnceLock<Arc<AtomicUsize>> = OnceLock::new();
+
+fn elt_counter() -> Arc<AtomicUsize> {
+    ELT_COUNTER.get_or_init(|| Arc::new(AtomicUsize::new(0))).clone()
+}
+
+#[derive(miniextendr_api::AltrepReal)]
+#[altrep(class = "JiffTimestampVecCounted", manual)]
+pub struct JiffTimestampVecCounted {
+    pub data: Arc<Vec<Timestamp>>,
+    pub counter: Arc<AtomicUsize>,
+}
+
+impl AltrepLen for JiffTimestampVecCounted {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltRealData for JiffTimestampVecCounted {
+    fn elt(&self, i: usize) -> f64 {
+        self.counter.fetch_add(1, Ordering::Relaxed);
+        let ts = &self.data[i];
+        ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+    }
+}
+
+/// Create a JiffTimestampVecCounted ALTREP and reset the elt call counter.
+/// @param n Number of elements (each is i seconds after epoch).
+#[miniextendr]
+pub fn jiff_counted_altrep(n: i32) -> SEXP {
+    let counter = elt_counter();
+    counter.store(0, Ordering::Relaxed);
+    let data: Vec<Timestamp> = (0..n)
+        .map(|i| Timestamp::new(i as i64, 0).expect("valid timestamp"))
+        .collect();
+    let vec = JiffTimestampVecCounted {
+        data: Arc::new(data),
+        counter,
+    };
+    let altrep = vec.into_sexp();
+    unsafe {
+        Rf_protect(altrep);
+        set_posixct_utc(altrep);
+        Rf_unprotect(1);
+    }
+    altrep
+}
+
+/// Return the number of times elt() has been called on the last counted ALTREP.
+#[miniextendr]
+pub fn jiff_counted_altrep_elt_count() -> i32 {
+    elt_counter().load(Ordering::Relaxed) as i32
 }
 
 // endregion
