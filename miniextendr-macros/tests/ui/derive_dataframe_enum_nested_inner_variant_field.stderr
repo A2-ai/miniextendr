@@ -31,7 +31,7 @@ error[E0080]: evaluation panicked: DataFrameRow inner-payload field collision: a
 14 | #[derive(DataFrameRow)]
    |          ^^^^^^^^^^^^ evaluation of `_` failed inside this call
    |
-note: inside `assert_no_payload_field_collision`
+note: inside `miniextendr_api::markers::assert_no_payload_field_collision`
   --> $RUST/core/src/panic.rs
    |
    |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));

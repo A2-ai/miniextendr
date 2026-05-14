@@ -204,7 +204,7 @@ pub(crate) fn generate_direct_altrep_registration(
                     });
                 }
 
-                match unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#ident #ty_generics>(&sexp) } {
+                match unsafe { ::miniextendr_api::altrep_data1_as::<#ident #ty_generics>(sexp) } {
                     Some(ptr) => Ok(#ref_ident(ptr)),
                     None => Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::EXTPTRSXP,
@@ -238,7 +238,7 @@ pub(crate) fn generate_direct_altrep_registration(
                     });
                 }
 
-                match unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#ident #ty_generics>(&sexp) } {
+                match unsafe { ::miniextendr_api::altrep_data1_as::<#ident #ty_generics>(sexp) } {
                     Some(ptr) => Ok(#mut_ident(ptr)),
                     None => Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::EXTPTRSXP,

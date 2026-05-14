@@ -2485,7 +2485,7 @@ unsafe extern "C-unwind" {
 
     // endregion
 
-    // region: ALTREP support — encapsulated by AltrepSexpExt trait methods
+    // region: ALTREP support — data2 encapsulated by AltrepSexpExt; data1 via standalone helpers
 
     // Issue #112 cat. 6: pub(crate) — no AltrepSexpExt method yet; available for future callers
     pub(crate) fn ALTREP_CLASS(x: SEXP) -> SEXP;
