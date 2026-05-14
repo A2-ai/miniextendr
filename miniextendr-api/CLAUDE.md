@@ -13,7 +13,7 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 - `worker.rs` — worker thread + `Sendable<T>`. Without `worker-thread` feature, `run_on_worker(f) → Ok(f())` inline.
 - `unwind_protect.rs` — `R_UnwindProtect` wrapper; `with_r_unwind_protect_error_in_r` is the user-facing path.
 - `error_value.rs` — tagged-SEXP transport. `make_rust_error_value` (3-elem) + `make_rust_condition_value` (4-elem, custom-class slot). PROTECT discipline matters here (see Gotchas).
-- `condition.rs` — `RCondition` enum + `error!`/`warning!`/`message!`/`condition!` macros + `RErrorAdapter<E: Error>`.
+- `condition.rs` — `RCondition` enum + `error!`/`warning!`/`message!`/`condition!` macros + `AsRError<E: Error>`.
 - `from_r.rs` — `TryFromSexp` + `r_slice` / `r_slice_mut` (handle R's 0x1 empty-vector data pointer).
 - `into_r.rs` — `IntoR` impls; `Box<[T]>` blanket + `bool`/`String` overrides.
 - `coerce.rs` / `as_coerce.rs` / `strict.rs` — conversion paths; strict-mode checked variants.

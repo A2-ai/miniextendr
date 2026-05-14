@@ -190,19 +190,19 @@ Functions that explicitly opt out of `error_in_r` via
 `Rf_errorcall` — those modes exist precisely to bypass the condition
 pipeline.
 
-## `RErrorAdapter` — wrapping `std::error::Error`
+## `AsRError` — wrapping `std::error::Error`
 
 For functions that return `Result<T, E>` where `E: std::error::Error`,
-`RErrorAdapter<E>` wraps the error and formats its full cause chain into the
+`AsRError<E>` wraps the error and formats its full cause chain into the
 message:
 
 ```rust
-use miniextendr_api::condition::RErrorAdapter;
+use miniextendr_api::condition::AsRError;
 use miniextendr_api::miniextendr;
 
 #[miniextendr]
-fn parse_number(s: &str) -> Result<i32, RErrorAdapter<std::num::ParseIntError>> {
-    s.parse::<i32>().map_err(RErrorAdapter)
+fn parse_number(s: &str) -> Result<i32, AsRError<std::num::ParseIntError>> {
+    s.parse::<i32>().map_err(AsRError)
 }
 ```
 

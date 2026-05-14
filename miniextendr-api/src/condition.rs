@@ -7,7 +7,7 @@
 //!    `with_r_unwind_protect_error_in_r` before the generic panic→error path,
 //!    then forwarded to R as a structured condition with `rust_*` class layering.
 //!
-//! 2. **[`RErrorAdapter`] struct** — wraps any `E: std::error::Error` and
+//! 2. **[`AsRError`] struct** — wraps any `E: std::error::Error` and
 //!    preserves the full error chain (cause/source) when converting to an R
 //!    error message. Use as the `Err` type in `Result` returns.
 //!
@@ -55,14 +55,14 @@
 //! # [1] "caught!"
 //! ```
 //!
-//! # `RErrorAdapter`
+//! # `AsRError`
 //!
 //! ```ignore
-//! use miniextendr_api::condition::RErrorAdapter;
+//! use miniextendr_api::condition::AsRError;
 //!
 //! #[miniextendr]
-//! fn parse_config(path: &str) -> Result<i32, RErrorAdapter<std::io::Error>> {
-//!     let content = std::fs::read_to_string(path).map_err(RErrorAdapter)?;
+//! fn parse_config(path: &str) -> Result<i32, AsRError<std::io::Error>> {
+//!     let content = std::fs::read_to_string(path).map_err(AsRError)?;
 //!     Ok(content.len() as i32)
 //! }
 //! ```
@@ -418,7 +418,7 @@ pub unsafe fn repanic_if_rust_error(sexp: crate::ffi::SEXP) {
 
 // endregion
 
-// region: RErrorAdapter struct — wraps std::error::Error for Result returns
+// region: AsRError struct — wraps std::error::Error for Result returns
 
 /// Structured error wrapper that preserves the `std::error::Error` cause chain.
 ///
@@ -429,29 +429,29 @@ pub unsafe fn repanic_if_rust_error(sexp: crate::ffi::SEXP) {
 ///   caused by: root cause
 /// ```
 ///
-/// Implements `From<E>` so it works with `?` and `.map_err(RErrorAdapter)`.
+/// Implements `From<E>` so it works with `?` and `.map_err(AsRError)`.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::condition::RErrorAdapter;
+/// use miniextendr_api::condition::AsRError;
 /// use std::num::ParseIntError;
 ///
 /// #[miniextendr]
-/// fn parse_number(s: &str) -> Result<i32, RErrorAdapter<ParseIntError>> {
-///     s.parse::<i32>().map_err(RErrorAdapter)
+/// fn parse_number(s: &str) -> Result<i32, AsRError<ParseIntError>> {
+///     s.parse::<i32>().map_err(AsRError)
 /// }
 /// ```
-pub struct RErrorAdapter<E: std::error::Error>(pub E);
+pub struct AsRError<E: std::error::Error>(pub E);
 
-impl<E: std::error::Error> From<E> for RErrorAdapter<E> {
+impl<E: std::error::Error> From<E> for AsRError<E> {
     #[inline]
     fn from(err: E) -> Self {
-        RErrorAdapter(err)
+        AsRError(err)
     }
 }
 
-impl<E: std::error::Error> std::fmt::Display for RErrorAdapter<E> {
+impl<E: std::error::Error> std::fmt::Display for AsRError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Write the top-level message
         write!(f, "{}", self.0)?;
@@ -467,13 +467,13 @@ impl<E: std::error::Error> std::fmt::Display for RErrorAdapter<E> {
     }
 }
 
-impl<E: std::error::Error> std::fmt::Debug for RErrorAdapter<E> {
+impl<E: std::error::Error> std::fmt::Debug for AsRError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "RErrorAdapter<{}>({})", std::any::type_name::<E>(), self)
+        write!(f, "AsRError<{}>({})", std::any::type_name::<E>(), self)
     }
 }
 
-impl<E: std::error::Error> RErrorAdapter<E> {
+impl<E: std::error::Error> AsRError<E> {
     /// Get the inner error.
     #[inline]
     pub fn into_inner(self) -> E {
