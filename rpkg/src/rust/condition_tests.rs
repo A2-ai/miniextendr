@@ -1,19 +1,19 @@
-//! Test fixtures for RErrorAdapter structured error adapter.
+//! Test fixtures for AsRError structured error adapter.
 
-use miniextendr_api::condition::RErrorAdapter;
+use miniextendr_api::condition::AsRError;
 use miniextendr_api::miniextendr;
 
 // region: Simple errors
 
 /// @export
 #[miniextendr]
-pub fn test_condition_parse_int(s: &str) -> Result<i32, RErrorAdapter<std::num::ParseIntError>> {
-    s.parse::<i32>().map_err(RErrorAdapter)
+pub fn test_condition_parse_int(s: &str) -> Result<i32, AsRError<std::num::ParseIntError>> {
+    s.parse::<i32>().map_err(AsRError)
 }
 
 /// @export
 #[miniextendr]
-pub fn test_condition_ok() -> Result<i32, RErrorAdapter<std::num::ParseIntError>> {
+pub fn test_condition_ok() -> Result<i32, AsRError<std::num::ParseIntError>> {
     Ok(42)
 }
 
@@ -41,9 +41,9 @@ impl std::error::Error for ConfigError {
 
 /// @export
 #[miniextendr]
-pub fn test_condition_chained(s: &str) -> Result<i32, RErrorAdapter<ConfigError>> {
+pub fn test_condition_chained(s: &str) -> Result<i32, AsRError<ConfigError>> {
     let value = s.parse::<i32>().map_err(|e| {
-        RErrorAdapter(ConfigError {
+        AsRError(ConfigError {
             msg: format!("failed to parse '{s}' as max_threads"),
             source: e,
         })

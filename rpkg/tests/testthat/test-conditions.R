@@ -1,23 +1,23 @@
-# Tests for the condition macro system and RErrorAdapter
+# Tests for the condition macro system and AsRError
 
-# region: RErrorAdapter structured error adapter (legacy path)
+# region: AsRError structured error adapter (legacy path)
 
-test_that("RErrorAdapter propagates parse error", {
+test_that("AsRError propagates parse error", {
   expect_error(test_condition_parse_int("not_a_number"), "invalid digit")
 })
 
-test_that("RErrorAdapter passes through on success", {
+test_that("AsRError passes through on success", {
   expect_equal(test_condition_ok(), 42L)
 })
 
-test_that("RErrorAdapter includes cause chain in error message", {
+test_that("AsRError includes cause chain in error message", {
   err <- tryCatch(test_condition_chained("abc"), error = function(e) e)
   expect_true(grepl("config error", err$message))
   expect_true(grepl("caused by", err$message))
   expect_true(grepl("invalid digit", err$message))
 })
 
-test_that("RErrorAdapter chained succeeds on valid input", {
+test_that("AsRError chained succeeds on valid input", {
   expect_equal(test_condition_chained("8"), 8L)
 })
 
