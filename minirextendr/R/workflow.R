@@ -156,8 +156,67 @@ miniextendr_vendor <- function(path = ".") {
   with_project(path)
   cli::cli_h1("miniextendr vendor workflow")
 
-  # Step 1: cargo revendor + CRAN-trim (delegates to vendor_crates_io)
-  cli::cli_h2("Step 1: vendor all dependencies")
+  # Step 1: regenerate Cargo.lock in tarball-shape.
+  #
+  # In a monorepo dev checkout .cargo/config.toml carries [patch."git+url"]
+  # overrides that redirect miniextendr-{api,lint,macros} to local paths.
+  # cargo records those as `source = "path+file:///..."` in Cargo.lock, which
+  # are invalid at offline install time (the paths don't exist inside the
+  # tarball). Regenerate the lock against the bare git URLs before vendoring.
+  #
+  # Mirrors the same dance in `just vendor` and `bootstrap.R` (PR #526).
+  cli::cli_h2("Step 1: regenerate Cargo.lock in tarball-shape")
+
+  rust_dir      <- usethis::proj_path("src", "rust")
+  cargo_cfg     <- fs::path(rust_dir, ".cargo", "config.toml")
+  cargo_cfg_bak <- paste0(cargo_cfg, ".tmp_vendor")
+  cargo_lock    <- fs::path(rust_dir, "Cargo.lock")
+  cargo_toml    <- fs::path(rust_dir, "Cargo.toml")
+
+  if (!fs::file_exists(cargo_toml)) {
+    cli::cli_abort(c(
+      "{.path src/rust/Cargo.toml} not found",
+      "i" = "Run {.code miniextendr_configure()} first"
+    ))
+  }
+
+  if (fs::file_exists(cargo_cfg)) {
+    safe_rename(
+      cargo_cfg, cargo_cfg_bak,
+      "cannot move .cargo/config.toml aside; Cargo.lock regeneration aborted"
+    )
+  }
+  if (fs::file_exists(cargo_lock)) {
+    fs::file_delete(cargo_lock)
+  }
+
+  cli::cli_alert("Regenerating {.path src/rust/Cargo.lock} without monorepo overrides...")
+  lock_status <- system2("cargo", c(
+    "generate-lockfile",
+    "--manifest-path", cargo_toml
+  ))
+
+  # Restore config regardless of lock_status — restore first, then error.
+  if (fs::file_exists(cargo_cfg_bak)) {
+    safe_rename(
+      cargo_cfg_bak, cargo_cfg,
+      paste0(
+        "cannot restore .cargo/config.toml from backup; ",
+        "manual fix required: rename ", cargo_cfg_bak, " -> ", cargo_cfg
+      )
+    )
+  }
+
+  if (lock_status != 0) {
+    cli::cli_abort(c(
+      "{.code cargo generate-lockfile} failed (exit {lock_status})",
+      "i" = "Check the output above for details"
+    ))
+  }
+  cli::cli_alert_success("Cargo.lock regenerated in tarball-shape")
+
+  # Step 2: cargo revendor + CRAN-trim (delegates to vendor_crates_io)
+  cli::cli_h2("Step 2: vendor all dependencies")
   vendor_crates_io()
 
   vendor_dir <- usethis::proj_path("vendor")
@@ -165,12 +224,12 @@ miniextendr_vendor <- function(path = ".") {
   inst_dir <- usethis::proj_path("inst")
   tarball <- fs::path(inst_dir, "vendor.tar.xz")
 
-  # Step 2: compress into inst/vendor.tar.xz
+  # Step 3: compress into inst/vendor.tar.xz
   # Note: Cargo.lock checksum lines are intentionally retained. cargo-revendor
   # (post PR #408) writes valid .cargo-checksum.json entries with real SHA-256s,
   # so stripping `checksum = "..."` from Cargo.lock is no longer needed and
   # would diverge from the `just vendor` reference output.
-  cli::cli_h2("Step 2: compress vendor tarball")
+  cli::cli_h2("Step 3: compress vendor tarball")
   fs::dir_create(inst_dir)
 
   # Create staging directory for clean compression

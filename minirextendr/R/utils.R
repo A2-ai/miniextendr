@@ -625,3 +625,28 @@ is_miniextendr_package <- function() {
 bullet_created <- function(path, verb = "Created") {
   cli::cli_alert_success("{verb} {.path {path}}")
 }
+
+#' Rename a file, hard-failing on any error
+#'
+#' `file.rename()` returns `FALSE` on failure without throwing — this wrapper
+#' converts any failure into a hard error so callers never silently swallow a
+#' rename that did not happen (important on Windows where renames are
+#' non-atomic and can fail when the target is locked).
+#'
+#' NOTE: `bootstrap.R` carries an identical inline copy of this helper because
+#' it is a standalone script (not a package), not a package function. See #523.
+#'
+#' @param from Source path.
+#' @param to Destination path.
+#' @param context Human-readable context string included in the error message.
+#' @return Invisibly.
+#' @noRd
+safe_rename <- function(from, to, context) {
+  if (!isTRUE(file.rename(from, to))) {
+    cli::cli_abort(c(
+      "Failed to rename {.path {from}} -> {.path {to}}",
+      "x" = context
+    ))
+  }
+  invisible()
+}
