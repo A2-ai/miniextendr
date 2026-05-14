@@ -231,6 +231,7 @@ Absent-variant rows produce `NULL` in both columns (not NA). An empty map produc
 
 - **Type aliases**: `type Counts = HashMap<String, i32>; field: Counts` — the last segment is `Counts`, not `HashMap`, so map expansion is not triggered. Use the concrete type directly, or annotate with `#[dataframe(as_list)]` and handle the named-list in R.
 - **`Option<HashMap<K,V>>`**: the outer segment is `Option` with one type argument, so the two-argument `HashMap`/`BTreeMap` guard is never reached. Unwrap the `Option` before storing (e.g., store `HashMap<K,V>` and push an empty map for the `None` case), or annotate with `#[dataframe(as_list)]`.
+- **`Option<UserStruct>`** where `UserStruct: DataFrameRow` — silently degrades to Scalar instead of recursively flattening. Tracked under [#484](https://github.com/A2-ai/miniextendr/issues/484).
 
 Note: multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field or an import alias to a newtype wrapper if a non-DataFrameRow stdlib type needs to be stored.
 
