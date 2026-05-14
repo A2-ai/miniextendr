@@ -492,7 +492,9 @@ mod worker_channel {
             // the loop (e.g., after an R longjmp consumed the last WorkRequest).
             let to_send: Result<Box<dyn Any + Send>, String> = match result {
                 Ok(val) => Ok(Box::new(val)),
-                Err(payload) => Err(crate::unwind_protect::panic_payload_to_string(&*payload)),
+                Err(payload) => {
+                    Err(crate::unwind_protect::panic_payload_to_string(&*payload).into_owned())
+                }
             };
             let _ = worker_tx.send(WorkerMessage::Done(to_send));
         });
@@ -598,7 +600,8 @@ mod worker_channel {
                             Ok(_) => {
                                 // Check if trampoline caught a panic
                                 if let Some(payload) = data.panic_payload.take() {
-                                    Err(crate::unwind_protect::panic_payload_to_string(&*payload))
+                                    Err(crate::unwind_protect::panic_payload_to_string(&*payload)
+                                        .into_owned())
                                 } else {
                                     // Normal completion - return the result
                                     Ok(data
@@ -614,7 +617,8 @@ mod worker_channel {
                                     ffi::R_ContinueUnwind(token);
                                 }
                                 // Rust panic - return as error response
-                                Err(crate::unwind_protect::panic_payload_to_string(&*payload))
+                                Err(crate::unwind_protect::panic_payload_to_string(&*payload)
+                                    .into_owned())
                             }
                         }
                     };

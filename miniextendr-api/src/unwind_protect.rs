@@ -15,6 +15,7 @@
 //! error paths.
 use std::{
     any::Any,
+    borrow::Cow,
     ffi::c_void,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::OnceLock,
@@ -163,17 +164,22 @@ pub(crate) fn get_continuation_token() -> SEXP {
 
 /// Extract a message from a panic payload.
 ///
-/// Handles `&str`, `String`, and `&String` payloads consistently.
-/// Returns a descriptive fallback for unrecognised payload types.
-pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> String {
+/// Handles `&str`, `String`, and `&String` payloads consistently. The borrowed
+/// variants are returned as `Cow::Borrowed`, so the common `panic!("literal")`
+/// case avoids the heap allocation that a `String` return would force.
+/// Unrecognised payload types fall back to a `Cow::Borrowed` static string.
+///
+/// Call `.into_owned()` (or `.to_string()`) at sites that need an owned
+/// `String`.
+pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
     if let Some(&s) = payload.downcast_ref::<&str>() {
-        s.to_string()
+        Cow::Borrowed(s)
     } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
+        Cow::Borrowed(s.as_str())
     } else if let Some(s) = payload.downcast_ref::<&String>() {
-        (*s).clone()
+        Cow::Borrowed(s.as_str())
     } else {
-        "unknown panic".to_string()
+        Cow::Borrowed("unknown panic")
     }
 }
 
