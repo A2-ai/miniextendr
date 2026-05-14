@@ -1271,6 +1271,18 @@ pub(super) fn derive_enum_dataframe(
     }
 
     // Struct literal initializer for the PhantomData field, when emitted.
+    //
+    // `phantom_field` is:
+    //   - Empty when the companion struct has at least one real field (tag or
+    //     column), or when there are no generic type parameters (const-param
+    //     enums don't need PhantomData — Rust allows unused const params).
+    //   - Non-empty only when the struct would otherwise have *zero* fields AND
+    //     the enum carries at least one type parameter `T`, where the generated
+    //     `PhantomData<T>` field prevents E0392 ("unused type parameter") on the
+    //     companion struct.  In practice this path is only reachable if the user
+    //     somehow has a type-generic unit-only enum; Rust's own E0392 rule blocks
+    //     such enums at the user-definition level, so this branch is a defensive
+    //     guard for hypothetical macro-generated enum inputs.
     let phantom_struct_field_init = if phantom_field.is_empty() {
         TokenStream::new()
     } else {
