@@ -1060,6 +1060,57 @@ jobs:
           retention-days: 7
 
   # ===========================================================================
+  # Bootstrap vendor regression test (#441 latch)
+  # ===========================================================================
+  bootstrap-vendor-test:
+    name: Bootstrap Vendor Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install pkgbuild
+        run: Rscript -e 'install.packages("pkgbuild", repos = "https://cloud.r-project.org")'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          # bootstrap.R calls cargo-revendor which calls `cargo metadata` on the
+          # rpkg workspace — cache that workspace's target dir.
+          workspaces: rpkg/src/rust -> target
+          shared-key: bootstrap-vendor-test
+          cache-on-failure: true
+
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
+      - name: Run bootstrap-vendor regression test
+        run: just test-bootstrap-vendor
+
+  # ===========================================================================
   # Summary job (for branch protection)
   # ===========================================================================
   ci-success:
@@ -1077,6 +1128,7 @@ jobs:
       - cross-package-tests
       - minirextendr
       - cran-check
+      - bootstrap-vendor-test
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -1095,6 +1147,7 @@ jobs:
             "${{ needs.cross-package-tests.result }}"
             "${{ needs.minirextendr.result }}"
             "${{ needs.cran-check.result }}"
+            "${{ needs.bootstrap-vendor-test.result }}"
           )
           for result in "${results[@]}"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
