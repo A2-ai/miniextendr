@@ -1,0 +1,49 @@
+warning: unexpected `cfg` condition value: `rayon`
+ --> tests/ui/derive_dataframe_enum_nested_inner_variant_field_custom_tag.rs:7:24
+  |
+7 | #[derive(Clone, Debug, DataFrameRow)]
+  |                        ^^^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `default-coerce`, `default-r6`, `default-s7`, `default-strict`, `default-worker`, `doc-lint`, and `vctrs`
+  = note: using a cfg inside a derive macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `DataFrameRow` crate for guidance on how handle this unexpected cfg
+  = help: the derive macro `DataFrameRow` may come from an old version of the `miniextendr_macros` crate, try updating your dependency with `cargo update -p miniextendr_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+  = note: this warning originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `rayon`
+  --> tests/ui/derive_dataframe_enum_nested_inner_variant_field_custom_tag.rs:15:10
+   |
+15 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default-coerce`, `default-r6`, `default-s7`, `default-strict`, `default-worker`, `doc-lint`, and `vctrs`
+   = note: using a cfg inside a derive macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `DataFrameRow` crate for guidance on how handle this unexpected cfg
+   = help: the derive macro `DataFrameRow` may come from an old version of the `miniextendr_macros` crate, try updating your dependency with `cargo update -p miniextendr_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0080]: evaluation panicked: DataFrameRow inner-payload field collision: an inner enum payload field has the same name as the inner enum's discriminant tag. After outer prefix expansion this produces two columns with identical names, causing silent data corruption. Rename the inner payload field or add `#[dataframe(rename = "...")]` on it to use a different column name.
+  --> tests/ui/derive_dataframe_enum_nested_inner_variant_field_custom_tag.rs:15:10
+   |
+15 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `assert_no_payload_field_collision`
+  --> $RUST/core/src/panic.rs
+   |
+   |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: $WORKSPACE/miniextendr-api/src/markers.rs
+   |
+   | /             panic!(
+   | |                 "DataFrameRow inner-payload field collision: an inner enum payload field \
+   | |                  has the same name as the inner enum's discriminant tag. After outer prefix \
+   | |                  expansion this produces two columns with identical names, causing silent \
+   | |                  data corruption. Rename the inner payload field or add \
+   | |                  `#[dataframe(rename = \"...\")]` on it to use a different column name."
+   | |             );
+   | |_____________- in this macro invocation

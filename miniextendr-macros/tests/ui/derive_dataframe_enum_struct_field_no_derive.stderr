@@ -79,3 +79,21 @@ note: required by a bound in `_assert_inner_is_dataframe_row`
 11 | #[derive(DataFrameRow)]
    |          ^^^^^^^^^^^^ required by this bound in `_assert_inner_is_dataframe_row`
    = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Point: DataFramePayloadFields` is not satisfied
+  --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:14:32
+   |
+14 |     Located { id: i32, origin: Point },
+   |                                ^^^^^ unsatisfied trait bound
+   |
+help: the trait `DataFramePayloadFields` is not implemented for `Point`
+  --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:6:1
+   |
+ 6 | struct Point {
+   | ^^^^^^^^^^^^
+help: the trait `DataFramePayloadFields` is implemented for `Event`
+  --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:11:10
+   |
+11 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)

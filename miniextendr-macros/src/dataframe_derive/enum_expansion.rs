@@ -230,25 +230,25 @@ pub(super) fn derive_enum_dataframe(
                         }
                     }
                 }
-                // B1: Check for `<base>_variant` discriminant column collision.
+                // B1: Check for `<base>_<inner_tag>` discriminant column collision.
                 //
                 // When a Struct field `kind: Inner` is flattened, the inner enum's
                 // discriminant column (tag) is emitted under `<base>_<inner_tag>`.
-                // If the inner enum uses `#[dataframe(tag = "variant")]` (recommended),
-                // the outer discriminant column becomes `kind_variant`.  If any sibling
-                // field in the same variant is also named `kind_variant` (or renames to
-                // that), the two fields would produce the same R column name — a runtime
-                // collision that is undetectable without this check.
+                // The inner tag is retrieved at runtime from
+                // `<Inner as DataFramePayloadFields>::TAG`; the B1 check here uses the
+                // hardcoded default `"variant"` for compile-time sibling detection because
+                // we cannot inspect inner enum attributes from the outer macro parse phase.
+                // The per-inner-field payload collision is caught separately via the
+                // `const _:` assertions emitted below (using `DataFramePayloadFields`).
                 //
-                // We detect the following cases at compile time:
-                //   1. Struct field `kind: Inner` + Single/Scalar field `kind_variant`
-                //   2. Struct field `kind: Inner` + another Struct field that would
-                //      produce `kind_variant` (e.g. if a field is renamed to `kind_variant`)
+                // We detect the following cases at compile time (both using "variant"):
+                //   1. Struct field `kind: Inner` + Single/Scalar sibling named `kind_variant`
+                //   2. Struct field `kind: Inner` + another Struct sibling field renamed to
+                //      produce `kind_variant`
                 //
-                // Inner-enum-internal collision (Inner has both `tag = "variant"` AND
-                // payload field `variant`) cannot be detected here — that requires
-                // inspecting Inner's own resolved columns.  Document this as a carve-out
-                // in DATAFRAME.md.
+                // Inner-enum-internal collision (Inner has both `tag = "X"` AND payload
+                // field `X`) is caught by the `assert_no_payload_field_collision` const
+                // assertion emitted below — no carve-out needed.
                 {
                     // Collect every flat column name produced by non-Struct resolved fields.
                     let flat_col_names: Vec<String> = resolved
@@ -269,6 +269,9 @@ pub(super) fn derive_enum_dataframe(
 
                     for r in &resolved {
                         if let EnumResolvedField::Struct(struct_data) = r {
+                            // Use hardcoded "variant" for the sibling check — this is the
+                            // default inner tag. The inner-payload collision for non-default
+                            // tags is caught by assert_no_payload_field_collision below.
                             let discriminant_col = format!("{}_variant", struct_data.base_name);
                             if flat_col_names.contains(&discriminant_col) {
                                 // Find the colliding field for a better span.
@@ -1017,6 +1020,28 @@ pub(super) fn derive_enum_dataframe(
             }
         })
         .collect();
+
+    // Payload collision assertions (#486): one per nested-enum struct field.
+    // For each `kind: Inner` field, emit:
+    //   const _: () = ::miniextendr_api::markers::assert_no_payload_field_collision(
+    //       <Inner as DataFramePayloadFields>::FIELDS,
+    //       <Inner as DataFramePayloadFields>::TAG,
+    //   );
+    // This fires a compile-time panic if any inner payload field name equals the
+    // inner enum's own tag suffix, which would (after outer prefix expansion) produce
+    // a column name identical to the outer discriminant column.
+    let payload_collision_assertions: Vec<TokenStream> = struct_cols
+        .iter()
+        .map(|sc| {
+            let inner_ty = &sc.inner_ty;
+            quote! {
+                const _: () = ::miniextendr_api::markers::assert_no_payload_field_collision(
+                    <#inner_ty as ::miniextendr_api::markers::DataFramePayloadFields>::FIELDS,
+                    <#inner_ty as ::miniextendr_api::markers::DataFramePayloadFields>::TAG,
+                );
+            }
+        })
+        .collect();
     // endregion
 
     // region: Generate From<Vec<Enum>>
@@ -1545,6 +1570,36 @@ pub(super) fn derive_enum_dataframe(
             for #row_name #ty_generics #where_clause {}
     };
 
+    // DataFramePayloadFields impl (#486): exposes FIELDS (all resolved column names,
+    // deduplicated) and TAG for compile-time collision detection by outer enums.
+    // FIELDS lists every single-column payload field name across all variants.
+    // TAG is the inner enum's #[dataframe(tag = "...")] value (or "" if absent).
+    let payload_fields_impl = {
+        // Collect unique field names from all variant payload fields (single columns only).
+        // We skip expanded (fixed/vec) and struct fields — only direct column contributions.
+        let mut field_names: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for vi in &variant_infos {
+            for erf in &vi.fields {
+                if let EnumResolvedField::Single(data) = erf {
+                    let name = data.col_name.to_string();
+                    if seen.insert(name.clone()) {
+                        field_names.push(name);
+                    }
+                }
+            }
+        }
+        let tag_str = attrs.tag.as_deref().unwrap_or("");
+        quote! {
+            impl #impl_generics ::miniextendr_api::markers::DataFramePayloadFields
+                for #row_name #ty_generics #where_clause
+            {
+                const FIELDS: &'static [&'static str] = &[#(#field_names),*];
+                const TAG: &'static str = #tag_str;
+            }
+        }
+    };
+
     // region: unit-only enum factor impls
     // For a unit-only enum (all variants are unit), auto-emit:
     //   1. `impl UnitEnumFactor for Self`  — provides FACTOR_LEVELS and to_factor_index()
@@ -1635,7 +1690,9 @@ pub(super) fn derive_enum_dataframe(
         #row_methods
         #split_method
         #marker_impl
+        #payload_fields_impl
         #(#struct_assertions)*
+        #(#payload_collision_assertions)*
         #unit_only_factor_impls
     })
     // endregion
