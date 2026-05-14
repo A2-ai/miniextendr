@@ -281,23 +281,11 @@ test_that("miniextendr_doctor is exported", {
 
 # =============================================================================
 # #523: miniextendr_vendor() must regenerate Cargo.lock before vendoring
+# (Structural test dropped: deparse(body) tests are brittle per project memory
+# rule — implementation theater, not a real fix. Behavioural coverage provided
+# by CI's functional smoke test via `just minirextendr-test`. A mock-based
+# replacement was not added because `mockery` is not in DESCRIPTION Suggests.)
 # =============================================================================
-
-test_that("miniextendr_vendor body includes lock-regen before vendor_crates_io", {
-  # Regression: miniextendr_vendor() was missing the cargo generate-lockfile
-  # dance that just vendor and bootstrap.R both perform. Without it, a monorepo
-  # dev checkout could produce a tarball with path+file:// Cargo.lock entries
-  # that break offline CRAN install. See #523.
-  body_src <- deparse(body(miniextendr_vendor))
-  gen_lock_line  <- grep("generate-lockfile", body_src)
-  vendor_call_line <- grep("vendor_crates_io", body_src)
-  expect_gt(length(gen_lock_line), 0,
-    label = "generate-lockfile must appear in miniextendr_vendor body")
-  expect_gt(length(vendor_call_line), 0,
-    label = "vendor_crates_io must appear in miniextendr_vendor body")
-  expect_lt(gen_lock_line[1], vendor_call_line[1],
-    label = "generate-lockfile must come before vendor_crates_io")
-})
 
 test_that("ensure_dir is defined only once", {
   # Scan all R files for ensure_dir definitions

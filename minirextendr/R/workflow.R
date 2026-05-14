@@ -169,7 +169,7 @@ miniextendr_vendor <- function(path = ".") {
 
   rust_dir      <- usethis::proj_path("src", "rust")
   cargo_cfg     <- fs::path(rust_dir, ".cargo", "config.toml")
-  cargo_cfg_bak <- paste0(cargo_cfg, ".tmp_vendor")
+  cargo_cfg_bak <- paste0(cargo_cfg, ".tmp_bootstrap_vendor")
   cargo_lock    <- fs::path(rust_dir, "Cargo.lock")
   cargo_toml    <- fs::path(rust_dir, "Cargo.toml")
 
