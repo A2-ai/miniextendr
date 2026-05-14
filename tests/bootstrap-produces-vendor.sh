@@ -32,8 +32,12 @@ rm -f rpkg/inst/vendor.tar.xz
 TMP_LIB=$(mktemp -d)
 trap 'rm -rf "$TMP_LIB" rpkg/inst/vendor.tar.xz miniextendr_*.tar.gz' EXIT
 
+# Preserve the original R_LIBS_USER so packages installed there (e.g. pkgbuild
+# itself, installed by CI before this script runs) remain visible even though
+# we override R_LIBS_USER to a temp dir for the build output.
+ORIG_LIBS_USER="${R_LIBS_USER:-}"
 R_LIBS_USER="$TMP_LIB" Rscript -e \
-  ".libPaths(c('${TMP_LIB}', .libPaths())); pkgbuild::build('rpkg', dest_path = '.')"
+  ".libPaths(unique(c('${TMP_LIB}', '${ORIG_LIBS_USER}', .libPaths()))); pkgbuild::build('rpkg', dest_path = '.')"
 
 # Find the produced tarball (pkgbuild writes miniextendr_X.Y.Z.tar.gz).
 TARBALL=$(ls -t miniextendr_*.tar.gz 2>/dev/null | head -n1)
