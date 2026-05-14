@@ -1354,67 +1354,136 @@ macro_rules! impl_altcomplex_from_data {
 }
 // endregion
 
+// region: Meta-macros for built-in ALTREP family instantiation
+//
+// `impl_builtin_altrep_family!` is a single declarative meta-macro that maps a
+// (type, family, dataptr-mode) triple to the correct per-family `impl_alt*_from_data!`
+// call.  All built-in types use `serialize` because they implement `AltrepSerialize`.
+//
+// ## Families
+//
+// | Token     | Delegates to               |
+// |-----------|----------------------------|
+// | `integer` | `impl_altinteger_from_data!` |
+// | `real`    | `impl_altreal_from_data!`    |
+// | `logical` | `impl_altlogical_from_data!` |
+// | `raw`     | `impl_altraw_from_data!`     |
+// | `string`  | `impl_altstring_from_data!`  |
+// | `complex` | `impl_altcomplex_from_data!` |
+//
+// ## Dataptr modes
+//
+// | Token         | Meaning                                                     |
+// |---------------|-------------------------------------------------------------|
+// | `dataptr`     | Type has a direct contiguous pointer (`RNativeType` backed) |
+// | `materializing` | No direct pointer; materializes into data2 on first access  |
+//
+// The `materializing` arm expands to `materializing_dataptr, serialize` in the
+// underlying macro (bool→i32 conversion, Range compute-on-access, etc.).
+// Both arms preserve `const GUARD = AltrepGuard::RUnwind` — the default from
+// `__impl_altrep_base!` and `__impl_altrep_base_with_serialize!`.
+//
+// ## Corner cases NOT handled by this macro
+//
+// - `[T; N]` const-generic arrays: use const generics (`impl<const N>`); left in the
+//   "Array implementations" region below.
+// - `&'static [T]` static slices: unique lifetime + writable-assert pattern; left in
+//   the "Static slice implementations" region below.
+
+#[doc(hidden)]
+macro_rules! impl_builtin_altrep_family {
+    // dataptr arm — type has a direct contiguous native pointer
+    ($ty:ty, integer, dataptr) => {
+        $crate::impl_altinteger_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, real, dataptr) => {
+        $crate::impl_altreal_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, logical, dataptr) => {
+        $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, raw, dataptr) => {
+        $crate::impl_altraw_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, string, dataptr) => {
+        $crate::impl_altstring_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, complex, dataptr) => {
+        $crate::impl_altcomplex_from_data!($ty, dataptr, serialize);
+    };
+    // materializing arm — no direct native pointer; materializes on DATAPTR access.
+    // Used for: bool (bool→i32 via LGLSXP), Range<T> (compute-on-access).
+    // Guard remains RUnwind (the default) — the underlying macros do not change it.
+    ($ty:ty, integer, materializing) => {
+        $crate::impl_altinteger_from_data!($ty, materializing_dataptr, serialize);
+    };
+    ($ty:ty, real, materializing) => {
+        $crate::impl_altreal_from_data!($ty, materializing_dataptr, serialize);
+    };
+    ($ty:ty, logical, materializing) => {
+        $crate::impl_altlogical_from_data!($ty, materializing_dataptr, serialize);
+    };
+    ($ty:ty, raw, materializing) => {
+        $crate::impl_altraw_from_data!($ty, materializing_dataptr, serialize);
+    };
+    ($ty:ty, string, materializing) => {
+        $crate::impl_altstring_from_data!($ty, materializing_dataptr, serialize);
+    };
+    ($ty:ty, complex, materializing) => {
+        $crate::impl_altcomplex_from_data!($ty, materializing_dataptr, serialize);
+    };
+}
+
 // region: Built-in implementations for standard types
 // These implementations are provided here to satisfy the orphan rules.
 // User crates can use these types directly with delegate_data.
 //
-// All types that implement AltrepSerialize get the `serialize` option enabled,
-// which allows proper saveRDS/readRDS round-trips.
+// All types implement AltrepSerialize; serialize is injected by the meta-macro.
+// Guard: RUnwind (default from __impl_altrep_base[_with_serialize]! — not overridden).
 
-// Integer types - Vec<i32> supports direct dataptr, ranges materialize on demand
-impl_altinteger_from_data!(Vec<i32>, dataptr, serialize);
-impl_altinteger_from_data!(std::ops::Range<i32>, materializing_dataptr, serialize);
-impl_altinteger_from_data!(std::ops::Range<i64>, materializing_dataptr, serialize);
-
-// Real types - Vec<f64> supports direct dataptr, ranges materialize on demand
-impl_altreal_from_data!(Vec<f64>, dataptr, serialize);
-impl_altreal_from_data!(std::ops::Range<f64>, materializing_dataptr, serialize);
-
-// Logical types — materializing dataptr converts bool→i32 into cached LGLSXP
-impl_altlogical_from_data!(Vec<bool>, materializing_dataptr, serialize);
-
-// Raw types - u8 == Rbyte, supports direct dataptr
-impl_altraw_from_data!(Vec<u8>, dataptr, serialize);
-
-// String types - Vec<String> supports dataptr via materialization into STRSXP
-impl_altstring_from_data!(Vec<String>, dataptr, serialize);
-// Vec<Option<String>> preserves NA_character_ through serialization roundtrips
-impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
+// Vec<T> — owned, heap-allocated contiguous storage.
+// bool uses `materializing` because bool is not RNativeType (R stores logicals as i32).
+impl_builtin_altrep_family!(Vec<i32>, integer, dataptr);
+impl_builtin_altrep_family!(Vec<f64>, real, dataptr);
+impl_builtin_altrep_family!(Vec<bool>, logical, materializing);
+impl_builtin_altrep_family!(Vec<u8>, raw, dataptr);
+impl_builtin_altrep_family!(Vec<String>, string, dataptr);
+impl_builtin_altrep_family!(Vec<Option<String>>, string, dataptr);
 // Cow string vectors — zero-copy from R, ALTREP output without copying back.
 // Serialize: Rf_mkCharLenCE hits R's CHARSXP cache (no string data copy for borrowed).
 // Unserialize: TryFromSexp uses charsxp_to_cow (zero-copy borrow for UTF-8).
-impl_altstring_from_data!(Vec<std::borrow::Cow<'static, str>>, dataptr, serialize);
-impl_altstring_from_data!(
-    Vec<Option<std::borrow::Cow<'static, str>>>,
-    dataptr,
-    serialize
-);
+impl_builtin_altrep_family!(Vec<std::borrow::Cow<'static, str>>, string, dataptr);
+impl_builtin_altrep_family!(Vec<Option<std::borrow::Cow<'static, str>>>, string, dataptr);
+impl_builtin_altrep_family!(Vec<crate::ffi::Rcomplex>, complex, dataptr);
 
-// Complex types - Vec<Rcomplex> supports dataptr
-impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
+// Range<T> — compute-on-access (no direct pointer); materializes into data2 INTSXP/REALSXP.
+impl_builtin_altrep_family!(std::ops::Range<i32>, integer, materializing);
+impl_builtin_altrep_family!(std::ops::Range<i64>, integer, materializing);
+impl_builtin_altrep_family!(std::ops::Range<f64>, real, materializing);
 // endregion
 
 // region: Box<[T]> implementations
 // Box<[T]> is a fat pointer (Sized) that wraps a DST slice.
 // Unlike Vec<T>, it has no capacity field - just ptr + len (2 words).
 // Useful for fixed-size heap allocations.
+// bool uses `materializing` (same reason as Vec<bool>).
 
-impl_altinteger_from_data!(Box<[i32]>, dataptr, serialize);
-impl_altreal_from_data!(Box<[f64]>, dataptr, serialize);
-impl_altlogical_from_data!(Box<[bool]>, materializing_dataptr, serialize);
-impl_altraw_from_data!(Box<[u8]>, dataptr, serialize);
-impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
-impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
+impl_builtin_altrep_family!(Box<[i32]>, integer, dataptr);
+impl_builtin_altrep_family!(Box<[f64]>, real, dataptr);
+impl_builtin_altrep_family!(Box<[bool]>, logical, materializing);
+impl_builtin_altrep_family!(Box<[u8]>, raw, dataptr);
+impl_builtin_altrep_family!(Box<[String]>, string, dataptr);
+impl_builtin_altrep_family!(Box<[crate::ffi::Rcomplex]>, complex, dataptr);
 
 // Cow<'static, [T]> — zero-copy borrow from R with copy-on-write dataptr.
 // Borrowed variants expose R's data directly; Owned behaves like Vec.
-impl_altinteger_from_data!(std::borrow::Cow<'static, [i32]>, dataptr, serialize);
-impl_altreal_from_data!(std::borrow::Cow<'static, [f64]>, dataptr, serialize);
-impl_altraw_from_data!(std::borrow::Cow<'static, [u8]>, dataptr, serialize);
-impl_altcomplex_from_data!(
+impl_builtin_altrep_family!(std::borrow::Cow<'static, [i32]>, integer, dataptr);
+impl_builtin_altrep_family!(std::borrow::Cow<'static, [f64]>, real, dataptr);
+impl_builtin_altrep_family!(std::borrow::Cow<'static, [u8]>, raw, dataptr);
+impl_builtin_altrep_family!(
     std::borrow::Cow<'static, [crate::ffi::Rcomplex]>,
-    dataptr,
-    serialize
+    complex,
+    dataptr
 );
 
 /// Eagerly register all built-in ALTREP classes.
