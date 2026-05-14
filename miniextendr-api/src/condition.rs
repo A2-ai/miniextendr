@@ -339,7 +339,9 @@ impl RCondition {
             .to_string();
 
         let kind_sexp = sexp.vector_elt(1);
-        let kind: &str = kind_sexp.string_elt_str(0).unwrap_or("panic");
+        let kind: &str = kind_sexp
+            .string_elt_str(0)
+            .unwrap_or(crate::error_value::kind::PANIC);
 
         // Class slot is element [2] in the 4-element form (NULL in legacy form)
         let class: Option<String> = if len >= 4 {
@@ -353,19 +355,22 @@ impl RCondition {
             None
         };
 
+        use crate::error_value::kind as kind_const;
         let cond = match kind {
-            "error" | "panic" | "result_err" | "none_err" | "other_rust_error" => {
-                RCondition::Error {
-                    message: msg,
-                    class,
-                }
-            }
-            "warning" => RCondition::Warning {
+            kind_const::ERROR
+            | kind_const::PANIC
+            | kind_const::RESULT_ERR
+            | kind_const::NONE_ERR
+            | kind_const::OTHER_RUST_ERROR => RCondition::Error {
                 message: msg,
                 class,
             },
-            "message" => RCondition::Message { message: msg },
-            "condition" => RCondition::Condition {
+            kind_const::WARNING => RCondition::Warning {
+                message: msg,
+                class,
+            },
+            kind_const::MESSAGE => RCondition::Message { message: msg },
+            kind_const::CONDITION => RCondition::Condition {
                 message: msg,
                 class,
             },

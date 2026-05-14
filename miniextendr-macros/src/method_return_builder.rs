@@ -17,10 +17,18 @@ use crate::miniextendr_impl::ParsedMethod;
 ///
 /// Expects `.val` to already be assigned (e.g., `.val <- .Call(...)`). Emits a
 /// single line indented by `indent`: when `.val` is a tagged `rust_condition_value`,
-/// hand off to the shared helper and return from the enclosing function. The
-/// helper's `stop()` longjmps for error/panic kinds; for warning/message/
-/// condition it signals and returns `invisible(NULL)`, which the surrounding
-/// `return(...)` propagates as the wrapper's result.
+/// hand off to the shared helper and return from the enclosing function.
+///
+/// The helper dispatches on `.val$kind` (see
+/// [`miniextendr_api::error_value::kind`] for canonical kind strings):
+///
+/// - `error` / `panic` / `result_err` / `none_err` / `conversion` (and any
+///   unknown kind) — `stop()` longjmps with the appropriate `rust_*` class
+///   layering.
+/// - `warning` — `warning()` signals; the wrapper's surrounding `return(...)`
+///   propagates `invisible(NULL)` as the wrapper's result.
+/// - `message` — `message()` signals; same propagation.
+/// - `condition` — `signalCondition()` signals; same propagation.
 pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
     vec![format!(
         "{indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, sys.call()))"

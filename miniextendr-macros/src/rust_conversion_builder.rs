@@ -111,7 +111,7 @@ impl RustConversionBuilder {
                     Ok(v) => v,
                     Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
                         &format!("{}: {e}", #error_msg),
-                        "conversion",
+                        ::miniextendr_api::error_value::kind::CONVERSION,
                         ::core::option::Option::None,
                         Some(__miniextendr_call),
                     ),
@@ -138,7 +138,7 @@ impl RustConversionBuilder {
                     Ok(v) => v,
                     Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
                         &format!("{}: {e}", #error_msg),
-                        "conversion",
+                        ::miniextendr_api::error_value::kind::CONVERSION,
                         ::core::option::Option::None,
                         Some(__miniextendr_call),
                     ),
@@ -256,7 +256,7 @@ impl RustConversionBuilder {
                                     Ok(v) => v,
                                     Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
                                         &format!("{}: {e}", #em),
-                                        "conversion",
+                                        ::miniextendr_api::error_value::kind::CONVERSION,
                                         ::core::option::Option::None,
                                         Some(__miniextendr_call),
                                     ),
@@ -477,7 +477,7 @@ impl RustConversionBuilder {
                                         Ok(v) => v,
                                         Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
                                             &format!("{}: {e}", #error_msg_convert),
-                                            "conversion",
+                                            ::miniextendr_api::error_value::kind::CONVERSION,
                                             ::core::option::Option::None,
                                             Some(__miniextendr_call),
                                         ),
@@ -486,7 +486,7 @@ impl RustConversionBuilder {
                                         Ok(v) => v,
                                         Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
                                             &format!("{}: {e}", #error_msg_coerce),
-                                            "conversion",
+                                            ::miniextendr_api::error_value::kind::CONVERSION,
                                             ::core::option::Option::None,
                                             Some(__miniextendr_call),
                                         ),
@@ -524,7 +524,7 @@ impl RustConversionBuilder {
                                         Ok(v) => v,
                                         Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
                                             &format!("{}: {e}", #error_msg_convert),
-                                            "conversion",
+                                            ::miniextendr_api::error_value::kind::CONVERSION,
                                             ::core::option::Option::None,
                                             Some(__miniextendr_call),
                                         ),
@@ -536,7 +536,7 @@ impl RustConversionBuilder {
                                         Ok(v) => v,
                                         Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
                                             &format!("{}: {e}", #error_msg_coerce),
-                                            "conversion",
+                                            ::miniextendr_api::error_value::kind::CONVERSION,
                                             ::core::option::Option::None,
                                             Some(__miniextendr_call),
                                         ),
