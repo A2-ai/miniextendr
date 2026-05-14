@@ -273,7 +273,9 @@ mod zero_copy_tests;
 // The direct registration pattern requires:
 // 1. A data type with #[derive(Altrep)] + #[altrep(class = "...")]
 // 2. High-level data trait impls (AltrepLen, AltIntegerData, etc.)
-// 3. Low-level trait impls generated via impl_alt*_from_data! macro
+//    — or write them by hand and use #[altrep(manual)] to skip auto-generation.
+// 3. The impl_alt*_from_data! registration macro is emitted automatically by the
+//    derive — you do NOT need to call it yourself.
 // No wrapper struct needed — the data type registers directly.
 
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
@@ -352,11 +354,12 @@ pub fn constant_int() -> ConstantIntData {
 //
 // The ALTREP API requires:
 // 1. A data type with #[derive(Altrep)] + #[altrep(class = "...")]
-// 2. High-level data trait impls (AltrepLen, Alt*Data)
-// 3. Low-level trait impls generated via impl_alt*_from_data! macro
-//
-// For custom behavior that can't be expressed through the data traits,
-// manually implement the low-level traits on the data type.
+// 2. High-level data trait impls (AltrepLen, Alt*Data) — either auto-generated
+//    by the derive, or hand-written with #[altrep(manual)].
+// 3. The impl_alt*_from_data! registration is emitted automatically by the derive
+//    in both field-based and manual modes. You do NOT need to call it yourself.
+//    Use #[altrep(no_lowlevel)] only if you want to suppress it entirely and
+//    provide the lowest-level Altrep/AltVec impls yourself.
 
 use miniextendr_api::altrep_data::{
     AltListData, AltLogicalData, AltRawData, AltRealData, AltStringData, Logical,
