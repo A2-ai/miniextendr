@@ -37,3 +37,10 @@ test_that("factor count helpers handle counts and NA", {
   with_na <- factor(c("Red", NA, "Green"), levels = factor_color_levels())
   expect_equal(factor_colors_with_na(with_na), c("red", "NA", "green"))
 })
+
+test_that("generic unit enum Signal<T> emits a valid factor column", {
+  result <- make_signal_factor()
+  expect_s3_class(result, "factor")
+  expect_equal(levels(result), c("Red", "Yellow", "Green"))
+  expect_equal(as.character(result), c("Red", NA, "Green", "Yellow"))
+})

@@ -700,14 +700,22 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let row_name = &input.ident;
 
     // Allow lifetime parameters (needed for &[T] borrowed slice fields).
-    // Reject type and const parameters — these can't be propagated correctly.
+    // Allow type parameters on unit-only enums (all variants are unit) — the
+    // companion struct has no field columns to type-parameterise, and the three
+    // unit-enum impls (UnitEnumFactor, IntoR, IntoList) handle generics via the
+    // split path in enum_expansion.rs.
+    // Reject type and const parameters for everything else.
     let has_type_params = input.generics.type_params().next().is_some();
     let has_const_params = input.generics.const_params().next().is_some();
     if has_type_params || has_const_params {
-        return Err(syn::Error::new_spanned(
-            &input.generics,
-            "DataFrameRow does not support type or const generic parameters",
-        ));
+        let is_unit_only_enum = matches!(&input.data, Data::Enum(e)
+            if e.variants.iter().all(|v| matches!(v.fields, Fields::Unit)));
+        if !is_unit_only_enum {
+            return Err(syn::Error::new_spanned(
+                &input.generics,
+                "DataFrameRow does not support type or const generic parameters",
+            ));
+        }
     }
 
     // Parse attributes

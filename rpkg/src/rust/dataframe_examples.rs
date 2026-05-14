@@ -350,3 +350,34 @@ pub fn create_sensor_readings_df() -> ToDataFrame<SensorReadingDataFrame> {
     ToDataFrame(SensorReading::to_dataframe(rows))
 }
 // endregion
+
+// region: Generic unit-only enum fixture
+
+/// Generic (const-param) unit-only enum — verifies that DataFrameRow derive
+/// auto-emits `UnitEnumFactor`, `IntoR`, and `IntoList` for enums with generic
+/// parameters (the generic path in enum_expansion.rs).
+///
+/// `const VERSION: usize` is a const parameter that does not appear in any
+/// variant body — Rust allows unused const params in enums, unlike type params.
+/// This exercises the `impl_generics.is_empty() == false` branch.
+#[derive(Clone, Copy, Debug, DataFrameRow)]
+pub enum Signal<const VERSION: usize> {
+    Red,
+    Yellow,
+    Green,
+}
+
+/// Return a `FactorOptionVec<Signal<0>>` to exercise the generic `IntoR` path.
+/// `Signal<0>` is a concrete monomorphization of the generic unit-only enum.
+///
+/// @export
+#[miniextendr]
+pub fn make_signal_factor() -> miniextendr_api::FactorOptionVec<Signal<0>> {
+    miniextendr_api::FactorOptionVec(vec![
+        Some(Signal::Red),
+        None,
+        Some(Signal::Green),
+        Some(Signal::Yellow),
+    ])
+}
+// endregion
