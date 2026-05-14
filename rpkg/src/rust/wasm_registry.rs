@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      2223d578ec80bb69
+// content-hash:      b7068eb34dac1b11
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -905,19 +905,15 @@ unsafe extern "C-unwind" {
     pub fn C_hybrid_as_ptr(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_hybrid_as_list(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ptr_list_as_ptr(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_attr_prefer_list(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_hybrid_as_native(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_plain_option_i32(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ptr_list_as_list(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_attr_prefer_native(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_native_list_as_list(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_native_list_as_native(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_attr_prefer_externalptr(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_attr_prefer_list_option(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_create_events_df(_: SEXP) -> SEXP;
     pub fn C_create_people_df(_: SEXP) -> SEXP;
     pub fn C_create_points_df(_: SEXP) -> SEXP;
     pub fn C_create_shapes_df(_: SEXP) -> SEXP;
+    pub fn C_make_signal_factor(_: SEXP) -> SEXP;
     pub fn C_create_events_split(_: SEXP) -> SEXP;
     pub fn C_create_shapes_split(_: SEXP) -> SEXP;
     pub fn C_create_scored_items_df(_: SEXP) -> SEXP;
@@ -6363,28 +6359,13 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
-        name: c"C_attr_prefer_list".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_list) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
         name: c"C_hybrid_as_native".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_hybrid_as_native) }),
         numArgs: 2,
     },
     R_CallMethodDef {
-        name: c"C_plain_option_i32".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_plain_option_i32) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
         name: c"C_ptr_list_as_list".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_ptr_list_as_list) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_attr_prefer_native".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_native) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -6395,16 +6376,6 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_native_list_as_native".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_native_list_as_native) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_attr_prefer_externalptr".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_externalptr) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_attr_prefer_list_option".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_list_option) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -6425,6 +6396,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_create_shapes_df".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_create_shapes_df) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_make_signal_factor".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_make_signal_factor) }),
         numArgs: 1,
     },
     R_CallMethodDef {

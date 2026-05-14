@@ -716,11 +716,30 @@ pub(super) fn derive_enum_dataframe(
         df_fields.push(quote! { pub #name: Vec<Option<#cty>> });
     }
 
+    // When the companion struct would otherwise have no fields (unit-only enum,
+    // no tag) but has generic type parameters, emit a PhantomData field to keep
+    // the type parameter in scope — without it the struct is E0392 (unused param).
+    let has_any_field = has_tag || !df_fields.is_empty();
+    let phantom_field = if !has_any_field && !impl_generics.to_token_stream().is_empty() {
+        let type_params: Vec<_> = input.generics.type_params().map(|tp| &tp.ident).collect();
+        if !type_params.is_empty() {
+            quote! {
+                #[allow(dead_code)]
+                _phantom: ::std::marker::PhantomData<(#(#type_params,)*)>,
+            }
+        } else {
+            TokenStream::new()
+        }
+    } else {
+        TokenStream::new()
+    };
+
     let dataframe_struct = quote! {
         #[derive(Debug, Clone)]
         pub struct #df_name #impl_generics #where_clause {
             #tag_field
             #(#df_fields),*
+            #phantom_field
         }
     };
     // endregion
@@ -992,10 +1011,13 @@ pub(super) fn derive_enum_dataframe(
                     // SAFETY: see auto-expand branch.
                     unsafe {
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        ::miniextendr_api::list::List::from_raw_pairs(vec![
+                        // Explicit type annotation so the vec![] case (unit-only enum
+                        // with no columns and no tag) doesn't hit E0282 inference failure.
+                        let __pairs: Vec<(&str, ::miniextendr_api::ffi::SEXP)> = vec![
                             #tag_pair
                             #(#col_pairs),*
-                        ])
+                        ];
+                        ::miniextendr_api::list::List::from_raw_pairs(__pairs)
                         .set_class_str(&["data.frame"])
                         .set_row_names_int(_n_rows)
                     }
@@ -1248,6 +1270,13 @@ pub(super) fn derive_enum_dataframe(
         col_struct_fields.push(quote! { #name });
     }
 
+    // Struct literal initializer for the PhantomData field, when emitted.
+    let phantom_struct_field_init = if phantom_field.is_empty() {
+        TokenStream::new()
+    } else {
+        quote! { _phantom: ::std::marker::PhantomData, }
+    };
+
     let from_vec_impl = quote! {
         impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
             fn from(rows: Vec<#row_name #ty_generics>) -> Self {
@@ -1262,6 +1291,7 @@ pub(super) fn derive_enum_dataframe(
                 #df_name {
                     #tag_struct_field
                     #(#col_struct_fields),*
+                    #phantom_struct_field_init
                 }
             }
         }
@@ -1619,14 +1649,20 @@ pub(super) fn derive_enum_dataframe(
         let all_unit = variant_infos
             .iter()
             .all(|vi| vi.shape == VariantShape::Unit);
-        // Note: generic enums (with type parameters) are intentionally excluded from
-        // auto-emission.  `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` relies
-        // on `FACTOR_LEVELS` being a compile-time constant, which is incompatible with
-        // generic enums (Rust does not allow generic statics).  If you need `as_factor`
-        // on a unit-only generic enum, implement `UnitEnumFactor` manually.
-        // See `docs/DATAFRAME.md` "Nested enum fields — flatten + opt-outs" for details.
-        if all_unit && impl_generics.to_token_stream().is_empty() {
-            // Collect variant names and assign 1-based R factor indices
+        // For unit-only enums, auto-emit three impls:
+        //   1. `impl UnitEnumFactor for Self`  — provides FACTOR_LEVELS and to_factor_index()
+        //   2. `impl IntoR for Self`  — produces a single-element factor SEXP
+        //   3. `impl IntoList for Self`  — delegates to vec![self].into_list()
+        //
+        // Non-generic enums: `IntoR` caches the levels SEXP via `OnceLock<SEXP>` (one-time
+        // `R_PreserveObject`).
+        //
+        // Generic enums: Rust does not allow generic statics, so `IntoR` builds the levels
+        // SEXP on each call using `build_levels_sexp` + manual `Rf_protect`/`Rf_unprotect`.
+        // This is the same pattern used by `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>`
+        // in `miniextendr-api/src/factor.rs`.
+        if all_unit {
+            // Collect variant names and assign 1-based R factor indices (used by both branches).
             let variant_idents: Vec<&syn::Ident> =
                 variant_infos.iter().map(|vi| &vi.name).collect();
             let variant_strs: Vec<String> =
@@ -1634,45 +1670,98 @@ pub(super) fn derive_enum_dataframe(
             let variant_strs_lit: Vec<&str> = variant_strs.iter().map(|s| s.as_str()).collect();
             let indices: Vec<i32> = (1i32..=(variant_idents.len() as i32)).collect();
 
-            quote! {
-                // impl UnitEnumFactor for Self: provides FACTOR_LEVELS + to_factor_index().
-                // Used by `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` in miniextendr-api
-                // to build factor SEXPs from `Vec<Option<Self>>` companion columns.
-                impl ::miniextendr_api::factor::UnitEnumFactor for #row_name {
-                    const FACTOR_LEVELS: &'static [&'static str] = &[#(#variant_strs_lit),*];
-                    fn to_factor_index(self) -> i32 {
-                        match self {
-                            #(#row_name::#variant_idents => #indices,)*
+            if impl_generics.to_token_stream().is_empty() {
+                // Non-generic: cache levels SEXP permanently via OnceLock (one R_PreserveObject).
+                quote! {
+                    // impl UnitEnumFactor for Self: provides FACTOR_LEVELS + to_factor_index().
+                    // Used by `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` in miniextendr-api
+                    // to build factor SEXPs from `Vec<Option<Self>>` companion columns.
+                    impl ::miniextendr_api::factor::UnitEnumFactor for #row_name {
+                        const FACTOR_LEVELS: &'static [&'static str] = &[#(#variant_strs_lit),*];
+                        fn to_factor_index(self) -> i32 {
+                            match self {
+                                #(#row_name::#variant_idents => #indices,)*
+                            }
+                        }
+                    }
+
+                    // impl IntoR for Self: single-element factor SEXP (cached levels via OnceLock).
+                    // Used when a unit-only enum value is returned directly from a #[miniextendr] fn.
+                    impl ::miniextendr_api::IntoR for #row_name {
+                        type Error = ::std::convert::Infallible;
+                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                            use ::std::sync::OnceLock;
+                            const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
+                            static LEVELS_CACHE: OnceLock<::miniextendr_api::ffi::SEXP> =
+                                OnceLock::new();
+                            let levels = *LEVELS_CACHE.get_or_init(|| {
+                                ::miniextendr_api::factor::build_levels_sexp_cached(LEVELS)
+                            });
+                            let idx: i32 = match self {
+                                #(#row_name::#variant_idents => #indices,)*
+                            };
+                            ::std::result::Result::Ok(
+                                ::miniextendr_api::factor::build_factor(&[idx], levels)
+                            )
+                        }
+                    }
+
+                    // impl IntoList for Self: for as_list path in outer DataFrameRow.
+                    // Delegates to Vec<Self>: IntoList (blanket impl via IntoR for Self).
+                    impl ::miniextendr_api::list::IntoList for #row_name {
+                        fn into_list(self) -> ::miniextendr_api::list::List {
+                            ::miniextendr_api::list::IntoList::into_list(::std::vec![self])
                         }
                     }
                 }
-
-                // impl IntoR for Self: single-element factor SEXP (cached levels via OnceLock).
-                // Used when a unit-only enum value is returned directly from a #[miniextendr] fn.
-                impl ::miniextendr_api::IntoR for #row_name {
-                    type Error = ::std::convert::Infallible;
-                    fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::ffi::SEXP, Self::Error> {
-                        use ::std::sync::OnceLock;
-                        const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
-                        static LEVELS_CACHE: OnceLock<::miniextendr_api::ffi::SEXP> =
-                            OnceLock::new();
-                        let levels = *LEVELS_CACHE.get_or_init(|| {
-                            ::miniextendr_api::factor::build_levels_sexp_cached(LEVELS)
-                        });
-                        let idx: i32 = match self {
-                            #(#row_name::#variant_idents => #indices,)*
-                        };
-                        ::std::result::Result::Ok(
-                            ::miniextendr_api::factor::build_factor(&[idx], levels)
-                        )
+            } else {
+                // Generic: cannot use generic statics (Rust restriction).
+                // Build the levels SEXP on each call and protect it across the build_factor
+                // allocation — same pattern as `FactorOptionVec<T>: IntoR` in
+                // `miniextendr-api/src/factor.rs`.
+                quote! {
+                    // impl UnitEnumFactor: associated const is allowed in generic impls.
+                    impl #impl_generics ::miniextendr_api::factor::UnitEnumFactor
+                        for #row_name #ty_generics #where_clause
+                    {
+                        const FACTOR_LEVELS: &'static [&'static str] = &[#(#variant_strs_lit),*];
+                        fn to_factor_index(self) -> i32 {
+                            match self {
+                                #(#row_name::#variant_idents => #indices,)*
+                            }
+                        }
                     }
-                }
 
-                // impl IntoList for Self: for as_list path in outer DataFrameRow.
-                // Delegates to Vec<Self>: IntoList (blanket impl via IntoR for Self).
-                impl ::miniextendr_api::list::IntoList for #row_name {
-                    fn into_list(self) -> ::miniextendr_api::list::List {
-                        ::miniextendr_api::list::IntoList::into_list(::std::vec![self])
+                    // impl IntoR: build levels SEXP on each call (no generic static allowed).
+                    // Protect the levels STRSXP before build_factor allocates so GC cannot
+                    // collect it mid-build (see CLAUDE.md "PROTECT discipline against R-devel GC").
+                    impl #impl_generics ::miniextendr_api::IntoR
+                        for #row_name #ty_generics #where_clause
+                    {
+                        type Error = ::std::convert::Infallible;
+                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                            const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
+                            let idx: i32 = match self {
+                                #(#row_name::#variant_idents => #indices,)*
+                            };
+                            unsafe {
+                                let levels = ::miniextendr_api::ffi::Rf_protect(
+                                    ::miniextendr_api::factor::build_levels_sexp(LEVELS)
+                                );
+                                let result = ::miniextendr_api::factor::build_factor(&[idx], levels);
+                                ::miniextendr_api::ffi::Rf_unprotect(1);
+                                ::std::result::Result::Ok(result)
+                            }
+                        }
+                    }
+
+                    // impl IntoList: for as_list path in outer DataFrameRow.
+                    impl #impl_generics ::miniextendr_api::list::IntoList
+                        for #row_name #ty_generics #where_clause
+                    {
+                        fn into_list(self) -> ::miniextendr_api::list::List {
+                            ::miniextendr_api::list::IntoList::into_list(::std::vec![self])
+                        }
                     }
                 }
             }
