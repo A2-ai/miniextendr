@@ -10,7 +10,18 @@
 #'
 #' User-authored files (lib.rs, Cargo.toml, R/ code) are never touched.
 #'
-#' @param path Path to the R package root, or `"."` to use the current directory.
+#' In a monorepo layout (workspace root containing an rpkg subdirectory),
+#' `upgrade_miniextendr_package()` automatically detects the rpkg subdir and
+#' operates on it rather than the workspace root. The rpkg subdir is the first
+#' immediate child directory that contains a miniextendr `configure.ac`. Pass
+#' `rpkg_subdir` explicitly if auto-detection is ambiguous.
+#'
+#' @param path Path to the R package root (standalone) or the monorepo workspace
+#'   root. Defaults to `"."`. For a monorepo, this is the directory containing
+#'   `Cargo.toml` — the rpkg subdir is resolved automatically.
+#' @param rpkg_subdir For monorepo layouts: name of the R package subdirectory
+#'   (e.g. `"rpkg"`). If `NULL` (default), auto-detected by scanning immediate
+#'   subdirectories for a miniextendr `configure.ac`.
 #' @param version Version of miniextendr crates to vendor (default: `"main"`).
 #' @param local_path Optional path to local miniextendr repository for vendoring.
 #' @param configure_ac Logical. If `TRUE`, overwrites configure.ac with the
@@ -25,12 +36,34 @@
 #' @return Invisibly returns TRUE on success.
 #' @export
 upgrade_miniextendr_package <- function(path = ".",
+                                         rpkg_subdir = NULL,
                                          version = "main",
                                          local_path = NULL,
                                          configure_ac = FALSE,
                                          autoconf = TRUE,
                                          allow_dirty = FALSE) {
-  with_project(path)
+  # Resolve path to an absolute path so we can probe it before setting as project.
+  resolved_path <- normalizePath(path, mustWork = FALSE)
+
+  # Detect monorepo: if path has a Cargo.toml but no configure.ac (or no
+  # DESCRIPTION), it's likely a workspace root rather than an rpkg root.
+  project_type <- detect_project_type(resolved_path)
+  if (identical(project_type, "monorepo") &&
+      !file.exists(file.path(resolved_path, "configure.ac"))) {
+    # Path is the workspace root — need to resolve to the rpkg subdir.
+    subdir <- rpkg_subdir %||% find_rpkg_subdir(resolved_path)
+    if (is.null(subdir)) {
+      cli::cli_abort(c(
+        "Could not find an rpkg subdirectory in {.path {resolved_path}}.",
+        "i" = "Pass {.code rpkg_subdir = '<name>'} explicitly.",
+        "i" = "Expected a subdirectory with a miniextendr {.path configure.ac}."
+      ))
+    }
+    resolved_path <- file.path(resolved_path, subdir)
+    cli::cli_alert_info("Monorepo layout detected — upgrading rpkg subdir {.path {subdir}}")
+  }
+
+  with_project(resolved_path)
 
   if (!is_miniextendr_package()) {
     cli::cli_abort(c(
@@ -92,6 +125,30 @@ upgrade_miniextendr_package <- function(path = ".",
   ))
 
   invisible(TRUE)
+}
+
+#' Find the rpkg subdirectory in a monorepo workspace root
+#'
+#' Scans immediate subdirectories of `path` for one that contains a
+#' `configure.ac` with the `CARGO_FEATURES` marker (the canonical signal that
+#' a directory is a miniextendr rpkg). Returns the first match, or `NULL` if
+#' none is found.
+#'
+#' @param path Path to the monorepo workspace root.
+#' @return Name of the rpkg subdirectory (not a full path), or `NULL`.
+#' @noRd
+find_rpkg_subdir <- function(path) {
+  subdirs <- list.dirs(path, full.names = FALSE, recursive = FALSE)
+  for (d in subdirs) {
+    configure_ac <- file.path(path, d, "configure.ac")
+    if (file.exists(configure_ac)) {
+      content <- readLines(configure_ac, warn = FALSE)
+      if (any(grepl("CARGO_FEATURES", content, fixed = TRUE))) {
+        return(d)
+      }
+    }
+  }
+  NULL
 }
 
 #' Check that scaffolding files are clean in git

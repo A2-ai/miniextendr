@@ -18,12 +18,31 @@
 #' rationale, and \code{\link[miniextendr]{assert_utf8_locale_now}} for why the
 #' UTF-8 check exists.
 #'
-#' @param path Path to the package root. Defaults to `"."`.
+#' For **monorepo layouts** (where the R package lives in a subdirectory such as
+#' `rpkg/`), the `bash ./configure` and `R CMD build` steps must run from inside
+#' that subdirectory. Pass `rpkg_subdir` to activate this; the generated workflow
+#' will add `working-directory: <rpkg_subdir>` to those steps. When `rpkg_subdir`
+#' is `NULL` (default) and `auto_detect_subdir` is `TRUE` (default),
+#' auto-detection via [detect_project_type()] is attempted.
+#' For a confirmed standalone package, set `auto_detect_subdir = FALSE` to skip
+#' detection and write the plain template unchanged.
+#'
+#' @param path Path to the package root (standalone) or monorepo workspace root.
+#'   Defaults to `"."`.
+#' @param rpkg_subdir For monorepo layouts: name of the R package subdirectory
+#'   (e.g. `"rpkg"`). If `NULL` (default) and `auto_detect_subdir` is `TRUE`,
+#'   the subdirectory is auto-detected. If a string, it is used directly
+#'   regardless of `auto_detect_subdir`.
+#' @param auto_detect_subdir If `TRUE` (default) and `rpkg_subdir` is `NULL`,
+#'   attempts to auto-detect the monorepo layout via [detect_project_type()].
+#'   Set to `FALSE` to force standalone mode and suppress auto-detection.
 #' @param overwrite If `TRUE`, replace an existing
 #'   `.github/workflows/r-release.yml`. Default `FALSE`.
 #' @return The path to the written file, invisibly.
 #' @export
-use_release_workflow <- function(path = ".", overwrite = FALSE) {
+use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
+                                  auto_detect_subdir = TRUE,
+                                  overwrite = FALSE) {
   dest_dir <- file.path(path, ".github", "workflows")
   dest_file <- file.path(dest_dir, "r-release.yml")
 
@@ -34,11 +53,43 @@ use_release_workflow <- function(path = ".", overwrite = FALSE) {
     ))
   }
 
+  # Resolve rpkg_subdir:
+  #   - explicit string → use it directly.
+  #   - NULL + auto_detect_subdir = TRUE → attempt auto-detection.
+  #   - NULL + auto_detect_subdir = FALSE → standalone (no detection).
+  resolved_subdir <- NULL
+  if (!is.null(rpkg_subdir)) {
+    resolved_subdir <- as.character(rpkg_subdir)
+  } else if (auto_detect_subdir) {
+    resolved_path <- normalizePath(path, mustWork = FALSE)
+    project_type <- detect_project_type(resolved_path)
+    if (identical(project_type, "monorepo") &&
+        !file.exists(file.path(resolved_path, "configure.ac"))) {
+      resolved_subdir <- find_rpkg_subdir(resolved_path)
+      if (is.null(resolved_subdir)) {
+        cli::cli_warn(c(
+          "Monorepo layout detected but could not find an rpkg subdirectory.",
+          "i" = "Pass {.code rpkg_subdir = '<name>'} explicitly for a monorepo-aware workflow."
+        ))
+      }
+    }
+  }
+
   src <- system.file("templates", "r-release.yml", package = "minirextendr",
                      mustWork = TRUE)
 
   fs::dir_create(dest_dir, recurse = TRUE)
-  fs::file_copy(src, dest_file, overwrite = overwrite)
+
+  if (is.null(resolved_subdir)) {
+    # Standalone: copy template unchanged.
+    fs::file_copy(src, dest_file, overwrite = TRUE)
+  } else {
+    # Monorepo: insert `working-directory: <subdir>` after configure and build steps.
+    cli::cli_alert_info("Adding {.code working-directory: {resolved_subdir}} to configure/build steps")
+    lines <- readLines(src, warn = FALSE)
+    lines <- release_workflow_insert_workdir(lines, resolved_subdir)
+    writeLines(lines, dest_file)
+  }
 
   cli::cli_alert_success("Written {.path {dest_file}}")
   cli::cli_alert_info(c(
@@ -47,4 +98,37 @@ use_release_workflow <- function(path = ".", overwrite = FALSE) {
   ))
 
   invisible(dest_file)
+}
+
+#' Insert working-directory lines into r-release.yml lines
+#'
+#' Post-processes the r-release.yml template lines to add
+#' `working-directory: <subdir>` after each `run: bash ./configure` and
+#' `run: |` line that begins a `R CMD build` block.
+#'
+#' The template has two instances of each step (one per job). Both are patched.
+#'
+#' @param lines Character vector of template lines.
+#' @param subdir Subdirectory name (e.g. `"rpkg"`).
+#' @return Modified character vector.
+#' @noRd
+release_workflow_insert_workdir <- function(lines, subdir) {
+  wd_line <- paste0("        working-directory: ", subdir)
+  result <- character(0)
+  i <- 1L
+  while (i <= length(lines)) {
+    line <- lines[[i]]
+    # Match the two configure/build `run:` patterns used in the template.
+    # Pattern 1: `        run: bash ./configure`  (single-line run)
+    # Pattern 2: `        run: |`                 (multi-line run starting R CMD build)
+    is_configure_step <- grepl("^        run: bash \\./configure\\s*$", line)
+    is_build_step <- grepl("^        run: \\|\\s*$", line) &&
+      i < length(lines) && grepl("R CMD build", lines[[i + 1L]])
+    result <- c(result, line)
+    if (is_configure_step || is_build_step) {
+      result <- c(result, wd_line)
+    }
+    i <- i + 1L
+  }
+  result
 }
