@@ -143,14 +143,17 @@ vendor:
 
 # Prepare for CRAN submission: vendor deps, build, check
 #
-# Cleanup: rpkg/inst/vendor.tar.xz must be removed after the build/check
+# Cleanup: inst/vendor.tar.xz must be removed after the build/check
 # pipeline. Otherwise the leftover in the source tree makes the next
 # `just install` / `devtools::install(".")` silently switch to tarball mode
 # (configure's only signal is `[ -f inst/vendor.tar.xz ]`), which freezes out
 # any cargo-resolved dependency edits.
-cran-prep: vendor rbuild rcheck
-    # TODO(#454): trap-clean on failure — see issue #454
-    rm -f inst/vendor.tar.xz
+[script("bash")]
+cran-prep: vendor
+    set -euo pipefail
+    trap 'rm -f inst/vendor.tar.xz' EXIT
+    just rbuild
+    just rcheck
 
 # ============================================================================
 # Version management

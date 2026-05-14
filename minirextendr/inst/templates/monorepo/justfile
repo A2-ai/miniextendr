@@ -142,8 +142,12 @@ vendor-lib crate dev_path:
 # `just install` / `devtools::install("{{rpkg}}")` silently switch to tarball
 # mode (configure's only signal is `[ -f inst/vendor.tar.xz ]`), which freezes
 # out monorepo workspace-crate edits via `[patch."git+url"]`.
-cran-prep: vendor rbuild rcheck
-    rm -f {{rpkg}}/inst/vendor.tar.xz
+[script("bash")]
+cran-prep: vendor
+    set -euo pipefail
+    trap 'rm -f {{rpkg}}/inst/vendor.tar.xz' EXIT
+    just rbuild
+    just rcheck
 
 # ============================================================================
 # Version management
