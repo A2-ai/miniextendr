@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      795f0d5bdf821068
+// content-hash:      abd936561f2fb3ab
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -1666,6 +1666,7 @@ unsafe extern "C-unwind" {
     pub fn C_flat_as_list_inner(_: SEXP) -> SEXP;
     pub fn C_flat_nested_struct(_: SEXP) -> SEXP;
     pub fn C_flat_renamed_inner(_: SEXP) -> SEXP;
+    pub fn C_qual_located_basic(_: SEXP) -> SEXP;
     pub fn C_flat_basic_zero_rows(_: SEXP) -> SEXP;
     pub fn C_flat_mixed_inner_types(_: SEXP) -> SEXP;
     pub fn C_flat_two_struct_fields(_: SEXP) -> SEXP;
@@ -10160,6 +10161,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_flat_renamed_inner".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_flat_renamed_inner) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_qual_located_basic".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_qual_located_basic) }),
         numArgs: 1,
     },
     R_CallMethodDef {

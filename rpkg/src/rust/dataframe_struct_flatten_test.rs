@@ -20,6 +20,7 @@
 //!   - tuple-struct outer (`_0_x` / `_1_x` etc.)
 //!   - zero-row input → empty DF with full column shape
 //!   - nested struct-in-struct (Outer → Inner → SubInner) cascades
+//!   - multi-segment qualified path (`geom::QualPoint`) — fix for issue #514
 //!
 //! All fixtures also exercise `gc_stress_struct_flatten_*` for the no-arg
 //! gctorture sweep, per `rpkg/CLAUDE.md`'s SEXP-storage convention.
@@ -65,6 +66,20 @@ pub struct FlatSubInner {
 pub struct FlatInner {
     pub a: f64,
     pub sub: FlatSubInner,
+}
+
+/// Sub-module with its own `DataFrameRow` type — used to verify that
+/// multi-segment paths (`geom::QualPoint`) are correctly classified as
+/// `FieldTypeKind::Struct` rather than falling through to `Scalar` (#514).
+pub mod geom {
+    use miniextendr_api::{DataFrameRow, IntoList};
+
+    /// A 2-column inner struct referenced via a qualified path (`geom::QualPoint`).
+    #[derive(Clone, Debug, DataFrameRow, IntoList)]
+    pub struct QualPoint {
+        pub qx: f64,
+        pub qy: f64,
+    }
 }
 
 // endregion
@@ -156,6 +171,18 @@ pub struct FlatPair(pub FlatPoint, pub FlatPoint);
 pub struct FlatNested {
     pub id: i32,
     pub inner: FlatInner,
+}
+
+/// Multi-segment-path field: `geom::QualPoint` (fix for issue #514).
+/// Expected columns: `id`, `pos_qx`, `pos_qy`.
+///
+/// Before the fix, `classify_field_type` required `segs.len() == 1`, so
+/// `geom::QualPoint` fell through to `Scalar` (opaque list column).
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct QualLocated {
+    pub id: i32,
+    #[dataframe(rename = "pos")]
+    pub origin: geom::QualPoint,
 }
 
 // endregion
@@ -282,6 +309,16 @@ pub fn flat_nested_struct() -> ToDataFrame<FlatNestedDataFrame> {
     ]))
 }
 
+/// Multi-segment-path field: `geom::QualPoint` (fix for issue #514).
+/// Returns a 1-row data.frame with columns `id`, `pos_qx`, `pos_qy`.
+#[miniextendr]
+pub fn qual_located_basic() -> ToDataFrame<QualLocatedDataFrame> {
+    ToDataFrame(QualLocated::to_dataframe(vec![QualLocated {
+        id: 42,
+        origin: geom::QualPoint { qx: 1.5, qy: 2.5 },
+    }]))
+}
+
 // endregion
 
 // region: gctorture fixtures (no-arg, self-contained)
@@ -385,6 +422,16 @@ const _: () = {
                 a: 1.0,
                 sub: FlatSubInner { depth: 1.0 },
             }],
+        };
+    }
+
+    /// Companion struct for `QualLocated` holds `Vec<geom::QualPoint>` — NOT
+    /// `Vec<List>` (which would indicate the field fell through to `Scalar`).
+    /// This assertion fails to compile if issue #514 regresses.
+    fn _shape_qual_located() {
+        let _ = QualLocatedDataFrame {
+            id: vec![42],
+            pos: vec![geom::QualPoint { qx: 1.5, qy: 2.5 }],
         };
     }
 };

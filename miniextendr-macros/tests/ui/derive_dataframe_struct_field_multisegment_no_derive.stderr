@@ -1,0 +1,34 @@
+error[E0599]: no function or associated item named `to_dataframe` found for struct `NotADataFrameRow` in the current scope
+  --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:20:10
+   |
+17 |     pub struct NotADataFrameRow;
+   |     --------------------------- function or associated item `to_dataframe` not found for this struct
+...
+20 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ function or associated item not found in `NotADataFrameRow`
+   |
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait `DataFrameRow` is not implemented for `NotADataFrameRow`
+  --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:23:12
+   |
+23 |     label: local::NotADataFrameRow,
+   |            ^^^^^^^^^^^^^^^^^^^^^^^ add `#[derive(DataFrameRow)]` to `NotADataFrameRow`, annotate the field with `#[dataframe(as_list)]` to keep it as an opaque list-column, or annotate with `#[dataframe(as_factor)]` for unit-only enums
+   |
+help: the trait `DataFrameRow` is not implemented for `NotADataFrameRow`
+  --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:17:5
+   |
+17 |     pub struct NotADataFrameRow;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: struct- and enum-typed variant fields are flattened by default into prefixed columns; the inner type must implement `DataFrameRow` for this to work
+help: the trait `DataFrameRow` is implemented for `Wrapper`
+  --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:20:10
+   |
+20 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+note: required by a bound in `_assert_inner_is_dataframe_row`
+  --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:20:10
+   |
+20 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ required by this bound in `_assert_inner_is_dataframe_row`
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
