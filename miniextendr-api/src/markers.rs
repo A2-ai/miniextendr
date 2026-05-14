@@ -56,6 +56,7 @@ pub trait DataFrameRow {}
 ///   The outer macro uses this as the discriminant suffix for inner-enum nested fields.
 ///
 /// You should not implement this trait manually.
+#[doc(hidden)]
 pub trait DataFramePayloadFields {
     /// Resolved column names contributed by this type (post-rename, pre-prefix).
     const FIELDS: &'static [&'static str];
@@ -102,6 +103,7 @@ const fn const_str_eq(a: &str, b: &str) -> bool {
 ///
 /// If any field name equals the discriminant suffix, the const evaluation panics with a
 /// message explaining the collision and suggesting a rename.
+#[doc(hidden)]
 pub const fn assert_no_payload_field_collision(fields: &[&str], discriminant_suffix: &str) {
     let mut i = 0;
     while i < fields.len() {
