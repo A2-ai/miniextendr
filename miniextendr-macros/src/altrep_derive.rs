@@ -52,6 +52,7 @@ struct AltrepFamilyConfig<'a> {
 /// |-----|------|-------------|
 /// | `len = "field"` | `String` | Name of the struct field that holds the vector length. Auto-detected if a field is named `len` or `length`. |
 /// | `elt = "field"` | `String` | Name of the struct field to return as the element value (produces a constant-value vector). If omitted, the default `elt()` returns `NA` / `NaN` / `0` / `None` depending on the family. |
+/// | `manual` | Flag | Skip automatic `AltrepLen` and `Alt*Data` trait generation. Use when you want to write those trait impls by hand (e.g., for custom `elt` logic, `no_na`, `sum`, etc.). The `impl_alt*_from_data!` registration is still emitted automatically — you do **not** need to call it yourself. Use `no_lowlevel` as an additional escape hatch if you also want to suppress the registration. |
 /// | `no_lowlevel` | Flag | Suppress automatic `impl_alt*_from_data!` macro invocation. Use this when you want to provide your own `Altrep`, `AltVec`, and family-specific trait implementations. |
 /// | `dataptr` | Flag | Enable `Dataptr` method registration, allowing R to get a direct pointer to the underlying data. Mutually exclusive with `subset`. Not supported for List. |
 /// | `serialize` | Flag | Enable `Serialized_state` and `Unserialize` method registration for ALTREP serialization support. |
