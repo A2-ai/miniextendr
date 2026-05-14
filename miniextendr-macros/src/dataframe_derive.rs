@@ -859,6 +859,10 @@ fn derive_struct_dataframe(
         col_name_str: String,
         /// Type of the companion Vec<T>.
         vec_elem_ty: syn::Type,
+        /// `#[dataframe(as_list)]` on a struct-typed field — companion stores
+        /// `Vec<List>`. The `from_rows_par` pre-pass handles these sequentially
+        /// instead of scatter-writing (List doesn't implement Default).
+        needs_into_list: bool,
     }
 
     let mut flat_cols: Vec<FlatCol> = Vec::new();
@@ -870,6 +874,7 @@ fn derive_struct_dataframe(
                     df_field: data.col_name.clone(),
                     col_name_str: data.col_name_str.clone(),
                     vec_elem_ty: data.ty.clone(),
+                    needs_into_list: data.needs_into_list,
                 });
             }
             ResolvedField::ExpandedFixed(data) => {
@@ -879,6 +884,7 @@ fn derive_struct_dataframe(
                         df_field: format_ident!("{}_{}", data.base_name, i),
                         col_name_str: name,
                         vec_elem_ty: data.elem_ty.clone(),
+                        needs_into_list: false,
                     });
                 }
             }
@@ -891,6 +897,7 @@ fn derive_struct_dataframe(
                         df_field: format_ident!("{}_{}", data.base_name, i),
                         col_name_str: name,
                         vec_elem_ty: opt_ty,
+                        needs_into_list: false,
                     });
                 }
             }
@@ -1398,25 +1405,79 @@ fn derive_struct_dataframe(
 
     // region: Generate from_rows_par (parallel scatter-write via ColumnWriter)
     //
-    // Skipped in two cases:
-    //   - struct (DataFrameRow-flattened) fields are present (#485): scatter
-    //     into `Vec<Inner>` would require `Inner: Default`.
+    // Two field kinds require special handling instead of parallel scatter-write:
+    //   - struct (DataFrameRow-flattened) fields (#485): companion stores
+    //     `Vec<Inner>` where `Inner` doesn't implement `Default`. These are
+    //     collected sequentially in a pre-pass (`for __prerow in &rows { ... }`)
+    //     before `into_par_iter()` consumes the vector. Requires `Inner: Clone`.
     //   - `as_list`-on-struct fields (#485 opt-out) store `Vec<List>` in the
-    //     companion, and `List` doesn't implement `Default`.
-    // Sequential `from_rows` still works for both. Tracked for follow-up if a
-    // rayon path is actually needed.
-    let from_rows_par_method = if (!flat_cols.is_empty() || !auto_expand_cols.is_empty() || has_tag)
-        && !has_struct
-        && !has_into_list_struct
+    //     companion, and `List` doesn't implement `Default`. Same pre-pass approach.
+    // Both are handled via sequential pre-pass + skip in the parallel loop.
+    // The pre-pass is O(n) extra per struct/list-struct field but does not change
+    // asymptotic complexity — just adds a constant factor for these column types.
+    let from_rows_par_method = if !flat_cols.is_empty()
+        || !auto_expand_cols.is_empty()
+        || has_tag
+        || has_struct
+        || has_into_list_struct
     {
-        // Column declarations: vec![default; len]
+        // Column declarations:
+        //   - scalar / expand cols: vec![default; len]  (scatter-write in parallel)
+        //   - struct / as_list-struct cols: Vec::with_capacity(len) filled in pre-pass
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
                 let mut _tag: Vec<String> = vec![String::new(); len];
             });
         }
+        // Sequential pre-pass: struct fields (Inner: Clone required).
+        // Iterate resolved to pick up tuple_index for tuple-struct outers.
+        for rf in &resolved {
+            if let ResolvedField::Struct(data) = rf {
+                let col_name = &data.col_name;
+                let ity = &data.inner_ty;
+                let access = if let Some(idx) = &data.tuple_index {
+                    quote! { __prerow.#idx }
+                } else {
+                    let rust_name = &data.rust_name;
+                    quote! { __prerow.#rust_name }
+                };
+                par_col_decls.push(quote! {
+                    let mut #col_name: Vec<#ity> = Vec::with_capacity(len);
+                    for __prerow in &rows {
+                        #col_name.push(::core::clone::Clone::clone(&#access));
+                    }
+                });
+            }
+        }
+        // Sequential pre-pass: as_list-on-struct fields (List: !Default).
+        for rf in &resolved {
+            if let ResolvedField::Single(data) = rf
+                && data.needs_into_list
+            {
+                let col_name = &data.col_name;
+                let rust_name = &data.rust_name;
+                let access = if let Some(idx) = &data.tuple_index {
+                    quote! { __prerow.#idx }
+                } else {
+                    quote! { __prerow.#rust_name }
+                };
+                par_col_decls.push(quote! {
+                    let mut #col_name: Vec<::miniextendr_api::list::List> = Vec::with_capacity(len);
+                    for __prerow in &rows {
+                        #col_name.push(::miniextendr_api::list::IntoList::into_list(
+                            ::core::clone::Clone::clone(&#access)
+                        ));
+                    }
+                });
+            }
+        }
+        // Parallel scalar/expand columns.
         for fc in &flat_cols {
+            if fc.needs_into_list {
+                // Handled in the sequential pre-pass above.
+                continue;
+            }
             let name = &fc.df_field;
             let ty = &fc.vec_elem_ty;
             par_col_decls.push(quote! {
@@ -1431,7 +1492,8 @@ fn derive_struct_dataframe(
             });
         }
 
-        // Writer declarations
+        // Writer declarations (only for scatter-write cols — struct/as_list pre-pass
+        // cols are already populated and need no ColumnWriter).
         let mut writer_decls = Vec::new();
         if has_tag {
             writer_decls.push(quote! {
@@ -1441,6 +1503,9 @@ fn derive_struct_dataframe(
             });
         }
         for fc in &flat_cols {
+            if fc.needs_into_list {
+                continue;
+            }
             let name = &fc.df_field;
             let w_name = format_ident!("__w_{}", name);
             writer_decls.push(quote! {
@@ -1459,7 +1524,7 @@ fn derive_struct_dataframe(
             });
         }
 
-        // Write calls per resolved field
+        // Write calls per resolved field (parallel scatter-write only).
         let tag_write = if has_tag {
             quote! { __w_tag.write(__i, #row_name_str.to_string()); }
         } else {
@@ -1470,6 +1535,10 @@ fn derive_struct_dataframe(
             .iter()
             .map(|rf| match rf {
                 ResolvedField::Single(data) => {
+                    if data.needs_into_list {
+                        // Handled in the sequential pre-pass; skip in par loop.
+                        return TokenStream::new();
+                    }
                     let access = if let Some(idx) = &data.tuple_index {
                         quote! { __row.#idx }
                     } else {
@@ -1477,11 +1546,7 @@ fn derive_struct_dataframe(
                         quote! { __row.#rust_name }
                     };
                     let w_name = format_ident!("__w_{}", data.col_name);
-                    if data.needs_into_list {
-                        quote! { #w_name.write(__i, ::miniextendr_api::list::IntoList::into_list(#access)); }
-                    } else {
-                        quote! { #w_name.write(__i, #access); }
-                    }
+                    quote! { #w_name.write(__i, #access); }
                 }
                 ResolvedField::ExpandedFixed(data) => {
                     let access = if let Some(idx) = &data.tuple_index {
@@ -1532,9 +1597,9 @@ fn derive_struct_dataframe(
                     let w_name = format_ident!("__w_{}", data.col_name);
                     quote! { #w_name.write(__i, #access); }
                 }
-                // Struct fields (#485) take the sequential path — `from_rows_par`
-                // generation is gated off above, so this arm is never reached.
-                ResolvedField::Struct(_) => unreachable!(),
+                // Struct fields (#485) are collected in the sequential pre-pass
+                // above; nothing to write in the parallel loop.
+                ResolvedField::Struct(_) => TokenStream::new(),
             })
             .collect();
 
@@ -1549,7 +1614,20 @@ fn derive_struct_dataframe(
         } else {
             TokenStream::new()
         };
-        let par_len_field = if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
+        // Emit `_len: len` only when the companion struct has a `_len` field —
+        // that is, when there are truly no column vecs at all (no scalars, no
+        // as_list-on-struct fields, no struct-flattened fields, no tag).
+        // `as_list`-on-struct fields live in `flat_cols` with `needs_into_list=true`;
+        // they provide their own length reference and do NOT require `_len`.
+        // The `flat_cols.iter().all(…)` guard is redundant with `flat_cols.is_empty()`
+        // but makes the intent explicit: _len is emitted only when every dimension
+        // that tracks length is absent.
+        let par_len_field = if flat_cols.is_empty()
+            && flat_cols.iter().all(|fc| !fc.needs_into_list)
+            && auto_expand_cols.is_empty()
+            && !has_tag
+            && struct_cols.is_empty()
+        {
             quote! { _len: len, }
         } else {
             TokenStream::new()
@@ -1565,18 +1643,18 @@ fn derive_struct_dataframe(
             let name = &ac.df_field;
             par_struct_fields.push(quote! { #name });
         }
+        for sc in &struct_cols {
+            let name = &sc.df_field;
+            par_struct_fields.push(quote! { #name });
+        }
 
-        quote! {
-            /// Parallel row→column transposition using rayon scatter-write.
-            ///
-            /// Always uses rayon — no threshold check. Use `from_rows` for the
-            /// sequential path.
-            #[cfg(feature = "rayon")]
-            #[allow(clippy::uninit_vec)]
-            pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                let len = rows.len();
-                #(#par_col_decls)*
+        // Only emit an into_par_iter call when there are scalar/expand/tag cols
+        // to scatter-write; struct/as_list-only structs skip the parallel loop.
+        let has_par_cols = !flat_cols.iter().all(|fc| fc.needs_into_list)
+            || !auto_expand_cols.is_empty()
+            || has_tag;
+        let par_loop = if has_par_cols {
+            quote! {
                 {
                     #(#writer_decls)*
                     rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
@@ -1585,6 +1663,50 @@ fn derive_struct_dataframe(
                         #(#par_skip_bindings)*
                     });
                 }
+            }
+        } else {
+            // All columns were collected in the pre-pass; rows already consumed.
+            quote! { let _rows = rows; }
+        };
+
+        // Build `where Inner: Clone` bounds for all struct-flattened fields.
+        // Emitting these on the method (rather than in a `const _` assertion block)
+        // points the compiler error at the `from_rows_par` call site, not at the
+        // expanded macro internals — cleaner diagnostic for downstream users.
+        let par_inner_clone_bounds: Vec<TokenStream> = struct_cols
+            .iter()
+            .map(|sc| {
+                let inner_ty = &sc.inner_ty;
+                quote! { #inner_ty: ::core::clone::Clone, }
+            })
+            .collect();
+        let par_where_clause = if par_inner_clone_bounds.is_empty() {
+            TokenStream::new()
+        } else {
+            quote! { where #(#par_inner_clone_bounds)* }
+        };
+
+        quote! {
+            /// Parallel row→column transposition using rayon scatter-write.
+            ///
+            /// Scalar/expand columns are scatter-written in parallel via rayon.
+            /// Struct-flattened and `as_list`-on-struct fields are collected
+            /// sequentially in a pre-pass before the parallel loop (these field
+            /// types don't implement `Default`, so scatter-write is not possible).
+            /// Inner struct types must implement `Clone` (enforced by the where
+            /// clause; the error will point at the `from_rows_par` call site).
+            ///
+            /// Always uses rayon — no threshold check. Use `from_rows` for the
+            /// sequential path.
+            #[cfg(feature = "rayon")]
+            #[allow(clippy::uninit_vec)]
+            pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self
+            #par_where_clause
+            {
+                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                let len = rows.len();
+                #(#par_col_decls)*
+                #par_loop
                 #df_name { #par_tag_field #par_len_field #(#par_struct_fields),* }
             }
         }
@@ -1782,6 +1904,8 @@ fn derive_struct_dataframe(
     // Compile-time assertions for struct-flattened fields (#485): each inner
     // type must implement `DataFrameRow`, otherwise users get a confusing
     // error pointing at the `to_dataframe` call site instead of the field.
+    // Note: `Clone` is no longer asserted here — it is enforced via a where
+    // clause on `from_rows_par` itself, giving a clearer error at the call site.
     let struct_assertions: Vec<TokenStream> = struct_cols
         .iter()
         .map(|sc| {
