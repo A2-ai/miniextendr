@@ -280,6 +280,125 @@ test_that("jiff: negative Span is_negative returns TRUE", {
 
 # endregion
 
+# region: RDate calendar helpers
+
+test_that("jiff: jiff_date_weekday returns correct ISO weekday", {
+  # 2024-01-01 is a Monday (ISO 1)
+  d <- as.Date("2024-01-01")
+  expect_equal(jiff_date_weekday(d), 1L)
+  # 2024-01-07 is a Sunday (ISO 7)
+  expect_equal(jiff_date_weekday(as.Date("2024-01-07")), 7L)
+})
+
+test_that("jiff: jiff_date_day_of_year returns correct ordinal", {
+  expect_equal(jiff_date_day_of_year(as.Date("2024-01-01")), 1L)
+  expect_equal(jiff_date_day_of_year(as.Date("2024-12-31")), 366L)  # 2024 is a leap year
+  expect_equal(jiff_date_day_of_year(as.Date("2023-12-31")), 365L)
+})
+
+test_that("jiff: jiff_date_first_of_month returns first day of month", {
+  result <- jiff_date_first_of_month(as.Date("2024-03-15"))
+  expect_s3_class(result, "Date")
+  expect_equal(format(result), "2024-03-01")
+})
+
+test_that("jiff: jiff_date_last_of_month returns last day of month", {
+  # Leap year February
+  result <- jiff_date_last_of_month(as.Date("2024-02-05"))
+  expect_s3_class(result, "Date")
+  expect_equal(format(result), "2024-02-29")
+  # Non-leap year February
+  result2 <- jiff_date_last_of_month(as.Date("2023-02-05"))
+  expect_equal(format(result2), "2023-02-28")
+})
+
+test_that("jiff: jiff_date_tomorrow advances by one day", {
+  result <- jiff_date_tomorrow(as.Date("2024-01-31"))
+  expect_s3_class(result, "Date")
+  expect_equal(format(result), "2024-02-01")
+})
+
+test_that("jiff: jiff_date_yesterday retreats by one day", {
+  result <- jiff_date_yesterday(as.Date("2024-03-01"))
+  expect_s3_class(result, "Date")
+  expect_equal(format(result), "2024-02-29")  # 2024 is a leap year
+})
+
+# endregion
+
+# region: RZoned adapter trait — start_of_day + strftime
+
+test_that("jiff: jiff_zoned_start_of_day resets time to midnight, preserves tz", {
+  zdt <- as.POSIXct("2024-06-15 14:30:45", tz = "America/New_York")
+  result <- jiff_zoned_start_of_day(zdt)
+  expect_s3_class(result, "POSIXct")
+  expect_equal(attr(result, "tzone"), "America/New_York")
+  # Start of day should be midnight local time
+  lt <- as.POSIXlt(result, tz = "America/New_York")
+  expect_equal(lt$hour, 0L)
+  expect_equal(lt$min,  0L)
+  expect_equal(lt$sec,  0L)
+})
+
+test_that("jiff: jiff_zoned_strftime formats datetime correctly", {
+  zdt <- as.POSIXct("2024-01-15 09:05:03", tz = "UTC")
+  result <- jiff_zoned_strftime(zdt, "%Y-%m-%d")
+  expect_equal(result, "2024-01-15")
+  result2 <- jiff_zoned_strftime(zdt, "%H:%M:%S")
+  expect_equal(result2, "09:05:03")
+})
+
+# endregion
+
+# region: RTimestamp adapter trait — strftime + as_millisecond
+
+test_that("jiff: jiff_timestamp_strftime formats UTC timestamp correctly", {
+  ts <- as.POSIXct("2024-06-15 12:30:45", tz = "UTC")
+  result <- jiff_timestamp_strftime(ts, "%Y-%m-%dT%H:%M:%SZ")
+  expect_equal(result, "2024-06-15T12:30:45Z")
+})
+
+test_that("jiff: jiff_timestamp_as_millisecond returns correct ms since epoch", {
+  # 1 second after epoch = 1000 ms
+  ts <- as.POSIXct(1.0, origin = "1970-01-01", tz = "UTC")
+  ms <- jiff_timestamp_as_millisecond(ts)
+  expect_equal(ms, 1000.0)
+  # Epoch itself = 0 ms
+  expect_equal(jiff_timestamp_as_millisecond(as.POSIXct(0, origin = "1970-01-01", tz = "UTC")), 0.0)
+  # Negative (pre-1970)
+  neg_ts <- as.POSIXct(-1.0, origin = "1970-01-01", tz = "UTC")
+  expect_equal(jiff_timestamp_as_millisecond(neg_ts), -1000.0)
+})
+
+# endregion
+
+# region: ALTREP laziness (item 9)
+
+test_that("jiff: JiffTimestampVecCounted elt counter starts at 0 after creation", {
+  altrep <- jiff_counted_altrep(10L)
+  expect_equal(jiff_counted_altrep_elt_count(), 0L)
+})
+
+test_that("jiff: JiffTimestampVecCounted counter increments only on element access", {
+  altrep <- jiff_counted_altrep(5L)
+  # No access yet — counter must still be 0 (proves no eager materialization)
+  expect_equal(jiff_counted_altrep_elt_count(), 0L)
+  # Access element 0 via R's [[ — triggers exactly one elt() call
+  invisible(altrep[[1]])
+  expect_equal(jiff_counted_altrep_elt_count(), 1L)
+  # Access element 2 — counter must be 2
+  invisible(altrep[[3]])
+  expect_equal(jiff_counted_altrep_elt_count(), 2L)
+})
+
+test_that("jiff: JiffTimestampVecCounted does not materialise on length query", {
+  altrep <- jiff_counted_altrep(100L)
+  expect_equal(length(altrep), 100L)
+  expect_equal(jiff_counted_altrep_elt_count(), 0L)
+})
+
+# endregion
+
 # region: vctrs rcrd constructors
 
 test_that("jiff: Span vctrs rcrd has correct fields", {
