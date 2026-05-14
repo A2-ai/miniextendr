@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      abd936561f2fb3ab
+// content-hash:      2223d578ec80bb69
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -905,10 +905,15 @@ unsafe extern "C-unwind" {
     pub fn C_hybrid_as_ptr(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_hybrid_as_list(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ptr_list_as_ptr(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_attr_prefer_list(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_hybrid_as_native(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_plain_option_i32(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ptr_list_as_list(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_attr_prefer_native(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_native_list_as_list(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_native_list_as_native(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_attr_prefer_externalptr(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_attr_prefer_list_option(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_create_events_df(_: SEXP) -> SEXP;
     pub fn C_create_people_df(_: SEXP) -> SEXP;
     pub fn C_create_points_df(_: SEXP) -> SEXP;
@@ -1666,7 +1671,6 @@ unsafe extern "C-unwind" {
     pub fn C_flat_as_list_inner(_: SEXP) -> SEXP;
     pub fn C_flat_nested_struct(_: SEXP) -> SEXP;
     pub fn C_flat_renamed_inner(_: SEXP) -> SEXP;
-    pub fn C_qual_located_basic(_: SEXP) -> SEXP;
     pub fn C_flat_basic_zero_rows(_: SEXP) -> SEXP;
     pub fn C_flat_mixed_inner_types(_: SEXP) -> SEXP;
     pub fn C_flat_two_struct_fields(_: SEXP) -> SEXP;
@@ -6359,13 +6363,28 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_attr_prefer_list".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_list) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_hybrid_as_native".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_hybrid_as_native) }),
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_plain_option_i32".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_plain_option_i32) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_ptr_list_as_list".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_ptr_list_as_list) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_attr_prefer_native".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_native) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -6376,6 +6395,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_native_list_as_native".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_native_list_as_native) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_attr_prefer_externalptr".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_externalptr) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_attr_prefer_list_option".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_list_option) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -10161,11 +10190,6 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_flat_renamed_inner".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_flat_renamed_inner) }),
-        numArgs: 1,
-    },
-    R_CallMethodDef {
-        name: c"C_qual_located_basic".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_qual_located_basic) }),
         numArgs: 1,
     },
     R_CallMethodDef {

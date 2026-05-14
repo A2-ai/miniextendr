@@ -717,7 +717,7 @@ pub fn miniextendr(
         coerce_all,
         rng,
         unwrap_in_r,
-        return_pref: _, // deferred: CWrapperContext doesn't yet use List/ExternalPtr/Native wrapping
+        return_pref,
         s3_generic,
         s3_class,
         dots_spec,
@@ -937,9 +937,19 @@ pub fn miniextendr(
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
     let fn_return_handling = if unwrap_in_r && crate::return_type_analysis::output_is_result(output)
     {
+        // Note: prefer= is intentionally ignored when unwrap_in_r overrides the return
+        // handling. In unwrap_in_r mode the IntoR here operates on the whole Result<T,E>
+        // (the framework's IntoR for Result encodes it as a tagged list for R to decode),
+        // NOT on the inner T. Applying prefer= would require Result<T,E>: IntoList /
+        // IntoExternalPtr / RNativeType — almost certainly absent. The prefer= attribute
+        // is effectively a no-op when unwrap_in_r is active.
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
-        c_wrapper_builder::detect_return_handling_standalone_fn(output)
+        let auto = c_wrapper_builder::detect_return_handling_standalone_fn(output);
+        // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
+        // Only applies to the plain IntoR variant — Option*/Result*/Unit/RawSexp/ExternalPtr
+        // variants pass through unchanged (see apply_return_pref docstring).
+        apply_return_pref(auto, return_pref)
     };
 
     let thread_strategy = if use_main_thread {
@@ -1533,6 +1543,42 @@ pub fn miniextendr(
     .into();
 
     expanded
+}
+
+/// Maps a `ReturnPref` attribute value onto an auto-detected `ReturnHandling`.
+///
+/// Only substitutes the plain `IntoR` variant with its pref-specific counterpart.
+/// All other variants (`Unit`, `RawSexp`, `ExternalPtr`, `Result*`, `OptionIntoR`,
+/// `OptionIntoRUnwrap`) are left unchanged — wrapping would be semantically wrong
+/// or there is no plain value to wrap.
+///
+/// # Notes
+///
+/// When `prefer=` is combined with `Option<T>` or `Result<T,E>` returns, only the
+/// plain-T fast path is affected — `Option`/`Result` wrappers behave as if `prefer=`
+/// were absent. A future PR can add explicit `Option*` handling if a user needs it.
+fn apply_return_pref(
+    auto: c_wrapper_builder::ReturnHandling,
+    pref: crate::miniextendr_fn::ReturnPref,
+) -> c_wrapper_builder::ReturnHandling {
+    use crate::miniextendr_fn::ReturnPref;
+    use c_wrapper_builder::ReturnHandling;
+
+    match pref {
+        ReturnPref::Auto => auto,
+        ReturnPref::List => match auto {
+            ReturnHandling::IntoR => ReturnHandling::AsListOf,
+            other => other, // Unit, RawSexp, ExternalPtr, Result*, Option* — ignore prefer on incompatible types
+        },
+        ReturnPref::ExternalPtr => match auto {
+            ReturnHandling::IntoR => ReturnHandling::AsExternalPtrOf,
+            other => other,
+        },
+        ReturnPref::Native => match auto {
+            ReturnHandling::IntoR => ReturnHandling::AsNativeOf,
+            other => other,
+        },
+    }
 }
 
 /// Generate thread-safe wrappers for R FFI functions.

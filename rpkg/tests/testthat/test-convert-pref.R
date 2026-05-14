@@ -16,3 +16,33 @@ test_that("return-type wrappers work with subset of representations", {
   expect_identical(native_list_as_native(6L), 6L)
 })
 
+test_that("prefer = 'list' attribute returns a list identical to explicit AsList wrapper", {
+  result <- attr_prefer_list(1L)
+  expect_identical(typeof(result), "list")
+  expect_identical(result, hybrid_as_list(1L))
+})
+
+test_that("prefer = 'externalptr' attribute returns an externalptr identical to explicit AsExternalPtr wrapper", {
+  result <- attr_prefer_externalptr(1L)
+  expect_identical(typeof(result), "externalptr")
+  expect_identical(typeof(result), typeof(hybrid_as_ptr(1L)))
+})
+
+test_that("prefer = 'native' attribute returns an integer scalar identical to explicit AsRNative wrapper", {
+  result <- attr_prefer_native(1L)
+  expect_identical(typeof(result), "integer")
+  expect_identical(result, hybrid_as_native(1L))
+})
+
+test_that("prefer = 'list' is a no-op when return type is Option<T>", {
+  # prefer= only applies to plain-T returns (the IntoR variant in apply_return_pref).
+  # For Option<T>, auto-detection produces OptionIntoR which passes through apply_return_pref
+  # unchanged, so prefer="list" is silently ignored on Option<T> returns.
+  # attr_prefer_list_option and plain_option_i32 must therefore produce identical outputs.
+  expect_identical(attr_prefer_list_option(1L), plain_option_i32(1L))
+  expect_null(attr_prefer_list_option(NULL))
+  expect_null(plain_option_i32(NULL))
+  # Crucially, the result is NOT a list (which prefer="list" WOULD produce on a plain T return).
+  expect_false(typeof(attr_prefer_list_option(1L)) == "list")
+})
+

@@ -1078,8 +1078,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     pub(crate) unwrap_in_r: bool,
-    /// Preferred return conversion (deferred: not yet forwarded to `CWrapperContext`).
-    #[allow(dead_code)]
+    /// Preferred return conversion: forces `AsList`/`AsExternalPtr`/`AsRNative` wrapping
+    /// of the return value before `IntoR::into_sexp` is called.
     pub(crate) return_pref: ReturnPref,
     /// S3 generic name (if this function is an S3 method).
     ///
