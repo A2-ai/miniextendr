@@ -1,7 +1,7 @@
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-05-09 16:53:58
+--- a/monorepo/rpkg/bootstrap.R	2026-05-14 09:18:35
 +++ b/monorepo/rpkg/bootstrap.R	2026-04-28 10:42:41
-@@ -1,53 +1,11 @@
+@@ -1,119 +1,11 @@
 -# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
 -# the source directory before R CMD build seals the tarball. Two jobs:
@@ -40,6 +40,72 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 -      call. = FALSE
 -    )
 -  }
+-
+-  # Regenerate Cargo.lock in tarball-shape before vendoring.
+-  #
+-  # In a dev monorepo checkout, .cargo/config.toml contains [patch."git+url"]
+-  # overrides that redirect miniextendr-{api,lint,macros} to local workspace
+-  # paths.  cargo then records `source = "path+file:///..."` entries in
+-  # Cargo.lock.  Those path-source entries are invalid at offline install time
+-  # (the workspace paths don't exist inside the tarball), so we must regenerate
+-  # the lock against the bare git URLs before invoking cargo-revendor.
+-  #
+-  # Steps mirror `just vendor`:
+-  #   1. Move .cargo/config.toml aside (suppress [patch] override).
+-  #   2. Delete Cargo.lock so cargo resolves fresh.
+-  #   3. `cargo generate-lockfile` — miniextendr-* entries get
+-  #      `source = "git+https://...#<commit>"`, which is what cargo's
+-  #      source-replacement mechanism needs during offline install.
+-  #   4. Restore .cargo/config.toml.
+-  rust_dir <- file.path(getwd(), "src", "rust")
+-  cargo_cfg <- file.path(rust_dir, ".cargo", "config.toml")
+-  cargo_cfg_backup <- paste0(cargo_cfg, ".tmp_bootstrap_vendor")
+-  cargo_lock <- file.path(rust_dir, "Cargo.lock")
+-  cargo_manifest <- file.path(rust_dir, "Cargo.toml")
+-
+-  # file.rename() returns FALSE on failure without throwing — wrap it so any
+-  # rename failure is a hard error rather than a silent no-op.
+-  safe_rename <- function(from, to, context) {
+-    if (!isTRUE(file.rename(from, to))) {
+-      stop(
+-        "bootstrap.R: failed to rename ", from, " -> ", to,
+-        " (", context, ")",
+-        call. = FALSE
+-      )
+-    }
+-    invisible()
+-  }
+-
+-  if (file.exists(cargo_cfg)) {
+-    safe_rename(
+-      cargo_cfg, cargo_cfg_backup,
+-      "cannot move .cargo/config.toml aside; Cargo.lock regeneration aborted"
+-    )
+-  }
+-  if (file.exists(cargo_lock)) {
+-    file.remove(cargo_lock)
+-  }
+-  message("bootstrap.R: regenerating Cargo.lock in tarball-shape")
+-  lock_status <- system2("cargo", c(
+-    "generate-lockfile",
+-    "--manifest-path", cargo_manifest
+-  ))
+-  if (file.exists(cargo_cfg_backup)) {
+-    safe_rename(
+-      cargo_cfg_backup, cargo_cfg,
+-      paste0(
+-        "cannot restore .cargo/config.toml from backup; ",
+-        "manual fix required: rename ", cargo_cfg_backup, " -> ", cargo_cfg
+-      )
+-    )
+-  }
+-  if (lock_status != 0) {
+-    stop(
+-      "bootstrap.R: cargo generate-lockfile failed (exit ", lock_status, ")",
+-      call. = FALSE
+-    )
+-  }
+-
 -  message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
 -  dir.create("inst", showWarnings = FALSE)
 -  status <- system2("cargo", c(
