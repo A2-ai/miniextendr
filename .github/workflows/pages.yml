@@ -6,7 +6,6 @@ on:
     paths:
       - 'site/**'
       - 'docs/**'
-      - 'plans/**'
       - 'scripts/**'
       - '*/src/**'
       - 'rpkg/src/rust/**'
@@ -124,7 +123,7 @@ jobs:
       - name: Generate manual from docs/
         run: bash scripts/docs-to-site.sh
 
-      - name: Generate roadmap data (issues + plans)
+      - name: Generate roadmap data (issues)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -132,7 +131,6 @@ jobs:
           gh issue list --state open --limit 500 \
             --json number,title,labels,url,createdAt,updatedAt,assignees,state \
             > site/data/issues.json
-          bash scripts/plans-to-json.sh > site/data/plans.json
 
       - name: Build Zola site
         run: cd site && zola build
