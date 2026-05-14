@@ -937,13 +937,18 @@ pub fn miniextendr(
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
     let fn_return_handling = if unwrap_in_r && crate::return_type_analysis::output_is_result(output)
     {
+        // Note: prefer= is intentionally ignored when unwrap_in_r overrides the return
+        // handling. In unwrap_in_r mode the IntoR here operates on the whole Result<T,E>
+        // (the framework's IntoR for Result encodes it as a tagged list for R to decode),
+        // NOT on the inner T. Applying prefer= would require Result<T,E>: IntoList /
+        // IntoExternalPtr / RNativeType — almost certainly absent. The prefer= attribute
+        // is effectively a no-op when unwrap_in_r is active.
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
         let auto = c_wrapper_builder::detect_return_handling_standalone_fn(output);
         // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
-        // Only meaningful when the auto-detected handling is IntoR.
-        // For Option*/Result*/Unit/RawSexp/ExternalPtr variants, prefer= is ignored
-        // because there is no plain value to wrap or wrapping would be semantically wrong.
+        // Only applies to the plain IntoR variant — Option*/Result*/Unit/RawSexp/ExternalPtr
+        // variants pass through unchanged (see apply_return_pref docstring).
         apply_return_pref(auto, return_pref)
     };
 
@@ -1542,15 +1547,16 @@ pub fn miniextendr(
 
 /// Maps a `ReturnPref` attribute value onto an auto-detected `ReturnHandling`.
 ///
-/// Only substitutes the three `IntoR`-family variants (`IntoR`, `OptionIntoR`,
-/// `OptionIntoRUnwrap`) with their pref-specific counterparts. All other variants
-/// (`Unit`, `RawSexp`, `ExternalPtr`, `Result*`) are left unchanged — wrapping
-/// would be semantically wrong or there is no plain value to wrap.
+/// Only substitutes the plain `IntoR` variant with its pref-specific counterpart.
+/// All other variants (`Unit`, `RawSexp`, `ExternalPtr`, `Result*`, `OptionIntoR`,
+/// `OptionIntoRUnwrap`) are left unchanged — wrapping would be semantically wrong
+/// or there is no plain value to wrap.
 ///
-/// Note: `OptionIntoR` / `OptionIntoRUnwrap` + `prefer` is mapped to the
-/// corresponding `As*Of` variant. The value wrapped will be `Option<T>`, which
-/// requires `Option<T>: IntoList` / `IntoExternalPtr` / `RNativeType`. If the
-/// user's type doesn't satisfy the trait bound the compiler will surface the error.
+/// # Notes
+///
+/// When `prefer=` is combined with `Option<T>` or `Result<T,E>` returns, only the
+/// plain-T fast path is affected — `Option`/`Result` wrappers behave as if `prefer=`
+/// were absent. A future PR can add explicit `Option*` handling if a user needs it.
 fn apply_return_pref(
     auto: c_wrapper_builder::ReturnHandling,
     pref: crate::miniextendr_fn::ReturnPref,
@@ -1561,21 +1567,15 @@ fn apply_return_pref(
     match pref {
         ReturnPref::Auto => auto,
         ReturnPref::List => match auto {
-            ReturnHandling::IntoR
-            | ReturnHandling::OptionIntoR
-            | ReturnHandling::OptionIntoRUnwrap => ReturnHandling::AsListOf,
-            other => other, // Unit, RawSexp, ExternalPtr, Result* — ignore prefer on incompatible types
+            ReturnHandling::IntoR => ReturnHandling::AsListOf,
+            other => other, // Unit, RawSexp, ExternalPtr, Result*, Option* — ignore prefer on incompatible types
         },
         ReturnPref::ExternalPtr => match auto {
-            ReturnHandling::IntoR
-            | ReturnHandling::OptionIntoR
-            | ReturnHandling::OptionIntoRUnwrap => ReturnHandling::AsExternalPtrOf,
+            ReturnHandling::IntoR => ReturnHandling::AsExternalPtrOf,
             other => other,
         },
         ReturnPref::Native => match auto {
-            ReturnHandling::IntoR
-            | ReturnHandling::OptionIntoR
-            | ReturnHandling::OptionIntoRUnwrap => ReturnHandling::AsNativeOf,
+            ReturnHandling::IntoR => ReturnHandling::AsNativeOf,
             other => other,
         },
     }

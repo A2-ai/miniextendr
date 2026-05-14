@@ -34,3 +34,15 @@ test_that("prefer = 'native' attribute returns an integer scalar identical to ex
   expect_identical(result, hybrid_as_native(1L))
 })
 
+test_that("prefer = 'list' is a no-op when return type is Option<T>", {
+  # prefer= only applies to plain-T returns (the IntoR variant in apply_return_pref).
+  # For Option<T>, auto-detection produces OptionIntoR which passes through apply_return_pref
+  # unchanged, so prefer="list" is silently ignored on Option<T> returns.
+  # attr_prefer_list_option and plain_option_i32 must therefore produce identical outputs.
+  expect_identical(attr_prefer_list_option(1L), plain_option_i32(1L))
+  expect_null(attr_prefer_list_option(NULL))
+  expect_null(plain_option_i32(NULL))
+  # Crucially, the result is NOT a list (which prefer="list" WOULD produce on a plain T return).
+  expect_false(typeof(attr_prefer_list_option(1L)) == "list")
+})
+

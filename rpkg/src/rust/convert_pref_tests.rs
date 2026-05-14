@@ -129,3 +129,33 @@ pub fn attr_prefer_externalptr(x: i32) -> Hybrid {
 pub fn attr_prefer_native(x: i32) -> Hybrid {
     Hybrid(x)
 }
+
+// Option<T> + prefer= no-op fixture.
+//
+// #[miniextendr(prefer = "list")] on -> Option<i32> should behave as if prefer= is absent:
+// apply_return_pref only maps IntoR → AsListOf; OptionIntoR (the auto-detected handling
+// for Option<T> in standalone-fn mode) passes through unchanged.  The result is the same SEXP
+// that a plain #[miniextendr] fn returning Option<i32> would produce.
+
+#[miniextendr(prefer = "list")]
+/// @title Option return with prefer = "list" is a no-op
+/// @rdname convert_pref_tests
+/// @description `prefer = "list"` is ignored when the return type is `Option<T>`;
+///   the result is identical to a plain `#[miniextendr]` function returning `Option<i32>`.
+///   This documents the current limitation: only plain-`T` returns are affected by `prefer=`.
+/// @examples
+/// attr_prefer_list_option(1L)
+/// attr_prefer_list_option(NULL)
+pub fn attr_prefer_list_option(x: Option<i32>) -> Option<i32> {
+    x
+}
+
+#[miniextendr]
+/// @title Plain Option return baseline for prefer= no-op test
+/// @rdname convert_pref_tests
+/// @description Baseline without `prefer=`; used to assert `attr_prefer_list_option` is identical.
+/// @examples
+/// plain_option_i32(1L)
+pub fn plain_option_i32(x: Option<i32>) -> Option<i32> {
+    x
+}
