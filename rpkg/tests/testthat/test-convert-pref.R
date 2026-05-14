@@ -40,8 +40,9 @@ test_that("prefer = 'list' is a no-op when return type is Option<T>", {
   # unchanged, so prefer="list" is silently ignored on Option<T> returns.
   # attr_prefer_list_option and plain_option_i32 must therefore produce identical outputs.
   expect_identical(attr_prefer_list_option(1L), plain_option_i32(1L))
-  expect_null(attr_prefer_list_option(NULL))
-  expect_null(plain_option_i32(NULL))
+  # Option<i32> None maps to NA_integer_ (not NULL) — same for both fns.
+  expect_identical(attr_prefer_list_option(NULL), plain_option_i32(NULL))
+  expect_identical(attr_prefer_list_option(NULL), NA_integer_)
   # Crucially, the result is NOT a list (which prefer="list" WOULD produce on a plain T return).
   expect_false(typeof(attr_prefer_list_option(1L)) == "list")
 })

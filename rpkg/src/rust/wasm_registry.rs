@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      2223d578ec80bb69
+// content-hash:      83c2dd743cbd90a3
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -955,19 +955,25 @@ unsafe extern "C-unwind" {
     pub fn C_jiff_time_minute(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_time_second(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_zoned_month(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_date_weekday(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_datetime_day(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_datetime_new(_: SEXP, _: SEXP, _: SEXP, _: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_span_is_zero(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_date_tomorrow(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_datetime_hour(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_datetime_year(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_duration_secs(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_zoned_tz_name(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_counted_altrep(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_date_yesterday(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_datetime_month(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_date(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_span_rcrd_demo(_: SEXP) -> SEXP;
+    pub fn C_jiff_zoned_strftime(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_epoch_timestamp(_: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_zoned(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_zoned_rcrd_demo(_: SEXP) -> SEXP;
+    pub fn C_jiff_date_day_of_year(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_option_timestamp(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_span_is_negative(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_altrep_timestamps(_: SEXP, _: SEXP) -> SEXP;
@@ -975,14 +981,20 @@ unsafe extern "C-unwind" {
     pub fn C_jiff_negative_duration(_: SEXP) -> SEXP;
     pub fn C_jiff_one_hour_duration(_: SEXP) -> SEXP;
     pub fn C_jiff_timestamp_seconds(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_date_last_of_month(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_negative_timestamp(_: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_date_vec(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_duration(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_timestamp_strftime(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_zoned_start_of_day(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_date_first_of_month(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_timestamp(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_zoned_vec(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_fractional_timestamp(_: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_timestamp_vec(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_counted_altrep_elt_count(_: SEXP) -> SEXP;
     pub fn C_jiff_half_second_before_epoch(_: SEXP) -> SEXP;
+    pub fn C_jiff_timestamp_as_millisecond(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_protect_pool_multi(_: SEXP) -> SEXP;
     pub fn C_protect_pool_roundtrip(_: SEXP) -> SEXP;
     pub fn C_sha2_sha256(_: SEXP, _: SEXP) -> SEXP;
@@ -1671,6 +1683,7 @@ unsafe extern "C-unwind" {
     pub fn C_flat_as_list_inner(_: SEXP) -> SEXP;
     pub fn C_flat_nested_struct(_: SEXP) -> SEXP;
     pub fn C_flat_renamed_inner(_: SEXP) -> SEXP;
+    pub fn C_qual_located_basic(_: SEXP) -> SEXP;
     pub fn C_flat_basic_zero_rows(_: SEXP) -> SEXP;
     pub fn C_flat_mixed_inner_types(_: SEXP) -> SEXP;
     pub fn C_flat_two_struct_fields(_: SEXP) -> SEXP;
@@ -1829,6 +1842,7 @@ unsafe extern "C-unwind" {
 
 unsafe extern "C" {
     pub safe fn __mx_altrep_reg_MxDerivedIntsData();
+    pub safe fn __mx_altrep_reg_JiffTimestampVecCounted();
     pub safe fn __mx_altrep_reg_WarnAltrepData();
     pub safe fn __mx_altrep_reg_MessageAltrepData();
     pub safe fn __mx_altrep_reg_ConditionAltrepData();
@@ -6613,6 +6627,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_jiff_date_weekday".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_date_weekday) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_jiff_datetime_day".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_datetime_day) }),
         numArgs: 2,
@@ -6625,6 +6644,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_jiff_span_is_zero".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_span_is_zero) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_date_tomorrow".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_date_tomorrow) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -6648,6 +6672,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_jiff_counted_altrep".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_counted_altrep) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_date_yesterday".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_date_yesterday) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_jiff_datetime_month".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_datetime_month) }),
         numArgs: 2,
@@ -6663,6 +6697,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_jiff_zoned_strftime".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_jiff_zoned_strftime) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
         name: c"C_jiff_epoch_timestamp".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_jiff_epoch_timestamp) }),
         numArgs: 1,
@@ -6676,6 +6715,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_jiff_zoned_rcrd_demo".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_jiff_zoned_rcrd_demo) }),
         numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_date_day_of_year".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_date_day_of_year) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_jiff_option_timestamp".as_ptr(),
@@ -6713,6 +6757,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_jiff_date_last_of_month".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_date_last_of_month) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_jiff_negative_timestamp".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_jiff_negative_timestamp) }),
         numArgs: 1,
@@ -6725,6 +6774,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_jiff_roundtrip_duration".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_roundtrip_duration) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_timestamp_strftime".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_jiff_timestamp_strftime) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_zoned_start_of_day".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_zoned_start_of_day) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_date_first_of_month".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_date_first_of_month) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -6748,9 +6812,19 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_jiff_counted_altrep_elt_count".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_jiff_counted_altrep_elt_count) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_jiff_half_second_before_epoch".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_jiff_half_second_before_epoch) }),
         numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_timestamp_as_millisecond".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_timestamp_as_millisecond) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_protect_pool_multi".as_ptr(),
@@ -10193,6 +10267,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_qual_located_basic".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_qual_located_basic) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_flat_basic_zero_rows".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_flat_basic_zero_rows) }),
         numArgs: 1,
@@ -10968,6 +11047,10 @@ pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[
     AltrepRegistration {
         register: __mx_altrep_reg_MxDerivedIntsData,
         symbol: "__mx_altrep_reg_MxDerivedIntsData",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_JiffTimestampVecCounted,
+        symbol: "__mx_altrep_reg_JiffTimestampVecCounted",
     },
     AltrepRegistration {
         register: __mx_altrep_reg_WarnAltrepData,
