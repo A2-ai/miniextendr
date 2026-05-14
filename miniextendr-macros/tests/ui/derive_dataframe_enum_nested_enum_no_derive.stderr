@@ -47,18 +47,18 @@ note: required by a bound in `_assert_inner_is_dataframe_row`
    |          ^^^^^^^^^^^^ required by this bound in `_assert_inner_is_dataframe_row`
    = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Status: DataFramePayloadFields` is not satisfied
+error[E0277]: the trait bound `Status: miniextendr_api::markers::DataFramePayloadFields` is not satisfied
   --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:15:32
    |
 15 |     Tracked { id: i32, status: Status },
    |                                ^^^^^^ unsatisfied trait bound
    |
-help: the trait `DataFramePayloadFields` is not implemented for `Status`
+help: the trait `miniextendr_api::markers::DataFramePayloadFields` is not implemented for `Status`
   --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:7:1
    |
  7 | enum Status {
    | ^^^^^^^^^^^
-help: the trait `DataFramePayloadFields` is implemented for `Outer`
+help: the trait `miniextendr_api::markers::DataFramePayloadFields` is implemented for `Outer`
   --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:12:10
    |
 12 | #[derive(DataFrameRow)]
