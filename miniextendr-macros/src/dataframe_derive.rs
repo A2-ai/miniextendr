@@ -1736,6 +1736,27 @@ fn derive_struct_dataframe(
             for #row_name #ty_generics #where_clause {}
     };
 
+    // DataFramePayloadFields impl: exposes FIELDS (all resolved column names) and TAG
+    // (the #[dataframe(tag = "...")] value, or "") for compile-time collision detection
+    // by outer DataFrameRow enums that nest this type as a struct-flattened field.
+    let payload_fields_impl = {
+        // Collect all column names: flat_cols + struct_col base names.
+        let mut field_names: Vec<String> =
+            flat_cols.iter().map(|fc| fc.col_name_str.clone()).collect();
+        for sc in &struct_cols {
+            field_names.push(sc.col_name_str.clone());
+        }
+        let tag_str = attrs.tag.as_deref().unwrap_or("");
+        quote! {
+            impl #impl_generics ::miniextendr_api::markers::DataFramePayloadFields
+                for #row_name #ty_generics #where_clause
+            {
+                const FIELDS: &'static [&'static str] = &[#(#field_names),*];
+                const TAG: &'static str = #tag_str;
+            }
+        }
+    };
+
     // Compile-time assertions for struct-flattened fields (#485): each inner
     // type must implement `DataFrameRow`, otherwise users get a confusing
     // error pointing at the `to_dataframe` call site instead of the field.
@@ -1763,6 +1784,7 @@ fn derive_struct_dataframe(
         #row_methods
         #trait_check
         #marker_impl
+        #payload_fields_impl
         #(#struct_assertions)*
     })
     // endregion

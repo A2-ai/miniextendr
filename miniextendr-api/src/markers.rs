@@ -38,6 +38,89 @@
 )]
 pub trait DataFrameRow {}
 
+/// Reflection trait for `#[derive(DataFrameRow)]` types, used for compile-time
+/// collision detection in outer `DataFrameRow` enums.
+///
+/// Automatically emitted by the `DataFrameRow` derive macro alongside `DataFrameRow`.
+/// The outer enum's codegen generates a `const _: ()` assertion that calls
+/// [`assert_no_payload_field_collision`] using these associated constants, producing
+/// a clear compile error when an inner payload field name (after outer prefix expansion)
+/// would produce the same R column as the outer discriminant column.
+///
+/// # Constants
+///
+/// - `FIELDS`: the resolved column names (after `#[dataframe(rename = "...")]`) that
+///   this type contributes directly. For structs: each column name. For enums: every
+///   payload field name across all variants (deduplicated).
+/// - `TAG`: the value of `#[dataframe(tag = "...")]` on this type, or `""` if absent.
+///   The outer macro uses this as the discriminant suffix for inner-enum nested fields.
+///
+/// You should not implement this trait manually.
+#[doc(hidden)]
+pub trait DataFramePayloadFields {
+    /// Resolved column names contributed by this type (post-rename, pre-prefix).
+    const FIELDS: &'static [&'static str];
+    /// Value of `#[dataframe(tag = "...")]` on this type, or `""` if absent.
+    const TAG: &'static str;
+}
+
+// region: const-eval collision helper
+
+/// Const-eval equality check for two `&str` values (stable since Rust 1.46).
+///
+/// Used by [`assert_no_payload_field_collision`] inside a `const {}` block.
+const fn const_str_eq(a: &str, b: &str) -> bool {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// Compile-time assertion: no element of `fields` equals `discriminant_suffix`
+/// (the inner-enum's `#[dataframe(tag)]` value).
+///
+/// Called from `const _: ()` blocks emitted by the outer `DataFrameRow` derive for
+/// every `EnumResolvedField::Struct` nested-enum field:
+///
+/// ```rust,ignore
+/// const _: () = ::miniextendr_api::markers::assert_no_payload_field_collision(
+///     <Inner as ::miniextendr_api::markers::DataFramePayloadFields>::FIELDS,
+///     <Inner as ::miniextendr_api::markers::DataFramePayloadFields>::TAG,
+/// );
+/// ```
+///
+/// `fields` contains the resolved column names the inner type emits directly (not prefixed).
+/// `discriminant_suffix` is the inner enum's tag value (e.g. `"variant"`).
+///
+/// If any field name equals the discriminant suffix, the const evaluation panics with a
+/// message explaining the collision and suggesting a rename.
+#[doc(hidden)]
+pub const fn assert_no_payload_field_collision(fields: &[&str], discriminant_suffix: &str) {
+    let mut i = 0;
+    while i < fields.len() {
+        if const_str_eq(fields[i], discriminant_suffix) {
+            panic!(
+                "DataFrameRow inner-payload field collision: an inner enum payload field \
+                 has the same name as the inner enum's discriminant tag. After outer prefix \
+                 expansion this produces two columns with identical names, causing silent \
+                 data corruption. Rename the inner payload field or add \
+                 `#[dataframe(rename = \"...\")]` on it to use a different column name."
+            );
+        }
+        i += 1;
+    }
+}
+// endregion
+
 /// Marker trait for types that should be converted to R lists via `IntoR`.
 ///
 /// Implemented by the `PreferList` derive; you can also implement it manually.

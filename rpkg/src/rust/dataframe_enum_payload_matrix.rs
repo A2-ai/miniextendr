@@ -1261,6 +1261,11 @@ mod struct_field_tests {
 //     `dir_variant` column from the `tag = "variant"` attribute on Direction)
 //   - `NestedFactorEvent`: `#[dataframe(as_factor)] dir: Direction` → factor column
 //   - `NestedListEvent`: `#[dataframe(as_list)] dir: Direction` → list column
+//
+// Note: the inner-payload-field-named-`variant` pattern (i.e., a `Status` payload
+// field named `"variant"`) is now a **compile error** enforced via
+// `assert_no_payload_field_collision` at the outer `#[derive(DataFrameRow)]` site.
+// See issue #486 and PR #542.
 
 /// Unit-only inner enum — derives `DataFrameRow`, which auto-emits `IntoR` and
 /// `IntoR for Vec<Option<Self>>` as factor SEXPs, and `IntoList`.
