@@ -717,7 +717,7 @@ pub fn miniextendr(
         coerce_all,
         rng,
         unwrap_in_r,
-        return_pref: _, // deferred: CWrapperContext doesn't yet use List/ExternalPtr/Native wrapping
+        return_pref,
         s3_generic,
         s3_class,
         dots_spec,
@@ -939,7 +939,12 @@ pub fn miniextendr(
     {
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
-        c_wrapper_builder::detect_return_handling_standalone_fn(output)
+        let auto = c_wrapper_builder::detect_return_handling_standalone_fn(output);
+        // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
+        // Only meaningful when the auto-detected handling is IntoR.
+        // For Option*/Result*/Unit/RawSexp/ExternalPtr variants, prefer= is ignored
+        // because there is no plain value to wrap or wrapping would be semantically wrong.
+        apply_return_pref(auto, return_pref)
     };
 
     let thread_strategy = if use_main_thread {
@@ -1533,6 +1538,47 @@ pub fn miniextendr(
     .into();
 
     expanded
+}
+
+/// Maps a `ReturnPref` attribute value onto an auto-detected `ReturnHandling`.
+///
+/// Only substitutes the three `IntoR`-family variants (`IntoR`, `OptionIntoR`,
+/// `OptionIntoRUnwrap`) with their pref-specific counterparts. All other variants
+/// (`Unit`, `RawSexp`, `ExternalPtr`, `Result*`) are left unchanged — wrapping
+/// would be semantically wrong or there is no plain value to wrap.
+///
+/// Note: `OptionIntoR` / `OptionIntoRUnwrap` + `prefer` is mapped to the
+/// corresponding `As*Of` variant. The value wrapped will be `Option<T>`, which
+/// requires `Option<T>: IntoList` / `IntoExternalPtr` / `RNativeType`. If the
+/// user's type doesn't satisfy the trait bound the compiler will surface the error.
+fn apply_return_pref(
+    auto: c_wrapper_builder::ReturnHandling,
+    pref: crate::miniextendr_fn::ReturnPref,
+) -> c_wrapper_builder::ReturnHandling {
+    use crate::miniextendr_fn::ReturnPref;
+    use c_wrapper_builder::ReturnHandling;
+
+    match pref {
+        ReturnPref::Auto => auto,
+        ReturnPref::List => match auto {
+            ReturnHandling::IntoR
+            | ReturnHandling::OptionIntoR
+            | ReturnHandling::OptionIntoRUnwrap => ReturnHandling::AsListOf,
+            other => other, // Unit, RawSexp, ExternalPtr, Result* — ignore prefer on incompatible types
+        },
+        ReturnPref::ExternalPtr => match auto {
+            ReturnHandling::IntoR
+            | ReturnHandling::OptionIntoR
+            | ReturnHandling::OptionIntoRUnwrap => ReturnHandling::AsExternalPtrOf,
+            other => other,
+        },
+        ReturnPref::Native => match auto {
+            ReturnHandling::IntoR
+            | ReturnHandling::OptionIntoR
+            | ReturnHandling::OptionIntoRUnwrap => ReturnHandling::AsNativeOf,
+            other => other,
+        },
+    }
 }
 
 /// Generate thread-safe wrappers for R FFI functions.

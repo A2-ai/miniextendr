@@ -16,3 +16,21 @@ test_that("return-type wrappers work with subset of representations", {
   expect_identical(native_list_as_native(6L), 6L)
 })
 
+test_that("prefer = 'list' attribute returns a list identical to explicit AsList wrapper", {
+  result <- attr_prefer_list(1L)
+  expect_identical(typeof(result), "list")
+  expect_identical(result, hybrid_as_list(1L))
+})
+
+test_that("prefer = 'externalptr' attribute returns an externalptr identical to explicit AsExternalPtr wrapper", {
+  result <- attr_prefer_externalptr(1L)
+  expect_identical(typeof(result), "externalptr")
+  expect_identical(typeof(result), typeof(hybrid_as_ptr(1L)))
+})
+
+test_that("prefer = 'native' attribute returns an integer scalar identical to explicit AsRNative wrapper", {
+  result <- attr_prefer_native(1L)
+  expect_identical(typeof(result), "integer")
+  expect_identical(result, hybrid_as_native(1L))
+})
+

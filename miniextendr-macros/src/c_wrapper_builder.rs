@@ -84,6 +84,22 @@ pub enum ReturnHandling {
     /// `None`/`Err` maps to R `NULL` (unit error is a deliberate sentinel, not a Rust failure).
     /// `error_in_r` does not affect this: unit errors always return NULL regardless.
     ResultNullOnErr,
+    /// Returns `T` where `T: IntoList` -- wraps in `AsList(result)` then calls `IntoR::into_sexp`.
+    ///
+    /// Produced when `#[miniextendr(prefer = "list")]` is used on a function returning `T: IntoList`.
+    /// Distinct from returning `AsList<T>` explicitly only in that the wrapping is generated
+    /// by the macro rather than written by the user.
+    AsListOf,
+    /// Returns `T` where `T: IntoExternalPtr` -- wraps in `AsExternalPtr(result)` then calls `IntoR::into_sexp`.
+    ///
+    /// Produced when `#[miniextendr(prefer = "externalptr")]` is used on a function returning
+    /// `T: IntoExternalPtr`. Distinct from the existing `ExternalPtr` variant (which boxes `Self`
+    /// via `ExternalPtr::new`): this variant calls `IntoExternalPtr::into_external_ptr()` on `T`.
+    AsExternalPtrOf,
+    /// Returns `T` where `T: RNativeType` -- wraps in `AsRNative(result)` then calls `IntoR::into_sexp`.
+    ///
+    /// Produced when `#[miniextendr(prefer = "native")]` is used on a function returning `T: RNativeType`.
+    AsNativeOf,
 }
 
 /// All information needed to generate a C wrapper function for an R-exported Rust item.
@@ -803,6 +819,30 @@ impl CWrapperContext {
                     }
                 }
             }
+            ReturnHandling::AsListOf => {
+                quote! {
+                    let __result = #call_expr;
+                    ::miniextendr_api::into_r::IntoR::into_sexp(
+                        ::miniextendr_api::convert::AsList(__result)
+                    )
+                }
+            }
+            ReturnHandling::AsExternalPtrOf => {
+                quote! {
+                    let __result = #call_expr;
+                    ::miniextendr_api::into_r::IntoR::into_sexp(
+                        ::miniextendr_api::convert::AsExternalPtr(__result)
+                    )
+                }
+            }
+            ReturnHandling::AsNativeOf => {
+                quote! {
+                    let __result = #call_expr;
+                    ::miniextendr_api::into_r::IntoR::into_sexp(
+                        ::miniextendr_api::convert::AsRNative(__result)
+                    )
+                }
+            }
         }
     }
 
@@ -1082,6 +1122,45 @@ impl CWrapperContext {
                         Ok(#result_ident) => #unwind_fn(|| #conversion, None),
                         Err(()) => ::miniextendr_api::ffi::SEXP::nil(),
                     }
+                };
+                (worker, convert)
+            }
+            ReturnHandling::AsListOf => {
+                let worker = quote! { #call_expr };
+                let unwind_fn = self.worker_conversion_unwind_fn();
+                let convert = quote! {
+                    #unwind_fn(
+                        || ::miniextendr_api::into_r::IntoR::into_sexp(
+                            ::miniextendr_api::convert::AsList(__miniextendr_result)
+                        ),
+                        None,
+                    )
+                };
+                (worker, convert)
+            }
+            ReturnHandling::AsExternalPtrOf => {
+                let worker = quote! { #call_expr };
+                let unwind_fn = self.worker_conversion_unwind_fn();
+                let convert = quote! {
+                    #unwind_fn(
+                        || ::miniextendr_api::into_r::IntoR::into_sexp(
+                            ::miniextendr_api::convert::AsExternalPtr(__miniextendr_result)
+                        ),
+                        None,
+                    )
+                };
+                (worker, convert)
+            }
+            ReturnHandling::AsNativeOf => {
+                let worker = quote! { #call_expr };
+                let unwind_fn = self.worker_conversion_unwind_fn();
+                let convert = quote! {
+                    #unwind_fn(
+                        || ::miniextendr_api::into_r::IntoR::into_sexp(
+                            ::miniextendr_api::convert::AsRNative(__miniextendr_result)
+                        ),
+                        None,
+                    )
                 };
                 (worker, convert)
             }

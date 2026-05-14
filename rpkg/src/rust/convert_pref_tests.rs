@@ -96,3 +96,36 @@ pub fn native_list_as_list(x: i32) -> AsList<NativeList> {
 pub fn native_list_as_native(x: i32) -> AsRNative<NativeList> {
     AsRNative(NativeList(x))
 }
+
+// Attribute-form prefer= fixtures — use #[miniextendr(prefer = "...")] with a plain T return type.
+// These must produce the same R values as the explicit wrapper forms above.
+
+#[miniextendr(prefer = "list")]
+/// @title Prefer list via attribute
+/// @rdname convert_pref_tests
+/// @description Tests that `prefer = "list"` wraps identically to an explicit `AsList` return type.
+/// @examples
+/// attr_prefer_list(1L)
+pub fn attr_prefer_list(x: i32) -> Hybrid {
+    Hybrid(x)
+}
+
+#[miniextendr(prefer = "externalptr")]
+/// @title Prefer externalptr via attribute
+/// @rdname convert_pref_tests
+/// @description Tests that `prefer = "externalptr"` wraps identically to an explicit `AsExternalPtr` return type.
+/// @examples
+/// attr_prefer_externalptr(1L)
+pub fn attr_prefer_externalptr(x: i32) -> Hybrid {
+    Hybrid(x)
+}
+
+#[miniextendr(prefer = "native")]
+/// @title Prefer native via attribute
+/// @rdname convert_pref_tests
+/// @description Tests that `prefer = "native"` wraps identically to an explicit `AsRNative` return type.
+/// @examples
+/// attr_prefer_native(1L)
+pub fn attr_prefer_native(x: i32) -> Hybrid {
+    Hybrid(x)
+}
