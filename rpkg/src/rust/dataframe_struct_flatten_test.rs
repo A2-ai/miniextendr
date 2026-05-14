@@ -148,6 +148,20 @@ pub struct FlatAsList {
     pub origin: FlatPoint,
 }
 
+/// An outer struct with ONLY an `as_list`-on-struct field and no scalars.
+/// Expected companion columns: `data` (a list-column).
+///
+/// This is the regression case for the `par_len_field` guard (#513 review):
+/// `flat_cols` is non-empty (the as_list field lives there with
+/// `needs_into_list=true`), so the companion struct must NOT have a `_len`
+/// field — the `data: Vec<List>` column provides the row-count directly.
+/// `from_rows_par` must compile and produce correct row-count without `_len`.
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct FlatOnlyAsList {
+    #[dataframe(as_list)]
+    pub data: FlatPoint,
+}
+
 /// Scalar, struct, scalar — verify column ordering is preserved.
 /// Expected columns: `id`, `p_x`, `p_y`, `label`.
 #[derive(Clone, Debug, DataFrameRow)]
@@ -434,6 +448,16 @@ const _: () = {
             pos: vec![geom::QualPoint { qx: 1.5, qy: 2.5 }],
         };
     }
+
+    // Regression for #513 review: `FlatOnlyAsList` has ONLY an `as_list`-on-struct
+    // field and no scalars. The companion must NOT have a `_len` field (the
+    // `Vec<List>` column provides the row-count). This verifies that `par_len_field`
+    // codegen correctly omits `_len` for this shape and the struct compiles.
+    fn _shape_only_as_list() {
+        let _ = FlatOnlyAsListDataFrame {
+            data: vec![],
+        };
+    }
 };
 
 // endregion
@@ -534,6 +558,28 @@ mod par_tests {
     // because `FlatAsListDataFrame::from_rows_par` calls `IntoList::into_list()`
     // in the sequential pre-pass, which allocates R SEXPs. R-side assertions live
     // in `rpkg/tests/testthat/test-dataframe-struct-flatten.R` (flat_as_list_par).
+
+    // Regression for #513 review — `par_len_field` guard for as_list-only structs.
+    //
+    // `FlatOnlyAsList` has ONLY a `#[dataframe(as_list)]` struct field and no
+    // scalars. The companion `FlatOnlyAsListDataFrame` must NOT have a `_len`
+    // field (the `Vec<List>` column provides the row-count directly via
+    // `into_data_frame`). Calling `from_rows_par` on this shape requires R FFI,
+    // so we verify only that the generated `from_rows_par` type-checks correctly —
+    // the function pointer cast confirms the method signature is valid.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn test_from_rows_par_only_as_list_compiles() {
+        // The companion struct must NOT have a `_len` field — verify the field
+        // layout is `{ data: Vec<List> }` by constructing it directly.
+        let df = FlatOnlyAsListDataFrame { data: vec![] };
+        // The `data` vec is empty (0 rows), so len == 0 is trivially correct.
+        assert_eq!(df.data.len(), 0);
+        // Verify `from_rows_par` is callable as a function (type-check only).
+        // Actual invocation requires R FFI; R-level test is in
+        // `test-dataframe-struct-flatten.R` (flat_only_aslist_par when available).
+        let _ = FlatOnlyAsListDataFrame::from_rows_par as fn(Vec<FlatOnlyAsList>) -> _;
+    }
 }
 
 // endregion

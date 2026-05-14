@@ -1614,7 +1614,16 @@ fn derive_struct_dataframe(
         } else {
             TokenStream::new()
         };
+        // Emit `_len: len` only when the companion struct has a `_len` field —
+        // that is, when there are truly no column vecs at all (no scalars, no
+        // as_list-on-struct fields, no struct-flattened fields, no tag).
+        // `as_list`-on-struct fields live in `flat_cols` with `needs_into_list=true`;
+        // they provide their own length reference and do NOT require `_len`.
+        // The `flat_cols.iter().all(…)` guard is redundant with `flat_cols.is_empty()`
+        // but makes the intent explicit: _len is emitted only when every dimension
+        // that tracks length is absent.
         let par_len_field = if flat_cols.is_empty()
+            && flat_cols.iter().all(|fc| !fc.needs_into_list)
             && auto_expand_cols.is_empty()
             && !has_tag
             && struct_cols.is_empty()
@@ -1660,6 +1669,23 @@ fn derive_struct_dataframe(
             quote! { let _rows = rows; }
         };
 
+        // Build `where Inner: Clone` bounds for all struct-flattened fields.
+        // Emitting these on the method (rather than in a `const _` assertion block)
+        // points the compiler error at the `from_rows_par` call site, not at the
+        // expanded macro internals — cleaner diagnostic for downstream users.
+        let par_inner_clone_bounds: Vec<TokenStream> = struct_cols
+            .iter()
+            .map(|sc| {
+                let inner_ty = &sc.inner_ty;
+                quote! { #inner_ty: ::core::clone::Clone, }
+            })
+            .collect();
+        let par_where_clause = if par_inner_clone_bounds.is_empty() {
+            TokenStream::new()
+        } else {
+            quote! { where #(#par_inner_clone_bounds)* }
+        };
+
         quote! {
             /// Parallel row→column transposition using rayon scatter-write.
             ///
@@ -1667,13 +1693,16 @@ fn derive_struct_dataframe(
             /// Struct-flattened and `as_list`-on-struct fields are collected
             /// sequentially in a pre-pass before the parallel loop (these field
             /// types don't implement `Default`, so scatter-write is not possible).
-            /// Inner struct types must implement `Clone`.
+            /// Inner struct types must implement `Clone` (enforced by the where
+            /// clause; the error will point at the `from_rows_par` call site).
             ///
             /// Always uses rayon — no threshold check. Use `from_rows` for the
             /// sequential path.
             #[cfg(feature = "rayon")]
             #[allow(clippy::uninit_vec)]
-            pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
+            pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self
+            #par_where_clause
+            {
                 use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
                 let len = rows.len();
                 #(#par_col_decls)*
@@ -1875,9 +1904,8 @@ fn derive_struct_dataframe(
     // Compile-time assertions for struct-flattened fields (#485): each inner
     // type must implement `DataFrameRow`, otherwise users get a confusing
     // error pointing at the `to_dataframe` call site instead of the field.
-    // Also assert `Clone` for inner struct types: `from_rows_par` borrows `rows`
-    // before `into_par_iter()` consumes it, so it calls `.clone()` on each
-    // inner value during the sequential pre-pass.
+    // Note: `Clone` is no longer asserted here — it is enforced via a where
+    // clause on `from_rows_par` itself, giving a clearer error at the call site.
     let struct_assertions: Vec<TokenStream> = struct_cols
         .iter()
         .map(|sc| {
@@ -1885,10 +1913,8 @@ fn derive_struct_dataframe(
             quote! {
                 const _: () = {
                     fn _assert_inner_is_dataframe_row<T: ::miniextendr_api::markers::DataFrameRow>() {}
-                    fn _assert_inner_is_clone<T: ::core::clone::Clone>() {}
                     fn _do_assert #impl_generics () #where_clause {
                         _assert_inner_is_dataframe_row::<#inner_ty>();
-                        _assert_inner_is_clone::<#inner_ty>();
                     }
                 };
             }

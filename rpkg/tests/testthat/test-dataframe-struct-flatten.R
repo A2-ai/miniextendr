@@ -229,3 +229,15 @@ test_that("from_rows_par — as_list field: list column produced", {
   expect_equal(df$origin[[1L]]$x, 1.0)
   expect_equal(df$origin[[2L]]$x, 3.0)
 })
+
+test_that("flat_nested_par produces flattened nested columns", {
+  skip_if_not(exists("flat_nested_par", mode = "function"),
+              "flat_nested_par not available (rayon feature not compiled)")
+  df <- flat_nested_par()
+  expect_s3_class(df, "data.frame")
+  expect_identical(colnames(df), c("id", "inner_a", "inner_sub_depth"))
+  expect_equal(nrow(df), 2L)
+  expect_equal(df$id, c(1L, 2L))
+  expect_equal(df$inner_a, c(10.0, 20.0))
+  expect_equal(df$inner_sub_depth, c(100.0, 200.0))
+})
