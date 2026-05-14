@@ -7,6 +7,7 @@ CARGO_TARGET_DIR      = @CARGO_TARGET_DIR@
 CARGO_PROFILE         = @CARGO_PROFILE@
 CARGO_STATICLIB_NAME  = @CARGO_STATICLIB_NAME@
 ENV_RUSTFLAGS         = @ENV_RUSTFLAGS@
+CARGO_HOME            = @CARGO_HOME@
 CARGO_BUILD_TARGET    = @CARGO_BUILD_TARGET@
 ABS_RPKG_SRC_CARGO    = @ABS_RPKG_SRC_CARGO@
 CARGO_LIBDIR          = @CARGO_LIBDIR@
@@ -39,6 +40,7 @@ WASM_REGISTRY_RS = $(ABS_RPKG_SRCDIR)/rust/wasm_registry.rs
 # cdylib for R wrapper generation (platform-specific extension)
 CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
 ## ----------------------------------------------------------------------
+export CARGO_HOME
 
 # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
 # letting Cargo's own incremental compilation decide what to rebuild.

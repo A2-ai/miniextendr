@@ -23,6 +23,7 @@ single signal:
 | `CARGO_PROFILE` | Build profile: `dev` or `release` | `release` |
 | `CARGO_TARGET_DIR` | Artifact directory (must be outside `src/`) | `${abs_top_srcdir}/rust-target` |
 | `CARGO_BUILD_TARGET` | Rust target triple for cross-compilation | Empty (native); auto-detected from autoconf host |
+| `CARGO_HOME` | Cargo registry/cache directory for offline or restricted environments | Empty (cargo's default, `~/.cargo`) |
 | `RUST_TOOLCHAIN` | Toolchain selector (e.g., `+stable`, `+nightly`) | Empty (system default) |
 | `ENV_RUSTFLAGS` | Rust compiler flags, passed as `RUSTFLAGS` to cargo | Value of `RUSTFLAGS` |
 
