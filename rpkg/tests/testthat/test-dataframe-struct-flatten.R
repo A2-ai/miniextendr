@@ -186,3 +186,46 @@ test_that("struct-in-struct flatten — multi-segment qualified path (geom::Qual
   expect_equal(df$pos_qx, 1.5)
   expect_equal(df$pos_qy, 2.5)
 })
+# region: par path (#513) — from_rows_par for struct-flatten + as_list --------
+#
+# flat_basic_par / flat_two_struct_fields_par / flat_as_list_par / flat_nested_par
+# are only registered when the package was compiled with the `rayon` feature.
+# `skip_if_not` on the function existence is the safest gate.
+
+test_that("from_rows_par — basic struct-flatten matches sequential", {
+  skip_if_not(exists("flat_basic_par", mode = "function"),
+              "flat_basic_par not available (rayon feature not compiled)")
+  df <- flat_basic_par()
+  expect_s3_class(df, "data.frame")
+  expect_identical(colnames(df), c("id", "origin_x", "origin_y"))
+  expect_equal(nrow(df), 3L)
+  expect_equal(df$id, c(1L, 2L, 3L))
+  expect_equal(df$origin_x, c(1.0, 3.0, 5.0))
+  expect_equal(df$origin_y, c(2.0, 4.0, 6.0))
+})
+
+test_that("from_rows_par — two struct fields: column shape matches sequential", {
+  skip_if_not(exists("flat_two_struct_fields_par", mode = "function"),
+              "flat_two_struct_fields_par not available (rayon feature not compiled)")
+  df_par <- flat_two_struct_fields_par()
+  df_seq <- flat_two_struct_fields()
+  expect_s3_class(df_par, "data.frame")
+  expect_identical(colnames(df_par), colnames(df_seq))
+  expect_equal(nrow(df_par), nrow(df_seq))
+  expect_equal(df_par$id, df_seq$id)
+  expect_equal(df_par$a_x, df_seq$a_x)
+  expect_equal(df_par$b_y, df_seq$b_y)
+})
+
+test_that("from_rows_par — as_list field: list column produced", {
+  skip_if_not(exists("flat_as_list_par", mode = "function"),
+              "flat_as_list_par not available (rayon feature not compiled)")
+  df <- flat_as_list_par()
+  expect_s3_class(df, "data.frame")
+  expect_identical(colnames(df), c("id", "origin"))
+  expect_equal(nrow(df), 2L)
+  expect_true(is.list(df$origin))
+  expect_equal(df$id, c(1L, 2L))
+  expect_equal(df$origin[[1L]]$x, 1.0)
+  expect_equal(df$origin[[2L]]$x, 3.0)
+})

@@ -437,3 +437,103 @@ const _: () = {
 };
 
 // endregion
+
+// region: #[miniextendr] par entrypoints — struct-flatten + as_list par path (#513)
+
+/// `from_rows_par` for the basic struct-flatten case (FlatLocated → 3 rows).
+/// Expected columns: `id`, `origin_x`, `origin_y`.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn flat_basic_par() -> ToDataFrame<FlatLocatedDataFrame> {
+    ToDataFrame(FlatLocatedDataFrame::from_rows_par(vec![
+        FlatLocated { id: 1, origin: FlatPoint { x: 1.0, y: 2.0 } },
+        FlatLocated { id: 2, origin: FlatPoint { x: 3.0, y: 4.0 } },
+        FlatLocated { id: 3, origin: FlatPoint { x: 5.0, y: 6.0 } },
+    ]))
+}
+
+/// `from_rows_par` for the two-struct-fields case (FlatSegment).
+/// Expected columns: `id`, `a_x`, `a_y`, `b_x`, `b_y`.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn flat_two_struct_fields_par() -> ToDataFrame<FlatSegmentDataFrame> {
+    ToDataFrame(FlatSegmentDataFrame::from_rows_par(vec![
+        FlatSegment {
+            id: 10,
+            a: FlatPoint { x: 1.0, y: 2.0 },
+            b: FlatPoint { x: 3.0, y: 4.0 },
+        },
+        FlatSegment {
+            id: 20,
+            a: FlatPoint { x: 5.0, y: 6.0 },
+            b: FlatPoint { x: 7.0, y: 8.0 },
+        },
+    ]))
+}
+
+/// `from_rows_par` for the `as_list` opt-out case (FlatAsList).
+/// Expected columns: `id`, `origin` (list column).
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn flat_as_list_par() -> ToDataFrame<FlatAsListDataFrame> {
+    ToDataFrame(FlatAsListDataFrame::from_rows_par(vec![
+        FlatAsList { id: 1, origin: FlatPoint { x: 1.0, y: 2.0 } },
+        FlatAsList { id: 2, origin: FlatPoint { x: 3.0, y: 4.0 } },
+    ]))
+}
+
+/// `from_rows_par` for the nested struct-in-struct case (FlatNested).
+/// Expected columns: `id`, `inner_a`, `inner_sub_depth`.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn flat_nested_par() -> ToDataFrame<FlatNestedDataFrame> {
+    ToDataFrame(FlatNestedDataFrame::from_rows_par(vec![
+        FlatNested {
+            id: 1,
+            inner: FlatInner { a: 10.0, sub: FlatSubInner { depth: 100.0 } },
+        },
+        FlatNested {
+            id: 2,
+            inner: FlatInner { a: 20.0, sub: FlatSubInner { depth: 200.0 } },
+        },
+    ]))
+}
+
+// endregion
+
+// region: Rust-level unit tests — par matches sequential (#513)
+
+#[cfg(test)]
+mod par_tests {
+    use super::*;
+
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn test_from_rows_par_struct_flatten_matches_sequential() {
+        let make_rows = || -> Vec<FlatLocated> {
+            (0..100)
+                .map(|i| FlatLocated {
+                    id: i,
+                    origin: FlatPoint { x: i as f64, y: (i as f64) * 2.0 },
+                })
+                .collect()
+        };
+
+        let df_seq = FlatLocatedDataFrame::from_rows(make_rows());
+        let df_par = FlatLocatedDataFrame::from_rows_par(make_rows());
+
+        assert_eq!(df_seq.id, df_par.id);
+        assert_eq!(df_seq.origin.len(), df_par.origin.len());
+        for (s, p) in df_seq.origin.iter().zip(df_par.origin.iter()) {
+            assert_eq!(s.x, p.x);
+            assert_eq!(s.y, p.y);
+        }
+    }
+
+    // Note: `test_from_rows_par_as_list_matches_sequential` would require R FFI
+    // because `FlatAsListDataFrame::from_rows_par` calls `IntoList::into_list()`
+    // in the sequential pre-pass, which allocates R SEXPs. R-side assertions live
+    // in `rpkg/tests/testthat/test-dataframe-struct-flatten.R` (flat_as_list_par).
+}
+
+// endregion
