@@ -283,7 +283,10 @@ pub(super) enum FieldTypeKind<'a> {
 /// - `&[T]` -> `BorrowedSlice`
 /// - `Vec<T>` -> `VariableVec`
 /// - `Box<[T]>` -> `BoxedSlice`
-/// - Everything else -> `Scalar`
+/// - `HashMap<K, V>` / `BTreeMap<K, V>` -> `Map`
+/// - Any non-scalar bare path type (single- or multi-segment, e.g. `Point` or
+///   `crate::geom::Point`) -> `Struct`
+/// - Everything else (known scalars, generic types with args, `::abs::Paths`) -> `Scalar`
 pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
     // Check for [T; N]
     if let syn::Type::Array(arr) = ty
@@ -342,20 +345,31 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
         }
     }
 
-    // Any remaining single-segment bare path type that is NOT a known scalar is
-    // treated as a user-defined struct whose `DataFrameRow` derive should be called.
-    // The compile-time assertion `_assert_inner_is_dataframe_row::<Inner>()` in the
-    // generated code surfaces a clear error if the inner type doesn't have the derive.
+    // Any remaining path type whose LAST segment is a bare ident (no generic args)
+    // that is NOT a known scalar is treated as a user-defined struct whose
+    // `DataFrameRow` derive should be called.  The compile-time assertion
+    // `_assert_inner_is_dataframe_row::<Inner>()` in the generated code surfaces a
+    // clear error if the inner type doesn't have the derive.
     //
     // Known scalars (i32, f64, String, bool, …) are kept as `Scalar` so that existing
     // enum variants with primitive fields (e.g. `Click { id: i64, x: f64 }`) are not
-    // misclassified as struct fields.  Multi-segment paths (std::ffi::CString) and
-    // path types with a qualifying `self::`/`super::` prefix fall through to `Scalar`
-    // as well — the user can opt into list-column treatment with `#[dataframe(as_list)]`.
+    // misclassified as struct fields.
+    //
+    // Multi-segment paths (e.g. `crate::geom::Point`, `geom::Point`) are now correctly
+    // classified here — the previous `segs.len() == 1` guard was overly restrictive.
+    // Paths with a leading `::` (absolute paths like `::std::ffi::CString`) still fall
+    // through to `Scalar`; use `#[dataframe(as_list)]` or an unqualified import if
+    // you need a custom treatment.
+    //
+    // RISK: a user type whose last path segment is named after a known-scalar
+    // (e.g. `mymod::String`) still correctly falls through to `Scalar` because of the
+    // KNOWN_SCALARS check. A type named `mymod::Option` / `mymod::Vec` would shadow
+    // the detection above — accepted per Rust naming convention (canonical names are
+    // rarely shadowed). `#[dataframe(as_list)]` is the documented escape hatch.
     if let syn::Type::Path(type_path) = ty {
         let segs = &type_path.path.segments;
-        // Single-segment, no leading colon (i.e. a bare ident like `Point`)
-        if segs.len() == 1 && type_path.qself.is_none() && type_path.path.leading_colon.is_none() {
+        // No leading colon (rules out `::std::…` absolute paths) and no self-type.
+        if type_path.qself.is_none() && type_path.path.leading_colon.is_none() {
             let seg = segs.last().unwrap();
             if matches!(seg.arguments, syn::PathArguments::None) {
                 let name = seg.ident.to_string();

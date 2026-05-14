@@ -171,3 +171,18 @@ test_that("struct-in-struct flatten — survives gctorture (nested)", {
   expect_equal(res$inner_a, as.numeric(0:15))
   expect_equal(res$inner_sub_depth, as.numeric(0:15) * 10)
 })
+
+# region: multi-segment qualified path (#514) ---------------------------------
+
+test_that("struct-in-struct flatten — multi-segment qualified path (geom::QualPoint)", {
+  # Before the fix for #514, `classify_field_type` required segs.len() == 1,
+  # so `geom::QualPoint` silently became a scalar (opaque list) column instead
+  # of flattening. This test confirms the fix works end-to-end.
+  df <- qual_located_basic()
+  expect_s3_class(df, "data.frame")
+  expect_identical(colnames(df), c("id", "pos_qx", "pos_qy"))
+  expect_equal(nrow(df), 1L)
+  expect_equal(df$id, 42L)
+  expect_equal(df$pos_qx, 1.5)
+  expect_equal(df$pos_qy, 2.5)
+})
