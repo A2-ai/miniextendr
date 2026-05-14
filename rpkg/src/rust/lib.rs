@@ -205,6 +205,7 @@ mod match_arg_impl_tests;
 mod match_arg_tests;
 mod misc_tests;
 mod missing_tests;
+mod native_sexp_altrep_fixture;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
 #[cfg(feature = "ndarray")]

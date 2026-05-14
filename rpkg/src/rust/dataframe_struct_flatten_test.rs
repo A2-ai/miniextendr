@@ -529,6 +529,7 @@ pub fn flat_nested_par() -> ToDataFrame<FlatNestedDataFrame> {
 
 #[cfg(test)]
 mod par_tests {
+    #[cfg(feature = "rayon")]
     use super::*;
 
     #[cfg(feature = "rayon")]

@@ -236,6 +236,38 @@ pub fn gc_stress_dataframe_nested_enum() {
     // Status is already exercised via NestedFlattenEvent above.
 }
 
+/// Exercise the native-SEXP ALTREP (`NativeSexpIntAltrep`) under GC pressure.
+///
+/// Constructs an ALTREP-backed integer vector where `data1` is a plain
+/// `INTSXP` (no ExternalPtr).  Exercises both element access (via `Elt`) and
+/// the dataptr path (`as.integer`) so that any PROTECT-discipline bug around
+/// the `data1` allocation would be caught by `gctorture(TRUE)`.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_native_sexp_altrep() {
+    use crate::native_sexp_altrep_fixture::native_sexp_altrep_new;
+    use miniextendr_api::ffi::SexpExt as _;
+
+    // Construct a small ALTREP-backed integer vector.
+    let values = vec![10i32, 20, 30, 40, 50];
+    let sexp = native_sexp_altrep_new(values);
+
+    // Verify that it is indeed ALTREP.
+    assert!(sexp.is_altrep(), "native_sexp_altrep_new should return an ALTREP SEXP");
+
+    // Force element access (exercises the Elt path) via the SexpExt trait.
+    let n = sexp.len();
+    assert_eq!(n, 5);
+    for i in 0..n {
+        let v = sexp.integer_elt(i as isize);
+        assert_eq!(v, (i as i32 + 1) * 10);
+    }
+
+    // Force the Dataptr path (exercises `AltVec::dataptr`).
+    let _ptr = unsafe { miniextendr_api::ffi::DATAPTR_RO(sexp) };
+}
+
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
 /// Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
 /// @param x An integer, numeric, or character vector to convert.
