@@ -94,6 +94,7 @@ rtest FILTER="": _assert-no-vendor-leak configure
     fi
 
 # Generate R documentation with devtools/roxygen2
+# Shared with monorepo/justfile — see scripts/templates-recipes-check.sh
 rdoc: configure
     Rscript -e 'devtools::document(".")'
 
@@ -110,10 +111,12 @@ rbuild *args: configure
     R CMD build {{args}} .
 
 # Run R CMD check
+# Shared with monorepo/justfile — see scripts/templates-recipes-check.sh
 rcheck: configure
     Rscript -e "rcmdcheck::rcmdcheck('.', args = c('--as-cran', '--no-manual'), error_on = 'warning')"
 
 # Run devtools::check
+# Shared with monorepo/justfile — see scripts/templates-recipes-check.sh
 devtools-check: configure
     Rscript -e 'devtools::check(".", error_on = "error")'
 
@@ -148,6 +151,8 @@ vendor:
 # `just install` / `devtools::install(".")` silently switch to tarball mode
 # (configure's only signal is `[ -f inst/vendor.tar.xz ]`), which freezes out
 # any cargo-resolved dependency edits.
+#
+# Shared with monorepo/justfile — see scripts/templates-recipes-check.sh
 [script("bash")]
 cran-prep: vendor
     set -euo pipefail

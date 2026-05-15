@@ -160,6 +160,9 @@ jobs:
       - name: Check templates sync
         run: just templates-check
 
+      - name: Check template justfile recipe sync
+        run: just templates-recipes-check
+
       - name: Check lint parser sync
         run: just lint-sync-check
 
