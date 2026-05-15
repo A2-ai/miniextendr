@@ -19639,7 +19639,7 @@ uuid_roundtrip_vec <- function(uuids) {
   .val
 }
 
-# Generated from Rust fn `arith_seq` (lib.rs:429:8)
+# Generated from Rust fn `arith_seq` (lib.rs:432:8)
 #' @title arith seq
 #' @param from (no documentation available)
 #' @param step (no documentation available)
@@ -19660,7 +19660,7 @@ arith_seq <- function(from, step, length_out) {
   .val
 }
 
-# Generated from Rust fn `boxed_raw` (lib.rs:1722:8)
+# Generated from Rust fn `boxed_raw` (lib.rs:1725:8)
 #' @title Create a Box<\[u8\]> ALTREP raw vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -20764,7 +20764,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `boxed_ints` (lib.rs:1404:8)
+# Generated from Rust fn `boxed_ints` (lib.rs:1407:8)
 #' @title Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -21448,7 +21448,7 @@ derived_rational_class_info <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_reals` (lib.rs:1692:8)
+# Generated from Rust fn `boxed_reals` (lib.rs:1695:8)
 #' @title Create a Box<\[f64\]> ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -21465,7 +21465,7 @@ boxed_reals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `lazy_string` (lib.rs:1037:8)
+# Generated from Rust fn `lazy_string` (lib.rs:1040:8)
 #' @title Create a lazy string ALTREP that computes elements on demand
 #' @rdname lazy_string_altrep
 #' @param prefix String prefix for generated elements.
@@ -21485,7 +21485,7 @@ lazy_string <- function(prefix, n) {
   .val
 }
 
-# Generated from Rust fn `leaked_ints` (lib.rs:1467:8)
+# Generated from Rust fn `leaked_ints` (lib.rs:1470:8)
 #' @title Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -21502,7 +21502,7 @@ leaked_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `static_ints` (lib.rs:1454:8)
+# Generated from Rust fn `static_ints` (lib.rs:1457:8)
 #' @title Create an ALTREP integer vector backed by a static slice (`&'static [i32]`)
 #' @rdname altrep_special
 #' @return An ALTREP integer vector with values 10, 20, 30, 40, 50.
@@ -21514,7 +21514,7 @@ static_ints <- function() {
   .val
 }
 
-# Generated from Rust fn `unit_circle` (lib.rs:1132:8)
+# Generated from Rust fn `unit_circle` (lib.rs:1135:8)
 #' @title Create a complex ALTREP of n points on the unit circle (e^(i*2*pi*k/n))
 #' @rdname altrep_special
 #' @param n Number of points on the unit circle.
@@ -22004,7 +22004,7 @@ arrayvec_roundtrip_int <- function(v) {
   .val
 }
 
-# Generated from Rust fn `constant_int` (lib.rs:345:8)
+# Generated from Rust fn `constant_int` (lib.rs:347:8)
 #' @title Create a constant-value integer ALTREP vector (10 elements, all 42)
 #' @rdname constant_altrep
 #' @return An ALTREP integer vector.
@@ -22016,7 +22016,7 @@ constant_int <- function() {
   .val
 }
 
-# Generated from Rust fn `lazy_int_seq` (lib.rs:652:8)
+# Generated from Rust fn `lazy_int_seq` (lib.rs:655:8)
 #' @title Create a lazy integer sequence ALTREP (like R's `seq()`)
 #' @description Elements are computed on demand; materialization is deferred until R needs the full data pointer.
 #' @rdname altrep_constructors
@@ -22040,7 +22040,7 @@ lazy_int_seq <- function(from, to, by) {
   .val
 }
 
-# Generated from Rust fn `lazy_squares` (lib.rs:813:8)
+# Generated from Rust fn `lazy_squares` (lib.rs:816:8)
 #' @title Example: Lazy computation - compute on demand
 #' @param n Length of the sequence.
 #' @export
@@ -22988,7 +22988,7 @@ streaming_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_complex` (lib.rs:1752:8)
+# Generated from Rust fn `boxed_complex` (lib.rs:1755:8)
 #' @title Create a Box<\[Rcomplex\]> ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23005,7 +23005,7 @@ boxed_complex <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_strings` (lib.rs:1737:8)
+# Generated from Rust fn `boxed_strings` (lib.rs:1740:8)
 #' @title Create a Box<\[String\]> ALTREP string vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23022,7 +23022,7 @@ boxed_strings <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_real` (lib.rs:395:8)
+# Generated from Rust fn `constant_real` (lib.rs:398:8)
 #' @title Create a constant-value real ALTREP vector (10 elements, all pi)
 #' @rdname constant_altrep
 #' @return An ALTREP real vector.
@@ -23034,7 +23034,7 @@ constant_real <- function() {
   .val
 }
 
-# Generated from Rust fn `repeating_raw` (lib.rs:1078:8)
+# Generated from Rust fn `repeating_raw` (lib.rs:1081:8)
 #' @title Create a repeating raw byte pattern ALTREP vector
 #' @rdname lazy_string_altrep
 #' @param pattern A raw vector containing the byte pattern to repeat.
@@ -23053,7 +23053,7 @@ repeating_raw <- function(pattern, n) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_copy` (lib.rs:846:8)
+# Generated from Rust fn `bench_vec_copy` (lib.rs:849:8)
 #' @title Create a vector of given size using regular copy (IntoR)
 #' @param n Length of the vector.
 #' @export
@@ -23068,7 +23068,7 @@ bench_vec_copy <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_logicals` (lib.rs:1707:8)
+# Generated from Rust fn `boxed_logicals` (lib.rs:1710:8)
 #' @title Create a Box<\[bool\]> ALTREP logical vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23085,7 +23085,7 @@ boxed_logicals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_range` (lib.rs:1573:8)
+# Generated from Rust fn `iter_int_range` (lib.rs:1576:8)
 #' @title Create an integer ALTREP from a collected range iterator
 #' @rdname altrep_iterators
 #' @param from Start of range (inclusive).
@@ -23105,7 +23105,7 @@ iter_int_range <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `iter_raw_bytes` (lib.rs:1605:8)
+# Generated from Rust fn `iter_raw_bytes` (lib.rs:1608:8)
 #' @title Create a raw bytes ALTREP via iterator collect (cycling 0..255)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -23122,7 +23122,7 @@ iter_raw_bytes <- function(n) {
   .val
 }
 
-# Generated from Rust fn `small_vec_copy` (lib.rs:794:8)
+# Generated from Rust fn `small_vec_copy` (lib.rs:797:8)
 #' @title Example: Small data - regular copy is fine
 #' @export
 #' @source Generated by miniextendr from Rust fn `small_vec_copy`
@@ -23132,7 +23132,7 @@ small_vec_copy <- function() {
   .val
 }
 
-# Generated from Rust fn `static_strings` (lib.rs:1511:8)
+# Generated from Rust fn `static_strings` (lib.rs:1514:8)
 #' @title Create an ALTREP string vector backed by a static string slice
 #' @rdname altrep_special
 #' @return An ALTREP string vector with 4 static entries.
@@ -23144,7 +23144,7 @@ static_strings <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_int_altrep` (lib.rs:1652:8)
+# Generated from Rust fn `vec_int_altrep` (lib.rs:1655:8)
 #' @title Create a `Vec<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23512,7 +23512,7 @@ json_serialize_point <- function(x, y) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_raw` (lib.rs:752:8)
+# Generated from Rust fn `altrep_from_raw` (lib.rs:755:8)
 #' @title Create an ALTREP raw vector from raw bytes
 #' @rdname altrep_constructors
 #' @param x A raw vector.
@@ -23526,7 +23526,7 @@ altrep_from_raw <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int` (lib.rs:1851:8)
+# Generated from Rust fn `sparse_iter_int` (lib.rs:1854:8)
 #' @title Create a sparse integer iterator ALTREP that skips elements
 #' @description Elements are computed on-demand using Iterator::nth(). Once an element is skipped (a higher index is accessed first), it cannot be retrieved and will return NA.
 #' @rdname sparse_altrep
@@ -23547,7 +23547,7 @@ sparse_iter_int <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_raw` (lib.rs:2000:8)
+# Generated from Rust fn `sparse_iter_raw` (lib.rs:2003:8)
 #' @title Create a sparse raw iterator ALTREP (cycling bytes 0..255)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -23564,7 +23564,7 @@ sparse_iter_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_real_altrep` (lib.rs:1663:8)
+# Generated from Rust fn `vec_real_altrep` (lib.rs:1666:8)
 #' @title Create a `Vec<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23697,7 +23697,7 @@ complex_roundtrip_vec <- function(v) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_list` (lib.rs:772:8)
+# Generated from Rust fn `altrep_from_list` (lib.rs:775:8)
 #' @title Create an ALTREP list from an R list, preserving the original SEXP
 #' @rdname altrep_constructors
 #' @param x An R list (VECSXP).
@@ -23710,7 +23710,7 @@ altrep_from_list <- function(x) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_altrep` (lib.rs:858:8)
+# Generated from Rust fn `bench_vec_altrep` (lib.rs:861:8)
 #' @title Create a vector of given size using ALTREP zero-copy
 #' @param n Length of the vector.
 #' @export
@@ -23725,7 +23725,7 @@ bench_vec_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_logical` (lib.rs:902:8)
+# Generated from Rust fn `constant_logical` (lib.rs:905:8)
 #' @title Create a constant-value logical ALTREP vector
 #' @rdname constant_altrep
 #' @param value Integer encoding of the logical value (0 = FALSE, NA_integer_ = NA, other = TRUE).
@@ -23745,7 +23745,7 @@ constant_logical <- function(value, n) {
   .val
 }
 
-# Generated from Rust fn `large_vec_altrep` (lib.rs:802:8)
+# Generated from Rust fn `large_vec_altrep` (lib.rs:805:8)
 #' @title Example: Large data - ALTREP avoids copy
 #' @export
 #' @source Generated by miniextendr from Rust fn `large_vec_altrep`
@@ -23755,7 +23755,7 @@ large_vec_altrep <- function() {
   .val
 }
 
-# Generated from Rust fn `range_i64_altrep` (lib.rs:1782:8)
+# Generated from Rust fn `range_i64_altrep` (lib.rs:1785:8)
 #' @title Create a `Range<i64>` ALTREP real vector (i64 stored as f64 bit patterns)
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -23775,7 +23775,7 @@ range_i64_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `range_int_altrep` (lib.rs:1771:8)
+# Generated from Rust fn `range_int_altrep` (lib.rs:1774:8)
 #' @title Create a `Range<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -23795,7 +23795,7 @@ range_int_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_real` (lib.rs:1914:8)
+# Generated from Rust fn `sparse_iter_real` (lib.rs:1917:8)
 #' @title Create a sparse real iterator ALTREP with arithmetic progression
 #' @rdname sparse_altrep
 #' @param from Start value.
@@ -24217,7 +24217,7 @@ native_sexp_altrep_new <- function(values) {
   .val
 }
 
-# Generated from Rust fn `boxed_data_altrep` (lib.rs:829:8)
+# Generated from Rust fn `boxed_data_altrep` (lib.rs:832:8)
 #' @title Example: Using into_altrep() to store wrapper
 #' @param n Length of the vector.
 #' @export
@@ -24232,7 +24232,7 @@ boxed_data_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_from_u16` (lib.rs:1630:8)
+# Generated from Rust fn `iter_int_from_u16` (lib.rs:1633:8)
 #' @title Create an integer ALTREP from u16-range values coerced to i32 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -24249,7 +24249,7 @@ iter_int_from_u16 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_real_squares` (lib.rs:1583:8)
+# Generated from Rust fn `iter_real_squares` (lib.rs:1586:8)
 #' @title Create a real ALTREP of squared values (0, 1, 4, 9, ...) via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -24266,7 +24266,7 @@ iter_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_string_items` (lib.rs:1616:8)
+# Generated from Rust fn `iter_string_items` (lib.rs:1619:8)
 #' @title Create a string ALTREP via iterator collect ("item_0", "item_1", ...)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -24283,7 +24283,7 @@ iter_string_items <- function(n) {
   .val
 }
 
-# Generated from Rust fn `range_real_altrep` (lib.rs:1793:8)
+# Generated from Rust fn `range_real_altrep` (lib.rs:1796:8)
 #' @title Create a `Range<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -24418,7 +24418,7 @@ ordered_float_roundtrip_vec <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_compact_int` (lib.rs:703:8)
+# Generated from Rust fn `altrep_compact_int` (lib.rs:706:8)
 #' @title Create a compact integer ALTREP from a lazy arithmetic sequence with printing on materialization
 #' @rdname altrep_constructors
 #' @param n Number of elements.
@@ -24441,7 +24441,7 @@ altrep_compact_int <- function(n, start, step) {
   .val
 }
 
-# Generated from Rust fn `iter_real_from_f32` (lib.rs:1641:8)
+# Generated from Rust fn `iter_real_from_f32` (lib.rs:1644:8)
 #' @title Create a real ALTREP from f32-precision values coerced to f64 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -24458,7 +24458,7 @@ iter_real_from_f32 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_complex_altrep` (lib.rs:1674:8)
+# Generated from Rust fn `vec_complex_altrep` (lib.rs:1677:8)
 #' @title Create a `Vec<Rcomplex>` ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -24524,7 +24524,7 @@ condition_panic_with_int_payload <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `altrep_from_doubles` (lib.rs:722:8)
+# Generated from Rust fn `altrep_from_doubles` (lib.rs:725:8)
 #' @title Create an ALTREP real vector from a double vector
 #' @rdname altrep_constructors
 #' @param x A double vector.
@@ -24538,7 +24538,7 @@ altrep_from_doubles <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_strings` (lib.rs:732:8)
+# Generated from Rust fn `altrep_from_strings` (lib.rs:735:8)
 #' @title Create an ALTREP string vector from a character vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A character vector (may contain NA values).
@@ -24552,7 +24552,7 @@ altrep_from_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_logical` (lib.rs:1955:8)
+# Generated from Rust fn `sparse_iter_logical` (lib.rs:1958:8)
 #' @title Create a sparse logical iterator ALTREP (alternating TRUE/FALSE)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -25834,7 +25834,7 @@ gc_stress_struct_flatten_nested <- function() {
   .val
 }
 
-# Generated from Rust fn `altrep_from_integers` (lib.rs:762:8)
+# Generated from Rust fn `altrep_from_integers` (lib.rs:765:8)
 #' @title Create an ALTREP integer vector from an integer vector
 #' @rdname altrep_constructors
 #' @param x An integer vector.
@@ -25848,7 +25848,7 @@ altrep_from_integers <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_logicals` (lib.rs:742:8)
+# Generated from Rust fn `altrep_from_logicals` (lib.rs:745:8)
 #' @title Create an ALTREP logical vector from a logical vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A logical vector (may contain NA values).
@@ -25861,7 +25861,7 @@ altrep_from_logicals <- function(x) {
   .val
 }
 
-# Generated from Rust fn `integer_sequence_list` (lib.rs:1178:8)
+# Generated from Rust fn `integer_sequence_list` (lib.rs:1181:8)
 #' @title Create a list ALTREP where each element is an integer sequence
 #' @param n Number of elements in the list.
 #' @return A list where element i contains the vector 1:i.
@@ -25882,7 +25882,7 @@ integer_sequence_list <- function(n) {
   .val
 }
 
-# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2041:8)
+# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2044:8)
 #' @title Returns a vector of enabled feature names for this build
 #' @description This function is useful for R tests to skip tests when features are not enabled.
 #' @name rpkg_enabled_features
@@ -25908,7 +25908,7 @@ standalone_dataframe_roundtrip <- function() {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1867:8)
+# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1870:8)
 #' @title Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -25925,7 +25925,7 @@ sparse_iter_int_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_logical_alternating` (lib.rs:1594:8)
+# Generated from Rust fn `iter_logical_alternating` (lib.rs:1597:8)
 #' @title Create an alternating TRUE/FALSE logical ALTREP via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -25942,7 +25942,7 @@ iter_logical_alternating <- function(n) {
   .val
 }
 
-# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:677:26)
+# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:680:26)
 #' @title Check if a lazy integer sequence ALTREP has been materialized
 #' @description Takes raw SEXP (extern "C-unwind") because auto-materialization in `TryFromSexp` for SEXP would trigger materialization before we can inspect it.
 #' @rdname altrep_constructors

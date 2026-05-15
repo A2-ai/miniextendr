@@ -1,3 +1,17 @@
+warning: unexpected `cfg` condition value: `rayon`
+  --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:20:10
+   |
+20 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default-coerce`, `default-r6`, `default-s7`, `default-strict`, `default-worker`, `doc-lint`, and `vctrs`
+   = note: using a cfg inside a derive macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `DataFrameRow` crate for guidance on how handle this unexpected cfg
+   = help: the derive macro `DataFrameRow` may come from an old version of the `miniextendr_macros` crate, try updating your dependency with `cargo update -p miniextendr_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+   = note: this warning originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
 error[E0599]: no function or associated item named `to_dataframe` found for struct `NotADataFrameRow` in the current scope
   --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:20:10
    |

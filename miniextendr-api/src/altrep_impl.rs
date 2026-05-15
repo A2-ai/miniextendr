@@ -1354,123 +1354,493 @@ macro_rules! impl_altcomplex_from_data {
 }
 // endregion
 
+// region: Meta-macros for built-in ALTREP family instantiation
+//
+// `impl_builtin_altrep_family!` is a single declarative meta-macro that maps a
+// (type, family, dataptr-mode, sym) 4-tuple to the correct per-family
+// `impl_alt*_from_data!` call AND emits a linkme `MX_ALTREP_REGISTRATIONS` entry
+// so the class is registered at `R_init_*` time (no hand-enumerated list needed).
+//
+// The `$sym:ident` parameter is a unique snake_case identifier used as the suffix
+// for the `#[no_mangle]` registration fn and the linkme static.  It must be unique
+// across all call sites — naming convention: `<container>_<elem>` (e.g. `Vec_i32`,
+// `Box_bool`, `Cow_str`, `Range_i32`).
+//
+// ## Families
+//
+// | Token     | Delegates to               |
+// |-----------|----------------------------|
+// | `integer` | `impl_altinteger_from_data!` |
+// | `real`    | `impl_altreal_from_data!`    |
+// | `logical` | `impl_altlogical_from_data!` |
+// | `raw`     | `impl_altraw_from_data!`     |
+// | `string`  | `impl_altstring_from_data!`  |
+// | `complex` | `impl_altcomplex_from_data!` |
+//
+// ## Dataptr modes
+//
+// | Token         | Meaning                                                     |
+// |---------------|-------------------------------------------------------------|
+// | `dataptr`     | Type has a direct contiguous pointer (`RNativeType` backed) |
+// | `materializing` | No direct pointer; materializes into data2 on first access  |
+//
+// The `materializing` arm expands to `materializing_dataptr, serialize` in the
+// underlying macro (bool→i32 conversion, Range compute-on-access, etc.).
+// Both arms preserve `const GUARD = AltrepGuard::RUnwind` — the default from
+// `__impl_altrep_base!` and `__impl_altrep_base_with_serialize!`.
+//
+// ## Corner cases NOT handled by this macro
+//
+// - `[T; N]` const-generic arrays: use const generics (`impl<const N>`); left in the
+//   "Array implementations" region below.
+// - `&'static [T]` static slices: unique lifetime + writable-assert pattern; left in
+//   the "Static slice implementations" region below.
+
+/// Generate ALTREP trait impls AND a linkme `MX_ALTREP_REGISTRATIONS` entry for a
+/// builtin type.
+///
+/// ## Arguments
+///
+/// - `$ty:ty` — the builtin container type (e.g. `Vec<i32>`, `Box<[f64]>`)
+/// - `$family:ident` — ALTREP family token: `integer`, `real`, `logical`, `raw`,
+///   `string`, or `complex`
+/// - `$mode:ident` — dataptr mode: `dataptr` or `materializing`
+/// - `$reg_fn:ident` — unique `#[no_mangle]` name for the registration fn
+///   (convention: `__mx_altrep_reg_builtin_<sym>`)
+/// - `$entry_ident:ident` — unique name for the linkme static
+///   (convention: `__MX_ALTREP_REG_ENTRY_builtin_<sym>`)
+///
+/// Both identifier arguments must be globally unique across all call sites.
+/// The registration fn is always emitted; the `#[distributed_slice]` attribute
+/// is guarded by `cfg_attr(not(target_arch = "wasm32"), ...)` so linkme's
+/// compile-error arm is not reached on wasm32 targets.
+#[doc(hidden)]
+macro_rules! impl_builtin_altrep_family {
+    // dataptr arm — type has a direct contiguous native pointer
+    ($ty:ty, integer, dataptr, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altinteger_from_data!($ty, dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, real, dataptr, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altreal_from_data!($ty, dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, logical, dataptr, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, raw, dataptr, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altraw_from_data!($ty, dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, string, dataptr, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altstring_from_data!($ty, dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, complex, dataptr, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altcomplex_from_data!($ty, dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    // materializing arm — no direct native pointer; materializes on DATAPTR access.
+    // Used for: bool (bool→i32 via LGLSXP), Range<T> (compute-on-access).
+    // Guard remains RUnwind (the default) — the underlying macros do not change it.
+    ($ty:ty, integer, materializing, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altinteger_from_data!($ty, materializing_dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, real, materializing, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altreal_from_data!($ty, materializing_dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, logical, materializing, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altlogical_from_data!($ty, materializing_dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, raw, materializing, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altraw_from_data!($ty, materializing_dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, string, materializing, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altstring_from_data!($ty, materializing_dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+    ($ty:ty, complex, materializing, $reg_fn:ident, $entry_ident:ident) => {
+        $crate::impl_altcomplex_from_data!($ty, materializing_dataptr, serialize);
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $reg_fn() {
+            <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    $crate::linkme::distributed_slice($crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = $crate::linkme)
+                )]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static $entry_ident: $crate::registry::AltrepRegistration =
+            $crate::registry::AltrepRegistration {
+                register: $reg_fn,
+                symbol: stringify!($reg_fn),
+            };
+    };
+}
+
 // region: Built-in implementations for standard types
 // These implementations are provided here to satisfy the orphan rules.
 // User crates can use these types directly with delegate_data.
 //
-// All types that implement AltrepSerialize get the `serialize` option enabled,
-// which allows proper saveRDS/readRDS round-trips.
+// All types implement AltrepSerialize; serialize is injected by the meta-macro.
+// Guard: RUnwind (default from __impl_altrep_base[_with_serialize]! — not overridden).
 
-// Integer types - Vec<i32> supports direct dataptr, ranges materialize on demand
-impl_altinteger_from_data!(Vec<i32>, dataptr, serialize);
-impl_altinteger_from_data!(std::ops::Range<i32>, materializing_dataptr, serialize);
-impl_altinteger_from_data!(std::ops::Range<i64>, materializing_dataptr, serialize);
-
-// Real types - Vec<f64> supports direct dataptr, ranges materialize on demand
-impl_altreal_from_data!(Vec<f64>, dataptr, serialize);
-impl_altreal_from_data!(std::ops::Range<f64>, materializing_dataptr, serialize);
-
-// Logical types — materializing dataptr converts bool→i32 into cached LGLSXP
-impl_altlogical_from_data!(Vec<bool>, materializing_dataptr, serialize);
-
-// Raw types - u8 == Rbyte, supports direct dataptr
-impl_altraw_from_data!(Vec<u8>, dataptr, serialize);
-
-// String types - Vec<String> supports dataptr via materialization into STRSXP
-impl_altstring_from_data!(Vec<String>, dataptr, serialize);
-// Vec<Option<String>> preserves NA_character_ through serialization roundtrips
-impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
+// Vec<T> — owned, heap-allocated contiguous storage.
+// bool uses `materializing` because bool is not RNativeType (R stores logicals as i32).
+impl_builtin_altrep_family!(
+    Vec<i32>,
+    integer,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_i32,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_i32
+);
+impl_builtin_altrep_family!(
+    Vec<f64>,
+    real,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_f64,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_f64
+);
+impl_builtin_altrep_family!(
+    Vec<bool>,
+    logical,
+    materializing,
+    __mx_altrep_reg_builtin_Vec_bool,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_bool
+);
+impl_builtin_altrep_family!(
+    Vec<u8>,
+    raw,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_u8,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_u8
+);
+impl_builtin_altrep_family!(
+    Vec<String>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_String,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_String
+);
+impl_builtin_altrep_family!(
+    Vec<Option<String>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Option_String,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Option_String
+);
 // Cow string vectors — zero-copy from R, ALTREP output without copying back.
 // Serialize: Rf_mkCharLenCE hits R's CHARSXP cache (no string data copy for borrowed).
 // Unserialize: TryFromSexp uses charsxp_to_cow (zero-copy borrow for UTF-8).
-impl_altstring_from_data!(Vec<std::borrow::Cow<'static, str>>, dataptr, serialize);
-impl_altstring_from_data!(
-    Vec<Option<std::borrow::Cow<'static, str>>>,
+impl_builtin_altrep_family!(
+    Vec<std::borrow::Cow<'static, str>>,
+    string,
     dataptr,
-    serialize
+    __mx_altrep_reg_builtin_Vec_Cow_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Cow_str
+);
+impl_builtin_altrep_family!(
+    Vec<Option<std::borrow::Cow<'static, str>>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Option_Cow_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Option_Cow_str
+);
+impl_builtin_altrep_family!(
+    Vec<crate::ffi::Rcomplex>,
+    complex,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Rcomplex,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Rcomplex
 );
 
-// Complex types - Vec<Rcomplex> supports dataptr
-impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
+// Range<T> — compute-on-access (no direct pointer); materializes into data2 INTSXP/REALSXP.
+impl_builtin_altrep_family!(
+    std::ops::Range<i32>,
+    integer,
+    materializing,
+    __mx_altrep_reg_builtin_Range_i32,
+    __MX_ALTREP_REG_ENTRY_builtin_Range_i32
+);
+impl_builtin_altrep_family!(
+    std::ops::Range<i64>,
+    integer,
+    materializing,
+    __mx_altrep_reg_builtin_Range_i64,
+    __MX_ALTREP_REG_ENTRY_builtin_Range_i64
+);
+impl_builtin_altrep_family!(
+    std::ops::Range<f64>,
+    real,
+    materializing,
+    __mx_altrep_reg_builtin_Range_f64,
+    __MX_ALTREP_REG_ENTRY_builtin_Range_f64
+);
 // endregion
 
 // region: Box<[T]> implementations
 // Box<[T]> is a fat pointer (Sized) that wraps a DST slice.
 // Unlike Vec<T>, it has no capacity field - just ptr + len (2 words).
 // Useful for fixed-size heap allocations.
+// bool uses `materializing` (same reason as Vec<bool>).
 
-impl_altinteger_from_data!(Box<[i32]>, dataptr, serialize);
-impl_altreal_from_data!(Box<[f64]>, dataptr, serialize);
-impl_altlogical_from_data!(Box<[bool]>, materializing_dataptr, serialize);
-impl_altraw_from_data!(Box<[u8]>, dataptr, serialize);
-impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
-impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
+impl_builtin_altrep_family!(
+    Box<[i32]>,
+    integer,
+    dataptr,
+    __mx_altrep_reg_builtin_Box_i32,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_i32
+);
+impl_builtin_altrep_family!(
+    Box<[f64]>,
+    real,
+    dataptr,
+    __mx_altrep_reg_builtin_Box_f64,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_f64
+);
+impl_builtin_altrep_family!(
+    Box<[bool]>,
+    logical,
+    materializing,
+    __mx_altrep_reg_builtin_Box_bool,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_bool
+);
+impl_builtin_altrep_family!(
+    Box<[u8]>,
+    raw,
+    dataptr,
+    __mx_altrep_reg_builtin_Box_u8,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_u8
+);
+impl_builtin_altrep_family!(
+    Box<[String]>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Box_String,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_String
+);
+impl_builtin_altrep_family!(
+    Box<[crate::ffi::Rcomplex]>,
+    complex,
+    dataptr,
+    __mx_altrep_reg_builtin_Box_Rcomplex,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_Rcomplex
+);
 
 // Cow<'static, [T]> — zero-copy borrow from R with copy-on-write dataptr.
 // Borrowed variants expose R's data directly; Owned behaves like Vec.
-impl_altinteger_from_data!(std::borrow::Cow<'static, [i32]>, dataptr, serialize);
-impl_altreal_from_data!(std::borrow::Cow<'static, [f64]>, dataptr, serialize);
-impl_altraw_from_data!(std::borrow::Cow<'static, [u8]>, dataptr, serialize);
-impl_altcomplex_from_data!(
-    std::borrow::Cow<'static, [crate::ffi::Rcomplex]>,
+impl_builtin_altrep_family!(
+    std::borrow::Cow<'static, [i32]>,
+    integer,
     dataptr,
-    serialize
+    __mx_altrep_reg_builtin_Cow_i32,
+    __MX_ALTREP_REG_ENTRY_builtin_Cow_i32
 );
-
-/// Eagerly register all built-in ALTREP classes.
-///
-/// Must be called during `R_init` so that R can find these classes when
-/// unserializing (readRDS) in a fresh session. Without this, the lazy
-/// `OnceLock` registration means classes don't exist until first use —
-/// too late for readRDS.
-pub(crate) fn register_builtin_altrep_classes() {
-    use crate::altrep::RegisterAltrep;
-
-    // Vec<T>
-    Vec::<i32>::get_or_init_class();
-    Vec::<f64>::get_or_init_class();
-    Vec::<bool>::get_or_init_class();
-    Vec::<u8>::get_or_init_class();
-    Vec::<String>::get_or_init_class();
-    Vec::<Option<String>>::get_or_init_class();
-    Vec::<crate::ffi::Rcomplex>::get_or_init_class();
-
-    // Cow string vectors
-    Vec::<std::borrow::Cow<'static, str>>::get_or_init_class();
-    Vec::<Option<std::borrow::Cow<'static, str>>>::get_or_init_class();
-
-    // Box<[T]>
-    Box::<[i32]>::get_or_init_class();
-    Box::<[f64]>::get_or_init_class();
-    Box::<[bool]>::get_or_init_class();
-    Box::<[u8]>::get_or_init_class();
-    Box::<[String]>::get_or_init_class();
-    Box::<[crate::ffi::Rcomplex]>::get_or_init_class();
-
-    // Cow<'static, [T]>
-    std::borrow::Cow::<'static, [i32]>::get_or_init_class();
-    std::borrow::Cow::<'static, [f64]>::get_or_init_class();
-    std::borrow::Cow::<'static, [u8]>::get_or_init_class();
-    std::borrow::Cow::<'static, [crate::ffi::Rcomplex]>::get_or_init_class();
-
-    // Range types
-    std::ops::Range::<i32>::get_or_init_class();
-    std::ops::Range::<i64>::get_or_init_class();
-    std::ops::Range::<f64>::get_or_init_class();
-}
-
-/// Register Arrow ALTREP classes (behind feature gate).
-#[cfg(feature = "arrow")]
-pub(crate) fn register_arrow_altrep_classes() {
-    use crate::altrep::RegisterAltrep;
-    use crate::optionals::arrow_impl::*;
-
-    Float64Array::get_or_init_class();
-    Int32Array::get_or_init_class();
-    UInt8Array::get_or_init_class();
-    BooleanArray::get_or_init_class();
-    StringArray::get_or_init_class();
-}
+impl_builtin_altrep_family!(
+    std::borrow::Cow<'static, [f64]>,
+    real,
+    dataptr,
+    __mx_altrep_reg_builtin_Cow_f64,
+    __MX_ALTREP_REG_ENTRY_builtin_Cow_f64
+);
+impl_builtin_altrep_family!(
+    std::borrow::Cow<'static, [u8]>,
+    raw,
+    dataptr,
+    __mx_altrep_reg_builtin_Cow_u8,
+    __MX_ALTREP_REG_ENTRY_builtin_Cow_u8
+);
+impl_builtin_altrep_family!(
+    std::borrow::Cow<'static, [crate::ffi::Rcomplex]>,
+    complex,
+    dataptr,
+    __mx_altrep_reg_builtin_Cow_Rcomplex,
+    __MX_ALTREP_REG_ENTRY_builtin_Cow_Rcomplex
+);
 
 // endregion
 
