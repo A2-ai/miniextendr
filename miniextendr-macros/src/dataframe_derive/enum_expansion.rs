@@ -1064,6 +1064,53 @@ pub(super) fn derive_enum_dataframe(
             }
         })
         .collect();
+
+    // Sibling collision assertions (#544): one per nested-enum struct field.
+    //
+    // The B1 parse-time check (earlier in this function) hardcodes `"variant"` as the
+    // inner tag when building the discriminant column name to compare against sibling
+    // Single fields. That check covers the common case with better spans/messages.
+    //
+    // This const assertion covers the non-default-tag case: when `Inner` uses
+    // `#[dataframe(tag = "foo")]`, the discriminant column is `<base>_foo`, not
+    // `<base>_variant`. The const assertion uses `<Inner as DataFramePayloadFields>::TAG`
+    // so it resolves to the actual tag at compile time regardless of the value.
+    //
+    // We collect all Single col names across ALL variants (not just the variant that
+    // introduced the struct field) — a collision in any one variant is a bug.
+    let all_single_col_names: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        let mut names = Vec::new();
+        for vi in &variant_infos {
+            for erf in &vi.fields {
+                if let EnumResolvedField::Single(d) = erf {
+                    let col = d.col_name.to_string();
+                    if seen.insert(col.clone()) {
+                        names.push(col);
+                    }
+                }
+            }
+        }
+        names
+    };
+    let sibling_collision_assertions: Vec<TokenStream> = struct_cols
+        .iter()
+        .map(|sc| {
+            let inner_ty = &sc.inner_ty;
+            let base_str = &sc.base_name;
+            let sibling_lits = all_single_col_names
+                .iter()
+                .map(|s| quote! { #s })
+                .collect::<Vec<_>>();
+            quote! {
+                const _: () = ::miniextendr_api::markers::assert_no_sibling_field_collision(
+                    &[#(#sibling_lits),*],
+                    #base_str,
+                    <#inner_ty as ::miniextendr_api::markers::DataFramePayloadFields>::TAG,
+                );
+            }
+        })
+        .collect();
     // endregion
 
     // region: Generate From<Vec<Enum>>
@@ -1794,6 +1841,7 @@ pub(super) fn derive_enum_dataframe(
         #payload_fields_impl
         #(#struct_assertions)*
         #(#payload_collision_assertions)*
+        #(#sibling_collision_assertions)*
         #unit_only_factor_impls
     })
     // endregion
