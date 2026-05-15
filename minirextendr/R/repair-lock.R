@@ -17,7 +17,7 @@
 #' 3. Strips any remaining `checksum = "..."` lines.
 #' 4. Restores `.cargo/config.toml` on exit (success or error).
 #'
-#' This is the lightweight alternative to [miniextendr_vendor()] — use it
+#' This is the lightweight alternative to [miniextendr_vendor()] -- use it
 #' during dev iteration when you only need a clean lock, not a fresh
 #' `inst/vendor.tar.xz`. Use [miniextendr_vendor()] only before
 #' `R CMD build` for CRAN submission.

@@ -7,9 +7,9 @@
 #' gotchas surfaced when running release workflows against AlmaLinux 8
 #' container builds and macOS arm64 runners (issue #448):
 #'
-#' 1. `LANG=C.UTF-8` scoped to container jobs — AlmaLinux 8 minimal defaults
+#' 1. `LANG=C.UTF-8` scoped to container jobs -- AlmaLinux 8 minimal defaults
 #'    to the `C` locale, which fails miniextendr's UTF-8 assertion.
-#' 2. Not set workflow-wide — macOS rejects `C.UTF-8` (glibc-only identifier).
+#' 2. Not set workflow-wide -- macOS rejects `C.UTF-8` (glibc-only identifier).
 #' 3. `dnf install git gh` + `gh auth setup-git` for AlmaLinux 8 minimal.
 #' 4. `CARGO_NET_GIT_FETCH_WITH_CLI=true` workflow-wide so cargo uses the
 #'    system git binary and can authenticate private git dependencies.
@@ -23,7 +23,7 @@
 #' that subdirectory. Pass `rpkg_subdir` to activate this; the generated workflow
 #' will add `working-directory: <rpkg_subdir>` to those steps. When `rpkg_subdir`
 #' is `NULL` (default) and `auto_detect_subdir` is `TRUE` (default),
-#' auto-detection via [detect_project_type()] is attempted.
+#' auto-detection via `detect_project_type()` is attempted.
 #' For a confirmed standalone package, set `auto_detect_subdir = FALSE` to skip
 #' detection and write the plain template unchanged.
 #'
@@ -34,7 +34,7 @@
 #'   the subdirectory is auto-detected. If a string, it is used directly
 #'   regardless of `auto_detect_subdir`.
 #' @param auto_detect_subdir If `TRUE` (default) and `rpkg_subdir` is `NULL`,
-#'   attempts to auto-detect the monorepo layout via [detect_project_type()].
+#'   attempts to auto-detect the monorepo layout via `detect_project_type()`.
 #'   Set to `FALSE` to force standalone mode and suppress auto-detection.
 #' @param overwrite If `TRUE`, replace an existing
 #'   `.github/workflows/r-release.yml`. Default `FALSE`.
@@ -54,9 +54,9 @@ use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
   }
 
   # Resolve rpkg_subdir:
-  #   - explicit string → use it directly.
-  #   - NULL + auto_detect_subdir = TRUE → attempt auto-detection.
-  #   - NULL + auto_detect_subdir = FALSE → standalone (no detection).
+  #   - explicit string -> use it directly.
+  #   - NULL + auto_detect_subdir = TRUE -> attempt auto-detection.
+  #   - NULL + auto_detect_subdir = FALSE -> standalone (no detection).
   resolved_subdir <- NULL
   if (!is.null(rpkg_subdir)) {
     resolved_subdir <- as.character(rpkg_subdir)

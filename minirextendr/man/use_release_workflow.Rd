@@ -4,10 +4,25 @@
 \alias{use_release_workflow}
 \title{Add an r-release.yml workflow with miniextendr platform fixes}
 \usage{
-use_release_workflow(path = ".", overwrite = FALSE)
+use_release_workflow(
+  path = ".",
+  rpkg_subdir = NULL,
+  auto_detect_subdir = TRUE,
+  overwrite = FALSE
+)
 }
 \arguments{
-\item{path}{Path to the package root. Defaults to \code{"."}.}
+\item{path}{Path to the package root (standalone) or monorepo workspace root.
+Defaults to \code{"."}.}
+
+\item{rpkg_subdir}{For monorepo layouts: name of the R package subdirectory
+(e.g. \code{"rpkg"}). If \code{NULL} (default) and \code{auto_detect_subdir} is \code{TRUE},
+the subdirectory is auto-detected. If a string, it is used directly
+regardless of \code{auto_detect_subdir}.}
+
+\item{auto_detect_subdir}{If \code{TRUE} (default) and \code{rpkg_subdir} is \code{NULL},
+attempts to auto-detect the monorepo layout via \code{detect_project_type()}.
+Set to \code{FALSE} to force standalone mode and suppress auto-detection.}
 
 \item{overwrite}{If \code{TRUE}, replace an existing
 \code{.github/workflows/r-release.yml}. Default \code{FALSE}.}
@@ -23,9 +38,9 @@ container builds and macOS arm64 runners (issue #448):
 }
 \details{
 \enumerate{
-\item \code{LANG=C.UTF-8} scoped to container jobs --- AlmaLinux 8 minimal defaults
+\item \code{LANG=C.UTF-8} scoped to container jobs -- AlmaLinux 8 minimal defaults
 to the \code{C} locale, which fails miniextendr's UTF-8 assertion.
-\item Not set workflow-wide --- macOS rejects \code{C.UTF-8} (glibc-only identifier).
+\item Not set workflow-wide -- macOS rejects \code{C.UTF-8} (glibc-only identifier).
 \item \verb{dnf install git gh} + \verb{gh auth setup-git} for AlmaLinux 8 minimal.
 \item \code{CARGO_NET_GIT_FETCH_WITH_CLI=true} workflow-wide so cargo uses the
 system git binary and can authenticate private git dependencies.
@@ -34,4 +49,13 @@ system git binary and can authenticate private git dependencies.
 See \code{docs/RELEASE_WORKFLOW.md} in the miniextendr repository for the full
 rationale, and \code{\link[miniextendr]{assert_utf8_locale_now}} for why the
 UTF-8 check exists.
+
+For \strong{monorepo layouts} (where the R package lives in a subdirectory such as
+\verb{rpkg/}), the \verb{bash ./configure} and \verb{R CMD build} steps must run from inside
+that subdirectory. Pass \code{rpkg_subdir} to activate this; the generated workflow
+will add \verb{working-directory: <rpkg_subdir>} to those steps. When \code{rpkg_subdir}
+is \code{NULL} (default) and \code{auto_detect_subdir} is \code{TRUE} (default),
+auto-detection via \code{detect_project_type()} is attempted.
+For a confirmed standalone package, set \code{auto_detect_subdir = FALSE} to skip
+detection and write the plain template unchanged.
 }
