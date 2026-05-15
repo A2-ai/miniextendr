@@ -85,19 +85,19 @@ rust_run_progress_to_stderr(n)
 rust_run_progress_explicit_close(n)
 }
 \arguments{
-\item{text}{Character string of input text to transform.}
+\item{text}{Input text to transform}
 
-\item{data}{Raw vector of initial data for the cursor.}
+\item{data}{Initial data for the cursor}
 
 \item{n}{Integer upper bound (bar goes from 0 to n inclusive).}
 
-\item{start}{Integer first value to generate.}
+\item{start}{First integer to generate}
 
-\item{end}{Integer last value to generate (inclusive).}
+\item{end}{Last integer to generate (inclusive)}
 
 \item{message}{Character string to emit on stderr.}
 
-\item{content}{Character string for initial buffer content.}
+\item{content}{Initial content for the buffer}
 }
 \value{
 R's stderr connection object.
@@ -150,7 +150,6 @@ close(conn)
 conn2 <- rot13_connection("uryyb")
 readLines(conn2)  # "hello"
 }
-Test creating a connection that ROT13-encodes text on read.
 \dontrun{
 conn <- cursor_connection(charToRaw("Hello"))
 rawToChar(readBin(conn, "raw", 5))  # "Hello"
@@ -160,7 +159,6 @@ seek(conn, 0)
 rawToChar(readBin(conn, "raw", 5))  # "Hi!!!"
 close(conn)
 }
-Test creating a read-write-seekable Cursor-backed connection.
 \dontrun{
 conn <- memory_connection()
 writeLines("Hello, World!", conn)
@@ -168,19 +166,16 @@ seek(conn, 0)
 readLines(conn)  # "Hello, World!"
 close(conn)
 }
-Test creating an empty in-memory read-write connection.
 \dontrun{
 conn <- counter_connection(1L, 5L)
 readLines(conn)  # c("1", "2", "3", "4", "5")
 close(conn)
 }
-Test creating a connection that generates sequential integers.
 \dontrun{
 conn <- uppercase_connection("hello world")
 readLines(conn)  # "HELLO WORLD"
 close(conn)
 }
-Test creating a connection that transforms text to uppercase on read.
 \dontrun{
 conn <- empty_cursor_connection()
 writeBin(as.raw(1:10), conn)
@@ -188,11 +183,9 @@ seek(conn, 0)
 readBin(conn, "raw", 10)  # raw(10): 01 02 03 04 05 06 07 08 09 0a
 close(conn)
 }
-Test creating an empty write-seekable Cursor-backed connection.
 \dontrun{
 conn <- string_input_connection("line1\nline2\nline3")
 readLines(conn)  # c("line1", "line2", "line3")
 close(conn)
 }
-Test creating a read-only connection pre-filled with a string.
 }
