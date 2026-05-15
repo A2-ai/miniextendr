@@ -950,6 +950,11 @@ templates-check-ci:
       exit 1
     fi
 
+# Check that shared recipe bodies in the two template justfiles stay in sync.
+# Recipes that are identical modulo {{rpkg}}/ path prefix are listed in the script.
+templates-recipes-check:
+    bash scripts/templates-recipes-check.sh
+
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)
 # ==============================================================================
