@@ -1078,5 +1078,338 @@ pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
 mod io_adapters;
 pub use io_adapters::*;
 
+// region: standard streams — issue #175
+
+/// R's `stdin()` terminal connection (read-only).
+///
+/// A zero-sized type representing R's standard input stream. Use it as a
+/// `std::io::Read` source when you want Rust code to read from R's stdin.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::RStdin;
+/// use std::io::Read;
+///
+/// let mut stdin = RStdin;
+/// let mut buf = String::new();
+/// stdin.read_to_string(&mut buf).unwrap();
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct RStdin;
+
+/// R's `stdout()` terminal connection (write-only).
+///
+/// A zero-sized type representing R's standard output stream. Use it as a
+/// `std::io::Write` sink when you want Rust code to emit text through R's
+/// normal output path (obeying `sink()` redirection etc.).
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::RStdout;
+/// use std::io::Write;
+///
+/// let mut out = RStdout;
+/// writeln!(out, "hello from Rust").unwrap();
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct RStdout;
+
+/// R's `stderr()` terminal connection (write-only).
+///
+/// A zero-sized type representing R's standard error stream. Writes go
+/// through R's message channel, which respects `sink(type="message")`
+/// redirection.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::RStderr;
+/// use std::io::Write;
+///
+/// let mut err = RStderr;
+/// writeln!(err, "diagnostic info").unwrap();
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct RStderr;
+
+// Helper: get the SEXP for one of R's standard connections by calling
+// base::stdin(), base::stdout(), or base::stderr().
+//
+// # Safety
+// Must be called from the R main thread.
+unsafe fn eval_base_connection(name: &std::ffi::CStr) -> SEXP {
+    use crate::ffi::{R_BaseEnv, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect};
+    unsafe {
+        let call = Rf_lang1(Rf_install(name.as_ptr()));
+        Rf_protect(call);
+        // R_tryEvalSilent so an error becomes a panic rather than a longjmp.
+        let mut err: std::os::raw::c_int = 0;
+        let result = crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err);
+        Rf_unprotect(1); // call
+        if err != 0 {
+            panic!("failed to evaluate {}()", name.to_string_lossy());
+        }
+        result
+    }
+}
+
+impl std::io::Read for RStdin {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        unsafe {
+            let sexp = eval_base_connection(c"stdin");
+            let conn = crate::ffi::R_GetConnection(sexp);
+            let n = read_connection(conn, buf);
+            Ok(n)
+        }
+    }
+}
+
+// R's terminal connections route writes through the console hook
+// (ptr_R_WriteConsoleEx / Rprintf / REprintf), not through
+// R_WriteConnection.  We use Rprintf_unchecked / REprintf_unchecked with
+// a %.*s format so that binary-safe byte-slice writing is possible without
+// null-termination gymnastics.
+//
+// otype semantics (matches R_WriteConsoleEx convention):
+//   0 = stdout (regular output)
+//   1 = stderr (message/diagnostic output)
+unsafe fn write_console(buf: &[u8], otype: std::os::raw::c_int) -> usize {
+    if buf.is_empty() {
+        return 0;
+    }
+    // Construct a temporary null-terminated copy for %s printing.
+    // For write() we can safely truncate at the first embedded NUL, which
+    // matches what R's own writeLines() does (it errors on embedded NUL).
+    let truncated = match buf.iter().position(|&b| b == 0) {
+        Some(pos) => &buf[..pos],
+        None => buf,
+    };
+    if truncated.is_empty() {
+        return buf.len(); // all NUL bytes — nothing to print
+    }
+    // Build a null-terminated temporary string.
+    let mut tmp = Vec::with_capacity(truncated.len() + 1);
+    tmp.extend_from_slice(truncated);
+    tmp.push(0u8);
+    unsafe {
+        let ptr = tmp.as_ptr().cast::<std::os::raw::c_char>();
+        if otype == 0 {
+            crate::ffi::Rprintf_unchecked(c"%s".as_ptr(), ptr);
+        } else {
+            crate::ffi::REprintf_unchecked(c"%s".as_ptr(), ptr);
+        }
+    }
+    buf.len()
+}
+
+impl std::io::Write for RStdout {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Ok(unsafe { write_console(buf, 0) })
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl std::io::Write for RStderr {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Ok(unsafe { write_console(buf, 1) })
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+// endregion
+
+// region: null connection — issue #176
+
+/// A write-only connection to the platform null device
+/// (`/dev/null` on Unix, `NUL` on Windows).
+///
+/// Writes are discarded but still routed through R's connection machinery,
+/// so active `sink()` redirections see the writes. The connection is opened
+/// automatically on construction and auto-closes on `Drop`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::RNullConnection;
+/// use std::io::Write;
+///
+/// let mut null = RNullConnection::new();
+/// writeln!(null, "discarded").unwrap();
+/// // closes automatically when dropped
+/// ```
+pub struct RNullConnection {
+    /// The protected SEXP for `file(nullfile(), open = "w")`.
+    ///
+    /// Stored on the precious list so R's GC cannot collect it while Rust
+    /// holds the struct.
+    sexp: SEXP,
+    /// Whether the connection is still open (i.e., `close()` hasn't been
+    /// called yet). Guards the `Drop` impl against double-close.
+    open: bool,
+}
+
+impl std::fmt::Debug for RNullConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RNullConnection")
+            .field("open", &self.open)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RNullConnection {
+    /// Open a connection to the null device.
+    ///
+    /// Evaluates `file(nullfile(), open = "w")` in the base environment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if R cannot open the null device (highly unlikely).
+    ///
+    /// # Safety (caller)
+    ///
+    /// Must be called from the R main thread.
+    pub fn new() -> Self {
+        unsafe {
+            use crate::ffi::{
+                R_BaseEnv, R_PreserveObject, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect,
+            };
+            // nullfile() — returns the platform null device path
+            let nullfile_sym = Rf_install(c"nullfile".as_ptr());
+            let nullfile_call = Rf_lang1(nullfile_sym);
+            Rf_protect(nullfile_call);
+
+            let mut err: std::os::raw::c_int = 0;
+            let null_path = crate::ffi::R_tryEvalSilent(nullfile_call, R_BaseEnv, &mut err);
+            Rf_unprotect(1); // nullfile_call
+            if err != 0 {
+                panic!("nullfile() failed");
+            }
+            Rf_protect(null_path);
+
+            // file(nullfile(), open = "w")
+            let file_sym = Rf_install(c"file".as_ptr());
+            let open_sym = Rf_install(c"open".as_ptr());
+            let open_str = crate::ffi::Rf_mkString(c"w".as_ptr());
+            Rf_protect(open_str);
+
+            // Build file(null_path, open = "w") as a pairlist
+            use crate::ffi::PairListExt;
+            let tail = open_str.cons(SEXP::nil());
+            Rf_protect(tail);
+            tail.set_tag(open_sym);
+            let mid = null_path.cons(tail);
+            Rf_protect(mid);
+            let call = file_sym.lcons(mid);
+            Rf_protect(call);
+
+            let sexp = crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err);
+            Rf_unprotect(5); // call, mid, tail, open_str, null_path
+
+            if err != 0 {
+                panic!("file(nullfile(), open=\"w\") failed");
+            }
+
+            // Pin on the precious list so GC cannot collect it while we hold it.
+            R_PreserveObject(sexp);
+
+            RNullConnection { sexp, open: true }
+        }
+    }
+
+    /// The underlying R connection SEXP.
+    #[inline]
+    pub fn sexp(&self) -> SEXP {
+        self.sexp
+    }
+
+    /// Construct from a SEXP that has **already been added to R's precious list**.
+    ///
+    /// Used by `TryFromSexp for RNullConnection` which calls
+    /// `R_PreserveObject` before handing the SEXP to this constructor.
+    /// The `Drop` impl will call `R_ReleaseObject` exactly once.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid, open R connection SEXP.
+    /// - Caller must have called `R_PreserveObject(sexp)` before this call.
+    pub(crate) unsafe fn from_preserved_sexp(sexp: SEXP) -> Self {
+        RNullConnection { sexp, open: true }
+    }
+
+    /// Close the connection explicitly.
+    ///
+    /// After calling this, `write` will return an error. The `Drop` impl
+    /// calls this automatically, so explicit calls are optional. A second
+    /// close is a no-op.
+    pub fn close(&mut self) {
+        if self.open {
+            self.open = false;
+            unsafe { self.close_inner() };
+        }
+    }
+
+    // Inner: call R's close() on the SEXP and release from precious list.
+    unsafe fn close_inner(&mut self) {
+        use crate::ffi::{
+            R_BaseEnv, R_ReleaseObject, Rf_install, Rf_lang2, Rf_protect, Rf_unprotect,
+        };
+        unsafe {
+            let close_sym = Rf_install(c"close".as_ptr());
+            let call = Rf_lang2(close_sym, self.sexp);
+            Rf_protect(call);
+            let mut err: std::os::raw::c_int = 0;
+            crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err);
+            Rf_unprotect(1); // call
+            // Release from precious list regardless of whether close() errored.
+            R_ReleaseObject(self.sexp);
+        }
+    }
+}
+
+impl Default for RNullConnection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::io::Write for RNullConnection {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if !self.open {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "RNullConnection is closed",
+            ));
+        }
+        unsafe {
+            let conn = crate::ffi::R_GetConnection(self.sexp);
+            let n = write_connection(conn, buf);
+            Ok(n)
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Drop for RNullConnection {
+    fn drop(&mut self) {
+        if self.open {
+            self.open = false;
+            unsafe { self.close_inner() };
+        }
+    }
+}
+
+// endregion
+
 #[cfg(test)]
 mod tests;

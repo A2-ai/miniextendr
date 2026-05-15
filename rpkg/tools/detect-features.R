@@ -43,6 +43,7 @@ features <- c(features, "borsh")
 features <- c(features, "arrow")
 features <- c(features, "datafusion")
 features <- c(features, "log")
+features <- c(features, "connections")
 
 # vctrs — only if the R package is installed
 if (requireNamespace("vctrs", quietly = TRUE)) {

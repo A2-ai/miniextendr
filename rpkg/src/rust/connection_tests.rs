@@ -403,3 +403,65 @@ pub fn rot13_connection(text: &str) -> SEXP {
         .build(TransformConnection::new(data, transform))
 }
 // endregion
+
+// region: Standard stream and null connection fixtures — issues #175 + #176
+
+/// Return R's stdout() terminal connection from Rust.
+///
+/// Used in tests to verify the type round-trips correctly.
+/// @return R's stdout connection object.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_get_stdout() -> miniextendr_api::connection::RStdout {
+    miniextendr_api::connection::RStdout
+}
+
+/// Return R's stderr() terminal connection from Rust.
+///
+/// Used in tests to verify the type round-trips correctly.
+/// @return R's stderr connection object.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_get_stderr() -> miniextendr_api::connection::RStderr {
+    miniextendr_api::connection::RStderr
+}
+
+/// Write a message to R's stderr connection from Rust.
+///
+/// Useful for capturing stderr output from Rust code via `capture.output()`.
+/// @param message Character string to emit on stderr.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_write_to_stderr(message: String) {
+    use miniextendr_api::connection::RStderr;
+    use std::io::Write;
+    let mut e = RStderr;
+    writeln!(e, "{message}").expect("write to RStderr failed");
+}
+
+/// Open a null device connection from Rust and return it to R.
+///
+/// The no-arg signature makes this eligible for the gctorture GC sweep.
+/// The returned connection is open; R will close it when it is GC'd or
+/// when the caller calls `close()` on it.
+/// @return An open write-only connection to the null device.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_get_null_connection() -> miniextendr_api::connection::RNullConnection {
+    miniextendr_api::connection::RNullConnection::new()
+}
+
+/// Write a message to a new null connection from Rust (output discarded).
+///
+/// Exercises the full write path: allocate → write → auto-close on drop.
+/// @param message Character string to write (discarded by null device).
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_write_to_null(message: String) {
+    use miniextendr_api::connection::RNullConnection;
+    use std::io::Write;
+    let mut n = RNullConnection::new();
+    writeln!(n, "{message}").expect("write to RNullConnection failed");
+}
+
+// endregion
