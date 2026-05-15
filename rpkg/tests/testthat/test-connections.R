@@ -220,3 +220,36 @@ test_that("rust_get_null_connection double-close is safe", {
   gc()
   succeed()
 })
+
+# =============================================================================
+# txtProgressBar (PR B / #177)
+# =============================================================================
+
+test_that("rust_run_progress emits a style-3 progress bar", {
+  out <- capture.output(rust_run_progress(5L))
+  # style 3 looks like: |====      | 80% or |==========| 100%
+  expect_true(any(grepl("\\|.+\\|.+%", out)))
+})
+
+test_that("rust_run_progress_to_stderr captures via sink(message)", {
+  buf <- character(0)
+  con <- textConnection("buf", "w", local = TRUE)
+  sink(con, type = "message")
+  rust_run_progress_to_stderr(5L)
+  sink(NULL, type = "message")
+  close(con)
+  expect_true(any(grepl("%", buf)))
+})
+
+test_that("RTxtProgressBar Drop runs cleanly", {
+  # Exercises the auto-close Drop path end-to-end without error.
+  expect_no_error(rust_run_progress(3L))
+})
+
+test_that("RTxtProgressBar explicit close() succeeds and Drop is no-op", {
+  expect_true(rust_run_progress_explicit_close(5L))
+})
+
+test_that("gc_stress_txt_progress_bar does not segfault", {
+  expect_no_error(gc_stress_txt_progress_bar())
+})

@@ -2593,3 +2593,34 @@ mod connections_into_r {
 }
 
 // endregion
+
+// region: txtProgressBar — IntoR (issue #177)
+
+#[cfg(feature = "connections")]
+mod txt_progress_bar_into_r {
+    use crate::ffi::SEXP;
+    use crate::into_r::IntoR;
+    use crate::txt_progress_bar::RTxtProgressBar;
+
+    /// Transfer ownership of the `RTxtProgressBar` back to R.
+    ///
+    /// Releases the SEXP from the precious list and forgets `self` (so `Drop`
+    /// is a no-op). R's environment keeps the bar alive after this call.
+    impl IntoR for RTxtProgressBar {
+        type Error = std::convert::Infallible;
+
+        fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+            Ok(self.into_sexp())
+        }
+
+        fn into_sexp(self) -> SEXP {
+            let sexp = self.sexp();
+            // Release from precious list; R manages lifetime from here on.
+            unsafe { crate::ffi::R_ReleaseObject(sexp) };
+            std::mem::forget(self); // Disarm Drop guard — no double-release.
+            sexp
+        }
+    }
+}
+
+// endregion
