@@ -10,7 +10,7 @@ skip_if_missing_feature(name)
 \item{name}{Character string naming the required feature.}
 }
 \value{
-Invisibly returns \code{NULL}. Called for its side effect of skipping tests.
+Invisibly returns `NULL`. Called for its side effect of skipping tests.
 }
 \description{
 For use in testthat tests to skip tests when an optional feature is not enabled.

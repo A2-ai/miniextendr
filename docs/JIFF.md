@@ -43,6 +43,8 @@ For types with no base-R scalar analog, wrap in `#[derive(ExternalPtr)]` and imp
 
 `JiffTimestampVec` — lazy `REALSXP` backed by `Arc<Vec<Timestamp>>`. Elements are projected to seconds-since-epoch on access; no upfront conversion. Apply POSIXct class after construction.
 
+`JiffZonedVec` — lazy `REALSXP` backed by `Arc<Vec<Zoned>>`, **single-timezone strict**. Constructor (`JiffZonedVec::new`) validates that all elements share the same IANA timezone name; returns `Err` if any element differs. On success, `into_sexp()` produces a POSIXct ALTREP with `class = c("POSIXct", "POSIXt")` and `tzone = <iana>`. `TryFromSexp` reconstructs each element using the SEXP's `tzone` attribute.
+
 ## vctrs rcrd constructors
 
 Requires `features = ["jiff", "vctrs"]`. Public helpers in `jiff_impl::vctrs_support`:
@@ -56,5 +58,4 @@ All constructors return vctrs rcrd SEXPs with class `c("<type>", "vctrs_rcrd", "
 
 ## Follow-ups
 
-- #304 — `JiffZonedVec` ALTREP (deferred; mixed-timezone vector semantics need a design decision)
 - #305 — expand adapter-trait test coverage (formatting/arithmetic methods, ALTREP laziness counter)
