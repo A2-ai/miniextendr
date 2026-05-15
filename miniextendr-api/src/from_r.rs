@@ -1275,6 +1275,156 @@ impl<T: TypedExternal + Send> TryFromSexp for Option<ExternalPtr<T>> {
 }
 // endregion
 
+// region: R connections — TryFromSexp impls (issue #175, #176)
+
+#[cfg(feature = "connections")]
+mod connections_from_r {
+    use std::ffi::CStr;
+
+    use crate::connection::{RNullConnection, RStderr, RStdin, RStdout, Rconn};
+    use crate::ffi::{Rboolean, SEXP};
+    use crate::from_r::{SexpError, TryFromSexp};
+
+    // Read the connection description and class fields from an Rconn handle.
+    //
+    // # Safety
+    // - sexp must be a valid, open R connection SEXP.
+    // - Must be called from the R main thread.
+    unsafe fn conn_description(sexp: SEXP) -> Option<String> {
+        unsafe {
+            let handle = crate::ffi::R_GetConnection(sexp);
+            let conn = handle.cast::<Rconn>().cast_const();
+            if (*conn).description.is_null() {
+                None
+            } else {
+                Some(
+                    CStr::from_ptr((*conn).description)
+                        .to_string_lossy()
+                        .into_owned(),
+                )
+            }
+        }
+    }
+
+    unsafe fn conn_class(sexp: SEXP) -> Option<String> {
+        unsafe {
+            let handle = crate::ffi::R_GetConnection(sexp);
+            let conn = handle.cast::<Rconn>().cast_const();
+            if (*conn).class.is_null() {
+                None
+            } else {
+                Some(CStr::from_ptr((*conn).class).to_string_lossy().into_owned())
+            }
+        }
+    }
+
+    unsafe fn conn_canwrite(sexp: SEXP) -> bool {
+        unsafe {
+            let handle = crate::ffi::R_GetConnection(sexp);
+            let conn = handle.cast::<Rconn>().cast_const();
+            (*conn).canwrite != Rboolean::FALSE
+        }
+    }
+
+    unsafe fn conn_isopen(sexp: SEXP) -> bool {
+        unsafe {
+            let handle = crate::ffi::R_GetConnection(sexp);
+            let conn = handle.cast::<Rconn>().cast_const();
+            (*conn).isopen != Rboolean::FALSE
+        }
+    }
+
+    // Strict validation: confirm description == expected_desc and class == "terminal".
+    unsafe fn validate_terminal(sexp: SEXP, expected_desc: &str) -> Result<(), SexpError> {
+        let desc = unsafe { conn_description(sexp) }.unwrap_or_default();
+        if desc != expected_desc {
+            return Err(SexpError::InvalidValue(format!(
+                "expected terminal connection with description {:?}, got {:?}",
+                expected_desc, desc
+            )));
+        }
+        let cls = unsafe { conn_class(sexp) }.unwrap_or_default();
+        if cls != "terminal" {
+            return Err(SexpError::InvalidValue(format!(
+                "expected class \"terminal\", got {:?}",
+                cls
+            )));
+        }
+        Ok(())
+    }
+
+    impl TryFromSexp for RStdin {
+        type Error = SexpError;
+
+        fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+            unsafe { validate_terminal(sexp, "stdin") }?;
+            Ok(RStdin)
+        }
+
+        unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+            Self::try_from_sexp(sexp)
+        }
+    }
+
+    impl TryFromSexp for RStdout {
+        type Error = SexpError;
+
+        fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+            unsafe { validate_terminal(sexp, "stdout") }?;
+            Ok(RStdout)
+        }
+
+        unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+            Self::try_from_sexp(sexp)
+        }
+    }
+
+    impl TryFromSexp for RStderr {
+        type Error = SexpError;
+
+        fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+            unsafe { validate_terminal(sexp, "stderr") }?;
+            Ok(RStderr)
+        }
+
+        unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+            Self::try_from_sexp(sexp)
+        }
+    }
+
+    /// Accepts any open, write-capable connection — not just the null device.
+    ///
+    /// This is intentional: validating against `description == "/dev/null"` /
+    /// `"NUL"` is brittle across platforms, and the type's value comes from the
+    /// RAII close-on-drop, not the specific target. Substituting a `file()`
+    /// connection for `RNullConnection` is supported.
+    impl TryFromSexp for RNullConnection {
+        type Error = SexpError;
+
+        fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+            if !unsafe { conn_isopen(sexp) } {
+                return Err(SexpError::InvalidValue(
+                    "expected an open connection".to_string(),
+                ));
+            }
+            if !unsafe { conn_canwrite(sexp) } {
+                return Err(SexpError::InvalidValue(
+                    "expected a write-capable connection".to_string(),
+                ));
+            }
+            // Preserve the SEXP so it lives as long as this Rust struct.
+            unsafe { crate::ffi::R_PreserveObject(sexp) };
+            Ok(unsafe { RNullConnection::from_preserved_sexp(sexp) })
+        }
+
+        unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+            Self::try_from_sexp(sexp)
+        }
+    }
+}
+
+// endregion
+
 // region: Helper macros for feature-gated modules
 
 /// Implement `TryFromSexp for Option<T>` where T already implements TryFromSexp.

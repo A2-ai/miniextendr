@@ -2140,6 +2140,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "indicatif") {
         features.push("indicatif");
     }
+    if cfg!(feature = "connections") {
+        features.push("connections");
+    }
 
     // Class systems (always available, not feature-gated)
     features.push("s7");

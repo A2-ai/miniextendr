@@ -2509,3 +2509,87 @@ fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::ffi::SEXP {
     }
 }
 // endregion
+
+// region: R connections — IntoR impls (issue #175, #176)
+
+#[cfg(feature = "connections")]
+mod connections_into_r {
+    use crate::connection::{RNullConnection, RStderr, RStdin, RStdout};
+    use crate::ffi::SEXP;
+    use crate::into_r::IntoR;
+
+    // Evaluate a no-arg base function and return the resulting SEXP (unprotected).
+    //
+    // # Safety
+    // Must be called from the R main thread.
+    unsafe fn eval_base_noarg(name: &std::ffi::CStr) -> SEXP {
+        use crate::ffi::{R_BaseEnv, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect};
+        unsafe {
+            let call = Rf_lang1(Rf_install(name.as_ptr()));
+            Rf_protect(call);
+            let mut err: std::os::raw::c_int = 0;
+            let result = crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err);
+            Rf_unprotect(1);
+            if err != 0 {
+                panic!("failed to evaluate {}()", name.to_string_lossy());
+            }
+            result
+        }
+    }
+
+    impl IntoR for RStdin {
+        type Error = std::convert::Infallible;
+
+        fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+            Ok(self.into_sexp())
+        }
+
+        fn into_sexp(self) -> SEXP {
+            unsafe { eval_base_noarg(c"stdin") }
+        }
+    }
+
+    impl IntoR for RStdout {
+        type Error = std::convert::Infallible;
+
+        fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+            Ok(self.into_sexp())
+        }
+
+        fn into_sexp(self) -> SEXP {
+            unsafe { eval_base_noarg(c"stdout") }
+        }
+    }
+
+    impl IntoR for RStderr {
+        type Error = std::convert::Infallible;
+
+        fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+            Ok(self.into_sexp())
+        }
+
+        fn into_sexp(self) -> SEXP {
+            unsafe { eval_base_noarg(c"stderr") }
+        }
+    }
+
+    /// Returns the held SEXP and disarms the `Drop` guard (no double-close).
+    impl IntoR for RNullConnection {
+        type Error = std::convert::Infallible;
+
+        fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+            Ok(self.into_sexp())
+        }
+
+        fn into_sexp(self) -> SEXP {
+            let sexp = self.sexp();
+            // Transfer ownership to R: release from precious list (R's connection
+            // table keeps the connection alive), then forget self to skip Drop.
+            unsafe { crate::ffi::R_ReleaseObject(sexp) };
+            std::mem::forget(self);
+            sexp
+        }
+    }
+}
+
+// endregion

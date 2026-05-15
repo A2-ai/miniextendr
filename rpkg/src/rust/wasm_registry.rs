@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      9623d38745ff2212
+// content-hash:      ff4ae0b298c3bdc1
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -748,6 +748,18 @@ unsafe extern "C-unwind" {
     pub fn C_zero_copy_arrow_f64_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_arrow_i32_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_arrow_f64_computed_is_different(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_rust_get_stderr(_: SEXP) -> SEXP;
+    pub fn C_rust_get_stdout(_: SEXP) -> SEXP;
+    pub fn C_rot13_connection(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_cursor_connection(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_memory_connection(_: SEXP) -> SEXP;
+    pub fn C_counter_connection(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_rust_write_to_null(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_rust_write_to_stderr(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_uppercase_connection(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_empty_cursor_connection(_: SEXP) -> SEXP;
+    pub fn C_string_input_connection(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_rust_get_null_connection(_: SEXP) -> SEXP;
     pub fn C_test_i32_sum(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_strict_echo_i64(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_test_f64_to_i32(_: SEXP, _: SEXP) -> SEXP;
@@ -5628,6 +5640,66 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_zero_copy_arrow_f64_computed_is_different".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_arrow_f64_computed_is_different) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_rust_get_stderr".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_rust_get_stderr) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_rust_get_stdout".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_rust_get_stdout) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_rot13_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rot13_connection) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_cursor_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_cursor_connection) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_memory_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_memory_connection) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_counter_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_counter_connection) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_rust_write_to_null".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rust_write_to_null) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_rust_write_to_stderr".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rust_write_to_stderr) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_uppercase_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_uppercase_connection) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_empty_cursor_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_empty_cursor_connection) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_string_input_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_string_input_connection) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_rust_get_null_connection".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_rust_get_null_connection) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_test_i32_sum".as_ptr(),
