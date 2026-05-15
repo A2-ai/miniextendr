@@ -14,6 +14,7 @@
 #
 #   rpkg (example R package):
 #     just configure          - Configure R package build (dev mode, no vendoring)
+#     just configure-fast     - Skip configure when Makevars/.cargo/config.toml are up to date
 #     just vendor             - Vendor deps for CRAN release prep
 #     just devtools-test      - Run R package tests
 #     just devtools-document  - Run roxygen2 (NAMESPACE + man pages)
@@ -369,6 +370,34 @@ configure:
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
     bash ./configure
 
+# Skip configure when build outputs are already up to date.
+#
+# Checks that rpkg/src/Makevars and rpkg/src/rust/.cargo/config.toml both
+# exist and are newer than their source inputs (configure.ac, Makevars.in,
+# cargo-config.toml.in). If so, skips the ~1 s configure round-trip; otherwise
+# falls back to the full `just configure` recipe.
+#
+# Used by high-iteration dev recipes (devtools-document, devtools-test,
+# devtools-load) to avoid re-running configure on every invocation.
+#
+# CAVEATS (mtime-based, not content-based):
+#   - Changes to tools/detect-features.R will NOT bust the cache.
+#   - Changes to environment variables (CARGO_FEATURES, CARGO_HOME, etc.)
+#     will NOT bust the cache.
+#   - Changes to monorepo sibling crates will NOT bust the cache.
+#   - For a guaranteed fresh configure, run `just configure` directly or
+#     touch rpkg/configure.ac to force the stale check to fail.
+configure-fast:
+    if [ -f rpkg/src/Makevars ] && \
+       [ -f rpkg/src/rust/.cargo/config.toml ] && \
+       [ rpkg/src/Makevars -nt rpkg/configure.ac ] && \
+       [ rpkg/src/Makevars -nt rpkg/src/Makevars.in ] && \
+       [ rpkg/src/rust/.cargo/config.toml -nt rpkg/src/rust/cargo-config.toml.in ]; then \
+        echo "configure-fast: up to date — skipping (touch rpkg/configure.ac to force)"; \
+    else \
+        just configure; \
+    fi
+
 # Vendor dependencies into inst/vendor.tar.xz for CRAN release preparation.
 # Requires cargo-revendor: `just revendor-install`.
 #
@@ -552,7 +581,7 @@ devtools-check: devtools-document
 
 # Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages)
 # R wrappers are generated automatically by Makevars during R CMD INSTALL.
-devtools-document: configure
+devtools-document: configure-fast
     Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace
