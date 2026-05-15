@@ -60,8 +60,9 @@ fn is_multiline_tag(tag: &str) -> bool {
 /// Most tags capture only a single line. Multi-line tags like `@examples`,
 /// `@description`, `@param`, and `@return` append continuation lines.
 ///
-/// For R6 methods, if no explicit tags are found, the first doc comment paragraph
-/// is auto-converted to `@description`.
+/// Paragraph-based auto-documentation (first paragraph → `@description`, rest
+/// → `@details` for docs without explicit tags) lives in the sibling
+/// [`roxygen_tags_from_attrs_for_r6_method`].
 pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
     roxygen_tags_from_attrs_impl(attrs, false)
 }

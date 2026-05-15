@@ -439,6 +439,35 @@ fn auto_description_order_is_description_then_details() {
     );
 }
 
+#[test]
+fn auto_description_empty_attrs_emits_nothing() {
+    let tags = roxygen_tags_from_attrs_for_r6_method(&[]);
+    assert!(tags.is_empty(), "expected empty tag list, got: {:?}", tags);
+}
+
+#[test]
+fn auto_description_tag_only_doc_emits_no_spurious_description() {
+    // Doc that starts directly with a roxygen tag (no pre-tag prose) must not
+    // synthesise an @description from the tag content.
+    let attrs = make_doc_attrs_plain(&["@param x An input value."]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@description")),
+        "unexpected @description: {:?}",
+        tags
+    );
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@details")),
+        "unexpected @details: {:?}",
+        tags
+    );
+    assert!(
+        tags.iter().any(|t| t.starts_with("@param")),
+        "expected @param to be preserved: {:?}",
+        tags
+    );
+}
+
 // endregion
 
 // region: Tag extraction tests
