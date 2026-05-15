@@ -569,6 +569,9 @@ pub mod externalptr;
 // Connection framework (unstable R API - use with caution)
 #[cfg(feature = "connections")]
 pub mod connection;
+// txtProgressBar handle — drives utils::txtProgressBar from Rust
+#[cfg(feature = "connections")]
+pub mod txt_progress_bar;
 pub use externalptr::{
     ErasedExternalPtr,
     ExternalPtr,

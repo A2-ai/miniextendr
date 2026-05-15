@@ -465,3 +465,56 @@ pub fn rust_write_to_null(message: String) {
 }
 
 // endregion
+
+// region: txtProgressBar fixtures — issue #177
+
+/// Run a style-3 progress bar from 0 to n on stdout.
+///
+/// Drives the full set/drop lifecycle; auto-closes when the function returns.
+/// @param n Integer upper bound (the bar goes from 0 to n inclusive).
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_run_progress(n: i32) {
+    use miniextendr_api::txt_progress_bar::RTxtProgressBar;
+    let pb = RTxtProgressBar::builder(0.0, n as f64).style(3).build();
+    for i in 0..=n {
+        pb.set(i as f64).ok();
+    }
+    // auto-close on drop
+}
+
+/// Run a style-3 progress bar from 0 to n, routing output to R's stderr.
+///
+/// Lets tests verify the `file` builder option works and that output appears
+/// on the message channel (where `sink(type="message")` can capture it).
+/// @param n Integer upper bound.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_run_progress_to_stderr(n: i32) {
+    use miniextendr_api::connection::RStderr;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::txt_progress_bar::RTxtProgressBar;
+    let pb = RTxtProgressBar::builder(0.0, n as f64)
+        .style(3)
+        .file(RStderr.into_sexp())
+        .build();
+    for i in 0..=n {
+        pb.set(i as f64).ok();
+    }
+    // auto-close on drop
+}
+
+/// No-arg GC-stress fixture for RTxtProgressBar (see #430).
+///
+/// Creates a bar, advances it once, then lets it close on drop.
+/// Called from the gctorture sweep to exercise precious-list GC discipline.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn gc_stress_txt_progress_bar() {
+    use miniextendr_api::txt_progress_bar::RTxtProgressBar;
+    let pb = RTxtProgressBar::builder(0.0, 1.0).style(1).build();
+    pb.set(1.0).ok();
+    // drop fires here
+}
+
+// endregion

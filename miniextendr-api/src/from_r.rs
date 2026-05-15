@@ -1425,6 +1425,37 @@ mod connections_from_r {
 
 // endregion
 
+// region: txtProgressBar — TryFromSexp (issue #177)
+
+#[cfg(feature = "connections")]
+mod txt_progress_bar_from_r {
+    use crate::ffi::{R_PreserveObject, SEXP, SexpExt};
+    use crate::from_r::{SexpError, TryFromSexp};
+    use crate::txt_progress_bar::RTxtProgressBar;
+
+    impl TryFromSexp for RTxtProgressBar {
+        type Error = SexpError;
+
+        fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+            // Must be a list (VECSXP) with class "txtProgressBar".
+            if !sexp.inherits_class(c"txtProgressBar") {
+                return Err(SexpError::InvalidValue(
+                    "expected a SEXP with class \"txtProgressBar\"".to_string(),
+                ));
+            }
+            // Pin on the precious list so GC cannot collect while Rust holds it.
+            unsafe { R_PreserveObject(sexp) };
+            Ok(unsafe { RTxtProgressBar::from_preserved_sexp(sexp) })
+        }
+
+        unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+            Self::try_from_sexp(sexp)
+        }
+    }
+}
+
+// endregion
+
 // region: Helper macros for feature-gated modules
 
 /// Implement `TryFromSexp for Option<T>` where T already implements TryFromSexp.
