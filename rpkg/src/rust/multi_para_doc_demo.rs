@@ -6,7 +6,7 @@ use miniextendr_api::miniextendr;
 /// This is the description paragraph (paragraph 2).
 ///
 /// This is the details paragraph (paragraph 3). It should appear in
-/// a `\details{}` block in the generated Rd file.
+/// a separate details section in the generated Rd file.
 ///
 /// @return Always returns 0.
 #[miniextendr]
