@@ -241,10 +241,13 @@ test_that("rust_run_progress_to_stderr captures via sink(message)", {
   expect_true(any(grepl("%", buf)))
 })
 
-test_that("RTxtProgressBar closes idempotently on drop", {
-  # The auto-close Drop path is exercised by rust_run_progress.
-  # A repeated no-error call is sufficient smoke-test.
+test_that("RTxtProgressBar Drop runs cleanly", {
+  # Exercises the auto-close Drop path end-to-end without error.
   expect_no_error(rust_run_progress(3L))
+})
+
+test_that("RTxtProgressBar explicit close() succeeds and Drop is no-op", {
+  expect_true(rust_run_progress_explicit_close(5L))
 })
 
 test_that("gc_stress_txt_progress_bar does not segfault", {

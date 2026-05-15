@@ -517,4 +517,21 @@ pub fn gc_stress_txt_progress_bar() {
     // drop fires here
 }
 
+/// Exercise the explicit `close()` path — Drop is a no-op after this.
+///
+/// Returns `TRUE` if `close()` succeeded. After `close()` consumes `self`,
+/// the `Drop` impl is skipped via `mem::forget`, so no double-close occurs.
+/// @param n Integer upper bound (bar goes from 0 to n inclusive).
+/// @return Logical `TRUE` if explicit close succeeded without error.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_run_progress_explicit_close(n: i32) -> bool {
+    use miniextendr_api::txt_progress_bar::RTxtProgressBar;
+    let pb = RTxtProgressBar::builder(0.0, n as f64).style(3).build();
+    for i in 0..=n {
+        pb.set(i as f64).ok();
+    }
+    pb.close().is_ok() // explicit close path — Drop is no-op after this
+}
+
 // endregion

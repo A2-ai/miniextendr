@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      2fe8e73bcaca8c80
+// content-hash:      89f60b451ca434fc
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -763,6 +763,7 @@ unsafe extern "C-unwind" {
     pub fn C_rust_get_null_connection(_: SEXP) -> SEXP;
     pub fn C_gc_stress_txt_progress_bar(_: SEXP) -> SEXP;
     pub fn C_rust_run_progress_to_stderr(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_rust_run_progress_explicit_close(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_test_i32_sum(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_strict_echo_i64(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_test_f64_to_i32(_: SEXP, _: SEXP) -> SEXP;
@@ -5717,6 +5718,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_rust_run_progress_to_stderr".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rust_run_progress_to_stderr) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_rust_run_progress_explicit_close".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rust_run_progress_explicit_close) }),
         numArgs: 2,
     },
     R_CallMethodDef {

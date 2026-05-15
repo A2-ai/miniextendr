@@ -62,6 +62,10 @@ impl std::fmt::Debug for RTxtProgressBar {
 impl RTxtProgressBar {
     /// Start building a new `txtProgressBar` with the given `min` and `max`.
     ///
+    /// # Panics
+    ///
+    /// Panics if `min > max`.
+    ///
     /// # Examples
     ///
     /// ```ignore
@@ -102,6 +106,10 @@ impl RTxtProgressBar {
     /// # Errors
     ///
     /// Returns `Err(String)` if the bar is closed or if the R call fails.
+    /// Note: R may print the error message to stderr (via `R_WriteConsoleEx`)
+    /// before the `Err` is returned. Callers in a tight update loop who want to
+    /// suppress that output should route the bar's `file` to `RNullConnection`
+    /// or call via `R_tryEvalSilent` directly.
     pub fn set(&self, value: f64) -> Result<(), String> {
         if !self.open {
             return Err("RTxtProgressBar is closed".to_string());
@@ -116,6 +124,8 @@ impl RTxtProgressBar {
     /// # Errors
     ///
     /// Returns `Err(String)` if the bar is closed or if the R call fails.
+    /// Note: R may print the error message to stderr (via `R_WriteConsoleEx`)
+    /// before the `Err` is returned.
     pub fn get(&self) -> Result<f64, String> {
         if !self.open {
             return Err("RTxtProgressBar is closed".to_string());
@@ -180,6 +190,10 @@ pub struct RTxtProgressBarBuilder {
 
 impl RTxtProgressBarBuilder {
     fn new(min: f64, max: f64) -> Self {
+        assert!(
+            min <= max,
+            "RTxtProgressBar: min ({min}) must be <= max ({max}) — transposed arguments?",
+        );
         RTxtProgressBarBuilder {
             min,
             max,
