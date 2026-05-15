@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      5e0ce6bb12695b95
+// content-hash:      f9058bca1c87688f
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -1880,6 +1880,33 @@ unsafe extern "C" {
     pub safe fn __mx_altrep_reg_InferredVecRealData();
     pub safe fn __mx_altrep_reg_SparseLogicalIterData();
     pub safe fn __mx_altrep_reg_IntegerSequenceListData();
+    pub safe fn __mx_altrep_reg_builtin_Box_u8();
+    pub safe fn __mx_altrep_reg_builtin_Cow_u8();
+    pub safe fn __mx_altrep_reg_builtin_Vec_u8();
+    pub safe fn __mx_altrep_reg_builtin_Box_f64();
+    pub safe fn __mx_altrep_reg_builtin_Box_i32();
+    pub safe fn __mx_altrep_reg_builtin_Cow_f64();
+    pub safe fn __mx_altrep_reg_builtin_Cow_i32();
+    pub safe fn __mx_altrep_reg_builtin_Vec_f64();
+    pub safe fn __mx_altrep_reg_builtin_Vec_i32();
+    pub safe fn __mx_altrep_reg_builtin_Box_bool();
+    pub safe fn __mx_altrep_reg_builtin_Vec_bool();
+    pub safe fn __mx_altrep_reg_builtin_Range_f64();
+    pub safe fn __mx_altrep_reg_builtin_Range_i32();
+    pub safe fn __mx_altrep_reg_builtin_Range_i64();
+    pub safe fn __mx_altrep_reg_builtin_Box_String();
+    pub safe fn __mx_altrep_reg_builtin_Vec_String();
+    pub safe fn __mx_altrep_reg_builtin_Vec_Cow_str();
+    pub safe fn __mx_altrep_reg_builtin_Box_Rcomplex();
+    pub safe fn __mx_altrep_reg_builtin_Cow_Rcomplex();
+    pub safe fn __mx_altrep_reg_builtin_Vec_Rcomplex();
+    pub safe fn __mx_altrep_reg_builtin_Vec_Option_String();
+    pub safe fn __mx_altrep_reg_builtin_Vec_Option_Cow_str();
+    pub safe fn __mx_altrep_reg_builtin_arrow_Int32Array();
+    pub safe fn __mx_altrep_reg_builtin_arrow_UInt8Array();
+    pub safe fn __mx_altrep_reg_builtin_arrow_StringArray();
+    pub safe fn __mx_altrep_reg_builtin_arrow_BooleanArray();
+    pub safe fn __mx_altrep_reg_builtin_arrow_Float64Array();
     pub safe fn __mx_altrep_reg_JiffTimestampVec();
     pub static __VTABLE_COUNTER_FOR_SIMPLECOUNTER: u8;
     pub static __VTABLE_COUNTER_FOR_PANICKYCOUNTER: u8;
@@ -11213,6 +11240,114 @@ pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[
     AltrepRegistration {
         register: __mx_altrep_reg_IntegerSequenceListData,
         symbol: "__mx_altrep_reg_IntegerSequenceListData",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Box_u8,
+        symbol: "__mx_altrep_reg_builtin_Box_u8",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Cow_u8,
+        symbol: "__mx_altrep_reg_builtin_Cow_u8",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_u8,
+        symbol: "__mx_altrep_reg_builtin_Vec_u8",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Box_f64,
+        symbol: "__mx_altrep_reg_builtin_Box_f64",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Box_i32,
+        symbol: "__mx_altrep_reg_builtin_Box_i32",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Cow_f64,
+        symbol: "__mx_altrep_reg_builtin_Cow_f64",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Cow_i32,
+        symbol: "__mx_altrep_reg_builtin_Cow_i32",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_f64,
+        symbol: "__mx_altrep_reg_builtin_Vec_f64",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_i32,
+        symbol: "__mx_altrep_reg_builtin_Vec_i32",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Box_bool,
+        symbol: "__mx_altrep_reg_builtin_Box_bool",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_bool,
+        symbol: "__mx_altrep_reg_builtin_Vec_bool",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Range_f64,
+        symbol: "__mx_altrep_reg_builtin_Range_f64",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Range_i32,
+        symbol: "__mx_altrep_reg_builtin_Range_i32",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Range_i64,
+        symbol: "__mx_altrep_reg_builtin_Range_i64",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Box_String,
+        symbol: "__mx_altrep_reg_builtin_Box_String",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_String,
+        symbol: "__mx_altrep_reg_builtin_Vec_String",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_Cow_str,
+        symbol: "__mx_altrep_reg_builtin_Vec_Cow_str",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Box_Rcomplex,
+        symbol: "__mx_altrep_reg_builtin_Box_Rcomplex",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Cow_Rcomplex,
+        symbol: "__mx_altrep_reg_builtin_Cow_Rcomplex",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_Rcomplex,
+        symbol: "__mx_altrep_reg_builtin_Vec_Rcomplex",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_Option_String,
+        symbol: "__mx_altrep_reg_builtin_Vec_Option_String",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_Vec_Option_Cow_str,
+        symbol: "__mx_altrep_reg_builtin_Vec_Option_Cow_str",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_Int32Array,
+        symbol: "__mx_altrep_reg_builtin_arrow_Int32Array",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_UInt8Array,
+        symbol: "__mx_altrep_reg_builtin_arrow_UInt8Array",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_StringArray,
+        symbol: "__mx_altrep_reg_builtin_arrow_StringArray",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_BooleanArray,
+        symbol: "__mx_altrep_reg_builtin_arrow_BooleanArray",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_Float64Array,
+        symbol: "__mx_altrep_reg_builtin_arrow_Float64Array",
     },
     AltrepRegistration {
         register: __mx_altrep_reg_JiffTimestampVec,

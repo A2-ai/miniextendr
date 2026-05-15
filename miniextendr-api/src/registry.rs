@@ -392,15 +392,14 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // linked list corrupted" on Linux).
     let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
     if !wrapper_gen {
-        // User-defined ALTREP classes (from #[miniextendr] structs)
+        // All ALTREP classes — both user-defined (#[miniextendr] structs) and
+        // builtins (Vec, Box, Range, Cow, Arrow) — register via linkme
+        // MX_ALTREP_REGISTRATIONS. Each call site emits a
+        // `#[distributed_slice(MX_ALTREP_REGISTRATIONS)]` entry, so a single
+        // iteration here covers everything. No hand-enumerated builtin list needed.
         for reg in altrep_regs().iter() {
             (reg.register)();
         }
-        // Built-in ALTREP classes (Vec, Box, Range, Arrow) — must be
-        // registered eagerly so readRDS can find them in fresh sessions.
-        crate::altrep_impl::register_builtin_altrep_classes();
-        #[cfg(feature = "arrow")]
-        crate::altrep_impl::register_arrow_altrep_classes();
 
         // Verify no two ALTREP types registered the same class name.
         // Duplicates cause silent overwrites in R — the wrong type gets

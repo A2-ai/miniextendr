@@ -1905,4 +1905,109 @@ impl RegisterAltrep for StringArray {
     }
 }
 
+// region: Linkme registration entries for Arrow ALTREP classes
+//
+// Each entry here mirrors what `__impl_builtin_altrep_registration!` emits for
+// the standard builtins.  Arrow types are in a separate module (optionals/) and
+// behind `#[cfg(feature = "arrow")]`, so they cannot be reached by the macro
+// call sites in `altrep_impl.rs` — the entries are emitted here instead.
+//
+// The `#[cfg_attr(not(wasm32), distributed_slice)]` pattern matches the pattern
+// used by user-defined ALTREP types (see `miniextendr-macros/src/altrep.rs`).
+
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub extern "C" fn __mx_altrep_reg_builtin_arrow_Float64Array() {
+    Float64Array::get_or_init_class();
+}
+
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    crate::linkme::distributed_slice(crate::registry::MX_ALTREP_REGISTRATIONS),
+    linkme(crate = crate::linkme)
+)]
+#[doc(hidden)]
+#[allow(non_upper_case_globals)]
+static __MX_ALTREP_REG_ENTRY_builtin_arrow_Float64Array: crate::registry::AltrepRegistration =
+    crate::registry::AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_Float64Array,
+        symbol: "__mx_altrep_reg_builtin_arrow_Float64Array",
+    };
+
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub extern "C" fn __mx_altrep_reg_builtin_arrow_Int32Array() {
+    Int32Array::get_or_init_class();
+}
+
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    crate::linkme::distributed_slice(crate::registry::MX_ALTREP_REGISTRATIONS),
+    linkme(crate = crate::linkme)
+)]
+#[doc(hidden)]
+#[allow(non_upper_case_globals)]
+static __MX_ALTREP_REG_ENTRY_builtin_arrow_Int32Array: crate::registry::AltrepRegistration =
+    crate::registry::AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_Int32Array,
+        symbol: "__mx_altrep_reg_builtin_arrow_Int32Array",
+    };
+
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub extern "C" fn __mx_altrep_reg_builtin_arrow_UInt8Array() {
+    UInt8Array::get_or_init_class();
+}
+
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    crate::linkme::distributed_slice(crate::registry::MX_ALTREP_REGISTRATIONS),
+    linkme(crate = crate::linkme)
+)]
+#[doc(hidden)]
+#[allow(non_upper_case_globals)]
+static __MX_ALTREP_REG_ENTRY_builtin_arrow_UInt8Array: crate::registry::AltrepRegistration =
+    crate::registry::AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_UInt8Array,
+        symbol: "__mx_altrep_reg_builtin_arrow_UInt8Array",
+    };
+
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub extern "C" fn __mx_altrep_reg_builtin_arrow_BooleanArray() {
+    BooleanArray::get_or_init_class();
+}
+
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    crate::linkme::distributed_slice(crate::registry::MX_ALTREP_REGISTRATIONS),
+    linkme(crate = crate::linkme)
+)]
+#[doc(hidden)]
+#[allow(non_upper_case_globals)]
+static __MX_ALTREP_REG_ENTRY_builtin_arrow_BooleanArray: crate::registry::AltrepRegistration =
+    crate::registry::AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_BooleanArray,
+        symbol: "__mx_altrep_reg_builtin_arrow_BooleanArray",
+    };
+
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub extern "C" fn __mx_altrep_reg_builtin_arrow_StringArray() {
+    StringArray::get_or_init_class();
+}
+
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    crate::linkme::distributed_slice(crate::registry::MX_ALTREP_REGISTRATIONS),
+    linkme(crate = crate::linkme)
+)]
+#[doc(hidden)]
+#[allow(non_upper_case_globals)]
+static __MX_ALTREP_REG_ENTRY_builtin_arrow_StringArray: crate::registry::AltrepRegistration =
+    crate::registry::AltrepRegistration {
+        register: __mx_altrep_reg_builtin_arrow_StringArray,
+        symbol: "__mx_altrep_reg_builtin_arrow_StringArray",
+    };
+
 // endregion
