@@ -23,7 +23,7 @@
 #' that subdirectory. Pass `rpkg_subdir` to activate this; the generated workflow
 #' will add `working-directory: <rpkg_subdir>` to those steps. When `rpkg_subdir`
 #' is `NULL` (default) and `auto_detect_subdir` is `TRUE` (default),
-#' auto-detection via [detect_project_type()] is attempted.
+#' auto-detection via `detect_project_type()` is attempted.
 #' For a confirmed standalone package, set `auto_detect_subdir = FALSE` to skip
 #' detection and write the plain template unchanged.
 #'
@@ -34,7 +34,7 @@
 #'   the subdirectory is auto-detected. If a string, it is used directly
 #'   regardless of `auto_detect_subdir`.
 #' @param auto_detect_subdir If `TRUE` (default) and `rpkg_subdir` is `NULL`,
-#'   attempts to auto-detect the monorepo layout via [detect_project_type()].
+#'   attempts to auto-detect the monorepo layout via `detect_project_type()`.
 #'   Set to `FALSE` to force standalone mode and suppress auto-detection.
 #' @param overwrite If `TRUE`, replace an existing
 #'   `.github/workflows/r-release.yml`. Default `FALSE`.

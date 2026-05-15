@@ -19,7 +19,7 @@ miniextendr_doctor <- function(path = ".") {
 
   results <- list(pass = character(), warn = character(), fail = character())
 
-  # ── Toolchain checks ──
+  # -- Toolchain checks --
   cli::cli_h2("Toolchain")
 
   # Rust
@@ -67,7 +67,7 @@ miniextendr_doctor <- function(path = ".") {
     results$fail <- c(results$fail, "R development headers missing")
   }
 
-  # ── Cargo.toml check ──
+  # -- Cargo.toml check --
   cli::cli_h2("Cargo.toml")
   cargo_toml_path <- tryCatch(usethis::proj_path("src", "rust", "Cargo.toml"), error = function(e) NULL)
   if (is.null(cargo_toml_path) || !file.exists(cargo_toml_path)) {
@@ -84,12 +84,12 @@ miniextendr_doctor <- function(path = ".") {
     }
   }
 
-  # ── Stale vendor tarball check ──
+  # -- Stale vendor tarball check --
   # inst/vendor.tar.xz is gitignored and only belongs in the source tree
   # transiently (during `just r-cmd-build` / `just r-cmd-check`). If it is
   # left behind after an interrupted build, configure switches to tarball mode
   # and the post-build cleanup in Makevars.in deletes src/rust/.cargo/ from the
-  # source tree — silently breaking the monorepo [patch] override on the next
+  # source tree -- silently breaking the monorepo [patch] override on the next
   # `just rcmdinstall`.
   cli::cli_h2("Install-mode signal")
 
@@ -137,7 +137,7 @@ tarball-mode cleanup in Makevars. Fix: \\
     results$pass <- c(results$pass, "cargo config.toml present")
   }
 
-  # ── Generated file freshness ──
+  # -- Generated file freshness --
   cli::cli_h2("Generated files")
 
   template_pairs <- list(
@@ -168,7 +168,7 @@ tarball-mode cleanup in Makevars. Fix: \\
     }
   }
 
-  # ── NAMESPACE check ──
+  # -- NAMESPACE check --
   cli::cli_h2("NAMESPACE")
 
   namespace_path <- tryCatch(usethis::proj_path("NAMESPACE"), error = function(e) NULL)
@@ -183,7 +183,7 @@ tarball-mode cleanup in Makevars. Fix: \\
     }
   }
 
-  # ── Vendor tarball leak ──
+  # -- Vendor tarball leak --
   cli::cli_h2("Vendor tarball")
 
   tarball_path <- tryCatch(usethis::proj_path("inst", "vendor.tar.xz"), error = function(e) NULL)
@@ -195,7 +195,7 @@ tarball-mode cleanup in Makevars. Fix: \\
         "tarball mode and hides workspace edits."
       ),
       "i" = "Run {.code miniextendr_clean_vendor_leak()} (or {.code just clean-vendor-leak} in the monorepo) to remove it.",
-      "i" = "If you are mid CRAN-prep and have not run {.code R CMD build} yet, this is intentional — ignore."
+      "i" = "If you are mid CRAN-prep and have not run {.code R CMD build} yet, this is intentional -- ignore."
     ))
     results$warn <- c(results$warn, "inst/vendor.tar.xz present (may flip tarball mode)")
   } else {
@@ -203,7 +203,7 @@ tarball-mode cleanup in Makevars. Fix: \\
     results$pass <- c(results$pass, "No vendor tarball leak")
   }
 
-  # ── Cargo.lock shape ──
+  # -- Cargo.lock shape --
   cli::cli_h2("Cargo.lock shape")
 
   lock_path <- tryCatch(usethis::proj_path("src", "rust", "Cargo.lock"), error = function(e) NULL)
@@ -226,7 +226,7 @@ tarball-mode cleanup in Makevars. Fix: \\
     }
   }
 
-  # ── Git Hooks ──
+  # -- Git Hooks --
   cli::cli_h2("Git Hooks")
 
   hook_status <- has_miniextendr_git_hooks(usethis::proj_get())
@@ -240,7 +240,7 @@ tarball-mode cleanup in Makevars. Fix: \\
     results$warn <- c(results$warn, "git hooks missing")
   }
 
-  # ── Summary ──
+  # -- Summary --
   cli::cli_h2("Summary")
   cli::cli_alert_success("{length(results$pass)} passed")
   if (length(results$warn) > 0) {

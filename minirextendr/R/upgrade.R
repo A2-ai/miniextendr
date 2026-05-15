@@ -18,7 +18,7 @@
 #'
 #' @param path Path to the R package root (standalone) or the monorepo workspace
 #'   root. Defaults to `"."`. For a monorepo, this is the directory containing
-#'   `Cargo.toml` — the rpkg subdir is resolved automatically.
+#'   `Cargo.toml` -- the rpkg subdir is resolved automatically.
 #' @param rpkg_subdir For monorepo layouts: name of the R package subdirectory
 #'   (e.g. `"rpkg"`). If `NULL` (default), auto-detected by scanning immediate
 #'   subdirectories for a miniextendr `configure.ac`.
@@ -50,7 +50,7 @@ upgrade_miniextendr_package <- function(path = ".",
   project_type <- detect_project_type(resolved_path)
   if (identical(project_type, "monorepo") &&
       !file.exists(file.path(resolved_path, "configure.ac"))) {
-    # Path is the workspace root — need to resolve to the rpkg subdir.
+    # Path is the workspace root -- need to resolve to the rpkg subdir.
     subdir <- rpkg_subdir %||% find_rpkg_subdir(resolved_path)
     if (is.null(subdir)) {
       cli::cli_abort(c(
@@ -60,7 +60,7 @@ upgrade_miniextendr_package <- function(path = ".",
       ))
     }
     resolved_path <- file.path(resolved_path, subdir)
-    cli::cli_alert_info("Monorepo layout detected — upgrading rpkg subdir {.path {subdir}}")
+    cli::cli_alert_info("Monorepo layout detected -- upgrading rpkg subdir {.path {subdir}}")
   }
 
   with_project(resolved_path)

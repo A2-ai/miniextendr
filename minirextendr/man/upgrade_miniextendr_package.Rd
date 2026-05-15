@@ -6,6 +6,7 @@
 \usage{
 upgrade_miniextendr_package(
   path = ".",
+  rpkg_subdir = NULL,
   version = "main",
   local_path = NULL,
   configure_ac = FALSE,
@@ -14,7 +15,13 @@ upgrade_miniextendr_package(
 )
 }
 \arguments{
-\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+\item{path}{Path to the R package root (standalone) or the monorepo workspace
+root. Defaults to \code{"."}. For a monorepo, this is the directory containing
+\code{Cargo.toml} -- the rpkg subdir is resolved automatically.}
+
+\item{rpkg_subdir}{For monorepo layouts: name of the R package subdirectory
+(e.g. \code{"rpkg"}). If \code{NULL} (default), auto-detected by scanning immediate
+subdirectories for a miniextendr \code{configure.ac}.}
 
 \item{version}{Version of miniextendr crates to vendor (default: \code{"main"}).}
 
@@ -44,4 +51,10 @@ generated C files.
 }
 \details{
 User-authored files (lib.rs, Cargo.toml, R/ code) are never touched.
+
+In a monorepo layout (workspace root containing an rpkg subdirectory),
+\code{upgrade_miniextendr_package()} automatically detects the rpkg subdir and
+operates on it rather than the workspace root. The rpkg subdir is the first
+immediate child directory that contains a miniextendr \code{configure.ac}. Pass
+\code{rpkg_subdir} explicitly if auto-detection is ambiguous.
 }
