@@ -66,13 +66,15 @@ pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
     roxygen_tags_from_attrs_impl(attrs, false)
 }
 
-/// Extract roxygen tags with optional auto-description for impl methods.
+/// Extract roxygen tags with paragraph-aware auto-documentation for impl methods.
 ///
 /// If `auto_description = true` and no explicit `@tag` is found, the first
-/// paragraph of regular doc comments is converted to `@description`.
+/// paragraph becomes `@description` and any subsequent paragraphs become
+/// `@details` (issue #343). This preserves prior behavior for single-paragraph
+/// method docs (emit `@description`, not `@title`).
 ///
-/// Used for all class systems (R6, S3, S4, S7, Env) to automatically
-/// convert Rust doc comments into roxygen `@description` tags.
+/// Used for all class systems (R6, S3, S4, S7, Env, Vctrs) to automatically
+/// convert Rust doc comments into correctly-structured roxygen sections.
 pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) -> Vec<String> {
     roxygen_tags_from_attrs_impl(attrs, true)
 }
@@ -82,15 +84,15 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 /// Walks through doc attributes line by line. Lines starting with `@` begin a new tag.
 /// Continuation lines are appended only if the current tag is multiline-capable.
 ///
-/// When `auto_description` is true and no `@tag` lines are found, the first paragraph
-/// of regular doc comments is auto-converted to `@description`.
+/// When `auto_description` is true and no `@tag` lines are found, the first
+/// paragraph becomes `@description` and any subsequent paragraphs become `@details`
+/// (issue #343).
 ///
 /// Also auto-generates `@title` from the implicit title (first sentence) when tags
 /// are present but `@title` is missing, and `@description` when `@name` is present
 /// but `@description` is missing.
 fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool) -> Vec<String> {
     let mut tags = Vec::new();
-    let mut regular_docs = Vec::new();
 
     for attr in attrs {
         if !attr.path().is_ident("doc") {
@@ -110,18 +112,15 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
             if trimmed.starts_with('@') {
                 // New tag starts
                 tags.push(trimmed.to_string());
-            } else if !trimmed.is_empty() {
-                if tags.is_empty() {
-                    // Before any @tags - collect as regular docs
-                    regular_docs.push(trimmed.to_string());
-                } else if let Some(last) = tags.last_mut()
-                    && is_multiline_tag(last)
-                {
-                    // Continuation line for multi-line tags only
-                    last.push('\n');
-                    last.push_str(trimmed);
-                }
-                // Single-line tags: ignore continuation lines
+            } else if !trimmed.is_empty()
+                && let Some(last) = tags.last_mut()
+                && is_multiline_tag(last)
+            {
+                // Continuation line for multi-line tags only.
+                // Pre-tag non-empty lines are ignored here; paragraph-aware
+                // helpers operate directly on attrs.
+                last.push('\n');
+                last.push_str(trimmed);
             }
         }
     }
@@ -176,10 +175,21 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
         tags.insert(insert_pos, format!("@details {}", details));
     }
 
-    // Original auto_description behavior for methods without any tags
-    if auto_description && tags.is_empty() && !regular_docs.is_empty() {
-        let description = regular_docs.join(" ");
-        tags.push(format!("@description {}", description));
+    // Auto-documentation for methods without any explicit @tags (issue #343).
+    //
+    // When `auto_description=true` (R6/S3/S4/S7/Env/Vctrs impl methods) and no
+    // explicit @tag lines are present, emit @description from the first paragraph
+    // and @details from any subsequent paragraphs. Single-paragraph docs continue
+    // to emit @description (preserving prior behavior, no @title cascade).
+    if auto_description && tags.is_empty() {
+        let paragraphs = auto_description_paragraphs(attrs);
+        if let Some(first) = paragraphs.first() {
+            tags.push(format!("@description {}", first));
+        }
+        if paragraphs.len() > 1 {
+            let details = paragraphs[1..].join("\n\n");
+            tags.push(format!("@details {}", details));
+        }
     }
 
     tags
@@ -301,6 +311,61 @@ fn normalize_for_comparison(s: &str) -> String {
             .len(),
     );
     result
+}
+
+/// Extract all non-empty paragraphs from doc attributes up to the first `@tag`.
+///
+/// Used by the `auto_description` path (issue #343): the first returned paragraph
+/// becomes `@description` and any further paragraphs become `@details`. Each paragraph
+/// is the lines of a blank-line-delimited block joined by spaces. Stops at the first
+/// line that begins with `@`.
+fn auto_description_paragraphs(attrs: &[syn::Attribute]) -> Vec<String> {
+    let mut paragraphs: Vec<String> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(expr_lit) = &nv.value else {
+            continue;
+        };
+        let syn::Lit::Str(lit) = &expr_lit.lit else {
+            continue;
+        };
+
+        let content = lit.value();
+        let trimmed = content.trim();
+
+        if trimmed.starts_with('@') {
+            // Tag line — commit any in-progress paragraph and stop.
+            if !current.is_empty() {
+                paragraphs.push(current.join(" "));
+                current.clear();
+            }
+            break;
+        }
+
+        if trimmed.is_empty() {
+            // Blank line — paragraph separator.
+            if !current.is_empty() {
+                paragraphs.push(current.join(" "));
+                current.clear();
+            }
+        } else {
+            current.push(trimmed.to_string());
+        }
+    }
+
+    // Commit trailing paragraph not terminated by blank or tag.
+    if !current.is_empty() {
+        paragraphs.push(current.join(" "));
+    }
+
+    paragraphs
 }
 
 /// Extract the implicit title from doc attributes (first sentence, up to first `.` or newline).

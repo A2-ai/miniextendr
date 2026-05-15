@@ -330,6 +330,117 @@ fn auto_details_order_is_title_description_details_param() {
 
 // endregion
 
+// region: auto_description (r6 method) multi-paragraph tests (issue #343)
+
+#[test]
+fn auto_description_single_paragraph_emits_description() {
+    // Single-paragraph method doc → @description only (NOT @title — preserves prior behavior)
+    let attrs = make_doc_attrs_plain(&["Short method description."]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        tags.iter().any(|t| t.starts_with("@description")),
+        "expected @description in: {:?}",
+        tags
+    );
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@title")),
+        "unexpected @title in single-para case: {:?}",
+        tags
+    );
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@details")),
+        "unexpected @details in single-para case: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn auto_description_two_paragraphs_emits_description_and_details() {
+    // Two-paragraph method doc → @description (p1) + @details (p2), no @title
+    let attrs = make_doc_attrs_plain(&["First paragraph.", "", "Second paragraph."]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@title")),
+        "unexpected @title in two-para case: {:?}",
+        tags
+    );
+    assert!(
+        tags.iter().any(|t| t.starts_with("@description")),
+        "expected @description in: {:?}",
+        tags
+    );
+    let details = tags.iter().find(|t| t.starts_with("@details"));
+    assert!(
+        details.is_some(),
+        "expected @details in two-para case: {:?}",
+        tags
+    );
+    assert!(
+        details.unwrap().contains("Second paragraph."),
+        "expected 'Second paragraph.' in @details: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn auto_description_three_paragraphs_emits_description_and_joined_details() {
+    // Three-paragraph method doc → @description (p1) + @details (p2 + p3 joined, issue #343 fix)
+    let attrs = make_doc_attrs_plain(&[
+        "First paragraph.",
+        "",
+        "Second paragraph.",
+        "",
+        "Third paragraph.",
+    ]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@title")),
+        "unexpected @title in three-para case: {:?}",
+        tags
+    );
+    assert!(
+        tags.iter().any(|t| t.starts_with("@description")),
+        "expected @description in: {:?}",
+        tags
+    );
+    let details = tags.iter().find(|t| t.starts_with("@details"));
+    assert!(details.is_some(), "expected @details in: {:?}", tags);
+    let details_text = details.unwrap();
+    assert!(
+        details_text.contains("Second paragraph."),
+        "expected 'Second paragraph.' in @details: {:?}",
+        tags
+    );
+    assert!(
+        details_text.contains("Third paragraph."),
+        "expected 'Third paragraph.' in @details: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn auto_description_order_is_description_then_details() {
+    // Verify: @description before @details in method-level auto docs (no @title)
+    let attrs = make_doc_attrs_plain(&["First.", "", "Second."]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@title")),
+        "unexpected @title: {:?}",
+        tags
+    );
+    let desc_pos = tags.iter().position(|t| t.starts_with("@description"));
+    let details_pos = tags.iter().position(|t| t.starts_with("@details"));
+    assert!(
+        desc_pos < details_pos,
+        "expected desc<details order: desc={:?} details={:?}\ntags={:?}",
+        desc_pos,
+        details_pos,
+        tags
+    );
+}
+
+// endregion
+
 // region: Tag extraction tests
 
 #[test]

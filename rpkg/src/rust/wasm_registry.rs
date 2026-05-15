@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      89f60b451ca434fc
+// content-hash:      be324a4210ef03b6
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -1130,6 +1130,8 @@ unsafe extern "C-unwind" {
     pub fn C_CounterTraitEnv__MatrixCounter__default_value(_: SEXP) -> SEXP;
     pub fn C_external_slice_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_external_slice_sum(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_DocDetailsDemo__get(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_DocDetailsDemo__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_docs_demo_three_paras(_: SEXP) -> SEXP;
     pub fn C_SidecarR6__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_SidecarS7__new(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -7553,6 +7555,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_external_slice_sum".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_external_slice_sum) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_DocDetailsDemo__get".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_DocDetailsDemo__get) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_DocDetailsDemo__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_DocDetailsDemo__new) }),
         numArgs: 2,
     },
     R_CallMethodDef {
