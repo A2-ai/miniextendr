@@ -822,8 +822,8 @@ pub use jiff;
 pub use optionals::jiff_impl;
 #[cfg(feature = "jiff")]
 pub use optionals::{
-    JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, RDate, RDateTime, RSignedDuration, RSpan,
-    RTime, RTimestamp, RZoned, SignedDuration, Span, Timestamp, Zoned,
+    JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, JiffZonedVec, RDate, RDateTime,
+    RSignedDuration, RSpan, RTime, RTimestamp, RZoned, SignedDuration, Span, Timestamp, Zoned,
 };
 
 #[cfg(feature = "serde_json")]

@@ -291,6 +291,7 @@ Enabled with `features = ["jiff"]`. Bundles IANA timezone database (`tzdb-bundle
 | `civil::Date` | `Date` | Days since 1970-01-01 via `Span::try_days` |
 | `SignedDuration` | `difftime` (secs) | Nanosecond-precision duration stored as f64 seconds |
 | `Vec<Timestamp>` (ALTREP) | `POSIXct` | `JiffTimestampVec`; elements materialized on access via `Arc<Vec<Timestamp>>` |
+| `Vec<Zoned>` (ALTREP, single-tz strict) | `POSIXct` + `tzone` attr | `JiffZonedVec`; construction-time check rejects heterogeneous timezones |
 
 **Adapter traits** (wrapping via `ExternalPtr`):
 `RTimestamp`, `RDate`, `RZoned`, `RSignedDuration`, `RSpan`, `RDateTime`, `RTime`

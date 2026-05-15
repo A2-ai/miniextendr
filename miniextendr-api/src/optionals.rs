@@ -308,7 +308,7 @@ pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 pub mod jiff_impl;
 #[cfg(feature = "jiff")]
 pub use jiff_impl::{
-    Date as JiffDate, DateTime as JiffDateTime, JiffTimestampVec, RDate, RDateTime,
+    Date as JiffDate, DateTime as JiffDateTime, JiffTimestampVec, JiffZonedVec, RDate, RDateTime,
     RSignedDuration, RSpan, RTime, RTimestamp, RZoned, SignedDuration, Span, Time as JiffTime,
     Timestamp, Zoned,
 };

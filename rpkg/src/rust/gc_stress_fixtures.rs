@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
+#[cfg(feature = "jiff")]
+use miniextendr_api::{JiffZonedVec, Timestamp};
 
 use crate::dataframe_enum_payload_matrix::{
     BTreeMapEvent, Direction, HashMapEvent, NestedFactorEvent, NestedFlattenEvent, NestedListEvent,
@@ -266,6 +268,43 @@ pub fn gc_stress_native_sexp_altrep() {
 
     // Force the Dataptr path (exercises `AltVec::dataptr`).
     let _ptr = unsafe { miniextendr_api::ffi::DATAPTR_RO(sexp) };
+}
+
+/// Exercise `JiffZonedVec` ALTREP construction and element access under GC pressure.
+///
+/// Constructs a single-timezone `JiffZonedVec` with several `America/New_York`
+/// timestamps, converts it to an SEXP via `into_sexp`, and forces element access
+/// to verify that both the `into_sexp_altrep` allocation and the `set_posixct_tz`
+/// PROTECT path are GC-safe.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[cfg(feature = "jiff")]
+#[miniextendr]
+pub fn gc_stress_jiff_zoned_vec() {
+    use miniextendr_api::jiff::tz::TimeZone;
+
+    let tz = TimeZone::get("America/New_York").expect("America/New_York must exist");
+    let timestamps = [
+        Timestamp::new(1_735_689_600, 0).expect("valid timestamp"), // 2025-01-01 UTC
+        Timestamp::new(1_750_000_000, 0).expect("valid timestamp"),
+        Timestamp::new(1_760_000_000, 0).expect("valid timestamp"),
+    ];
+    let data: Vec<miniextendr_api::Zoned> = timestamps
+        .iter()
+        .map(|ts| ts.to_zoned(tz.clone()))
+        .collect::<Vec<_>>();
+    let vec = JiffZonedVec::new(data).expect("single-tz JiffZonedVec construction");
+
+    // Convert to SEXP (exercises ALTREP allocation + set_posixct_tz PROTECT path).
+    let sexp = vec.into_posixct_sexp();
+
+    // Force element access via the ALTREP Elt path.
+    use miniextendr_api::ffi::SexpExt as _;
+    let n = sexp.len();
+    assert_eq!(n, 3);
+    for i in 0..n {
+        let _v = sexp.real_elt(i as isize);
+    }
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.

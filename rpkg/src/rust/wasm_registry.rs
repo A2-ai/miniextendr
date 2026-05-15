@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      f9058bca1c87688f
+// content-hash:      9623d38745ff2212
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -933,6 +933,7 @@ unsafe extern "C-unwind" {
     pub fn C_into_sexp_altrep(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedData__get_label(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_struct(_: SEXP) -> SEXP;
     pub fn C_gc_stress_native_sexp_altrep(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_borrowed(_: SEXP) -> SEXP;
@@ -966,6 +967,7 @@ unsafe extern "C-unwind" {
     pub fn C_jiff_datetime_year(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_duration_secs(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_zoned_tz_name(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_zoned_vec_new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_counted_altrep(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_date_yesterday(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_datetime_month(_: SEXP, _: SEXP) -> SEXP;
@@ -994,6 +996,7 @@ unsafe extern "C-unwind" {
     pub fn C_jiff_roundtrip_zoned_vec(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_fractional_timestamp(_: SEXP) -> SEXP;
     pub fn C_jiff_roundtrip_timestamp_vec(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_jiff_zoned_vec_first_element(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_jiff_counted_altrep_elt_count(_: SEXP) -> SEXP;
     pub fn C_jiff_half_second_before_epoch(_: SEXP) -> SEXP;
     pub fn C_jiff_timestamp_as_millisecond(_: SEXP, _: SEXP) -> SEXP;
@@ -1907,6 +1910,7 @@ unsafe extern "C" {
     pub safe fn __mx_altrep_reg_builtin_arrow_StringArray();
     pub safe fn __mx_altrep_reg_builtin_arrow_BooleanArray();
     pub safe fn __mx_altrep_reg_builtin_arrow_Float64Array();
+    pub safe fn __mx_altrep_reg_JiffZonedVec();
     pub safe fn __mx_altrep_reg_JiffTimestampVec();
     pub static __VTABLE_COUNTER_FOR_SIMPLECOUNTER: u8;
     pub static __VTABLE_COUNTER_FOR_PANICKYCOUNTER: u8;
@@ -6551,6 +6555,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_jiff_zoned_vec".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_jiff_zoned_vec) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_dataframe_struct".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_struct) }),
         numArgs: 1,
@@ -6716,6 +6725,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_jiff_zoned_vec_new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_zoned_vec_new) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_jiff_counted_altrep".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_counted_altrep) }),
         numArgs: 2,
@@ -6853,6 +6867,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_jiff_roundtrip_timestamp_vec".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_roundtrip_timestamp_vec) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_jiff_zoned_vec_first_element".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_zoned_vec_first_element) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -11348,6 +11367,10 @@ pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[
     AltrepRegistration {
         register: __mx_altrep_reg_builtin_arrow_Float64Array,
         symbol: "__mx_altrep_reg_builtin_arrow_Float64Array",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_JiffZonedVec,
+        symbol: "__mx_altrep_reg_JiffZonedVec",
     },
     AltrepRegistration {
         register: __mx_altrep_reg_JiffTimestampVec,

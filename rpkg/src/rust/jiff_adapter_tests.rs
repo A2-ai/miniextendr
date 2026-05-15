@@ -4,8 +4,8 @@ use miniextendr_api::ffi::{Rf_protect, Rf_unprotect, SEXP};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::{
-    AltRealData, AltrepLen, JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, SignedDuration,
-    Span, Timestamp, Zoned,
+    AltRealData, AltrepLen, JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, JiffZonedVec,
+    SignedDuration, Span, Timestamp, Zoned,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -226,6 +226,47 @@ pub fn jiff_altrep_len(x: Vec<Timestamp>) -> i32 {
 pub fn jiff_altrep_elt(x: Vec<Timestamp>, i: i32) -> f64 {
     let ts = &x[i as usize];
     ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+}
+
+// endregion
+
+// region: ALTREP (JiffZonedVec)
+
+/// Create a JiffZonedVec ALTREP from a character vector of RFC 9557 zoned strings.
+///
+/// All elements must share the same IANA timezone. Returns a POSIXct REALSXP
+/// ALTREP vector backed by `Arc<Vec<Zoned>>` with the `tzone` attribute set.
+/// Panics (error in R) if any element has a different timezone.
+///
+/// @param zdts Character vector of RFC 9557 zoned datetime strings, e.g.
+///   `"2025-01-01T00:00:00[America/New_York]"`.
+#[miniextendr]
+pub fn jiff_zoned_vec_new(zdts: Vec<String>) -> SEXP {
+    let parsed: Vec<Zoned> = zdts
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            s.parse::<Zoned>()
+                .unwrap_or_else(|e| panic!("invalid zoned datetime at index {i} ({s:?}): {e}"))
+        })
+        .collect();
+    let vec = JiffZonedVec::new(parsed)
+        .unwrap_or_else(|e| panic!("{e}"));
+    vec.into_posixct_sexp()
+}
+
+/// Return the first element of a JiffZonedVec as an RFC 9557 string.
+///
+/// Useful for roundtrip tests: pass a POSIXct built by `jiff_zoned_vec_new` and
+/// get back the formatted string for the first element.
+///
+/// @param x POSIXct ALTREP vector (single-tz).
+#[miniextendr]
+pub fn jiff_zoned_vec_first_element(x: JiffZonedVec) -> String {
+    if x.data.is_empty() {
+        panic!("jiff_zoned_vec_first_element: empty vector");
+    }
+    x.data[0].to_string()
 }
 
 // endregion

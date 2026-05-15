@@ -10,7 +10,7 @@ rpkg_has_feature(name)
 \item{name}{Character string naming the feature to check.}
 }
 \value{
-Logical \code{TRUE} if the feature is enabled, \code{FALSE} otherwise.
+Logical `TRUE` if the feature is enabled, `FALSE` otherwise.
 }
 \description{
 Check if a specific optional feature was compiled into the package.

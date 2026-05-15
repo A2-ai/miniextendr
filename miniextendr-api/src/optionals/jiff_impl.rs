@@ -28,9 +28,12 @@
 //!
 //! # Vec<Zoned> timezone policy
 //!
-//! A `Vec<Zoned>` → POSIXct can only carry one `tzone` attribute. When elements have
-//! heterogeneous timezones, the first element's timezone is used and a warning is logged
-//! (via `log::warn!` when the `log` feature is enabled). Document this limitation to users.
+//! `Vec<Zoned>` → POSIXct uses the first element's timezone for the `tzone` attribute.
+//! Heterogeneous timezones are silently handled by writing the first tz and logging a
+//! warning (via `log::warn!` when the `log` feature is enabled).
+//!
+//! For strict single-timezone enforcement, use [`JiffZonedVec`] directly — its
+//! constructor rejects heterogeneous timezones at construction time with an error.
 
 pub use jiff::civil::{Date, DateTime, Time};
 pub use jiff::{SignedDuration, Span, Timestamp, Zoned};
@@ -1509,6 +1512,150 @@ impl AltRealData for JiffTimestampVec {
     fn elt(&self, i: usize) -> f64 {
         let ts = &self.data[i];
         ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+    }
+}
+
+// endregion
+
+// region: ALTREP lazy vector for Vec<Zoned> (single-timezone strict)
+
+/// ALTREP-backed lazy vector of `Zoned` datetimes, single-timezone strict.
+///
+/// All elements must share the same IANA timezone (verified at construction
+/// time). Elements are materialized on access as seconds-since-epoch f64.
+/// Registered as a `REALSXP` ALTREP vector with class `"JiffZonedVec"`.
+///
+/// The `tzone` attribute on the resulting SEXP carries the canonical IANA name
+/// (e.g. `"America/New_York"`), matching R's POSIXct convention.
+#[derive(miniextendr_macros::AltrepReal)]
+#[altrep(class = "JiffZonedVec", manual)]
+pub struct JiffZonedVec {
+    /// Shared ownership of the zoned datetimes.
+    pub data: Arc<Vec<Zoned>>,
+    /// Canonical IANA timezone name shared by every element.
+    pub tzone: String,
+}
+
+impl JiffZonedVec {
+    /// Construct a `JiffZonedVec`, enforcing single-timezone invariant.
+    ///
+    /// Returns an error if any element's IANA timezone name differs from
+    /// `data[0]`'s timezone. An empty vector succeeds with `tzone = "UTC"`.
+    pub fn new(data: Vec<Zoned>) -> Result<Self, String> {
+        let tzone = if data.is_empty() {
+            "UTC".to_string()
+        } else {
+            let first = data[0].time_zone().iana_name().unwrap_or("UTC").to_string();
+            for (i, z) in data.iter().enumerate().skip(1) {
+                let iana = z.time_zone().iana_name().unwrap_or("UTC");
+                if iana != first {
+                    return Err(format!(
+                        "JiffZonedVec: heterogeneous timezone at index {i}: \
+                         expected {first:?}, got {iana:?}. \
+                         All elements must share the same timezone."
+                    ));
+                }
+            }
+            first
+        };
+        Ok(Self {
+            data: Arc::new(data),
+            tzone,
+        })
+    }
+}
+
+impl AltrepLen for JiffZonedVec {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltRealData for JiffZonedVec {
+    fn elt(&self, i: usize) -> f64 {
+        let ts = self.data[i].timestamp();
+        ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+    }
+}
+
+impl JiffZonedVec {
+    /// Convert to a `POSIXct` ALTREP SEXP with the correct `class` and `tzone`
+    /// attributes.
+    ///
+    /// This is the primary conversion path. The derive-generated [`IntoR`] impl
+    /// produces a raw ALTREP without class/tzone; use this method instead when
+    /// you want a fully-formed R POSIXct.
+    pub fn into_posixct_sexp(self) -> crate::ffi::SEXP {
+        use crate::into_r::IntoRAltrep;
+        let tzone = self.tzone.clone();
+        let altrep = self.into_sexp_altrep();
+        unsafe {
+            crate::ffi::Rf_protect(altrep);
+            set_posixct_tz(altrep, &tzone);
+            crate::ffi::Rf_unprotect(1);
+        }
+        altrep
+    }
+}
+
+impl crate::from_r::TryFromSexp for JiffZonedVec {
+    type Error = crate::from_r::SexpError;
+
+    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::SexpExt as _;
+        let actual = sexp.type_of();
+        if actual != crate::ffi::SEXPTYPE::REALSXP {
+            return Err(crate::from_r::SexpTypeError {
+                expected: crate::ffi::SEXPTYPE::REALSXP,
+                actual,
+            }
+            .into());
+        }
+
+        // Read the tzone attribute.
+        let tz_name: String = unsafe {
+            let tzone_sym = crate::cached_class::tzone_symbol();
+            let tzone_attr = sexp.get_attr(tzone_sym);
+            if tzone_attr.type_of() == crate::ffi::SEXPTYPE::STRSXP && tzone_attr.len() >= 1 {
+                let charsxp = tzone_attr.string_elt(0);
+                let cstr = std::ffi::CStr::from_ptr(charsxp.r_char());
+                cstr.to_string_lossy().into_owned()
+            } else {
+                String::new()
+            }
+        };
+
+        let tz = if tz_name.is_empty() || tz_name == "UTC" {
+            jiff::tz::TimeZone::UTC
+        } else {
+            jiff::tz::TimeZone::get(&tz_name).map_err(|e| {
+                crate::from_r::SexpError::InvalidValue(format!("unknown IANA tz {tz_name:?}: {e}"))
+            })?
+        };
+
+        let canonical = tz.iana_name().unwrap_or("UTC").to_string();
+        let src: &[f64] = unsafe { sexp.as_slice() };
+        let mut result = Vec::with_capacity(src.len());
+        for (i, &secs) in src.iter().enumerate() {
+            if secs.is_nan() {
+                return Err(crate::from_r::SexpError::InvalidValue(format!(
+                    "NA at index {i} not allowed for JiffZonedVec"
+                )));
+            }
+            let whole = secs.floor() as i64;
+            let fract = secs - secs.floor();
+            let nanos = (fract * 1_000_000_000.0) as i32;
+            let ts = Timestamp::new(whole, nanos).map_err(|e| {
+                crate::from_r::SexpError::InvalidValue(format!(
+                    "jiff Timestamp out of range at index {i}: {e}"
+                ))
+            })?;
+            result.push(ts.to_zoned(tz.clone()));
+        }
+        Ok(Self {
+            data: Arc::new(result),
+            tzone: canonical,
+        })
     }
 }
 
