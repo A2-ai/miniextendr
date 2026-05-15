@@ -7,9 +7,9 @@
 #' gotchas surfaced when running release workflows against AlmaLinux 8
 #' container builds and macOS arm64 runners (issue #448):
 #'
-#' 1. `LANG=C.UTF-8` scoped to container jobs — AlmaLinux 8 minimal defaults
+#' 1. `LANG=C.UTF-8` scoped to container jobs -- AlmaLinux 8 minimal defaults
 #'    to the `C` locale, which fails miniextendr's UTF-8 assertion.
-#' 2. Not set workflow-wide — macOS rejects `C.UTF-8` (glibc-only identifier).
+#' 2. Not set workflow-wide -- macOS rejects `C.UTF-8` (glibc-only identifier).
 #' 3. `dnf install git gh` + `gh auth setup-git` for AlmaLinux 8 minimal.
 #' 4. `CARGO_NET_GIT_FETCH_WITH_CLI=true` workflow-wide so cargo uses the
 #'    system git binary and can authenticate private git dependencies.
@@ -54,9 +54,9 @@ use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
   }
 
   # Resolve rpkg_subdir:
-  #   - explicit string → use it directly.
-  #   - NULL + auto_detect_subdir = TRUE → attempt auto-detection.
-  #   - NULL + auto_detect_subdir = FALSE → standalone (no detection).
+  #   - explicit string -> use it directly.
+  #   - NULL + auto_detect_subdir = TRUE -> attempt auto-detection.
+  #   - NULL + auto_detect_subdir = FALSE -> standalone (no detection).
   resolved_subdir <- NULL
   if (!is.null(rpkg_subdir)) {
     resolved_subdir <- as.character(rpkg_subdir)

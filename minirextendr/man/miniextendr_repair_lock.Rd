@@ -36,7 +36,7 @@ without the \verb{[patch."git+url"]} override that would re-introduce
 \item Restores \code{.cargo/config.toml} on exit (success or error).
 }
 
-This is the lightweight alternative to \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} — use it
+This is the lightweight alternative to \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} -- use it
 during dev iteration when you only need a clean lock, not a fresh
 \code{inst/vendor.tar.xz}. Use \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} only before
 \verb{R CMD build} for CRAN submission.
