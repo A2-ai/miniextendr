@@ -1168,15 +1168,19 @@ impl std::io::Read for RStdin {
 
 // R's terminal connections route writes through the console hook
 // (ptr_R_WriteConsoleEx / Rprintf / REprintf), not through
-// R_WriteConnection.  We use Rprintf_unchecked / REprintf_unchecked with
-// a %.*s format so that binary-safe byte-slice writing is possible without
-// null-termination gymnastics.
+// R_WriteConnection.
 //
 // otype semantics (matches R_WriteConsoleEx convention):
 //   0 = stdout (regular output)
 //   1 = stderr (message/diagnostic output)
-unsafe fn write_console(buf: &[u8], otype: std::os::raw::c_int) -> usize {
+//
+// Calls from a non-main thread are silently dropped — writing to the R
+// console from a worker thread is unsound (R API is not thread-safe).
+fn write_console(buf: &[u8], otype: std::os::raw::c_int) -> usize {
     if buf.is_empty() {
+        return 0;
+    }
+    if !crate::worker::is_r_main_thread() {
         return 0;
     }
     // Construct a temporary null-terminated copy for %s printing.
@@ -1196,9 +1200,9 @@ unsafe fn write_console(buf: &[u8], otype: std::os::raw::c_int) -> usize {
     unsafe {
         let ptr = tmp.as_ptr().cast::<std::os::raw::c_char>();
         if otype == 0 {
-            crate::ffi::Rprintf_unchecked(c"%s".as_ptr(), ptr);
+            crate::ffi::Rprintf(c"%s".as_ptr(), ptr);
         } else {
-            crate::ffi::REprintf_unchecked(c"%s".as_ptr(), ptr);
+            crate::ffi::REprintf(c"%s".as_ptr(), ptr);
         }
     }
     buf.len()
@@ -1206,7 +1210,7 @@ unsafe fn write_console(buf: &[u8], otype: std::os::raw::c_int) -> usize {
 
 impl std::io::Write for RStdout {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Ok(unsafe { write_console(buf, 0) })
+        Ok(write_console(buf, 0))
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -1216,7 +1220,7 @@ impl std::io::Write for RStdout {
 
 impl std::io::Write for RStderr {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Ok(unsafe { write_console(buf, 1) })
+        Ok(write_console(buf, 1))
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -1404,7 +1408,9 @@ impl Drop for RNullConnection {
     fn drop(&mut self) {
         if self.open {
             self.open = false;
-            unsafe { self.close_inner() };
+            crate::externalptr::drop_catching_panic(|| {
+                unsafe { self.close_inner() };
+            });
         }
     }
 }

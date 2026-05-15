@@ -1392,7 +1392,12 @@ mod connections_from_r {
         }
     }
 
-    /// Permissive: accept any open, write-capable connection SEXP.
+    /// Accepts any open, write-capable connection — not just the null device.
+    ///
+    /// This is intentional: validating against `description == "/dev/null"` /
+    /// `"NUL"` is brittle across platforms, and the type's value comes from the
+    /// RAII close-on-drop, not the specific target. Substituting a `file()`
+    /// connection for `RNullConnection` is supported.
     impl TryFromSexp for RNullConnection {
         type Error = SexpError;
 

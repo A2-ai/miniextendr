@@ -2582,23 +2582,10 @@ mod connections_into_r {
         }
 
         fn into_sexp(self) -> SEXP {
-            // Disarm close-on-drop: ownership of the SEXP transfers to R.
-            // We must NOT call R_ReleaseObject because the caller now owns it.
-            // Use close() to flip the flag without closing the connection.
-            // Actually: we want to disarm Drop but keep the connection open.
-            // We do this by marking it as closed in our struct (preventing the
-            // Drop impl from calling close_inner), then returning the raw SEXP.
-            // The caller is responsible for closing the connection via R.
             let sexp = self.sexp();
-            // Mark as closed so Drop skips close_inner.
-            // We use close_without_releasing to avoid R_ReleaseObject — the
-            // SEXP's precious-list entry is now caller's responsibility.
-            // Simplest: std::mem::forget(self) would work too, but that leaks
-            // the precious-list entry. Instead, call R_ReleaseObject here since
-            // we're handing a live connection back to R which has its own GC
-            // anchor via the connection table.
+            // Transfer ownership to R: release from precious list (R's connection
+            // table keeps the connection alive), then forget self to skip Drop.
             unsafe { crate::ffi::R_ReleaseObject(sexp) };
-            // Disarm drop to avoid double-release.
             std::mem::forget(self);
             sexp
         }
