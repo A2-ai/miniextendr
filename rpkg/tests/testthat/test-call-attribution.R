@@ -54,6 +54,12 @@ test_that("wrapped and unwrapped paths differ in call attribution", {
   # Wrapped path conditionCall includes formal parameter names
   call_with_str <- deparse(conditionCall(e_with))
   expect_match(call_with_str, "left")
+  # Unwrapped path's conditionCall is non-NULL and names the function;
+  # see docs/CALL_ATTRIBUTION.md:93-94. Rf_error captures the C-level
+  # call expression, just without match.call()'s formal-name wiring.
+  expect_false(is.null(conditionCall(e_without)))
+  call_without_str <- deparse(conditionCall(e_without))
+  expect_match(call_without_str, "unsafe_C_call_attr_without")
 })
 
 # endregion
