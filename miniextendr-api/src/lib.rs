@@ -327,6 +327,13 @@ pub static ALTREP_PKG_NAME: AltrepPkgName = AltrepPkgName;
 /// # Safety
 /// The provided pointer must point to a valid null-terminated C string
 /// that lives for the duration of the R session.
+///
+/// The strict requirement is narrower: R copies the bytes via `install()`
+/// inside each `R_make_alt*_class` call that consults this global (see
+/// `RegisterClass` in R's `src/main/altrep.c`), so the pointer only has to
+/// remain valid across those calls. We keep the session-lifetime contract
+/// because we don't track which registrations are still pending; a string
+/// literal passed from C satisfies both.
 #[doc(hidden)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::c_char) {
