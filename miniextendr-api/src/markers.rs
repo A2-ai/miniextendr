@@ -119,6 +119,79 @@ pub const fn assert_no_payload_field_collision(fields: &[&str], discriminant_suf
         i += 1;
     }
 }
+
+/// Compile-time assertion: no element of `sibling_cols` matches `concat!(base, "_", tag)`.
+///
+/// Called from `const _: ()` blocks emitted by the outer `DataFrameRow` derive for every
+/// nested-enum struct field, complementing the parse-time B1 check in `enum_expansion.rs`
+/// (which is hardcoded to the default tag `"variant"`). This assertion catches the
+/// non-default-tag case at compile time.
+///
+/// `sibling_cols` is a slice of all flat column names produced by non-Struct sibling fields
+/// in the same outer enum. `base` is the outer field name (e.g. `"kind"`). `tag` is the
+/// inner enum's `#[dataframe(tag = "...")]` value, retrieved via
+/// `<Inner as DataFramePayloadFields>::TAG`.
+///
+/// If `tag` is empty (structs emit no discriminant column), returns immediately as a no-op.
+///
+/// # Call site (emitted by proc-macro)
+///
+/// ```rust,ignore
+/// const _: () = ::miniextendr_api::markers::assert_no_sibling_field_collision(
+///     &["id", "other_col", /* … */],
+///     "kind",
+///     <Inner as ::miniextendr_api::markers::DataFramePayloadFields>::TAG,
+/// );
+/// ```
+#[doc(hidden)]
+pub const fn assert_no_sibling_field_collision(sibling_cols: &[&str], base: &str, tag: &str) {
+    // Structs don't emit a discriminant column, so tag == "" → no-op.
+    if tag.is_empty() {
+        return;
+    }
+    let expected_len = base.len() + 1 + tag.len();
+    let base_bytes = base.as_bytes();
+    let tag_bytes = tag.as_bytes();
+    let mut i = 0;
+    while i < sibling_cols.len() {
+        let col = sibling_cols[i].as_bytes();
+        if col.len() == expected_len {
+            // Check base prefix byte-by-byte.
+            let mut j = 0;
+            let mut base_match = true;
+            while j < base_bytes.len() {
+                if col[j] != base_bytes[j] {
+                    base_match = false;
+                    break;
+                }
+                j += 1;
+            }
+            // Check separator '_'.
+            let sep_match = col[base_bytes.len()] == b'_';
+            // Check tag suffix byte-by-byte.
+            let mut k = 0;
+            let mut tag_match = true;
+            let offset = base_bytes.len() + 1;
+            while k < tag_bytes.len() {
+                if col[offset + k] != tag_bytes[k] {
+                    tag_match = false;
+                    break;
+                }
+                k += 1;
+            }
+            if base_match && sep_match && tag_match {
+                panic!(
+                    "DataFrameRow B1 sibling-collision: a sibling field in the outer enum \
+                     produces a column name that collides with the discriminant column emitted \
+                     by a nested inner enum. Rename the sibling field or use \
+                     `#[dataframe(tag = \"...\")]` on the inner enum to choose a different \
+                     discriminant column name."
+                );
+            }
+        }
+        i += 1;
+    }
+}
 // endregion
 
 /// Marker trait for types that should be converted to R lists via `IntoR`.
