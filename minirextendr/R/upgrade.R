@@ -131,24 +131,33 @@ upgrade_miniextendr_package <- function(path = ".",
 #'
 #' Scans immediate subdirectories of `path` for one that contains a
 #' `configure.ac` with the `CARGO_FEATURES` marker (the canonical signal that
-#' a directory is a miniextendr rpkg). Returns the first match, or `NULL` if
-#' none is found.
+#' a directory is a miniextendr rpkg). Returns the single match, `NULL` if
+#' none is found, or aborts if more than one match is found.
 #'
 #' @param path Path to the monorepo workspace root.
 #' @return Name of the rpkg subdirectory (not a full path), or `NULL`.
 #' @noRd
 find_rpkg_subdir <- function(path) {
   subdirs <- list.dirs(path, full.names = FALSE, recursive = FALSE)
+  matches <- character(0)
   for (d in subdirs) {
     configure_ac <- file.path(path, d, "configure.ac")
     if (file.exists(configure_ac)) {
       content <- readLines(configure_ac, warn = FALSE)
       if (any(grepl("CARGO_FEATURES", content, fixed = TRUE))) {
-        return(d)
+        matches <- c(matches, d)
       }
     }
   }
-  NULL
+  if (length(matches) > 1) {
+    cli::cli_abort(c(
+      "Multiple rpkg subdirectories detected in {.path {path}}:",
+      setNames(matches, rep("*", length(matches))),
+      "i" = "Pass {.code rpkg_subdir = '<name>'} explicitly to disambiguate."
+    ))
+  }
+  if (length(matches) == 0L) return(NULL)
+  matches
 }
 
 #' Check that scaffolding files are clean in git

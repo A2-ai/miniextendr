@@ -120,6 +120,29 @@ test_that("B2: find_rpkg_subdir() ignores subdirs without CARGO_FEATURES", {
   expect_null(minirextendr:::find_rpkg_subdir(tmp))
 })
 
+test_that("B2: find_rpkg_subdir() aborts with both names when two subdirs match", {
+  tmp <- withr::local_tempdir()
+  for (name in c("rpkg-a", "rpkg-b")) {
+    d <- file.path(tmp, name)
+    dir.create(d)
+    writeLines(c("AC_INIT", 'CARGO_FEATURES=""', "AC_OUTPUT"),
+               file.path(d, "configure.ac"))
+  }
+
+  expect_error(
+    minirextendr:::find_rpkg_subdir(tmp),
+    class = "rlang_error"
+  )
+  expect_error(
+    minirextendr:::find_rpkg_subdir(tmp),
+    regexp = "rpkg-a"
+  )
+  expect_error(
+    minirextendr:::find_rpkg_subdir(tmp),
+    regexp = "rpkg-b"
+  )
+})
+
 test_that("B2: upgrade_miniextendr_package() resolves rpkg subdir in monorepo", {
   tmp <- withr::local_tempdir()
   dirs <- make_minimal_monorepo(tmp)
