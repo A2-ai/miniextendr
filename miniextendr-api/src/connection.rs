@@ -633,7 +633,7 @@ pub trait RConnectionImpl: Sized + 'static {
 #[inline]
 unsafe fn get_state<T: RConnectionImpl>(conn: *mut Rconn) -> &'static mut T {
     let private = unsafe { (*conn).private };
-    debug_assert!(!private.is_null(), "Connection private pointer is null");
+    assert!(!private.is_null(), "Connection private pointer is null");
     unsafe { &mut *private.cast::<T>() }
 }
 
