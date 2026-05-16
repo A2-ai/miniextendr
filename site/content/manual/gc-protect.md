@@ -189,6 +189,106 @@ slot.clear();
 **Important**: Values returned by `take()` and `replace()` are **unprotected**.
 If they need to survive further allocations, protect them explicitly.
 
+## ProtectPool
+
+A VECSXP-backed pool that stores protected SEXPs in a single R list, with
+slot management and generational key tracking on the Rust side. Designed for
+cross-`.Call` protection of many objects with any-order release.
+
+### Architecture
+
+```text
+┌─────────────────────────────────────┐
+│  R side: VECSXP (GC-traced slots)   │  ← one R_PreserveObject, ever
+│  [SEXP][SEXP][NIL][SEXP][NIL][SEXP] │
+└──────┬──────────────────────────────┘
+       │ slot indices
+┌──────┴──────────────────────────────┐
+│  Rust side: Vec<u32> generations    │  ← one free list, one generation array
+│  + Vec<usize> free_slots            │
+└─────────────────────────────────────┘
+```
+
+A single `R_PreserveObject` anchors the backing VECSXP. Each insert writes
+into a free slot; each release clears the slot and increments its generation
+counter. Keys carry both a slot index and a generation, so stale-key
+operations are no-ops rather than crashes.
+
+### API
+
+| Method | Description |
+|--------|-------------|
+| `ProtectPool::new(capacity)` | Create a pool with an initial VECSXP capacity (grows automatically) |
+| `pool.insert(sexp)` | Protect a SEXP, returning a `ProtectKey` |
+| `pool.get(key)` | Retrieve the SEXP for a key, or `None` if the key is stale |
+| `pool.replace(key, sexp)` | Overwrite an existing slot in-place (pool equivalent of `R_Reprotect`) |
+| `pool.release(key)` | Release protection; stale keys are silently ignored |
+| `pool.len()` | Number of currently protected objects |
+| `pool.contains_key(key)` | Check whether a key is currently valid |
+
+`ProtectKey` is 8 bytes (4-byte slot index + 4-byte generation) and is
+`Copy`. Dropping a key without calling `release` leaks protection but does
+not crash.
+
+`ProtectPool` is `!Send + !Sync` — all operations must occur on the R main
+thread.
+
+### Performance
+
+10.1 ns/op for a single insert+release pair. Zero R allocation per insert —
+the backing VECSXP is allocated once at pool creation; inserts reuse existing
+slots. Contrast with `preserve` (Preserve List), which allocates one CONSXP
+per insert (~28.9 ns/op). See `analysis/gc-protection-benchmarks-results.md`
+for full benchmark data.
+
+Automatic growth doubles the backing VECSXP when slots are exhausted.
+Growth copies existing slot contents, releases the old VECSXP via
+`R_ReleaseObject`, and preserves the new one.
+
+### Example
+
+```rust
+use miniextendr_api::protect_pool::{ProtectPool, ProtectKey};
+
+unsafe fn build_cross_call_state() -> (ProtectPool, ProtectKey, ProtectKey) {
+    let mut pool = ProtectPool::new(16);
+
+    let s1 = SEXP::scalar_integer(42);
+    let s2 = SEXP::scalar_real(3.14);
+    let k1 = pool.insert(s1);
+    let k2 = pool.insert(s2);
+
+    // Both SEXPs survive GC across .Call boundaries
+    (pool, k1, k2)
+}
+
+unsafe fn use_cross_call_state(pool: &mut ProtectPool, k1: ProtectKey, k2: ProtectKey) {
+    // Retrieve — returns None if the key is stale
+    let s1 = pool.get(k1).expect("k1 should still be valid");
+
+    // Release when done — any order, not LIFO
+    pool.release(k2);
+    pool.release(k1);
+}
+```
+
+### Comparison to ProtectScope and Preserve List
+
+| | `ProtectScope` | `ProtectPool` | Preserve List |
+|---|---|---|---|
+| Scope | Within one `.Call` | Cross-`.Call` | Cross-`.Call` |
+| Release order | LIFO (drop) | Any order | Any order |
+| Per-op cost | 7.4 ns | 10.1 ns | 28.9 ns (CONSXP per insert) |
+| R allocation per insert | None | None | One CONSXP |
+| Max objects | ~50k (ppsize) | Unlimited (grows) | Unlimited |
+| Key safety | Lifetime-bound (`Root<'scope>`) | Generational (stale = no-op) | Manual |
+
+Use `ProtectScope` for temporaries that live only within a single `.Call`
+invocation. Use `ProtectPool` when protected objects must outlive a `.Call`
+boundary, you have many objects or high insert/release churn, and you need
+any-order release. Use the Preserve List when you have a small number of
+long-lived objects that are rarely released (e.g., cached lookup tables).
+
 ## When to Use What
 
 | Scenario | Use |
@@ -196,6 +296,7 @@ If they need to survive further allocations, protect them explicitly.
 | Multiple values, known at function start | `ProtectScope` |
 | Single value, simple case | `OwnedProtect` |
 | Accumulator loop, repeated replacement | `ReprotectSlot` |
+| Many SEXPs that must outlive a `.Call`, any-order release | `ProtectPool` |
 | Building typed vectors from iterators | `scope.collect()` |
 | Building lists with unknown length | `ListAccumulator` |
 | Building string vectors | `StrVecBuilder` |
