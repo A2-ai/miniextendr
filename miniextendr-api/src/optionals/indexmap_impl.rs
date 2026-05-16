@@ -51,8 +51,9 @@
 
 pub use indexmap::IndexMap;
 
-use crate::ffi::{R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{R_xlen_t, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 
 // region: TryFromSexp for IndexMap<String, T>
@@ -129,30 +130,23 @@ where
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(unsafe {
-            let n = self.len();
-            let list = Rf_allocVector(SEXPTYPE::VECSXP, n as R_xlen_t);
-            Rf_protect(list);
+        let n = self.len();
+        let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n as R_xlen_t)) };
+        let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t)) };
 
-            // Allocate names vector
-            let names = Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
-            Rf_protect(names);
-
-            for (i, (key, value)) in self.into_iter().enumerate() {
-                // Set list element
-                list.set_vector_elt(i as R_xlen_t, value.into_sexp());
-
-                // Set name
+        for (i, (key, value)) in self.into_iter().enumerate() {
+            // `value.into_sexp()` and `checked_mkchar` can trigger GC;
+            // `list` and `names` are protected for the duration by OwnedProtect.
+            unsafe {
+                list.get().set_vector_elt(i as R_xlen_t, value.into_sexp());
                 let charsxp = crate::altrep_impl::checked_mkchar(&key);
-                names.set_string_elt(i as R_xlen_t, charsxp);
+                names.get().set_string_elt(i as R_xlen_t, charsxp);
             }
+        }
 
-            // Attach names attribute
-            list.set_names(names);
-
-            Rf_unprotect(2);
-            list
-        })
+        list.get().set_names(names.get());
+        // Guards drop here; the returned SEXP is rooted by the caller.
+        Ok(list.get())
     }
 }
 // endregion
