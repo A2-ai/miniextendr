@@ -643,7 +643,7 @@ mod tests {
 
     impl RBufMut for TestBufMut {
         fn remaining_mut(&self) -> i32 {
-            self.data.borrow().remaining_mut() as i32
+            i32::try_from(self.data.borrow().remaining_mut()).unwrap_or(i32::MAX)
         }
 
         fn put_u8(&self, val: i32) {
@@ -867,10 +867,9 @@ mod tests {
     #[test]
     fn test_rbufmut_has_remaining() {
         let buf = TestBufMut::with_capacity(10);
-        // BytesMut is growable, so remaining_mut() returns usize::MAX - len
-        // which when cast to i32 may overflow. But has_remaining_mut() uses > 0.
-        // For our test implementation, remaining_mut as i32 overflows to negative,
-        // so let's just check that we can write to the buffer.
+        // BytesMut is growable: remaining_mut() returns usize::MAX - len, which
+        // saturates to i32::MAX via try_from. has_remaining_mut() returns true.
+        assert!(buf.remaining_mut() > 0);
         buf.put_u8(1);
         assert_eq!(buf.len(), 1);
     }
