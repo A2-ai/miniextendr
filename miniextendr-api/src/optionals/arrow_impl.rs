@@ -1035,6 +1035,23 @@ impl TryFromSexp for RecordBatch {
             columns.push(array);
         }
 
+        // Validate that all columns have the same length before calling
+        // RecordBatch::try_new, which would otherwise emit a generic error.
+        if let Some(first) = columns.first() {
+            let nrow = first.len();
+            for (i, col) in columns.iter().enumerate().skip(1) {
+                if col.len() != nrow {
+                    return Err(SexpError::InvalidValue(format!(
+                        "column '{}' has length {} but column '{}' has length {}",
+                        names[i],
+                        col.len(),
+                        names[0],
+                        nrow,
+                    )));
+                }
+            }
+        }
+
         let schema = Arc::new(Schema::new(fields));
         RecordBatch::try_new(schema, columns).map_err(|e| SexpError::InvalidValue(e.to_string()))
     }
