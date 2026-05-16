@@ -360,6 +360,15 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
 ///
 /// Must be called on R's main thread.
 ///
+/// # Allocation failure
+///
+/// `Rf_allocVector` raises an R error (longjmp) on OOM rather than returning
+/// a null pointer. The framework's `R_UnwindProtect` wrapper catches this
+/// longjmp and converts it to a Rust panic, which surfaces to the caller as a
+/// "memory exhausted" R error. The two `.expect()` calls in the body are
+/// therefore unreachable in production — they guard against logic errors
+/// (wrong `len` encoding or unexpected null pointer), not against OOM.
+///
 /// # Example
 ///
 /// ```ignore
