@@ -307,6 +307,52 @@ pub fn gc_stress_jiff_zoned_vec() {
     }
 }
 
+/// Exercise `array_to_sexp` PROTECT discipline for integer, float, and boolean
+/// TOML arrays under GC pressure.
+///
+/// Constructs `TomlValue::Array` values covering the four homogeneous branches
+/// of `array_to_sexp` and converts each to SEXP via `IntoR`, verifying that
+/// the `OwnedProtect` guards keep each allocation live across the fill loop.
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[cfg(feature = "toml")]
+#[miniextendr]
+pub fn gc_stress_toml_array() {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::toml_impl::TomlValue;
+
+    // Integer branch (all fit in i32) → INTSXP
+    let int_arr = TomlValue::Array(vec![
+        TomlValue::Integer(1),
+        TomlValue::Integer(2),
+        TomlValue::Integer(i64::from(i32::MAX)),
+    ]);
+    let _ = int_arr.into_sexp();
+
+    // Integer branch (one value exceeds i32 range) → REALSXP fallback
+    let big_int_arr = TomlValue::Array(vec![
+        TomlValue::Integer(1),
+        TomlValue::Integer(i64::from(i32::MAX) + 1),
+        TomlValue::Integer(3),
+    ]);
+    let _ = big_int_arr.into_sexp();
+
+    // Float branch → REALSXP
+    let float_arr = TomlValue::Array(vec![
+        TomlValue::Float(1.1),
+        TomlValue::Float(2.2),
+        TomlValue::Float(3.3),
+    ]);
+    let _ = float_arr.into_sexp();
+
+    // Boolean branch → LGLSXP
+    let bool_arr = TomlValue::Array(vec![
+        TomlValue::Boolean(true),
+        TomlValue::Boolean(false),
+        TomlValue::Boolean(true),
+    ]);
+    let _ = bool_arr.into_sexp();
+}
+
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
 /// Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
 /// @param x An integer, numeric, or character vector to convert.

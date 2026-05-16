@@ -422,64 +422,67 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 });
 
                 if all_fit {
+                    // Protect sexp for consistency with the String/float/boolean
+                    // branches — PROTECT discipline against R-devel's aggressive GC.
                     let sexp = unsafe {
-                        Rf_allocVector(
+                        OwnedProtect::new(Rf_allocVector(
                             SEXPTYPE::INTSXP,
                             isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                        )
+                        ))
                     };
-                    let dst: &mut [i32] = unsafe { SexpExt::as_mut_slice(&sexp) };
+                    let dst: &mut [i32] = unsafe { SexpExt::as_mut_slice(&sexp.get()) };
                     for (i, v) in arr.iter().enumerate() {
                         if let TomlValue::Integer(n) = v {
                             dst[i] = i32::try_from(*n).expect("validated by i64_fits_r_int");
                         }
                     }
-                    return sexp;
+                    return sexp.get();
                 }
                 // Fall back to REALSXP if any value is out of range
                 let sexp = unsafe {
-                    Rf_allocVector(
+                    OwnedProtect::new(Rf_allocVector(
                         SEXPTYPE::REALSXP,
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                    )
+                    ))
                 };
-                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp) };
+                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp.get()) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Integer(n) = v {
                         dst[i] = i64_precise_as_f64(*n);
                     }
                 }
-                return sexp;
+                return sexp.get();
             }
             TomlValue::Float(_) => {
                 let sexp = unsafe {
-                    Rf_allocVector(
+                    OwnedProtect::new(Rf_allocVector(
                         SEXPTYPE::REALSXP,
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                    )
+                    ))
                 };
-                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp) };
+                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp.get()) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Float(f) = v {
                         dst[i] = *f;
                     }
                 }
-                return sexp;
+                return sexp.get();
             }
             TomlValue::Boolean(_) => {
                 let sexp = unsafe {
-                    Rf_allocVector(
+                    OwnedProtect::new(Rf_allocVector(
                         SEXPTYPE::LGLSXP,
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                    )
+                    ))
                 };
-                let dst: &mut [crate::ffi::RLogical] = unsafe { SexpExt::as_mut_slice(&sexp) };
+                let dst: &mut [crate::ffi::RLogical] =
+                    unsafe { SexpExt::as_mut_slice(&sexp.get()) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Boolean(b) = v {
                         dst[i] = crate::ffi::RLogical::from(*b);
                     }
                 }
-                return sexp;
+                return sexp.get();
             }
             _ => {
                 // Tables, arrays, datetimes - fall through to list
