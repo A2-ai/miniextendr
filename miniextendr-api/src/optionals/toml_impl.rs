@@ -422,9 +422,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 });
 
                 if all_fit {
-                    // Protect sexp: the fill loop calls i32::try_from which may
-                    // theoretically allocate on some platforms (and consistency
-                    // with the String/float/boolean branches matters for R-devel GC).
+                    // Protect sexp for consistency with the String/float/boolean
+                    // branches — PROTECT discipline against R-devel's aggressive GC.
                     let sexp = unsafe {
                         OwnedProtect::new(Rf_allocVector(
                             SEXPTYPE::INTSXP,
