@@ -345,7 +345,7 @@ After editing `docs/`, run `just site-docs` and commit both. See
 
 ## Common issues
 
-- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just devtools-document`.
+- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just force-document`.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
 - **Permission errors installing**: `R_LIBS=/tmp/claude/R_lib R CMD INSTALL rpkg` or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
@@ -371,7 +371,7 @@ Common: `devtools-doc.log`, `rcmdinstall.log`, `rcmdcheck.log`,
 ### Sandbox restrictions
 
 Claude Code sandbox blocks compilation. For any compiling command
-(`just devtools-document`, `rcmdinstall`, `cargo build`,
+(`just force-document`, `rcmdinstall`, `cargo build`,
 `R CMD INSTALL/check`), pass `dangerouslyDisableSandbox: true`.
 
 ### File deletion safety

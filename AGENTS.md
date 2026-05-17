@@ -197,7 +197,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 
 ## Common Issues
 
-- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just devtools-document`.
+- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just force-document`.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
 - **Permission errors installing**: `R_LIBS=/tmp/codex/R_lib R CMD INSTALL rpkg` or `just devtools-install`. `/tmp/codex/` is writable in Codex sandboxes.
 - **Stale `.snap.new`**: diff vs `.snap`; if expected, `mv` over the old snapshot. Re-run `just test`.
@@ -215,7 +215,7 @@ Common: `devtools-doc.log`, `rcmdinstall.log`, `rcmdcheck.log`, `devtools-test.l
 
 ## Sandbox Restrictions
 
-Some agent sandboxes block compilation. For any compiling command (`just devtools-document`, `rcmdinstall`, `cargo build`, `R CMD INSTALL/check`), run with the agent's full-access or unsandboxed mode.
+Some agent sandboxes block compilation. For any compiling command (`just force-document`, `rcmdinstall`, `cargo build`, `R CMD INSTALL/check`), run with the agent's full-access or unsandboxed mode.
 
 ## File Deletion Safety
 

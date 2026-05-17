@@ -13,7 +13,7 @@ just devtools-document  # roxygen2 → NAMESPACE + man/
 just devtools-test      # testthat
 just r-cmd-build / r-cmd-check  # tarball + check
 ```
-After **anything** that affects R wrapper output (proc-macro roxygen, `r_wrappers.rs`, adding `#[miniextendr]` fns) run `just devtools-document` and commit `R/miniextendr-wrappers.R` + `NAMESPACE` + `man/*.Rd` in the same PR. Pre-commit hook enforces.
+After **anything** that affects R wrapper output (proc-macro roxygen, `r_wrappers.rs`, adding `#[miniextendr]` fns) run `just force-document` and commit `R/miniextendr-wrappers.R` + `NAMESPACE` + `man/*.Rd` in the same PR. Pre-commit hook enforces.
 
 ## File-edit rules (templates → generated)
 - `src/Makevars` ← `src/Makevars.in`
