@@ -175,9 +175,15 @@ pub fn gc_stress_dataframe_struct() {
 
     // Flatten path: struct-typed field expands to prefixed columns.
     let flatten_rows = vec![
-        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructFlattenEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
         StructFlattenEvent::Other { id: 2 },
-        StructFlattenEvent::Located { id: 3, origin: Point { x: 3.0, y: 4.0 } },
+        StructFlattenEvent::Located {
+            id: 3,
+            origin: Point { x: 3.0, y: 4.0 },
+        },
         StructFlattenEvent::Other { id: 4 },
     ];
     let _ = StructFlattenEvent::to_dataframe(flatten_rows.clone()).into_sexp();
@@ -185,9 +191,15 @@ pub fn gc_stress_dataframe_struct() {
 
     // as_list path: struct-typed field kept as opaque list-column.
     let list_rows = vec![
-        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructListEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
         StructListEvent::Other { id: 2 },
-        StructListEvent::Located { id: 3, origin: Point { x: 5.0, y: 6.0 } },
+        StructListEvent::Located {
+            id: 3,
+            origin: Point { x: 5.0, y: 6.0 },
+        },
         StructListEvent::Other { id: 4 },
     ];
     let _ = StructListEvent::to_dataframe(list_rows.clone()).into_sexp();
@@ -207,9 +219,15 @@ pub fn gc_stress_dataframe_nested_enum() {
     // Flatten path: nested payload-bearing DataFrameRow enum expands to prefixed columns.
     // Uses Status (Ok / Err { code }) so status_variant + status_code columns are exercised.
     let flatten_rows = vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
         NestedFlattenEvent::Other { id: 2 },
-        NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Tracked {
+            id: 3,
+            status: Status::Err { code: 404 },
+        },
         NestedFlattenEvent::Other { id: 4 },
     ];
     let _ = NestedFlattenEvent::to_dataframe(flatten_rows.clone()).into_sexp();
@@ -217,9 +235,15 @@ pub fn gc_stress_dataframe_nested_enum() {
 
     // as_factor path: unit-only enum field stored as factor column.
     let factor_rows = vec![
-        NestedFactorEvent::Move { id: 1, dir: Direction::North },
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
         NestedFactorEvent::Stop { id: 2 },
-        NestedFactorEvent::Move { id: 3, dir: Direction::East },
+        NestedFactorEvent::Move {
+            id: 3,
+            dir: Direction::East,
+        },
         NestedFactorEvent::Stop { id: 4 },
     ];
     let _ = NestedFactorEvent::to_dataframe(factor_rows.clone()).into_sexp();
@@ -227,9 +251,15 @@ pub fn gc_stress_dataframe_nested_enum() {
 
     // as_list path: enum field kept as opaque list-column.
     let list_rows = vec![
-        NestedListEvent::Move { id: 1, dir: Direction::South },
+        NestedListEvent::Move {
+            id: 1,
+            dir: Direction::South,
+        },
         NestedListEvent::Stop { id: 2 },
-        NestedListEvent::Move { id: 3, dir: Direction::West },
+        NestedListEvent::Move {
+            id: 3,
+            dir: Direction::West,
+        },
         NestedListEvent::Stop { id: 4 },
     ];
     let _ = NestedListEvent::to_dataframe(list_rows.clone()).into_sexp();
@@ -256,7 +286,10 @@ pub fn gc_stress_native_sexp_altrep() {
     let sexp = native_sexp_altrep_new(values);
 
     // Verify that it is indeed ALTREP.
-    assert!(sexp.is_altrep(), "native_sexp_altrep_new should return an ALTREP SEXP");
+    assert!(
+        sexp.is_altrep(),
+        "native_sexp_altrep_new should return an ALTREP SEXP"
+    );
 
     // Force element access (exercises the Elt path) via the SexpExt trait.
     let n = sexp.len();

@@ -227,11 +227,26 @@ Absent-variant rows produce `NULL` in both columns (not NA). An empty map produc
 
 **`as_list` opt-out**: annotate the field with `#[dataframe(as_list)]` to keep it as a single opaque named-list column (the pre-expansion behavior). Only use this when the named-list per-row shape is needed directly in R.
 
-**Detection caveats**: `classify_field_type` detects `HashMap` / `BTreeMap` by matching the last path segment (`HashMap` or `BTreeMap`) and requiring exactly two generic type arguments. It also detects struct-typed fields by matching bare path types (single- or multi-segment, e.g. `Point` or `crate::geom::Point`) whose last segment has no generic arguments. Two shapes are not detected and fall through to `Scalar` (opaque list-column); both are tracked under [#484](https://github.com/A2-ai/miniextendr/issues/484):
+**Detection caveats**: `classify_field_type` detects `HashMap` / `BTreeMap` by matching the last path segment (`HashMap` or `BTreeMap`) and requiring exactly two generic type arguments. It also detects struct-typed fields by matching bare path types (single- or multi-segment, e.g. `Point` or `crate::geom::Point`) whose last segment has no generic arguments.
 
-- **Type aliases**: `type Counts = HashMap<String, i32>; field: Counts` — the last segment is `Counts`, not `HashMap`, so map expansion is not triggered. Use the concrete type directly, or annotate with `#[dataframe(as_list)]` and handle the named-list in R.
-- **`Option<HashMap<K,V>>`**: the outer segment is `Option` with one type argument, so the two-argument `HashMap`/`BTreeMap` guard is never reached. Unwrap the `Option` before storing (e.g., store `HashMap<K,V>` and push an empty map for the `None` case), or annotate with `#[dataframe(as_list)]`.
-- **`Option<UserStruct>`** where `UserStruct: DataFrameRow` — silently degrades to Scalar instead of recursively flattening. Tracked under [#484](https://github.com/A2-ai/miniextendr/issues/484).
+**Rejected wrapper types** — the following shapes produce a compile error (since #484) because they cannot be automatically expanded and would otherwise silently produce a confusing opaque list-column:
+
+- `Option<T>` — including `Option<HashMap<K,V>>`, `Option<UserStruct>`, etc.
+- `Cow<T>`, `Rc<T>`, `Arc<T>`, `RefCell<T>`, `Cell<T>`, `Mutex<T>`, `RwLock<T>`
+
+For all of these, use `#[dataframe(as_list)]` to opt into an explicit opaque list-column, or unwrap to the inner type (e.g. store `HashMap<K,V>` directly and use an empty map for the absent case):
+
+```rust
+#[derive(Clone, DataFrameRow)]
+struct Row {
+    id: i32,
+    // `counts: Option<HashMap<String, i32>>` → compile error without `as_list`.
+    #[dataframe(as_list)]
+    counts: Option<HashMap<String, i32>>,
+}
+```
+
+**Type aliases** are not automatically unwrapped — `type Counts = HashMap<String, i32>; field: Counts` has `Counts` as the last segment, so map expansion is not triggered. Use the concrete type directly (`field: HashMap<String, i32>`), or annotate with `#[dataframe(as_list)]`.
 
 Note: multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field or an import alias to a newtype wrapper if a non-DataFrameRow stdlib type needs to be stored.
 

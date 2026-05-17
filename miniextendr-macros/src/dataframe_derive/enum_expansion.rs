@@ -85,8 +85,14 @@ pub(super) fn derive_enum_dataframe(
                         // companion struct (so no R API is called during row accumulation) and
                         // flag `needs_into_list = true` to trigger per-element conversion in the
                         // dynamic `into_data_frame` path.
-                        let needs_into_list =
-                            matches!(classify_field_type(&f.ty), FieldTypeKind::Struct { .. });
+                        //
+                        // Use `.as_ref().ok()` to suppress classification errors: `as_list` is
+                        // an explicit opt-in, so wrapper types (Option<T>, Arc<T>, …) are
+                        // allowed — they become opaque list-columns.
+                        let needs_into_list = matches!(
+                            classify_field_type(&f.ty).as_ref().ok(),
+                            Some(FieldTypeKind::Struct { .. })
+                        );
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: format_ident!("{}", col_name_str),
                             binding: binding.clone(),
@@ -99,7 +105,7 @@ pub(super) fn derive_enum_dataframe(
                         // `as_factor` is only valid on bare-ident enum types (Struct kind).
                         // The inner enum must be unit-only and derive DataFrameRow, which
                         // auto-emits UnitEnumFactor so FactorOptionVec<T> implements IntoR.
-                        match classify_field_type(&f.ty) {
+                        match classify_field_type(&f.ty)? {
                             FieldTypeKind::Struct { .. } => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
@@ -122,7 +128,7 @@ pub(super) fn derive_enum_dataframe(
                             }
                         }
                     } else {
-                        match classify_field_type(&f.ty) {
+                        match classify_field_type(&f.ty)? {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
                                 resolved.push(EnumResolvedField::ExpandedFixed(Box::new(
                                     EnumExpandedFixedData {
@@ -325,8 +331,13 @@ pub(super) fn derive_enum_dataframe(
 
                     // Tuple enum fields: same expansion logic
                     if fa.as_list {
-                        let needs_into_list =
-                            matches!(classify_field_type(&f.ty), FieldTypeKind::Struct { .. });
+                        // Use `.as_ref().ok()` to suppress classification errors: `as_list` is
+                        // an explicit opt-in, so wrapper types (Option<T>, Arc<T>, …) are
+                        // allowed — they become opaque list-columns.
+                        let needs_into_list = matches!(
+                            classify_field_type(&f.ty).as_ref().ok(),
+                            Some(FieldTypeKind::Struct { .. })
+                        );
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: format_ident!("{}", col_name_str),
                             binding,
@@ -336,7 +347,7 @@ pub(super) fn derive_enum_dataframe(
                             is_factor: false,
                         })));
                     } else if fa.as_factor {
-                        match classify_field_type(&f.ty) {
+                        match classify_field_type(&f.ty)? {
                             FieldTypeKind::Struct { .. } => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
@@ -359,7 +370,7 @@ pub(super) fn derive_enum_dataframe(
                             }
                         }
                     } else {
-                        match classify_field_type(&f.ty) {
+                        match classify_field_type(&f.ty)? {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
                                 resolved.push(EnumResolvedField::ExpandedFixed(Box::new(
                                     EnumExpandedFixedData {
