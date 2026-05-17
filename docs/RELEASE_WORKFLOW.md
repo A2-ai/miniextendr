@@ -2,15 +2,17 @@
 
 Every miniextendr consumer eventually writes an `r-release.yml` GitHub Actions
 workflow that builds and checks their package on multiple platforms. AlmaLinux 8
-containers and macOS arm64 runners surface four reproducible gotchas that
-downstream maintainers hit independently. This document explains each one, gives
-the canonical fix, and explains why miniextendr's own locale check exists — so
-you know not to file a bug upstream.
+containers and macOS runners surface six reproducible gotchas that downstream
+maintainers hit independently. The first four are locale / auth issues uncovered
+in issue #448; the last two align the macOS Rust toolchain ABI with CRAN's
+binary distribution. This document explains each one, gives the canonical fix,
+and explains why miniextendr's own locale check exists — so you know not to file
+a bug upstream.
 
 Use `minirextendr::use_release_workflow()` to scaffold a template that has all
-four fixes already baked in.
+six fixes already baked in.
 
-## The four gotchas
+## The six gotchas
 
 ### Gotcha 1: AlmaLinux 8 minimal defaults to the `C` locale
 
@@ -129,6 +131,121 @@ jobs:
 
 `CARGO_NET_GIT_FETCH_WITH_CLI=true` is safe to set at the workflow level —
 it has no negative effect on AlmaLinux or any other platform.
+
+### Gotcha 5: macOS SDK and deployment target must match CRAN
+
+CRAN's macOS binary R is built against a specific Xcode SDK with a specific
+`MACOSX_DEPLOYMENT_TARGET`. The current binary targets (per `R Installation
+and Administration` §"Building binary packages", r-svn
+[`doc/manual/R-admin.texi:5854-5867`](https://github.com/r-devel/r-svn/blob/master/doc/manual/R-admin.texi#L5854))
+are:
+
+| Arch | macOS target | Deployment floor |
+|---|---|---|
+| arm64 | Sonoma 14 | `MACOSX_DEPLOYMENT_TARGET=14.0` |
+| x86_64 | Big Sur 11 | `MACOSX_DEPLOYMENT_TARGET=11.0` |
+
+If a GitHub Actions runner builds Rust artefacts against a different SDK or
+without a deployment-target pin, two things break under CRAN's R:
+
+- The Rust `cdylib` / `staticlib` emits load commands referencing newer SDK
+  symbols. R's package linker (built against CRAN's SDK) can't resolve them,
+  so `R CMD INSTALL` fails or the resulting `.so` segfaults on load.
+- `dyld` mismatch warnings ("was built for newer macOS version (X) than being
+  linked (Y)") appear in `R CMD check` and trip `--as-cran` notes.
+
+**Fix**: select the matching Xcode and export the deployment target in
+`$GITHUB_ENV` before any Rust toolchain install or cargo build. The pin
+**must run before** `dtolnay/rust-toolchain` and `r-lib/actions/setup-r` so
+both pick up the value. Branch on `uname -m` so the same step works on both
+runners:
+
+```yaml
+- name: Pin macOS SDK and deployment target
+  run: |
+    if [ "$(uname -m)" = "x86_64" ]; then
+      sudo xcode-select -s /Applications/Xcode_16.2.app || true
+      echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+    else
+      sudo xcode-select -s /Applications/Xcode_26.0.app || true
+      echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+    fi
+    echo "xcode is set: $(xcode-select --print-path)"
+    xcrun --show-sdk-version || true
+```
+
+The values track
+[`r-devel/actions/setup-macos-tools@ec72e88`](https://github.com/r-devel/actions/blob/ec72e88/setup-macos-tools/action.yml#L17-L28).
+The scaffolded template inlines (rather than `uses:`-references) those lines
+so the workflow stays hermetic if the upstream repo is ever archived or
+restructured.
+
+**Why inlined, not `uses:`-referenced?** `r-devel/actions` is a small,
+maintainer-driven repository; a deletion or refactor would silently break
+every downstream workflow that referenced it. Inlining trades a one-line
+`uses:` for ~10 lines of explicit shell that the maintainer can audit and the
+runner can execute without an external repo lookup.
+
+**Per-install floor.** configure also emits these values in
+`.cargo/config.toml` `[env]` so end-user `R CMD INSTALL` (no GitHub Actions
+involvement) gets the same pins derived from the host's R. The workflow pin
+is the CI overlay that locks the values for release builds independent of
+whatever R is installed on the runner. See
+[CRAN_COMPATIBILITY.md](./CRAN_COMPATIBILITY.md#toolchain-abi-matching) for
+the layered defense.
+
+### Gotcha 6: CRAN system libraries on macOS
+
+CRAN's macOS binary R is linked against a curated set of system libraries
+(libcurl, openssl, libtiff, libwebp, …) staged under `/opt/R/<arch>/lib`,
+built and packaged by
+[`r-universe-org/macos-libs`](https://github.com/r-universe-org/macos-libs).
+A Rust crate with a `-sys` C dependency (e.g. `openssl-sys`, `curl-sys`,
+`libtiff-sys`) that uses `pkg-config` to discover its system library will, on
+a stock GitHub Actions macOS runner, resolve against **Homebrew's** version
+rather than CRAN's. The two ABIs are not always compatible — same SONAME,
+different symbol exports — and packages that pass locally segfault under
+CRAN's R.
+
+**Fix**: prefetch the curated tarball into `/opt/`, then point
+`PKG_CONFIG_PATH` at `/opt/R/<arch>/lib/pkgconfig`. Any subsequent
+`cargo build` of a `-sys` crate resolves against the same library set CRAN
+built against:
+
+```yaml
+- name: Download CRAN system libraries
+  run: |
+    sudo mkdir -p /opt
+    sudo chown $USER /opt
+    curl --retry 3 --fail-with-body -sSL \
+      https://github.com/r-universe-org/macos-libs/releases/download/2025-12-13/cranlibs-everything.tar.xz \
+      -o libs.tar.xz
+    sudo tar -xf libs.tar.xz -C / opt
+    rm -f libs.tar.xz
+    echo "PKG_CONFIG_PATH=/opt/R/$(uname -m)/lib/pkgconfig:/opt/R/$(uname -m)/share/pkgconfig" >> $GITHUB_ENV
+```
+
+The tarball URL pins a specific release date so the workflow is reproducible
+across re-runs. Bump the URL when the upstream repo cuts a new release; the
+underlying library versions only change when CRAN itself updates them.
+Inlined from
+[`r-devel/actions/setup-macos-tools@ec72e88`](https://github.com/r-devel/actions/blob/ec72e88/setup-macos-tools/action.yml#L44-L53)
+for the same hermetic reason as Gotcha 5.
+
+**What was skipped from upstream** (and why):
+
+- `brew unlink $(brew list --formula)` — destructive on shared runners and
+  unnecessary once `PKG_CONFIG_PATH` is set (cargo's `pkg-config` lookup
+  prefers the listed paths over the system default).
+- gfortran install — no Fortran-linked Rust deps in miniextendr today.
+  Downstream packages that depend on a Fortran library (e.g. via a `-sys`
+  crate wrapping LAPACK) can add it back.
+- TinyTeX — the default scaffold builds with `--no-manual`, so no PDF
+  toolchain is required.
+- xQuartz — no X11 dependencies in the default scaffold.
+- Adding `/opt/R/<arch>/bin` to `$GITHUB_PATH` — `r-lib/actions/setup-r`
+  installs R independently and puts its `bin/` on PATH; the upstream's path
+  addition is for runs that don't use `setup-r`.
 
 ## Why `package_init` checks for UTF-8
 
