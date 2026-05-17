@@ -105,7 +105,8 @@ just check / test / clippy / fmt / lint
 # rpkg (R package)
 just configure           # REQUIRED before any R CMD operation (dev mode)
 just rcmdinstall         # Build + install (compiles Rust, auto-generates R wrappers)
-just devtools-document   # roxygen2 → NAMESPACE + man/
+just devtools-document   # roxygen2 → NAMESPACE + man/ (short-circuits if nothing changed)
+just force-document      # like devtools-document but always runs — use after macro changes
 just devtools-test       # R tests
 just r-cmd-build         # Build tarball
 just r-cmd-check         # Check built tarball (save to log — see "Capturing output")
@@ -174,14 +175,23 @@ Regression test: `just test-bootstrap-vendor`.
 ### After Rust changes (especially macro changes)
 
 ```bash
-just configure && just rcmdinstall && just devtools-document
+just configure && just rcmdinstall && just force-document
 ```
 
-Run `just devtools-document` after **anything** that affects R wrapper output:
-proc-macro roxygen, `r_wrappers.rs` / class-system codegen, adding/removing
-`#[miniextendr]` functions. Generated files (`rpkg/R/miniextendr-wrappers.R`,
-`NAMESPACE`, `man/*.Rd`) must be committed in sync with the Rust changes that
-produced them.
+Use `just force-document` (not `just devtools-document`) after **anything** that
+affects R wrapper output: proc-macro roxygen, `r_wrappers.rs` / class-system
+codegen, adding/removing `#[miniextendr]` functions. The `force-document` recipe
+bypasses `roxygen2::needs_roxygenize()` — required here because the macro's
+contributions to `R/miniextendr-wrappers.R` live outside roxygen's view until
+`rcmdinstall` has re-run and bumped the wrappers.R mtime.
+
+`just devtools-document` (short-circuiting variant) is safe for **pure R/roxygen
+changes** — it skips the full roxygenize pass when `needs_roxygenize()` returns
+`FALSE`. Use this in tight iteration loops when you're only editing `///` doc
+comments or `rpkg/R/*.R` sources.
+
+Generated files (`rpkg/R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must
+be committed in sync with the Rust changes that produced them.
 
 Pre-commit hook (`.githooks/pre-commit`) blocks commits where `*-wrappers.R`
 is staged without matching `NAMESPACE`. Enable once per clone:
@@ -191,7 +201,7 @@ is staged without matching `NAMESPACE`. Enable once per clone:
 
 1. `pub fn` with `#[miniextendr]` — registration is automatic via linkme `#[distributed_slice]`, no module macro needed.
 2. Module must be reachable via `mod` from `lib.rs` (`#[cfg(feature = "foo")]` on `mod` declaration is sufficient for feature-gated modules).
-3. `just configure && just rcmdinstall && just devtools-document`.
+3. `just configure && just rcmdinstall && just force-document`.
 
 ### Adding a new conversion type
 
@@ -335,7 +345,7 @@ After editing `docs/`, run `just site-docs` and commit both. See
 
 ## Common issues
 
-- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just devtools-document`.
+- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just force-document`.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
 - **Permission errors installing**: `R_LIBS=/tmp/claude/R_lib R CMD INSTALL rpkg` or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
@@ -361,7 +371,7 @@ Common: `devtools-doc.log`, `rcmdinstall.log`, `rcmdcheck.log`,
 ### Sandbox restrictions
 
 Claude Code sandbox blocks compilation. For any compiling command
-(`just devtools-document`, `rcmdinstall`, `cargo build`,
+(`just force-document`, `rcmdinstall`, `cargo build`,
 `R CMD INSTALL/check`), pass `dangerouslyDisableSandbox: true`.
 
 ### File deletion safety

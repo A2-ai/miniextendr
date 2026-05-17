@@ -37,6 +37,6 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - **MXL111** — `s4_*` method name on `#[miniextendr(s4)]` impl gets `s4_s4_*`. Drop the prefix.
 
 ## When changing codegen
-- Touched proc-macro output? Run `just configure && just rcmdinstall && just devtools-document` and commit regenerated `rpkg/R/miniextendr-wrappers.R` + `NAMESPACE` + `man/*.Rd` in the same PR. Pre-commit hook (`.githooks/pre-commit`) enforces.
+- Touched proc-macro output? Run `just configure && just rcmdinstall && just force-document` and commit regenerated `rpkg/R/miniextendr-wrappers.R` + `NAMESPACE` + `man/*.Rd` in the same PR. Pre-commit hook (`.githooks/pre-commit`) enforces.
 - Added a class-system constructor path? Make sure error-check pattern `(.val <- .Call(...); error_in_r_check_lines())` is wired through — silent object corruption otherwise.
 - Added a S3 `@export`? Use `#' @export generic_name` (explicit target) on `if (!exists(...)) generic <- ...` — roxygen2 can't introspect conditional declarations and drifts the export onto the next function.
