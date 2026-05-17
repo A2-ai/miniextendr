@@ -111,6 +111,18 @@ fn try_from_list_reports_field_name_on_type_error() {
     });
 }
 
+#[test]
+fn from_raw_pairs_empty_is_length_zero_vecsxp_with_names() {
+    r_test_utils::with_r_thread(|| {
+        let list = List::from_raw_pairs_empty();
+        assert!(list.as_sexp().is_list(), "should be VECSXP");
+        assert_eq!(list.as_sexp().xlength(), 0, "should have length 0");
+        let names = list.as_sexp().get_names();
+        assert!(names.is_character(), "names attribute should be STRSXP");
+        assert_eq!(names.xlength(), 0, "names should have length 0");
+    });
+}
+
 use miniextendr_api::ExternalPtr;
 
 #[derive(ExternalPtr, miniextendr_api::IntoList)]
