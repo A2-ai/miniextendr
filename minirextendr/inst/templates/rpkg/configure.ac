@@ -395,6 +395,139 @@ if test -n "$MONOREPO_ROOT"; then
   fi
 fi
 
+dnl ---- derive Cargo [env] block (R-ABI matching) ----
+dnl Goal: every cargo invocation (local dev, CI, end-user R CMD INSTALL) inherits
+dnl R-compatible toolchain settings so the Rust staticlib's ABI matches R's build.
+dnl
+dnl Shell env wins over `[env]` (no `force = true`) — users can still override
+dnl via `MACOSX_DEPLOYMENT_TARGET=12.0 R CMD INSTALL .` etc.
+dnl
+dnl Per-platform derivations:
+dnl   macOS   : MACOSX_DEPLOYMENT_TARGET (4-step fallback: env → R config → otool → arch default).
+dnl   Windows : CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER (and aarch64) from rtools gcc when detected.
+dnl   Linux   : conservative — only AR_<target>/RANLIB_<target> overrides if R's are non-default.
+dnl   All     : CARGO_NET_GIT_FETCH_WITH_CLI = "true" (works around in-tree rustls/CA issues).
+dnl
+dnl We pre-compute derivation variables here so AC_CONFIG_COMMANDS just writes
+dnl the lines out. The block is emitted as the FIRST table in each install-mode
+dnl branch of .cargo/config.toml (TOML table-scoping requires it).
+
+dnl Rust target triple for *_<target> environment variables. Prefer the user's
+dnl explicit CARGO_BUILD_TARGET; otherwise ask rustc for its default host.
+CARGO_ENV_RUST_TARGET="$CARGO_BUILD_TARGET"
+if test -z "$CARGO_ENV_RUST_TARGET"; then
+  CARGO_ENV_RUST_TARGET=`"$RUSTC" -vV 2>/dev/null | $SED -n 's/^host: //p'`
+fi
+
+dnl Uppercase + s/-/_/g, e.g. aarch64-apple-darwin -> AARCH64_APPLE_DARWIN.
+CARGO_ENV_RUST_TARGET_UPPER=`echo "$CARGO_ENV_RUST_TARGET" | tr 'a-z-' 'A-Z_'`
+
+dnl --- macOS: derive MACOSX_DEPLOYMENT_TARGET ----
+dnl Derivation order (first match wins, logged via AC_MSG_NOTICE):
+dnl   1. Shell env MACOSX_DEPLOYMENT_TARGET (caller's value)
+dnl   2. -mmac(os|osx)-version-min=X.Y in R CMD config {CC,CXX,FC}
+dnl   3. otool -l "$R_HOME/bin/exec/R" → LC_BUILD_VERSION minos
+dnl   4. Arch default: aarch64 → 14.0, x86_64 → 11.0 (per R-admin §macOS).
+CARGO_ENV_MACOS_DEPLOY_TARGET=""
+CARGO_ENV_MACOS_DEPLOY_SOURCE=""
+case "$host_os" in
+  darwin*)
+    dnl Step 1: shell env wins (cargo [env] no-force semantics mean we could
+    dnl emit it and shell would still win, but skipping emission keeps the
+    dnl config.toml output stable across invocations with different env vars).
+    if test -n "${MACOSX_DEPLOYMENT_TARGET}"; then
+      CARGO_ENV_MACOS_DEPLOY_TARGET="$MACOSX_DEPLOYMENT_TARGET"
+      CARGO_ENV_MACOS_DEPLOY_SOURCE="shell env"
+    fi
+
+    dnl Step 2: parse R CMD config CC / CXX / FC. clang spells it
+    dnl `-mmacos-version-min`; legacy gfortran / older clang use `-mmacosx-version-min`.
+    if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      for _cfg_key in CC CXX FC; do
+        _flag_val=`"${R_HOME}/bin/R" CMD config "$_cfg_key" 2>/dev/null \
+          | $SED -n 's/.*-mmac[ox]*-version-min=\(@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/p' \
+          | head -n1`
+        if test -n "$_flag_val"; then
+          CARGO_ENV_MACOS_DEPLOY_TARGET="$_flag_val"
+          CARGO_ENV_MACOS_DEPLOY_SOURCE="R CMD config $_cfg_key"
+          break
+        fi
+      done
+    fi
+
+    dnl Step 3: otool -l on R binary. LC_BUILD_VERSION's `minos` field is
+    dnl the authoritative target R was linked against.
+    if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      if command -v otool >/dev/null 2>&1; then
+        _otool_val=`otool -l "${R_HOME}/bin/exec/R" 2>/dev/null \
+          | awk '/LC_BUILD_VERSION/ {found=1} found && /minos/ {print $2; exit}'`
+        if test -n "$_otool_val"; then
+          CARGO_ENV_MACOS_DEPLOY_TARGET="$_otool_val"
+          CARGO_ENV_MACOS_DEPLOY_SOURCE="otool LC_BUILD_VERSION"
+        fi
+      fi
+    fi
+
+    dnl Step 4: arch default. R-admin (Sec. "macOS") states current CRAN
+    dnl targets are macOS 14.0 (arm64) and 11.0 (Intel).
+    if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      case "$host_cpu" in
+        arm64|aarch64) CARGO_ENV_MACOS_DEPLOY_TARGET="14.0" ;;
+        *)             CARGO_ENV_MACOS_DEPLOY_TARGET="11.0" ;;
+      esac
+      CARGO_ENV_MACOS_DEPLOY_SOURCE="arch default ($host_cpu)"
+    fi
+
+    AC_MSG_NOTICE([MACOSX_DEPLOYMENT_TARGET = $CARGO_ENV_MACOS_DEPLOY_TARGET (source: $CARGO_ENV_MACOS_DEPLOY_SOURCE)])
+    ;;
+esac
+
+dnl --- Windows: derive rtools gcc linker path ----
+dnl Strategy: R CMD config CC's first token is the C compiler path. If its
+dnl sibling `gcc` (or `gcc.exe`) exists, use that as the cargo linker for
+dnl x86_64-pc-windows-gnu / aarch64-pc-windows-gnu. This pins cargo to rtools'
+dnl gcc rather than whichever gcc happens to be on PATH (MSYS2's, etc).
+CARGO_ENV_WIN_LINKER=""
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    _r_cc=`"${R_HOME}/bin/R" CMD config CC 2>/dev/null | awk '{print $1}'`
+    if test -n "$_r_cc"; then
+      _r_cc_bindir=`dirname "$_r_cc"`
+      for _gcc_cand in "$_r_cc_bindir/gcc.exe" "$_r_cc_bindir/gcc"; do
+        if test -x "$_gcc_cand"; then
+          dnl Cargo's [env] consumes the path raw; TOML needs forward slashes.
+          dnl `cygpath -m` produces a Windows-native path with forward slashes,
+          dnl which is exactly what cargo's TOML parser wants.
+          _gcc_native="$_gcc_cand"
+          if test "x$CYGPATH" != "xno"; then
+            _gcc_native=`"$CYGPATH" -m "$_gcc_cand" 2>/dev/null || echo "$_gcc_cand"`
+          fi
+          CARGO_ENV_WIN_LINKER="$_gcc_native"
+          break
+        fi
+      done
+    fi
+    if test -n "$CARGO_ENV_WIN_LINKER"; then
+      AC_MSG_NOTICE([rtools linker        = $CARGO_ENV_WIN_LINKER])
+    else
+      AC_MSG_NOTICE([rtools linker        = (not detected — cargo will use default gcc on PATH)])
+    fi
+    ;;
+esac
+
+dnl --- AR / RANLIB overrides (all platforms, only if non-default) ----
+dnl R may be configured with a non-default AR/RANLIB (e.g. a cross-toolchain
+dnl prefix). Cargo's default is `ar` / `ranlib`, so we only emit overrides
+dnl when R's values differ — otherwise we'd just add noise to the config.
+CARGO_ENV_R_AR=`"${R_HOME}/bin/R" CMD config AR 2>/dev/null`
+CARGO_ENV_R_RANLIB=`"${R_HOME}/bin/R" CMD config RANLIB 2>/dev/null`
+
+dnl Individual env-derivation variables are propagated to AC_CONFIG_COMMANDS
+dnl via the trailing variable-pass list, and the [env] block body is composed
+dnl inline inside that shell context. Pre-composing here and passing a single
+dnl newline-separated string trips on AC_CONFIG_COMMANDS' heredoc-style
+dnl variable propagation (embedded `"` breaks the outer assignment quoting).
+
 dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)
 dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
@@ -472,12 +605,46 @@ AC_CONFIG_COMMANDS([cargo-config],
   RPKG_CFG="src/rust/.cargo/config.toml"
   rm -f "$RPKG_CFG"
 
+  dnl `[env]` is emitted as the FIRST table in every branch. TOML table-scoping
+  dnl makes any later `[…]` heading end the previous table — so `[env]` must
+  dnl precede `[source.*]` / `[patch.*]` / `[build]` to stay independent.
+  dnl Cargo applies these to every cargo invocation in this package. Shell env
+  dnl wins (no `force = true`), so users can override case-by-case.
+  dnl
+  dnl Derivation variables are passed individually via the variable-pass list
+  dnl (see second arg) — composing the body here keeps quoting predictable.
+  emit_env_block() {
+    echo "@<:@env@:>@"
+    if test -n "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      echo "MACOSX_DEPLOYMENT_TARGET = \"$CARGO_ENV_MACOS_DEPLOY_TARGET\""
+    fi
+    if test -n "$CARGO_ENV_WIN_LINKER"; then
+      case "$CARGO_ENV_RUST_TARGET_UPPER" in
+        *AARCH64*WINDOWS*)
+          echo "CARGO_TARGET_AARCH64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
+          ;;
+        *)
+          echo "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
+          ;;
+      esac
+    fi
+    echo 'CARGO_NET_GIT_FETCH_WITH_CLI = "true"'
+    if test -n "$CARGO_ENV_R_AR" && test "$CARGO_ENV_R_AR" != "ar"; then
+      echo "AR_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_AR\""
+    fi
+    if test -n "$CARGO_ENV_R_RANLIB" && test "$CARGO_ENV_R_RANLIB" != "ranlib"; then
+      echo "RANLIB_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_RANLIB\""
+    fi
+    echo ""
+  }
+
   if test "$IS_TARBALL_INSTALL" = "true"; then
     {
       echo "# Autogenerated by configure — DO NOT EDIT"
       echo "# Tarball install: redirect crates.io and the miniextendr git source"
       echo "# to the unpacked inst/vendor.tar.xz."
       echo ""
+      emit_env_block
       echo "@<:@source.crates-io@:>@"
       echo 'replace-with = "vendored-sources"'
       echo ""
@@ -504,6 +671,7 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "# Source install (monorepo): patch the miniextendr git source to"
       echo "# resolve against local workspace crates."
       echo ""
+      emit_env_block
       echo '@<:@patch."https://github.com/A2-ai/miniextendr"@:>@'
       echo "miniextendr-api    = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-api\" }"
       echo "miniextendr-lint   = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-lint\" }"
@@ -521,6 +689,7 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "# declared in Cargo.toml. First build downloads, subsequent"
       echo "# builds use cargo's git cache."
       echo ""
+      emit_env_block
       echo "@<:@build@:>@"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
@@ -532,6 +701,12 @@ AC_CONFIG_COMMANDS([cargo-config],
  MONOREPO_ROOT_CARGO="$MONOREPO_ROOT_CARGO"
  VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
+ CARGO_ENV_MACOS_DEPLOY_TARGET="$CARGO_ENV_MACOS_DEPLOY_TARGET"
+ CARGO_ENV_WIN_LINKER="$CARGO_ENV_WIN_LINKER"
+ CARGO_ENV_RUST_TARGET="$CARGO_ENV_RUST_TARGET"
+ CARGO_ENV_RUST_TARGET_UPPER="$CARGO_ENV_RUST_TARGET_UPPER"
+ CARGO_ENV_R_AR="$CARGO_ENV_R_AR"
+ CARGO_ENV_R_RANLIB="$CARGO_ENV_R_RANLIB"
  SED="$SED"])
 
 dnl ---- 3) Cargo.lock shape check (tarball mode only) ----

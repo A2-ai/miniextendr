@@ -83,6 +83,13 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR)
 #
 # OBJECTS are passed to cargo as link-args so the Rust crate can reference
 # symbols from C shim files (bindgen-generated static inline wrappers).
+#
+# Note: configure.ac emits an [env] block in src/rust/.cargo/config.toml with
+# platform-derived MACOSX_DEPLOYMENT_TARGET (macOS), CARGO_TARGET_*_LINKER
+# (Windows rtools), and AR_<target> overrides. Cargo inherits these on every
+# invocation below; they ensure the Rust staticlib's ABI matches R's build.
+# To override, set the variable in your shell — shell env wins over [env].
+# See `bash ./configure` output for the values actually emitted.
 $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	@set -e; \
 	TARGET_OPT=""; \

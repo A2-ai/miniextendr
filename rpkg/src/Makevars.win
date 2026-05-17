@@ -9,4 +9,9 @@ include Makevars
 # - advapi32: Security functions
 # - secur32: Security Support Provider Interface (GetUserNameExW for whoami crate)
 # Use full path to staticlib to avoid MinGW linker picking up cdylib's .dll.a import lib
+#
+# Note: configure.ac sets CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER (and the
+# aarch64 equivalent) in src/rust/.cargo/config.toml [env] when rtools is
+# detected via `R CMD config CC`. This pins cargo's linker to rtools' gcc
+# rather than whichever gcc happens to be on PATH (MSYS2's separate gcc, etc).
 PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32
