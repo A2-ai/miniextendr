@@ -167,3 +167,7 @@ pub fn describe_color(color: Color) -> &'static str {
     }
 }
 ```
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/features/) for the exhaustive treatment, edge cases, and every feature switch.

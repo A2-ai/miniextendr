@@ -6,17 +6,24 @@ from each file's `# Title` line). **Edit files in `docs/`, not
 `site/content/manual/`** — any direct edit there gets overwritten on
 the next regeneration.
 
-After editing anything under `docs/`, regenerate before committing:
+`site/content/manual/*.md` is gitignored except `_index.md`. CI
+regenerates the manual via `bash scripts/docs-to-site.sh` before each
+`zola build` in the pages workflow. Run the script locally before
+`just site-build` / `just site-serve` to preview doc edits — the
+generated files stay in your working tree but are no longer tracked.
+
+After editing anything under `docs/`, commit only the `docs/` changes:
 
 ```bash
-bash scripts/docs-to-site.sh
-git add docs/ site/content/manual/
+# Edit docs/SOMETHING.md, then:
+bash scripts/docs-to-site.sh   # regenerate for local preview
+just site-serve                # preview (optional)
+git add docs/SOMETHING.md      # commit docs/ only — manual/ is gitignored
+git commit
 ```
 
-CI runs `scripts/docs-to-site.sh` itself before each Zola build, so the
-deployed site is always correct — but the in-repo `site/content/manual/`
-drifts out of sync if you skip the local regenerate step, which makes
-diffs noisy and masks unrelated site edits.
+CI's existing regenerate-before-zola-build step keeps the deployed site
+correct. You no longer need to `git add site/content/manual/`.
 
 `just site-build` (`cd site && zola build`) and `just site-serve`
 (`cd site && zola serve`) do **not** call `docs-to-site.sh`. Run the

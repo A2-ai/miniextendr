@@ -229,3 +229,7 @@ When working in the miniextendr monorepo itself, the [`justfile`](https://github
 - [Type Conversions](/type-conversions/) - Full type mapping reference
 - [Class Systems](/class-systems/) - Choosing and using R class systems
 - [ALTREP](/altrep/) - Lazy and compact vectors
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/getting-started/) for the exhaustive treatment, edge cases, and every feature switch.

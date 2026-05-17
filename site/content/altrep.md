@@ -108,3 +108,7 @@ When R needs the full data (e.g., for `DATAPTR`), ALTREP vectors materialize. mi
 ## Serialization
 
 ALTREP objects serialize by materializing to standard R vectors. Custom serialization can be implemented via the `Serialize` ALTREP method.
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/altrep/) for the exhaustive treatment, edge cases, and every feature switch.

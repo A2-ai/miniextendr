@@ -56,3 +56,7 @@ ExternalPtr objects can be passed between R packages. The `TypedExternal` trait 
 - **Thin pointer** in `R_ExternalPtrAddr` (the outer Box)
 - **Fat pointer** on the heap (carries the `Any` vtable)
 - Non-generic finalizer `release_any` works for all types
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/externalptr/) for the exhaustive treatment, edge cases, and every feature switch.

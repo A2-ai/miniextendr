@@ -44,3 +44,7 @@ The detailed version, including workspace membership, publish status, and how th
 - [Open the full package map](/manual/packages/)
 - [Read the DESCRIPTION fields guide](/manual/description-fields/)
 - [Read the full project tutorial](/full-project-tutorial/)
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/packages/) for the exhaustive treatment, edge cases, and every feature switch.

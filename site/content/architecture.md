@@ -142,3 +142,7 @@ producer.pkg:                 consumer.pkg:
   impl Counter trait            impl Counter trait for DoubleCounter
   exports as ExternalPtr        calls trait methods via vtable lookup
 ```
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/architecture/) for the exhaustive treatment, edge cases, and every feature switch.

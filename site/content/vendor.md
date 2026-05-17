@@ -64,3 +64,7 @@ R CMD check; release tooling regenerates it at version-bump time.
   and Makevars together for compiled packages.
 - [Environment variables](@/manual/environment-variables.md) — all env
   vars the build honors (and which legacy ones are gone).
+
+## Full reference
+
+This page is a curated entry point. The "See also" links above lead directly to the relevant manual pages for the exhaustive treatment, edge cases, and every feature switch.

@@ -66,3 +66,7 @@ Rf_allocVector(INTSXP, 10);
 // Unchecked (known-safe context):
 Rf_allocVector_unchecked(INTSXP, 10);
 ```
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/threads/) for the exhaustive treatment, edge cases, and every feature switch.

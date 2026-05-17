@@ -14,4 +14,4 @@ miniextendr is a Rust-R interoperability framework built for packages that need 
 
 ## What the documentation covers
 
-The guide pages below start broad and then narrow into specific subsystems. Use the manual when you want exhaustive behavior, feature switches, packaging details, or edge-case references.
+The guide pages below start broad and then narrow into specific subsystems. Use the manual when you want exhaustive behavior, feature switches, packaging details, or edge-case references. Curated entry pages link to the [user manual](/manual/) for full reference.
