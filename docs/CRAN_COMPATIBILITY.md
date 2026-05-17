@@ -211,6 +211,82 @@ See CLAUDE.md "Vendor tarball is a latch" for the full context and the
 - `[ -f inst/vendor.tar.xz ]` is the only source-vs-tarball signal. Don't add
   a second one. Maintenance load lives in the number of switches.
 
+## Toolchain ABI matching
+
+The vendoring story above keeps **Rust dependency sources** in sync between
+maintainer and CRAN's builder. A second, orthogonal problem is keeping the
+**Rust toolchain's compile-time targets** (SDK, deployment floor, system
+library prefix) in sync with the C toolchain CRAN's R was built with. A
+mismatch here produces `.so`s that link locally and segfault under CRAN's R,
+or trip `--as-cran` notes about deployment-target drift.
+
+miniextendr defends against this with three layered checks. The first two are
+load-bearing, the third documents the values.
+
+### Layer 1 — Per-install floor (`./configure` emits `[env]`)
+
+`./configure` derives `MACOSX_DEPLOYMENT_TARGET` (and equivalents) from the
+host R's `R CMD config CC` flags at install time, then writes them into
+`.cargo/config.toml`'s `[env]` table. Every `R CMD INSTALL` of the
+miniextendr-based package — including end-user installs that never see a
+GitHub Actions runner — picks up the same values R is configured against.
+
+This is the load-bearing layer for end users. They don't run the release
+workflow; they `install.packages()` (binary) or `R CMD INSTALL` (source) and
+expect the result to work with the R they have.
+
+### Layer 2 — CI overlay (`r-release.yml` workflow `env:` pins)
+
+The CI workflow that produces release binaries pins the **CRAN-canonical**
+values directly via `MACOSX_DEPLOYMENT_TARGET` in `$GITHUB_ENV` plus
+`xcode-select -s` to select the matching SDK. These override whatever Layer 1
+derived: the release artifact targets CRAN's exact ABI floor, not the
+runner's host R's floor.
+
+GitHub Actions shell `env:` wins over cargo `[env]` by default (cargo's
+`[env]` table is "set if not already set" semantics), so the two layers
+cooperate without conflict: CI uses the pinned values, end-user installs use
+whatever the host R reports.
+
+The same workflow also prefetches CRAN's curated system libraries
+(`r-universe-org/macos-libs`) into `/opt/R/<arch>/lib` and points
+`PKG_CONFIG_PATH` at them, so any Rust `-sys` crate's `pkg-config` lookup
+resolves against the same C libraries CRAN's R was linked with.
+
+See [RELEASE_WORKFLOW.md Gotchas 5 and 6](./RELEASE_WORKFLOW.md#gotcha-5-macos-sdk-and-deployment-target-must-match-cran)
+for the exact YAML snippets and citations.
+
+### Layer 3 — Documented canonical values
+
+The current CRAN-canonical pins are:
+
+| Platform | Arch | Pin | Source |
+|---|---|---|---|
+| macOS | arm64 | `MACOSX_DEPLOYMENT_TARGET=11.0` for the **toolchain**; `14.0` for the **binary** | [R-admin §"Building binary packages"](https://github.com/r-devel/r-svn/blob/master/doc/manual/R-admin.texi#L5854) — `Xcode_26.0` |
+| macOS | x86_64 | `MACOSX_DEPLOYMENT_TARGET=11.0` | R-admin (same) — `Xcode_16.2` |
+| Windows | x86_64 | rtools45 / GCC 14, mingw runtime release `6768` | [`r-windows/rtools-base`](https://github.com/r-windows/rtools-base) |
+| Linux | x86_64 | distro-supplied glibc; no per-platform pin | n/a |
+
+The Windows rtools version is **not currently consumed** by miniextendr's
+template — there's no `build-windows` job in `r-release.yml` yet. The value
+is documented here for completeness, and configure handles the rtools linker
+pin for end-user Windows installs already once the per-install `[env]` floor
+lands. See [issue tracker](https://github.com/A2-ai/miniextendr/issues?q=is%3Aissue+rtools+windows) for the rtools rebase cadence.
+
+### How to update the pins when CRAN moves
+
+CRAN's macOS binary build moves SDKs roughly once per major macOS release.
+When it does, three places must be updated in lockstep:
+
+1. `minirextendr/inst/templates/r-release.yml` — the `xcode-select -s` path
+   and `MACOSX_DEPLOYMENT_TARGET` value in the "Pin macOS SDK and deployment
+   target" step.
+2. `docs/RELEASE_WORKFLOW.md` Gotcha 5 — the version table and prose.
+3. This file — the table in "Layer 3" above.
+
+Cross-reference `r-devel/actions/setup-macos-tools` to confirm the upstream
+values; the `r-devel/actions` repo tracks CRAN's actual build matrix.
+
 ## Symbols cleanup, for grep-bait
 
 Removed entirely from this codebase:
