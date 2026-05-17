@@ -25,13 +25,13 @@ impl PtrIdentityTest {
 
 /// Returns the ExternalPtr unchanged -- should preserve R identity.
 /// @param x An ExternalPtr wrapping a PtrIdentityTest.
-#[miniextendr]
 /// @name rpkg_externalptr_identity
 /// @examples
 /// a <- PtrIdentityTest$new(10L)
 /// b <- ptr_identity(a)
 /// identical(a, b) # TRUE
 /// @aliases ptr_identity ptr_pick_larger
+#[miniextendr]
 pub fn ptr_identity(x: ExternalPtr<PtrIdentityTest>) -> ExternalPtr<PtrIdentityTest> {
     x
 }

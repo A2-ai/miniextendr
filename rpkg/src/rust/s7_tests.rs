@@ -64,7 +64,9 @@ impl S7Range {
     /// Computed property: read-only length of the range.
     ///
     /// This becomes an S7 property accessed as `obj@length` in R.
-    /// Since there's no setter, it's a computed (read-only) property.
+    /// Since there's no setter, it is a computed (read-only) property.
+    ///
+    /// The value is always `end - start` and is recomputed on each access.
     #[miniextendr(s7(getter))]
     pub fn length(&self) -> f64 {
         self.end - self.start

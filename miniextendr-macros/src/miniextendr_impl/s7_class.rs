@@ -3,6 +3,52 @@
 use super::{ParsedImpl, ParsedMethod};
 use crate::r_class_formatter::{class_ref_or_verbatim, is_bare_identifier};
 
+/// Extract the full property documentation from a getter's `doc_tags` for use in
+/// `@prop <name> <doc>` emission.
+///
+/// After #578, the auto-description path emits:
+/// - `@title <para 1>`
+/// - `@description <para 2>` (if present)
+/// - `@details <para 3+>` (if present)
+///
+/// This helper collects title, description, and details and joins them with
+/// `\n\n` for multi-line `@prop` continuation (supported by roxygen2 8.0.0+).
+fn extract_prop_doc_from_tags(doc_tags: &[String]) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+
+    // Look for @title (primary doc — from para 1)
+    if let Some(title) = doc_tags.iter().find_map(|t| {
+        if !t.starts_with('@') {
+            return Some(t.clone()); // plain text before any @tag
+        }
+        t.strip_prefix("@title ").map(|s| s.to_string())
+    }) {
+        parts.push(title);
+    }
+
+    // Look for @description (para 2)
+    if let Some(desc) = doc_tags
+        .iter()
+        .find_map(|t| t.strip_prefix("@description ").map(|s| s.to_string()))
+    {
+        parts.push(desc);
+    }
+
+    // Look for @details (para 3+)
+    if let Some(details) = doc_tags
+        .iter()
+        .find_map(|t| t.strip_prefix("@details ").map(|s| s.to_string()))
+    {
+        parts.push(details);
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n\n"))
+    }
+}
+
 /// S7-property variant of [`class_ref_or_verbatim`] that asks the resolver to
 /// fall back silently to `S7::class_any` on miss (unregistered type, or a
 /// registered-but-non-S7 class). Prevents the load-time `object not found`
@@ -254,21 +300,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 if let Some(ref msg) = attrs.s7.deprecated {
                     entry.deprecated = Some(msg.clone());
                 }
-                // Extract first description line from getter's doc comment
-                // for @prop documentation in the class-level roxygen block.
-                // Doc comments are auto-converted to @description by the parser,
-                // so check both plain text and @description/@title tags.
-                entry.doc = method.doc_tags.iter().find_map(|t| {
-                    // Plain description text (rare — only if no @tags at all)
-                    if !t.starts_with('@') {
-                        return Some(t.clone());
-                    }
-                    // Auto-converted doc comment: "@description The text."
-                    // Fallback to @title if no @description
-                    t.strip_prefix("@description ")
-                        .or_else(|| t.strip_prefix("@title "))
-                        .map(|rest| rest.lines().next().unwrap_or(rest).to_string())
-                });
+                // Extract full doc from getter's doc comment for @prop documentation
+                // in the class-level roxygen block.  After #578 the auto_description
+                // path emits @title (para 1), @description (para 2), @details (para 3+).
+                // We collect all three to surface the complete doc under @prop.
+                // Multi-line @prop is supported by roxygen2 8.0.0 (continuation lines
+                // indented with two spaces).
+                entry.doc = extract_prop_doc_from_tags(&method.doc_tags);
             }
             if attrs.s7.setter {
                 entry.setter_method_ident = Some(method_ident.clone());
@@ -416,7 +454,18 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 continue; // already documented as @param above
             }
             let doc = prop.doc.as_deref().unwrap_or("(undocumented property)");
-            lines.push(format!("#' @prop {} {}", prop.name, doc));
+            // Emit @prop with multi-line continuation support (roxygen2 8.0.0+).
+            // First line: `#' @prop <name> <para1>`.
+            // Additional paragraphs: `#'   <continuation>` (two-space indent).
+            let mut prop_lines = doc.lines();
+            if let Some(first_line) = prop_lines.next() {
+                lines.push(format!("#' @prop {} {}", prop.name, first_line));
+                for continuation in prop_lines {
+                    lines.push(format!("#'   {}", continuation));
+                }
+            } else {
+                lines.push(format!("#' @prop {} {}", prop.name, doc));
+            }
         }
 
         // @prop tags for sidecar (r_data_accessors) properties.

@@ -2110,6 +2110,37 @@ fn snapshot_s7_documented_props() {
     insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
 }
 
+/// Snapshot: S7 class where a getter has a multi-paragraph doc comment.
+/// Verifies that paragraph 2+ is preserved in the @prop line (fix for #579).
+#[test]
+fn snapshot_s7_prop_multi_paragraph_doc() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl MultiParaProp {
+            pub fn new(start: f64, end: f64) -> Self { unimplemented!() }
+
+            /// Computed length of the range.
+            ///
+            /// This is a read-only computed property.
+            /// It returns end minus start.
+            #[miniextendr(s7(getter))]
+            pub fn length(&self) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let output = generate_s7_r_wrapper(&parsed);
+    // Multi-paragraph doc: para 1 on @prop line, para 2 as continuation
+    assert!(
+        output.contains("@prop length Computed length of the range"),
+        "first paragraph missing from @prop: {}",
+        output
+    );
+    assert!(
+        output.contains("read-only computed property"),
+        "second paragraph missing from @prop continuation: {}",
+        output
+    );
+}
+
 #[test]
 fn snapshot_vctrs_vctr() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {

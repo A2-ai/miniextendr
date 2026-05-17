@@ -173,11 +173,12 @@ pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
 
 // region: `mut` checks
 
-/// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
-#[allow(unused_mut)]
 /// Test macro handling of a mutable left parameter.
 /// @param left Integer input (declared mut in Rust).
 /// @param right Integer input.
+///
+/// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
+#[allow(unused_mut)]
 #[miniextendr]
 pub fn add_left_mut(mut left: i32, right: i32) -> i32 {
     let left = &mut left;

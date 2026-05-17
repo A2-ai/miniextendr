@@ -58,8 +58,8 @@ pub fn greetings_last_as_nameless_dots(_exclamations: i32, _dots: ...) {}
 // region: typed_list! macro examples
 
 /// Test typed_list! validation with numeric, list, and optional character fields.
-#[miniextendr]
 /// @param ... Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
+#[miniextendr]
 pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
     let args = dots
         .typed(typed_list!(
@@ -75,8 +75,8 @@ pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
 }
 
 /// Test typed_list! with exact mode (no extra fields allowed).
-#[miniextendr]
 /// @param ... Named arguments: `x` (numeric), `y` (numeric). No extra fields allowed.
+#[miniextendr]
 pub fn validate_strict_args(dots: ...) -> Result<String, String> {
     let args = dots
         .typed(typed_list!(@exact; x => numeric(), y => numeric()))
@@ -89,8 +89,8 @@ pub fn validate_strict_args(dots: ...) -> Result<String, String> {
 }
 
 /// Test typed_list! validation with a class-typed field (data.frame).
-#[miniextendr]
 /// @param ... Named arguments: `data` (data.frame).
+#[miniextendr]
 pub fn validate_class_args(dots: ...) -> Result<i32, String> {
     let args = dots
         .typed(typed_list!(data => "data.frame"))
@@ -107,8 +107,8 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
 // region: Attribute sugar for typed_list validation
 
 /// Test dots attribute sugar for typed_list validation (x and y numeric).
-#[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
 /// @param ... Named arguments: `x` (numeric), `y` (numeric).
+#[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
 pub fn validate_with_attribute(_dots: ...) -> String {
     // dots_typed is automatically created by the attribute
     let x: f64 = dots_typed.get("x").expect("x");
@@ -117,8 +117,8 @@ pub fn validate_with_attribute(_dots: ...) -> String {
 }
 
 /// Test dots attribute sugar with an optional field (greeting).
-#[miniextendr(dots = typed_list!(name => character(), greeting? => character()))]
 /// @param ... Named arguments: `name` (character), `greeting` (optional character).
+#[miniextendr(dots = typed_list!(name => character(), greeting? => character()))]
 pub fn validate_attr_optional(_dots: ...) -> String {
     let name: String = dots_typed.get("name").expect("name");
     let greeting: Option<String> = dots_typed.get_opt("greeting").expect("greeting");

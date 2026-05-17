@@ -9,7 +9,7 @@ expression: generate_s7_r_wrapper(&parsed)
 #' @importFrom S7 new_class class_any new_object S7_object new_generic method new_property class_integer
 #' @export
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
-#' @prop count The integer count value.
+#' @prop count The integer count value
 Documented <- S7::new_class("Documented",
   properties = list(
     .ptr = S7::class_any,

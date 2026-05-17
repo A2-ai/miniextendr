@@ -15,9 +15,6 @@ impl Drop for SimpleDropMsg {
 }
 
 /// Test with_r_unwind_protect normal execution with RAII resource cleanup.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
 /// @name rpkg_unwind_protect
 /// @examples
 /// \dontrun{
@@ -27,6 +24,9 @@ impl Drop for SimpleDropMsg {
 /// }
 /// @aliases unsafe_C_unwind_protect_normal unsafe_C_unwind_protect_r_error
 ///   unsafe_C_unwind_protect_lowlevel_test
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
 pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
     with_r_unwind_protect(
         || {

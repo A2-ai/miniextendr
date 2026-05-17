@@ -206,6 +206,151 @@ mod doc_lint_tests {
 }
 // endregion
 
+// region: #586 — doc-stream interrupted by non-doc attribute
+
+#[test]
+fn attr_interrupt_resets_multiline_continuation() {
+    // Simulates: /// @examples\n/// ex()\n  #[cfg(feature="x")]\n/// prose
+    // The trailing "prose" must NOT appear inside the @examples block.
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = "@examples"]),
+        syn::parse_quote!(#[doc = "ex()"]),
+        syn::parse_quote!(#[cfg(feature = "x")]),
+        syn::parse_quote!(#[doc = "prose after attribute"]),
+    ];
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let examples_tag = tags.iter().find(|t| t.starts_with("@examples")).unwrap();
+    assert!(
+        !examples_tag.contains("prose after attribute"),
+        "trailing prose must not land inside @examples: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn attr_interrupt_before_any_doc_does_not_affect_result() {
+    // Non-doc attr BEFORE any doc content is harmless — no interruption
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[cfg(feature = "x")]),
+        syn::parse_quote!(#[doc = "@param x A value"]),
+    ];
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert!(tags.iter().any(|t| t.starts_with("@param")));
+}
+
+#[test]
+fn attr_interrupt_bare_prose_after_cfg_not_in_return_tag() {
+    // Split: @return block, then cfg, then bare prose.
+    // The prose must NOT land inside @return.
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = "@return The output value."]),
+        syn::parse_quote!(#[cfg(feature = "x")]),
+        syn::parse_quote!(#[doc = "Extra paragraph after cfg."]),
+    ];
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let return_tag = tags.iter().find(|t| t.starts_with("@return")).unwrap();
+    assert!(
+        !return_tag.contains("Extra paragraph"),
+        "@return must not include post-cfg prose: {:?}",
+        tags
+    );
+}
+
+// endregion
+
+// region: #578 — auto_description path emits @title not @description
+
+fn make_r6_method_doc_attrs(lines: &[&str]) -> Vec<syn::Attribute> {
+    lines
+        .iter()
+        .map(|line| syn::parse_quote!(#[doc = #line]))
+        .collect()
+}
+
+#[test]
+fn auto_description_one_para_emits_title_only() {
+    // Single paragraph: auto-description path should emit @title, not @description
+    let attrs = make_r6_method_doc_attrs(&["Compute the sum of all elements."]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        tags.iter().any(|t| t.starts_with("@title")),
+        "expected @title tag: {:?}",
+        tags
+    );
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@description")),
+        "single-para must not emit @description: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn auto_description_two_para_emits_title_and_description() {
+    let attrs = make_r6_method_doc_attrs(&[
+        "Compute the sum of all elements.",
+        "",
+        "This is the description paragraph.",
+    ]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        tags.iter().any(|t| t.starts_with("@title")),
+        "expected @title: {:?}",
+        tags
+    );
+    assert!(
+        tags.iter().any(|t| t.starts_with("@description")),
+        "expected @description: {:?}",
+        tags
+    );
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@details")),
+        "two-para must not emit @details: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn auto_description_three_para_emits_title_description_details() {
+    let attrs = make_r6_method_doc_attrs(&[
+        "Short title.",
+        "",
+        "Description paragraph.",
+        "",
+        "Details paragraph goes here.",
+    ]);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        tags.iter().any(|t| t.starts_with("@title")),
+        "expected @title: {:?}",
+        tags
+    );
+    assert!(
+        tags.iter().any(|t| t.starts_with("@description")),
+        "expected @description: {:?}",
+        tags
+    );
+    let details = tags.iter().find(|t| t.starts_with("@details"));
+    assert!(details.is_some(), "expected @details: {:?}", tags);
+    assert!(
+        details.unwrap().contains("Details paragraph"),
+        "wrong @details content: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn auto_description_no_doc_emits_nothing() {
+    let attrs: Vec<syn::Attribute> = vec![];
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    assert!(
+        tags.is_empty(),
+        "expected empty tags for no-doc: {:?}",
+        tags
+    );
+}
+
+// endregion
+
 // region: @details auto-injection integration tests (via roxygen_tags_from_attrs)
 
 fn make_doc_attrs_plain(lines: &[&str]) -> Vec<syn::Attribute> {

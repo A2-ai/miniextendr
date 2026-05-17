@@ -43,6 +43,7 @@ const MULTILINE_TAGS: &[&str] = &[
     "slot",
     "field",
     "value", // synonym for return
+    "prop",  // S7 property documentation (roxygen2 8.0.0+)
 ];
 
 /// Check if a tag name supports multi-line content.
@@ -91,9 +92,21 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool) -> Vec<String> {
     let mut tags = Vec::new();
     let mut regular_docs = Vec::new();
+    // Track whether we have seen doc content followed by a non-doc attribute.
+    // When that happens, subsequent bare prose must NOT continue into any open
+    // multiline tag (it would corrupt @examples / @details / @return blocks).
+    // Instead we reset the multiline-continuation context so the trailing prose
+    // is treated as new regular_docs material (if tags is still empty) or is
+    // simply ignored as a continuation.
+    let mut interrupted_by_non_doc = false;
 
     for attr in attrs {
         if !attr.path().is_ident("doc") {
+            // Non-doc attribute between doc runs — set interruption flag if we
+            // have already collected some doc content.
+            if !tags.is_empty() || !regular_docs.is_empty() {
+                interrupted_by_non_doc = true;
+            }
             continue;
         }
         let syn::Meta::NameValue(nv) = &attr.meta else {
@@ -108,12 +121,19 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
         for line in lit.value().lines() {
             let trimmed = line.trim_start();
             if trimmed.starts_with('@') {
-                // New tag starts
+                // New tag starts — interruption no longer relevant for tags
+                interrupted_by_non_doc = false;
                 tags.push(trimmed.to_string());
             } else if !trimmed.is_empty() {
                 if tags.is_empty() {
                     // Before any @tags - collect as regular docs
+                    // (allowed even after an interruption — user prose, not tag continuation)
                     regular_docs.push(trimmed.to_string());
+                } else if interrupted_by_non_doc {
+                    // Bare prose after a non-doc attribute interruption:
+                    // do NOT append to any open multiline tag — that would
+                    // corrupt @examples / @details / @return content.
+                    // The prose is dropped for tag-continuation purposes.
                 } else if let Some(last) = tags.last_mut()
                     && is_multiline_tag(last)
                 {
@@ -176,10 +196,21 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
         tags.insert(insert_pos, format!("@details {}", details));
     }
 
-    // Original auto_description behavior for methods without any tags
+    // Auto-description for impl methods that have no explicit @tags.
+    // Follows roxygen2 convention: paragraph 1 → @title, paragraph 2 → @description,
+    // paragraphs 3+ → @details.  The three implicit_*_from_attrs helpers parse the
+    // raw attrs so they correctly handle paragraph boundaries even when there is no
+    // blank-line separator encoded in the pre-collected `regular_docs`.
     if auto_description && tags.is_empty() && !regular_docs.is_empty() {
-        let description = regular_docs.join(" ");
-        tags.push(format!("@description {}", description));
+        if let Some(title) = implicit_title_from_attrs(attrs) {
+            tags.push(format!("@title {}", title));
+        }
+        if let Some(desc) = implicit_description_from_attrs(attrs) {
+            tags.push(format!("@description {}", desc));
+        }
+        if let Some(details) = implicit_details_from_attrs(attrs) {
+            tags.push(format!("@details {}", details));
+        }
     }
 
     tags

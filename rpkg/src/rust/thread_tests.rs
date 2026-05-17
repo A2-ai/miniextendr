@@ -5,9 +5,6 @@ use miniextendr_api::miniextendr;
 use miniextendr_api::thread::RThreadBuilder;
 
 /// Test RThreadBuilder spawn with explicit stack size and thread name.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
 /// @name rpkg_thread_builder
 /// @examples
 /// \dontrun{
@@ -18,6 +15,9 @@ use miniextendr_api::thread::RThreadBuilder;
 /// }
 /// @aliases unsafe_C_test_r_thread_builder unsafe_C_test_r_thread_builder_spawn_join
 ///   unsafe_C_test_spawn_with_r_lean_stack unsafe_C_test_stack_check_guard_lean
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
     let handle = RThreadBuilder::new()
         .stack_size(16 * 1024 * 1024) // 16 MiB

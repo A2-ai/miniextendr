@@ -4,6 +4,7 @@
 //! on the shared [`CrateIndex`] and produce
 //! [`Diagnostic`] values.
 
+pub mod doc_attr_interleave;
 pub mod export_attrs;
 pub mod ffi_unchecked;
 pub mod fn_visibility;
@@ -47,6 +48,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: vctrs ctor returns Self / instance receiver on vctrs impl (MXL120)
     vctrs_self_ctor::check(index, &mut diagnostics);
+
+    // Per-file: non-doc attribute interrupts doc-comment stream (MXL302)
+    doc_attr_interleave::check(index, &mut diagnostics);
 
     // Sort by path and line for deterministic output
     diagnostics.sort_by(|a, b| {
