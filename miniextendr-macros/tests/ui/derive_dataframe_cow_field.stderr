@@ -1,0 +1,5 @@
+error: DataFrameRow does not support `Cow<…>` directly as a field type. Use `#[dataframe(as_list)]` to opt into an explicit opaque list-column, or unwrap to the inner type (e.g. store the inner value directly, using a sentinel / empty collection for the absent case).
+  --> tests/ui/derive_dataframe_cow_field.rs:13:12
+   |
+13 |     label: Cow<'a, str>,
+   |            ^^^^^^^^^^^^

@@ -325,30 +325,7 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
     if let syn::Type::Path(type_path) = ty
         && let Some(seg) = type_path.path.segments.last()
         && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
     {
-        // Check for Vec<T>
-        if seg.ident == "Vec" {
-            return Ok(FieldTypeKind::VariableVec(inner));
-        }
-
-        // Check for Box<[T]>
-        if seg.ident == "Box"
-            && let syn::Type::Slice(slice) = inner
-        {
-            return Ok(FieldTypeKind::BoxedSlice(&slice.elem));
-        }
-
-        // Check for HashMap<K, V> and BTreeMap<K, V>
-        if (seg.ident == "HashMap" || seg.ident == "BTreeMap")
-            && let Some(syn::GenericArgument::Type(val_ty)) = args.args.iter().nth(1)
-        {
-            return Ok(FieldTypeKind::Map {
-                key_ty: inner,
-                val_ty,
-            });
-        }
-
         // Reject wrapper types that would silently fall through to Scalar /
         // Struct and produce a confusing opaque list-column or a downstream
         // DataFrameRow assertion error.  These are the common smart-pointer
@@ -359,6 +336,12 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
         // checking (which is unavailable in proc macros). The user must either
         // unwrap to the inner type, or annotate with `#[dataframe(as_list)]`
         // to opt into an explicit opaque list-column.
+        //
+        // IMPORTANT: The rejection fires on *path identity alone*, before we
+        // inspect generic args.  `Cow<'a, T>` has a lifetime as its first
+        // generic argument, not a type; inspecting `args.args.first()` as a
+        // `GenericArgument::Type` would silently skip `Cow`.  Checking ident
+        // before args makes the rejection robust to any generic shape.
         const REJECTED_WRAPPERS: &[&str] = &[
             "Option", "Cow", "Rc", "Arc", "RefCell", "Cell", "Mutex", "RwLock",
         ];
@@ -373,6 +356,42 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
                      a sentinel / empty collection for the absent case)."
                 ),
             ));
+        }
+
+        // For the collection types below we need the first *type* argument.
+        // Skip any leading lifetime or const arguments (e.g. `Cow<'a, B>`
+        // has a lifetime first, but `Cow` is already rejected above so we
+        // only reach here for other angle-bracketed types).
+        let first_type_arg = args.args.iter().find_map(|arg| {
+            if let syn::GenericArgument::Type(t) = arg {
+                Some(t)
+            } else {
+                None
+            }
+        });
+
+        if let Some(inner) = first_type_arg {
+            // Check for Vec<T>
+            if seg.ident == "Vec" {
+                return Ok(FieldTypeKind::VariableVec(inner));
+            }
+
+            // Check for Box<[T]>
+            if seg.ident == "Box"
+                && let syn::Type::Slice(slice) = inner
+            {
+                return Ok(FieldTypeKind::BoxedSlice(&slice.elem));
+            }
+
+            // Check for HashMap<K, V> and BTreeMap<K, V>
+            if (seg.ident == "HashMap" || seg.ident == "BTreeMap")
+                && let Some(syn::GenericArgument::Type(val_ty)) = args.args.iter().nth(1)
+            {
+                return Ok(FieldTypeKind::Map {
+                    key_ty: inner,
+                    val_ty,
+                });
+            }
         }
     }
 

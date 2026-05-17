@@ -246,7 +246,7 @@ struct Row {
 }
 ```
 
-**Type aliases** are not automatically unwrapped — `type Counts = HashMap<String, i32>; field: Counts` has `Counts` as the last segment, so map expansion is not triggered. Use the concrete type directly (`field: HashMap<String, i32>`), or annotate with `#[dataframe(as_list)]`.
+**Type aliases** are not automatically unwrapped — `type Counts = HashMap<String, i32>; field: Counts` has `Counts` as the last segment, so map expansion is not triggered. Use the concrete type directly (`field: HashMap<String, i32>`), or annotate with `#[dataframe(as_list)]`. See [#604](https://github.com/A2-ai/miniextendr/issues/604) for tracking.
 
 Note: multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field or an import alias to a newtype wrapper if a non-DataFrameRow stdlib type needs to be stored.
 
