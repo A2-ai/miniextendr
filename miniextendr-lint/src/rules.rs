@@ -12,6 +12,7 @@ pub mod lifetime_param;
 pub mod r_reserved_params;
 pub mod rf_error;
 pub mod s4_method_prefix;
+pub mod vctrs_self_ctor;
 
 use crate::crate_index::CrateIndex;
 use crate::diagnostic::Diagnostic;
@@ -43,6 +44,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: explicit lifetime param on #[miniextendr] fn/impl (MXL112)
     lifetime_param::check(index, &mut diagnostics);
+
+    // Per-file: vctrs ctor returns Self / instance receiver on vctrs impl (MXL120)
+    vctrs_self_ctor::check(index, &mut diagnostics);
 
     // Sort by path and line for deterministic output
     diagnostics.sort_by(|a, b| {
