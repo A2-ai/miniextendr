@@ -13,7 +13,7 @@ R connections are the standard abstraction for I/O in R -- `readLines()`, `write
 miniextendr-api = { version = "0.1", features = ["connections"] }
 ```
 
-> **Warning:** R explicitly reserves the right to change the connection C API without backward compatibility. This module performs a compile-time ABI version check, but future R releases may break it. See [Safety & Version Checking](#safety--version-checking).
+> **Warning:** R explicitly reserves the right to change the connection C API without backward compatibility. This module performs a compile-time ABI version check, but future R releases may break it. See [Safety & Version Checking](#safety-version-checking).
 
 ## Table of Contents
 
@@ -21,8 +21,8 @@ miniextendr-api = { version = "0.1", features = ["connections"] }
 - [The RConnectionImpl Trait](#the-rconnectionimpl-trait)
 - [Builder Pattern](#builder-pattern)
 - [Connection Lifecycle](#connection-lifecycle)
-- [std::io Adapters](#stdio-adapters)
-- [Safety & Version Checking](#safety--version-checking)
+- [std::io Adapters](#std-io-adapters)
+- [Safety & Version Checking](#safety-version-checking)
 - [Capability Probing](#capability-probing)
 - [Error Handling](#error-handling)
 - [Trampoline Architecture](#trampoline-architecture)

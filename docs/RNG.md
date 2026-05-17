@@ -13,8 +13,8 @@ attribute (recommended) and manual RAII guards.
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [The `#[miniextendr(rng)]` Attribute](#the-miniextendrrng-attribute)
-- [Manual Control: RngGuard and with_rng](#manual-control-rngguard-and-with_rng)
+- [The `#[miniextendr(rng)]` Attribute](#the-miniextendr-rng-attribute)
+- [Manual Control: RngGuard and with_rng](#manual-control-rngguard-and-with-rng)
 - [Available RNG Functions](#available-rng-functions)
 - [Combining with Other Attributes](#combining-with-other-attributes)
 - [R Longjumps and Safety](#r-longjumps-and-safety)
