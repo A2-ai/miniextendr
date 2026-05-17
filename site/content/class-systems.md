@@ -151,3 +151,7 @@ impl Counter { /* ... */ }
 #[miniextendr(label = "counter_ext")]
 impl Counter { /* additional methods */ }
 ```
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/class-systems/) for the exhaustive treatment, edge cases, and every feature switch.

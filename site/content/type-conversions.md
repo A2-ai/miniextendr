@@ -132,3 +132,7 @@ pub fn make_point() -> Point {
 | Type preservation | No (all numbers -> f64) | Yes (i32 stays i32) |
 | NA handling | Limited | Full support via `Option<T>` |
 | Performance | Extra parse/stringify | Direct conversion |
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/type-conversions/) for the exhaustive treatment, edge cases, and every feature switch.

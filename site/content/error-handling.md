@@ -101,3 +101,7 @@ Rust panics do not leak.
 - Return `Result<T, String>` for recoverable errors
 - Use `#[miniextendr(unwrap_in_r, no_error_in_r)]` when callers should handle errors in R
 - Never call `Rf_error()` directly (lint rule MXL300 warns about this)
+
+## Full reference
+
+This page is a curated entry point. See the [user manual](/manual/error-handling/) for the exhaustive treatment, edge cases, and every feature switch.
