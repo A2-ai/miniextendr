@@ -41,12 +41,17 @@ pub enum MethodReceiverKind {
 
 impl MethodReceiverKind {
     /// Returns true if this is an instance receiver (any form of `self`).
+    ///
+    /// Mirrors `ReceiverKind::is_instance` in `miniextendr-macros/src/miniextendr_impl.rs`.
+    /// `Value` (consuming `self`) is **excluded** — the macro treats consuming-`self` methods
+    /// separately: they are either constructors (`returns Self` or `#[miniextendr(constructor)]`)
+    /// or finalizers, not ordinary instance calls.  Including `Value` here would produce a
+    /// false-positive for a vctrs method with `#[miniextendr(constructor)]` that consumes `self`.
     pub fn is_instance(self) -> bool {
         matches!(
             self,
             Self::Ref
                 | Self::RefMut
-                | Self::Value
                 | Self::ExternalPtrRef
                 | Self::ExternalPtrRefMut
                 | Self::ExternalPtrValue
@@ -773,38 +778,45 @@ fn detect_receiver_kind(sig: &syn::Signature) -> MethodReceiverKind {
     };
     match first {
         syn::FnArg::Receiver(recv) => {
-            if recv.mutability.is_some() {
-                MethodReceiverKind::RefMut
-            } else if recv.reference.is_some() {
-                MethodReceiverKind::Ref
+            // syn 2.x parses *all* `self` receiver forms as `FnArg::Receiver`, including
+            // the typed forms `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`,
+            // and `self: ExternalPtr<Self>`.  When a colon token is present the receiver
+            // has an explicit type in `recv.ty`; otherwise `recv.reference` / `recv.mutability`
+            // describe the shorthand `(&)(&mut) self`.
+            if recv.colon_token.is_some() {
+                // Typed form: `self: <ty>`.  Classify by inspecting `recv.ty`.
+                match recv.ty.as_ref() {
+                    syn::Type::Reference(r) => {
+                        if is_external_ptr_self_ty(r.elem.as_ref()) {
+                            if r.mutability.is_some() {
+                                MethodReceiverKind::ExternalPtrRefMut
+                            } else {
+                                MethodReceiverKind::ExternalPtrRef
+                            }
+                        } else if r.mutability.is_some() {
+                            MethodReceiverKind::RefMut
+                        } else {
+                            MethodReceiverKind::Ref
+                        }
+                    }
+                    ty if is_external_ptr_self_ty(ty) => MethodReceiverKind::ExternalPtrValue,
+                    _ => MethodReceiverKind::None,
+                }
             } else {
-                MethodReceiverKind::Value
+                // Shorthand form: `self`, `&self`, `&mut self`.
+                if recv.mutability.is_some() {
+                    MethodReceiverKind::RefMut
+                } else if recv.reference.is_some() {
+                    MethodReceiverKind::Ref
+                } else {
+                    MethodReceiverKind::Value
+                }
             }
         }
-        syn::FnArg::Typed(pat_type) => {
-            // Typed `self:` form — check if it matches `ExternalPtr<Self>` variants.
-            let is_self_param = matches!(&*pat_type.pat, syn::Pat::Ident(pi) if pi.ident == "self");
-            if !is_self_param {
-                return MethodReceiverKind::None;
-            }
-            // Inspect the type: `&ExternalPtr<Self>`, `&mut ExternalPtr<Self>`, `ExternalPtr<Self>`
-            match &*pat_type.ty {
-                syn::Type::Reference(r) => {
-                    if is_external_ptr_self_ty(r.elem.as_ref()) {
-                        if r.mutability.is_some() {
-                            MethodReceiverKind::ExternalPtrRefMut
-                        } else {
-                            MethodReceiverKind::ExternalPtrRef
-                        }
-                    } else if r.mutability.is_some() {
-                        MethodReceiverKind::RefMut
-                    } else {
-                        MethodReceiverKind::Ref
-                    }
-                }
-                ty if is_external_ptr_self_ty(ty) => MethodReceiverKind::ExternalPtrValue,
-                _ => MethodReceiverKind::None,
-            }
+        syn::FnArg::Typed(_) => {
+            // In syn 2.x, typed `self:` forms are represented as `FnArg::Receiver`, so
+            // this arm is only reached for genuinely non-`self` parameters.
+            MethodReceiverKind::None
         }
     }
 }
