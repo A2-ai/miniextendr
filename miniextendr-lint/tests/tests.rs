@@ -531,3 +531,184 @@ fn mxl110_r_reserved_word_as_method_param() {
         report.diagnostics
     );
 }
+
+// region: MXL120 — vctrs Self-returning constructor / instance receiver
+
+#[test]
+fn mxl120_vctrs_ctor_returns_self() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(vctrs(vctr))]
+        impl MyVec {
+            pub fn new(values: Vec<f64>) -> Self { MyVec { values } }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL120"),
+        "expected MXL120 error for vctrs ctor returning Self, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl120_vctrs_ctor_returns_result_self() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(vctrs(vctr))]
+        impl MyVec {
+            pub fn new(values: Vec<f64>) -> Result<Self, String> {
+                Ok(MyVec { values })
+            }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL120"),
+        "expected MXL120 error for vctrs ctor returning Result<Self, _>, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl120_vctrs_instance_method_ref_self() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(vctrs(vctr))]
+        impl MyVec {
+            pub fn new(values: Vec<f64>) -> Vec<f64> { values }
+            pub fn value(&self) -> f64 { 0.0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL120"),
+        "expected MXL120 error for vctrs instance method &self, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl120_vctrs_instance_method_external_ptr() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(vctrs(vctr))]
+        impl MyVec {
+            pub fn new(values: Vec<f64>) -> Vec<f64> { values }
+            pub fn value(self: &ExternalPtr<Self>) -> f64 { 0.0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL120"),
+        "expected MXL120 error for vctrs instance method with ExternalPtr<Self> receiver, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl120_no_fire_for_valid_vctrs_impl() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // All-static methods, constructor returns Vec<f64> — clean.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(vctrs(vctr))]
+        impl MyVec {
+            pub fn new(values: Vec<f64>) -> Vec<f64> { values }
+            pub fn scale(amounts: Vec<f64>, factor: f64) -> Vec<f64> {
+                amounts.into_iter().map(|v| v * factor).collect()
+            }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL120"),
+        "MXL120 must not fire on valid vctrs impl, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl120_no_fire_for_r6_ctor_returns_self() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // Non-vctrs class system: MXL120 must NOT fire even if constructor returns Self.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(r6)]
+        impl MyR6 {
+            pub fn new() -> Self { MyR6 {} }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL120"),
+        "MXL120 must not fire on non-vctrs impl (r6), got: {:?}",
+        report.diagnostics
+    );
+}
+
+// endregion

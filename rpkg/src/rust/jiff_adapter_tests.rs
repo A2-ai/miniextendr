@@ -250,8 +250,7 @@ pub fn jiff_zoned_vec_new(zdts: Vec<String>) -> SEXP {
                 .unwrap_or_else(|e| panic!("invalid zoned datetime at index {i} ({s:?}): {e}"))
         })
         .collect();
-    let vec = JiffZonedVec::new(parsed)
-        .unwrap_or_else(|e| panic!("{e}"));
+    let vec = JiffZonedVec::new(parsed).unwrap_or_else(|e| panic!("{e}"));
     vec.into_posixct_sexp()
 }
 
@@ -527,7 +526,9 @@ pub fn jiff_timestamp_as_millisecond(ts: Timestamp) -> f64 {
 static ELT_COUNTER: OnceLock<Arc<AtomicUsize>> = OnceLock::new();
 
 fn elt_counter() -> Arc<AtomicUsize> {
-    ELT_COUNTER.get_or_init(|| Arc::new(AtomicUsize::new(0))).clone()
+    ELT_COUNTER
+        .get_or_init(|| Arc::new(AtomicUsize::new(0)))
+        .clone()
 }
 
 #[derive(miniextendr_api::AltrepReal)]

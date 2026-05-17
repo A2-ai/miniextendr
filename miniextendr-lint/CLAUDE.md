@@ -18,6 +18,7 @@ Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `
 - **MXL110** — parameter name is an R reserved word.
 - **MXL111** — `s4_*` method on `#[miniextendr(s4)]` impl (codegen auto-prefixes — yields `s4_s4_*`).
 - **MXL112** — explicit lifetime param on `#[miniextendr]` fn/impl.
+- **MXL120** — vctrs constructor returns `Self`/named type, or impl has an instance-method receiver (`&self`, `self: &ExternalPtr<Self>`, etc.). Mirrors the proc-macro hard error in `miniextendr-macros`.
 - **MXL203** — redundant `internal` + `noexport`.
 - **MXL300** — direct `Rf_error`/`Rf_errorcall` → replace with `panic!()` (framework converts to R error via tagged-SEXP transport).
 - **MXL301** — `_unchecked` FFI outside known-safe contexts (ALTREP callbacks, `with_r_unwind_protect`, `with_r_thread`).

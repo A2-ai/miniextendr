@@ -136,7 +136,10 @@ pub fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs
                 continue;
             }
 
-            for part in tokens.split(',') {
+            // Parse the flat top-level comma-separated list, skipping nested parens.
+            // This handles `vctrs(kind = "vctr", base = "double", ...)` as a single
+            // top-level item without being tripped up by the inner commas.
+            for part in split_top_level_commas(tokens) {
                 let part = part.trim();
                 if part.is_empty() {
                     continue;
@@ -154,15 +157,63 @@ pub fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs
                     result.noexport = true;
                 } else if part == "strict" {
                     result.strict = true;
-                } else if !part.contains('=') {
-                    // Class system identifier (env, r6, s3, s4, s7)
-                    result.class_system = Some(part.to_string());
+                } else if !part.contains('=') || part.contains('(') {
+                    // Class system identifier: env, r6, s3, s4, s7, vctrs.
+                    // `vctrs` may appear as `vctrs(kind = "vctr", ...)` — keep
+                    // only the leading identifier before any `(`.
+                    let base = part
+                        .find(|c: char| !c.is_alphanumeric() && c != '_')
+                        .map(|i| &part[..i])
+                        .unwrap_or(part);
+                    if !base.is_empty() {
+                        result.class_system = Some(base.to_string());
+                    }
                 }
             }
         }
     }
 
     result
+}
+
+/// Split a token string on top-level commas (ignoring commas inside `(...)` groups).
+fn split_top_level_commas(s: &str) -> impl Iterator<Item = &str> {
+    SplitTopLevelCommas { remaining: s }
+}
+
+struct SplitTopLevelCommas<'a> {
+    remaining: &'a str,
+}
+
+impl<'a> Iterator for SplitTopLevelCommas<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<&'a str> {
+        if self.remaining.is_empty() {
+            return None;
+        }
+        let mut depth: usize = 0;
+        let mut in_str = false;
+        let bytes = self.remaining.as_bytes();
+        for (i, &b) in bytes.iter().enumerate() {
+            match b {
+                b'"' if !in_str => in_str = true,
+                b'"' if in_str => in_str = false,
+                b'(' | b'[' | b'{' if !in_str => depth += 1,
+                b')' | b']' | b'}' if !in_str && depth > 0 => depth -= 1,
+                b',' if !in_str && depth == 0 => {
+                    let item = &self.remaining[..i];
+                    self.remaining = &self.remaining[i + 1..];
+                    return Some(item);
+                }
+                _ => {}
+            }
+        }
+        // Last item (no trailing comma)
+        let item = self.remaining;
+        self.remaining = "";
+        Some(item)
+    }
 }
 
 /// Extract `#[path = "..."]` attribute value from a module declaration.

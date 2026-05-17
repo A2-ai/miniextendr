@@ -15,6 +15,74 @@ use crate::helpers::{
     is_altrep_struct, parse_miniextendr_impl_attrs,
 };
 
+// region: Impl method entry
+
+/// Receiver kind for an impl method, mirroring `ReceiverKind` in `miniextendr-macros`.
+///
+/// Mirror: `miniextendr-macros/src/miniextendr_impl.rs` — `ReceiverKind`.
+/// Keep both in sync: if the macro relaxes one receiver kind, update this enum too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MethodReceiverKind {
+    /// No self — static / associated function.
+    None,
+    /// `&self`
+    Ref,
+    /// `&mut self`
+    RefMut,
+    /// `self` (consuming)
+    Value,
+    /// `self: &ExternalPtr<Self>`
+    ExternalPtrRef,
+    /// `self: &mut ExternalPtr<Self>`
+    ExternalPtrRefMut,
+    /// `self: ExternalPtr<Self>`
+    ExternalPtrValue,
+}
+
+impl MethodReceiverKind {
+    /// Returns true if this is an instance receiver (any form of `self`).
+    pub fn is_instance(self) -> bool {
+        matches!(
+            self,
+            Self::Ref
+                | Self::RefMut
+                | Self::Value
+                | Self::ExternalPtrRef
+                | Self::ExternalPtrRefMut
+                | Self::ExternalPtrValue
+        )
+    }
+
+    /// Human-readable spelling used in diagnostic messages.
+    pub fn spelling(self) -> &'static str {
+        match self {
+            Self::None => "(none)",
+            Self::Ref => "&self",
+            Self::RefMut => "&mut self",
+            Self::Value => "self",
+            Self::ExternalPtrRef => "self: &ExternalPtr<Self>",
+            Self::ExternalPtrRefMut => "self: &mut ExternalPtr<Self>",
+            Self::ExternalPtrValue => "self: ExternalPtr<Self>",
+        }
+    }
+}
+
+/// Per-method data collected during the crate-index pass for impl-method lint rules.
+#[derive(Clone, Debug)]
+pub struct ImplMethodEntry {
+    pub method_name: String,
+    pub line: usize,
+    pub class_system: String,
+    /// Stringified return type tokens (empty string = `()` / no explicit return).
+    pub return_type_str: String,
+    /// Receiver kind detected from the method signature.
+    pub receiver_kind: MethodReceiverKind,
+    /// True when the method carries `#[miniextendr(constructor)]`.
+    pub has_constructor_attr: bool,
+}
+
+// endregion
+
 // region: Lint item types
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -114,8 +182,8 @@ pub struct FileData {
     pub export_control: HashMap<String, (bool, bool, usize)>,
 
     // Impl method details for per-method lint rules
-    /// Methods per inherent impl type: type_name → Vec<(method_name, line, class_system)>.
-    pub impl_methods: HashMap<String, Vec<(String, usize, String)>>,
+    /// Methods per inherent impl type: type_name → Vec<ImplMethodEntry>.
+    pub impl_methods: HashMap<String, Vec<ImplMethodEntry>>,
 
     // Doc-comment roxygen tags per function/impl name
     /// Known roxygen tags: "@noRd", "@export", "@keywords internal"
@@ -538,18 +606,26 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                     line,
                                 ));
 
-                                // Collect method names for per-method rules (e.g. MXL111)
+                                // Collect method names for per-method rules (e.g. MXL111, MXL120)
                                 let methods =
                                     data.impl_methods.entry(type_name.clone()).or_default();
                                 for impl_item in &item_impl.items {
                                     if let syn::ImplItem::Fn(method) = impl_item {
                                         let method_name = method.sig.ident.to_string();
                                         let method_line = method.sig.ident.span().start().line;
-                                        methods.push((
+                                        let return_type_str =
+                                            extract_return_type_str(&method.sig.output);
+                                        let receiver_kind = detect_receiver_kind(&method.sig);
+                                        let has_constructor_attr =
+                                            has_constructor_attr(&method.attrs);
+                                        methods.push(ImplMethodEntry {
                                             method_name,
-                                            method_line,
-                                            class_system.clone(),
-                                        ));
+                                            line: method_line,
+                                            class_system: class_system.clone(),
+                                            return_type_str,
+                                            receiver_kind,
+                                            has_constructor_attr,
+                                        });
                                     }
                                 }
 
@@ -672,6 +748,116 @@ fn scan_ffi_unchecked_calls(lines: &[&str], data: &mut FileData) {
         }
     }
 }
+
+// region: Impl method helpers (MXL120 and future per-method rules)
+
+/// Stringify a `syn::ReturnType` to a compact token string.
+///
+/// Returns an empty string for `-> ()` / no explicit return (both mean unit).
+fn extract_return_type_str(output: &syn::ReturnType) -> String {
+    use quote::ToTokens;
+    match output {
+        syn::ReturnType::Default => String::new(),
+        syn::ReturnType::Type(_, ty) => ty.to_token_stream().to_string(),
+    }
+}
+
+/// Detect the receiver kind from a method signature.
+///
+/// Mirror: `miniextendr-macros/src/miniextendr_impl.rs` — `detect_receiver_kind`.
+/// Keep both in sync: if the macro adds a new receiver variant, update this function too.
+fn detect_receiver_kind(sig: &syn::Signature) -> MethodReceiverKind {
+    let first = match sig.inputs.first() {
+        Some(arg) => arg,
+        None => return MethodReceiverKind::None,
+    };
+    match first {
+        syn::FnArg::Receiver(recv) => {
+            if recv.mutability.is_some() {
+                MethodReceiverKind::RefMut
+            } else if recv.reference.is_some() {
+                MethodReceiverKind::Ref
+            } else {
+                MethodReceiverKind::Value
+            }
+        }
+        syn::FnArg::Typed(pat_type) => {
+            // Typed `self:` form — check if it matches `ExternalPtr<Self>` variants.
+            let is_self_param = matches!(&*pat_type.pat, syn::Pat::Ident(pi) if pi.ident == "self");
+            if !is_self_param {
+                return MethodReceiverKind::None;
+            }
+            // Inspect the type: `&ExternalPtr<Self>`, `&mut ExternalPtr<Self>`, `ExternalPtr<Self>`
+            match &*pat_type.ty {
+                syn::Type::Reference(r) => {
+                    if is_external_ptr_self_ty(r.elem.as_ref()) {
+                        if r.mutability.is_some() {
+                            MethodReceiverKind::ExternalPtrRefMut
+                        } else {
+                            MethodReceiverKind::ExternalPtrRef
+                        }
+                    } else if r.mutability.is_some() {
+                        MethodReceiverKind::RefMut
+                    } else {
+                        MethodReceiverKind::Ref
+                    }
+                }
+                ty if is_external_ptr_self_ty(ty) => MethodReceiverKind::ExternalPtrValue,
+                _ => MethodReceiverKind::None,
+            }
+        }
+    }
+}
+
+/// Returns true if `ty` is `ExternalPtr<Self>` (last path segment = `ExternalPtr`,
+/// single type argument = `Self`).
+fn is_external_ptr_self_ty(ty: &syn::Type) -> bool {
+    let syn::Type::Path(p) = ty else {
+        return false;
+    };
+    let Some(last) = p.path.segments.last() else {
+        return false;
+    };
+    if last.ident != "ExternalPtr" {
+        return false;
+    }
+    let syn::PathArguments::AngleBracketed(ref args) = last.arguments else {
+        return false;
+    };
+    matches!(
+        args.args.first(),
+        Some(syn::GenericArgument::Type(syn::Type::Path(tp)))
+            if tp.path.is_ident("Self")
+    )
+}
+
+/// Returns true when the attribute list contains `#[miniextendr(constructor)]` or
+/// `#[miniextendr(r6(constructor))]` / `#[miniextendr(s3(constructor))]` etc.
+fn has_constructor_attr(attrs: &[syn::Attribute]) -> bool {
+    for attr in attrs {
+        if attr
+            .path()
+            .segments
+            .last()
+            .is_none_or(|seg| seg.ident != "miniextendr")
+        {
+            continue;
+        }
+        if let syn::Meta::List(meta_list) = &attr.meta {
+            let tokens = meta_list.tokens.to_string();
+            // Accept both `constructor` at top level and inside `r6(...)`, `s3(...)`, etc.
+            if tokens
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .any(|t| t == "constructor")
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// endregion
 
 /// Scan raw source text for direct Rf_error/Rf_errorcall calls.
 fn scan_rf_error_calls(lines: &[&str], data: &mut FileData) {

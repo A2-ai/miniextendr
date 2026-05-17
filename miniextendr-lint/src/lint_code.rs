@@ -27,6 +27,11 @@ pub enum LintCode {
     MXL111,
     /// Explicit lifetime parameter on `#[miniextendr]` fn or impl — use owned types instead.
     MXL112,
+    /// vctrs constructor returns `Self` / named type, or impl has an instance-method receiver.
+    ///
+    /// Mirror: `miniextendr-macros/src/miniextendr_impl.rs` (proc-macro hard error).
+    /// Both checks must fire on the same source; keep them in sync.
+    MXL120,
     // endregion
 
     // region: P1: Important
@@ -59,6 +64,10 @@ impl LintCode {
 
             // Codegen-breaking: reserved words produce syntactically invalid R wrappers.
             Self::MXL110 => Severity::Error,
+
+            // Runtime-breaking: vctrs constructors returning Self produce EXTPTRSXP
+            // which vctrs::new_vctr() rejects; instance-method receivers panic at runtime.
+            Self::MXL120 => Severity::Error,
 
             // Everything else is a warning.
             Self::MXL106
