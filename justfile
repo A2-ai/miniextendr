@@ -579,9 +579,26 @@ devtools-build: configure vendor
 devtools-check: devtools-document
     Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
-# Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages)
+# Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages).
 # R wrappers are generated automatically by Makevars during R CMD INSTALL.
+#
+# Short-circuits via roxygen2::needs_roxygenize() — skips the full roxygenize
+# pass when no R source, NAMESPACE, or man/* mtime changes are detected.
+#
+# CAVEAT — macro-layer cache misses: needs_roxygenize() tracks R-source mtimes
+# only. When the proc-macro changes how it serialises a tag (e.g. a new wrapper
+# attribute), those changes flow through rcmdinstall → wrappers.R mtime update,
+# which roxygen2 does detect. However, if you change miniextendr-macros/** and
+# then run devtools-document WITHOUT first running rcmdinstall, the skip fires
+# incorrectly. Rule: after any Rust/macro change, always run:
+#   just rcmdinstall && just force-document
 devtools-document: configure-fast
+    Rscript -e 'if (roxygen2::needs_roxygenize("rpkg")) { devtools::document("rpkg") } else { cat("devtools-document: man/ up to date — skipping (use `just force-document` to override)\n") }'
+
+# Force-document rpkg unconditionally — bypasses the needs_roxygenize() check.
+# Use after Rust/macro changes where the mtime cache may not have caught up:
+#   just rcmdinstall && just force-document
+force-document: configure-fast
     Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace
