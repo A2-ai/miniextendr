@@ -1032,6 +1032,21 @@ impl List {
             List(list.get())
         }
     }
+
+    /// Build an empty named-list SEXP (zero elements, `names` attribute set).
+    ///
+    /// Equivalent to [`Self::from_raw_pairs`]`(vec![])`, but avoids the
+    /// `Vec<(&str, SEXP)>` type annotation that Rust requires at empty-vector
+    /// callsites where type inference cannot resolve the element type.
+    ///
+    /// Codegen paths that emit an empty `from_raw_pairs` call (e.g. unit-variant
+    /// partitions in `#[derive(DataFrameRow)]`) use this helper so that a future
+    /// signature change to `from_raw_pairs` only needs to be updated in one
+    /// place.
+    #[must_use]
+    pub fn from_raw_pairs_empty() -> Self {
+        Self::from_raw_pairs(Vec::<(&str, SEXP)>::new())
+    }
 }
 
 impl IntoR for List {

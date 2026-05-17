@@ -1905,9 +1905,7 @@ fn generate_split_method(
                 });
 
                 df_constructions.push(quote! {
-                    let #df_var = ::miniextendr_api::list::List::from_raw_pairs(
-                        Vec::<(&str, ::miniextendr_api::ffi::SEXP)>::new()
-                    )
+                    let #df_var = ::miniextendr_api::list::List::from_raw_pairs_empty()
                     .set_class_str(&["data.frame"])
                     .set_row_names_int(#count_var);
                 });
