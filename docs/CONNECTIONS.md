@@ -9,7 +9,7 @@ R connections are the standard abstraction for I/O in R -- `readLines()`, `write
 miniextendr-api = { version = "0.1", features = ["connections"] }
 ```
 
-> **Warning:** R explicitly reserves the right to change the connection C API without backward compatibility. This module performs a compile-time ABI version check, but future R releases may break it. See [Safety & Version Checking](#safety--version-checking).
+> **Warning:** R explicitly reserves the right to change the connection C API without backward compatibility. This module performs a compile-time ABI version check, but future R releases may break it. See [Safety & Version Checking](#safety-version-checking).
 
 ## Table of Contents
 
