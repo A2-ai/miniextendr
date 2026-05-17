@@ -149,6 +149,18 @@ test_that("RecordBatch handles mixed types", {
   expect_true(is.na(result$chr[2]))
 })
 
+test_that("RecordBatch rejects ragged columns with offending name in error", {
+  # Pass a named list (VECSXP) with columns of unequal lengths.
+  # The pre-validation in TryFromSexp for RecordBatch should catch this and
+  # name the offending column before RecordBatch::try_new sees it.
+  ragged <- list(x = c(1.0, 2.0, 3.0), y = c(10L, 20L))
+  expect_error(
+    arrow_recordbatch_roundtrip(ragged),
+    regexp = "'y'",
+    fixed = FALSE
+  )
+})
+
 # endregion
 
 # region: ArrayRef (dynamic dispatch)

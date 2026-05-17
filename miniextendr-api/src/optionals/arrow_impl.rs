@@ -360,6 +360,18 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
 ///
 /// Must be called on R's main thread.
 ///
+/// # Allocation failure
+///
+/// If `Rf_allocVector` cannot satisfy the request, R longjmps from inside
+/// the allocation. `R_UnwindProtect` catches the longjmp, the framework
+/// recognises the R-origin path via `RErrorMarker`, and `R_ContinueUnwind`
+/// re-raises R's original `Error: vector memory exhausted (limit reached?)`
+/// verbatim. The error message is R's, not Rust's — no tagged-SEXP synthesis
+/// happens on this path (cf. `with_r_unwind_protect_error_in_r`). The two
+/// `.expect()` calls in the body are therefore unreachable in production —
+/// they guard against logic errors (wrong `len` encoding or unexpected null
+/// pointer), not against OOM.
+///
 /// # Example
 ///
 /// ```ignore
@@ -1024,6 +1036,23 @@ impl TryFromSexp for RecordBatch {
             let (field, array) = sexp_column_to_arrow(col_sexp, name)?;
             fields.push(field);
             columns.push(array);
+        }
+
+        // Validate that all columns have the same length before calling
+        // RecordBatch::try_new, which would otherwise emit a generic error.
+        if let Some(first) = columns.first() {
+            let nrow = first.len();
+            for (i, col) in columns.iter().enumerate().skip(1) {
+                if col.len() != nrow {
+                    return Err(SexpError::InvalidValue(format!(
+                        "column '{}' has length {} but column '{}' has length {}",
+                        names[i],
+                        col.len(),
+                        names[0],
+                        nrow,
+                    )));
+                }
+            }
         }
 
         let schema = Arc::new(Schema::new(fields));
