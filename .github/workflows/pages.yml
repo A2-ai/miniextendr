@@ -55,10 +55,17 @@ jobs:
       # ../../vendor/miniextendr-api etc. Populate vendor/ so the
       # patch paths resolve. `just vendor` calls `cargo revendor` directly;
       # does NOT need autoconf or `just configure` (no Rscript, no Makevars).
+      #
+      # The rpkg rustdoc build requires `just vendor` (autoconf + cargo-revendor
+      # + R headers) and adds ~5 min plus failure points. Mark these steps
+      # continue-on-error so the site still deploys when rpkg-specific tooling
+      # regresses; workspace rustdoc + Zola build remain strict (#79).
       - name: Install cargo-revendor
+        continue-on-error: true
         run: cargo install --path cargo-revendor
 
       - name: Restore rpkg vendor directory cache
+        continue-on-error: true
         id: rpkg-vendor-cache
         uses: actions/cache/restore@v5
         with:
@@ -66,14 +73,17 @@ jobs:
           key: ${{ runner.os }}-rpkg-vendor-${{ hashFiles('Cargo.lock', 'rpkg/src/rust/Cargo.lock', 'miniextendr-api/**/*.rs', 'miniextendr-macros/**/*.rs', 'miniextendr-lint/**/*.rs') }}
 
       - name: Install just
+        continue-on-error: true
         if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@just
 
       - name: Generate rpkg/vendor
+        continue-on-error: true
         if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
         run: just vendor
 
       - name: Save rpkg vendor directory cache
+        continue-on-error: true
         if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
@@ -81,6 +91,7 @@ jobs:
           key: ${{ steps.rpkg-vendor-cache.outputs.cache-primary-key }}
 
       - name: Build rustdoc (rpkg)
+        continue-on-error: true
         env:
           RUSTFLAGS: --cfg=docsrs
           RUSTDOCFLAGS: >-
@@ -97,6 +108,7 @@ jobs:
       # build produced with --enable-index-page. After merging, regenerate
       # crates.js so the workspace index links to rpkg crates too.
       - name: Merge rpkg rustdoc into main docs
+        continue-on-error: true
         run: |
           if [ -d rpkg/src/rust/target/doc ]; then
             # Copy rpkg crate directories but preserve workspace index.html,
