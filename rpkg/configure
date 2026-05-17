@@ -2636,6 +2636,91 @@ printf '%s\n' "$as_me: monorepo siblings    = $MONOREPO_ROOT (source-mode patch 
   fi
 fi
 
+
+CARGO_ENV_RUST_TARGET="$CARGO_BUILD_TARGET"
+if test -z "$CARGO_ENV_RUST_TARGET"; then
+  CARGO_ENV_RUST_TARGET=`"$RUSTC" -vV 2>/dev/null | $SED -n 's/^host: //p'`
+fi
+
+CARGO_ENV_RUST_TARGET_UPPER=`echo "$CARGO_ENV_RUST_TARGET" | tr 'a-z-' 'A-Z_'`
+
+CARGO_ENV_MACOS_DEPLOY_TARGET=""
+CARGO_ENV_MACOS_DEPLOY_SOURCE=""
+case "$host_os" in
+  darwin*)
+                if test -n "${MACOSX_DEPLOYMENT_TARGET}"; then
+      CARGO_ENV_MACOS_DEPLOY_TARGET="$MACOSX_DEPLOYMENT_TARGET"
+      CARGO_ENV_MACOS_DEPLOY_SOURCE="shell env"
+    fi
+
+            if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      for _cfg_key in CC CXX FC; do
+        _flag_val=`"${R_HOME}/bin/R" CMD config "$_cfg_key" 2>/dev/null \
+          | $SED -n 's/.*-mmacox*-version-min=\([0-9]*\.[0-9]*\).*/\1/p' \
+          | head -n1`
+        if test -n "$_flag_val"; then
+          CARGO_ENV_MACOS_DEPLOY_TARGET="$_flag_val"
+          CARGO_ENV_MACOS_DEPLOY_SOURCE="R CMD config $_cfg_key"
+          break
+        fi
+      done
+    fi
+
+            if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      if command -v otool >/dev/null 2>&1; then
+        _otool_val=`otool -l "${R_HOME}/bin/exec/R" 2>/dev/null \
+          | awk '/LC_BUILD_VERSION/ {found=1} found && /minos/ {print $2; exit}'`
+        if test -n "$_otool_val"; then
+          CARGO_ENV_MACOS_DEPLOY_TARGET="$_otool_val"
+          CARGO_ENV_MACOS_DEPLOY_SOURCE="otool LC_BUILD_VERSION"
+        fi
+      fi
+    fi
+
+            if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      case "$host_cpu" in
+        arm64|aarch64) CARGO_ENV_MACOS_DEPLOY_TARGET="14.0" ;;
+        *)             CARGO_ENV_MACOS_DEPLOY_TARGET="11.0" ;;
+      esac
+      CARGO_ENV_MACOS_DEPLOY_SOURCE="arch default ($host_cpu)"
+    fi
+
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: MACOSX_DEPLOYMENT_TARGET = $CARGO_ENV_MACOS_DEPLOY_TARGET (source: $CARGO_ENV_MACOS_DEPLOY_SOURCE)" >&5
+printf '%s\n' "$as_me: MACOSX_DEPLOYMENT_TARGET = $CARGO_ENV_MACOS_DEPLOY_TARGET (source: $CARGO_ENV_MACOS_DEPLOY_SOURCE)" >&6;}
+    ;;
+esac
+
+CARGO_ENV_WIN_LINKER=""
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    _r_cc=`"${R_HOME}/bin/R" CMD config CC 2>/dev/null | awk '{print $1}'`
+    if test -n "$_r_cc"; then
+      _r_cc_bindir=`dirname "$_r_cc"`
+      for _gcc_cand in "$_r_cc_bindir/gcc.exe" "$_r_cc_bindir/gcc"; do
+        if test -x "$_gcc_cand"; then
+                                        _gcc_native="$_gcc_cand"
+          if test "x$CYGPATH" != "xno"; then
+            _gcc_native=`"$CYGPATH" -m "$_gcc_cand" 2>/dev/null || echo "$_gcc_cand"`
+          fi
+          CARGO_ENV_WIN_LINKER="$_gcc_native"
+          break
+        fi
+      done
+    fi
+    if test -n "$CARGO_ENV_WIN_LINKER"; then
+      { printf '%s\n' "$as_me:${as_lineno-$LINENO}: rtools linker        = $CARGO_ENV_WIN_LINKER" >&5
+printf '%s\n' "$as_me: rtools linker        = $CARGO_ENV_WIN_LINKER" >&6;}
+    else
+      { printf '%s\n' "$as_me:${as_lineno-$LINENO}: rtools linker        = (not detected — cargo will use default gcc on PATH)" >&5
+printf '%s\n' "$as_me: rtools linker        = (not detected — cargo will use default gcc on PATH)" >&6;}
+    fi
+    ;;
+esac
+
+CARGO_ENV_R_AR=`"${R_HOME}/bin/R" CMD config AR 2>/dev/null`
+CARGO_ENV_R_RANLIB=`"${R_HOME}/bin/R" CMD config RANLIB 2>/dev/null`
+
+
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
 ac_config_files="$ac_config_files src/Makevars:src/Makevars.in src/$PACKAGE_NAME-win.def:src/win.def.in"
@@ -3319,6 +3404,12 @@ IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
  MONOREPO_ROOT_CARGO="$MONOREPO_ROOT_CARGO"
  VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
+ CARGO_ENV_MACOS_DEPLOY_TARGET="$CARGO_ENV_MACOS_DEPLOY_TARGET"
+ CARGO_ENV_WIN_LINKER="$CARGO_ENV_WIN_LINKER"
+ CARGO_ENV_RUST_TARGET="$CARGO_ENV_RUST_TARGET"
+ CARGO_ENV_RUST_TARGET_UPPER="$CARGO_ENV_RUST_TARGET_UPPER"
+ CARGO_ENV_R_AR="$CARGO_ENV_R_AR"
+ CARGO_ENV_R_RANLIB="$CARGO_ENV_R_RANLIB"
  SED="$SED"
 IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
  R_HOME="$R_HOME"
@@ -3776,12 +3867,38 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
   RPKG_CFG="src/rust/.cargo/config.toml"
   rm -f "$RPKG_CFG"
 
+                  emit_env_block() {
+    echo "[env]"
+    if test -n "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
+      echo "MACOSX_DEPLOYMENT_TARGET = \"$CARGO_ENV_MACOS_DEPLOY_TARGET\""
+    fi
+    if test -n "$CARGO_ENV_WIN_LINKER"; then
+      case "$CARGO_ENV_RUST_TARGET_UPPER" in
+        *AARCH64*WINDOWS*)
+          echo "CARGO_TARGET_AARCH64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
+          ;;
+        *)
+          echo "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
+          ;;
+      esac
+    fi
+    echo 'CARGO_NET_GIT_FETCH_WITH_CLI = "true"'
+    if test -n "$CARGO_ENV_R_AR" && test "$CARGO_ENV_R_AR" != "ar"; then
+      echo "AR_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_AR\""
+    fi
+    if test -n "$CARGO_ENV_R_RANLIB" && test "$CARGO_ENV_R_RANLIB" != "ranlib"; then
+      echo "RANLIB_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_RANLIB\""
+    fi
+    echo ""
+  }
+
   if test "$IS_TARBALL_INSTALL" = "true"; then
     {
       echo "# Autogenerated by configure — DO NOT EDIT"
       echo "# Tarball install: redirect crates.io and the miniextendr git source"
       echo "# to the unpacked inst/vendor.tar.xz."
       echo ""
+      emit_env_block
       echo "[source.crates-io]"
       echo 'replace-with = "vendored-sources"'
       echo ""
@@ -3805,6 +3922,7 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
       echo "# Source install (monorepo): patch the miniextendr git source to"
       echo "# resolve against local workspace crates."
       echo ""
+      emit_env_block
       echo '[patch."https://github.com/A2-ai/miniextendr"]'
       echo "miniextendr-api    = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-api\" }"
       echo "miniextendr-lint   = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-lint\" }"
@@ -3822,6 +3940,7 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
       echo "# declared in Cargo.toml. First build downloads, subsequent"
       echo "# builds use cargo's git cache."
       echo ""
+      emit_env_block
       echo "[build]"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
