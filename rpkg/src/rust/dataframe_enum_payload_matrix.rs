@@ -28,13 +28,8 @@ use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum VecOpaqueEvent {
-    Items {
-        label: String,
-        items: Vec<i32>,
-    },
-    NoItems {
-        label: String,
-    },
+    Items { label: String, items: Vec<i32> },
+    NoItems { label: String },
 }
 
 fn vec_opaque_payload(label: &str, items: Vec<i32>) -> VecOpaqueEvent {
@@ -93,13 +88,8 @@ pub fn vec_opaque_split_nvnr() -> List {
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum HashSetEvent {
-    Tagged {
-        id: i32,
-        tags: HashSet<String>,
-    },
-    Untagged {
-        id: i32,
-    },
+    Tagged { id: i32, tags: HashSet<String> },
+    Untagged { id: i32 },
 }
 
 fn hashset_payload(id: i32, tags: &[&str]) -> HashSetEvent {
@@ -158,13 +148,8 @@ pub fn hashset_split_nvnr() -> List {
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum BTreeSetEvent {
-    Cats {
-        label: String,
-        cats: BTreeSet<i32>,
-    },
-    NoCats {
-        label: String,
-    },
+    Cats { label: String, cats: BTreeSet<i32> },
+    NoCats { label: String },
 }
 
 fn btreeset_payload(label: &str, cats: &[i32]) -> BTreeSetEvent {
@@ -514,16 +499,25 @@ pub enum BorrowedStrEvent<'a> {
 
 #[miniextendr]
 pub fn borrowed_str_split_1v1r() -> List {
-    let data: Vec<BorrowedStrEvent<'static>> = vec![BorrowedStrEvent::Named { id: 1, name: "alice" }];
+    let data: Vec<BorrowedStrEvent<'static>> = vec![BorrowedStrEvent::Named {
+        id: 1,
+        name: "alice",
+    }];
     BorrowedStrEvent::to_dataframe_split(data)
 }
 
 #[miniextendr]
 pub fn borrowed_str_split_1vnr() -> List {
     let data: Vec<BorrowedStrEvent<'static>> = vec![
-        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Named {
+            id: 1,
+            name: "alice",
+        },
         BorrowedStrEvent::Named { id: 2, name: "bob" },
-        BorrowedStrEvent::Named { id: 3, name: "carol" },
+        BorrowedStrEvent::Named {
+            id: 3,
+            name: "carol",
+        },
     ];
     BorrowedStrEvent::to_dataframe_split(data)
 }
@@ -531,7 +525,10 @@ pub fn borrowed_str_split_1vnr() -> List {
 #[miniextendr]
 pub fn borrowed_str_split_nv1r() -> List {
     let data: Vec<BorrowedStrEvent<'static>> = vec![
-        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Named {
+            id: 1,
+            name: "alice",
+        },
         BorrowedStrEvent::Bare { id: 2 },
     ];
     BorrowedStrEvent::to_dataframe_split(data)
@@ -540,9 +537,15 @@ pub fn borrowed_str_split_nv1r() -> List {
 #[miniextendr]
 pub fn borrowed_str_align_nvnr() -> ToDataFrame<BorrowedStrEventDataFrame<'static>> {
     ToDataFrame(BorrowedStrEvent::to_dataframe(vec![
-        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Named {
+            id: 1,
+            name: "alice",
+        },
         BorrowedStrEvent::Bare { id: 2 },
-        BorrowedStrEvent::Named { id: 3, name: "carol" },
+        BorrowedStrEvent::Named {
+            id: 3,
+            name: "carol",
+        },
         BorrowedStrEvent::Bare { id: 4 },
     ]))
 }
@@ -550,9 +553,15 @@ pub fn borrowed_str_align_nvnr() -> ToDataFrame<BorrowedStrEventDataFrame<'stati
 #[miniextendr]
 pub fn borrowed_str_split_nvnr() -> List {
     let data: Vec<BorrowedStrEvent<'static>> = vec![
-        BorrowedStrEvent::Named { id: 1, name: "alice" },
+        BorrowedStrEvent::Named {
+            id: 1,
+            name: "alice",
+        },
         BorrowedStrEvent::Bare { id: 2 },
-        BorrowedStrEvent::Named { id: 3, name: "carol" },
+        BorrowedStrEvent::Named {
+            id: 3,
+            name: "carol",
+        },
         BorrowedStrEvent::Bare { id: 4 },
     ];
     BorrowedStrEvent::to_dataframe_split(data)
@@ -571,17 +580,28 @@ pub enum BorrowedSliceEvent<'a> {
 
 #[miniextendr]
 pub fn borrowed_slice_split_1v1r() -> List {
-    let data: Vec<BorrowedSliceEvent<'static>> =
-        vec![BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] }];
+    let data: Vec<BorrowedSliceEvent<'static>> = vec![BorrowedSliceEvent::Buffer {
+        label: "a".into(),
+        data: &[1.0, 2.0, 3.0],
+    }];
     BorrowedSliceEvent::to_dataframe_split(data)
 }
 
 #[miniextendr]
 pub fn borrowed_slice_split_1vnr() -> List {
     let data: Vec<BorrowedSliceEvent<'static>> = vec![
-        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
-        BorrowedSliceEvent::Buffer { label: "b".into(), data: &[4.0] },
-        BorrowedSliceEvent::Buffer { label: "c".into(), data: &[] },
+        BorrowedSliceEvent::Buffer {
+            label: "a".into(),
+            data: &[1.0, 2.0, 3.0],
+        },
+        BorrowedSliceEvent::Buffer {
+            label: "b".into(),
+            data: &[4.0],
+        },
+        BorrowedSliceEvent::Buffer {
+            label: "c".into(),
+            data: &[],
+        },
     ];
     BorrowedSliceEvent::to_dataframe_split(data)
 }
@@ -589,7 +609,10 @@ pub fn borrowed_slice_split_1vnr() -> List {
 #[miniextendr]
 pub fn borrowed_slice_split_nv1r() -> List {
     let data: Vec<BorrowedSliceEvent<'static>> = vec![
-        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
+        BorrowedSliceEvent::Buffer {
+            label: "a".into(),
+            data: &[1.0, 2.0, 3.0],
+        },
         BorrowedSliceEvent::NoBuffer { label: "b".into() },
     ];
     BorrowedSliceEvent::to_dataframe_split(data)
@@ -598,9 +621,15 @@ pub fn borrowed_slice_split_nv1r() -> List {
 #[miniextendr]
 pub fn borrowed_slice_align_nvnr() -> ToDataFrame<BorrowedSliceEventDataFrame<'static>> {
     ToDataFrame(BorrowedSliceEvent::to_dataframe(vec![
-        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
+        BorrowedSliceEvent::Buffer {
+            label: "a".into(),
+            data: &[1.0, 2.0, 3.0],
+        },
         BorrowedSliceEvent::NoBuffer { label: "b".into() },
-        BorrowedSliceEvent::Buffer { label: "c".into(), data: &[4.0] },
+        BorrowedSliceEvent::Buffer {
+            label: "c".into(),
+            data: &[4.0],
+        },
         BorrowedSliceEvent::NoBuffer { label: "d".into() },
     ]))
 }
@@ -608,9 +637,15 @@ pub fn borrowed_slice_align_nvnr() -> ToDataFrame<BorrowedSliceEventDataFrame<'s
 #[miniextendr]
 pub fn borrowed_slice_split_nvnr() -> List {
     let data: Vec<BorrowedSliceEvent<'static>> = vec![
-        BorrowedSliceEvent::Buffer { label: "a".into(), data: &[1.0, 2.0, 3.0] },
+        BorrowedSliceEvent::Buffer {
+            label: "a".into(),
+            data: &[1.0, 2.0, 3.0],
+        },
         BorrowedSliceEvent::NoBuffer { label: "b".into() },
-        BorrowedSliceEvent::Buffer { label: "c".into(), data: &[4.0] },
+        BorrowedSliceEvent::Buffer {
+            label: "c".into(),
+            data: &[4.0],
+        },
         BorrowedSliceEvent::NoBuffer { label: "d".into() },
     ];
     BorrowedSliceEvent::to_dataframe_split(data)
@@ -1025,7 +1060,10 @@ mod tests {
             df.tally_keys[0].as_deref(),
             Some(vec!["a".to_string(), "z".to_string()].as_slice())
         );
-        assert_eq!(df.tally_values[0].as_deref(), Some(vec![1i32, 3i32].as_slice()));
+        assert_eq!(
+            df.tally_values[0].as_deref(),
+            Some(vec![1i32, 3i32].as_slice())
+        );
     }
 
     #[test]
@@ -1099,9 +1137,18 @@ pub fn struct_flatten_split_1v1r() -> List {
 #[miniextendr]
 pub fn struct_flatten_split_1vnr() -> List {
     StructFlattenEvent::to_dataframe_split(vec![
-        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
-        StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
-        StructFlattenEvent::Located { id: 3, origin: Point { x: 5.0, y: 6.0 } },
+        StructFlattenEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
+        StructFlattenEvent::Located {
+            id: 2,
+            origin: Point { x: 3.0, y: 4.0 },
+        },
+        StructFlattenEvent::Located {
+            id: 3,
+            origin: Point { x: 5.0, y: 6.0 },
+        },
     ])
 }
 
@@ -1109,7 +1156,10 @@ pub fn struct_flatten_split_1vnr() -> List {
 #[miniextendr]
 pub fn struct_flatten_split_nv1r() -> List {
     StructFlattenEvent::to_dataframe_split(vec![
-        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructFlattenEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
         StructFlattenEvent::Other { id: 2 },
     ])
 }
@@ -1118,8 +1168,14 @@ pub fn struct_flatten_split_nv1r() -> List {
 #[miniextendr]
 pub fn struct_flatten_split_nvnr() -> List {
     StructFlattenEvent::to_dataframe_split(vec![
-        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
-        StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructFlattenEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
+        StructFlattenEvent::Located {
+            id: 2,
+            origin: Point { x: 3.0, y: 4.0 },
+        },
         StructFlattenEvent::Other { id: 3 },
         StructFlattenEvent::Other { id: 4 },
     ])
@@ -1129,8 +1185,14 @@ pub fn struct_flatten_split_nvnr() -> List {
 #[miniextendr]
 pub fn struct_flatten_align_nvnr() -> ToDataFrame<StructFlattenEventDataFrame> {
     ToDataFrame(StructFlattenEvent::to_dataframe(vec![
-        StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
-        StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructFlattenEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
+        StructFlattenEvent::Located {
+            id: 2,
+            origin: Point { x: 3.0, y: 4.0 },
+        },
         StructFlattenEvent::Other { id: 3 },
         StructFlattenEvent::Other { id: 4 },
     ]))
@@ -1153,9 +1215,18 @@ pub fn struct_list_split_1v1r() -> List {
 #[miniextendr]
 pub fn struct_list_split_1vnr() -> List {
     StructListEvent::to_dataframe_split(vec![
-        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
-        StructListEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
-        StructListEvent::Located { id: 3, origin: Point { x: 5.0, y: 6.0 } },
+        StructListEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
+        StructListEvent::Located {
+            id: 2,
+            origin: Point { x: 3.0, y: 4.0 },
+        },
+        StructListEvent::Located {
+            id: 3,
+            origin: Point { x: 5.0, y: 6.0 },
+        },
     ])
 }
 
@@ -1163,7 +1234,10 @@ pub fn struct_list_split_1vnr() -> List {
 #[miniextendr]
 pub fn struct_list_split_nv1r() -> List {
     StructListEvent::to_dataframe_split(vec![
-        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+        StructListEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
         StructListEvent::Other { id: 2 },
     ])
 }
@@ -1172,8 +1246,14 @@ pub fn struct_list_split_nv1r() -> List {
 #[miniextendr]
 pub fn struct_list_split_nvnr() -> List {
     StructListEvent::to_dataframe_split(vec![
-        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
-        StructListEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructListEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
+        StructListEvent::Located {
+            id: 2,
+            origin: Point { x: 3.0, y: 4.0 },
+        },
         StructListEvent::Other { id: 3 },
         StructListEvent::Other { id: 4 },
     ])
@@ -1183,8 +1263,14 @@ pub fn struct_list_split_nvnr() -> List {
 #[miniextendr]
 pub fn struct_list_align_nvnr() -> ToDataFrame<StructListEventDataFrame> {
     ToDataFrame(StructListEvent::to_dataframe(vec![
-        StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
-        StructListEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+        StructListEvent::Located {
+            id: 1,
+            origin: Point { x: 1.0, y: 2.0 },
+        },
+        StructListEvent::Located {
+            id: 2,
+            origin: Point { x: 3.0, y: 4.0 },
+        },
         StructListEvent::Other { id: 3 },
         StructListEvent::Other { id: 4 },
     ]))
@@ -1201,7 +1287,10 @@ mod struct_field_tests {
     #[test]
     fn test_struct_flatten_align_located_rows_have_values() {
         let df = StructFlattenEvent::to_dataframe(vec![
-            StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+            StructFlattenEvent::Located {
+                id: 1,
+                origin: Point { x: 1.0, y: 2.0 },
+            },
             StructFlattenEvent::Other { id: 2 },
         ]);
         // origin is present at row 0 (Located), absent at row 1 (Other)
@@ -1221,8 +1310,14 @@ mod struct_field_tests {
     #[ignore = "requires R runtime (calls into_data_frame)"]
     fn test_struct_flatten_split_located_has_correct_count() {
         let split = StructFlattenEvent::to_dataframe_split(vec![
-            StructFlattenEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
-            StructFlattenEvent::Located { id: 2, origin: Point { x: 3.0, y: 4.0 } },
+            StructFlattenEvent::Located {
+                id: 1,
+                origin: Point { x: 1.0, y: 2.0 },
+            },
+            StructFlattenEvent::Located {
+                id: 2,
+                origin: Point { x: 3.0, y: 4.0 },
+            },
             StructFlattenEvent::Other { id: 3 },
         ]);
         // split returns a list of per-variant data frames
@@ -1233,7 +1328,10 @@ mod struct_field_tests {
     #[test]
     fn test_struct_list_align_origin_is_some() {
         let df = StructListEvent::to_dataframe(vec![
-            StructListEvent::Located { id: 1, origin: Point { x: 1.0, y: 2.0 } },
+            StructListEvent::Located {
+                id: 1,
+                origin: Point { x: 1.0, y: 2.0 },
+            },
             StructListEvent::Other { id: 2 },
         ]);
         // origin is the list-column holding Option<Point>
@@ -1344,9 +1442,18 @@ pub fn nested_flatten_split_1v1r() -> List {
 #[miniextendr]
 pub fn nested_flatten_split_1vnr() -> List {
     NestedFlattenEvent::to_dataframe_split(vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
-        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
-        NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 500 } },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
+        NestedFlattenEvent::Tracked {
+            id: 2,
+            status: Status::Err { code: 404 },
+        },
+        NestedFlattenEvent::Tracked {
+            id: 3,
+            status: Status::Err { code: 500 },
+        },
     ])
 }
 
@@ -1354,7 +1461,10 @@ pub fn nested_flatten_split_1vnr() -> List {
 #[miniextendr]
 pub fn nested_flatten_split_nv1r() -> List {
     NestedFlattenEvent::to_dataframe_split(vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
         NestedFlattenEvent::Other { id: 2 },
     ])
 }
@@ -1363,8 +1473,14 @@ pub fn nested_flatten_split_nv1r() -> List {
 #[miniextendr]
 pub fn nested_flatten_split_nvnr() -> List {
     NestedFlattenEvent::to_dataframe_split(vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
-        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
+        NestedFlattenEvent::Tracked {
+            id: 2,
+            status: Status::Err { code: 404 },
+        },
         NestedFlattenEvent::Other { id: 3 },
         NestedFlattenEvent::Other { id: 4 },
     ])
@@ -1374,7 +1490,10 @@ pub fn nested_flatten_split_nvnr() -> List {
 #[miniextendr]
 pub fn nested_flatten_align_1v1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
     ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
     ]))
 }
 
@@ -1382,9 +1501,18 @@ pub fn nested_flatten_align_1v1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
 #[miniextendr]
 pub fn nested_flatten_align_1vnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
     ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
-        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
-        NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 500 } },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
+        NestedFlattenEvent::Tracked {
+            id: 2,
+            status: Status::Err { code: 404 },
+        },
+        NestedFlattenEvent::Tracked {
+            id: 3,
+            status: Status::Err { code: 500 },
+        },
     ]))
 }
 
@@ -1392,7 +1520,10 @@ pub fn nested_flatten_align_1vnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
 #[miniextendr]
 pub fn nested_flatten_align_nv1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
     ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
         NestedFlattenEvent::Other { id: 2 },
     ]))
 }
@@ -1401,8 +1532,14 @@ pub fn nested_flatten_align_nv1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
 #[miniextendr]
 pub fn nested_flatten_align_nvnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
     ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
-        NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
-        NestedFlattenEvent::Tracked { id: 2, status: Status::Err { code: 404 } },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Ok,
+        },
+        NestedFlattenEvent::Tracked {
+            id: 2,
+            status: Status::Err { code: 404 },
+        },
         NestedFlattenEvent::Other { id: 3 },
         NestedFlattenEvent::Other { id: 4 },
     ]))
@@ -1425,9 +1562,18 @@ pub fn nested_factor_split_1v1r() -> List {
 #[miniextendr]
 pub fn nested_factor_split_1vnr() -> List {
     NestedFactorEvent::to_dataframe_split(vec![
-        NestedFactorEvent::Move { id: 1, dir: Direction::North },
-        NestedFactorEvent::Move { id: 2, dir: Direction::South },
-        NestedFactorEvent::Move { id: 3, dir: Direction::East },
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedFactorEvent::Move {
+            id: 2,
+            dir: Direction::South,
+        },
+        NestedFactorEvent::Move {
+            id: 3,
+            dir: Direction::East,
+        },
     ])
 }
 
@@ -1435,7 +1581,10 @@ pub fn nested_factor_split_1vnr() -> List {
 #[miniextendr]
 pub fn nested_factor_split_nv1r() -> List {
     NestedFactorEvent::to_dataframe_split(vec![
-        NestedFactorEvent::Move { id: 1, dir: Direction::West },
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::West,
+        },
         NestedFactorEvent::Stop { id: 2 },
     ])
 }
@@ -1444,8 +1593,14 @@ pub fn nested_factor_split_nv1r() -> List {
 #[miniextendr]
 pub fn nested_factor_split_nvnr() -> List {
     NestedFactorEvent::to_dataframe_split(vec![
-        NestedFactorEvent::Move { id: 1, dir: Direction::North },
-        NestedFactorEvent::Move { id: 2, dir: Direction::East },
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedFactorEvent::Move {
+            id: 2,
+            dir: Direction::East,
+        },
         NestedFactorEvent::Stop { id: 3 },
         NestedFactorEvent::Stop { id: 4 },
     ])
@@ -1454,19 +1609,30 @@ pub fn nested_factor_split_nvnr() -> List {
 /// 1v1r align (as_factor): single Move row.
 #[miniextendr]
 pub fn nested_factor_align_1v1r() -> ToDataFrame<NestedFactorEventDataFrame> {
-    ToDataFrame(NestedFactorEvent::to_dataframe(vec![NestedFactorEvent::Move {
-        id: 1,
-        dir: Direction::North,
-    }]))
+    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+    ]))
 }
 
 /// 1vNr align (as_factor): multiple Move rows.
 #[miniextendr]
 pub fn nested_factor_align_1vnr() -> ToDataFrame<NestedFactorEventDataFrame> {
     ToDataFrame(NestedFactorEvent::to_dataframe(vec![
-        NestedFactorEvent::Move { id: 1, dir: Direction::North },
-        NestedFactorEvent::Move { id: 2, dir: Direction::South },
-        NestedFactorEvent::Move { id: 3, dir: Direction::East },
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedFactorEvent::Move {
+            id: 2,
+            dir: Direction::South,
+        },
+        NestedFactorEvent::Move {
+            id: 3,
+            dir: Direction::East,
+        },
     ]))
 }
 
@@ -1474,7 +1640,10 @@ pub fn nested_factor_align_1vnr() -> ToDataFrame<NestedFactorEventDataFrame> {
 #[miniextendr]
 pub fn nested_factor_align_nv1r() -> ToDataFrame<NestedFactorEventDataFrame> {
     ToDataFrame(NestedFactorEvent::to_dataframe(vec![
-        NestedFactorEvent::Move { id: 1, dir: Direction::West },
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::West,
+        },
         NestedFactorEvent::Stop { id: 2 },
     ]))
 }
@@ -1483,8 +1652,14 @@ pub fn nested_factor_align_nv1r() -> ToDataFrame<NestedFactorEventDataFrame> {
 #[miniextendr]
 pub fn nested_factor_align_nvnr() -> ToDataFrame<NestedFactorEventDataFrame> {
     ToDataFrame(NestedFactorEvent::to_dataframe(vec![
-        NestedFactorEvent::Move { id: 1, dir: Direction::North },
-        NestedFactorEvent::Move { id: 2, dir: Direction::East },
+        NestedFactorEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedFactorEvent::Move {
+            id: 2,
+            dir: Direction::East,
+        },
         NestedFactorEvent::Stop { id: 3 },
         NestedFactorEvent::Stop { id: 4 },
     ]))
@@ -1507,9 +1682,18 @@ pub fn nested_list_split_1v1r() -> List {
 #[miniextendr]
 pub fn nested_list_split_1vnr() -> List {
     NestedListEvent::to_dataframe_split(vec![
-        NestedListEvent::Move { id: 1, dir: Direction::North },
-        NestedListEvent::Move { id: 2, dir: Direction::South },
-        NestedListEvent::Move { id: 3, dir: Direction::East },
+        NestedListEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedListEvent::Move {
+            id: 2,
+            dir: Direction::South,
+        },
+        NestedListEvent::Move {
+            id: 3,
+            dir: Direction::East,
+        },
     ])
 }
 
@@ -1517,7 +1701,10 @@ pub fn nested_list_split_1vnr() -> List {
 #[miniextendr]
 pub fn nested_list_split_nv1r() -> List {
     NestedListEvent::to_dataframe_split(vec![
-        NestedListEvent::Move { id: 1, dir: Direction::West },
+        NestedListEvent::Move {
+            id: 1,
+            dir: Direction::West,
+        },
         NestedListEvent::Stop { id: 2 },
     ])
 }
@@ -1526,8 +1713,14 @@ pub fn nested_list_split_nv1r() -> List {
 #[miniextendr]
 pub fn nested_list_split_nvnr() -> List {
     NestedListEvent::to_dataframe_split(vec![
-        NestedListEvent::Move { id: 1, dir: Direction::North },
-        NestedListEvent::Move { id: 2, dir: Direction::East },
+        NestedListEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedListEvent::Move {
+            id: 2,
+            dir: Direction::East,
+        },
         NestedListEvent::Stop { id: 3 },
         NestedListEvent::Stop { id: 4 },
     ])
@@ -1546,9 +1739,18 @@ pub fn nested_list_align_1v1r() -> ToDataFrame<NestedListEventDataFrame> {
 #[miniextendr]
 pub fn nested_list_align_1vnr() -> ToDataFrame<NestedListEventDataFrame> {
     ToDataFrame(NestedListEvent::to_dataframe(vec![
-        NestedListEvent::Move { id: 1, dir: Direction::North },
-        NestedListEvent::Move { id: 2, dir: Direction::South },
-        NestedListEvent::Move { id: 3, dir: Direction::East },
+        NestedListEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedListEvent::Move {
+            id: 2,
+            dir: Direction::South,
+        },
+        NestedListEvent::Move {
+            id: 3,
+            dir: Direction::East,
+        },
     ]))
 }
 
@@ -1556,7 +1758,10 @@ pub fn nested_list_align_1vnr() -> ToDataFrame<NestedListEventDataFrame> {
 #[miniextendr]
 pub fn nested_list_align_nv1r() -> ToDataFrame<NestedListEventDataFrame> {
     ToDataFrame(NestedListEvent::to_dataframe(vec![
-        NestedListEvent::Move { id: 1, dir: Direction::West },
+        NestedListEvent::Move {
+            id: 1,
+            dir: Direction::West,
+        },
         NestedListEvent::Stop { id: 2 },
     ]))
 }
@@ -1565,8 +1770,14 @@ pub fn nested_list_align_nv1r() -> ToDataFrame<NestedListEventDataFrame> {
 #[miniextendr]
 pub fn nested_list_align_nvnr() -> ToDataFrame<NestedListEventDataFrame> {
     ToDataFrame(NestedListEvent::to_dataframe(vec![
-        NestedListEvent::Move { id: 1, dir: Direction::North },
-        NestedListEvent::Move { id: 2, dir: Direction::East },
+        NestedListEvent::Move {
+            id: 1,
+            dir: Direction::North,
+        },
+        NestedListEvent::Move {
+            id: 2,
+            dir: Direction::East,
+        },
         NestedListEvent::Stop { id: 3 },
         NestedListEvent::Stop { id: 4 },
     ]))
@@ -1594,9 +1805,15 @@ mod nested_enum_field_tests {
     #[test]
     fn test_nested_flatten_companion_struct_shape() {
         let df = NestedFlattenEvent::to_dataframe(vec![
-            NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+            NestedFlattenEvent::Tracked {
+                id: 1,
+                status: Status::Ok,
+            },
             NestedFlattenEvent::Other { id: 2 },
-            NestedFlattenEvent::Tracked { id: 3, status: Status::Err { code: 404 } },
+            NestedFlattenEvent::Tracked {
+                id: 3,
+                status: Status::Err { code: 404 },
+            },
         ]);
         assert_eq!(df.id[0], Some(1i32));
         assert_eq!(df.id[1], Some(2i32));
@@ -1616,11 +1833,8 @@ mod nested_enum_field_tests {
     #[test]
     fn test_nested_flatten_status_payload_columns() {
         // Verify inner Status companion struct has the expected column layout.
-        let inner_df = Status::to_dataframe(vec![
-            Status::Ok,
-            Status::Err { code: 404 },
-            Status::Ok,
-        ]);
+        let inner_df =
+            Status::to_dataframe(vec![Status::Ok, Status::Err { code: 404 }, Status::Ok]);
         // `code` column: None for Ok rows, Some(i32) for Err rows.
         assert!(inner_df.code[0].is_none()); // Ok has no code
         assert_eq!(inner_df.code[1], Some(404i32));
@@ -1630,7 +1844,10 @@ mod nested_enum_field_tests {
     #[test]
     fn test_nested_factor_align_col_types() {
         let df = NestedFactorEvent::to_dataframe(vec![
-            NestedFactorEvent::Move { id: 1, dir: Direction::North },
+            NestedFactorEvent::Move {
+                id: 1,
+                dir: Direction::North,
+            },
             NestedFactorEvent::Stop { id: 2 },
         ]);
         // The companion struct has id: Vec<Option<i32>> and dir: Vec<Option<Direction>>
@@ -1653,7 +1870,10 @@ mod nested_enum_field_tests {
     #[test]
     fn test_nested_list_align_col_types() {
         let df = NestedListEvent::to_dataframe(vec![
-            NestedListEvent::Move { id: 1, dir: Direction::North },
+            NestedListEvent::Move {
+                id: 1,
+                dir: Direction::North,
+            },
             NestedListEvent::Stop { id: 2 },
         ]);
         assert_eq!(df.id[0], Some(1i32));
@@ -1664,7 +1884,10 @@ mod nested_enum_field_tests {
     #[test]
     fn test_nested_flatten_align_col_types() {
         let df = NestedFlattenEvent::to_dataframe(vec![
-            NestedFlattenEvent::Tracked { id: 1, status: Status::Ok },
+            NestedFlattenEvent::Tracked {
+                id: 1,
+                status: Status::Ok,
+            },
             NestedFlattenEvent::Other { id: 2 },
         ]);
         assert_eq!(df.id[0], Some(1i32));
