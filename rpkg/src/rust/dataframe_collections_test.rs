@@ -235,10 +235,7 @@ pub struct WithSlicePinned<'a> {
 // This enum uses only owned types to verify the enum expand path compiles.
 #[derive(Clone, Debug, DataFrameRow)]
 pub enum WithLifetimeEnumOwned {
-    Row {
-        label: String,
-        value: f64,
-    },
+    Row { label: String, value: f64 },
 }
 
 // Test enum with skip
