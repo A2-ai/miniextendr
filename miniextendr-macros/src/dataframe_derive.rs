@@ -287,7 +287,12 @@ pub(super) enum FieldTypeKind<'a> {
 /// - Any non-scalar bare path type (single- or multi-segment, e.g. `Point` or
 ///   `crate::geom::Point`) -> `Struct`
 /// - Everything else (known scalars, generic types with args, `::abs::Paths`) -> `Scalar`
-pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
+///
+/// Returns `Err` for shapes the macro cannot classify and that would silently
+/// become opaque list-columns: `Option<T>`, `Cow<T>`, `Rc<T>`, `Arc<T>`,
+/// `RefCell<T>`, `Cell<T>`, `Mutex<T>`, `RwLock<T>`.  Use
+/// `#[dataframe(as_list)]` to opt into list-column treatment explicitly.
+pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'_>> {
     // Check for [T; N]
     if let syn::Type::Array(arr) = ty
         && let syn::Expr::Lit(syn::ExprLit {
@@ -296,14 +301,14 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
         }) = &arr.len
         && let Ok(n) = lit_int.base10_parse::<usize>()
     {
-        return FieldTypeKind::FixedArray(&arr.elem, n);
+        return Ok(FieldTypeKind::FixedArray(&arr.elem, n));
     }
 
     // Check for &[T] and &[T; N]
     if let syn::Type::Reference(ref_ty) = ty {
         // &[T] → BorrowedSlice
         if let syn::Type::Slice(slice) = &*ref_ty.elem {
-            return FieldTypeKind::BorrowedSlice(&slice.elem);
+            return Ok(FieldTypeKind::BorrowedSlice(&slice.elem));
         }
         // &[T; N] → FixedArray (same as owned)
         if let syn::Type::Array(arr) = &*ref_ty.elem
@@ -313,35 +318,80 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
             }) = &arr.len
             && let Ok(n) = lit_int.base10_parse::<usize>()
         {
-            return FieldTypeKind::FixedArray(&arr.elem, n);
+            return Ok(FieldTypeKind::FixedArray(&arr.elem, n));
         }
     }
 
     if let syn::Type::Path(type_path) = ty
         && let Some(seg) = type_path.path.segments.last()
         && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
     {
-        // Check for Vec<T>
-        if seg.ident == "Vec" {
-            return FieldTypeKind::VariableVec(inner);
+        // Reject wrapper types that would silently fall through to Scalar /
+        // Struct and produce a confusing opaque list-column or a downstream
+        // DataFrameRow assertion error.  These are the common smart-pointer
+        // and interior-mutability types that wrap a meaningful inner type but
+        // that DataFrameRow does not know how to expand.
+        //
+        // The macro has no way to resolve through the wrapper without type-
+        // checking (which is unavailable in proc macros). The user must either
+        // unwrap to the inner type, or annotate with `#[dataframe(as_list)]`
+        // to opt into an explicit opaque list-column.
+        //
+        // IMPORTANT: The rejection fires on *path identity alone*, before we
+        // inspect generic args.  `Cow<'a, T>` has a lifetime as its first
+        // generic argument, not a type; inspecting `args.args.first()` as a
+        // `GenericArgument::Type` would silently skip `Cow`.  Checking ident
+        // before args makes the rejection robust to any generic shape.
+        const REJECTED_WRAPPERS: &[&str] = &[
+            "Option", "Cow", "Rc", "Arc", "RefCell", "Cell", "Mutex", "RwLock",
+        ];
+        let name = seg.ident.to_string();
+        if REJECTED_WRAPPERS.contains(&name.as_str()) {
+            return Err(syn::Error::new_spanned(
+                ty,
+                format!(
+                    "DataFrameRow does not support `{name}<…>` directly as a field type. \
+                     Use `#[dataframe(as_list)]` to opt into an explicit opaque list-column, \
+                     or unwrap to the inner type (e.g. store the inner value directly, using \
+                     a sentinel / empty collection for the absent case)."
+                ),
+            ));
         }
 
-        // Check for Box<[T]>
-        if seg.ident == "Box"
-            && let syn::Type::Slice(slice) = inner
-        {
-            return FieldTypeKind::BoxedSlice(&slice.elem);
-        }
+        // For the collection types below we need the first *type* argument.
+        // Skip any leading lifetime or const arguments (e.g. `Cow<'a, B>`
+        // has a lifetime first, but `Cow` is already rejected above so we
+        // only reach here for other angle-bracketed types).
+        let first_type_arg = args.args.iter().find_map(|arg| {
+            if let syn::GenericArgument::Type(t) = arg {
+                Some(t)
+            } else {
+                None
+            }
+        });
 
-        // Check for HashMap<K, V> and BTreeMap<K, V>
-        if (seg.ident == "HashMap" || seg.ident == "BTreeMap")
-            && let Some(syn::GenericArgument::Type(val_ty)) = args.args.iter().nth(1)
-        {
-            return FieldTypeKind::Map {
-                key_ty: inner,
-                val_ty,
-            };
+        if let Some(inner) = first_type_arg {
+            // Check for Vec<T>
+            if seg.ident == "Vec" {
+                return Ok(FieldTypeKind::VariableVec(inner));
+            }
+
+            // Check for Box<[T]>
+            if seg.ident == "Box"
+                && let syn::Type::Slice(slice) = inner
+            {
+                return Ok(FieldTypeKind::BoxedSlice(&slice.elem));
+            }
+
+            // Check for HashMap<K, V> and BTreeMap<K, V>
+            if (seg.ident == "HashMap" || seg.ident == "BTreeMap")
+                && let Some(syn::GenericArgument::Type(val_ty)) = args.args.iter().nth(1)
+            {
+                return Ok(FieldTypeKind::Map {
+                    key_ty: inner,
+                    val_ty,
+                });
+            }
         }
     }
 
@@ -380,13 +430,13 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
                     "isize", "u8", "u16", "u32", "u64", "u128", "usize", "String",
                 ];
                 if !KNOWN_SCALARS.contains(&name.as_str()) {
-                    return FieldTypeKind::Struct { inner_ty: ty };
+                    return Ok(FieldTypeKind::Struct { inner_ty: ty });
                 }
             }
         }
     }
 
-    FieldTypeKind::Scalar
+    Ok(FieldTypeKind::Scalar)
 }
 // endregion
 
@@ -541,6 +591,8 @@ fn resolve_struct_field(
     };
 
     let ty = &field.ty;
+    // Propagate classification errors (e.g. Option<T>, Arc<T>) when as_list is
+    // not set.  The as_list branch below uses `.ok()` to suppress errors.
     let kind = classify_field_type(ty);
 
     // as_list suppresses expansion. For struct-typed fields (#485 opt-out), the
@@ -549,8 +601,11 @@ fn resolve_struct_field(
     // behavior is preserved: companion stores `Vec<#ty>` and the field type is
     // serialized natively (this requires `Vec<#ty>: IntoR`).
     if field_attrs.as_list {
-        let (final_ty, needs_into_list) = match classify_field_type(ty) {
-            FieldTypeKind::Struct { .. } => {
+        // Use `.ok()` here: `as_list` is an explicit opt-in, so wrapper types
+        // like `Option<T>` / `Arc<T>` are allowed — they become opaque list-
+        // columns. Any classification error is suppressed and treated as non-Struct.
+        let (final_ty, needs_into_list) = match classify_field_type(ty).ok() {
+            Some(FieldTypeKind::Struct { .. }) => {
                 (syn::parse_quote!(::miniextendr_api::list::List), true)
             }
             _ => (ty.clone(), false),
@@ -565,7 +620,7 @@ fn resolve_struct_field(
         }))));
     }
 
-    match kind {
+    match kind? {
         FieldTypeKind::FixedArray(elem_ty, len) => Ok(Some(ResolvedField::ExpandedFixed(
             Box::new(ExpandedFixedData {
                 rust_name,

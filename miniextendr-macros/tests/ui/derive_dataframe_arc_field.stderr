@@ -1,0 +1,5 @@
+error: DataFrameRow does not support `Arc<…>` directly as a field type. Use `#[dataframe(as_list)]` to opt into an explicit opaque list-column, or unwrap to the inner type (e.g. store the inner value directly, using a sentinel / empty collection for the absent case).
+ --> tests/ui/derive_dataframe_arc_field.rs:9:14
+  |
+9 |     payload: Arc<String>,
+  |              ^^^^^^^^^^^

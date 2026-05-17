@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use miniextendr_api::{DataFrameRow, IntoList};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 // Test with Vec fields (no expansion — stays opaque)
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -268,6 +268,30 @@ pub struct ParallelExpanded {
 pub enum ParallelExpandedEvent {
     Measurement { sensor: String, readings: [f64; 2] },
     Status { sensor: String, code: i32 },
+}
+
+// Test: `Option<HashMap<K, V>>` with `#[dataframe(as_list)]` — escape hatch for #484.
+// The field becomes an opaque list-column (`Vec<Option<HashMap<String, i32>>>` in the
+// companion struct).  Without `as_list` the macro now emits a compile error.
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct WithOptMapAsList {
+    pub id: i32,
+    #[dataframe(as_list)]
+    pub counts: Option<HashMap<String, i32>>,
+}
+
+impl IntoList for WithOptMapAsList {
+    fn into_list(self) -> miniextendr_api::List {
+        use miniextendr_api::{IntoR, ffi::SEXP};
+        let counts_sexp = match self.counts {
+            Some(m) => m.into_list().into_sexp(),
+            None => SEXP::nil(),
+        };
+        miniextendr_api::List::from_raw_pairs(vec![
+            ("id", self.id.into_sexp()),
+            ("counts", counts_sexp),
+        ])
+    }
 }
 
 #[cfg(test)]
@@ -944,5 +968,33 @@ mod tests {
         assert_eq!(df.value.len(), 2);
         assert_eq!(df.value[0], Some(1.0));
         assert_eq!(df.value[1], Some(2.0));
+    }
+
+    #[test]
+    fn test_option_hashmap_as_list() {
+        // Verify that `Option<HashMap<K, V>>` with `#[dataframe(as_list)]` compiles
+        // and produces a single opaque list-column (#484 positive case).  Without the
+        // annotation the macro now emits a compile error, so this test exists to confirm
+        // the escape hatch works end-to-end.
+        let rows = vec![
+            WithOptMapAsList {
+                id: 1,
+                counts: None,
+            },
+            WithOptMapAsList {
+                id: 2,
+                counts: Some({
+                    let mut m = HashMap::new();
+                    m.insert("a".to_string(), 10);
+                    m
+                }),
+            },
+        ];
+        let df = WithOptMapAsList::to_dataframe(rows);
+        // Two rows → two entries in each companion column.
+        assert_eq!(df.id.len(), 2);
+        assert_eq!(df.id[0], 1);
+        assert_eq!(df.id[1], 2);
+        assert_eq!(df.counts.len(), 2);
     }
 }
