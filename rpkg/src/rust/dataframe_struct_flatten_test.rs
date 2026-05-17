@@ -214,9 +214,18 @@ pub fn flat_basic_1row() -> ToDataFrame<FlatLocatedDataFrame> {
 #[miniextendr]
 pub fn flat_basic_nrow() -> ToDataFrame<FlatLocatedDataFrame> {
     ToDataFrame(FlatLocated::to_dataframe(vec![
-        FlatLocated { id: 1, origin: FlatPoint { x: 1.0, y: 2.0 } },
-        FlatLocated { id: 2, origin: FlatPoint { x: 3.0, y: 4.0 } },
-        FlatLocated { id: 3, origin: FlatPoint { x: 5.0, y: 6.0 } },
+        FlatLocated {
+            id: 1,
+            origin: FlatPoint { x: 1.0, y: 2.0 },
+        },
+        FlatLocated {
+            id: 2,
+            origin: FlatPoint { x: 3.0, y: 4.0 },
+        },
+        FlatLocated {
+            id: 3,
+            origin: FlatPoint { x: 5.0, y: 6.0 },
+        },
     ]))
 }
 
@@ -246,11 +255,17 @@ pub fn flat_mixed_inner_types() -> ToDataFrame<FlatTaggedDataFrame> {
     ToDataFrame(FlatTagged::to_dataframe(vec![
         FlatTagged {
             id: 1,
-            owner: FlatPerson { name: "Ada".to_string(), age: 30 },
+            owner: FlatPerson {
+                name: "Ada".to_string(),
+                age: 30,
+            },
         },
         FlatTagged {
             id: 2,
-            owner: FlatPerson { name: "Linus".to_string(), age: 50 },
+            owner: FlatPerson {
+                name: "Linus".to_string(),
+                age: 50,
+            },
         },
     ]))
 }
@@ -266,16 +281,28 @@ pub fn flat_renamed_inner() -> ToDataFrame<FlatRenamedDataFrame> {
 #[miniextendr]
 pub fn flat_skip_inner() -> ToDataFrame<FlatSkipDataFrame> {
     ToDataFrame(FlatSkip::to_dataframe(vec![
-        FlatSkip { id: 1, origin: FlatPoint { x: 1.0, y: 2.0 } },
-        FlatSkip { id: 2, origin: FlatPoint { x: 3.0, y: 4.0 } },
+        FlatSkip {
+            id: 1,
+            origin: FlatPoint { x: 1.0, y: 2.0 },
+        },
+        FlatSkip {
+            id: 2,
+            origin: FlatPoint { x: 3.0, y: 4.0 },
+        },
     ]))
 }
 
 #[miniextendr]
 pub fn flat_as_list_inner() -> ToDataFrame<FlatAsListDataFrame> {
     ToDataFrame(FlatAsList::to_dataframe(vec![
-        FlatAsList { id: 1, origin: FlatPoint { x: 1.0, y: 2.0 } },
-        FlatAsList { id: 2, origin: FlatPoint { x: 3.0, y: 4.0 } },
+        FlatAsList {
+            id: 1,
+            origin: FlatPoint { x: 1.0, y: 2.0 },
+        },
+        FlatAsList {
+            id: 2,
+            origin: FlatPoint { x: 3.0, y: 4.0 },
+        },
     ]))
 }
 
@@ -406,7 +433,10 @@ const _: () = {
     fn _shape_mixed_inner_types() {
         let _ = FlatTaggedDataFrame {
             id: vec![1],
-            owner: vec![FlatPerson { name: "x".to_string(), age: 1 }],
+            owner: vec![FlatPerson {
+                name: "x".to_string(),
+                age: 1,
+            }],
         };
     }
 
@@ -454,9 +484,7 @@ const _: () = {
     // `Vec<List>` column provides the row-count). This verifies that `par_len_field`
     // codegen correctly omits `_len` for this shape and the struct compiles.
     fn _shape_only_as_list() {
-        let _ = FlatOnlyAsListDataFrame {
-            data: vec![],
-        };
+        let _ = FlatOnlyAsListDataFrame { data: vec![] };
     }
 };
 
@@ -470,9 +498,18 @@ const _: () = {
 #[miniextendr]
 pub fn flat_basic_par() -> ToDataFrame<FlatLocatedDataFrame> {
     ToDataFrame(FlatLocatedDataFrame::from_rows_par(vec![
-        FlatLocated { id: 1, origin: FlatPoint { x: 1.0, y: 2.0 } },
-        FlatLocated { id: 2, origin: FlatPoint { x: 3.0, y: 4.0 } },
-        FlatLocated { id: 3, origin: FlatPoint { x: 5.0, y: 6.0 } },
+        FlatLocated {
+            id: 1,
+            origin: FlatPoint { x: 1.0, y: 2.0 },
+        },
+        FlatLocated {
+            id: 2,
+            origin: FlatPoint { x: 3.0, y: 4.0 },
+        },
+        FlatLocated {
+            id: 3,
+            origin: FlatPoint { x: 5.0, y: 6.0 },
+        },
     ]))
 }
 
@@ -501,8 +538,14 @@ pub fn flat_two_struct_fields_par() -> ToDataFrame<FlatSegmentDataFrame> {
 #[miniextendr]
 pub fn flat_as_list_par() -> ToDataFrame<FlatAsListDataFrame> {
     ToDataFrame(FlatAsListDataFrame::from_rows_par(vec![
-        FlatAsList { id: 1, origin: FlatPoint { x: 1.0, y: 2.0 } },
-        FlatAsList { id: 2, origin: FlatPoint { x: 3.0, y: 4.0 } },
+        FlatAsList {
+            id: 1,
+            origin: FlatPoint { x: 1.0, y: 2.0 },
+        },
+        FlatAsList {
+            id: 2,
+            origin: FlatPoint { x: 3.0, y: 4.0 },
+        },
     ]))
 }
 
@@ -514,11 +557,17 @@ pub fn flat_nested_par() -> ToDataFrame<FlatNestedDataFrame> {
     ToDataFrame(FlatNestedDataFrame::from_rows_par(vec![
         FlatNested {
             id: 1,
-            inner: FlatInner { a: 10.0, sub: FlatSubInner { depth: 100.0 } },
+            inner: FlatInner {
+                a: 10.0,
+                sub: FlatSubInner { depth: 100.0 },
+            },
         },
         FlatNested {
             id: 2,
-            inner: FlatInner { a: 20.0, sub: FlatSubInner { depth: 200.0 } },
+            inner: FlatInner {
+                a: 20.0,
+                sub: FlatSubInner { depth: 200.0 },
+            },
         },
     ]))
 }
@@ -539,7 +588,10 @@ mod par_tests {
             (0..100)
                 .map(|i| FlatLocated {
                     id: i,
-                    origin: FlatPoint { x: i as f64, y: (i as f64) * 2.0 },
+                    origin: FlatPoint {
+                        x: i as f64,
+                        y: (i as f64) * 2.0,
+                    },
                 })
                 .collect()
         };

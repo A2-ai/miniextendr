@@ -164,7 +164,6 @@ mod decimal_adapter_tests;
 mod default_tests;
 mod display_fromstr_tests;
 mod doc_attr_tests;
-mod multi_para_doc_demo;
 mod dots_tests;
 #[cfg(feature = "either")]
 mod either_adapter_tests;
@@ -205,9 +204,10 @@ mod match_arg_impl_tests;
 mod match_arg_tests;
 mod misc_tests;
 mod missing_tests;
-mod native_sexp_altrep_fixture;
+mod multi_para_doc_demo;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
+mod native_sexp_altrep_fixture;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;
 #[cfg(feature = "num-complex")]

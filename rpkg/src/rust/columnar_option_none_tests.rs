@@ -132,9 +132,18 @@ pub fn test_columnar_opt_u64_all_none_single() -> ColumnarDataFrame {
 #[miniextendr]
 pub fn test_columnar_opt_u64_all_none_multi() -> ColumnarDataFrame {
     let rows = vec![
-        WithOptU64 { name: "a".into(), stored: None },
-        WithOptU64 { name: "b".into(), stored: None },
-        WithOptU64 { name: "c".into(), stored: None },
+        WithOptU64 {
+            name: "a".into(),
+            stored: None,
+        },
+        WithOptU64 {
+            name: "b".into(),
+            stored: None,
+        },
+        WithOptU64 {
+            name: "c".into(),
+            stored: None,
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
@@ -213,9 +222,18 @@ pub fn test_columnar_opt_bytes_all_none() -> ColumnarDataFrame {
 #[miniextendr]
 pub fn test_columnar_opt_u64_mixed() -> ColumnarDataFrame {
     let rows = vec![
-        WithOptU64 { name: "a".into(), stored: Some(42) },
-        WithOptU64 { name: "b".into(), stored: None },
-        WithOptU64 { name: "c".into(), stored: Some(99) },
+        WithOptU64 {
+            name: "a".into(),
+            stored: Some(42),
+        },
+        WithOptU64 {
+            name: "b".into(),
+            stored: None,
+        },
+        WithOptU64 {
+            name: "c".into(),
+            stored: Some(99),
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
@@ -226,7 +244,10 @@ pub fn test_columnar_opt_u64_mixed() -> ColumnarDataFrame {
 #[miniextendr]
 pub fn test_columnar_opt_string_mixed() -> ColumnarDataFrame {
     let rows = vec![
-        WithOptString { id: 1, label: Some("hello".into()) },
+        WithOptString {
+            id: 1,
+            label: Some("hello".into()),
+        },
         WithOptString { id: 2, label: None },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
@@ -242,8 +263,14 @@ pub fn test_columnar_opt_string_mixed() -> ColumnarDataFrame {
 #[miniextendr]
 pub fn test_columnar_bytes_with_values() -> ColumnarDataFrame {
     let rows = vec![
-        WithOptBytes { id: 1, data: Some(vec![1u8, 2, 3]) },
-        WithOptBytes { id: 2, data: Some(vec![4u8, 5]) },
+        WithOptBytes {
+            id: 1,
+            data: Some(vec![1u8, 2, 3]),
+        },
+        WithOptBytes {
+            id: 2,
+            data: Some(vec![4u8, 5]),
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
@@ -259,8 +286,14 @@ pub fn test_columnar_bytes_with_values() -> ColumnarDataFrame {
 #[miniextendr]
 pub fn test_columnar_bytes_and_opt_none() -> ColumnarDataFrame {
     let rows = vec![
-        WithBytesAndOpt { raw: vec![1u8, 2], stored: None },
-        WithBytesAndOpt { raw: vec![3u8], stored: None },
+        WithBytesAndOpt {
+            raw: vec![1u8, 2],
+            stored: None,
+        },
+        WithBytesAndOpt {
+            raw: vec![3u8],
+            stored: None,
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
@@ -278,11 +311,17 @@ pub fn test_columnar_flatten_all_none() -> ColumnarDataFrame {
     let rows = vec![
         WithFlattenedOptField {
             id: 1,
-            inner: InnerWithOpt { size: None, name: "a".into() },
+            inner: InnerWithOpt {
+                size: None,
+                name: "a".into(),
+            },
         },
         WithFlattenedOptField {
             id: 2,
-            inner: InnerWithOpt { size: None, name: "b".into() },
+            inner: InnerWithOpt {
+                size: None,
+                name: "b".into(),
+            },
         },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
@@ -297,10 +336,7 @@ pub fn test_columnar_flatten_all_none() -> ColumnarDataFrame {
 /// @export
 #[miniextendr]
 pub fn test_columnar_enum_all_none() -> ColumnarDataFrame {
-    let rows = vec![
-        EventWithOptX::A { x: None },
-        EventWithOptX::A { x: None },
-    ];
+    let rows = vec![EventWithOptX::A { x: None }, EventWithOptX::A { x: None }];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
@@ -352,7 +388,10 @@ pub fn test_columnar_schema_upgrade_scalar() -> ColumnarDataFrame {
 pub fn test_columnar_schema_upgrade_nested() -> ColumnarDataFrame {
     let rows = vec![
         WithOptPoint { id: 1, point: None },
-        WithOptPoint { id: 2, point: Some(InnerStruct { x: 1.0, y: 2.0 }) },
+        WithOptPoint {
+            id: 2,
+            point: Some(InnerStruct { x: 1.0, y: 2.0 }),
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
@@ -400,7 +439,10 @@ pub fn test_columnar_schema_upgrade_multi_none_first() -> ColumnarDataFrame {
 pub fn test_columnar_compound_different_shapes() -> ColumnarDataFrame {
     let rows = vec![
         EventDifferentNested::A { value: 1.0 },
-        EventDifferentNested::B { value: 2.0, extra: 3.0 },
+        EventDifferentNested::B {
+            value: 2.0,
+            extra: 3.0,
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }

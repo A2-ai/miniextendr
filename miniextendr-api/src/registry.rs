@@ -914,9 +914,20 @@ pub fn write_r_wrappers_to_file(path: &str) {
         content = result;
     }
 
-    // Only write if content changed (avoids unnecessary NAMESPACE/man regeneration)
+    // Only write if content changed (avoids unnecessary NAMESPACE/man regeneration).
+    //
+    // "Semantic equality" means equal after stripping source-position suffixes from
+    // the source-attribution comments emitted by the `#[miniextendr]` proc-macro:
+    //
+    //   # Generated from Rust fn `foo` (lib.rs:42:8)
+    //                                           ^^^^^ positional suffix — ignored here
+    //
+    // These positions shift whenever any unrelated Rust source above a wrapper is
+    // edited. The NOTE and the file rewrite should only fire when the actual
+    // wrapper code, exports, or docstrings change — not when line numbers move.
+    // The written file still carries the real line:col for jump-to-source.
     let existing = std::fs::read_to_string(path).unwrap_or_default();
-    if existing == content {
+    if wrappers_semantically_equal(&existing, &content) {
         return;
     }
 
@@ -932,6 +943,142 @@ pub fn write_r_wrappers_to_file(path: &str) {
         eprintln!("NOTE: {filename} changed — run devtools::document() to update NAMESPACE.");
         eprintln!();
     }
+}
+
+/// Returns `true` when `a` and `b` are equal after normalising away
+/// `(<file>.rs:LINE:COL)` positional suffixes in source-attribution comments.
+///
+/// The `#[miniextendr]` proc-macro emits comments of the form:
+/// ```r
+/// # Generated from Rust fn `foo` (lib.rs:42:8)
+/// ```
+/// The `42:8` part shifts whenever unrelated code above the wrapper is edited,
+/// producing spurious wrapper-file rewrites and misleading NOTEs. Normalisation
+/// replaces `(lib.rs:42:8)` → `(lib.rs:_:_)` for the comparison only; the
+/// file on disk still carries the real positions.
+///
+/// A match requires `(` + one or more non-`()`/non-newline chars + `.rs:` +
+/// ASCII digits + `:` + ASCII digits + `)`. Malformed or non-`.rs` patterns
+/// are left untouched.
+fn wrappers_semantically_equal(a: &str, b: &str) -> bool {
+    normalize_source_locs(a) == normalize_source_locs(b)
+}
+
+/// Replace every `(<stem>.rs:LINE:COL)` occurrence with `(<stem>.rs:_:_)`.
+///
+/// Returns a [`std::borrow::Cow::Borrowed`] slice when no replacements are
+/// needed (zero-allocation fast path for the common case where the file has
+/// never been written or is truly unchanged).
+fn normalize_source_locs(s: &str) -> std::borrow::Cow<'_, str> {
+    // Fast path: bail early if there is no `.rs:` anywhere in the string.
+    if !s.contains(".rs:") {
+        return std::borrow::Cow::Borrowed(s);
+    }
+
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len);
+    let mut pos = 0usize;
+    let mut any_replaced = false;
+
+    while pos < len {
+        // Look for the next `(`.
+        let Some(open) = memchr(bytes, pos, b'(') else {
+            break;
+        };
+
+        // After `(`, scan for `.rs:` without crossing `)` or `(` or a newline.
+        let inner_start = open + 1;
+        let Some(dot_rs) = find_substr(bytes, inner_start, b".rs:") else {
+            // No `.rs:` at all in the rest of the string — copy remainder and stop.
+            out.push_str(&s[pos..]);
+            return std::borrow::Cow::Owned(out);
+        };
+
+        // Make sure `.rs:` precedes any closing `)`, `(`, or newline (no nesting).
+        let intervening = &bytes[inner_start..dot_rs];
+        if intervening
+            .iter()
+            .any(|&b| b == b')' || b == b'(' || b == b'\n')
+        {
+            // Guard crossed; copy up to and including `(` and continue after it.
+            out.push_str(&s[pos..=open]);
+            pos = open + 1;
+            continue;
+        }
+
+        // After `.rs:`, consume digits for LINE.
+        let after_colon1 = dot_rs + 4; // skip `.rs:`
+        let Some(colon2) = scan_digits(bytes, after_colon1) else {
+            // Not digits after `.rs:` — not a source-attribution pattern.
+            out.push_str(&s[pos..=open]);
+            pos = open + 1;
+            continue;
+        };
+        if colon2 >= len || bytes[colon2] != b':' {
+            out.push_str(&s[pos..=open]);
+            pos = open + 1;
+            continue;
+        }
+
+        // After the second `:`, consume digits for COL.
+        let after_colon2 = colon2 + 1;
+        let Some(close_pos) = scan_digits(bytes, after_colon2) else {
+            out.push_str(&s[pos..=open]);
+            pos = open + 1;
+            continue;
+        };
+        if close_pos >= len || bytes[close_pos] != b')' {
+            out.push_str(&s[pos..=open]);
+            pos = open + 1;
+            continue;
+        }
+
+        // We have a match: `(stem.rs:LINE:COL)` — emit `(stem.rs:_:_)`.
+        any_replaced = true;
+        out.push_str(&s[pos..inner_start]); // text before inner_start (includes `(`)
+        out.push_str(&s[inner_start..dot_rs + 3]); // `stem.rs` (without the colon)
+        out.push_str(":_:_)");
+        pos = close_pos + 1; // skip past the closing `)`
+    }
+
+    if !any_replaced {
+        return std::borrow::Cow::Borrowed(s);
+    }
+
+    out.push_str(&s[pos..]);
+    std::borrow::Cow::Owned(out)
+}
+
+/// Find the first occurrence of `needle` in `haystack[from..]`.
+/// Returns the absolute index in `haystack`, or `None`.
+#[inline]
+fn find_substr(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
+    let window = haystack.get(from..)?;
+    window
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|rel| from + rel)
+}
+
+/// Find the first byte equal to `needle` in `haystack[from..]`.
+/// Returns the absolute index, or `None`.
+#[inline]
+fn memchr(haystack: &[u8], from: usize, needle: u8) -> Option<usize> {
+    haystack[from..]
+        .iter()
+        .position(|&b| b == needle)
+        .map(|rel| from + rel)
+}
+
+/// Advance past a run of ASCII digits starting at `haystack[from]`.
+/// Returns the absolute index of the first non-digit byte, or `None` if
+/// there are no digits at `from` (empty run is not valid).
+#[inline]
+fn scan_digits(haystack: &[u8], from: usize) -> Option<usize> {
+    let start = haystack.get(from..)?;
+    let count = start.iter().take_while(|&&b| b.is_ascii_digit()).count();
+    if count == 0 { None } else { Some(from + count) }
 }
 // endregion
 
@@ -1203,5 +1350,92 @@ mod tests {
         let output = resolve_class_refs(input, &entries);
         assert_eq!(output, "inherit = Parent, class = S7::class_any");
     }
+
+    // region: normalize_source_locs unit tests (#528)
+
+    #[test]
+    fn normalize_source_locs_noop_on_plain_text() {
+        // No `.rs:N:M` pattern — should return the input string unchanged (Borrowed).
+        let input = "# just a comment\nfoo <- function() {}\n";
+        let result = normalize_source_locs(input);
+        assert_eq!(result.as_ref(), input);
+        // Verify it's the zero-allocation borrowed path.
+        assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn normalize_source_locs_single_attribution() {
+        let input = "# Generated from Rust fn `foo` (lib.rs:42:8)";
+        let result = normalize_source_locs(input);
+        assert_eq!(
+            result.as_ref(),
+            "# Generated from Rust fn `foo` (lib.rs:_:_)"
+        );
+    }
+
+    #[test]
+    fn normalize_source_locs_multiple_attributions() {
+        let input = concat!(
+            "# (conversions.rs:1:5)\n",
+            "foo <- function() {}\n",
+            "# (conversions.rs:158:8)\n",
+            "bar <- function() {}\n",
+        );
+        let result = normalize_source_locs(input);
+        assert_eq!(
+            result.as_ref(),
+            concat!(
+                "# (conversions.rs:_:_)\n",
+                "foo <- function() {}\n",
+                "# (conversions.rs:_:_)\n",
+                "bar <- function() {}\n",
+            )
+        );
+    }
+
+    #[test]
+    fn normalize_source_locs_does_not_match_extra_colon() {
+        // `(lib.rs:1:5:6)` — four components — is NOT a valid attribution; leave alone.
+        let input = "(lib.rs:1:5:6)";
+        let result = normalize_source_locs(input);
+        // The pattern `(lib.rs:1:5` matches, but then we expect `)` after the col
+        // digits and find `:` instead — so it should NOT be replaced.
+        assert_eq!(result.as_ref(), input);
+    }
+
+    #[test]
+    fn normalize_source_locs_does_not_match_without_parens() {
+        // Bare `lib.rs:1:5` without surrounding parens — leave untouched.
+        let input = "lib.rs:1:5";
+        let result = normalize_source_locs(input);
+        assert_eq!(result.as_ref(), input);
+        assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn wrappers_semantically_equal_position_only_diff() {
+        // Two wrappers identical except for line:col are semantically equal.
+        let old = "# Generated from Rust fn `foo` (lib.rs:42:8)\nfoo <- function() {}\n";
+        let new = "# Generated from Rust fn `foo` (lib.rs:99:8)\nfoo <- function() {}\n";
+        assert!(wrappers_semantically_equal(old, new));
+    }
+
+    #[test]
+    fn wrappers_semantically_equal_content_diff() {
+        // A real semantic change (different function body) is NOT equal.
+        let old = "# Generated from Rust fn `foo` (lib.rs:42:8)\nfoo <- function() { 1L }\n";
+        let new = "# Generated from Rust fn `foo` (lib.rs:42:8)\nfoo <- function() { 2L }\n";
+        assert!(!wrappers_semantically_equal(old, new));
+    }
+
+    #[test]
+    fn wrappers_semantically_equal_both_position_and_content_diff() {
+        // Both positions and content differ — still NOT equal.
+        let old = "# Generated from Rust fn `foo` (lib.rs:1:1)\nfoo <- function() { 1L }\n";
+        let new = "# Generated from Rust fn `bar` (lib.rs:9:1)\nbar <- function() { 2L }\n";
+        assert!(!wrappers_semantically_equal(old, new));
+    }
+
+    // endregion
 }
 // endregion
