@@ -134,12 +134,12 @@ pub(crate) unsafe fn get_unchecked() -> SEXP {
 #[cfg(feature = "debug-preserve")]
 #[inline]
 pub unsafe fn count() -> crate::ffi::R_xlen_t {
-    use crate::ffi::{R_xlen_t, Rf_xlength};
+    use crate::ffi::{R_xlen_t, SexpExt};
     unsafe {
         let head: R_xlen_t = 1;
         let tail: R_xlen_t = 1;
         let list = get();
-        Rf_xlength(list) - head - tail
+        list.xlength() - head - tail
     }
 }
 
@@ -154,13 +154,13 @@ pub unsafe fn count() -> crate::ffi::R_xlen_t {
 #[cfg(feature = "debug-preserve")]
 #[inline]
 pub unsafe fn count_unchecked() -> crate::ffi::R_xlen_t {
-    use crate::ffi::{R_xlen_t, Rf_xlength_unchecked};
+    use crate::ffi::{R_xlen_t, SexpExt};
 
     unsafe {
         let head: R_xlen_t = 1;
         let tail: R_xlen_t = 1;
         let list = get_unchecked();
-        Rf_xlength_unchecked(list) - head - tail
+        list.xlength_unchecked() - head - tail
     }
 }
 

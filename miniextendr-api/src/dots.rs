@@ -26,7 +26,7 @@
 //! }
 //! ```
 
-use crate::ffi::SEXP;
+use crate::ffi::{SEXP, SexpExt};
 use crate::from_r::TryFromSexp;
 use crate::list::{List, ListFromSexpError};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
@@ -129,7 +129,7 @@ impl Dots {
     /// creating an intermediate List wrapper.
     #[inline]
     pub fn len(&self) -> isize {
-        unsafe { crate::ffi::Rf_xlength(self.inner) }
+        self.inner.xlength()
     }
 
     /// Returns true if no arguments were passed to `...`.

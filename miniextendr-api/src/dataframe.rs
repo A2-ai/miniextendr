@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
@@ -302,7 +302,7 @@ fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
     }
 
     let rn_type = row_names.type_of();
-    let rn_len = unsafe { ffi::Rf_xlength(row_names) };
+    let rn_len = row_names.xlength();
 
     // Compact integer form: c(NA_integer_, -n) where n is the row count
     if rn_type == SEXPTYPE::INTSXP && rn_len == 2 {
@@ -329,7 +329,7 @@ fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
 
 /// Fall back: extract nrow from the length of the first column.
 fn nrow_from_first_column(sexp: SEXP) -> Result<usize, DataFrameError> {
-    let ncol = unsafe { ffi::Rf_xlength(sexp) };
+    let ncol = sexp.xlength();
     if ncol == 0 {
         // 0 columns → 0 rows
         return Ok(0);
@@ -338,7 +338,7 @@ fn nrow_from_first_column(sexp: SEXP) -> Result<usize, DataFrameError> {
     if first_col == SEXP::nil() {
         return Ok(0);
     }
-    let len = unsafe { ffi::Rf_xlength(first_col) };
+    let len = first_col.xlength();
     if let Ok(n) = usize::try_from(len) {
         Ok(n)
     } else {
@@ -362,17 +362,13 @@ fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
 
     // Get the length of the first column
     let first_col = list.as_sexp().vector_elt(0);
-    let expected: usize = unsafe { ffi::Rf_xlength(first_col) }
-        .try_into()
-        .expect("column length must be non-negative");
+    let expected: usize = first_col.len();
 
     // Check all columns match
     let names_sexp = list.names();
     for i in 1..n {
         let col = list.as_sexp().vector_elt(i);
-        let col_len: usize = unsafe { ffi::Rf_xlength(col) }
-            .try_into()
-            .expect("column length must be non-negative");
+        let col_len: usize = col.len();
         if col_len != expected {
             // Try to get the column name for the error message
             let col_name = if let Some(names) = names_sexp {

@@ -83,6 +83,7 @@ impl TryFromSexp for OffsetDateTime {
             )));
         }
 
+        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
         let secs = unsafe { *REAL(sexp) };
         if secs.is_nan() {
             return Err(SexpError::Na(SexpNaError {
@@ -123,6 +124,7 @@ impl IntoR for OffsetDateTime {
             let duration = self - UNIX_EPOCH;
             let secs = duration.whole_seconds() as f64
                 + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
+            // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
             *REAL(vec) = secs;
 
             set_posixct_utc(vec);
@@ -160,6 +162,7 @@ impl TryFromSexp for Option<OffsetDateTime> {
             )));
         }
 
+        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
         let secs = unsafe { *REAL(sexp) };
         if secs.is_nan() {
             return Ok(None);
@@ -366,6 +369,7 @@ impl TryFromSexp for Date {
             )));
         }
 
+        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
         let days = unsafe { *REAL(sexp) };
         if days.is_nan() {
             return Err(SexpError::Na(SexpNaError {
@@ -397,6 +401,7 @@ impl IntoR for Date {
 
             // Calculate days since epoch
             let days = (self - UNIX_EPOCH_DATE).whole_days() as f64;
+            // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
             *REAL(vec) = days;
 
             // Set class = "Date"
@@ -435,6 +440,7 @@ impl TryFromSexp for Option<Date> {
             )));
         }
 
+        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
         let days = unsafe { *REAL(sexp) };
         if days.is_nan() {
             return Ok(None);

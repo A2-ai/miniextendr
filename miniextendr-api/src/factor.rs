@@ -29,10 +29,7 @@ use std::ops::Deref;
 use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::ffi::{
-    INTEGER, Rf_allocVector, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SEXP, SEXPTYPE,
-    SexpExt,
-};
+use crate::ffi::{Rf_allocVector, Rf_install, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
@@ -141,9 +138,7 @@ impl<'a> Factor<'a> {
             return Err(SexpError::InvalidValue("expected a factor".into()));
         }
 
-        let len = unsafe { Rf_xlength(sexp) } as usize;
-        let ptr = unsafe { INTEGER(sexp) };
-        let indices = unsafe { crate::from_r::r_slice(ptr, len) };
+        let indices = unsafe { sexp.as_slice::<i32>() };
         let levels_sexp = sexp.get_levels();
 
         Ok(Self {
@@ -174,7 +169,7 @@ impl<'a> Factor<'a> {
     /// Number of levels.
     #[inline]
     pub fn n_levels(&self) -> usize {
-        unsafe { Rf_xlength(self.levels_sexp) as usize }
+        self.levels_sexp.len()
     }
 
     /// Get level string at 0-based index.
@@ -239,9 +234,7 @@ impl<'a> FactorMut<'a> {
             return Err(SexpError::InvalidValue("expected a factor".into()));
         }
 
-        let len = unsafe { Rf_xlength(sexp) } as usize;
-        let ptr = unsafe { INTEGER(sexp) };
-        let indices = unsafe { crate::from_r::r_slice_mut(ptr, len) };
+        let indices = unsafe { sexp.as_mut_slice::<i32>() };
         let levels_sexp = sexp.get_levels();
 
         Ok(Self {
@@ -272,7 +265,7 @@ impl<'a> FactorMut<'a> {
     /// Number of levels.
     #[inline]
     pub fn n_levels(&self) -> usize {
-        unsafe { Rf_xlength(self.levels_sexp) as usize }
+        self.levels_sexp.len()
     }
 
     /// Get level string at 0-based index.
@@ -318,7 +311,7 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
         return Err(SexpError::InvalidValue("levels is not STRSXP".into()));
     }
 
-    let n = unsafe { Rf_xlength(levels) } as usize;
+    let n = levels.len();
     if n != expected.len() {
         return Err(SexpError::InvalidValue(format!(
             "expected {} levels, got {}",
@@ -351,7 +344,7 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
 pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
 
-    let len = unsafe { Rf_xlength(sexp) };
+    let len = sexp.xlength();
     if len != 1 {
         return Err(SexpError::InvalidValue(format!(
             "expected length 1, got {}",
@@ -372,7 +365,7 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
 pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
@@ -396,7 +389,7 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
 ) -> Result<Vec<Option<T>>, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {

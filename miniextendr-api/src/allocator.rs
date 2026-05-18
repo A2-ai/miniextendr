@@ -37,7 +37,7 @@
 //! For long-lived allocations or critical cleanup requirements, consider using
 //! Rust's standard allocator instead.
 
-use crate::ffi::{R_PreserveObject_unchecked, R_ReleaseObject_unchecked, SEXP, SEXPTYPE};
+use crate::ffi::{R_PreserveObject_unchecked, R_ReleaseObject_unchecked, SEXP, SEXPTYPE, SexpExt};
 use crate::worker::{has_worker_context, is_r_main_thread, with_r_thread};
 use core::{
     alloc::{GlobalAlloc, Layout},
@@ -296,7 +296,7 @@ unsafe fn realloc_main_thread(
 
     // Check if existing allocation has capacity
     let raw_base = unsafe { crate::ffi::RAW_unchecked(sexp) }.cast::<u8>();
-    let cap: usize = match unsafe { crate::ffi::Rf_xlength_unchecked(sexp) }.try_into() {
+    let cap: usize = match unsafe { sexp.xlength_unchecked() }.try_into() {
         Ok(n) => n,
         Err(_) => return sendable_data_ptr_null(),
     };

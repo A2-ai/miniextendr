@@ -179,7 +179,7 @@ impl JsonOptions {
         self
     }
 }
-use crate::ffi::{Rf_allocVector, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -353,9 +353,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
         return factor_to_json(sexp, opts);
     }
 
-    let len = unsafe { Rf_xlength(sexp) }
-        .try_into()
-        .expect("length overflow");
+    let len = sexp.len();
 
     match sexp_type {
         SEXPTYPE::LGLSXP => {
@@ -529,9 +527,7 @@ fn real_to_json(
 }
 
 fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
-    let len: usize = unsafe { Rf_xlength(sexp) }
-        .try_into()
-        .expect("length overflow");
+    let len: usize = sexp.len();
     let levels = sexp.get_levels();
     let slice: &[i32] = unsafe { SexpExt::as_slice(&sexp) };
 

@@ -585,6 +585,13 @@ pub trait SexpExt {
     /// The SEXP must be valid.
     fn xlength(&self) -> R_xlen_t;
 
+    /// Get the length as `R_xlen_t` without thread checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. No debug assertions.
+    unsafe fn xlength_unchecked(&self) -> R_xlen_t;
+
     /// Get the length without thread checks.
     ///
     /// # Safety
@@ -995,6 +1002,11 @@ impl SexpExt for SEXP {
     #[inline]
     fn xlength(&self) -> R_xlen_t {
         unsafe { Rf_xlength(*self) }
+    }
+
+    #[inline]
+    unsafe fn xlength_unchecked(&self) -> R_xlen_t {
+        unsafe { Rf_xlength_unchecked(*self) }
     }
 
     #[inline]
@@ -2148,10 +2160,9 @@ unsafe extern "C-unwind" {
         len: ::std::os::raw::c_int,
         ce: cetype_t,
     ) -> SEXP;
-    // Issue #112 cat. 1: kept pub(crate) — ~60 callers; mechanical migration tracked in follow-up issue
     #[doc(alias = "xlength")]
     #[doc(alias = "XLENGTH")]
-    pub(crate) fn Rf_xlength(x: SEXP) -> R_xlen_t;
+    fn Rf_xlength(x: SEXP) -> R_xlen_t;
     #[doc(alias = "translateCharUTF8")]
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
     #[doc(alias = "getCharCE")]

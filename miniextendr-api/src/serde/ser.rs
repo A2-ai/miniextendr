@@ -257,7 +257,7 @@ impl ser::SerializeSeq for SeqSerializer {
         let elem = value.serialize(RSerializer)?;
 
         // Track homogeneity for smart dispatch
-        let elem_len = unsafe { crate::ffi::Rf_xlength(elem) };
+        let elem_len = elem.xlength();
         let elem_type = elem.type_of();
 
         if elem_len != 1 {
@@ -526,7 +526,7 @@ fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
         return Err(RSerdeError::NonStringKey);
     }
 
-    let len = unsafe { crate::ffi::Rf_xlength(sexp) };
+    let len = sexp.xlength();
     if len != 1 {
         return Err(RSerdeError::NonStringKey);
     }

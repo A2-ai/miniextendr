@@ -73,7 +73,7 @@ impl List {
     /// Length of the list (number of elements).
     #[inline]
     pub fn len(self) -> isize {
-        unsafe { ffi::Rf_xlength(self.0) }
+        self.0.xlength()
     }
 
     /// Returns true if the list is empty.
@@ -571,10 +571,8 @@ impl<'a> ListBuilder<'a> {
     #[inline]
     pub unsafe fn set(&self, idx: isize, child: SEXP) {
         // SAFETY: caller guarantees valid and protected child
-        unsafe {
-            debug_assert!(idx >= 0 && idx < ffi::Rf_xlength(self.list));
-            self.list.set_vector_elt(idx, child);
-        }
+        debug_assert!(idx >= 0 && idx < self.list.xlength());
+        self.list.set_vector_elt(idx, child);
     }
 
     /// Set an element, protecting the child within the builder's scope.
@@ -588,7 +586,7 @@ impl<'a> ListBuilder<'a> {
     pub unsafe fn set_protected(&self, idx: isize, child: SEXP) {
         // SAFETY: caller guarantees valid child
         unsafe {
-            debug_assert!(idx >= 0 && idx < ffi::Rf_xlength(self.list));
+            debug_assert!(idx >= 0 && idx < self.list.xlength());
             let _guard = OwnedProtect::new(child);
             self.list.set_vector_elt(idx, child);
         }
@@ -615,7 +613,7 @@ impl<'a> ListBuilder<'a> {
     /// Get the length of the list.
     #[inline]
     pub fn len(&self) -> isize {
-        unsafe { ffi::Rf_xlength(self.list) }
+        self.list.xlength()
     }
 
     /// Check if the list is empty.
@@ -952,7 +950,7 @@ impl List {
         let first_type = elements[0].type_of();
         let all_scalar_same_type = elements
             .iter()
-            .all(|&e| unsafe { ffi::Rf_xlength(e) == 1 && e.type_of() == first_type });
+            .all(|&e| e.xlength() == 1 && e.type_of() == first_type);
 
         if !all_scalar_same_type {
             return Self::from_raw_values(elements.to_vec());
@@ -1203,7 +1201,7 @@ impl TryFromSexp for List {
         // Check for duplicate non-NA names
         let names_sexp = list_sexp.get_names();
         if names_sexp != SEXP::nil() {
-            let n = unsafe { ffi::Rf_xlength(list_sexp) };
+            let n = list_sexp.xlength();
             let n_usize: usize = n.try_into().expect("list length must be non-negative");
             let mut seen = HashSet::with_capacity(n_usize);
 

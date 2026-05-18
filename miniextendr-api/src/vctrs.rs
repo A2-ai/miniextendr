@@ -9,7 +9,7 @@ use crate::ffi::SEXP;
 
 // region: Construction helpers (Phase A)
 
-use crate::ffi::{R_xlen_t, Rf_allocVector, Rf_xlength, SEXPTYPE, SexpExt};
+use crate::ffi::{R_xlen_t, Rf_allocVector, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
 
@@ -185,7 +185,7 @@ fn get_typeof_name(sexp: SEXP) -> &'static str {
 /// Must be called from R's main thread with a valid STRSXP.
 #[must_use]
 unsafe fn repair_na_names(names: SEXP) -> (SEXP, Option<OwnedProtect>) {
-    let n = unsafe { Rf_xlength(names) };
+    let n = names.xlength();
     let mut has_na = false;
 
     // First pass: check if any NA
@@ -363,7 +363,7 @@ pub fn new_rcrd(
     // Validate: check for duplicate names and get expected length from first field
     let mut seen_names = std::collections::HashSet::new();
     let first_field = fields.get(0).expect("n_fields > 0");
-    let expected_len = unsafe { Rf_xlength(first_field) };
+    let expected_len = first_field.xlength();
 
     for i in 0..n_fields {
         // Check name
@@ -387,7 +387,7 @@ pub fn new_rcrd(
         // Check length (skip first, already used for expected_len)
         if i > 0 {
             let field = fields.as_sexp().vector_elt(i);
-            let field_len = unsafe { Rf_xlength(field) };
+            let field_len = field.xlength();
             if field_len != expected_len {
                 return Err(VctrsBuildError::FieldLengthMismatch {
                     field: name.to_string(),

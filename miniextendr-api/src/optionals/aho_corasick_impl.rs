@@ -40,7 +40,7 @@
 
 pub use aho_corasick::{AhoCorasick, MatchKind};
 
-use crate::ffi::{Rf_xlength, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::{
@@ -69,7 +69,7 @@ impl TryFromSexp for AhoCorasick {
             }));
         }
 
-        let len = unsafe { Rf_xlength(sexp) } as usize;
+        let len = sexp.len();
         if len == 0 {
             return Err(SexpError::InvalidValue(
                 "aho-corasick requires at least one pattern".to_string(),

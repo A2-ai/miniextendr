@@ -423,7 +423,7 @@ unsafe fn get_r_error_message() -> String {
         Rf_protect(msg_sexp);
 
         // geterrmessage() returns character(1)
-        let result = if ffi::Rf_xlength(msg_sexp) > 0 {
+        let result = if msg_sexp.xlength() > 0 {
             let charsxp = msg_sexp.string_elt(0);
             if !charsxp.is_null() {
                 let ptr = charsxp.r_char();
