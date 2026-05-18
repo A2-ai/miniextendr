@@ -218,10 +218,7 @@ impl MethodReturnBuilder {
     /// directly rather than going through `.val`, as `error_in_r=false` is passed).
     fn build_with_tails(&self, tails: ReturnTails<'_>) -> Vec<String> {
         let indent = " ".repeat(self.indent);
-        let class_name = self
-            .class_name
-            .as_deref()
-            .unwrap_or("");
+        let class_name = self.class_name.as_deref().unwrap_or("");
         let call_expr = &self.call_expr;
         let eir = self.error_in_r;
 
@@ -245,12 +242,8 @@ impl MethodReturnBuilder {
                 ReturnStrategy::ReturnSelf => {
                     (tails.self_tail)(&indent, call_expr, class_name, false)
                 }
-                ReturnStrategy::ChainableMutation => {
-                    (tails.chain_tail)(&indent, call_expr, false)
-                }
-                ReturnStrategy::Direct => {
-                    (tails.direct_tail)(&indent, call_expr, false)
-                }
+                ReturnStrategy::ChainableMutation => (tails.chain_tail)(&indent, call_expr, false),
+                ReturnStrategy::Direct => (tails.direct_tail)(&indent, call_expr, false),
             }
         }
     }
@@ -266,7 +259,10 @@ impl MethodReturnBuilder {
             // error_in_r=true:  class(.val) <- "Foo"  /  .val
             // error_in_r=false: result <- call; class(result) <- "Foo"  /  result
             self_tail: Box::new(|indent, call_expr, class_name, eir| {
-                assert!(!class_name.is_empty(), "class_name required for ReturnSelf strategy");
+                assert!(
+                    !class_name.is_empty(),
+                    "class_name required for ReturnSelf strategy"
+                );
                 if eir {
                     vec![
                         format!("{}class(.val) <- \"{}\"", indent, class_name),
@@ -309,11 +305,17 @@ impl MethodReturnBuilder {
             // error_in_r=true:  ClassName$new(.ptr = .val)
             // error_in_r=false: ClassName$new(.ptr = call_expr)  (single line)
             self_tail: Box::new(|indent, call_expr, class_name, eir| {
-                assert!(!class_name.is_empty(), "class_name required for ReturnSelf strategy");
+                assert!(
+                    !class_name.is_empty(),
+                    "class_name required for ReturnSelf strategy"
+                );
                 if eir {
                     vec![format!("{}{}$new(.ptr = .val)", indent, class_name)]
                 } else {
-                    vec![format!("{}{}$new(.ptr = {})", indent, class_name, call_expr)]
+                    vec![format!(
+                        "{}{}$new(.ptr = {})",
+                        indent, class_name, call_expr
+                    )]
                 }
             }),
             chain_tail: Box::new(|indent, call_expr, eir| {
@@ -343,9 +345,15 @@ impl MethodReturnBuilder {
             // error_in_r=true:  structure(.val, class = "Foo")
             // error_in_r=false: structure(call_expr, class = "Foo")  (single line)
             self_tail: Box::new(|indent, call_expr, class_name, eir| {
-                assert!(!class_name.is_empty(), "class_name required for ReturnSelf strategy");
+                assert!(
+                    !class_name.is_empty(),
+                    "class_name required for ReturnSelf strategy"
+                );
                 if eir {
-                    vec![format!("{}structure(.val, class = \"{}\")", indent, class_name)]
+                    vec![format!(
+                        "{}structure(.val, class = \"{}\")",
+                        indent, class_name
+                    )]
                 } else {
                     vec![format!(
                         "{}structure({}, class = \"{}\")",
