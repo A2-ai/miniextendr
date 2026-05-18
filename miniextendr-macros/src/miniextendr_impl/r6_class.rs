@@ -269,39 +269,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
         lines.push(format!("    {} = function({}) {{", r_name, ctx.params));
 
-        // Inject r_entry (user code before all checks)
-        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
-            for line in entry.lines() {
-                lines.push(format!("      {}", line));
-            }
-        }
-        // Inject on.exit cleanup
-        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
-            lines.push(format!("      {}", on_exit.to_r_code()));
-        }
-        // Inject missing param defaults
-        for line in ctx.missing_prelude() {
-            lines.push(format!("      {}", line));
-        }
-        // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, r_name);
-        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("      {}", prelude));
-        }
-        // Inject precondition checks
-        for check in ctx.precondition_checks() {
-            lines.push(format!("      {}", check));
-        }
-        // Inject match.arg validation for match_arg/choices params
-        for line in ctx.match_arg_prelude() {
-            lines.push(format!("      {}", line));
-        }
-        // Inject r_post_checks (user code after all checks, before .Call)
-        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
-            for line in post.lines() {
-                lines.push(format!("      {}", line));
-            }
-        }
+        ctx.emit_method_prelude(&mut lines, "      ", &what);
 
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -559,39 +528,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             static_method_name, ctx.params
         ));
 
-        // Inject r_entry
-        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
-            for line in entry.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
-        // Inject on.exit cleanup
-        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
-            lines.push(format!("  {}", on_exit.to_r_code()));
-        }
-        // Inject missing param defaults
-        for line in ctx.missing_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
-        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("  {}", prelude));
-        }
-        // Inject precondition checks
-        for check in ctx.precondition_checks() {
-            lines.push(format!("  {}", check));
-        }
-        // Inject match.arg validation for match_arg/choices params
-        for line in ctx.match_arg_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject r_post_checks
-        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
-            for line in post.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
+        ctx.emit_method_prelude(&mut lines, "  ", &what);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())

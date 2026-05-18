@@ -373,6 +373,51 @@ impl<'a> MethodContext<'a> {
         .static_checks
     }
 
+    /// Emit the 7-step method prelude into `lines`, each line prefixed with `indent`.
+    ///
+    /// The prelude is the standardised sequence that appears at the top of every
+    /// generated R method body, in order:
+    ///
+    /// 1. `r_entry` — user code injected before any checks
+    /// 2. `r_on_exit` — `on.exit(...)` cleanup
+    /// 3. `missing_prelude` — `if (missing(param)) param <- quote(expr=)` for `Missing<T>`
+    /// 4. `lifecycle_prelude` — deprecation/superseded banner (class-system-specific label)
+    /// 5. `precondition_checks` — `stopifnot(is.*(param))` for typed params
+    /// 6. `match_arg_prelude` — `base::match.arg(param)` validation
+    /// 7. `r_post_checks` — user code after all checks, before `.Call()`
+    ///
+    /// `what` is the human-readable method label passed to `lifecycle_prelude`
+    /// (e.g., `"Type.method"` for S3/S4, `"Type$method"` for Env/R6/S7).
+    /// `indent` is the per-line prefix (e.g., `"  "` for 2-space, `"      "` for 6-space).
+    pub fn emit_method_prelude(&self, lines: &mut Vec<String>, indent: &str, what: &str) {
+        let m = self.method;
+        if let Some(ref entry) = m.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("{}{}", indent, line));
+            }
+        }
+        if let Some(ref on_exit) = m.method_attrs.r_on_exit {
+            lines.push(format!("{}{}", indent, on_exit.to_r_code()));
+        }
+        for line in self.missing_prelude() {
+            lines.push(format!("{}{}", indent, line));
+        }
+        if let Some(prelude) = m.lifecycle_prelude(what) {
+            lines.push(format!("{}{}", indent, prelude));
+        }
+        for check in self.precondition_checks() {
+            lines.push(format!("{}{}", indent, check));
+        }
+        for line in self.match_arg_prelude() {
+            lines.push(format!("{}{}", indent, line));
+        }
+        if let Some(ref post) = m.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("{}{}", indent, line));
+            }
+        }
+    }
+
     /// Build `if (missing(param)) param <- quote(expr=)` prelude lines for Missing<T> parameters.
     ///
     /// Skips params that have a user-specified default (they get the default in formals instead).

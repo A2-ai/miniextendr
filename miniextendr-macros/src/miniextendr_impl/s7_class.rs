@@ -951,38 +951,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
-        // Inject r_entry
-        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
-            for line in entry.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
-        // Inject on.exit cleanup
-        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
-            lines.push(format!("  {}", on_exit.to_r_code()));
-        }
-        // Inject missing param defaults
-        for line in ctx.missing_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject lifecycle prelude if present
-        if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
-            lines.push(format!("  {}", prelude));
-        }
-        // Inject precondition checks
-        for check in ctx.precondition_checks() {
-            lines.push(format!("  {}", check));
-        }
-        // Inject match.arg validation for match_arg/choices params
-        for line in ctx.match_arg_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject r_post_checks
-        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
-            for line in post.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
+        ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
