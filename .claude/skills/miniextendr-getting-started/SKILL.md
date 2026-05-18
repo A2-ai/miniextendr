@@ -89,8 +89,9 @@ if needed).
 
 `use_miniextendr()` writes the following into your package:
 
-- `src/Makevars.in` and `src/rust/cargo-config.toml.in` — build configuration
-  templates.
+- `src/Makevars.in` — build configuration template. `configure` writes
+  `src/rust/.cargo/config.toml` inline per install mode (no `.in` template
+  for that file).
 - `configure.ac` — the autoconf source for install-mode detection.
 - `configure` — the generated configure script (via `autoconf`).
 - `src/rust/Cargo.toml` — a Rust crate depending on `miniextendr-api` and
@@ -156,9 +157,9 @@ The `just` recipes are for maintainers of this repo. If you are scaffolding
 your own separate R package, use plain `bash ./configure && R CMD INSTALL .`.
 
 Important: always use `bash ./configure`, not `./configure`. The script uses
-`#!/bin/sh` as its shebang, but on macOS that resolves to `dash` rather than
-`bash`, which causes spurious errors in the `AC_CONFIG_COMMANDS` passthrough
-blocks.
+`#!/bin/sh` as its shebang, and `AC_CONFIG_COMMANDS` passthrough produces
+spurious errors under that shell. Invoking with explicit `bash` avoids the
+problem on every platform.
 
 ### Step 4: Call from R and iterate
 
@@ -256,9 +257,9 @@ For CRAN submission:
 
 ## Common pitfalls
 
-- **`bash ./configure`, not `./configure`**: on macOS, `/bin/sh` is `dash`;
-  `AC_CONFIG_COMMANDS` passthrough produces spurious errors under dash. Always
-  use `bash ./configure` or run the `just configure` recipe.
+- **`bash ./configure`, not `./configure`**: the script uses `#!/bin/sh`,
+  and `AC_CONFIG_COMMANDS` passthrough produces spurious errors under that
+  shell. Always use `bash ./configure` or run the `just configure` recipe.
 
 - **`just` is maintainer-only**: the `just` recipes are for working inside this
   repository. End-user packages must build via `configure.ac`, `tools/*.R`, and
