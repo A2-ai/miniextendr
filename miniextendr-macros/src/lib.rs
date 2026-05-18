@@ -1066,7 +1066,7 @@ pub fn miniextendr(
         } else {
             ".val"
         };
-        crate::method_return_builder::error_in_r_standalone_body(&call_expr, final_return)
+        crate::method_return_builder::error_in_r_standalone_body(&call_expr, final_return, "  ")
     } else if !is_invisible_return_type {
         call_expr
     } else {
