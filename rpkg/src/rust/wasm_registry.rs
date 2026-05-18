@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      a91d5893dac65130
+// content-hash:      88fd2486a74797d7
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -1339,6 +1339,7 @@ unsafe extern "C-unwind" {
     pub fn C_derived_percent_class_info(_: SEXP) -> SEXP;
     pub fn C_derived_rational_class_info(_: SEXP) -> SEXP;
     pub fn C_DerivedCurrency__format_amounts(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_make_doubling_altrep(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_call_attr_with(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_call_attr_without(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_create_large_par_events(_: SEXP, _: SEXP) -> SEXP;
@@ -1501,6 +1502,7 @@ unsafe extern "C-unwind" {
     pub fn C_aho_test_find_flat(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_aho_test_overlapping(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_aho_test_replace_empty(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_make_no_lowlevel_altrep(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_boxed_ints(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_test_columnar_enum_all_none(_: SEXP) -> SEXP;
     pub fn C_test_columnar_opt_u64_mixed(_: SEXP) -> SEXP;
@@ -1870,6 +1872,7 @@ unsafe extern "C-unwind" {
 unsafe extern "C" {
     pub safe fn __mx_altrep_reg_MxDerivedIntsData();
     pub safe fn __mx_altrep_reg_JiffTimestampVecCounted();
+    pub safe fn __mx_altrep_reg_DoublingAltrep();
     pub safe fn __mx_altrep_reg_WarnAltrepData();
     pub safe fn __mx_altrep_reg_MessageAltrepData();
     pub safe fn __mx_altrep_reg_ConditionAltrepData();
@@ -1878,6 +1881,7 @@ unsafe extern "C" {
     pub safe fn __mx_altrep_reg_ClassedErrorAltrepData();
     pub safe fn __mx_altrep_reg_StreamingIntRangeData();
     pub safe fn __mx_altrep_reg_StreamingRealSquaresData();
+    pub safe fn __mx_altrep_reg_NoLowlevelAltrep();
     pub safe fn __mx_altrep_reg_ListData();
     pub safe fn __mx_altrep_reg_ArithSeqData();
     pub safe fn __mx_altrep_reg_BoxedIntsData();
@@ -8602,6 +8606,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 3,
     },
     R_CallMethodDef {
+        name: c"C_make_doubling_altrep".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_make_doubling_altrep) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_call_attr_with".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_call_attr_with) }),
         numArgs: 3,
@@ -9410,6 +9419,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_aho_test_replace_empty".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_aho_test_replace_empty) }),
         numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_make_no_lowlevel_altrep".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_make_no_lowlevel_altrep) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_boxed_ints".as_ptr(),
@@ -11243,6 +11257,10 @@ pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[
         symbol: "__mx_altrep_reg_JiffTimestampVecCounted",
     },
     AltrepRegistration {
+        register: __mx_altrep_reg_DoublingAltrep,
+        symbol: "__mx_altrep_reg_DoublingAltrep",
+    },
+    AltrepRegistration {
         register: __mx_altrep_reg_WarnAltrepData,
         symbol: "__mx_altrep_reg_WarnAltrepData",
     },
@@ -11273,6 +11291,10 @@ pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[
     AltrepRegistration {
         register: __mx_altrep_reg_StreamingRealSquaresData,
         symbol: "__mx_altrep_reg_StreamingRealSquaresData",
+    },
+    AltrepRegistration {
+        register: __mx_altrep_reg_NoLowlevelAltrep,
+        symbol: "__mx_altrep_reg_NoLowlevelAltrep",
     },
     AltrepRegistration {
         register: __mx_altrep_reg_ListData,
