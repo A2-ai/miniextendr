@@ -41,3 +41,7 @@ test_that("native-SEXP AltrepExtract preserves NA_integer_", {
   expect_identical(v[3L], 3L)
   expect_identical(as.integer(v), c(1L, NA_integer_, 3L))
 })
+
+test_that("native_sexp_altrep_new rejects non-integer input", {
+  expect_error(native_sexp_altrep_new(c(1.0, 2.0)), "is.integer(values)", fixed = TRUE)
+})

@@ -117,6 +117,8 @@ mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
 mod altrep_condition_tests;
+mod altrep_manual_fixture;
+mod altrep_no_lowlevel_fixture;
 mod altrep_sexp_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;

@@ -283,7 +283,7 @@ fn build_native_sexp_altrep(values: &[i32]) -> SEXP {
 /// @param values An integer vector.
 /// @return An ALTREP-backed integer vector.
 /// @export
-#[miniextendr]
+#[miniextendr(r_entry = "stopifnot(is.integer(values))")]
 pub fn native_sexp_altrep_new(values: Vec<i32>) -> SEXP {
     build_native_sexp_altrep(&values)
 }
