@@ -203,7 +203,7 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 /// Roxygen2 documentation and `@importFrom S7 ...` tags are generated automatically.
 pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
-        ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
+        should_export_from_tags, ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
     };
 
     let class_name = parsed_impl.class_name();
@@ -211,9 +211,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_doc_tags = &parsed_impl.doc_tags;
     // Check if class has @noRd - if so, skip method documentation and exports
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
-    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
-        || parsed_impl.internal;
-    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
+    let should_export =
+        should_export_from_tags(class_doc_tags, parsed_impl.noexport || parsed_impl.internal);
 
     let mut lines = Vec::new();
 

@@ -26,6 +26,20 @@
 
 use crate::miniextendr_impl::{ParsedImpl, ParsedMethod};
 
+/// Determine whether a class or method should be `@export`-ed.
+///
+/// Returns `true` unless the doc tags include `@noRd` or `@keywords internal`,
+/// or the `noexport` flag is set (which should incorporate both the `noexport`
+/// attribute and the `internal` attribute from the impl block).
+///
+/// Call sites should pass `parsed_impl.noexport || parsed_impl.internal` as
+/// `noexport` so the `internal` attribute is correctly folded in.
+pub(crate) fn should_export_from_tags(tags: &[String], noexport: bool) -> bool {
+    let has_no_rd = crate::roxygen::has_roxygen_tag(tags, "noRd");
+    let has_internal = crate::roxygen::has_roxygen_tag(tags, "keywords internal");
+    !has_no_rd && !has_internal && !noexport
+}
+
 /// Check whether `s` is a bare R identifier (only `[A-Za-z_][A-Za-z0-9_]*`).
 pub(crate) fn is_bare_identifier(s: &str) -> bool {
     let mut chars = s.chars();

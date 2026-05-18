@@ -18,7 +18,9 @@ use super::ParsedImpl;
 /// Custom double-dispatch patterns (e.g., `vec_ptype2.a.b`) are supported via
 /// `#[miniextendr(generic = "...", class = "...")]` attributes.
 pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
-    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+    use crate::r_class_formatter::{
+        should_export_from_tags, ClassDocBuilder, MethodDocBuilder, ParsedImplExt,
+    };
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
@@ -26,12 +28,11 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let ctor_name = format!("new_{}", class_name.to_lowercase());
     let class_doc_tags = &parsed_impl.doc_tags;
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
-    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
-        || parsed_impl.internal;
     // Generic export (NAMESPACE `export(generic_name)`): suppressed by
     // @noRd / internal / noexport. An internal class doesn't pollute the
     // package's user-facing surface with a bare generic.
-    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
+    let should_export =
+        should_export_from_tags(class_doc_tags, parsed_impl.noexport || parsed_impl.internal);
     // Method @export (NAMESPACE `S3method(generic, Class)`): only suppressed
     // by `noexport`. `internal` should keep S3method registration so dispatch
     // still works for instances of the class — without it, callers (including
@@ -273,16 +274,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Create class environment for static methods and trait namespace compatibility
-    // Check if class should be exported
-    let has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd");
-    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal")
-        || parsed_impl.internal;
-    let export_line = if !has_no_rd && !has_internal && !parsed_impl.noexport {
-        "#' @export\n"
-    } else {
-        ""
-    };
-    if has_no_rd {
+    // Check if class should be exported (reuse should_export already computed above)
+    let export_line = if should_export { "#' @export\n" } else { "" };
+    if class_has_no_rd {
         lines.push(format!(
             "#' @noRd
 {} <- new.env(parent = emptyenv())",

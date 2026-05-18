@@ -23,7 +23,9 @@ use super::ParsedImpl;
 /// Roxygen2 documentation is generated for the class, each method, and the
 /// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
 pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
-    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+    use crate::r_class_formatter::{
+        should_export_from_tags, ClassDocBuilder, MethodDocBuilder, ParsedImplExt,
+    };
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
@@ -211,9 +213,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
-    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal")
-        || parsed_impl.internal;
-    let should_export = !class_has_no_rd && !has_internal && !parsed_impl.noexport;
+    let should_export =
+        should_export_from_tags(&parsed_impl.doc_tags, parsed_impl.noexport || parsed_impl.internal);
 
     // Generate roxygen tags for dispatch methods.
     // roxygen2 8.0.0+ enforces that any `generic.class`-named function carry
