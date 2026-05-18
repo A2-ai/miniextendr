@@ -1,0 +1,301 @@
+---
+name: miniextendr-getting-started
+description: Use when a new user asks how to start a miniextendr-backed R package from zero, how to scaffold via minirextendr::use_miniextendr(), what their first Rust function should look like, what the dev loop is, or "can I add Rust to an existing R package". Also use when someone is confused about which package is which (miniextendr vs minirextendr).
+---
+
+# Getting Started with miniextendr
+
+miniextendr lets you write R packages with Rust backends. From an empty R
+package to a callable Rust function is five steps. This skill walks a developer
+who knows R and basic Rust — but has never written R-Rust FFI — through those
+steps.
+
+## When to use this skill
+
+- "I'm new to miniextendr, where do I start?"
+- "Can I add Rust to an existing R package?"
+- "What does the dev loop look like?"
+- "Where do I put my Rust code?"
+- "How do I scaffold a new package?"
+- "What is the difference between miniextendr and minirextendr?"
+- "What does `#[miniextendr]` actually do?"
+- "How do I call my Rust function from R?"
+
+## Key concepts
+
+### miniextendr vs minirextendr
+
+These are two separate packages with different audiences:
+
+- **miniextendr** (this framework) is the runtime and macro system your Rust
+  code links against. It lives in `miniextendr-api/` and `miniextendr-macros/`
+  in this repo. End users add it as a Cargo dependency in their package's
+  `Cargo.toml`.
+
+- **minirextendr** is a pure-R scaffolding helper. It generates the directory
+  structure, `configure.ac`, `Makevars.in`, and boilerplate that wires an R
+  package to its Rust backend. End users run
+  `minirextendr::use_miniextendr()` once to set up a new package and never
+  touch it again during normal development.
+
+In short: minirextendr sets up the scaffolding; miniextendr is the framework
+the scaffolded Rust code uses at build and runtime.
+
+### Source mode vs tarball mode
+
+During local development, the package builds in source mode: cargo resolves
+miniextendr from git or a local path, and the `configure` script writes
+appropriate `[patch]` or `[source]` entries in `.cargo/config.toml`.
+
+When shipping to CRAN, you run `just vendor` to bundle all cargo dependencies
+into `rpkg/inst/vendor.tar.xz`. The presence of that tarball is the single
+signal that flips `configure` into offline (CRAN-safe) tarball mode.
+
+For a full explanation of the latch and why it works this way, see the
+`miniextendr-architecture` skill. For now: if you are just developing locally,
+you never need to worry about this unless `minirextendr_doctor()` reports a
+stale tarball.
+
+### What `#[miniextendr]` does
+
+Placing `#[miniextendr]` on a `pub fn` does three things automatically:
+
+1. Generates a `extern "C-unwind"` C wrapper that receives SEXPs, converts them
+   to Rust types via `TryFromSexp`, calls your function, and converts the
+   return value back to an SEXP via `IntoR`.
+2. Emits an entry into the `MX_CALL_DEFS` distributed_slice so the C wrapper
+   is registered with R at package load time via `R_init_<pkg>`.
+3. Emits an entry into the `MX_R_WRAPPERS` distributed_slice so that a
+   corresponding `.Call(C_my_fn, ...)` R wrapper is generated into
+   `R/miniextendr-wrappers.R` at build time.
+
+You write plain Rust. The macro handles all the FFI plumbing.
+
+## How it works: the five-step walkthrough
+
+### Step 1: Create the package skeleton
+
+If you are starting from scratch, use the scaffolding helper:
+
+```r
+install.packages("minirextendr")  # or devtools::install_github("...")
+library(minirextendr)
+use_miniextendr()
+```
+
+Run this from your new package's root directory (which should already have a
+`DESCRIPTION` file — create it first with `usethis::create_package("mypkg")`
+if needed).
+
+`use_miniextendr()` writes the following into your package:
+
+- `src/Makevars.in` and `src/rust/cargo-config.toml.in` — build configuration
+  templates.
+- `configure.ac` — the autoconf source for install-mode detection.
+- `configure` — the generated configure script (via `autoconf`).
+- `src/rust/Cargo.toml` — a Rust crate depending on `miniextendr-api` and
+  `miniextendr-macros`.
+- `src/rust/src/lib.rs` — a minimal Rust library with `miniextendr_init!`.
+- `src/stub.c` — the minimal C file that R's build system requires.
+
+The key entry point is `minirextendr/R/create.R`. If you want to see what the
+scaffolded package looks like before running the function, the canonical live
+example is `rpkg/` in this repository.
+
+### Step 2: Add a Rust function
+
+Open `src/rust/src/lib.rs` (inside your R package's source tree) and add:
+
+```rust
+use miniextendr_api::miniextendr;
+
+/// Add two integers together.
+///
+/// @param x First integer.
+/// @param y Second integer.
+/// @return Integer sum.
+/// @export
+#[miniextendr]
+pub fn add_integers(x: i32, y: i32) -> i32 {
+    x + y
+}
+```
+
+A few rules:
+
+- The function must be `pub`.
+- The module containing the function must be reachable via `mod` from `lib.rs`.
+- Argument and return types must implement `TryFromSexp` and `IntoR`
+  respectively. Common types (integers, floats, strings, logical values,
+  vectors) all work out of the box.
+- The roxygen comment above the function is real: the macros pick it up and
+  include it in the generated R wrapper.
+
+For the simplest live example, look at the small helper functions in
+`rpkg/src/rust/lib.rs` around the `small_vec_copy` and `large_vec_altrep`
+functions.
+
+### Step 3: Build and install
+
+For local development:
+
+```bash
+bash ./configure        # generates Makevars and .cargo/config.toml
+R CMD INSTALL .         # compiles Rust, generates R wrappers, installs
+```
+
+Or, if you are working inside the miniextendr monorepo:
+
+```bash
+just configure          # wraps bash ./configure with workspace settings
+just rcmdinstall        # R CMD INSTALL with correct flags
+just force-document     # run roxygen2 to regenerate NAMESPACE and man/
+```
+
+The `just` recipes are for maintainers of this repo. If you are scaffolding
+your own separate R package, use plain `bash ./configure && R CMD INSTALL .`.
+
+Important: always use `bash ./configure`, not `./configure`. The script uses
+`#!/bin/sh` as its shebang, but on macOS that resolves to `dash` rather than
+`bash`, which causes spurious errors in the `AC_CONFIG_COMMANDS` passthrough
+blocks.
+
+### Step 4: Call from R and iterate
+
+After installing, load the package and call your function:
+
+```r
+library(mypkg)
+add_integers(3L, 4L)
+# [1] 7
+```
+
+The iteration loop for Rust changes is:
+
+1. Edit `.rs` source files.
+2. `bash ./configure && R CMD INSTALL .` (or `just configure && just rcmdinstall`).
+3. If you added or removed `#[miniextendr]` functions, also regenerate wrappers:
+   in the monorepo run `just force-document`; in a standalone package run
+   `Rscript -e 'devtools::document()'` after install.
+4. Restart R (or reload the package) and test.
+
+Generated files (`R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must be
+committed in the same PR as the Rust changes that produced them. The pre-commit
+hook in this repo enforces this for wrappers.R.
+
+### Step 5: Build a tarball for CRAN
+
+```bash
+just vendor             # bundles all cargo dependencies into inst/vendor.tar.xz
+R CMD build .           # produces the tarball
+R CMD check mypkg_*.tar.gz --as-cran
+```
+
+`just vendor` is the maintainer-only step. It calls `cargo-revendor` to produce
+a `vendor/` tree, compresses it, and places it at `inst/vendor.tar.xz`. Once
+that file is present, `configure` automatically switches to offline tarball mode
+for any subsequent `R CMD INSTALL` or check.
+
+The tarball recipes in the justfile trap-clean `inst/vendor.tar.xz` on exit so
+it does not linger after a build. If it does linger (for example, after a
+failed build), run `just clean-vendor-leak` to remove it.
+
+For a detailed account of the CRAN compatibility requirements, see
+`docs/CRAN_COMPATIBILITY.md`.
+
+## Decision trees
+
+### I want to create a new package vs add Rust to an existing one
+
+Starting from scratch:
+
+1. `usethis::create_package("mypkg")` (creates the R package skeleton).
+2. `minirextendr::use_miniextendr()` from the package root (adds Rust
+   scaffolding).
+3. Write Rust functions with `#[miniextendr]`.
+4. `bash ./configure && R CMD INSTALL .`.
+
+Adding Rust to an existing R package:
+
+1. From the package root, run `minirextendr::use_miniextendr()`. It detects an
+   existing `DESCRIPTION` and adds scaffolding without overwriting your existing
+   R code.
+2. The scaffolded `Makevars.in` and `configure.ac` coexist with any existing
+   `src/` files.
+3. Same build steps as above.
+
+### I am shipping to CRAN vs internal use only
+
+For internal use:
+
+- No vendoring needed. Source mode (no `inst/vendor.tar.xz`) is the default.
+- Users install via `remotes::install_github()` or similar. Cargo fetches
+  dependencies from crates.io or git at install time.
+
+For CRAN submission:
+
+- Run `just vendor` before `R CMD build`. This bundles all dependencies.
+- Check the built tarball: `R CMD check mypkg_*.tar.gz --as-cran`. Always check
+  the tarball, not the source directory — the source directory skips
+  `Authors@R` to `Author/Maintainer` conversion and misses real CRAN failures.
+- See `docs/CRAN_COMPATIBILITY.md` for the full set of requirements.
+
+## Key files
+
+- `minirextendr/R/create.R` — `use_miniextendr()` and
+  `create_miniextendr_package()` entry points.
+- `rpkg/src/rust/lib.rs` — the canonical live example of a miniextendr Rust
+  crate. The simplest exported functions near the `small_vec_copy` region show
+  the minimal `#[miniextendr] pub fn` pattern.
+- `rpkg/configure.ac` — the per-install entrypoint that detects source vs
+  tarball mode and writes the cargo config.
+- `rpkg/src/Makevars.in` — the Makevars template that drives the cdylib to
+  staticlib double-link build.
+- `docs/CRAN_COMPATIBILITY.md` — vendoring requirements, offline build
+  verification, and CRAN submission checklist.
+
+## Common pitfalls
+
+- **`bash ./configure`, not `./configure`**: on macOS, `/bin/sh` is `dash`;
+  `AC_CONFIG_COMMANDS` passthrough produces spurious errors under dash. Always
+  use `bash ./configure` or run the `just configure` recipe.
+
+- **`just` is maintainer-only**: the `just` recipes are for working inside this
+  repository. End-user packages must build via `configure.ac`, `tools/*.R`, and
+  standard R mechanisms (`R CMD INSTALL`, `devtools::install()`). Never require
+  `just` in scaffolded package instructions.
+
+- **Generated wrappers must be committed**: `R/miniextendr-wrappers.R` is
+  generated during `R CMD INSTALL`. If you add or remove `#[miniextendr]`
+  functions, regenerate and commit this file in the same PR. The pre-commit
+  hook in this repo blocks commits where `*-wrappers.R` is staged without a
+  matching updated `NAMESPACE`.
+
+- **Install-mode latch leak**: if `inst/vendor.tar.xz` is present during local
+  development (left over from a previous `R CMD build` that did not clean up),
+  configure writes vendored mode and your edits to miniextendr workspace crates
+  have no effect. Run `just clean-vendor-leak` or delete the file manually. Use
+  `minirextendr_doctor()` to detect the condition automatically.
+
+- **Modules must be reachable from `lib.rs`**: if you add a new `.rs` file with
+  `#[miniextendr]` functions, you must add `mod my_module;` to `lib.rs`.
+  Functions in unreachable modules are silently excluded from registration.
+
+- **`configure.ac` must not be called via `minirextendr::*`**: configure-time
+  helpers belong in `tools/*.R` and are invoked via `Rscript tools/foo.R`. Do
+  not call minirextendr functions from configure — configure runs in a minimal
+  environment without the R library available.
+
+## Related skills
+
+- `miniextendr-architecture` — how the cdylib to staticlib double-link works,
+  the distributed_slice registration system, and the install-mode latch in
+  depth.
+- `miniextendr-build` — configure.ac, Makevars.in, vendor pipeline, and the
+  justfile recipes.
+- `miniextendr-scaffolding` — minirextendr templates, template sync workflow,
+  `minirextendr_doctor()`, and upgrade mechanics.
+- `miniextendr-conversions` — `TryFromSexp`, `IntoR`, `Coerce`, NA handling,
+  and the full type conversion matrix.
+- `miniextendr-macros` — deep dive into what `#[miniextendr]` generates and
+  how to use advanced attributes.
