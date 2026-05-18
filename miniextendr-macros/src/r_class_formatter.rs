@@ -26,6 +26,40 @@
 
 use crate::miniextendr_impl::{ParsedImpl, ParsedMethod};
 
+/// Determine whether a class or method should be `@export`-ed.
+///
+/// Returns `true` unless the doc tags include `@noRd` or `@keywords internal`,
+/// or the `noexport` flag is set (which should incorporate both the `noexport`
+/// attribute and the `internal` attribute from the impl block).
+///
+/// Call sites should pass `parsed_impl.noexport || parsed_impl.internal` as
+/// `noexport` so the `internal` attribute is correctly folded in.
+pub(crate) fn should_export_from_tags(tags: &[String], noexport: bool) -> bool {
+    let has_no_rd = crate::roxygen::has_roxygen_tag(tags, "noRd");
+    let has_internal = crate::roxygen::has_roxygen_tag(tags, "keywords internal");
+    !has_no_rd && !has_internal && !noexport
+}
+
+/// Emit the conditional S3 generic guard for a given generic name.
+///
+/// Returns an R code string (to be pushed onto a `lines: Vec<String>` with
+/// `lines.push(emit_s3_generic_guard(name))`) that creates the generic only
+/// when it doesn't already exist as a function:
+///
+/// ```r
+/// if (!exists("name", mode = "function")) {
+///   name <- function(x, ...) UseMethod("name")
+/// }
+/// ```
+///
+/// Use this for S3/vctrs class generators and trait-ABI wrappers. Do **not**
+/// use for S7 generics — those use `S7::new_generic()` / `S7::new_external_generic()`.
+pub(crate) fn emit_s3_generic_guard(name: &str) -> String {
+    format!(
+        "if (!exists(\"{name}\", mode = \"function\")) {{\n  {name} <- function(x, ...) UseMethod(\"{name}\")\n}}"
+    )
+}
+
 /// Check whether `s` is a bare R identifier (only `[A-Za-z_][A-Za-z0-9_]*`).
 pub(crate) fn is_bare_identifier(s: &str) -> bool {
     let mut chars = s.chars();
@@ -337,6 +371,51 @@ impl<'a> MethodContext<'a> {
             &self.match_arg_skip_set(),
         )
         .static_checks
+    }
+
+    /// Emit the 7-step method prelude into `lines`, each line prefixed with `indent`.
+    ///
+    /// The prelude is the standardised sequence that appears at the top of every
+    /// generated R method body, in order:
+    ///
+    /// 1. `r_entry` — user code injected before any checks
+    /// 2. `r_on_exit` — `on.exit(...)` cleanup
+    /// 3. `missing_prelude` — `if (missing(param)) param <- quote(expr=)` for `Missing<T>`
+    /// 4. `lifecycle_prelude` — deprecation/superseded banner (class-system-specific label)
+    /// 5. `precondition_checks` — `stopifnot(is.*(param))` for typed params
+    /// 6. `match_arg_prelude` — `base::match.arg(param)` validation
+    /// 7. `r_post_checks` — user code after all checks, before `.Call()`
+    ///
+    /// `what` is the human-readable method label passed to `lifecycle_prelude`
+    /// (e.g., `"Type.method"` for S3/S4, `"Type$method"` for Env/R6/S7).
+    /// `indent` is the per-line prefix (e.g., `"  "` for 2-space, `"      "` for 6-space).
+    pub fn emit_method_prelude(&self, lines: &mut Vec<String>, indent: &str, what: &str) {
+        let m = self.method;
+        if let Some(ref entry) = m.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("{}{}", indent, line));
+            }
+        }
+        if let Some(ref on_exit) = m.method_attrs.r_on_exit {
+            lines.push(format!("{}{}", indent, on_exit.to_r_code()));
+        }
+        for line in self.missing_prelude() {
+            lines.push(format!("{}{}", indent, line));
+        }
+        if let Some(prelude) = m.lifecycle_prelude(what) {
+            lines.push(format!("{}{}", indent, prelude));
+        }
+        for check in self.precondition_checks() {
+            lines.push(format!("{}{}", indent, check));
+        }
+        for line in self.match_arg_prelude() {
+            lines.push(format!("{}{}", indent, line));
+        }
+        if let Some(ref post) = m.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("{}{}", indent, line));
+            }
+        }
     }
 
     /// Build `if (missing(param)) param <- quote(expr=)` prelude lines for Missing<T> parameters.

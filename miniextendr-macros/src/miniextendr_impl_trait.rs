@@ -180,6 +180,14 @@ impl TraitMethod {
         format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
     }
 
+    /// Generates the C wrapper identifier as a `String`, for use in R-side `.Call()` generation.
+    ///
+    /// Prefer `c_wrapper_ident()` for Rust token generation; use this variant
+    /// when building R code strings (e.g., `".Call(C_Type__Trait__method, ...)"`).
+    fn c_wrapper_ident_string(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> String {
+        format!("C_{}__{}__{}", type_ident, trait_name, self.ident)
+    }
+
     /// Returns true if this method has no return type (returns unit `()`).
     ///
     /// Used to decide whether the R wrapper should emit `invisible(x)` for
@@ -228,6 +236,11 @@ impl TraitConst {
     /// This is the symbol name registered with R for `.Call()` access to the constant.
     fn c_wrapper_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
         format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
+    }
+
+    /// Generates the C wrapper identifier as a `String`, for use in R-side `.Call()` generation.
+    fn c_wrapper_ident_string(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> String {
+        format!("C_{}__{}__{}", type_ident, trait_name, self.ident)
     }
 
     /// Generates the `R_CallMethodDef` static identifier: `call_method_def_{Type}__{Trait}_{CONST}`.

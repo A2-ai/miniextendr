@@ -23,7 +23,9 @@ use super::ParsedImpl;
 /// Roxygen2 documentation is generated for the class, each method, and the
 /// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
 pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
-    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+    use crate::r_class_formatter::{
+        ClassDocBuilder, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
+    };
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
@@ -100,39 +102,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name, method_name, ctx.params
         ));
 
-        // Inject r_entry
-        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
-            for line in entry.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
-        // Inject on.exit cleanup
-        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
-            lines.push(format!("  {}", on_exit.to_r_code()));
-        }
-        // Inject missing param defaults
-        for line in ctx.missing_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
-        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("  {}", prelude));
-        }
-        // Inject precondition checks
-        for check in ctx.precondition_checks() {
-            lines.push(format!("  {}", check));
-        }
-        // Inject match.arg validation for match_arg/choices params
-        for line in ctx.match_arg_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject r_post_checks
-        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
-            for line in post.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
+        ctx.emit_method_prelude(&mut lines, "  ", &what);
 
         let call = ctx.instance_call("self");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -164,39 +135,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name, method_name, ctx.params
         ));
 
-        // Inject r_entry
-        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
-            for line in entry.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
-        // Inject on.exit cleanup
-        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
-            lines.push(format!("  {}", on_exit.to_r_code()));
-        }
-        // Inject missing param defaults
-        for line in ctx.missing_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
-        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("  {}", prelude));
-        }
-        // Inject precondition checks
-        for check in ctx.precondition_checks() {
-            lines.push(format!("  {}", check));
-        }
-        // Inject match.arg validation for match_arg/choices params
-        for line in ctx.match_arg_prelude() {
-            lines.push(format!("  {}", line));
-        }
-        // Inject r_post_checks
-        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
-            for line in post.lines() {
-                lines.push(format!("  {}", line));
-            }
-        }
+        ctx.emit_method_prelude(&mut lines, "  ", &what);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
@@ -211,9 +151,10 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
-    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal")
-        || parsed_impl.internal;
-    let should_export = !class_has_no_rd && !has_internal && !parsed_impl.noexport;
+    let should_export = should_export_from_tags(
+        &parsed_impl.doc_tags,
+        parsed_impl.noexport || parsed_impl.internal,
+    );
 
     // Generate roxygen tags for dispatch methods.
     // roxygen2 8.0.0+ enforces that any `generic.class`-named function carry

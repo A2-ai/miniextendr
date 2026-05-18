@@ -7,6 +7,7 @@
 
 use super::{TraitConst, TraitMethod, trait_method_body_lines, trait_method_preamble_lines};
 use crate::miniextendr_impl::ClassSystem;
+use crate::r_class_formatter::emit_s3_generic_guard;
 
 /// Options controlling export visibility and documentation for trait R wrapper generation.
 pub(super) struct TraitWrapperOpts {
@@ -179,7 +180,6 @@ fn generate_trait_env_r_wrapper(
     lines.push(String::new());
 
     for method in methods {
-        let method_name = &method.ident;
         let r_name = method.r_method_name();
 
         // Build R formals with defaults applied
@@ -214,7 +214,7 @@ fn generate_trait_env_r_wrapper(
         }
 
         // Build .Call() invocation — C name uses Rust ident, R name uses r_name
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let (full_params, call) = if method.has_self {
             let fp = if formals.is_empty() {
                 "x".to_string()
@@ -269,7 +269,7 @@ fn generate_trait_env_r_wrapper(
         lines.extend(roxygen);
 
         // Build .Call() invocation
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, const_name);
+        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
         // Generate const wrapper
@@ -325,7 +325,6 @@ fn generate_trait_s3_r_wrapper(
 
     // Generate S3 generics + methods for instance methods
     for method in &instance_methods {
-        let method_name = &method.ident;
         let generic_name = method.r_method_name();
         let s3_method_name = format!("{}.{}", generic_name, type_str);
 
@@ -354,13 +353,7 @@ fn generate_trait_s3_r_wrapper(
         lines.extend(generic_roxygen);
 
         // S3 generic definition
-        lines.push(format!(
-            "if (!exists(\"{generic_name}\", mode = \"function\")) {{"
-        ));
-        lines.push(format!(
-            "  {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")"
-        ));
-        lines.push("}".to_string());
+        lines.push(emit_s3_generic_guard(generic_name.as_str()));
         lines.push(String::new());
 
         // S3 method roxygen (include @param tags from method doc comments)
@@ -381,7 +374,7 @@ fn generate_trait_s3_r_wrapper(
         };
 
         // Build .Call() invocation
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident)
             .with_self("x")
             .with_args(&params)
@@ -423,7 +416,6 @@ fn generate_trait_s3_r_wrapper(
 
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
-        let method_name = &method.ident;
         let r_name = method.r_method_name();
         // Build R formals with defaults applied
         let formals =
@@ -444,7 +436,7 @@ fn generate_trait_s3_r_wrapper(
         lines.extend(roxygen);
 
         // Build .Call() invocation — C name uses Rust ident
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!(
@@ -468,7 +460,7 @@ fn generate_trait_s3_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, const_name);
+        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
         lines.push(format!(
@@ -580,7 +572,7 @@ fn generate_trait_s4_r_wrapper(
         lines.push(format!("#' @exportMethod {}", generic_name));
 
         // Build .Call() invocation
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident)
             .with_self("x")
             .with_args(&params)
@@ -605,7 +597,6 @@ fn generate_trait_s4_r_wrapper(
 
     // Generate static methods as standalone functions
     for method in &static_methods {
-        let method_name = &method.ident;
         let r_name = method.r_method_name();
         let fn_name = format!("{}_{}_{}", type_str, trait_str, r_name);
         // Build R formals with defaults applied
@@ -628,7 +619,7 @@ fn generate_trait_s4_r_wrapper(
         lines.extend(roxygen);
 
         // Build .Call() invocation — C name uses Rust ident
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!("{} <- function({}) {{", fn_name, formals));
@@ -650,7 +641,7 @@ fn generate_trait_s4_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, const_name);
+        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
         lines.push(format!("{} <- function() {{", fn_name));
@@ -756,7 +747,7 @@ fn generate_trait_s7_r_wrapper(
         lines.push(String::new());
 
         // Build .Call() invocation
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident)
             .with_self("x")
             .with_args(&params)
@@ -790,7 +781,6 @@ fn generate_trait_s7_r_wrapper(
 
     // Generate static methods in trait namespace
     for method in &static_methods {
-        let method_name = &method.ident;
         let r_name = method.r_method_name();
         // Build R formals with defaults applied
         let formals =
@@ -810,7 +800,7 @@ fn generate_trait_s7_r_wrapper(
         lines.extend(roxygen);
 
         // C name uses Rust ident
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!(
@@ -834,7 +824,7 @@ fn generate_trait_s7_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, const_name);
+        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
         lines.push(format!("{}${} <- function() {{", trait_env_var, const_name));
@@ -934,7 +924,7 @@ fn generate_trait_r6_r_wrapper(
         lines.extend(roxygen.export().build());
 
         // Build .Call() invocation
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident)
             .with_self("x")
             .with_args(&params)
@@ -966,7 +956,6 @@ fn generate_trait_r6_r_wrapper(
 
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
-        let method_name = &method.ident;
         let r_name = method.r_method_name();
         // Build R formals with defaults applied
         let formals =
@@ -986,7 +975,7 @@ fn generate_trait_r6_r_wrapper(
         lines.extend(roxygen);
 
         // C name uses Rust ident
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
+        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!(
@@ -1010,7 +999,7 @@ fn generate_trait_r6_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, const_name);
+        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
         lines.push(format!(
