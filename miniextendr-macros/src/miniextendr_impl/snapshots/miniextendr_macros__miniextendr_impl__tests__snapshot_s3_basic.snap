@@ -1,6 +1,5 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 1905
 expression: generate_s3_r_wrapper(&parsed)
 ---
 # Counter::new (1:1)

@@ -12,7 +12,7 @@ R6 sensor reading with one documented and one undocumented active binding
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
   \describe{
-    \item{\code{value}}{The calibrated sensor value (exported active binding).}
+    \item{\code{value}}{The calibrated sensor value (exported active binding)}
 
     \item{\code{raw_bytes}}{(internal)}
   }
@@ -28,7 +28,7 @@ R6 sensor reading with one documented and one undocumented active binding
 \if{html}{\out{<a id="method-R6SensorReading-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-R6SensorReading-initialize}{}}}
 \subsection{\code{R6SensorReading$new()}}{
-  Creates a new sensor reading.
+  Creates a new sensor reading
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6SensorReading$new(value, raw, .ptr = NULL)}

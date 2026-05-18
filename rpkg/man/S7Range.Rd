@@ -25,16 +25,24 @@ S7Range(start, end, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Regular method: returns the start value.
+S7Range S7 Class
 
-Regular method: returns the end value.
+Regular method: returns the start value
+
+Regular method: returns the end value
 }
 \keyword{internal}
 \section{Additional properties}{
 
 \describe{
-\item{\code{@length}}{Computed property: read-only length of the range. This becomes an S7 property accessed as \code{obj@length} in R. Since there's no setter, it's a computed (read-only) property.}
+\item{\code{@length}}{Computed property: read-only length of the range
 
-\item{\code{@midpoint}}{Dynamic property getter: read the midpoint. Combined with set_midpoint, this creates a dynamic property that can be both read and written.}
+This becomes an S7 property accessed as \code{obj@length} in R. Since there's no setter, it is a computed (read-only) property.
+
+The value is always \code{end - start} and is recomputed on each access.}
+
+\item{\code{@midpoint}}{Dynamic property getter: read the midpoint
+
+Combined with set_midpoint, this creates a dynamic property that can be both read and written.}
 }}
 

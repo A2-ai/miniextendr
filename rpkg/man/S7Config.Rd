@@ -23,12 +23,14 @@ S7Config(name, score, version, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Regular getter for version.
+S7Config S7 Class
+
+Regular getter for version
 }
 \keyword{internal}
 \section{Additional properties}{
 
 \describe{
-\item{\code{@old_version}}{Deprecated property - emits warning when accessed.}
+\item{\code{@old_version}}{Deprecated property - emits warning when accessed}
 }}
 

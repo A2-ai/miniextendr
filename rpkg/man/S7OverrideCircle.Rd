@@ -19,6 +19,8 @@ S7OverrideCircle(radius, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the radius.
+S7OverrideCircle S7 Class
+
+Returns the radius
 }
 \keyword{internal}

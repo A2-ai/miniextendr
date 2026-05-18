@@ -1,6 +1,5 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 1963
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title WithDefaults S7 Class

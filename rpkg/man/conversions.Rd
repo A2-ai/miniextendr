@@ -1393,7 +1393,7 @@ Test \verb{HashSet<String>} argument: returns the number of unique elements
 
 conversions
 
-Note: \code{mut} tests macro handling of mutable parameters; becomes unused after expansion
+Test \code{ListMut} argument: sets the first element to 99 and returns the length
 
 Test \verb{Option<String>} argument: returns 1 if Some, 0 if None (NA)
 

@@ -12,9 +12,9 @@ R6 rectangle class demonstrating active bindings for computed properties
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
   \describe{
-    \item{\code{area}}{Returns the area (active binding - property access).}
+    \item{\code{area}}{Returns the area (active binding - property access)}
 
-    \item{\code{perimeter}}{Returns the perimeter (active binding - property access).}
+    \item{\code{perimeter}}{Returns the perimeter (active binding - property access)}
   }
   \if{html}{\out{</div>}}
 }
@@ -30,7 +30,7 @@ R6 rectangle class demonstrating active bindings for computed properties
 \if{html}{\out{<a id="method-R6Rectangle-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Rectangle-initialize}{}}}
 \subsection{\code{R6Rectangle$new()}}{
-  Creates a new rectangle with given dimensions.
+  Creates a new rectangle with given dimensions
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Rectangle$new(width, height, .ptr = NULL)}
@@ -51,7 +51,7 @@ R6 rectangle class demonstrating active bindings for computed properties
 \if{html}{\out{<a id="method-R6Rectangle-get_width"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Rectangle-get_width}{}}}
 \subsection{\code{R6Rectangle$get_width()}}{
-  Returns the width (regular method).
+  Returns the width (regular method)
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Rectangle$get_width()}
@@ -63,7 +63,7 @@ R6 rectangle class demonstrating active bindings for computed properties
 \if{html}{\out{<a id="method-R6Rectangle-get_height"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Rectangle-get_height}{}}}
 \subsection{\code{R6Rectangle$get_height()}}{
-  Returns the height (regular method).
+  Returns the height (regular method)
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Rectangle$get_height()}

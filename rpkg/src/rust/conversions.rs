@@ -1000,10 +1000,11 @@ pub fn conv_btreemap_rlog_ret() -> BTreeMap<String, RLogical> {
 }
 
 // -----------------------------------------------------------------------------
-/// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
-#[allow(unused_mut)]
 /// Test `ListMut` argument: sets the first element to 99 and returns the length.
 /// @param x Input list (first element mutated in-place).
+///
+/// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
+#[allow(unused_mut)]
 #[miniextendr]
 pub fn conv_list_mut_set_first(mut x: ListMut) -> i32 {
     let len = x.len() as i32;

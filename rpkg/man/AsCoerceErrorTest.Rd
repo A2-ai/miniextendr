@@ -58,19 +58,7 @@ AsCoerceErrorTest
 \description{
 S3 generic for \code{as_data_frame}
 
-Convert to data.frame - fails when empty.
-
 S3 generic for \code{as_list}
 
-Convert to list - always returns "not supported" error.
-
 S3 generic for \code{as_character}
-
-Convert to character - custom error message.
-
-Convert to data.frame - fails when empty.
-
-Convert to list - always returns "not supported" error.
-
-Convert to character - custom error message.
 }

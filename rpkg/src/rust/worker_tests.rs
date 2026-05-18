@@ -258,7 +258,6 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 // region: Test 6: Return value propagation
 
 /// Test that i32 return values propagate correctly from the worker thread.
-#[miniextendr]
 /// @name rpkg_worker_tests
 /// @examples
 /// test_worker_return_i32()
@@ -283,6 +282,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 /// unsafe_C_test_nested_with_r_thread unsafe_C_test_nested_worker_calls
 /// unsafe_C_test_nested_with_error unsafe_C_test_nested_with_panic
 /// unsafe_C_test_deep_with_r_thread_sequence
+#[miniextendr]
 pub fn test_worker_return_i32() -> i32 {
     // This uses worker strategy automatically (returns non-SEXP)
     let x = 21;

@@ -32,12 +32,14 @@ S7Counter_default_counter()
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the current value (S7-specific method name to avoid conflicts).
+S7Counter S7 Class
 
-Increments the counter by 1 and returns the new value.
+Returns the current value (S7-specific method name to avoid conflicts)
 
-Adds the given amount to the counter and returns the new value.
+Increments the counter by 1 and returns the new value
 
-A static method that returns a default counter (value = 0).
+Adds the given amount to the counter and returns the new value
+
+A static method that returns a default counter (value = 0)
 }
 \keyword{internal}

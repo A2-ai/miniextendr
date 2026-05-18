@@ -45,10 +45,12 @@ convert(from, to, ...)
 \item{...}{Additional arguments passed to the S7 convert generic.}
 }
 \description{
-Get the temperature value.
+S7Fahrenheit S7 Class
 
-Convert Fahrenheit to Celsius. Uses S7::convert() for type coercion: S7::convert(fahrenheit_obj, S7Celsius)
+Get the temperature value
 
-Convert Fahrenheit from Celsius. Uses S7::convert() for type coercion: S7::convert(celsius_obj, S7Fahrenheit)
+Convert Fahrenheit to Celsius
+
+Convert Fahrenheit from Celsius
 }
 \keyword{internal}

@@ -19,6 +19,8 @@ S7Circle(radius, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the area.
+S7Circle S7 Class
+
+Returns the area
 }
 \keyword{internal}

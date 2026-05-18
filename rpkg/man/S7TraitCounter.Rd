@@ -38,8 +38,12 @@ S7TraitCounter_new_s7trait(initial)
 \item{initial}{(undocumented)}
 }
 \description{
-Get value via inherent method.
+S7TraitCounter S7 Class
 
-Create a new S7 trait counter.
+Get value via inherent method
+
+Create a new S7 trait counter
+
+Static trait method Counter::default_initial()
 }
 \keyword{internal}

@@ -50,8 +50,4 @@ S3TraitCounter
 }
 \description{
 S3 generic for \code{get_value}
-
-Get value via inherent method.
-
-Create a new S3 trait counter.
 }

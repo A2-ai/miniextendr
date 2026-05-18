@@ -22,6 +22,7 @@ Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `
 - **MXL203** — redundant `internal` + `noexport`.
 - **MXL300** — direct `Rf_error`/`Rf_errorcall` → replace with `panic!()` (framework converts to R error via tagged-SEXP transport).
 - **MXL301** — `_unchecked` FFI outside known-safe contexts (ALTREP callbacks, `with_r_unwind_protect`, `with_r_thread`).
+- **MXL302** — non-doc attribute (`#[cfg(...)]`, `#[deprecated]`, etc.) interrupts a `///` doc-comment stream on a `#[miniextendr]` item. The macro resets multiline-continuation context at the interruption so output is well-formed, but trailing prose after the interruption will not continue the preceding `@examples`/`@details`/`@return` block. Fix: move all `///` comments above non-doc attributes.
 
 ## Adding a rule
 - New file under `rules/`, register in `rules.rs`, add code to `lint_code.rs`.

@@ -30,7 +30,9 @@ SerdeRPoint
 \item{name}{Method name for dispatch.}
 }
 \description{
-Serialize this Point to an R list.
+SerdeRPoint  Class
 
-Deserialize a Point from an R list.
+Serialize this Point to an R list
+
+Deserialize a Point from an R list
 }

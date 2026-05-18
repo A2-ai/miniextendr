@@ -7,11 +7,11 @@
 use miniextendr_api::miniextendr;
 
 /// Test standalone function mixed with R6 impl blocks.
-#[miniextendr]
 /// @name rpkg_r6_standalone
 /// @examples
 /// r6_standalone_add(1L, 2L)
 /// @aliases r6_standalone_add
+#[miniextendr]
 pub fn r6_standalone_add(a: i32, b: i32) -> i32 {
     a + b
 }

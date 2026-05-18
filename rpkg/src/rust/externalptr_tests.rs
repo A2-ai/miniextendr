@@ -18,7 +18,6 @@ pub struct Point {
 }
 
 /// Create a new Counter ExternalPtr with the given initial value.
-#[miniextendr]
 /// @name rpkg_externalptr
 /// @examples
 /// ptr <- extptr_counter_new(1L)
@@ -32,6 +31,7 @@ pub struct Point {
 ///   unsafe_C_extptr_type_mismatch_test unsafe_C_extptr_null_test unsafe_C_extptr_is_counter
 ///   unsafe_C_extptr_is_point test_extptr_on_main_thread
 /// @param initial Initial value for the counter.
+#[miniextendr]
 pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::ExternalPtr<Counter> {
     miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
 }

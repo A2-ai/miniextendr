@@ -1,6 +1,5 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 1955
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 # Rational::new (1:1)
