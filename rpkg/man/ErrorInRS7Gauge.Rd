@@ -31,12 +31,14 @@ ErrorInRS7Gauge(level, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Read the level -- should always succeed.
+S7 class for testing error_in_r with S7 class system
 
-Set the level -- mutable, chainable.
+Read the level -- should always succeed
 
-Deliberately panic.
+Set the level -- mutable, chainable
 
-Return Result::Err.
+Deliberately panic
+
+Return Result::Err
 }
 \keyword{internal}

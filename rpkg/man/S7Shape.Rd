@@ -19,6 +19,8 @@ S7Shape(name, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the shape name.
+S7Shape S7 Class
+
+Returns the shape name
 }
 \keyword{internal}

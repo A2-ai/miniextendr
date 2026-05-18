@@ -42,7 +42,7 @@ R6 calculator class testing default parameter values on methods
 \if{html}{\out{<a id="method-Calculator-get"></a>}}
 \if{latex}{\out{\hypertarget{method-Calculator-get}{}}}
 \subsection{\code{Calculator$get()}}{
-  Returns the current value.
+  Returns the current value
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Calculator$get()}

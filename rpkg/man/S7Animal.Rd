@@ -21,6 +21,8 @@ S7Animal(kind, legs, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the animal kind - should be callable on all descendants.
+S7Animal S7 Class
+
+Returns the animal kind - should be callable on all descendants
 }
 \keyword{internal}

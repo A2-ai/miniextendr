@@ -19,6 +19,8 @@ S7Celsius(value, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Get the temperature value.
+S7Celsius S7 Class
+
+Get the temperature value
 }
 \keyword{internal}

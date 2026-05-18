@@ -22,7 +22,7 @@ R6 cloneable class with locked class definition
 \if{html}{\out{<a id="method-R6Cloneable-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Cloneable-initialize}{}}}
 \subsection{\code{R6Cloneable$new()}}{
-  Creates a new instance.
+  Creates a new instance
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Cloneable$new(value, .ptr = NULL)}
@@ -42,7 +42,7 @@ R6 cloneable class with locked class definition
 \if{html}{\out{<a id="method-R6Cloneable-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Cloneable-get_value}{}}}
 \subsection{\code{R6Cloneable$get_value()}}{
-  Returns the value.
+  Returns the value
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Cloneable$get_value()}
@@ -54,7 +54,7 @@ R6 cloneable class with locked class definition
 \if{html}{\out{<a id="method-R6Cloneable-set_value"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Cloneable-set_value}{}}}
 \subsection{\code{R6Cloneable$set_value()}}{
-  Sets the value.
+  Sets the value
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Cloneable$set_value(value)}

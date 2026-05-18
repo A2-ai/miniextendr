@@ -40,13 +40,20 @@ PtrSelfTest
 \item{name}{Method name for dispatch.}
 }
 \description{
-Regular &self method — returns the stored value.
+PtrSelfTest  Class
 
-ExternalPtr self — can check pointer state.
+Create a new PtrSelfTest
+\describe{
+\item{\code{value}}{Integer value.}
+}
 
-ExternalPtr self — access inner value via Deref.
+Regular &self method — returns the stored value
 
-Mutable ExternalPtr self — modify inner value via DerefMut.
+ExternalPtr self — can check pointer state
 
-By-value ExternalPtr self — access inner value via Deref on owned ptr.
+ExternalPtr self — access inner value via Deref
+
+Mutable ExternalPtr self — modify inner value via DerefMut
+
+By-value ExternalPtr self — access inner value via Deref on owned ptr
 }

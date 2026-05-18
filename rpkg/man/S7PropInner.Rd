@@ -19,6 +19,8 @@ S7PropInner(label, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the inner class label.
+S7PropInner S7 Class
+
+Returns the inner class label
 }
 \keyword{internal}

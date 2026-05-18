@@ -34,11 +34,17 @@ S4Counter_default_counter()
 \item{initial}{Initial value for the counter.}
 }
 \description{
-Returns the current value.
+S4 counter class with setMethod dispatches for constructor, accessor, and mutation
 
-Increments the counter by 1 and returns the new value.
+Creates a new counter with the given initial value
 
-A static method that returns a default counter (value = 0).
+Returns the current value
+
+Increments the counter by 1 and returns the new value
+
+Adds the given amount to the counter and returns the new value
+
+A static method that returns a default counter (value = 0)
 }
 \section{Slots}{
 

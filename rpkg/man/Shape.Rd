@@ -19,6 +19,8 @@ Shape(kind, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the kind of shape.
+Shape S7 Class
+
+Returns the kind of shape
 }
 \keyword{internal}

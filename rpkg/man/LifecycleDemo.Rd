@@ -24,7 +24,7 @@ R6 class demonstrating lifecycle attributes on methods
 \if{html}{\out{<a id="method-LifecycleDemo-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-LifecycleDemo-initialize}{}}}
 \subsection{\code{LifecycleDemo$new()}}{
-  Creates a new LifecycleDemo.
+  Creates a new LifecycleDemo
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LifecycleDemo$new(value, .ptr = NULL)}
@@ -44,7 +44,7 @@ R6 class demonstrating lifecycle attributes on methods
 \if{html}{\out{<a id="method-LifecycleDemo-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-LifecycleDemo-get_value}{}}}
 \subsection{\code{LifecycleDemo$get_value()}}{
-  Returns the value.
+  Returns the value
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LifecycleDemo$get_value()}
@@ -56,7 +56,10 @@ R6 class demonstrating lifecycle attributes on methods
 \if{html}{\out{<a id="method-LifecycleDemo-old_value"></a>}}
 \if{latex}{\out{\hypertarget{method-LifecycleDemo-old_value}{}}}
 \subsection{\code{LifecycleDemo$old_value()}}{
-  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A deprecated method using lifecycle attribute.
+  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+
+
+  A deprecated method using lifecycle attribute
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LifecycleDemo$old_value()}
@@ -68,7 +71,10 @@ R6 class demonstrating lifecycle attributes on methods
 \if{html}{\out{<a id="method-LifecycleDemo-experimental_method"></a>}}
 \if{latex}{\out{\hypertarget{method-LifecycleDemo-experimental_method}{}}}
 \subsection{\code{LifecycleDemo$experimental_method()}}{
-  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}} An experimental method.
+  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+
+
+  An experimental method
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LifecycleDemo$experimental_method()}
@@ -80,7 +86,10 @@ R6 class demonstrating lifecycle attributes on methods
 \if{html}{\out{<a id="method-LifecycleDemo-legacy_value"></a>}}
 \if{latex}{\out{\hypertarget{method-LifecycleDemo-legacy_value}{}}}
 \subsection{\code{LifecycleDemo$legacy_value()}}{
-  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A method marked with Rust's \verb{#[deprecated]} attribute.
+  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+
+
+  A method marked with Rust's \verb{#[deprecated]} attribute
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LifecycleDemo$legacy_value()}

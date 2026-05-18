@@ -50,13 +50,7 @@ S3Counter
 \description{
 S3 generic for \code{s3_value}
 
-Returns the current value (S3-specific method name to avoid conflicts).
-
 S3 generic for \code{s3_inc}
 
-Increments the counter by 1 and returns the new value.
-
 S3 generic for \code{s3_add}
-
-A static method that returns a default counter (value = 0).
 }

@@ -12,9 +12,9 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
   \describe{
-    \item{\code{celsius}}{Get the temperature in Celsius (active binding getter).}
+    \item{\code{celsius}}{Get the temperature in Celsius (active binding getter)}
 
-    \item{\code{fahrenheit}}{Get the temperature in Fahrenheit (active binding with getter+setter).}
+    \item{\code{fahrenheit}}{Get the temperature in Fahrenheit (active binding with getter+setter)}
   }
   \if{html}{\out{</div>}}
 }
@@ -30,7 +30,7 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
 \if{html}{\out{<a id="method-R6Temperature-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Temperature-initialize}{}}}
 \subsection{\code{R6Temperature$new()}}{
-  Creates a new temperature in Celsius.
+  Creates a new temperature in Celsius
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Temperature$new(celsius, .ptr = NULL)}
@@ -50,7 +50,7 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
 \if{html}{\out{<a id="method-R6Temperature-set_celsius"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Temperature-set_celsius}{}}}
 \subsection{\code{R6Temperature$set_celsius()}}{
-  Set the temperature in Celsius (active binding setter).
+  Set the temperature in Celsius (active binding setter)
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Temperature$set_celsius(value)}
@@ -69,7 +69,7 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
 \if{html}{\out{<a id="method-R6Temperature-set_fahrenheit"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Temperature-set_fahrenheit}{}}}
 \subsection{\code{R6Temperature$set_fahrenheit()}}{
-  Set the temperature via Fahrenheit (active binding setter).
+  Set the temperature via Fahrenheit (active binding setter)
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Temperature$set_fahrenheit(value)}

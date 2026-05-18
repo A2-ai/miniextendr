@@ -42,7 +42,7 @@ WrapperDemo R6 Class
 \if{html}{\out{<a id="method-WrapperDemo-add_one"></a>}}
 \if{latex}{\out{\hypertarget{method-WrapperDemo-add_one}{}}}
 \subsection{\code{WrapperDemo$add_one()}}{
-  Increment the value by one.
+  Increment the value by one
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{WrapperDemo$add_one()}
@@ -73,7 +73,7 @@ WrapperDemo R6 Class
 \if{html}{\out{<a id="method-WrapperDemo-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-WrapperDemo-get_value}{}}}
 \subsection{\code{WrapperDemo$get_value()}}{
-  Get the current value.
+  Get the current value
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{WrapperDemo$get_value()}

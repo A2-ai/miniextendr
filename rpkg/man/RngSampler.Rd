@@ -36,13 +36,15 @@ RngSampler
 \item{name}{Method name for dispatch.}
 }
 \description{
-Create a new RngSampler.
+RngSampler  Class
 
-Get the seed hint (for testing).
+Create a new RngSampler
 
-Sample n uniform values using the rng attribute on a method.
+Get the seed hint (for testing)
 
-Sample n normal values.
+Sample n uniform values using the rng attribute on a method
 
-Static method with rng.
+Sample n normal values
+
+Static method with rng
 }

@@ -23,8 +23,10 @@ S7Strict(value, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Length method without \code{...} (strict generic).
+S7Strict S7 Class
 
-Method with fallback to class_any.
+Length method without \code{...} (strict generic)
+
+Method with fallback to class_any
 }
 \keyword{internal}

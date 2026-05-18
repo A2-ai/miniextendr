@@ -61,7 +61,7 @@ Static trait method MatrixCounter::default_value()
 \if{html}{\out{<a id="method-CounterTraitR6-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-CounterTraitR6-get_value}{}}}
 \subsection{\code{CounterTraitR6$get_value()}}{
-  Get the current counter value.
+  Get the current counter value
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{CounterTraitR6$get_value()}

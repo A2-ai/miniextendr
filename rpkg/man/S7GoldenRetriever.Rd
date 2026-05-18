@@ -23,8 +23,10 @@ S7GoldenRetriever(name, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-Returns the dog's name.
+S7GoldenRetriever S7 Class
 
-Returns the coat color.
+Returns the dog's name
+
+Returns the coat color
 }
 \keyword{internal}
