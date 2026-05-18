@@ -225,6 +225,23 @@ impl RTxtProgressBarBuilder {
         self
     }
 
+    /// Set the width of the bar to the current R console width.
+    ///
+    /// Queries `getOption("width")` at [`.build()`](RTxtProgressBarBuilder::build)
+    /// time and passes the result as a fixed integer to `txtProgressBar()`.
+    /// This matches R's canonical "fill the terminal" semantics and works
+    /// correctly inside `R -e ...` scripts where terminal-size syscalls may
+    /// not be meaningful.
+    ///
+    /// Calling `width_auto()` after `width()` (or vice-versa) uses the last
+    /// setting.
+    pub fn width_auto(mut self) -> Self {
+        let w = unsafe { crate::ffi::Rf_GetOptionWidth() };
+        // Rf_GetOptionWidth() returns a positive int; saturate to u32.
+        self.width = Some(w.max(1) as u32);
+        self
+    }
+
     /// Set the style of the progress bar: 1, 2, or 3 (default: 3).
     ///
     /// - Style 1: percentage only.
@@ -412,6 +429,40 @@ unsafe fn kill_txt_progress_bar_inner(sexp: SEXP) {
         Rf_unprotect(2); // call, kill_fn
         // Ignore err2 — we're in Drop, cannot propagate.
     }
+}
+
+// endregion
+
+// region: with_progress
+
+/// Run a closure with a style-3 [`RTxtProgressBar`] from `min` to `max`.
+///
+/// The bar is automatically closed when the closure returns or panics —
+/// [`RTxtProgressBar`]'s `Drop` impl calls `pb$kill()` via
+/// `R_tryEvalSilent`, so close-on-unwind is guaranteed without any
+/// additional teardown in the closure.
+///
+/// # Panics
+///
+/// Panics if `min > max` (forwarded from [`RTxtProgressBar::builder`]) or if
+/// `utils::txtProgressBar()` errors.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::txt_progress_bar::with_progress;
+///
+/// with_progress(0.0, 100.0, |pb| {
+///     for i in 0..=100 {
+///         pb.set(i as f64).ok();
+///     }
+/// });
+/// ```
+pub fn with_progress<F: FnOnce(&RTxtProgressBar)>(min: f64, max: f64, f: F) {
+    let pb = RTxtProgressBar::builder(min, max).style(3).build();
+    f(&pb);
+    // pb drops here → Drop calls kill() + R_ReleaseObject.
+    // Panic inside f will also unwind through Drop (same guarantee).
 }
 
 // endregion
