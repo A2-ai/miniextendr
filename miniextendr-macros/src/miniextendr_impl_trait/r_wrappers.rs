@@ -7,6 +7,7 @@
 
 use super::{TraitConst, TraitMethod, trait_method_body_lines, trait_method_preamble_lines};
 use crate::miniextendr_impl::ClassSystem;
+use crate::r_class_formatter::emit_s3_generic_guard;
 
 /// Options controlling export visibility and documentation for trait R wrapper generation.
 pub(super) struct TraitWrapperOpts {
@@ -354,13 +355,7 @@ fn generate_trait_s3_r_wrapper(
         lines.extend(generic_roxygen);
 
         // S3 generic definition
-        lines.push(format!(
-            "if (!exists(\"{generic_name}\", mode = \"function\")) {{"
-        ));
-        lines.push(format!(
-            "  {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")"
-        ));
-        lines.push("}".to_string());
+        lines.push(emit_s3_generic_guard(generic_name.as_str()));
         lines.push(String::new());
 
         // S3 method roxygen (include @param tags from method doc comments)

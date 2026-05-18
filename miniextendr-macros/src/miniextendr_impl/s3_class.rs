@@ -19,7 +19,8 @@ use super::ParsedImpl;
 /// `#[miniextendr(generic = "...", class = "...")]` attributes.
 pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
-        should_export_from_tags, ClassDocBuilder, MethodDocBuilder, ParsedImplExt,
+        emit_s3_generic_guard, should_export_from_tags, ClassDocBuilder, MethodDocBuilder,
+        ParsedImplExt,
     };
 
     let class_name = parsed_impl.class_name();
@@ -120,11 +121,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     lines.push(format!("#' @export {}", generic_name));
                 }
             }
-            lines.push(format!(
-                "if (!exists(\"{generic_name}\", mode = \"function\")) {{
-  {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
-}}"
-            ));
+            lines.push(emit_s3_generic_guard(&generic_name));
             lines.push(String::new());
         }
 

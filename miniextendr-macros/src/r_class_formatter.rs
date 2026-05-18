@@ -40,6 +40,26 @@ pub(crate) fn should_export_from_tags(tags: &[String], noexport: bool) -> bool {
     !has_no_rd && !has_internal && !noexport
 }
 
+/// Emit the conditional S3 generic guard for a given generic name.
+///
+/// Returns an R code string (to be pushed onto a `lines: Vec<String>` with
+/// `lines.push(emit_s3_generic_guard(name))`) that creates the generic only
+/// when it doesn't already exist as a function:
+///
+/// ```r
+/// if (!exists("name", mode = "function")) {
+///   name <- function(x, ...) UseMethod("name")
+/// }
+/// ```
+///
+/// Use this for S3/vctrs class generators and trait-ABI wrappers. Do **not**
+/// use for S7 generics — those use `S7::new_generic()` / `S7::new_external_generic()`.
+pub(crate) fn emit_s3_generic_guard(name: &str) -> String {
+    format!(
+        "if (!exists(\"{name}\", mode = \"function\")) {{\n  {name} <- function(x, ...) UseMethod(\"{name}\")\n}}"
+    )
+}
+
 /// Check whether `s` is a bare R identifier (only `[A-Za-z_][A-Za-z0-9_]*`).
 pub(crate) fn is_bare_identifier(s: &str) -> bool {
     let mut chars = s.chars();
