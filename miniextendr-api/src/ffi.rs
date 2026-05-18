@@ -3941,7 +3941,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns the value of `getOption("width")`.
     #[doc(alias = "GetOptionWidth")]
-    fn Rf_GetOptionWidth() -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_GetOptionWidth() -> ::std::os::raw::c_int;
 
     // Factor functions
 
