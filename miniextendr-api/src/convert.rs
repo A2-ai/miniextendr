@@ -656,7 +656,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
 
         // Extract column names as Vec<String>
         let names_sexp = first_names_sexp.expect("checked is_none above");
-        let n_cols = unsafe { crate::ffi::Rf_xlength(names_sexp) };
+        let n_cols = names_sexp.xlength();
         let mut col_names = Vec::with_capacity(n_cols as usize);
         for i in 0..n_cols {
             unsafe {

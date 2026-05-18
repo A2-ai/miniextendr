@@ -5,7 +5,7 @@
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::ffi::{Rf_xlength, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
@@ -57,7 +57,7 @@ impl RDeserializer {
     }
 
     fn len(&self) -> usize {
-        unsafe { Rf_xlength(self.sexp) as usize }
+        self.sexp.len()
     }
 
     fn is_null(&self) -> bool {
@@ -413,9 +413,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             });
         }
 
-        let len = self.len();
-        let ptr = unsafe { crate::ffi::RAW(self.sexp) };
-        let bytes = unsafe { crate::from_r::r_slice(ptr, len) };
+        let bytes = unsafe { self.sexp.as_slice::<u8>() };
         visitor.visit_bytes(bytes)
     }
 
@@ -427,9 +425,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             });
         }
 
-        let len = self.len();
-        let ptr = unsafe { crate::ffi::RAW(self.sexp) };
-        let bytes = unsafe { crate::from_r::r_slice(ptr, len) };
+        let bytes = unsafe { self.sexp.as_slice::<u8>() };
         visitor.visit_byte_buf(bytes.to_vec())
     }
 
@@ -709,7 +705,7 @@ impl VectorSeqAccess {
             sexp,
             sexp_type: sexp.type_of(),
             index: 0,
-            len: unsafe { Rf_xlength(sexp) as usize },
+            len: sexp.len(),
         }
     }
 }
@@ -811,7 +807,7 @@ impl ListSeqAccess {
         ListSeqAccess {
             sexp,
             index: 0,
-            len: unsafe { Rf_xlength(sexp) as usize },
+            len: sexp.len(),
         }
     }
 }
@@ -859,8 +855,8 @@ impl NamedListMapAccess {
                 actual: "list (names attribute is not character)".into(),
             });
         }
-        let len = unsafe { Rf_xlength(sexp) as usize };
-        let names_len = unsafe { Rf_xlength(names) as usize };
+        let len = sexp.len();
+        let names_len = names.len();
         if names_len != len {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",

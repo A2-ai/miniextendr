@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 
 use crate::ffi::SEXPTYPE::STRSXP;
-use crate::ffi::{self, SEXP, SexpExt};
+use crate::ffi::{SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
@@ -38,7 +38,7 @@ impl StrVec {
     /// Length of the character vector (number of elements).
     #[inline]
     pub fn len(self) -> isize {
-        unsafe { ffi::Rf_xlength(self.0) }
+        self.0.xlength()
     }
 
     /// Returns true if the vector is empty.
@@ -347,7 +347,7 @@ impl<'a> StrVecBuilder<'a> {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn set_str(&self, idx: isize, s: &str) {
-        debug_assert!(idx >= 0 && idx < unsafe { ffi::Rf_xlength(self.vec) });
+        debug_assert!(idx >= 0 && idx < self.vec.xlength());
         let charsxp = SEXP::charsxp(s);
         self.vec.set_string_elt(idx, charsxp);
     }
@@ -359,7 +359,7 @@ impl<'a> StrVecBuilder<'a> {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn set_na(&self, idx: isize) {
-        debug_assert!(idx >= 0 && idx < unsafe { ffi::Rf_xlength(self.vec) });
+        debug_assert!(idx >= 0 && idx < self.vec.xlength());
         self.vec.set_string_elt(idx, SEXP::na_string());
     }
 
@@ -398,7 +398,7 @@ impl<'a> StrVecBuilder<'a> {
     /// Get the length.
     #[inline]
     pub fn len(&self) -> isize {
-        unsafe { ffi::Rf_xlength(self.vec) }
+        self.vec.xlength()
     }
 
     /// Check if empty.

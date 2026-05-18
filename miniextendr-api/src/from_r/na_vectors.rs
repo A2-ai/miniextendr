@@ -90,14 +90,9 @@ impl TryFromSexp for Vec<Option<bool>> {
             .into());
         }
 
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { r_slice(ptr, len) };
+        let slice: &[RLogical] = unsafe { sexp.as_slice() };
 
-        Ok(slice
-            .iter()
-            .map(|&v| RLogical::from_i32(v).to_option_bool())
-            .collect())
+        Ok(slice.iter().map(|v| v.to_option_bool()).collect())
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -110,14 +105,9 @@ impl TryFromSexp for Vec<Option<bool>> {
             .into());
         }
 
-        let len = unsafe { sexp.len_unchecked() };
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { r_slice(ptr, len) };
+        let slice: &[RLogical] = unsafe { sexp.as_slice_unchecked() };
 
-        Ok(slice
-            .iter()
-            .map(|&v| RLogical::from_i32(v).to_option_bool())
-            .collect())
+        Ok(slice.iter().map(|v| v.to_option_bool()).collect())
     }
 }
 
@@ -145,22 +135,17 @@ impl TryFromSexp for Vec<Rboolean> {
             .into());
         }
 
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { r_slice(ptr, len) };
+        let slice: &[RLogical] = unsafe { sexp.as_slice() };
 
         slice
             .iter()
-            .map(|&v| {
-                let raw = RLogical::from_i32(v);
-                match raw.to_option_bool() {
-                    Some(false) => Ok(Rboolean::FALSE),
-                    Some(true) => Ok(Rboolean::TRUE),
-                    None => Err(SexpNaError {
-                        sexp_type: SEXPTYPE::LGLSXP,
-                    }
-                    .into()),
+            .map(|v| match v.to_option_bool() {
+                Some(false) => Ok(Rboolean::FALSE),
+                Some(true) => Ok(Rboolean::TRUE),
+                None => Err(SexpNaError {
+                    sexp_type: SEXPTYPE::LGLSXP,
                 }
+                .into()),
             })
             .collect()
     }
@@ -180,13 +165,11 @@ impl TryFromSexp for Vec<Option<Rboolean>> {
             .into());
         }
 
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { r_slice(ptr, len) };
+        let slice: &[RLogical] = unsafe { sexp.as_slice() };
 
         Ok(slice
             .iter()
-            .map(|&v| match RLogical::from_i32(v).to_option_bool() {
+            .map(|v| match v.to_option_bool() {
                 Some(false) => Some(Rboolean::FALSE),
                 Some(true) => Some(Rboolean::TRUE),
                 None => None,
@@ -213,13 +196,11 @@ impl TryFromSexp for Vec<crate::altrep_data::Logical> {
             .into());
         }
 
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { r_slice(ptr, len) };
+        let slice: &[RLogical] = unsafe { sexp.as_slice() };
 
         Ok(slice
             .iter()
-            .map(|&v| crate::altrep_data::Logical::from_r_int(v))
+            .map(|&v| crate::altrep_data::Logical::from(v))
             .collect())
     }
 }
@@ -238,16 +219,11 @@ impl TryFromSexp for Vec<Option<RLogical>> {
             .into());
         }
 
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { r_slice(ptr, len) };
+        let slice: &[RLogical] = unsafe { sexp.as_slice() };
 
         Ok(slice
             .iter()
-            .map(|&v| {
-                let raw = RLogical::from_i32(v);
-                if raw.is_na() { None } else { Some(raw) }
-            })
+            .map(|v| if v.is_na() { None } else { Some(*v) })
             .collect())
     }
 }
@@ -309,9 +285,7 @@ impl TryFromSexp for Vec<Option<u8>> {
             .into());
         }
 
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::RAW(sexp) };
-        let slice = unsafe { r_slice(ptr, len) };
+        let slice: &[u8] = unsafe { sexp.as_slice() };
 
         Ok(slice.iter().map(|&v| Some(v)).collect())
     }

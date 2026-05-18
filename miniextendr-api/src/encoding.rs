@@ -57,9 +57,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         crate::worker::is_r_main_thread(),
         "must be called from R main thread"
     );
-    use crate::ffi::{
-        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SexpExt,
-    };
+    use crate::ffi::{LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, SexpExt};
 
     unsafe {
         // Call l10n_info()
@@ -70,7 +68,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
 
         // Find the "UTF-8" element by name
         let names = info.get_names();
-        let n = Rf_xlength(info);
+        let n = info.xlength();
         let mut is_utf8 = false;
         for i in 0..n {
             let name_charsxp = names.string_elt(i);
@@ -78,6 +76,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
             let name = std::ffi::CStr::from_ptr(name_ptr);
             if name == c"UTF-8" {
                 let elt = info.vector_elt(i);
+                // keep raw: single-scalar read; no SexpExt::get_logical_elt(i) helper yet (see follow-up issue)
                 is_utf8 = LOGICAL(elt).read() != 0;
                 break;
             }

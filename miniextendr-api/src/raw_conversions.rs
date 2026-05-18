@@ -58,7 +58,7 @@ pub use bytemuck::{Pod, Zeroable};
 use std::fmt;
 use std::mem;
 
-use crate::ffi::{RAW, Rf_allocVector, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -339,9 +339,7 @@ fn get_raw_bytes(sexp: SEXP) -> Result<&'static [u8], SexpError> {
             actual: sexp.type_of(),
         }));
     }
-    let len = unsafe { Rf_xlength(sexp) } as usize;
-    let ptr = unsafe { RAW(sexp) };
-    Ok(unsafe { crate::from_r::r_slice(ptr, len) })
+    Ok(unsafe { sexp.as_slice::<u8>() })
 }
 
 /// Align bytes to type T, copying if necessary.
@@ -407,6 +405,7 @@ impl<T: Pod> IntoR for Raw<T> {
         let bytes = bytemuck::bytes_of(&self.0);
         unsafe {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as isize);
+            // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
             Ok(sexp)
@@ -420,6 +419,7 @@ impl<T: Pod> IntoR for RawSlice<T> {
         let bytes = bytemuck::cast_slice::<T, u8>(&self.0);
         unsafe {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as isize);
+            // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
             Ok(sexp)
@@ -437,6 +437,7 @@ impl<T: Pod> IntoR for RawTagged<T> {
 
         unsafe {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_len as isize);
+            // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(header_bytes.as_ptr(), ptr, header_bytes.len());
             std::ptr::copy_nonoverlapping(
@@ -465,6 +466,7 @@ impl<T: Pod> IntoR for RawSliceTagged<T> {
 
         unsafe {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_len as isize);
+            // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(header_bytes.as_ptr(), ptr, header_bytes.len());
             std::ptr::copy_nonoverlapping(

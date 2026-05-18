@@ -150,7 +150,7 @@ impl AltrepSexp {
         let typ = self.sexp.type_of();
         match typ {
             SEXPTYPE::STRSXP => {
-                let n = unsafe { ffi::Rf_xlength(self.sexp) };
+                let n = self.sexp.xlength();
                 for i in 0..n {
                     let _ = self.sexp.string_elt(i);
                 }
@@ -174,7 +174,7 @@ impl AltrepSexp {
     /// Must be called on the R main thread. The SEXP must be REALSXP.
     pub unsafe fn materialize_real(&self) -> &[f64] {
         let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const f64;
-        let len = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
+        let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
 
@@ -185,7 +185,7 @@ impl AltrepSexp {
     /// Must be called on the R main thread. The SEXP must be INTSXP.
     pub unsafe fn materialize_integer(&self) -> &[i32] {
         let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const i32;
-        let len = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
+        let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
 
@@ -196,7 +196,7 @@ impl AltrepSexp {
     /// Must be called on the R main thread. The SEXP must be LGLSXP.
     pub unsafe fn materialize_logical(&self) -> &[i32] {
         let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const i32;
-        let len = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
+        let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
 
@@ -207,7 +207,7 @@ impl AltrepSexp {
     /// Must be called on the R main thread. The SEXP must be RAWSXP.
     pub unsafe fn materialize_raw(&self) -> &[u8] {
         let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const u8;
-        let len = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
+        let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
 
@@ -218,7 +218,7 @@ impl AltrepSexp {
     /// Must be called on the R main thread. The SEXP must be CPLXSXP.
     pub unsafe fn materialize_complex(&self) -> &[Rcomplex] {
         let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const Rcomplex;
-        let len = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
+        let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
 
@@ -231,7 +231,7 @@ impl AltrepSexp {
     /// Must be called on the R main thread. The SEXP must be STRSXP.
     pub unsafe fn materialize_strings(&self) -> Vec<Option<String>> {
         use crate::from_r::charsxp_to_str;
-        let n = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
+        let n = self.sexp.len();
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
             let elt = self.sexp.string_elt(i as ffi::R_xlen_t);
@@ -264,7 +264,7 @@ impl AltrepSexp {
     /// Get the length of the underlying vector.
     #[inline]
     pub fn len(&self) -> usize {
-        (unsafe { ffi::Rf_xlength(self.sexp) }) as usize
+        self.sexp.len()
     }
 
     /// Check if the underlying vector is empty.

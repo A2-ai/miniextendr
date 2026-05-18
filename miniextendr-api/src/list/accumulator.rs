@@ -353,7 +353,7 @@ impl ListMut {
     /// Length of the list (number of elements).
     #[inline]
     pub fn len(&self) -> isize {
-        unsafe { ffi::Rf_xlength(self.0) }
+        self.0.xlength()
     }
 
     /// Returns true if the list is empty.

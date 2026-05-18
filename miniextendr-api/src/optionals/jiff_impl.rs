@@ -39,6 +39,8 @@ pub use jiff::civil::{Date, DateTime, Time};
 pub use jiff::{SignedDuration, Span, Timestamp, Zoned};
 
 use crate::cached_class::{date_class_sexp, set_posixct_tz, set_posixct_utc};
+// keep raw: all `*REAL(sexp)` reads and `*REAL(vec) = …` writes here are single-scalar;
+// no SexpExt::get_real_elt / set_real_elt helpers yet — see follow-up issue.
 use crate::ffi::{REAL, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
