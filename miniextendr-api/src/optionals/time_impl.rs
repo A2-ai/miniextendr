@@ -195,6 +195,7 @@ impl IntoR for Option<OffsetDateTime> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
+                // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
                 *REAL(vec) = f64::NAN;
                 set_posixct_utc(vec);
                 Rf_unprotect(1);
@@ -470,6 +471,7 @@ impl IntoR for Option<Date> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
+                // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
                 *REAL(vec) = f64::NAN;
 
                 vec.set_class(crate::cached_class::date_class_sexp());
