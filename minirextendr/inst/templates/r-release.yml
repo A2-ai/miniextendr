@@ -1,8 +1,12 @@
-# This template encodes four platform gotchas surfaced by issue #448:
+# This template encodes six platform gotchas:
 #   1. LANG=C.UTF-8 scoped to container jobs (AlmaLinux 8 has no UTF-8 locale by default)
 #   2. NOT set workflow-level (macOS rejects C.UTF-8 — glibc-only locale identifier)
 #   3. AlmaLinux minimal needs `dnf install git gh` + `gh auth setup-git`
 #   4. CARGO_NET_GIT_FETCH_WITH_CLI=true for cargo + private git deps on both platforms
+#   5. macOS SDK + MACOSX_DEPLOYMENT_TARGET pinned to CRAN's binary-distribution targets
+#   6. CRAN system libraries (libcurl, openssl, libtiff, …) prefetched into /opt/R/<arch>
+# Gotchas 1–4 from issue #448; 5–6 align the Rust toolchain's ABI with the C
+# libraries CRAN's macOS R was built against.
 # See docs/RELEASE_WORKFLOW.md for the full rationale.
 #
 # Scaffold this file into your package with:
@@ -73,15 +77,22 @@ jobs:
           R CMD build .
           R CMD check --as-cran --no-manual ./*.tar.gz
 
-  # ── macOS arm64 ───────────────────────────────────────────────────────────
+  # ── macOS (arm64 + Intel) ────────────────────────────────────────────────
   build-macos:
     strategy:
+      fail-fast: false
       matrix:
+        runner: [macos-14, macos-13]
         r-version: ['release', 'oldrel-1']
-    runs-on: macos-14  # arm64 runner
+    runs-on: ${{ matrix.runner }}
 
     # Note: NO LANG/LC_ALL here — macOS runners default to UTF-8 and break
     # if you force C.UTF-8 (glibc-only). See docs/RELEASE_WORKFLOW.md Gotcha 2.
+    #
+    # macos-14 is arm64 (CRAN target: Sonoma / 14.0).
+    # macos-13 is x86_64 (CRAN target: Big Sur / 11.0; last Intel macOS runner).
+    # The SDK / deployment-target pin step below branches on `uname -m`, so it
+    # is safe across both runners.
     steps:
       - uses: actions/checkout@v4
 
@@ -93,6 +104,48 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh auth setup-git
+
+      # Gotcha 5: pin macOS SDK + deployment target to CRAN's binary targets so
+      # Rust artefacts (staticlib / cdylib) link cleanly into R's package build
+      # pipeline. Inlined (not `uses:`-referenced) from
+      # r-devel/actions/setup-macos-tools@ec72e88 (action.yml lines 17-28) to
+      # stay hermetic if that repo is later archived or restructured. Pin values
+      # track CRAN per `R Installation and Administration` §"Building binary
+      # packages" / r-svn doc/manual/R-admin.texi:5854-5867: Sonoma (14.0) for
+      # arm64, Big Sur (11.0) for Intel.
+      # Skipped vs. upstream: brew unlink (destructive), gfortran (no Fortran
+      # deps), TinyTeX (no PDF manuals), xQuartz (no X11), /opt/R/<arch>/bin on
+      # GITHUB_PATH (r-lib/actions/setup-r installs R independently).
+      # See docs/RELEASE_WORKFLOW.md Gotcha 5.
+      - name: Pin macOS SDK and deployment target
+        run: |
+          if [ "$(uname -m)" = "x86_64" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app || true
+            echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+          else
+            sudo xcode-select -s /Applications/Xcode_26.0.app || true
+            echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+          fi
+          echo "xcode is set: $(xcode-select --print-path)"
+          xcrun --show-sdk-version || true
+
+      # Gotcha 6: CRAN's macOS binary R links against /opt/R/<arch>/lib system
+      # libraries (libcurl, openssl, libtiff, …) curated by
+      # r-universe-org/macos-libs. Any Rust crate with a -sys C dep using
+      # pkg-config will resolve against these — the same library set R itself
+      # was built against. Pre-empts the "links fine locally, segfaults under
+      # CRAN's R" trap. Inlined from r-devel/actions/setup-macos-tools@ec72e88
+      # (action.yml lines 44-53). See docs/RELEASE_WORKFLOW.md Gotcha 6.
+      - name: Download CRAN system libraries
+        run: |
+          sudo mkdir -p /opt
+          sudo chown $USER /opt
+          curl --retry 3 --fail-with-body -sSL \
+            https://github.com/r-universe-org/macos-libs/releases/download/2025-12-13/cranlibs-everything.tar.xz \
+            -o libs.tar.xz
+          sudo tar -xf libs.tar.xz -C / opt
+          rm -f libs.tar.xz
+          echo "PKG_CONFIG_PATH=/opt/R/$(uname -m)/lib/pkgconfig:/opt/R/$(uname -m)/share/pkgconfig" >> $GITHUB_ENV
 
       - uses: r-lib/actions/setup-r@v2
         with:
