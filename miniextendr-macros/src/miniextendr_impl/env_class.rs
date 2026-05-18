@@ -24,7 +24,7 @@ use super::ParsedImpl;
 /// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
 pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
-        should_export_from_tags, ClassDocBuilder, MethodDocBuilder, ParsedImplExt,
+        ClassDocBuilder, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
     };
 
     let class_name = parsed_impl.class_name();
@@ -151,8 +151,10 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
-    let should_export =
-        should_export_from_tags(&parsed_impl.doc_tags, parsed_impl.noexport || parsed_impl.internal);
+    let should_export = should_export_from_tags(
+        &parsed_impl.doc_tags,
+        parsed_impl.noexport || parsed_impl.internal,
+    );
 
     // Generate roxygen tags for dispatch methods.
     // roxygen2 8.0.0+ enforces that any `generic.class`-named function carry

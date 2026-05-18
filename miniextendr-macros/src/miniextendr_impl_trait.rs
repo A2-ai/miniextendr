@@ -184,11 +184,7 @@ impl TraitMethod {
     ///
     /// Prefer `c_wrapper_ident()` for Rust token generation; use this variant
     /// when building R code strings (e.g., `".Call(C_Type__Trait__method, ...)"`).
-    fn c_wrapper_ident_string(
-        &self,
-        type_ident: &syn::Ident,
-        trait_name: &syn::Ident,
-    ) -> String {
+    fn c_wrapper_ident_string(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> String {
         format!("C_{}__{}__{}", type_ident, trait_name, self.ident)
     }
 
@@ -243,11 +239,7 @@ impl TraitConst {
     }
 
     /// Generates the C wrapper identifier as a `String`, for use in R-side `.Call()` generation.
-    fn c_wrapper_ident_string(
-        &self,
-        type_ident: &syn::Ident,
-        trait_name: &syn::Ident,
-    ) -> String {
+    fn c_wrapper_ident_string(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> String {
         format!("C_{}__{}__{}", type_ident, trait_name, self.ident)
     }
 

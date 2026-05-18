@@ -203,7 +203,7 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 /// Roxygen2 documentation and `@importFrom S7 ...` tags are generated automatically.
 pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
-        should_export_from_tags, ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
+        ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
     };
 
     let class_name = parsed_impl.class_name();

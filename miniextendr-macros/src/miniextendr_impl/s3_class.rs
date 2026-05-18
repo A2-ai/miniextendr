@@ -19,8 +19,8 @@ use super::ParsedImpl;
 /// `#[miniextendr(generic = "...", class = "...")]` attributes.
 pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
-        emit_s3_generic_guard, should_export_from_tags, ClassDocBuilder, MethodDocBuilder,
-        ParsedImplExt,
+        ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
+        should_export_from_tags,
     };
 
     let class_name = parsed_impl.class_name();
@@ -109,7 +109,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("#' @rdname {}", class_name));
                 lines.push("#' @param x An object".to_string());
                 lines.push("#' @param ... Additional arguments passed to methods".to_string());
-                lines.push(crate::roxygen::method_source_tag(type_ident, &ctx.method.ident));
+                lines.push(crate::roxygen::method_source_tag(
+                    type_ident,
+                    &ctx.method.ident,
+                ));
                 if should_export {
                     // Explicit name on @export: the generic is wrapped in
                     // `if (!exists(...))`, which roxygen2 can't introspect, and the

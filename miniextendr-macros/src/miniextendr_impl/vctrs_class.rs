@@ -23,8 +23,8 @@ use super::{ParsedImpl, VctrsKind};
 /// Roxygen2 documentation and `@importFrom vctrs ...` tags are generated automatically.
 pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
-        emit_s3_generic_guard, should_export_from_tags, ClassDocBuilder, MethodDocBuilder,
-        ParsedImplExt,
+        ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
+        should_export_from_tags,
     };
 
     let class_name = parsed_impl.class_name();
@@ -228,7 +228,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push(format!("#' @name {}.{}", generic_name, class_name));
             lines.push("#' @param x An object".to_string());
             lines.push("#' @param ... Additional arguments passed to methods".to_string());
-            lines.push(crate::roxygen::method_source_tag(type_ident, &ctx.method.ident));
+            lines.push(crate::roxygen::method_source_tag(
+                type_ident,
+                &ctx.method.ident,
+            ));
             if should_export {
                 lines.push("#' @export".to_string());
             }

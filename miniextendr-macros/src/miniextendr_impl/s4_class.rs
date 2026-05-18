@@ -19,7 +19,7 @@ use super::ParsedImpl;
 /// as appropriate.
 pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
-        should_export_from_tags, ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
+        ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
     };
 
     let class_name = parsed_impl.class_name();
