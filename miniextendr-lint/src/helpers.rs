@@ -297,7 +297,7 @@ pub fn is_altrep_struct(item: &syn::ItemStruct) -> bool {
 
         if let syn::Meta::List(meta_list) = &attr.meta {
             let tokens = meta_list.tokens.to_string();
-            for part in tokens.split(',') {
+            for part in split_top_level_commas(&tokens) {
                 let part = part.trim();
                 // These mode attrs mean "not ALTREP"
                 if matches!(part, "list" | "dataframe" | "externalptr") {
