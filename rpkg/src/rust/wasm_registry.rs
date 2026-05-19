@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      88fd2486a74797d7
+// content-hash:      f637b48dbae4c84c
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -1456,6 +1456,12 @@ unsafe extern "C-unwind" {
     pub fn C_refcount_arena_roundtrip(_: SEXP) -> SEXP;
     pub fn C_streaming_int_range(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_streaming_real_squares(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_PanickingSidecar__new(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_PanickingSidecar__boom(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_panicking_sidecar_new(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_sidecar_consumer_panic(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C__mx_rdata_get_PanickingSidecar_doom(_: SEXP) -> SEXP;
+    pub fn C__mx_rdata_set_PanickingSidecar_doom(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6SensorReading__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6SensorReading__value(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6SensorReading__raw_bytes(_: SEXP, _: SEXP) -> SEXP;
@@ -1550,6 +1556,15 @@ unsafe extern "C-unwind" {
     pub fn C_constant_int(_: SEXP) -> SEXP;
     pub fn C_lazy_int_seq(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_lazy_squares(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__new(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__vctrs_raise_error(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__format_vctrsraiser(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__vctrs_raise_message(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__vctrs_raise_warning(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__vctrs_raise_condition(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__vctrs_raise_error_classed(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__vctrs_raise_warning_classed(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_VctrsRaiser__vctrs_raise_condition_classed(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Raiser__id(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_S4Raiser__id(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Raiser__new(_: SEXP, _: SEXP) -> SEXP;
@@ -9191,6 +9206,36 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_PanickingSidecar__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_PanickingSidecar__new) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_PanickingSidecar__boom".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_PanickingSidecar__boom) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_panicking_sidecar_new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_panicking_sidecar_new) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_sidecar_consumer_panic".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_sidecar_consumer_panic) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C__mx_rdata_get_PanickingSidecar_doom".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C__mx_rdata_get_PanickingSidecar_doom) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C__mx_rdata_set_PanickingSidecar_doom".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C__mx_rdata_set_PanickingSidecar_doom) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_R6SensorReading__new".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6SensorReading__new) }),
         numArgs: 3,
@@ -9659,6 +9704,51 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_lazy_squares".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_lazy_squares) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__new) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__vctrs_raise_error".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__vctrs_raise_error) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__format_vctrsraiser".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__format_vctrsraiser) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__vctrs_raise_message".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__vctrs_raise_message) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__vctrs_raise_warning".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__vctrs_raise_warning) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__vctrs_raise_condition".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__vctrs_raise_condition) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__vctrs_raise_error_classed".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__vctrs_raise_error_classed) }),
+        numArgs: 4,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__vctrs_raise_warning_classed".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__vctrs_raise_warning_classed) }),
+        numArgs: 4,
+    },
+    R_CallMethodDef {
+        name: c"C_VctrsRaiser__vctrs_raise_condition_classed".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP, _>(C_VctrsRaiser__vctrs_raise_condition_classed) }),
+        numArgs: 4,
     },
     R_CallMethodDef {
         name: c"C_R6Raiser__id".as_ptr(),
