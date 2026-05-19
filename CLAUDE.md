@@ -90,6 +90,37 @@ R wrappers, then we relink as staticlib for the final installed shared object.
 `miniextendr_init!(pkg)` (proc-macro) generates `R_init_<pkg>`; `package_init()`
 in `miniextendr-api/src/init.rs` consolidates the init steps.
 
+## R version (rv + rig)
+
+This repo uses **rv** for R package management — `rproject.toml` at the
+repo root pins the R version and dependency set. **The pinned version
+must match the R on PATH**, otherwise rv enters safe mode and refuses
+to activate the project library:
+
+```
+WARNING: R version specified in config (X.Y) does not match session version (A.B).
+rv library will not be activated until the issue is resolved. Entering safe mode...
+creating temporary library: …/__rv_R_mismatch
+Error in loadNamespace(x) : there is no package called 'testthat'
+```
+
+Current pin: **R 4.6** (see `rproject.toml:r_version`). Switch your
+default with **rig** before running `just devtools-test` /
+`just rcmdinstall` / any recipe that loads the project library:
+
+```bash
+rig default 4.6           # or `rig default 4.6-arm64` on macOS arm64
+R --version | head -1     # verify 4.6.x
+```
+
+If you legitimately need to bump R, edit `rproject.toml` *and* mirror
+the change in this section. Don't try to work around a mismatch by
+installing into the temporary `__rv_R_mismatch` library — packages
+won't persist and tests still won't find `testthat`.
+
+For deeper context (rv vs renv, dependency layout, sync flow) see the
+[`rv` skill](.claude/skills/miniextendr-rv/SKILL.md).
+
 ## Build commands
 
 Always use `just` recipes — they iterate every manifest in the multi-crate
