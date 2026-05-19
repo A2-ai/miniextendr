@@ -335,6 +335,15 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     usethis::use_package_doc()
   }))
 
+  # Mark the scaffolded package as a "developer source tree" so
+  # configure.ac's auto-vendor block (active when no .git ancestor is
+  # found) is skipped. We add this AFTER usethis::create_package so it
+  # doesn't trigger usethis's nested-project challenge. Without this,
+  # configure auto-vendors and locks the package into tarball mode,
+  # which then requires pre-generated R wrappers and refuses to resolve
+  # newly-added Cargo deps like itertools at build time (#633).
+  dir.create(file.path(pkg_path, ".git"))
+
   suppressMessages({
     miniextendr_autoconf(path = pkg_path)
     miniextendr_configure(path = pkg_path)
