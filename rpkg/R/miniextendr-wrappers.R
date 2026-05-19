@@ -3527,10 +3527,10 @@ methods::setClass("S4TraitCounter", slots = c(ptr = "externalptr"))
 #' @aliases s4_get_value,S4TraitCounter-method
 if (!methods::isGeneric("s4_get_value")) methods::setGeneric("s4_get_value", function(x, ...) standardGeneric("s4_get_value"))
 methods::setMethod("s4_get_value", "S4TraitCounter", function(x, ...) {
-    .val <- .Call(C_S4TraitCounter__get_value, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  })
+  .val <- .Call(C_S4TraitCounter__get_value, .call = match.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
 
 # S4TraitCounter::new_s4trait (241:8)
 #' @title Create a new S4 trait counter
@@ -3574,10 +3574,10 @@ if (!exists("get_value", mode = "function")) {
   get_value <- S7::new_generic("get_value", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(get_value, S7TraitCounter) <- function(x, ...) {
-    .val <- .Call(C_S7TraitCounter__get_value, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7TraitCounter__get_value, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7TraitCounter::new_s7trait (293:8)
 #' @title Create a new S7 trait counter
@@ -3892,10 +3892,10 @@ if (!exists("read_level", mode = "function")) {
   read_level <- S7::new_generic("read_level", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(read_level, ErrorInRS7Gauge) <- function(x, ...) {
-    .val <- .Call(C_ErrorInRS7Gauge__read_level, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_ErrorInRS7Gauge__read_level, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # ErrorInRS7Gauge::set_level (188:12)
 #' @title Set the level -- mutable, chainable
@@ -3911,11 +3911,9 @@ S7::method(set_level, ErrorInRS7Gauge) <- function(x, level, ...) {
     "'level' must be numeric, logical, or raw" = is.numeric(level) || is.logical(level) || is.raw(level),
     "'level' must have length 1" = length(level) == 1L
   )
-  {
-    .val <- .Call(C_ErrorInRS7Gauge__set_level, .call = match.call(), x@.ptr, level)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    x
-  }
+  .val <- .Call(C_ErrorInRS7Gauge__set_level, .call = match.call(), x@.ptr, level)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  x
 }
 
 # ErrorInRS7Gauge::panic_method (194:12)
@@ -3928,10 +3926,10 @@ if (!exists("panic_method", mode = "function")) {
   panic_method <- S7::new_generic("panic_method", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(panic_method, ErrorInRS7Gauge) <- function(x, ...) {
-    .val <- .Call(C_ErrorInRS7Gauge__panic_method, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_ErrorInRS7Gauge__panic_method, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # ErrorInRS7Gauge::failing_result (200:12)
 #' @title Return Result::Err
@@ -3943,10 +3941,10 @@ if (!exists("failing_result", mode = "function")) {
   failing_result <- S7::new_generic("failing_result", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(failing_result, ErrorInRS7Gauge) <- function(x, ...) {
-    .val <- .Call(C_ErrorInRS7Gauge__failing_result, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_ErrorInRS7Gauge__failing_result, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `ErrorInRR6Widget` (error_in_r_tests.rs:135:6)
 #' @title ErrorInRR6Widget R6 Class
@@ -4418,10 +4416,10 @@ CounterTraitS4 <- function(v) {
 #' @aliases s4_get_value,CounterTraitS4-method
 if (!methods::isGeneric("s4_get_value")) methods::setGeneric("s4_get_value", function(x, ...) standardGeneric("s4_get_value"))
 methods::setMethod("s4_get_value", "CounterTraitS4", function(x, ...) {
-    .val <- .Call(C_CounterTraitS4__get_value, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  })
+  .val <- .Call(C_CounterTraitS4__get_value, .call = match.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
 
 # Generated from Rust impl `CounterTraitS7` (class_system_matrix.rs:138:6)
 #' @title CounterTraitS7 S7 Class
@@ -4462,10 +4460,10 @@ if (!exists("get_value", mode = "function")) {
   get_value <- S7::new_generic("get_value", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(get_value, CounterTraitS7) <- function(x, ...) {
-    .val <- .Call(C_CounterTraitS7__get_value, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_CounterTraitS7__get_value, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `CounterTraitEnv` (class_system_matrix.rs:37:6)
 #' @title CounterTraitEnv  Class
@@ -5705,10 +5703,10 @@ S4MatchArgHolder <- function(mode = c("Fast", "Safe", "Debug")) {
 if (!methods::isGeneric("s4_mode_current")) methods::setGeneric("s4_mode_current", function(x, ...) standardGeneric("s4_mode_current"))
 #' @exportMethod s4_mode_current
 methods::setMethod("s4_mode_current", "S4MatchArgHolder", function(x, ...) {
-    .val <- .Call(C_S4MatchArgHolder__mode_current, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  })
+  .val <- .Call(C_S4MatchArgHolder__mode_current, .call = match.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
 
 # S4MatchArgHolder::mode_set (169:12)
 #' @name S4MatchArgHolder-s4_mode_set
@@ -5720,11 +5718,9 @@ if (!methods::isGeneric("s4_mode_set")) methods::setGeneric("s4_mode_set", funct
 methods::setMethod("s4_mode_set", "S4MatchArgHolder", function(x, mode = c("Fast", "Safe", "Debug"), ...) {
   mode <- if (is.factor(mode)) as.character(mode) else mode
   mode <- base::match.arg(mode)
-  {
-    .val <- .Call(C_S4MatchArgHolder__mode_set, .call = match.call(), x@ptr, mode)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4MatchArgHolder__mode_set, .call = match.call(), x@ptr, mode)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # Generated from Rust impl `S7MatchArgHolder` (match_arg_impl_tests.rs:100:6)
@@ -5765,10 +5761,10 @@ if (!exists("current", mode = "function")) {
   current <- S7::new_generic("current", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(current, S7MatchArgHolder) <- function(x, ...) {
-    .val <- .Call(C_S7MatchArgHolder__current, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7MatchArgHolder__current, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7MatchArgHolder::set (111:12)
 #' @name S7MatchArgHolder-set
@@ -5782,11 +5778,9 @@ if (!exists("set", mode = "function")) {
 S7::method(set, S7MatchArgHolder) <- function(x, mode = c("Fast", "Safe", "Debug"), ...) {
   mode <- if (is.factor(mode)) as.character(mode) else mode
   mode <- base::match.arg(mode)
-  {
-    .val <- .Call(C_S7MatchArgHolder__set, .call = match.call(), x@.ptr, mode)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7MatchArgHolder__set, .call = match.call(), x@.ptr, mode)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `R6MatchArgCounter` (match_arg_impl_tests.rs:38:6)
@@ -6998,10 +6992,10 @@ S4Raiser <- function(id) {
 #' @aliases s4_id,S4Raiser-method
 if (!methods::isGeneric("s4_id")) methods::setGeneric("s4_id", function(x, ...) standardGeneric("s4_id"))
 methods::setMethod("s4_id", "S4Raiser", function(x, ...) {
-    .val <- .Call(C_S4Raiser__id, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  })
+  .val <- .Call(C_S4Raiser__id, .call = match.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
 
 # S4Raiser::raise_error (161:12)
 #' @name S4Raiser-s4_raise_error
@@ -7014,11 +7008,9 @@ methods::setMethod("s4_raise_error", "S4Raiser", function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S4Raiser__raise_error, .call = match.call(), x@ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Raiser__raise_error, .call = match.call(), x@ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # S4Raiser::raise_error_classed (165:12)
@@ -7034,11 +7026,9 @@ methods::setMethod("s4_raise_error_classed", "S4Raiser", function(x, class, msg,
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S4Raiser__raise_error_classed, .call = match.call(), x@ptr, class, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Raiser__raise_error_classed, .call = match.call(), x@ptr, class, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # S4Raiser::raise_warning (169:12)
@@ -7052,11 +7042,9 @@ methods::setMethod("s4_raise_warning", "S4Raiser", function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S4Raiser__raise_warning, .call = match.call(), x@ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Raiser__raise_warning, .call = match.call(), x@ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # S4Raiser::raise_warning_classed (173:12)
@@ -7072,11 +7060,9 @@ methods::setMethod("s4_raise_warning_classed", "S4Raiser", function(x, class, ms
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S4Raiser__raise_warning_classed, .call = match.call(), x@ptr, class, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Raiser__raise_warning_classed, .call = match.call(), x@ptr, class, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # S4Raiser::raise_message (177:12)
@@ -7090,11 +7076,9 @@ methods::setMethod("s4_raise_message", "S4Raiser", function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S4Raiser__raise_message, .call = match.call(), x@ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Raiser__raise_message, .call = match.call(), x@ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # S4Raiser::raise_condition (181:12)
@@ -7108,11 +7092,9 @@ methods::setMethod("s4_raise_condition", "S4Raiser", function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S4Raiser__raise_condition, .call = match.call(), x@ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Raiser__raise_condition, .call = match.call(), x@ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # S4Raiser::raise_condition_classed (185:12)
@@ -7128,11 +7110,9 @@ methods::setMethod("s4_raise_condition_classed", "S4Raiser", function(x, class, 
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S4Raiser__raise_condition_classed, .call = match.call(), x@ptr, class, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Raiser__raise_condition_classed, .call = match.call(), x@ptr, class, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # Generated from Rust impl `S7Raiser` (condition_class_system_tests.rs:200:6)
@@ -7174,10 +7154,10 @@ if (!exists("s7_id", mode = "function")) {
   s7_id <- S7::new_generic("s7_id", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(s7_id, S7Raiser) <- function(x, ...) {
-    .val <- .Call(C_S7Raiser__s7_id, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_id, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Raiser::s7_raise_error (209:12)
 #' @name S7Raiser-s7_raise_error
@@ -7192,11 +7172,9 @@ S7::method(s7_raise_error, S7Raiser) <- function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S7Raiser__s7_raise_error, .call = match.call(), x@.ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_raise_error, .call = match.call(), x@.ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # S7Raiser::s7_raise_error_classed (213:12)
@@ -7214,11 +7192,9 @@ S7::method(s7_raise_error_classed, S7Raiser) <- function(x, class, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S7Raiser__s7_raise_error_classed, .call = match.call(), x@.ptr, class, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_raise_error_classed, .call = match.call(), x@.ptr, class, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # S7Raiser::s7_raise_warning (217:12)
@@ -7234,11 +7210,9 @@ S7::method(s7_raise_warning, S7Raiser) <- function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S7Raiser__s7_raise_warning, .call = match.call(), x@.ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_raise_warning, .call = match.call(), x@.ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # S7Raiser::s7_raise_warning_classed (221:12)
@@ -7256,11 +7230,9 @@ S7::method(s7_raise_warning_classed, S7Raiser) <- function(x, class, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S7Raiser__s7_raise_warning_classed, .call = match.call(), x@.ptr, class, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_raise_warning_classed, .call = match.call(), x@.ptr, class, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # S7Raiser::s7_raise_message (225:12)
@@ -7276,11 +7248,9 @@ S7::method(s7_raise_message, S7Raiser) <- function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S7Raiser__s7_raise_message, .call = match.call(), x@.ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_raise_message, .call = match.call(), x@.ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # S7Raiser::s7_raise_condition (229:12)
@@ -7296,11 +7266,9 @@ S7::method(s7_raise_condition, S7Raiser) <- function(x, msg, ...) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S7Raiser__s7_raise_condition, .call = match.call(), x@.ptr, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_raise_condition, .call = match.call(), x@.ptr, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # S7Raiser::s7_raise_condition_classed (233:12)
@@ -7318,11 +7286,9 @@ S7::method(s7_raise_condition_classed, S7Raiser) <- function(x, class, msg, ...)
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  {
-    .val <- .Call(C_S7Raiser__s7_raise_condition_classed, .call = match.call(), x@.ptr, class, msg)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Raiser__s7_raise_condition_classed, .call = match.call(), x@.ptr, class, msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `EnvRaiser` (condition_class_system_tests.rs:248:6)
@@ -8205,10 +8171,10 @@ S4Counter <- function(initial) {
 #' @aliases s4_value,S4Counter-method
 if (!methods::isGeneric("s4_value")) methods::setGeneric("s4_value", function(x, ...) standardGeneric("s4_value"))
 methods::setMethod("s4_value", "S4Counter", function(x, ...) {
-    .val <- .Call(C_S4Counter__value, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  })
+  .val <- .Call(C_S4Counter__value, .call = match.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
 
 # S4Counter::inc (28:12)
 #' @title Increments the counter by 1 and returns the new value
@@ -8218,10 +8184,10 @@ methods::setMethod("s4_value", "S4Counter", function(x, ...) {
 #' @aliases s4_inc,S4Counter-method
 if (!methods::isGeneric("s4_inc")) methods::setGeneric("s4_inc", function(x, ...) standardGeneric("s4_inc"))
 methods::setMethod("s4_inc", "S4Counter", function(x, ...) {
-    .val <- .Call(C_S4Counter__inc, .call = match.call(), x@ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  })
+  .val <- .Call(C_S4Counter__inc, .call = match.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
 
 # S4Counter::add (35:12)
 #' @title Adds the given amount to the counter and returns the new value
@@ -8235,11 +8201,9 @@ methods::setMethod("s4_add", "S4Counter", function(x, amount, ...) {
     "'amount' must be numeric, logical, or raw" = is.numeric(amount) || is.logical(amount) || is.raw(amount),
     "'amount' must have length 1" = length(amount) == 1L
   )
-  {
-    .val <- .Call(C_S4Counter__add, .call = match.call(), x@ptr, amount)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S4Counter__add, .call = match.call(), x@ptr, amount)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 # S4Counter::default_counter (41:12)
@@ -8308,10 +8272,10 @@ if (!exists("s7_start", mode = "function")) {
   s7_start <- S7::new_generic("s7_start", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(s7_start, S7Range) <- function(x, ...) {
-    .val <- .Call(C_S7Range__s7_start, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Range__s7_start, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Range::s7_end (101:12)
 #' @title Regular method: returns the end value
@@ -8323,10 +8287,10 @@ if (!exists("s7_end", mode = "function")) {
   s7_end <- S7::new_generic("s7_end", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(s7_end, S7Range) <- function(x, ...) {
-    .val <- .Call(C_S7Range__s7_end, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Range__s7_end, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Shape` (s7_tests.rs:259:6)
 #' @title S7Shape S7 Class
@@ -8369,10 +8333,10 @@ if (!exists("shape_name", mode = "function")) {
   shape_name <- S7::new_generic("shape_name", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(shape_name, S7Shape) <- function(x, ...) {
-    .val <- .Call(C_S7Shape__shape_name, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Shape__shape_name, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Animal` (s7_tests.rs:305:6)
 #' @title S7Animal S7 Class
@@ -8419,10 +8383,10 @@ if (!exists("animal_kind", mode = "function")) {
   animal_kind <- S7::new_generic("animal_kind", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(animal_kind, S7Animal) <- function(x, ...) {
-    .val <- .Call(C_S7Animal__animal_kind, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Animal__animal_kind, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Circle` (s7_tests.rs:280:6)
 #' @title S7Circle S7 Class
@@ -8464,10 +8428,10 @@ if (!exists("circle_area", mode = "function")) {
   circle_area <- S7::new_generic("circle_area", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(circle_area, S7Circle) <- function(x, ...) {
-    .val <- .Call(C_S7Circle__circle_area, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Circle__circle_area, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Config` (s7_tests.rs:118:6)
 #' @title S7Config S7 Class
@@ -8519,10 +8483,10 @@ if (!exists("get_version", mode = "function")) {
   get_version <- S7::new_generic("get_version", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(get_version, S7Config) <- function(x, ...) {
-    .val <- .Call(C_S7Config__get_version, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Config__get_version, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Strict` (s7_tests.rs:169:6)
 #' @title S7Strict S7 Class
@@ -8564,10 +8528,10 @@ if (!exists("strict_length", mode = "function")) {
   strict_length <- S7::new_generic("strict_length", "x", function(x) S7::S7_dispatch())
 }
 S7::method(strict_length, S7Strict) <- function(x) {
-    .val <- .Call(C_S7Strict__strict_length, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Strict__strict_length, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Strict::describe_any (183:12)
 #' @title Method with fallback to class_any
@@ -8579,10 +8543,10 @@ if (!exists("describe_any", mode = "function")) {
   describe_any <- S7::new_generic("describe_any", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(describe_any, S7::class_any) <- function(x, ...) {
-    .val <- .Call(C_S7Strict__describe_any, .call = match.call(), if (inherits(x, "S7_object")) x@.ptr else stop(paste0("expected an S7 object, got ", class(x)[[1]])))
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Strict__describe_any, .call = match.call(), if (inherits(x, "S7_object")) x@.ptr else stop(paste0("expected an S7 object, got ", class(x)[[1]])))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Celsius` (s7_tests.rs:200:6)
 #' @title S7Celsius S7 Class
@@ -8624,10 +8588,10 @@ if (!exists("value", mode = "function")) {
   value <- S7::new_generic("value", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(value, S7Celsius) <- function(x, ...) {
-    .val <- .Call(C_S7Celsius__value, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Celsius__value, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Counter` (s7_tests.rs:14:6)
 #' @title S7Counter S7 Class
@@ -8669,10 +8633,10 @@ if (!exists("s7_value", mode = "function")) {
   s7_value <- S7::new_generic("s7_value", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(s7_value, S7Counter) <- function(x, ...) {
-    .val <- .Call(C_S7Counter__s7_value, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Counter__s7_value, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Counter::s7_inc (27:12)
 #' @title Increments the counter by 1 and returns the new value
@@ -8684,10 +8648,10 @@ if (!exists("s7_inc", mode = "function")) {
   s7_inc <- S7::new_generic("s7_inc", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(s7_inc, S7Counter) <- function(x, ...) {
-    .val <- .Call(C_S7Counter__s7_inc, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Counter__s7_inc, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Counter::s7_add (33:12)
 #' @title Adds the given amount to the counter and returns the new value
@@ -8703,11 +8667,9 @@ S7::method(s7_add, S7Counter) <- function(x, amount, ...) {
     "'amount' must be numeric, logical, or raw" = is.numeric(amount) || is.logical(amount) || is.raw(amount),
     "'amount' must have length 1" = length(amount) == 1L
   )
-  {
-    .val <- .Call(C_S7Counter__s7_add, .call = match.call(), x@.ptr, amount)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Counter__s7_add, .call = match.call(), x@.ptr, amount)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # S7Counter::default_counter (39:12)
@@ -8763,10 +8725,10 @@ if (!exists("label", mode = "function")) {
   label <- S7::new_generic("label", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(label, S7PropInner) <- function(x, ...) {
-    .val <- .Call(C_S7PropInner__label, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7PropInner__label, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7PropOuter` (s7_tests.rs:461:6)
 #' @title S7PropOuter S7 Class
@@ -8840,10 +8802,10 @@ if (!exists("value", mode = "function")) {
   value <- S7::new_generic("value", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(value, S7Fahrenheit) <- function(x, ...) {
-    .val <- .Call(C_S7Fahrenheit__value, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Fahrenheit__value, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Fahrenheit::to_celsius (244:12)
 #' @title Convert Fahrenheit to Celsius
@@ -8855,10 +8817,10 @@ if (!exists("to_celsius", mode = "function")) {
   to_celsius <- S7::new_generic("to_celsius", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(to_celsius, S7Fahrenheit) <- function(x, ...) {
-    .val <- .Call(C_S7Fahrenheit__to_celsius, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Fahrenheit__to_celsius, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Fahrenheit::from_celsius (235:12)
 #' @title Convert Fahrenheit from Celsius
@@ -8936,10 +8898,10 @@ if (!exists("shape_kind", mode = "function")) {
   shape_kind <- S7::new_generic("shape_kind", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(shape_kind, Shape) <- function(x, ...) {
-    .val <- .Call(C_S7OverrideShape__shape_kind, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7OverrideShape__shape_kind, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7OverrideCircle` (s7_tests.rs:413:6)
 #' @title S7OverrideCircle S7 Class
@@ -8981,10 +8943,10 @@ if (!exists("override_radius", mode = "function")) {
   override_radius <- S7::new_generic("override_radius", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(override_radius, S7OverrideCircle) <- function(x, ...) {
-    .val <- .Call(C_S7OverrideCircle__override_radius, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7OverrideCircle__override_radius, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7Dog` (s7_tests.rs:332:6)
 #' @title S7Dog S7 Class
@@ -9026,10 +8988,10 @@ if (!exists("dog_breed", mode = "function")) {
   dog_breed <- S7::new_generic("dog_breed", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(dog_breed, S7Dog) <- function(x, ...) {
-    .val <- .Call(C_S7Dog__dog_breed, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Dog__dog_breed, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7Dog::bark (344:12)
 #' @title All dogs bark
@@ -9041,10 +9003,10 @@ if (!exists("bark", mode = "function")) {
   bark <- S7::new_generic("bark", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(bark, S7Dog) <- function(x, ...) {
-    .val <- .Call(C_S7Dog__bark, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7Dog__bark, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `S7GoldenRetriever` (s7_tests.rs:357:6)
 #' @title S7GoldenRetriever S7 Class
@@ -9086,10 +9048,10 @@ if (!exists("retriever_name", mode = "function")) {
   retriever_name <- S7::new_generic("retriever_name", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(retriever_name, S7GoldenRetriever) <- function(x, ...) {
-    .val <- .Call(C_S7GoldenRetriever__retriever_name, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7GoldenRetriever__retriever_name, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # S7GoldenRetriever::color (369:12)
 #' @title Returns the coat color
@@ -9101,10 +9063,10 @@ if (!exists("color", mode = "function")) {
   color <- S7::new_generic("color", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(color, S7GoldenRetriever) <- function(x, ...) {
-    .val <- .Call(C_S7GoldenRetriever__color, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_S7GoldenRetriever__color, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Generated from Rust impl `RngSampler` (rng_tests.rs:90:6)
 #' @title RngSampler  Class
