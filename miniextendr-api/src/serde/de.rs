@@ -788,10 +788,71 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
         }
     }
 
+    /// Treat a coalesced scalar element as a 1-element sequence.
+    ///
+    /// `SeqSerializer::end()` coalesces `Vec<T>` with length-1 scalar elements
+    /// into a flat atomic vector. That makes `Vec<Vec<scalar>>` with all
+    /// length-1 inner vecs serialize to the same flat atomic vector as
+    /// `Vec<scalar>`. To round-trip correctly, when the target type asks for
+    /// a sequence and we hold a single scalar, we yield it as a 1-element
+    /// sequence.
+    fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_seq(VectorElementSeqAccess { de: Some(self) })
+    }
+
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        if len != 1 {
+            return Err(RSerdeError::LengthMismatch {
+                expected: len,
+                actual: 1,
+            });
+        }
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        self.deserialize_tuple(len, visitor)
+    }
+
     serde::forward_to_deserialize_any! {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes byte_buf
-        option unit unit_struct newtype_struct seq tuple tuple_struct map struct
+        option unit unit_struct newtype_struct map struct
         enum identifier ignored_any
+    }
+}
+
+/// SeqAccess that yields a single `VectorElementDeserializer` then None.
+///
+/// Used when a scalar element of a coalesced atomic vector must round-trip
+/// as a 1-element sequence (the inverse of `SeqSerializer::end()` coalescing).
+struct VectorElementSeqAccess {
+    de: Option<VectorElementDeserializer>,
+}
+
+impl<'de> SeqAccess<'de> for VectorElementSeqAccess {
+    type Error = RSerdeError;
+
+    fn next_element_seed<T: DeserializeSeed<'de>>(
+        &mut self,
+        seed: T,
+    ) -> Result<Option<T::Value>, Self::Error> {
+        match self.de.take() {
+            Some(de) => seed.deserialize(de).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(if self.de.is_some() { 1 } else { 0 })
     }
 }
 
