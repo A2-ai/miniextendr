@@ -5,7 +5,8 @@ use miniextendr_api::ffi::SEXP;
 use miniextendr_api::indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use miniextendr_api::miniextendr;
 use miniextendr_api::progress::{
-    RTerm, term_like_connection, term_like_stderr, term_like_stdout,
+    RTerm, term_like_connection, term_like_connection_with_hz, term_like_stderr,
+    term_like_stderr_with_hz, term_like_stdout, term_like_stdout_with_hz,
 };
 
 /// Test RTerm construction and Debug output formatting.
@@ -20,6 +21,10 @@ pub fn indicatif_rterm_debug() -> String {
 pub fn indicatif_factories_compile() -> bool {
     let _stdout = term_like_stdout(80);
     let _stderr = term_like_stderr(80);
+    let _stdout_hz = term_like_stdout_with_hz(80, 5);
+    let _stderr_hz = term_like_stderr_with_hz(80, 5);
+    let null = RNullConnection::new();
+    let _conn_hz = term_like_connection_with_hz(null, 80, 5);
     true
 }
 

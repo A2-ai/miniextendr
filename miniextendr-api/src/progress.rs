@@ -161,8 +161,16 @@ impl RTerm {
             "RTerm::new must be called from the R main thread"
         );
         let sexp = conn.into_sexp();
-        let kind = unsafe { classify_connection(sexp) };
+        // PROTECT discipline: `conn.into_sexp()` may return a freshly-allocated
+        // unprotected SEXP (e.g. `RStdout` / `RStderr` evaluate `base::stdout()`,
+        // which mints a fresh `ScalarInteger(R_OutputCon)` + STRSXP class vec).
+        // `classify_connection` calls `R_GetConnection` + a `CStr` deref over the
+        // description string; both are GC points. `R_PreserveObject` itself
+        // allocates a CONSXP and is also a GC point. Preserve first, classify
+        // second to close the window. (Same class of bug as PR #344 commit
+        // af6b4875 — R-release CI can pass while R-devel's stricter GC trips.)
         unsafe { R_PreserveObject(sexp) };
+        let kind = unsafe { classify_connection(sexp) };
         RTerm { sexp, width, kind }
     }
 
