@@ -239,13 +239,16 @@ test_that("B3: release_workflow_insert_workdir() adds working-directory to confi
   )
   result <- minirextendr:::release_workflow_insert_workdir(lines, "rpkg")
 
+  # working-directory is inserted *before* the matched `run:` line. Same-level
+  # sibling keys must precede a `run: |` block scalar — see the comment on
+  # release_workflow_insert_workdir() for the rationale.
   cfg_idx <- which(grepl("run: bash ./configure", result, fixed = TRUE))
   expect_true(length(cfg_idx) > 0)
-  expect_match(result[[cfg_idx + 1L]], "working-directory: rpkg")
+  expect_match(result[[cfg_idx - 1L]], "working-directory: rpkg")
 
   build_idx <- which(grepl("run: |", result, fixed = TRUE))
   expect_true(length(build_idx) > 0)
-  expect_match(result[[build_idx + 1L]], "working-directory: rpkg")
+  expect_match(result[[build_idx - 1L]], "working-directory: rpkg")
 })
 
 test_that("B3: use_release_workflow() with rpkg_subdir inserts working-directory", {
@@ -332,6 +335,56 @@ test_that("B3: use_release_workflow() standalone auto-detect (no Cargo.toml) is 
   lines <- readLines(dest, warn = FALSE)
   wd_lines <- grep("working-directory:", lines, value = TRUE)
   expect_equal(length(wd_lines), 0L)
+})
+
+# B3-yaml: structural YAML verification — guards against template drift that
+# would silently break release_workflow_insert_workdir()'s line-string matcher.
+# We use yaml::read_yaml() for *verification only* (no round-trip write — that
+# would lose the 50+ inline comments in the template). If this test fails, the
+# template's job/step structure has shifted; update either the matcher or this
+# assertion accordingly. See #524.
+test_that("B3: patched workflow parses as YAML with working-directory on each configure + build step", {
+  skip_if_not_installed("yaml")
+  tmp <- withr::local_tempdir()
+
+  use_release_workflow(path = tmp, rpkg_subdir = "rpkg")
+  dest <- file.path(tmp, ".github", "workflows", "r-release.yml")
+
+  parsed <- yaml::read_yaml(dest)
+  expect_true("jobs" %in% names(parsed),
+              info = "Top-level `jobs:` key missing — template structure changed")
+
+  # Collect every step across all jobs. Each step is a list; we look for steps
+  # whose `run` value mentions `bash ./configure` or `R CMD build`, and assert
+  # they have `working-directory: rpkg` set.
+  configure_steps <- list()
+  build_steps <- list()
+  for (job_name in names(parsed$jobs)) {
+    steps <- parsed$jobs[[job_name]]$steps %||% list()
+    for (step in steps) {
+      run_val <- step$run %||% ""
+      if (grepl("bash \\./configure", run_val)) {
+        configure_steps[[length(configure_steps) + 1L]] <- step
+      }
+      if (grepl("R CMD build", run_val)) {
+        build_steps[[length(build_steps) + 1L]] <- step
+      }
+    }
+  }
+
+  expect_true(length(configure_steps) > 0,
+              info = "No `bash ./configure` step found in any job")
+  expect_true(length(build_steps) > 0,
+              info = "No `R CMD build` step found in any job")
+
+  for (step in configure_steps) {
+    expect_identical(step[["working-directory"]], "rpkg",
+                     info = "configure step missing or has wrong working-directory")
+  }
+  for (step in build_steps) {
+    expect_identical(step[["working-directory"]], "rpkg",
+                     info = "build step missing or has wrong working-directory")
+  }
 })
 
 # endregion ---------------------------------------------------------------
