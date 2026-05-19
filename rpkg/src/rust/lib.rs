@@ -147,6 +147,7 @@ mod columnar_flatten_tests;
 mod columnar_option_none_tests;
 mod condition_class_system_tests;
 mod condition_demo;
+mod condition_sidecar_tests;
 mod condition_tests;
 #[cfg(feature = "connections")]
 mod connection_tests;
