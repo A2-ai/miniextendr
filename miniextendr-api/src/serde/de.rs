@@ -797,9 +797,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
     /// a sequence and we hold a single scalar, we yield it as a 1-element
     /// sequence.
     fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        visitor.visit_seq(VectorElementSeqAccess {
-            de: Some(self),
-        })
+        visitor.visit_seq(VectorElementSeqAccess { de: Some(self) })
     }
 
     fn deserialize_tuple<V: Visitor<'de>>(
