@@ -57,9 +57,15 @@ time = ["dep:time"]
 ## Provides conversions for Timestamp/Zoned/civil::Date/SignedDuration, ExternalPtr
 ## wrappers for Span/DateTime/Time, and optional vctrs + ALTREP layers.
 jiff = ["dep:jiff"]
-## Enable indicatif progress bar integration (R console).
-## Requires non-API console hooks (ptr_R_WriteConsoleEx).
-indicatif = ["dep:indicatif", "nonapi"]
+## Enable indicatif progress bar integration. Routes bar output through R
+## connections — terminal connections (`stdout()`/`stderr()`) use the console
+## hook (`ptr_R_WriteConsoleEx` / `Rprintf` / `REprintf`); all other R
+## connections (`sink()`, `textConnection`, `file()`, custom) use
+## `R_WriteConnection`. Requires `connections` (for `R_GetConnection` and
+## `R_WriteConnection`) and `nonapi` (still needed for the console-hook
+## fallback used by the terminal branch — dropping `nonapi` would require R
+## to grow a `write` callback on terminal connections upstream).
+indicatif = ["dep:indicatif", "nonapi", "connections"]
 ## Enable num-traits integration. Provides RNum and RFloat adapter traits for generic numeric operations.
 num-traits = ["dep:num-traits"]
 ## Enable bytes crate integration. Provides RBuf and RBufMut adapter traits for byte buffer operations.

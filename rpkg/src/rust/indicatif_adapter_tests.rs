@@ -1,13 +1,17 @@
-//! indicatif adapter tests — R console progress bar integration.
+//! indicatif adapter tests — R connection-routed progress bar integration.
 
+use miniextendr_api::connection::{RNullConnection, RStderr};
+use miniextendr_api::ffi::SEXP;
 use miniextendr_api::indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use miniextendr_api::miniextendr;
-use miniextendr_api::progress::{RStream, RTerm, term_like_stderr, term_like_stdout};
+use miniextendr_api::progress::{
+    RTerm, term_like_connection, term_like_stderr, term_like_stdout,
+};
 
 /// Test RTerm construction and Debug output formatting.
 #[miniextendr]
 pub fn indicatif_rterm_debug() -> String {
-    let term = RTerm::new(RStream::Stderr, 80);
+    let term = RTerm::new(RStderr, 80);
     format!("{:?}", term)
 }
 
@@ -22,7 +26,7 @@ pub fn indicatif_factories_compile() -> bool {
 /// Test running a hidden progress bar (zero length) to exercise the full codepath.
 #[miniextendr]
 pub fn indicatif_hidden_bar() -> bool {
-    let term = RTerm::new(RStream::Stderr, 80);
+    let term = RTerm::new(RStderr, 80);
     let target = ProgressDrawTarget::term_like(Box::new(term));
     let pb = ProgressBar::with_draw_target(Some(0), target);
     pb.finish_and_clear();
@@ -107,6 +111,50 @@ pub fn indicatif_elapsed_demo() -> String {
     }
     pb.finish();
     "finished".to_string()
+}
+
+// endregion
+
+// region: Connection-target fixtures (issue #178)
+
+/// Drive a short progress bar against an arbitrary R connection SEXP. The
+/// R-side test creates a `textConnection(out, open = "w")` / `file()` /
+/// custom connection, passes it in here, and inspects the result after the
+/// bar finishes.
+///
+/// Returns the literal string `"ok"` after the bar finishes — the caller is
+/// expected to read the underlying buffer (via the textConnection variable,
+/// file contents, etc.) to assert that bytes actually reached the connection.
+///
+/// @param conn An open writable R connection.
+/// @param ticks Number of bar steps.
+#[miniextendr]
+pub fn indicatif_drive_connection(conn: SEXP, ticks: i32) -> String {
+    let target = term_like_connection(conn, 40);
+    let pb = ProgressBar::with_draw_target(Some(ticks as u64), target);
+    pb.set_style(ProgressStyle::with_template("{pos}/{len}").unwrap());
+    for _ in 0..ticks {
+        pb.inc(1);
+    }
+    pb.finish();
+    "ok".to_string()
+}
+
+/// Smoke-test routing a bar at [`RNullConnection`]. Must not panic — bytes are
+/// discarded by the OS null device, but the codepath must be exercised
+/// without longjmping. Returns `"ok"` on success.
+#[miniextendr]
+pub fn indicatif_to_null_connection() -> String {
+    let null = RNullConnection::new();
+    // RNullConnection: IntoR returns the wrapped SEXP (disarming Drop).
+    let target = term_like_connection(null, 40);
+    let pb = ProgressBar::with_draw_target(Some(2), target);
+    pb.set_style(ProgressStyle::with_template("{pos}/{len}").unwrap());
+    for _ in 0..2 {
+        pb.inc(1);
+    }
+    pb.finish();
+    "ok".to_string()
 }
 
 // endregion

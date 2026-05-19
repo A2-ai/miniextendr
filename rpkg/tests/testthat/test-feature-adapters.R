@@ -1538,3 +1538,43 @@ test_that("indicatif_elapsed_demo finishes", {
   skip_if_missing_feature("indicatif")
   expect_equal(indicatif_elapsed_demo(), "finished")
 })
+
+# -----------------------------------------------------------------------------
+# Connection-routed indicatif (issue #178)
+# -----------------------------------------------------------------------------
+
+test_that("indicatif routes bytes through a textConnection", {
+  skip_if_missing_feature("indicatif")
+  out <- character()
+  conn <- textConnection("out", open = "w", local = TRUE)
+  on.exit(try(close(conn), silent = TRUE), add = TRUE)
+  result <- indicatif_drive_connection(conn, 3L)
+  # Driver always returns "ok" on success.
+  expect_equal(result, "ok")
+  # The textConnection variable receives the bytes. Indicatif emits clear-line
+  # / cursor-position ANSI sequences plus the rendered bar — assert we saw at
+  # least one bar tick by matching the literal pos/len fragment we templated.
+  rendered <- paste(out, collapse = "\n")
+  expect_match(rendered, "3/3", fixed = TRUE,
+               info = paste("captured:", rendered))
+})
+
+test_that("indicatif routes bytes through a file connection", {
+  skip_if_missing_feature("indicatif")
+  path <- tempfile(fileext = ".txt")
+  on.exit(unlink(path), add = TRUE)
+  conn <- file(path, open = "w")
+  on.exit(try(close(conn), silent = TRUE), add = TRUE, after = FALSE)
+  result <- indicatif_drive_connection(conn, 2L)
+  expect_equal(result, "ok")
+  # Close so the buffer flushes before we read it.
+  try(close(conn), silent = TRUE)
+  contents <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  expect_match(contents, "2/2", fixed = TRUE,
+               info = paste("file contents:", contents))
+})
+
+test_that("indicatif routes through RNullConnection without panicking", {
+  skip_if_missing_feature("indicatif")
+  expect_equal(indicatif_to_null_connection(), "ok")
+})

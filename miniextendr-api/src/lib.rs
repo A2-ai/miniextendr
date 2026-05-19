@@ -96,7 +96,7 @@
 //! | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`). May break with R updates. |
 //! | `rayon` | Parallel iterators via Rayon. Adds `RParallelIterator`, `RParallelExtend`. |
 //! | `connections` | Experimental R connection framework. **Unstable R API.** |
-//! | `indicatif` | Progress bars via R console. Requires `nonapi`. |
+//! | `indicatif` | Progress bars routed through R connections. Requires `nonapi` + `connections`. |
 //! | `vctrs` | vctrs class construction (`new_vctr`, `new_rcrd`, `new_list_of`) and `#[derive(Vctrs)]`. |
 //! | `worker-thread` | Worker thread for panic isolation and `Drop` safety. Without it, stubs run inline. |
 //!

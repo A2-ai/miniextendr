@@ -1187,7 +1187,11 @@ impl std::io::Read for RStdin {
 //
 // Calls from a non-main thread are silently dropped — writing to the R
 // console from a worker thread is unsound (R API is not thread-safe).
-fn write_console(buf: &[u8], otype: std::os::raw::c_int) -> usize {
+//
+// This is `pub(crate)` so [`crate::progress`] can route its terminal-connection
+// branch through the same console hook (the `indicatif` integration dispatches
+// on `inherits("terminal")` and uses this for terminal targets).
+pub(crate) fn write_console_to(buf: &[u8], otype: std::os::raw::c_int) -> usize {
     if buf.is_empty() {
         return 0;
     }
@@ -1221,7 +1225,7 @@ fn write_console(buf: &[u8], otype: std::os::raw::c_int) -> usize {
 
 impl std::io::Write for RStdout {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Ok(write_console(buf, 0))
+        Ok(write_console_to(buf, 0))
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -1231,7 +1235,7 @@ impl std::io::Write for RStdout {
 
 impl std::io::Write for RStderr {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Ok(write_console(buf, 1))
+        Ok(write_console_to(buf, 1))
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
