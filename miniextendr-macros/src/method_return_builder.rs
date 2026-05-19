@@ -381,6 +381,84 @@ impl MethodReturnBuilder {
         })
     }
 
+    /// Build S7-style method body lines (creates new S7 object with .ptr).
+    ///
+    /// Returns lines suitable for embedding inside an outer `function(...) { ... }`
+    /// block — unlike [`build_s7_inline`](Self::build_s7_inline) which wraps the
+    /// body in its own `{ }` and is intended for callers that emit
+    /// `function(...) <expr>` directly (e.g., S7 `convert` definitions).
+    pub fn build_s7_body(&self) -> Vec<String> {
+        self.build_with_tails(ReturnTails {
+            // error_in_r=true:  ClassName(.ptr = .val)
+            // error_in_r=false: ClassName(.ptr = call_expr)
+            self_tail: Box::new(|indent, call_expr, class_name, eir| {
+                assert!(
+                    !class_name.is_empty(),
+                    "class_name required for ReturnSelf strategy"
+                );
+                if eir {
+                    vec![format!("{}{}(.ptr = .val)", indent, class_name)]
+                } else {
+                    vec![format!("{}{}(.ptr = {})", indent, class_name, call_expr)]
+                }
+            }),
+            chain_tail: Box::new(|indent, call_expr, eir| {
+                if eir {
+                    vec![format!("{}x", indent)]
+                } else {
+                    vec![format!("{}{}", indent, call_expr), format!("{}x", indent)]
+                }
+            }),
+            direct_tail: Box::new(|indent, call_expr, eir| {
+                if eir {
+                    vec![format!("{}.val", indent)]
+                } else {
+                    vec![format!("{}{}", indent, call_expr)]
+                }
+            }),
+        })
+    }
+
+    /// Build S4-style method body lines (uses methods::new() to wrap Self returns).
+    ///
+    /// Returns lines suitable for embedding inside an outer
+    /// `function(...) { ... }` block, mirroring [`build_s7_body`](Self::build_s7_body).
+    pub fn build_s4_body(&self) -> Vec<String> {
+        self.build_with_tails(ReturnTails {
+            self_tail: Box::new(|indent, call_expr, class_name, eir| {
+                assert!(
+                    !class_name.is_empty(),
+                    "class_name required for ReturnSelf strategy"
+                );
+                if eir {
+                    vec![format!(
+                        "{}methods::new(\"{}\", ptr = .val)",
+                        indent, class_name
+                    )]
+                } else {
+                    vec![format!(
+                        "{}methods::new(\"{}\", ptr = {})",
+                        indent, class_name, call_expr
+                    )]
+                }
+            }),
+            chain_tail: Box::new(|indent, call_expr, eir| {
+                if eir {
+                    vec![format!("{}x", indent)]
+                } else {
+                    vec![format!("{}{}", indent, call_expr), format!("{}x", indent)]
+                }
+            }),
+            direct_tail: Box::new(|indent, call_expr, eir| {
+                if eir {
+                    vec![format!("{}.val", indent)]
+                } else {
+                    vec![format!("{}{}", indent, call_expr)]
+                }
+            }),
+        })
+    }
+
     /// Build S7-style return (creates new S7 object with .ptr).
     ///
     /// In error_in_r mode, returns a multi-line block expression.

@@ -748,64 +748,19 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Define method using the resolved generic name
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let return_expr = crate::MethodReturnBuilder::new(call.clone())
+            let body_lines = crate::MethodReturnBuilder::new(call.clone())
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
                 .with_error_in_r(ctx.method.method_attrs.error_in_r)
-                .build_s7_inline();
+                .build_s7_body();
 
-            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, match_arg, r_post_checks
             let what = format!("{}.{}", generic_name, class_name);
-            let r_entry = &ctx.method.method_attrs.r_entry;
-            let r_on_exit = &ctx.method.method_attrs.r_on_exit;
-            let missing = ctx.missing_prelude();
-            let lifecycle = ctx.method.lifecycle_prelude(&what);
-            let preconditions = ctx.precondition_checks();
-            let match_arg_lines = ctx.match_arg_prelude();
-            let r_post_checks = &ctx.method.method_attrs.r_post_checks;
-            if r_entry.is_some()
-                || r_on_exit.is_some()
-                || !missing.is_empty()
-                || lifecycle.is_some()
-                || !preconditions.is_empty()
-                || !match_arg_lines.is_empty()
-                || r_post_checks.is_some()
-            {
-                lines.push(format!(
-                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {{"
-                ));
-                if let Some(entry) = r_entry {
-                    for line in entry.lines() {
-                        lines.push(format!("  {line}"));
-                    }
-                }
-                if let Some(on_exit) = r_on_exit {
-                    lines.push(format!("  {}", on_exit.to_r_code()));
-                }
-                for line in &missing {
-                    lines.push(format!("  {line}"));
-                }
-                if let Some(prelude) = lifecycle {
-                    lines.push(format!("  {prelude}"));
-                }
-                for check in &preconditions {
-                    lines.push(format!("  {check}"));
-                }
-                for line in &match_arg_lines {
-                    lines.push(format!("  {line}"));
-                }
-                if let Some(post) = r_post_checks {
-                    for line in post.lines() {
-                        lines.push(format!("  {line}"));
-                    }
-                }
-                lines.push(format!("  {return_expr}"));
-                lines.push("}".to_string());
-            } else {
-                lines.push(format!(
-                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {return_expr}"
-                ));
-            }
+            lines.push(format!(
+                "S7::method({gen_name}, {method_class}) <- function({full_params}) {{"
+            ));
+            ctx.emit_method_prelude(&mut lines, "  ", &what);
+            lines.extend(body_lines);
+            lines.push("}".to_string());
         } else {
             // Create new S7 generic if it doesn't exist
             // Use @rawNamespace to explicitly export the bare generic name.
@@ -863,67 +818,22 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Define method
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let return_expr = crate::MethodReturnBuilder::new(call)
+            let body_lines = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
                 .with_error_in_r(ctx.method.method_attrs.error_in_r)
-                .build_s7_inline();
+                .build_s7_body();
 
             // Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7.no_dots);
 
-            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, match_arg, r_post_checks
             let what = format!("{}.{}", generic_name, class_name);
-            let r_entry = &ctx.method.method_attrs.r_entry;
-            let r_on_exit = &ctx.method.method_attrs.r_on_exit;
-            let missing = ctx.missing_prelude();
-            let lifecycle = ctx.method.lifecycle_prelude(&what);
-            let preconditions = ctx.precondition_checks();
-            let match_arg_lines = ctx.match_arg_prelude();
-            let r_post_checks = &ctx.method.method_attrs.r_post_checks;
-            if r_entry.is_some()
-                || r_on_exit.is_some()
-                || !missing.is_empty()
-                || lifecycle.is_some()
-                || !preconditions.is_empty()
-                || !match_arg_lines.is_empty()
-                || r_post_checks.is_some()
-            {
-                lines.push(format!(
-                    "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{"
-                ));
-                if let Some(entry) = r_entry {
-                    for line in entry.lines() {
-                        lines.push(format!("  {line}"));
-                    }
-                }
-                if let Some(on_exit) = r_on_exit {
-                    lines.push(format!("  {}", on_exit.to_r_code()));
-                }
-                for line in &missing {
-                    lines.push(format!("  {line}"));
-                }
-                if let Some(prelude) = lifecycle {
-                    lines.push(format!("  {prelude}"));
-                }
-                for check in &preconditions {
-                    lines.push(format!("  {check}"));
-                }
-                for line in &match_arg_lines {
-                    lines.push(format!("  {line}"));
-                }
-                if let Some(post) = r_post_checks {
-                    for line in post.lines() {
-                        lines.push(format!("  {line}"));
-                    }
-                }
-                lines.push(format!("  {return_expr}"));
-                lines.push("}".to_string());
-            } else {
-                lines.push(format!(
-                    "S7::method({generic_name}, {method_class}) <- function({method_formals}) {return_expr}"
-                ));
-            }
+            lines.push(format!(
+                "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{"
+            ));
+            ctx.emit_method_prelude(&mut lines, "  ", &what);
+            lines.extend(body_lines);
+            lines.push("}".to_string());
         }
         lines.push(String::new());
     }
