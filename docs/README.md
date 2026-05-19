@@ -150,3 +150,29 @@ framework.
 - **[Feature Backlog](FEATURE_BACKLOG.md)** -- Proposed features and sequencing
 - **[Maintainer Guide](MAINTAINER.md)** -- Release process and maintenance
   tasks
+
+### Claude Code skills
+
+The `.claude/skills/` directory ships 15 task-focused reference files that
+Claude Code auto-loads when working in this repo. They complement the prose
+docs above with structured frontmatter ("Use when...") plus per-skill
+sections on key concepts, decision trees, common pitfalls, and key files.
+Humans can read them too:
+
+| Skill | What it covers |
+|---|---|
+| [miniextendr-architecture](../.claude/skills/miniextendr-architecture/SKILL.md) | crate graph, build pipeline overview |
+| [miniextendr-getting-started](../.claude/skills/miniextendr-getting-started/SKILL.md) | new-user walkthrough |
+| [miniextendr-macros](../.claude/skills/miniextendr-macros/SKILL.md) | `#[miniextendr]` proc-macro internals |
+| [miniextendr-class-systems](../.claude/skills/miniextendr-class-systems/SKILL.md) | R6 / S3 / S4 / S7 / Env / Vctrs |
+| [miniextendr-conversions](../.claude/skills/miniextendr-conversions/SKILL.md) | `TryFromSexp` / `IntoR` / `Coerce` |
+| [miniextendr-externalptr](../.claude/skills/miniextendr-externalptr/SKILL.md) | `Box<Box<dyn Any>>` + `TypedExternal` |
+| [miniextendr-serde](../.claude/skills/miniextendr-serde/SKILL.md) | R ↔ Rust serde flow |
+| [miniextendr-altrep](../.claude/skills/miniextendr-altrep/SKILL.md) | derives, guard modes, manual path |
+| [miniextendr-dots](../.claude/skills/miniextendr-dots/SKILL.md) | `Dots`, `typed_list!`, variadic args |
+| [miniextendr-connections](../.claude/skills/miniextendr-connections/SKILL.md) | custom R connections from Rust |
+| [miniextendr-ffi](../.claude/skills/miniextendr-ffi/SKILL.md) | `r_ffi_checked`, `with_r_unwind_protect`, GC RAII |
+| [miniextendr-worker](../.claude/skills/miniextendr-worker/SKILL.md) | `run_on_worker`, `Sendable<T>` |
+| [miniextendr-lint](../.claude/skills/miniextendr-lint/SKILL.md) | MXL rule catalogue |
+| [miniextendr-build](../.claude/skills/miniextendr-build/SKILL.md) | `configure.ac`, Makevars, install-mode latch |
+| [miniextendr-scaffolding](../.claude/skills/miniextendr-scaffolding/SKILL.md) | minirextendr templates and sync workflow |
