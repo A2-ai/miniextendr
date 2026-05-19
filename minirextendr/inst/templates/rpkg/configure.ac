@@ -522,6 +522,38 @@ dnl when R's values differ — otherwise we'd just add noise to the config.
 CARGO_ENV_R_AR=`"${R_HOME}/bin/R" CMD config AR 2>/dev/null`
 CARGO_ENV_R_RANLIB=`"${R_HOME}/bin/R" CMD config RANLIB 2>/dev/null`
 
+dnl --- CFLAGS / CXXFLAGS: ABI-only allowlist from R config ----
+dnl Cargo applies CFLAGS_<target> and CXXFLAGS_<target> to *every* transitive
+dnl C/C++ build script (cc, cmake, etc.). R's raw CFLAGS contain R-specific
+dnl -I paths, R-private defines, and warning flags that have no business in
+dnl cargo deps. We allowlist a small set of ABI-affecting flags; everything
+dnl else is stripped. See issue #598 for the full rationale table.
+CARGO_ENV_ABI_CFLAGS=""
+CARGO_ENV_ABI_CXXFLAGS=""
+
+_r_cflags=`"${R_HOME}/bin/R" CMD config CFLAGS 2>/dev/null`
+_r_cxxflags=`"${R_HOME}/bin/R" CMD config CXXFLAGS 2>/dev/null`
+
+dnl Allowlist regex. Keep ABI-affecting flags only:
+dnl   -march=, -mtune=, -mfpmath=, -mfpu=, -mfloat-abi=, -mabi=, -m{sse,avx,ssse,pclmul,aes},
+dnl   -pthread, -D_REENTRANT, -fopenmp[=…]
+dnl No character classes are used (no `[...]`), so no m4 bracket escaping needed.
+_abi_allow_re='^-march=|^-mtune=|^-mfpmath=|^-mfpu=|^-mfloat-abi=|^-mabi=|^-msse|^-mavx|^-mssse|^-mpclmul|^-maes|^-pthread$|^-D_REENTRANT$|^-fopenmp'
+
+if test -n "$_r_cflags"; then
+  CARGO_ENV_ABI_CFLAGS=`echo "$_r_cflags" | tr ' ' '\n' | grep -E "$_abi_allow_re" | tr '\n' ' ' | $SED 's/ *$//'`
+fi
+if test -n "$_r_cxxflags"; then
+  CARGO_ENV_ABI_CXXFLAGS=`echo "$_r_cxxflags" | tr ' ' '\n' | grep -E "$_abi_allow_re" | tr '\n' ' ' | $SED 's/ *$//'`
+fi
+
+if test -n "$CARGO_ENV_ABI_CFLAGS"; then
+  AC_MSG_NOTICE([cargo CFLAGS_<target>  = $CARGO_ENV_ABI_CFLAGS])
+fi
+if test -n "$CARGO_ENV_ABI_CXXFLAGS"; then
+  AC_MSG_NOTICE([cargo CXXFLAGS_<target>= $CARGO_ENV_ABI_CXXFLAGS])
+fi
+
 dnl Individual env-derivation variables are propagated to AC_CONFIG_COMMANDS
 dnl via the trailing variable-pass list, and the [env] block body is composed
 dnl inline inside that shell context. Pre-composing here and passing a single
@@ -635,6 +667,12 @@ AC_CONFIG_COMMANDS([cargo-config],
     if test -n "$CARGO_ENV_R_RANLIB" && test "$CARGO_ENV_R_RANLIB" != "ranlib"; then
       echo "RANLIB_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_RANLIB\""
     fi
+    if test -n "$CARGO_ENV_ABI_CFLAGS"; then
+      echo "CFLAGS_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_ABI_CFLAGS\""
+    fi
+    if test -n "$CARGO_ENV_ABI_CXXFLAGS"; then
+      echo "CXXFLAGS_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_ABI_CXXFLAGS\""
+    fi
     echo ""
   }
 
@@ -707,6 +745,8 @@ AC_CONFIG_COMMANDS([cargo-config],
  CARGO_ENV_RUST_TARGET_UPPER="$CARGO_ENV_RUST_TARGET_UPPER"
  CARGO_ENV_R_AR="$CARGO_ENV_R_AR"
  CARGO_ENV_R_RANLIB="$CARGO_ENV_R_RANLIB"
+ CARGO_ENV_ABI_CFLAGS="$CARGO_ENV_ABI_CFLAGS"
+ CARGO_ENV_ABI_CXXFLAGS="$CARGO_ENV_ABI_CXXFLAGS"
  SED="$SED"])
 
 dnl ---- 3) Cargo.lock shape check (tarball mode only) ----
