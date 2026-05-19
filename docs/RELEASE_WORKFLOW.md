@@ -283,3 +283,28 @@ The template targets AlmaLinux 8 (RHEL 8 family — common in enterprise release
 pipelines) and macOS arm64 (`macos-14`). Extend it with additional steps for
 your package's specific setup (R package installation, cargo caching, upload
 steps, etc.).
+
+## Monorepo layouts (`rpkg_subdir`)
+
+If the R package lives in a subdirectory of a Cargo workspace (the layout this
+repo uses — `rpkg/` under the workspace root), `bash ./configure` and `R CMD
+build` must run from inside that subdirectory. Pass `rpkg_subdir` to inject
+`working-directory:` on every relevant step:
+
+```r
+minirextendr::use_release_workflow(rpkg_subdir = "rpkg")
+```
+
+When `rpkg_subdir = NULL` (default) the call attempts auto-detection via
+`detect_project_type()`; pass `auto_detect_subdir = FALSE` to force standalone
+mode on a confirmed single-package layout.
+
+**Why the `working-directory:` key precedes `run:`** — the build step uses a
+`run: |` block scalar (`R CMD build .` + `R CMD check ...`). YAML resolves the
+scalar's content by the indent of its first line, so any same-indent line that
+follows `run: |` is absorbed into the scalar text instead of becoming a sibling
+mapping key. `release_workflow_insert_workdir()` inserts `working-directory:`
+*before* the matched `run:` line so it stays a peer of `run:`. The structural
+test in `minirextendr/tests/testthat/test-monorepo-gaps.R` parses the patched
+workflow with `yaml::read_yaml()` and asserts every configure and build step
+exposes `working-directory: <subdir>` as a real key.
