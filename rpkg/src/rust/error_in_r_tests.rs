@@ -102,25 +102,21 @@ impl ErrorInRCounter {
     }
 
     /// Get the current value -- should always succeed.
-    #[miniextendr]
     fn get(&self) -> i32 {
         self.value
     }
 
     /// Increment -- mutable method, should succeed and allow chaining.
-    #[miniextendr]
     fn inc(&mut self) {
         self.value += 1;
     }
 
     /// Deliberately panic in a method.
-    #[miniextendr]
     fn panic_method(&self) -> i32 {
         panic!("method panic in error_in_r")
     }
 
     /// Return Result::Err in a method.
-    #[miniextendr]
     fn failing_method(&self) -> Result<i32, String> {
         Err("method error".to_string())
     }
@@ -144,19 +140,16 @@ impl ErrorInRR6Widget {
     }
 
     /// Get the name -- should always succeed.
-    #[miniextendr]
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
 
     /// Deliberately panic.
-    #[miniextendr]
     pub fn panic_method(&self) -> String {
         panic!("R6 panic in error_in_r")
     }
 
     /// Return Result::Err.
-    #[miniextendr]
     pub fn failing_result(&self) -> Result<String, String> {
         Err("R6 result error".to_string())
     }
@@ -182,25 +175,21 @@ impl ErrorInRS7Gauge {
     }
 
     /// Read the level -- should always succeed.
-    #[miniextendr]
     pub fn read_level(&self) -> f64 {
         self.level
     }
 
     /// Set the level -- mutable, chainable.
-    #[miniextendr]
     pub fn set_level(&mut self, level: f64) {
         self.level = level;
     }
 
     /// Deliberately panic.
-    #[miniextendr]
     pub fn panic_method(&self) -> f64 {
         panic!("S7 panic in error_in_r")
     }
 
     /// Return Result::Err.
-    #[miniextendr]
     pub fn failing_result(&self) -> Result<f64, String> {
         Err("S7 result error".to_string())
     }
@@ -241,12 +230,10 @@ impl FallibleImpl {
 /// Fallible trait implementation for FallibleImpl with error_in_r on each method.
 #[miniextendr]
 impl Fallible for FallibleImpl {
-    #[miniextendr]
     fn get_value(&self) -> i32 {
         self.value
     }
 
-    #[miniextendr]
     fn will_panic(&self) -> i32 {
         panic!("trait panic in error_in_r")
     }
