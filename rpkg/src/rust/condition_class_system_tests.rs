@@ -1,10 +1,15 @@
 //! Cross class-system condition fixtures.
 //!
-//! Each class system (R6, S3, S4, S7, Env) gets a small struct whose methods
-//! raise every `RCondition` variant — bare and with a custom class. The matrix
-//! exercises the per-class-system R wrapper shape (active bindings, setMethod,
-//! `self`-default arg, S7 `tryCatch(x@.ptr)` lambda, ...) which all dispatch
-//! through `.miniextendr_raise_condition` after PR #382.
+//! Each class system (R6, S3, S4, S7, Env, Vctrs) gets a small struct whose
+//! methods raise every `RCondition` variant — bare and with a custom class. The
+//! matrix exercises the per-class-system R wrapper shape (active bindings,
+//! setMethod, `self`-default arg, S7 `tryCatch(x@.ptr)` lambda, vctrs S3
+//! `UseMethod` dispatch, ...) which all dispatch through
+//! `.miniextendr_raise_condition` after PR #382.
+//!
+//! The Vctrs fixture is feature-gated behind `vctrs`. R-side tests pair with
+//! `skip_if_vctrs_disabled()` in
+//! `rpkg/tests/testthat/test-conditions-comprehensive.R`.
 //!
 //! Tests live in `rpkg/tests/testthat/test-conditions-comprehensive.R`.
 
@@ -280,6 +285,106 @@ impl EnvRaiser {
 
     pub fn env_raise_condition_classed(&self, class: &str, msg: &str) {
         raise_condition_with_class(class, msg);
+    }
+}
+
+// endregion
+
+// region: Vctrs — static methods + S3 protocol override, vector-payload constructor
+//
+// vctrs codegen forbids `&self` receivers (MXL120) because a vctrs object is an
+// S3-classed base vector — there is no Rust `Self` stored in the SEXP. All
+// methods are therefore static; the vctrs payload (`Vec<f64>`) is passed
+// explicitly.
+//
+// Two emission shapes are exercised:
+//   1. Static helpers — emitted as plain wrapped fns
+//      (`vctrsraiser_vctrs_raise_error(values, msg)`); full `match.call()`
+//      attribution like any `#[miniextendr]` free function.
+//   2. vctrs protocol override (`#[miniextendr(vctrs(format))]`) — emitted as
+//      the S3 method `format.VctrsRaiser(values, ...)`; dispatch goes through
+//      `UseMethod("format")` in base R, the method body carries
+//      `.call = match.call()` of the inner `.Call`. This is the closest analogue
+//      to the S3 raise_*.S3Raiser path.
+
+#[cfg(feature = "vctrs")]
+mod vctrs_raiser {
+    use super::*;
+
+    /// Vctrs fixture — static methods raise every condition kind.
+    ///
+    /// `kind = "vctr"` + `base = "double"` means the constructor returns the
+    /// numeric payload (`Vec<f64>`) and the R wrapper calls
+    /// `vctrs::new_vctr(.data, class = "VctrsRaiser")`. Method names start with
+    /// `vctrs_` to avoid colliding with the unprefixed `raise_*` static fns on
+    /// other class systems.
+    pub struct VctrsRaiser;
+
+    #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "raise"))]
+    impl VctrsRaiser {
+        /// Vctrs ctors return vector payload (not Self) — vctrs::new_vctr wraps it.
+        /// @param values Numeric values to embed in the vctrs vector.
+        #[allow(clippy::new_ret_no_self)]
+        pub fn new(values: Vec<f64>) -> Vec<f64> {
+            values
+        }
+
+        /// @param _values The vctrs payload (unused; receiver stand-in for the S3 object).
+        /// @param msg Error message.
+        pub fn vctrs_raise_error(_values: Vec<f64>, msg: String) {
+            miniextendr_api::error!("{msg}");
+        }
+
+        /// @param _values The vctrs payload (unused).
+        /// @param class Custom condition class.
+        /// @param msg Error message.
+        pub fn vctrs_raise_error_classed(_values: Vec<f64>, class: String, msg: String) {
+            raise_error_with_class(&class, &msg);
+        }
+
+        /// @param _values The vctrs payload (unused).
+        /// @param msg Warning message.
+        pub fn vctrs_raise_warning(_values: Vec<f64>, msg: String) {
+            miniextendr_api::warning!("{msg}");
+        }
+
+        /// @param _values The vctrs payload (unused).
+        /// @param class Custom condition class.
+        /// @param msg Warning message.
+        pub fn vctrs_raise_warning_classed(_values: Vec<f64>, class: String, msg: String) {
+            raise_warning_with_class(&class, &msg);
+        }
+
+        /// @param _values The vctrs payload (unused).
+        /// @param msg Message text.
+        pub fn vctrs_raise_message(_values: Vec<f64>, msg: String) {
+            miniextendr_api::message!("{msg}");
+        }
+
+        /// @param _values The vctrs payload (unused).
+        /// @param msg Condition message.
+        pub fn vctrs_raise_condition(_values: Vec<f64>, msg: String) {
+            miniextendr_api::condition!("{msg}");
+        }
+
+        /// @param _values The vctrs payload (unused).
+        /// @param class Custom condition class.
+        /// @param msg Condition message.
+        pub fn vctrs_raise_condition_classed(_values: Vec<f64>, class: String, msg: String) {
+            raise_condition_with_class(&class, &msg);
+        }
+
+        /// vctrs protocol override — emits `format.VctrsRaiser(values, ...)` for
+        /// S3 dispatch via `UseMethod("format")`. Always panics so the test can
+        /// inspect `conditionCall` for the dispatched generic name.
+        ///
+        /// @param _values The vctrs payload (unused).
+        /// @return Never returns — always raises a `rust_error`.
+        #[miniextendr(vctrs(format))]
+        #[allow(clippy::needless_pass_by_value)]
+        pub fn format_vctrsraiser(_values: Vec<f64>) -> Vec<String> {
+            miniextendr_api::error!("format-protocol boom");
+        }
     }
 }
 
