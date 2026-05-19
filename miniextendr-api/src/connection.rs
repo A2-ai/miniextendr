@@ -930,7 +930,18 @@ impl RCustomConnection {
             let boxed_state = Box::new(state);
             let state_ptr = Box::into_raw(boxed_state).cast::<c_void>();
 
-            // Create the R connection object
+            // Create the R connection object.
+            //
+            // SAFETY: self.{description,mode,class_name} are owned `CString`
+            // field bindings on the builder, alive for the entirety of this
+            // call. R `strcpy`s them into its own malloc'd buffers inside
+            // `init_con` (r-source `src/main/connections.c` ~line 710) and
+            // frees those copies in `con_close1`; we only need the borrow
+            // to outlive this single FFI call. Do not refactor the builder
+            // to hold `&str` views or to compute these via
+            // `CString::new(...).as_ptr()` without a binding — that would
+            // free the temporary before R reads it (silent UAF, not caught
+            // by basic tests because R has already copied the bytes by then).
             let mut conn_ptr: Rconnection = std::ptr::null_mut();
             let sexp = crate::ffi::R_new_custom_connection(
                 self.description.as_ptr(),
