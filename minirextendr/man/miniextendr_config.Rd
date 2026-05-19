@@ -18,3 +18,27 @@ Falls back to defaults for any missing keys. The \code{yaml} package
 is required to read the file; if unavailable, defaults are returned
 with a warning.
 }
+\section{Is \code{miniextendr.yml} load-bearing?}{
+
+
+\code{miniextendr.yml} is \strong{optional project metadata}, not a build-time
+configuration source. Downstream packages may keep it, edit it, or
+delete it without changing how their package compiles or runs. The
+parsed values are consumed by:
+\itemize{
+\item \verb{miniextendr-cli config} — display only.
+\item \code{\link[=miniextendr_sync]{miniextendr_sync()}} — \code{features}, \code{strict}, \code{coerce}, \code{rust_version}
+feed a cache-invalidation hash. Editing the file invalidates the
+sync cache; it does not change codegen or runtime behaviour.
+}
+
+Specifically, \code{class_system}, \code{strict}, and \code{coerce} in this file do
+\strong{not} become Rust-side defaults. Codegen behaviour is controlled by
+\verb{#[miniextendr(...)]} attributes on each item; the per-package Cargo
+feature set is controlled by \code{src/rust/Cargo.toml} (and optionally
+\code{tools/detect-features.R}); neither layer reads \code{miniextendr.yml}.
+
+If unsure: leave it where \code{\link[=use_miniextendr]{use_miniextendr()}} scaffolded it, or
+delete it — both are safe.
+}
+

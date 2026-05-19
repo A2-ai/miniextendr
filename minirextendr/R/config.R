@@ -7,6 +7,27 @@
 #' is required to read the file; if unavailable, defaults are returned
 #' with a warning.
 #'
+#' @section Is `miniextendr.yml` load-bearing?:
+#'
+#' `miniextendr.yml` is **optional project metadata**, not a build-time
+#' configuration source. Downstream packages may keep it, edit it, or
+#' delete it without changing how their package compiles or runs. The
+#' parsed values are consumed by:
+#'
+#' - `miniextendr-cli config` — display only.
+#' - [miniextendr_sync()] — `features`, `strict`, `coerce`, `rust_version`
+#'   feed a cache-invalidation hash. Editing the file invalidates the
+#'   sync cache; it does not change codegen or runtime behaviour.
+#'
+#' Specifically, `class_system`, `strict`, and `coerce` in this file do
+#' **not** become Rust-side defaults. Codegen behaviour is controlled by
+#' `#[miniextendr(...)]` attributes on each item; the per-package Cargo
+#' feature set is controlled by `src/rust/Cargo.toml` (and optionally
+#' `tools/detect-features.R`); neither layer reads `miniextendr.yml`.
+#'
+#' If unsure: leave it where [use_miniextendr()] scaffolded it, or
+#' delete it — both are safe.
+#'
 #' @param path Path to the project root (default: current directory).
 #' @return A list of configuration values.
 #' @export

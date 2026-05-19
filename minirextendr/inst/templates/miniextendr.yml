@@ -1,5 +1,16 @@
-# miniextendr project configuration
-# See ?miniextendr_config for all options
+# miniextendr project configuration (optional)
+#
+# This file is parsed by minirextendr but is NOT load-bearing for codegen
+# or runtime behaviour. Editing values here changes:
+#   - what `miniextendr-cli config` prints
+#   - the sync-cache hash key (see ?miniextendr_sync)
+#
+# It does NOT change Rust-side defaults — those come from
+# `#[miniextendr(...)]` attributes per item — and it does NOT control
+# which Cargo features are enabled (see src/rust/Cargo.toml or
+# tools/detect-features.R). Safe to delete.
+#
+# See ?miniextendr_config for all keys and defaults.
 
 class_system: env
 strict: false
