@@ -13,6 +13,14 @@
 # crates match the registry entries.  Do NOT overwrite .cargo-checksum.json
 # to {"files":{}} and do NOT strip checksum lines from Cargo.lock — both
 # defeat cargo's verification and diverge from `just vendor` output.
+#
+# Trim policy (post PR for #631): all CRAN-relevant trimming lives in
+# `cargo-revendor --strip-toml-sections`. No additional R-side deletion
+# of vendor/<crate>/ contents — any post-cargo-revendor deletion would
+# invalidate the files map in `.cargo-checksum.json` (cargo recomputes
+# files map *inside* its own strip pass, then we can't re-touch). The
+# vendor.tar.xz is opaque to R CMD check, so the few MB of `examples/`
+# / `docs/` saved by extra trimming aren't worth the verification bug.
 
 #' Run cargo revendor and CRAN-trim the result
 #'
@@ -63,16 +71,19 @@ vendor_crates_io <- function(path = ".") {
 
   check_result(result, "cargo revendor")
 
-  # CRAN-trim vendor/ before it is packaged into inst/vendor.tar.xz. The
-  # rpkg/.Rbuildignore has matching patterns for .github/, ci/, dotfiles etc.
-  # on the source tree, but .Rbuildignore does not filter inside the tarball —
-  # this stripping is the only mechanism that cleans tarball contents.
-  # cargo-revendor's --strip-toml-sections (above) handles .github/, .circleci/,
-  # ci/, target/ and TOML surgery; this covers the rest (docs/, examples/,
-  # remaining dotfiles). tests/ and benches/ are intentionally preserved —
-  # some crates (e.g. zerocopy) use include_str!("../benches/...") in library
-  # source; deleting those dirs breaks compilation.
-  strip_vendored_dir(vendor_dir)
+  # cargo-revendor's --strip-toml-sections (above) handles all the
+  # CRAN-relevant trims: stripping `[[test]]` / `[[bench]]` / `[[example]]`
+  # / `[[bin]]` / `[dev-dependencies]` from each vendored Cargo.toml,
+  # pruning dangling `[features]` refs, removing always-safe base dirs
+  # (`.github/`, `.circleci/`, `ci/`, `target/`), and — crucially —
+  # recomputing each crate's `.cargo-checksum.json` so cargo's offline
+  # source-replacement verification still succeeds.
+  #
+  # The vendor.tar.xz is opaque to R CMD check (it doesn't recurse into
+  # nested tarballs), so any additional R-side stripping of `examples/`,
+  # `docs/`, or hidden dotfiles after cargo-revendor would only shave a
+  # couple of MB at the cost of invalidating the checksum files map —
+  # see #631 for the failure mode this used to produce.
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
   invisible(TRUE)
@@ -100,49 +111,3 @@ check_cargo_revendor <- function() {
   invisible(TRUE)
 }
 
-#' Strip CRAN-unfriendly content from a vendored tree
-#'
-#' Walks every crate directory under `vendor_path` and removes build
-#' artifacts, hidden dotfiles, and other content that would trigger CRAN
-#' NOTEs (portable filenames, hidden files, long paths) on the produced
-#' tarball.
-#'
-#' tests/ and benches/ are intentionally NOT stripped: some published
-#' crates reference files inside those directories from regular library
-#' source via `include_str!("../benches/X")` for documentation (zerocopy
-#' is one). Stripping them breaks compilation post-vendor. They cost a
-#' few MB across the dep graph; CRAN tolerates them.
-#'
-#' @noRd
-strip_vendored_dir <- function(vendor_path) {
-  if (!fs::dir_exists(vendor_path)) return(invisible())
-
-  unwanted_dirs <- c("target", ".git", ".github",
-                     "examples", "docs", "ci", ".circleci")
-
-  crate_dirs <- fs::dir_ls(vendor_path, type = "directory")
-  for (crate_dir in crate_dirs) {
-    for (d in unwanted_dirs) {
-      d_path <- fs::path(crate_dir, d)
-      if (fs::dir_exists(d_path)) {
-        fs::dir_delete(d_path)
-      }
-    }
-
-    # Remove hidden dotfiles (except .cargo-checksum.json which cargo needs)
-    all_files <- fs::dir_ls(crate_dir, all = TRUE, recurse = FALSE)
-    dotfiles <- all_files[grepl("^\\.", basename(all_files))]
-    dotfiles <- dotfiles[basename(dotfiles) != ".cargo-checksum.json"]
-    for (f in dotfiles) {
-      if (fs::is_dir(f)) {
-        fs::dir_delete(f)
-      } else {
-        fs::file_delete(f)
-      }
-    }
-    # .cargo-checksum.json: cargo-revendor already wrote valid SHA-256s
-    # (recomputed post-CRAN-trim in PR #408). Do not overwrite it.
-  }
-
-  invisible()
-}
