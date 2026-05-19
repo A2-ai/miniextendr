@@ -503,6 +503,43 @@ jobs:
         run: |
           brew install autoconf
 
+      # Gotcha 5: CRAN's macOS binary R is built against a specific Xcode SDK
+      # (Xcode 16.2 for x86_64 / Xcode 26.0 for arm64) and deployment target
+      # (11.0 for x86_64 / 14.0 for arm64). Pin the SDK so our CI exercises
+      # the same toolchain ABI we tell downstream maintainers to use.
+      # Mirrors `minirextendr/inst/templates/r-release.yml`; docs are the
+      # single source of truth, this duplication is by design.
+      # See docs/RELEASE_WORKFLOW.md Gotcha 5.
+      - name: Pin macOS SDK and deployment target
+        run: |
+          if [ "$(uname -m)" = "x86_64" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app || true
+            echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+          else
+            sudo xcode-select -s /Applications/Xcode_26.0.app || true
+            echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+          fi
+          echo "xcode is set: $(xcode-select --print-path)"
+          xcrun --show-sdk-version || true
+
+      # Gotcha 6: CRAN's macOS binary R links against /opt/R/<arch>/lib system
+      # libraries (libcurl, openssl, libtiff, ...) curated by
+      # r-universe-org/macos-libs. Any Rust crate with a -sys C dep using
+      # pkg-config will resolve against these — the same library set R itself
+      # was built against. Pre-empts the "links fine locally, segfaults under
+      # CRAN's R" trap. Inlined from r-devel/actions/setup-macos-tools@ec72e88.
+      # See docs/RELEASE_WORKFLOW.md Gotcha 6.
+      - name: Download CRAN system libraries
+        run: |
+          sudo mkdir -p /opt
+          sudo chown $USER /opt
+          curl --retry 3 --fail-with-body -sSL \
+            https://github.com/r-universe-org/macos-libs/releases/download/2025-12-13/cranlibs-everything.tar.xz \
+            -o libs.tar.xz
+          sudo tar -xf libs.tar.xz -C / opt
+          rm -f libs.tar.xz
+          echo "PKG_CONFIG_PATH=/opt/R/$(uname -m)/lib/pkgconfig:/opt/R/$(uname -m)/share/pkgconfig" >> $GITHUB_ENV
+
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
