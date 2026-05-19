@@ -298,6 +298,13 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
     usethis::use_package_doc()
   }))
 
+  # Same auto-vendor suppression as the cargo-dep test below: a `.git`
+  # marker inside `pkg_path` makes configure.ac skip auto-vendor and stay
+  # in source mode. Without this, `devtools::document()` below fails
+  # because tarball-mode Makevars expects a pre-generated wrappers.R that
+  # this fresh scaffold doesn't have yet (#632).
+  dir.create(file.path(pkg_path, ".git"))
+
   suppressMessages({
     miniextendr_autoconf(path = pkg_path)
     miniextendr_configure(path = pkg_path)
