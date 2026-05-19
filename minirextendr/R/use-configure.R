@@ -101,6 +101,14 @@ use_miniextendr_config_scripts <- function(path = ".") {
     bullet_created(file.path("tools", script), "Copied")
   }
 
+  # tools/lock-shape-check.R is referenced by configure.ac's
+  # AC_CONFIG_COMMANDS([lock-shape-check]) block; without it, configure
+  # fails in tarball mode with "cannot open file 'tools/lock-shape-check.R'".
+  lock_check_src <- template_path("lock-shape-check.R", subdir = "tools")
+  lock_check_dest <- usethis::proj_path("tools", "lock-shape-check.R")
+  fs::file_copy(lock_check_src, lock_check_dest, overwrite = TRUE)
+  bullet_created(file.path("tools", "lock-shape-check.R"), "Copied")
+
   invisible(TRUE)
 }
 
