@@ -326,8 +326,11 @@ test_that("Env: message!() raises rust_message", {
 #   1. Static helpers — emit `vctrsraiser_vctrs_raise_*(values, …)` plain
 #      wrapped fns with full match.call() attribution.
 #   2. `#[miniextendr(vctrs(format))]` — emits the S3 method
-#      `format.VctrsRaiser(values, ...)`; user calls `format(x)` which
-#      dispatches via `UseMethod("format")`.
+#      `format.VctrsRaiser(x, ...)`; user calls `format(x)` which dispatches
+#      via `UseMethod("format")`. The Rust argument is named `_x` (not
+#      `_values`) so the generated method signature matches base `format(x,
+#      ...)` — avoids an S3 generic/method consistency WARNING from R CMD
+#      check.
 
 test_that("Vctrs: constructor builds a vctrs vector", {
   skip_if_vctrs_disabled()
@@ -486,9 +489,15 @@ test_that("condition!() composes with withRestarts + invokeRestart", {
 })
 
 test_that("bare error: class(e) starts with rust_error (no user class layered)", {
-  # The condition list stores only message/call/kind; the user-supplied class
-  # (if any) is layered as the first element of class(e). For a bare
-  # `error!`, class(e) starts with "rust_error".
+  # The internal transport SEXP (make_rust_condition_value) is a 4-element list
+  # with names c("error", "kind", "class", "call") — the user-supplied class
+  # lives in .val$class on transport. The R-side .miniextendr_raise_condition
+  # helper consumes that slot and prepends it to class(e) on the final
+  # condition object via stop(structure(list(...), class = c(user_class,
+  # "rust_error", "simpleError", "error", "condition"))); the final condition
+  # object itself stores only message/call (no $class field — class is set as
+  # an attribute via structure()). For a bare `error!` with no user class,
+  # class(e) starts with "rust_error".
   e <- tryCatch(demo_error("x"), error = function(e) e)
   expect_equal(class(e)[1], "rust_error")
   expect_false("typed_err" %in% class(e))

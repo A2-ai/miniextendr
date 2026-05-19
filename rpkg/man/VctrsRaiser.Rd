@@ -57,12 +57,12 @@ vctrsraiser_vctrs_raise_condition(values, msg)
 
 vctrsraiser_vctrs_raise_condition_classed(values, class, msg)
 
-\method{format}{VctrsRaiser}(values, ...)
+\method{format}{VctrsRaiser}(x, ...)
 }
 \arguments{
-\item{values}{(undocumented)}
+\item{values}{The vctrs payload (unused).}
 
-\item{x}{A VctrsRaiser vector to cast.}
+\item{x}{The vctrs payload (unused; receiver stand-in for the S3 object).}
 
 \item{...}{Additional arguments (unused).}
 
@@ -73,14 +73,10 @@ vctrsraiser_vctrs_raise_condition_classed(values, class, msg)
 \item{msg}{Condition message.}
 
 \item{class}{Custom condition class.}
-
-\item{_values}{The vctrs payload (unused).}
 }
 \value{
 Never returns — always raises a \code{rust_error}.
 }
 \description{
-Vctrs ctors return vector payload (not Self) — vctrs::new_vctr wraps it
-
-vctrs protocol override — emits \code{format.VctrsRaiser(values, ...)} for S3 dispatch via \code{UseMethod("format")}
+The argument is named \code{x} (not \code{values}) so the generated S3 method signature \code{format.VctrsRaiser(x, ...)} matches the base S3 generic \code{format(x, ...)} — otherwise \verb{R CMD check} raises an S3 generic/method consistency WARNING.
 }

@@ -84,7 +84,7 @@ pub fn panicking_sidecar_new(doom: String) -> ExternalPtr<PanickingSidecar> {
 /// standalone-fn path: the R wrapper carries `.call = match.call()` so
 /// `conditionCall(e)` is non-NULL and references the wrapper.
 ///
-/// @param _x A `PanickingSidecar` instance (unused; just exercises argument
+/// @param x A `PanickingSidecar` instance (unused; just exercises argument
 ///   conversion through `ExternalPtr<PanickingSidecar>`).
 #[miniextendr]
 pub fn sidecar_consumer_panic(_x: ExternalPtr<PanickingSidecar>) {

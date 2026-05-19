@@ -17,9 +17,7 @@ sidecar_consumer_panic(x)
 \arguments{
 \item{doom}{Message string surfaced when \code{boom()} panics.}
 
-\item{x}{(no documentation available)}
-
-\item{_x}{A \code{PanickingSidecar} instance (unused; just exercises argument
+\item{x}{A \code{PanickingSidecar} instance (unused; just exercises argument
 conversion through \verb{ExternalPtr<PanickingSidecar>}).}
 }
 \description{

@@ -329,60 +329,69 @@ mod vctrs_raiser {
             values
         }
 
-        /// @param _values The vctrs payload (unused; receiver stand-in for the S3 object).
+        /// @param values The vctrs payload (unused; receiver stand-in for the S3 object).
         /// @param msg Error message.
         pub fn vctrs_raise_error(_values: Vec<f64>, msg: String) {
             miniextendr_api::error!("{msg}");
         }
 
-        /// @param _values The vctrs payload (unused).
+        /// @param values The vctrs payload (unused).
         /// @param class Custom condition class.
         /// @param msg Error message.
         pub fn vctrs_raise_error_classed(_values: Vec<f64>, class: String, msg: String) {
             raise_error_with_class(&class, &msg);
         }
 
-        /// @param _values The vctrs payload (unused).
+        /// @param values The vctrs payload (unused).
         /// @param msg Warning message.
         pub fn vctrs_raise_warning(_values: Vec<f64>, msg: String) {
             miniextendr_api::warning!("{msg}");
         }
 
-        /// @param _values The vctrs payload (unused).
+        /// @param values The vctrs payload (unused).
         /// @param class Custom condition class.
         /// @param msg Warning message.
         pub fn vctrs_raise_warning_classed(_values: Vec<f64>, class: String, msg: String) {
             raise_warning_with_class(&class, &msg);
         }
 
-        /// @param _values The vctrs payload (unused).
+        /// @param values The vctrs payload (unused).
         /// @param msg Message text.
         pub fn vctrs_raise_message(_values: Vec<f64>, msg: String) {
             miniextendr_api::message!("{msg}");
         }
 
-        /// @param _values The vctrs payload (unused).
+        /// @param values The vctrs payload (unused).
         /// @param msg Condition message.
         pub fn vctrs_raise_condition(_values: Vec<f64>, msg: String) {
             miniextendr_api::condition!("{msg}");
         }
 
-        /// @param _values The vctrs payload (unused).
+        /// @param values The vctrs payload (unused).
         /// @param class Custom condition class.
         /// @param msg Condition message.
         pub fn vctrs_raise_condition_classed(_values: Vec<f64>, class: String, msg: String) {
             raise_condition_with_class(&class, &msg);
         }
 
-        /// vctrs protocol override — emits `format.VctrsRaiser(values, ...)` for
+        /// vctrs protocol override — emits `format.VctrsRaiser(x, ...)` for
         /// S3 dispatch via `UseMethod("format")`. Always panics so the test can
-        /// inspect `conditionCall` for the dispatched generic name.
+        /// inspect `conditionCall` for the dispatched generic name. Note that
+        /// `format`-protocol dispatch is what's being exercised here, not
+        /// arbitrary `vctrs_*` S3 generics — `match.call()` inside
+        /// `format.VctrsRaiser` captures the dispatched-method call frame, not
+        /// the user's `format(obj)` call.
         ///
-        /// @param _values The vctrs payload (unused).
+        /// The argument is named `x` (not `values`) so the generated S3 method
+        /// signature `format.VctrsRaiser(x, ...)` matches the base S3 generic
+        /// `format(x, ...)` — otherwise `R CMD check` raises an S3
+        /// generic/method consistency WARNING.
+        ///
+        /// @param x The vctrs payload (unused; receiver stand-in for the S3 object).
         /// @return Never returns — always raises a `rust_error`.
         #[miniextendr(vctrs(format))]
         #[allow(clippy::needless_pass_by_value)]
-        pub fn format_vctrsraiser(_values: Vec<f64>) -> Vec<String> {
+        pub fn format_vctrsraiser(_x: Vec<f64>) -> Vec<String> {
             miniextendr_api::error!("format-protocol boom");
         }
     }
