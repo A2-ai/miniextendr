@@ -30,10 +30,31 @@ fi
 # regenerates it from scratch via bootstrap.R.
 rm -f rpkg/inst/vendor.tar.xz
 
+# Stash the tracked Cargo.lock: bootstrap.R unconditionally deletes it and
+# runs `cargo generate-lockfile` when the latch is absent (see
+# rpkg/bootstrap.R lines ~78-100). Without this stash, a dev whose lockfile
+# pins different transitive checksums than `generate-lockfile` would produce
+# (e.g. workspace tip moved between revendor runs) ends up with a dirty
+# tracked file each time this test runs. The trap restores from the backup.
+CARGO_LOCK_BACKUP="/tmp/bootstrap-vendor-test-cargo-lock-$$.bak"
+cp rpkg/src/rust/Cargo.lock "$CARGO_LOCK_BACKUP"
+
 # Trap-clean producer artifacts (latch + configure outputs + built tarball)
 # so the test is idempotent on dev machines and matches the latch-leak
 # hygiene of `just r-cmd-build` (justfile r-cmd-build trap on line ~632).
-trap 'rm -f rpkg/inst/vendor.tar.xz rpkg/src/Makevars rpkg/src/rust/.cargo/config.toml miniextendr_*.tar.gz; rm -rf rpkg/vendor' EXIT
+# Also restore Cargo.lock from the stash (see above) and clear bootstrap.R's
+# tmp_bootstrap_vendor sidecar in case bootstrap.R fails mid-way before its
+# own restore step runs.
+# Note: this trap also removes Makevars and .cargo/config.toml, so a
+# `just configure` is needed before the next dev iteration in this checkout.
+trap '
+  rm -f rpkg/inst/vendor.tar.xz rpkg/src/Makevars rpkg/src/rust/.cargo/config.toml miniextendr_*.tar.gz
+  rm -f rpkg/src/rust/.cargo/config.toml.tmp_bootstrap_vendor
+  rm -rf rpkg/vendor
+  if [ -f "$CARGO_LOCK_BACKUP" ]; then
+    mv "$CARGO_LOCK_BACKUP" rpkg/src/rust/Cargo.lock
+  fi
+' EXIT
 
 # Run bootstrap.R in the package source dir. This produces inst/vendor.tar.xz
 # via cargo-revendor and runs ./configure to generate Makevars / .cargo/config.toml.
@@ -42,7 +63,8 @@ trap 'rm -f rpkg/inst/vendor.tar.xz rpkg/src/Makevars rpkg/src/rust/.cargo/confi
 # R CMD build seals the tarball. With Config/build/bootstrap: TRUE in
 # DESCRIPTION, pkgbuild would re-run bootstrap.R; the bare `R CMD build`
 # invocation does NOT, which is what we want here (bootstrap already ran).
-R CMD build rpkg
+# --no-manual matches `just r-cmd-build` and avoids needing pdflatex on CI.
+R CMD build --no-manual rpkg
 
 # Find the produced tarball (R CMD build writes miniextendr_X.Y.Z.tar.gz).
 TARBALL=$(ls -t miniextendr_*.tar.gz 2>/dev/null | head -n1)
