@@ -1026,6 +1026,34 @@ vendor-sync-check:
 lint-sync-check:
     cargo check --manifest-path=miniextendr-lint/Cargo.toml
 
+# Verify committed R wrappers / NAMESPACE / man are in sync with #[miniextendr]
+# Rust source. Catches the failure mode where a Rust-side edit ships without
+# the corresponding regenerated `R/miniextendr-wrappers.R` / NAMESPACE / man/
+# (the pre-commit hook only fires when wrappers.R is itself staged, missing
+# the inverse case — see #602).
+[script("bash")]
+wrappers-sync-check: _assert-no-vendor-leak configure
+    set -euo pipefail
+
+    R CMD INSTALL rpkg >/dev/null
+    Rscript -e 'devtools::document("rpkg")' >/dev/null
+
+    paths=(
+      "rpkg/R/miniextendr-wrappers.R"
+      "rpkg/NAMESPACE"
+      "rpkg/man"
+      "rpkg/src/rust/wasm_registry.rs"
+    )
+
+    if ! git diff --exit-code -- "${paths[@]}"; then
+      echo ""
+      echo "Generated R wrappers / NAMESPACE / man drift from #[miniextendr] Rust source."
+      echo "Run 'just rcmdinstall && just force-document' and commit the regenerated files."
+      exit 1
+    fi
+
+    echo "Wrappers sync check passed."
+
 # Show diff between workspace and vendored crates
 [script("bash")]
 vendor-sync-diff:
