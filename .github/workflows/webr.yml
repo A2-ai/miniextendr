@@ -48,12 +48,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # build.rs:64 unconditionally runs `R RHOME`; $RUNNER_TEMP is always a
-      # real directory so Path::new(&r_home).is_dir() passes. cargo check never
-      # links, so the dummy value is sufficient. Same pattern as rust-lint in ci.yml.
-      - name: Set dummy R_HOME
-        run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

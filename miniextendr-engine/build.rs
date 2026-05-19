@@ -12,6 +12,16 @@ fn main() {
 
 /// Resolves `R_HOME` and emits linker flags for libR.
 fn link_to_r() {
+    // Skip libR resolution on wasm32 targets (webR / wasm32-unknown-emscripten
+    // and friends). cargo check never links and the toolchain doesn't ship a
+    // host R, so the rest of this function is pure overhead/breakage there.
+    // Must use the env var, not `cfg!(target_arch = "wasm32")`: the cfg refers
+    // to the build script binary's host arch, not the requested cross-compile
+    // target. See issue #482.
+    if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
+        return;
+    }
+
     // Resolve R home directory.
     let r_home = if let Ok(val) = env::var("R_HOME") {
         val
