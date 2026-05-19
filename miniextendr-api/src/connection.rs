@@ -909,9 +909,22 @@ impl RCustomConnection {
 
     /// Build the connection with the given state.
     ///
-    /// Returns an R connection SEXP that can be returned to R.
+    /// Returns an **open** R connection SEXP that can be returned to R.
     /// The state is boxed and stored in the connection's `private` field.
     /// It will be automatically dropped when the connection is destroyed.
+    ///
+    /// `R_new_custom_connection` returns the connection in a CLOSED state
+    /// with `text = TRUE` as defaults. This builder fixes both:
+    /// - `text` is inferred from the mode string when not explicitly set
+    ///   (`'b'` in the mode → binary; otherwise text). This matches the
+    ///   behavior of R's built-in `file()` / `url()` connections.
+    /// - The `open` callback is invoked before returning, so the resulting
+    ///   SEXP is immediately usable for `readLines` / `writeBin` / `seek`
+    ///   without relying on R's per-call auto-open path (which doesn't
+    ///   fire for write/seek operations).
+    ///
+    /// If the `open` callback fails, the boxed state is dropped via the
+    /// destroy trampoline and `SEXP::nil()` is returned.
     ///
     /// # Panics
     ///
@@ -924,6 +937,14 @@ impl RCustomConnection {
     pub fn build<T: RConnectionImpl>(self, state: T) -> SEXP {
         // Verify API version
         check_connections_version();
+
+        // Infer text vs binary from the mode string when the caller did not
+        // explicitly set `text`. R's `R_new_custom_connection` defaults
+        // `text = TRUE` regardless of mode, so a builder like
+        // `.mode("r+b")` without `.text(false)` would land as a text
+        // connection that rejects `readBin` / `writeBin`.
+        let text_default = !self.mode.as_bytes().contains(&b'b');
+        let text = self.text.unwrap_or(text_default);
 
         unsafe {
             // Box the state
@@ -976,14 +997,12 @@ impl RCustomConnection {
             (*conn).fflush = Some(flush_trampoline::<T>);
             (*conn).vfprintf = Some(vfprintf_trampoline::<T>);
 
-            // Set optional flags
-            if let Some(text) = self.text {
-                (*conn).text = if text {
-                    Rboolean::TRUE
-                } else {
-                    Rboolean::FALSE
-                };
-            }
+            // Set text/binary mode (always overrides R's default of TRUE).
+            (*conn).text = if text {
+                Rboolean::TRUE
+            } else {
+                Rboolean::FALSE
+            };
             if let Some(can_read) = self.can_read {
                 (*conn).canread = if can_read {
                     Rboolean::TRUE
@@ -1011,6 +1030,23 @@ impl RCustomConnection {
                 } else {
                     Rboolean::FALSE
                 };
+            }
+
+            // Open the connection. `R_new_custom_connection` returns a
+            // connection in CLOSED state (`isopen = FALSE`). R auto-opens
+            // on some paths (e.g. `readLines`) but not on `writeBin` /
+            // `writeLines` / direct `seek`, which would then bail with
+            // "Error writing to connection". Pre-open here so callers get
+            // a uniformly usable connection. R's auto-open path sees
+            // `isopen == TRUE` and short-circuits — no double-open.
+            let opened = open_trampoline::<T>(conn);
+            if !matches!(opened, Rboolean::TRUE) {
+                // Open failed — tear down via the destroy trampoline,
+                // which drops the boxed state and nulls out `private`.
+                if let Some(destroy) = (*conn).destroy {
+                    destroy(conn);
+                }
+                return SEXP::nil();
             }
 
             sexp
