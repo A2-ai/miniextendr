@@ -664,7 +664,7 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
                 let result = { #vtable_call };
                 // Approach 1 (issue #345): if the shim returned a tagged error SEXP,
                 // re-panic with the reconstructed RCondition so the consumer's outer
-                // error_in_r guard can apply rust_* class layering.
+                // `with_r_unwind_protect` guard can apply rust_* class layering.
                 ::miniextendr_api::trait_abi::repanic_if_rust_error(result);
                 #result_conversion
             }
@@ -810,8 +810,8 @@ fn generate_method_shim(
             // a tagged error SEXP instead of calling Rf_errorcall directly. The
             // tagged SEXP is returned to the View method wrapper which re-panics
             // via repanic_if_rust_error, allowing the consumer's outer
-            // error_in_r guard to produce rust_* class layering (issue #345).
-            // R-origin longjmps still propagate via R_ContinueUnwind.
+            // `with_r_unwind_protect` guard to produce rust_* class layering
+            // (issue #345). R-origin longjmps still propagate via R_ContinueUnwind.
             ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                 // Extract arguments
                 #(#arg_extractions)*

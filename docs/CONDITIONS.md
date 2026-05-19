@@ -1,8 +1,8 @@
 # Condition system: error!, warning!, message!, condition!
 
 miniextendr provides four macros for raising structured R conditions from Rust.
-They all require `error_in_r` mode — the default for every `#[miniextendr]`
-function.
+They ride the tagged-condition transport that every `#[miniextendr]` function
+uses.
 
 ## Quick reference
 
@@ -19,10 +19,10 @@ for programmatic catching.
 ## How it works
 
 Each macro calls `std::panic::panic_any(RCondition::...)`. The panic is caught by
-`with_r_unwind_protect_error_in_r` before Rust destructors have unwound, which
-recognises the `RCondition` payload and converts it to a tagged SEXP (4-element
-list: `error`, `kind`, `class`, `call`). The generated R wrapper reads the SEXP
-and dispatches to the appropriate R signal function.
+`with_r_unwind_protect` before Rust destructors have unwound, which recognises
+the `RCondition` payload and converts it to a tagged SEXP (4-element list:
+`error`, `kind`, `class`, `call`). The generated R wrapper reads the SEXP and
+dispatches to the appropriate R signal function.
 
 The `class` slot carries the optional user-supplied class. When non-NULL it is
 prepended to the standard layered vector.
@@ -155,9 +155,9 @@ to inspect a tagged SEXP. Two different mechanisms cover the two contexts:
 
 - **Trait-ABI shims**: the vtable shim returns a tagged SEXP on panic; the
   generated View method wrapper inspects the result and re-panics with the
-  reconstructed [`RCondition`]. The consumer's outer `error_in_r` guard
-  (every `#[miniextendr]` fn has one) catches the re-panic and produces the
-  tagged SEXP for the consumer's R wrapper. End-to-end behavior is identical
+  reconstructed [`RCondition`]. The consumer's outer `with_r_unwind_protect`
+  guard (every `#[miniextendr]` fn has one) catches the re-panic and produces
+  the tagged SEXP for the consumer's R wrapper. End-to-end behavior is identical
   to a same-package call: `tryCatch(rust_error = h, ...)` matches; user
   classes from `error!(class = "...", ...)` match before `rust_error`.
 
@@ -178,17 +178,15 @@ Two narrow cases still degrade:
   instead"*.
 
 - A trait View method (`view.method()`) called from Rust code that is not
-  wrapped in `with_r_unwind_protect_error_in_r` (e.g., a manual call from
-  a test harness or init callback). The re-panic from the View has no
-  outer guard to catch it, so the worker thread's `catch_unwind` boundary
-  converts it to an R error without `rust_*` class layering. In practice,
-  every `#[miniextendr]` fn already provides the outer guard, so this only
-  affects unusual call sites.
+  wrapped in `with_r_unwind_protect` (e.g., a manual call from a test harness
+  or init callback). The re-panic from the View has no outer guard to catch it,
+  so the worker thread's `catch_unwind` boundary converts it to an R error
+  without `rust_*` class layering. In practice, every `#[miniextendr]` fn
+  already provides the outer guard, so this only affects unusual call sites.
 
-Functions that explicitly opt out of `error_in_r` via
-`#[miniextendr(no_error_in_r)]` or `unwrap_in_r` continue to use direct
-`Rf_errorcall` — those modes exist precisely to bypass the condition
-pipeline.
+Functions that explicitly opt out via `#[miniextendr(unwrap_in_r)]` deliver
+`Result<T, E>` to R as a list with an `$error` slot rather than treating `Err`
+as a Rust-origin failure — `Err` never traverses the condition pipeline.
 
 ## `AsRError` — wrapping `std::error::Error`
 

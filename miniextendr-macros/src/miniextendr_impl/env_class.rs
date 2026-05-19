@@ -76,7 +76,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push(format!("  {}", line));
         }
         lines.push(format!("  .val <- {}", ctx.static_call()));
-        lines.extend(crate::method_return_builder::error_in_r_check_lines("  "));
+        lines.extend(crate::method_return_builder::condition_check_lines("  "));
         lines.push("  self <- .val".to_string());
         lines.push(format!("  class(self) <- \"{}\"", class_name));
         lines.push("  self".to_string());
@@ -109,8 +109,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
-            .with_class_name(class_name.clone())
-            .with_error_in_r(ctx.method.method_attrs.error_in_r);
+            .with_class_name(class_name.clone());
         lines.extend(return_builder.build());
 
         lines.push("}".to_string());
@@ -141,8 +140,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
-            .with_class_name(class_name.clone())
-            .with_error_in_r(ctx.method.method_attrs.error_in_r);
+            .with_class_name(class_name.clone());
         lines.extend(return_builder.build());
 
         lines.push("}".to_string());

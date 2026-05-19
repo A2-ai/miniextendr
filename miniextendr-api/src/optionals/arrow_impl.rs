@@ -367,7 +367,7 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
 /// recognises the R-origin path via `RErrorMarker`, and `R_ContinueUnwind`
 /// re-raises R's original `Error: vector memory exhausted (limit reached?)`
 /// verbatim. The error message is R's, not Rust's — no tagged-SEXP synthesis
-/// happens on this path (cf. `with_r_unwind_protect_error_in_r`). The two
+/// happens on this path (cf. `with_r_unwind_protect`). The two
 /// `.expect()` calls in the body are therefore unreachable in production —
 /// they guard against logic errors (wrong `len` encoding or unexpected null
 /// pointer), not against OOM.

@@ -239,7 +239,7 @@ fn generate_trait_env_r_wrapper(
             type_ident, trait_name, r_name, full_params
         ));
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&call, "  "));
         if method.has_self && method.returns_unit() {
             lines.push("  invisible(x)".to_string());
         }
@@ -386,7 +386,7 @@ fn generate_trait_s3_r_wrapper(
             s3_method_name, full_params
         ));
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -444,7 +444,7 @@ fn generate_trait_s3_r_wrapper(
             type_ident, trait_name, r_name, formals
         ));
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -586,7 +586,7 @@ fn generate_trait_s4_r_wrapper(
         lines.push("  .ptr <- x@ptr".to_string());
         let s4_call = call.replace(", x", ", .ptr");
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&s4_call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&s4_call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -624,7 +624,7 @@ fn generate_trait_s4_r_wrapper(
 
         lines.push(format!("{} <- function({}) {{", fn_name, formals));
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -762,7 +762,7 @@ fn generate_trait_s7_r_wrapper(
         lines.push("  .ptr <- x@.ptr".to_string());
         let s7_call = call.replace(", x", ", .ptr");
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&s7_call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&s7_call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -808,7 +808,7 @@ fn generate_trait_s7_r_wrapper(
             trait_env_var, r_name, formals
         ));
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -936,7 +936,7 @@ fn generate_trait_r6_r_wrapper(
         // Replace x with .ptr in the .Call
         let r6_call = call.replace(", x", ", .ptr");
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&r6_call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&r6_call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -983,7 +983,7 @@ fn generate_trait_r6_r_wrapper(
             type_ident, trait_name, r_name, formals
         ));
         lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }

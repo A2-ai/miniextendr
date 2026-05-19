@@ -167,7 +167,7 @@ pub fn process(path: &str) -> Result<i32> {
 ### panic!() for Errors
 
 Use `panic!()` for unrecoverable errors. The `#[miniextendr]` framework catches panics
-and converts them to structured R error conditions via `error_in_r`:
+and converts them to structured R error conditions via the tagged-condition transport:
 
 ```rust
 #[miniextendr]
@@ -258,7 +258,7 @@ unsafe { Rf_error(...) }
 ### The ~8-byte leak on R_ContinueUnwind
 
 There is one documented, accepted cost in the unwind path: when an R error propagates
-through `with_r_unwind_protect_error_in_r`, the `R_ContinueUnwind` call that hands
+through `with_r_unwind_protect`, the `R_ContinueUnwind` call that hands
 control back to R's evaluator leaks approximately 8 bytes (the `RErrorMarker` struct
 plus its `Box` header). This is not a bug -- it is a deliberate trade-off to keep the
 unwind path free of further R API calls that could themselves error.
@@ -301,41 +301,20 @@ pub fn verbose_function() {
 
 ---
 
-## Error-in-R Mode (`error_in_r`)
+## Tagged-Condition Transport
 
-By default, Rust-origin failures (panics, `Result::Err`, `Option::None`) are transported as
+Rust-origin failures (panics, `Result::Err`, `Option::None`) are transported as
 **tagged SEXP values** back to R, and the generated R wrapper inspects the value and raises a
 structured R condition. This ensures all Rust destructors have fully completed before R sees
 the error, and gives R code a typed condition class to catch.
 
-This is the `error_in_r` mode, which is **enabled by default** for all `#[miniextendr]`
-functions and methods. Opt out with `no_error_in_r` if you need the legacy behavior where
-`Rf_error`/`Rf_errorcall` raises the R error immediately (while Rust stack frames are still
-active).
-
-### Opting Out
-
-Per-function:
-
-```rust
-// Opt out: use legacy Rf_error behavior
-#[miniextendr(no_error_in_r)]
-pub fn fast_path(x: i32) -> i32 { x }
-```
-
-Per-method on an impl block:
-
-```rust
-#[miniextendr]
-impl MyType {
-    #[miniextendr(no_error_in_r)]
-    fn legacy_method(&self) -> i32 { 42 }
-}
-```
+This is the **only** transport for `#[miniextendr]` functions and methods. The
+`unwrap_in_r` attribute (orthogonal to the transport) instead returns `Result<T, E>`
+to R as a list with an `$error` slot — `Err` never traverses the condition pipeline.
 
 ### What Gets Caught
 
-`error_in_r` intercepts three failure modes:
+The transport intercepts three failure modes:
 
 | Failure | Error kind | Example |
 |---------|-----------|---------|
@@ -343,8 +322,8 @@ impl MyType {
 | `Result::Err` | `"result_err"` | `Err("bad input".to_string())` |
 | `Option::None` | `"none_err"` | Returning `None` from `-> Option<T>` |
 
-**Not affected**: `Result<T, ()>` (unit error type) always returns `NULL` on `Err(())` regardless
-of `error_in_r`, since a unit error is a deliberate sentinel, not a failure.
+**Not affected**: `Result<T, ()>` (unit error type) always returns `NULL` on `Err(())`,
+since a unit error is a deliberate sentinel, not a failure.
 
 ### The Error Value (Rust Side)
 
@@ -419,24 +398,21 @@ The condition object has these fields:
 
 ### Works with All Class Systems
 
-`error_in_r` can be applied to methods in any class system:
+The tagged-condition transport applies to methods in any class system; no extra attribute is needed:
 
 ```rust
 #[miniextendr]            // env class (default)
 impl Counter {
-    #[miniextendr(error_in_r)]
     fn get(&self) -> i32 { self.value }
 }
 
 #[miniextendr(r6)]        // R6 class
 impl Widget {
-    #[miniextendr(error_in_r)]
     pub fn name(&self) -> String { self.name.clone() }
 }
 
 #[miniextendr(s7)]        // S7 class
 impl Gauge {
-    #[miniextendr(error_in_r)]
     pub fn read(&self) -> f64 { self.level }
 }
 ```
@@ -446,14 +422,13 @@ It also works on trait impl methods:
 ```rust
 #[miniextendr]
 impl Fallible for MyType {
-    #[miniextendr(error_in_r)]
     fn get_value(&self) -> i32 { self.value }
 }
 ```
 
 ### Object Survival After Errors
 
-Objects remain valid after an `error_in_r` error. Since the error is transported as a value
+Objects remain valid after an error. Since the error is transported as a value
 (not a longjmp), the object's internal state is never corrupted:
 
 ```r
@@ -466,17 +441,17 @@ tryCatch(counter$panic_method(), error = function(e) NULL)
 counter$get()  # Still returns 1
 ```
 
-### error_in_r vs unwrap_in_r
+### `unwrap_in_r` — Result-as-value opt-out
 
-`error_in_r` and `unwrap_in_r` are mutually exclusive. Both transport errors past the Rust
-boundary, but differ in the R-side representation:
+The default transport treats `Result::Err` as a Rust-origin failure (kind `"result_err"`,
+class `rust_error`). The `unwrap_in_r` attribute instead returns the `Result<T, E>` to
+R as a list with an `$error` slot, leaving the caller to decide what to do:
 
-| | `error_in_r` | `unwrap_in_r` |
+| | default | `unwrap_in_r` |
 |---|---|---|
-| R-side error | Structured condition (`rust_error` class) | Plain `stop()` message |
-| Catchable by class | Yes (`tryCatch(..., rust_error = ...)`) | No (generic `error` only) |
-| Error kind field | `e$kind` available | Not available |
-| Use case | Libraries that need typed error handling | Simple scripts |
+| `Err(e)` reaches R | as a `rust_error` condition (via `stop()`) | as `list(value = NULL, error = e)` |
+| Catchable by class | Yes (`tryCatch(..., rust_error = ...)`) | n/a — no error is raised |
+| Use case | Most code; cleanly maps Rust errors to R errors | Returning structured error data alongside values |
 
 ---
 

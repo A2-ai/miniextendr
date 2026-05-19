@@ -1,6 +1,6 @@
 //! Unwind protection benchmarks.
 
-use miniextendr_api::unwind_protect::with_r_unwind_protect;
+use miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise;
 use miniextendr_bench::raw_ffi;
 
 fn main() {
@@ -10,7 +10,7 @@ fn main() {
 
 #[divan::bench]
 fn unwind_protect_noop() {
-    let out: i32 = with_r_unwind_protect(|| 42, None);
+    let out: i32 = with_r_unwind_protect_or_raise(|| 42, None);
     divan::black_box(out);
 }
 
@@ -24,7 +24,7 @@ fn direct_noop() {
 
 #[divan::bench]
 fn unwind_r_call() {
-    let out = with_r_unwind_protect(|| unsafe { raw_ffi::Rf_ScalarInteger(1) }, None);
+    let out = with_r_unwind_protect_or_raise(|| unsafe { raw_ffi::Rf_ScalarInteger(1) }, None);
     divan::black_box(out);
 }
 // endregion
@@ -58,8 +58,8 @@ fn catch_unwind_panic(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn unwind_nested_2() {
-    let out = with_r_unwind_protect(
-        || with_r_unwind_protect(|| unsafe { raw_ffi::Rf_ScalarInteger(1) }, None),
+    let out = with_r_unwind_protect_or_raise(
+        || with_r_unwind_protect_or_raise(|| unsafe { raw_ffi::Rf_ScalarInteger(1) }, None),
         None,
     );
     divan::black_box(out);
@@ -67,15 +67,15 @@ fn unwind_nested_2() {
 
 #[divan::bench]
 fn unwind_nested_5() {
-    let out = with_r_unwind_protect(
+    let out = with_r_unwind_protect_or_raise(
         || {
-            with_r_unwind_protect(
+            with_r_unwind_protect_or_raise(
                 || {
-                    with_r_unwind_protect(
+                    with_r_unwind_protect_or_raise(
                         || {
-                            with_r_unwind_protect(
+                            with_r_unwind_protect_or_raise(
                                 || {
-                                    with_r_unwind_protect(
+                                    with_r_unwind_protect_or_raise(
                                         || unsafe { raw_ffi::Rf_ScalarInteger(1) },
                                         None,
                                     )
@@ -94,7 +94,7 @@ fn unwind_nested_5() {
     divan::black_box(out);
 }
 
-// NOTE: R error path (Rf_error inside with_r_unwind_protect) and panic-through-R-unwind
+// NOTE: R error path (Rf_error inside with_r_unwind_protect_or_raise) and panic-through-R-unwind
 // benchmarks require subprocess isolation since the error/panic longjmps past the divan
 // harness. These paths are tested for correctness in rpkg/tests/testthat/test-subprocess-isolated.R.
 // endregion

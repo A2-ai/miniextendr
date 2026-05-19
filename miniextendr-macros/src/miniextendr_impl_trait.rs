@@ -138,8 +138,6 @@ struct TraitMethod {
     rng: bool,
     /// Return `Result<T, E>` to R without unwrapping -- R wrapper receives the result variant.
     unwrap_in_r: bool,
-    /// Transport Rust-origin errors as tagged SEXP values; R wrapper raises a condition.
-    error_in_r: bool,
     /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`.
     /// Keys are parameter names, values are R expressions used as default values.
     param_defaults: std::collections::HashMap<String, String>,
@@ -394,19 +392,13 @@ fn trait_method_preamble_lines(method: &TraitMethod, indent: &str) -> Vec<String
     lines
 }
 
-/// Generate R function body lines with optional error_in_r checking.
-///
-/// Without error_in_r: returns `["{indent}{call_expr}"]`
-/// With error_in_r: captures result in `.val`, checks for `rust_condition_value`, returns `.val`
-fn trait_method_body_lines(call_expr: &str, error_in_r: bool, indent: &str) -> Vec<String> {
-    if error_in_r {
-        let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];
-        lines.extend(crate::method_return_builder::error_in_r_check_lines(indent));
-        lines.push(format!("{}.val", indent));
-        lines
-    } else {
-        vec![format!("{}{}", indent, call_expr)]
-    }
+/// Generate R function body lines that capture the `.Call()` result in `.val`,
+/// check for a tagged `rust_condition_value`, and return `.val`.
+fn trait_method_body_lines(call_expr: &str, indent: &str) -> Vec<String> {
+    let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];
+    lines.extend(crate::method_return_builder::condition_check_lines(indent));
+    lines.push(format!("{}.val", indent));
+    lines
 }
 
 /// Convert a type to an uppercase identifier-safe name.
@@ -774,7 +766,6 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 check_interrupt: false,
                 rng: false,
                 unwrap_in_r: false,
-                error_in_r: false,
                 param_defaults: Default::default(),
                 param_tags: vec![],
                 skip: false,

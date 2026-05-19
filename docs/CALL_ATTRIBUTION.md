@@ -36,7 +36,7 @@ Generated R wrappers (excerpted from `rpkg/R/miniextendr-wrappers.R`):
 call_attr_with <- function(left, right) {
   # ... preconditions ...
   .val <- .Call(C_call_attr_with, .call = match.call(), left, right)
-  # ... error_in_r demux ...
+  # ... tagged-condition demux ...
 }
 
 unsafe_C_call_attr_without <- function(left, right) {
@@ -98,7 +98,7 @@ miniextendr:::unsafe_C_call_attr_without(x, x + 1L)
 
 1. **Formal parameter names matched.** `call_attr_with(left = 1L, right = 2L)` reads better than `call_attr_with(1L, 2L)` and is robust to positional vs. named call style.
 2. **Public function name, not internal symbol.** Errors blame `call_attr_with`, not `miniextendr:::unsafe_C_call_attr_without`. Triple-colon paths in error messages are a leak of internals.
-3. **Structured `rust_error` class.** The wrapped path goes through the `error_in_r` decoder and returns a condition with class `rust_error`, which downstream handlers can catch specifically. The unwrapped path produces a plain `simpleError`.
+3. **Structured `rust_error` class.** The wrapped path goes through the tagged-condition decoder and returns a condition with class `rust_error`, which downstream handlers can catch specifically. The unwrapped path produces a plain `simpleError`.
 4. **Stable across nesting.** Whether the user calls the function directly or from another function, `match.call()` always captures the *immediate* caller's expression, with the call written as the user wrote it.
 
 ## How it flows end to end
@@ -145,7 +145,7 @@ It applies uniformly to:
 
 ## Where `.call = NULL` is used instead of `match.call()`
 
-Five lambda dispatch sites cannot use `match.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `match.call()` inside those lambdas would capture the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `error_in_r_check_lines` then surfaces the nearest meaningful frame.
+Five lambda dispatch sites cannot use `match.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `match.call()` inside those lambdas would capture the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `condition_check_lines` then surfaces the nearest meaningful frame.
 
 The five sites are:
 

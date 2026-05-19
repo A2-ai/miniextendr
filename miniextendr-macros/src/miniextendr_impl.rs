@@ -587,8 +587,6 @@ pub struct MethodAttrs {
     pub rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     pub unwrap_in_r: bool,
-    /// Transport Rust-origin errors as tagged values; R wrapper raises condition.
-    pub error_in_r: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
@@ -1226,7 +1224,6 @@ impl ParsedMethod {
         let mut worker: Option<bool> = None;
         let mut unsafe_main_thread: Option<bool> = None;
         let mut coerce: Option<bool> = None;
-        let mut error_in_r: Option<bool> = None;
 
         for attr in attrs {
             // Parse new-style #[miniextendr(class_system(...))] attributes
@@ -1280,17 +1277,7 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("rng") {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
-                            if error_in_r == Some(true) {
-                                return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
-                            }
                             method_attrs.unwrap_in_r = true;
-                        } else if inner.path.is_ident("error_in_r") {
-                            if method_attrs.unwrap_in_r {
-                                return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
-                            }
-                            error_in_r = Some(true);
-                        } else if inner.path.is_ident("no_error_in_r") {
-                            error_in_r = Some(false);
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1399,7 +1386,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone, r_on_exit"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone, r_on_exit"
                             ));
                         }
                         Ok(())
@@ -1505,17 +1492,7 @@ impl ParsedMethod {
                 } else if meta.path.is_ident("rng") {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
-                    if error_in_r == Some(true) {
-                        return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
-                    }
                     method_attrs.unwrap_in_r = true;
-                } else if meta.path.is_ident("error_in_r") {
-                    if method_attrs.unwrap_in_r {
-                        return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
-                    }
-                    error_in_r = Some(true);
-                } else if meta.path.is_ident("no_error_in_r") {
-                    error_in_r = Some(false);
                 } else if meta.path.is_ident("as") {
                     // Parse as = "data.frame", as = "list", etc.
                     method_attrs.as_coercion_span = Some(meta.path.span());
@@ -1701,7 +1678,7 @@ impl ParsedMethod {
                     method_attrs.internal = true;
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit, noexport, internal"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit, noexport, internal"
                     ));
                 }
                 Ok(())
@@ -1712,24 +1689,6 @@ impl ParsedMethod {
         method_attrs.worker = worker.unwrap_or(cfg!(feature = "default-worker"));
         method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(true);
         method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "default-coerce"));
-        let resolved_error_in_r = error_in_r.unwrap_or(true);
-
-        // Validate: rng requires error_in_r
-        if method_attrs.rng && !resolved_error_in_r {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "`rng` requires `error_in_r` (PutRNGstate must run after .Call returns; \
-                 non-error_in_r diverges via longjmp, skipping PutRNGstate)",
-            ));
-        }
-
-        if resolved_error_in_r && method_attrs.unwrap_in_r {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "`error_in_r` (default) and `unwrap_in_r` are mutually exclusive; use `no_error_in_r` to opt out",
-            ));
-        }
-        method_attrs.error_in_r = resolved_error_in_r;
 
         // Method-level `internal` / `noexport` are currently only honoured by the R6
         // active-binding doc path (emits `#' @field <name> (internal)` — the documented
@@ -2632,10 +2591,6 @@ pub fn generate_method_c_wrapper(
         builder = builder.strict();
     }
 
-    if method.method_attrs.error_in_r {
-        builder = builder.error_in_r();
-    }
-
     // Forward match_arg + several_ok parameter names so `RustConversionBuilder` swaps
     // in `match_arg_vec_from_sexp` for the Vec/slice/array/Box<[_]> conversion path.
     // Scalar match_arg doesn't need this — R's match.arg() validated the choice and
@@ -2990,8 +2945,7 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
-            .with_class_name(class_name.clone())
-            .with_error_in_r(method.method_attrs.error_in_r);
+            .with_class_name(class_name.clone());
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());

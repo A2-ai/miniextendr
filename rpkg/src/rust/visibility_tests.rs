@@ -75,9 +75,10 @@ pub fn with_interrupt_check(x: i32) -> i32 {
     x * 2
 }
 
-/// Test unwrap_in_r + no_error_in_r: Result is unwrapped on the R side.
+/// Test `unwrap_in_r`: the `Result` is converted to `list(error = ...)` on the
+/// R side instead of raising a condition.
 /// @param x Integer input (negative triggers Err with message).
-#[miniextendr(unwrap_in_r, no_error_in_r)]
+#[miniextendr(unwrap_in_r)]
 pub fn result_unwrap_in_r(x: i32) -> Result<i32, String> {
     if x >= 0 {
         Ok(x * 2)

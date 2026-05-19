@@ -471,7 +471,7 @@ pub mod strict;
 // Cached R class attribute SEXPs (POSIXct, Date, data.frame, etc.)
 pub mod cached_class;
 
-// Error value transport for #[miniextendr(error_in_r)]
+// Tagged condition value transport for the Rust→R boundary
 pub mod error_value;
 
 // Error handling helpers (r_warning, r_print!, r_println! macros)

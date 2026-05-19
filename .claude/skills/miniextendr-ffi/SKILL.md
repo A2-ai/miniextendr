@@ -1,6 +1,6 @@
 ---
 name: miniextendr-ffi
-description: Use when the user asks about the FFI safety layer in miniextendr: #[r_ffi_checked] proc macro, checked vs _unchecked FFI variants, when _unchecked is safe, with_r_unwind_protect / with_r_unwind_protect_error_in_r, GC protection (OwnedProtect, ProtectScope), the R longjmp leak in the error-in-r path, MXL300 / MXL301 lint rules, the nonapi feature gate, or the continuation token.
+description: Use when the user asks about the FFI safety layer in miniextendr: #[r_ffi_checked] proc macro, checked vs _unchecked FFI variants, when _unchecked is safe, with_r_unwind_protect / with_r_unwind_protect_or_raise, GC protection (OwnedProtect, ProtectScope), the R longjmp leak in the tagged-condition path, MXL300 / MXL301 lint rules, the nonapi feature gate, or the continuation token.
 ---
 
 # miniextendr FFI Layer
@@ -13,7 +13,7 @@ The FFI layer is the boundary where Rust code calls into R's C API. R uses `long
 - "When can I use `Rf_allocVector_unchecked` instead of `Rf_allocVector`?"
 - "What is `with_r_unwind_protect` and when do I use it?"
 - "What is the ~8 byte leak on the R longjmp path?"
-- "What is the difference between `with_r_unwind_protect` and `with_r_unwind_protect_error_in_r`?"
+- "What is the difference between `with_r_unwind_protect` (default) and `with_r_unwind_protect_or_raise` (legacy)?"
 - "What are `OwnedProtect` and `ProtectScope`?"
 - "Why does MXL300 flag my `Rf_error` call?"
 - "What is the `nonapi` feature?"
@@ -42,31 +42,24 @@ MXL301 enforces this: using `_unchecked` outside these known-safe contexts is a 
 
 The `^nonapi^` annotation in `ffi.rs` marks functions that require `#[cfg(feature = "nonapi")]`. These are R internals not part of the stable public API.
 
-### `with_r_unwind_protect` — catching both panics and R longjmps
+### `with_r_unwind_protect` — the default for `#[miniextendr]` functions
 
-R's error handling longjmps over Rust stack frames, skipping all destructors. `with_r_unwind_protect` wraps `R_UnwindProtect`:
+This is the **only** transport for all `#[miniextendr]` functions and methods. Instead of longjmping on panic, it returns a tagged-SEXP condition value. The generated R wrapper inspects this SEXP and calls `stop(structure(…, class = c("rust_error", "simpleError", "error", "condition")))` on the R side. This gives full `rust_*` class layering accessible to `tryCatch`.
+
+Mechanics (`miniextendr-api/src/unwind_protect.rs`):
 
 1. Runs the closure inside a `catch_unwind` trampoline.
-2. If the closure panics, converts the panic to an R error via `raise_rust_condition_via_stop` (Approach 3: `Rf_eval(stop(structure(…)))`) — diverges via longjmp.
-3. If R longjmps inside the closure, the cleanup handler fires, `R_ContinueUnwind` is called — diverges via longjmp.
+2. If the closure panics, builds a tagged-condition SEXP via `make_rust_condition_value`; the R-side wrapper raises a structured `rust_*` condition.
+3. If R longjmps inside the closure, the cleanup handler fires and `R_ContinueUnwind` re-propagates the longjmp.
 4. Rust destructors run via `drop(data)` before all diverging paths.
 
-This function is used by:
-- Trait-ABI vtable shims (cross-package C-ABI calls where no R wrapper exists).
-- ALTREP `RUnwind` guard callbacks.
-- Explicit `#[miniextendr(no_error_in_r)]` opt-out.
+### `with_r_unwind_protect_or_raise` — legacy panics-as-R-error variant
 
-### `with_r_unwind_protect_error_in_r` — the default for `#[miniextendr]` functions
-
-This is the **default** transport for all `#[miniextendr]` functions and methods (`error_in_r` defaults to `true` in both `miniextendr_fn.rs` and `miniextendr_impl.rs`).
-
-Instead of longjmping on panic, it returns a tagged-SEXP error value. The generated R wrapper inspects this SEXP and calls `stop(structure(…, class = c("rust_error", "simpleError", "error", "condition")))` on the R side. This gives full `rust_*` class layering accessible to `tryCatch`.
-
-On R longjmp (the closure itself called `stop()` or similar): same behavior as `with_r_unwind_protect` — `R_ContinueUnwind` is called.
+Kept for explicit framework callers (test fixtures, benchmarks, trait-ABI vtable shims) that need panics converted directly to an R error via `raise_rust_condition_via_stop` (Approach 3: `Rf_eval(stop(structure(…)))`) — diverges via longjmp. **Not used by `#[miniextendr]` codegen.**
 
 ### The ~8 byte longjmp-path leak
 
-`with_r_unwind_protect_error_in_r` leaks approximately 8 bytes (an `RErrorMarker` marker struct + a `Box` header) on the R longjmp path through `R_ContinueUnwind`. This is because `R_ContinueUnwind` longjmps and Rust cannot reclaim the box through normal drop. Regular Rust panics do not leak.
+`with_r_unwind_protect` leaks approximately 8 bytes (an `RErrorMarker` marker struct + a `Box` header) on the R longjmp path through `R_ContinueUnwind`. This is because `R_ContinueUnwind` longjmps and Rust cannot reclaim the box through normal drop. Regular Rust panics do not leak.
 
 This is a known, accepted trade-off. The MXL300 lint rule discourages calling `Rf_error`/`Rf_errorcall` directly (use `panic!()` instead) precisely to avoid bypassing the framework's PROTECT-discipline and introducing additional leak sites.
 
@@ -145,7 +138,7 @@ Use `_unchecked` variants. The callback is guaranteed on the main thread by R's 
 
 ### I'm raising an R error — which mechanism?
 
-- Inside `#[miniextendr]` function (default path): `panic!("message")` — the framework converts via `with_r_unwind_protect_error_in_r` to a tagged SEXP → R wrapper raises `stop(structure(…))`. Gives full `rust_*` class layering.
+- Inside `#[miniextendr]` function (default path): `panic!("message")` — the framework converts via `with_r_unwind_protect` to a tagged SEXP → R wrapper raises `stop(structure(…))`. Gives full `rust_*` class layering.
 - Inside ALTREP callback: `panic!("message")` — `with_r_unwind_protect_sourced` intercepts (if guard is `r_unwind` or `rust_unwind`) and calls `raise_rust_condition_via_stop` (Approach 3). Same class layering.
 - Explicit condition: use `miniextendr_api::error!("message")` or `miniextendr_api::warning!(…)` — emits a `RCondition` payload recognised by the error transport.
 - Never call `Rf_error` / `Rf_errorcall` directly — MXL300 flags this. The framework's transport is safer (correct PROTECT discipline, class layering) and avoids the ~8 byte leak.
@@ -159,11 +152,11 @@ Use `_unchecked` variants. The callback is guaranteed on the main thread by R's 
 ## Key files
 
 - `miniextendr-api/src/ffi.rs` — all R API declarations under `#[r_ffi_checked]`. Blocks at lines 2092, 2634, 2803, 2973, 3000, 3356, 3419, 3525, 3790.
-- `miniextendr-api/src/unwind_protect.rs` — `with_r_unwind_protect`, `with_r_unwind_protect_error_in_r`, `with_r_unwind_protect_sourced`, `raise_rust_condition_via_stop`, `get_continuation_token`.
+- `miniextendr-api/src/unwind_protect.rs` — `with_r_unwind_protect` (default), `with_r_unwind_protect_or_raise` (legacy), `with_r_unwind_protect_shim`, `with_r_unwind_protect_sourced`, `raise_rust_condition_via_stop`, `get_continuation_token`.
 - `miniextendr-api/src/ffi_guard.rs` — `GuardMode`, `guarded_ffi_call`, `guarded_ffi_call_with_fallback`.
 - `miniextendr-api/src/gc_protect.rs` — `OwnedProtect`, `ProtectScope`, `Root`, `ReprotectSlot`, `tls` convenience module.
 - `miniextendr-api/src/panic_telemetry.rs` — `PanicSource`, `fire()`, telemetry hook registration.
-- `miniextendr-api/src/error_value.rs` — `make_rust_error_value`, `make_rust_condition_value`, tagged-SEXP format.
+- `miniextendr-api/src/error_value.rs` — `make_rust_condition_value`, tagged-SEXP format.
 
 ## Common pitfalls
 
@@ -183,5 +176,5 @@ Use `_unchecked` variants. The callback is guaranteed on the main thread by R's 
 
 - `miniextendr-worker` — `with_r_thread`, `run_on_worker`, `Sendable<T>`, how closures cross thread boundaries.
 - `miniextendr-altrep` — guard modes that route through the same unwind-protect machinery.
-- `miniextendr-macros` — `error_in_r` default, how the generated R wrapper inspects the tagged-SEXP.
+- `miniextendr-macros` — codegen for `#[miniextendr]` functions; how the generated R wrapper inspects the tagged-SEXP.
 - `miniextendr-lint` — MXL300 (direct Rf_error) and MXL301 (unchecked FFI outside safe context) rules.

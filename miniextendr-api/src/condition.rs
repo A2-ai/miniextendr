@@ -4,8 +4,8 @@
 //!
 //! 1. **[`RCondition`] enum** — the internal panic payload used by `error!()`,
 //!    `warning!()`, `message!()`, and `condition!()` macros. Caught by
-//!    `with_r_unwind_protect_error_in_r` before the generic panic→error path,
-//!    then forwarded to R as a structured condition with `rust_*` class layering.
+//!    `with_r_unwind_protect` before the generic panic→error path, then
+//!    forwarded to R as a structured condition with `rust_*` class layering.
 //!
 //! 2. **[`AsRError`] struct** — wraps any `E: std::error::Error` and
 //!    preserves the full error chain (cause/source) when converting to an R
@@ -14,8 +14,8 @@
 //! # Condition macros
 //!
 //! The four macros are the user-facing API for raising non-panic conditions from
-//! Rust. They all require `error_in_r` mode (the default for `#[miniextendr]`
-//! functions):
+//! Rust. They ride the tagged-condition transport that every `#[miniextendr]`
+//! function uses:
 //!
 //! ```ignore
 //! use miniextendr_api::{error, warning, message, condition};
@@ -72,9 +72,9 @@
 /// Internal panic payload for structured R conditions.
 ///
 /// Raised by the `error!()`, `warning!()`, `message!()`, and `condition!()`
-/// macros via `std::panic::panic_any`. Caught by
-/// `with_r_unwind_protect_error_in_r` before the generic panic→string path
-/// and forwarded to R as a tagged SEXP with `rust_*` class layering.
+/// macros via `std::panic::panic_any`. Caught by `with_r_unwind_protect`
+/// before the generic panic→string path and forwarded to R as a tagged SEXP
+/// with `rust_*` class layering.
 ///
 /// This type is `#[doc(hidden)]` because users interact with the macros,
 /// not the enum directly.
@@ -106,7 +106,7 @@ pub enum RCondition {
 
 /// Raise an R error from Rust with `rust_error` class layering.
 ///
-/// Requires `error_in_r` mode (the default for `#[miniextendr]` functions).
+/// Rides the tagged-condition transport that every `#[miniextendr]` function uses.
 /// The raised condition has class `c("rust_error", "simpleError", "error", "condition")`.
 ///
 /// An optional `class = "name"` form prepends a custom class for programmatic catching:
@@ -154,7 +154,7 @@ macro_rules! error {
 
 /// Raise an R warning from Rust with `rust_warning` class layering.
 ///
-/// Requires `error_in_r` mode (the default for `#[miniextendr]` functions).
+/// Rides the tagged-condition transport that every `#[miniextendr]` function uses.
 /// Unlike `panic!`, execution continues after `warning!` is caught by a handler.
 /// The raised condition has class `c("rust_warning", "simpleWarning", "warning", "condition")`.
 ///
@@ -200,7 +200,7 @@ macro_rules! warning {
 
 /// Emit an R message from Rust with `rust_message` class layering.
 ///
-/// Requires `error_in_r` mode (the default for `#[miniextendr]` functions).
+/// Rides the tagged-condition transport that every `#[miniextendr]` function uses.
 /// The raised condition has class `c("rust_message", "simpleMessage", "message", "condition")`.
 /// Muffled by `suppressMessages()` automatically (standard R restart mechanism).
 ///
@@ -232,7 +232,7 @@ macro_rules! message {
 
 /// Signal a generic R condition from Rust with `rust_condition` class layering.
 ///
-/// Requires `error_in_r` mode (the default for `#[miniextendr]` functions).
+/// Rides the tagged-condition transport that every `#[miniextendr]` function uses.
 /// Unlike `error!`, a bare condition is a silent no-op if there is no handler.
 /// The raised condition has class `c("rust_condition", "simpleCondition", "condition")`.
 ///
@@ -400,9 +400,8 @@ impl RCondition {
 ///
 /// When `sexp` is a tagged error value:
 /// - `RCondition::Error` / `RCondition::Warning` / etc. → `panic_any!(cond)`.
-///   The outer `with_r_unwind_protect_error_in_r` in the consumer's C entry
-///   point will catch this and produce a tagged SEXP for the consumer's R
-///   wrapper.
+///   The outer `with_r_unwind_protect` in the consumer's C entry point will
+///   catch this and produce a tagged SEXP for the consumer's R wrapper.
 ///
 /// When `sexp` is a normal value: this is a no-op.
 ///

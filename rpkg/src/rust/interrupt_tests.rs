@@ -2,7 +2,7 @@
 
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::miniextendr;
-use miniextendr_api::unwind_protect::with_r_unwind_protect;
+use miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise;
 
 /// Test R_CheckUserInterrupt after a 2-second sleep.
 #[miniextendr]
@@ -19,7 +19,7 @@ pub extern "C-unwind" fn C_check_interupt_after() -> SEXP {
     }
 }
 
-/// Test R_CheckUserInterrupt inside with_r_unwind_protect after a 2-second sleep.
+/// Test R_CheckUserInterrupt inside with_r_unwind_protect_or_raise after a 2-second sleep.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -29,7 +29,7 @@ pub extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     unsafe {
-        with_r_unwind_protect(
+        with_r_unwind_protect_or_raise(
             || {
                 R_CheckUserInterrupt();
                 SEXP::nil()

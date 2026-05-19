@@ -1,6 +1,6 @@
 ---
 name: miniextendr-macros
-description: Use when the user asks how #[miniextendr] works, how Rust functions become R-callable, how C or R wrappers are generated, what codegen attributes like strict/internal/noexport/dots do, how error_in_r and tagged-SEXP error transport work, or when debugging generated wrapper code. Also use when working in miniextendr-macros/src/*.rs files or miniextendr-api/src/registry.rs.
+description: Use when the user asks how #[miniextendr] works, how Rust functions become R-callable, how C or R wrappers are generated, what codegen attributes like strict/internal/noexport/dots do, how the tagged-SEXP error transport works, or when debugging generated wrapper code. Also use when working in miniextendr-macros/src/*.rs files or miniextendr-api/src/registry.rs.
 ---
 
 # miniextendr Proc Macro System
@@ -18,7 +18,7 @@ the full codegen pipeline and all attribute options.
 - "Why does the generated R code look like X?"
 - "What does `strict` do?"
 - "How do I hide a function from R users?"
-- "Why is `error_in_r` the default and what does it mean?"
+- "How does the tagged-SEXP error transport work?"
 - "What is the tagged-SEXP error transport?"
 - "I added a function but R can't find it — what went wrong?"
 - "How does the proc macro generate roxygen documentation?"
@@ -33,8 +33,9 @@ For every `#[miniextendr] pub fn foo(x: i32) -> String`, the macro generates:
 
 1. An `extern "C-unwind" #[no_mangle]` C wrapper that receives SEXPs, converts
    them with `TryFromSexp`, calls the Rust function, and converts the return
-   value with `IntoR`. With `error_in_r` active (the default), panics are caught
-   and returned as a tagged SEXP value rather than causing R to longjmp.
+   value with `IntoR`. Panics are caught by `with_r_unwind_protect` and
+   returned as a tagged SEXP value; the R wrapper raises a structured condition
+   past the Rust boundary so destructors unwind cleanly.
 2. A `#[distributed_slice(MX_CALL_DEFS)]` entry containing the C function pointer
    and name string, registered with R at package load via `R_init_*`.
 3. A `#[distributed_slice(MX_R_WRAPPERS)]` entry containing an R wrapper function
@@ -88,18 +89,15 @@ the main thread. Functions are forced to the main thread when: the function take
 or returns `SEXP`, the receiver `&self`/`&mut self` is not `Send`, it takes `Dots`,
 or `#[miniextendr(check_interrupt)]` is used.
 
-### `error_in_r` — the default error transport
+### Tagged-condition transport — the only error path
 
-`error_in_r` defaults to `true` for both standalone functions (see
-`miniextendr-macros/src/miniextendr_fn.rs` at the `unwrap_or(true)` at L1604)
-and impl methods (`miniextendr_impl.rs` similarly). Under `error_in_r`:
+Every `#[miniextendr]` function and method routes errors through the
+tagged-condition transport:
 
-- Panics in the Rust function are caught inside
-  `with_r_unwind_protect_error_in_r`.
+- Panics in the Rust function are caught inside `with_r_unwind_protect`.
 - The panic payload (or an `RCondition` value) is packed into a tagged SEXP via
-  `make_rust_error_value` or `make_rust_condition_value` in
-  `miniextendr-api/src/error_value.rs`.
-- The R wrapper checks the returned value via `error_in_r_check_lines()` (from
+  `make_rust_condition_value` in `miniextendr-api/src/error_value.rs`.
+- The R wrapper checks the returned value via `condition_check_lines()` (from
   `miniextendr-macros/src/method_return_builder.rs`): if the value inherits
   `"rust_condition_value"` and carries the `__rust_condition__` attribute, it
   calls `.miniextendr_raise_condition(.val, sys.call())`.
@@ -108,21 +106,21 @@ and impl methods (`miniextendr_impl.rs` similarly). Under `error_in_r`:
   with the layered class vector `c(user_class, "rust_error", "simpleError",
   "error", "condition")`.
 
-The `error_in_r` path is the *only* path for user functions. `Rf_error` / `Rf_errorcall`
-directly is reserved for: trait-ABI vtable shims (`miniextendr_trait.rs:808`),
-ALTREP `RUnwind` guards (`ffi_guard.rs`), and explicit opt-out via
-`no_error_in_r`. MXL300 enforces this.
+This is the *only* path for user functions. Direct `Rf_error` / `Rf_errorcall`
+is reserved for trait-ABI vtable shims (`miniextendr_trait.rs:808`) and ALTREP
+`RUnwind` guards (`ffi_guard.rs`). MXL300 enforces this.
 
-Opt-outs: `#[miniextendr(no_error_in_r)]` reverts to direct `Rf_error` on panic.
-`#[miniextendr(unwrap_in_r)]` passes `Result<T, E>` to R as a list with an error
-field rather than unwrapping. These two are mutually exclusive with `error_in_r`.
+Opt-out: `#[miniextendr(unwrap_in_r)]` passes `Result<T, E>` to R as a list with
+an error field rather than treating `Err` as a Rust-origin failure. This is
+orthogonal to the transport (`unwrap_in_r` returns the Result intact; tagged
+conditions only fire for panics and unwrapped errors).
 
 ### `RCondition` macros
 
 The `error!()`, `warning!()`, `message!()`, `condition!()` macros in
 `miniextendr-api/src/condition.rs` produce `RCondition` enum payloads that ride
 the same tagged-SEXP transport. The `RCondition` variant is recognised by
-`with_r_unwind_protect_error_in_r` before the generic panic-to-string path.
+`with_r_unwind_protect` before the generic panic-to-string path.
 
 Name collision caution: `pub mod error` and `pub mod condition` exist at the
 `miniextendr_api` crate root, shadowing the `error!` and `condition!` macros.
@@ -177,11 +175,11 @@ by `miniextendr-macros/src/miniextendr_trait.rs`. It generates:
   pointer, and call the Rust method.
 - A vtable builder `__<trait>_build_vtable::<T>()` for use by impl blocks.
 
-Trait-ABI shims use `with_r_unwind_protect_shim`, not `with_r_unwind_protect_error_in_r`.
-They return a tagged error SEXP that propagates to the consumer's outer
-`error_in_r` guard, which applies `rust_*` class layering (issue #345). The
-`TAG_` / vtable / view machinery is the bridge to the miniextendr-externalptr and
-miniextendr-ffi skills.
+Trait-ABI shims use `with_r_unwind_protect_shim`, not the user-facing
+`with_r_unwind_protect`. They return a tagged error SEXP that propagates to the
+consumer's outer `with_r_unwind_protect` guard, which applies `rust_*` class
+layering (issue #345). The `TAG_` / vtable / view machinery is the bridge to the
+miniextendr-externalptr and miniextendr-ffi skills.
 
 ## How it works
 
@@ -194,7 +192,7 @@ miniextendr-ffi skills.
    to detect types needing coercion (e.g., `bool` from `i32`), and calls
    `analyze_return_type` from `return_type_analysis.rs`.
 3. The C wrapper is emitted: `extern "C-unwind" #[no_mangle] fn C_foo(...)` with
-   `with_r_unwind_protect_error_in_r` wrapping the body.
+   `with_r_unwind_protect` wrapping the body.
 4. A `#[distributed_slice(MX_CALL_DEFS)]` entry registers the wrapper under the
    name `"C_foo"` with `numArgs = 1`.
 5. A `#[distributed_slice(MX_R_WRAPPERS)]` entry registers the R wrapper string
@@ -209,11 +207,10 @@ miniextendr-ffi skills.
 | `strict` | Lossy integer types (`i64`, `u64`, `isize`, `usize`) use checked conversions that panic on overflow instead of silent truncation. Also controls `-> Result<T, E>` wrapping. |
 | `internal` | Adds `@keywords internal` to generated roxygen; class is still exported but not user-visible in docs. |
 | `noexport` | Omits `@export` from generated roxygen; function is not exported from the package namespace. |
-| `no_error_in_r` | Disables the tagged-SEXP error transport; panics longjmp directly via `Rf_error`. |
-| `unwrap_in_r` | `Result<T, E>` is passed to R as a list with an `$error` field instead of unwrapped. Mutually exclusive with `error_in_r`. |
+| `unwrap_in_r` | `Result<T, E>` is passed to R as a list with an `$error` field instead of treating `Err` as a Rust-origin failure. Orthogonal to the tagged-condition transport (which only fires for panics and unwrapped errors). |
 | `worker` | Executes the Rust function on the worker thread (see `miniextendr-worker` skill). |
 | `check_interrupt` | Forces main-thread execution; inserts `R_CheckUserInterrupt` around the call. |
-| `rng` | Wraps the call in `GetRNGstate`/`PutRNGstate`; requires `error_in_r`. |
+| `rng` | Wraps the call in `GetRNGstate`/`PutRNGstate`. |
 | `dots = typed_list!(...)` | Validates `...` arguments; generates `dots_typed` parameter. See `miniextendr-dots` skill. |
 | `coerce_all` | Applies coercion mappings to all eligible types. |
 
@@ -248,7 +245,7 @@ Cargo feature.
 - Impl block R wrapper shape (class body): the relevant class generator in
   `miniextendr-macros/src/miniextendr_impl/<system>_class.rs`.
 - Error-check lines: `miniextendr-macros/src/method_return_builder.rs`
-  (`error_in_r_check_lines`, `error_in_r_standalone_body`).
+  (`condition_check_lines`, `standalone_body`).
 - Post-processing (placeholder substitution, ordering): `miniextendr-api/src/registry.rs`
   `write_r_wrappers_to_file`.
 
@@ -274,8 +271,8 @@ are violated, the macro falls back silently to main-thread execution. See the
   `.Call(...)` R wrapper emission; `RArgumentBuilder`, `RoxygenBuilder`.
 - `miniextendr-macros/src/return_type_analysis.rs` — `analyze_return_type`;
   `ReturnTypeAnalysis` struct; `output_is_result`.
-- `miniextendr-macros/src/method_return_builder.rs` — `error_in_r_check_lines`,
-  `error_in_r_standalone_body`, `error_in_r_inline_block`; `ReturnStrategy` enum.
+- `miniextendr-macros/src/method_return_builder.rs` — `condition_check_lines`,
+  `standalone_body`, `condition_check_inline_block`; `ReturnStrategy` enum.
 - `miniextendr-macros/src/roxygen.rs` — doc-comment extraction; multiline tag
   list; `has_roxygen_tag`.
 - `miniextendr-macros/src/r_class_formatter.rs` — `ClassDocBuilder`,
@@ -285,10 +282,10 @@ are violated, the macro falls back silently to main-thread execution. See the
 - `miniextendr-api/src/registry.rs` — `MX_CALL_DEFS`, `MX_R_WRAPPERS`,
   `RWrapperPriority`, `collect_r_wrappers`, `miniextendr_write_wrappers`,
   `write_r_wrappers_to_file`.
-- `miniextendr-api/src/error_value.rs` — `make_rust_error_value`,
-  `make_rust_condition_value`; tagged SEXP format.
+- `miniextendr-api/src/error_value.rs` — `make_rust_condition_value`;
+  tagged SEXP format.
 - `miniextendr-api/src/condition.rs` — `RCondition` enum, condition macros.
-- `miniextendr-api/src/unwind_protect.rs` — `with_r_unwind_protect_error_in_r`,
+- `miniextendr-api/src/unwind_protect.rs` — `with_r_unwind_protect`,
   `with_r_unwind_protect_shim`.
 
 ## Common pitfalls
@@ -312,15 +309,11 @@ are violated, the macro falls back silently to main-thread execution. See the
 - **`#[miniextendr]` on 1-field structs is removed**: The shorthand for wrapping
   a newtype struct is gone. Use ALTREP derives instead.
 
-- **`error_in_r` and `unwrap_in_r` are mutually exclusive**: Since `error_in_r`
-  defaults to `true`, explicitly adding `unwrap_in_r` produces a compile error.
-  First opt out with `no_error_in_r`.
-
 - **UI test `.stderr` snapshots must be updated** when error message wording
   changes: `TRYBUILD=overwrite cargo test -p miniextendr-macros`, then review the
   diff before committing.
 
-- **`with_r_unwind_protect_error_in_r` leaks ~8 bytes on R longjmp** (the
+- **`with_r_unwind_protect` leaks ~8 bytes on R longjmp** (the
   `RErrorMarker` + `Box` header). Regular panics do not leak. This is why MXL300
   warns against direct `Rf_error` calls — see `miniextendr-api/CLAUDE.md`.
 

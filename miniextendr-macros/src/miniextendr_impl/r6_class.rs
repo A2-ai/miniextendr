@@ -181,7 +181,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("      } else {".to_string());
             lines.push(format!("        .val <- {}", ctx.static_call()));
             // Use shared condition switch (supports error!/warning!/message!/condition!).
-            for check_line in crate::method_return_builder::error_in_r_check_lines("        ") {
+            for check_line in crate::method_return_builder::condition_check_lines("        ") {
                 lines.push(check_line);
             }
             lines.push("        private$.ptr <- .val".to_string());
@@ -199,7 +199,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("      {}", line));
             }
             lines.push(format!("      .val <- {}", ctx.static_call()));
-            lines.extend(crate::method_return_builder::error_in_r_check_lines(
+            lines.extend(crate::method_return_builder::condition_check_lines(
                 "      ",
             ));
             lines.push("      private$.ptr <- .val".to_string());
@@ -277,7 +277,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
-            .with_error_in_r(ctx.method.method_attrs.error_in_r)
             .with_indent(6); // R6 methods have 6-space indent
         lines.extend(return_builder.build_r6_body());
 
@@ -328,7 +327,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
-            .with_error_in_r(ctx.method.method_attrs.error_in_r)
             .with_indent(6);
         lines.extend(return_builder.build_r6_body());
 
@@ -469,7 +467,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 let return_builder = crate::MethodReturnBuilder::new(call)
                     .with_strategy(strategy)
                     .with_class_name(class_name.clone())
-                    .with_error_in_r(ctx.method.method_attrs.error_in_r)
                     .with_indent(6); // R6 active bindings have 6-space indent
                 lines.extend(return_builder.build_r6_body());
 
@@ -534,8 +531,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
-            .with_class_name(class_name.clone())
-            .with_error_in_r(ctx.method.method_attrs.error_in_r);
+            .with_class_name(class_name.clone());
         lines.extend(return_builder.build_r6_body());
 
         lines.push("}".to_string());
