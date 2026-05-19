@@ -5,22 +5,24 @@
 #
 # Requirements:
 #   - cargo-revendor on PATH (bootstrap.R invokes it for auto-vendor)
-#   - pkgbuild installed in R
 #
 # This test deletes any pre-existing inst/vendor.tar.xz before building, so
 # it is safe to run even when a leftover tarball is present in the source tree.
+#
+# Implementation note (#551): we drive `Rscript bootstrap.R` + `R CMD build rpkg`
+# directly rather than going through `pkgbuild::build()`. pkgbuild's plumbing
+# empirically loses inst/vendor.tar.xz somewhere between bootstrap and the
+# sealed tarball on CI in a way no source audit has reproduced. The direct
+# invocation mirrors what `just r-cmd-build` (the recipe every r-check-* CI
+# job depends on) does — minus the explicit `just vendor` step, so bootstrap.R
+# is exercised end-to-end exactly as intended.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Check for required tools and R packages; skip (not fail) if missing.
+# Check for required tools; skip (not fail) if missing.
 if ! command -v cargo-revendor >/dev/null 2>&1; then
     echo "SKIP: cargo-revendor not on PATH (install with: cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor)"
-    exit 0
-fi
-
-if ! Rscript -e 'if (!requireNamespace("pkgbuild", quietly = TRUE)) quit(status = 1)' 2>/dev/null; then
-    echo "SKIP: pkgbuild not installed in R (install with: install.packages('pkgbuild'))"
     exit 0
 fi
 
@@ -28,32 +30,32 @@ fi
 # regenerates it from scratch via bootstrap.R.
 rm -f rpkg/inst/vendor.tar.xz
 
-# Build into a throwaway lib to avoid touching the user's R library.
-TMP_LIB=$(mktemp -d)
-trap 'rm -rf "$TMP_LIB" rpkg/inst/vendor.tar.xz miniextendr_*.tar.gz' EXIT
+# Trap-clean producer artifacts (latch + configure outputs + built tarball)
+# so the test is idempotent on dev machines and matches the latch-leak
+# hygiene of `just r-cmd-build` (justfile r-cmd-build trap on line ~632).
+trap 'rm -f rpkg/inst/vendor.tar.xz rpkg/src/Makevars rpkg/src/rust/.cargo/config.toml miniextendr_*.tar.gz; rm -rf rpkg/vendor' EXIT
 
-# Preserve the original R_LIBS_USER so packages installed there (e.g. pkgbuild
-# itself, installed by CI before this script runs) remain visible even though
-# we override R_LIBS_USER to a temp dir for the build output.
-ORIG_LIBS_USER="${R_LIBS_USER:-}"
-R_LIBS_USER="$TMP_LIB" Rscript -e \
-  ".libPaths(unique(c('${TMP_LIB}', '${ORIG_LIBS_USER}', .libPaths()))); pkgbuild::build('rpkg', dest_path = '.')"
+# Run bootstrap.R in the package source dir. This produces inst/vendor.tar.xz
+# via cargo-revendor and runs ./configure to generate Makevars / .cargo/config.toml.
+( cd rpkg && Rscript bootstrap.R )
 
-# Find the produced tarball (pkgbuild writes miniextendr_X.Y.Z.tar.gz).
+# R CMD build seals the tarball. With Config/build/bootstrap: TRUE in
+# DESCRIPTION, pkgbuild would re-run bootstrap.R; the bare `R CMD build`
+# invocation does NOT, which is what we want here (bootstrap already ran).
+R CMD build rpkg
+
+# Find the produced tarball (R CMD build writes miniextendr_X.Y.Z.tar.gz).
 TARBALL=$(ls -t miniextendr_*.tar.gz 2>/dev/null | head -n1)
 if [ -z "$TARBALL" ]; then
-    echo "FAIL: pkgbuild::build did not produce a tarball" >&2
+    echo "FAIL: R CMD build did not produce a tarball" >&2
     exit 1
 fi
 
 # Assert: the tarball ships inst/vendor.tar.xz (produced by bootstrap.R).
-if ! tar -tJf "$TARBALL" 2>/dev/null | grep -q 'inst/vendor\.tar\.xz$'; then
-    # Try plain tar (non-xz tarball from pkgbuild on some platforms)
-    if ! tar -tzf "$TARBALL" 2>/dev/null | grep -q 'inst/vendor\.tar\.xz$'; then
-        echo "FAIL: $TARBALL does not contain inst/vendor.tar.xz" >&2
-        echo "      Bootstrap pipeline regression — see #441/#440." >&2
-        exit 1
-    fi
+if ! tar -tzf "$TARBALL" 2>/dev/null | grep -q 'inst/vendor\.tar\.xz$'; then
+    echo "FAIL: $TARBALL does not contain inst/vendor.tar.xz" >&2
+    echo "      Bootstrap pipeline regression — see #441/#440." >&2
+    exit 1
 fi
 
 echo "OK: $TARBALL contains inst/vendor.tar.xz"
