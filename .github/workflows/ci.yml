@@ -149,10 +149,23 @@ jobs:
       - name: Install cargo-revendor
         run: cargo install --path cargo-revendor
 
-      - name: Configure and vendor
-        run: |
-          just configure
-          just vendor
+      - name: Install R packages (devtools, roxygen2)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::devtools, any::roxygen2
+          needs: check
+
+      - name: Configure (dev mode — no vendor tarball yet)
+        run: just configure
+
+      - name: Check R wrappers / NAMESPACE / man sync
+        # MUST run in dev mode (no inst/vendor.tar.xz yet) — tarball mode
+        # short-circuits wrapper generation and expects pre-shipped files.
+        run: just wrappers-sync-check
+
+      - name: Vendor
+        run: just vendor
 
       - name: Check vendor sync
         run: just vendor-sync-check
