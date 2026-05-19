@@ -113,6 +113,10 @@ use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
 #' @return Modified character vector.
 #' @noRd
 release_workflow_insert_workdir <- function(lines, subdir) {
+  # Insert `working-directory:` *before* the matched `run:` line. Inserting
+  # after breaks the build step: `run: |` starts a block scalar that would
+  # absorb a following same-indent line as text, leaving the step with no
+  # actual `run` value. Same-level sibling keys must precede the block scalar.
   wd_line <- paste0("        working-directory: ", subdir)
   result <- character(0)
   i <- 1L
@@ -124,10 +128,10 @@ release_workflow_insert_workdir <- function(lines, subdir) {
     is_configure_step <- grepl("^        run: bash \\./configure\\s*$", line)
     is_build_step <- grepl("^        run: \\|\\s*$", line) &&
       i < length(lines) && grepl("R CMD build", lines[[i + 1L]])
-    result <- c(result, line)
     if (is_configure_step || is_build_step) {
       result <- c(result, wd_line)
     }
+    result <- c(result, line)
     i <- i + 1L
   }
   result
