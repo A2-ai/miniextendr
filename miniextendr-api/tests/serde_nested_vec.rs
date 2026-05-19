@@ -9,6 +9,8 @@
 //!
 //! These tests exercise the round-trip for that and related shapes.
 
+#![cfg(feature = "serde")]
+
 mod r_test_utils;
 
 use miniextendr_api::serde::{from_r, to_r};
