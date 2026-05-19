@@ -51,7 +51,7 @@
 pub use time::{Date, OffsetDateTime};
 
 use crate::cached_class::set_posixct_utc;
-use crate::ffi::{REAL, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -83,8 +83,7 @@ impl TryFromSexp for OffsetDateTime {
             )));
         }
 
-        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -124,8 +123,7 @@ impl IntoR for OffsetDateTime {
             let duration = self - UNIX_EPOCH;
             let secs = duration.whole_seconds() as f64
                 + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
-            // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
-            *REAL(vec) = secs;
+            vec.set_real_elt(0, secs);
 
             set_posixct_utc(vec);
 
@@ -162,8 +160,7 @@ impl TryFromSexp for Option<OffsetDateTime> {
             )));
         }
 
-        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Ok(None);
         }
@@ -195,8 +192,7 @@ impl IntoR for Option<OffsetDateTime> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
-                *REAL(vec) = f64::NAN;
+                vec.set_real_elt(0, f64::NAN);
                 set_posixct_utc(vec);
                 Rf_unprotect(1);
                 vec
@@ -370,8 +366,7 @@ impl TryFromSexp for Date {
             )));
         }
 
-        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
-        let days = unsafe { *REAL(sexp) };
+        let days = sexp.real_elt(0);
         if days.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -402,8 +397,7 @@ impl IntoR for Date {
 
             // Calculate days since epoch
             let days = (self - UNIX_EPOCH_DATE).whole_days() as f64;
-            // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
-            *REAL(vec) = days;
+            vec.set_real_elt(0, days);
 
             // Set class = "Date"
             vec.set_class(crate::cached_class::date_class_sexp());
@@ -441,8 +435,7 @@ impl TryFromSexp for Option<Date> {
             )));
         }
 
-        // keep raw: single-scalar read; no SexpExt::get_real_elt helper yet (see follow-up issue)
-        let days = unsafe { *REAL(sexp) };
+        let days = sexp.real_elt(0);
         if days.is_nan() {
             return Ok(None);
         }
@@ -471,8 +464,7 @@ impl IntoR for Option<Date> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                // keep raw: single-scalar write; no SexpExt::set_real_elt helper yet (see follow-up issue)
-                *REAL(vec) = f64::NAN;
+                vec.set_real_elt(0, f64::NAN);
 
                 vec.set_class(crate::cached_class::date_class_sexp());
 

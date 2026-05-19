@@ -39,9 +39,7 @@ pub use jiff::civil::{Date, DateTime, Time};
 pub use jiff::{SignedDuration, Span, Timestamp, Zoned};
 
 use crate::cached_class::{date_class_sexp, set_posixct_tz, set_posixct_utc};
-// keep raw: all `*REAL(sexp)` reads and `*REAL(vec) = …` writes here are single-scalar;
-// no SexpExt::get_real_elt / set_real_elt helpers yet — see follow-up issue.
-use crate::ffi::{REAL, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -70,7 +68,7 @@ impl TryFromSexp for Timestamp {
                 sexp.len()
             )));
         }
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -99,7 +97,7 @@ impl IntoR for Timestamp {
             Rf_protect(vec);
             let secs =
                 self.as_second() as f64 + (self.subsec_nanosecond() as f64 / 1_000_000_000.0);
-            *REAL(vec) = secs;
+            vec.set_real_elt(0, secs);
             set_posixct_utc(vec);
             Rf_unprotect(1);
             vec
@@ -132,7 +130,7 @@ impl TryFromSexp for Option<Timestamp> {
                 sexp.len()
             )));
         }
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Ok(None);
         }
@@ -159,7 +157,7 @@ impl IntoR for Option<Timestamp> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                *REAL(vec) = f64::NAN;
+                vec.set_real_elt(0, f64::NAN);
                 set_posixct_utc(vec);
                 Rf_unprotect(1);
                 vec
@@ -314,7 +312,7 @@ impl TryFromSexp for Date {
                 sexp.len()
             )));
         }
-        let days = unsafe { *REAL(sexp) };
+        let days = sexp.real_elt(0);
         if days.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -344,7 +342,7 @@ impl IntoR for Date {
             Rf_protect(vec);
             // Date::since(epoch) → Span of days
             let span = self.since(unix_epoch_date()).unwrap_or_default();
-            *REAL(vec) = span.get_days() as f64;
+            vec.set_real_elt(0, span.get_days() as f64);
             vec.set_class(date_class_sexp());
             Rf_unprotect(1);
             vec
@@ -377,7 +375,7 @@ impl TryFromSexp for Option<Date> {
                 sexp.len()
             )));
         }
-        let days = unsafe { *REAL(sexp) };
+        let days = sexp.real_elt(0);
         if days.is_nan() {
             return Ok(None);
         }
@@ -406,7 +404,7 @@ impl IntoR for Option<Date> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                *REAL(vec) = f64::NAN;
+                vec.set_real_elt(0, f64::NAN);
                 vec.set_class(date_class_sexp());
                 Rf_unprotect(1);
                 vec
@@ -562,7 +560,7 @@ impl TryFromSexp for Zoned {
                 sexp.len()
             )));
         }
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -611,7 +609,10 @@ impl IntoR for Zoned {
             let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             Rf_protect(vec);
             let ts = self.timestamp();
-            *REAL(vec) = ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0);
+            vec.set_real_elt(
+                0,
+                ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0),
+            );
             let iana = self.time_zone().iana_name().unwrap_or("UTC");
             set_posixct_tz(vec, iana);
             Rf_unprotect(1);
@@ -645,7 +646,7 @@ impl TryFromSexp for Option<Zoned> {
                 sexp.len()
             )));
         }
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Ok(None);
         }
@@ -667,7 +668,7 @@ impl IntoR for Option<Zoned> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                *REAL(vec) = f64::NAN;
+                vec.set_real_elt(0, f64::NAN);
                 set_posixct_utc(vec);
                 Rf_unprotect(1);
                 vec
@@ -919,7 +920,7 @@ impl TryFromSexp for SignedDuration {
                 sexp.len()
             )));
         }
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -944,7 +945,7 @@ impl IntoR for SignedDuration {
         unsafe {
             let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             Rf_protect(vec);
-            *REAL(vec) = self.as_secs_f64();
+            vec.set_real_elt(0, self.as_secs_f64());
             set_difftime_secs_class(vec);
             Rf_unprotect(1);
             vec
@@ -977,7 +978,7 @@ impl TryFromSexp for Option<SignedDuration> {
                 sexp.len()
             )));
         }
-        let secs = unsafe { *REAL(sexp) };
+        let secs = sexp.real_elt(0);
         if secs.is_nan() {
             return Ok(None);
         }
@@ -1001,7 +1002,7 @@ impl IntoR for Option<SignedDuration> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                *REAL(vec) = f64::NAN;
+                vec.set_real_elt(0, f64::NAN);
                 set_difftime_secs_class(vec);
                 Rf_unprotect(1);
                 vec
