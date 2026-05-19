@@ -41,10 +41,10 @@ if (!exists("get", mode = "function")) {
   get <- S7::new_generic("get", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(get, Counter) <- function(x, ...) {
-    .val <- .Call(C_Counter__get, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    .val
-  }
+  .val <- .Call(C_Counter__get, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
 
 # Counter::increment (1:1)
 #' @name Counter-increment
@@ -56,10 +56,10 @@ if (!exists("increment", mode = "function")) {
   increment <- S7::new_generic("increment", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(increment, Counter) <- function(x, ...) {
-    .val <- .Call(C_Counter__increment, .call = match.call(), x@.ptr)
-    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-    x
-  }
+  .val <- .Call(C_Counter__increment, .call = match.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  x
+}
 
 # Counter::from_parts (1:1)
 #' @param a (undocumented)

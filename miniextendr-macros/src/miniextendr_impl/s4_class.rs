@@ -160,73 +160,20 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         let strategy = crate::ReturnStrategy::for_method(method);
-        let return_expr = crate::MethodReturnBuilder::new(call)
+        let body_lines = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
             .with_error_in_r(method.method_attrs.error_in_r)
-            .build_s4_inline();
+            .build_s4_body();
 
-        // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, and precondition checks if present
-        let r_entry = &method.method_attrs.r_entry;
-        let r_on_exit = &method.method_attrs.r_on_exit;
-        let missing = crate::r_wrapper_builder::build_missing_prelude(
-            &method.sig.inputs,
-            &method.param_defaults,
-        );
         let what = format!("{}.{}", method_name, class_name);
-        let lifecycle = method.lifecycle_prelude(&what);
-        let preconditions = crate::r_preconditions::build_precondition_checks(
-            &method.sig.inputs,
-            &std::collections::HashSet::new(),
-        )
-        .static_checks;
-        let match_arg_lines = ctx.match_arg_prelude();
-        let r_post_checks = &method.method_attrs.r_post_checks;
-        if r_entry.is_some()
-            || r_on_exit.is_some()
-            || !missing.is_empty()
-            || lifecycle.is_some()
-            || !preconditions.is_empty()
-            || !match_arg_lines.is_empty()
-            || r_post_checks.is_some()
-        {
-            lines.push(format!(
-                "methods::setMethod(\"{}\", \"{}\", function({}) {{",
-                method_name, class_name, full_params
-            ));
-            if let Some(entry) = r_entry {
-                for line in entry.lines() {
-                    lines.push(format!("  {}", line));
-                }
-            }
-            if let Some(on_exit) = r_on_exit {
-                lines.push(format!("  {}", on_exit.to_r_code()));
-            }
-            for line in &missing {
-                lines.push(format!("  {}", line));
-            }
-            if let Some(prelude) = lifecycle {
-                lines.push(format!("  {}", prelude));
-            }
-            for check in &preconditions {
-                lines.push(format!("  {}", check));
-            }
-            for line in &match_arg_lines {
-                lines.push(format!("  {}", line));
-            }
-            if let Some(post) = r_post_checks {
-                for line in post.lines() {
-                    lines.push(format!("  {}", line));
-                }
-            }
-            lines.push(format!("  {}", return_expr));
-            lines.push("})".to_string());
-        } else {
-            lines.push(format!(
-                "methods::setMethod(\"{}\", \"{}\", function({}) {})",
-                method_name, class_name, full_params, return_expr
-            ));
-        }
+        lines.push(format!(
+            "methods::setMethod(\"{}\", \"{}\", function({}) {{",
+            method_name, class_name, full_params
+        ));
+        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        lines.extend(body_lines);
+        lines.push("})".to_string());
         lines.push(String::new());
     }
 
