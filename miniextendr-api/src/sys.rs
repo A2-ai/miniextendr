@@ -254,15 +254,12 @@ unsafe extern "C-unwind" {
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.
     #[cfg(feature = "nonapi")]
-    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API TRUE singleton.
     pub static R_TrueValue: SEXP;
     #[cfg(feature = "nonapi")]
-    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API FALSE singleton.
     pub static R_FalseValue: SEXP;
     #[cfg(feature = "nonapi")]
-    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API NA logical singleton.
     pub static R_LogicalNAValue: SEXP;
 
