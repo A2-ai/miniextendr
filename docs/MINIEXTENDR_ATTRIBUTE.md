@@ -96,12 +96,19 @@ pub fn get_record() -> MyStruct { /* ... */ }
 
 | Attribute | Effect |
 |-----------|--------|
-| `error_in_r` | Transport `Result::Err` as R condition (structured error) |
-| `unwrap_in_r` | Transport `Result::Err` as R `stop()` message |
+| (default) | `Result::Err`, panics, and `Option::None` ride the tagged-condition transport: R wrapper raises a structured `rust_*` condition |
+| `unwrap_in_r` | Return `Result<T, E>` to R as a list with an `$error` slot — `Err` is delivered as a value, not as an R error |
 
 ```rust
-#[miniextendr(error_in_r)]
+// Default: Err becomes a `rust_error` R condition
+#[miniextendr]
 pub fn parse_data(s: String) -> Result<i32, String> {
+    s.parse::<i32>().map_err(|e| e.to_string())
+}
+
+// `unwrap_in_r`: Err is delivered as `list(value = NULL, error = "...")`
+#[miniextendr(unwrap_in_r)]
+pub fn parse_data_unwrap(s: String) -> Result<i32, String> {
     s.parse::<i32>().map_err(|e| e.to_string())
 }
 ```
@@ -321,7 +328,7 @@ impl Person {
 | `check_interrupt` | Insert interrupt check |
 | `coerce` / `no_coerce` | Type coercion override |
 | `rng` | RNG state management |
-| `error_in_r` / `unwrap_in_r` | Error handling override |
+| `unwrap_in_r` | Return `Result<T, E>` as a list with `$value`/`$error` instead of raising on `Err` |
 | `r_name = "..."` | Override R method name |
 | `r_entry = "..."` | Inject R code at method entry |
 | `r_post_checks = "..."` | Inject R code after checks |
@@ -620,6 +627,6 @@ appropriate derives internally. Both paths produce identical code.
 - [ALTREP.md](ALTREP.md): ALTREP deep dive
 - [DATAFRAME.md](DATAFRAME.md): DataFrame conversion (derive + serde + columnar)
 - [SERDE_R.md](SERDE_R.md): serde integration for direct Rust-R serialization
-- [ERROR_HANDLING.md](ERROR_HANDLING.md): error_in_r, unwrap_in_r, panic handling
+- [ERROR_HANDLING.md](ERROR_HANDLING.md): tagged-condition transport, `unwrap_in_r`, panic handling
 - [LIFECYCLE.md](LIFECYCLE.md): deprecation/experimental lifecycle attributes
 - [TRAIT_ABI.md](TRAIT_ABI.md): cross-package trait dispatch

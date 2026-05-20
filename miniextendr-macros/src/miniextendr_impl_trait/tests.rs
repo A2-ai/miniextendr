@@ -86,7 +86,6 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         check_interrupt: false,
         rng: false,
         unwrap_in_r: false,
-        error_in_r: false,
         param_defaults: Default::default(),
         param_tags: vec![],
         skip: false,

@@ -3653,7 +3653,7 @@ StrictCounter <- R6::R6Class("StrictCounter",
   cloneable = FALSE
 )
 
-# Generated from Rust impl `FallibleImpl` (error_in_r_tests.rs:225:6)
+# Generated from Rust impl `FallibleImpl` (error_in_r_tests.rs:218:6)
 #' @title FallibleImpl  Class
 #' @name FallibleImpl
 #' @rdname FallibleImpl
@@ -3661,7 +3661,7 @@ StrictCounter <- R6::R6Class("StrictCounter",
 #' @export
 FallibleImpl <- new.env(parent = emptyenv())
 
-# FallibleImpl::new (227:8)
+# FallibleImpl::new (220:8)
 #' @title Create a new FallibleImpl
 #' @name FallibleImpl$new
 #' @rdname FallibleImpl
@@ -3678,7 +3678,7 @@ FallibleImpl$new <- function(value) {
   self
 }
 
-# FallibleImpl::inherent_value (232:8)
+# FallibleImpl::inherent_value (225:8)
 #' @title Get value via inherent method
 #' @name FallibleImpl$inherent_value
 #' @rdname FallibleImpl
@@ -3738,7 +3738,7 @@ FallibleImpl$inherent_value <- function() {
 #' @export
 `[[.FallibleImpl` <- `$.FallibleImpl`
 
-# Generated from Rust impl `ErrorInRCounter` (error_in_r_tests.rs:94:6)
+# Generated from Rust impl `ErrorInRCounter` (error_in_r_tests.rs:98:6)
 #' @title ErrorInRCounter  Class
 #' @name ErrorInRCounter
 #' @rdname ErrorInRCounter
@@ -3746,7 +3746,7 @@ FallibleImpl$inherent_value <- function() {
 #' @export
 ErrorInRCounter <- new.env(parent = emptyenv())
 
-# ErrorInRCounter::new (96:8)
+# ErrorInRCounter::new (100:8)
 #' @title Create a new counter
 #' @name ErrorInRCounter$new
 #' @rdname ErrorInRCounter
@@ -3759,7 +3759,7 @@ ErrorInRCounter$new <- function() {
   self
 }
 
-# ErrorInRCounter::get (102:8)
+# ErrorInRCounter::get (105:8)
 #' @title Get the current value -- should always succeed
 #' @name ErrorInRCounter$get
 #' @rdname ErrorInRCounter
@@ -3770,7 +3770,7 @@ ErrorInRCounter$get <- function() {
   .val
 }
 
-# ErrorInRCounter::inc (108:8)
+# ErrorInRCounter::inc (110:8)
 #' @title Increment -- mutable method, should succeed and allow chaining
 #' @name ErrorInRCounter$inc
 #' @rdname ErrorInRCounter
@@ -3781,7 +3781,7 @@ ErrorInRCounter$inc <- function() {
   self
 }
 
-# ErrorInRCounter::panic_method (114:8)
+# ErrorInRCounter::panic_method (115:8)
 #' @title Deliberately panic in a method
 #' @name ErrorInRCounter$panic_method
 #' @rdname ErrorInRCounter
@@ -3852,7 +3852,7 @@ ErrorInRCounter$failing_method <- function() {
 #' @export
 `[[.ErrorInRCounter` <- `$.ErrorInRCounter`
 
-# Generated from Rust impl `ErrorInRS7Gauge` (error_in_r_tests.rs:173:6)
+# Generated from Rust impl `ErrorInRS7Gauge` (error_in_r_tests.rs:170:6)
 #' @name ErrorInRS7Gauge
 #' @rdname ErrorInRS7Gauge
 #' @title S7 class for testing error_in_r with S7 class system
@@ -3882,7 +3882,7 @@ ErrorInRS7Gauge <- S7::new_class("ErrorInRS7Gauge",
   }
 )
 
-# ErrorInRS7Gauge::read_level (182:12)
+# ErrorInRS7Gauge::read_level (178:12)
 #' @title Read the level -- should always succeed
 #' @name ErrorInRS7Gauge-read_level
 #' @rdname ErrorInRS7Gauge
@@ -3897,7 +3897,7 @@ S7::method(read_level, ErrorInRS7Gauge) <- function(x, ...) {
   .val
 }
 
-# ErrorInRS7Gauge::set_level (188:12)
+# ErrorInRS7Gauge::set_level (183:12)
 #' @title Set the level -- mutable, chainable
 #' @name ErrorInRS7Gauge-set_level
 #' @rdname ErrorInRS7Gauge
@@ -3916,7 +3916,7 @@ S7::method(set_level, ErrorInRS7Gauge) <- function(x, level, ...) {
   x
 }
 
-# ErrorInRS7Gauge::panic_method (194:12)
+# ErrorInRS7Gauge::panic_method (188:12)
 #' @title Deliberately panic
 #' @name ErrorInRS7Gauge-panic_method
 #' @rdname ErrorInRS7Gauge
@@ -3931,7 +3931,7 @@ S7::method(panic_method, ErrorInRS7Gauge) <- function(x, ...) {
   .val
 }
 
-# ErrorInRS7Gauge::failing_result (200:12)
+# ErrorInRS7Gauge::failing_result (193:12)
 #' @title Return Result::Err
 #' @name ErrorInRS7Gauge-failing_result
 #' @rdname ErrorInRS7Gauge
@@ -3974,21 +3974,21 @@ ErrorInRR6Widget <- R6::R6Class("ErrorInRR6Widget",
         private$.ptr <- .val
       }
     },
-    # ErrorInRR6Widget::get_name (144:12)
+    # ErrorInRR6Widget::get_name (143:12)
     #' @description Get the name -- should always succeed
     get_name = function() {
       .val <- .Call(C_ErrorInRR6Widget__get_name, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # ErrorInRR6Widget::panic_method (150:12)
+    # ErrorInRR6Widget::panic_method (148:12)
     #' @description Deliberately panic
     panic_method = function() {
       .val <- .Call(C_ErrorInRR6Widget__panic_method, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # ErrorInRR6Widget::failing_result (156:12)
+    # ErrorInRR6Widget::failing_result (153:12)
     #' @description Return Result::Err
     failing_result = function() {
       .val <- .Call(C_ErrorInRR6Widget__failing_result, .call = match.call(), private$.ptr)
@@ -17221,7 +17221,7 @@ test_df_sort_limit <- function(df, col, asc, n) {
   .val
 }
 
-# Generated from Rust fn `error_in_r_panic` (error_in_r_tests.rs:15:8)
+# Generated from Rust fn `error_in_r_panic` (error_in_r_tests.rs:19:8)
 #' @title Standalone function that panics -- error_in_r catches this
 #' @rdname error_in_r_tests
 #' @export
@@ -17232,7 +17232,7 @@ error_in_r_panic <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_i32_ok` (error_in_r_tests.rs:63:8)
+# Generated from Rust fn `error_in_r_i32_ok` (error_in_r_tests.rs:67:8)
 #' @title Function returning i32 -- tests numeric return
 #' @rdname error_in_r_tests
 #' @export
@@ -17243,7 +17243,7 @@ error_in_r_i32_ok <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_normal` (error_in_r_tests.rs:55:8)
+# Generated from Rust fn `error_in_r_normal` (error_in_r_tests.rs:59:8)
 #' @title Normal function (no error) -- works fine
 #' @rdname error_in_r_tests
 #' @export
@@ -17254,7 +17254,7 @@ error_in_r_normal <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_i32_err` (error_in_r_tests.rs:71:8)
+# Generated from Rust fn `error_in_r_i32_err` (error_in_r_tests.rs:75:8)
 #' @title Function returning Result<i32, String> with Err -- becomes error value
 #' @rdname error_in_r_tests
 #' @export
@@ -17265,7 +17265,7 @@ error_in_r_i32_err <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_result_ok` (error_in_r_tests.rs:31:8)
+# Generated from Rust fn `error_in_r_result_ok` (error_in_r_tests.rs:35:8)
 #' @title Standalone function that returns Result::Ok -- works normally
 #' @rdname error_in_r_tests
 #' @export
@@ -17276,7 +17276,7 @@ error_in_r_result_ok <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_result_err` (error_in_r_tests.rs:23:8)
+# Generated from Rust fn `error_in_r_result_err` (error_in_r_tests.rs:27:8)
 #' @title Standalone function that returns Result::Err -- becomes error value
 #' @rdname error_in_r_tests
 #' @export
@@ -17287,7 +17287,7 @@ error_in_r_result_err <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_option_none` (error_in_r_tests.rs:39:8)
+# Generated from Rust fn `error_in_r_option_none` (error_in_r_tests.rs:43:8)
 #' @title Standalone function that returns Option::None (unit) -- becomes error value
 #' @rdname error_in_r_tests
 #' @export
@@ -17298,7 +17298,7 @@ error_in_r_option_none <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `error_in_r_option_some` (error_in_r_tests.rs:47:8)
+# Generated from Rust fn `error_in_r_option_some` (error_in_r_tests.rs:51:8)
 #' @title Standalone function that returns Option::Some(()) -- returns NULL
 #' @rdname error_in_r_tests
 #' @export
@@ -17309,7 +17309,7 @@ error_in_r_option_some <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `error_in_r_panic_custom` (error_in_r_tests.rs:80:8)
+# Generated from Rust fn `error_in_r_panic_custom` (error_in_r_tests.rs:84:8)
 #' @title Panic with custom message
 #' @param msg Custom panic message.
 #' @rdname error_in_r_tests
@@ -17567,8 +17567,8 @@ result_null_on_err <- function(x) {
   .val
 }
 
-# Generated from Rust fn `result_unwrap_in_r` (visibility_tests.rs:81:8)
-#' @title Test unwrap_in_r + no_error_in_r: Result is unwrapped on the R side
+# Generated from Rust fn `result_unwrap_in_r` (visibility_tests.rs:82:8)
+#' @title Test `unwrap_in_r`: the `Result` is converted to `list(error = ...)` on the R side instead of raising a condition
 #' @param x Integer input (negative triggers Err with message).
 #' @rdname visibility_tests
 #' @source Generated by miniextendr from Rust fn `result_unwrap_in_r`
@@ -17578,7 +17578,9 @@ result_unwrap_in_r <- function(x) {
     "'x' must be numeric, logical, or raw" = is.numeric(x) || is.logical(x) || is.raw(x),
     "'x' must have length 1" = length(x) == 1L
   )
-  .Call(C_result_unwrap_in_r, .call = match.call(), x)
+  .val <- .Call(C_result_unwrap_in_r, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust fn `force_invisible_i32` (visibility_tests.rs:61:8)
@@ -21640,7 +21642,7 @@ tabled_concat_horizontal <- function(left_keys, right_vals) {
 }
 
 # Generated from Rust fn `C_unwind_protect_normal` (unwind_protect_tests.rs:30:26)
-#' @title Test with_r_unwind_protect normal execution with RAII resource cleanup
+#' @title Test with_r_unwind_protect_or_raise normal execution with RAII resource cleanup
 #' @name rpkg_unwind_protect
 #' @examples
 #' \dontrun{
@@ -26615,14 +26617,18 @@ SimpleCounter$Counter <- new.env(parent = emptyenv())
 #' @name SimpleCounter$Counter$value
 #' @rdname SimpleCounter
 SimpleCounter$Counter$value <- function(x) {
-  .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
+  .val <- .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name SimpleCounter$Counter$increment
 #' @rdname SimpleCounter
 SimpleCounter$Counter$increment <- function(x) {
-  .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
+  .val <- .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
@@ -26630,7 +26636,9 @@ attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 #' @name SimpleCounter$Counter$checked_add
 #' @rdname SimpleCounter
 SimpleCounter$Counter$checked_add <- function(x, n) {
-  .Call(C_SimpleCounter__Counter__checked_add, .call = match.call(), x, n)
+  .val <- .Call(C_SimpleCounter__Counter__checked_add, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(SimpleCounter$Counter$checked_add, ".__mx_instance__") <- TRUE
@@ -26638,7 +26646,9 @@ attr(SimpleCounter$Counter$checked_add, ".__mx_instance__") <- TRUE
 #' @name SimpleCounter$Counter$default_initial
 #' @rdname SimpleCounter
 SimpleCounter$Counter$default_initial <- function() {
-  .Call(C_SimpleCounter__Counter__default_initial, .call = match.call())
+  .val <- .Call(C_SimpleCounter__Counter__default_initial, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name SimpleCounter$Counter$MAX_VALUE
@@ -26656,14 +26666,18 @@ PanickyCounter$Counter <- new.env(parent = emptyenv())
 #' @name PanickyCounter$Counter$value
 #' @rdname PanickyCounter
 PanickyCounter$Counter$value <- function(x) {
-  .Call(C_PanickyCounter__Counter__value, .call = match.call(), x)
+  .val <- .Call(C_PanickyCounter__Counter__value, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(PanickyCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name PanickyCounter$Counter$increment
 #' @rdname PanickyCounter
 PanickyCounter$Counter$increment <- function(x) {
-  .Call(C_PanickyCounter__Counter__increment, .call = match.call(), x)
+  .val <- .Call(C_PanickyCounter__Counter__increment, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(PanickyCounter$Counter$increment, ".__mx_instance__") <- TRUE
@@ -26671,7 +26685,9 @@ attr(PanickyCounter$Counter$increment, ".__mx_instance__") <- TRUE
 #' @name PanickyCounter$Counter$checked_add
 #' @rdname PanickyCounter
 PanickyCounter$Counter$checked_add <- function(x, n) {
-  .Call(C_PanickyCounter__Counter__checked_add, .call = match.call(), x, n)
+  .val <- .Call(C_PanickyCounter__Counter__checked_add, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(PanickyCounter$Counter$checked_add, ".__mx_instance__") <- TRUE
@@ -26679,7 +26695,9 @@ attr(PanickyCounter$Counter$checked_add, ".__mx_instance__") <- TRUE
 #' @name PanickyCounter$Counter$default_initial
 #' @rdname PanickyCounter
 PanickyCounter$Counter$default_initial <- function() {
-  .Call(C_PanickyCounter__Counter__default_initial, .call = match.call())
+  .val <- .Call(C_PanickyCounter__Counter__default_initial, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name PanickyCounter$Counter$MAX_VALUE
@@ -26701,7 +26719,9 @@ PanickyCounter$Counter$MAX_VALUE <- function() {
 #' @export
 r6_trait_Counter_value <- function(x) {
   .ptr <- x$.__enclos_env__$private$.ptr
-  .Call(C_R6TraitCounter__Counter__value, .call = match.call(), .ptr)
+  .val <- .Call(C_R6TraitCounter__Counter__value, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name r6_trait_Counter_increment
@@ -26712,7 +26732,9 @@ r6_trait_Counter_value <- function(x) {
 #' @export
 r6_trait_Counter_increment <- function(x) {
   .ptr <- x$.__enclos_env__$private$.ptr
-  .Call(C_R6TraitCounter__Counter__increment, .call = match.call(), .ptr)
+  .val <- .Call(C_R6TraitCounter__Counter__increment, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 
@@ -26725,7 +26747,9 @@ r6_trait_Counter_increment <- function(x) {
 #' @export
 r6_trait_Counter_checked_add <- function(x, n) {
   .ptr <- x$.__enclos_env__$private$.ptr
-  .Call(C_R6TraitCounter__Counter__checked_add, .call = match.call(), .ptr, n)
+  .val <- .Call(C_R6TraitCounter__Counter__checked_add, .call = match.call(), .ptr, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 
@@ -26735,7 +26759,9 @@ R6TraitCounter$Counter <- new.env(parent = emptyenv())
 #' @name R6TraitCounter$Counter$default_initial
 #' @rdname R6TraitCounter
 R6TraitCounter$Counter$default_initial <- function() {
-  .Call(C_R6TraitCounter__Counter__default_initial, .call = match.call())
+  .val <- .Call(C_R6TraitCounter__Counter__default_initial, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name R6TraitCounter$Counter$MAX_VALUE
@@ -26764,7 +26790,9 @@ if (!exists("value", mode = "function")) {
 #' @method value S3TraitCounter
 #' @export
 value.S3TraitCounter <- function(x, ...) {
-  .Call(C_S3TraitCounter__Counter__value, .call = match.call(), x)
+  .val <- .Call(C_S3TraitCounter__Counter__value, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 if (inherits(get0("value", mode = "function"), "S7_generic")) {
   S7::method(value, S7::new_S3_class("S3TraitCounter")) <- value.S3TraitCounter
@@ -26786,7 +26814,9 @@ if (!exists("increment", mode = "function")) {
 #' @method increment S3TraitCounter
 #' @export
 increment.S3TraitCounter <- function(x, ...) {
-  .Call(C_S3TraitCounter__Counter__increment, .call = match.call(), x)
+  .val <- .Call(C_S3TraitCounter__Counter__increment, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 if (inherits(get0("increment", mode = "function"), "S7_generic")) {
@@ -26810,7 +26840,9 @@ if (!exists("checked_add", mode = "function")) {
 #' @param n Amount to add.
 #' @export
 checked_add.S3TraitCounter <- function(x, n, ...) {
-  .Call(C_S3TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+  .val <- .Call(C_S3TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 if (inherits(get0("checked_add", mode = "function"), "S7_generic")) {
@@ -26823,7 +26855,9 @@ S3TraitCounter$Counter <- new.env(parent = emptyenv())
 #' @name S3TraitCounter$Counter$default_initial
 #' @rdname S3TraitCounter
 S3TraitCounter$Counter$default_initial <- function() {
-  .Call(C_S3TraitCounter__Counter__default_initial, .call = match.call())
+  .val <- .Call(C_S3TraitCounter__Counter__default_initial, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name S3TraitCounter$Counter$MAX_VALUE
@@ -26851,7 +26885,9 @@ if (!methods::isGeneric("s4_trait_Counter_value")) methods::setGeneric("s4_trait
 #' @keywords internal
 methods::setMethod("s4_trait_Counter_value", "S4TraitCounter", function(x, ...) {
   .ptr <- x@ptr
-  .Call(C_S4TraitCounter__Counter__value, .call = match.call(), .ptr)
+  .val <- .Call(C_S4TraitCounter__Counter__value, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 #' @name s4_trait_Counter_increment
@@ -26867,7 +26903,9 @@ if (!methods::isGeneric("s4_trait_Counter_increment")) methods::setGeneric("s4_t
 #' @keywords internal
 methods::setMethod("s4_trait_Counter_increment", "S4TraitCounter", function(x, ...) {
   .ptr <- x@ptr
-  .Call(C_S4TraitCounter__Counter__increment, .call = match.call(), .ptr)
+  .val <- .Call(C_S4TraitCounter__Counter__increment, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 })
 
@@ -26886,7 +26924,9 @@ if (!methods::isGeneric("s4_trait_Counter_checked_add")) methods::setGeneric("s4
 #' @keywords internal
 methods::setMethod("s4_trait_Counter_checked_add", "S4TraitCounter", function(x, n, ...) {
   .ptr <- x@ptr
-  .Call(C_S4TraitCounter__Counter__checked_add, .call = match.call(), .ptr, n)
+  .val <- .Call(C_S4TraitCounter__Counter__checked_add, .call = match.call(), .ptr, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 })
 
@@ -26895,7 +26935,9 @@ methods::setMethod("s4_trait_Counter_checked_add", "S4TraitCounter", function(x,
 #' @rdname S4TraitCounter
 #' @keywords internal
 S4TraitCounter_Counter_default_initial <- function() {
-  .Call(C_S4TraitCounter__Counter__default_initial, .call = match.call())
+  .val <- .Call(C_S4TraitCounter__Counter__default_initial, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name S4TraitCounter_Counter_MAX_VALUE
@@ -26923,7 +26965,9 @@ if (!exists("s7_trait_Counter_value", mode = "function")) {
 
 S7::method(s7_trait_Counter_value, .s7_class_S7TraitCounter) <- function(x, ...) {
   .ptr <- x@.ptr
-  .Call(C_S7TraitCounter__Counter__value, .call = match.call(), .ptr)
+  .val <- .Call(C_S7TraitCounter__Counter__value, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name s7_trait_Counter_increment
@@ -26937,7 +26981,9 @@ if (!exists("s7_trait_Counter_increment", mode = "function")) {
 
 S7::method(s7_trait_Counter_increment, .s7_class_S7TraitCounter) <- function(x, ...) {
   .ptr <- x@.ptr
-  .Call(C_S7TraitCounter__Counter__increment, .call = match.call(), .ptr)
+  .val <- .Call(C_S7TraitCounter__Counter__increment, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 
@@ -26952,7 +26998,9 @@ if (!exists("s7_trait_Counter_checked_add", mode = "function")) {
 
 S7::method(s7_trait_Counter_checked_add, .s7_class_S7TraitCounter) <- function(x, n, ...) {
   .ptr <- x@.ptr
-  .Call(C_S7TraitCounter__Counter__checked_add, .call = match.call(), .ptr, n)
+  .val <- .Call(C_S7TraitCounter__Counter__checked_add, .call = match.call(), .ptr, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 
@@ -26962,7 +27010,9 @@ S7::method(s7_trait_Counter_checked_add, .s7_class_S7TraitCounter) <- function(x
 #' @name S7TraitCounter$Counter$default_initial
 #' @rdname S7TraitCounter
 .S7TraitCounter__Counter$default_initial <- function() {
-  .Call(C_S7TraitCounter__Counter__default_initial, .call = match.call())
+  .val <- .Call(C_S7TraitCounter__Counter__default_initial, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name S7TraitCounter$Counter$MAX_VALUE
@@ -26973,7 +27023,7 @@ S7::method(s7_trait_Counter_checked_add, .s7_class_S7TraitCounter) <- function(x
 
 attr(S7TraitCounter, "Counter") <- .S7TraitCounter__Counter
 
-# Generated from Rust impl `Fallible` for `FallibleImpl` (error_in_r_tests.rs:239:19)
+# Generated from Rust impl `Fallible` for `FallibleImpl` (error_in_r_tests.rs:232:19)
 # Trait methods and consts for FallibleImpl implementing Fallible
 # Generated by #[miniextendr] impl Fallible for FallibleImpl
 
@@ -27006,14 +27056,18 @@ AtomicCounter$SharedCounter <- new.env(parent = emptyenv())
 #' @name AtomicCounter$SharedCounter$value
 #' @rdname AtomicCounter
 AtomicCounter$SharedCounter$value <- function(x) {
-  .Call(C_AtomicCounter__SharedCounter__value, .call = match.call(), x)
+  .val <- .Call(C_AtomicCounter__SharedCounter__value, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(AtomicCounter$SharedCounter$value, ".__mx_instance__") <- TRUE
 
 #' @name AtomicCounter$SharedCounter$increment
 #' @rdname AtomicCounter
 AtomicCounter$SharedCounter$increment <- function(x) {
-  .Call(C_AtomicCounter__SharedCounter__increment, .call = match.call(), x)
+  .val <- .Call(C_AtomicCounter__SharedCounter__increment, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(AtomicCounter$SharedCounter$increment, ".__mx_instance__") <- TRUE
@@ -27021,7 +27075,9 @@ attr(AtomicCounter$SharedCounter$increment, ".__mx_instance__") <- TRUE
 #' @name AtomicCounter$SharedCounter$add
 #' @rdname AtomicCounter
 AtomicCounter$SharedCounter$add <- function(x, n) {
-  .Call(C_AtomicCounter__SharedCounter__add, .call = match.call(), x, n)
+  .val <- .Call(C_AtomicCounter__SharedCounter__add, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(AtomicCounter$SharedCounter$add, ".__mx_instance__") <- TRUE
@@ -27029,7 +27085,9 @@ attr(AtomicCounter$SharedCounter$add, ".__mx_instance__") <- TRUE
 #' @name AtomicCounter$SharedCounter$reset
 #' @rdname AtomicCounter
 AtomicCounter$SharedCounter$reset <- function(x) {
-  .Call(C_AtomicCounter__SharedCounter__reset, .call = match.call(), x)
+  .val <- .Call(C_AtomicCounter__SharedCounter__reset, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(AtomicCounter$SharedCounter$reset, ".__mx_instance__") <- TRUE
@@ -27043,14 +27101,18 @@ SharedSimpleCounter$SharedCounter <- new.env(parent = emptyenv())
 #' @name SharedSimpleCounter$SharedCounter$value
 #' @rdname SharedSimpleCounter
 SharedSimpleCounter$SharedCounter$value <- function(x) {
-  .Call(C_SharedSimpleCounter__SharedCounter__value, .call = match.call(), x)
+  .val <- .Call(C_SharedSimpleCounter__SharedCounter__value, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(SharedSimpleCounter$SharedCounter$value, ".__mx_instance__") <- TRUE
 
 #' @name SharedSimpleCounter$SharedCounter$increment
 #' @rdname SharedSimpleCounter
 SharedSimpleCounter$SharedCounter$increment <- function(x) {
-  .Call(C_SharedSimpleCounter__SharedCounter__increment, .call = match.call(), x)
+  .val <- .Call(C_SharedSimpleCounter__SharedCounter__increment, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(SharedSimpleCounter$SharedCounter$increment, ".__mx_instance__") <- TRUE
@@ -27058,7 +27120,9 @@ attr(SharedSimpleCounter$SharedCounter$increment, ".__mx_instance__") <- TRUE
 #' @name SharedSimpleCounter$SharedCounter$add
 #' @rdname SharedSimpleCounter
 SharedSimpleCounter$SharedCounter$add <- function(x, n) {
-  .Call(C_SharedSimpleCounter__SharedCounter__add, .call = match.call(), x, n)
+  .val <- .Call(C_SharedSimpleCounter__SharedCounter__add, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(SharedSimpleCounter$SharedCounter$add, ".__mx_instance__") <- TRUE
@@ -27066,7 +27130,9 @@ attr(SharedSimpleCounter$SharedCounter$add, ".__mx_instance__") <- TRUE
 #' @name SharedSimpleCounter$SharedCounter$reset
 #' @rdname SharedSimpleCounter
 SharedSimpleCounter$SharedCounter$reset <- function(x) {
-  .Call(C_SharedSimpleCounter__SharedCounter__reset, .call = match.call(), x)
+  .val <- .Call(C_SharedSimpleCounter__SharedCounter__reset, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(SharedSimpleCounter$SharedCounter$reset, ".__mx_instance__") <- TRUE
@@ -27080,7 +27146,9 @@ CounterTraitEnv$StaticXParam <- new.env(parent = emptyenv())
 #' @name CounterTraitEnv$StaticXParam$from_value
 #' @rdname CounterTraitEnv
 CounterTraitEnv$StaticXParam$from_value <- function(x) {
-  .Call(C_CounterTraitEnv__StaticXParam__from_value, .call = match.call(), x)
+  .val <- .Call(C_CounterTraitEnv__StaticXParam__from_value, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `MatrixCounter` for `CounterTraitR6` (class_system_matrix.rs:184:24)
@@ -27096,7 +27164,9 @@ CounterTraitEnv$StaticXParam$from_value <- function(x) {
 #' @export
 r6_trait_MatrixCounter_custom_get <- function(x) {
   .ptr <- x$.__enclos_env__$private$.ptr
-  .Call(C_CounterTraitR6__MatrixCounter__custom_get, .call = match.call(), .ptr)
+  .val <- .Call(C_CounterTraitR6__MatrixCounter__custom_get, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name r6_trait_MatrixCounter_custom_add
@@ -27108,7 +27178,9 @@ r6_trait_MatrixCounter_custom_get <- function(x) {
 #' @export
 r6_trait_MatrixCounter_custom_add <- function(x, n) {
   .ptr <- x$.__enclos_env__$private$.ptr
-  .Call(C_CounterTraitR6__MatrixCounter__custom_add, .call = match.call(), .ptr, n)
+  .val <- .Call(C_CounterTraitR6__MatrixCounter__custom_add, .call = match.call(), .ptr, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 
@@ -27118,7 +27190,9 @@ CounterTraitR6$MatrixCounter <- new.env(parent = emptyenv())
 #' @name CounterTraitR6$MatrixCounter$default_value
 #' @rdname CounterTraitR6
 CounterTraitR6$MatrixCounter$default_value <- function() {
-  .Call(C_CounterTraitR6__MatrixCounter__default_value, .call = match.call())
+  .val <- .Call(C_CounterTraitR6__MatrixCounter__default_value, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `MatrixCounter` for `CounterTraitS3` (class_system_matrix.rs:80:24)
@@ -27141,7 +27215,9 @@ if (!exists("custom_get", mode = "function")) {
 #' @method custom_get CounterTraitS3
 #' @export
 custom_get.CounterTraitS3 <- function(x, ...) {
-  .Call(C_CounterTraitS3__MatrixCounter__custom_get, .call = match.call(), x)
+  .val <- .Call(C_CounterTraitS3__MatrixCounter__custom_get, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 if (inherits(get0("custom_get", mode = "function"), "S7_generic")) {
   S7::method(custom_get, S7::new_S3_class("CounterTraitS3")) <- custom_get.CounterTraitS3
@@ -27164,7 +27240,9 @@ if (!exists("custom_add", mode = "function")) {
 #' @param n Amount to add.
 #' @export
 custom_add.CounterTraitS3 <- function(x, n, ...) {
-  .Call(C_CounterTraitS3__MatrixCounter__custom_add, .call = match.call(), x, n)
+  .val <- .Call(C_CounterTraitS3__MatrixCounter__custom_add, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 if (inherits(get0("custom_add", mode = "function"), "S7_generic")) {
@@ -27177,7 +27255,9 @@ CounterTraitS3$MatrixCounter <- new.env(parent = emptyenv())
 #' @name CounterTraitS3$MatrixCounter$default_value
 #' @rdname CounterTraitS3
 CounterTraitS3$MatrixCounter$default_value <- function() {
-  .Call(C_CounterTraitS3__MatrixCounter__default_value, .call = match.call())
+  .val <- .Call(C_CounterTraitS3__MatrixCounter__default_value, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `MatrixCounter` for `CounterTraitS4` (class_system_matrix.rs:116:24)
@@ -27199,7 +27279,9 @@ if (!methods::isGeneric("s4_trait_MatrixCounter_custom_get")) methods::setGeneri
 #' @keywords internal
 methods::setMethod("s4_trait_MatrixCounter_custom_get", "CounterTraitS4", function(x, ...) {
   .ptr <- x@ptr
-  .Call(C_CounterTraitS4__MatrixCounter__custom_get, .call = match.call(), .ptr)
+  .val <- .Call(C_CounterTraitS4__MatrixCounter__custom_get, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 })
 
 #' @name s4_trait_MatrixCounter_custom_add
@@ -27217,7 +27299,9 @@ if (!methods::isGeneric("s4_trait_MatrixCounter_custom_add")) methods::setGeneri
 #' @keywords internal
 methods::setMethod("s4_trait_MatrixCounter_custom_add", "CounterTraitS4", function(x, n, ...) {
   .ptr <- x@ptr
-  .Call(C_CounterTraitS4__MatrixCounter__custom_add, .call = match.call(), .ptr, n)
+  .val <- .Call(C_CounterTraitS4__MatrixCounter__custom_add, .call = match.call(), .ptr, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 })
 
@@ -27226,7 +27310,9 @@ methods::setMethod("s4_trait_MatrixCounter_custom_add", "CounterTraitS4", functi
 #' @rdname CounterTraitS4
 #' @keywords internal
 CounterTraitS4_MatrixCounter_default_value <- function() {
-  .Call(C_CounterTraitS4__MatrixCounter__default_value, .call = match.call())
+  .val <- .Call(C_CounterTraitS4__MatrixCounter__default_value, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `MatrixCounter` for `CounterTraitS7` (class_system_matrix.rs:149:24)
@@ -27247,7 +27333,9 @@ if (!exists("s7_trait_MatrixCounter_custom_get", mode = "function")) {
 
 S7::method(s7_trait_MatrixCounter_custom_get, .s7_class_CounterTraitS7) <- function(x, ...) {
   .ptr <- x@.ptr
-  .Call(C_CounterTraitS7__MatrixCounter__custom_get, .call = match.call(), .ptr)
+  .val <- .Call(C_CounterTraitS7__MatrixCounter__custom_get, .call = match.call(), .ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 #' @name s7_trait_MatrixCounter_custom_add
@@ -27261,7 +27349,9 @@ if (!exists("s7_trait_MatrixCounter_custom_add", mode = "function")) {
 
 S7::method(s7_trait_MatrixCounter_custom_add, .s7_class_CounterTraitS7) <- function(x, n, ...) {
   .ptr <- x@.ptr
-  .Call(C_CounterTraitS7__MatrixCounter__custom_add, .call = match.call(), .ptr, n)
+  .val <- .Call(C_CounterTraitS7__MatrixCounter__custom_add, .call = match.call(), .ptr, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 
@@ -27271,7 +27361,9 @@ S7::method(s7_trait_MatrixCounter_custom_add, .s7_class_CounterTraitS7) <- funct
 #' @name CounterTraitS7$MatrixCounter$default_value
 #' @rdname CounterTraitS7
 .CounterTraitS7__MatrixCounter$default_value <- function() {
-  .Call(C_CounterTraitS7__MatrixCounter__default_value, .call = match.call())
+  .val <- .Call(C_CounterTraitS7__MatrixCounter__default_value, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 attr(CounterTraitS7, "MatrixCounter") <- .CounterTraitS7__MatrixCounter
@@ -27285,14 +27377,18 @@ CounterTraitEnv$MatrixCounter <- new.env(parent = emptyenv())
 #' @name CounterTraitEnv$MatrixCounter$custom_get
 #' @rdname CounterTraitEnv
 CounterTraitEnv$MatrixCounter$custom_get <- function(x) {
-  .Call(C_CounterTraitEnv__MatrixCounter__custom_get, .call = match.call(), x)
+  .val <- .Call(C_CounterTraitEnv__MatrixCounter__custom_get, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(CounterTraitEnv$MatrixCounter$custom_get, ".__mx_instance__") <- TRUE
 
 #' @name CounterTraitEnv$MatrixCounter$custom_add
 #' @rdname CounterTraitEnv
 CounterTraitEnv$MatrixCounter$custom_add <- function(x, n) {
-  .Call(C_CounterTraitEnv__MatrixCounter__custom_add, .call = match.call(), x, n)
+  .val <- .Call(C_CounterTraitEnv__MatrixCounter__custom_add, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(CounterTraitEnv$MatrixCounter$custom_add, ".__mx_instance__") <- TRUE
@@ -27300,7 +27396,9 @@ attr(CounterTraitEnv$MatrixCounter$custom_add, ".__mx_instance__") <- TRUE
 #' @name CounterTraitEnv$MatrixCounter$default_value
 #' @rdname CounterTraitEnv
 CounterTraitEnv$MatrixCounter$default_value <- function() {
-  .Call(C_CounterTraitEnv__MatrixCounter__default_value, .call = match.call())
+  .val <- .Call(C_CounterTraitEnv__MatrixCounter__default_value, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `ROrd` for `Point` (adapter_traits_tests.rs:107:48)
@@ -27312,7 +27410,9 @@ Point$ROrd <- new.env(parent = emptyenv())
 #' @name Point$ROrd$cmp
 #' @rdname Point
 Point$ROrd$cmp <- function(x, other) {
-  .Call(C_Point__ROrd__cmp, .call = match.call(), x, other)
+  .val <- .Call(C_Point__ROrd__cmp, .call = match.call(), x, other)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$ROrd$cmp, ".__mx_instance__") <- TRUE
 
@@ -27325,14 +27425,18 @@ Point$RCopy <- new.env(parent = emptyenv())
 #' @name Point$RCopy$copy
 #' @rdname Point
 Point$RCopy$copy <- function(x) {
-  .Call(C_Point__RCopy__copy, .call = match.call(), x)
+  .val <- .Call(C_Point__RCopy__copy, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$RCopy$copy, ".__mx_instance__") <- TRUE
 
 #' @name Point$RCopy$is_copy
 #' @rdname Point
 Point$RCopy$is_copy <- function(x) {
-  .Call(C_Point__RCopy__is_copy, .call = match.call(), x)
+  .val <- .Call(C_Point__RCopy__is_copy, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$RCopy$is_copy, ".__mx_instance__") <- TRUE
 
@@ -27345,7 +27449,9 @@ Point$RHash <- new.env(parent = emptyenv())
 #' @name Point$RHash$hash
 #' @rdname Point
 Point$RHash$hash <- function(x) {
-  .Call(C_Point__RHash__hash, .call = match.call(), x)
+  .val <- .Call(C_Point__RHash__hash, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$RHash$hash, ".__mx_instance__") <- TRUE
 
@@ -27358,7 +27464,9 @@ Point$RClone <- new.env(parent = emptyenv())
 #' @name Point$RClone$clone
 #' @rdname Point
 Point$RClone$clone <- function(x) {
-  .Call(C_Point__RClone__clone, .call = match.call(), x)
+  .val <- .Call(C_Point__RClone__clone, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$RClone$clone, ".__mx_instance__") <- TRUE
 
@@ -27371,14 +27479,18 @@ Point$RDebug <- new.env(parent = emptyenv())
 #' @name Point$RDebug$debug_str
 #' @rdname Point
 Point$RDebug$debug_str <- function(x) {
-  .Call(C_Point__RDebug__debug_str, .call = match.call(), x)
+  .val <- .Call(C_Point__RDebug__debug_str, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$RDebug$debug_str, ".__mx_instance__") <- TRUE
 
 #' @name Point$RDebug$debug_str_pretty
 #' @rdname Point
 Point$RDebug$debug_str_pretty <- function(x) {
-  .Call(C_Point__RDebug__debug_str_pretty, .call = match.call(), x)
+  .val <- .Call(C_Point__RDebug__debug_str_pretty, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$RDebug$debug_str_pretty, ".__mx_instance__") <- TRUE
 
@@ -27391,21 +27503,27 @@ IntSet$RToVec <- new.env(parent = emptyenv())
 #' @name IntSet$RToVec$to_vec
 #' @rdname IntSet
 IntSet$RToVec$to_vec <- function(x) {
-  .Call(C_IntSet__RToVec__to_vec, .call = match.call(), x)
+  .val <- .Call(C_IntSet__RToVec__to_vec, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntSet$RToVec$to_vec, ".__mx_instance__") <- TRUE
 
 #' @name IntSet$RToVec$len
 #' @rdname IntSet
 IntSet$RToVec$len <- function(x) {
-  .Call(C_IntSet__RToVec__len, .call = match.call(), x)
+  .val <- .Call(C_IntSet__RToVec__len, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntSet$RToVec$len, ".__mx_instance__") <- TRUE
 
 #' @name IntSet$RToVec$is_empty
 #' @rdname IntSet
 IntSet$RToVec$is_empty <- function(x) {
-  .Call(C_IntSet__RToVec__is_empty, .call = match.call(), x)
+  .val <- .Call(C_IntSet__RToVec__is_empty, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntSet$RToVec$is_empty, ".__mx_instance__") <- TRUE
 
@@ -27418,7 +27536,9 @@ Point$RDefault <- new.env(parent = emptyenv())
 #' @name Point$RDefault$default
 #' @rdname Point
 Point$RDefault$default <- function() {
-  .Call(C_Point__RDefault__default, .call = match.call())
+  .val <- .Call(C_Point__RDefault__default, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `RDisplay` for `Point` (adapter_traits_tests.rs:83:52)
@@ -27430,7 +27550,9 @@ Point$RDisplay <- new.env(parent = emptyenv())
 #' @name Point$RDisplay$as_r_string
 #' @rdname Point
 Point$RDisplay$as_r_string <- function(x) {
-  .Call(C_Point__RDisplay__as_r_string, .call = match.call(), x)
+  .val <- .Call(C_Point__RDisplay__as_r_string, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(Point$RDisplay$as_r_string, ".__mx_instance__") <- TRUE
 
@@ -27443,7 +27565,9 @@ Point$RFromStr <- new.env(parent = emptyenv())
 #' @name Point$RFromStr$from_str
 #' @rdname Point
 Point$RFromStr$from_str <- function(s) {
-  .Call(C_Point__RFromStr__from_str, .call = match.call(), s)
+  .val <- .Call(C_Point__RFromStr__from_str, .call = match.call(), s)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `RFromIter` for `IntSet` (adapter_traits_tests.rs:345:58)
@@ -27455,7 +27579,9 @@ IntSet$RFromIter <- new.env(parent = emptyenv())
 #' @name IntSet$RFromIter$from_vec
 #' @rdname IntSet
 IntSet$RFromIter$from_vec <- function(items) {
-  .Call(C_IntSet__RFromIter__from_vec, .call = match.call(), items)
+  .val <- .Call(C_IntSet__RFromIter__from_vec, .call = match.call(), items)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 
 # Generated from Rust impl `RError` for `ChainedError` (adapter_traits_tests.rs:215:50)
@@ -27467,21 +27593,27 @@ ChainedError$RError <- new.env(parent = emptyenv())
 #' @name ChainedError$RError$error_message
 #' @rdname ChainedError
 ChainedError$RError$error_message <- function(x) {
-  .Call(C_ChainedError__RError__error_message, .call = match.call(), x)
+  .val <- .Call(C_ChainedError__RError__error_message, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(ChainedError$RError$error_message, ".__mx_instance__") <- TRUE
 
 #' @name ChainedError$RError$error_chain
 #' @rdname ChainedError
 ChainedError$RError$error_chain <- function(x) {
-  .Call(C_ChainedError__RError__error_chain, .call = match.call(), x)
+  .val <- .Call(C_ChainedError__RError__error_chain, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(ChainedError$RError$error_chain, ".__mx_instance__") <- TRUE
 
 #' @name ChainedError$RError$error_chain_length
 #' @rdname ChainedError
 ChainedError$RError$error_chain_length <- function(x) {
-  .Call(C_ChainedError__RError__error_chain_length, .call = match.call(), x)
+  .val <- .Call(C_ChainedError__RError__error_chain_length, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(ChainedError$RError$error_chain_length, ".__mx_instance__") <- TRUE
 
@@ -27494,7 +27626,9 @@ GrowableVec$RExtend <- new.env(parent = emptyenv())
 #' @name GrowableVec$RExtend$extend_from_vec
 #' @rdname GrowableVec
 GrowableVec$RExtend$extend_from_vec <- function(x, items) {
-  .Call(C_GrowableVec__RExtend__extend_from_vec, .call = match.call(), x, items)
+  .val <- .Call(C_GrowableVec__RExtend__extend_from_vec, .call = match.call(), x, items)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
   invisible(x)
 }
 attr(GrowableVec$RExtend$extend_from_vec, ".__mx_instance__") <- TRUE
@@ -27502,14 +27636,18 @@ attr(GrowableVec$RExtend$extend_from_vec, ".__mx_instance__") <- TRUE
 #' @name GrowableVec$RExtend$len
 #' @rdname GrowableVec
 GrowableVec$RExtend$len <- function(x) {
-  .Call(C_GrowableVec__RExtend__len, .call = match.call(), x)
+  .val <- .Call(C_GrowableVec__RExtend__len, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(GrowableVec$RExtend$len, ".__mx_instance__") <- TRUE
 
 #' @name GrowableVec$RExtend$is_empty
 #' @rdname GrowableVec
 GrowableVec$RExtend$is_empty <- function(x) {
-  .Call(C_GrowableVec__RExtend__is_empty, .call = match.call(), x)
+  .val <- .Call(C_GrowableVec__RExtend__is_empty, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(GrowableVec$RExtend$is_empty, ".__mx_instance__") <- TRUE
 
@@ -27522,7 +27660,9 @@ MyFloat$RPartialOrd <- new.env(parent = emptyenv())
 #' @name MyFloat$RPartialOrd$partial_cmp
 #' @rdname MyFloat
 MyFloat$RPartialOrd$partial_cmp <- function(x, other) {
-  .Call(C_MyFloat__RPartialOrd__partial_cmp, .call = match.call(), x, other)
+  .val <- .Call(C_MyFloat__RPartialOrd__partial_cmp, .call = match.call(), x, other)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(MyFloat$RPartialOrd$partial_cmp, ".__mx_instance__") <- TRUE
 
@@ -27535,35 +27675,45 @@ IntVecIter$RIterator <- new.env(parent = emptyenv())
 #' @name IntVecIter$RIterator$next_item
 #' @rdname IntVecIter
 IntVecIter$RIterator$next_item <- function(x) {
-  .Call(C_IntVecIter__RIterator__next, .call = match.call(), x)
+  .val <- .Call(C_IntVecIter__RIterator__next, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntVecIter$RIterator$next_item, ".__mx_instance__") <- TRUE
 
 #' @name IntVecIter$RIterator$count
 #' @rdname IntVecIter
 IntVecIter$RIterator$count <- function(x) {
-  .Call(C_IntVecIter__RIterator__count, .call = match.call(), x)
+  .val <- .Call(C_IntVecIter__RIterator__count, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntVecIter$RIterator$count, ".__mx_instance__") <- TRUE
 
 #' @name IntVecIter$RIterator$collect_n
 #' @rdname IntVecIter
 IntVecIter$RIterator$collect_n <- function(x, n) {
-  .Call(C_IntVecIter__RIterator__collect_n, .call = match.call(), x, n)
+  .val <- .Call(C_IntVecIter__RIterator__collect_n, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntVecIter$RIterator$collect_n, ".__mx_instance__") <- TRUE
 
 #' @name IntVecIter$RIterator$skip
 #' @rdname IntVecIter
 IntVecIter$RIterator$skip <- function(x, n) {
-  .Call(C_IntVecIter__RIterator__skip, .call = match.call(), x, n)
+  .val <- .Call(C_IntVecIter__RIterator__skip, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntVecIter$RIterator$skip, ".__mx_instance__") <- TRUE
 
 #' @name IntVecIter$RIterator$nth
 #' @rdname IntVecIter
 IntVecIter$RIterator$nth <- function(x, n) {
-  .Call(C_IntVecIter__RIterator__nth, .call = match.call(), x, n)
+  .val <- .Call(C_IntVecIter__RIterator__nth, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IntVecIter$RIterator$nth, ".__mx_instance__") <- TRUE
 
@@ -27576,7 +27726,9 @@ IterableVec$RMakeIter <- new.env(parent = emptyenv())
 #' @name IterableVec$RMakeIter$make_iter
 #' @rdname IterableVec
 IterableVec$RMakeIter$make_iter <- function(x) {
-  .Call(C_IterableVec__RMakeIter__make_iter, .call = match.call(), x)
+  .val <- .Call(C_IterableVec__RMakeIter__make_iter, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IterableVec$RMakeIter$make_iter, ".__mx_instance__") <- TRUE
 
@@ -27589,35 +27741,45 @@ IterableVecIter$RIterator <- new.env(parent = emptyenv())
 #' @name IterableVecIter$RIterator$next_item
 #' @rdname IterableVecIter
 IterableVecIter$RIterator$next_item <- function(x) {
-  .Call(C_IterableVecIter__RIterator__next, .call = match.call(), x)
+  .val <- .Call(C_IterableVecIter__RIterator__next, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IterableVecIter$RIterator$next_item, ".__mx_instance__") <- TRUE
 
 #' @name IterableVecIter$RIterator$count
 #' @rdname IterableVecIter
 IterableVecIter$RIterator$count <- function(x) {
-  .Call(C_IterableVecIter__RIterator__count, .call = match.call(), x)
+  .val <- .Call(C_IterableVecIter__RIterator__count, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IterableVecIter$RIterator$count, ".__mx_instance__") <- TRUE
 
 #' @name IterableVecIter$RIterator$collect_n
 #' @rdname IterableVecIter
 IterableVecIter$RIterator$collect_n <- function(x, n) {
-  .Call(C_IterableVecIter__RIterator__collect_n, .call = match.call(), x, n)
+  .val <- .Call(C_IterableVecIter__RIterator__collect_n, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IterableVecIter$RIterator$collect_n, ".__mx_instance__") <- TRUE
 
 #' @name IterableVecIter$RIterator$skip
 #' @rdname IterableVecIter
 IterableVecIter$RIterator$skip <- function(x, n) {
-  .Call(C_IterableVecIter__RIterator__skip, .call = match.call(), x, n)
+  .val <- .Call(C_IterableVecIter__RIterator__skip, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IterableVecIter$RIterator$skip, ".__mx_instance__") <- TRUE
 
 #' @name IterableVecIter$RIterator$nth
 #' @rdname IterableVecIter
 IterableVecIter$RIterator$nth <- function(x, n) {
-  .Call(C_IterableVecIter__RIterator__nth, .call = match.call(), x, n)
+  .val <- .Call(C_IterableVecIter__RIterator__nth, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(IterableVecIter$RIterator$nth, ".__mx_instance__") <- TRUE
 
@@ -27631,14 +27793,18 @@ ExportControlTraitPoint$RDebug <- new.env(parent = emptyenv())
 #' @name ExportControlTraitPoint$RDebug$debug_str
 #' @rdname ExportControlTraitPoint
 ExportControlTraitPoint$RDebug$debug_str <- function(x) {
-  .Call(C_ExportControlTraitPoint__RDebug__debug_str, .call = match.call(), x)
+  .val <- .Call(C_ExportControlTraitPoint__RDebug__debug_str, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(ExportControlTraitPoint$RDebug$debug_str, ".__mx_instance__") <- TRUE
 
 #' @name ExportControlTraitPoint$RDebug$debug_str_pretty
 #' @rdname ExportControlTraitPoint
 ExportControlTraitPoint$RDebug$debug_str_pretty <- function(x) {
-  .Call(C_ExportControlTraitPoint__RDebug__debug_str_pretty, .call = match.call(), x)
+  .val <- .Call(C_ExportControlTraitPoint__RDebug__debug_str_pretty, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(ExportControlTraitPoint$RDebug$debug_str_pretty, ".__mx_instance__") <- TRUE
 
@@ -27651,7 +27817,9 @@ ExportControlTraitPoint$RDisplay <- new.env(parent = emptyenv())
 #' @name ExportControlTraitPoint$RDisplay$as_r_string
 #' @rdname ExportControlTraitPoint
 ExportControlTraitPoint$RDisplay$as_r_string <- function(x) {
-  .Call(C_ExportControlTraitPoint__RDisplay__as_r_string, .call = match.call(), x)
+  .val <- .Call(C_ExportControlTraitPoint__RDisplay__as_r_string, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(ExportControlTraitPoint$RDisplay$as_r_string, ".__mx_instance__") <- TRUE
 
@@ -27664,7 +27832,9 @@ OptsTarget$OptionsDemo <- new.env(parent = emptyenv())
 #' @name OptsTarget$OptionsDemo$basic_value
 #' @rdname OptsTarget
 OptsTarget$OptionsDemo$basic_value <- function(x) {
-  .Call(C_OptsTarget__OptionsDemo__basic_value, .call = match.call(), x)
+  .val <- .Call(C_OptsTarget__OptionsDemo__basic_value, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(OptsTarget$OptionsDemo$basic_value, ".__mx_instance__") <- TRUE
 
@@ -27672,7 +27842,9 @@ attr(OptsTarget$OptionsDemo$basic_value, ".__mx_instance__") <- TRUE
 #' @rdname OptsTarget
 OptsTarget$OptionsDemo$with_entry <- function(x) {
   .__entry_ran__ <- TRUE
-  .Call(C_OptsTarget__OptionsDemo__with_entry, .call = match.call(), x)
+  .val <- .Call(C_OptsTarget__OptionsDemo__with_entry, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(OptsTarget$OptionsDemo$with_entry, ".__mx_instance__") <- TRUE
 
@@ -27680,7 +27852,9 @@ attr(OptsTarget$OptionsDemo$with_entry, ".__mx_instance__") <- TRUE
 #' @rdname OptsTarget
 OptsTarget$OptionsDemo$with_exit <- function(x) {
   on.exit(.__exit_ran__ <- TRUE, add = TRUE)
-  .Call(C_OptsTarget__OptionsDemo__with_exit, .call = match.call(), x)
+  .val <- .Call(C_OptsTarget__OptionsDemo__with_exit, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(OptsTarget$OptionsDemo$with_exit, ".__mx_instance__") <- TRUE
 
@@ -27688,7 +27862,9 @@ attr(OptsTarget$OptionsDemo$with_exit, ".__mx_instance__") <- TRUE
 #' @rdname OptsTarget
 OptsTarget$OptionsDemo$with_checks <- function(x, n) {
   stopifnot(is.integer(n))
-  .Call(C_OptsTarget__OptionsDemo__with_checks, .call = match.call(), x, n)
+  .val <- .Call(C_OptsTarget__OptionsDemo__with_checks, .call = match.call(), x, n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(OptsTarget$OptionsDemo$with_checks, ".__mx_instance__") <- TRUE
 
@@ -27696,7 +27872,9 @@ attr(OptsTarget$OptionsDemo$with_checks, ".__mx_instance__") <- TRUE
 #' @rdname OptsTarget
 OptsTarget$OptionsDemo$deprecated_method <- function(x) {
   lifecycle::deprecate_warn("0.0.0", "deprecated_method()")
-  .Call(C_OptsTarget__OptionsDemo__deprecated_method, .call = match.call(), x)
+  .val <- .Call(C_OptsTarget__OptionsDemo__deprecated_method, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
 }
 attr(OptsTarget$OptionsDemo$deprecated_method, ".__mx_instance__") <- TRUE
 

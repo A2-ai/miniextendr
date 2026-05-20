@@ -11,8 +11,8 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 - `init.rs::package_init()` — consolidates `R_init_<pkg>` steps; `miniextendr_init!` proc-macro thin-wraps it.
 - `mx_abi.rs` — Rust reimpl of `mx_wrap`/`mx_get`/`mx_query`/`mx_abi_register` (replaced the old `mx_abi.c` / `entrypoint.c`).
 - `worker.rs` — worker thread + `Sendable<T>`. Without `worker-thread` feature, `run_on_worker(f) → Ok(f())` inline.
-- `unwind_protect.rs` — `R_UnwindProtect` wrapper; `with_r_unwind_protect_error_in_r` is the user-facing path.
-- `error_value.rs` — tagged-SEXP transport. `make_rust_error_value` (3-elem) + `make_rust_condition_value` (4-elem, custom-class slot). PROTECT discipline matters here (see Gotchas).
+- `unwind_protect.rs` — `R_UnwindProtect` wrapper; `with_r_unwind_protect` is the user-facing path (returns a tagged-condition SEXP; the R wrapper raises). `with_r_unwind_protect_or_raise` is the legacy panics-as-R-error variant kept for test/bench use.
+- `error_value.rs` — tagged-SEXP transport. `make_rust_condition_value` (4-element list with custom-class slot) is the only producer. PROTECT discipline matters here (see Gotchas).
 - `condition.rs` — `RCondition` enum + `error!`/`warning!`/`message!`/`condition!` macros + `AsRError<E: Error>`.
 - `from_r.rs` — `TryFromSexp` + `r_slice` / `r_slice_mut` (handle R's 0x1 empty-vector data pointer).
 - `into_r.rs` — `IntoR` impls; `Box<[T]>` blanket + `bool`/`String` overrides.
@@ -22,8 +22,8 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 - `panic_telemetry.rs` — RwLock-based panic hook.
 
 ## Gotchas specific to this crate
-- **`error_in_r` is the DEFAULT** for `#[miniextendr]` fns/methods. `Rf_error` only fires from trait-ABI vtable shims, ALTREP `RUnwind` guards, and explicit opt-out (`no_error_in_r`/`unwrap_in_r`). Older comments suggesting otherwise are stale.
-- **`with_r_unwind_protect_error_in_r` leaks ~8 bytes on R longjmp** (RErrorMarker + Box header). Regular panics don't leak. MXL300 warns about direct `Rf_error()` for this reason.
+- **Tagged-condition transport is the only path** for `#[miniextendr]` fns/methods. All Rust-origin failures (panics, `Result::Err`, `Option::None`) and user conditions (`error!`/`warning!`/`message!`/`condition!`) flow through `make_rust_condition_value` → R wrapper → `stop(structure(..., class = c("rust_*", ...)))`. `Rf_error` only fires from trait-ABI vtable shims and ALTREP `RUnwind` guards. `unwrap_in_r` is semantically distinct (Result-as-value vs Result-as-error-boundary) and orthogonal to transport.
+- **`with_r_unwind_protect` leaks ~8 bytes on R longjmp** (RErrorMarker + Box header). Regular panics don't leak. MXL300 warns about direct `Rf_error()` for this reason.
 - **PROTECT discipline against R-devel GC** — `SEXP::scalar_string` and `scalar_logical(true)` allocate fresh STRSXP/LGLSXP; protect across `SET_VECTOR_ELT`/`SETATTRIB`. R-devel's GC is more aggressive — `make_rust_condition_value` crossed the threshold in PR #344 commit `af6b4875` (recursive gc + segfault at small offsets). R-release passing ≠ safe.
 - **`#[macro_export]` collides with same-named modules at crate root** — `pub mod error`/`pub mod condition` shadow `error!`/`condition!` macros under `use miniextendr_api::{error, condition}`. Invoke via fully-qualified path; `message!` / `warning!` have no module conflict.
 - **`R_GetCCallable` throws on miss** — does NOT return NULL. Force DLL load via `NAMESPACE importFrom(...)`.

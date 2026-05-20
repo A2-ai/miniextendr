@@ -728,7 +728,6 @@ pub fn miniextendr(
         noexport,
         export,
         doc,
-        error_in_r,
         c_symbol,
         r_name: fn_r_name,
         r_entry,
@@ -856,7 +855,6 @@ pub fn miniextendr(
         rust_ident,
         unwrap_in_r,
         strict,
-        error_in_r,
     );
 
     let returns_sexp = return_analysis.returns_sexp;
@@ -885,8 +883,9 @@ pub fn miniextendr(
     //    - Required when SEXP types are involved (not Send)
     //    - Required for R API calls (Rf_*, R_*)
     //    - Panic handling via R_UnwindProtect (Rust destructors run correctly)
-    //    - Combined with error_in_r: errors returned as tagged SEXP values,
-    //      R wrapper raises structured condition objects
+    //    - Errors are always returned as tagged SEXP values; the R wrapper
+    //      inspects the tag and raises a structured condition (`rust_*` class
+    //      layering) past the Rust boundary.
     //    - Simpler execution model, better R integration
     //
     // 2. **Worker Thread Strategy** (run_on_worker + catch_unwind) — OPT-IN
@@ -898,7 +897,8 @@ pub fn miniextendr(
     //    - ExternalPtr<T> is Send: can be returned from worker thread functions
     //    - R API calls from worker use with_r_thread (serialized to main thread)
     //
-    // Default: Main thread (safer with error_in_r, simpler execution model)
+    // Default: Main thread (simpler execution model, compatible with the
+    // tagged-SEXP error transport)
     // Override: Use worker thread with #[miniextendr(worker)]
     //
     // Thread strategy:
@@ -997,9 +997,6 @@ pub fn miniextendr(
     if strict {
         c_wrapper_builder = c_wrapper_builder.strict();
     }
-    if error_in_r {
-        c_wrapper_builder = c_wrapper_builder.error_in_r();
-    }
 
     let c_wrapper = c_wrapper_builder.build().generate();
 
@@ -1059,18 +1056,14 @@ pub fn miniextendr(
     } else {
         format!(".Call({}, {})", c_ident_str, call_args_joined)
     };
-    let r_wrapper_return_str = if error_in_r {
-        // error_in_r mode: capture result, check for error value, raise R condition
+    let r_wrapper_return_str = {
+        // Capture result, check for tagged condition value, raise R condition if present.
         let final_return = if is_invisible_return_type {
             "invisible(.val)"
         } else {
             ".val"
         };
-        crate::method_return_builder::error_in_r_standalone_body(&call_expr, final_return, "  ")
-    } else if !is_invisible_return_type {
-        call_expr
-    } else {
-        format!("invisible({})", call_expr)
+        crate::method_return_builder::standalone_body(&call_expr, final_return, "  ")
     };
     // Determine R function name and S3-specific comments
     let is_s3_method = s3_generic.is_some() || s3_class.is_some();

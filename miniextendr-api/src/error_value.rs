@@ -1,9 +1,10 @@
-//! Tagged error value transport for `#[miniextendr(error_in_r)]` mode.
+//! Tagged condition value transport.
 //!
-//! When `error_in_r` is enabled, Rust-origin failures (panics, `Result::Err`,
-//! `Option::None`) are converted to a tagged SEXP value instead of raising an
-//! R error immediately. The generated R wrapper inspects this tagged value and
-//! escalates it to a proper R error condition past the Rust boundary.
+//! Rust-origin failures (panics, `Result::Err`, `Option::None`) and user-raised
+//! conditions (`error!()`, `warning!()`, `message!()`, `condition!()`) are
+//! converted to a tagged SEXP value instead of raising an R error immediately.
+//! The generated R wrapper inspects this tagged value and escalates it to a
+//! proper R condition past the Rust boundary, with `rust_*` class layering.
 //!
 //! This ensures Rust destructors run cleanly before R sees the error.
 //!
@@ -73,7 +74,7 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
 /// Build a tagged condition-value SEXP for transport across the Rust→R boundary.
 ///
 /// Used for all Rust-origin failures and user-facing conditions. The R-side
-/// switch in `error_in_r_check_lines` reads `.val$kind` to select the condition
+/// switch in `condition_check_lines` reads `.val$kind` to select the condition
 /// type and `.val$class` to prepend optional user classes before the standard
 /// `rust_*` layering.
 ///

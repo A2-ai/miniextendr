@@ -263,9 +263,10 @@ impl<T: serde::Serialize> IntoR for AsSerialize<T> {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(to_r(&self.0).unwrap_or_else(|e| {
-            crate::error::r_stop(&format!("serde_r serialization failed: {}", e))
-        }))
+        // Panic so the surrounding `with_r_unwind_protect` converts to a tagged
+        // condition SEXP — direct `r_stop` would longjmp past the framework's
+        // structured `rust_*` class layering.
+        Ok(to_r(&self.0).unwrap_or_else(|e| panic!("serde_r serialization failed: {}", e)))
     }
 }
 // endregion

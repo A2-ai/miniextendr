@@ -542,7 +542,6 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 check_interrupt: attrs.check_interrupt,
                 rng: attrs.rng,
                 unwrap_in_r: attrs.unwrap_in_r,
-                error_in_r: attrs.error_in_r,
                 param_defaults: attrs.defaults,
                 param_tags,
                 skip: attrs.skip,
@@ -575,8 +574,6 @@ struct TraitMethodAttrs {
     rng: bool,
     /// Return `Result<T, E>` to R without unwrapping (R wrapper receives the result variant).
     unwrap_in_r: bool,
-    /// Transport Rust errors as tagged SEXP values; R wrapper raises a condition.
-    error_in_r: bool,
     /// Exclude this method from all generated wrappers (C, R, vtable shims).
     skip: bool,
     /// Parameter default values: keys are parameter names, values are R expressions.
@@ -603,7 +600,6 @@ struct TraitMethodAttrs {
 ///
 /// Both styles can coexist. The `worker` flag controls whether static methods
 /// dispatch to the worker thread (defaults to `cfg!(feature = "default-worker")`).
-/// `error_in_r` and `unwrap_in_r` are mutually exclusive.
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethodAttrs> {
     let mut worker = false;
     let mut unsafe_main_thread = false;
@@ -611,7 +607,6 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut check_interrupt = false;
     let mut rng = false;
     let mut unwrap_in_r = false;
-    let mut error_in_r = false;
     let mut skip = false;
     let mut strict = false;
     let mut defaults = std::collections::HashMap::new();
@@ -644,25 +639,11 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     } else if inner.path.is_ident("check_interrupt") {
                         check_interrupt = true;
                     } else if inner.path.is_ident("unwrap_in_r") {
-                        if error_in_r {
-                            return Err(syn::Error::new_spanned(
-                                inner.path,
-                                "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                            ));
-                        }
                         unwrap_in_r = true;
-                    } else if inner.path.is_ident("error_in_r") {
-                        if unwrap_in_r {
-                            return Err(syn::Error::new_spanned(
-                                inner.path,
-                                "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                            ));
-                        }
-                        error_in_r = true;
                     } else {
                         return Err(inner.error(
                             "unknown nested option; expected `worker`, `main_thread`, `coerce`, \
-                             `check_interrupt`, `unwrap_in_r`, or `error_in_r`",
+                             `check_interrupt`, or `unwrap_in_r`",
                         ));
                     }
                     Ok(())
@@ -678,21 +659,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
             } else if meta.path.is_ident("rng") {
                 rng = true;
             } else if meta.path.is_ident("unwrap_in_r") {
-                if error_in_r {
-                    return Err(syn::Error::new_spanned(
-                        meta.path,
-                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                    ));
-                }
                 unwrap_in_r = true;
-            } else if meta.path.is_ident("error_in_r") {
-                if unwrap_in_r {
-                    return Err(syn::Error::new_spanned(
-                        meta.path,
-                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                    ));
-                }
-                error_in_r = true;
             } else if meta.path.is_ident("skip") {
                 skip = true;
             } else if meta.path.is_ident("r_name") {
@@ -804,7 +771,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
-                     `check_interrupt`, `rng`, `unwrap_in_r`, `error_in_r`, `skip`, `r_name`, \
+                     `check_interrupt`, `rng`, `unwrap_in_r`, `skip`, `r_name`, \
                      `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`",
                 ));
             }
@@ -819,7 +786,6 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         check_interrupt,
         rng,
         unwrap_in_r,
-        error_in_r,
         skip,
         strict,
         defaults,
@@ -1045,11 +1011,6 @@ pub(super) fn generate_trait_method_c_wrapper(
     // Apply rng if the method has #[miniextendr(rng)]
     if method.rng {
         builder = builder.rng();
-    }
-
-    // Apply error_in_r mode
-    if method.error_in_r {
-        builder = builder.error_in_r();
     }
 
     // Apply strict mode for lossy type conversions

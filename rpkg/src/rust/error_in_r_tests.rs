@@ -1,8 +1,12 @@
-//! Test fixtures for `#[miniextendr(error_in_r)]` mode.
+//! Test fixtures for the default tagged-condition transport.
 //!
-//! These functions use error_in_r to transport Rust failures as tagged SEXP values
-//! instead of raising immediate R errors. The generated R wrapper inspects the
-//! tagged value and raises a proper R error condition past the Rust boundary.
+//! These functions exercise the standard `#[miniextendr]` path where Rust
+//! failures are returned as tagged SEXP values and the generated R wrapper
+//! raises a proper `rust_*`-classed condition past the Rust boundary.
+//!
+//! Historical note: this module pre-dates the removal of the
+//! `#[miniextendr(error_in_r)]` opt-in; the option is now the only mode and
+//! has been dropped from the syntax.
 
 use miniextendr_api::miniextendr;
 
@@ -11,7 +15,7 @@ use miniextendr_api::miniextendr;
 /// Standalone function that panics -- error_in_r catches this.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_panic() -> String {
     panic!("test panic from error_in_r")
 }
@@ -19,7 +23,7 @@ pub fn error_in_r_panic() -> String {
 /// Standalone function that returns Result::Err -- becomes error value.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_result_err() -> Result<String, String> {
     Err("test result error".to_string())
 }
@@ -27,7 +31,7 @@ pub fn error_in_r_result_err() -> Result<String, String> {
 /// Standalone function that returns Result::Ok -- works normally.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_result_ok() -> Result<String, String> {
     Ok("success".to_string())
 }
@@ -35,7 +39,7 @@ pub fn error_in_r_result_ok() -> Result<String, String> {
 /// Standalone function that returns Option::None (unit) -- becomes error value.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_option_none() -> Option<()> {
     None
 }
@@ -43,7 +47,7 @@ pub fn error_in_r_option_none() -> Option<()> {
 /// Standalone function that returns Option::Some(()) -- returns NULL.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_option_some() -> Option<()> {
     Some(())
 }
@@ -51,7 +55,7 @@ pub fn error_in_r_option_some() -> Option<()> {
 /// Normal function (no error) -- works fine.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_normal() -> String {
     "all good".to_string()
 }
@@ -59,7 +63,7 @@ pub fn error_in_r_normal() -> String {
 /// Function returning i32 -- tests numeric return.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_i32_ok() -> i32 {
     42
 }
@@ -67,7 +71,7 @@ pub fn error_in_r_i32_ok() -> i32 {
 /// Function returning Result<i32, String> with Err -- becomes error value.
 ///
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_i32_err() -> Result<i32, String> {
     Err("integer conversion failed".to_string())
 }
@@ -76,7 +80,7 @@ pub fn error_in_r_i32_err() -> Result<i32, String> {
 ///
 /// @param msg Custom panic message.
 /// @export
-#[miniextendr(error_in_r)]
+#[miniextendr]
 pub fn error_in_r_panic_custom(msg: String) -> String {
     panic!("{}", msg)
 }
@@ -98,25 +102,21 @@ impl ErrorInRCounter {
     }
 
     /// Get the current value -- should always succeed.
-    #[miniextendr(error_in_r)]
     fn get(&self) -> i32 {
         self.value
     }
 
     /// Increment -- mutable method, should succeed and allow chaining.
-    #[miniextendr(error_in_r)]
     fn inc(&mut self) {
         self.value += 1;
     }
 
     /// Deliberately panic in a method.
-    #[miniextendr(error_in_r)]
     fn panic_method(&self) -> i32 {
         panic!("method panic in error_in_r")
     }
 
     /// Return Result::Err in a method.
-    #[miniextendr(error_in_r)]
     fn failing_method(&self) -> Result<i32, String> {
         Err("method error".to_string())
     }
@@ -140,19 +140,16 @@ impl ErrorInRR6Widget {
     }
 
     /// Get the name -- should always succeed.
-    #[miniextendr(error_in_r)]
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
 
     /// Deliberately panic.
-    #[miniextendr(error_in_r)]
     pub fn panic_method(&self) -> String {
         panic!("R6 panic in error_in_r")
     }
 
     /// Return Result::Err.
-    #[miniextendr(error_in_r)]
     pub fn failing_result(&self) -> Result<String, String> {
         Err("R6 result error".to_string())
     }
@@ -178,25 +175,21 @@ impl ErrorInRS7Gauge {
     }
 
     /// Read the level -- should always succeed.
-    #[miniextendr(error_in_r)]
     pub fn read_level(&self) -> f64 {
         self.level
     }
 
     /// Set the level -- mutable, chainable.
-    #[miniextendr(error_in_r)]
     pub fn set_level(&mut self, level: f64) {
         self.level = level;
     }
 
     /// Deliberately panic.
-    #[miniextendr(error_in_r)]
     pub fn panic_method(&self) -> f64 {
         panic!("S7 panic in error_in_r")
     }
 
     /// Return Result::Err.
-    #[miniextendr(error_in_r)]
     pub fn failing_result(&self) -> Result<f64, String> {
         Err("S7 result error".to_string())
     }
@@ -237,12 +230,10 @@ impl FallibleImpl {
 /// Fallible trait implementation for FallibleImpl with error_in_r on each method.
 #[miniextendr]
 impl Fallible for FallibleImpl {
-    #[miniextendr(error_in_r)]
     fn get_value(&self) -> i32 {
         self.value
     }
 
-    #[miniextendr(error_in_r)]
     fn will_panic(&self) -> i32 {
         panic!("trait panic in error_in_r")
     }

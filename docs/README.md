@@ -37,7 +37,7 @@ framework.
 - **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`,
   `REnv` for calling R from Rust
 - **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`,
-  `error_in_r` mode, backtrace control
+  tagged-condition transport, backtrace control
 - **[ExternalPtr](EXTERNALPTR.md)** -- Box-like owned pointer wrapping R's
   `EXTPTRSXP`
 - **[GC Protection](GC_PROTECT.md)** -- RAII-based protect/unprotect

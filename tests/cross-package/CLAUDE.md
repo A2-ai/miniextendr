@@ -20,7 +20,7 @@ just cross-check     # R CMD check both
 
 ## Why this matters
 - `R_GetCCallable("pkg", "fn")` **throws an R error** (longjmp) on miss — does NOT return NULL. NAMESPACE `importFrom(vctrs, ...)` (or any function from the producer package) forces the producer DLL to load before the consumer DLL resolves its callables.
-- Trait-ABI vtable shims use `Rf_error` (not `error_in_r`) — see `miniextendr-macros/src/miniextendr_trait.rs:808` and the `with_r_unwind_protect` leak note in root `CLAUDE.md`.
+- Trait-ABI vtable shims wrap in `with_r_unwind_protect_shim` (returns a tagged error SEXP that the View method re-panics into the consumer's outer `with_r_unwind_protect` guard) — see `miniextendr-macros/src/miniextendr_trait.rs:808` and the `with_r_unwind_protect` leak note in root `CLAUDE.md`.
 
 ## Gotcha
 - Each cross-package has its own `Cargo.toml` and its own `[patch.crates-io]` — `just check/clippy/test` iterate them via the workspace recipes. Raw `cargo --workspace` from the repo root won't include them.

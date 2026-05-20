@@ -31,7 +31,7 @@ divide(1L, 0L)
 
 ## Result Types
 
-Return `Result<T, E>` for structured error handling. By default (`error_in_r` is on), `Err` values are transported as tagged SEXP values across the Rust boundary, then the generated R wrapper raises a structured R condition:
+Return `Result<T, E>` for structured error handling. `Err` values are transported as tagged SEXP values across the Rust boundary, then the generated R wrapper raises a structured R condition:
 
 ```rust
 #[miniextendr]
@@ -40,10 +40,10 @@ pub fn parse_int(s: &str) -> Result<i32, String> {
 }
 ```
 
-To return `Result<T, E>` to R as a value instead of an error, use `#[miniextendr(unwrap_in_r, no_error_in_r)]`:
+To return `Result<T, E>` to R as a value instead of an error, use `#[miniextendr(unwrap_in_r)]`:
 
 ```rust
-#[miniextendr(unwrap_in_r, no_error_in_r)]
+#[miniextendr(unwrap_in_r)]
 pub fn try_parse(s: &str) -> Result<i32, String> {
     s.parse().map_err(|e| e.to_string())
 }
@@ -69,7 +69,7 @@ with_r_unwind_protect(|| { ... })
   +-- Success?    --> return SEXP normally
 ```
 
-Note: `with_r_unwind_protect_error_in_r` leaks ~8 bytes (the `RErrorMarker` + Box header) on the R-longjmp path (`R_ContinueUnwind`). Regular Rust panics do not leak. This is why MXL300 flags direct `Rf_error()` calls: they longjmp through Rust frames and bypass destructors unless wrapped correctly.
+Note: `with_r_unwind_protect` leaks ~8 bytes (the `RErrorMarker` + Box header) on the R-longjmp path (`R_ContinueUnwind`). Regular Rust panics do not leak. This is why MXL300 flags direct `Rf_error()` calls: they longjmp through Rust frames and bypass destructors unless wrapped correctly.
 
 ## Never Call Rf_error() Directly
 
@@ -91,7 +91,7 @@ return Err("something went wrong".to_string());
 miniextendr-lint (MXL300) flags direct `Rf_error()` call sites at build time.
 
 **Note on the `~8-byte leak`**: on the `R_ContinueUnwind` path (R error propagating through
-`with_r_unwind_protect_error_in_r`), approximately 8 bytes are leaked per event
+`with_r_unwind_protect`), approximately 8 bytes are leaked per event
 (`RErrorMarker` + Box header). This is a documented, bounded cost -- not a bug. Regular
 Rust panics do not leak.
 
@@ -99,7 +99,7 @@ Rust panics do not leak.
 
 - Use `panic!()` instead of `Rf_error()` -- the framework converts panics safely
 - Return `Result<T, String>` for recoverable errors
-- Use `#[miniextendr(unwrap_in_r, no_error_in_r)]` when callers should handle errors in R
+- Use `#[miniextendr(unwrap_in_r)]` when callers should handle errors in R as values
 - Never call `Rf_error()` directly (lint rule MXL300 warns about this)
 
 ## Full reference

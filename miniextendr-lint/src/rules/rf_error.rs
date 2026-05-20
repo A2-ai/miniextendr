@@ -3,7 +3,7 @@
 //! - MXL300: Warns on direct `Rf_error`/`Rf_errorcall` calls in user code.
 //!   These longjmp through Rust frames, bypassing destructors unless wrapped in
 //!   `R_UnwindProtect`. Prefer `panic!()` or `Err(...)` which produce structured
-//!   R condition objects via `error_in_r`.
+//!   R condition objects via the tagged-condition transport.
 
 use crate::crate_index::CrateIndex;
 use crate::diagnostic::Diagnostic;
@@ -25,7 +25,8 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
                 )
                 .with_help(
                     "Use `panic!()` for unrecoverable errors or return `Err(...)` for \
-                     Result types. These produce structured R condition objects via error_in_r.",
+                     Result types. These produce structured R condition objects via \
+                     the tagged-condition transport.",
                 ),
             );
         }

@@ -313,49 +313,41 @@ where
     }
 }
 
-/// Execute a closure with R unwind protection (non-`error_in_r` path).
+/// Execute a closure with R unwind protection, raising any Rust panic as an R
+/// error via `Rf_eval(stop(structure(...)))`.
 ///
-/// If the closure panics, the panic is caught and converted to an R error via
-/// `Rf_errorcall` (longjmp). If R raises an error (longjmp), all Rust RAII
-/// resources are properly dropped before R continues unwinding.
+/// If the closure panics, the panic is caught and converted to an R error
+/// (longjmp) with `rust_*` class layering. If R raises an error (longjmp), all
+/// Rust RAII resources are properly dropped before R continues unwinding.
 ///
-/// **This is NOT the default path for `#[miniextendr]` functions.** The default
-/// is [`with_r_unwind_protect_error_in_r`], which returns a tagged SEXP instead
-/// of longjmping, preserving `rust_*` class layering.
+/// **This is NOT the user-facing path for `#[miniextendr]` functions.** That
+/// path is [`with_r_unwind_protect`], which returns a tagged SEXP instead of
+/// longjmping (the macro-generated R wrapper raises the structured condition).
 ///
-/// This function is used by:
-/// - Trait-ABI vtable shims (cross-package C-ABI calls)
-/// - ALTREP `RUnwind` guard callbacks
-/// - Explicit `#[miniextendr(no_error_in_r)]` / `unwrap_in_r` opt-out
+/// This raising-variant exists for guard sites that have no R wrapper between
+/// them and R's runtime:
+/// - ALTREP `RUnwind` guard callbacks (via [`with_r_unwind_protect_sourced`])
+/// - FFI guard tests / benchmarks exercising the raw `R_UnwindProtect` mechanism
 ///
-/// In these contexts there is no R wrapper to inspect a tagged SEXP. Panics
-/// are routed through `raise_rust_condition_via_stop` so they still receive
-/// `rust_*` class layering (issue #345). Trait-ABI shims use a separate
-/// SEXP-returning variant that re-panics at the View boundary.
+/// In those contexts there is no consumer-side R wrapper to inspect a tagged
+/// SEXP. Panics are routed through `raise_rust_condition_via_stop` so they
+/// still receive `rust_*` class layering (issue #345). Trait-ABI shims use a
+/// separate SEXP-returning variant ([`with_r_unwind_protect_shim`]) that
+/// re-panics at the View boundary.
 ///
 /// # Arguments
 ///
 /// * `f` - The closure to execute
 /// * `call` - Optional R call SEXP for better error messages
-///
-/// # Example
-///
-/// ```ignore
-/// // Typical use: inside a trait-ABI shim where no R wrapper exists.
-/// // For user-facing #[miniextendr] fns, prefer with_r_unwind_protect_error_in_r.
-/// let result: i32 = with_r_unwind_protect_error_in_r(|| {
-///     // Rust code that may panic or raise conditions
-///     SEXP::nil()
-/// }, Some(call));
-/// ```
-pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
+pub fn with_r_unwind_protect_or_raise<F, R>(f: F, call: Option<SEXP>) -> R
 where
     F: FnOnce() -> R,
 {
     with_r_unwind_protect_sourced(f, call, crate::panic_telemetry::PanicSource::UnwindProtect)
 }
 
-/// Like [`with_r_unwind_protect`], but reports panics with a custom [`PanicSource`].
+/// Like [`with_r_unwind_protect_or_raise`], but reports panics with a custom
+/// [`PanicSource`].
 ///
 /// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
 /// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.
@@ -382,7 +374,7 @@ where
     match run_r_unwind_protect(f) {
         Ok(result) => result,
         Err(payload) => {
-            // region: RCondition recognition in non-error_in_r context
+            // region: RCondition recognition for the raising-variant path
             if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
                 match cond {
                     crate::condition::RCondition::Error { message, class } => {
@@ -421,21 +413,18 @@ where
     }
 }
 
-/// Like [`with_r_unwind_protect`], but returns a tagged error SEXP on Rust panics
-/// instead of raising an R error via `Rf_errorcall`.
+/// Like [`with_r_unwind_protect`], but tailored for trait-ABI vtable shims.
 ///
-/// **For trait-ABI vtable shims.** Same behaviour as
-/// [`with_r_unwind_protect_error_in_r`] except it is intended for use in shim
-/// functions that have no R wrapper of their own. The tagged SEXP is returned
-/// to the View method wrapper, which calls
+/// Same tagged-SEXP behaviour as [`with_r_unwind_protect`], but intended for
+/// shim functions that have no R wrapper of their own. The tagged SEXP is
+/// returned to the View method wrapper, which calls
 /// [`crate::condition::repanic_if_rust_error`] to re-panic with the
 /// reconstructed [`crate::condition::RCondition`]. The outer
-/// `with_r_unwind_protect_error_in_r` in the consumer's C entry point then
-/// catches the re-panic and builds the final tagged SEXP for the consumer's R
-/// wrapper.
+/// `with_r_unwind_protect` in the consumer's C entry point then catches the
+/// re-panic and builds the final tagged SEXP for the consumer's R wrapper.
 ///
 /// R-origin errors (longjmp) still pass through via `R_ContinueUnwind` — the
-/// outer `error_in_r` guard will catch them.
+/// outer guard will catch them.
 ///
 /// # PROTECT note
 ///
@@ -451,7 +440,7 @@ where
     match run_r_unwind_protect(f) {
         Ok(result) => result,
         Err(payload) => {
-            // region: RCondition recognition — same as error_in_r path
+            // region: RCondition recognition — same as the tagged-SEXP path
             if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
                 use crate::error_value::kind;
                 let (kind, msg, class) = match cond {
@@ -485,20 +474,24 @@ where
     }
 }
 
-/// Like [`with_r_unwind_protect`], but returns a tagged error SEXP on Rust panics
-/// instead of raising an R error via `Rf_errorcall`.
+/// Run a closure under `R_UnwindProtect`, returning a tagged condition SEXP on
+/// Rust panics instead of raising an R error.
 ///
-/// This is the **default** transport for all `#[miniextendr]` functions and
-/// methods (both `error_in_r.unwrap_or(true)`). The error/condition SEXP is
-/// inspected by the generated R wrapper which raises a proper R condition past
-/// the Rust boundary, with `rust_*` class layering.
+/// This is **the** transport for all `#[miniextendr]` functions and methods.
+/// The returned error/condition SEXP is inspected by the generated R wrapper
+/// which raises a proper R condition past the Rust boundary, with `rust_*`
+/// class layering.
 ///
 /// Recognises [`crate::condition::RCondition`] payloads (from `error!()`,
 /// `warning!()`, `message!()`, `condition!()`) before falling through to the
 /// generic panic→string path.
 ///
 /// R-origin errors (longjmp) still pass through via `R_ContinueUnwind`.
-pub fn with_r_unwind_protect_error_in_r<F>(f: F, call: Option<SEXP>) -> SEXP
+///
+/// For guard sites that have no R wrapper to inspect a tagged SEXP (ALTREP
+/// `RUnwind` callbacks, FFI guard tests) see [`with_r_unwind_protect_or_raise`];
+/// for trait-ABI vtable shims see [`with_r_unwind_protect_shim`].
+pub fn with_r_unwind_protect<F>(f: F, call: Option<SEXP>) -> SEXP
 where
     F: FnOnce() -> SEXP,
 {

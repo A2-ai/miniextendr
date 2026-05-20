@@ -129,10 +129,10 @@ Fix: move all `///` comments above any non-doc attributes.
 
 **MXL300** — Direct `Rf_error` or `Rf_errorcall` call.
 Calling the R error longjmp functions directly bypasses the
-`with_r_unwind_protect_error_in_r` transport that runs Rust destructors before
-jumping. The tagged-SEXP payload (Box allocated in `make_rust_error_value`) is
+`with_r_unwind_protect` transport that runs Rust destructors before jumping.
+The tagged-SEXP payload (Box allocated by `make_rust_condition_value`) is
 leaked on the R longjmp path when `Rf_error` is called inside
-`with_r_unwind_protect_error_in_r` — approximately 8 bytes per error invocation.
+`with_r_unwind_protect` — approximately 8 bytes per error invocation.
 The framework converts `panic!()` to R errors correctly.
 Fix: replace `Rf_error(...)` / `Rf_errorcall(...)` with `panic!(...)`.
 

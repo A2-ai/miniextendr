@@ -4,14 +4,14 @@ Project-wide defaults for `#[miniextendr]` options, controlled via Cargo feature
 
 ## Problem
 
-Options like `strict`, `coerce`, and `error_in_r` must normally be specified on every
+Options like `strict` and `coerce` must normally be specified on every
 `#[miniextendr]` annotation:
 
 ```rust
-#[miniextendr(strict, coerce, error_in_r)]
+#[miniextendr(strict, coerce)]
 fn add(a: i64, b: i64) -> i64 { a + b }
 
-#[miniextendr(strict, coerce, error_in_r)]
+#[miniextendr(strict, coerce)]
 fn mul(a: i64, b: i64) -> i64 { a * b }
 ```
 
@@ -50,13 +50,12 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 
 ### Hardcoded Defaults (No Longer Feature-Controlled)
 
-The following were previously opt-in features but are now **always enabled by default**.
-Use the corresponding opt-out keyword to disable per-function/method:
+The following were previously opt-in features but are now **always enabled by default**:
 
-| Default | Effect | Opt-out keyword |
-|---------|--------|-----------------|
-| `error_in_r` | Transport Rust errors as R conditions | `no_error_in_r` |
-| Main thread | All code runs on R's main thread | `worker` (to opt into worker thread) |
+| Default | Effect | Notes |
+|---------|--------|-------|
+| Tagged-condition transport | Transport Rust errors as R conditions (panics, `Err`, `None` → tagged SEXP → R wrapper raises) | Only path; no opt-out. `unwrap_in_r` is orthogonal (Result-as-value vs Result-as-error-boundary). |
+| Main thread | All code runs on R's main thread | Opt into the worker thread with `worker`. |
 
 ### Mutual Exclusivity
 
@@ -120,8 +119,8 @@ impl MyType { ... }
 
 ### Methods
 
-Per-method options (`worker`, `main_thread`, `coerce`, `error_in_r`) also respect
-feature defaults:
+Per-method options (`worker`, `main_thread`, `coerce`) also respect feature
+defaults:
 
 ```rust
 // With default-worker + default-coerce features enabled:
@@ -139,20 +138,15 @@ impl MyType {
 }
 ```
 
-### error_in_r + unwrap_in_r Conflict
+### `unwrap_in_r`
 
-`error_in_r` and `unwrap_in_r` are mutually exclusive. Since `error_in_r` is now the
-default, specifying `unwrap_in_r` without `no_error_in_r` produces a helpful error:
-
-```text
-error: `error_in_r` (default) and `unwrap_in_r` are mutually exclusive;
-       use `no_error_in_r` to opt out
-```
-
-Fix by adding `no_error_in_r`:
+`unwrap_in_r` is orthogonal to the tagged-condition transport. It controls
+whether `Result<T, E>` is treated as a Rust-origin failure (`Err` → tagged
+condition → `stop()`) or as a value to surface to R as a list with an `$error`
+slot. There is no conflict to resolve:
 
 ```rust
-#[miniextendr(unwrap_in_r, no_error_in_r)]
+#[miniextendr(unwrap_in_r)]
 fn fallible() -> Result<i32, String> { Ok(42) }
 ```
 
@@ -162,7 +156,7 @@ For each option, the resolution is:
 
 1. **Explicit attribute** -- `strict` or `no_strict` on the item → uses that value
 2. **Feature default** -- `cfg!(feature = "default-strict")` → uses the feature setting (for feature-controlled options)
-3. **Built-in default** -- `error_in_r=true`, `main_thread=true`, `false` for other boolean options, `Env` for class system
+3. **Built-in default** -- `main_thread=true`, tagged-condition transport always on, `false` for other boolean options, `Env` for class system
 
 Explicit attributes always win over feature/built-in defaults.
 
@@ -213,7 +207,6 @@ impl LightWrapper { ... }  // env (overridden)
 |---------|-------|---------|
 | `no_strict` | `#[miniextendr(no_strict)]` on fn, `#[miniextendr(no_strict)]` on impl | `default-strict` feature |
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `default-coerce` feature |
-| `no_error_in_r` | `#[miniextendr(no_error_in_r)]` on fn, `#[miniextendr(r6(no_error_in_r))]` on method | Built-in `error_in_r` default |
 | `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
 | `no_worker` | `#[miniextendr(no_worker)]` on fn, `#[miniextendr(r6(no_worker))]` on method | `default-worker` feature |
 | `env` / `r6` / `s7` / `s3` / `s4` | `#[miniextendr(env)]` on impl | `default-r6` or `default-s7` feature |

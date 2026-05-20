@@ -8,7 +8,7 @@ Four independent FFI boundaries exist between Rust and R:
 
 | Boundary | Where | Guard |
 |----------|-------|-------|
-| Main thread (default) | `unwind_protect.rs` | `R_UnwindProtect` + `catch_unwind` + `error_in_r` tagged values |
+| Main thread (default) | `unwind_protect.rs` | `R_UnwindProtect` + `catch_unwind` + tagged-condition SEXP |
 | Worker thread (opt-in, requires `worker-thread` feature) | `worker.rs` | `catch_unwind` + `Rf_error` |
 | ALTREP trampolines | `altrep_bridge.rs` | Per-type `AltrepGuard` const |
 | `R_UnwindProtect` | `unwind_protect.rs` | Catches panics + R longjmps |

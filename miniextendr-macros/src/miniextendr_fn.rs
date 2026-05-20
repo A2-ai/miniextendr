@@ -1039,7 +1039,7 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// NameValue bool, parenthesized bool) all read from the same list and can't
 /// drift.
 const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
-     rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, \
+     rng, unwrap_in_r, strict, no_strict, \
      internal, noexport, export";
 
 /// Comma-separated list of fn-level nested options, for error messages.
@@ -1099,8 +1099,6 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) lifecycle: Option<crate::lifecycle::LifecycleSpec>,
     /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
     pub(crate) strict: bool,
-    /// Transport Rust-origin errors as tagged values; R wrapper raises condition.
-    pub(crate) error_in_r: bool,
     /// Mark as internal: adds `@keywords internal`, suppresses `@export`.
     pub(crate) internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
@@ -1197,9 +1195,9 @@ pub(crate) enum ReturnPref {
 /// - **Name-value**: `#[miniextendr(prefer = "list")]` or `#[miniextendr(invisible = true)]`
 /// - **Nested list**: `#[miniextendr(s3(generic = "...", class = "..."))]`
 ///
-/// Options with negated forms (`no_worker`, `no_coerce`, `no_strict`, `no_error_in_r`)
-/// explicitly disable the corresponding flag, which is useful for overriding
-/// feature-based defaults.
+/// Options with negated forms (`no_worker`, `no_coerce`, `no_strict`) explicitly
+/// disable the corresponding flag, which is useful for overriding feature-based
+/// defaults.
 ///
 /// An empty input (plain `#[miniextendr]`) resolves all options to their feature-based
 /// defaults (e.g., `default-worker`, `default-coerce`, `default-strict`).
@@ -1208,7 +1206,7 @@ pub(crate) enum ReturnPref {
 ///
 /// Returns a compile error for:
 /// - Unknown option names (prevents silent typos)
-/// - Mutually exclusive options (`error_in_r` + `unwrap_in_r`, `internal` + `noexport`)
+/// - Mutually exclusive options (`internal` + `noexport`)
 /// - Invalid values for key-value options (e.g., bad `prefer` or `c_symbol`)
 /// - Missing required sub-options (e.g., `s3(...)` without `class`)
 impl syn::parse::Parse for MiniextendrFnAttrs {
@@ -1229,7 +1227,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut dots_span = None;
         let mut lifecycle = None;
         let mut strict: Option<bool> = None;
-        let mut error_in_r: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
         let mut export = false;
@@ -1267,12 +1264,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else if ident == "rng" {
                             rng = true;
                         } else if ident == "unwrap_in_r" {
-                            if error_in_r == Some(true) {
-                                return Err(syn::Error::new_spanned(
-                                    ident,
-                                    "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                ));
-                            }
                             unwrap_in_r = true;
                         } else if ident == "worker" {
                             force_worker = Some(true);
@@ -1282,16 +1273,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             strict = Some(true);
                         } else if ident == "no_strict" {
                             strict = Some(false);
-                        } else if ident == "error_in_r" {
-                            if unwrap_in_r {
-                                return Err(syn::Error::new_spanned(
-                                    ident,
-                                    "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                ));
-                            }
-                            error_in_r = Some(true);
-                        } else if ident == "no_error_in_r" {
-                            error_in_r = Some(false);
                         } else if ident == "internal" {
                             internal = true;
                         } else if ident == "noexport" {
@@ -1334,27 +1315,11 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             } else if ident == "rng" {
                                 rng = val;
                             } else if ident == "unwrap_in_r" {
-                                if val && error_in_r == Some(true) {
-                                    return Err(syn::Error::new_spanned(
-                                        ident,
-                                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                    ));
-                                }
                                 unwrap_in_r = val;
                             } else if ident == "strict" {
                                 strict = Some(val);
                             } else if ident == "no_strict" {
                                 strict = Some(!val);
-                            } else if ident == "error_in_r" {
-                                if val && unwrap_in_r {
-                                    return Err(syn::Error::new_spanned(
-                                        ident,
-                                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                    ));
-                                }
-                                error_in_r = Some(val);
-                            } else if ident == "no_error_in_r" {
-                                error_in_r = Some(!val);
                             } else if ident == "internal" {
                                 internal = val;
                             } else if ident == "noexport" {
@@ -1600,26 +1565,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             ));
         }
 
-        // Resolve feature defaults for fields not explicitly set
-        let resolved_error_in_r = error_in_r.unwrap_or(true);
-
-        // Validate: rng requires error_in_r
-        if rng && !resolved_error_in_r {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "`rng` requires `error_in_r` (PutRNGstate must run after .Call returns; \
-                 non-error_in_r diverges via longjmp, skipping PutRNGstate)",
-            ));
-        }
-
-        if resolved_error_in_r && unwrap_in_r {
-            // This can happen when error_in_r is the default and unwrap_in_r is explicit
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "`error_in_r` (default) and `unwrap_in_r` are mutually exclusive; use `no_error_in_r` to opt out",
-            ));
-        }
-
         Ok(Self {
             force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
             force_invisible,
@@ -1634,7 +1579,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             dots_span,
             lifecycle,
             strict: strict.unwrap_or(cfg!(feature = "default-strict")),
-            error_in_r: resolved_error_in_r,
             internal,
             noexport,
             export,

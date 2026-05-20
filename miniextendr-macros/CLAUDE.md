@@ -9,10 +9,10 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 ## Layout
 - `lib.rs` — proc-macro entrypoints + the `MiniextendrFnAttrs` / `ImplAttrs` / `ParsedImpl` destructuring. **Add a field here → update all 6 class generators.**
 - `naming.rs` — canonical name derivations (R wrapper names, `__miniextendr_*` mangling, class symbols). Single source of truth.
-- `miniextendr_fn.rs` — `#[miniextendr]` on bare fns. `error_in_r` defaults to true (`unwrap_or(true)` ~L1611).
-- `miniextendr_impl.rs` (+ `miniextendr_impl/`) — inherent impl methods. `error_in_r` default at ~L1677. Class-system dispatch (R6/S3/S4/S7/Env/Vctrs).
+- `miniextendr_fn.rs` — `#[miniextendr]` on bare fns. Tagged-condition transport is the only mode; `unwrap_in_r` is orthogonal.
+- `miniextendr_impl.rs` (+ `miniextendr_impl/`) — inherent impl methods. Same transport. Class-system dispatch (R6/S3/S4/S7/Env/Vctrs).
 - `miniextendr_impl_trait.rs` (+ `miniextendr_impl_trait/`) — trait-impl method codegen, ABI-compatible.
-- `miniextendr_trait.rs` — `#[miniextendr_trait]` declaration codegen. Trait-ABI vtable shims use `Rf_error` (not `error_in_r`) — see `miniextendr_trait.rs:808`.
+- `miniextendr_trait.rs` — `#[miniextendr_trait]` declaration codegen. Trait-ABI vtable shims wrap in `with_r_unwind_protect_shim` (returns a tagged error SEXP that the View method re-panics into the consumer's outer `with_r_unwind_protect` guard) — see `miniextendr_trait.rs:808`.
 - `c_wrapper_builder.rs` (+ dir) — `CWrapperContext` for impl method C wrappers. **Prepends `__miniextendr_call: SEXP` as first param.**
 - `externalptr_derive.rs` — hand-rolls C wrappers for sidecar `*_get_field` / `*_set_field` accessors: `(x: SEXP)` / `(x, value: SEXP)`, `numArgs = 1/2`, **no call slot**. Adding `.call = match.call()` to the R side breaks at runtime (PR #344 reverted this).
 - `r_wrapper_builder.rs` (+ dir) — R-side `.Call(C_…, .call = match.call(), …)` emission. `DotCallBuilder` at ~L390 is the canonical site; use `.null_call_attribution()` for lambda contexts (R6 finalizer/deep_clone, S7 getter/setter/validator).
@@ -38,5 +38,5 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 
 ## When changing codegen
 - Touched proc-macro output? Run `just configure && just rcmdinstall && just force-document` and commit regenerated `rpkg/R/miniextendr-wrappers.R` + `NAMESPACE` + `man/*.Rd` in the same PR. Pre-commit hook (`.githooks/pre-commit`) enforces.
-- Added a class-system constructor path? Make sure error-check pattern `(.val <- .Call(...); error_in_r_check_lines())` is wired through — silent object corruption otherwise.
+- Added a class-system constructor path? Make sure error-check pattern `(.val <- .Call(...); condition_check_lines())` is wired through — silent object corruption otherwise.
 - Added a S3 `@export`? Use `#' @export generic_name` (explicit target) on `if (!exists(...)) generic <- ...` — roxygen2 can't introspect conditional declarations and drifts the export onto the next function.

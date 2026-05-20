@@ -73,15 +73,12 @@ pub(crate) fn output_is_result(output: &syn::ReturnType) -> bool {
 ///   rather than unwrapped in Rust (which raises an R error)
 /// - `strict`: When `true`, lossy integer types (i64, u64, isize, usize) use checked
 ///   conversions that panic on overflow instead of silent truncation
-/// - `error_in_r`: When `true`, errors are returned as tagged SEXP values (checked in R)
-///   instead of raising an R error directly in Rust
 pub(crate) fn analyze_return_type(
     output: &syn::ReturnType,
     rust_result_ident: &syn::Ident,
     rust_ident: &syn::Ident,
     unwrap_in_r: bool,
     strict: bool,
-    error_in_r: bool,
 ) -> ReturnTypeAnalysis {
     let mut returns_sexp = false;
     let mut is_invisible = false;
@@ -119,7 +116,7 @@ pub(crate) fn analyze_return_type(
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
-                analyze_option_type(p, &mut ctx, &option_none_error_msg, strict, error_in_r);
+                analyze_option_type(p, &mut ctx, &option_none_error_msg, strict);
             }
 
             // -> Result<T, E>
@@ -133,7 +130,7 @@ pub(crate) fn analyze_return_type(
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
-                analyze_result_type(p, &mut ctx, unwrap_in_r, error_in_r);
+                analyze_result_type(p, &mut ctx, unwrap_in_r);
             }
 
             // -> T (any other type)
@@ -152,17 +149,14 @@ pub(crate) fn analyze_return_type(
 /// Analyze `Option<T>` return type and generate conversion code.
 ///
 /// Handles three cases:
-/// - `Option<()>`: invisible, errors on `None`
+/// - `Option<()>`: invisible, `None` returns a tagged condition SEXP
 /// - `Option<SEXP>`: returns the SEXP or `R_NilValue` for `None`
 /// - `Option<T>`: delegates to `IntoR` (which maps `None` to `NA` for supported types)
-///
-/// In `error_in_r` mode, `None` returns a tagged error SEXP instead of raising an R error.
 fn analyze_option_type(
     type_path: &syn::TypePath,
     ctx: &mut AnalysisCtx,
     option_none_error_msg: &str,
     strict: bool,
-    error_in_r: bool,
 ) -> proc_macro2::TokenStream {
     let rust_result_ident = ctx.rust_result_ident;
     let seg = type_path.path.segments.last().unwrap();
@@ -172,25 +166,15 @@ fn analyze_option_type(
     let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
     if is_unit_inner {
-        // Option<()> - invisible, error on None
+        // Option<()> - invisible; tagged condition value on None.
         *ctx.is_invisible = true;
-        if error_in_r {
-            // error_in_r: return tagged error value on None (no post_call unwrap)
-            quote::quote! {
-                match #rust_result_ident {
-                    Some(()) => ::miniextendr_api::ffi::SEXP::nil(),
-                    None => ::miniextendr_api::error_value::make_rust_condition_value(
-                        #option_none_error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                    ),
-                }
+        quote::quote! {
+            match #rust_result_ident {
+                Some(()) => ::miniextendr_api::ffi::SEXP::nil(),
+                None => ::miniextendr_api::error_value::make_rust_condition_value(
+                    #option_none_error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                ),
             }
-        } else {
-            ctx.post_call_statements.push(quote::quote! {
-                if #rust_result_ident.is_none() {
-                    ::miniextendr_api::error::r_stop(#option_none_error_msg);
-                }
-            });
-            quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
         }
     } else if is_sexp_inner {
         // Option<SEXP> - return SEXP or R_NilValue for None
@@ -220,15 +204,14 @@ fn analyze_option_type(
 ///
 /// Handles several combinations of `T` and `E`:
 /// - `Result<T, ()>`: unit error is a deliberate sentinel; `Err(())` returns `NULL` to R
-/// - `Result<(), E>`: invisible, `Err` raises R error (or tagged error in `error_in_r` mode)
-/// - `Result<SEXP, E>`: returns the SEXP directly on `Ok`
+/// - `Result<(), E>`: invisible; `Err` returns a tagged condition SEXP
+/// - `Result<SEXP, E>`: returns the SEXP directly on `Ok`, tagged condition on `Err`
 /// - `Result<T, E>` with `unwrap_in_r`: passes the full `Result` to R as a list
-/// - `Result<T, E>` default: unwraps in Rust, raising R error on `Err`
+/// - `Result<T, E>` default: tagged condition SEXP on `Err`, `IntoR` on `Ok`
 fn analyze_result_type(
     type_path: &syn::TypePath,
     ctx: &mut AnalysisCtx,
     unwrap_in_r: bool,
-    error_in_r: bool,
 ) -> proc_macro2::TokenStream {
     let rust_result_ident = ctx.rust_result_ident;
     let seg = type_path.path.segments.last().unwrap();
@@ -240,8 +223,8 @@ fn analyze_result_type(
     let err_is_unit =
         err_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
 
-    // Special case: Result<T, ()> - convert to Result<T, NullOnErr> which returns NULL on Err
-    // Unit error is a deliberate sentinel, not a Rust failure - error_in_r does not change this.
+    // Special case: Result<T, ()> - convert to Result<T, NullOnErr> which returns NULL on Err.
+    // Unit error is a deliberate sentinel, not a Rust failure.
     if err_is_unit {
         if ok_is_unit {
             // Result<(), ()> - invisible, always returns NULL
@@ -261,47 +244,11 @@ fn analyze_result_type(
             // Use IntoR which returns NULL on Err(NullOnErr)
             quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
         }
-    } else if error_in_r {
-        // error_in_r mode: return tagged error value on Err (takes priority over unwrap_in_r)
-        if ok_is_unit {
-            // Result<(), E> - invisible, return error value on Err
-            *ctx.is_invisible = true;
-            quote::quote! {
-                match #rust_result_ident {
-                    Ok(()) => ::miniextendr_api::ffi::SEXP::nil(),
-                    Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
-                        &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                    ),
-                }
-            }
-        } else if ok_is_sexp {
-            // Result<SEXP, E> - return SEXP or error value
-            *ctx.is_invisible = false;
-            *ctx.returns_sexp = true;
-            quote::quote! {
-                match #rust_result_ident {
-                    Ok(v) => v,
-                    Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
-                        &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                    ),
-                }
-            }
-        } else {
-            // Result<T, E> - convert Ok to SEXP, return error value on Err
-            *ctx.is_invisible = false;
-            quote::quote! {
-                match #rust_result_ident {
-                    Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
-                    Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
-                        &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                    ),
-                }
-            }
-        }
     } else if unwrap_in_r {
-        // Result<T, E> - return the Result to R without unwrapping
-        // Uses IntoR impl which returns list(error=...) on Err
-        // Note: Requires E: Display for the IntoR impl
+        // Result<T, E> - return the Result to R without unwrapping (takes priority
+        // over the default tagged-condition path).
+        // Uses IntoR impl which returns list(error=...) on Err.
+        // Note: Requires E: Display for the IntoR impl.
         *ctx.is_invisible = false;
         if ok_is_sexp {
             // Still require main thread for Result<SEXP, E>
@@ -309,32 +256,38 @@ fn analyze_result_type(
         }
         quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
     } else if ok_is_unit {
-        // Result<(), E> - invisible, r_stop on Err
-        // Uses Debug format so it works with any E: Debug
+        // Result<(), E> - invisible, tagged condition SEXP on Err
         *ctx.is_invisible = true;
-        ctx.post_call_statements.push(quote::quote! {
-            if let Err(e) = #rust_result_ident {
-                ::miniextendr_api::error::r_stop(&format!("{:?}", e));
+        quote::quote! {
+            match #rust_result_ident {
+                Ok(()) => ::miniextendr_api::ffi::SEXP::nil(),
+                Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                    &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                ),
             }
-        });
-        quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
-    } else {
-        // Result<T, E> - unwrap then convert
-        // Uses Debug format so it works with any E: Debug
-        *ctx.is_invisible = false;
-        if ok_is_sexp {
-            *ctx.returns_sexp = true;
         }
-        ctx.post_call_statements.push(quote::quote! {
-            let #rust_result_ident = match #rust_result_ident {
+    } else if ok_is_sexp {
+        // Result<SEXP, E> - return SEXP or tagged condition SEXP on Err
+        *ctx.is_invisible = false;
+        *ctx.returns_sexp = true;
+        quote::quote! {
+            match #rust_result_ident {
                 Ok(v) => v,
-                Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
-            };
-        });
-        if ok_is_sexp {
-            quote::quote! { #rust_result_ident }
-        } else {
-            quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
+                Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                    &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                ),
+            }
+        }
+    } else {
+        // Result<T, E> - convert Ok to SEXP via IntoR, tagged condition SEXP on Err
+        *ctx.is_invisible = false;
+        quote::quote! {
+            match #rust_result_ident {
+                Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
+                Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                    &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                ),
+            }
         }
     }
 }

@@ -971,8 +971,10 @@ See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
 | `default-s7` | S7 class system for impl blocks | `env`, `r6`, etc. |
 | `default-worker` | Force worker thread execution (implies `worker-thread`) | `no_worker` |
 
-**Note:** `error_in_r` and main thread execution are now **hardcoded defaults** (no feature
-needed). Opt out per-function with `no_error_in_r` or `worker` respectively.
+**Note:** The tagged-condition transport (panics, `Err`, `None` → tagged SEXP → R wrapper
+raises a structured `rust_*` condition) and main thread execution are **hardcoded
+defaults** with no opt-out. The `unwrap_in_r` attribute is orthogonal (Result-as-value
+vs Result-as-error-boundary). Opt into the worker thread per-function with `worker`.
 
 **Mutual exclusivity:** `default-r6`/`default-s7` cannot be enabled simultaneously.
 

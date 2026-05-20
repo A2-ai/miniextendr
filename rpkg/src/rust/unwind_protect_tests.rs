@@ -1,8 +1,8 @@
-//! Tests for `with_r_unwind_protect` mechanism.
+//! Tests for `with_r_unwind_protect_or_raise` mechanism.
 
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::miniextendr;
-use miniextendr_api::unwind_protect::with_r_unwind_protect;
+use miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise;
 
 /// Simple RAII type that prints when dropped (without using with_r to avoid deadlocks).
 /// This is used across multiple test modules.
@@ -14,7 +14,7 @@ impl Drop for SimpleDropMsg {
     }
 }
 
-/// Test with_r_unwind_protect normal execution with RAII resource cleanup.
+/// Test with_r_unwind_protect_or_raise normal execution with RAII resource cleanup.
 /// @name rpkg_unwind_protect
 /// @examples
 /// \dontrun{
@@ -28,7 +28,7 @@ impl Drop for SimpleDropMsg {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
-    with_r_unwind_protect(
+    with_r_unwind_protect_or_raise(
         || {
             let _a = SimpleDropMsg("stack resource");
             let _b = Box::new(SimpleDropMsg("heap resource"));
@@ -38,7 +38,7 @@ pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
     )
 }
 
-/// Test with_r_unwind_protect cleanup when an R error is triggered.
+/// Test with_r_unwind_protect_or_raise cleanup when an R error is triggered.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -47,7 +47,7 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
     let a = SimpleDropMsg("captured resource 1");
     let b = Box::new(SimpleDropMsg("captured resource 2 (boxed)"));
 
-    with_r_unwind_protect(
+    with_r_unwind_protect_or_raise(
         move || {
             // Access resources without moving them out of closure's captured state
             eprintln!("[Rust] Inside closure, using captured resources");
@@ -69,14 +69,14 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
     )
 }
 
-/// Test low-level with_r_unwind_protect that triggers an R error directly.
+/// Test low-level with_r_unwind_protect_or_raise that triggers an R error directly.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
     eprintln!("[Rust] Starting low-level unwind protect test");
     unsafe {
-        with_r_unwind_protect(
+        with_r_unwind_protect_or_raise(
             || {
                 eprintln!("[Rust] Inside protected function, about to trigger R error");
                 // mxl::allow(MXL300)

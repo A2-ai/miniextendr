@@ -19,7 +19,7 @@ them.
 - "How do instance methods map from Rust to R?"
 - "How do trait methods appear in the generated R code?"
 - "Why does my S7 class need its parent defined first?"
-- "What does `error_in_r_check_lines` do in constructors?"
+- "What does `condition_check_lines` do in constructors?"
 - "What is RWrapperPriority and why does the ordering matter?"
 - "How do I use vctrs with miniextendr?"
 - "What is `invisible(self)` in the generated R6 code?"
@@ -56,7 +56,7 @@ Static methods for Env/S4/S7/S3 are named `<Class>_<method>(...)` or `<Class>$<m
 
 For every class system, the constructor calls `.Call(C_Type__new, ...)` and
 **must** validate the returned value. All six class generators wire through
-`error_in_r_check_lines()` from `miniextendr-macros/src/method_return_builder.rs`:
+`condition_check_lines()` from `miniextendr-macros/src/method_return_builder.rs`:
 
 ```r
 .val <- .Call(C_Type__new, ...)
@@ -67,7 +67,7 @@ if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_conditio
 Skipping this check means a panic from the Rust constructor silently corrupts the
 object rather than raising an R error. This applies to **all five class generators
 with constructors** (Env, R6, S3, S4, S7 — and Vctrs via S3). Read
-`method_return_builder.rs` `error_in_r_check_lines` for the canonical guard line.
+`method_return_builder.rs` `condition_check_lines` for the canonical guard line.
 
 ### RWrapperPriority — output ordering
 
@@ -310,7 +310,7 @@ The generated class is named after the Rust type by default. Override with
 ### My constructor panics but R doesn't see an error — what went wrong?
 
 The constructor's `.Call()` result must be validated before wrapping into the
-R object. All six generators do this via `error_in_r_check_lines()`. If you are
+R object. All six generators do this via `condition_check_lines()`. If you are
 manually writing constructor wrappers (rare), you must include the guard:
 
 ```r
@@ -344,8 +344,8 @@ later, unpredictably.
   vtable registration, R-side dual-calling wrappers.
 - `miniextendr-macros/src/r_class_formatter.rs` — Shared utilities: `ClassDocBuilder`,
   `MethodDocBuilder`, `MethodContext`, `emit_s3_generic_guard`, `should_export_from_tags`.
-- `miniextendr-macros/src/method_return_builder.rs` — `error_in_r_check_lines`,
-  `error_in_r_inline_block`, `ReturnStrategy`; `build_r6_return` (`invisible(self)`).
+- `miniextendr-macros/src/method_return_builder.rs` — `condition_check_lines`,
+  `condition_check_inline_block`, `ReturnStrategy`; `build_r6_return` (`invisible(self)`).
 - `miniextendr-macros/src/r_wrapper_builder.rs` — `DotCallBuilder` at ~L390;
   `.null_call_attribution()` for lambda contexts.
 - `miniextendr-api/src/registry.rs` — `RWrapperPriority` enum (L210), `collect_r_wrappers`,
@@ -353,7 +353,7 @@ later, unpredictably.
 
 ## Common pitfalls
 
-- **Missing `error_in_r_check_lines` in constructor**: if you copy-paste a
+- **Missing `condition_check_lines` in constructor**: if you copy-paste a
   constructor wrapper and omit the tagged-SEXP guard, panics silently corrupt
   the returned object. All six generators include it; only risk arises in
   hand-crafted wrappers.

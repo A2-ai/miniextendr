@@ -1,34 +1,35 @@
 //! Error handling helpers for R API calls.
 //!
-//! ## Default path: `error_in_r` (the standard for `#[miniextendr]`)
+//! ## User-facing path: tagged condition SEXP
 //!
 //! Every `#[miniextendr]` function runs inside
-//! [`with_r_unwind_protect_error_in_r`](crate::unwind_protect::with_r_unwind_protect_error_in_r).
+//! [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
 //! Rust panics and user-raised conditions (`error!()`, `warning!()`, `message!()`,
 //! `condition!()`) are caught, packaged as a tagged SEXP, and returned normally.
-//! The generated R wrapper inspects the SEXP and raises the appropriate R condition
-//! with `rust_*` class layering. **No `Rf_error` longjmp happens on this path.**
+//! The generated R wrapper inspects the SEXP and raises the appropriate R
+//! condition with `rust_*` class layering. **No `Rf_error` longjmp happens on
+//! this path.**
 //!
 //! User code should use:
 //! - `panic!()` — for unrecoverable Rust errors (becomes `rust_error` in R)
-//! - `error!()` / `warning!()` / `message!()` / `condition!()` — for structured R conditions
-//!   (see `crate::condition`)
+//! - `error!()` / `warning!()` / `message!()` / `condition!()` — for structured
+//!   R conditions (see `crate::condition`)
 //!
-//! ## When `Rf_error` fires
+//! ## When `Rf_error` still fires (framework-internal)
 //!
-//! `Rf_error` / `Rf_errorcall` (longjmp) is only used on three paths where there
-//! is no R wrapper to inspect a tagged SEXP:
+//! `Rf_error` (longjmp via `r_stop`) survives only at FFI guard sites where
+//! there is no SEXP slot to return through:
 //!
-//! 1. **Trait-ABI vtable shims** — cross-package C-ABI calls go through
-//!    `with_r_unwind_protect` (non-error_in_r).
-//! 2. **ALTREP `RUnwind` guard** — ALTREP callbacks invoked from R's GC / vector
-//!    dispatch use `with_r_unwind_protect_sourced`.
-//! 3. **Explicit opt-out** — `#[miniextendr(no_error_in_r)]` / `unwrap_in_r`.
+//! 1. **`ffi_guard::guarded_ffi_call(GuardMode::CatchUnwind, …)`** — worker
+//!    thread panic conversion before the worker→main boundary returns a SEXP.
+//! 2. **`trait_abi::check_arity`** — pre-shim arity check that runs before the
+//!    vtable shim has a SEXP to return.
 //!
-//! `r_stop` (this module) is the internal Rust wrapper around `Rf_error`. It is
-//! used by proc-macro generated argument validation and return-type unwrapping,
-//! which run *before* the closure enters `with_r_unwind_protect`. **User code
-//! should never call `r_stop` directly.**
+//! ALTREP `RUnwind` callbacks now route through
+//! `with_r_unwind_protect_sourced` → `raise_rust_condition_via_stop`, which
+//! preserves `rust_*` class layering without going through `r_stop`.
+//!
+//! [`r_stop`] is `pub(crate)` — no user code should depend on it.
 //!
 //! # Example
 //!
@@ -42,21 +43,22 @@
 //! }
 //! ```
 
-/// Raise an R error via `Rf_error` (longjmp). **Do not call from user code.**
+/// Raise an R error via `Rf_error` (longjmp). **Crate-internal only.**
+///
+/// Survives at two guard sites where there is no SEXP slot to return through:
+/// - [`crate::ffi_guard::guarded_ffi_call`] with `GuardMode::CatchUnwind`
+///   (worker thread panic conversion)
+/// - [`crate::trait_abi::check_arity`] (pre-shim arity check)
 ///
 /// User code should use `panic!()` (caught by the framework and converted to a
 /// `rust_error` R condition) or the structured condition macros `error!()` /
 /// `warning!()` / `message!()` / `condition!()`.
 ///
-/// `r_stop` is for internal use only: generated argument validation, return-type
-/// unwrapping, and the FFI guard layer — all of which run in contexts where
-/// `Rf_error` longjmp is safe (inside `R_UnwindProtect` or after `catch_unwind`).
-///
 /// # Panics
 ///
 /// Panics if the message contains null bytes.
 #[inline]
-pub fn r_stop(msg: &str) -> ! {
+pub(crate) fn r_stop(msg: &str) -> ! {
     let c_msg = std::ffi::CString::new(msg).expect("r_stop: message contains null bytes");
 
     if crate::worker::is_r_main_thread() {

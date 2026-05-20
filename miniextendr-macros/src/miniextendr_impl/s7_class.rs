@@ -655,7 +655,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
             lines.push("    } else {".to_string());
             lines.push(format!("      .val <- {}", ctx.static_call()));
-            lines.extend(crate::method_return_builder::error_in_r_check_lines(
+            lines.extend(crate::method_return_builder::condition_check_lines(
                 "      ",
             ));
             lines.push("      S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
@@ -673,7 +673,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("    {}", line));
             }
             lines.push(format!("    .val <- {}", ctx.static_call()));
-            lines.extend(crate::method_return_builder::error_in_r_check_lines("    "));
+            lines.extend(crate::method_return_builder::condition_check_lines("    "));
             lines.push("    S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
             lines.push("  }".to_string());
         }
@@ -751,7 +751,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let body_lines = crate::MethodReturnBuilder::new(call.clone())
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
-                .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_body();
 
             let what = format!("{}.{}", generic_name, class_name);
@@ -821,7 +820,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let body_lines = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
-                .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_body();
 
             // Use matching formals for method (with or without ...)
@@ -867,7 +865,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
-            .with_error_in_r(ctx.method.method_attrs.error_in_r)
             .build_s7_inline();
         lines.push(format!("  {}", return_expr));
 
@@ -926,7 +923,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call_with_from)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
-                .with_error_in_r(method.method_attrs.error_in_r)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package.
@@ -979,7 +975,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(crate::ReturnStrategy::ReturnSelf)
                 .with_class_name(to_type_ref.clone())
-                .with_error_in_r(method.method_attrs.error_in_r)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package.
