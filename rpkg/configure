@@ -2733,6 +2733,30 @@ if test -n "$CARGO_ENV_PROFILE_LTO"; then
 printf '%s\n' "$as_me: R LTO flag           = $_r_lto (cargo profile lto: $CARGO_ENV_PROFILE_LTO)" >&6;}
 fi
 
+CARGO_ENV_ABI_CFLAGS=""
+CARGO_ENV_ABI_CXXFLAGS=""
+
+_r_cflags=`"${R_HOME}/bin/R" CMD config CFLAGS 2>/dev/null`
+_r_cxxflags=`"${R_HOME}/bin/R" CMD config CXXFLAGS 2>/dev/null`
+
+_abi_allow_re='^-march=|^-mtune=|^-mfpmath=|^-mfpu=|^-mfloat-abi=|^-mabi=|^-msse|^-mavx|^-mssse|^-mpclmul|^-maes|^-pthread$|^-D_REENTRANT$|^-fopenmp'
+
+if test -n "$_r_cflags"; then
+  CARGO_ENV_ABI_CFLAGS=`echo "$_r_cflags" | tr ' ' '\n' | grep -E "$_abi_allow_re" | tr '\n' ' ' | $SED 's/ *$//'`
+fi
+if test -n "$_r_cxxflags"; then
+  CARGO_ENV_ABI_CXXFLAGS=`echo "$_r_cxxflags" | tr ' ' '\n' | grep -E "$_abi_allow_re" | tr '\n' ' ' | $SED 's/ *$//'`
+fi
+
+if test -n "$CARGO_ENV_ABI_CFLAGS"; then
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: cargo CFLAGS_<target>  = $CARGO_ENV_ABI_CFLAGS" >&5
+printf '%s\n' "$as_me: cargo CFLAGS_<target>  = $CARGO_ENV_ABI_CFLAGS" >&6;}
+fi
+if test -n "$CARGO_ENV_ABI_CXXFLAGS"; then
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: cargo CXXFLAGS_<target>= $CARGO_ENV_ABI_CXXFLAGS" >&5
+printf '%s\n' "$as_me: cargo CXXFLAGS_<target>= $CARGO_ENV_ABI_CXXFLAGS" >&6;}
+fi
+
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
@@ -3425,6 +3449,8 @@ IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
  CARGO_ENV_R_RANLIB="$CARGO_ENV_R_RANLIB"
  CARGO_ENV_PROFILE_LTO="$CARGO_ENV_PROFILE_LTO"
  CARGO_PROFILE="$CARGO_PROFILE"
+ CARGO_ENV_ABI_CFLAGS="$CARGO_ENV_ABI_CFLAGS"
+ CARGO_ENV_ABI_CXXFLAGS="$CARGO_ENV_ABI_CXXFLAGS"
  SED="$SED"
 IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
  R_HOME="$R_HOME"
@@ -3907,6 +3933,12 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
     if test -n "$CARGO_ENV_PROFILE_LTO"; then
       CARGO_ENV_PROFILE_UPPER=`echo "$CARGO_PROFILE" | tr 'a-z' 'A-Z'`
       echo "CARGO_PROFILE_${CARGO_ENV_PROFILE_UPPER}_LTO = \"$CARGO_ENV_PROFILE_LTO\""
+    fi
+    if test -n "$CARGO_ENV_ABI_CFLAGS"; then
+      echo "CFLAGS_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_ABI_CFLAGS\""
+    fi
+    if test -n "$CARGO_ENV_ABI_CXXFLAGS"; then
+      echo "CXXFLAGS_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_ABI_CXXFLAGS\""
     fi
     echo ""
   }
