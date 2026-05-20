@@ -27,7 +27,7 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 - **PROTECT discipline against R-devel GC** — `SEXP::scalar_string` and `scalar_logical(true)` allocate fresh STRSXP/LGLSXP; protect across `SET_VECTOR_ELT`/`SETATTRIB`. R-devel's GC is more aggressive — `make_rust_condition_value` crossed the threshold in PR #344 commit `af6b4875` (recursive gc + segfault at small offsets). R-release passing ≠ safe.
 - **`#[macro_export]` collides with same-named modules at crate root** — `pub mod error`/`pub mod condition` shadow `error!`/`condition!` macros under `use miniextendr_api::{error, condition}`. Invoke via fully-qualified path; `message!` / `warning!` have no module conflict.
 - **`R_GetCCallable` throws on miss** — does NOT return NULL. Force DLL load via `NAMESPACE importFrom(...)`.
-- **`R_new_custom_connection` creates connections CLOSED** (`isopen = FALSE`); explicitly call the `open` callback after building.
+- **`R_new_custom_connection` creates connections CLOSED** (`isopen = FALSE`) and defaults `text = TRUE`. `RCustomConnection::build()` pre-opens and infers `text` from the mode string ('b' → binary), so callers get a usable connection. Going around `build()` requires explicit `open()` + `text` correction.
 - **Pointer provenance for ExternalPtr** — cache `*mut T` via `&mut T` / `downcast_mut` / `Box::into_raw`. Never write through a `*mut` derived from `&T` / `downcast_ref` — UB under Stacked Borrows.
 
 ## Features
