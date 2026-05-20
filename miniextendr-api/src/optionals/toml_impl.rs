@@ -64,7 +64,7 @@
 
 pub use toml::Value as TomlValue;
 
-use crate::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
 use crate::impl_option_try_from_sexp;
@@ -207,10 +207,10 @@ impl TryFromSexp for Vec<Option<TomlValue>> {
 
 impl IntoR for TomlValue {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     /// Convert a TOML value to an R object.
@@ -229,26 +229,26 @@ impl IntoR for TomlValue {
 
 impl IntoR for Option<TomlValue> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
         match self {
             Some(value) => toml_value_to_sexp(&value),
-            None => crate::ffi::SEXP::nil(),
+            None => crate::sys::SEXP::nil(),
         }
     }
 }
 
 impl IntoR for Vec<TomlValue> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -272,10 +272,10 @@ impl IntoR for Vec<TomlValue> {
 
 impl IntoR for Vec<Option<TomlValue>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -289,7 +289,7 @@ impl IntoR for Vec<Option<TomlValue>> {
         for (i, value) in self.iter().enumerate() {
             let elem = match value {
                 Some(v) => toml_value_to_sexp(v),
-                None => crate::ffi::SEXP::nil(),
+                None => crate::sys::SEXP::nil(),
             };
             sexp.get()
                 .set_vector_elt(isize::try_from(i).expect("index overflow"), elem)
@@ -475,11 +475,11 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
                     ))
                 };
-                let dst: &mut [crate::ffi::RLogical] =
+                let dst: &mut [crate::sys::RLogical] =
                     unsafe { SexpExt::as_mut_slice(&sexp.get()) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Boolean(b) = v {
-                        dst[i] = crate::ffi::RLogical::from(*b);
+                        dst[i] = crate::sys::RLogical::from(*b);
                     }
                 }
                 return sexp.get();

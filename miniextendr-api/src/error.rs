@@ -63,12 +63,12 @@ pub(crate) fn r_stop(msg: &str) -> ! {
 
     if crate::worker::is_r_main_thread() {
         unsafe {
-            crate::ffi::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+            crate::sys::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
         }
     } else {
         // Route to main thread
         crate::worker::with_r_thread(move || unsafe {
-            crate::ffi::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+            crate::sys::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
         })
     }
 }
@@ -83,11 +83,11 @@ pub fn r_warning(msg: &str) {
 
     if crate::worker::is_r_main_thread() {
         unsafe {
-            crate::ffi::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+            crate::sys::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
         }
     } else {
         crate::worker::with_r_thread(move || unsafe {
-            crate::ffi::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+            crate::sys::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
         });
     }
 }
@@ -101,11 +101,11 @@ pub fn _r_print_str(msg: &str) {
 
     if crate::worker::is_r_main_thread() {
         unsafe {
-            crate::ffi::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+            crate::sys::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
         }
     } else {
         crate::worker::with_r_thread(move || unsafe {
-            crate::ffi::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+            crate::sys::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
         });
     }
 }
@@ -117,11 +117,11 @@ pub fn _r_print_str(msg: &str) {
 pub fn _r_print_newline() {
     if crate::worker::is_r_main_thread() {
         unsafe {
-            crate::ffi::Rprintf_unchecked(c"\n".as_ptr());
+            crate::sys::Rprintf_unchecked(c"\n".as_ptr());
         }
     } else {
         crate::worker::with_r_thread(|| unsafe {
-            crate::ffi::Rprintf_unchecked(c"\n".as_ptr());
+            crate::sys::Rprintf_unchecked(c"\n".as_ptr());
         });
     }
 }

@@ -4,7 +4,7 @@
 //! to serialize any serde-compatible Rust type into R data structures.
 
 use super::error::RSerdeError;
-use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use serde::ser::{self, Serialize};

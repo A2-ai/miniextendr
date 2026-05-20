@@ -4,8 +4,8 @@
 
 use std::borrow::Cow;
 
-use crate::ffi::SEXPTYPE::STRSXP;
-use crate::ffi::{SEXP, SexpExt};
+use crate::sys::SEXPTYPE::STRSXP;
+use crate::sys::{SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
 use crate::gc_protect::{OwnedProtect, ProtectScope, Protected};
 use crate::into_r::IntoR;

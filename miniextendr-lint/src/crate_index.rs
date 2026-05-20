@@ -750,8 +750,9 @@ fn line_has_allow(line: &str, code: &str) -> bool {
     false
 }
 
-/// Scan raw source text for `ffi::*_unchecked()` calls.
+/// Scan raw source text for `sys::*_unchecked()` calls.
 fn scan_ffi_unchecked_calls(lines: &[&str], data: &mut FileData) {
+    const PREFIX: &str = "sys::";
     for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         if trimmed.starts_with("//") {
@@ -766,21 +767,21 @@ fn scan_ffi_unchecked_calls(lines: &[&str], data: &mut FileData) {
             None => trimmed,
         };
         let mut search_from = 0;
-        while let Some(ffi_pos) = code_part[search_from..].find("ffi::") {
-            let abs_pos = search_from + ffi_pos;
-            let after_ffi = &code_part[abs_pos + 5..];
-            let ident_end = after_ffi
+        while let Some(sys_pos) = code_part[search_from..].find(PREFIX) {
+            let abs_pos = search_from + sys_pos;
+            let after = &code_part[abs_pos + PREFIX.len()..];
+            let ident_end = after
                 .find(|c: char| !c.is_alphanumeric() && c != '_')
-                .unwrap_or(after_ffi.len());
-            let ident = &after_ffi[..ident_end];
+                .unwrap_or(after.len());
+            let ident = &after[..ident_end];
             if ident.ends_with("_unchecked")
-                && after_ffi[ident_end..].starts_with('(')
+                && after[ident_end..].starts_with('(')
                 && !is_suppressed(lines, line_idx, "MXL301")
             {
                 data.ffi_unchecked_calls
                     .push((ident.to_string(), line_idx + 1));
             }
-            search_from = abs_pos + 5 + ident_end;
+            search_from = abs_pos + PREFIX.len() + ident_end;
         }
     }
 }

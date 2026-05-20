@@ -104,7 +104,7 @@
 //!
 //! ```ignore
 //! use miniextendr_api::gc_protect::ProtectScope;
-//! use miniextendr_api::ffi::SEXP;
+//! use miniextendr_api::SEXP;
 //!
 //! unsafe fn process_vectors(x: SEXP, y: SEXP) -> SEXP {
 //!     let scope = ProtectScope::new();
@@ -164,7 +164,7 @@
 //!
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
-use crate::ffi::{
+use crate::sys::{
     R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList, Rf_allocMatrix,
     Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
@@ -601,7 +601,7 @@ impl ProtectScope {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn scalar_complex<'a>(&'a self, x: crate::ffi::Rcomplex) -> Root<'a> {
+    pub unsafe fn scalar_complex<'a>(&'a self, x: crate::sys::Rcomplex) -> Root<'a> {
         unsafe { self.protect(SEXP::scalar_complex(x)) }
     }
 
@@ -680,9 +680,9 @@ impl ProtectScope {
             self.protect(R_NewEnv(
                 parent,
                 if hash {
-                    crate::ffi::Rboolean::TRUE
+                    crate::sys::Rboolean::TRUE
                 } else {
-                    crate::ffi::Rboolean::FALSE
+                    crate::sys::Rboolean::FALSE
                 },
                 size,
             ))
@@ -726,8 +726,8 @@ impl ProtectScope {
     /// | `i32` | `INTSXP` |
     /// | `f64` | `REALSXP` |
     /// | `u8` | `RAWSXP` |
-    /// | [`RLogical`](crate::ffi::RLogical) | `LGLSXP` |
-    /// | [`Rcomplex`](crate::ffi::Rcomplex) | `CPLXSXP` |
+    /// | [`RLogical`](crate::sys::RLogical) | `LGLSXP` |
+    /// | [`Rcomplex`](crate::sys::Rcomplex) | `CPLXSXP` |
     ///
     /// # Safety
     ///
@@ -1371,7 +1371,7 @@ impl Drop for WorkerUnprotectGuard {
     fn drop(&mut self) {
         let n = self.0;
         crate::worker::with_r_thread(move || unsafe {
-            crate::ffi::Rf_unprotect_unchecked(n);
+            crate::sys::Rf_unprotect_unchecked(n);
         });
     }
 }
@@ -1501,7 +1501,7 @@ mod tests {
         // This should panic because there's no active scope
         // Note: Can't actually call protect without R, but we test the panic message
         unsafe {
-            let _ = tls::protect(crate::ffi::SEXP(std::ptr::null_mut()));
+            let _ = tls::protect(crate::sys::SEXP(std::ptr::null_mut()));
         }
     }
     // endregion

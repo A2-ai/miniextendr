@@ -48,7 +48,7 @@ pub use arrow_schema::{self, DataType, Field, Schema};
 
 use arrow_array::types::ArrowPrimitiveType;
 
-use crate::ffi::{self, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{self, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -292,7 +292,7 @@ impl Drop for RPreservedSexp {
     fn drop(&mut self) {
         // SAFETY: R_ReleaseObject is thread-safe (mutex-protected in R 4.0+).
         // We use _unchecked because this Drop may fire off the R main thread.
-        unsafe { ffi::R_ReleaseObject_unchecked(self.0) }
+        unsafe { sys::R_ReleaseObject_unchecked(self.0) }
     }
 }
 
@@ -322,7 +322,7 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
         return Some(arrow_buffer::Buffer::from(Vec::<u8>::new()));
     }
 
-    let ptr = unsafe { ffi::DATAPTR_RO(sexp) }.cast::<u8>().cast_mut();
+    let ptr = unsafe { sys::DATAPTR_RO(sexp) }.cast::<u8>().cast_mut();
 
     // ALTREP types with null bitmasks (e.g., deserialized Arrow arrays) may
     // return null from DATAPTR_RO when they cannot provide a contiguous buffer.
@@ -331,7 +331,7 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
     }
 
     // Preserve the R object so it won't be GC'd while Arrow holds a reference
-    unsafe { ffi::R_PreserveObject(sexp) };
+    unsafe { sys::R_PreserveObject(sexp) };
     let guard = Arc::new(RPreservedSexp(sexp));
 
     let byte_len = len * std::mem::size_of::<T>();
@@ -389,7 +389,7 @@ pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer
         );
     }
     let len_isize: isize = len.try_into().expect("vector length exceeds isize::MAX");
-    let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len_isize) };
+    let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, len_isize) };
     // freshly allocated R vectors always have a valid data pointer
     let buffer = unsafe { sexp_to_arrow_buffer::<T>(sexp) }
         .expect("freshly allocated R vector must have a valid data pointer");
@@ -473,7 +473,7 @@ impl TryFromSexp for Float64Array {
         // Read element-by-element via elt() which works for all SEXP types.
         let values: Vec<Option<f64>> = (0..len)
             .map(|i| {
-                let v = f64::elt(sexp, i as ffi::R_xlen_t);
+                let v = f64::elt(sexp, i as sys::R_xlen_t);
                 if is_na_real(v) { None } else { Some(v) }
             })
             .collect();
@@ -516,7 +516,7 @@ impl TryFromSexp for Int32Array {
         // Read element-by-element via elt() which works for all SEXP types.
         let values: Vec<Option<i32>> = (0..len)
             .map(|i| {
-                let v = i32::elt(sexp, i as ffi::R_xlen_t);
+                let v = i32::elt(sexp, i as sys::R_xlen_t);
                 if v == NA_INTEGER { None } else { Some(v) }
             })
             .collect();
@@ -553,7 +553,7 @@ impl TryFromSexp for UInt8Array {
 
         // Fallback: DATAPTR_RO returned null. Read element-by-element via elt().
         let values: Vec<u8> = (0..len)
-            .map(|i| u8::elt(sexp, i as ffi::R_xlen_t))
+            .map(|i| u8::elt(sexp, i as sys::R_xlen_t))
             .collect();
         Ok(UInt8Array::from(values))
     }
@@ -1209,14 +1209,14 @@ impl IntoR for BooleanArray {
 
     fn into_sexp(self) -> SEXP {
         unsafe {
-            let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::ffi::RLogical>(self.len());
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::sys::RLogical>(self.len());
             for (i, slot) in dst.iter_mut().enumerate() {
                 *slot = if self.is_null(i) {
-                    crate::ffi::RLogical::NA
+                    crate::sys::RLogical::NA
                 } else if self.value(i) {
-                    crate::ffi::RLogical::TRUE
+                    crate::sys::RLogical::TRUE
                 } else {
-                    crate::ffi::RLogical::FALSE
+                    crate::sys::RLogical::FALSE
                 };
             }
             sexp
@@ -1234,7 +1234,7 @@ impl IntoR for StringArray {
     fn into_sexp(self) -> SEXP {
         let n = Array::len(&self);
         unsafe {
-            let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
+            let sexp = sys::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
             let guard = crate::gc_protect::OwnedProtect::new(sexp);
             for i in 0..n {
                 if self.is_null(i) {
@@ -1406,7 +1406,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
                     // Not a string dictionary, fall through to default
                     let n = array.len();
                     unsafe {
-                        let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
+                        let sexp = sys::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
                         let guard = crate::gc_protect::OwnedProtect::new(sexp);
                         for i in 0..n {
                             guard.get().set_string_elt(i as R_xlen_t, SEXP::na_string());
@@ -1419,7 +1419,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
         _ => {
             let n = array.len();
             unsafe {
-                let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
+                let sexp = sys::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
                 let guard = crate::gc_protect::OwnedProtect::new(sexp);
                 for i in 0..n {
                     guard.get().set_string_elt(i as R_xlen_t, SEXP::na_string());
@@ -1816,9 +1816,9 @@ crate::impl_altlogical_from_data!(BooleanArray, serialize);
 use crate::altrep::RegisterAltrep;
 
 impl RegisterAltrep for Float64Array {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Float64Array as crate::altrep_data::InferBase>::make_class(
@@ -1835,9 +1835,9 @@ impl RegisterAltrep for Float64Array {
 }
 
 impl RegisterAltrep for Int32Array {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Int32Array as crate::altrep_data::InferBase>::make_class(
@@ -1854,9 +1854,9 @@ impl RegisterAltrep for Int32Array {
 }
 
 impl RegisterAltrep for UInt8Array {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <UInt8Array as crate::altrep_data::InferBase>::make_class(
@@ -1873,9 +1873,9 @@ impl RegisterAltrep for UInt8Array {
 }
 
 impl RegisterAltrep for BooleanArray {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <BooleanArray as crate::altrep_data::InferBase>::make_class(
@@ -1916,9 +1916,9 @@ impl crate::altrep_data::AltStringData for StringArray {
 crate::impl_altstring_from_data!(StringArray, serialize);
 
 impl RegisterAltrep for StringArray {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <StringArray as crate::altrep_data::InferBase>::make_class(

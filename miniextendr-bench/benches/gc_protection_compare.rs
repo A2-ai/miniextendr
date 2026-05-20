@@ -7,7 +7,7 @@
 //!
 //! See `plans/gc-protection-benchmarks.md`.
 
-use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, SEXP};
+use miniextendr_api::sys::{self, R_PreserveObject, R_ReleaseObject, SEXP};
 use miniextendr_api::preserve;
 use miniextendr_api::protect_pool::ProtectPool;
 use miniextendr_bench::pool_prototypes::{
@@ -491,7 +491,7 @@ mod bursty {
         let sexps = unsafe { prealloc_sexps(BURST * rounds) };
 
         bencher.bench_local(|| unsafe {
-            let mut kept: Vec<ffi::SEXP> = Vec::new();
+            let mut kept: Vec<sys::SEXP> = Vec::new();
             for round in 0..rounds {
                 let mut cells = Vec::with_capacity(BURST);
                 for i in 0..BURST {
@@ -518,7 +518,7 @@ mod bursty {
         let sexps = unsafe { prealloc_sexps(burst * rounds) };
 
         bencher.bench_local(|| unsafe {
-            let mut kept: Vec<ffi::SEXP> = Vec::new();
+            let mut kept: Vec<sys::SEXP> = Vec::new();
             for round in 0..rounds {
                 for i in 0..burst {
                     R_PreserveObject(sexps[round * burst + i]);
@@ -554,9 +554,9 @@ mod replace_in_loop {
 
         bencher.bench_local(|| unsafe {
             let mut idx: std::os::raw::c_int = 0;
-            ffi::R_ProtectWithIndex(sexps[0], std::ptr::from_mut(&mut idx));
+            sys::R_ProtectWithIndex(sexps[0], std::ptr::from_mut(&mut idx));
             for &s in &sexps[1..] {
-                ffi::R_Reprotect(s, idx);
+                sys::R_Reprotect(s, idx);
             }
             raw_ffi::Rf_unprotect(1);
         });
@@ -572,7 +572,7 @@ mod replace_in_loop {
         bencher.bench_local(|| unsafe {
             let slot = pool.insert(sexps[0]);
             for &s in &sexps[1..] {
-                raw_ffi::SET_VECTOR_ELT(pool.backing, slot as ffi::R_xlen_t, s);
+                raw_ffi::SET_VECTOR_ELT(pool.backing, slot as sys::R_xlen_t, s);
             }
             pool.release(slot);
         });
@@ -720,7 +720,7 @@ mod unprotect_ptr_depth {
             for &s in &sexps[1..] {
                 raw_ffi::Rf_protect(s);
             }
-            ffi::Rf_unprotect_ptr(target);
+            sys::Rf_unprotect_ptr(target);
             if depth > 1 {
                 raw_ffi::Rf_unprotect((depth - 1) as i32);
             }
@@ -1030,7 +1030,7 @@ mod gc_and_memory {
             for (i, &s) in sexps.iter().enumerate() {
                 let cell = preserve::insert_unchecked(s);
                 // Simulate work allocation (interleaved with protection)
-                divan::black_box(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
+                divan::black_box(raw_ffi::Rf_allocVector(sys::SEXPTYPE::INTSXP, 10));
                 preserve::release_unchecked(cell);
                 _ = i;
             }
@@ -1047,7 +1047,7 @@ mod gc_and_memory {
         bencher.bench_local(|| unsafe {
             for (i, &s) in sexps.iter().enumerate() {
                 let slot = pool.insert(s);
-                divan::black_box(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
+                divan::black_box(raw_ffi::Rf_allocVector(sys::SEXPTYPE::INTSXP, 10));
                 pool.release(slot);
                 _ = i;
             }

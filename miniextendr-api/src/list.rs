@@ -17,8 +17,8 @@
 //! - [`ListBuilder`] — fixed-size batch construction
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
-use crate::ffi::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
-use crate::ffi::{self, SEXP, SexpExt};
+use crate::sys::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
+use crate::sys::{self, SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -167,7 +167,7 @@ impl List {
     /// Get row names from the `dimnames` attribute.
     #[inline]
     pub fn get_rownames(self) -> Option<SEXP> {
-        let rownames = unsafe { ffi::Rf_GetRowNames(self.0) };
+        let rownames = unsafe { sys::Rf_GetRowNames(self.0) };
         if rownames.is_nil() {
             None
         } else {
@@ -182,7 +182,7 @@ impl List {
         if dimnames.is_nil() {
             return None;
         }
-        let colnames = unsafe { ffi::Rf_GetColNames(dimnames) };
+        let colnames = unsafe { sys::Rf_GetColNames(dimnames) };
         if colnames.is_nil() {
             None
         } else {
@@ -266,7 +266,7 @@ impl List {
     /// ```
     #[inline]
     pub fn set_class_str(self, classes: &[&str]) -> Self {
-        use crate::ffi::SEXPTYPE::STRSXP;
+        use crate::sys::SEXPTYPE::STRSXP;
 
         let n: isize = classes
             .len()
@@ -277,7 +277,7 @@ impl List {
             // parent list can be freed during `Rf_allocVector` while it sits
             // unrooted in our Rust handle (UAF under gctorture).
             let _self_guard = OwnedProtect::new(self.0);
-            let class_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            let class_vec = OwnedProtect::new(sys::Rf_allocVector(STRSXP, n));
             for (i, class) in classes.iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 class_vec.get().set_string_elt(idx, SEXP::charsxp(class));
@@ -310,7 +310,7 @@ impl List {
     /// ```
     #[inline]
     pub fn set_names_str(self, names: &[&str]) -> Self {
-        use crate::ffi::SEXPTYPE::STRSXP;
+        use crate::sys::SEXPTYPE::STRSXP;
 
         let n: isize = names
             .len()
@@ -319,7 +319,7 @@ impl List {
         unsafe {
             // Protect self across the names-vector allocation; see set_class_str.
             let _self_guard = OwnedProtect::new(self.0);
-            let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            let names_vec = OwnedProtect::new(sys::Rf_allocVector(STRSXP, n));
             for (i, name) in names.iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 names_vec.get().set_string_elt(idx, SEXP::charsxp(name));
@@ -379,7 +379,7 @@ impl List {
     /// ```
     #[inline]
     pub fn set_row_names_str(self, row_names: &[&str]) -> Self {
-        use crate::ffi::SEXPTYPE::STRSXP;
+        use crate::sys::SEXPTYPE::STRSXP;
 
         let n: isize = row_names
             .len()
@@ -388,7 +388,7 @@ impl List {
         unsafe {
             // Protect self across the row.names allocation; see set_class_str.
             let _self_guard = OwnedProtect::new(self.0);
-            let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            let names_vec = OwnedProtect::new(sys::Rf_allocVector(STRSXP, n));
             for (i, name) in row_names.iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 names_vec.get().set_string_elt(idx, SEXP::charsxp(name));
@@ -658,7 +658,7 @@ impl<T: IntoR> IntoList for Vec<T> {
             .try_into()
             .expect("list length exceeds isize::MAX");
         unsafe {
-            let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
+            let list = OwnedProtect::new(sys::Rf_allocVector(VECSXP, n));
             for (i, val) in self.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 list.get().set_vector_elt(idx, val.into_sexp());
@@ -875,8 +875,8 @@ impl List {
             .try_into()
             .expect("pairs length exceeds isize::MAX");
         unsafe {
-            let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
-            let names = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            let list = OwnedProtect::new(sys::Rf_allocVector(VECSXP, n));
+            let names = OwnedProtect::new(sys::Rf_allocVector(STRSXP, n));
             for (i, (name, val)) in pairs.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 list.get().set_vector_elt(idx, val.into_sexp());
@@ -917,7 +917,7 @@ impl List {
         unsafe {
             // Protect list during construction. SET_VECTOR_ELT doesn't allocate,
             // but we protect defensively in case this code is modified later.
-            let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
+            let list = OwnedProtect::new(sys::Rf_allocVector(VECSXP, n));
             for (i, val) in values.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 list.get().set_vector_elt(idx, val);
@@ -940,7 +940,7 @@ impl List {
     /// The input SEXPs should already be protected or be children of protected
     /// containers.
     pub fn from_scalars_or_list(elements: &[SEXP]) -> Self {
-        use crate::ffi::SEXPTYPE;
+        use crate::sys::SEXPTYPE;
         use crate::into_r::alloc_r_vector;
 
         if elements.is_empty() {
@@ -975,10 +975,10 @@ impl List {
                 v
             },
             SEXPTYPE::LGLSXP => unsafe {
-                let (v, dst) = alloc_r_vector::<crate::ffi::RLogical>(n);
+                let (v, dst) = alloc_r_vector::<crate::sys::RLogical>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
                     *slot = *elem
-                        .as_slice::<crate::ffi::RLogical>()
+                        .as_slice::<crate::sys::RLogical>()
                         .first()
                         .expect("scalar has length 1");
                 }
@@ -986,7 +986,7 @@ impl List {
             },
             // STRSXP elements are CHARSXPs — must use SET_STRING_ELT (no slice access).
             SEXPTYPE::STRSXP => unsafe {
-                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as isize));
+                let v = OwnedProtect::new(sys::Rf_allocVector(SEXPTYPE::STRSXP, n as isize));
                 for (i, &elem) in elements.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     v.get().set_string_elt(idx, elem.string_elt(0));
@@ -1016,8 +1016,8 @@ impl List {
         unsafe {
             // CRITICAL: Both list and names must be protected because
             // Rf_mkCharLenCE can allocate and trigger GC in the loop below.
-            let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
-            let names = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            let list = OwnedProtect::new(sys::Rf_allocVector(VECSXP, n));
+            let names = OwnedProtect::new(sys::Rf_allocVector(STRSXP, n));
             for (i, (name, val)) in pairs.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 list.get().set_vector_elt(idx, val);
@@ -1090,12 +1090,12 @@ impl IntoR for Vec<List> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt as _};
-            let n = self.len() as crate::ffi::R_xlen_t;
+            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt as _};
+            let n = self.len() as crate::sys::R_xlen_t;
             let out = Rf_allocVector(SEXPTYPE::VECSXP, n);
             Rf_protect(out);
             for (i, list) in self.into_iter().enumerate() {
-                out.set_vector_elt(i as crate::ffi::R_xlen_t, list.0);
+                out.set_vector_elt(i as crate::sys::R_xlen_t, list.0);
             }
             Rf_unprotect(1);
             out
@@ -1118,15 +1118,15 @@ impl IntoR for Vec<Option<List>> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt as _};
-            let n = self.len() as crate::ffi::R_xlen_t;
+            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt as _};
+            let n = self.len() as crate::sys::R_xlen_t;
             // VECSXP slots are zero-initialised to R_NilValue by Rf_allocVector,
             // so None elements require no explicit fill.
             let out = Rf_allocVector(SEXPTYPE::VECSXP, n);
             Rf_protect(out);
             for (i, opt) in self.into_iter().enumerate() {
                 if let Some(list) = opt {
-                    out.set_vector_elt(i as crate::ffi::R_xlen_t, list.0);
+                    out.set_vector_elt(i as crate::sys::R_xlen_t, list.0);
                 }
             }
             Rf_unprotect(1);

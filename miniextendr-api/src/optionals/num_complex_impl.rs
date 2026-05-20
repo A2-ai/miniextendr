@@ -42,7 +42,7 @@
 pub use num_complex::Complex;
 
 use crate::altrep_traits::NA_REAL;
-use crate::ffi::{Rcomplex, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rcomplex, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -123,10 +123,10 @@ impl TryFromSexp for Complex<f64> {
 
 impl IntoR for Complex<f64> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -173,10 +173,10 @@ impl TryFromSexp for Option<Complex<f64>> {
 
 impl IntoR for Option<Complex<f64>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -222,17 +222,17 @@ impl TryFromSexp for Vec<Complex<f64>> {
 
 impl IntoR for Vec<Complex<f64>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::Rf_allocVector;
+        use crate::sys::Rf_allocVector;
 
         let len = self.len();
-        let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
+        let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::sys::R_xlen_t) };
         let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
 
         for (i, c) in self.into_iter().enumerate() {
@@ -277,17 +277,17 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
 
 impl IntoR for Vec<Option<Complex<f64>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::Rf_allocVector;
+        use crate::sys::Rf_allocVector;
 
         let len = self.len();
-        let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
+        let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::sys::R_xlen_t) };
         let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
 
         for (i, opt) in self.into_iter().enumerate() {

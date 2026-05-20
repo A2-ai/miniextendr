@@ -8,7 +8,7 @@
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::coerce::TryCoerce;
-use crate::ffi::{RLogical, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{RLogical, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, is_na_real};
 
 #[inline]

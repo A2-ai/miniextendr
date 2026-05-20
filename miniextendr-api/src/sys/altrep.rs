@@ -3,7 +3,9 @@
 //! This module mirrors `R_ext/Altrep.h` and is intentionally low-level.
 
 #![allow(non_camel_case_types)]
-use crate::ffi::{DllInfo, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
+use crate::SEXP;
+use crate::sexp_types::{R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXPTYPE};
+use crate::sys::DllInfo;
 
 /// Signature for ALTREP `coerce` method.
 pub type R_altrep_Coerce_method_t =

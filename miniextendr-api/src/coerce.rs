@@ -26,7 +26,7 @@
 //! ```
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::ffi::{Rboolean, Rcomplex};
+use crate::sys::{Rboolean, Rcomplex};
 
 /// Infallible coercion from `Self` to type `R`.
 ///
@@ -498,7 +498,7 @@ impl TryCoerce<bool> for Rboolean {
     }
 }
 
-impl TryCoerce<bool> for crate::ffi::RLogical {
+impl TryCoerce<bool> for crate::sys::RLogical {
     type Error = LogicalCoerceError;
 
     #[inline]

@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 
-use miniextendr_api::ffi::{self, SEXP};
+use miniextendr_api::sys::{self, SEXP};
 use miniextendr_bench::raw_ffi;
 
 fn main() {
@@ -29,7 +29,7 @@ unsafe fn charsxp_to_string_r_char_utf8_only(charsxp: SEXP) -> String {
 
 #[inline(always)]
 unsafe fn charsxp_to_string_translate_utf8(charsxp: SEXP) -> String {
-    let ptr = unsafe { ffi::Rf_translateCharUTF8(charsxp) };
+    let ptr = unsafe { sys::Rf_translateCharUTF8(charsxp) };
     if ptr.is_null() {
         return String::new();
     }
@@ -58,7 +58,7 @@ fn charsxp_r_char_ptr_utf8() {
 #[divan::bench]
 fn charsxp_translate_ptr_utf8() {
     unsafe {
-        let ptr = ffi::Rf_translateCharUTF8(fixtures().utf8_charsxp());
+        let ptr = sys::Rf_translateCharUTF8(fixtures().utf8_charsxp());
         divan::black_box(ptr);
     }
 }
@@ -66,7 +66,7 @@ fn charsxp_translate_ptr_utf8() {
 #[divan::bench]
 fn charsxp_translate_ptr_latin1() {
     unsafe {
-        let ptr = ffi::Rf_translateCharUTF8(fixtures().latin1_charsxp());
+        let ptr = sys::Rf_translateCharUTF8(fixtures().latin1_charsxp());
         divan::black_box(ptr);
     }
 }

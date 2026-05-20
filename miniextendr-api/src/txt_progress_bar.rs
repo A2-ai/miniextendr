@@ -26,7 +26,7 @@
 
 use std::marker::PhantomData;
 
-use crate::ffi::{R_PreserveObject, R_ReleaseObject, Rf_protect, Rf_unprotect, SEXP, SexpExt};
+use crate::sys::{R_PreserveObject, R_ReleaseObject, Rf_protect, Rf_unprotect, SEXP, SexpExt};
 
 // region: RTxtProgressBar struct
 
@@ -236,7 +236,7 @@ impl RTxtProgressBarBuilder {
     /// Calling `width_auto()` after `width()` (or vice-versa) uses the last
     /// setting.
     pub fn width_auto(mut self) -> Self {
-        let w = unsafe { crate::ffi::Rf_GetOptionWidth() };
+        let w = unsafe { crate::sys::Rf_GetOptionWidth() };
         // Rf_GetOptionWidth() returns a positive int; saturate to u32.
         self.width = Some(w.max(1) as u32);
         self
@@ -290,7 +290,7 @@ impl RTxtProgressBarBuilder {
 // Must be called from the R main thread.
 unsafe fn build_inner(opts: RTxtProgressBarBuilder) -> RTxtProgressBar {
     use crate::expression::{RCall, REnv};
-    use crate::ffi::{Rf_mkString, SEXP};
+    use crate::sys::{Rf_mkString, SEXP};
 
     unsafe {
         // Resolve the utils namespace — utils is always loaded (base default).
@@ -354,7 +354,7 @@ unsafe fn build_inner(opts: RTxtProgressBarBuilder) -> RTxtProgressBar {
 // Must be called from the R main thread.
 unsafe fn set_txt_progress_bar_inner(sexp: SEXP, value: f64) -> Result<(), String> {
     use crate::expression::RCall;
-    use crate::ffi::SEXP;
+    use crate::sys::SEXP;
 
     unsafe {
         let val_sexp = SEXP::scalar_real(value);
@@ -402,7 +402,7 @@ unsafe fn close_txt_progress_bar_inner(sexp: SEXP) -> Result<(), String> {
 // # Safety
 // Must be called from the R main thread.
 unsafe fn kill_txt_progress_bar_inner(sexp: SEXP) {
-    use crate::ffi::{R_BaseEnv, Rf_install, Rf_lang1, Rf_lang3, Rf_mkString};
+    use crate::sys::{R_BaseEnv, Rf_install, Rf_lang1, Rf_lang3, Rf_mkString};
 
     unsafe {
         // Extract pb$kill — evaluates `"$"(pb, "kill")` to get the closure.
@@ -414,7 +414,7 @@ unsafe fn kill_txt_progress_bar_inner(sexp: SEXP) {
         Rf_protect(extract);
 
         let mut err: std::os::raw::c_int = 0;
-        let kill_fn = crate::ffi::R_tryEvalSilent(extract, R_BaseEnv, &mut err);
+        let kill_fn = crate::sys::R_tryEvalSilent(extract, R_BaseEnv, &mut err);
         Rf_unprotect(2); // extract, kill_str
         if err != 0 {
             return; // bar already closed or invalid — ignore
@@ -425,7 +425,7 @@ unsafe fn kill_txt_progress_bar_inner(sexp: SEXP) {
         let call = Rf_lang1(kill_fn);
         Rf_protect(call);
         let mut err2: std::os::raw::c_int = 0;
-        crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err2);
+        crate::sys::R_tryEvalSilent(call, R_BaseEnv, &mut err2);
         Rf_unprotect(2); // call, kill_fn
         // Ignore err2 — we're in Drop, cannot propagate.
     }

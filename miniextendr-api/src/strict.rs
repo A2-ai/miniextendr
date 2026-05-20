@@ -14,7 +14,7 @@
 //! if the value doesn't fit in i32.
 
 use crate::coerce::TryCoerce;
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 

@@ -73,7 +73,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 
 /// Offset in bytes from SEXP address to data pointer for standard (non-ALTREP) vectors.
 ///
@@ -99,11 +99,11 @@ pub fn sexprec_data_offset() -> usize {
 /// Must be called on R's main thread with R initialized.
 pub unsafe fn init_sexprec_data_offset() {
     unsafe {
-        let test = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::REALSXP, 1));
+        let test = sys::Rf_protect(sys::Rf_allocVector(SEXPTYPE::REALSXP, 1));
         let sexp_addr = test.0 as usize;
-        let data_addr = ffi::DATAPTR_RO(test) as usize;
+        let data_addr = sys::DATAPTR_RO(test) as usize;
         SEXPREC_DATA_OFFSET.store(data_addr - sexp_addr, Ordering::Relaxed);
-        ffi::Rf_unprotect(1);
+        sys::Rf_unprotect(1);
     }
 }
 
@@ -188,7 +188,7 @@ pub unsafe fn try_recover_r_sexp(
 
     // Compute candidate SEXP by subtracting header size.
     // wrapping_byte_sub is defined behavior for all pointer arithmetic.
-    let candidate_ptr = (data_ptr as *mut ffi::SEXPREC).wrapping_byte_sub(offset);
+    let candidate_ptr = (data_ptr as *mut sys::SEXPREC).wrapping_byte_sub(offset);
 
     let candidate = SEXP(candidate_ptr);
 

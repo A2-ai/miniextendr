@@ -11,7 +11,7 @@
 //! - Release order flexibility
 //! - High iteration counts
 
-use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE};
+use miniextendr_api::sys::{self, Rf_allocVector, SEXPTYPE};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::refcount_protect::{
     HashMapArena, RefCountedArena, ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
@@ -44,8 +44,8 @@ fn raw_preserve_release_single() {
 fn raw_preserve_release_unchecked_single() {
     unsafe {
         let x = raw_ffi::Rf_ScalarInteger(42);
-        ffi::R_PreserveObject_unchecked(x);
-        ffi::R_ReleaseObject_unchecked(x);
+        sys::R_PreserveObject_unchecked(x);
+        sys::R_ReleaseObject_unchecked(x);
         divan::black_box(x);
     }
 }
@@ -75,11 +75,11 @@ fn raw_preserve_release_unchecked_multiple(n: usize) {
         let mut values = Vec::with_capacity(n);
         for i in 0..n {
             let x = raw_ffi::Rf_ScalarInteger(i as i32);
-            ffi::R_PreserveObject_unchecked(x);
+            sys::R_PreserveObject_unchecked(x);
             values.push(x);
         }
         for x in values {
-            ffi::R_ReleaseObject_unchecked(x);
+            sys::R_ReleaseObject_unchecked(x);
         }
     }
 }
@@ -91,7 +91,7 @@ fn raw_preserve_only(n: usize) {
     unsafe {
         for i in 0..n {
             let x = raw_ffi::Rf_ScalarInteger((i % 100) as i32);
-            ffi::R_PreserveObject_unchecked(x);
+            sys::R_PreserveObject_unchecked(x);
             divan::black_box(x);
         }
         // NOTE: Not releasing - this pollutes the precious list but shows true preserve cost
@@ -106,11 +106,11 @@ fn raw_preserve_release_scale(n: usize) {
         let mut values = Vec::with_capacity(n);
         for i in 0..n {
             let x = raw_ffi::Rf_ScalarInteger((i % 100) as i32);
-            ffi::R_PreserveObject_unchecked(x);
+            sys::R_PreserveObject_unchecked(x);
             values.push(x);
         }
         for x in values {
-            ffi::R_ReleaseObject_unchecked(x);
+            sys::R_ReleaseObject_unchecked(x);
         }
     }
 }

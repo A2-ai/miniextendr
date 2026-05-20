@@ -231,10 +231,28 @@ pub mod altrep_traits;
 pub mod altrep_registration {
     pub use crate::altrep::RegisterAltrep;
 }
-/// Raw R FFI bindings and low-level SEXP utilities.
+/// Core type vocabulary for R values: `SEXPTYPE`, `R_xlen_t`, `Rcomplex`,
+/// `RLogical`, `Rboolean`, `RNativeType`, `cetype_t`.
+pub mod sexp_types;
+
+/// The `SEXP` newtype and inherent methods.
+pub mod sexp;
+
+/// `SexpExt` — the ergonomic extension trait on `SEXP`.
+pub mod sexp_ext;
+
+/// Raw R FFI bindings.
 ///
-/// Most users should prefer safe wrappers from higher-level modules.
-pub mod ffi;
+/// Most users should prefer safe wrappers from higher-level modules — see
+/// [`sexp`], [`sexp_ext`], and [`sexp_types`].
+pub mod sys;
+
+// Crate-root re-exports for the ergonomic API surface.
+pub use sexp::{SEXP, SEXPREC};
+pub use sexp_ext::SexpExt;
+pub use sexp_types::{
+    R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE, cetype_t,
+};
 
 /// Automatic registration internals.
 ///
@@ -352,13 +370,13 @@ static ALTREP_DLL_INFO: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::n
 
 /// Get the stored DllInfo pointer for ALTREP class registration.
 #[doc(hidden)]
-pub fn altrep_dll_info() -> *mut ffi::DllInfo {
+pub fn altrep_dll_info() -> *mut sys::DllInfo {
     ALTREP_DLL_INFO.load(Ordering::Acquire).cast()
 }
 
 /// Store the DllInfo pointer during package init.
 #[doc(hidden)]
-pub fn set_altrep_dll_info(dll: *mut ffi::DllInfo) {
+pub fn set_altrep_dll_info(dll: *mut sys::DllInfo) {
     ALTREP_DLL_INFO.store(dll.cast(), Ordering::Release);
 }
 

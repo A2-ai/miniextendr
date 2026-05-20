@@ -32,7 +32,7 @@
 //! let alpha: Vec<f64> = validated.get("alpha")?;
 //! ```
 
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::list::{List, ListFromSexpError};
 use std::collections::HashSet;

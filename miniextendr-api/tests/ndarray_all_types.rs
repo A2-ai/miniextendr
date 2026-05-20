@@ -12,7 +12,7 @@ use miniextendr_api::{Array0, Array1, Array2};
 fn array1_all_rnative_types() {
     // Verify Array1 blanket impl works for all RNativeType: i32, f64, u8, RLogical
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{
+        use miniextendr_api::sys::{
             RLogical, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt,
         };
 
@@ -70,8 +70,8 @@ fn array1_all_rnative_types() {
 fn array0_scalar_all_types() {
     // Verify Array0 (scalar) works for all types
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::RLogical;
-        use miniextendr_api::ffi::SEXP;
+        use miniextendr_api::sys::RLogical;
+        use miniextendr_api::sys::SEXP;
 
         // i32 scalar
         let sexp_int = SEXP::scalar_integer(42);
@@ -95,7 +95,7 @@ fn array0_scalar_all_types() {
 fn array2_u8_blanket_impl() {
     // Verify Array2 works for u8 (raw matrices)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 2x2 raw matrix
@@ -124,7 +124,7 @@ fn array2_u8_blanket_impl() {
 fn arrayd_i32_from_vector() {
     // Test ArrayD created from R vector (1D)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
         use ndarray::ArrayD;
 
         unsafe {

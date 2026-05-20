@@ -50,7 +50,7 @@
 //! These use ahash instead of SipHash for improved throughput. Not DOS-resistant,
 //! but suitable for local, non-hostile environments.
 
-use crate::ffi::{
+use crate::sys::{
     R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP,
     SEXPTYPE, SexpExt,
 };

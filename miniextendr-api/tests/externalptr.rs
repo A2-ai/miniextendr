@@ -3,7 +3,7 @@
 mod r_test_utils;
 
 use miniextendr_api::externalptr::ExternalPtr;
-use miniextendr_api::ffi::{Rf_install, SEXP};
+use miniextendr_api::sys::{Rf_install, SEXP};
 use std::ffi::CString;
 
 #[test]

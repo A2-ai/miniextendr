@@ -57,11 +57,11 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         crate::worker::is_r_main_thread(),
         "must be called from R main thread"
     );
-    use crate::ffi::{R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, SexpExt};
+    use crate::sys::{R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, SexpExt};
 
     unsafe {
         // Call l10n_info()
-        let call = crate::ffi::Rf_lang1(Rf_install(c"l10n_info".as_ptr()));
+        let call = crate::sys::Rf_lang1(Rf_install(c"l10n_info".as_ptr()));
         Rf_protect(call);
         let info = Rf_eval(call, R_BaseEnv);
         Rf_protect(info);
@@ -84,7 +84,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         Rf_unprotect(2);
 
         if !is_utf8 {
-            crate::ffi::Rf_error_unchecked(
+            crate::sys::Rf_error_unchecked(
                 c"%s".as_ptr(),
                 c"miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)".as_ptr(),
             );
@@ -100,7 +100,7 @@ pub extern "C-unwind" fn miniextendr_encoding_init() {
     let _ = ENCODING_INFO.get_or_init(|| {
         #[cfg(feature = "nonapi")]
         unsafe {
-            use crate::ffi::{Rboolean, nonapi_encoding};
+            use crate::sys::{Rboolean, nonapi_encoding};
 
             let native_encoding = {
                 let ptr = nonapi_encoding::R_nativeEncoding();
@@ -125,7 +125,7 @@ pub extern "C-unwind" fn miniextendr_encoding_init() {
             if std::env::var_os("MINIEXTENDR_ENCODING_DEBUG").is_some() {
                 let msg = format!("[miniextendr] encoding init: {info:?}\n");
                 if let Ok(c_msg) = std::ffi::CString::new(msg) {
-                    crate::ffi::REprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+                    crate::sys::REprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
                 }
             }
 

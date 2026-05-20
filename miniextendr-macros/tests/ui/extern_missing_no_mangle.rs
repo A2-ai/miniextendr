@@ -2,7 +2,7 @@
 
 use miniextendr_macros::miniextendr;
 #[miniextendr]
-extern "C-unwind" fn C_bad(_x: miniextendr_api::ffi::SEXP) -> miniextendr_api::ffi::SEXP {
+extern "C-unwind" fn C_bad(_x: miniextendr_api::sys::SEXP) -> miniextendr_api::sys::SEXP {
     _x
 }
 

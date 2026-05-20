@@ -1,6 +1,6 @@
 //! SexpExt helper benchmarks.
 
-use miniextendr_api::ffi::{self, SexpExt};
+use miniextendr_api::sys::{self, SexpExt};
 use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
@@ -36,7 +36,7 @@ fn sexp_is_integer_ext() {
 #[divan::bench]
 fn sexp_is_integer_type_of() {
     let sexp = miniextendr_bench::fixtures().int_vec(2);
-    let out = sexp.type_of() == ffi::SEXPTYPE::INTSXP;
+    let out = sexp.type_of() == sys::SEXPTYPE::INTSXP;
     divan::black_box(out);
 }
 

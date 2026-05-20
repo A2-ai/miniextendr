@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::SexpExt;
+use miniextendr_api::sys::SexpExt;
 use miniextendr_api::from_r::{SexpLengthError, TryFromSexp};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::list::{IntoList as _, List, TryFromList};
@@ -61,7 +61,7 @@ fn names_as_vec(list: List) -> Vec<String> {
     (0..len)
         .map(|i| {
             names
-                .string_elt_str(i as miniextendr_api::ffi::R_xlen_t)
+                .string_elt_str(i as miniextendr_api::sys::R_xlen_t)
                 .unwrap_or("")
                 .to_string()
         })

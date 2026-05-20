@@ -1,6 +1,6 @@
 //! Test fixtures for into_r_as module (IntoRAs trait).
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::into_r_as::IntoRAs;
 use miniextendr_api::prelude::*;
 

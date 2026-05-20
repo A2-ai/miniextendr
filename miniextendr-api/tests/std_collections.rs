@@ -87,7 +87,7 @@ fn cow_slice_owned() {
 #[test]
 fn cow_slice_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
@@ -135,7 +135,7 @@ fn cow_str_owned() {
 #[test]
 fn cow_str_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::Rf_mkString;
+        use miniextendr_api::sys::Rf_mkString;
         use std::ffi::CString;
 
         unsafe {

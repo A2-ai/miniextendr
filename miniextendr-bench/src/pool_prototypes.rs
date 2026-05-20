@@ -9,7 +9,7 @@
 //! thread with valid SEXP arguments. These are benchmark prototypes, not public API.
 #![allow(clippy::missing_safety_doc)]
 
-use miniextendr_api::ffi::{
+use miniextendr_api::sys::{
     self, R_PreserveObject, R_ReleaseObject, Rf_protect, Rf_unprotect, SEXP, SexpExt,
 };
 use std::collections::VecDeque;
@@ -31,7 +31,7 @@ impl VecPool {
         let capacity = capacity.max(1);
         unsafe {
             let backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, capacity as sys::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -54,33 +54,33 @@ impl VecPool {
             self.len += 1;
             s
         };
-        self.backing.set_vector_elt(slot as ffi::R_xlen_t, sexp);
+        self.backing.set_vector_elt(slot as sys::R_xlen_t, sexp);
         slot
     }
 
     #[inline]
     pub unsafe fn release(&mut self, slot: usize) {
         self.backing
-            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
+            .set_vector_elt(slot as sys::R_xlen_t, SEXP::nil());
         self.free_list.push(slot);
     }
 
     #[inline]
     pub unsafe fn get(&self, slot: usize) -> SEXP {
-        self.backing.vector_elt(slot as ffi::R_xlen_t)
+        self.backing.vector_elt(slot as sys::R_xlen_t)
     }
 
     unsafe fn grow(&mut self) {
         let new_cap = self.capacity * 2;
         unsafe {
             let new_backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, new_cap as sys::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {
                 new_backing.set_vector_elt(
-                    i as ffi::R_xlen_t,
-                    self.backing.vector_elt(i as ffi::R_xlen_t),
+                    i as sys::R_xlen_t,
+                    self.backing.vector_elt(i as sys::R_xlen_t),
                 );
             }
             R_ReleaseObject(self.backing);
@@ -117,7 +117,7 @@ impl DequePool {
         let capacity = capacity.max(1);
         unsafe {
             let backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, capacity as sys::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -140,14 +140,14 @@ impl DequePool {
             self.len += 1;
             s
         };
-        self.backing.set_vector_elt(slot as ffi::R_xlen_t, sexp);
+        self.backing.set_vector_elt(slot as sys::R_xlen_t, sexp);
         slot
     }
 
     #[inline]
     pub unsafe fn release(&mut self, slot: usize) {
         self.backing
-            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
+            .set_vector_elt(slot as sys::R_xlen_t, SEXP::nil());
         self.free_list.push_back(slot);
     }
 
@@ -155,13 +155,13 @@ impl DequePool {
         let new_cap = self.capacity * 2;
         unsafe {
             let new_backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, new_cap as sys::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {
                 new_backing.set_vector_elt(
-                    i as ffi::R_xlen_t,
-                    self.backing.vector_elt(i as ffi::R_xlen_t),
+                    i as sys::R_xlen_t,
+                    self.backing.vector_elt(i as sys::R_xlen_t),
                 );
             }
             R_ReleaseObject(self.backing);
@@ -205,7 +205,7 @@ impl SlotmapPool {
         let capacity = capacity.max(1);
         unsafe {
             let backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, capacity as sys::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -229,7 +229,7 @@ impl SlotmapPool {
             self.next_slot += 1;
             s
         };
-        self.backing.set_vector_elt(slot as ffi::R_xlen_t, sexp);
+        self.backing.set_vector_elt(slot as sys::R_xlen_t, sexp);
         self.slots.insert(slot)
     }
 
@@ -237,7 +237,7 @@ impl SlotmapPool {
     pub unsafe fn release(&mut self, key: ProtectKey) {
         if let Some(slot) = self.slots.remove(key) {
             self.backing
-                .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
+                .set_vector_elt(slot as sys::R_xlen_t, SEXP::nil());
             self.free_slots.push(slot);
         }
     }
@@ -245,20 +245,20 @@ impl SlotmapPool {
     #[inline]
     pub fn get(&self, key: ProtectKey) -> Option<SEXP> {
         let &slot = self.slots.get(key)?;
-        Some(self.backing.vector_elt(slot as ffi::R_xlen_t))
+        Some(self.backing.vector_elt(slot as sys::R_xlen_t))
     }
 
     unsafe fn grow(&mut self) {
         let new_cap = self.capacity * 2;
         unsafe {
             let new_backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, new_cap as sys::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {
                 new_backing.set_vector_elt(
-                    i as ffi::R_xlen_t,
-                    self.backing.vector_elt(i as ffi::R_xlen_t),
+                    i as sys::R_xlen_t,
+                    self.backing.vector_elt(i as sys::R_xlen_t),
                 );
             }
             R_ReleaseObject(self.backing);
@@ -294,7 +294,7 @@ impl KeyedBacking {
         let capacity = capacity.max(1);
         unsafe {
             let backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, capacity as sys::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -321,18 +321,18 @@ impl KeyedBacking {
 
     #[inline]
     unsafe fn set(&self, slot: usize, sexp: SEXP) {
-        self.backing.set_vector_elt(slot as ffi::R_xlen_t, sexp);
+        self.backing.set_vector_elt(slot as sys::R_xlen_t, sexp);
     }
 
     #[inline]
     unsafe fn get(&self, slot: usize) -> SEXP {
-        self.backing.vector_elt(slot as ffi::R_xlen_t)
+        self.backing.vector_elt(slot as sys::R_xlen_t)
     }
 
     #[inline]
     unsafe fn clear_slot(&mut self, slot: usize) {
         self.backing
-            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
+            .set_vector_elt(slot as sys::R_xlen_t, SEXP::nil());
         self.free_slots.push(slot);
     }
 
@@ -340,13 +340,13 @@ impl KeyedBacking {
         let new_cap = self.capacity * 2;
         unsafe {
             let new_backing =
-                crate::raw_ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+                crate::raw_ffi::Rf_allocVector(sys::SEXPTYPE::VECSXP, new_cap as sys::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {
                 new_backing.set_vector_elt(
-                    i as ffi::R_xlen_t,
-                    self.backing.vector_elt(i as ffi::R_xlen_t),
+                    i as sys::R_xlen_t,
+                    self.backing.vector_elt(i as sys::R_xlen_t),
                 );
             }
             R_ReleaseObject(self.backing);

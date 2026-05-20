@@ -143,7 +143,7 @@ pub use conv::{check_arity, extract_arg, from_sexp, nil, rf_error, to_sexp, try_
 pub use crate::condition::repanic_if_rust_error;
 
 use crate::abi::mx_tag;
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 use std::os::raw::c_void;
 
 // region: TraitView - Trait for macro-generated View structs
@@ -244,7 +244,7 @@ pub trait TraitView: Sized {
             }
 
             // Get the erased pointer (points to the wrapper struct header)
-            let raw_ptr = crate::ffi::R_ExternalPtrAddr(sexp);
+            let raw_ptr = crate::sys::R_ExternalPtrAddr(sexp);
             if raw_ptr.is_null() {
                 return None;
             }

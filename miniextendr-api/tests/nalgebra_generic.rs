@@ -12,7 +12,7 @@ use miniextendr_api::{DMatrix, DVector, SMatrix, SVector};
 fn dvector_i32_blanket_impl() {
     // Verify blanket impl works for i32 (not just f64)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
@@ -54,7 +54,7 @@ fn dvector_f64_roundtrip() {
 fn dmatrix_i32_blanket_impl() {
     // Verify blanket impl works for i32
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 2x3 matrix
@@ -88,7 +88,7 @@ fn dmatrix_i32_blanket_impl() {
 fn dmatrix_u8_blanket_impl() {
     // Verify blanket impl works for u8 (raw bytes)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 2x2 raw matrix
@@ -148,7 +148,7 @@ fn svector_f64_roundtrip() {
 #[test]
 fn svector_i32_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 3x1 integer matrix (column vector)
@@ -173,7 +173,7 @@ fn svector_i32_from_r() {
 #[test]
 fn svector_length_mismatch() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 4x1 matrix, but try to convert to SVector<f64, 3>
@@ -220,7 +220,7 @@ fn smatrix_f64_roundtrip() {
 #[test]
 fn smatrix_i32_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 2x2 integer matrix
@@ -249,7 +249,7 @@ fn smatrix_i32_from_r() {
 #[test]
 fn smatrix_dimension_mismatch() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 3x3 matrix, but try to convert to SMatrix<f64, 2, 2>

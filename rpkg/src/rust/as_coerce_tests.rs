@@ -5,8 +5,8 @@
 
 use miniextendr_api::as_coerce::AsCoerceError;
 use miniextendr_api::{
-    ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, ffi, ffi::SexpExt,
-    miniextendr,
+    ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, SEXP, miniextendr, sys,
+    sys::SexpExt,
 };
 
 /// Test struct for as.<class> coercion methods.
@@ -105,7 +105,7 @@ impl AsCoerceTestData {
     ///
     /// Returns a single string describing the data.
     #[miniextendr(as = "character")]
-    pub fn as_character(&self) -> Result<ffi::SEXP, AsCoerceError> {
+    pub fn as_character(&self) -> Result<SEXP, AsCoerceError> {
         let desc = format!(
             "AsCoerceTestData({} items: {})",
             self.values.len(),
@@ -114,8 +114,8 @@ impl AsCoerceTestData {
 
         // Create a character vector of length 1
         unsafe {
-            let result = OwnedProtect::new(ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1));
-            result.get().set_string_elt(0, ffi::SEXP::charsxp(&desc));
+            let result = OwnedProtect::new(sys::Rf_allocVector(sys::SEXPTYPE::STRSXP, 1));
+            result.get().set_string_elt(0, sys::SEXP::charsxp(&desc));
             Ok(result.into_sexp())
         }
     }
@@ -124,7 +124,7 @@ impl AsCoerceTestData {
     ///
     /// Returns the values as a numeric vector.
     #[miniextendr(as = "numeric")]
-    pub fn as_numeric(&self) -> Result<ffi::SEXP, AsCoerceError> {
+    pub fn as_numeric(&self) -> Result<SEXP, AsCoerceError> {
         Ok(self.values.clone().into_sexp())
     }
 
@@ -132,7 +132,7 @@ impl AsCoerceTestData {
     ///
     /// Returns the values truncated to integers.
     #[miniextendr(as = "integer")]
-    pub fn as_integer(&self) -> Result<ffi::SEXP, AsCoerceError> {
+    pub fn as_integer(&self) -> Result<SEXP, AsCoerceError> {
         let ints: Vec<i32> = self.values.iter().map(|&v| v as i32).collect();
         Ok(ints.into_sexp())
     }
@@ -187,7 +187,7 @@ impl AsCoerceErrorTest {
 
     /// Convert to character - custom error message.
     #[miniextendr(as = "character")]
-    pub fn as_character(&self) -> Result<ffi::SEXP, AsCoerceError> {
+    pub fn as_character(&self) -> Result<SEXP, AsCoerceError> {
         Err(AsCoerceError::Custom(
             "intentional error for testing".into(),
         ))

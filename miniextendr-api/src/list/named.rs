@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::ffi::{SEXP, SexpExt};
+use crate::sys::{SEXP, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 

@@ -212,7 +212,7 @@ pub trait PrefersExternalPtr: crate::externalptr::IntoExternalPtr {}
 /// Marker trait for types that prefer native SEXP conversion.
 ///
 /// Implemented by the `PreferRNativeType` derive; currently informational.
-pub trait PrefersRNativeType: crate::ffi::RNativeType {}
+pub trait PrefersRNativeType: crate::sys::RNativeType {}
 
 // region: Coercion marker traits
 

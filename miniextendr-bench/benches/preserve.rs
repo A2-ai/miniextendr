@@ -4,7 +4,7 @@
 //! protection overhead. Compares checked vs unchecked variants.
 
 use divan::Bencher;
-use miniextendr_api::ffi::{R_PreserveObject, R_ReleaseObject};
+use miniextendr_api::sys::{R_PreserveObject, R_ReleaseObject};
 use miniextendr_api::preserve;
 use miniextendr_bench::raw_ffi;
 

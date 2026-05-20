@@ -3,7 +3,7 @@
 mod r_test_utils;
 
 use miniextendr_api::altrep_traits::NA_LOGICAL;
-use miniextendr_api::ffi::{R_xlen_t, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::sys::{R_xlen_t, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::into_r::IntoR;
 
 fn scalar_logical(sexp: SEXP) -> i32 {

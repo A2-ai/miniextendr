@@ -1,6 +1,6 @@
 //! Miscellaneous test functions.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::miniextendr;
 
 // Test that wildcard `_` parameters work (transformed to synthetic names internally)
@@ -18,5 +18,5 @@ pub fn underscore_it_all(_: i32, _: f64) {}
 /// Test returning a scalar integer SEXP directly.
 #[miniextendr]
 pub fn do_nothing() -> SEXP {
-    miniextendr_api::ffi::SEXP::scalar_integer(42)
+    miniextendr_api::sys::SEXP::scalar_integer(42)
 }

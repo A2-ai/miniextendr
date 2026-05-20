@@ -3,7 +3,7 @@
 //!
 //! These bypass miniextendr-api's `#[r_ffi_checked]` wrappers.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 
 #[allow(non_snake_case, dead_code)]
 unsafe extern "C-unwind" {
