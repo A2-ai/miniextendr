@@ -60,6 +60,18 @@ trap '
 # via cargo-revendor and runs ./configure to generate Makevars / .cargo/config.toml.
 ( cd rpkg && Rscript bootstrap.R )
 
+# Diagnostic: state of rpkg/ tree immediately after bootstrap.R (before R CMD build).
+echo "=== DIAG: rpkg/inst/ after bootstrap.R ==="
+ls -la rpkg/inst/ || true
+echo "=== DIAG: rpkg/ top-level dirs ==="
+ls -la rpkg/ | head -30 || true
+echo "=== DIAG: file rpkg/inst/vendor.tar.xz ==="
+file rpkg/inst/vendor.tar.xz 2>/dev/null || true
+stat rpkg/inst/vendor.tar.xz 2>/dev/null || stat -c '%a %s %y %n' rpkg/inst/vendor.tar.xz 2>/dev/null || true
+echo "=== DIAG: R version ==="
+R --version | head -1
+echo "=== DIAG: end ==="
+
 # R CMD build seals the tarball. With Config/build/bootstrap: TRUE in
 # DESCRIPTION, pkgbuild would re-run bootstrap.R; the bare `R CMD build`
 # invocation does NOT, which is what we want here (bootstrap already ran).
@@ -72,6 +84,15 @@ if [ -z "$TARBALL" ]; then
     echo "FAIL: R CMD build did not produce a tarball" >&2
     exit 1
 fi
+
+# Diagnostic: full file listing of the tarball, plus inst/-prefixed entries.
+echo "=== DIAG: tar entries with 'inst' or 'vendor' ==="
+tar -tzf "$TARBALL" | grep -E "(inst|vendor)" | head -30 || true
+echo "=== DIAG: total tar entry count ==="
+tar -tzf "$TARBALL" | wc -l
+echo "=== DIAG: tar size ==="
+ls -la "$TARBALL"
+echo "=== DIAG: end ==="
 
 # Assert: the tarball ships inst/vendor.tar.xz (produced by bootstrap.R).
 if ! tar -tzf "$TARBALL" 2>/dev/null | grep -q 'inst/vendor\.tar\.xz$'; then
