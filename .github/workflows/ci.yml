@@ -1124,7 +1124,6 @@ jobs:
     timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.r == 'true'
-    continue-on-error: true  # Tracked: #551 — pkgbuild::build tarball doesn't include inst/vendor.tar.xz
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SCCACHE_GHA_ENABLED: "true"
@@ -1143,9 +1142,6 @@ jobs:
         with:
           r-version: release
           use-public-rspm: true
-
-      - name: Install pkgbuild
-        run: Rscript -e 'install.packages("pkgbuild", repos = "https://cloud.r-project.org")'
 
       - name: Install rv (for .Rprofile activate.R)
         run: |
@@ -1194,8 +1190,7 @@ jobs:
       - cross-package-tests
       - minirextendr
       - cran-check
-      # bootstrap-vendor-test is non-gating while #551 is being diagnosed
-      # (continue-on-error on the job + omitted from this gate).
+      - bootstrap-vendor-test
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -1214,7 +1209,7 @@ jobs:
             "${{ needs.cross-package-tests.result }}"
             "${{ needs.minirextendr.result }}"
             "${{ needs.cran-check.result }}"
-            # bootstrap-vendor-test omitted: #551
+            "${{ needs.bootstrap-vendor-test.result }}"
           )
           for result in "${results[@]}"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then

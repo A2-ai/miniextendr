@@ -470,6 +470,26 @@ dnl when R's values differ — otherwise we'd just add noise to the config.
 CARGO_ENV_R_AR=`"${R_HOME}/bin/R" CMD config AR 2>/dev/null`
 CARGO_ENV_R_RANLIB=`"${R_HOME}/bin/R" CMD config RANLIB 2>/dev/null`
 
+dnl --- LTO: mirror R's --enable-lto into cargo profile LTO ----
+dnl R's `--enable-lto` substitutes a value into the LTO make variable
+dnl (typically `-flto`, but users can pass `LTO=-flto=thin` etc).
+dnl We map the flag space onto cargo's profile.lto values:
+dnl   -flto=thin              -> "thin"
+dnl   -flto=fat | -flto=full  -> "fat"
+dnl   -flto* (anything else)  -> "thin"  (conservative)
+dnl   empty                   -> ""      (no emission)
+CARGO_ENV_PROFILE_LTO=""
+_r_lto=`"${R_HOME}/bin/R" CMD config LTO 2>/dev/null`
+case "$_r_lto" in
+  *-flto=thin*)              CARGO_ENV_PROFILE_LTO="thin" ;;
+  *-flto=fat*|*-flto=full*)  CARGO_ENV_PROFILE_LTO="fat"  ;;
+  *-flto*)                   CARGO_ENV_PROFILE_LTO="thin" ;;
+  *)                         CARGO_ENV_PROFILE_LTO=""     ;;
+esac
+if test -n "$CARGO_ENV_PROFILE_LTO"; then
+  AC_MSG_NOTICE([R LTO flag           = $_r_lto (cargo profile lto: $CARGO_ENV_PROFILE_LTO)])
+fi
+
 dnl --- CFLAGS / CXXFLAGS: ABI-only allowlist from R config ----
 dnl Cargo applies CFLAGS_<target> and CXXFLAGS_<target> to *every* transitive
 dnl C/C++ build script (cc, cmake, etc.). R's raw CFLAGS contain R-specific
@@ -615,6 +635,10 @@ AC_CONFIG_COMMANDS([cargo-config],
     if test -n "$CARGO_ENV_R_RANLIB" && test "$CARGO_ENV_R_RANLIB" != "ranlib"; then
       echo "RANLIB_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_RANLIB\""
     fi
+    if test -n "$CARGO_ENV_PROFILE_LTO"; then
+      CARGO_ENV_PROFILE_UPPER=`echo "$CARGO_PROFILE" | tr 'a-z' 'A-Z'`
+      echo "CARGO_PROFILE_${CARGO_ENV_PROFILE_UPPER}_LTO = \"$CARGO_ENV_PROFILE_LTO\""
+    fi
     if test -n "$CARGO_ENV_ABI_CFLAGS"; then
       echo "CFLAGS_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_ABI_CFLAGS\""
     fi
@@ -693,6 +717,8 @@ AC_CONFIG_COMMANDS([cargo-config],
  CARGO_ENV_RUST_TARGET_UPPER="$CARGO_ENV_RUST_TARGET_UPPER"
  CARGO_ENV_R_AR="$CARGO_ENV_R_AR"
  CARGO_ENV_R_RANLIB="$CARGO_ENV_R_RANLIB"
+ CARGO_ENV_PROFILE_LTO="$CARGO_ENV_PROFILE_LTO"
+ CARGO_PROFILE="$CARGO_PROFILE"
  CARGO_ENV_ABI_CFLAGS="$CARGO_ENV_ABI_CFLAGS"
  CARGO_ENV_ABI_CXXFLAGS="$CARGO_ENV_ABI_CXXFLAGS"
  SED="$SED"])
