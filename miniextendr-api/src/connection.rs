@@ -477,6 +477,35 @@ pub struct Rconn {
 }
 // endregion
 
+// region: libc bindings for default vfprintf implementation
+
+// We hand-bind `vsnprintf` rather than pulling in the `libc` crate because
+// (a) this is the only libc symbol we need and (b) miniextendr already
+// hand-binds the rest of its C ABI surface in `crate::ffi`. The signature
+// matches POSIX/glibc/musl/macOS/Win32 (`_vsnprintf` is also exported as
+// `vsnprintf` since Windows 7).
+unsafe extern "C" {
+    fn vsnprintf(buf: *mut c_char, len: usize, format: *const c_char, ap: *mut c_void) -> c_int;
+}
+
+/// Wrapper so the trait method's `unsafe` block has a stable name.
+///
+/// # Safety
+///
+/// Inherits the contract of `vsnprintf`: `buf` must be writable for `len`
+/// bytes, `format` must be a NUL-terminated C string, `ap` must be a
+/// valid `va_list` matching `format`.
+#[inline]
+unsafe fn ffi_vsnprintf(
+    buf: *mut c_char,
+    len: usize,
+    format: *const c_char,
+    ap: *mut c_void,
+) -> c_int {
+    unsafe { vsnprintf(buf, len, format, ap) }
+}
+// endregion
+
 // region: RConnectionImpl trait - user-facing trait for implementing connections
 
 /// Trait for implementing custom R connections.
@@ -613,12 +642,39 @@ pub trait RConnectionImpl: Sized + 'static {
 
     /// Formatted print (vfprintf-style).
     ///
-    /// This is rarely needed - R typically uses `write` for output.
-    /// Return the number of characters written, or -1 on error.
+    /// R's `Rconn_printf` (used by `writeLines`, `cat`, `message`, etc.)
+    /// always routes through `con->vfprintf`. The default implementation
+    /// uses libc `vsnprintf` to format into a stack buffer and delegates
+    /// to [`write`](Self::write) — so anything that implements `write`
+    /// gets working `writeLines`/`cat`/`message` for free. Output larger
+    /// than the 4 KiB stack buffer is truncated; override this method if
+    /// you need to support very large single `Rconn_printf` payloads.
     ///
-    /// The default returns -1 (not implemented).
-    fn vfprintf(&mut self, _fmt: *const c_char, _ap: *mut c_void) -> i32 {
-        -1
+    /// Return the number of bytes written, or -1 on error.
+    ///
+    /// # Safety
+    ///
+    /// `fmt` must be a NUL-terminated C string. `ap` must be a valid
+    /// `va_list` whose pending arguments match `fmt`'s conversion
+    /// specifiers. R's `Rconn_printf` upholds both for the default impl;
+    /// only override if you can guarantee them for your custom format.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    fn vfprintf(&mut self, fmt: *const c_char, ap: *mut c_void) -> i32 {
+        // SAFETY: `fmt` and `ap` come from R's `Rconn_printf` and obey the
+        // standard `vsnprintf` contract. `vsnprintf` writes at most `len`
+        // bytes (including NUL) into `buf`. The `va_list` is consumed by
+        // this single call, which is why we can't trivially re-run with a
+        // larger buffer on overflow — keep the stack buffer ample.
+        const STACK_BUF: usize = 4096;
+        let mut stack = [0u8; STACK_BUF];
+        let needed =
+            unsafe { ffi_vsnprintf(stack.as_mut_ptr().cast::<c_char>(), STACK_BUF, fmt, ap) };
+        if needed < 0 {
+            return -1;
+        }
+        let written = (needed as usize).min(STACK_BUF.saturating_sub(1));
+        let wrote = self.write(&stack[..written]);
+        wrote as i32
     }
 }
 // endregion
@@ -869,7 +925,11 @@ impl RCustomConnection {
 
     /// Set whether this is a text connection (vs binary).
     ///
-    /// If not set, R infers from the mode string.
+    /// If not set, [`build`](Self::build) infers from the mode string: any
+    /// `'b'` in the mode means binary (`text = false`), otherwise text
+    /// (`text = true`). This overrides R's `R_new_custom_connection`
+    /// default of `text = TRUE`, which would otherwise leave binary
+    /// connections mis-flagged.
     pub fn text(mut self, is_text: bool) -> Self {
         self.text = Some(is_text);
         self
@@ -901,7 +961,12 @@ impl RCustomConnection {
 
     /// Set whether the connection is blocking.
     ///
-    /// Default is `true`.
+    /// Default is `true`. (R's `init_con` actually defaults to `FALSE`, but
+    /// `do_readLines` reflexively calls `con->seek(con, -1.0, 1, 1)` on
+    /// non-blocking seekable connections to "re-position" them — and any
+    /// `seek` impl that doesn't treat negative `where` as a `tell` will
+    /// reset its read cursor on every `readLines` call. The builder
+    /// overrides R's default to keep the common case usable.)
     pub fn blocking(mut self, blocking: bool) -> Self {
         self.blocking = Some(blocking);
         self
@@ -909,9 +974,22 @@ impl RCustomConnection {
 
     /// Build the connection with the given state.
     ///
-    /// Returns an R connection SEXP that can be returned to R.
-    /// The state is boxed and stored in the connection's `private` field.
-    /// It will be automatically dropped when the connection is destroyed.
+    /// Returns an R connection SEXP that can be returned to R. The connection
+    /// is returned **open** — `build` invokes the implementation's `open`
+    /// callback before returning, so callers (and R-side code) can read or
+    /// write immediately. If `open` returns `false`, `build` runs the destroy
+    /// trampoline to release the boxed state and returns `R_NilValue`.
+    ///
+    /// `R_new_custom_connection` itself creates connections in a closed state
+    /// (`isopen = FALSE`), defaults `text` to `TRUE`, and defaults `blocking`
+    /// to `FALSE`. The builder corrects all three: `text` is inferred from the
+    /// mode string when not explicitly set (modes containing `'b'` → binary,
+    /// otherwise text), `blocking` defaults to `true` to avoid the
+    /// `do_readLines` re-position footgun (see [`blocking`](Self::blocking)),
+    /// and the open callback is invoked after callbacks and flags are wired.
+    ///
+    /// The state is boxed and stored in the connection's `private` field. It
+    /// will be automatically dropped when the connection is destroyed.
     ///
     /// # Panics
     ///
@@ -976,14 +1054,21 @@ impl RCustomConnection {
             (*conn).fflush = Some(flush_trampoline::<T>);
             (*conn).vfprintf = Some(vfprintf_trampoline::<T>);
 
-            // Set optional flags
-            if let Some(text) = self.text {
-                (*conn).text = if text {
-                    Rboolean::TRUE
-                } else {
-                    Rboolean::FALSE
-                };
-            }
+            // Set text flag. `R_new_custom_connection` defaults `text = TRUE`
+            // regardless of the mode string, which leaves binary connections
+            // mis-flagged when the caller didn't explicitly thread `.text(...)`
+            // through (e.g. `RConnectionIo` adapters with `.mode("r+b")`).
+            // Infer from the mode string when not explicitly set: any `'b'`
+            // in the mode means binary, otherwise text. This matches R's
+            // own mode-string parsing in `file()` / `gzfile()`.
+            let text = self
+                .text
+                .unwrap_or_else(|| !self.mode.as_bytes().contains(&b'b'));
+            (*conn).text = if text {
+                Rboolean::TRUE
+            } else {
+                Rboolean::FALSE
+            };
             if let Some(can_read) = self.can_read {
                 (*conn).canread = if can_read {
                     Rboolean::TRUE
@@ -1005,12 +1090,45 @@ impl RCustomConnection {
                     Rboolean::FALSE
                 };
             }
-            if let Some(blocking) = self.blocking {
-                (*conn).blocking = if blocking {
-                    Rboolean::TRUE
-                } else {
-                    Rboolean::FALSE
-                };
+            // Set blocking flag. `init_con` defaults this to FALSE, which is
+            // a footgun: `do_readLines` re-positions non-blocking seekable
+            // connections by calling `con->seek(con, -1.0, 1, 1)` (a query
+            // disguised as a value seek). Implementations that don't treat
+            // a negative `where` as a "tell" silently reset position to 0
+            // on every `readLines` call. Blocking custom connections are
+            // the common case (the impl runs on the R thread anyway), so
+            // default to TRUE and let callers opt into FALSE via
+            // `.blocking(false)`.
+            let blocking = self.blocking.unwrap_or(true);
+            (*conn).blocking = if blocking {
+                Rboolean::TRUE
+            } else {
+                Rboolean::FALSE
+            };
+
+            // Open the connection. `R_new_custom_connection` returns the
+            // connection in a closed state (`isopen = FALSE`). R auto-opens
+            // on some code paths (e.g. `readLines`) but not on others
+            // (`writeBin`, `writeLines`, direct `seek`), so callers that
+            // skip pre-opening hit "Error writing to connection" on the
+            // first write call. Pre-opening here makes `.build()` return a
+            // usable connection in every code path; R's auto-open machinery
+            // sees `isopen == TRUE` and short-circuits, so there is no
+            // double-open.
+            //
+            // SAFETY: `open` was just set above to `Some(open_trampoline::<T>)`.
+            let opened = (*conn).open.expect("open trampoline was set above")(conn);
+            if opened != Rboolean::TRUE {
+                // Open failed. Tear down the boxed state via the destroy
+                // trampoline (which also nulls `private`) and return nil.
+                // R itself will not have signalled here — the open trampoline
+                // absorbs panics into `Rboolean::FALSE`, and an
+                // `RConnectionImpl::open` returning `false` is the trait's
+                // documented failure signal.
+                if let Some(destroy) = (*conn).destroy {
+                    destroy(conn);
+                }
+                return SEXP::nil();
             }
 
             sexp
