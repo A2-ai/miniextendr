@@ -94,9 +94,27 @@ echo "=== DIAG: tar size ==="
 ls -la "$TARBALL"
 echo "=== DIAG: end ==="
 
+# Diagnostic: replicate the exact assertion logic with verbose output before
+# the final assert. Helps pinpoint whether the bug is in tar/grep behavior,
+# pipefail, or the regex.
+echo "=== DIAG: assertion-mimic ==="
+echo "running: tar -tzf \"$TARBALL\" 2>/dev/null | grep -E 'inst/vendor\\.tar\\.xz\$'"
+set +e
+tar -tzf "$TARBALL" 2>/dev/null | grep -E 'inst/vendor\.tar\.xz$'
+GREP_RC=$?
+set -e
+echo "grep exit code: $GREP_RC"
+echo "=== DIAG: end-assertion-mimic ==="
+
 # Assert: the tarball ships inst/vendor.tar.xz (produced by bootstrap.R).
-if ! tar -tzf "$TARBALL" 2>/dev/null | grep -q 'inst/vendor\.tar\.xz$'; then
-    echo "FAIL: $TARBALL does not contain inst/vendor.tar.xz" >&2
+# Use ERE and a temporarily-disabled pipefail in case the pipe is being
+# evaluated under unexpected shell options.
+set +o pipefail
+tar -tzf "$TARBALL" 2>/dev/null | grep -qE 'inst/vendor\.tar\.xz$'
+ASSERT_RC=$?
+set -o pipefail
+if [ "$ASSERT_RC" -ne 0 ]; then
+    echo "FAIL: $TARBALL does not contain inst/vendor.tar.xz (grep rc=$ASSERT_RC)" >&2
     echo "      Bootstrap pipeline regression — see #441/#440." >&2
     exit 1
 fi
