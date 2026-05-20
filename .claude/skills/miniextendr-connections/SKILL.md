@@ -11,7 +11,7 @@ R's connection system provides an I/O abstraction used by `file()`, `url()`, `gz
 
 - "How do I create a custom R connection in Rust?"
 - "What is `RConnectionImpl`?"
-- "Why does my connection start closed and have to be explicitly opened?"
+- "Why is my connection returned already-open, and where does the open callback get invoked?"
 - "How do panics inside connection callbacks get handled?"
 - "What is `catch_connection_panic`?"
 - "What is the connections ABI version check?"
@@ -26,22 +26,24 @@ The `connections` feature in miniextendr is gated for this reason. Before using 
 
 The API requires R >= 4.3.0. Use `check_runtime_connections_support()` for a runtime probe.
 
-### Connections start in CLOSED state
+### Connections from `RCustomConnection::build` are returned open
 
-`R_new_custom_connection` creates the connection in a closed state (`isopen = FALSE`). After building the connection SEXP, you must explicitly invoke the `open` callback to put it into an open state before returning it to R callers who expect an open connection.
+`R_new_custom_connection` (R's underlying C entry point) returns a connection in the CLOSED state (`isopen = FALSE`) with `text = TRUE` regardless of mode. `RCustomConnection::build` papers over both:
 
-The builder's `.build(impl)` method does not automatically call `open`. If you want an auto-opened connection:
+- The mode string is parsed for `'b'` to infer `text`; explicit `.text(...)` still wins.
+- The `open` callback is invoked before the SEXP is returned. R's own auto-open path (used by `readLines` / `scan` / etc.) sees `isopen == TRUE` and short-circuits, so there is no double-open.
 
 ```rust
 let conn_sexp = RCustomConnection::new()
     .description("my conn")
+    .mode("r+b")
     .can_read(true)
+    .can_write(true)
     .build(MyConnectionImpl { /* ... */ });
-// conn_sexp is CLOSED here. Open it:
-unsafe { open_connection(conn_sexp)? };
+// conn_sexp is already OPEN. readLines / writeBin / seek all work.
 ```
 
-`open_connection` is a helper that calls the connection's registered `open` trampoline through R's internal dispatch. See `miniextendr-api/src/connection.rs` for the implementation.
+If your `RConnectionImpl::open` returns `false`, the boxed state is dropped via the destroy trampoline and `build` returns `SEXP::nil()`. Make sure `open` returns `true` on success.
 
 ### `RConnectionImpl` trait
 
@@ -116,7 +118,7 @@ Panics inside `RConnectionImpl` methods are caught by `catch_connection_panic`. 
 
 ## Common pitfalls
 
-- **Connection starts CLOSED**: `R_new_custom_connection` creates in closed state. Always call the open callback explicitly after `build()` if you want an already-open connection. Returning a closed connection to R code that calls `readLines()` on it immediately will produce an "connection is not open" error.
+- **Underlying API starts CLOSED with `text = TRUE`**: `R_new_custom_connection` returns a closed connection with `text = TRUE` regardless of mode. `RCustomConnection::build` opens it for you and infers `text` from the mode string before returning, so this is invisible to callers — but if you ever bypass the builder and call `R_new_custom_connection` directly, you need to handle both yourself.
 
 - **Panics are silently absorbed**: unlike `#[miniextendr]` functions (which use the tagged-SEXP error transport to surface Rust panics as R errors), connection trampolines use the fallback-value pattern. A panic in `read()` returns `0` bytes — the R caller sees a short read, not an error. Design your `RConnectionImpl` to return error signals through return values, not panics.
 

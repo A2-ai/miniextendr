@@ -611,12 +611,22 @@ pub trait RConnectionImpl: Sized + 'static {
         0
     }
 
-    /// Formatted print (vfprintf-style).
+    /// Formatted print (`vfprintf`-style).
     ///
-    /// This is rarely needed - R typically uses `write` for output.
-    /// Return the number of characters written, or -1 on error.
+    /// R calls into this through `Rconn_printf` from `writeLines`, `cat`,
+    /// sink dispatch, and similar. The default implementation returns `-1`
+    /// to signal "delegate to the standard format-and-write path," in
+    /// which case the framework formats the args into a fixed buffer via
+    /// the host `vsnprintf` and forwards the bytes to [`write`](Self::write).
     ///
-    /// The default returns -1 (not implemented).
+    /// Override this only if you need a custom output path that bypasses
+    /// [`write`](Self::write) (e.g., to stream into a pre-encoded sink).
+    /// Return the number of bytes written on success, or `-1` on error.
+    ///
+    /// # Safety
+    ///
+    /// `fmt` is a null-terminated C string from R. `ap` is the `va_list`
+    /// of R's printf-style call; treat it as opaque and pass to libc.
     fn vfprintf(&mut self, _fmt: *const c_char, _ap: *mut c_void) -> i32 {
         -1
     }
@@ -768,7 +778,64 @@ simple_trampoline!(fgetc_trampoline, c_int, fallback = -1 => fgetc());
 simple_trampoline!(seek_trampoline, f64, fallback = -1.0, where_: f64, origin: c_int, rw: c_int => seek(where_, origin, rw));
 simple_trampoline!(truncate_trampoline, (), fallback = () => truncate());
 simple_trampoline!(flush_trampoline, c_int, fallback = -1 => flush());
-simple_trampoline!(vfprintf_trampoline, c_int, fallback = -1, fmt: *const c_char, ap: *mut c_void => vfprintf(fmt, ap));
+
+// libc::vsnprintf — the host C library's printf-into-buffer entry point.
+// Used by the default `vfprintf_trampoline` to format R's printf-style
+// callsites (e.g. `Rconn_printf` in `do_writelines`) into a byte buffer,
+// which is then forwarded to the user's `write` callback.
+unsafe extern "C" {
+    fn vsnprintf(s: *mut c_char, n: usize, format: *const c_char, ap: *mut c_void) -> c_int;
+}
+
+/// vfprintf callback trampoline.
+///
+/// R calls this through `Rconn_printf` from `do_writelines`, `cat`, sink
+/// dispatch, and similar. We must NOT return a negative value — R treats
+/// that as a write error and raises `"Error writing to connection"`.
+///
+/// We format the printf-style args into a stack buffer via the host
+/// `vsnprintf`, then forward the resulting bytes to the user's `write`
+/// callback. This mirrors R's own `dummy_vfprintf` (used by most stock
+/// connection types) and means users almost never need to override
+/// [`RConnectionImpl::vfprintf`] manually — implementing `write` is enough.
+///
+/// If the formatted output exceeds the buffer, we still write the
+/// truncated portion and return the truncated length. Long writes through
+/// `Rconn_printf` are rare on custom connections; users who need
+/// unbounded text output can override [`RConnectionImpl::vfprintf`].
+unsafe extern "C-unwind" fn vfprintf_trampoline<T: RConnectionImpl>(
+    conn: *mut Rconn,
+    fmt: *const c_char,
+    ap: *mut c_void,
+) -> c_int {
+    catch_connection_panic(-1, || {
+        // Give user impls first crack — if they return >= 0 we honor that.
+        // The default impl returns -1, which we interpret as "fall back to
+        // the standard format-and-write path below."
+        let state = unsafe { get_state::<T>(conn) };
+        let user_result = state.vfprintf(fmt, ap);
+        if user_result >= 0 {
+            return user_result;
+        }
+
+        // Standard fallback: vsnprintf into a stack buffer, then write.
+        const BUFSIZE: usize = 10_000;
+        let mut buf = [0u8; BUFSIZE];
+        let res = unsafe { vsnprintf(buf.as_mut_ptr().cast::<c_char>(), BUFSIZE, fmt, ap) };
+        if res < 0 {
+            return -1;
+        }
+        let written_len = (res as usize).min(BUFSIZE.saturating_sub(1));
+        if written_len == 0 {
+            return res;
+        }
+        let bytes_written = state.write(&buf[..written_len]);
+        if bytes_written < written_len {
+            return -1;
+        }
+        res
+    })
+}
 // endregion
 
 // region: RCustomConnection builder
@@ -901,7 +968,11 @@ impl RCustomConnection {
 
     /// Set whether the connection is blocking.
     ///
-    /// Default is `true`.
+    /// Default is `true`. R's underlying `R_new_custom_connection` defaults
+    /// this to FALSE, which makes `readLines` push back the final incomplete
+    /// line on EOF (silently dropping a trailing line without `\n`). Most
+    /// in-memory Rust impls want synchronous blocking behavior, so we
+    /// flip the default to match R's stock `file()` connections.
     pub fn blocking(mut self, blocking: bool) -> Self {
         self.blocking = Some(blocking);
         self
@@ -909,9 +980,22 @@ impl RCustomConnection {
 
     /// Build the connection with the given state.
     ///
-    /// Returns an R connection SEXP that can be returned to R.
+    /// Returns an **open** R connection SEXP that can be returned to R.
     /// The state is boxed and stored in the connection's `private` field.
     /// It will be automatically dropped when the connection is destroyed.
+    ///
+    /// `R_new_custom_connection` returns the connection in a CLOSED state
+    /// with `text = TRUE` as defaults. This builder fixes both:
+    /// - `text` is inferred from the mode string when not explicitly set
+    ///   (`'b'` in the mode → binary; otherwise text). This matches the
+    ///   behavior of R's built-in `file()` / `url()` connections.
+    /// - The `open` callback is invoked before returning, so the resulting
+    ///   SEXP is immediately usable for `readLines` / `writeBin` / `seek`
+    ///   without relying on R's per-call auto-open path (which doesn't
+    ///   fire for write/seek operations).
+    ///
+    /// If the `open` callback fails, the boxed state is dropped via the
+    /// destroy trampoline and `SEXP::nil()` is returned.
     ///
     /// # Panics
     ///
@@ -924,6 +1008,22 @@ impl RCustomConnection {
     pub fn build<T: RConnectionImpl>(self, state: T) -> SEXP {
         // Verify API version
         check_connections_version();
+
+        // Infer text vs binary from the mode string when the caller did not
+        // explicitly set `text`. R's `R_new_custom_connection` defaults
+        // `text = TRUE` regardless of mode, so a builder like
+        // `.mode("r+b")` without `.text(false)` would land as a text
+        // connection that rejects `readBin` / `writeBin`.
+        let text_default = !self.mode.as_bytes().contains(&b'b');
+        let text = self.text.unwrap_or(text_default);
+
+        // Default `blocking = true`. R's `init_con` defaults blocking to
+        // FALSE, but for in-memory / synchronous custom connections that
+        // is wrong — non-blocking text connections push back the final
+        // incomplete line on EOF, so `readLines` silently drops a trailing
+        // line without a `\n`. R's stock `file()`/`url()` paths flip this
+        // to TRUE later in their own builders; we do the same.
+        let blocking = self.blocking.unwrap_or(true);
 
         unsafe {
             // Box the state
@@ -976,14 +1076,12 @@ impl RCustomConnection {
             (*conn).fflush = Some(flush_trampoline::<T>);
             (*conn).vfprintf = Some(vfprintf_trampoline::<T>);
 
-            // Set optional flags
-            if let Some(text) = self.text {
-                (*conn).text = if text {
-                    Rboolean::TRUE
-                } else {
-                    Rboolean::FALSE
-                };
-            }
+            // Set text/binary mode (always overrides R's default of TRUE).
+            (*conn).text = if text {
+                Rboolean::TRUE
+            } else {
+                Rboolean::FALSE
+            };
             if let Some(can_read) = self.can_read {
                 (*conn).canread = if can_read {
                     Rboolean::TRUE
@@ -1005,12 +1103,27 @@ impl RCustomConnection {
                     Rboolean::FALSE
                 };
             }
-            if let Some(blocking) = self.blocking {
-                (*conn).blocking = if blocking {
-                    Rboolean::TRUE
-                } else {
-                    Rboolean::FALSE
-                };
+            (*conn).blocking = if blocking {
+                Rboolean::TRUE
+            } else {
+                Rboolean::FALSE
+            };
+
+            // Open the connection. `R_new_custom_connection` returns a
+            // connection in CLOSED state (`isopen = FALSE`). R auto-opens
+            // on some paths (e.g. `readLines`) but not on `writeBin` /
+            // `writeLines` / direct `seek`, which would then bail with
+            // "Error writing to connection". Pre-open here so callers get
+            // a uniformly usable connection. R's auto-open path sees
+            // `isopen == TRUE` and short-circuits — no double-open.
+            let opened = open_trampoline::<T>(conn);
+            if !matches!(opened, Rboolean::TRUE) {
+                // Open failed — tear down via the destroy trampoline,
+                // which drops the boxed state and nulls out `private`.
+                if let Some(destroy) = (*conn).destroy {
+                    destroy(conn);
+                }
+                return SEXP::nil();
             }
 
             sexp
