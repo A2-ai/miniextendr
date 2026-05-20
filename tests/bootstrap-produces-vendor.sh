@@ -10,12 +10,13 @@
 # it is safe to run even when a leftover tarball is present in the source tree.
 #
 # Implementation note (#551): we drive `Rscript bootstrap.R` + `R CMD build rpkg`
-# directly rather than going through `pkgbuild::build()`. pkgbuild's plumbing
-# empirically loses inst/vendor.tar.xz somewhere between bootstrap and the
-# sealed tarball on CI in a way no source audit has reproduced. The direct
-# invocation mirrors what `just r-cmd-build` (the recipe every r-check-* CI
-# job depends on) does — minus the explicit `just vendor` step, so bootstrap.R
-# is exercised end-to-end exactly as intended.
+# directly rather than going through `pkgbuild::build()`. This mirrors what
+# `just r-cmd-build` (the recipe every r-check-* CI job depends on) does —
+# minus the explicit `just vendor` step, so bootstrap.R is exercised
+# end-to-end exactly as intended. The earlier `pkgbuild::build()` invocation
+# was reported as "losing inst/vendor.tar.xz on CI", but post-rewrite
+# diagnostics (PR #653) proved the file was always present in the sealed
+# tarball — the bug lived in the assertion (see "Assert" block below).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -60,18 +61,6 @@ trap '
 # via cargo-revendor and runs ./configure to generate Makevars / .cargo/config.toml.
 ( cd rpkg && Rscript bootstrap.R )
 
-# Diagnostic: state of rpkg/ tree immediately after bootstrap.R (before R CMD build).
-echo "=== DIAG: rpkg/inst/ after bootstrap.R ==="
-ls -la rpkg/inst/ || true
-echo "=== DIAG: rpkg/ top-level dirs ==="
-ls -la rpkg/ | head -30 || true
-echo "=== DIAG: file rpkg/inst/vendor.tar.xz ==="
-file rpkg/inst/vendor.tar.xz 2>/dev/null || true
-stat rpkg/inst/vendor.tar.xz 2>/dev/null || stat -c '%a %s %y %n' rpkg/inst/vendor.tar.xz 2>/dev/null || true
-echo "=== DIAG: R version ==="
-R --version | head -1
-echo "=== DIAG: end ==="
-
 # R CMD build seals the tarball. With Config/build/bootstrap: TRUE in
 # DESCRIPTION, pkgbuild would re-run bootstrap.R; the bare `R CMD build`
 # invocation does NOT, which is what we want here (bootstrap already ran).
@@ -85,36 +74,22 @@ if [ -z "$TARBALL" ]; then
     exit 1
 fi
 
-# Diagnostic: full file listing of the tarball, plus inst/-prefixed entries.
-echo "=== DIAG: tar entries with 'inst' or 'vendor' ==="
-tar -tzf "$TARBALL" | grep -E "(inst|vendor)" | head -30 || true
-echo "=== DIAG: total tar entry count ==="
-tar -tzf "$TARBALL" | wc -l
-echo "=== DIAG: tar size ==="
-ls -la "$TARBALL"
-echo "=== DIAG: end ==="
-
-# Diagnostic: replicate the exact assertion logic with verbose output before
-# the final assert. Helps pinpoint whether the bug is in tar/grep behavior,
-# pipefail, or the regex.
-echo "=== DIAG: assertion-mimic ==="
-echo "running: tar -tzf \"$TARBALL\" 2>/dev/null | grep -E 'inst/vendor\\.tar\\.xz\$'"
-set +e
-tar -tzf "$TARBALL" 2>/dev/null | grep -E 'inst/vendor\.tar\.xz$'
-GREP_RC=$?
-set -e
-echo "grep exit code: $GREP_RC"
-echo "=== DIAG: end-assertion-mimic ==="
-
 # Assert: the tarball ships inst/vendor.tar.xz (produced by bootstrap.R).
-# Use ERE and a temporarily-disabled pipefail in case the pipe is being
-# evaluated under unexpected shell options.
-set +o pipefail
-tar -tzf "$TARBALL" 2>/dev/null | grep -qE 'inst/vendor\.tar\.xz$'
-ASSERT_RC=$?
-set -o pipefail
-if [ "$ASSERT_RC" -ne 0 ]; then
-    echo "FAIL: $TARBALL does not contain inst/vendor.tar.xz (grep rc=$ASSERT_RC)" >&2
+#
+# IMPORTANT: do NOT use `if ! tar -tzf … | grep -q PATTERN; then FAIL`. Under
+# `set -o pipefail` (active here via `set -euo pipefail`), `grep -q` short-
+# circuits on the first match and closes its stdin. `tar` continues writing
+# and gets SIGPIPE → exits non-zero. pipefail propagates the non-zero rc to
+# the pipeline; `!` inverts it; the `if` body fires; FAIL is reported even
+# though the file IS in the tarball. The bug manifests reliably on Ubuntu
+# (Linux pipe buffer 64 KB) but not macOS (16 KB) — process-scheduling
+# accident, not a real failure. See #551 / PR #653 investigation history.
+#
+# Fix: materialise the tar listing into a variable first (no pipe involved in
+# the check), then grep the variable. tar is fully drained, no SIGPIPE risk.
+TAR_LISTING=$(tar -tzf "$TARBALL" 2>/dev/null)
+if ! grep -qE 'inst/vendor\.tar\.xz$' <<<"$TAR_LISTING"; then
+    echo "FAIL: $TARBALL does not contain inst/vendor.tar.xz" >&2
     echo "      Bootstrap pipeline regression — see #441/#440." >&2
     exit 1
 fi
