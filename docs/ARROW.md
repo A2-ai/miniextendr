@@ -253,7 +253,7 @@ pub fn generate_sequence(n: i32) -> SEXP {
 
     // Fill through the SEXP's raw pointer (before wrapping in Arrow)
     unsafe {
-        let ptr = miniextendr_api::ffi::REAL(sexp);
+        let ptr = miniextendr_api::sys::REAL(sexp);
         for i in 0..n {
             *ptr.add(i) = i as f64;
         }

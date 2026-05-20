@@ -85,7 +85,7 @@ inspect ALTREP metadata, or to defer materialization), use `AltrepSexp`:
 
 ```rust
 use miniextendr_api::AltrepSexp;
-use miniextendr_api::ffi::SEXPTYPE;
+use miniextendr_api::sys::SEXPTYPE;
 
 #[miniextendr]
 pub fn altrep_info(x: AltrepSexp) -> Vec<String> {
@@ -139,7 +139,7 @@ For functions that must receive the *exact* SEXP from R without any conversion
 (e.g., inspecting ALTREP state before materialization), use `extern "C-unwind"`:
 
 ```rust
-use miniextendr_api::ffi::{SEXP, ALTREP};
+use miniextendr_api::sys::{SEXP, ALTREP};
 use miniextendr_api::IntoR;
 
 #[miniextendr]
@@ -287,7 +287,7 @@ pub extern "C-unwind" fn C_is_altrep(x: SEXP) -> SEXP {
 
 ```rust
 use miniextendr_api::AltrepSexp;
-use miniextendr_api::ffi::SEXPTYPE;
+use miniextendr_api::sys::SEXPTYPE;
 
 /// Accept only ALTREP, materialize, and return the data.
 #[miniextendr]
@@ -301,7 +301,7 @@ pub fn materialize_altrep(x: AltrepSexp) -> Vec<i32> {
 
 ```rust
 use miniextendr_api::altrep_sexp::ensure_materialized;
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::IntoR;
 
 /// Accept any SEXP (ALTREP or not), materialize, then convert.

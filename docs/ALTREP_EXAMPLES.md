@@ -18,7 +18,7 @@ Real-world examples of ALTREP usage patterns in miniextendr.
 
 ```rust
 use miniextendr_api::altrep_data::{AltrepLen, AltListData};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use std::cell::RefCell;
 
 #[derive(miniextendr_api::Altrep)]

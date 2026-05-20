@@ -417,7 +417,7 @@ impl AltrepSerialize for LazyIntSeqData {
     fn serialized_state(&self) -> SEXP {
         // Return a serializable representation (typically a simple vector)
         unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SET_INTEGER_ELT, SEXPTYPE};
+            use miniextendr_api::sys::{Rf_allocVector, SET_INTEGER_ELT, SEXPTYPE};
             let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
             SET_INTEGER_ELT(state, 0, self.start);
             SET_INTEGER_ELT(state, 1, self.step);
@@ -428,7 +428,7 @@ impl AltrepSerialize for LazyIntSeqData {
 
     fn unserialize(state: SEXP) -> Option<Self> {
         unsafe {
-            use miniextendr_api::ffi::INTEGER_ELT;
+            use miniextendr_api::sys::INTEGER_ELT;
             Some(LazyIntSeqData {
                 start: INTEGER_ELT(state, 0),
                 step: INTEGER_ELT(state, 1),
@@ -582,7 +582,7 @@ String and List vectors can be made mutable by implementing the `set_elt()` meth
 
 ```rust
 use miniextendr_api::altrep_data::{AltrepLen, AltStringData};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use std::cell::RefCell;
 
 #[derive(miniextendr_api::Altrep)]
@@ -630,7 +630,7 @@ Lists are easier to make mutable since they already store SEXPs:
 
 ```rust
 use miniextendr_api::altrep_data::{AltrepLen, AltListData};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use std::cell::RefCell;
 
 #[derive(miniextendr_api::Altrep)]
@@ -732,7 +732,7 @@ pub fn static_ints() -> SEXP {
 ## Complex Numbers
 
 ```rust
-use miniextendr_api::ffi::Rcomplex;
+use miniextendr_api::sys::Rcomplex;
 use miniextendr_api::altrep_data::AltComplexData;
 
 #[derive(miniextendr_api::Altrep)]
@@ -872,7 +872,7 @@ List vectors (R's `list` type / VECSXP) can contain any R objects. The `AltListD
 
 ```rust
 use miniextendr_api::altrep_data::{AltrepLen, AltListData};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::{IntoR, Rf_ScalarInteger};
 
 #[derive(miniextendr_api::Altrep)]
@@ -1048,7 +1048,7 @@ R calls `extract_subset(x, indices, call)` when:
 
 ```rust
 use miniextendr_api::altrep_traits::AltVec;
-use miniextendr_api::ffi::{SEXP, R_xlen_t};
+use miniextendr_api::sys::{SEXP, R_xlen_t};
 
 impl AltVec for RangeData {
     const HAS_EXTRACT_SUBSET: bool = true;
@@ -1080,7 +1080,7 @@ impl AltVec for ConstantIntData {
     const HAS_EXTRACT_SUBSET: bool = true;
 
     fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
-        use miniextendr_api::ffi::{Rf_xlength, TYPEOF, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_xlength, TYPEOF, SEXPTYPE};
 
         let data = unsafe { altrep_data1_as::<ConstantIntData>(x) }?;
 
@@ -1134,7 +1134,7 @@ With `extract_subset`:
 
 ```rust
 fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{TYPEOF, SEXPTYPE};
+    use miniextendr_api::sys::{TYPEOF, SEXPTYPE};
 
     unsafe {
         match TYPEOF(indices) {
