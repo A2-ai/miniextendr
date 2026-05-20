@@ -65,7 +65,7 @@ miniextendr-api = { version = "...", features = ["nonapi"] }
 
 ### Checked vs Unchecked R FFI
 
-Most `miniextendr_api::ffi::*` functions are **checked** (via `#[r_ffi_checked]`).
+Most `miniextendr_api::sys::*` functions are **checked** (via `#[r_ffi_checked]`).
 By default, they verify you're on the main thread and panic otherwise. With the
 `worker-thread` feature, if called from the worker thread, they route to the main
 thread via `with_r_thread`.
@@ -80,7 +80,7 @@ use miniextendr_api::spawn_with_r;
 
 let handle = spawn_with_r(|| {
     // Safe to call R APIs here!
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) }
+    unsafe { miniextendr_api::sys::Rf_ScalarInteger_unchecked(42) }
 })?;
 
 let result = handle.join().unwrap();
@@ -136,7 +136,7 @@ std::thread::spawn(|| {
     let _guard = StackCheckGuard::disable();
 
     // R API calls safe while guard is alive
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) };
+    unsafe { miniextendr_api::sys::Rf_ScalarInteger_unchecked(42) };
 
     // Original limit restored when _guard drops
 });
@@ -148,7 +148,7 @@ std::thread::spawn(|| {
 use miniextendr_api::with_stack_checking_disabled;
 
 let result = with_stack_checking_disabled(|| {
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) }
+    unsafe { miniextendr_api::sys::Rf_ScalarInteger_unchecked(42) }
 });
 ```
 

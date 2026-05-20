@@ -568,7 +568,7 @@ struct LogEntry {
 }
 
 #[miniextendr]
-fn get_logs() -> miniextendr_api::ffi::SEXP {
+fn get_logs() -> miniextendr_api::sys::SEXP {
     let logs = vec![
         LogEntry { timestamp: 1.0, level: "INFO".into(), message: "started".into() },
         LogEntry { timestamp: 2.0, level: "ERROR".into(), message: "failed".into() },

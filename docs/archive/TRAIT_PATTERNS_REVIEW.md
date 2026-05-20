@@ -183,7 +183,7 @@ macro_rules! impl_scalar_try_from_sexp {
 
 ```rust
 // In your crate (no miniextendr modification needed!)
-use miniextendr_api::ffi::{RNativeType, SEXP, SEXPTYPE};
+use miniextendr_api::{RNativeType, SEXP, SEXPTYPE};
 
 pub struct Temperature(f64);
 
@@ -191,7 +191,7 @@ impl RNativeType for Temperature {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
 
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        miniextendr_api::ffi::REAL(sexp) as *mut Self
+        miniextendr_api::sys::REAL(sexp) as *mut Self
     }
 }
 

@@ -87,7 +87,7 @@ bindgen \
   --allowlist-file '.*/cli/progress\.h' \
   --blocklist-type 'SEXPREC' \
   --blocklist-type 'SEXP' \
-  --raw-line 'use miniextendr_api::ffi::SEXP;' \
+  --raw-line 'use miniextendr_api::sys::SEXP;' \
   src/cli_wrapper.h \
   -- \
   -I"$R_INCLUDE" \
@@ -152,7 +152,7 @@ int cli_progress_num__extern(void) { return cli_progress_num(); }
 **`src/rust/native/cli_ffi.rs`**: Rust FFI declarations with `__extern` link names:
 
 ```rust
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 
 unsafe extern "C" {
     #[link_name = "cli_progress_num__extern"]
@@ -388,7 +388,7 @@ bindgen \
   --wrap-static-fns-path "$STATIC_C" \
   --blocklist-type 'SEXPREC' \
   --blocklist-type 'SEXP' \
-  --raw-line 'use miniextendr_api::ffi::SEXP;' \
+  --raw-line 'use miniextendr_api::sys::SEXP;' \
   "$WRAPPER" \
   -- \
   -x c++ -std=c++17 \

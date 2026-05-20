@@ -59,7 +59,7 @@ elements are computed from `start + i * step`.
 ### Step 1: Define the data struct
 
 ```rust
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::miniextendr;
 use miniextendr_api::altrep_data::{AltrepLen, AltRealData};
 
@@ -276,7 +276,7 @@ cannot occur.
 Here is a complete, self-contained example you can drop into `lib.rs`:
 
 ```rust
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::miniextendr;
 use miniextendr_api::altrep_data::{AltrepLen, AltIntegerData};
 

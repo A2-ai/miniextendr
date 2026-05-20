@@ -32,7 +32,7 @@ Here is a minimal read-only connection that serves an in-memory string:
 
 ```rust
 use miniextendr_api::connection::{RConnectionImpl, RCustomConnection};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::miniextendr;
 
 struct StringSource {
@@ -445,7 +445,7 @@ A buffer that supports reading, writing, and seeking -- similar to `textConnecti
 
 ```rust
 use miniextendr_api::connection::{RConnectionImpl, RCustomConnection};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::miniextendr;
 
 struct MemoryBuffer {
