@@ -51,7 +51,7 @@
 //!
 //! All functions in this module are unsafe and must be called from the R main thread.
 
-use crate::ffi::{PairListExt, R_PreserveObject, Rf_protect, Rf_unprotect, SEXP, SexpExt};
+use crate::sys::{PairListExt, R_PreserveObject, Rf_protect, Rf_unprotect, SEXP, SexpExt};
 use std::cell::OnceCell;
 
 thread_local! {
@@ -89,7 +89,7 @@ unsafe fn init() -> SEXP {
 /// you're certain you're on the main thread.
 #[inline]
 unsafe fn init_unchecked() -> SEXP {
-    use crate::ffi::{PairListExt, R_PreserveObject_unchecked};
+    use crate::sys::{PairListExt, R_PreserveObject_unchecked};
 
     unsafe {
         let out = SEXP::nil().cons_unchecked(SEXP::nil().cons_unchecked(SEXP::nil()));
@@ -133,8 +133,8 @@ pub(crate) unsafe fn get_unchecked() -> SEXP {
 /// Must be called from the R main thread.
 #[cfg(feature = "debug-preserve")]
 #[inline]
-pub unsafe fn count() -> crate::ffi::R_xlen_t {
-    use crate::ffi::{R_xlen_t, SexpExt};
+pub unsafe fn count() -> crate::sys::R_xlen_t {
+    use crate::sys::{R_xlen_t, SexpExt};
     unsafe {
         let head: R_xlen_t = 1;
         let tail: R_xlen_t = 1;
@@ -153,8 +153,8 @@ pub unsafe fn count() -> crate::ffi::R_xlen_t {
 /// you're certain you're on the main thread.
 #[cfg(feature = "debug-preserve")]
 #[inline]
-pub unsafe fn count_unchecked() -> crate::ffi::R_xlen_t {
-    use crate::ffi::{R_xlen_t, SexpExt};
+pub unsafe fn count_unchecked() -> crate::sys::R_xlen_t {
+    use crate::sys::{R_xlen_t, SexpExt};
 
     unsafe {
         let head: R_xlen_t = 1;
@@ -217,7 +217,7 @@ pub unsafe fn insert(x: SEXP) -> SEXP {
 /// The returned cell must eventually be passed to [`release_unchecked`].
 #[inline]
 pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
-    use crate::ffi::{PairListExt, Rf_protect_unchecked, Rf_unprotect_unchecked};
+    use crate::sys::{PairListExt, Rf_protect_unchecked, Rf_unprotect_unchecked};
 
     unsafe {
         if x.is_nil() {
@@ -283,7 +283,7 @@ pub unsafe fn release(cell: SEXP) {
 /// cell returned from [`insert_unchecked`] and must not have been released already.
 #[inline]
 pub unsafe fn release_unchecked(cell: SEXP) {
-    use crate::ffi::PairListExt;
+    use crate::sexp_ext::PairListExt;
 
     unsafe {
         if cell.is_nil() {

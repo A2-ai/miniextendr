@@ -17,7 +17,7 @@
 //! | ALTLIST | `length` + `elt` |
 //! | Numeric types | `length` + (`elt` OR `dataptr` via HAS_*) |
 
-use crate::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
+use crate::sys::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use core::ffi::c_void;
 
 // region: ALTREP GUARD MODE

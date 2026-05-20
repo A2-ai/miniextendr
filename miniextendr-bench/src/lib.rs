@@ -18,7 +18,7 @@
 use std::os::raw::c_char;
 use std::sync::OnceLock;
 
-use miniextendr_api::ffi::{self, SEXP};
+use miniextendr_api::sys::{self, SEXP};
 
 pub mod bench_plan;
 pub mod pool_prototypes;
@@ -202,7 +202,7 @@ unsafe fn init_fixtures_once() {
         use crate::raw_ffi::{
             INTEGER, LOGICAL, RAW, REAL, Rf_allocMatrix, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
         };
-        use miniextendr_api::ffi::{SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{SEXPTYPE, SexpExt};
 
         // UTF-8 string.
         let utf8_charsxp = SEXP::charsxp("hello");
@@ -212,7 +212,7 @@ unsafe fn init_fixtures_once() {
         let latin1_charsxp = Rf_mkCharLenCE(
             latin1_bytes.as_ptr().cast::<c_char>(),
             latin1_bytes.len() as i32,
-            ffi::cetype_t::CE_LATIN1,
+            sys::cetype_t::CE_LATIN1,
         );
 
         // STRSXP(1) wrappers to mirror the `TryFromSexp` path.
@@ -230,7 +230,7 @@ unsafe fn init_fixtures_once() {
 
         for (i, &size) in SIZES.iter().enumerate() {
             // Integer vector filled with 0..size
-            let int_vec = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, size as ffi::R_xlen_t));
+            let int_vec = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, size as sys::R_xlen_t));
             let int_ptr = INTEGER(int_vec);
             for j in 0..size {
                 *int_ptr.add(j) = j as i32;
@@ -238,7 +238,7 @@ unsafe fn init_fixtures_once() {
             int_vecs[i] = int_vec;
 
             // Real vector filled with 0.0..size as f64
-            let real_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, size as ffi::R_xlen_t));
+            let real_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, size as sys::R_xlen_t));
             let real_ptr = REAL(real_vec);
             for j in 0..size {
                 *real_ptr.add(j) = j as f64;
@@ -246,7 +246,7 @@ unsafe fn init_fixtures_once() {
             real_vecs[i] = real_vec;
 
             // Logical vector with alternating TRUE/FALSE
-            let lgl_vec = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, size as ffi::R_xlen_t));
+            let lgl_vec = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, size as sys::R_xlen_t));
             let lgl_ptr = LOGICAL(lgl_vec);
             for j in 0..size {
                 *lgl_ptr.add(j) = (j % 2) as i32;
@@ -254,7 +254,7 @@ unsafe fn init_fixtures_once() {
             lgl_vecs[i] = lgl_vec;
 
             // Raw vector filled with 0..255 cycling
-            let raw_vec = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, size as ffi::R_xlen_t));
+            let raw_vec = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, size as sys::R_xlen_t));
             let raw_ptr = RAW(raw_vec);
             for j in 0..size {
                 *raw_ptr.add(j) = (j % 256) as u8;
@@ -274,13 +274,13 @@ unsafe fn init_fixtures_once() {
         // Named lists for list/map conversion benchmarks
         let mut named_list_i32 = [SEXP::null(); 3];
         for (idx, &len) in NAMED_LIST_SIZES.iter().enumerate() {
-            let list = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, len as ffi::R_xlen_t));
-            let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, len as ffi::R_xlen_t));
+            let list = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, len as sys::R_xlen_t));
+            let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, len as sys::R_xlen_t));
 
             for i in 0..len {
-                list.set_vector_elt(i as ffi::R_xlen_t, SEXP::scalar_integer(i as i32));
+                list.set_vector_elt(i as sys::R_xlen_t, SEXP::scalar_integer(i as i32));
                 let key = format!("k{i}");
-                names.set_string_elt(i as ffi::R_xlen_t, SEXP::charsxp(&key));
+                names.set_string_elt(i as sys::R_xlen_t, SEXP::charsxp(&key));
             }
 
             list.set_names(names);

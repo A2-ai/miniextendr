@@ -399,7 +399,7 @@ fn generate_getter_body(
     // Helper: generate the pointer extraction code for Box<dyn Any> storage.
     // R_ExternalPtrAddr returns *mut Box<dyn Any>; we downcast to &T.
     let extract_ref = quote::quote! {
-        use ::miniextendr_api::ffi::{R_ExternalPtrAddr, SEXP};
+        use ::miniextendr_api::sys::{R_ExternalPtrAddr, SEXP};
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
             return SEXP::nil();
@@ -423,7 +423,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarInt => {
             quote::quote! {
-                use ::miniextendr_api::ffi::SEXP;
+                use ::miniextendr_api::sys::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_integer(data.#field_name)
@@ -432,7 +432,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarReal => {
             quote::quote! {
-                use ::miniextendr_api::ffi::SEXP;
+                use ::miniextendr_api::sys::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_real(data.#field_name)
@@ -441,7 +441,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarLogical => {
             quote::quote! {
-                use ::miniextendr_api::ffi::SEXP;
+                use ::miniextendr_api::sys::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_logical(data.#field_name)
@@ -450,7 +450,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarRaw => {
             quote::quote! {
-                use ::miniextendr_api::ffi::SEXP;
+                use ::miniextendr_api::sys::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_raw(data.#field_name)
@@ -491,7 +491,7 @@ fn generate_setter_body(
 
     // Helper: extract mutable reference via Box<dyn Any> downcast.
     let extract_mut = quote::quote! {
-        use ::miniextendr_api::ffi::R_ExternalPtrAddr;
+        use ::miniextendr_api::sys::R_ExternalPtrAddr;
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
             return x;
@@ -514,7 +514,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarInt => {
             quote::quote! {
-                use ::miniextendr_api::ffi::SexpExt;
+                use ::miniextendr_api::sys::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = value.as_integer().unwrap_or(::miniextendr_api::altrep_traits::NA_INTEGER);
@@ -524,7 +524,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarReal => {
             quote::quote! {
-                use ::miniextendr_api::ffi::SexpExt;
+                use ::miniextendr_api::sys::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = value.as_real().unwrap_or(::miniextendr_api::altrep_traits::NA_REAL);
@@ -534,7 +534,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarLogical => {
             quote::quote! {
-                use ::miniextendr_api::ffi::SexpExt;
+                use ::miniextendr_api::sys::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = value.as_logical().unwrap_or(false);
@@ -544,7 +544,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarRaw => {
             quote::quote! {
-                use ::miniextendr_api::ffi::{SexpExt, SEXPTYPE};
+                use ::miniextendr_api::sys::{SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
                     let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
@@ -974,8 +974,8 @@ NULL
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #getter_fn_name(
-                x: ::miniextendr_api::ffi::SEXP
-            ) -> ::miniextendr_api::ffi::SEXP {
+                x: ::miniextendr_api::sys::SEXP
+            ) -> ::miniextendr_api::sys::SEXP {
                 #getter_body
             }
         });
@@ -988,9 +988,9 @@ NULL
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #setter_fn_name(
-                x: ::miniextendr_api::ffi::SEXP,
-                value: ::miniextendr_api::ffi::SEXP,
-            ) -> ::miniextendr_api::ffi::SEXP {
+                x: ::miniextendr_api::sys::SEXP,
+                value: ::miniextendr_api::sys::SEXP,
+            ) -> ::miniextendr_api::sys::SEXP {
                 #setter_body
             }
         });
@@ -1022,8 +1022,8 @@ NULL
         c_functions.push(quote::quote! {
             #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
-            static #getter_def_ident: ::miniextendr_api::ffi::R_CallMethodDef =
-                ::miniextendr_api::ffi::R_CallMethodDef {
+            static #getter_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
+                ::miniextendr_api::sys::R_CallMethodDef {
                     name: #getter_cstr_lit.as_ptr().cast(),
                     fun: Some(unsafe { ::std::mem::transmute(#getter_fn_name as unsafe extern "C-unwind" fn(_) -> _) }),
                     numArgs: 1,
@@ -1032,8 +1032,8 @@ NULL
         c_functions.push(quote::quote! {
             #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
-            static #setter_def_ident: ::miniextendr_api::ffi::R_CallMethodDef =
-                ::miniextendr_api::ffi::R_CallMethodDef {
+            static #setter_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
+                ::miniextendr_api::sys::R_CallMethodDef {
                     name: #setter_cstr_lit.as_ptr().cast(),
                     fun: Some(unsafe { ::std::mem::transmute(#setter_fn_name as unsafe extern "C-unwind" fn(_, _) -> _) }),
                     numArgs: 2,

@@ -3,7 +3,7 @@
 use miniextendr_macros::miniextendr;
 #[miniextendr]
 #[unsafe(no_mangle)]
-extern "C-unwind" fn C_bad(_x: miniextendr_api::ffi::SEXP) -> i32 {
+extern "C-unwind" fn C_bad(_x: miniextendr_api::sys::SEXP) -> i32 {
     0
 }
 

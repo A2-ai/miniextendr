@@ -1,6 +1,6 @@
 //! Test fixtures for protect_pool (generational GC pool).
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::prelude::*;
 use miniextendr_api::protect_pool::ProtectPool;
 

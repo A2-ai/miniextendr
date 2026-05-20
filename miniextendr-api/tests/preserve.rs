@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{SEXP, SexpExt};
+use miniextendr_api::sys::{SEXP, SexpExt};
 use miniextendr_api::preserve;
 
 #[test]

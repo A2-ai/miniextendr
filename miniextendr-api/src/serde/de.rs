@@ -5,7 +5,7 @@
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 

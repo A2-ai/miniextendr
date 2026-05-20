@@ -435,7 +435,7 @@ fn mxl301_ffi_unchecked_usage() {
         r#"
         #[miniextendr]
         pub fn bad_unchecked() {
-            unsafe { ffi::Rf_allocVector_unchecked(INTSXP, 10) };
+            unsafe { sys::Rf_allocVector_unchecked(INTSXP, 10) };
         }
         "#,
     )

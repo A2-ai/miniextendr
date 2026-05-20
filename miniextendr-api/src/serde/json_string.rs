@@ -6,7 +6,7 @@
 //!
 //! Requires the `serde_json` feature.
 
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::into_r_error::IntoRError;

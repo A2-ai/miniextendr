@@ -7,7 +7,7 @@
 //! Covers: `&str`, `String`, `char`, `Option<&str>`, `Option<String>`,
 //! `Vec<String>`, `Vec<&str>`, `Box<[String]>`.
 
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{
     SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
     charsxp_to_str_unchecked,

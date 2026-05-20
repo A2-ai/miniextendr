@@ -24,9 +24,9 @@ use std::{
 // region: raise_rust_condition_via_stop — Approach 3 for ALTREP RUnwind path
 
 /// Cached `stop` symbol (permanently interned via `Rf_install`).
-fn stop_sym() -> crate::ffi::SEXP {
-    static CACHE: OnceLock<crate::ffi::SEXP> = OnceLock::new();
-    *CACHE.get_or_init(|| unsafe { crate::ffi::Rf_install(c"stop".as_ptr()) })
+fn stop_sym() -> crate::sys::SEXP {
+    static CACHE: OnceLock<crate::sys::SEXP> = OnceLock::new();
+    *CACHE.get_or_init(|| unsafe { crate::sys::Rf_install(c"stop".as_ptr()) })
 }
 
 /// Raise an R condition with `rust_*` class layering by evaluating
@@ -58,9 +58,9 @@ fn stop_sym() -> crate::ffi::SEXP {
 pub(crate) unsafe fn raise_rust_condition_via_stop(
     message: &str,
     class: Option<&str>,
-    call: Option<crate::ffi::SEXP>,
+    call: Option<crate::sys::SEXP>,
 ) -> ! {
-    use crate::ffi::{
+    use crate::sys::{
         CE_UTF8, R_BaseEnv, Rf_allocVector, Rf_eval, Rf_lang2, Rf_mkCharCE, Rf_protect, SEXP,
         SEXPTYPE, SexpExt,
     };
@@ -133,7 +133,7 @@ pub(crate) unsafe fn raise_rust_condition_via_stop(
 
 // endregion
 
-use crate::ffi::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
+use crate::sys::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
 
 /// Global continuation token for R_UnwindProtect.
 ///
@@ -155,8 +155,8 @@ pub(crate) fn get_continuation_token() -> SEXP {
         // (R_MakeUnwindCont is an R API call). OnceLock ensures it is
         // only created once and safely shared.
         unsafe {
-            let token = ffi::R_MakeUnwindCont();
-            ffi::R_PreserveObject(token);
+            let token = sys::R_MakeUnwindCont();
+            sys::R_PreserveObject(token);
             token
         }
     })
@@ -235,11 +235,11 @@ where
         match catch_unwind(AssertUnwindSafe(f)) {
             Ok(result) => {
                 data.result = Some(result);
-                crate::ffi::SEXP::nil()
+                crate::sys::SEXP::nil()
             }
             Err(payload) => {
                 data.panic_payload = Some(payload);
-                crate::ffi::SEXP::nil()
+                crate::sys::SEXP::nil()
             }
         }
     }

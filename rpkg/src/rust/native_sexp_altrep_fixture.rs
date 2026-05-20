@@ -48,7 +48,7 @@ use std::sync::OnceLock;
 
 use miniextendr_api::altrep::RegisterAltrep;
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepDataptr, AltrepExtract, AltrepLen};
-use miniextendr_api::ffi::{
+use miniextendr_api::sys::{
     DATAPTR_RO, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt as _,
 };
 use miniextendr_api::into_r::IntoR;
@@ -192,8 +192,8 @@ impl AltInteger for NativeSexpIntAltrep {
 // region: RegisterAltrep — class registration via OnceLock
 
 impl RegisterAltrep for NativeSexpIntAltrep {
-    fn get_or_init_class() -> miniextendr_api::ffi::altrep::R_altrep_class_t {
-        static CLASS: OnceLock<miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+    fn get_or_init_class() -> miniextendr_api::sys::altrep::R_altrep_class_t {
+        static CLASS: OnceLock<miniextendr_api::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             const CLASS_NAME: &[u8] = b"NativeSexpIntAltrep\0";
             let cls = unsafe {

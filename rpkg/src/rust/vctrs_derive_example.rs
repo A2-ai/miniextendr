@@ -65,7 +65,7 @@ impl DerivedPercent {
 /// @param x Numeric values (as proportions).
 /// @return A derived_percent vector.
 #[miniextendr]
-pub fn new_derived_percent(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, String> {
+pub fn new_derived_percent(x: Vec<f64>) -> Result<miniextendr_api::sys::SEXP, String> {
     let percent = DerivedPercent::new(x);
     percent.into_vctrs().map_err(|e| e.to_string())
 }
@@ -119,7 +119,7 @@ impl DerivedRational {
 pub fn new_derived_rational(
     n: Vec<i32>,
     d: Vec<i32>,
-) -> Result<miniextendr_api::ffi::SEXP, String> {
+) -> Result<miniextendr_api::sys::SEXP, String> {
     let rational = DerivedRational::new(n, d)?;
     rational.into_vctrs().map_err(|e| e.to_string())
 }
@@ -161,8 +161,8 @@ impl DerivedIntLists {
 /// @return A derived_int_lists list_of vector.
 #[miniextendr]
 pub fn new_derived_int_lists(
-    x: miniextendr_api::ffi::SEXP,
-) -> Result<miniextendr_api::ffi::SEXP, String> {
+    x: miniextendr_api::sys::SEXP,
+) -> Result<miniextendr_api::sys::SEXP, String> {
     use miniextendr_api::from_r::TryFromSexp;
     let lists: Vec<Vec<i32>> = TryFromSexp::try_from_sexp(x).map_err(|e| format!("{:?}", e))?;
     let int_lists = DerivedIntLists::new(lists);
@@ -204,7 +204,7 @@ impl DerivedPoint {
 /// @param y Y coordinates.
 /// @return A derived_point record vector with proxy methods.
 #[miniextendr]
-pub fn new_derived_point(x: Vec<f64>, y: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, String> {
+pub fn new_derived_point(x: Vec<f64>, y: Vec<f64>) -> Result<miniextendr_api::sys::SEXP, String> {
     let point = DerivedPoint::new(x, y)?;
     point.into_vctrs().map_err(|e| e.to_string())
 }
@@ -233,7 +233,7 @@ impl DerivedTemp {
 /// @param x Temperature values.
 /// @return A derived_temp vector.
 #[miniextendr]
-pub fn new_derived_temp(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, String> {
+pub fn new_derived_temp(x: Vec<f64>) -> Result<miniextendr_api::sys::SEXP, String> {
     let temp = DerivedTemp::new(x);
     temp.into_vctrs().map_err(|e| e.to_string())
 }

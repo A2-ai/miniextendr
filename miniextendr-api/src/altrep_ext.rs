@@ -2,13 +2,13 @@
 //!
 //! Using methods on SEXP (via `&self`) instead of free functions avoids
 //! `clippy::not_unsafe_ptr_arg_deref` in ALTREP trait implementations,
-//! mirroring the pattern established by [`SexpExt`](crate::ffi::SexpExt).
+//! mirroring the pattern established by [`SexpExt`](crate::sys::SexpExt).
 
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 
 /// ALTREP-specific extension methods for SEXP.
 ///
-/// These methods wrap the free functions in `ffi::altrep`, converting
+/// These methods wrap the free functions in `sys::altrep`, converting
 /// `func(x)` calls to `x.method()` calls. This avoids the
 /// `clippy::not_unsafe_ptr_arg_deref` lint in ALTREP trait method
 /// implementations that receive SEXP as a parameter.

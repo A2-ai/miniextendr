@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{self, SEXP, SexpExt};
+use miniextendr_api::sys::{self, SEXP, SexpExt};
 use miniextendr_api::protect_pool::ProtectPool;
 
 #[test]
@@ -18,7 +18,7 @@ fn pool_protects_from_gc() {
         let k2 = pool.insert(s2);
 
         // Force GC
-        ffi::R_gc();
+        sys::R_gc();
 
         // Values should survive GC
         let got1 = pool.get(k1).expect("k1 should be valid after GC");
@@ -28,7 +28,7 @@ fn pool_protects_from_gc() {
 
         // Release k1, GC again
         pool.release(k1);
-        ffi::R_gc();
+        sys::R_gc();
 
         // k1 should be stale, k2 still valid
         assert!(pool.get(k1).is_none(), "k1 should be stale after release");
@@ -51,7 +51,7 @@ fn pool_replace_survives_gc() {
         let k = pool.insert(SEXP::scalar_integer(1));
         pool.replace(k, SEXP::scalar_integer(2));
 
-        ffi::R_gc();
+        sys::R_gc();
 
         let got = pool.get(k).expect("replaced value should survive GC");
         assert_eq!(got.integer_elt(0), 2);
@@ -71,7 +71,7 @@ fn pool_growth_survives_gc() {
             keys.push(pool.insert(SEXP::scalar_integer(i)));
         }
 
-        ffi::R_gc();
+        sys::R_gc();
 
         // All 100 values should survive
         for (i, &k) in keys.iter().enumerate() {

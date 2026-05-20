@@ -233,7 +233,7 @@ pub fn arrow_date_len(v: miniextendr_api::arrow_impl::Date32Array) -> i32 {
 /// Test POSIXct roundtrip through Arrow TimestampSecondArray.
 /// @param v R POSIXct SEXP to convert to Arrow timestamp.
 #[miniextendr]
-pub fn arrow_posixct_roundtrip(v: miniextendr_api::ffi::SEXP) -> miniextendr_api::ffi::SEXP {
+pub fn arrow_posixct_roundtrip(v: miniextendr_api::sys::SEXP) -> miniextendr_api::sys::SEXP {
     use miniextendr_api::arrow_impl::posixct_to_timestamp;
     use miniextendr_api::into_r::IntoR;
     let arr = posixct_to_timestamp(v).expect("posixct_to_timestamp failed");
@@ -243,7 +243,7 @@ pub fn arrow_posixct_roundtrip(v: miniextendr_api::ffi::SEXP) -> miniextendr_api
 /// Test getting the length of a POSIXct converted to Arrow timestamp.
 /// @param v R POSIXct SEXP to convert to Arrow timestamp.
 #[miniextendr]
-pub fn arrow_posixct_len(v: miniextendr_api::ffi::SEXP) -> i32 {
+pub fn arrow_posixct_len(v: miniextendr_api::sys::SEXP) -> i32 {
     use miniextendr_api::arrow_impl::posixct_to_timestamp;
     let arr = posixct_to_timestamp(v).expect("posixct_to_timestamp failed");
     arr.len() as i32

@@ -25,7 +25,7 @@
 //! }
 //! ```
 
-use crate::ffi::{
+use crate::sys::{
     self, PairListExt, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_protect,
     Rf_unprotect, SEXP, SexpExt,
 };
@@ -192,7 +192,7 @@ impl REnv {
     #[inline]
     pub unsafe fn caller() -> Self {
         REnv {
-            sexp: unsafe { ffi::R_GetCurrentEnv() },
+            sexp: unsafe { sys::R_GetCurrentEnv() },
         }
     }
 
@@ -226,18 +226,18 @@ impl REnv {
 ///
 /// ```ignore
 /// use miniextendr_api::expression::RCall;
-/// use miniextendr_api::ffi;
+/// use miniextendr_api::sys;
 ///
 /// unsafe {
 ///     // seq_len(10)
 ///     let result = RCall::new("seq_len")
-///         .arg(ffi::SEXP::scalar_integer(10))
+///         .arg(sys::SEXP::scalar_integer(10))
 ///         .eval_base()?;
 ///
 ///     // paste(x, collapse = ", ")
 ///     let result = RCall::new("paste")
 ///         .arg(some_sexp)
-///         .named_arg("collapse", ffi::Rf_mkString(c", ".as_ptr()))
+///         .named_arg("collapse", sys::Rf_mkString(c", ".as_ptr()))
 ///         .eval_base()?;
 /// }
 /// ```
@@ -409,7 +409,7 @@ unsafe fn get_r_error_message() -> String {
     unsafe {
         // Call geterrmessage() — a public R function that returns the last
         // error message as a character(1) string.
-        let call = ffi::Rf_lang1(Rf_install(c"geterrmessage".as_ptr()));
+        let call = sys::Rf_lang1(Rf_install(c"geterrmessage".as_ptr()));
         Rf_protect(call);
 
         let mut err: std::os::raw::c_int = 0;

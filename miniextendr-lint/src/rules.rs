@@ -37,7 +37,7 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
     // Per-file: direct Rf_error/Rf_errorcall usage (MXL300)
     rf_error::check(index, &mut diagnostics);
 
-    // Per-file: ffi::*_unchecked() usage (MXL301)
+    // Per-file: sys::*_unchecked() usage (MXL301)
     ffi_unchecked::check(index, &mut diagnostics);
 
     // Per-file: s4_* method name on #[miniextendr(s4)] impl (MXL111)

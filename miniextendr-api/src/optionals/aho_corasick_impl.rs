@@ -40,7 +40,7 @@
 
 pub use aho_corasick::{AhoCorasick, MatchKind};
 
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::{
@@ -78,7 +78,7 @@ impl TryFromSexp for AhoCorasick {
 
         let mut patterns = Vec::with_capacity(len);
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
             if charsxp == SEXP::na_string() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed in patterns",

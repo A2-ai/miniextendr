@@ -59,7 +59,7 @@
 pub use bitflags::Flags;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use std::fmt;

@@ -1,6 +1,6 @@
 use miniextendr_api::IntoR;
 use miniextendr_api::altrep_sexp::{AltrepSexp, ensure_materialized};
-use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::sys::{SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::miniextendr;
 
 /// Check if a SEXP is ALTREP and return info about it.

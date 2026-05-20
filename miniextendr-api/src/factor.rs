@@ -29,7 +29,7 @@ use std::ops::Deref;
 use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::ffi::{Rf_allocVector, Rf_install, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rf_allocVector, Rf_install, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
@@ -40,7 +40,7 @@ static FACTOR_CLASS: OnceLock<SEXP> = OnceLock::new();
 pub(crate) fn factor_class_sexp() -> SEXP {
     *FACTOR_CLASS.get_or_init(|| unsafe {
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        crate::ffi::R_PreserveObject(class_sexp);
+        crate::sys::R_PreserveObject(class_sexp);
         // Use symbol PRINTNAME for permanent CHARSXP
         let sym = Rf_install(c"factor".as_ptr());
         class_sexp.set_string_elt(0, sym.printname());
@@ -86,7 +86,7 @@ pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
 pub fn build_levels_sexp_cached(levels: &[&str]) -> SEXP {
     unsafe {
         let sexp = build_levels_sexp(levels);
-        crate::ffi::R_PreserveObject(sexp);
+        crate::sys::R_PreserveObject(sexp);
         sexp
     }
 }
@@ -446,10 +446,10 @@ impl<T> std::ops::DerefMut for FactorVec<T> {
 
 impl<T: RFactor> IntoR for FactorVec<T> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -551,10 +551,10 @@ pub trait UnitEnumFactor {
 
 impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {

@@ -5,8 +5,8 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{Rf_allocVector, SEXP, SEXPTYPE};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope, Protected, tls};
+use miniextendr_api::sys::{Rf_allocVector, SEXP, SEXPTYPE};
 
 // region: Balance tests
 
@@ -156,7 +156,7 @@ fn disarm_scope_no_unprotect() {
 
         // We need to manually unprotect to avoid leaking
         // (In real code, this would be handled by some other mechanism)
-        miniextendr_api::ffi::Rf_unprotect(2);
+        miniextendr_api::sys::Rf_unprotect(2);
     });
 }
 // endregion
@@ -238,7 +238,7 @@ fn owned_protect_deref() {
         let guard = OwnedProtect::new(SEXP::scalar_real(std::f64::consts::PI));
 
         // Deref to get &SEXP
-        let sexp: &miniextendr_api::ffi::SEXP = &guard;
+        let sexp: &miniextendr_api::sys::SEXP = &guard;
         assert!(!sexp.is_null());
     });
 }

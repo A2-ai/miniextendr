@@ -9,7 +9,7 @@ use miniextendr_api::connection::{
     RConnectionIo, Rconn, get_connection, read_connection, write_connection,
 };
 #[cfg(feature = "connections")]
-use miniextendr_api::ffi;
+use miniextendr_api::sys;
 #[cfg(feature = "connections")]
 use miniextendr_bench::raw_ffi;
 #[cfg(feature = "connections")]
@@ -17,7 +17,7 @@ use std::io::Cursor;
 
 #[cfg(feature = "connections")]
 struct ProtectedConn {
-    sexp: ffi::SEXP,
+    sexp: sys::SEXP,
 }
 
 #[cfg(feature = "connections")]
@@ -31,7 +31,7 @@ impl Drop for ProtectedConn {
 
 /// Build a connection and open it so read/write operations work.
 #[cfg(feature = "connections")]
-unsafe fn open_connection(sexp: ffi::SEXP) {
+unsafe fn open_connection(sexp: sys::SEXP) {
     unsafe {
         let handle = get_connection(sexp).cast::<Rconn>();
         if let Some(open_fn) = (*handle).open {

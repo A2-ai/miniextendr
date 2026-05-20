@@ -16,7 +16,7 @@
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::ffi::SEXP;
+/// use miniextendr_api::SEXP;
 /// use miniextendr_api::s4_helpers;
 ///
 /// unsafe {
@@ -29,7 +29,7 @@
 /// }
 /// ```
 use crate::expression::{RCall, REnv};
-use crate::ffi::{SEXP, SexpExt};
+use crate::sys::{SEXP, SexpExt};
 use std::ffi::CStr;
 
 /// Get the `methods` package namespace for evaluating S4 functions.

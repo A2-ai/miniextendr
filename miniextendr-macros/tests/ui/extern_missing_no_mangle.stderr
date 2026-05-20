@@ -4,5 +4,5 @@ error: extern "C-unwind" functions need a visible C symbol for R's .Call interfa
          - `#[export_name = "my_symbol"]` (custom symbol name)
  --> tests/ui/extern_missing_no_mangle.rs:5:1
   |
-5 | extern "C-unwind" fn C_bad(_x: miniextendr_api::ffi::SEXP) -> miniextendr_api::ffi::SEXP {
+5 | extern "C-unwind" fn C_bad(_x: miniextendr_api::sys::SEXP) -> miniextendr_api::sys::SEXP {
   | ^^^^^^

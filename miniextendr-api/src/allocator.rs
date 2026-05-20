@@ -37,7 +37,7 @@
 //! For long-lived allocations or critical cleanup requirements, consider using
 //! Rust's standard allocator instead.
 
-use crate::ffi::{R_PreserveObject_unchecked, R_ReleaseObject_unchecked, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{R_PreserveObject_unchecked, R_ReleaseObject_unchecked, SEXP, SEXPTYPE, SexpExt};
 use crate::worker::{has_worker_context, is_r_main_thread, with_r_thread};
 use core::{
     alloc::{GlobalAlloc, Layout},
@@ -232,7 +232,7 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     // If this happens inside run_on_worker, R_UnwindProtect will catch it.
     // Outside of that context, Rust destructors may be skipped.
     // Use _unchecked since we're guaranteed to be on R main thread via with_r_thread_or_inline.
-    let sexp = unsafe { crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::RAWSXP, total_isize) };
+    let sexp = unsafe { crate::sys::Rf_allocVector_unchecked(SEXPTYPE::RAWSXP, total_isize) };
     if sexp.is_null() {
         return sendable_data_ptr_null();
     }
@@ -242,7 +242,7 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     unsafe { R_PreserveObject_unchecked(sexp) };
 
     // Use _unchecked since we're guaranteed to be on R main thread.
-    let raw_base = unsafe { crate::ffi::RAW_unchecked(sexp) }.cast::<u8>();
+    let raw_base = unsafe { crate::sys::RAW_unchecked(sexp) }.cast::<u8>();
 
     // Calculate header and data pointers with alignment
     let after_header = unsafe { raw_base.add(HEADER_SIZE) };
@@ -295,7 +295,7 @@ unsafe fn realloc_main_thread(
     let sexp = unsafe { (*header).sexp };
 
     // Check if existing allocation has capacity
-    let raw_base = unsafe { crate::ffi::RAW_unchecked(sexp) }.cast::<u8>();
+    let raw_base = unsafe { crate::sys::RAW_unchecked(sexp) }.cast::<u8>();
     let cap: usize = match unsafe { sexp.xlength_unchecked() }.try_into() {
         Ok(n) => n,
         Err(_) => return sendable_data_ptr_null(),

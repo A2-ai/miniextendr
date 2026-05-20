@@ -26,7 +26,7 @@
 //! }
 //! ```
 
-use crate::ffi::{SEXP, SexpExt};
+use crate::sys::{SEXP, SexpExt};
 use crate::from_r::TryFromSexp;
 use crate::list::{List, ListFromSexpError};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};

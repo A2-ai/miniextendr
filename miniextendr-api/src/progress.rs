@@ -53,7 +53,7 @@ use std::fmt;
 use std::io;
 
 use crate::connection::{RStderr, RStdout, Rconn};
-use crate::ffi::{R_PreserveObject, R_ReleaseObject, SEXP, SexpExt};
+use crate::sys::{R_PreserveObject, R_ReleaseObject, SEXP, SexpExt};
 use crate::into_r::IntoR;
 
 // region: TermKind — precomputed dispatch kind
@@ -294,7 +294,7 @@ impl TermLike for RTerm {
         }
         match self.kind {
             TermKind::TerminalStdout | TermKind::TerminalStderr => {
-                unsafe { crate::ffi::R_FlushConsole() };
+                unsafe { crate::sys::R_FlushConsole() };
             }
             // Non-terminal connections flush on close or on the next write;
             // R's connection API doesn't expose a portable generic flush

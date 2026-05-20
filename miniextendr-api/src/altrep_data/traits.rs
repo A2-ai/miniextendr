@@ -13,7 +13,7 @@
 //! | [`AltListData`] | VECSXP | `elt(i) -> SEXP` |
 
 use super::{AltrepLen, Logical, Sortedness, fill_region};
-use crate::ffi::{Rcomplex, SEXP};
+use crate::sys::{Rcomplex, SEXP};
 
 // region: Integer ALTREP
 

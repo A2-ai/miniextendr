@@ -34,7 +34,7 @@
 //! ```
 
 use crate::coerce::{CoerceError, TryCoerce};
-use crate::ffi::{RLogical, SEXP};
+use crate::sys::{RLogical, SEXP};
 use crate::into_r::IntoR;
 use std::fmt;
 

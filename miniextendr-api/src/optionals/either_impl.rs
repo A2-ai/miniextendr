@@ -85,7 +85,7 @@
 
 pub use either::{Either, Left, Right};
 
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 

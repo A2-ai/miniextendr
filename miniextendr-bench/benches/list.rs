@@ -5,7 +5,7 @@
 //! - positional lookup baseline (`List::get_index`)
 //! - derive-driven struct ↔ list conversions (`IntoList` / `TryFromList`)
 
-use miniextendr_api::ffi;
+use miniextendr_api::sys;
 use miniextendr_api::list::{IntoList as IntoListTrait, List, TryFromList as TryFromListTrait};
 use miniextendr_bench::raw_ffi;
 
@@ -89,7 +89,7 @@ fn derive_into_list_tuple() {
 }
 
 struct ProtectedSexp {
-    sexp: ffi::SEXP,
+    sexp: sys::SEXP,
 }
 
 impl Drop for ProtectedSexp {

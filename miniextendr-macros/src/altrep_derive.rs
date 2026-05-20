@@ -669,13 +669,13 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
         quote! { ::miniextendr_api::altrep_data::AltComplexData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::ffi::Rcomplex { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::sys::Rcomplex { self.#d.elt(i) } }
             } else if let Some(f) = elt_field {
-                quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::Rcomplex { self.#f } }
+                quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::sys::Rcomplex { self.#f } }
             } else {
                 quote! {
-                    fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::Rcomplex {
-                        ::miniextendr_api::ffi::Rcomplex { r: f64::NAN, i: f64::NAN }
+                    fn elt(&self, _i: usize) -> ::miniextendr_api::sys::Rcomplex {
+                        ::miniextendr_api::sys::Rcomplex { r: f64::NAN, i: f64::NAN }
                     }
                 }
             }
@@ -684,7 +684,7 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
             macro_base: "impl_altcomplex_from_data",
             dataptr_macro: Some((
                 "__impl_altvec_dataptr",
-                Some(quote! { ::miniextendr_api::ffi::Rcomplex }),
+                Some(quote! { ::miniextendr_api::sys::Rcomplex }),
             )),
             string_dataptr: false,
             subset: true,
@@ -721,14 +721,14 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 
         let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
             quote! {
-                fn elt(&self, i: usize) -> ::miniextendr_api::ffi::SEXP {
+                fn elt(&self, i: usize) -> ::miniextendr_api::sys::SEXP {
                     self.#elt_field[i]
                 }
             }
         } else {
             quote! {
-                fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::SEXP {
-                    ::miniextendr_api::ffi::SEXP::nil()
+                fn elt(&self, _i: usize) -> ::miniextendr_api::sys::SEXP {
+                    ::miniextendr_api::sys::SEXP::nil()
                 }
             }
         };
@@ -765,10 +765,10 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                 ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics, #guard);
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
-                    fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
+                    fn elt(x: ::miniextendr_api::sys::SEXP, i: ::miniextendr_api::sys::R_xlen_t) -> ::miniextendr_api::sys::SEXP {
                         unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
                             .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                            .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
+                            .unwrap_or(::miniextendr_api::sys::SEXP::nil())
                     }
                 }
                 ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
@@ -778,10 +778,10 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                 ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics);
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
-                    fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
+                    fn elt(x: ::miniextendr_api::sys::SEXP, i: ::miniextendr_api::sys::R_xlen_t) -> ::miniextendr_api::sys::SEXP {
                         unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
                             .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                            .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
+                            .unwrap_or(::miniextendr_api::sys::SEXP::nil())
                     }
                 }
                 ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);

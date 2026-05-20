@@ -73,8 +73,14 @@ pub use crate::{Sendable, with_r_thread};
 pub use crate::{r_print, r_println, r_warning};
 // endregion
 
-// region: FFI (SEXP is needed in almost every crate)
-pub use crate::ffi::SEXP;
+// region: FFI core types
+//
+// The most-used vocabulary for working with R values. `SEXP` is the central
+// newtype; `SexpExt` is the ergonomic extension trait; the rest are R's
+// native element/vector types.
+pub use crate::{
+    R_xlen_t, RLogical, RNativeType, Rboolean, Rcomplex, SEXP, SEXPTYPE, SexpExt,
+};
 // endregion
 
 // region: Optional feature re-exports

@@ -16,7 +16,7 @@ mod r_test_utils;
 #[cfg(feature = "arrow")]
 mod arrow_altrep_thread {
     use super::r_test_utils;
-    use miniextendr_api::ffi::{self, SEXP, SexpExt};
+    use miniextendr_api::sys::{self, SEXP, SexpExt};
     use miniextendr_api::worker::is_r_main_thread;
 
     /// Create an ALTREP Float64Array with NAs and return the SEXP + protect it.
@@ -30,7 +30,7 @@ mod arrow_altrep_thread {
             .collect();
         let sexp = arr.into_sexp_altrep();
         // Protect from GC for the duration of the test
-        unsafe { ffi::Rf_protect(sexp) };
+        unsafe { sys::Rf_protect(sexp) };
         sexp
     }
 
@@ -53,7 +53,7 @@ mod arrow_altrep_thread {
             // Verify we're still on main thread after ALTREP access
             assert!(is_r_main_thread());
 
-            unsafe { ffi::Rf_unprotect(1) };
+            unsafe { sys::Rf_unprotect(1) };
         });
     }
 
@@ -62,7 +62,7 @@ mod arrow_altrep_thread {
         r_test_utils::with_r_thread(|| {
             let sexp = make_arrow_altrep_with_nas();
             assert_eq!(sexp.len(), 5);
-            unsafe { ffi::Rf_unprotect(1) };
+            unsafe { sys::Rf_unprotect(1) };
         });
     }
 
@@ -77,7 +77,7 @@ mod arrow_altrep_thread {
                 .collect();
 
             assert_eq!(is_na, vec![false, true, false, true, false]);
-            unsafe { ffi::Rf_unprotect(1) };
+            unsafe { sys::Rf_unprotect(1) };
         });
     }
 
@@ -88,7 +88,7 @@ mod arrow_altrep_thread {
 
             // DATAPTR_RO triggers materialization into data2 for Arrow arrays with nulls.
             // This must succeed (not segfault) and return a valid pointer.
-            let ptr = unsafe { ffi::DATAPTR_RO(sexp) };
+            let ptr = unsafe { sys::DATAPTR_RO(sexp) };
             assert!(
                 !ptr.is_null(),
                 "DATAPTR_RO on ALTREP with nulls must not return null"
@@ -102,7 +102,7 @@ mod arrow_altrep_thread {
             assert!(slice[3].to_bits() == miniextendr_api::altrep_traits::NA_REAL.to_bits());
             assert_eq!(slice[4], 50.0);
 
-            unsafe { ffi::Rf_unprotect(1) };
+            unsafe { sys::Rf_unprotect(1) };
         });
     }
 
@@ -145,7 +145,7 @@ mod arrow_altrep_thread {
             assert_eq!(v1_bits, miniextendr_api::altrep_traits::NA_REAL.to_bits());
             assert_eq!(v2, 30.0);
 
-            unsafe { ffi::Rf_unprotect(1) };
+            unsafe { sys::Rf_unprotect(1) };
         });
     }
 
@@ -157,7 +157,7 @@ mod arrow_altrep_thread {
 
             let arr: Int32Array = vec![Some(1), None, Some(3)].into_iter().collect();
             let sexp = arr.into_sexp_altrep();
-            unsafe { ffi::Rf_protect(sexp) };
+            unsafe { sys::Rf_protect(sexp) };
 
             assert_eq!(sexp.len(), 3);
             assert_eq!(sexp.integer_elt(0), 1);
@@ -168,10 +168,10 @@ mod arrow_altrep_thread {
             assert_eq!(sexp.integer_elt(2), 3);
 
             // DATAPTR_RO should materialize without crash
-            let ptr = unsafe { ffi::DATAPTR_RO(sexp) };
+            let ptr = unsafe { sys::DATAPTR_RO(sexp) };
             assert!(!ptr.is_null());
 
-            unsafe { ffi::Rf_unprotect(1) };
+            unsafe { sys::Rf_unprotect(1) };
         });
     }
 
@@ -183,7 +183,7 @@ mod arrow_altrep_thread {
 
             let arr = StringArray::from(vec![Some("hello"), None, Some("world")]);
             let sexp = arr.into_sexp_altrep();
-            unsafe { ffi::Rf_protect(sexp) };
+            unsafe { sys::Rf_protect(sexp) };
 
             assert_eq!(sexp.len(), 3);
 
@@ -199,7 +199,7 @@ mod arrow_altrep_thread {
             assert!(!sexp.string_elt(0).is_na_string());
             assert!(sexp.string_elt(1).is_na_string());
 
-            unsafe { ffi::Rf_unprotect(1) };
+            unsafe { sys::Rf_unprotect(1) };
         });
     }
 }

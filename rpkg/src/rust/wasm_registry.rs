@@ -7,7 +7,7 @@
 // content-hash:      45deb187685d12d3
 
 use ::miniextendr_api::abi::mx_tag;
-use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
+use ::miniextendr_api::sys::{R_CallMethodDef, SEXP};
 use ::miniextendr_api::registry::{AltrepRegistration, TraitDispatchEntry};
 use ::core::ffi::c_void;
 

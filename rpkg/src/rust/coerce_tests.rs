@@ -86,7 +86,7 @@ pub fn test_coerce_widen(x: i32) -> f64 {
 /// Test coercion from Rboolean to i32 via Coerce trait.
 /// @param x Logical scalar input.
 #[miniextendr]
-pub fn test_coerce_bool_to_int(x: miniextendr_api::ffi::Rboolean) -> i32 {
+pub fn test_coerce_bool_to_int(x: miniextendr_api::sys::Rboolean) -> i32 {
     x.coerce()
 }
 

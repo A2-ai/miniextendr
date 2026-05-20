@@ -9,7 +9,7 @@
 //! RAWSXP/LGLSXP and panic instead of widening.
 
 use miniextendr_api::IntoR;
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::strict;
 

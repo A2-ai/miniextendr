@@ -4,7 +4,7 @@ use crate::altrep_data::{
     IterLogicalData, IterRawData, IterRealCoerceData, IterRealData, IterStringData, Logical,
     Sortedness,
 };
-use crate::ffi::Rcomplex;
+use crate::sys::Rcomplex;
 
 #[test]
 pub(crate) fn test_logical_to_r_int() {

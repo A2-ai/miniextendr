@@ -51,7 +51,7 @@
 
 pub use indexmap::IndexMap;
 
-use crate::ffi::{R_xlen_t, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{R_xlen_t, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;

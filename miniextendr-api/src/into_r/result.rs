@@ -62,13 +62,13 @@ where
     E: std::fmt::Display,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::ffi::SEXP {
+    fn into_sexp(self) -> crate::sys::SEXP {
         match self {
             Ok(value) => value.into_sexp(),
             Err(msg) => {
@@ -115,16 +115,16 @@ pub struct NullOnErr;
 /// carries no information. Instead of raising an R error, we return NULL.
 impl<T: IntoR> IntoR for Result<T, NullOnErr> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::ffi::SEXP {
+    fn into_sexp(self) -> crate::sys::SEXP {
         match self {
             Ok(value) => value.into_sexp(),
-            Err(NullOnErr) => crate::ffi::SEXP::nil(),
+            Err(NullOnErr) => crate::sys::SEXP::nil(),
         }
     }
 }

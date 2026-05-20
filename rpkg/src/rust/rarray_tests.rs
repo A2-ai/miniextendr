@@ -1,6 +1,6 @@
 //! Test fixtures for RArray/RMatrix/RVector.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::prelude::*;
 use miniextendr_api::rarray::{RMatrix, RVector};
 

@@ -108,7 +108,7 @@ pub use ndarray::{
 };
 
 use crate::coerce::TryCoerce;
-use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
@@ -677,7 +677,7 @@ impl_all_arrays_try_from_sexp_coerce!(f64 => f32);
 // endregion
 
 // region: Logical coercions: R logical (RLogical) -> bool
-impl_all_arrays_try_from_sexp_coerce!(crate::ffi::RLogical => bool);
+impl_all_arrays_try_from_sexp_coerce!(crate::sys::RLogical => bool);
 // endregion
 
 // region: Array2 conversions
@@ -705,7 +705,7 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
 
         // Create R matrix with RAII protection
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(
+            let mat = crate::sys::Rf_allocMatrix(
                 T::SEXP_TYPE,
                 i32::try_from(nrow).expect("nrow exceeds i32"),
                 i32::try_from(ncol).expect("ncol exceeds i32"),
@@ -752,7 +752,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, data.len() as crate::sys::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -797,7 +797,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -842,7 +842,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -883,7 +883,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -931,7 +931,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -1058,7 +1058,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
         }
 
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(
+            let mat = crate::sys::Rf_allocMatrix(
                 T::SEXP_TYPE,
                 i32::try_from(nrow).expect("nrow exceeds i32"),
                 i32::try_from(ncol).expect("ncol exceeds i32"),
@@ -1099,7 +1099,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, data.len() as crate::sys::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -1140,7 +1140,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -1588,7 +1588,7 @@ impl<T: RNativeType + Clone, const NDIM: usize> From<&RArray<T, NDIM>> for Array
 // Explicit ExternalPtr: `ExternalPtr::new(arr)` → wraps without copying
 
 use crate::externalptr::TypedExternal;
-use crate::ffi::Rcomplex;
+use crate::sys::Rcomplex;
 
 // Helper macro for implementing TypedExternal for ndarray types.
 // For these well-known library types, we use the descriptive name as both
@@ -2759,7 +2759,7 @@ impl<T: RNativeType> RndVec<T> {
             }
             .into());
         }
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
             _marker: std::marker::PhantomData,
@@ -2772,8 +2772,8 @@ impl<T: RNativeType> RndVec<T> {
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t) };
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        let sexp = unsafe { crate::sys::Rf_allocVector(T::SEXP_TYPE, len as crate::sys::R_xlen_t) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
@@ -2851,7 +2851,7 @@ impl<T: RNativeType> RndVec<T> {
     pub unsafe fn into_sexp_unprotected(self) -> SEXP {
         let sexp = self.sexp;
         // Skip Drop (which would also call R_ReleaseObject)
-        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
+        unsafe { crate::sys::R_ReleaseObject(self.sexp) };
         std::mem::forget(self);
         sexp
     }
@@ -2859,7 +2859,7 @@ impl<T: RNativeType> RndVec<T> {
 
 impl<T: RNativeType> Drop for RndVec<T> {
     fn drop(&mut self) {
-        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
+        unsafe { crate::sys::R_ReleaseObject(self.sexp) }
     }
 }
 
@@ -2906,7 +2906,7 @@ impl<T: RNativeType> RndMat<T> {
             .into());
         }
         let (nrow, ncol) = get_matrix_dims(sexp)?;
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
             nrow,
@@ -2922,13 +2922,13 @@ impl<T: RNativeType> RndMat<T> {
     /// Must be called on R's main thread.
     pub unsafe fn new(nrow: usize, ncol: usize, init: impl FnOnce(&mut [T])) -> Self {
         let sexp = unsafe {
-            crate::ffi::Rf_allocMatrix(
+            crate::sys::Rf_allocMatrix(
                 T::SEXP_TYPE,
                 i32::try_from(nrow).expect("nrow exceeds i32"),
                 i32::try_from(ncol).expect("ncol exceeds i32"),
             )
         };
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, nrow * ncol) };
         init(slice);
@@ -2996,7 +2996,7 @@ impl<T: RNativeType> RndMat<T> {
     /// The returned SEXP is **unprotected**. See [`RndVec::into_sexp_unprotected`].
     pub unsafe fn into_sexp_unprotected(self) -> SEXP {
         let sexp = self.sexp;
-        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
+        unsafe { crate::sys::R_ReleaseObject(self.sexp) };
         std::mem::forget(self);
         sexp
     }
@@ -3004,7 +3004,7 @@ impl<T: RNativeType> RndMat<T> {
 
 impl<T: RNativeType> Drop for RndMat<T> {
     fn drop(&mut self) {
-        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
+        unsafe { crate::sys::R_ReleaseObject(self.sexp) }
     }
 }
 
@@ -3521,9 +3521,9 @@ crate::impl_altinteger_from_data!(Array1<i32>, dataptr);
 use crate::altrep::RegisterAltrep;
 
 impl RegisterAltrep for Array1<f64> {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Array1<f64> as crate::altrep_data::InferBase>::make_class(
@@ -3538,9 +3538,9 @@ impl RegisterAltrep for Array1<f64> {
 }
 
 impl RegisterAltrep for Array1<i32> {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Array1<i32> as crate::altrep_data::InferBase>::make_class(

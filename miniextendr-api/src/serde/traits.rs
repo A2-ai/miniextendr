@@ -6,7 +6,7 @@
 use super::de::RDeserializer;
 use super::error::RSerdeError;
 use super::ser::RSerializer;
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 
 /// Adapter trait for direct R serialization (Rust -> R SEXP).
 ///

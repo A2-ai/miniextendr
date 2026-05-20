@@ -10,7 +10,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
 
 /// Blanket impl: Convert R vector to `Cow<'static, [T]>` where T: RNativeType.
@@ -24,7 +24,7 @@ use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, chars
 /// R's protection stack guards this SEXP.
 impl<T> TryFromSexp for Cow<'static, [T]>
 where
-    T: crate::ffi::RNativeType + Copy + Clone,
+    T: crate::sys::RNativeType + Copy + Clone,
 {
     type Error = SexpTypeError;
 
@@ -89,7 +89,7 @@ impl TryFromSexp for Vec<Cow<'static, str>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
             if charsxp == SEXP::na_string() || charsxp == SEXP::blank_string() {
                 result.push(Cow::Borrowed(""));
             } else {
@@ -121,7 +121,7 @@ impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
             if charsxp == SEXP::na_string() {
                 result.push(None);
             } else {
@@ -181,7 +181,7 @@ impl TryFromSexp for Vec<String> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
             let s = if charsxp == SEXP::na_string() {
                 String::new()
             } else {
@@ -226,7 +226,7 @@ impl TryFromSexp for Vec<&'static str> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
             if charsxp == SEXP::na_string() {
                 result.push("");
                 continue;
@@ -260,7 +260,7 @@ impl TryFromSexp for Vec<Option<&'static str>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
             if charsxp == SEXP::na_string() {
                 result.push(None);
                 continue;

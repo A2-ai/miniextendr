@@ -9,7 +9,7 @@
 //! - `argument_coercion`: wrapper path with type coercion
 //! - `class_methods`: Env/R6/S3/S4/S7-style method invocation overhead
 
-use miniextendr_api::ffi::{self, SexpExt};
+use miniextendr_api::sys::{self, SexpExt};
 use miniextendr_bench::raw_ffi;
 use std::os::raw::c_char;
 
@@ -27,11 +27,11 @@ enum ParseStatus {
 
 unsafe extern "C" {
     fn R_ParseVector(
-        text: ffi::SEXP,
+        text: sys::SEXP,
         n: i32,
         status: *mut ParseStatus,
-        srcfile: ffi::SEXP,
-    ) -> ffi::SEXP;
+        srcfile: sys::SEXP,
+    ) -> sys::SEXP;
 }
 
 /// RAII guard that calls `Rf_unprotect(n)` on drop.
@@ -57,18 +57,18 @@ impl Drop for ProtectGuard {
 
 /// Pre-parsed R expression with protection.
 struct ParsedExpr {
-    expr: ffi::SEXP,
+    expr: sys::SEXP,
     _guard: ProtectGuard,
 }
 
 /// Parse an R string into a protected expression ready for `Rf_eval`.
 unsafe fn parse_and_protect(code: &str) -> ParsedExpr {
     unsafe {
-        let code_sexp = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1));
+        let code_sexp = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(sys::SEXPTYPE::STRSXP, 1));
         let charsxp = raw_ffi::Rf_mkCharLenCE(
             code.as_ptr().cast::<c_char>(),
             code.len() as i32,
-            ffi::CE_UTF8,
+            sys::CE_UTF8,
         );
         raw_ffi::SET_STRING_ELT(code_sexp, 0, charsxp);
 
@@ -95,7 +95,7 @@ unsafe fn parse_and_protect(code: &str) -> ParsedExpr {
 }
 
 /// Evaluate an R code string and return the result (unprotected).
-unsafe fn r_eval_string(code: &str) -> ffi::SEXP {
+unsafe fn r_eval_string(code: &str) -> sys::SEXP {
     unsafe {
         let parsed = parse_and_protect(code);
         raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv)
@@ -179,7 +179,7 @@ fn eval_sum(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c"sum".as_ptr());
-            let call = ffi::Rf_lang2(sym, miniextendr_bench::fixtures().real_vec(2));
+            let call = sys::Rf_lang2(sym, miniextendr_bench::fixtures().real_vec(2));
             raw_ffi::Rf_protect(call);
             (call, ProtectGuard::new(1))
         })
@@ -196,7 +196,7 @@ fn direct_call_noop(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_noop__".as_ptr());
             let arg = raw_ffi::Rf_ScalarInteger(1);
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
@@ -212,7 +212,7 @@ fn wrapper_call_noop(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_wrapper_noop__".as_ptr());
             let arg = raw_ffi::Rf_ScalarInteger(1);
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
@@ -228,7 +228,7 @@ fn direct_call_realvec(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_noop__".as_ptr());
             let arg = miniextendr_bench::fixtures().real_vec(2);
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
@@ -244,7 +244,7 @@ fn wrapper_call_realvec(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_wrapper_noop__".as_ptr());
             let arg = miniextendr_bench::fixtures().real_vec(2);
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
@@ -263,7 +263,7 @@ fn coerce_int_scalar(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_int__".as_ptr());
             let arg = raw_ffi::Rf_ScalarReal(42.0);
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
@@ -279,7 +279,7 @@ fn coerce_dbl_scalar(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_dbl__".as_ptr());
             let arg = raw_ffi::Rf_ScalarInteger(42);
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
@@ -295,7 +295,7 @@ fn coerce_chr_scalar(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_chr__".as_ptr());
             let arg = raw_ffi::Rf_ScalarInteger(42);
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
@@ -311,7 +311,7 @@ fn coerce_int_vec256(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_int__".as_ptr());
             let arg = miniextendr_bench::fixtures().real_vec(2); // 256 elements
-            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(sys::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {

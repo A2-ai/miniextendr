@@ -1,6 +1,6 @@
 //! Checked vs unchecked FFI wrapper benchmarks.
 
-use miniextendr_api::ffi::{self, SEXPTYPE};
+use miniextendr_api::sys::{self, SEXPTYPE};
 use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
@@ -48,7 +48,7 @@ fn xlength_unchecked(size_idx: usize) {
 #[divan::bench(args = ALLOC_SIZES)]
 fn alloc_vector_checked(len: usize) {
     unsafe {
-        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::INTSXP, len as ffi::R_xlen_t);
+        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::INTSXP, len as sys::R_xlen_t);
         divan::black_box(sexp);
     }
 }
@@ -56,7 +56,7 @@ fn alloc_vector_checked(len: usize) {
 #[divan::bench(args = ALLOC_SIZES)]
 fn alloc_vector_unchecked(len: usize) {
     unsafe {
-        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::INTSXP, len as ffi::R_xlen_t);
+        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::INTSXP, len as sys::R_xlen_t);
         divan::black_box(sexp);
     }
 }

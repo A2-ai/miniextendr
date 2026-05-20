@@ -47,7 +47,7 @@
 //! See also: `docs/ALTREP_SEXP.md` for the full guide on receiving ALTREP
 //! vectors from R.
 
-use crate::ffi::{self, Rcomplex, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{self, Rcomplex, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::r_slice;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -160,7 +160,7 @@ impl AltrepSexp {
             | SEXPTYPE::LGLSXP
             | SEXPTYPE::RAWSXP
             | SEXPTYPE::CPLXSXP => {
-                let _ = unsafe { ffi::DATAPTR_RO(self.sexp) };
+                let _ = unsafe { sys::DATAPTR_RO(self.sexp) };
             }
             _ => {} // non-vector types, nothing to materialize
         }
@@ -173,7 +173,7 @@ impl AltrepSexp {
     ///
     /// Must be called on the R main thread. The SEXP must be REALSXP.
     pub unsafe fn materialize_real(&self) -> &[f64] {
-        let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const f64;
+        let ptr = unsafe { sys::DATAPTR_RO(self.sexp) } as *const f64;
         let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
@@ -184,7 +184,7 @@ impl AltrepSexp {
     ///
     /// Must be called on the R main thread. The SEXP must be INTSXP.
     pub unsafe fn materialize_integer(&self) -> &[i32] {
-        let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const i32;
+        let ptr = unsafe { sys::DATAPTR_RO(self.sexp) } as *const i32;
         let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
@@ -195,7 +195,7 @@ impl AltrepSexp {
     ///
     /// Must be called on the R main thread. The SEXP must be LGLSXP.
     pub unsafe fn materialize_logical(&self) -> &[i32] {
-        let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const i32;
+        let ptr = unsafe { sys::DATAPTR_RO(self.sexp) } as *const i32;
         let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
@@ -206,7 +206,7 @@ impl AltrepSexp {
     ///
     /// Must be called on the R main thread. The SEXP must be RAWSXP.
     pub unsafe fn materialize_raw(&self) -> &[u8] {
-        let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const u8;
+        let ptr = unsafe { sys::DATAPTR_RO(self.sexp) } as *const u8;
         let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
@@ -217,7 +217,7 @@ impl AltrepSexp {
     ///
     /// Must be called on the R main thread. The SEXP must be CPLXSXP.
     pub unsafe fn materialize_complex(&self) -> &[Rcomplex] {
-        let ptr = unsafe { ffi::DATAPTR_RO(self.sexp) } as *const Rcomplex;
+        let ptr = unsafe { sys::DATAPTR_RO(self.sexp) } as *const Rcomplex;
         let len = self.sexp.len();
         unsafe { r_slice(ptr, len) }
     }
@@ -234,7 +234,7 @@ impl AltrepSexp {
         let n = self.sexp.len();
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
-            let elt = self.sexp.string_elt(i as ffi::R_xlen_t);
+            let elt = self.sexp.string_elt(i as sys::R_xlen_t);
             if elt == SEXP::na_string() {
                 out.push(None);
             } else {

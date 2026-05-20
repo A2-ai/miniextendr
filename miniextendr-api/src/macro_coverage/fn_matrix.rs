@@ -11,7 +11,7 @@
 //! Every `MiniextendrFnAttrs` option has at least one atomic fixture,
 //! and common combinations are also covered.
 
-use crate::ffi::{self, SEXP};
+use crate::sys::{self, SEXP};
 use crate::miniextendr;
 
 #[derive(Debug)]
@@ -336,14 +336,14 @@ pub fn cov_explicit_inline() -> i32 {
 
 #[miniextendr]
 #[unsafe(no_mangle)]
-pub(crate) extern "C-unwind" fn C_cov_direct() -> ffi::SEXP {
+pub(crate) extern "C-unwind" fn C_cov_direct() -> sys::SEXP {
     SEXP::nil()
 }
 
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub(crate) extern "C-unwind" fn C_cov_indirect() -> ffi::SEXP {
+pub(crate) extern "C-unwind" fn C_cov_indirect() -> sys::SEXP {
     SEXP::nil()
 }
 // endregion

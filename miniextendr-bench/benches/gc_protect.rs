@@ -14,7 +14,7 @@
 //! - `ListBuilder` vs manual list construction
 //! - `StrVecBuilder` vs manual string vector construction
 
-use miniextendr_api::ffi::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+use miniextendr_api::sys::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
 use miniextendr_api::list::{List, ListAccumulator, ListBuilder, collect_list};
 use miniextendr_api::preserve;
@@ -204,16 +204,16 @@ fn raw_expensive_reference() {
         // Protect-with-index + reprotect (replace-in-place)
         let mut idx: ProtectIndex = 0;
         let slot_value = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-        ffi::R_ProtectWithIndex(slot_value, std::ptr::from_mut(&mut idx));
+        sys::R_ProtectWithIndex(slot_value, std::ptr::from_mut(&mut idx));
 
         // Protect new value temporarily to avoid GC gap before reprotect
         let replaced = Rf_allocVector(SEXPTYPE::INTSXP, 1);
         Rf_protect(replaced);
-        ffi::R_Reprotect(replaced, idx);
+        sys::R_Reprotect(replaced, idx);
         Rf_unprotect(1);
 
         // Unprotect by pointer (linear scan)
-        ffi::Rf_unprotect_ptr(replaced);
+        sys::Rf_unprotect_ptr(replaced);
 
         divan::black_box((preserved, replaced));
     }
@@ -369,7 +369,7 @@ fn strvec_manual_construction(size_idx: usize) {
 
         for i in 0..n {
             // UNSAFE: charsxp unprotected - GC risk! See doc comment above.
-            let charsxp = raw_ffi::Rf_mkCharLenCE("hello".as_ptr().cast(), 5, ffi::CE_UTF8);
+            let charsxp = raw_ffi::Rf_mkCharLenCE("hello".as_ptr().cast(), 5, sys::CE_UTF8);
             raw_ffi::SET_STRING_ELT(vec, i, charsxp);
         }
 
@@ -413,7 +413,7 @@ fn build_named_list_realistic() {
         let s = scope.protect_raw(raw_ffi::Rf_mkCharLenCE(
             "test".as_ptr().cast(),
             4,
-            ffi::CE_UTF8,
+            sys::CE_UTF8,
         ));
         builder.set(3, scope.protect_raw(raw_ffi::Rf_ScalarString(s)));
         // Nested list

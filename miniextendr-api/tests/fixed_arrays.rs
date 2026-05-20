@@ -46,7 +46,7 @@ fn fixed_array_f64_roundtrip() {
 #[test]
 fn fixed_array_length_mismatch_error() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create R vector with 5 elements
