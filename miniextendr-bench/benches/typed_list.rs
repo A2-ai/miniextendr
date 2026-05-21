@@ -5,8 +5,8 @@
 //! medium (10 fields), and large (50 fields) specs, plus failure paths and strict
 //! (`@exact`) mode.
 
-use miniextendr_api::sys::{self, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::list::List;
+use miniextendr_api::sys::{self, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::typed_list::{TypeSpec, TypedEntry, TypedListSpec, validate_list};
 use miniextendr_bench::raw_ffi;
 

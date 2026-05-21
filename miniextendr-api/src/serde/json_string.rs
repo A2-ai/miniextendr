@@ -6,10 +6,10 @@
 //!
 //! Requires the `serde_json` feature.
 
-use crate::sys::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::into_r_error::IntoRError;
+use crate::sys::SEXP;
 
 // region: AsJson — T: Serialize → R character (compact JSON)
 

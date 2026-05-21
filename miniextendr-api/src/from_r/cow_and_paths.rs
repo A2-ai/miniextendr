@@ -10,8 +10,8 @@ use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 
 /// Blanket impl: Convert R vector to `Cow<'static, [T]>` where T: RNativeType.
 ///

@@ -6,8 +6,8 @@
 //! Covers: `&T`, `&mut T`, `Option<&T>`, `Vec<&T>`, `Vec<&[T]>`, and
 //! mutable variants for all `RNativeType` types.
 
-use crate::sys::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+use crate::sys::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_ref_conversions_for {
     ($t:ty) => {

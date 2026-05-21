@@ -23,9 +23,9 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 
 // region: AtomicElement trait
 

@@ -4,11 +4,11 @@
 //! `ListAccumulator` supports dynamic growth via `push`. It uses
 //! `ReprotectSlot` internally to maintain O(1) protect stack usage.
 
-use crate::sys::SEXPTYPE::{STRSXP, VECSXP};
-use crate::sys::{self, SEXP, SexpExt};
 use crate::from_r::SexpError;
 use crate::gc_protect::{OwnedProtect, ProtectScope, ReprotectSlot, Root};
 use crate::into_r::IntoR;
+use crate::sys::SEXPTYPE::{STRSXP, VECSXP};
+use crate::sys::{self, SEXP, SexpExt};
 
 use super::ListMut;
 

@@ -51,9 +51,9 @@
 pub use time::{Date, OffsetDateTime};
 
 use crate::cached_class::set_posixct_utc;
-use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 
 /// Unix epoch as an OffsetDateTime constant.
 const UNIX_EPOCH: OffsetDateTime = time::macros::datetime!(1970-01-01 0:00 UTC);

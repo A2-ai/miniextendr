@@ -2,10 +2,10 @@
 
 mod r_test_utils;
 
-use miniextendr_api::sys::SexpExt;
 use miniextendr_api::from_r::{SexpLengthError, TryFromSexp};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::list::{IntoList as _, List, TryFromList};
+use miniextendr_api::sys::SexpExt;
 
 #[derive(Debug, PartialEq)]
 struct Foo {

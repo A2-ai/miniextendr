@@ -59,8 +59,8 @@ use datafusion::prelude::*;
 use std::sync::Arc;
 
 use super::arrow_impl::RecordBatch;
-use crate::sys::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
+use crate::sys::SEXP;
 
 /// Get or create a thread-local Tokio runtime for blocking on async DataFusion operations.
 ///

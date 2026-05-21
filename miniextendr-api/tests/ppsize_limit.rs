@@ -15,10 +15,10 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{OnceLock, mpsc};
 
-use miniextendr_api::sys::{self, Rf_allocVector, SEXPTYPE, SexpExt};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::strvec::StrVecBuilder;
+use miniextendr_api::sys::{self, Rf_allocVector, SEXPTYPE, SexpExt};
 use miniextendr_api::thread::RThreadBuilder;
 
 // region: R initialization with small ppsize

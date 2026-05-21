@@ -7,9 +7,9 @@
 //!
 //! See `plans/gc-protection-benchmarks.md`.
 
-use miniextendr_api::sys::{self, R_PreserveObject, R_ReleaseObject, SEXP};
 use miniextendr_api::preserve;
 use miniextendr_api::protect_pool::ProtectPool;
+use miniextendr_api::sys::{self, R_PreserveObject, R_ReleaseObject, SEXP};
 use miniextendr_bench::pool_prototypes::{
     BTreeMapPool, DequePool, HashMapPool, IndexMapPool, SlotmapPool, VecPool,
 };

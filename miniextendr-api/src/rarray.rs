@@ -83,9 +83,9 @@
 //! }
 //! ```
 
-use crate::sys::{self, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{self, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::marker::PhantomData;
 
 // region: Type aliases

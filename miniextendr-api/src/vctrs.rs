@@ -9,9 +9,9 @@ use crate::sys::SEXP;
 
 // region: Construction helpers (Phase A)
 
-use crate::sys::{R_xlen_t, Rf_allocVector, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
+use crate::sys::{R_xlen_t, Rf_allocVector, SEXPTYPE, SexpExt};
 
 /// Error type for vctrs object construction.
 ///

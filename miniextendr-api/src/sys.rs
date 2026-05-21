@@ -1629,7 +1629,10 @@ unsafe extern "C-unwind" {
     ///
     /// Triggers GC if allocation fails, then retries.
     /// Memory must be freed with `free()`.
-    pub fn R_realloc_gc(ptr: *mut ::std::os::raw::c_void, size: usize) -> *mut ::std::os::raw::c_void;
+    pub fn R_realloc_gc(
+        ptr: *mut ::std::os::raw::c_void,
+        size: usize,
+    ) -> *mut ::std::os::raw::c_void;
 }
 
 // endregion
@@ -1679,7 +1682,11 @@ unsafe extern "C-unwind" {
     /// - `x`: Pointer to double array (sorted in place)
     /// - `indx`: Pointer to integer array (permuted alongside `x`)
     /// - `n`: Number of elements
-    pub fn rsort_with_index(x: *mut f64, indx: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+    pub fn rsort_with_index(
+        x: *mut f64,
+        indx: *mut ::std::os::raw::c_int,
+        n: ::std::os::raw::c_int,
+    );
 
     /// Partial sort integers (moves k-th smallest to position k).
     ///
@@ -1689,7 +1696,11 @@ unsafe extern "C-unwind" {
     /// - `n`: Number of elements
     /// - `k`: Target position (0-indexed)
     #[doc(alias = "Rf_iPsort")]
-    pub fn iPsort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+    pub fn iPsort(
+        x: *mut ::std::os::raw::c_int,
+        n: ::std::os::raw::c_int,
+        k: ::std::os::raw::c_int,
+    );
 
     /// Partial sort doubles (moves k-th smallest to position k).
     ///
@@ -1774,7 +1785,8 @@ unsafe extern "C-unwind" {
     /// Convert string to double with end pointer, using '.' as decimal point.
     ///
     /// Like `strtod()` but locale-independent.
-    pub fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char) -> f64;
+    pub fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char)
+    -> f64;
 
     /// Generate a temporary filename.
     ///

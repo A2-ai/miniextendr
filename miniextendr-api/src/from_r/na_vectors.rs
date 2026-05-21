@@ -6,11 +6,11 @@
 //! numeric types (`Option<i64>`, `Option<u64>`, etc.).
 
 use crate::coerce::TryCoerce;
-use crate::sys::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{
     SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value, is_na_real,
     r_slice,
 };
+use crate::sys::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {

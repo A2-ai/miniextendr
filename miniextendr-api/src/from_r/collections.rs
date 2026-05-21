@@ -6,8 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use crate::sys::{RLogical, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
+use crate::sys::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_map_try_from_sexp {
     ($(#[$meta:meta])* $map_ty:ident, $create:expr) => {

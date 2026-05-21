@@ -63,9 +63,9 @@
 
 pub use tinyvec::{Array, ArrayVec, TinyVec};
 
-use crate::sys::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: Blanket implementations for TinyVec and ArrayVec
 //

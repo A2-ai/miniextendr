@@ -78,9 +78,7 @@ pub use crate::{r_print, r_println, r_warning};
 // The most-used vocabulary for working with R values. `SEXP` is the central
 // newtype; `SexpExt` is the ergonomic extension trait; the rest are R's
 // native element/vector types.
-pub use crate::{
-    R_xlen_t, RLogical, RNativeType, Rboolean, Rcomplex, SEXP, SEXPTYPE, SexpExt,
-};
+pub use crate::{R_xlen_t, RLogical, RNativeType, Rboolean, Rcomplex, SEXP, SEXPTYPE, SexpExt};
 // endregion
 
 // region: Optional feature re-exports

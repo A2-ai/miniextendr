@@ -59,9 +59,9 @@
 pub use bitflags::Flags;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use std::fmt;
 use std::ops::{BitAnd, BitOr, BitXor, Deref, Not};
 

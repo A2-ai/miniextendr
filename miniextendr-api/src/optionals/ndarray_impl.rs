@@ -108,10 +108,10 @@ pub use ndarray::{
 };
 
 use crate::coerce::TryCoerce;
-use crate::sys::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
+use crate::sys::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: Blanket implementations for ndarray types where T: RNativeType
 

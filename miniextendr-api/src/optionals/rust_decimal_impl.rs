@@ -47,9 +47,9 @@
 pub use rust_decimal::Decimal;
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use std::str::FromStr;
 
 // region: Coerce/TryCoerce impls for Decimal

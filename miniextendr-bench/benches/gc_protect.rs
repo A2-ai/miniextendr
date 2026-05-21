@@ -14,11 +14,11 @@
 //! - `ListBuilder` vs manual list construction
 //! - `StrVecBuilder` vs manual string vector construction
 
-use miniextendr_api::sys::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
 use miniextendr_api::list::{List, ListAccumulator, ListBuilder, collect_list};
 use miniextendr_api::preserve;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
+use miniextendr_api::sys::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use miniextendr_bench::raw_ffi;
 
 fn main() {

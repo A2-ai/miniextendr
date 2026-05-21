@@ -47,10 +47,10 @@ pub use bitvec::order::{Lsb0, Msb0};
 pub use bitvec::vec::BitVec;
 
 use crate::altrep_traits::NA_LOGICAL;
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 
 /// Standard bit vector type for R interop.
 ///

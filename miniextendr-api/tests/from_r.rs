@@ -4,10 +4,10 @@ mod r_test_utils;
 
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use miniextendr_api::coerce::Coerced;
+use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use miniextendr_api::sys::{
     R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
-use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
 
 #[derive(Default)]

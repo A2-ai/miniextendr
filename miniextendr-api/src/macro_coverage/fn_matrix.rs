@@ -11,8 +11,8 @@
 //! Every `MiniextendrFnAttrs` option has at least one atomic fixture,
 //! and common combinations are also covered.
 
-use crate::sys::{self, SEXP};
 use crate::miniextendr;
+use crate::sys::{self, SEXP};
 
 #[derive(Debug)]
 struct DropTracer(&'static str);

@@ -5,8 +5,8 @@
 //! - positional lookup baseline (`List::get_index`)
 //! - derive-driven struct ↔ list conversions (`IntoList` / `TryFromList`)
 
-use miniextendr_api::sys;
 use miniextendr_api::list::{IntoList as IntoListTrait, List, TryFromList as TryFromListTrait};
+use miniextendr_api::sys;
 use miniextendr_bench::raw_ffi;
 
 fn main() {
