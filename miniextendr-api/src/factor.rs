@@ -29,10 +29,10 @@ use std::ops::Deref;
 use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::gc_protect::OwnedProtect;
-use crate::sys::{Rf_allocVector, Rf_install, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::sys::{Rf_allocVector, Rf_install, SEXP, SEXPTYPE, SexpExt};
 
 // region: Cached "factor" class STRSXP
 

@@ -27,10 +27,10 @@
 //! the main `.Call()`, giving users familiar R error messages and partial
 //! matching.
 
-use crate::gc_protect::ProtectScope;
-use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::gc_protect::ProtectScope;
 use crate::into_r::IntoR;
+use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 
 /// Trait for enum types that support `match.arg`-style string conversion.
 ///

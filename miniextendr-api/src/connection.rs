@@ -142,7 +142,9 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
         let minor_sexp = OwnedProtect::new(dollar_extract(version_list.get(), "minor")?);
 
         // Convert major (character) to integer via as.integer().
-        let major_int = RCall::new("as.integer").arg(major_sexp.get()).eval(R_BaseEnv)?;
+        let major_int = RCall::new("as.integer")
+            .arg(major_sexp.get())
+            .eval(R_BaseEnv)?;
         let major = major_int.as_integer().expect("R.Version()$major is not NA");
 
         // Parse minor: it's a string like "3.1" — only the part before the dot.
@@ -151,7 +153,9 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
             .arg(crate::sys::Rf_mkString(c"".as_ptr()))
             .arg(minor_sexp.get())
             .eval(R_BaseEnv)?;
-        let minor_int = RCall::new("as.integer").arg(minor_stripped).eval(R_BaseEnv)?;
+        let minor_int = RCall::new("as.integer")
+            .arg(minor_stripped)
+            .eval(R_BaseEnv)?;
         let minor = minor_int.as_integer().expect("R.Version()$minor is not NA");
 
         // R_new_custom_connection requires R >= 4.3.0
