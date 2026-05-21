@@ -228,6 +228,7 @@
 //! - You need JSON inspection/manipulation
 
 pub mod columnar;
+pub mod dataframe_de;
 mod de;
 mod error;
 #[cfg(feature = "serde_json")]
@@ -239,6 +240,7 @@ mod traits;
 pub use ::serde::{Deserialize, Serialize};
 
 pub use columnar::{ColumnarDataFrame, vec_to_dataframe, vec_to_dataframe_split};
+pub use dataframe_de::{dataframe_to_vec, with_dataframe_rows};
 pub use de::RDeserializer;
 pub use error::RSerdeError;
 #[cfg(feature = "serde_json")]

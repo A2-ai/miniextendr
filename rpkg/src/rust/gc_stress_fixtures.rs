@@ -410,3 +410,99 @@ pub fn into_sexp_altrep(x: SEXP) -> SEXP {
         _ => panic!("into_sexp_altrep: unsupported SEXP type {:?}", sxp_type),
     }
 }
+
+// region: dataframe_to_vec / with_dataframe_rows GC stress
+
+/// Exercise `dataframe_to_vec` PROTECT discipline under GC pressure.
+///
+/// Synthesizes 10 rows via `vec_to_dataframe`, then runs `dataframe_to_vec`
+/// to reconstruct the original rows. Returns the row count to verify execution.
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_dataframe_to_vec() -> i32 {
+    use crate::serde::{Deserialize, Serialize};
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{dataframe_to_vec, vec_to_dataframe};
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct GcRow {
+        id: i32,
+        score: f64,
+        label: Option<String>,
+    }
+
+    let original: Vec<GcRow> = (0i32..10)
+        .map(|i| GcRow {
+            id: i,
+            score: f64::from(i) * 1.1,
+            label: if i % 2 == 0 {
+                Some(format!("item_{}", i))
+            } else {
+                None
+            },
+        })
+        .collect();
+
+    let sexp = vec_to_dataframe(&original)
+        .expect("gc_stress_dataframe_to_vec: vec_to_dataframe failed")
+        .into_sexp();
+
+    let back: Vec<GcRow> =
+        dataframe_to_vec(sexp).expect("gc_stress_dataframe_to_vec: dataframe_to_vec failed");
+
+    assert_eq!(back.len(), original.len());
+    for (a, b) in original.iter().zip(back.iter()) {
+        assert_eq!(a, b);
+    }
+
+    back.len() as i32
+}
+
+/// Exercise `with_dataframe_rows` PROTECT discipline under GC pressure.
+///
+/// Synthesizes 10 rows, converts to a data.frame, then uses `with_dataframe_rows`
+/// to compute a sum via the scoped callback. Returns the sum to verify execution.
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_with_dataframe_rows() -> f64 {
+    use crate::serde::{Deserialize, Serialize};
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{vec_to_dataframe, with_dataframe_rows};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(crate = "crate::serde")]
+    struct GcRow {
+        value: f64,
+        tag: String,
+    }
+
+    let source: Vec<GcRow> = (0i32..10)
+        .map(|i| GcRow {
+            value: f64::from(i) * 2.0,
+            tag: format!("t{}", i),
+        })
+        .collect();
+
+    let sexp = vec_to_dataframe(&source)
+        .expect("gc_stress_with_dataframe_rows: vec_to_dataframe failed")
+        .into_sexp();
+
+    with_dataframe_rows(sexp, |rows: &[GcRow]| {
+        // Compute a sum and verify tags are valid.
+        let sum: f64 = rows.iter().map(|r| r.value).sum();
+        for r in rows {
+            assert!(
+                r.tag.starts_with('t'),
+                "tag should start with 't': {}",
+                r.tag
+            );
+        }
+        sum
+    })
+    .expect("gc_stress_with_dataframe_rows: with_dataframe_rows failed")
+}
+
+// endregion
