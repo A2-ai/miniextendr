@@ -386,6 +386,55 @@ pub fn gc_stress_toml_array() {
     let _ = bool_arr.into_sexp();
 }
 
+/// Exercise `NamedDataFrameListBuilder` SEXP protection under GC pressure.
+///
+/// Pushes two `ColumnarDataFrame`s (synthesised internally) into a
+/// `NamedDataFrameListBuilder` and calls `build()`.  Each `push` stores the
+/// input SEXP in an internal `Vec<SEXP>` (protected by the builder's
+/// `ProtectScope`), making this the canonical gctorture coverage for the
+/// SEXP-storage-across-allocations path in the builder.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_named_df_list_builder() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{NamedDataFrameListBuilder, vec_to_dataframe};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        value: f64,
+    }
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        msg: String,
+    }
+
+    let oks: Vec<OkRow> = (0..50)
+        .map(|i| OkRow {
+            id: i,
+            value: f64::from(i) * 1.5,
+        })
+        .collect();
+    let errs: Vec<ErrRow> = (0..20)
+        .map(|i| ErrRow {
+            id: i,
+            msg: format!("err {i}"),
+        })
+        .collect();
+
+    NamedDataFrameListBuilder::new()
+        .push("results", vec_to_dataframe(&oks).unwrap())
+        .push("error", vec_to_dataframe(&errs).unwrap())
+        .build()
+        .into_sexp()
+}
+
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
 /// Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
 /// @param x An integer, numeric, or character vector to convert.

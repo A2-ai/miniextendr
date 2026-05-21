@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      0a019a5205ef69de
+// content-hash:      97e37b9621caeef5
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -957,6 +957,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_vec_option_borrowed(_: SEXP) -> SEXP;
     pub fn C_gc_stress_with_dataframe_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_nested_enum(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_named_df_list_builder(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_collection(_: SEXP) -> SEXP;
     pub fn C_into_r_error_inner(_: SEXP) -> SEXP;
     pub fn C_into_r_error_length_overflow(_: SEXP) -> SEXP;
@@ -6710,6 +6711,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_dataframe_nested_enum".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_nested_enum) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_named_df_list_builder".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_named_df_list_builder) }),
         numArgs: 1,
     },
     R_CallMethodDef {

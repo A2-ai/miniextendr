@@ -239,7 +239,9 @@ mod traits;
 // Re-export the serde crate for convenience
 pub use ::serde::{Deserialize, Serialize};
 
-pub use columnar::{ColumnarDataFrame, vec_to_dataframe, vec_to_dataframe_split};
+pub use columnar::{
+    ColumnarDataFrame, NamedDataFrameListBuilder, vec_to_dataframe, vec_to_dataframe_split,
+};
 pub use dataframe_de::{dataframe_to_vec, with_dataframe_rows};
 pub use de::RDeserializer;
 pub use error::RSerdeError;
