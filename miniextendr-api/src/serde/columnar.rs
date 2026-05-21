@@ -171,6 +171,7 @@ impl ColumnarDataFrame {
                 is_top_level: true,
                 pending_key: None,
                 scope: &scope,
+                strict: false,
             };
             row.serialize(filler)?;
         }
@@ -481,6 +482,200 @@ impl Default for NamedDataFrameListBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// endregion
+
+// region: Streaming serialize (iter_to_dataframe + DataFrameBuilder)
+
+/// Stream rows from an iterator into a columnar data.frame.
+///
+/// Schema is taken from the **first row**; subsequent rows must match that
+/// schema. If a later row introduces a field not seen in the first row,
+/// returns [`RSerdeError::Message`]. Fields present in the first row but
+/// missing from a later row are NA-padded.
+///
+/// `nrow_hint` lets callers pre-size column buffers; `None` is fine — buffers
+/// grow exponentially via `Vec::push`.
+///
+/// # When to use this vs [`vec_to_dataframe`]
+///
+/// Use [`vec_to_dataframe`] when you already have a `&[T]` in memory. Use
+/// `iter_to_dataframe` when the rows arrive incrementally (a file iterator,
+/// a DB cursor, a generator) — materialising into a `Vec` first would defeat
+/// the purpose.
+///
+/// # Errors
+///
+/// - A row fails to serialize.
+/// - A row introduces a field not present in the first row's schema.
+/// - Column assembly fails.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[derive(serde::Serialize)]
+/// struct Row { id: i32, name: String }
+///
+/// let rows = (0..10).map(|i| Row { id: i, name: format!("item_{i}") });
+/// let df = iter_to_dataframe(rows, Some(10))?;
+/// ```
+pub fn iter_to_dataframe<T, I>(
+    iter: I,
+    nrow_hint: Option<usize>,
+) -> Result<ColumnarDataFrame, RSerdeError>
+where
+    T: Serialize,
+    I: IntoIterator<Item = T>,
+{
+    let mut builder = DataFrameBuilder::<T>::new(nrow_hint);
+    for row in iter {
+        builder.push(row)?;
+    }
+    builder.finish()
+}
+
+/// Builder for incremental data.frame assembly.
+///
+/// Schema discovery happens on the first [`push`](Self::push) call.
+/// Subsequent pushes must match (strict-mode `ColumnFiller` — fields not in
+/// the initial schema produce an error). Call [`finish`](Self::finish) to
+/// produce the [`ColumnarDataFrame`].
+///
+/// Use [`iter_to_dataframe`] when an iterator suffices; reach for this when
+/// you need explicit control over push points (conditional skipping,
+/// streaming from multiple sources, custom NA strategies).
+pub struct DataFrameBuilder<T: Serialize> {
+    /// Schema set on first push.
+    schema: Option<Schema>,
+    /// One buffer per column; lengths grow with each row.
+    columns: Vec<ColumnBuffer>,
+    /// Per-row "did this column get a value?" tracking; resized to ncol on first push.
+    filled: Vec<bool>,
+    /// Number of rows pushed so far.
+    nrow: usize,
+    /// Initial capacity hint; if `Some`, columns are allocated with this capacity.
+    nrow_hint: Option<usize>,
+    /// Holds protected SEXPs from `ColumnBuffer::Generic` cells until `finish` assembles them.
+    scope: crate::ProtectScope,
+    _marker: core::marker::PhantomData<fn(T)>,
+}
+
+impl<T: Serialize> DataFrameBuilder<T> {
+    /// Create a new builder.
+    ///
+    /// `nrow_hint` pre-sizes column buffers; `None` is acceptable.
+    pub fn new(nrow_hint: Option<usize>) -> Self {
+        Self {
+            schema: None,
+            columns: Vec::new(),
+            filled: Vec::new(),
+            nrow: 0,
+            nrow_hint,
+            // SAFETY: builder must be constructed on the R main thread.
+            // ProtectScope carries NoSendSync; the builder cannot escape.
+            scope: unsafe { crate::ProtectScope::new() },
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Append a row.
+    ///
+    /// On the first call: discovers schema from the row's fields, allocates
+    /// column buffers, and fills them. On subsequent calls: uses the existing
+    /// schema in strict mode (unknown keys → error).
+    pub fn push(&mut self, row: T) -> Result<(), RSerdeError> {
+        if self.schema.is_none() {
+            let schema = discover_schema_one_row(&row)?;
+            let ncol = schema.fields.len();
+            let cap = self.nrow_hint.unwrap_or(0);
+            self.columns = schema
+                .fields
+                .iter()
+                .map(|f| ColumnBuffer::new(f.col_type, cap))
+                .collect();
+            self.filled = vec![false; ncol];
+            self.schema = Some(schema);
+        }
+
+        let schema = self.schema.as_ref().expect("schema set above");
+        let ncol = schema.fields.len();
+
+        let filler = ColumnFiller {
+            columns: &mut self.columns,
+            field_map: &schema.field_map,
+            filled: &mut self.filled,
+            col_start: 0,
+            col_count: ncol,
+            is_top_level: true,
+            pending_key: None,
+            scope: &self.scope,
+            strict: true,
+        };
+        // ColumnFiller::SerializeStruct::end calls pad_unfilled, which
+        // NA-pads any column the row didn't touch and resets `filled` for
+        // the next push — same flow as ColumnarDataFrame::from_rows.
+        row.serialize(filler)?;
+
+        self.nrow += 1;
+        Ok(())
+    }
+
+    /// Number of rows pushed so far.
+    pub fn len(&self) -> usize {
+        self.nrow
+    }
+
+    /// Whether no rows have been pushed yet.
+    pub fn is_empty(&self) -> bool {
+        self.nrow == 0
+    }
+
+    /// Consume the builder and produce the data.frame.
+    ///
+    /// An empty builder produces an empty 0-row 0-column data.frame
+    /// (matching `vec_to_dataframe(&[])`).
+    pub fn finish(self) -> Result<ColumnarDataFrame, RSerdeError> {
+        let Some(schema) = self.schema else {
+            return Ok(ColumnarDataFrame {
+                sexp: empty_dataframe(),
+            });
+        };
+        // SAFETY: nrow columns × matching lengths invariant maintained by push.
+        let df = ColumnarDataFrame {
+            sexp: unsafe { assemble_dataframe(&schema.fields, &self.columns, self.nrow) },
+        };
+        // `self.scope` drops here after assemble has copied every protected
+        // SEXP into the parent VECSXP. The parent is then rooted by the
+        // caller's protection of the returned df SEXP.
+        Ok(df)
+    }
+}
+
+/// Discover a single row's schema and convert it directly to a [`Schema`].
+///
+/// Used by [`DataFrameBuilder`] for first-row schema. Equivalent to running
+/// [`discover_schema_union`] on a one-element slice, but doesn't go through
+/// the per-key-candidate machinery (only one candidate per key).
+fn discover_schema_one_row<T: Serialize>(row: &T) -> Result<Schema, RSerdeError> {
+    let mut discoverer = SchemaDiscoverer::new(0);
+    row.serialize(&mut discoverer)?;
+
+    let total = discoverer.fields.len();
+    if total == 0 {
+        return Err(RSerdeError::Message(
+            "DataFrameBuilder: first row has no fields".into(),
+        ));
+    }
+
+    Ok(Schema {
+        fields: discoverer.fields,
+        field_map: FieldMap {
+            map: discoverer.mappings,
+            col_start: 0,
+            total_cols: total,
+        },
+    })
 }
 
 // endregion
@@ -1344,6 +1539,11 @@ struct ColumnFiller<'a> {
     is_top_level: bool,
     pending_key: Option<String>,
     scope: &'a crate::ProtectScope,
+    /// When true, fields not in the schema produce an error instead of being
+    /// silently ignored. `DataFrameBuilder` sets this to enforce first-row
+    /// schema; `ColumnarDataFrame::from_rows` leaves it false because its
+    /// schema is the union of all rows (so misses can't happen).
+    strict: bool,
 }
 
 impl ColumnFiller<'_> {
@@ -1372,11 +1572,20 @@ impl ColumnFiller<'_> {
                     is_top_level: false,
                     pending_key: None,
                     scope: self.scope,
+                    strict: self.strict,
                 };
                 value.serialize(sub)?;
             }
             None => {
-                // Field not in schema — ignore (may happen with dynamic types)
+                // Field not in schema. The union-schema path (from_rows) never
+                // hits this because the schema absorbed every row's keys; the
+                // streaming path (DataFrameBuilder, strict=true) does, when a
+                // later row introduces a new field.
+                if self.strict {
+                    return Err(RSerdeError::Message(format!(
+                        "DataFrameBuilder: row introduced field {key:?} not in initial schema"
+                    )));
+                }
             }
         }
         Ok(())
