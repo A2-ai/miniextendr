@@ -34,6 +34,30 @@
 //! | `tabled` | `tabled_impl` | Table formatting |
 //! | `tinyvec` | `tinyvec_impl` | Small-vector optimized types |
 //! | `borsh` | `borsh_impl` | Binary serialization |
+//!
+//! # Module template
+//!
+//! Every integration module follows the same regional layout. Use this as
+//! a template when adding a new optional integration:
+//!
+//! ```text
+//! // region: Scalar conversions          (TryFromSexp + IntoR for T)
+//! // region: Option conversions          (NA support — Option<T>)
+//! // region: Vector conversions          (Vec<T>, Box<[T]>, slice views)
+//! // region: Vec<Option<T>> conversions  (NA-aware vectors)
+//! // region: R<X>Ops adapter trait       (e.g., RUuidOps, RUrlOps —
+//! //                                      convenience methods callable
+//! //                                      from #[miniextendr] code)
+//! // region: Helper functions
+//! // region: Unit tests
+//! ```
+//!
+//! Exceptions: `rayon_bridge.rs` exposes a parallel-iteration API, not a
+//! type-conversion adapter, and does not follow this shape. `serde_impl.rs`
+//! is the JSON adapter (the *native* serde path lives in `crate::serde`).
+//! Array-heavy upstreams (`ndarray_impl`, `arrow_impl`, `nalgebra_impl`,
+//! `jiff_impl`) are larger because their type matrices are larger; the
+//! per-region shape still applies.
 
 // region: Rayon - Parallel computation
 
