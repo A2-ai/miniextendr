@@ -6,7 +6,7 @@
 mod r_test_utils;
 
 use miniextendr_api::ffi::{Rf_allocVector, SEXP, SEXPTYPE};
-use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope, tls};
+use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope, Protected, tls};
 
 // region: Balance tests
 
@@ -426,6 +426,44 @@ fn reprotect_slot_multiple_replacements() {
 
         // Final value should be the last one
         assert!(std::ptr::eq(slot.get().0, values[4].0));
+    });
+}
+// endregion
+
+// region: Protected tests
+
+#[test]
+fn protected_new_drops_unprotect() {
+    // Test: Protected::new pushes one protect entry that drops cleanly
+    // when the Protected goes out of scope. Net change after drop is zero.
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+        let outer = scope.protect(SEXP::scalar_integer(1));
+        let depth_before = scope.count();
+        {
+            let p = Protected::<'static, SEXP>::new(outer.get(), outer.get());
+            // While `p` is alive, an additional protect entry exists.
+            // The drop at the end of this block UNPROTECTs(1).
+            let _ = p.get();
+        }
+        // Net change after p drops is zero.
+        assert_eq!(scope.count(), depth_before);
+    });
+}
+
+#[test]
+fn protected_from_trusted_no_stack_change() {
+    // Test: Protected::from_trusted does NOT push a protect entry.
+    // The scope's count should be unchanged across construction and drop.
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+        let outer = scope.protect(SEXP::scalar_integer(7));
+        let depth_before = scope.count();
+        {
+            let p = Protected::<'static, SEXP>::from_trusted(outer.get(), outer.get());
+            let _ = p.get();
+        }
+        assert_eq!(scope.count(), depth_before);
     });
 }
 // endregion

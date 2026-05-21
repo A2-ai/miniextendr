@@ -1595,20 +1595,16 @@ mod tests {
         let p = unsafe {
             Protected::<'static, Vec<u8>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
         };
-        // _protect is private — verify indirectly: if it were Some(OwnedProtect),
-        // the OwnedProtect drop would call Rf_unprotect(1) without a matching
-        // protect (crashing R). Since we're not running R here, just confirm the
-        // Debug output shows `protected: false`.
+        // This test uses `from_trusted` to avoid touching the protect stack;
+        // `Protected::new` would require an initialized R runtime (see
+        // `tests/gc_protect.rs` for that path). Verify the `_protect` field is
+        // `None` indirectly via the `Debug` output.
         assert!(format!("{p:?}").contains("protected: false"));
     }
 
-    /// Verify `Protected<'a, T>` with `Some(OwnedProtect)` is `!Send`
-    /// (compile-time — the type-system test is implicit: if this test builds
-    /// we confirm the field layout compiles cleanly).
+    /// Smoke-test: `Protected::from_trusted` + `Deref` compiles for a scalar `T`.
     #[test]
-    fn protected_is_copy_of_struct_fields_compile_check() {
-        // Smoke-test: constructing Protected<'static, i32> via from_trusted
-        // (the None path, which is auto-Send) must compile.
+    fn protected_from_trusted_compile_check() {
         let p = unsafe {
             Protected::<'static, i32>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), 99)
         };
