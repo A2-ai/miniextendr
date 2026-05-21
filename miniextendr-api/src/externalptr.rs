@@ -29,7 +29,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **Preserve list** | [`preserve`](crate::preserve) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Across `.Call`s | Any order | Long-lived R objects |
 //! | **R ownership** | [`ExternalPtr`](struct@crate::externalptr::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! ## When to Use ExternalPtr
@@ -43,7 +43,7 @@
 //! - You're allocating temporary R objects during computation
 //! - Protection is short-lived (within a single `.Call`)
 //!
-//! **Use [`preserve`](crate::preserve) instead when:**
+//! **Use [`ProtectPool`](crate::protect_pool::ProtectPool) instead when:**
 //! - You need R objects (not Rust values) to survive across `.Call`s
 //! - You need arbitrary-order release of protections
 //!

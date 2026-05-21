@@ -1,5 +1,10 @@
 # R GC Protection Strategies: Costs, Limits, and Trade-offs
 
+> **Historical**: "Mechanism 3" below describes the cpp11-style DLL preserve
+> list that lived in `miniextendr-api/src/preserve.rs`. That module has been
+> removed; this analysis is preserved as design rationale for the
+> `ProtectPool` / refcount-arena successors.
+
 Source: R 4.5.2 `src/main/memory.c`, `src/include/Defn.h`, `src/include/Rinlinedfuns.h`
 
 ## The Five Primitives

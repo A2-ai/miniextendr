@@ -42,7 +42,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`] | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **Preserve list** | [`preserve`] | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`] | Across `.Call`s | Any order | Long-lived R objects |
 //! | **R ownership** | [`ExternalPtr`](struct@ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! Quick guide:
@@ -57,12 +57,13 @@
 //! } // UNPROTECT(n) called automatically
 //! ```
 //!
-//! **R objects surviving across `.Call`s** -> [`preserve`]
+//! **R objects surviving across `.Call`s** -> [`ProtectPool`] or `R_PreserveObject`
 //! ```ignore
-//! // In RAllocator or similar long-lived context
-//! let cell = unsafe { preserve::insert(backing_vec) };
+//! // ProtectPool: O(1) insert/release with generational keys
+//! let mut pool = unsafe { ProtectPool::new(16) };
+//! let key = unsafe { pool.insert(backing_vec) };
 //! // ... use across multiple .Calls ...
-//! unsafe { preserve::release(cell) };
+//! unsafe { pool.release(key) };
 //! ```
 //!
 //! **Rust data owned by R** -> [`ExternalPtr`](struct@ExternalPtr)
@@ -178,7 +179,6 @@
 //! |---------|-------------|
 //! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 //! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
-//! | `debug-preserve` | Enable `preserve::count()` diagnostic helpers (tests/benchmarks only) |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
 //! | `refcount-fast-hash` | Use ahash for refcount arenas (enabled by default, not DOS-resistant) |
 // Re-export linkme for use by generated code (distributed_slice entries)
@@ -615,10 +615,6 @@ pub use externalptr::{
 
 // TypedExternal implementations for std types
 pub mod externalptr_std;
-
-// Deprecated: DLL preserve list. Use ProtectPool or R_PreserveObject instead.
-// Kept for benchmark comparisons.
-pub mod preserve;
 
 // GC protection toolkit (PROTECT stack RAII wrappers)
 pub mod gc_protect;

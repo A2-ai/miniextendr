@@ -40,7 +40,7 @@ to add optional crates as separate direct dependencies.
 | Arrow / DataFusion | `arrow`, `datafusion` |
 | Logging | `log` |
 | Project defaults | `default-strict`, `default-coerce`, `default-r6`, `default-s7`, `default-worker` |
-| Diagnostics | `macro-coverage`, `debug-preserve`, `growth-debug` |
+| Diagnostics | `macro-coverage`, `growth-debug` |
 
 For the complete entry-by-entry reference -- including descriptions, type tables, and
 code examples for every feature -- see the

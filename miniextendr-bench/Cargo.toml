@@ -18,7 +18,6 @@ indexmap = "2"
 rayon = ["miniextendr-api/rayon"]
 connections = ["miniextendr-api/connections"]
 refcount-fast-hash = ["miniextendr-api/refcount-fast-hash"]
-debug-preserve = ["miniextendr-api/debug-preserve"]
 
 [dev-dependencies]
 divan = "0.1.21"
@@ -77,10 +76,6 @@ harness = false
 
 [[bench]]
 name = "panic_telemetry"
-harness = false
-
-[[bench]]
-name = "preserve"
 harness = false
 
 [[bench]]

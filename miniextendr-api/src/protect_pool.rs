@@ -6,7 +6,7 @@
 //! # Performance
 //!
 //! Benchmarked at 10.1 ns/op for single insert+release. Zero R allocation per
-//! insert (unlike `preserve.rs` DLL which allocates a CONSXP each time).
+//! insert (unlike `R_PreserveObject`, which allocates a CONSXP each time).
 //! See `analysis/gc-protection-benchmarks-results.md` for full data.
 //!
 //! # When to use

@@ -21,7 +21,7 @@
 //!    - Pointer acquisition only (no copy)
 //!
 //! 4) `protect_unprotect`
-//!    - `Rf_protect` / `Rf_unprotect` vs preserve list (see preserve module)
+//!    - `Rf_protect` / `Rf_unprotect` vs ProtectPool (see protect_pool module)
 //!    - Measure cost per protect/unprotect pair
 //!
 //! Metrics:

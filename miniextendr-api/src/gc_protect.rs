@@ -22,7 +22,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **Preserve list** | [`preserve`](crate::preserve) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Across `.Call`s | Any order | Long-lived R objects |
 //! | **R ownership** | [`ExternalPtr`](struct@crate::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! ## When to Use Each
@@ -32,10 +32,10 @@
 //! - You want RAII-based automatic balancing of PROTECT/UNPROTECT
 //! - Protection is short-lived (within a single function)
 //!
-//! **Use [`preserve`](crate::preserve) when:**
+//! **Use [`ProtectPool`](crate::protect_pool::ProtectPool) when:**
 //! - Objects must survive across multiple `.Call` invocations
 //! - You need to release protections in arbitrary order
-//! - Example: [`RAllocator`](crate::RAllocator) backing memory
+//! - O(1) insert/release with generational keys
 //!
 //! **Use [`ExternalPtr`](struct@crate::ExternalPtr) when:**
 //! - You want R to own a Rust value
@@ -57,10 +57,10 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //!
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │  preserve (objects surviving across .Calls)                     │
-//! │  ├── preserve::insert(sexp)   // add to linked list             │
+//! │  ProtectPool (objects surviving across .Calls)                  │
+//! │  ├── pool.insert(sexp)        // O(1), generational key         │
 //! │  ├── ... multiple .Calls ...  // object stays protected         │
-//! │  └── preserve::release(cell)  // remove when done               │
+//! │  └── pool.release(key)        // O(1) remove                    │
 //! └─────────────────────────────────────────────────────────────────┘
 //!
 //! ┌─────────────────────────────────────────────────────────────────┐
