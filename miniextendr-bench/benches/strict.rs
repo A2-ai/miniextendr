@@ -9,9 +9,9 @@
 //! RAWSXP/LGLSXP and panic instead of widening.
 
 use miniextendr_api::IntoR;
-use miniextendr_api::sys::SEXP;
 use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::strict;
+use miniextendr_api::sys::SEXP;
 
 const VEC_SIZES: &[usize] = &[1, 1_000, 10_000];
 

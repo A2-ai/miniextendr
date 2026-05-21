@@ -6,8 +6,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
-use crate::sys::SexpExt;
 use crate::into_r::{IntoR, str_to_charsxp, str_to_charsxp_unchecked};
+use crate::sys::SexpExt;
 
 macro_rules! impl_map_into_r {
     ($(#[$meta:meta])* $map_ty:ident) => {

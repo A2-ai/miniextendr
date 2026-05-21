@@ -1282,8 +1282,8 @@ mod connections_from_r {
     use std::ffi::CStr;
 
     use crate::connection::{RNullConnection, RStderr, RStdin, RStdout, Rconn};
-    use crate::sys::{Rboolean, SEXP};
     use crate::from_r::{SexpError, TryFromSexp};
+    use crate::sys::{Rboolean, SEXP};
 
     // Read the connection description and class fields from an Rconn handle.
     //
@@ -1429,8 +1429,8 @@ mod connections_from_r {
 
 #[cfg(feature = "connections")]
 mod txt_progress_bar_from_r {
-    use crate::sys::{R_PreserveObject, SEXP, SexpExt};
     use crate::from_r::{SexpError, TryFromSexp};
+    use crate::sys::{R_PreserveObject, SEXP, SexpExt};
     use crate::txt_progress_bar::RTxtProgressBar;
 
     impl TryFromSexp for RTxtProgressBar {
@@ -1500,8 +1500,8 @@ macro_rules! impl_vec_try_from_sexp_list {
             type Error = $crate::from_r::SexpError;
 
             fn try_from_sexp(sexp: $crate::sys::SEXP) -> Result<Self, Self::Error> {
-                use $crate::sys::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
+                use $crate::sys::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {
@@ -1524,8 +1524,8 @@ macro_rules! impl_vec_try_from_sexp_list {
             unsafe fn try_from_sexp_unchecked(
                 sexp: $crate::sys::SEXP,
             ) -> Result<Self, Self::Error> {
-                use $crate::sys::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
+                use $crate::sys::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {
@@ -1560,8 +1560,8 @@ macro_rules! impl_vec_option_try_from_sexp_list {
             type Error = $crate::from_r::SexpError;
 
             fn try_from_sexp(sexp: $crate::sys::SEXP) -> Result<Self, Self::Error> {
-                use $crate::sys::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
+                use $crate::sys::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {
@@ -1590,8 +1590,8 @@ macro_rules! impl_vec_option_try_from_sexp_list {
             unsafe fn try_from_sexp_unchecked(
                 sexp: $crate::sys::SEXP,
             ) -> Result<Self, Self::Error> {
-                use $crate::sys::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
+                use $crate::sys::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {

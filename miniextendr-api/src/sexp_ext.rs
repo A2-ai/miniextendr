@@ -13,10 +13,9 @@ use crate::sexp_types::{R_xlen_t, RNativeType, Rboolean, Rcomplex, SEXPTYPE};
 use crate::sys::{
     ALTREP, CAR, CAR_unchecked, CDR, CDR_unchecked, COMPLEX_ELT, DATAPTR_RO, DATAPTR_RO_unchecked,
     INTEGER_ELT, LOGICAL_ELT, PRINTNAME, R_CHAR, R_CHAR_unchecked, R_ClassSymbol, R_DimNamesSymbol,
-    R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_NaString, R_NilValue, R_RowNamesSymbol, RAW_ELT,
-    REAL_ELT,
-    Rf_asChar, Rf_asInteger, Rf_asLogical, Rf_asReal, Rf_classgets, Rf_coerceVector, Rf_cons,
-    Rf_cons_unchecked, Rf_dimgets, Rf_dimnamesgets, Rf_duplicate, Rf_getAttrib,
+    R_DimSymbol, R_LevelsSymbol, R_NaString, R_NamesSymbol, R_NilValue, R_RowNamesSymbol, RAW_ELT,
+    REAL_ELT, Rf_asChar, Rf_asInteger, Rf_asLogical, Rf_asReal, Rf_classgets, Rf_coerceVector,
+    Rf_cons, Rf_cons_unchecked, Rf_dimgets, Rf_dimnamesgets, Rf_duplicate, Rf_getAttrib,
     Rf_getAttrib_unchecked, Rf_inherits, Rf_isArray, Rf_isFactor, Rf_isFunction, Rf_isList,
     Rf_isMatrix, Rf_isObject, Rf_isS4, Rf_lcons, Rf_namesgets, Rf_setAttrib,
     Rf_setAttrib_unchecked, Rf_shallow_duplicate, Rf_xlength, Rf_xlength_unchecked, Rf_xlengthgets,

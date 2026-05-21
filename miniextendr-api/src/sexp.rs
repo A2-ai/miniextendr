@@ -13,13 +13,12 @@ use crate::sexp_types::{CE_UTF8, R_xlen_t, Rcomplex, SEXPTYPE};
 // fine because they're the same items.
 use crate::sys::{
     R_BaseNamespace, R_BlankString, R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol,
-    R_MissingArg, R_NamesSymbol, R_NaString, R_NilValue, R_TspSymbol, R_altrep_data1,
+    R_MissingArg, R_NaString, R_NamesSymbol, R_NilValue, R_TspSymbol, R_altrep_data1,
     R_altrep_data1_unchecked, R_altrep_data2, R_altrep_data2_unchecked, R_set_altrep_data1,
-    R_set_altrep_data2, R_set_altrep_data2_unchecked, Rf_ScalarComplex,
-    Rf_ScalarComplex_unchecked, Rf_ScalarInteger, Rf_ScalarInteger_unchecked, Rf_ScalarLogical,
-    Rf_ScalarLogical_unchecked, Rf_ScalarRaw, Rf_ScalarRaw_unchecked, Rf_ScalarReal,
-    Rf_ScalarReal_unchecked, Rf_ScalarString, Rf_ScalarString_unchecked, Rf_allocVector,
-    Rf_installChar, Rf_mkCharLenCE,
+    R_set_altrep_data2, R_set_altrep_data2_unchecked, Rf_ScalarComplex, Rf_ScalarComplex_unchecked,
+    Rf_ScalarInteger, Rf_ScalarInteger_unchecked, Rf_ScalarLogical, Rf_ScalarLogical_unchecked,
+    Rf_ScalarRaw, Rf_ScalarRaw_unchecked, Rf_ScalarReal, Rf_ScalarReal_unchecked, Rf_ScalarString,
+    Rf_ScalarString_unchecked, Rf_allocVector, Rf_installChar, Rf_mkCharLenCE,
 };
 
 #[repr(transparent)]

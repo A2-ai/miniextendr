@@ -63,10 +63,10 @@
 
 pub use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 
-use crate::sys::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::sys::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use nalgebra::Scalar;
 
 // region: Blanket implementations for DVector and DMatrix
@@ -977,8 +977,8 @@ where
 // GC protection uses R_PreserveObject/R_ReleaseObject (arbitrary-order release, survives
 // across .Call boundaries). Types are !Send + !Sync.
 
-use crate::sys;
 use crate::from_r::SexpTypeError;
+use crate::sys;
 use nalgebra::base::Matrix;
 use nalgebra::base::allocator::Allocator;
 use nalgebra::base::default_allocator::DefaultAllocator;

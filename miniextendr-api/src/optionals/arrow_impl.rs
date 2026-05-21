@@ -48,9 +48,9 @@ pub use arrow_schema::{self, DataType, Field, Schema};
 
 use arrow_array::types::ArrowPrimitiveType;
 
-use crate::sys::{self, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{self, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: RSourced trait — R buffer provenance for Arrow types
 

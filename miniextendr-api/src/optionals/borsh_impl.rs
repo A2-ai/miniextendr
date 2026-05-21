@@ -19,9 +19,9 @@
 //! | `borsh_to_raw` | `&T` | R raw vector (SEXP) |
 //! | `borsh_from_raw` | R raw vector (SEXP) | `Result<T, SexpError>` |
 
-use crate::sys::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::SEXP;
 
 // region: Borsh<T> wrapper type
 

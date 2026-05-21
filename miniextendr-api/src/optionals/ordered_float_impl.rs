@@ -14,9 +14,9 @@
 pub use ordered_float::OrderedFloat;
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Coerce/TryCoerce impls for OrderedFloat
 

@@ -9,8 +9,8 @@
 //! | `Option<Rboolean>` | `None` on NA |
 //! | `Option<bool>` | `None` on NA |
 
-use crate::sys::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};
+use crate::sys::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 impl TryFromSexp for Rboolean {
     type Error = SexpError;

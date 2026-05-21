@@ -39,9 +39,9 @@ pub use jiff::civil::{Date, DateTime, Time};
 pub use jiff::{SignedDuration, Span, Timestamp, Zoned};
 
 use crate::cached_class::{date_class_sexp, set_posixct_tz, set_posixct_utc};
-use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 
 /// Unix epoch as a civil::Date constant.
 fn unix_epoch_date() -> Date {

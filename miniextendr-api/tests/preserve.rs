@@ -2,8 +2,8 @@
 
 mod r_test_utils;
 
-use miniextendr_api::sys::{SEXP, SexpExt};
 use miniextendr_api::preserve;
+use miniextendr_api::sys::{SEXP, SexpExt};
 
 #[test]
 fn preserve_insert_release() {

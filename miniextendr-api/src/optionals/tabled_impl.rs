@@ -47,9 +47,9 @@ pub use tabled::settings::object::Columns;
 pub use tabled::settings::{Alignment, Modify, Style, Width};
 pub use tabled::{Table, Tabled};
 
-use crate::sys::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::sys::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 
 // region: Helper functions
 

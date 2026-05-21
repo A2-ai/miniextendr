@@ -27,8 +27,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::sys::SexpExt;
 use crate::gc_protect::OwnedProtect;
+use crate::sys::SexpExt;
 
 /// Trait for converting Rust types to R SEXP values.
 ///
@@ -2515,8 +2515,8 @@ fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::sys::SEXP {
 #[cfg(feature = "connections")]
 mod connections_into_r {
     use crate::connection::{RNullConnection, RStderr, RStdin, RStdout};
-    use crate::sys::SEXP;
     use crate::into_r::IntoR;
+    use crate::sys::SEXP;
 
     // Evaluate a no-arg base function and return the resulting SEXP (unprotected).
     //
@@ -2598,8 +2598,8 @@ mod connections_into_r {
 
 #[cfg(feature = "connections")]
 mod txt_progress_bar_into_r {
-    use crate::sys::SEXP;
     use crate::into_r::IntoR;
+    use crate::sys::SEXP;
     use crate::txt_progress_bar::RTxtProgressBar;
 
     /// Transfer ownership of the `RTxtProgressBar` back to R.

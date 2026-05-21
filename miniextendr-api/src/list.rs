@@ -17,11 +17,11 @@
 //! - [`ListBuilder`] — fixed-size batch construction
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
-use crate::sys::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
-use crate::sys::{self, SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::sys::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
+use crate::sys::{self, SEXP, SexpExt};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
@@ -940,8 +940,8 @@ impl List {
     /// The input SEXPs should already be protected or be children of protected
     /// containers.
     pub fn from_scalars_or_list(elements: &[SEXP]) -> Self {
-        use crate::sys::SEXPTYPE;
         use crate::into_r::alloc_r_vector;
+        use crate::sys::SEXPTYPE;
 
         if elements.is_empty() {
             return Self::from_raw_values(Vec::new());

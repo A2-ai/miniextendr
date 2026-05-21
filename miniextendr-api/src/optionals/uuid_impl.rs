@@ -35,9 +35,9 @@
 
 pub use uuid::Uuid;
 
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Scalar conversions
 

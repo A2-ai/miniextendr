@@ -60,10 +60,10 @@
 //! | Type has multiple valid representations | Don't use `Prefer*`; use `As*` or `return` |
 
 use crate::externalptr::{ExternalPtr, IntoExternalPtr};
-use crate::sys::{RNativeType, SexpExt};
 use crate::into_r::IntoR;
 use crate::list::{IntoList, List};
 use crate::named_vector::AtomicElement;
+use crate::sys::{RNativeType, SexpExt};
 
 /// Wrap a value and convert it to an R list via [`IntoList`] when returned from Rust.
 ///
@@ -457,8 +457,8 @@ impl<T: serde::Serialize> From<T> for AsSerializeRow<T> {
 #[cfg(feature = "serde")]
 impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
     fn into_list(self) -> List {
-        use crate::sys::{SEXPTYPE, SexpExt};
         use crate::serde::RSerializer;
+        use crate::sys::{SEXPTYPE, SexpExt};
         match RSerializer::to_sexp(&self.0) {
             Ok(sexp) => {
                 if sexp.type_of() == SEXPTYPE::VECSXP {

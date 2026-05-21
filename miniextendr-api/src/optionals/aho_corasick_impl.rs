@@ -40,9 +40,9 @@
 
 pub use aho_corasick::{AhoCorasick, MatchKind};
 
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use crate::from_r::{SexpError, TryFromSexp};
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use crate::{
     impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
 };

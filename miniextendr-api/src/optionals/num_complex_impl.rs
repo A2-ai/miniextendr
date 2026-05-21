@@ -42,9 +42,9 @@
 pub use num_complex::Complex;
 
 use crate::altrep_traits::NA_REAL;
-use crate::sys::{Rcomplex, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{Rcomplex, SEXP, SEXPTYPE, SexpExt};
 
 // region: Helper functions
 
