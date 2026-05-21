@@ -27,9 +27,10 @@
 //! the main `.Call()`, giving users familiar R error messages and partial
 //! matching.
 
+use crate::gc_protect::ProtectScope;
+use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
-use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 
 /// Trait for enum types that support `match.arg`-style string conversion.
 ///
@@ -133,9 +134,10 @@ pub fn escape_r_string(s: &str) -> String {
 pub fn choices_sexp<T: MatchArg>() -> SEXP {
     let choices = <T as MatchArg>::CHOICES;
     unsafe {
-        let n = choices.len();
-        let vec = sys::Rf_allocVector(SEXPTYPE::STRSXP, n as sys::R_xlen_t);
-        sys::Rf_protect(vec);
+        let scope = ProtectScope::new();
+        // Preserve the R_BlankString short-circuit: skips hash-lookup on the
+        // interned empty CHARSXP for any empty choice strings.
+        let vec = scope.alloc_strsxp(choices.len()).into_raw();
         for (i, s) in choices.iter().enumerate() {
             let charsxp = if s.is_empty() {
                 SEXP::blank_string()
@@ -144,7 +146,6 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
             };
             vec.set_string_elt(i as sys::R_xlen_t, charsxp);
         }
-        sys::Rf_unprotect(1);
         vec
     }
 }
@@ -248,9 +249,10 @@ fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
 /// Called by the `impl IntoR for Vec<T>` block emitted by `#[derive(MatchArg)]`.
 pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
     unsafe {
-        let n = values.len();
-        let vec = sys::Rf_allocVector(SEXPTYPE::STRSXP, n as sys::R_xlen_t);
-        sys::Rf_protect(vec);
+        let scope = ProtectScope::new();
+        // Preserve the R_BlankString short-circuit: skips hash-lookup on the
+        // interned empty CHARSXP for any empty choice strings.
+        let vec = scope.alloc_strsxp(values.len()).into_raw();
         for (i, v) in values.into_iter().enumerate() {
             let s = v.to_choice();
             let charsxp = if s.is_empty() {
@@ -260,7 +262,6 @@ pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
             };
             vec.set_string_elt(i as sys::R_xlen_t, charsxp);
         }
-        sys::Rf_unprotect(1);
         vec
     }
 }

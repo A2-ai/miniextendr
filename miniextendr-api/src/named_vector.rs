@@ -23,9 +23,10 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::gc_protect::{OwnedProtect, ProtectScope};
+use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 
 // region: AtomicElement trait
 
@@ -213,18 +214,22 @@ impl<M> From<M> for NamedVector<M> {
 /// `sexp` must be a valid, protected SEXP. Caller must manage protect stack.
 pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
     unsafe {
-        let n = keys.len();
-        let names = sys::Rf_allocVector(SEXPTYPE::STRSXP, n as sys::R_xlen_t);
-        sys::Rf_protect(names);
+        let scope = ProtectScope::new();
+        let names = scope.alloc_strsxp(keys.len()).into_raw();
 
         for (i, key) in keys.iter().enumerate() {
             let s = key.as_ref();
-            let charsxp = SEXP::charsxp(s);
+            // Preserve the R_BlankString short-circuit: skips hash-lookup
+            // on the interned empty CHARSXP for empty keys.
+            let charsxp = if s.is_empty() {
+                SEXP::blank_string()
+            } else {
+                SEXP::charsxp(s)
+            };
             names.set_string_elt(i as sys::R_xlen_t, charsxp);
         }
 
         sexp.set_names(names);
-        sys::Rf_unprotect(1);
     }
 }
 
@@ -291,9 +296,8 @@ impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
         let (keys, values): (Vec<String>, Vec<V>) = self.0.into_iter().unzip();
         let sexp = V::vec_to_sexp(values);
         unsafe {
-            sys::Rf_protect(sexp);
-            set_names_on_sexp(sexp, &keys);
-            sys::Rf_unprotect(1);
+            let guard = OwnedProtect::new(sexp);
+            set_names_on_sexp(guard.get(), &keys);
         }
         sexp
     }
@@ -311,9 +315,8 @@ impl<V: AtomicElement> IntoR for NamedVector<BTreeMap<String, V>> {
         let (keys, values): (Vec<String>, Vec<V>) = self.0.into_iter().unzip();
         let sexp = V::vec_to_sexp(values);
         unsafe {
-            sys::Rf_protect(sexp);
-            set_names_on_sexp(sexp, &keys);
-            sys::Rf_unprotect(1);
+            let guard = OwnedProtect::new(sexp);
+            set_names_on_sexp(guard.get(), &keys);
         }
         sexp
     }

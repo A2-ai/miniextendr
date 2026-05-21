@@ -1803,8 +1803,8 @@ pub(super) fn derive_enum_dataframe(
                     }
 
                     // impl IntoR: build levels SEXP on each call (no generic static allowed).
-                    // Protect the levels STRSXP before build_factor allocates so GC cannot
-                    // collect it mid-build (see CLAUDE.md "PROTECT discipline against R-devel GC").
+                    // build_factor_with_levels handles the PROTECT discipline internally —
+                    // see CLAUDE.md "PROTECT discipline against R-devel GC".
                     impl #impl_generics ::miniextendr_api::IntoR
                         for #row_name #ty_generics #where_clause
                     {
@@ -1814,14 +1814,9 @@ pub(super) fn derive_enum_dataframe(
                             let idx: i32 = match self {
                                 #(#row_name::#variant_idents => #indices,)*
                             };
-                            unsafe {
-                                let levels = ::miniextendr_api::sys::Rf_protect(
-                                    ::miniextendr_api::factor::build_levels_sexp(LEVELS)
-                                );
-                                let result = ::miniextendr_api::factor::build_factor(&[idx], levels);
-                                ::miniextendr_api::sys::Rf_unprotect(1);
-                                ::std::result::Result::Ok(result)
-                            }
+                            ::std::result::Result::Ok(
+                                ::miniextendr_api::factor::build_factor_with_levels(&[idx], LEVELS)
+                            )
                         }
                     }
 

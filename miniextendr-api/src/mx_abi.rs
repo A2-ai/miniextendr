@@ -6,10 +6,10 @@
 //! This module replaces the C implementation that was previously in `mx_abi.c.in`.
 
 use crate::abi::{mx_erased, mx_tag};
+use crate::gc_protect::OwnedProtect;
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr, R_PreserveObject,
-    R_RegisterCCallable, R_RegisterCFinalizerEx, Rboolean, Rf_install, Rf_protect, Rf_unprotect,
-    SEXP, SEXPTYPE, SexpExt,
+    R_RegisterCCallable, R_RegisterCFinalizerEx, Rboolean, Rf_install, SEXP, SEXPTYPE, SexpExt,
 };
 use std::ffi::CStr;
 use std::sync::OnceLock;
@@ -61,10 +61,9 @@ unsafe extern "C-unwind" fn mx_externalptr_finalizer(ptr: SEXP) {
 pub unsafe extern "C-unwind" fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
     unsafe {
         let tag = get_tag();
-        let sexp = Rf_protect(R_MakeExternalPtr(ptr.cast(), tag, SEXP::nil()));
-        R_RegisterCFinalizerEx(sexp, Some(mx_externalptr_finalizer), Rboolean::TRUE);
-        Rf_unprotect(1);
-        sexp
+        let guard = OwnedProtect::new(R_MakeExternalPtr(ptr.cast(), tag, SEXP::nil()));
+        R_RegisterCFinalizerEx(guard.get(), Some(mx_externalptr_finalizer), Rboolean::TRUE);
+        guard.get()
     }
 }
 
