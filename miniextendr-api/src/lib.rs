@@ -604,7 +604,9 @@ pub mod preserve;
 
 // GC protection toolkit (PROTECT stack RAII wrappers)
 pub mod gc_protect;
-pub use gc_protect::{OwnedProtect, ProtectIndex, ProtectScope, Protector, ReprotectSlot, Root};
+pub use gc_protect::{
+    OwnedProtect, ProtectIndex, ProtectScope, Protected, Protector, ReprotectSlot, Root,
+};
 
 // VECSXP pool with generational keys (slotmap-backed)
 pub mod protect_pool;

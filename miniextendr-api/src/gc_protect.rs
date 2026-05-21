@@ -931,6 +931,128 @@ impl std::ops::Deref for OwnedProtect {
 }
 // endregion
 
+// region: Protected
+
+/// A Rust value (`T`) bundled with an [`OwnedProtect`] guard on an SEXP
+/// the value borrows from. The protect releases on drop; the lifetime
+/// ties any borrows inside `T` to `&self`, so `T`'s SEXP-internal
+/// references can't outlive the protection.
+///
+/// # When to use `Protected<'a, T>` vs the alternatives
+///
+/// | Pattern | Use | Why |
+/// |---------|-----|-----|
+/// | [`OwnedProtect`] | raw SEXP, no Rust view | one-shot protect/unprotect on a single SEXP |
+/// | [`ProtectScope`] + [`Root`] | several SEXPs in one function body | batched UNPROTECT, no Rust view |
+/// | `Protected<'a, T>` | SEXP + Rust view of its data | hand the bundle to callers; borrows in `T` tied to `&self` |
+///
+/// # Notes on Send/Sync
+///
+/// When constructed via [`Protected::new`], the inner [`OwnedProtect`] carries
+/// `!Send + !Sync` (via `NoSendSync`). When constructed via
+/// [`Protected::from_trusted`], the `_protect` field is `None` and the type
+/// becomes auto-`Send`/`Sync` — the same behaviour as [`ProtectedStrVec`] today.
+pub struct Protected<'a, T> {
+    inner: T,
+    _protect: Option<OwnedProtect>,
+    _marker: core::marker::PhantomData<&'a ()>,
+}
+
+impl<'a, T> Protected<'a, T> {
+    /// Create a protected bundle. Calls `Rf_protect` on `sexp`.
+    ///
+    /// `inner` may borrow from `sexp`; the lifetime `'a` is tied to
+    /// `&self` thereafter, so any borrow inside `inner` cannot outlive
+    /// this `Protected`.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called from the R main thread.
+    /// - `sexp` must be a valid SEXP.
+    /// - If `inner` borrows from `sexp`, its lifetime parameter must
+    ///   match `'a`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use miniextendr_api::{Protected, OwnedProtect};
+    /// use miniextendr_api::ffi::SEXP;
+    ///
+    /// unsafe fn wrap_view(sexp: SEXP, view: MyView<'_>) -> Protected<'_, MyView<'_>> {
+    ///     // Protect the SEXP and bundle it with the view.
+    ///     // The view's borrow is tied to the returned Protected.
+    ///     Protected::new(sexp, view)
+    /// }
+    /// ```
+    #[inline]
+    pub unsafe fn new(sexp: SEXP, inner: T) -> Self {
+        let guard = unsafe { OwnedProtect::new(sexp) };
+        Self {
+            inner,
+            _protect: Some(guard),
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Create a protected bundle without adding to the protect stack.
+    ///
+    /// Use when `sexp` is already protected by R (a `.Call` argument,
+    /// a [`ProtectScope`] slot, an enclosing [`OwnedProtect`]) to avoid
+    /// double-protecting. The lifetime contract is unchanged — `'a`
+    /// still ties any borrows inside `inner` to `&self`.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called from the R main thread.
+    /// - `sexp` must be a valid SEXP.
+    /// - `sexp` must remain GC-protected for the lifetime of the
+    ///   returned `Protected`.
+    /// - Lifetime contract same as [`Protected::new`].
+    #[inline]
+    pub unsafe fn from_trusted(_sexp: SEXP, inner: T) -> Self {
+        Self {
+            inner,
+            _protect: None,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Borrow the inner view.
+    #[inline]
+    pub fn get(&self) -> &T {
+        &self.inner
+    }
+
+    /// Consume the bundle and return the inner view.
+    ///
+    /// The [`OwnedProtect`] guard drops here, releasing the SEXP from the protect
+    /// stack. Any owned data extracted from `T` must not retain SEXP references
+    /// after this point.
+    #[inline]
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+}
+
+impl<'a, T> core::ops::Deref for Protected<'a, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &T {
+        &self.inner
+    }
+}
+
+impl<'a, T: std::fmt::Debug> std::fmt::Debug for Protected<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Protected")
+            .field("inner", &self.inner)
+            .field("protected", &self._protect.is_some())
+            .finish()
+    }
+}
+// endregion
+
 // region: ReprotectSlot
 
 /// A protected slot created with `R_ProtectWithIndex` and updated with `R_Reprotect`.
@@ -1428,6 +1550,66 @@ mod tests {
     //
     // These should be tested in miniextendr-api/tests/gc_protect.rs with
     // embedded R.
+    // endregion
+
+    // region: Protected<'a, T> tests
+
+    /// Verify `Protected::get()` returns the inner value.
+    #[test]
+    fn protected_get_returns_inner() {
+        // from_trusted with null SEXP (safe for compile-time tests since we
+        // never dereference the SEXP itself, only the already-constructed inner)
+        let v = vec![1i32, 2, 3];
+        let p = unsafe {
+            Protected::<'static, Vec<i32>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+        };
+        assert_eq!(p.get(), &[1, 2, 3]);
+    }
+
+    /// Verify `Deref<Target = T>` works (exercises the blanket impl).
+    #[test]
+    fn protected_deref_reaches_inner() {
+        let v = vec![10i32, 20];
+        let p = unsafe {
+            Protected::<'static, Vec<i32>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+        };
+        // Deref should let us call Vec methods directly.
+        assert_eq!(p.len(), 2);
+    }
+
+    /// Verify `into_inner` moves the inner value out cleanly.
+    #[test]
+    fn protected_into_inner_moves_value() {
+        let v = vec![42i32];
+        let p = unsafe {
+            Protected::<'static, Vec<i32>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+        };
+        let got = p.into_inner();
+        assert_eq!(got, [42]);
+    }
+
+    /// Verify `from_trusted` sets `_protect` to `None` (no extra protect push).
+    #[test]
+    fn protected_from_trusted_does_not_hold_protect() {
+        let v: Vec<u8> = vec![];
+        let p = unsafe {
+            Protected::<'static, Vec<u8>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+        };
+        // This test uses `from_trusted` to avoid touching the protect stack;
+        // `Protected::new` would require an initialized R runtime (see
+        // `tests/gc_protect.rs` for that path). Verify the `_protect` field is
+        // `None` indirectly via the `Debug` output.
+        assert!(format!("{p:?}").contains("protected: false"));
+    }
+
+    /// Smoke-test: `Protected::from_trusted` + `Deref` compiles for a scalar `T`.
+    #[test]
+    fn protected_from_trusted_compile_check() {
+        let p = unsafe {
+            Protected::<'static, i32>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), 99)
+        };
+        assert_eq!(*p, 99);
+    }
     // endregion
 }
 // endregion
