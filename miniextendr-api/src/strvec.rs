@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use crate::ffi::SEXPTYPE::STRSXP;
 use crate::ffi::{SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
-use crate::gc_protect::{OwnedProtect, ProtectScope};
+use crate::gc_protect::{OwnedProtect, ProtectScope, Protected};
 use crate::into_r::IntoR;
 
 /// Owned handle to an R character vector (`STRSXP`).
@@ -447,8 +447,8 @@ impl TryFromSexp for StrVec {
 /// GC-protected view over an R character vector (`STRSXP`).
 ///
 /// Unlike [`StrVec`] (which is `Copy` and trusts the caller for GC protection),
-/// `ProtectedStrVec` owns an [`OwnedProtect`] guard that keeps the STRSXP alive.
-/// All borrowed data (`&str`, iterators) has its lifetime tied to `&self`,
+/// `ProtectedStrVec` wraps a [`Protected<'static, StrVec>`](crate::gc_protect::Protected) that keeps the
+/// STRSXP alive. All borrowed data (`&str`, iterators) has its lifetime tied to `&self`,
 /// not `'static` — preventing use-after-GC bugs at compile time.
 ///
 /// # When to use
@@ -470,9 +470,8 @@ impl TryFromSexp for StrVec {
 /// }
 /// ```
 pub struct ProtectedStrVec {
-    inner: StrVec,
+    protected: Protected<'static, StrVec>,
     len: isize,
-    _protect: Option<OwnedProtect>,
 }
 
 impl ProtectedStrVec {
@@ -488,13 +487,11 @@ impl ProtectedStrVec {
     /// - Must be called from the R main thread.
     #[inline]
     pub unsafe fn new(sexp: SEXP) -> Self {
-        let guard = unsafe { OwnedProtect::new(sexp) };
-        let inner = unsafe { StrVec::from_raw(guard.get()) };
+        let inner = unsafe { StrVec::from_raw(sexp) };
         let len = inner.len();
         Self {
-            inner,
+            protected: unsafe { Protected::new(sexp, inner) },
             len,
-            _protect: Some(guard),
         }
     }
 
@@ -517,9 +514,8 @@ impl ProtectedStrVec {
         let inner = unsafe { StrVec::from_raw(sexp) };
         let len = inner.len();
         Self {
-            inner,
+            protected: unsafe { Protected::from_trusted(sexp, inner) },
             len,
-            _protect: None,
         }
     }
 
@@ -542,14 +538,14 @@ impl ProtectedStrVec {
     pub fn get_str(&self, idx: isize) -> Option<&str> {
         // charsxp_to_str returns &'static str, but lifetime elision
         // restricts it to &'_ (tied to &self) — correct: data lives
-        // as long as OwnedProtect keeps the STRSXP alive.
-        self.inner.get_str(idx)
+        // as long as the Protected guard keeps the STRSXP alive.
+        self.protected.get().get_str(idx)
     }
 
     /// Get the string at index as `Cow<str>` (encoding-safe, lifetime tied to `&self`).
     #[inline]
     pub fn get_cow(&self, idx: isize) -> Option<Cow<'_, str>> {
-        self.inner.get_cow(idx)
+        self.protected.get().get_cow(idx)
     }
 
     /// Iterate over elements as `Option<&str>` (lifetime tied to `&self`).
@@ -575,13 +571,13 @@ impl ProtectedStrVec {
     /// Get the underlying SEXP (still protected by this handle).
     #[inline]
     pub fn as_sexp(&self) -> SEXP {
-        self.inner.as_sexp()
+        self.protected.get().as_sexp()
     }
 
     /// Get the inner `StrVec` (unprotected copy — caller assumes protection responsibility).
     #[inline]
     pub fn as_strvec(&self) -> StrVec {
-        self.inner
+        *self.protected.get()
     }
 }
 
