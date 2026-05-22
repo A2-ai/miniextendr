@@ -383,6 +383,108 @@ pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, R
     ColumnarDataFrame::from_rows(rows)
 }
 
+// region: NamedDataFrameListBuilder
+
+/// Assemble a named list whose elements are [`ColumnarDataFrame`]s,
+/// without per-result `OwnedProtect` bookkeeping.
+///
+/// Each [`push`](NamedDataFrameListBuilder::push) protects the input
+/// data.frame's SEXP via an internal [`ProtectScope`](crate::ProtectScope);
+/// [`build`](NamedDataFrameListBuilder::build) consumes the builder and emits
+/// a named list via [`List::from_raw_pairs`](crate::list::List::from_raw_pairs).
+/// The scope drops at the end of `build`, releasing the per-input protects —
+/// by which point the children are reachable from the assembled list.
+///
+/// # Example
+///
+/// ```ignore
+/// let result = NamedDataFrameListBuilder::new()
+///     .push("results", vec_to_dataframe(&oks)?)
+///     .push("error",   vec_to_dataframe(&errs)?)
+///     .build();
+/// ```
+pub struct NamedDataFrameListBuilder {
+    scope: crate::ProtectScope,
+    pairs: Vec<(String, crate::ffi::SEXP)>,
+}
+
+impl NamedDataFrameListBuilder {
+    /// Create an empty builder.
+    ///
+    /// # Safety (caller)
+    ///
+    /// Must be called from the R main thread. The internal
+    /// [`ProtectScope`](crate::ProtectScope) carries `!Send + !Sync`
+    /// so the builder cannot be moved to another thread.
+    pub fn new() -> Self {
+        Self {
+            // SAFETY: ProtectScope requires the R main thread. The builder is
+            // constructible only on the R main thread; ProtectScope carries
+            // NoSendSync so it cannot be moved off-thread.
+            scope: unsafe { crate::ProtectScope::new() },
+            pairs: Vec::new(),
+        }
+    }
+
+    /// Create a builder pre-allocated for `n` entries.
+    ///
+    /// Equivalent to [`new`](Self::new) but avoids repeated re-allocations
+    /// when the number of partitions is known up front.
+    pub fn with_capacity(n: usize) -> Self {
+        Self {
+            scope: unsafe { crate::ProtectScope::new() },
+            pairs: Vec::with_capacity(n),
+        }
+    }
+
+    /// Append a named data.frame. The input's SEXP is protected
+    /// internally for the lifetime of the builder.
+    #[must_use]
+    pub fn push<S: Into<String>>(mut self, name: S, df: ColumnarDataFrame) -> Self {
+        use crate::IntoR as _;
+        let sexp = df.into_sexp();
+        // SAFETY: R main thread (constructor invariant); sexp is a valid
+        // VECSXP just produced by ColumnarDataFrame::into_sexp.
+        unsafe {
+            self.scope.protect_raw(sexp);
+        }
+        self.pairs.push((name.into(), sexp));
+        self
+    }
+
+    /// Number of entries pushed so far.
+    pub fn len(&self) -> usize {
+        self.pairs.len()
+    }
+
+    /// Whether no entries have been pushed yet.
+    pub fn is_empty(&self) -> bool {
+        self.pairs.is_empty()
+    }
+
+    /// Consume the builder and return the assembled named [`List`](crate::list::List).
+    ///
+    /// The returned `List`'s SEXP is *not* separately protected on return — the
+    /// caller takes responsibility for protection (typically by immediately
+    /// handing it back to R via the `.Call` return path). This matches the
+    /// contract of [`List::from_raw_pairs`](crate::list::List::from_raw_pairs).
+    pub fn build(self) -> crate::list::List {
+        // pairs[i].1 is protected by self.scope; from_raw_pairs protects the
+        // assembled VECSXP and STRSXP during construction. When self drops at
+        // this function's exit, the input SEXPs are unprotected — but they are
+        // now children of the returned list, so they remain reachable.
+        crate::list::List::from_raw_pairs(self.pairs)
+    }
+}
+
+impl Default for NamedDataFrameListBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// endregion
+
 // region: Field mapping (recursive name → column routing)
 
 /// Maps a field name to its column location in the flat column array.
@@ -1484,6 +1586,11 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
             ColumnBuffer::Character(v) => {
                 let nrow_r: isize = nrow.try_into().expect("nrow exceeds isize::MAX");
                 let sexp = Rf_allocVector(SEXPTYPE::STRSXP, nrow_r);
+                // PROTECT discipline: SEXP::charsxp (Rf_mkCharLenCE) allocates
+                // and can trigger GC under gctorture, which would reclaim our
+                // unprotected STRSXP. Protect here; balance with Rf_unprotect
+                // before returning.
+                Rf_protect(sexp);
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     match val {
@@ -1495,6 +1602,7 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                         }
                     }
                 }
+                Rf_unprotect(1);
                 sexp
             }
             ColumnBuffer::Generic(v) => {
@@ -2032,8 +2140,6 @@ fn unit_variant_dataframe(nrow: usize) -> SEXP {
 /// Returns an error if any row serializes without a variant name (not an enum),
 /// or if column building fails.
 pub fn vec_to_dataframe_split<T: Serialize>(rows: &[T]) -> Result<crate::list::List, RSerdeError> {
-    use crate::IntoR as _;
-    use crate::OwnedProtect;
     use crate::list::List;
 
     if rows.is_empty() {
@@ -2069,47 +2175,78 @@ pub fn vec_to_dataframe_split<T: Serialize>(rows: &[T]) -> Result<crate::list::L
     // Detect enum style from the first row that has a tag field
     let tag_field: Option<&str> = infos.iter().find_map(|i| i.tag_field.as_deref());
 
-    // Phase 3: build per-partition data.frames, protecting each immediately
-    let mut protected: Vec<(String, OwnedProtect)> = Vec::with_capacity(groups.len());
+    // Phase 3: build per-partition data.frames, protecting each via the builder
+    let mut builder = NamedDataFrameListBuilder::with_capacity(groups.len());
 
     for (name, indices) in &groups {
         let is_unit = infos[indices[0]].is_unit;
 
-        let prot = if is_unit {
-            unsafe { OwnedProtect::new(unit_variant_dataframe(indices.len())) }
+        let df = if is_unit {
+            // Unit variants produce 0-column data.frames; wrap the raw SEXP in
+            // ColumnarDataFrame (same module, private field accessible here).
+            let sexp = unit_variant_dataframe(indices.len());
+            ColumnarDataFrame { sexp }
         } else if tag_field.is_some() {
             // Internally-tagged: call from_rows directly, then drop the tag column
             let refs: Vec<&T> = indices.iter().map(|&i| &rows[i]).collect();
             let df = ColumnarDataFrame::from_rows(&refs)?;
-            let df = if let Some(tf) = tag_field {
+            if let Some(tf) = tag_field {
                 df.drop(tf)
             } else {
                 df
-            };
-            unsafe { OwnedProtect::new(df.into_sexp()) }
+            }
         } else {
             // Externally-tagged: wrap each row so serialize_struct_variant is
             // redirected to serialize_struct (strips the outer variant wrapper)
             let wrapped: Vec<VariantPayload<&T>> =
                 indices.iter().map(|&i| VariantPayload(&rows[i])).collect();
-            let df = ColumnarDataFrame::from_rows(&wrapped)?;
-            unsafe { OwnedProtect::new(df.into_sexp()) }
+            ColumnarDataFrame::from_rows(&wrapped)?
         };
 
-        protected.push((name.clone(), prot));
+        builder = builder.push(name.clone(), df);
     }
 
     // Phase 4: assemble the result
-    if protected.len() == 1 {
-        let (_, prot) = protected.into_iter().next().unwrap();
-        Ok(unsafe { List::from_raw(prot.get()) })
+    if builder.len() == 1 {
+        // Single-variant: return the bare data.frame, not a named list.
+        // The SEXP is protected by builder.scope for the duration of this
+        // expression; builder (and its scope) drops after the Ok is constructed.
+        let sexp = builder.pairs[0].1;
+        Ok(unsafe { List::from_raw(sexp) })
     } else {
-        // All partition SEXPs are protected via `protected` throughout from_raw_pairs
-        let pairs: Vec<(String, SEXP)> = protected
-            .iter()
-            .map(|(n, p)| (n.clone(), p.get()))
-            .collect();
-        Ok(List::from_raw_pairs(pairs))
+        Ok(builder.build())
+    }
+}
+
+// endregion
+
+// region: Tests (NamedDataFrameListBuilder structural invariants)
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A new builder has zero length and reports is_empty().
+    #[test]
+    fn builder_new_is_empty() {
+        let b = NamedDataFrameListBuilder::default();
+        assert_eq!(b.len(), 0);
+        assert!(b.is_empty());
+    }
+
+    /// with_capacity reserves space but the builder is still empty.
+    #[test]
+    fn builder_with_capacity_starts_empty() {
+        let b = NamedDataFrameListBuilder::with_capacity(8);
+        assert_eq!(b.len(), 0);
+        assert!(b.is_empty());
+    }
+
+    /// The builder's scope count starts at zero (no protections yet).
+    #[test]
+    fn builder_scope_count_zero_before_push() {
+        let b = NamedDataFrameListBuilder::new();
+        assert_eq!(b.scope.count(), 0);
     }
 }
 
