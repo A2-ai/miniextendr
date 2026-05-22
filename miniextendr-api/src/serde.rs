@@ -243,7 +243,9 @@ pub use columnar::{
     ColumnarDataFrame, DataFrameBuilder, NamedDataFrameListBuilder, iter_to_dataframe,
     vec_to_dataframe, vec_to_dataframe_split,
 };
-pub use dataframe_de::{dataframe_to_vec, with_dataframe_rows};
+pub use dataframe_de::{
+    BorrowedRows, dataframe_to_vec, dataframe_to_vec_borrowed, with_dataframe_rows,
+};
 pub use de::RDeserializer;
 pub use error::RSerdeError;
 #[cfg(feature = "serde_json")]

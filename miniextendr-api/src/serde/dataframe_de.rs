@@ -136,6 +136,80 @@ where
 
 // endregion
 
+// region: BorrowedRows<'a, T> RAII (#671 Follow-up B on top of #681)
+
+/// RAII handle around a `Vec<T>` deserialised from a data.frame, with the
+/// source SEXP kept GC-rooted for the bundle's lifetime.
+///
+/// Type alias for [`Protected<'a, Vec<T>>`](crate::Protected) — see #681 for
+/// the underlying primitive. Use [`dataframe_to_vec_borrowed`] to construct.
+///
+/// Access rows via `Deref<Target = Vec<T>>`:
+///
+/// ```ignore
+/// let rows: BorrowedRows<'_, Row> = dataframe_to_vec_borrowed(sexp)?;
+/// for r in &*rows {
+///     // …
+/// }
+/// ```
+pub type BorrowedRows<'a, T> = crate::Protected<'a, Vec<T>>;
+
+/// Deserialise a data.frame into a `BorrowedRows<'a, T>` that holds the
+/// source SEXP rooted for `'a`.
+///
+/// Sister function to [`dataframe_to_vec`]: same per-row deserialisation,
+/// same flat-struct limitations ([#688], [#689]), but the returned handle
+/// keeps the input SEXP protected on the R protect stack while the caller
+/// holds it. Use this when [`with_dataframe_rows`]'s closure shape is too
+/// restrictive — e.g., a parser that threads rows through multiple helper
+/// functions before producing a summary.
+///
+/// # Cost vs alternatives
+///
+/// One extra `Rf_protect` entry vs. [`with_dataframe_rows`], plus the
+/// [`Protected`](crate::Protected) wrapper itself. Prefer the closure form
+/// when it fits.
+///
+/// # Note on the lifetime parameter
+///
+/// `T: for<'b> serde::Deserialize<'b>` is equivalent to `DeserializeOwned`
+/// today, so character fields materialise as `String` (no zero-copy yet).
+/// The `'a` lifetime ties the protect entry to the returned handle; future
+/// work threading `'a` through [`DataFrameView`](crate::dataframe::DataFrameView)
+/// would enable true zero-copy `T = Borrowed<'a> { name: &'a str }` — see
+/// the issue thread on #671 for the design discussion.
+///
+/// [#688]: https://github.com/A2-ai/miniextendr/issues/688
+/// [#689]: https://github.com/A2-ai/miniextendr/issues/689
+pub fn dataframe_to_vec_borrowed<'a, T>(sexp: SEXP) -> Result<BorrowedRows<'a, T>, RSerdeError>
+where
+    T: for<'b> serde::Deserialize<'b>,
+{
+    let rows: Vec<T> = if is_empty_dataframe(sexp) {
+        Vec::new()
+    } else {
+        let view =
+            DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
+        let nrow = view.nrow();
+        let mut rows: Vec<T> = Vec::with_capacity(nrow);
+        for i in 0..nrow {
+            let de = BorrowedRowDeserializer::new(&view, i);
+            rows.push(T::deserialize(de)?);
+        }
+        rows
+    };
+    // SAFETY:
+    // - Caller is on the R main thread (entry via #[miniextendr] wrapper).
+    // - `sexp` is a valid SEXP — DataFrameView::from_sexp validated it for
+    //   the non-empty path; the empty short-circuit checked is_data_frame +
+    //   xlength == 0.
+    // - `rows` carries no SEXP-internal borrows under the `for<'b>` bound
+    //   (DeserializeOwned-equivalent), so `'a` is satisfied trivially.
+    Ok(unsafe { crate::Protected::new(sexp, rows) })
+}
+
+// endregion
+
 // region: empty-df short-circuit
 
 /// Detect a 0-row 0-column data.frame for which `DataFrameView::from_sexp`
