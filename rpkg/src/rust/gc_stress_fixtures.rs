@@ -555,3 +555,43 @@ pub fn gc_stress_with_dataframe_rows() -> f64 {
 }
 
 // endregion
+
+// region: Streaming serialize GC stress
+
+/// Exercise `iter_to_dataframe` PROTECT discipline under GC pressure.
+///
+/// Synthesizes 50 rows via an iterator and runs them through
+/// `iter_to_dataframe`, verifying that the per-builder `ProtectScope` keeps
+/// every protected SEXP live across the fill loop and `assemble_dataframe`.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_iter_to_dataframe() -> SEXP {
+    use crate::serde::Serialize;
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::iter_to_dataframe;
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct StreamRow {
+        id: i32,
+        value: f64,
+        label: String,
+        flag: Option<i32>,
+    }
+
+    let df = iter_to_dataframe(
+        (0i32..50).map(|i| StreamRow {
+            id: i,
+            value: f64::from(i) * 1.5,
+            label: format!("row_{i}"),
+            flag: if i % 3 == 0 { None } else { Some(i * 2) },
+        }),
+        None,
+    )
+    .expect("gc_stress_iter_to_dataframe: iter_to_dataframe failed");
+    df.into_sexp()
+}
+
+// endregion
