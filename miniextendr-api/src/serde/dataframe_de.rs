@@ -7,18 +7,18 @@
 //! - [`with_dataframe_rows`] — scoped callback; `T: for<'a> Deserialize<'a>`;
 //!   supports zero-copy borrows (`name: &'a str`).
 //!
-//! # Design (Strategy A — two deserializer types)
+//! # Design (unified row/cell deserializer)
 //!
-//! Two deserializer types are provided, even though both currently materialise
-//! `String` for character cells (`for<'a> Deserialize<'a>` ≡ `DeserializeOwned`):
-//! - `OwnedRowDeserializer` — used by `dataframe_to_vec`; `deserialize_str` calls
-//!   `visit_string` (copies into `String`).
-//! - `BorrowedRowDeserializer<'a>` — used by `with_dataframe_rows`; `deserialize_str`
-//!   calls `visit_borrowed_str`. Prepared for the `BorrowedRows<'a, T>` RAII
-//!   variant from #671b, where `T` will be able to hold `&'a str`.
+//! A single `RowDeserializer<'sexp>` + `RowMapAccess<'sexp>` + `CellDeserializer<'sexp, 'n>`
+//! covers all three entry points. Each entry point hands rows back to the
+//! caller in its own way (owned `Vec`, scoped callback, RAII handle), but the
+//! per-row deserialisation pipeline is shared via [`deserialize_rows`].
 //!
-//! Both walk `DataFrameView`'s named columns in insertion order, yielding
-//! `(col_name, CellDeserializer)` pairs to serde's `MapAccess`.
+//! Character cells go through `visit_borrowed_str` — visitors that want
+//! `String` (i.e. `DeserializeOwned`) fall back to `visit_str` via serde's
+//! default `Visitor::visit_borrowed_str` impl, which copies into a `String`.
+//! Visitors that want `&'sexp str` (a future zero-copy path) get the borrow
+//! directly. The unified shape pre-loads the seam for that future variant.
 //!
 //! # Limitations
 //!
@@ -80,13 +80,7 @@ where
         return Ok(Vec::new());
     }
     let view = DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    let nrow = view.nrow();
-    let mut rows = Vec::with_capacity(nrow);
-    for i in 0..nrow {
-        let de = OwnedRowDeserializer::new(&view, i);
-        rows.push(T::deserialize(de)?);
-    }
-    Ok(rows)
+    deserialize_rows(&view)
 }
 
 /// Pass a slice of deserialized rows to a scoped callback.
@@ -121,16 +115,7 @@ where
         return Ok(f(&rows));
     }
     let view = DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    let nrow = view.nrow();
-    let mut rows: Vec<T> = Vec::with_capacity(nrow);
-    for i in 0..nrow {
-        // BorrowedRowDeserializer<'_> ties the lifetime to `view`,
-        // which in turn is tied to the function-local scope.
-        // The compiler enforces that `rows` (and therefore any borrows inside
-        // elements of `rows`) cannot outlive this function.
-        let de = BorrowedRowDeserializer::new(&view, i);
-        rows.push(T::deserialize(de)?);
-    }
+    let rows: Vec<T> = deserialize_rows(&view)?;
     Ok(f(&rows))
 }
 
@@ -190,13 +175,7 @@ where
     } else {
         let view =
             DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-        let nrow = view.nrow();
-        let mut rows: Vec<T> = Vec::with_capacity(nrow);
-        for i in 0..nrow {
-            let de = BorrowedRowDeserializer::new(&view, i);
-            rows.push(T::deserialize(de)?);
-        }
-        rows
+        deserialize_rows(&view)?
     };
     // SAFETY:
     // - Caller is on the R main thread (entry via #[miniextendr] wrapper).
@@ -225,28 +204,32 @@ fn is_empty_dataframe(sexp: SEXP) -> bool {
 
 // endregion
 
-// region: owned deserializer
+// region: row + cell deserializer
 
-/// Row deserializer for the owned path (`dataframe_to_vec`).
+/// Row deserializer.
 ///
-/// No lifetime parameter — character cells are copied into `String`.
-struct OwnedRowDeserializer<'v> {
-    view: &'v DataFrameView,
+/// The lifetime `'sexp` ties cell deserializers to `DataFrameView`'s borrow of
+/// the source SEXP. The `impl<'de> Deserializer<'de> for RowDeserializer<'de>`
+/// constrains `'de = 'sexp` so visitors that want `&'de str` see a borrow
+/// rooted in the SEXP's CHARSXP cache; `String`-wanting visitors fall back
+/// through serde's default `visit_borrowed_str → visit_str`.
+struct RowDeserializer<'sexp> {
+    view: &'sexp DataFrameView,
     row: usize,
 }
 
-impl<'v> OwnedRowDeserializer<'v> {
-    fn new(view: &'v DataFrameView, row: usize) -> Self {
+impl<'sexp> RowDeserializer<'sexp> {
+    fn new(view: &'sexp DataFrameView, row: usize) -> Self {
         Self { view, row }
     }
 }
 
-impl<'de> Deserializer<'de> for OwnedRowDeserializer<'_> {
+impl<'de> Deserializer<'de> for RowDeserializer<'de> {
     type Error = RSerdeError;
 
     fn deserialize_any<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value, Self::Error> {
         Err(RSerdeError::Message(
-            "dataframe_to_vec only supports struct deserialisation".into(),
+            "dataframe row deserialiser only supports struct/map deserialisation".into(),
         ))
     }
 
@@ -256,11 +239,11 @@ impl<'de> Deserializer<'de> for OwnedRowDeserializer<'_> {
         _fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
-        visitor.visit_map(OwnedMapAccess::new(self.view, self.row))
+        visitor.visit_map(RowMapAccess::new(self.view, self.row))
     }
 
     fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        visitor.visit_map(OwnedMapAccess::new(self.view, self.row))
+        visitor.visit_map(RowMapAccess::new(self.view, self.row))
     }
 
     serde::forward_to_deserialize_any! {
@@ -270,18 +253,18 @@ impl<'de> Deserializer<'de> for OwnedRowDeserializer<'_> {
     }
 }
 
-/// `MapAccess` that iterates columns and yields owned values.
-struct OwnedMapAccess<'v> {
-    view: &'v DataFrameView,
+/// `MapAccess` that iterates columns and yields one [`CellDeserializer`] per cell.
+struct RowMapAccess<'sexp> {
+    view: &'sexp DataFrameView,
     row: usize,
-    /// Column names as collected once (ordered).
+    /// Column names collected once (ordered).
     names: Vec<String>,
     /// Current column index.
     col_idx: usize,
 }
 
-impl<'v> OwnedMapAccess<'v> {
-    fn new(view: &'v DataFrameView, row: usize) -> Self {
+impl<'sexp> RowMapAccess<'sexp> {
+    fn new(view: &'sexp DataFrameView, row: usize) -> Self {
         let names: Vec<String> = view.names().map(str::to_owned).collect();
         Self {
             view,
@@ -292,7 +275,7 @@ impl<'v> OwnedMapAccess<'v> {
     }
 }
 
-impl<'de> MapAccess<'de> for OwnedMapAccess<'_> {
+impl<'de> MapAccess<'de> for RowMapAccess<'de> {
     type Error = RSerdeError;
 
     fn next_key_seed<K: DeserializeSeed<'de>>(
@@ -317,438 +300,27 @@ impl<'de> MapAccess<'de> for OwnedMapAccess<'_> {
             .column_raw(col_name)
             .ok_or_else(|| RSerdeError::MissingField(col_name.to_owned()))?;
         self.col_idx += 1;
-        let cell_de = OwnedCellDeserializer::new(col_sexp, self.row, col_name);
+        let cell_de = CellDeserializer::new(col_sexp, self.row, col_name);
         seed.deserialize(cell_de)
     }
 }
 
-// endregion
-
-// region: owned cell deserializer
-
-/// Deserializer for a single cell on the owned path.
+/// Deserializer for a single cell.
 ///
-/// Reads element `row` from `col_sexp`. Character values are copied to `String`.
-struct OwnedCellDeserializer<'n> {
-    col: SEXP,
-    row: usize,
-    col_name: &'n str,
-}
-
-impl<'n> OwnedCellDeserializer<'n> {
-    fn new(col: SEXP, row: usize, col_name: &'n str) -> Self {
-        Self { col, row, col_name }
-    }
-
-    fn sexp_type(&self) -> SEXPTYPE {
-        self.col.type_of()
-    }
-
-    fn col_type_name(&self) -> String {
-        self.sexp_type().type_name().to_string()
-    }
-
-    fn type_mismatch(&self, expected: &'static str) -> RSerdeError {
-        RSerdeError::Message(format!(
-            "column {:?}: type mismatch: expected {}, got {}",
-            self.col_name,
-            expected,
-            self.col_type_name()
-        ))
-    }
-
-    fn row_isize(&self) -> isize {
-        self.row as isize
-    }
-}
-
-impl<'de> Deserializer<'de> for OwnedCellDeserializer<'_> {
-    type Error = RSerdeError;
-
-    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let i = self.row_isize();
-        match self.sexp_type() {
-            SEXPTYPE::LGLSXP => {
-                let v = self.col.logical_elt(i);
-                if v == NA_LOGICAL {
-                    visitor.visit_none()
-                } else {
-                    visitor.visit_bool(v != 0)
-                }
-            }
-            SEXPTYPE::INTSXP => {
-                let v = self.col.integer_elt(i);
-                if v == NA_INTEGER {
-                    visitor.visit_none()
-                } else {
-                    visitor.visit_i32(v)
-                }
-            }
-            SEXPTYPE::REALSXP => {
-                let v = self.col.real_elt(i);
-                if v.to_bits() == NA_REAL.to_bits() {
-                    visitor.visit_none()
-                } else {
-                    visitor.visit_f64(v)
-                }
-            }
-            SEXPTYPE::STRSXP => {
-                let charsxp = self.col.string_elt(i);
-                if charsxp == SEXP::na_string() {
-                    visitor.visit_none()
-                } else {
-                    let s = unsafe { charsxp_to_str(charsxp) };
-                    visitor.visit_string(s.to_owned())
-                }
-            }
-            _ => Err(RSerdeError::UnsupportedType {
-                sexptype: self.sexp_type() as i32,
-            }),
-        }
-    }
-
-    fn deserialize_bool<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        if self.sexp_type() != SEXPTYPE::LGLSXP {
-            return Err(self.type_mismatch("logical"));
-        }
-        let v = self.col.logical_elt(self.row_isize());
-        if v == NA_LOGICAL {
-            return Err(RSerdeError::UnexpectedNa);
-        }
-        visitor.visit_bool(v != 0)
-    }
-
-    fn deserialize_i8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell(&self)?;
-        if v < i8::MIN as i32 || v > i8::MAX as i32 {
-            return Err(RSerdeError::Overflow {
-                from: "i32",
-                to: "i8",
-            });
-        }
-        visitor.visit_i8(v as i8)
-    }
-
-    fn deserialize_i16<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell(&self)?;
-        if v < i16::MIN as i32 || v > i16::MAX as i32 {
-            return Err(RSerdeError::Overflow {
-                from: "i32",
-                to: "i16",
-            });
-        }
-        visitor.visit_i16(v as i16)
-    }
-
-    fn deserialize_i32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell(&self)?;
-        visitor.visit_i32(v)
-    }
-
-    fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        match self.sexp_type() {
-            SEXPTYPE::INTSXP => {
-                let v = self.col.integer_elt(self.row_isize());
-                if v == NA_INTEGER {
-                    return Err(RSerdeError::UnexpectedNa);
-                }
-                visitor.visit_i64(v as i64)
-            }
-            SEXPTYPE::REALSXP => {
-                let v = self.col.real_elt(self.row_isize());
-                if v.to_bits() == NA_REAL.to_bits() {
-                    return Err(RSerdeError::UnexpectedNa);
-                }
-                if !v.is_finite() || v != v.trunc() || v < i64::MIN as f64 || v > i64::MAX as f64 {
-                    return Err(RSerdeError::Overflow {
-                        from: "f64",
-                        to: "i64",
-                    });
-                }
-                visitor.visit_i64(v as i64)
-            }
-            _ => Err(self.type_mismatch("integer or numeric")),
-        }
-    }
-
-    fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell(&self)?;
-        if v < 0 || v > u8::MAX as i32 {
-            return Err(RSerdeError::Overflow {
-                from: "i32",
-                to: "u8",
-            });
-        }
-        visitor.visit_u8(v as u8)
-    }
-
-    fn deserialize_u16<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell(&self)?;
-        if v < 0 || v > u16::MAX as i32 {
-            return Err(RSerdeError::Overflow {
-                from: "i32",
-                to: "u16",
-            });
-        }
-        visitor.visit_u16(v as u16)
-    }
-
-    fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        match self.sexp_type() {
-            SEXPTYPE::INTSXP => {
-                let v = self.col.integer_elt(self.row_isize());
-                if v == NA_INTEGER {
-                    return Err(RSerdeError::UnexpectedNa);
-                }
-                if v < 0 {
-                    return Err(RSerdeError::Overflow {
-                        from: "i32",
-                        to: "u32",
-                    });
-                }
-                visitor.visit_u32(v as u32)
-            }
-            SEXPTYPE::REALSXP => {
-                let v = self.col.real_elt(self.row_isize());
-                if v.to_bits() == NA_REAL.to_bits() {
-                    return Err(RSerdeError::UnexpectedNa);
-                }
-                if !v.is_finite() || v != v.trunc() || v < 0.0 || v > u32::MAX as f64 {
-                    return Err(RSerdeError::Overflow {
-                        from: "f64",
-                        to: "u32",
-                    });
-                }
-                visitor.visit_u32(v as u32)
-            }
-            _ => Err(self.type_mismatch("integer or numeric")),
-        }
-    }
-
-    fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        match self.sexp_type() {
-            SEXPTYPE::INTSXP => {
-                let v = self.col.integer_elt(self.row_isize());
-                if v == NA_INTEGER {
-                    return Err(RSerdeError::UnexpectedNa);
-                }
-                if v < 0 {
-                    return Err(RSerdeError::Overflow {
-                        from: "i32",
-                        to: "u64",
-                    });
-                }
-                visitor.visit_u64(v as u64)
-            }
-            SEXPTYPE::REALSXP => {
-                let v = self.col.real_elt(self.row_isize());
-                if v.to_bits() == NA_REAL.to_bits() {
-                    return Err(RSerdeError::UnexpectedNa);
-                }
-                if !v.is_finite() || v != v.trunc() || v < 0.0 || v > u64::MAX as f64 {
-                    return Err(RSerdeError::Overflow {
-                        from: "f64",
-                        to: "u64",
-                    });
-                }
-                visitor.visit_u64(v as u64)
-            }
-            _ => Err(self.type_mismatch("integer or numeric")),
-        }
-    }
-
-    fn deserialize_f32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_real_cell(&self)?;
-        visitor.visit_f32(v as f32)
-    }
-
-    fn deserialize_f64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_real_cell(&self)?;
-        visitor.visit_f64(v)
-    }
-
-    fn deserialize_char<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        if self.sexp_type() != SEXPTYPE::STRSXP {
-            return Err(self.type_mismatch("character"));
-        }
-        let charsxp = self.col.string_elt(self.row_isize());
-        if charsxp == SEXP::na_string() {
-            return Err(RSerdeError::UnexpectedNa);
-        }
-        let s = unsafe { charsxp_to_str(charsxp) };
-        let mut chars = s.chars();
-        match (chars.next(), chars.next()) {
-            (Some(c), None) => visitor.visit_char(c),
-            _ => Err(RSerdeError::TypeMismatch {
-                expected: "single character",
-                actual: format!("string of length {}", s.len()),
-            }),
-        }
-    }
-
-    fn deserialize_str<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        if self.sexp_type() != SEXPTYPE::STRSXP {
-            return Err(self.type_mismatch("character"));
-        }
-        let charsxp = self.col.string_elt(self.row_isize());
-        if charsxp == SEXP::na_string() {
-            return Err(RSerdeError::UnexpectedNa);
-        }
-        let s = unsafe { charsxp_to_str(charsxp) };
-        // owned path: copy to String
-        visitor.visit_string(s.to_owned())
-    }
-
-    fn deserialize_string<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        self.deserialize_str(visitor)
-    }
-
-    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let i = self.row_isize();
-        let is_na = match self.sexp_type() {
-            SEXPTYPE::LGLSXP => self.col.logical_elt(i) == NA_LOGICAL,
-            SEXPTYPE::INTSXP => self.col.integer_elt(i) == NA_INTEGER,
-            SEXPTYPE::REALSXP => self.col.real_elt(i).to_bits() == NA_REAL.to_bits(),
-            SEXPTYPE::STRSXP => self.col.string_elt(i) == SEXP::na_string(),
-            _ => false,
-        };
-        if is_na {
-            visitor.visit_none()
-        } else {
-            visitor.visit_some(self)
-        }
-    }
-
-    fn deserialize_identifier<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        self.deserialize_str(visitor)
-    }
-
-    fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        visitor.visit_unit()
-    }
-
-    serde::forward_to_deserialize_any! {
-        bytes byte_buf unit unit_struct newtype_struct seq tuple tuple_struct
-        map struct enum
-    }
-}
-
-// endregion
-
-// region: borrowed deserializer
-
-/// Row deserializer for the borrowed path (`with_dataframe_rows`).
-///
-/// Lifetime `'sexp` is tied to the SEXP (via `DataFrameView`). Character cells
-/// are handed out as `&'sexp str` — zero-copy from CHARSXP.
-struct BorrowedRowDeserializer<'sexp> {
-    view: &'sexp DataFrameView,
-    row: usize,
-}
-
-impl<'sexp> BorrowedRowDeserializer<'sexp> {
-    fn new(view: &'sexp DataFrameView, row: usize) -> Self {
-        Self { view, row }
-    }
-}
-
-impl<'de> Deserializer<'de> for BorrowedRowDeserializer<'de> {
-    type Error = RSerdeError;
-
-    fn deserialize_any<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value, Self::Error> {
-        Err(RSerdeError::Message(
-            "with_dataframe_rows only supports struct deserialisation".into(),
-        ))
-    }
-
-    fn deserialize_struct<V: Visitor<'de>>(
-        self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
-        visitor: V,
-    ) -> Result<V::Value, Self::Error> {
-        visitor.visit_map(BorrowedMapAccess::new(self.view, self.row))
-    }
-
-    fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        visitor.visit_map(BorrowedMapAccess::new(self.view, self.row))
-    }
-
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
-        byte_buf option unit unit_struct newtype_struct seq tuple
-        tuple_struct enum identifier ignored_any
-    }
-}
-
-/// `MapAccess` that iterates columns and yields borrowed values.
-struct BorrowedMapAccess<'sexp> {
-    view: &'sexp DataFrameView,
-    row: usize,
-    /// Column names as collected once (ordered).
-    names: Vec<String>,
-    col_idx: usize,
-}
-
-impl<'sexp> BorrowedMapAccess<'sexp> {
-    fn new(view: &'sexp DataFrameView, row: usize) -> Self {
-        let names: Vec<String> = view.names().map(str::to_owned).collect();
-        Self {
-            view,
-            row,
-            names,
-            col_idx: 0,
-        }
-    }
-}
-
-impl<'de> MapAccess<'de> for BorrowedMapAccess<'de> {
-    type Error = RSerdeError;
-
-    fn next_key_seed<K: DeserializeSeed<'de>>(
-        &mut self,
-        seed: K,
-    ) -> Result<Option<K::Value>, Self::Error> {
-        if self.col_idx >= self.names.len() {
-            return Ok(None);
-        }
-        let name = self.names[self.col_idx].as_str();
-        seed.deserialize(de::value::StrDeserializer::new(name))
-            .map(Some)
-    }
-
-    fn next_value_seed<V: DeserializeSeed<'de>>(
-        &mut self,
-        seed: V,
-    ) -> Result<V::Value, Self::Error> {
-        let col_name = self.names[self.col_idx].as_str();
-        let col_sexp = self
-            .view
-            .column_raw(col_name)
-            .ok_or_else(|| RSerdeError::MissingField(col_name.to_owned()))?;
-        self.col_idx += 1;
-        let cell_de = BorrowedCellDeserializer::new(col_sexp, self.row, col_name);
-        seed.deserialize(cell_de)
-    }
-}
-
-// endregion
-
-// region: borrowed cell deserializer
-
-/// Deserializer for a single cell on the borrowed path.
-///
-/// The lifetime `'sexp` on `BorrowedCellDeserializer<'sexp>` is the lifetime of
-/// the CHARSXP data pointers. When serde calls `deserialize_str`, we hand out a
-/// `&'sexp str` — zero-copy from R's string cache.
-struct BorrowedCellDeserializer<'sexp, 'n> {
+/// `'sexp` is the lifetime of CHARSXP data pointers (rooted by R's protect
+/// stack for the duration of the enclosing call). `'n` is the borrow of the
+/// column name from the parent [`RowMapAccess`]. Character cells go through
+/// `visit_borrowed_str` so visitors that want `&'sexp str` see the borrow;
+/// `DeserializeOwned` visitors fall back via serde's default
+/// `visit_borrowed_str → visit_str`, which copies into a `String`.
+struct CellDeserializer<'sexp, 'n> {
     col: SEXP,
     row: usize,
     col_name: &'n str,
     _marker: std::marker::PhantomData<&'sexp ()>,
 }
 
-impl<'sexp, 'n> BorrowedCellDeserializer<'sexp, 'n> {
+impl<'sexp, 'n> CellDeserializer<'sexp, 'n> {
     fn new(col: SEXP, row: usize, col_name: &'n str) -> Self {
         Self {
             col,
@@ -780,12 +352,7 @@ impl<'sexp, 'n> BorrowedCellDeserializer<'sexp, 'n> {
     }
 }
 
-// Helper: build an OwnedCellDeserializer-like view for shared integer/real helpers.
-// Since BorrowedCellDeserializer is almost identical to OwnedCellDeserializer
-// for non-string types, we factor the integer/real reads out as free functions
-// below to avoid duplication.
-
-impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
+impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
     type Error = RSerdeError;
 
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
@@ -820,9 +387,9 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
                 if charsxp == SEXP::na_string() {
                     visitor.visit_none()
                 } else {
-                    // SAFETY: The SEXP is protected by R's argument frame for the
-                    // duration of the enclosing `with_dataframe_rows` call, so the
-                    // CHARSXP data pointer is valid for `'de` (= `'sexp`).
+                    // SAFETY: The SEXP is rooted by R's argument frame for the
+                    // duration of the enclosing call, so the CHARSXP data
+                    // pointer is valid for `'de` (= `'sexp`).
                     let s: &'de str = unsafe { charsxp_to_str(charsxp) };
                     visitor.visit_borrowed_str(s)
                 }
@@ -845,12 +412,7 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
     }
 
     fn deserialize_i8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell_raw(
-            &self.col,
-            self.row_isize(),
-            self.sexp_type(),
-            self.col_name,
-        )?;
+        let v = deserialize_integer_cell(&self)?;
         if v < i8::MIN as i32 || v > i8::MAX as i32 {
             return Err(RSerdeError::Overflow {
                 from: "i32",
@@ -861,12 +423,7 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
     }
 
     fn deserialize_i16<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell_raw(
-            &self.col,
-            self.row_isize(),
-            self.sexp_type(),
-            self.col_name,
-        )?;
+        let v = deserialize_integer_cell(&self)?;
         if v < i16::MIN as i32 || v > i16::MAX as i32 {
             return Err(RSerdeError::Overflow {
                 from: "i32",
@@ -877,12 +434,7 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
     }
 
     fn deserialize_i32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell_raw(
-            &self.col,
-            self.row_isize(),
-            self.sexp_type(),
-            self.col_name,
-        )?;
+        let v = deserialize_integer_cell(&self)?;
         visitor.visit_i32(v)
     }
 
@@ -913,12 +465,7 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
     }
 
     fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell_raw(
-            &self.col,
-            self.row_isize(),
-            self.sexp_type(),
-            self.col_name,
-        )?;
+        let v = deserialize_integer_cell(&self)?;
         if v < 0 || v > u8::MAX as i32 {
             return Err(RSerdeError::Overflow {
                 from: "i32",
@@ -929,12 +476,7 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
     }
 
     fn deserialize_u16<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_integer_cell_raw(
-            &self.col,
-            self.row_isize(),
-            self.sexp_type(),
-            self.col_name,
-        )?;
+        let v = deserialize_integer_cell(&self)?;
         if v < 0 || v > u16::MAX as i32 {
             return Err(RSerdeError::Overflow {
                 from: "i32",
@@ -1009,22 +551,12 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
     }
 
     fn deserialize_f32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_real_cell_raw(
-            &self.col,
-            self.row_isize(),
-            self.sexp_type(),
-            self.col_name,
-        )?;
+        let v = deserialize_real_cell(&self)?;
         visitor.visit_f32(v as f32)
     }
 
     fn deserialize_f64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        let v = deserialize_real_cell_raw(
-            &self.col,
-            self.row_isize(),
-            self.sexp_type(),
-            self.col_name,
-        )?;
+        let v = deserialize_real_cell(&self)?;
         visitor.visit_f64(v)
     }
 
@@ -1055,8 +587,10 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
         if charsxp == SEXP::na_string() {
             return Err(RSerdeError::UnexpectedNa);
         }
-        // SAFETY: The SEXP is rooted by R's argument frame for the duration of
-        // `with_dataframe_rows`; `'de` equals `'sexp` here.
+        // SAFETY: The SEXP is rooted by R's argument frame for the duration
+        // of the enclosing call; `'de` equals `'sexp` here. `DeserializeOwned`
+        // visitors handle this via the default `visit_borrowed_str → visit_str`
+        // fallback, which copies into a `String`.
         let s: &'de str = unsafe { charsxp_to_str(charsxp) };
         visitor.visit_borrowed_str(s)
     }
@@ -1097,10 +631,33 @@ impl<'de> Deserializer<'de> for BorrowedCellDeserializer<'de, '_> {
 
 // endregion
 
+// region: per-row dispatch
+
+/// Per-row deserialisation loop shared by all three public entry points.
+///
+/// Borrows `view` for the duration of deserialisation; the HRTB constraint
+/// (`T: for<'de> Deserialize<'de>`) lets the call site pick `'de = 'sexp`
+/// internally — visitors that want `&'sexp str` see a borrow rooted in the
+/// SEXP, `DeserializeOwned` visitors copy via serde's default fallback.
+fn deserialize_rows<'sexp, T>(view: &'sexp DataFrameView) -> Result<Vec<T>, RSerdeError>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    let nrow = view.nrow();
+    let mut rows: Vec<T> = Vec::with_capacity(nrow);
+    for i in 0..nrow {
+        let de = RowDeserializer::new(view, i);
+        rows.push(T::deserialize(de)?);
+    }
+    Ok(rows)
+}
+
+// endregion
+
 // region: shared cell helpers
 
 /// Read an integer cell, failing on NA and type mismatch.
-fn deserialize_integer_cell(de: &OwnedCellDeserializer<'_>) -> Result<i32, RSerdeError> {
+fn deserialize_integer_cell(de: &CellDeserializer<'_, '_>) -> Result<i32, RSerdeError> {
     if de.sexp_type() != SEXPTYPE::INTSXP {
         return Err(de.type_mismatch("integer"));
     }
@@ -1112,7 +669,7 @@ fn deserialize_integer_cell(de: &OwnedCellDeserializer<'_>) -> Result<i32, RSerd
 }
 
 /// Read a real cell, accepting integer columns via widening.
-fn deserialize_real_cell(de: &OwnedCellDeserializer<'_>) -> Result<f64, RSerdeError> {
+fn deserialize_real_cell(de: &CellDeserializer<'_, '_>) -> Result<f64, RSerdeError> {
     match de.sexp_type() {
         SEXPTYPE::REALSXP => {
             let v = de.col.real_elt(de.row_isize());
@@ -1129,57 +686,6 @@ fn deserialize_real_cell(de: &OwnedCellDeserializer<'_>) -> Result<f64, RSerdeEr
             Ok(v as f64)
         }
         _ => Err(de.type_mismatch("numeric or integer")),
-    }
-}
-
-/// Read an integer cell (free-fn variant for borrowed path).
-fn deserialize_integer_cell_raw(
-    col: &SEXP,
-    i: isize,
-    stype: SEXPTYPE,
-    col_name: &str,
-) -> Result<i32, RSerdeError> {
-    if stype != SEXPTYPE::INTSXP {
-        return Err(RSerdeError::Message(format!(
-            "column {:?}: type mismatch: expected integer, got {}",
-            col_name,
-            stype.type_name()
-        )));
-    }
-    let v = col.integer_elt(i);
-    if v == NA_INTEGER {
-        return Err(RSerdeError::UnexpectedNa);
-    }
-    Ok(v)
-}
-
-/// Read a real cell, accepting integer columns via widening (free-fn variant for borrowed path).
-fn deserialize_real_cell_raw(
-    col: &SEXP,
-    i: isize,
-    stype: SEXPTYPE,
-    col_name: &str,
-) -> Result<f64, RSerdeError> {
-    match stype {
-        SEXPTYPE::REALSXP => {
-            let v = col.real_elt(i);
-            if v.to_bits() == NA_REAL.to_bits() {
-                return Err(RSerdeError::UnexpectedNa);
-            }
-            Ok(v)
-        }
-        SEXPTYPE::INTSXP => {
-            let v = col.integer_elt(i);
-            if v == NA_INTEGER {
-                return Err(RSerdeError::UnexpectedNa);
-            }
-            Ok(v as f64)
-        }
-        _ => Err(RSerdeError::Message(format!(
-            "column {:?}: type mismatch: expected numeric or integer, got {}",
-            col_name,
-            stype.type_name()
-        ))),
     }
 }
 
