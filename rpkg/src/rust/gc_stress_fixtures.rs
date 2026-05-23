@@ -595,3 +595,57 @@ pub fn gc_stress_iter_to_dataframe() -> SEXP {
 }
 
 // endregion
+
+// region: BorrowedRows GC stress
+
+/// Exercise `dataframe_to_vec_borrowed` PROTECT discipline under GC pressure.
+///
+/// Synthesises 10 rows via `vec_to_dataframe`, then deserialises through
+/// `dataframe_to_vec_borrowed` and reads back via the `BorrowedRows<'_, T>`
+/// handle. Verifies the internal `OwnedProtect` keeps the source SEXP rooted
+/// while we read each row.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_borrowed_rows() -> i32 {
+    use crate::serde::{Deserialize, Serialize};
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{BorrowedRows, dataframe_to_vec_borrowed, vec_to_dataframe};
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        id: i32,
+        score: f64,
+        label: Option<String>,
+    }
+
+    let original: Vec<Row> = (0i32..10)
+        .map(|i| Row {
+            id: i,
+            score: f64::from(i) * 1.1,
+            label: if i % 2 == 0 {
+                Some(format!("item_{i}"))
+            } else {
+                None
+            },
+        })
+        .collect();
+
+    let sexp = vec_to_dataframe(&original)
+        .expect("gc_stress_borrowed_rows: vec_to_dataframe failed")
+        .into_sexp();
+
+    let bundle: BorrowedRows<'_, Row> =
+        dataframe_to_vec_borrowed(sexp).expect("gc_stress_borrowed_rows: deserialise failed");
+
+    assert_eq!(bundle.len(), original.len());
+    for (a, b) in original.iter().zip(bundle.iter()) {
+        assert_eq!(a, b);
+    }
+
+    bundle.len() as i32
+}
+
+// endregion
