@@ -135,7 +135,12 @@ impl ColumnarDataFrame {
         }
 
         // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
-        let schema = discover_schema_union(rows)?;
+        let mut acc = SchemaAccumulator::new(SchemaMode::Union);
+        for row in rows {
+            // Skip rows that fail discovery (e.g., top-level None) — Union mode tolerates partial probes.
+            let _ = acc.feed(row);
+        }
+        let schema = acc.finalize()?;
         let ncol = schema.fields.len();
         let nrow = rows.len();
 
@@ -586,7 +591,9 @@ impl<T: Serialize> DataFrameBuilder<T> {
     /// schema in strict mode (unknown keys → error).
     pub fn push(&mut self, row: T) -> Result<(), RSerdeError> {
         if self.schema.is_none() {
-            let schema = discover_schema_one_row(&row)?;
+            let mut acc = SchemaAccumulator::new(SchemaMode::SingleRow);
+            acc.feed(&row)?;
+            let schema = acc.finalize()?;
             let ncol = schema.fields.len();
             let cap = self.nrow_hint.unwrap_or(0);
             self.columns = schema
@@ -650,32 +657,6 @@ impl<T: Serialize> DataFrameBuilder<T> {
         // caller's protection of the returned df SEXP.
         Ok(df)
     }
-}
-
-/// Discover a single row's schema and convert it directly to a [`Schema`].
-///
-/// Used by [`DataFrameBuilder`] for first-row schema. Equivalent to running
-/// [`discover_schema_union`] on a one-element slice, but doesn't go through
-/// the per-key-candidate machinery (only one candidate per key).
-fn discover_schema_one_row<T: Serialize>(row: &T) -> Result<Schema, RSerdeError> {
-    let mut discoverer = SchemaDiscoverer::new(0);
-    row.serialize(&mut discoverer)?;
-
-    let total = discoverer.fields.len();
-    if total == 0 {
-        return Err(RSerdeError::Message(
-            "DataFrameBuilder: first row has no fields".into(),
-        ));
-    }
-
-    Ok(Schema {
-        fields: discoverer.fields,
-        field_map: FieldMap {
-            map: discoverer.mappings,
-            col_start: 0,
-            total_cols: total,
-        },
-    })
 }
 
 // endregion
@@ -765,9 +746,23 @@ fn resolve_candidates(candidates: &mut Vec<Candidate>) -> Candidate {
     candidates.swap_remove(best_idx)
 }
 
-/// Discover schema by probing all rows and taking the union of field sets.
+/// Mode controls accumulation strictness and the final empty-schema error wording.
 ///
-/// Two limitations vs. a fully-typed schema:
+/// `SingleRow` produces the `DataFrameBuilder: first row has no fields` error; `Union`
+/// produces the `ColumnarDataFrame::from_rows: no fields discovered from any row` error.
+/// Field collection itself is identical — both feed candidates into the same lattice
+/// resolver. SingleRow callers feed exactly once; Union callers feed per row.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SchemaMode {
+    SingleRow,
+    Union,
+}
+
+/// Accumulates per-row probes into per-key candidate lists, then resolves them
+/// into a unified [`Schema`].
+///
+/// Two limitations vs. a fully-typed schema (apply to Union mode; SingleRow sees ≤1
+/// candidate per key so the lattice degenerates):
 ///
 /// - **Truly-all-None nested Option<Struct>**: when every row has `None` for an
 ///   `Option<UserStruct>`, the probe never sees the inner struct's fields. The key lands
@@ -779,26 +774,32 @@ fn resolve_candidates(candidates: &mut Vec<Candidate>) -> Candidate {
 ///   shapes for the same key (e.g., enum variants with different nested structs), the
 ///   first Compound wins and the second is silently discarded. Recursive union is tracked
 ///   as a separate follow-up.
-///
-/// Different rows may serialize different fields (e.g., enum variants).
-/// The unified schema contains every field seen in any row. During filling,
-/// fields absent from a particular row get NA via the padding mechanism.
-fn discover_schema_union<T: Serialize>(rows: &[T]) -> Result<Schema, RSerdeError> {
-    // Phase A — probe every row, accumulate per-key candidates.
-    let mut key_order: Vec<String> = Vec::new();
-    let mut per_key_candidates: HashMap<String, Vec<Candidate>> = HashMap::new();
+struct SchemaAccumulator {
+    candidates: HashMap<String, Vec<Candidate>>,
+    key_order: Vec<String>,
+    mode: SchemaMode,
+}
 
-    for row in rows {
-        let mut discoverer = SchemaDiscoverer::new(0);
-        if row.serialize(&mut discoverer).is_err() {
-            continue; // skip rows that fail discovery (e.g., top-level None)
+impl SchemaAccumulator {
+    fn new(mode: SchemaMode) -> Self {
+        Self {
+            candidates: HashMap::new(),
+            key_order: Vec::new(),
+            mode,
         }
+    }
+
+    /// Probe one row and append its per-key candidates. Caller controls whether
+    /// to propagate or swallow the error (Union mode treats per-row failures
+    /// like top-level `None` as expected and skips them).
+    fn feed<T: ?Sized + Serialize>(&mut self, row: &T) -> Result<(), RSerdeError> {
+        let mut discoverer = SchemaDiscoverer::new(0);
+        row.serialize(&mut discoverer)?;
 
         for key in &discoverer.key_order {
-            // Register key order on first appearance.
-            if !per_key_candidates.contains_key(key) {
-                key_order.push(key.clone());
-                per_key_candidates.insert(key.clone(), Vec::new());
+            if !self.candidates.contains_key(key) {
+                self.key_order.push(key.clone());
+                self.candidates.insert(key.clone(), Vec::new());
             }
 
             let Some(mapping) = discoverer.mappings.remove(key) else {
@@ -826,64 +827,73 @@ fn discover_schema_union<T: Serialize>(rows: &[T]) -> Result<Schema, RSerdeError
                     }
                 }
             };
-            per_key_candidates.get_mut(key).unwrap().push(candidate);
+            self.candidates.get_mut(key).unwrap().push(candidate);
         }
+        Ok(())
     }
 
-    // Phase B — resolve each key into a single best candidate, build unified schema.
-    let mut unified_fields: Vec<FieldInfo> = Vec::new();
-    let mut unified_mappings: HashMap<String, FieldMapping> = HashMap::new();
+    /// Resolve each key's candidate list into the best single candidate and
+    /// build the unified [`Schema`]. Errors with a mode-specific message when
+    /// no fields were collected.
+    fn finalize(mut self) -> Result<Schema, RSerdeError> {
+        let mut unified_fields: Vec<FieldInfo> = Vec::new();
+        let mut unified_mappings: HashMap<String, FieldMapping> = HashMap::new();
 
-    for key in &key_order {
-        let candidates = per_key_candidates.get_mut(key).unwrap();
-        if candidates.is_empty() {
-            continue;
-        }
-        let new_start = unified_fields.len();
-        match resolve_candidates(candidates) {
-            Candidate::Scalar(col_type) => {
-                unified_fields.push(FieldInfo {
-                    name: key.clone(),
-                    col_type,
-                });
-                unified_mappings.insert(key.clone(), FieldMapping::Scalar { col_idx: new_start });
+        for key in &self.key_order {
+            let candidates = self.candidates.get_mut(key).unwrap();
+            if candidates.is_empty() {
+                continue;
             }
-            Candidate::Compound { fields, sub_map } => {
-                let col_count = fields.len();
-                // sub_map indices were relative to col_offset=0 in the per-row probe;
-                // remap them to the actual position in the unified layout.
-                let old_base = sub_map.col_start;
-                for field in fields {
-                    unified_fields.push(field);
+            let new_start = unified_fields.len();
+            match resolve_candidates(candidates) {
+                Candidate::Scalar(col_type) => {
+                    unified_fields.push(FieldInfo {
+                        name: key.clone(),
+                        col_type,
+                    });
+                    unified_mappings
+                        .insert(key.clone(), FieldMapping::Scalar { col_idx: new_start });
                 }
-                let remapped = remap_field_map(sub_map, old_base, new_start);
-                unified_mappings.insert(
-                    key.clone(),
-                    FieldMapping::Compound {
-                        col_start: new_start,
-                        col_count,
-                        sub_fields: remapped,
-                    },
-                );
+                Candidate::Compound { fields, sub_map } => {
+                    let col_count = fields.len();
+                    // sub_map indices were relative to col_offset=0 in the per-row probe;
+                    // remap them to the actual position in the unified layout.
+                    let old_base = sub_map.col_start;
+                    for field in fields {
+                        unified_fields.push(field);
+                    }
+                    let remapped = remap_field_map(sub_map, old_base, new_start);
+                    unified_mappings.insert(
+                        key.clone(),
+                        FieldMapping::Compound {
+                            col_start: new_start,
+                            col_count,
+                            sub_fields: remapped,
+                        },
+                    );
+                }
             }
         }
-    }
 
-    if unified_fields.is_empty() {
-        return Err(RSerdeError::Message(
-            "ColumnarDataFrame::from_rows: no fields discovered from any row".into(),
-        ));
-    }
+        if unified_fields.is_empty() {
+            return Err(RSerdeError::Message(match self.mode {
+                SchemaMode::SingleRow => "DataFrameBuilder: first row has no fields".into(),
+                SchemaMode::Union => {
+                    "ColumnarDataFrame::from_rows: no fields discovered from any row".into()
+                }
+            }));
+        }
 
-    let total = unified_fields.len();
-    Ok(Schema {
-        fields: unified_fields,
-        field_map: FieldMap {
-            map: unified_mappings,
-            col_start: 0,
-            total_cols: total,
-        },
-    })
+        let total = unified_fields.len();
+        Ok(Schema {
+            fields: unified_fields,
+            field_map: FieldMap {
+                map: unified_mappings,
+                col_start: 0,
+                total_cols: total,
+            },
+        })
+    }
 }
 
 /// Remap all column indices in a FieldMap from old base to new base.
