@@ -7,8 +7,8 @@ by R's memory manager.
 
 `RAllocator` routes every Rust heap allocation through R's `Rf_allocVector(RAWSXP, n)`,
 so Rust memory participates in R's garbage collection. Each allocation is
-GC-protected via the [preserve list](GC_PROTECT.md#preserve-list) and released
-on dealloc.
+GC-protected via `R_PreserveObject` and released on dealloc via
+`R_ReleaseObject`.
 
 **Source:** `miniextendr-api/src/allocator.rs`
 
@@ -35,9 +35,9 @@ RAWSXP data bytes:
                                   └── pointer returned to caller
 ```
 
-The `Header` stores a single `preserve_tag: SEXP`, the cell in the preserve
-list that keeps this RAWSXP alive. On dealloc, the allocator reads the header
-to recover the tag and releases the preserve cell.
+The `Header` stores a single `sexp: SEXP` pointing back to the RAWSXP that
+backs this allocation. On dealloc, the allocator reads the header to recover
+the SEXP and calls `R_ReleaseObject` to drop R's protection.
 
 ## How It Works
 
@@ -45,18 +45,18 @@ to recover the tag and releases the preserve cell.
 
 1. Compute total size: alignment padding + `Header` (8 bytes) + requested size
 2. `Rf_allocVector(RAWSXP, total)` - allocate an R raw vector
-3. `preserve::insert(sexp)` - protect from GC (any-order release, not LIFO)
-4. Write the `Header` (preserve tag) immediately before the user pointer
+3. `R_PreserveObject(sexp)` - protect from GC
+4. Write the `Header` (SEXP back-pointer) immediately before the user pointer
 5. Return the aligned user pointer
 
 ### Deallocation
 
-1. Read the `Header` just before the pointer → recover `preserve_tag`
-2. `preserve::release(tag)` - R's GC can now reclaim the RAWSXP
+1. Read the `Header` just before the pointer → recover backing `sexp`
+2. `R_ReleaseObject(sexp)` - R's GC can now reclaim the RAWSXP
 
 ### Reallocation
 
-1. Recover the original RAWSXP via the header's preserve tag
+1. Recover the original RAWSXP via the header
 2. Check if the existing RAWSXP has spare capacity (possible due to alignment
    over-allocation)
 3. If it fits → return the same pointer (no copy)

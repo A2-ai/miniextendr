@@ -117,9 +117,6 @@ default-s7 = ["miniextendr-macros/default-s7"]
 ## Without this feature, worker APIs are lightweight inline stubs.
 worker-thread = []
 default-worker = ["miniextendr-macros/default-worker", "worker-thread"]
-## Enable preserve::count() / count_unchecked() diagnostic helpers.
-## Only needed in tests and benchmarks; excluded from production builds.
-debug-preserve = []
 ## Enable debug instrumentation for tracking collection growth events.
 ## Provides track_growth! and report_growth! macros for diagnosing unexpected
 ## Vec/arena reallocations. Zero-cost (no-ops) when disabled.
@@ -136,7 +133,7 @@ full = [
     "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
     "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
     "either", "log", "worker-thread", "macro-coverage",
-    "debug-preserve", "growth-debug",
+    "growth-debug",
 ]
 
 [dependencies]

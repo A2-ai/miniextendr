@@ -26,7 +26,8 @@
 
 use std::marker::PhantomData;
 
-use crate::sys::{R_PreserveObject, R_ReleaseObject, Rf_protect, Rf_unprotect, SEXP, SexpExt};
+use crate::gc_protect::OwnedProtect;
+use crate::sys::{R_PreserveObject, R_ReleaseObject, SEXP, SexpExt};
 
 // region: RTxtProgressBar struct
 
@@ -290,52 +291,40 @@ impl RTxtProgressBarBuilder {
 // Must be called from the R main thread.
 unsafe fn build_inner(opts: RTxtProgressBarBuilder) -> RTxtProgressBar {
     use crate::expression::{RCall, REnv};
-    use crate::sys::{Rf_mkString, SEXP};
+    use crate::sys::SEXP;
 
     unsafe {
         // Resolve the utils namespace — utils is always loaded (base default).
         let utils_ns =
             REnv::package_namespace("utils").expect("utils namespace not found — is utils loaded?");
 
-        // Prepare scalar arguments; protect them across the RCall::build step.
-        let min_val = SEXP::scalar_real(opts.min);
-        Rf_protect(min_val);
-        let max_val = SEXP::scalar_real(opts.max);
-        Rf_protect(max_val);
-        let initial_val = SEXP::scalar_real(opts.initial);
-        Rf_protect(initial_val);
-
-        let char_cstr = std::ffi::CString::new(opts.char.as_str())
-            .unwrap_or_else(|_| std::ffi::CString::new("=").unwrap());
-        let char_val = Rf_mkString(char_cstr.as_ptr());
-        Rf_protect(char_val);
-
+        // Prepare scalar arguments; each OwnedProtect drops at end-of-scope.
+        let min_val = OwnedProtect::new(SEXP::scalar_real(opts.min));
+        let max_val = OwnedProtect::new(SEXP::scalar_real(opts.max));
+        let initial_val = OwnedProtect::new(SEXP::scalar_real(opts.initial));
+        let char_val = OwnedProtect::new(SEXP::scalar_string_from_str(&opts.char));
         // NA_integer_ when width is None (R interprets NA as "use getOption").
-        let width_val = SEXP::scalar_integer(opts.width.map(|w| w as i32).unwrap_or(i32::MIN));
-        Rf_protect(width_val);
-
-        let style_val = SEXP::scalar_integer(opts.style as i32);
-        Rf_protect(style_val);
+        let width_val = OwnedProtect::new(SEXP::scalar_integer(
+            opts.width.map(|w| w as i32).unwrap_or(i32::MIN),
+        ));
+        let style_val = OwnedProtect::new(SEXP::scalar_integer(opts.style as i32));
 
         // Build the call: txtProgressBar(min=, max=, initial=, char=, width=, style= [, file=])
         let mut call = RCall::new("txtProgressBar")
-            .named_arg("min", min_val)
-            .named_arg("max", max_val)
-            .named_arg("initial", initial_val)
-            .named_arg("char", char_val)
-            .named_arg("width", width_val)
-            .named_arg("style", style_val);
+            .named_arg("min", min_val.get())
+            .named_arg("max", max_val.get())
+            .named_arg("initial", initial_val.get())
+            .named_arg("char", char_val.get())
+            .named_arg("width", width_val.get())
+            .named_arg("style", style_val.get());
 
         if let Some(file_sexp) = opts.file {
             call = call.named_arg("file", file_sexp);
         }
 
-        let result = call.eval(utils_ns.as_sexp());
-
-        // Release our scalar protections.
-        Rf_unprotect(6); // style_val, width_val, char_val, initial_val, max_val, min_val
-
-        let sexp = result.expect("utils::txtProgressBar(...) failed");
+        let sexp = call
+            .eval(utils_ns.as_sexp())
+            .expect("utils::txtProgressBar(...) failed");
 
         // Pin on the precious list — GC cannot collect while Rust holds it.
         R_PreserveObject(sexp);
@@ -357,16 +346,12 @@ unsafe fn set_txt_progress_bar_inner(sexp: SEXP, value: f64) -> Result<(), Strin
     use crate::sys::SEXP;
 
     unsafe {
-        let val_sexp = SEXP::scalar_real(value);
-        Rf_protect(val_sexp);
-
-        let result = RCall::new("setTxtProgressBar")
+        let val_sexp = OwnedProtect::new(SEXP::scalar_real(value));
+        RCall::new("setTxtProgressBar")
             .arg(sexp)
-            .arg(val_sexp)
-            .eval_base();
-
-        Rf_unprotect(1); // val_sexp
-        result.map(|_| ())
+            .arg(val_sexp.get())
+            .eval_base()
+            .map(|_| ())
     }
 }
 
@@ -402,32 +387,17 @@ unsafe fn close_txt_progress_bar_inner(sexp: SEXP) -> Result<(), String> {
 // # Safety
 // Must be called from the R main thread.
 unsafe fn kill_txt_progress_bar_inner(sexp: SEXP) {
-    use crate::sys::{R_BaseEnv, Rf_install, Rf_lang1, Rf_lang3, Rf_mkString};
+    use crate::expression::{RCall, dollar_extract};
 
     unsafe {
-        // Extract pb$kill — evaluates `"$"(pb, "kill")` to get the closure.
-        let dollar_sym = Rf_install(c"$".as_ptr());
-        let kill_str = Rf_mkString(c"kill".as_ptr());
-        Rf_protect(kill_str);
+        // Extract pb$kill — returns the closure stored in the progress bar.
+        let Ok(kill_fn) = dollar_extract(sexp, "kill") else {
+            return; // bar already closed or invalid — Drop cannot propagate.
+        };
+        let kill_fn = OwnedProtect::new(kill_fn);
 
-        let extract = Rf_lang3(dollar_sym, sexp, kill_str);
-        Rf_protect(extract);
-
-        let mut err: std::os::raw::c_int = 0;
-        let kill_fn = crate::sys::R_tryEvalSilent(extract, R_BaseEnv, &mut err);
-        Rf_unprotect(2); // extract, kill_str
-        if err != 0 {
-            return; // bar already closed or invalid — ignore
-        }
-
-        // Call kill()
-        Rf_protect(kill_fn);
-        let call = Rf_lang1(kill_fn);
-        Rf_protect(call);
-        let mut err2: std::os::raw::c_int = 0;
-        crate::sys::R_tryEvalSilent(call, R_BaseEnv, &mut err2);
-        Rf_unprotect(2); // call, kill_fn
-        // Ignore err2 — we're in Drop, cannot propagate.
+        // Call kill() — ignore errors, Drop cannot propagate.
+        let _ = RCall::from_sexp(kill_fn.get()).eval_base();
     }
 }
 

@@ -649,3 +649,77 @@ pub fn gc_stress_borrowed_rows() -> i32 {
 }
 
 // endregion
+
+// region: STRSXP-building PROTECT discipline GC stress
+
+/// Exercise the PROTECT discipline of the migrated STRSXP-building / factor
+/// paths under GC pressure.
+///
+/// Drives:
+/// - `match_arg::choices_sexp` (via a derived `MatchArg` enum's `IntoR for Vec<T>`),
+/// - `match_arg::match_arg_vec_into_sexp` (same path),
+/// - `factor::build_factor_with_levels` (via `FactorVec` / `FactorOptionVec`
+///   blanket impls — bare `RFactor` enum, no caching),
+/// - `named_vector::set_names_on_sexp` (via `NamedVector<HashMap<String, i32>>`).
+///
+/// Each path allocates a fresh STRSXP and reads/writes elements across
+/// allocations that can fire GC — exactly the shape that broke in PR #344's
+/// `make_rust_condition_value`. No arguments — suitable for the fast
+/// gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_protect_discipline() {
+    use miniextendr_api::factor::{FactorOptionVec, FactorVec};
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::match_arg::MatchArg;
+    use miniextendr_api::NamedVector;
+
+    // FactorVec<Color> → build_factor_with_levels exercised on a no-cache path
+    // (RFactor blanket through FactorVec).
+    let fv: FactorVec<crate::factor_tests::Color> = FactorVec(vec![
+        crate::factor_tests::Color::Red,
+        crate::factor_tests::Color::Green,
+        crate::factor_tests::Color::Blue,
+        crate::factor_tests::Color::Red,
+    ]);
+    let _ = fv.into_sexp();
+
+    // FactorOptionVec<Color> with NA → same path, different indices builder.
+    let fov: FactorOptionVec<crate::factor_tests::Color> = FactorOptionVec(vec![
+        Some(crate::factor_tests::Color::Red),
+        None,
+        Some(crate::factor_tests::Color::Green),
+        None,
+    ]);
+    let _ = fov.into_sexp();
+
+    // Vec<Mode>: IntoR (Vec<T: MatchArg>) → match_arg_vec_into_sexp,
+    // exercising the STRSXP build loop with the R_BlankString short-circuit
+    // path skipped (no empty strings in CHOICES here).
+    let _ = miniextendr_api::match_arg::match_arg_vec_into_sexp(vec![
+        crate::match_arg_tests::Mode::Fast,
+        crate::match_arg_tests::Mode::Safe,
+        crate::match_arg_tests::Mode::Debug,
+    ]);
+
+    // choices_sexp<Mode> → STRSXP build with the same short-circuit branch.
+    let _ = miniextendr_api::match_arg::choices_sexp::<crate::match_arg_tests::Mode>();
+
+    // NamedVector<HashMap<String, i32>> → set_names_on_sexp STRSXP build.
+    let mut m = HashMap::new();
+    m.insert("alpha".to_string(), 1i32);
+    m.insert("beta".to_string(), 2);
+    m.insert("gamma".to_string(), 3);
+    let _ = NamedVector(m).into_sexp();
+
+    // Empty-key edge case: hits the `R_BlankString` short-circuit in
+    // `set_names_on_sexp`.
+    let mut m2 = HashMap::new();
+    m2.insert(String::new(), 42i32);
+    let _ = NamedVector(m2).into_sexp();
+
+    // CHOICES read-back to silence unused-warning on the MatchArg trait import
+    // (also a sanity check that the enum type is reachable at compile time).
+    let _ = <crate::match_arg_tests::Mode as MatchArg>::CHOICES.len();
+}
+
+// endregion

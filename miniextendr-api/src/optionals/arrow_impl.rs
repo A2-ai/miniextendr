@@ -275,7 +275,7 @@ impl std::fmt::Debug for RStringArray {
 /// GC guard that keeps an R SEXP alive for as long as an Arrow Buffer exists.
 ///
 /// Uses `R_PreserveObject`/`R_ReleaseObject` (mutex-protected in R 4.0+)
-/// instead of the thread-local preserve list, because Arrow buffers may be
+/// rather than a Rust-side protect pool, because Arrow buffers may be
 /// dropped on non-main threads (Arrow is `Send + Sync`).
 struct RPreservedSexp(SEXP);
 

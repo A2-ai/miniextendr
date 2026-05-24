@@ -16,7 +16,6 @@
 
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
 use miniextendr_api::list::{List, ListAccumulator, ListBuilder, collect_list};
-use miniextendr_api::preserve;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 use miniextendr_api::sys::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use miniextendr_bench::raw_ffi;
@@ -36,114 +35,6 @@ fn raw_protect_unprotect() {
         Rf_protect(sexp);
         Rf_unprotect(1);
         divan::black_box(sexp);
-    }
-}
-
-/// Preserve list: insert + release
-#[divan::bench]
-fn preserve_insert_release() {
-    unsafe {
-        let sexp = raw_ffi::Rf_ScalarInteger(42);
-        let cell = preserve::insert(sexp);
-        preserve::release(cell);
-        divan::black_box(cell);
-    }
-}
-
-/// Preserve list (unchecked): insert + release
-#[divan::bench]
-fn preserve_insert_release_unchecked() {
-    unsafe {
-        let sexp = raw_ffi::Rf_ScalarInteger(42);
-        let cell = preserve::insert_unchecked(sexp);
-        preserve::release_unchecked(cell);
-        divan::black_box(cell);
-    }
-}
-
-/// Preserve list: insert N values then release all (doubly-linked list O(n))
-#[divan::bench(args = [10, 100, 1000])]
-fn preserve_multiple(n: usize) {
-    unsafe {
-        let mut cells = Vec::with_capacity(n);
-        for i in 0..n {
-            let sexp = raw_ffi::Rf_ScalarInteger(i as i32);
-            cells.push(preserve::insert_unchecked(sexp));
-        }
-        // Release in reverse order (typical LIFO pattern)
-        for cell in cells.into_iter().rev() {
-            preserve::release_unchecked(cell);
-        }
-    }
-}
-
-/// Preserve list: insert N values then release in arbitrary order
-/// Shows O(1) release advantage of doubly-linked list
-#[divan::bench(args = [10, 100, 1000])]
-fn preserve_release_arbitrary_order(n: usize) {
-    unsafe {
-        let mut cells = Vec::with_capacity(n);
-        for i in 0..n {
-            let sexp = raw_ffi::Rf_ScalarInteger(i as i32);
-            cells.push(preserve::insert_unchecked(sexp));
-        }
-        // Release in "random" order (every 3rd, then every 2nd, then rest)
-        for i in (0..n).step_by(3) {
-            preserve::release_unchecked(cells[i]);
-        }
-        for i in (1..n).step_by(3) {
-            preserve::release_unchecked(cells[i]);
-        }
-        for i in (2..n).step_by(3) {
-            preserve::release_unchecked(cells[i]);
-        }
-    }
-}
-
-/// Preserve list: count check
-#[cfg(feature = "debug-preserve")]
-#[divan::bench]
-fn preserve_count() {
-    unsafe {
-        divan::black_box(preserve::count());
-    }
-}
-
-/// Preserve list: large scale test (matches ppsize_* benchmarks in refcount_protect)
-#[divan::bench(args = [10000, 50000, 100000, 200000, 300000, 400000, 500000])]
-fn preserve_ppsize_scale(n: usize) {
-    unsafe {
-        let mut cells = Vec::with_capacity(n);
-        for i in 0..n {
-            let sexp = raw_ffi::Rf_ScalarInteger((i % 1000) as i32);
-            cells.push(preserve::insert_unchecked(sexp));
-        }
-        // Release all
-        for cell in cells {
-            preserve::release_unchecked(cell);
-        }
-    }
-}
-
-/// Preserve list: large scale with arbitrary release order
-#[divan::bench(args = [10000, 50000, 100000])]
-fn preserve_ppsize_arbitrary_order(n: usize) {
-    unsafe {
-        let mut cells = Vec::with_capacity(n);
-        for i in 0..n {
-            let sexp = raw_ffi::Rf_ScalarInteger((i % 1000) as i32);
-            cells.push(preserve::insert_unchecked(sexp));
-        }
-        // Release in "random" order
-        for i in (0..n).step_by(3) {
-            preserve::release_unchecked(cells[i]);
-        }
-        for i in (1..n).step_by(3) {
-            preserve::release_unchecked(cells[i]);
-        }
-        for i in (2..n).step_by(3) {
-            preserve::release_unchecked(cells[i]);
-        }
     }
 }
 

@@ -5,7 +5,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::gc_protect::{OwnedProtect, Protected, ProtectScope, tls};
+use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope, Protected, tls};
 use miniextendr_api::sys::{Rf_allocVector, SEXP, SEXPTYPE};
 
 // region: Balance tests

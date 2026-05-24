@@ -25,9 +25,10 @@
 //! }
 //! ```
 
+use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::sys::{
-    self, PairListExt, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_protect,
-    Rf_unprotect, SEXP, SexpExt,
+    self, PairListExt, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, SEXP,
+    SexpExt,
 };
 use std::ffi::{CStr, CString};
 
@@ -170,11 +171,11 @@ impl REnv {
     /// Returns `Err` if the package namespace is not found (package not loaded).
     pub unsafe fn package_namespace(name: &str) -> Result<Self, String> {
         unsafe {
-            let name_sexp = SEXP::scalar_string_from_str(name);
-            Rf_protect(name_sexp);
-            let result = RCall::new("getNamespace").arg(name_sexp).eval(R_BaseEnv);
-            Rf_unprotect(1);
-            result.map(|sexp| REnv { sexp })
+            let name_sexp = OwnedProtect::new(SEXP::scalar_string_from_str(name));
+            RCall::new("getNamespace")
+                .arg(name_sexp.get())
+                .eval(R_BaseEnv)
+                .map(|sexp| REnv { sexp })
         }
     }
 
@@ -328,29 +329,23 @@ impl RCall {
     pub unsafe fn build(&self) -> SEXP {
         unsafe {
             // Build the argument pairlist from back to front using Rf_cons.
-            // We protect intermediate results as we go.
-            let mut n_protect: i32 = 0;
+            // ProtectScope tracks all intermediate cons cells and the final
+            // LANGSXP head, then unprotects them all on drop. The returned
+            // call is unprotected — caller protects it if needed.
+            let scope = ProtectScope::new();
 
             let mut tail = SEXP::nil();
             for (name, value) in self.args.iter().rev() {
-                tail = value.cons(tail);
-                Rf_protect(tail);
-                n_protect += 1;
-
+                tail = scope.protect_raw(value.cons(tail));
                 if let Some(c_name) = name {
                     tail.set_tag(Rf_install(c_name.as_ptr()));
                 }
             }
 
-            // Prepend the function as LANGSXP head
-            let call = self.fun.lcons(tail);
-            Rf_protect(call);
-            n_protect += 1;
-
-            // Clean up all intermediate protections; caller is responsible
-            // for protecting the returned call.
-            Rf_unprotect(n_protect);
-            call
+            // Prepend the function as LANGSXP head.
+            // ProtectScope drops here; the call is unprotected on return
+            // (callers re-protect via OwnedProtect before invoking eval).
+            scope.protect_raw(self.fun.lcons(tail))
         }
     }
 
@@ -371,13 +366,10 @@ impl RCall {
     /// - `Err(String)` with the R error message on failure
     pub unsafe fn eval(&self, env: SEXP) -> Result<SEXP, String> {
         unsafe {
-            let call = self.build();
-            Rf_protect(call);
+            let call = OwnedProtect::new(self.build());
 
             let mut error_occurred: std::os::raw::c_int = 0;
-            let result = R_tryEvalSilent(call, env, &mut error_occurred);
-
-            Rf_unprotect(1); // call
+            let result = R_tryEvalSilent(call.get(), env, &mut error_occurred);
 
             if error_occurred != 0 {
                 Err(get_r_error_message())
@@ -397,6 +389,40 @@ impl RCall {
         unsafe { self.eval(R_BaseEnv) }
     }
 }
+
+/// Build and evaluate `target$name` — the R `$` extraction operator.
+///
+/// This is a convenience wrapper that avoids hand-rolling
+/// `Rf_install("$") + Rf_lang3(...) + R_tryEvalSilent(...)` ladders.
+/// Equivalent to:
+///
+/// ```ignore
+/// RCall::new("$")
+///     .arg(target)
+///     .arg(SEXP::scalar_string_from_str(name))
+///     .eval_base()
+/// ```
+///
+/// but uses the more direct LANGSXP form internally and protects all
+/// intermediate allocations via RAII.
+///
+/// # Safety
+///
+/// - Must be called from the R main thread.
+/// - `target` must be a valid SEXP (typically a list, environment, or S4
+///   object that supports `$` extraction).
+///
+/// # Returns
+///
+/// - `Ok(SEXP)` with the extracted value (unprotected — caller should protect if needed).
+/// - `Err(String)` with the R error message if `$` extraction fails or the
+///   evaluation errors.
+pub unsafe fn dollar_extract(target: SEXP, name: &str) -> Result<SEXP, String> {
+    unsafe {
+        let name_sexp = OwnedProtect::new(SEXP::scalar_string_from_str(name));
+        RCall::new("$").arg(target).arg(name_sexp.get()).eval_base()
+    }
+}
 // endregion
 
 // region: Error message extraction
@@ -409,39 +435,29 @@ unsafe fn get_r_error_message() -> String {
     unsafe {
         // Call geterrmessage() — a public R function that returns the last
         // error message as a character(1) string.
-        let call = sys::Rf_lang1(Rf_install(c"geterrmessage".as_ptr()));
-        Rf_protect(call);
+        let call = OwnedProtect::new(sys::Rf_lang1(Rf_install(c"geterrmessage".as_ptr())));
 
         let mut err: std::os::raw::c_int = 0;
-        let msg_sexp = R_tryEvalSilent(call, R_BaseEnv, &mut err);
+        let msg_sexp = R_tryEvalSilent(call.get(), R_BaseEnv, &mut err);
 
         if err != 0 || msg_sexp.is_null() {
-            Rf_unprotect(1); // call
             return "R error occurred (could not retrieve message)".to_string();
         }
 
-        Rf_protect(msg_sexp);
+        let _msg_guard = OwnedProtect::new(msg_sexp);
 
         // geterrmessage() returns character(1)
-        let result = if msg_sexp.xlength() > 0 {
+        if msg_sexp.xlength() > 0 {
             let charsxp = msg_sexp.string_elt(0);
             if !charsxp.is_null() {
                 let ptr = charsxp.r_char();
                 if !ptr.is_null() {
                     let msg = CStr::from_ptr(ptr).to_string_lossy().into_owned();
-                    msg.trim_end().to_string()
-                } else {
-                    "R error occurred".to_string()
+                    return msg.trim_end().to_string();
                 }
-            } else {
-                "R error occurred".to_string()
             }
-        } else {
-            "R error occurred".to_string()
-        };
-
-        Rf_unprotect(2); // call + msg_sexp
-        result
+        }
+        "R error occurred".to_string()
     }
 }
 // endregion

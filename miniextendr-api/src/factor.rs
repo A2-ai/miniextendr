@@ -30,8 +30,9 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::{Rf_allocVector, Rf_install, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rf_allocVector, Rf_install, SEXP, SEXPTYPE, SexpExt};
 
 // region: Cached "factor" class STRSXP
 
@@ -99,6 +100,29 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
         sexp.set_levels(levels);
         sexp.set_class(factor_class_sexp());
         sexp
+    }
+}
+
+/// Build a factor SEXP from indices and level names in a single call.
+///
+/// Builds the levels STRSXP via [`build_levels_sexp`] and protects it
+/// across the [`build_factor`] allocation, so callers don't need to manage
+/// the levels protection themselves. The returned factor SEXP is **not**
+/// protected — caller must protect or return it.
+///
+/// This is the recommended path for one-shot factor construction; for
+/// repeated calls with the same levels prefer caching via
+/// [`build_levels_sexp_cached`] (no protection needed because the cached
+/// SEXP is on R's precious list).
+///
+/// See CLAUDE.md "PROTECT discipline against R-devel GC" for why this
+/// matters even though `build_levels_sexp` uses symbol PRINTNAMEs for the
+/// per-element CHARSXPs — the container STRSXP itself is freshly allocated
+/// and unprotected.
+pub fn build_factor_with_levels(indices: &[i32], level_names: &[&str]) -> SEXP {
+    unsafe {
+        let levels = OwnedProtect::new(build_levels_sexp(level_names));
+        build_factor(indices, levels.get())
     }
 }
 // endregion
@@ -454,15 +478,9 @@ impl<T: RFactor> IntoR for FactorVec<T> {
     }
     fn into_sexp(self) -> SEXP {
         let indices: Vec<i32> = self.0.iter().map(|v| v.to_level_index()).collect();
-        // Protect levels STRSXP before build_factor allocates the integer SEXP.
-        // build_factor's alloc_r_vector call can trigger GC which could collect the
-        // unprotected STRSXP container.
-        unsafe {
-            let levels = Rf_protect(build_levels_sexp(T::CHOICES));
-            let result = build_factor(&indices, levels);
-            Rf_unprotect(1);
-            result
-        }
+        // build_factor_with_levels protects the levels STRSXP across the
+        // build_factor allocation — see "PROTECT discipline against R-devel GC".
+        build_factor_with_levels(&indices, T::CHOICES)
     }
 }
 
@@ -558,10 +576,9 @@ impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        // Note: generic statics are not allowed in Rust, so we build levels on each call.
-        // Protect the levels STRSXP before build_factor allocates the integer SEXP —
-        // build_factor's alloc_r_vector can trigger GC which could collect an unprotected
-        // STRSXP container.  See CLAUDE.md "PROTECT discipline against R-devel GC".
+        // Generic statics aren't allowed in Rust, so levels are built per call.
+        // build_factor_with_levels protects the levels STRSXP across the
+        // build_factor allocation — see "PROTECT discipline against R-devel GC".
         let indices: Vec<i32> = self
             .0
             .into_iter()
@@ -570,12 +587,7 @@ impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
                 Some(v) => v.to_factor_index(),
             })
             .collect();
-        unsafe {
-            let levels = Rf_protect(build_levels_sexp(T::FACTOR_LEVELS));
-            let result = build_factor(&indices, levels);
-            Rf_unprotect(1);
-            result
-        }
+        build_factor_with_levels(&indices, T::FACTOR_LEVELS)
     }
 }
 // endregion: UnitEnumFactor

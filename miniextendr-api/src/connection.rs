@@ -128,62 +128,35 @@ pub fn check_connections_version() {
 /// }
 /// ```
 pub unsafe fn check_connections_runtime() -> Result<(), String> {
-    use crate::expression::RCall;
-    use crate::sys::{R_BaseEnv, Rf_protect, Rf_unprotect, SexpExt};
+    use crate::expression::{RCall, dollar_extract};
+    use crate::gc_protect::OwnedProtect;
+    use crate::sys::{R_BaseEnv, SexpExt};
 
     unsafe {
-        // Evaluate R.Version() in base env
-        let version_list = RCall::new("R.Version").eval(R_BaseEnv)?;
-        Rf_protect(version_list);
+        // Evaluate R.Version() in base env.
+        let version_list = OwnedProtect::new(RCall::new("R.Version").eval(R_BaseEnv)?);
 
-        // Extract $major
-        let major_sexp = RCall::new("$")
-            .arg(version_list)
-            .arg(crate::sys::Rf_mkString(c"major".as_ptr()))
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(1);
-            })?;
-        Rf_protect(major_sexp);
+        // Extract $major / $minor — each guarded by an OwnedProtect that
+        // releases automatically if a later step short-circuits with `?`.
+        let major_sexp = OwnedProtect::new(dollar_extract(version_list.get(), "major")?);
+        let minor_sexp = OwnedProtect::new(dollar_extract(version_list.get(), "minor")?);
 
-        // Extract $minor
-        let minor_sexp = RCall::new("$")
-            .arg(version_list)
-            .arg(crate::sys::Rf_mkString(c"minor".as_ptr()))
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(2);
-            })?;
-        Rf_protect(minor_sexp);
-
-        // Convert major (character) to integer via as.integer()
+        // Convert major (character) to integer via as.integer().
         let major_int = RCall::new("as.integer")
-            .arg(major_sexp)
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(3);
-            })?;
+            .arg(major_sexp.get())
+            .eval(R_BaseEnv)?;
         let major = major_int.as_integer().expect("R.Version()$major is not NA");
 
-        // Parse minor: it's a string like "3.1", we only need the part before the dot
+        // Parse minor: it's a string like "3.1" — only the part before the dot.
+        let minor_stripped = RCall::new("sub")
+            .arg(crate::sys::Rf_mkString(c"\\..*".as_ptr()))
+            .arg(crate::sys::Rf_mkString(c"".as_ptr()))
+            .arg(minor_sexp.get())
+            .eval(R_BaseEnv)?;
         let minor_int = RCall::new("as.integer")
-            .arg(
-                RCall::new("sub")
-                    .arg(crate::sys::Rf_mkString(c"\\..*".as_ptr()))
-                    .arg(crate::sys::Rf_mkString(c"".as_ptr()))
-                    .arg(minor_sexp)
-                    .eval(R_BaseEnv)
-                    .inspect_err(|_| {
-                        Rf_unprotect(3);
-                    })?,
-            )
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(3);
-            })?;
+            .arg(minor_stripped)
+            .eval(R_BaseEnv)?;
         let minor = minor_int.as_integer().expect("R.Version()$minor is not NA");
-
-        Rf_unprotect(3); // version_list, major_sexp, minor_sexp
 
         // R_new_custom_connection requires R >= 4.3.0
         if major > 4 || (major == 4 && minor >= 3) {
@@ -1264,18 +1237,13 @@ pub struct RStderr;
 // # Safety
 // Must be called from the R main thread.
 unsafe fn eval_base_connection(name: &std::ffi::CStr) -> SEXP {
-    use crate::sys::{R_BaseEnv, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect};
+    use crate::expression::RCall;
     unsafe {
-        let call = Rf_lang1(Rf_install(name.as_ptr()));
-        Rf_protect(call);
-        // R_tryEvalSilent so an error becomes a panic rather than a longjmp.
-        let mut err: std::os::raw::c_int = 0;
-        let result = crate::sys::R_tryEvalSilent(call, R_BaseEnv, &mut err);
-        Rf_unprotect(1); // call
-        if err != 0 {
-            panic!("failed to evaluate {}()", name.to_string_lossy());
-        }
-        result
+        // R_tryEvalSilent (inside RCall::eval) routes errors back as Err
+        // rather than longjmping.
+        RCall::from_cstr(name)
+            .eval_base()
+            .unwrap_or_else(|_| panic!("failed to evaluate {}()", name.to_string_lossy()))
     }
 }
 
@@ -1410,44 +1378,24 @@ impl RNullConnection {
     /// Must be called from the R main thread.
     pub fn new() -> Self {
         unsafe {
-            use crate::sys::{
-                R_BaseEnv, R_PreserveObject, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect,
-            };
-            // nullfile() — returns the platform null device path
-            let nullfile_sym = Rf_install(c"nullfile".as_ptr());
-            let nullfile_call = Rf_lang1(nullfile_sym);
-            Rf_protect(nullfile_call);
+            use crate::expression::RCall;
+            use crate::gc_protect::OwnedProtect;
+            use crate::sys::R_PreserveObject;
 
-            let mut err: std::os::raw::c_int = 0;
-            let null_path = crate::sys::R_tryEvalSilent(nullfile_call, R_BaseEnv, &mut err);
-            Rf_unprotect(1); // nullfile_call
-            if err != 0 {
-                panic!("nullfile() failed");
-            }
-            Rf_protect(null_path);
+            // nullfile() — returns the platform null device path. Protect it
+            // while we build the file() call that references it as an arg.
+            let null_path = OwnedProtect::new(
+                RCall::new("nullfile")
+                    .eval_base()
+                    .unwrap_or_else(|_| panic!("nullfile() failed")),
+            );
 
-            // file(nullfile(), open = "w")
-            let file_sym = Rf_install(c"file".as_ptr());
-            let open_sym = Rf_install(c"open".as_ptr());
-            let open_str = crate::sys::Rf_mkString(c"w".as_ptr());
-            Rf_protect(open_str);
-
-            // Build file(null_path, open = "w") as a pairlist
-            use crate::sexp_ext::PairListExt;
-            let tail = open_str.cons(SEXP::nil());
-            Rf_protect(tail);
-            tail.set_tag(open_sym);
-            let mid = null_path.cons(tail);
-            Rf_protect(mid);
-            let call = file_sym.lcons(mid);
-            Rf_protect(call);
-
-            let sexp = crate::sys::R_tryEvalSilent(call, R_BaseEnv, &mut err);
-            Rf_unprotect(5); // call, mid, tail, open_str, null_path
-
-            if err != 0 {
-                panic!("file(nullfile(), open=\"w\") failed");
-            }
+            // file(null_path, open = "w")
+            let sexp = RCall::new("file")
+                .arg(null_path.get())
+                .named_arg("open", crate::sys::Rf_mkString(c"w".as_ptr()))
+                .eval_base()
+                .unwrap_or_else(|_| panic!("file(nullfile(), open=\"w\") failed"));
 
             // Pin on the precious list so GC cannot collect it while we hold it.
             R_PreserveObject(sexp);
@@ -1490,17 +1438,12 @@ impl RNullConnection {
 
     // Inner: call R's close() on the SEXP and release from precious list.
     unsafe fn close_inner(&mut self) {
-        use crate::sys::{
-            R_BaseEnv, R_ReleaseObject, Rf_install, Rf_lang2, Rf_protect, Rf_unprotect,
-        };
+        use crate::expression::RCall;
+        use crate::sys::R_ReleaseObject;
         unsafe {
-            let close_sym = Rf_install(c"close".as_ptr());
-            let call = Rf_lang2(close_sym, self.sexp);
-            Rf_protect(call);
-            let mut err: std::os::raw::c_int = 0;
-            crate::sys::R_tryEvalSilent(call, R_BaseEnv, &mut err);
-            Rf_unprotect(1); // call
-            // Release from precious list regardless of whether close() errored.
+            // Ignore close() errors — we still need to release the precious-list
+            // reference (otherwise the SEXP leaks).
+            let _ = RCall::new("close").arg(self.sexp).eval_base();
             R_ReleaseObject(self.sexp);
         }
     }

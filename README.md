@@ -57,7 +57,7 @@ Feature families in the runtime crate include:
   `raw_conversions`, `aho-corasick`, `toml`, `tabled`, `rand`, `rand_distr`,
   `num-traits`
 - Proc-macro defaults and diagnostics: `default-strict`, `default-coerce`,
-  `default-r6`, `default-s7`, `doc-lint`, `debug-preserve`, `growth-debug`,
+  `default-r6`, `default-s7`, `doc-lint`, `growth-debug`,
   `macro-coverage`, `refcount-fast-hash`
 
 See `miniextendr-api/README.md` and `docs/FEATURES.md` for the current feature

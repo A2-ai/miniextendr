@@ -22,7 +22,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **Preserve list** | [`preserve`](crate::preserve) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Across `.Call`s | Any order | Long-lived R objects |
 //! | **R ownership** | [`ExternalPtr`](struct@crate::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! ## When to Use Each
@@ -32,10 +32,10 @@
 //! - You want RAII-based automatic balancing of PROTECT/UNPROTECT
 //! - Protection is short-lived (within a single function)
 //!
-//! **Use [`preserve`](crate::preserve) when:**
+//! **Use [`ProtectPool`](crate::protect_pool::ProtectPool) when:**
 //! - Objects must survive across multiple `.Call` invocations
 //! - You need to release protections in arbitrary order
-//! - Example: [`RAllocator`](crate::RAllocator) backing memory
+//! - O(1) insert/release with generational keys
 //!
 //! **Use [`ExternalPtr`](struct@crate::ExternalPtr) when:**
 //! - You want R to own a Rust value
@@ -57,10 +57,10 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //!
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │  preserve (objects surviving across .Calls)                     │
-//! │  ├── preserve::insert(sexp)   // add to linked list             │
+//! │  ProtectPool (objects surviving across .Calls)                  │
+//! │  ├── pool.insert(sexp)        // O(1), generational key         │
 //! │  ├── ... multiple .Calls ...  // object stays protected         │
-//! │  └── preserve::release(cell)  // remove when done               │
+//! │  └── pool.release(key)        // O(1) remove                    │
 //! └─────────────────────────────────────────────────────────────────┘
 //!
 //! ┌─────────────────────────────────────────────────────────────────┐
@@ -976,7 +976,7 @@ impl<'a, T> Protected<'a, T> {
     ///
     /// ```ignore
     /// use miniextendr_api::{Protected, OwnedProtect};
-    /// use miniextendr_api::ffi::SEXP;
+    /// use miniextendr_api::sys::SEXP;
     ///
     /// unsafe fn wrap_view(sexp: SEXP, view: MyView<'_>) -> Protected<'_, MyView<'_>> {
     ///     // Protect the SEXP and bundle it with the view.
@@ -1561,7 +1561,7 @@ mod tests {
         // never dereference the SEXP itself, only the already-constructed inner)
         let v = vec![1i32, 2, 3];
         let p = unsafe {
-            Protected::<'static, Vec<i32>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<i32>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
         };
         assert_eq!(p.get(), &[1, 2, 3]);
     }
@@ -1571,7 +1571,7 @@ mod tests {
     fn protected_deref_reaches_inner() {
         let v = vec![10i32, 20];
         let p = unsafe {
-            Protected::<'static, Vec<i32>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<i32>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
         };
         // Deref should let us call Vec methods directly.
         assert_eq!(p.len(), 2);
@@ -1582,7 +1582,7 @@ mod tests {
     fn protected_into_inner_moves_value() {
         let v = vec![42i32];
         let p = unsafe {
-            Protected::<'static, Vec<i32>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<i32>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
         };
         let got = p.into_inner();
         assert_eq!(got, [42]);
@@ -1593,7 +1593,7 @@ mod tests {
     fn protected_from_trusted_does_not_hold_protect() {
         let v: Vec<u8> = vec![];
         let p = unsafe {
-            Protected::<'static, Vec<u8>>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<u8>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
         };
         // This test uses `from_trusted` to avoid touching the protect stack;
         // `Protected::new` would require an initialized R runtime (see
@@ -1606,7 +1606,7 @@ mod tests {
     #[test]
     fn protected_from_trusted_compile_check() {
         let p = unsafe {
-            Protected::<'static, i32>::from_trusted(crate::ffi::SEXP(core::ptr::null_mut()), 99)
+            Protected::<'static, i32>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), 99)
         };
         assert_eq!(*p, 99);
     }
