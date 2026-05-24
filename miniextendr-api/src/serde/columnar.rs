@@ -181,15 +181,11 @@ impl ColumnarDataFrame {
             row.serialize(filler)?;
         }
 
-        // Phase 4: Assemble data.frame
-        let df = ColumnarDataFrame {
-            sexp: unsafe { assemble_dataframe(&schema.fields, &columns, nrow) },
-        };
-        // `scope` drops here, after assemble has copied every protected SEXP
-        // into the parent VECSXP via `set_vector_elt`. The parent is then
-        // rooted by the caller's protection of the returned df SEXP.
-        drop(scope);
-        Ok(df)
+        // Phase 4: Assemble data.frame. `assemble_with_scope` sequences
+        // `assemble_dataframe(...)` followed by `drop(scope)` so the
+        // protected SEXPs in `ColumnBuffer::Generic` cells are still rooted
+        // while `set_vector_elt` copies them into the parent VECSXP.
+        Ok(unsafe { assemble_with_scope(&schema, &columns, nrow, scope) })
     }
 
     /// Rename a column. No-op if `from` doesn't match any column name.
@@ -649,13 +645,9 @@ impl<T: Serialize> DataFrameBuilder<T> {
             });
         };
         // SAFETY: nrow columns × matching lengths invariant maintained by push.
-        let df = ColumnarDataFrame {
-            sexp: unsafe { assemble_dataframe(&schema.fields, &self.columns, self.nrow) },
-        };
-        // `self.scope` drops here after assemble has copied every protected
-        // SEXP into the parent VECSXP. The parent is then rooted by the
-        // caller's protection of the returned df SEXP.
-        Ok(df)
+        // `assemble_with_scope` runs `assemble_dataframe` then drops the scope —
+        // see its docstring for the drop-order rationale.
+        Ok(unsafe { assemble_with_scope(&schema, &self.columns, self.nrow, self.scope) })
     }
 }
 
@@ -1731,6 +1723,30 @@ fn empty_dataframe() -> SEXP {
         Rf_unprotect(2);
         list
     }
+}
+
+/// Assemble column buffers into a data.frame, then drop `scope` only after the
+/// assembled VECSXP has copied every protected element. The returned
+/// [`ColumnarDataFrame`] is rooted by the caller's protection of its SEXP.
+///
+/// Centralises the protect-scope drop discipline shared by
+/// [`ColumnarDataFrame::from_rows`] and [`DataFrameBuilder::finish`].
+///
+/// # Safety
+///
+/// Must be called from the R main thread. All column buffers must have
+/// exactly `nrow` elements.
+unsafe fn assemble_with_scope(
+    schema: &Schema,
+    columns: &[ColumnBuffer],
+    nrow: usize,
+    scope: crate::ProtectScope,
+) -> ColumnarDataFrame {
+    let df = ColumnarDataFrame {
+        sexp: unsafe { assemble_dataframe(&schema.fields, columns, nrow) },
+    };
+    drop(scope);
+    df
 }
 
 /// Assemble column buffers into an R data.frame SEXP.
