@@ -180,14 +180,18 @@ update *cargo_flags:
     cargo update --manifest-path "$rust_dir/Cargo.toml" {{cargo_flags}}
     just lock-shape-check
 
-# Restore rpkg/src/rust/Cargo.lock to its committed canonical (tarball) shape.
+# Restore rpkg/src/rust/Cargo.lock from the git index (preserves staged
+# changes — matters for the `just vendor` flow which stages a tarball-shape
+# lockfile before commit; if nothing is staged the index equals HEAD, so this
+# is effectively a HEAD-restore).
+#
 # `just check / clippy / build / test / doc / doc-check` invoke cargo with
 # `--config "patch.'https://github.com/A2-ai/miniextendr'.<crate>.path=…"`,
 # which causes cargo to drop the `source = "git+…#<sha>"` line for each
 # workspace sibling. The committed lockfile must keep those lines (CRAN/
 # tarball builds resolve `vendor/` against them). The drifting recipes
-# auto-chain this restore as their last line; run it manually to clean
-# up if a recipe aborted mid-way.
+# auto-chain this restore as their last line; run it manually to clean up
+# if a recipe aborted mid-way.
 cargo-lock-restore:
     git restore --worktree -- rpkg/src/rust/Cargo.lock
 
