@@ -142,8 +142,9 @@ impl_altinteger_from_data!(MyType, dataptr);
 // With serialization
 impl_altinteger_from_data!(MyType, serialize);
 
-// Multiple options
-impl_altinteger_from_data!(MyType, dataptr, serialize, subset, set_elt);
+// Multiple options (canonical alphabetical order):
+impl_altinteger_from_data!(MyType, dataptr, serialize);
+impl_altinteger_from_data!(MyType, subset, serialize);
 ```
 
 ## Available Macros

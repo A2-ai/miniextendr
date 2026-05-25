@@ -995,8 +995,10 @@ miniextendr_api::impl_altinteger_from_data!(MyType, serialize);
 // With subset optimization (enables optimized x[i] for index vectors)
 miniextendr_api::impl_altinteger_from_data!(MyType, subset);
 
-// Multiple options
-miniextendr_api::impl_altinteger_from_data!(MyType, dataptr, serialize, subset);
+// Combinations (canonical alphabetical order; `dataptr` and `subset` are
+// mutually exclusive):
+miniextendr_api::impl_altinteger_from_data!(MyType, dataptr, serialize);
+miniextendr_api::impl_altinteger_from_data!(MyType, subset, serialize);
 ```
 
 | Option | What it does | Requires |
