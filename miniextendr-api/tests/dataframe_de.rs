@@ -360,6 +360,302 @@ fn with_dataframe_rows_callback_returns_owned() {
 
 // endregion
 
+// region: test — one-level nested struct round-trip
+
+#[test]
+fn round_trip_nested_struct_one_level() {
+    r_test_utils::with_r_thread(|| {
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Address {
+            city: String,
+            zip: String,
+        }
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Person {
+            name: String,
+            address: Address,
+        }
+
+        let original = vec![
+            Person {
+                name: "alice".into(),
+                address: Address {
+                    city: "Lyon".into(),
+                    zip: "69000".into(),
+                },
+            },
+            Person {
+                name: "bob".into(),
+                address: Address {
+                    city: "Paris".into(),
+                    zip: "75001".into(),
+                },
+            },
+        ];
+        let sexp = vec_to_dataframe(&original)
+            .expect("vec_to_dataframe")
+            .into_sexp();
+        let back: Vec<Person> = dataframe_to_vec(sexp).expect("dataframe_to_vec");
+        assert_eq!(back, original);
+    });
+}
+
+// endregion
+
+// region: test — two-level nested struct round-trip
+
+#[test]
+fn round_trip_nested_struct_two_levels() {
+    r_test_utils::with_r_thread(|| {
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Address {
+            city: String,
+            zip: String,
+        }
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Customer {
+            name: String,
+            address: Address,
+        }
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Order {
+            id: i32,
+            customer: Customer,
+        }
+
+        let original = vec![
+            Order {
+                id: 1,
+                customer: Customer {
+                    name: "alice".into(),
+                    address: Address {
+                        city: "Lyon".into(),
+                        zip: "69000".into(),
+                    },
+                },
+            },
+            Order {
+                id: 2,
+                customer: Customer {
+                    name: "bob".into(),
+                    address: Address {
+                        city: "Paris".into(),
+                        zip: "75001".into(),
+                    },
+                },
+            },
+        ];
+        let sexp = vec_to_dataframe(&original)
+            .expect("vec_to_dataframe")
+            .into_sexp();
+        let back: Vec<Order> = dataframe_to_vec(sexp).expect("dataframe_to_vec");
+        assert_eq!(back, original);
+    });
+}
+
+// endregion
+
+// region: test — nested with Option fields
+
+#[test]
+fn round_trip_nested_struct_with_option() {
+    r_test_utils::with_r_thread(|| {
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Address {
+            city: String,
+            zip: Option<String>,
+        }
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Person {
+            name: String,
+            address: Address,
+        }
+
+        let original = vec![
+            Person {
+                name: "alice".into(),
+                address: Address {
+                    city: "Lyon".into(),
+                    zip: Some("69000".into()),
+                },
+            },
+            Person {
+                name: "bob".into(),
+                address: Address {
+                    city: "Paris".into(),
+                    zip: None,
+                },
+            },
+        ];
+        let sexp = vec_to_dataframe(&original)
+            .expect("vec_to_dataframe")
+            .into_sexp();
+        let back: Vec<Person> = dataframe_to_vec(sexp).expect("dataframe_to_vec");
+        assert_eq!(back, original);
+    });
+}
+
+// endregion
+
+// region: test — missing nested column surfaces the inner-struct field
+
+#[test]
+fn nested_missing_column_errors_with_inner_field_name() {
+    // serde's standard missing-field path reports the inner-struct field
+    // (`zip`), not the prefixed column name (`address_zip`). This is a
+    // consequence of letting `T::deserialize` drive the walk: when the
+    // inner `RowMapAccess` runs out of keys, the inner visitor decides
+    // which of its expected fields is "missing", not the outer
+    // deserialiser. Reporting `address_zip` instead would require either
+    // schema introspection (target type's expected fields) or stripping
+    // the missing-field signal out of serde, both of which trade
+    // simplicity for marginal UX gain. Documented limitation.
+    r_test_utils::with_r_thread(|| {
+        // Source has `address.city` only (no `address.zip`).
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        struct PartialAddress {
+            city: String,
+        }
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        struct PartialPerson {
+            name: String,
+            address: PartialAddress,
+        }
+        let partial = vec![PartialPerson {
+            name: "alice".into(),
+            address: PartialAddress {
+                city: "Lyon".into(),
+            },
+        }];
+        let sexp = vec_to_dataframe(&partial)
+            .expect("vec_to_dataframe")
+            .into_sexp();
+
+        // Target struct requires `address_zip` too.
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        struct Address {
+            city: String,
+            zip: String,
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        struct Person {
+            name: String,
+            address: Address,
+        }
+
+        let result: Result<Vec<Person>, RSerdeError> = dataframe_to_vec(sexp);
+        assert!(result.is_err(), "expected missing-field error");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("zip"),
+            "error should mention the missing field 'zip', got: {}",
+            msg
+        );
+    });
+}
+
+// endregion
+
+// region: test — flat field name with underscore disambiguation
+
+#[test]
+fn flat_field_with_underscore_works_when_no_sibling_columns() {
+    // Documented limitation: `last_name` looks like a nested path `last.name`.
+    // The visitor still gets `last → Some(MaybeNested with bare_col = None)`,
+    // which then recurses to a nested map containing only `name`. Serde sees
+    // a struct with field `last` containing a sub-struct with `name`. So if
+    // the target type is shaped that way, it works; otherwise it doesn't.
+    //
+    // This test pins the *working* shape so future refactors don't break it:
+    // a struct deliberately modelled as nested still round-trips.
+    r_test_utils::with_r_thread(|| {
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct Last {
+            name: String,
+        }
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        struct PersonNested {
+            id: i32,
+            last: Last,
+        }
+
+        let original = vec![
+            PersonNested {
+                id: 1,
+                last: Last {
+                    name: "smith".into(),
+                },
+            },
+            PersonNested {
+                id: 2,
+                last: Last {
+                    name: "jones".into(),
+                },
+            },
+        ];
+        let sexp = vec_to_dataframe(&original)
+            .expect("vec_to_dataframe")
+            .into_sexp();
+        let back: Vec<PersonNested> = dataframe_to_vec(sexp).expect("dataframe_to_vec");
+        assert_eq!(back, original);
+    });
+}
+
+#[test]
+fn flat_field_with_underscore_fails_when_visitor_expects_flat_name() {
+    // Documented limitation, locked in via test: if the producer side
+    // generated a column literally named `last_name` for a flat string field,
+    // the deserialiser greedy-splits to `last` and the visitor — expecting a
+    // flat `last_name` field — sees the wrong key. serde reports a
+    // missing-field error for `last_name`.
+    r_test_utils::with_r_thread(|| {
+        // Build a data.frame whose first column is literally `last_name` and
+        // whose value is a plain string. We do this by serializing a struct
+        // whose field is `last_name`. Since columnar serialization for a
+        // primitive field uses the field name verbatim, the column will be
+        // named `last_name`.
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        struct FlatProducer {
+            id: i32,
+            last_name: String,
+        }
+        let original = vec![FlatProducer {
+            id: 1,
+            last_name: "smith".into(),
+        }];
+        let sexp = vec_to_dataframe(&original)
+            .expect("vec_to_dataframe")
+            .into_sexp();
+
+        // Identical struct on the consumer side — but the deserialiser
+        // will interpret `last_name` as nested `last.name`, so the visitor
+        // sees a key `last` and not `last_name`. serde reports "missing
+        // field `last_name`".
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        #[allow(dead_code)]
+        struct FlatConsumer {
+            id: i32,
+            last_name: String,
+        }
+        let result: Result<Vec<FlatConsumer>, RSerdeError> = dataframe_to_vec(sexp);
+        assert!(
+            result.is_err(),
+            "underscore-in-flat-name limitation should surface as an error"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("last_name") || msg.contains("last") || msg.contains("unknown"),
+            "error should mention the underscore-bearing field, got: {}",
+            msg
+        );
+    });
+}
+
+// endregion
+
 // region: test 11 — non-data.frame input is an error
 
 #[test]
