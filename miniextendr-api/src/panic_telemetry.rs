@@ -4,6 +4,28 @@
 //! trampolines, and unwind_protect). This module provides a unified hook point
 //! that fires before each panic is converted to an R error.
 //!
+//! # Relationship to the three emission paths
+//!
+//! This module is **observability, not emission**. It does not raise R
+//! conditions and does not change how panics become errors; it only lets a
+//! caller observe them. The three actual emission paths are documented on
+//! [`crate::error_value`]:
+//!
+//! - `panic!(msg)` — escape hatch; tagged-SEXP with `kind = "panic"`.
+//! - [`crate::error!`] / [`crate::warning!`] / [`crate::message!`] /
+//!   [`crate::condition!`] — typed conditions via `RCondition` panic payloads.
+//! - `Result<_, E: std::error::Error>` with [`crate::condition::AsRError`] —
+//!   value-style propagation; tagged-SEXP with `kind = "result_err"`.
+//!
+//! `fire` is invoked from each catch site *before* the panic message is encoded
+//! into a tagged condition value, so a registered hook sees every Rust-origin
+//! failure regardless of which of the three paths produced it. Typical uses:
+//! routing to `tracing` / `log`, capturing stack snapshots for crash reports,
+//! or surfacing the panic message in test harnesses where R's stderr is
+//! buffered. The hook must not raise R conditions itself (it runs inside the
+//! panic-handling path) and must not panic — secondary panics from the hook
+//! are caught and silently suppressed by `fire` (this crate, `pub(crate)`).
+//!
 //! # Usage
 //!
 //! ```ignore

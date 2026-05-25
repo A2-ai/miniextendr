@@ -6,7 +6,67 @@
 //! The generated R wrapper inspects this tagged value and escalates it to a
 //! proper R condition past the Rust boundary, with `rust_*` class layering.
 //!
-//! This ensures Rust destructors run cleanly before R sees the error.
+//! # Why tagged SEXP instead of `Rf_error`
+//!
+//! The naive way to surface a Rust error in R is to call `Rf_error`, which
+//! `longjmp`s out of the call frame. That works for C — C has no destructors —
+//! but in Rust it skips every drop on the stack: open files, `Mutex` guards,
+//! `Box::into_raw` round-trips, the worker-thread continuation token. Anything
+//! holding a resource leaks or corrupts.
+//!
+//! The framework instead catches every Rust panic (and every `RCondition`
+//! `panic_any` payload) at the boundary inside
+//! [`crate::unwind_protect::with_r_unwind_protect`], encodes it as the
+//! 4-element list described below, and *returns* that SEXP normally. The
+//! generated R wrapper then re-raises with `stop(structure(..., class =
+//! c("rust_*", ...)))`. Destructors run; `tryCatch` sees the right class.
+//!
+//! There is one accepted leak: on the R-longjmp branch inside
+//! `with_r_unwind_protect` (when an R-origin error is propagated through via
+//! `R_ContinueUnwind`), the `RErrorMarker` panic payload — about 8 bytes plus
+//! `Box` header — escapes Rust drop ordering. This is the price we pay for
+//! routing Rust failures through real R conditions instead of
+//! `Rf_error`-via-longjmp, and is exactly why lint MXL300 forbids direct
+//! `Rf_error` / `Rf_errorcall` in user code: every `Rf_error` skips Rust
+//! destructors unconditionally, not just on the (rare) R-longjmp path.
+//!
+//! # The three error-emission entry points
+//!
+//! Authors of `#[miniextendr]` functions reach for one of:
+//!
+//! 1. **`panic!(msg)`** — escape hatch. Produces `kind = "panic"` and R class
+//!    `c("rust_error", "simpleError", "error", "condition")`. Use for true
+//!    bugs / impossible states; the caller has nothing to catch by class.
+//! 2. **`miniextendr_api::error!("msg")`** — typed condition. Produces `kind
+//!    = "error"` and the same `rust_error` class layering. The `class =
+//!    "my_class"` form prepends a user class, giving R-side
+//!    `c("rust_my_class", "rust_error", "simpleError", "error", "condition")`
+//!    — exactly what a caller's `tryCatch(my_class = …)` matches on. The
+//!    sibling [`crate::warning!`], [`crate::message!`], [`crate::condition!`]
+//!    macros cover the non-error condition kinds.
+//! 3. **`Result<_, E>` where `E: std::error::Error`**, often via
+//!    [`crate::condition::AsRError`] — value-style propagation through Rust
+//!    code. Converts at the boundary using `kind = "result_err"`.
+//!    `Option::None` follows the same path with `kind = "none_err"`.
+//!
+//! # `error_in_r` is the default
+//!
+//! For every `#[miniextendr]` fn / method, the proc macro emits a wrapper that
+//! routes through this tagged-SEXP transport — i.e. `error_in_r = true` is the
+//! default. The opt-outs are documented on the macro:
+//!
+//! - `#[miniextendr(no_error_in_r)]` — bypass the tagged-SEXP path entirely.
+//!   Useful for trait-ABI vtable shims and benchmarks; Rust panics become
+//!   classic `Rf_error` longjmps. Drops the leak above at the cost of skipping
+//!   Rust destructors universally.
+//! - `#[miniextendr(unwrap_in_r)]` — `Result<T, E>` returns are unwrapped on
+//!   the R side rather than encoded as `kind = "result_err"`. Orthogonal to
+//!   the transport: still rides this SEXP path, just changes how `Err` is
+//!   stringified.
+//!
+//! Older comments suggesting `Rf_error` is the user-facing path predate PR
+//! #344 and are wrong. The wrapper preambles now consistently use this
+//! transport.
 //!
 //! # Condition value structure (`make_rust_condition_value`)
 //!
@@ -17,6 +77,23 @@
 //! - `call`: the R call SEXP (or `NULL` if not available)
 //! - class attribute: `"rust_condition_value"`
 //! - `__rust_condition__` attribute: `TRUE`
+//!
+//! # PROTECT discipline (read before editing)
+//!
+//! [`make_rust_condition_value`] allocates four SEXPs that must remain live
+//! across subsequent allocations (`SET_VECTOR_ELT` / `SETATTRIB` both
+//! trigger old-to-new GC barriers): the list itself, the message scalar
+//! STRSXP, the kind scalar STRSXP, the optional class scalar STRSXP, and
+//! the `TRUE` marker LGLSXP. Each is `Rf_protect`ed before the next
+//! allocation; `prot` counts them; `Rf_unprotect(prot)` balances at exit.
+//!
+//! R-devel runs a more aggressive GC than R-release/oldrel and *will* fire
+//! inside the window between two allocations. PR #344 commit `af6b4875`
+//! tracked down a `recursive gc invocation` segfault that lit up only on
+//! R-devel because the pre-existing 3-element version was lucky-not-safe;
+//! adding the class slot crossed the threshold. **If you add a fifth fresh
+//! allocation, protect it.** A green R-release CI run is *not* proof of
+//! safety here; run `gctorture(TRUE)` on R-devel before merging.
 
 use crate::cached_class::{
     condition_names_sexp, rust_condition_attr_symbol, rust_condition_class_sexp,
@@ -58,7 +135,7 @@ pub mod kind {
     /// Fallback kind written by [`super::make_rust_condition_value`] when the
     /// caller's `kind` argument contained an interior NUL and could not be
     /// converted to a `CString`. Should not appear in normal flow; the match
-    /// arm in [`crate::condition::RCondition::from_sexp`] handles it
+    /// arm in [`crate::condition::RCondition::from_tagged_sexp`] handles it
     /// defensively by degrading to `RCondition::Error`.
     pub const OTHER_RUST_ERROR: &str = "other_rust_error";
 }
