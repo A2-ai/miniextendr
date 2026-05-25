@@ -1,4 +1,16 @@
 //! S7-class R wrapper generator.
+//!
+//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
+//! for the full decision tree.
+//!
+//! Generates `S7::new_class(...)` with **value semantics, formal property
+//! validation, and parent-based inheritance**. Property attributes
+//! (`s7(getter)` / `s7(setter, prop = "...")`) compile to `S7::new_property`
+//! with `@`-access semantics, including read-only computed properties and
+//! read-write dynamic ones. Similar formal power to S4 with cleaner syntax,
+//! but the S7 ecosystem is younger and the R-package dependency surface is
+//! evolving. Pick S7 for **new** packages wanting modern formal OOP; use S4
+//! when you need Bioconductor compatibility or multi-dispatch.
 
 use super::{ParsedImpl, ParsedMethod};
 use crate::r_class_formatter::{class_ref_or_verbatim, is_bare_identifier};

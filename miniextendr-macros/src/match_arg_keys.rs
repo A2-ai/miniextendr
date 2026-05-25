@@ -1,5 +1,16 @@
 //! Write-time placeholder & symbol-name formatting for the match_arg pipeline.
 //!
+//! Tradeoff signpost: this module is the **wiring** between the
+//! `#[derive(MatchArg)]` proc macro (see [`match_arg_derive`]) and the
+//! cdylib's write-time substitution pass. The `match.arg` codegen path
+//! deliberately splits responsibilities — the proc macro emits placeholders
+//! into the R wrapper, and the cdylib resolves them to a concrete `c("a",
+//! "b", ...)` literal at write time using `MX_MATCH_ARG_CHOICES`. That
+//! split lets the variant list change without re-running `cargo expand` on
+//! every consumer. Compared to hand-rolling `match.arg` in a wrapper body,
+//! the user gets partial matching, R-visible defaults, and `@param` doc
+//! lines for free, without ever stringifying the variant list in source.
+//!
 //! All four shapes (`choices_placeholder`, `param_doc_placeholder`,
 //! `choices_helper_c_name`, `choices_helper_def_ident`) share the same
 //! `{c_ident_without_prefix}_{r_param}` stem so the cdylib's write-time pass

@@ -1,4 +1,16 @@
 //! S4-class R wrapper generator.
+//!
+//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
+//! for the full decision tree.
+//!
+//! Generates `methods::setClass(...)` with an `externalptr` slot, plus
+//! `methods::setGeneric` / `methods::setMethod` for each instance method.
+//! Supports **formal slot validation, multi-dispatch on method signatures,
+//! and contains-based inheritance** — the only system here with native
+//! multi-dispatch. Cost: slowest dispatch path, all helpers live in the
+//! `methods::` namespace (`methods` must be imported, not `base`), and the
+//! ecosystem is increasingly legacy. Pick S4 for Bioconductor interop;
+//! use S7 for new packages wanting similar formal semantics.
 
 use super::ParsedImpl;
 

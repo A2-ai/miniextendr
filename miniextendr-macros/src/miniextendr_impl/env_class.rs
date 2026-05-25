@@ -1,4 +1,15 @@
 //! Env-class R wrapper generator.
+//!
+//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
+//! for the full decision tree.
+//!
+//! Generates an R environment (`new.env(parent = emptyenv())`) that serves as
+//! the class namespace, with `obj$method()` dispatched through an `$.ClassName`
+//! S3 method. This is the **fastest** of the six class systems and has **no R
+//! package dependencies**, but provides no formal class machinery: no
+//! inheritance, no multi-dispatch, no slot validation. Pick env for simple
+//! ExternalPtr-backed APIs; reach for R6/S3/S4/S7 when you need dispatch or
+//! formal class semantics.
 
 use super::ParsedImpl;
 
