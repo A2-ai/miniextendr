@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      836a3633ef635ebc
+// content-hash:      a634cb661d37b09f
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::sys::{R_CallMethodDef, SEXP};
@@ -949,13 +949,18 @@ unsafe extern "C-unwind" {
     pub fn C_into_sexp_altrep(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedData__get_label(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_gc_stress_toml_array(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_borrowed_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_struct(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_dataframe_to_vec(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_iter_to_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_native_sexp_altrep(_: SEXP) -> SEXP;
     pub fn C_gc_stress_protect_discipline(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_borrowed(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_with_dataframe_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_nested_enum(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_named_df_list_builder(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_collection(_: SEXP) -> SEXP;
     pub fn C_into_r_error_inner(_: SEXP) -> SEXP;
     pub fn C_into_r_error_length_overflow(_: SEXP) -> SEXP;
@@ -6672,6 +6677,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_borrowed_rows".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_borrowed_rows) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_dataframe_map".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_map) }),
         numArgs: 1,
@@ -6684,6 +6694,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_dataframe_struct".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_struct) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_dataframe_to_vec".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_to_vec) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_iter_to_dataframe".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_iter_to_dataframe) }),
         numArgs: 1,
     },
     R_CallMethodDef {
@@ -6702,8 +6722,18 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_with_dataframe_rows".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_with_dataframe_rows) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_dataframe_nested_enum".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_nested_enum) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_named_df_list_builder".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_named_df_list_builder) }),
         numArgs: 1,
     },
     R_CallMethodDef {
