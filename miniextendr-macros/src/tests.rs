@@ -868,7 +868,9 @@ fn test_derive_altrep_unsafe_guard_with_serialize() {
     let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
     let output_str = output.to_string();
 
-    assert!(output_str.contains("__impl_altrep_base_with_serialize"));
+    // Expanded path emits __impl_altrep_base!(Ty, Unsafe, with_serialize)
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("with_serialize"));
     assert!(output_str.contains("Unsafe"));
 }
 
