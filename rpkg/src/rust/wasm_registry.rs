@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      45deb187685d12d3
+// content-hash:      9afa48ad3ea03459
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -952,8 +952,11 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_borrowed_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_split_collated(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_split_with_tag(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_struct(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_to_vec(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_map_to_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_iter_to_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_native_sexp_altrep(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_borrowed(_: SEXP) -> SEXP;
@@ -961,6 +964,9 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_dataframe_nested_enum(_: SEXP) -> SEXP;
     pub fn C_gc_stress_named_df_list_builder(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_collection(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_result_to_dataframe_auto(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_result_to_dataframe_collated(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_result_to_dataframe_split_sentinel(_: SEXP) -> SEXP;
     pub fn C_into_r_error_inner(_: SEXP) -> SEXP;
     pub fn C_into_r_error_length_overflow(_: SEXP) -> SEXP;
     pub fn C_into_r_error_string_too_long(_: SEXP) -> SEXP;
@@ -1414,17 +1420,25 @@ unsafe extern "C-unwind" {
     pub fn C_test_columnar_empty_split(_: SEXP) -> SEXP;
     pub fn C_test_columnar_rename_noop(_: SEXP) -> SEXP;
     pub fn C_test_columnar_tagged_enum(_: SEXP) -> SEXP;
+    pub fn C_test_hashmap_to_dataframe(_: SEXP) -> SEXP;
     pub fn C_test_columnar_deep_nesting(_: SEXP) -> SEXP;
     pub fn C_test_columnar_strip_prefix(_: SEXP) -> SEXP;
     pub fn C_test_columnar_serde_flatten(_: SEXP) -> SEXP;
     pub fn C_test_columnar_untagged_enum(_: SEXP) -> SEXP;
+    pub fn C_test_columnar_split_collated(_: SEXP) -> SEXP;
+    pub fn C_test_columnar_split_with_tag(_: SEXP) -> SEXP;
     pub fn C_test_columnar_optional_struct(_: SEXP) -> SEXP;
     pub fn C_test_columnar_ext_tagged_split(_: SEXP) -> SEXP;
     pub fn C_test_columnar_int_tagged_split(_: SEXP) -> SEXP;
+    pub fn C_test_map_to_dataframe_btreemap(_: SEXP) -> SEXP;
     pub fn C_test_columnar_with_column_append(_: SEXP) -> SEXP;
     pub fn C_test_columnar_skip_serializing_if(_: SEXP) -> SEXP;
     pub fn C_test_columnar_with_column_replace(_: SEXP) -> SEXP;
+    pub fn C_test_result_to_dataframe_collated(_: SEXP) -> SEXP;
     pub fn C_test_columnar_single_variant_split(_: SEXP) -> SEXP;
+    pub fn C_test_result_to_dataframe_auto_mixed(_: SEXP) -> SEXP;
+    pub fn C_test_result_to_dataframe_auto_all_ok(_: SEXP) -> SEXP;
+    pub fn C_test_result_to_dataframe_split_all_err(_: SEXP) -> SEXP;
     pub fn C_PtrSelfTest__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_PtrSelfTest__value(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_PtrSelfTest__is_null_ptr(_: SEXP, _: SEXP) -> SEXP;
@@ -6691,6 +6705,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_split_collated".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_split_collated) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_split_with_tag".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_split_with_tag) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_dataframe_struct".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_struct) }),
         numArgs: 1,
@@ -6698,6 +6722,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_dataframe_to_vec".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_to_vec) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_map_to_dataframe".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_map_to_dataframe) }),
         numArgs: 1,
     },
     R_CallMethodDef {
@@ -6733,6 +6762,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_vec_option_collection".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_vec_option_collection) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_result_to_dataframe_auto".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_result_to_dataframe_auto) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_result_to_dataframe_collated".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_result_to_dataframe_collated) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_result_to_dataframe_split_sentinel".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_result_to_dataframe_split_sentinel) }),
         numArgs: 1,
     },
     R_CallMethodDef {
@@ -9001,6 +9045,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_test_hashmap_to_dataframe".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_hashmap_to_dataframe) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_test_columnar_deep_nesting".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_columnar_deep_nesting) }),
         numArgs: 1,
@@ -9021,6 +9070,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_test_columnar_split_collated".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_columnar_split_collated) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_test_columnar_split_with_tag".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_columnar_split_with_tag) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_test_columnar_optional_struct".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_columnar_optional_struct) }),
         numArgs: 1,
@@ -9033,6 +9092,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_test_columnar_int_tagged_split".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_columnar_int_tagged_split) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_test_map_to_dataframe_btreemap".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_map_to_dataframe_btreemap) }),
         numArgs: 1,
     },
     R_CallMethodDef {
@@ -9051,8 +9115,28 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_test_result_to_dataframe_collated".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_result_to_dataframe_collated) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_test_columnar_single_variant_split".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_columnar_single_variant_split) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_test_result_to_dataframe_auto_mixed".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_result_to_dataframe_auto_mixed) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_test_result_to_dataframe_auto_all_ok".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_result_to_dataframe_auto_all_ok) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_test_result_to_dataframe_split_all_err".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_test_result_to_dataframe_split_all_err) }),
         numArgs: 1,
     },
     R_CallMethodDef {
