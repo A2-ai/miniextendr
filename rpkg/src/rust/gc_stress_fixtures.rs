@@ -649,3 +649,261 @@ pub fn gc_stress_borrowed_rows() -> i32 {
 }
 
 // endregion
+
+// region: map_to_dataframe / result_to_dataframe / vec_to_dataframe_split helpers (#700, #697, #699)
+
+/// Exercise `map_to_dataframe` under GC pressure.
+///
+/// Allocates a `BTreeMap<i32, KvValue>`, serialises through the helper,
+/// converts to SEXP. Touches the same SEXP-storage code paths as
+/// `vec_to_dataframe` (its underlying call) — `gctorture(TRUE)` validates
+/// the schema-discovery / column-buffer / character-column protections.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_map_to_dataframe() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::map_to_dataframe;
+    use std::collections::BTreeMap;
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct KvValue {
+        score: f64,
+        label: String,
+    }
+
+    let mut map: BTreeMap<i32, KvValue> = BTreeMap::new();
+    for i in 0..40i32 {
+        map.insert(
+            i,
+            KvValue {
+                score: f64::from(i) * 1.25,
+                label: format!("entry_{i}"),
+            },
+        );
+    }
+
+    map_to_dataframe(&map, "id")
+        .expect("gc_stress_map_to_dataframe: map_to_dataframe failed")
+        .into_sexp()
+}
+
+/// Exercise `result_to_dataframe(Auto)` under GC pressure with mixed Ok/Err
+/// rows. Exercises the split path (intermediate `ColumnarDataFrame` pair +
+/// `NamedDataFrameListBuilder` assembly in `IntoR for DataFrameShape`).
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_result_to_dataframe_auto() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{ResultShape, result_to_dataframe};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        value: f64,
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let rows: Vec<Result<OkRow, ErrRow>> = (0..40i32)
+        .map(|i| {
+            if i % 3 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("err {i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    value: f64::from(i) * 1.5,
+                })
+            }
+        })
+        .collect();
+
+    result_to_dataframe(
+        &rows,
+        ResultShape::Auto {
+            empty_ok_sentinel: (),
+        },
+    )
+    .expect("gc_stress_result_to_dataframe_auto: helper failed")
+    .into_sexp()
+}
+
+/// Exercise `result_to_dataframe(Collated)` under GC pressure. Union-schema
+/// emission goes through the `TaggedVariantRow`/`MapForwarder` path.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_result_to_dataframe_collated() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{ResultShape, result_to_dataframe};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        value: f64,
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let rows: Vec<Result<OkRow, ErrRow>> = (0..30i32)
+        .map(|i| {
+            if i % 4 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("err {i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    value: f64::from(i) * 2.0,
+                })
+            }
+        })
+        .collect();
+
+    result_to_dataframe::<_, _, ()>(&rows, ResultShape::Collated)
+        .expect("gc_stress_result_to_dataframe_collated: helper failed")
+        .into_sexp()
+}
+
+/// Exercise `result_to_dataframe(Split)` with all-Err input → sentinel
+/// path. Validates that the user-supplied sentinel SEXP is rooted while
+/// the outer named list is assembled.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_result_to_dataframe_split_sentinel() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{ResultShape, result_to_dataframe};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let rows: Vec<Result<OkRow, ErrRow>> = (0..25i32)
+        .map(|i| {
+            Err(ErrRow {
+                id: i,
+                reason: format!("err {i}"),
+            })
+        })
+        .collect();
+
+    // Sentinel is a String — ends up as an STRSXP and exercises the
+    // protect-around-CHARSXP-allocation path inside DataFrameShape::IntoR.
+    result_to_dataframe(
+        &rows,
+        ResultShape::Split {
+            empty_ok_sentinel: String::from("no ok rows"),
+        },
+    )
+    .expect("gc_stress_result_to_dataframe_split_sentinel: helper failed")
+    .into_sexp()
+}
+
+/// Exercise `vec_to_dataframe_split(PerVariantListWithTag)` under GC
+/// pressure. The tag-column prepend allocates a per-partition STRSXP that
+/// must be protected through the `prepend_column` VECSXP reshuffle.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_split_with_tag() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{SplitShape, vec_to_dataframe_split};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    enum Event {
+        Click { x: f64, y: f64 },
+        Scroll { delta: f64 },
+        KeyPress { code: String },
+    }
+
+    let rows: Vec<Event> = (0..30i32)
+        .map(|i| match i % 3 {
+            0 => Event::Click {
+                x: f64::from(i),
+                y: f64::from(i) * 2.0,
+            },
+            1 => Event::Scroll {
+                delta: f64::from(i) * -0.5,
+            },
+            _ => Event::KeyPress {
+                code: format!("k{i}"),
+            },
+        })
+        .collect();
+
+    vec_to_dataframe_split(
+        &rows,
+        SplitShape::PerVariantListWithTag {
+            column: "variant".into(),
+        },
+    )
+    .expect("gc_stress_split_with_tag: helper failed")
+    .into_sexp()
+}
+
+/// Exercise `vec_to_dataframe_split(Collated)` under GC pressure. Drives
+/// the `TaggedVariantRow` / `MapForwarder` collation path through the
+/// schema-union machinery in `ColumnarDataFrame::from_rows`.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_split_collated() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{SplitShape, vec_to_dataframe_split};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    enum Event {
+        Click { x: f64, y: f64 },
+        Scroll { delta: f64 },
+        KeyPress { code: String },
+    }
+
+    let rows: Vec<Event> = (0..30i32)
+        .map(|i| match i % 3 {
+            0 => Event::Click {
+                x: f64::from(i),
+                y: f64::from(i) * 2.0,
+            },
+            1 => Event::Scroll {
+                delta: f64::from(i) * -0.5,
+            },
+            _ => Event::KeyPress {
+                code: format!("k{i}"),
+            },
+        })
+        .collect();
+
+    vec_to_dataframe_split(
+        &rows,
+        SplitShape::Collated {
+            column: "kind".into(),
+        },
+    )
+    .expect("gc_stress_split_collated: helper failed")
+    .into_sexp()
+}
+
+// endregion
