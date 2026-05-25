@@ -9,8 +9,10 @@
 mod r_test_utils;
 
 use miniextendr_api::IntoR as _;
-use miniextendr_api::ffi::SexpExt as _;
-use miniextendr_api::serde::{DataFrameBuilder, RSerdeError, iter_to_dataframe, vec_to_dataframe};
+use miniextendr_api::ffi::{SEXPTYPE, SexpExt as _};
+use miniextendr_api::serde::{
+    DataFrameBuilder, RSerdeError, TypeSpec, iter_to_dataframe, vec_to_dataframe,
+};
 use serde::Serialize;
 
 // region: round-trip equivalence with vec_to_dataframe
@@ -161,6 +163,122 @@ fn dataframe_builder_missing_field_na_pads() {
         assert_eq!(df.xlength(), 2);
         assert_eq!(df.vector_elt(0).xlength(), 2);
         assert_eq!(df.vector_elt(1).xlength(), 2);
+    });
+}
+
+// endregion
+
+// region: with_schema / grow_schema (#693 / #692)
+
+#[test]
+fn with_schema_skips_discovery_first_row_none_keeps_declared_type() {
+    r_test_utils::with_r_thread(|| {
+        // Pre-declared schema: column "b" is Optional(Character). The first
+        // row's `b` is None — default discovery would have made this a logical
+        // NA column. With `with_schema`, it stays character.
+        let mut b = DataFrameBuilder::<Optional>::with_schema(
+            [
+                ("a", TypeSpec::Optional(Box::new(TypeSpec::Integer))),
+                ("b", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+            ],
+            None,
+        );
+        b.push(Optional {
+            a: None,
+            b: None,
+        })
+        .unwrap();
+        b.push(Optional {
+            a: Some(2),
+            b: Some("x".into()),
+        })
+        .unwrap();
+        let df = b.finish().unwrap().into_sexp();
+        assert_eq!(df.xlength(), 2, "two columns");
+        // We check the *types* survived rather than the values to keep the
+        // assertion robust against NA encodings. With default discovery the
+        // first-row None would have made both columns LGLSXP — Optional()
+        // pins them to the declared base type.
+        let col_a = df.vector_elt(0);
+        let col_b = df.vector_elt(1);
+        assert_ne!(
+            col_a.type_of(),
+            SEXPTYPE::LGLSXP,
+            "column 'a' degraded to logical despite Optional(Integer)"
+        );
+        assert_ne!(
+            col_b.type_of(),
+            SEXPTYPE::LGLSXP,
+            "column 'b' degraded to logical despite Optional(Character)"
+        );
+    });
+}
+
+#[test]
+fn with_schema_rejects_unknown_field_at_runtime() {
+    r_test_utils::with_r_thread(|| {
+        let mut b = DataFrameBuilder::<Plain>::with_schema(
+            [("id", TypeSpec::Integer), ("val", TypeSpec::Real)],
+            None,
+        );
+        // `name` is not in the declared schema — strict filler rejects.
+        let err = b
+            .push(Plain {
+                id: 1,
+                val: 2.0,
+                name: "x".into(),
+            })
+            .unwrap_err();
+        assert!(
+            matches!(err, RSerdeError::Message(ref m) if m.contains("name")),
+            "expected strict rejection of 'name', got: {err:?}"
+        );
+    });
+}
+
+#[test]
+fn grow_schema_back_fills_na_on_new_field_end_to_end() {
+    r_test_utils::with_r_thread(|| {
+        use std::collections::BTreeMap;
+        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+        let r1: BTreeMap<String, i32> = [("a".into(), 1)].into_iter().collect();
+        let r2: BTreeMap<String, i32> = [("a".into(), 2), ("b".into(), 3)].into_iter().collect();
+        let r3: BTreeMap<String, i32> = [("a".into(), 4), ("c".into(), 99)].into_iter().collect();
+        b.push(r1).unwrap();
+        b.push(r2).unwrap();
+        b.push(r3).unwrap();
+        let df = b.finish().unwrap().into_sexp();
+        // Three columns (a, b, c), each of length 3.
+        assert_eq!(df.xlength(), 3, "expected 3 columns after growth");
+        for i in 0..3 {
+            assert_eq!(
+                df.vector_elt(i).xlength(),
+                3,
+                "column {i} length mismatch after back-fill"
+            );
+        }
+    });
+}
+
+#[test]
+fn grow_schema_combined_with_with_schema_end_to_end() {
+    r_test_utils::with_r_thread(|| {
+        use std::collections::BTreeMap;
+        // Declare one column up front, let the rest grow.
+        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::with_schema(
+            [("a", TypeSpec::Integer)],
+            None,
+        )
+        .grow_schema();
+        let r1: BTreeMap<String, i32> = [("a".into(), 10)].into_iter().collect();
+        let r2: BTreeMap<String, i32> = [("a".into(), 20), ("d".into(), 7)].into_iter().collect();
+        b.push(r1).unwrap();
+        b.push(r2).unwrap();
+        let df = b.finish().unwrap().into_sexp();
+        assert_eq!(df.xlength(), 2, "declared + grown columns");
+        for i in 0..2 {
+            assert_eq!(df.vector_elt(i).xlength(), 2);
+        }
     });
 }
 
