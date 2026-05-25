@@ -1,8 +1,30 @@
 //! Unsafe ALTREP trampolines and installers bridging safe traits to R's C ABI.
 //!
-//! This module provides:
-//! - Generic `extern "C-unwind"` trampolines that call into safe trait methods
-//! - Installer functions that register methods with R based on `HAS_*` consts
+//! This module is the seam between R's C method tables and the safe traits in
+//! [`crate::altrep_traits`]. It provides:
+//! - Generic `extern "C-unwind"` trampolines (`t_length`, `t_dataptr`,
+//!   `t_elt_*`, …) that call into safe trait methods on `T: Altrep`.
+//! - Installer functions (`install_*`) that register the trampolines with R
+//!   based on the `HAS_*` const gates declared by the safe traits.
+//!
+//! Each trampoline routes its callback through `guarded_altrep_call` (the
+//! internal helper at the top of this module), which dispatches on the
+//! `T::GUARD` const at monomorphization time. The branch the user selected
+//! (`Unsafe` / `RustUnwind` / `RUnwind`) survives; the others are eliminated
+//! by the optimizer — so the guard choice has no runtime overhead beyond
+//! its inherent cost.
+//!
+//! ## Why a separate bridge module
+//!
+//! R installs methods via raw `extern "C-unwind"` function pointers. To make
+//! `impl Altrep for MyType` ergonomic, we generate one trampoline per method
+//! once, generic over `T: Altrep`, that:
+//! 1. Recovers `T`'s monomorphization at the call site (no vtables).
+//! 2. Wraps the user callback in the per-type guard.
+//! 3. Hands the result back to R.
+//!
+//! Users (and the `#[derive(Altrep*)]` macros) never call into this module
+//! directly — `RegisterAltrep::get_or_init_class` does.
 //!
 //! ## Design
 //!
