@@ -365,7 +365,7 @@ fn with_dataframe_rows_callback_returns_owned() {
 #[test]
 fn non_dataframe_input_is_error() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
         // Allocate a plain list (not a data.frame)
         let list_sexp = unsafe {
             let s = Rf_allocVector(SEXPTYPE::VECSXP, 2);

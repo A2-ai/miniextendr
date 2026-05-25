@@ -5,7 +5,7 @@ Zero-copy conversions between R vectors and Apache Arrow arrays.
 ## Quick Reference
 
 ```rust
-use miniextendr_api::{miniextendr, ffi::SEXP};
+use miniextendr_api::{miniextendr, SEXP};
 use miniextendr_api::optionals::arrow_impl::*;
 
 // R numeric → Arrow Float64Array → back to R: zero-copy both directions

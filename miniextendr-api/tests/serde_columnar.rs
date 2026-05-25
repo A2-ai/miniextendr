@@ -6,10 +6,10 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::SexpExt as _;
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::into_r::IntoR as _;
 use miniextendr_api::serde::{NamedDataFrameListBuilder, vec_to_dataframe, vec_to_dataframe_split};
+use miniextendr_api::sys::SexpExt as _;
 use serde::Serialize;
 
 // region: NamedDataFrameListBuilder

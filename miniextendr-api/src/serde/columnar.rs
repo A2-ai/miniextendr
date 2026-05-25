@@ -407,7 +407,7 @@ pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, R
 /// ```
 pub struct NamedDataFrameListBuilder {
     scope: crate::ProtectScope,
-    pairs: Vec<(String, crate::ffi::SEXP)>,
+    pairs: Vec<(String, SEXP)>,
 }
 
 impl NamedDataFrameListBuilder {

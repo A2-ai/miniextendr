@@ -65,7 +65,7 @@ When a `#[miniextendr]` function takes `SEXP`, the generated wrapper calls
 pub fn inspect_vector(x: SEXP) -> i32 {
     // By the time we get here, `x` is guaranteed materialized.
     // DATAPTR_RO is safe, data pointer is stable.
-    unsafe { ffi::Rf_xlength(x) as i32 }
+    unsafe { sys::Rf_xlength(x) as i32 }
 }
 ```
 

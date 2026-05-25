@@ -118,7 +118,7 @@ Methods can return various types:
 ```rust
 // Return SEXP directly
 #[miniextendr(as = "numeric")]
-pub fn as_numeric(&self) -> Result<ffi::SEXP, AsCoerceError> { ... }
+pub fn as_numeric(&self) -> Result<SEXP, AsCoerceError> { ... }
 
 // Return List (for data.frame, list)
 #[miniextendr(as = "data.frame")]

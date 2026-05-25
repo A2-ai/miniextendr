@@ -9,8 +9,8 @@
 mod r_test_utils;
 
 use miniextendr_api::IntoR as _;
-use miniextendr_api::ffi::SexpExt as _;
 use miniextendr_api::serde::{DataFrameBuilder, RSerdeError, iter_to_dataframe, vec_to_dataframe};
+use miniextendr_api::sys::SexpExt as _;
 use serde::Serialize;
 
 // region: round-trip equivalence with vec_to_dataframe

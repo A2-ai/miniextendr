@@ -22,7 +22,7 @@ ALTREP allows you to create R vectors with custom internal representations. Inst
 Here's a minimal ALTREP example - a constant integer vector using the field-based derive (simplest approach):
 
 ```rust
-use miniextendr_api::{miniextendr, ffi::SEXP, IntoR};
+use miniextendr_api::{miniextendr, SEXP, IntoR};
 
 // 1. Define your data type with derive - generates everything
 #[derive(miniextendr_api::AltrepInteger)]
@@ -140,7 +140,7 @@ Is your data > 1000 elements?
 ### Examples
 
 ```rust
-use miniextendr_api::{miniextendr, IntoRAltrep, ffi::SEXP};
+use miniextendr_api::{miniextendr, IntoRAltrep, SEXP};
 
 // Small data - copy is fine
 #[miniextendr]

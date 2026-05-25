@@ -135,7 +135,7 @@ Fields marked `#[vctrs(data)]` become the record fields. All `#[vctrs(data)]` fi
 ### Step 2: Write a Constructor
 
 ```rust
-use miniextendr_api::{miniextendr, ffi::SEXP};
+use miniextendr_api::{miniextendr, SEXP};
 use miniextendr_api::vctrs::IntoVctrs;
 
 #[miniextendr]
