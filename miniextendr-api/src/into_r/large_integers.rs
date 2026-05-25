@@ -2,6 +2,21 @@
 //!
 //! R doesn't have native 64-bit integers. These types convert to f64 (REALSXP)
 //! which may lose precision for values outside the "safe integer" range.
+//!
+//! # Tradeoff
+//!
+//! These are the **lax** outbound impls — values in `(i32::MIN, i32::MAX]`
+//! become `INTSXP` and everything else silently widens to `REALSXP`, with
+//! precision loss above `2^53`. The strict alternative is
+//! [`crate::strict::checked_into_sexp_i64`] (and the `u64`/`isize`/`usize`
+//! siblings), reached via `#[miniextendr(strict)]` — those panic (→ R error)
+//! instead of widening. Failure mode of staying on the lax path with
+//! IDs/counters: collisions once values exceed `2^53` (≈ `9 × 10^15`).
+//!
+//! For storage-directed conversions (force `INTSXP`, error if out of range)
+//! see [`crate::into_r_as::IntoRAs`]. Background:
+//! [STRICT_MODE.md](../../../docs/STRICT_MODE.md),
+//! [TYPE_CONVERSIONS.md](../../../docs/TYPE_CONVERSIONS.md).
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::into_r::IntoR;

@@ -5,6 +5,20 @@
 //!
 //! Covers: `&T`, `&mut T`, `Option<&T>`, `Vec<&T>`, `Vec<&[T]>`, and
 //! mutable variants for all `RNativeType` types.
+//!
+//! # Tradeoff
+//!
+//! Prefer borrowed `&[T]` over owned `Vec<T>` when you only need read access —
+//! this is the fast path (no allocation, no copy). Reach for `&mut [T]` only
+//! when you genuinely need to mutate R-owned data in place; the R caller will
+//! observe those writes (ALTREP MAYBE_REFERENCED rules still apply). Failure
+//! mode: taking `&mut [T]` from a shared SEXP that R has handed to multiple
+//! callers writes through that aliased buffer.
+//!
+//! For NA-aware reads use [`crate::from_r::na_vectors`] (`Vec<Option<T>>`) —
+//! borrowed slices cannot express NA without losing the sentinel encoding.
+//! Outbound: borrowed slices have no `IntoR` impl (R owns return-value
+//! storage); see [`crate::into_r`] for the owned equivalents.
 
 use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};

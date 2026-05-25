@@ -5,6 +5,21 @@
 //!
 //! Covers: `i8`, `i16`, `u16`, `u32`, `f32` (sub-native scalars) and
 //! `i64`, `u64`, `isize`, `usize` (large integers via f64 intermediary).
+//!
+//! # Tradeoff
+//!
+//! This is the **looser** inbound path. The strict alternative is the bare
+//! [`TryFromSexp`](crate::from_r::TryFromSexp) impl on the matching R native
+//! type (`i32`, `f64`, `&[i32]`, …) — those reject any mismatched
+//! [`SEXPTYPE`] outright instead of coercing. Failure mode of preferring the
+//! coerced path when you wanted strict: an R caller silently passes `1.7`
+//! (REALSXP) into a Rust `i32` argument and gets a truncated `1`.
+//!
+//! Outbound counterparts for the large-integer types in this module live in
+//! [`crate::into_r::large_integers`] (lax, default) and [`crate::strict`]
+//! (`#[miniextendr(strict)]` opt-in). See
+//! [STRICT_MODE.md](../../../docs/STRICT_MODE.md) and
+//! [COERCE.md](../../../docs/COERCE.md).
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::coerce::TryCoerce;

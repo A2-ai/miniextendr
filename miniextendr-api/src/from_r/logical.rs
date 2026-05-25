@@ -8,6 +8,18 @@
 //! | `bool` | Error on NA |
 //! | `Option<Rboolean>` | `None` on NA |
 //! | `Option<bool>` | `None` on NA |
+//!
+//! # Tradeoff
+//!
+//! Use `Option<bool>` / `Option<Rboolean>` if R might pass `NA` — the plain
+//! `bool` / `Rboolean` impls treat NA as a conversion failure. Failure mode
+//! of binding a plain `bool` when callers can pass `NA`: every NA argument
+//! surfaces as `SexpNaError` at the call site, which is usually not what you
+//! want for an interactive R API.
+//!
+//! Outbound counterpart: `bool` / `Option<bool>` impls in
+//! [`crate::into_r`]. Conversion table:
+//! [CONVERSION_MATRIX.md](../../../docs/CONVERSION_MATRIX.md).
 
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};

@@ -9,6 +9,24 @@
 //! it converts; if not, it errors. There is no "lossy" escape hatch - if you want
 //! lossy conversion, cast the values yourself first.
 //!
+//! # Where this fits among the three outbound paths
+//!
+//! - [`crate::into_r::IntoR`] — **lax** default: picks an R storage type for
+//!   you (e.g. `i64` → `INTSXP` if it fits, `REALSXP` otherwise). Silent.
+//! - [`crate::strict`] — **strict** opt-in via `#[miniextendr(strict)]`:
+//!   panics (→ R error) if the value can't fit `INTSXP`.
+//! - `IntoRAs` (this module) — **storage-directed**: the *caller* picks the
+//!   target R type, the conversion errors with [`StorageCoerceError`] if any
+//!   value doesn't fit.
+//!
+//! Failure mode of reaching for the default `IntoR` when you actually wanted
+//! storage control: an R-side `is.integer()` check fails because R received
+//! a `REALSXP` your `tibble` column wasn't expecting.
+//!
+//! Background: [STRICT_MODE.md](../../docs/STRICT_MODE.md),
+//! [TYPE_CONVERSIONS.md](../../docs/TYPE_CONVERSIONS.md),
+//! [CONVERSION_MATRIX.md](../../docs/CONVERSION_MATRIX.md).
+//!
 //! # Example
 //!
 //! ```ignore
