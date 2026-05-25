@@ -125,7 +125,7 @@ check-features:
         "rayon,ndarray"
         "rayon,serde"
         # connections + strict mode
-        "connections,default-strict"
+        "connections,strict-default"
         # numeric ecosystem
         "num-bigint,num-complex,num-traits,ordered-float,rust_decimal"
         # string/pattern features together
@@ -135,8 +135,8 @@ check-features:
         # collection combos
         "indexmap,tinyvec,bitvec,bitflags"
         # defaults combos
-        "default-strict,default-coerce,default-r6"
-        "default-strict,default-s7,default-worker"
+        "strict-default,coerce-default,r6-default"
+        "strict-default,s7-default,worker-default"
         # diagnostic features
         "growth-debug,materialization-tracking"
         # all features together

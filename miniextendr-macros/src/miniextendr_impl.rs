@@ -737,7 +737,7 @@ pub struct ParsedImpl {
 #[derive(Debug)]
 pub struct ImplAttrs {
     /// Which R class system to generate wrappers for.
-    /// Defaults to `Env` unless overridden by feature flags (`default-r6`, `default-s7`).
+    /// Defaults to `Env` unless overridden by feature flags (`r6-default`, `s7-default`).
     pub class_system: ClassSystem,
     /// Optional override for the R class name. When `None`, the Rust type name is used.
     pub class_name: Option<String>,
@@ -797,9 +797,9 @@ pub struct ImplAttrs {
 impl syn::parse::Parse for ImplAttrs {
     /// Parses `#[miniextendr(...)]` impl-level options.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut class_system = if cfg!(feature = "default-r6") {
+        let mut class_system = if cfg!(feature = "r6-default") {
             ClassSystem::R6
-        } else if cfg!(feature = "default-s7") {
+        } else if cfg!(feature = "s7-default") {
             ClassSystem::S7
         } else {
             ClassSystem::Env
@@ -1130,7 +1130,7 @@ impl syn::parse::Parse for ImplAttrs {
             s7_parent,
             s7_abstract,
             r_data_accessors,
-            strict: strict.unwrap_or(cfg!(feature = "default-strict")),
+            strict: strict.unwrap_or(cfg!(feature = "strict-default")),
             internal,
             noexport,
             blanket,
@@ -1686,9 +1686,9 @@ impl ParsedMethod {
         }
 
         // Resolve feature defaults for fields not explicitly set
-        method_attrs.worker = worker.unwrap_or(cfg!(feature = "default-worker"));
+        method_attrs.worker = worker.unwrap_or(cfg!(feature = "worker-default"));
         method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(true);
-        method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "default-coerce"));
+        method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "coerce-default"));
 
         // Method-level `internal` / `noexport` are currently only honoured by the R6
         // active-binding doc path (emits `#' @field <name> (internal)` — the documented
@@ -2470,7 +2470,7 @@ pub fn generate_method_c_wrapper(
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
     // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(worker)]
-    // or by the default-worker feature flag)
+    // or by the worker-default feature flag)
     let thread_strategy = if method.method_attrs.unsafe_main_thread || method.env.is_instance() {
         ThreadStrategy::MainThread
     } else if method.method_attrs.worker {

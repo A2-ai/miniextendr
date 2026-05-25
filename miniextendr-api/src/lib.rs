@@ -194,11 +194,11 @@
 //!
 //! | Feature | Description |
 //! |---------|-------------|
-//! | `default-r6` | Default class system: R6 (mutually exclusive with `default-s7`) |
-//! | `default-s7` | Default class system: S7 (mutually exclusive with `default-r6`) |
-//! | `default-worker` | Default to worker thread dispatch (implies `worker-thread`) |
-//! | `default-strict` | Default to strict mode for lossy integer conversions |
-//! | `default-coerce` | Default to coerce mode for type conversions |
+//! | `r6-default` | Default class system: R6 (mutually exclusive with `s7-default`) |
+//! | `s7-default` | Default class system: S7 (mutually exclusive with `r6-default`) |
+//! | `worker-default` | Default to worker thread dispatch (implies `worker-thread`) |
+//! | `strict-default` | Default to strict mode for lossy integer conversions |
+//! | `coerce-default` | Default to coerce mode for type conversions |
 //!
 //! ### Development / Diagnostics
 //!

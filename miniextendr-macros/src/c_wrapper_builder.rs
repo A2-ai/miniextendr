@@ -477,7 +477,7 @@ impl CWrapperContext {
         let call_expr = &self.call_expr;
 
         // Compile-time check: worker dispatch requires the `worker-thread` feature.
-        // Check both `worker-thread` (direct) and `default-worker` (implies worker-thread
+        // Check both `worker-thread` (direct) and `worker-default` (implies worker-thread
         // via miniextendr-api, but the user crate may only have the latter in its features).
         let fn_name = self.fn_ident.to_string();
         let feature_msg = format!(
@@ -485,7 +485,7 @@ impl CWrapperContext {
              Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
         );
         let worker_feature_check = quote! {
-            #[cfg(not(any(feature = "worker-thread", feature = "default-worker")))]
+            #[cfg(not(any(feature = "worker-thread", feature = "worker-default")))]
             compile_error!(#feature_msg);
         };
 

@@ -321,8 +321,8 @@ framework crates.
   `Cargo.lock`, or `.rs` files during `./configure` dirties the VCS working
   tree. Vendoring belongs in `just vendor`, not in configure.
 
-- **`--all-features` fails on this workspace**: the `default-r6` and
-  `default-s7` features are mutually exclusive. CI's `clippy_all` job uses a
+- **`--all-features` fails on this workspace**: the `r6-default` and
+  `s7-default` features are mutually exclusive. CI's `clippy_all` job uses a
   curated feature list maintained in `.github/workflows/ci.yml`. Read it from
   there before reproducing locally.
 

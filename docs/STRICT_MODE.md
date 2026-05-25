@@ -102,10 +102,10 @@ In `Cargo.toml`:
 
 ```toml
 [dependencies]
-miniextendr-api = { version = "0.1", features = ["default-strict"] }
+miniextendr-api = { version = "0.1", features = ["strict-default"] }
 ```
 
-When `default-strict` is enabled, all `#[miniextendr]` functions default to strict.
+When `strict-default` is enabled, all `#[miniextendr]` functions default to strict.
 Use `#[miniextendr(no_strict)]` to opt out.
 
 ## Error Messages

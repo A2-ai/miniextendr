@@ -201,17 +201,17 @@ Default features:
 | `indicatif` | Progress bars routed through the R console. Requires `nonapi`. |
 | `vctrs` | Access to the vctrs C API and the `#[derive(Vctrs)]` proc macro. |
 | `worker-thread` | Enables the worker-thread infrastructure without changing proc-macro defaults by itself. |
-| `default-worker` | Makes worker-thread execution the proc-macro default and enables `worker-thread`. |
+| `worker-default` | Makes worker-thread execution the proc-macro default and enables `worker-thread`. |
 | `log` | Routes Rust `log` output to the R console during package init. |
 
 ### Proc-macro defaults
 
 | Feature | Description |
 |---------|-------------|
-| `default-strict` | Turns on strict numeric conversion defaults in the macros. |
-| `default-coerce` | Makes `#[miniextendr(coerce)]` the default macro behavior. |
-| `default-r6` | Makes generated classes default to R6. |
-| `default-s7` | Makes generated classes default to S7. |
+| `strict-default` | Turns on strict numeric conversion defaults in the macros. |
+| `coerce-default` | Makes `#[miniextendr(coerce)]` the default macro behavior. |
+| `r6-default` | Makes generated classes default to R6. |
+| `s7-default` | Makes generated classes default to S7. |
 
 ### Serialization and columnar data
 

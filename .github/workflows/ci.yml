@@ -301,12 +301,12 @@ jobs:
         continue-on-error: true
         # NOTE: Can't use `--features full` — the `full` feature in
         # miniextendr-api omits the forwarding features we want checked
-        # (default-r6/-strict/-coerce/-worker, nonapi, connections) and adds
+        # (r6-default/strict-default/coerce-default/worker-default, nonapi, connections) and adds
         # heavy deps (arrow, datafusion, log) we don't need here. Keep the
         # explicit list so CI signal matches what rpkg actually enables.
         run: >-
           cargo clippy --workspace --all-targets --locked
-          --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,indicatif,default-strict,default-coerce,default-r6,default-worker,jiff
+          --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,indicatif,strict-default,coerce-default,r6-default,worker-default,jiff
           -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_all.log"
         shell: bash
 

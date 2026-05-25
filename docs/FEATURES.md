@@ -117,7 +117,7 @@ calling thread (no thread dispatch).
 - `run_on_worker(f)` → `Ok(f())` (inline)
 - `with_r_thread(f)` → `f()` (inline, panics if not on main thread)
 
-The `default-worker` feature implies `worker-thread`.
+The `worker-default` feature implies `worker-thread`.
 
 ### `rayon`
 
@@ -965,18 +965,18 @@ See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
 
 | Feature | Effect | Opt-out |
 |---------|--------|---------|
-| `default-strict` | Strict checked conversions for lossy types | `no_strict` |
-| `default-coerce` | Auto-coerce parameters | `no_coerce` |
-| `default-r6` | R6 class system for impl blocks | `env`, `s7`, etc. |
-| `default-s7` | S7 class system for impl blocks | `env`, `r6`, etc. |
-| `default-worker` | Force worker thread execution (implies `worker-thread`) | `no_worker` |
+| `strict-default` | Strict checked conversions for lossy types | `no_strict` |
+| `coerce-default` | Auto-coerce parameters | `no_coerce` |
+| `r6-default` | R6 class system for impl blocks | `env`, `s7`, etc. |
+| `s7-default` | S7 class system for impl blocks | `env`, `r6`, etc. |
+| `worker-default` | Force worker thread execution (implies `worker-thread`) | `no_worker` |
 
 **Note:** The tagged-condition transport (panics, `Err`, `None` → tagged SEXP → R wrapper
 raises a structured `rust_*` condition) and main thread execution are **hardcoded
 defaults** with no opt-out. The `unwrap_in_r` attribute is orthogonal (Result-as-value
 vs Result-as-error-boundary). Opt into the worker thread per-function with `worker`.
 
-**Mutual exclusivity:** `default-r6`/`default-s7` cannot be enabled simultaneously.
+**Mutual exclusivity:** `r6-default`/`s7-default` cannot be enabled simultaneously.
 
 ---
 
@@ -1026,7 +1026,7 @@ Feature implications (automatically enabled):
 | `rand_distr` | `rand` |
 | `indicatif` | `nonapi` |
 | `datafusion` | `arrow` |
-| `default-worker` | `worker-thread` |
+| `worker-default` | `worker-thread` |
 
 ---
 

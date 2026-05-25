@@ -562,7 +562,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
 /// Extracted from method-level attributes to control C wrapper behavior,
 /// threading, and R wrapper generation.
 struct TraitMethodAttrs {
-    /// Dispatch to worker thread. Set by explicit `#[miniextendr(worker)]` or `default-worker` feature.
+    /// Dispatch to worker thread. Set by explicit `#[miniextendr(worker)]` or `worker-default` feature.
     worker: bool,
     /// Force execution on R's main thread (overrides default worker thread for static methods).
     unsafe_main_thread: bool,
@@ -599,7 +599,7 @@ struct TraitMethodAttrs {
 /// - **Nested class-system**: `#[miniextendr(env(worker, coerce))]`
 ///
 /// Both styles can coexist. The `worker` flag controls whether static methods
-/// dispatch to the worker thread (defaults to `cfg!(feature = "default-worker")`).
+/// dispatch to the worker thread (defaults to `cfg!(feature = "worker-default")`).
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethodAttrs> {
     let mut worker = false;
     let mut unsafe_main_thread = false;
@@ -780,7 +780,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     }
 
     Ok(TraitMethodAttrs {
-        worker: worker || cfg!(feature = "default-worker"),
+        worker: worker || cfg!(feature = "worker-default"),
         unsafe_main_thread,
         coerce,
         check_interrupt,
@@ -858,7 +858,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     let call_method_def_ident = method.call_method_def_ident(type_ident, trait_name);
 
     // Thread strategy: instance methods stay on main thread (self_ref can't cross threads);
-    // static methods use worker thread only when worker=true (explicit or default-worker feature)
+    // static methods use worker thread only when worker=true (explicit or worker-default feature)
     let thread_strategy = if method.has_self || method.unsafe_main_thread {
         ThreadStrategy::MainThread
     } else if method.worker {

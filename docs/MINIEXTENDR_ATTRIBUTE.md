@@ -60,7 +60,7 @@ pub fn set_option(key: String, value: i32) { /* ... */ }
 
 | Attribute | Effect |
 |-----------|--------|
-| `worker` | Run on worker thread (default if `default-worker` feature) |
+| `worker` | Run on worker thread (default if `worker-default` feature) |
 | `no_worker` | Run on main R thread |
 | `unsafe(main_thread)` | Main thread, no worker overhead (for SEXP params) |
 

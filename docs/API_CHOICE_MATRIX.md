@@ -17,7 +17,7 @@ textbook.
 | Decision | Stricter / safer | Looser / faster | Pick stricter when... |
 |---|---|---|---|
 | **Rust → R for lossy ints** (`i64`/`u64`/`isize`/`usize`) | `#[miniextendr(strict)]` → `strict::checked_*` helpers (panic on overflow) | default `IntoR` (silently widens to `REALSXP` outside `[-2^53, 2^53]`) | the caller's data is *supposed to fit* the type you declared and a silent precision loss would mask a bug |
-| **Strict mode (project-wide)** | `default-strict` feature | strict opted-in per-fn | you'd rather a misuse fail loudly across the whole package |
+| **Strict mode (project-wide)** | `strict-default` feature | strict opted-in per-fn | you'd rather a misuse fail loudly across the whole package |
 | **R → Rust shape mismatch** | `TryFromSexp` (returns `Result` on wrong R type) | `Coerce<R>` (widens across SEXP types) | the input is *supposed to be* one R type and accepting others would mask a caller bug |
 | **Numeric narrowing across types** | `TryCoerce<R>` (fallible) | `Coerce<R>` (infallible widening) | the source range exceeds the target type |
 | **Conversion impl style** | hand-rolled `TryFromSexp + IntoR` | `#[derive(RSerializeNative)]` (serde feature) | you need full control over the SEXP layout, zero-overhead, or your shape doesn't match serde's data model |
@@ -50,7 +50,7 @@ one-line summary is:
 | **Vctrs** | the type is a *vector* that should integrate with tidyverse `vctrs` | the type isn't vector-shaped |
 
 Default class system is controlled by the mutually-exclusive
-`default-r6` and `default-s7` features. Per-type override via the
+`r6-default` and `s7-default` features. Per-type override via the
 `#[miniextendr]` attribute.
 
 ## Defaults that change behavior
@@ -61,10 +61,10 @@ call sites:
 
 | Feature | What it changes |
 |---|---|
-| `default-strict` | All `#[miniextendr]` lossy conversions reject NA / truncation by default |
-| `default-coerce` | Numeric scalars use `TryCoerce` path by default |
-| `default-r6` / `default-s7` | Picks the default class system for `#[miniextendr] impl` blocks without an explicit attr |
-| `default-worker` | All `#[miniextendr]` fns dispatch through the worker thread (implies `worker-thread`) |
+| `strict-default` | All `#[miniextendr]` lossy conversions reject NA / truncation by default |
+| `coerce-default` | Numeric scalars use `TryCoerce` path by default |
+| `r6-default` / `s7-default` | Picks the default class system for `#[miniextendr] impl` blocks without an explicit attr |
+| `worker-default` | All `#[miniextendr]` fns dispatch through the worker thread (implies `worker-thread`) |
 
 See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full story.
 
