@@ -554,6 +554,58 @@ pub fn gc_stress_with_dataframe_rows() -> f64 {
     .expect("gc_stress_with_dataframe_rows: with_dataframe_rows failed")
 }
 
+/// Exercise `dataframe_to_vec` nested-struct un-flattening under GC pressure.
+///
+/// Synthesizes 10 rows of a nested `Person { name, address: Address { city, zip } }`
+/// struct via `vec_to_dataframe`, then reconstructs them via `dataframe_to_vec`
+/// using the single-underscore prefix-matching path. Returns the row count.
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_dataframe_to_vec_nested() -> i32 {
+    use crate::serde::{Deserialize, Serialize};
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{dataframe_to_vec, vec_to_dataframe};
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct Address {
+        city: String,
+        zip: String,
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct Person {
+        name: String,
+        address: Address,
+    }
+
+    let original: Vec<Person> = (0i32..10)
+        .map(|i| Person {
+            name: format!("person_{}", i),
+            address: Address {
+                city: format!("city_{}", i),
+                zip: format!("{:05}", i * 1000),
+            },
+        })
+        .collect();
+
+    let sexp = vec_to_dataframe(&original)
+        .expect("gc_stress_dataframe_to_vec_nested: vec_to_dataframe failed")
+        .into_sexp();
+
+    let back: Vec<Person> = dataframe_to_vec(sexp)
+        .expect("gc_stress_dataframe_to_vec_nested: dataframe_to_vec failed");
+
+    assert_eq!(back.len(), original.len());
+    for (a, b) in original.iter().zip(back.iter()) {
+        assert_eq!(a, b);
+    }
+
+    back.len() as i32
+}
+
 // endregion
 
 // region: Streaming serialize GC stress
