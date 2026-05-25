@@ -1,0 +1,5 @@
+error: typed_dataframe! requires at least one column declaration
+ --> tests/ui/typed_dataframe_empty.rs:4:9
+  |
+4 |     pub EmptyDf {}
+  |         ^^^^^^^
