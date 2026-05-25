@@ -9,7 +9,11 @@ mod r_test_utils;
 use miniextendr_api::ffi::SexpExt as _;
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::into_r::IntoR as _;
-use miniextendr_api::serde::{NamedDataFrameListBuilder, vec_to_dataframe, vec_to_dataframe_split};
+use miniextendr_api::serde::{
+    DataFrameShape, NamedDataFrameListBuilder, ResultShape, SplitResults, SplitShape,
+    hashmap_to_dataframe, map_to_dataframe, result_to_dataframe, vec_to_dataframe,
+    vec_to_dataframe_split,
+};
 use serde::Serialize;
 
 // region: NamedDataFrameListBuilder
@@ -132,15 +136,15 @@ fn vec_to_dataframe_split_single_variant_regression() {
 
     r_test_utils::with_r_thread(|| {
         let rows = vec![E::Ok { id: 1 }, E::Ok { id: 2 }];
-        let list = vec_to_dataframe_split(&rows).unwrap();
-        let sexp = list.into_sexp();
-        // Single-variant short-circuit: returned as a bare data.frame (no names attr)
-        // The data.frame itself is a VECSXP with one column ("id")
+        let shape = vec_to_dataframe_split(&rows, SplitShape::PerVariantList).unwrap();
+        // Single-variant short-circuit: DataFrameShape::Bare; single-column df.
+        assert!(matches!(shape, DataFrameShape::Bare(_)));
+        let sexp = shape.into_sexp();
         assert_eq!(sexp.xlength(), 1, "single-column data.frame expected");
     });
 }
 
-/// vec_to_dataframe_split on a multi-variant input returns a named list.
+/// vec_to_dataframe_split on a multi-variant input returns a PerVariantList shape.
 #[test]
 fn vec_to_dataframe_split_multi_variant_regression() {
     #[derive(Serialize)]
@@ -155,9 +159,270 @@ fn vec_to_dataframe_split_multi_variant_regression() {
             E::Err { msg: "oops".into() },
             E::Ok { id: 2 },
         ];
-        let list = vec_to_dataframe_split(&rows).unwrap();
-        let sexp = list.into_sexp();
+        let shape = vec_to_dataframe_split(&rows, SplitShape::PerVariantList).unwrap();
+        assert!(matches!(shape, DataFrameShape::PerVariantList(_)));
+        let sexp = shape.into_sexp();
         assert_eq!(sexp.xlength(), 2, "expected 2 named partitions");
+    });
+}
+
+// endregion
+
+// region: map_to_dataframe regression
+
+#[test]
+fn map_to_dataframe_btreemap_basic() {
+    use std::collections::BTreeMap;
+
+    #[derive(Serialize)]
+    struct Summary {
+        cmax: f64,
+        tmax: f64,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let mut map: BTreeMap<i32, Summary> = BTreeMap::new();
+        map.insert(
+            1,
+            Summary {
+                cmax: 10.5,
+                tmax: 2.0,
+            },
+        );
+        map.insert(
+            2,
+            Summary {
+                cmax: 8.1,
+                tmax: 3.0,
+            },
+        );
+
+        let df = map_to_dataframe(&map, "subject").unwrap();
+        let sexp = df.into_sexp();
+        assert_eq!(sexp.xlength(), 3, "expected 3 columns: subject + cmax + tmax");
+
+        let names = sexp.get_names();
+        assert_eq!(names.string_elt_str(0), Some("subject"));
+    });
+}
+
+#[test]
+fn hashmap_to_dataframe_sorted_keys() {
+    use std::collections::HashMap;
+
+    #[derive(Serialize)]
+    struct Row {
+        v: i32,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let mut map: HashMap<i32, Row> = HashMap::new();
+        map.insert(3, Row { v: 30 });
+        map.insert(1, Row { v: 10 });
+        map.insert(2, Row { v: 20 });
+
+        let df = hashmap_to_dataframe(&map, "id").unwrap();
+        let sexp = df.into_sexp();
+        assert_eq!(sexp.xlength(), 2, "expected 2 columns: id + v");
+    });
+}
+
+// endregion
+
+// region: result_to_dataframe regression
+
+#[derive(Serialize)]
+struct Obs {
+    id: i32,
+    value: f64,
+}
+
+#[derive(Serialize)]
+struct ErrRow {
+    id: i32,
+    reason: String,
+}
+
+#[test]
+fn result_to_dataframe_auto_all_ok_bare() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<Obs, ErrRow>> = vec![
+            Ok(Obs { id: 1, value: 1.0 }),
+            Ok(Obs { id: 2, value: 2.0 }),
+        ];
+        let shape = result_to_dataframe(
+            &rows,
+            ResultShape::Auto {
+                empty_ok_sentinel: (),
+            },
+        )
+        .unwrap();
+        assert!(matches!(shape, DataFrameShape::Bare(_)));
+    });
+}
+
+#[test]
+fn result_to_dataframe_auto_mixed_split() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<Obs, ErrRow>> = vec![
+            Ok(Obs { id: 1, value: 1.0 }),
+            Err(ErrRow {
+                id: 2,
+                reason: "bad".into(),
+            }),
+        ];
+        let shape = result_to_dataframe(
+            &rows,
+            ResultShape::Auto {
+                empty_ok_sentinel: (),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            shape,
+            DataFrameShape::Split {
+                results: SplitResults::Some(_),
+                ..
+            }
+        ));
+        let sexp = shape.into_sexp();
+        assert_eq!(sexp.xlength(), 2, "results + error elements");
+    });
+}
+
+#[test]
+fn result_to_dataframe_split_all_err_uses_sentinel() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<Obs, ErrRow>> = vec![Err(ErrRow {
+            id: 1,
+            reason: "x".into(),
+        })];
+        let shape = result_to_dataframe(
+            &rows,
+            ResultShape::Split {
+                empty_ok_sentinel: (),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            shape,
+            DataFrameShape::Split {
+                results: SplitResults::None(_),
+                ..
+            }
+        ));
+    });
+}
+
+#[test]
+fn result_to_dataframe_collated_yields_bare() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<Obs, ErrRow>> = vec![
+            Ok(Obs { id: 1, value: 1.0 }),
+            Err(ErrRow {
+                id: 2,
+                reason: "bad".into(),
+            }),
+        ];
+        let shape = result_to_dataframe(&rows, ResultShape::<()>::Collated).unwrap();
+        let DataFrameShape::Bare(df) = shape else {
+            panic!("expected Bare");
+        };
+        let sexp = df.into_sexp();
+        // is_error + id (union of Obs.id and ErrRow.id) + value + reason
+        assert_eq!(sexp.xlength(), 4, "is_error + id + value + reason");
+        let names = sexp.get_names();
+        assert_eq!(
+            names.string_elt_str(0),
+            Some("is_error"),
+            "is_error first column"
+        );
+    });
+}
+
+// endregion
+
+// region: SplitShape variants
+
+#[test]
+fn split_pervariantlist_with_tag_prepends_column() {
+    #[derive(Serialize)]
+    enum E {
+        Click { x: f64 },
+        Scroll { delta: f64 },
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![E::Click { x: 1.0 }, E::Scroll { delta: -1.0 }];
+        let shape = vec_to_dataframe_split(
+            &rows,
+            SplitShape::PerVariantListWithTag {
+                column: "variant".into(),
+            },
+        )
+        .unwrap();
+        let DataFrameShape::PerVariantList(parts) = shape else {
+            panic!("expected PerVariantList");
+        };
+        assert_eq!(parts.len(), 2);
+        // Each partition df should have a leading "variant" column.
+        for (name, df) in parts {
+            let sexp = df.into_sexp();
+            let names = sexp.get_names();
+            assert_eq!(
+                names.string_elt_str(0),
+                Some("variant"),
+                "variant column should be first in {name}"
+            );
+        }
+    });
+}
+
+#[test]
+fn split_collated_emits_single_df_with_tag() {
+    #[derive(Serialize)]
+    enum E {
+        Click { x: f64 },
+        Scroll { delta: f64 },
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![E::Click { x: 1.0 }, E::Scroll { delta: -1.0 }];
+        let shape = vec_to_dataframe_split(
+            &rows,
+            SplitShape::Collated {
+                column: "kind".into(),
+            },
+        )
+        .unwrap();
+        let DataFrameShape::Bare(df) = shape else {
+            panic!("expected Bare");
+        };
+        let sexp = df.into_sexp();
+        // kind + x + delta = 3 columns
+        assert_eq!(sexp.xlength(), 3, "kind + x + delta");
+        let names = sexp.get_names();
+        assert_eq!(names.string_elt_str(0), Some("kind"));
+    });
+}
+
+#[test]
+fn split_collated_empty_input_errors() {
+    #[derive(Serialize)]
+    #[allow(dead_code)]
+    enum E {
+        Click { x: f64 },
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<E> = Vec::new();
+        let res = vec_to_dataframe_split(
+            &rows,
+            SplitShape::Collated {
+                column: "k".into(),
+            },
+        );
+        assert!(res.is_err(), "collated empty input must error");
     });
 }
 
