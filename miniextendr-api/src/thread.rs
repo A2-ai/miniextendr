@@ -4,6 +4,35 @@
 //! from threads other than the main R thread. This module provides utilities to
 //! safely disable stack checking when crossing thread boundaries.
 //!
+//! # Prefer [`crate::worker::with_r_thread`] in normal code
+//!
+//! This module is the **escape hatch** for advanced cases (rayon pools,
+//! externally-spawned threads that need to touch R briefly). The default
+//! tool for crossing back to R is [`crate::worker::with_r_thread`], which
+//! routes the closure to the recorded main thread instead of unsafely
+//! patching R's internal stack bounds.
+//!
+//! `StackCheckGuard` is gated behind the `nonapi` feature because it
+//! mutates `R_CStackStart` / `R_CStackLimit` / `R_CStackDir`, none of which
+//! are part of R's public C API. The lint **MXL301** treats this guard the
+//! same way as the other known-safe contexts — inside a `StackCheckGuard`
+//! scope you may use `*_unchecked` FFI variants because the main-thread
+//! assertion would be wrong (you're explicitly *not* on the main thread).
+//!
+//! # Don't use `Rf_error` here either
+//!
+//! A longjmp from a non-main thread is undefined behaviour even with the
+//! stack check disabled. Panic, capture the message in your guard's
+//! fallback (see [`crate::ffi_guard::guarded_ffi_call_with_fallback`]), and
+//! surface the failure to the main thread before letting R see it. The lint
+//! **MXL300** rejects direct `Rf_error` calls in user code.
+//!
+//! # Cross references
+//!
+//! - [`crate::worker::with_r_thread`] — preferred path for crossing back to R.
+//! - [`crate::ffi`] — checked vs `*_unchecked` FFI surface.
+//! - `docs/THREADS.md` — main-thread invariants.
+//!
 //! # Background
 //!
 //! R tracks three variables for stack overflow detection (all non-API):

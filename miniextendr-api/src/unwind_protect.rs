@@ -6,6 +6,44 @@
 //! **Important**: R uses `longjmp` for error handling, which normally bypasses Rust destructors.
 //! Use this API to ensure cleanup happens even when R errors occur.
 //!
+//! ## When to reach for this
+//!
+//! - **Calling R APIs that can error from a body you wrote yourself**
+//!   (custom ALTREP, custom connection trampoline, hand-rolled FFI shim).
+//!   Wrap the R-calling section in [`with_r_unwind_protect`] so Rust
+//!   destructors run if R longjmps.
+//! - **Inside a [`with_r_unwind_protect`] body it is safe to use `*_unchecked`
+//!   variants of the R FFI** — see the [`crate::ffi`] module doc. The lint
+//!   **MXL301** recognises this as one of the three contexts where bypassing
+//!   the main-thread assertion is valid (the other two being ALTREP callbacks
+//!   and [`crate::worker::with_r_thread`] bodies).
+//!
+//! ## You probably don't need this from a `#[miniextendr]` body
+//!
+//! The proc-macro already wraps every function and method in a guard that
+//! converts panics into the tagged-condition transport ([`crate::error_value`]).
+//! Returning `Result::Err`, `Option::None`, or calling `panic!()` /
+//! [`crate::error!`] / [`crate::warning!`] / [`crate::message!`] is the
+//! idiomatic path. Direct [`with_r_unwind_protect`] use inside that body is
+//! almost always wrong — you'd be nesting an `R_UnwindProtect` inside another
+//! `R_UnwindProtect`, paying the longjmp-leak cost twice (see "Leaks" below).
+//!
+//! ## Don't use `Rf_error`
+//!
+//! `Rf_error` and `Rf_errorcall` longjmp directly, skipping every Rust
+//! destructor on the stack. The lint **MXL300** forbids them in user code.
+//! Panic instead (or call [`crate::error!`]) and the framework raises the
+//! corresponding R condition for you.
+//!
+//! ## Leaks
+//!
+//! On the R longjmp path (when R unwinds out of the protected body),
+//! `with_r_unwind_protect` leaks ~8 bytes (an `RErrorMarker` + `Box` header)
+//! because the cleanup handler can't reclaim them via
+//! `Box::from_raw`. Regular Rust panics from inside the body don't leak.
+//! This is the cost MXL300 is buying off: every direct `Rf_error()` would
+//! incur the same leak with no observability.
+//!
 //! ## Log drain
 //!
 //! Every call to `with_r_unwind_protect` (and its variants) drains the
@@ -13,6 +51,12 @@
 //! helper before returning or re-raising an R error. This ensures that records
 //! buffered by worker threads are flushed to R's console on every FFI exit —
 //! including error paths.
+//!
+//! ## Cross references
+//!
+//! - [`crate::worker::with_r_thread`] — routes a closure to R's main thread.
+//! - [`crate::ffi_guard`] — unified panic-catching trampoline that consumes
+//!   `with_r_unwind_protect_sourced` for ALTREP `RUnwind` mode.
 use std::{
     any::Any,
     borrow::Cow,
@@ -326,7 +370,8 @@ where
 ///
 /// This raising-variant exists for guard sites that have no R wrapper between
 /// them and R's runtime:
-/// - ALTREP `RUnwind` guard callbacks (via [`with_r_unwind_protect_sourced`])
+/// - ALTREP `RUnwind` guard callbacks (via the crate-private
+///   `with_r_unwind_protect_sourced`)
 /// - FFI guard tests / benchmarks exercising the raw `R_UnwindProtect` mechanism
 ///
 /// In those contexts there is no consumer-side R wrapper to inspect a tagged

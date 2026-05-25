@@ -1,7 +1,57 @@
 //! Low-level FFI bindings to R headers.
 //!
-//! This module mirrors R's C API closely and is intentionally thin. Most
-//! downstream code should prefer higher-level wrappers in the crate root.
+//! This module mirrors R's C API closely and is intentionally thin. **You
+//! almost never call these directly from user code** — reach for the
+//! higher-level wrappers in the crate root (`SEXP` extensions, [`IntoR`],
+//! [`TryFromSexp`], [`with_r_thread`], [`with_r_unwind_protect`], the
+//! `#[miniextendr]` proc-macro). The items here exist so those wrappers can
+//! be written; treat them as the framework's escape hatch.
+//!
+//! [`IntoR`]: crate::IntoR
+//! [`TryFromSexp`]: crate::TryFromSexp
+//! [`with_r_thread`]: crate::worker::with_r_thread
+//! [`with_r_unwind_protect`]: crate::unwind_protect::with_r_unwind_protect
+//!
+//! # Checked vs `*_unchecked` variants
+//!
+//! Most non-variadic R API entry points come in two forms thanks to the
+//! [`#[r_ffi_checked]`](miniextendr_macros::r_ffi_checked) proc-macro applied
+//! to the `unsafe extern "C-unwind"` blocks below:
+//!
+//! - **Checked** (default — e.g. `Rf_allocVector`, `Rf_protect`, `INTEGER`):
+//!   debug-asserts you're on R's main thread, routing through
+//!   [`crate::worker::with_r_thread`] when called from a worker thread. **Use
+//!   these by default.**
+//! - **`*_unchecked`** (e.g. `Rf_allocVector_unchecked`): bypass the assertion
+//!   and the worker round-trip. Calling one off the R main thread is
+//!   undefined behaviour. They exist for three known-safe contexts:
+//!     1. Inside ALTREP callbacks — R is already calling us on the main thread.
+//!     2. Inside a [`crate::unwind_protect::with_r_unwind_protect`] body —
+//!        the guard has already established main-thread context.
+//!     3. Inside a [`crate::worker::with_r_thread`] body — the check would be
+//!        redundant.
+//!
+//! The build-time lint **MXL301** enforces this: any `*_unchecked` call
+//! outside those contexts is a compile-time error. See
+//! `docs/FFI_GUARD.md` and `miniextendr-lint/CLAUDE.md` for the rule's
+//! full surface.
+//!
+//! # Don't raise R errors directly
+//!
+//! `Rf_error`, `Rf_errorcall`, and their `_unchecked` siblings longjmp,
+//! which **skips Rust destructors** and leaks resources. The lint **MXL300**
+//! forbids them in user code. Use `panic!()` instead; the framework converts
+//! the panic into a structured R condition with `rust_*` class layering via
+//! the tagged-SEXP transport (see [`crate::error_value`] and the
+//! `docs/ERROR_HANDLING.md` manual chapter).
+//!
+//! # Cross references
+//!
+//! - `docs/FFI_GUARD.md` — guard taxonomy and worker-thread invariants.
+//! - `docs/THREADS.md` — worker / main-thread split.
+//! - `docs/ALTREP_GUARDS.md` — guard modes inside ALTREP callbacks.
+//! - `docs/ERROR_HANDLING.md` — panic → R condition transport.
+//! - `docs/API_CHOICE_MATRIX.md` — top-level API choices.
 
 /// ALTREP-specific C API bindings.
 pub mod altrep;
