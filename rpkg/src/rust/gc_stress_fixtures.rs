@@ -648,6 +648,94 @@ pub fn gc_stress_iter_to_dataframe() -> SEXP {
 
 // endregion
 
+// region: DataFrameBuilder with_schema / grow_schema GC stress
+
+/// Exercise [`DataFrameBuilder::with_schema`] PROTECT discipline under GC
+/// pressure. Builds a pre-declared schema, pushes 50 rows including a
+/// `None`-bearing optional column, then assembles via `finish()`. Verifies
+/// the per-builder `ProtectScope` keeps every protected SEXP live across
+/// the fill loop and final assembly.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_builder_with_schema() -> SEXP {
+    use crate::serde::Serialize;
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{DataFrameBuilder, TypeSpec};
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        id: i32,
+        ratio: f64,
+        tag: Option<String>,
+    }
+
+    let mut b = DataFrameBuilder::<Row>::with_schema(
+        [
+            ("id", TypeSpec::Integer),
+            ("ratio", TypeSpec::Real),
+            // Optional(Character) keeps the column character-typed even if
+            // the first row's `tag` is None.
+            ("tag", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+        ],
+        Some(50),
+    );
+    for i in 0..50i32 {
+        b.push(Row {
+            id: i,
+            ratio: f64::from(i) * 0.25,
+            tag: if i % 3 == 0 {
+                None
+            } else {
+                Some(format!("tag_{i}"))
+            },
+        })
+        .expect("gc_stress_builder_with_schema: push failed");
+    }
+    let df = b
+        .finish()
+        .expect("gc_stress_builder_with_schema: finish failed");
+    df.into_sexp()
+}
+
+/// Exercise [`DataFrameBuilder::grow_schema`] PROTECT discipline under GC
+/// pressure. Pushes 30 heterogeneous `BTreeMap` rows that progressively
+/// introduce new keys, forcing the back-fill path to allocate columns and
+/// NA-fill prior rows. Verifies the grown columns stay rooted and
+/// length-aligned through `finish()`.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_builder_grow_schema() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::DataFrameBuilder;
+    use std::collections::BTreeMap;
+
+    let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+    for i in 0..30i32 {
+        let mut row: BTreeMap<String, i32> = BTreeMap::new();
+        row.insert("base".into(), i);
+        // Introduce a fresh key every 5 rows to drive the back-fill path.
+        if i % 5 == 0 {
+            row.insert(format!("k_{i}"), i * 10);
+        }
+        // A common second column that appears from row 1 onward.
+        if i >= 1 {
+            row.insert("common".into(), i + 100);
+        }
+        b.push(row).expect("gc_stress_builder_grow_schema: push failed");
+    }
+    let df = b
+        .finish()
+        .expect("gc_stress_builder_grow_schema: finish failed");
+    df.into_sexp()
+}
+
+// endregion
+
 // region: BorrowedRows GC stress
 
 /// Exercise `dataframe_to_vec_borrowed` PROTECT discipline under GC pressure.

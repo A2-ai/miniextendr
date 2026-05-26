@@ -572,18 +572,92 @@ where
     builder.finish()
 }
 
+/// User-facing column type descriptor for [`DataFrameBuilder::with_schema`].
+///
+/// Maps onto the internal `ColumnType` and unlocks an NA-tolerance hint via
+/// `Optional(_)`. The wrapper does **not** change the underlying column type —
+/// `Optional(Integer)` produces an integer column where `None` lands as
+/// `NA_INTEGER`. Without the hint, an all-`None` column discovered from the
+/// first row would otherwise degrade to a logical-NA column (see
+/// `ColumnarDataFrame::from_rows` doc).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeSpec {
+    /// R `logical` column (`bool`).
+    Logical,
+    /// R `integer` column (`i8`/`i16`/`i32`).
+    Integer,
+    /// R `numeric` column (`f32`/`f64`/`i64`/`u64`).
+    Real,
+    /// R `character` column (`String`/`&str`).
+    Character,
+    /// R generic list column (per-element SEXP fallback).
+    Generic,
+    /// NA-tolerance hint wrapping a base type. `Optional(Integer)` is an
+    /// integer column where `None` is `NA_INTEGER`.
+    Optional(Box<TypeSpec>),
+}
+
+impl TypeSpec {
+    /// Collapse the user-facing spec to the internal `ColumnType`. The
+    /// `Optional` hint is discarded — column types are already NA-tolerant
+    /// at the R level (`NA_INTEGER` / `NA_REAL` / `NA_character_` are part
+    /// of the corresponding atomic vector types).
+    fn into_column_type(self) -> ColumnType {
+        match self {
+            TypeSpec::Logical => ColumnType::Logical,
+            TypeSpec::Integer => ColumnType::Integer,
+            TypeSpec::Real => ColumnType::Real,
+            TypeSpec::Character => ColumnType::Character,
+            TypeSpec::Generic => ColumnType::Generic,
+            TypeSpec::Optional(inner) => inner.into_column_type(),
+        }
+    }
+}
+
 /// Builder for incremental data.frame assembly.
 ///
-/// Schema discovery happens on the first [`push`](Self::push) call.
-/// Subsequent pushes must match (strict-mode `ColumnFiller` — fields not in
-/// the initial schema produce an error). Call [`finish`](Self::finish) to
-/// produce the [`ColumnarDataFrame`].
+/// Three schema modes:
+///
+/// 1. **Default** ([`DataFrameBuilder::new`]) — schema discovered from the
+///    first [`push`](Self::push); subsequent rows that introduce new fields
+///    are rejected.
+/// 2. **Pre-declared** ([`DataFrameBuilder::with_schema`]) — schema fixed at
+///    construction; first push skips discovery; later pushes must conform.
+/// 3. **Growing** ([`DataFrameBuilder::grow_schema`]) — new fields seen in
+///    later rows are added on-the-fly and back-filled with NA on prior rows.
+///    Composes with [`with_schema`](Self::with_schema) to start from a
+///    declared partial schema.
+///
+/// Call [`finish`](Self::finish) to produce the [`ColumnarDataFrame`].
 ///
 /// Use [`iter_to_dataframe`] when an iterator suffices; reach for this when
 /// you need explicit control over push points (conditional skipping,
 /// streaming from multiple sources, custom NA strategies).
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// # use miniextendr_api::serde::{DataFrameBuilder, TypeSpec};
+/// # use serde::Serialize;
+/// #[derive(Serialize)]
+/// struct Row { id: i32, label: Option<String> }
+///
+/// // Pre-declared schema. Optional(Character) keeps the column character-typed
+/// // even if the first row's label is None.
+/// let mut b = DataFrameBuilder::<Row>::with_schema(
+///     [
+///         ("id", TypeSpec::Integer),
+///         ("label", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+///     ],
+///     None,
+/// );
+/// b.push(Row { id: 1, label: None }).unwrap();
+/// b.push(Row { id: 2, label: Some("two".into()) }).unwrap();
+/// let df = b.finish().unwrap();
+/// ```
 pub struct DataFrameBuilder<T: Serialize> {
-    /// Schema set on first push.
+    /// Schema set on first push (default mode), at construction
+    /// ([`with_schema`](Self::with_schema)), or grown lazily ([`grow_schema`](Self::grow_schema)).
     schema: Option<Schema>,
     /// One buffer per column; lengths grow with each row.
     columns: Vec<ColumnBuffer>,
@@ -595,11 +669,14 @@ pub struct DataFrameBuilder<T: Serialize> {
     nrow_hint: Option<usize>,
     /// Holds protected SEXPs from `ColumnBuffer::Generic` cells until `finish` assembles them.
     scope: crate::ProtectScope,
+    /// When true, each push runs a Union-mode discovery pass and adds any
+    /// previously-unseen fields (back-filling NA on existing rows).
+    grow: bool,
     _marker: core::marker::PhantomData<fn(T)>,
 }
 
 impl<T: Serialize> DataFrameBuilder<T> {
-    /// Create a new builder.
+    /// Create a new builder with schema discovered on first [`push`](Self::push).
     ///
     /// `nrow_hint` pre-sizes column buffers; `None` is acceptable.
     pub fn new(nrow_hint: Option<usize>) -> Self {
@@ -612,15 +689,133 @@ impl<T: Serialize> DataFrameBuilder<T> {
             // SAFETY: builder must be constructed on the R main thread.
             // ProtectScope carries NoSendSync; the builder cannot escape.
             scope: unsafe { crate::ProtectScope::new() },
+            grow: false,
             _marker: core::marker::PhantomData,
         }
     }
 
+    /// Create a builder with a pre-declared flat schema.
+    ///
+    /// Skips the first-row discovery pass. All later pushes are validated
+    /// against this schema by the strict [`ColumnFiller`]; fields not in
+    /// the schema produce an error (unless [`grow_schema`](Self::grow_schema)
+    /// is chained, in which case new fields are added on the fly).
+    ///
+    /// `schema` is an iterable of `(name, TypeSpec)` pairs. Order is
+    /// preserved in the resulting data.frame's column layout.
+    ///
+    /// **Limitation**: this constructor takes a flat schema only — nested
+    /// struct flattening (`parent_child` columns) is not supported here.
+    /// Callers who need flattened nested structs either let default
+    /// discovery handle it, or pre-flatten the names themselves
+    /// (`"parent_child"` strings).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// # use miniextendr_api::serde::{DataFrameBuilder, TypeSpec};
+    /// # use serde::Serialize;
+    /// #[derive(Serialize)]
+    /// struct R { id: i32, name: String }
+    ///
+    /// let mut b = DataFrameBuilder::<R>::with_schema(
+    ///     [("id", TypeSpec::Integer), ("name", TypeSpec::Character)],
+    ///     Some(100),
+    /// );
+    /// for i in 0..100 {
+    ///     b.push(R { id: i, name: format!("row_{i}") }).unwrap();
+    /// }
+    /// let df = b.finish().unwrap();
+    /// ```
+    pub fn with_schema<S, I>(schema: I, nrow_hint: Option<usize>) -> Self
+    where
+        S: Into<String>,
+        I: IntoIterator<Item = (S, TypeSpec)>,
+    {
+        let mut fields: Vec<FieldInfo> = Vec::new();
+        let mut map: HashMap<String, FieldMapping> = HashMap::new();
+        for (name, spec) in schema {
+            let name = name.into();
+            let col_idx = fields.len();
+            let col_type = spec.into_column_type();
+            fields.push(FieldInfo {
+                name: name.clone(),
+                col_type,
+            });
+            map.insert(name, FieldMapping::Scalar { col_idx });
+        }
+        let total = fields.len();
+        let cap = nrow_hint.unwrap_or(0);
+        let columns: Vec<ColumnBuffer> = fields
+            .iter()
+            .map(|f| ColumnBuffer::new(f.col_type, cap))
+            .collect();
+        let filled = vec![false; total];
+        let schema = Schema {
+            fields,
+            field_map: FieldMap {
+                map,
+                col_start: 0,
+                total_cols: total,
+            },
+        };
+        Self {
+            schema: Some(schema),
+            columns,
+            filled,
+            nrow: 0,
+            nrow_hint,
+            // SAFETY: builder must be constructed on the R main thread.
+            scope: unsafe { crate::ProtectScope::new() },
+            grow: false,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Enable growing-schema mode: new fields discovered in later rows are
+    /// added on the fly and back-filled with NA on prior rows.
+    ///
+    /// Composes with [`with_schema`](Self::with_schema) — call
+    /// `DataFrameBuilder::with_schema(...).grow_schema()` to start with a
+    /// declared partial schema and let new fields appear as rows arrive.
+    ///
+    /// Cost: O(new_fields × existing_nrow) on each push that introduces a
+    /// new field. For row-by-row growing types this is amortised
+    /// O(nrow × ncols) — the same shape as `vec_to_dataframe` today.
+    ///
+    /// **Type clashes**: a later row writing a `String` to a column whose
+    /// first-seen value was an `Integer` follows today's union-path
+    /// behaviour — the value is coerced or NA-filled by
+    /// [`ColumnBuffer::push_value`]. No new error is raised. If your data
+    /// is genuinely heterogeneous, declare the column as
+    /// `TypeSpec::Generic` to get a list-column.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// # use miniextendr_api::serde::DataFrameBuilder;
+    /// # use std::collections::BTreeMap;
+    /// // Heterogeneous rows: each row is a map; later rows introduce new keys.
+    /// let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+    ///
+    /// let r1: BTreeMap<String, i32> = [("a".into(), 1)].into_iter().collect();
+    /// let r2: BTreeMap<String, i32> = [("a".into(), 2), ("b".into(), 3)].into_iter().collect();
+    /// b.push(r1).unwrap();
+    /// b.push(r2).unwrap();  // adds column "b", back-fills NA on row 0
+    /// let df = b.finish().unwrap();
+    /// ```
+    pub fn grow_schema(mut self) -> Self {
+        self.grow = true;
+        self
+    }
+
     /// Append a row.
     ///
-    /// On the first call: discovers schema from the row's fields, allocates
-    /// column buffers, and fills them. On subsequent calls: uses the existing
-    /// schema in strict mode (unknown keys → error).
+    /// In default mode the first call discovers the schema. In
+    /// [`with_schema`](Self::with_schema) mode the schema is fixed at
+    /// construction. In [`grow_schema`](Self::grow_schema) mode each push
+    /// also runs a discovery pass and absorbs any new fields, back-filling
+    /// NA on prior rows.
     pub fn push(&mut self, row: T) -> Result<(), RSerdeError> {
         if self.schema.is_none() {
             let mut acc = SchemaAccumulator::new(SchemaMode::SingleRow);
@@ -635,6 +830,8 @@ impl<T: Serialize> DataFrameBuilder<T> {
                 .collect();
             self.filled = vec![false; ncol];
             self.schema = Some(schema);
+        } else if self.grow {
+            self.absorb_new_fields(&row)?;
         }
 
         let schema = self.schema.as_ref().expect("schema set above");
@@ -657,6 +854,53 @@ impl<T: Serialize> DataFrameBuilder<T> {
         row.serialize(filler)?;
 
         self.nrow += 1;
+        Ok(())
+    }
+
+    /// Run a Union-mode discovery pass over `row` and absorb any fields not
+    /// present in the current schema. New columns get a fresh
+    /// [`ColumnBuffer`] back-filled with `self.nrow` NA values so the
+    /// per-column length invariant is preserved going into the fill step.
+    ///
+    /// Compound (nested-struct) discoveries are flattened by
+    /// [`SchemaAccumulator::finalize`]; each leaf field appears as its own
+    /// top-level entry in the per-row schema and is added here as a flat
+    /// scalar column under that name.
+    fn absorb_new_fields(&mut self, row: &T) -> Result<(), RSerdeError> {
+        let mut acc = SchemaAccumulator::new(SchemaMode::Union);
+        // Union mode tolerates rows that probe to no fields (e.g. top-level
+        // None); we propagate hard serialization errors.
+        let _ = acc.feed(row);
+        // If the row produced no fields at all, `finalize` would error; treat
+        // that as "no new fields" rather than failing the push.
+        let discovered = match acc.finalize() {
+            Ok(s) => s,
+            Err(_) => return Ok(()),
+        };
+
+        let cap = self.nrow_hint.unwrap_or(0);
+        let schema = self.schema.as_mut().expect("schema set by push gating");
+
+        for field in discovered.fields {
+            if schema.field_map.map.contains_key(&field.name) {
+                continue;
+            }
+            // Allocate a fresh column and back-fill prior rows with NA so
+            // the column length matches the existing nrow.
+            let mut buf = ColumnBuffer::new(field.col_type, cap);
+            for _ in 0..self.nrow {
+                buf.push_na();
+            }
+            let col_idx = schema.fields.len();
+            self.columns.push(buf);
+            self.filled.push(false);
+            schema
+                .field_map
+                .map
+                .insert(field.name.clone(), FieldMapping::Scalar { col_idx });
+            schema.field_map.total_cols = col_idx + 1;
+            schema.fields.push(field);
+        }
         Ok(())
     }
 
@@ -3365,6 +3609,7 @@ impl<T: Serialize, E: Serialize> Serialize for CollatedResultRow<'_, T, E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Serialize;
 
     /// A new builder has zero length and reports is_empty().
     #[test]
@@ -3388,6 +3633,230 @@ mod tests {
         let b = NamedDataFrameListBuilder::new();
         assert_eq!(b.scope.count(), 0);
     }
+
+    // region: TypeSpec → ColumnType collapse
+
+    /// Each `TypeSpec` variant maps to the expected `ColumnType`. `Optional`
+    /// unwraps to its inner column type — the NA-tolerance hint never
+    /// changes the underlying R atomic type.
+    #[test]
+    fn typespec_collapses_to_column_type() {
+        assert_eq!(TypeSpec::Logical.into_column_type(), ColumnType::Logical);
+        assert_eq!(TypeSpec::Integer.into_column_type(), ColumnType::Integer);
+        assert_eq!(TypeSpec::Real.into_column_type(), ColumnType::Real);
+        assert_eq!(
+            TypeSpec::Character.into_column_type(),
+            ColumnType::Character
+        );
+        assert_eq!(TypeSpec::Generic.into_column_type(), ColumnType::Generic);
+        assert_eq!(
+            TypeSpec::Optional(Box::new(TypeSpec::Integer)).into_column_type(),
+            ColumnType::Integer
+        );
+        // Nested Optional collapses transitively.
+        assert_eq!(
+            TypeSpec::Optional(Box::new(TypeSpec::Optional(Box::new(TypeSpec::Real))))
+                .into_column_type(),
+            ColumnType::Real
+        );
+    }
+
+    // endregion
+
+    // region: DataFrameBuilder::with_schema (#693)
+
+    #[derive(Serialize)]
+    struct WideRow {
+        a: i32,
+        b: Option<String>,
+    }
+
+    /// `with_schema` populates the schema before any push, allocates the
+    /// expected number of column buffers, and seeds `filled` to the matching
+    /// length. First push therefore skips discovery — the schema is fixed.
+    #[test]
+    fn with_schema_allocates_columns_up_front() {
+        let b = DataFrameBuilder::<WideRow>::with_schema(
+            [
+                ("a", TypeSpec::Integer),
+                ("b", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+            ],
+            Some(4),
+        );
+        let schema = b.schema.as_ref().expect("schema set by with_schema");
+        assert_eq!(schema.fields.len(), 2);
+        assert_eq!(schema.fields[0].name, "a");
+        assert_eq!(schema.fields[0].col_type, ColumnType::Integer);
+        assert_eq!(schema.fields[1].name, "b");
+        // Optional(Character) collapses to Character — NA-tolerance is implicit.
+        assert_eq!(schema.fields[1].col_type, ColumnType::Character);
+        assert_eq!(b.columns.len(), 2);
+        assert_eq!(b.filled.len(), 2);
+        assert!(!b.grow);
+    }
+
+    /// `with_schema` + `Optional(Integer)` + first row's value `None` lands
+    /// in the integer buffer as `NA_INTEGER`, not as a logical-NA column
+    /// (which is what default discovery would produce when the first row's
+    /// `Option<i32>` is `None`).
+    ///
+    /// Inspects the buffer state directly; doesn't call `finish` (avoids R
+    /// allocation in unit tests).
+    #[test]
+    fn with_schema_optional_first_none_keeps_declared_type() {
+        let mut b = DataFrameBuilder::<WideRow>::with_schema(
+            [
+                ("a", TypeSpec::Integer),
+                ("b", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+            ],
+            None,
+        );
+        b.push(WideRow { a: 1, b: None })
+            .expect("first push should succeed");
+        assert_eq!(b.nrow, 1);
+        // Column "a" is integer with value 1.
+        match &b.columns[0] {
+            ColumnBuffer::Integer(v) => assert_eq!(v, &vec![1]),
+            _ => panic!("expected Integer buffer"),
+        }
+        // Column "b" is character with NA (None) — *not* a logical column.
+        match &b.columns[1] {
+            ColumnBuffer::Character(v) => assert_eq!(v, &vec![None]),
+            _ => panic!("expected Character buffer for Optional(Character)"),
+        }
+    }
+
+    /// Default mode: first push discovers schema; a later push with a new
+    /// field is rejected by the strict filler.
+    #[test]
+    fn default_mode_rejects_new_field_on_later_push() {
+        #[derive(Serialize)]
+        struct R1 {
+            a: i32,
+        }
+        #[derive(Serialize)]
+        struct R2 {
+            a: i32,
+            b: i32,
+        }
+        // Push R1 then R2 — but builder is parameterised over a single T.
+        // Use a wrapper enum to allow heterogeneous serialization.
+        #[derive(Serialize)]
+        #[serde(untagged)]
+        enum Either {
+            One(R1),
+            Two(R2),
+        }
+        let mut b = DataFrameBuilder::<Either>::new(None);
+        b.push(Either::One(R1 { a: 1 })).expect("first push");
+        let err = b
+            .push(Either::Two(R2 { a: 2, b: 99 }))
+            .expect_err("strict mode should reject field 'b' not in schema");
+        match err {
+            RSerdeError::Message(m) => {
+                assert!(m.contains("row introduced field"), "unexpected error: {m}");
+            }
+            other => panic!("expected Message variant, got {other:?}"),
+        }
+    }
+
+    /// `with_schema` mode: an unknown field on push is rejected.
+    #[test]
+    fn with_schema_rejects_unknown_field() {
+        #[derive(Serialize)]
+        struct R {
+            x: i32,
+            extra: i32,
+        }
+        let mut b = DataFrameBuilder::<R>::with_schema([("x", TypeSpec::Integer)], None);
+        let err = b
+            .push(R { x: 1, extra: 9 })
+            .expect_err("'extra' not declared");
+        match err {
+            RSerdeError::Message(m) => assert!(m.contains("extra"), "unexpected error: {m}"),
+            other => panic!("expected Message variant, got {other:?}"),
+        }
+    }
+
+    // endregion
+
+    // region: DataFrameBuilder::grow_schema (#692)
+
+    /// `grow_schema()` lets a later row introduce a new field. The new
+    /// column is back-filled with `self.nrow` NA values so its length
+    /// matches the existing rows.
+    #[test]
+    fn grow_schema_back_fills_na_on_new_field() {
+        use std::collections::BTreeMap;
+        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+        let r1: BTreeMap<String, i32> = [("a".to_string(), 1)].into_iter().collect();
+        let r2: BTreeMap<String, i32> = [("a".to_string(), 2), ("b".to_string(), 3)]
+            .into_iter()
+            .collect();
+        b.push(r1).expect("first push");
+        assert_eq!(b.nrow, 1);
+        assert_eq!(b.columns.len(), 1, "only 'a' so far");
+        b.push(r2).expect("growth push");
+        assert_eq!(b.nrow, 2);
+        assert_eq!(b.columns.len(), 2, "'b' added");
+        match &b.columns[0] {
+            ColumnBuffer::Integer(v) => assert_eq!(v, &vec![1, 2]),
+            _ => panic!("expected Integer for 'a'"),
+        }
+        // Column 'b' was allocated on row 1; row 0 back-filled to NA_INTEGER.
+        match &b.columns[1] {
+            ColumnBuffer::Integer(v) => assert_eq!(v, &vec![i32::MIN, 3]),
+            _ => panic!("expected Integer for 'b'"),
+        }
+    }
+
+    /// `grow_schema()` composed with `with_schema(...)`: pre-declared
+    /// columns stay typed; new columns from later rows are appended.
+    #[test]
+    fn grow_schema_combined_with_with_schema() {
+        use std::collections::BTreeMap;
+        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::with_schema(
+            [("a", TypeSpec::Integer)],
+            None,
+        )
+        .grow_schema();
+        let r1: BTreeMap<String, i32> = [("a".to_string(), 10)].into_iter().collect();
+        let r2: BTreeMap<String, i32> = [("a".to_string(), 20), ("c".to_string(), 99)]
+            .into_iter()
+            .collect();
+        b.push(r1).expect("push 1");
+        b.push(r2).expect("push 2");
+        assert_eq!(b.nrow, 2);
+        // Original declared column 'a' preserved.
+        let schema = b.schema.as_ref().unwrap();
+        assert_eq!(schema.fields[0].name, "a");
+        assert_eq!(schema.fields[0].col_type, ColumnType::Integer);
+        // New column 'c' added after first push that introduced it.
+        assert_eq!(schema.fields.len(), 2);
+        assert_eq!(schema.fields[1].name, "c");
+        assert_eq!(schema.fields[1].col_type, ColumnType::Integer);
+        match &b.columns[1] {
+            ColumnBuffer::Integer(v) => assert_eq!(v, &vec![i32::MIN, 99]),
+            _ => panic!("expected Integer for 'c'"),
+        }
+    }
+
+    /// `grow_schema()` plus a row that introduces no new fields is a no-op
+    /// on schema state — the discovery pass runs but nothing is added.
+    #[test]
+    fn grow_schema_noop_when_no_new_fields() {
+        use std::collections::BTreeMap;
+        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+        let r: BTreeMap<String, i32> = [("k".to_string(), 5)].into_iter().collect();
+        b.push(r.clone()).unwrap();
+        let pre_len = b.schema.as_ref().unwrap().fields.len();
+        b.push(r).unwrap();
+        let post_len = b.schema.as_ref().unwrap().fields.len();
+        assert_eq!(pre_len, post_len);
+        assert_eq!(b.nrow, 2);
+    }
+
+    // endregion
 }
 
 // endregion
