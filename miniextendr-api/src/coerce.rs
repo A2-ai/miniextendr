@@ -12,6 +12,20 @@
 //! - [`Coerce<R>`] - infallible coercion (identity, widening)
 //! - [`TryCoerce<R>`] - fallible coercion (narrowing, overflow-possible)
 //!
+//! # Where this fits
+//!
+//! `Coerce` / `TryCoerce` is the **looser** inbound side — it's the path
+//! [`crate::from_r::TryFromSexp`] impls take for multi-source scalars
+//! (`i8`/`i16`/`u16`/`u32`/`f32`/`i64`/`u64`/`isize`/`usize`). The strict
+//! inbound alternative is the bare `TryFromSexp` impl on the matching R
+//! native type (`i32`, `f64`, …), which rejects mismatched
+//! [`SEXPTYPE`](crate::ffi::SEXPTYPE)s outright. Failure mode of relying on
+//! coercion in a function that should be strict: a Rust `i32` argument
+//! silently accepts `1.7` (REALSXP) and truncates.
+//!
+//! The outbound strict-vs-lax pairing lives on [`crate::into_r::IntoR`] (lax,
+//! default) vs [`crate::strict`] (`#[miniextendr(strict)]` opt-in).
+//!
 //! # Examples
 //!
 //! ```ignore
@@ -32,6 +46,9 @@ use crate::ffi::{Rboolean, Rcomplex};
 ///
 /// Implement this trait for types that can always be converted to `R`.
 /// Identity and widening conversions should use this trait.
+///
+/// Pair: [`TryCoerce`] for fallible (narrowing) coercions. Strict alternative
+/// on the inbound side: [`crate::from_r::TryFromSexp`].
 ///
 /// Works for both scalars and element-wise on slices:
 /// - `i8::coerce() -> i32` (scalar widening)
@@ -54,6 +71,9 @@ pub trait Coerce<R> {
 /// Fallible coercion from `Self` to type `R`.
 ///
 /// Implement this trait for narrowing conversions that may overflow or lose precision.
+///
+/// Pair: [`Coerce`] for infallible (widening / identity) coercions. Strict
+/// alternative on the inbound side: [`crate::from_r::TryFromSexp`].
 pub trait TryCoerce<R> {
     /// Error returned when coercion fails.
     type Error;

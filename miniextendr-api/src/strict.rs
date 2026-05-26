@@ -12,6 +12,23 @@
 //! precision for values outside `[-2^53, 2^53]`. With `#[miniextendr(strict)]`,
 //! the macro generates calls to these helpers instead, which panic (→ R error)
 //! if the value doesn't fit in i32.
+//!
+//! # Paired with
+//!
+//! This is the **strict outbound** path. Its lax counterpart is the bare
+//! [`IntoR`] impls for `i64`/`u64`/`isize`/`usize` (see [`crate::into_r`]).
+//! Failure mode of staying on the lax path when you cared about exact
+//! representation: a counter / ID just above `i32::MAX` lands in R as
+//! `REALSXP`, and anything above `2^53` starts colliding silently.
+//!
+//! There is **no `TryFromSexpStrict` trait** — inbound is already
+//! strict-by-default because [`crate::from_r::TryFromSexp`] returns
+//! `Result<T, SexpError>`. The looser inbound path is
+//! [`crate::coerce::Coerce`] / [`crate::coerce::TryCoerce`].
+//!
+//! For storage-directed conversions (force `Vec<i64>` into `INTSXP` and error
+//! if any element doesn't fit) see [`crate::into_r_as::IntoRAs`] — it's a
+//! third path with value-based runtime checks.
 
 use crate::coerce::TryCoerce;
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};

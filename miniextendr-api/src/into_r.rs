@@ -12,6 +12,24 @@
 //! | [`result`] | `Result<T, E>` → list with `ok`/`err` fields |
 //! | [`altrep`] | `Altrep<T>` marker type, `Lazy<T>` alias, `IntoRAltrep` trait |
 //!
+//! # Choosing the right outbound conversion
+//!
+//! [`IntoR`] is the **lax** outbound path — it silently widens 64-bit integers
+//! to R's `REALSXP` when the value doesn't fit `INTSXP`. The strict alternative
+//! lives in [`crate::strict`] and is opted into via `#[miniextendr(strict)]`,
+//! which routes through [`crate::strict::checked_into_sexp_i64`] and friends.
+//! Failure mode of staying on the default lax path when you care about exact
+//! representation: an `i64` value just above `i32::MAX` lands in R as an
+//! inexact `f64` (and IDs/counters larger than `2^53` start colliding).
+//!
+//! For storage-directed conversions (e.g. force `Vec<i64>` into `INTSXP`
+//! when values fit), reach for [`crate::into_r_as::IntoRAs`] instead.
+//!
+//! The inbound counterpart is [`crate::from_r::TryFromSexp`] (strict by
+//! construction — returns `Result`); the inbound looser path is
+//! [`crate::coerce::Coerce`] / [`crate::coerce::TryCoerce`]. There is
+//! intentionally no `TryFromSexpStrict` trait.
+//!
 //! # Thread Safety
 //!
 //! The trait provides two methods:
@@ -31,6 +49,11 @@ use crate::ffi::SexpExt;
 use crate::gc_protect::OwnedProtect;
 
 /// Trait for converting Rust types to R SEXP values.
+///
+/// Outbound counterpart of [`crate::from_r::TryFromSexp`]. This is the **lax**
+/// path for 64-bit integer types — values that overflow `i32` silently land
+/// as `REALSXP`. For the strict alternative, see [`crate::strict`] and the
+/// `#[miniextendr(strict)]` attribute.
 ///
 /// # Required Method
 ///

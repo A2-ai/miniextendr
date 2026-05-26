@@ -6,6 +6,20 @@
 //!
 //! Covers: `&str`, `String`, `char`, `Option<&str>`, `Option<String>`,
 //! `Vec<String>`, `Vec<&str>`, `Box<[String]>`.
+//!
+//! # Tradeoff
+//!
+//! Prefer borrowed `&str` / `Vec<&str>` over owned `String` / `Vec<String>`
+//! when the data only needs to live for the `.Call` — borrowed strings point
+//! straight into R's CHARSXP pool with no allocation. Use `Option<String>`
+//! / `Vec<Option<String>>` when callers may pass `NA_character_`; the plain
+//! `String` impl rejects NA with [`SexpNaError`](crate::from_r::SexpNaError).
+//! Failure mode of binding plain `String` to a column that contains `NA`:
+//! every NA element surfaces as a hard error instead of `None`.
+//!
+//! UTF-8 validity is guaranteed by `miniextendr_assert_utf8_locale()` at
+//! package init — these impls skip per-string validation. Outbound
+//! counterparts: `String` / `&str` impls in [`crate::into_r`].
 
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{

@@ -4,6 +4,19 @@
 //! instead of eager copy when returned from a `#[miniextendr]` function.
 //!
 //! `Lazy<T>` is a type alias for `Altrep<T>` — use whichever reads better.
+//!
+//! # Tradeoff
+//!
+//! The bare `Vec<T>` impl in [`crate::into_r`] (eager copy) is the default —
+//! ALTREP is opt-in via this wrapper. Reach for `Altrep<Vec<T>>` when the
+//! vector is large and most callers index into a small slice; stay on the
+//! eager path for short vectors and anything R will scan end-to-end anyway
+//! (the ALTREP dispatch per element is not free). Failure mode of wrapping
+//! a tiny vector in `Altrep`: you pay per-element callback overhead for no
+//! benefit.
+//!
+//! For derive-driven ALTREP classes (rather than this on-demand wrapper),
+//! see the `#[derive(AltrepInteger)]` family.
 
 use crate::into_r::IntoR;
 

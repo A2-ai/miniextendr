@@ -4,6 +4,15 @@
 //! - `Cow<'static, str>` — zero-copy borrow of R character scalars
 //! - `PathBuf` / `OsString` — from STRSXP via `String` intermediary
 //! - `HashSet<String>` / `BTreeSet<String>` — string set conversions
+//!
+//! # Tradeoff
+//!
+//! These [`TryFromSexp`](crate::from_r::TryFromSexp) impls reject mismatched
+//! [`SEXPTYPE`]s — there is no looser coercion path for `Cow` / `PathBuf` /
+//! `OsString`. The `'static` lifetime on `Cow` borrows is valid only for the
+//! duration of the enclosing `.Call`; if you need an owned value that
+//! outlives R's GC, take `String` or `Vec<T>` instead (see
+//! [`strings`](crate::from_r::strings) and [`references`](crate::from_r::references)).
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashSet};

@@ -24,6 +24,20 @@
 //! | [`collections`] | `HashMap`, `BTreeMap`, `HashSet`, `BTreeSet` |
 //! | [`cow_and_paths`] | `Cow<[T]>`, `PathBuf`, `OsString`, string sets |
 //!
+//! # Choosing the right inbound conversion
+//!
+//! [`TryFromSexp`] is the strict inbound path: it returns `Result<T, SexpError>`
+//! and rejects mismatched [`SEXPTYPE`]s outright (no silent coercion). When you
+//! need to *accept* arguments coming from multiple R native types, reach for
+//! the [`crate::coerce::Coerce`] / [`crate::coerce::TryCoerce`] traits instead
+//! — those are the looser inbound path and the entry point for the multi-source
+//! scalars handled in [`coerced_scalars`].
+//!
+//! The strict-vs-lax pairing for *outbound* conversion lives on
+//! [`crate::into_r::IntoR`] (lax, default) vs [`crate::strict`] (`#[miniextendr(strict)]`).
+//! There is intentionally no `TryFromSexpStrict` trait — inbound is already
+//! strict-by-default because it returns `Result`.
+//!
 //! # Thread Safety
 //!
 //! The trait provides two methods:
@@ -274,6 +288,10 @@ impl From<SexpNaError> for SexpError {
 }
 
 /// TryFrom-style trait for converting SEXP to Rust types.
+///
+/// Inbound counterpart of [`crate::into_r::IntoR`]. Strict by construction
+/// (returns `Result`) — for a looser, multi-source coercion path use
+/// [`crate::coerce::Coerce`] / [`crate::coerce::TryCoerce`].
 ///
 /// # Examples
 ///

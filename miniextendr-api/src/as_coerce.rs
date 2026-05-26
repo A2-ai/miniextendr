@@ -4,6 +4,16 @@
 //! to define how they convert to R base types. When used with the `#[miniextendr(as = "...")]`
 //! attribute, these generate proper S3 method wrappers for R's coercion generics.
 //!
+//! # Tradeoff
+//!
+//! These traits are about exposing user-controlled conversions to R callers
+//! via S3 method dispatch — they're **not** the inbound/outbound conversion
+//! path for `#[miniextendr]` arguments and return values. For that, see
+//! [`crate::from_r::TryFromSexp`] / [`crate::into_r::IntoR`] (and
+//! [`crate::coerce::Coerce`] / [`crate::strict`] for the lax/strict pairs).
+//! Failure mode of confusing the two: an `AsList` impl will not satisfy a
+//! `fn foo(_: MyType)` argument coming from R — that needs `TryFromSexp`.
+//!
 //! # Supported Conversions
 //!
 //! | R Generic | Rust Trait | Method |
