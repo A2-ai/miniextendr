@@ -342,12 +342,7 @@ fn dispatch_to_dataframes_mixed() {
         let sexp = list.into_sexp();
         let names_sexp = sexp.get_names();
         let names: Vec<String> = (0..names_sexp.xlength())
-            .map(|i| {
-                names_sexp
-                    .string_elt_str(i)
-                    .unwrap_or("")
-                    .to_string()
-            })
+            .map(|i| names_sexp.string_elt_str(i).unwrap_or("").to_string())
             .collect();
         assert_eq!(names, vec!["ok".to_string(), "err".to_string()]);
 
@@ -431,12 +426,7 @@ fn dispatch_to_dataframes_custom_names() {
         let sexp = list.into_sexp();
         let names_sexp = sexp.get_names();
         let names: Vec<String> = (0..names_sexp.xlength())
-            .map(|i| {
-                names_sexp
-                    .string_elt_str(i)
-                    .unwrap_or("")
-                    .to_string()
-            })
+            .map(|i| names_sexp.string_elt_str(i).unwrap_or("").to_string())
             .collect();
         assert_eq!(names, vec!["results".to_string(), "errors".to_string()]);
     });
