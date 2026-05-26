@@ -28,17 +28,14 @@
 //!    want to control `Altrep` / `AltVec` directly.
 //!
 //! Pick by what your data looks like: a finite buffer that fits in a struct
-//! field → field-based; a computed element (`fibonacci(i)`) → manual. The
-//! flowchart in [ALTREP.md](../../docs/ALTREP.md) walks through both with
-//! worked examples.
+//! field → field-based; a computed element (`fibonacci(i)`) → manual.
 //!
 //! # Guard mode attribute
 //!
 //! The derive recognises `#[altrep(unsafe)]` / `#[altrep(rust_unwind)]` /
 //! `#[altrep(r_unwind)]` on the struct, which sets the runtime
 //! `Altrep::GUARD` const that the trampolines in `altrep_bridge` dispatch
-//! on. Default is `r_unwind` (safe for callbacks that call R APIs); see
-//! [ALTREP_GUARDS.md](../../docs/ALTREP_GUARDS.md) for the decision tree.
+//! on. Default is `r_unwind` (safe for callbacks that call R APIs).
 //!
 //! # Derive validation rules
 //!

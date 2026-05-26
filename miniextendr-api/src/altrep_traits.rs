@@ -30,10 +30,8 @@
 //! | [`AltrepGuard::RUnwind`] *(default)* | `R_UnwindProtect` (R's C API) | callback calls into R (e.g. `Rf_mkCharLenCE`, `Rf_allocVector`) and may longjmp |
 //!
 //! The derive surface exposes the same three modes as `#[altrep(unsafe)]` /
-//! `#[altrep(rust_unwind)]` / `#[altrep(r_unwind)]`. See
-//! [ALTREP_GUARDS.md](../../docs/ALTREP_GUARDS.md) for the full decision
-//! tree; bridging through these modes is handled by
-//! [`crate::altrep_bridge`].
+//! `#[altrep(rust_unwind)]` / `#[altrep(r_unwind)]`; bridging through these
+//! modes is handled by [`crate::altrep_bridge`].
 
 use crate::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use core::ffi::c_void;

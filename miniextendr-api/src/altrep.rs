@@ -30,9 +30,8 @@
 //!    `impl_alt*_from_data!` registration is still emitted.
 //!
 //! Both paths route trampolines through the same guard mode selected by
-//! [`Altrep::GUARD`](crate::altrep_traits::Altrep::GUARD). See
-//! [ALTREP.md](../../docs/ALTREP.md) for the field-vs-manual flowchart and
-//! [ALTREP_GUARDS.md](../../docs/ALTREP_GUARDS.md) for guard-mode selection.
+//! [`Altrep::GUARD`](crate::altrep_traits::Altrep::GUARD); guard modes are
+//! documented on [`crate::altrep_traits`].
 //!
 //! ## Threading
 //!

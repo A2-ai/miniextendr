@@ -115,8 +115,6 @@
 //!
 //! # See also
 //!
-//! - [EXTERNALPTR.md](../../docs/EXTERNALPTR.md) — full guide with `#[derive]`
-//!   patterns and sidecar fields.
 //! - [`crate::altrep`] — when the alternative (an ALTREP class) makes more
 //!   sense than `ExternalPtr`.
 //!
