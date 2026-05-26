@@ -261,11 +261,21 @@ impl<'de> Deserializer<'de> for RowDeserializer<'de> {
         _fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
-        visitor.visit_map(RowMapAccess::new(self.view, self.row, self.column_names, ""))
+        visitor.visit_map(RowMapAccess::new(
+            self.view,
+            self.row,
+            self.column_names,
+            "",
+        ))
     }
 
     fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        visitor.visit_map(RowMapAccess::new(self.view, self.row, self.column_names, ""))
+        visitor.visit_map(RowMapAccess::new(
+            self.view,
+            self.row,
+            self.column_names,
+            "",
+        ))
     }
 
     serde::forward_to_deserialize_any! {
@@ -491,10 +501,7 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
         }
     }
 
-    fn deserialize_ignored_any<V: Visitor<'de>>(
-        self,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error> {
+    fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
         // serde calls this when a field is unknown to the visitor; just
         // consume and discard. Doesn't matter whether bare or nested.
         let _ = self;
