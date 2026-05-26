@@ -11,7 +11,8 @@ mod r_test_utils;
 use miniextendr_api::IntoR as _;
 use miniextendr_api::ffi::{SEXPTYPE, SexpExt as _};
 use miniextendr_api::serde::{
-    DataFrameBuilder, RSerdeError, TypeSpec, iter_to_dataframe, vec_to_dataframe,
+    DataFrameBuilder, DispatchNames, RSerdeError, TypeSpec, dispatch_to_dataframes,
+    iter_to_dataframe, vec_to_dataframe,
 };
 use serde::Serialize;
 
@@ -301,6 +302,143 @@ fn dataframe_builder_len_is_empty_finish() {
 
         let df = builder.finish().unwrap().into_sexp();
         assert_eq!(df.vector_elt(0).xlength(), 1);
+    });
+}
+
+// endregion
+
+// region: dispatch_to_dataframes (#691)
+
+#[derive(Debug, Clone, Serialize)]
+struct OkRow {
+    id: i32,
+    val: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ErrRow {
+    id: i32,
+    reason: String,
+}
+
+#[test]
+fn dispatch_to_dataframes_mixed() {
+    r_test_utils::with_r_thread(|| {
+        let rows = (0..6).map(|i| {
+            if i % 3 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("skip_{i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    val: i as f64 * 0.5,
+                })
+            }
+        });
+
+        let list = dispatch_to_dataframes(rows, Some(6), DispatchNames::default()).unwrap();
+        let sexp = list.into_sexp();
+        let names_sexp = sexp.get_names();
+        let names: Vec<String> = (0..names_sexp.xlength())
+            .map(|i| {
+                names_sexp
+                    .string_elt_str(i)
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(names, vec!["ok".to_string(), "err".to_string()]);
+
+        // ok side: 4 rows (i = 1, 2, 4, 5); cols: id, val
+        let ok_df = sexp.vector_elt(0);
+        assert_eq!(ok_df.xlength(), 2);
+        assert_eq!(ok_df.vector_elt(0).xlength(), 4);
+
+        // err side: 2 rows (i = 0, 3); cols: id, reason
+        let err_df = sexp.vector_elt(1);
+        assert_eq!(err_df.xlength(), 2);
+        assert_eq!(err_df.vector_elt(0).xlength(), 2);
+    });
+}
+
+#[test]
+fn dispatch_to_dataframes_all_ok() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<OkRow, ErrRow>> = (0..3)
+            .map(|i| {
+                Ok(OkRow {
+                    id: i,
+                    val: i as f64,
+                })
+            })
+            .collect();
+
+        let list = dispatch_to_dataframes(rows, None, DispatchNames::default()).unwrap();
+        let sexp = list.into_sexp();
+        let ok_df = sexp.vector_elt(0);
+        let err_df = sexp.vector_elt(1);
+
+        assert_eq!(ok_df.vector_elt(0).xlength(), 3);
+        // empty err side: 0 columns / 0 rows
+        assert_eq!(err_df.xlength(), 0);
+    });
+}
+
+#[test]
+fn dispatch_to_dataframes_all_err() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<OkRow, ErrRow>> = (0..3)
+            .map(|i| {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("bad_{i}"),
+                })
+            })
+            .collect();
+
+        let list = dispatch_to_dataframes(rows, None, DispatchNames::default()).unwrap();
+        let sexp = list.into_sexp();
+        let ok_df = sexp.vector_elt(0);
+        let err_df = sexp.vector_elt(1);
+
+        assert_eq!(ok_df.xlength(), 0);
+        assert_eq!(err_df.vector_elt(0).xlength(), 3);
+    });
+}
+
+#[test]
+fn dispatch_to_dataframes_custom_names() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<OkRow, ErrRow>> = vec![
+            Ok(OkRow { id: 1, val: 1.0 }),
+            Err(ErrRow {
+                id: 2,
+                reason: "bad".into(),
+            }),
+        ];
+
+        let list = dispatch_to_dataframes(
+            rows,
+            None,
+            DispatchNames {
+                ok: "results".into(),
+                err: "errors".into(),
+            },
+        )
+        .unwrap();
+        let sexp = list.into_sexp();
+        let names_sexp = sexp.get_names();
+        let names: Vec<String> = (0..names_sexp.xlength())
+            .map(|i| {
+                names_sexp
+                    .string_elt_str(i)
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(names, vec!["results".to_string(), "errors".to_string()]);
     });
 }
 
