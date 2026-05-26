@@ -3,9 +3,10 @@
 
 use crate::serde::Serialize;
 use miniextendr_api::IntoR;
-use miniextendr_api::list::List;
 use miniextendr_api::miniextendr;
-use miniextendr_api::serde::{ColumnarDataFrame, vec_to_dataframe_split};
+use miniextendr_api::serde::{
+    ColumnarDataFrame, DataFrameShape, SplitShape, vec_to_dataframe_split,
+};
 
 // region: Test types
 
@@ -375,47 +376,271 @@ enum ExtEvent {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_ext_tagged_split() -> List {
+pub fn test_columnar_ext_tagged_split() -> DataFrameShape {
     let rows = vec![
         ExtEvent::Click { x: 1.0, y: 2.0 },
         ExtEvent::Scroll { delta: -3.0 },
         ExtEvent::Click { x: 5.0, y: 6.0 },
     ];
-    vec_to_dataframe_split(&rows).expect("split")
+    vec_to_dataframe_split(&rows, SplitShape::PerVariantList).expect("split")
 }
 
 /// Internally-tagged enum split: tag column dropped, per-variant data.frames.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_int_tagged_split() -> List {
+pub fn test_columnar_int_tagged_split() -> DataFrameShape {
     let rows = vec![
         TaggedEvent::Click { x: 10.0, y: 20.0 },
         TaggedEvent::Scroll { delta: -3.5 },
         TaggedEvent::Click { x: 30.0, y: 40.0 },
     ];
-    vec_to_dataframe_split(&rows).expect("split")
+    vec_to_dataframe_split(&rows, SplitShape::PerVariantList).expect("split")
 }
 
 /// Single-variant externally-tagged split returns a bare data.frame.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_single_variant_split() -> List {
+pub fn test_columnar_single_variant_split() -> DataFrameShape {
     let rows = vec![
         ExtEvent::Click { x: 1.0, y: 2.0 },
         ExtEvent::Click { x: 3.0, y: 4.0 },
     ];
-    vec_to_dataframe_split(&rows).expect("split")
+    vec_to_dataframe_split(&rows, SplitShape::PerVariantList).expect("split")
 }
 
-/// Empty input split — variant set is unknowable, returns an unnamed empty list.
+/// Empty input split — variant set is unknowable, returns an empty named list.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_empty_split() -> List {
+pub fn test_columnar_empty_split() -> DataFrameShape {
     let rows: Vec<ExtEvent> = Vec::new();
-    vec_to_dataframe_split(&rows).expect("split")
+    vec_to_dataframe_split(&rows, SplitShape::PerVariantList).expect("split")
+}
+
+/// Externally-tagged enum split WITH a variant-tag column on each partition.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_split_with_tag() -> DataFrameShape {
+    let rows = vec![
+        ExtEvent::Click { x: 1.0, y: 2.0 },
+        ExtEvent::Scroll { delta: -3.0 },
+        ExtEvent::Click { x: 5.0, y: 6.0 },
+    ];
+    vec_to_dataframe_split(
+        &rows,
+        SplitShape::PerVariantListWithTag {
+            column: "variant".into(),
+        },
+    )
+    .expect("split")
+}
+
+/// Collated split: single data.frame with union schema + variant column.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_split_collated() -> DataFrameShape {
+    let rows = vec![
+        ExtEvent::Click { x: 1.0, y: 2.0 },
+        ExtEvent::Scroll { delta: -3.0 },
+        ExtEvent::Click { x: 5.0, y: 6.0 },
+    ];
+    vec_to_dataframe_split(
+        &rows,
+        SplitShape::Collated {
+            column: "variant".into(),
+        },
+    )
+    .expect("split")
+}
+
+// endregion
+
+// region: map_to_dataframe fixtures
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct CmaxValue {
+    cmax: f64,
+    tmax: f64,
+}
+
+/// map_to_dataframe over BTreeMap<i32, CmaxValue>.
+///
+/// @export
+#[miniextendr]
+pub fn test_map_to_dataframe_btreemap() -> ColumnarDataFrame {
+    use std::collections::BTreeMap;
+    let mut map: BTreeMap<i32, CmaxValue> = BTreeMap::new();
+    map.insert(
+        1,
+        CmaxValue {
+            cmax: 10.5,
+            tmax: 2.0,
+        },
+    );
+    map.insert(
+        2,
+        CmaxValue {
+            cmax: 8.1,
+            tmax: 3.5,
+        },
+    );
+    map.insert(
+        3,
+        CmaxValue {
+            cmax: 12.0,
+            tmax: 1.0,
+        },
+    );
+    miniextendr_api::serde::map_to_dataframe(&map, "subject").expect("map_to_dataframe")
+}
+
+/// hashmap_to_dataframe over HashMap<i32, CmaxValue>.
+///
+/// @export
+#[miniextendr]
+pub fn test_hashmap_to_dataframe() -> ColumnarDataFrame {
+    use std::collections::HashMap;
+    let mut map: HashMap<i32, CmaxValue> = HashMap::new();
+    map.insert(
+        3,
+        CmaxValue {
+            cmax: 12.0,
+            tmax: 1.0,
+        },
+    );
+    map.insert(
+        1,
+        CmaxValue {
+            cmax: 10.5,
+            tmax: 2.0,
+        },
+    );
+    map.insert(
+        2,
+        CmaxValue {
+            cmax: 8.1,
+            tmax: 3.5,
+        },
+    );
+    miniextendr_api::serde::hashmap_to_dataframe(&map, "subject").expect("hashmap_to_dataframe")
+}
+
+// endregion
+
+// region: result_to_dataframe fixtures
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct GoodRow {
+    id: i32,
+    value: f64,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct BadRow {
+    id: i32,
+    reason: String,
+}
+
+fn make_mixed_rows() -> Vec<Result<GoodRow, BadRow>> {
+    vec![
+        Ok(GoodRow {
+            id: 1,
+            value: 1.0,
+        }),
+        Err(BadRow {
+            id: 2,
+            reason: "bad".into(),
+        }),
+        Ok(GoodRow {
+            id: 3,
+            value: 3.0,
+        }),
+    ]
+}
+
+/// result_to_dataframe under Auto with all-Ok input → bare data.frame.
+///
+/// @export
+#[miniextendr]
+pub fn test_result_to_dataframe_auto_all_ok() -> DataFrameShape {
+    use miniextendr_api::serde::ResultShape;
+    let rows: Vec<Result<GoodRow, BadRow>> = vec![
+        Ok(GoodRow {
+            id: 1,
+            value: 1.0,
+        }),
+        Ok(GoodRow {
+            id: 2,
+            value: 2.0,
+        }),
+    ];
+    miniextendr_api::serde::result_to_dataframe(
+        &rows,
+        ResultShape::Auto {
+            empty_ok_sentinel: (),
+        },
+    )
+    .expect("result_to_dataframe")
+}
+
+/// result_to_dataframe under Auto with mixed Ok/Err → list(results=, error=).
+///
+/// @export
+#[miniextendr]
+pub fn test_result_to_dataframe_auto_mixed() -> DataFrameShape {
+    use miniextendr_api::serde::ResultShape;
+    miniextendr_api::serde::result_to_dataframe(
+        &make_mixed_rows(),
+        ResultShape::Auto {
+            empty_ok_sentinel: (),
+        },
+    )
+    .expect("result_to_dataframe")
+}
+
+/// result_to_dataframe under Collated → single data.frame with is_error column.
+///
+/// @export
+#[miniextendr]
+pub fn test_result_to_dataframe_collated() -> DataFrameShape {
+    use miniextendr_api::serde::ResultShape;
+    miniextendr_api::serde::result_to_dataframe::<_, _, ()>(
+        &make_mixed_rows(),
+        ResultShape::Collated,
+    )
+    .expect("result_to_dataframe")
+}
+
+/// result_to_dataframe under Split with all-Err input → sentinel in results slot.
+///
+/// @export
+#[miniextendr]
+pub fn test_result_to_dataframe_split_all_err() -> DataFrameShape {
+    use miniextendr_api::serde::ResultShape;
+    let rows: Vec<Result<GoodRow, BadRow>> = vec![
+        Err(BadRow {
+            id: 1,
+            reason: "x".into(),
+        }),
+        Err(BadRow {
+            id: 2,
+            reason: "y".into(),
+        }),
+    ];
+    miniextendr_api::serde::result_to_dataframe(
+        &rows,
+        ResultShape::Split {
+            empty_ok_sentinel: (),
+        },
+    )
+    .expect("result_to_dataframe")
 }
 
 // endregion
