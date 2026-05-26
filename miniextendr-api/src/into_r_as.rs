@@ -23,10 +23,6 @@
 //! storage control: an R-side `is.integer()` check fails because R received
 //! a `REALSXP` your `tibble` column wasn't expecting.
 //!
-//! Background: [STRICT_MODE.md](../../docs/STRICT_MODE.md),
-//! [TYPE_CONVERSIONS.md](../../docs/TYPE_CONVERSIONS.md),
-//! [CONVERSION_MATRIX.md](../../docs/CONVERSION_MATRIX.md).
-//!
 //! # Example
 //!
 //! ```ignore

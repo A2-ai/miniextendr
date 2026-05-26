@@ -30,10 +30,6 @@
 //! [`crate::coerce::Coerce`] / [`crate::coerce::TryCoerce`]. There is
 //! intentionally no `TryFromSexpStrict` trait.
 //!
-//! Background: [STRICT_MODE.md](../../docs/STRICT_MODE.md),
-//! [CONVERSION_MATRIX.md](../../docs/CONVERSION_MATRIX.md),
-//! [PREFER_DERIVES.md](../../docs/PREFER_DERIVES.md).
-//!
 //! # Thread Safety
 //!
 //! The trait provides two methods:

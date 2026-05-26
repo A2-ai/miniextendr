@@ -14,9 +14,7 @@
 //! IDs/counters: collisions once values exceed `2^53` (≈ `9 × 10^15`).
 //!
 //! For storage-directed conversions (force `INTSXP`, error if out of range)
-//! see [`crate::into_r_as::IntoRAs`]. Background:
-//! [STRICT_MODE.md](../../../docs/STRICT_MODE.md),
-//! [TYPE_CONVERSIONS.md](../../../docs/TYPE_CONVERSIONS.md).
+//! see [`crate::into_r_as::IntoRAs`].
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::into_r::IntoR;

@@ -24,10 +24,7 @@
 //! silently accepts `1.7` (REALSXP) and truncates.
 //!
 //! The outbound strict-vs-lax pairing lives on [`crate::into_r::IntoR`] (lax,
-//! default) vs [`crate::strict`] (`#[miniextendr(strict)]` opt-in). See
-//! [COERCE.md](../../docs/COERCE.md),
-//! [STRICT_MODE.md](../../docs/STRICT_MODE.md),
-//! [CONVERSION_MATRIX.md](../../docs/CONVERSION_MATRIX.md).
+//! default) vs [`crate::strict`] (`#[miniextendr(strict)]` opt-in).
 //!
 //! # Examples
 //!

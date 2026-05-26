@@ -14,8 +14,6 @@
 //! Failure mode of confusing the two: an `AsList` impl will not satisfy a
 //! `fn foo(_: MyType)` argument coming from R — that needs `TryFromSexp`.
 //!
-//! Background: [AS_COERCE.md](../../docs/AS_COERCE.md).
-//!
 //! # Supported Conversions
 //!
 //! | R Generic | Rust Trait | Method |

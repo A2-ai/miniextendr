@@ -16,8 +16,7 @@
 //! benefit.
 //!
 //! For derive-driven ALTREP classes (rather than this on-demand wrapper),
-//! see the `#[derive(AltrepInteger)]` family — overview in
-//! [ALTREP.md](../../../docs/ALTREP.md).
+//! see the `#[derive(AltrepInteger)]` family.
 
 use crate::into_r::IntoR;
 

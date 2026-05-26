@@ -17,9 +17,7 @@
 //!
 //! Outbound counterparts for the large-integer types in this module live in
 //! [`crate::into_r::large_integers`] (lax, default) and [`crate::strict`]
-//! (`#[miniextendr(strict)]` opt-in). See
-//! [STRICT_MODE.md](../../../docs/STRICT_MODE.md) and
-//! [COERCE.md](../../../docs/COERCE.md).
+//! (`#[miniextendr(strict)]` opt-in).
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::coerce::TryCoerce;

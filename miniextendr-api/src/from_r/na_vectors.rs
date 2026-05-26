@@ -14,8 +14,7 @@
 //! as `i32::MIN`, the R NA sentinel, which is a footgun for arithmetic
 //! downstream.
 //!
-//! Outbound counterpart: `Vec<Option<T>>` impls in [`crate::into_r`]. See
-//! [CONVERSION_MATRIX.md](../../../docs/CONVERSION_MATRIX.md).
+//! Outbound counterpart: `Vec<Option<T>>` impls in [`crate::into_r`].
 
 use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};

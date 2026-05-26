@@ -38,10 +38,6 @@
 //! There is intentionally no `TryFromSexpStrict` trait — inbound is already
 //! strict-by-default because it returns `Result`.
 //!
-//! Background: [STRICT_MODE.md](../../docs/STRICT_MODE.md),
-//! [CONVERSION_MATRIX.md](../../docs/CONVERSION_MATRIX.md),
-//! [COERCE.md](../../docs/COERCE.md).
-//!
 //! # Thread Safety
 //!
 //! The trait provides two methods:

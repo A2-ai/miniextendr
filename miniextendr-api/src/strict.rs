@@ -29,9 +29,6 @@
 //! For storage-directed conversions (force `Vec<i64>` into `INTSXP` and error
 //! if any element doesn't fit) see [`crate::into_r_as::IntoRAs`] — it's a
 //! third path with value-based runtime checks.
-//!
-//! Background: [STRICT_MODE.md](../../docs/STRICT_MODE.md),
-//! [CONVERSION_MATRIX.md](../../docs/CONVERSION_MATRIX.md).
 
 use crate::coerce::TryCoerce;
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};

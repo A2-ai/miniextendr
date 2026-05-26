@@ -13,9 +13,6 @@
 //! classed `rust_*` condition. Failure mode of opting into `unwrap_in_r`
 //! without telling R callers: they suddenly need to inspect `$ok` / `$err`
 //! on every return value instead of using `tryCatch`.
-//!
-//! Background: [ERROR_HANDLING.md](../../../docs/ERROR_HANDLING.md),
-//! [CONDITIONS.md](../../../docs/CONDITIONS.md).
 
 use std::collections::HashMap;
 

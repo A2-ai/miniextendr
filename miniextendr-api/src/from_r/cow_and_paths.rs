@@ -13,8 +13,6 @@
 //! duration of the enclosing `.Call`; if you need an owned value that
 //! outlives R's GC, take `String` or `Vec<T>` instead (see
 //! [`strings`](crate::from_r::strings) and [`references`](crate::from_r::references)).
-//!
-//! Background: [CONVERSION_MATRIX.md](../../../docs/CONVERSION_MATRIX.md).
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashSet};

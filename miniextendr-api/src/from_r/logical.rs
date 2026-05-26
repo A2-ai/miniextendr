@@ -18,8 +18,7 @@
 //! want for an interactive R API.
 //!
 //! Outbound counterpart: `bool` / `Option<bool>` impls in
-//! [`crate::into_r`]. Conversion table:
-//! [CONVERSION_MATRIX.md](../../../docs/CONVERSION_MATRIX.md).
+//! [`crate::into_r`].
 
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};
