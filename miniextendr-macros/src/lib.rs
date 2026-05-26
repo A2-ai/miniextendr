@@ -1576,8 +1576,40 @@ fn apply_return_pref(
 
 /// Generate thread-safe wrappers for R FFI functions.
 ///
-/// Apply this to an `extern "C-unwind"` block to generate wrappers that ensure
-/// R API calls happen on R's main thread.
+/// Apply this to an `extern "C-unwind"` block to generate, **for each
+/// non-variadic function**, a pair of entry points:
+///
+/// - The original name (e.g. `Rf_allocVector`) — a safe Rust wrapper that
+///   debug-asserts the caller is on R's main thread, routing through
+///   `miniextendr_api::worker::with_r_thread` when called from a worker.
+/// - A `*_unchecked` sibling (`Rf_allocVector_unchecked`) — the raw
+///   `extern "C-unwind"` declaration with no main-thread assertion and no
+///   worker round-trip.
+///
+/// User code should reach for the checked variant by default; the unchecked
+/// sibling exists for three known-safe contexts:
+///
+/// 1. **Inside ALTREP callbacks** — R is already calling us on the main
+///    thread, so the assertion would always pass and the route would
+///    deadlock the call back to R.
+/// 2. **Inside a `with_r_unwind_protect` body** — the guard has established
+///    main-thread context, and re-entering `with_r_thread` would nest two
+///    `R_UnwindProtect` frames (paying the longjmp-leak cost twice).
+/// 3. **Inside a `with_r_thread` body** — the assertion is redundant; you
+///    are already where you needed to be.
+///
+/// The build-time lint **MXL301** enforces this: calling `*_unchecked`
+/// outside one of those three contexts is a compile-time error. Outside
+/// the worker-thread feature gate, the checked variant collapses to a thin
+/// call and the two variants are observationally identical, but the lint
+/// still applies so the same code is correct under `--features worker-thread`.
+///
+/// # Tradeoffs at a glance
+///
+/// | Variant | Asserts main thread | Routes to main | When to use |
+/// |---|---|---|---|
+/// | `Rf_foo` (checked) | yes (debug) | yes (from worker) | default |
+/// | `Rf_foo_unchecked` | no | no | ALTREP callbacks, `with_r_unwind_protect`, `with_r_thread` |
 ///
 /// # Behavior
 ///

@@ -1,9 +1,39 @@
 //! Worker thread infrastructure for safe Rust-R FFI.
 //!
+//! ## Why a worker thread at all?
+//!
+//! R's error handling uses `longjmp`, which skips Rust destructors and leaks
+//! resources. To contain that, `#[miniextendr]`-generated function bodies run
+//! on a separate Rust thread (the "worker"). R only longjmps on its own main
+//! thread, so Rust frames on the worker are unwind-safe.
+//!
+//! That split means **user code is off the R main thread** whenever the
+//! `worker-thread` cargo feature is enabled. Anything that calls R's C API
+//! (allocating `SEXP`s, walking attributes, accessing `INTEGER(x)`) must
+//! cross back to main via [`with_r_thread`].
+//!
 //! ## Public API
 //!
-//! - [`with_r_thread`] — Execute a closure on R's main thread
-//! - [`is_r_main_thread`] — Check if the current thread is R's main thread
+//! - [`with_r_thread`] — Execute a closure on R's main thread. This is the
+//!   bridge: call it from inside a `#[miniextendr]` body whenever you need
+//!   to touch the R FFI.
+//! - [`is_r_main_thread`] — Check if the current thread is R's main thread.
+//! - [`Sendable`] — `#[doc(hidden)]` wrapper used by the macros to ferry
+//!   `SEXP` (and other `!Send` types) across the worker channel. The author
+//!   asserts the value is only consumed on the main thread.
+//!
+//! ## Tradeoffs
+//!
+//! - **Default to checked FFI variants** (`Rf_allocVector`, `INTEGER`, …) so
+//!   the debug-assertion catches accidental off-thread calls.
+//! - **Inside a [`with_r_thread`] body, the assertion is redundant** — the
+//!   `*_unchecked` variants in [`crate::ffi`] are safe to call there
+//!   (recognised by the lint **MXL301**, alongside ALTREP callbacks and
+//!   [`crate::unwind_protect::with_r_unwind_protect`] bodies).
+//! - **Don't raise R errors directly** from worker-thread code. `Rf_error`
+//!   would longjmp through Rust frames on the wrong thread. Panic instead;
+//!   the framework converts the panic into a structured R condition (see
+//!   [`crate::error_value`]). The lint **MXL300** enforces this.
 //!
 //! ## Feature gate: `worker-thread`
 //!
@@ -14,12 +44,21 @@
 //!
 //! With the feature enabled, a dedicated worker thread is spawned at init time.
 //! `with_r_thread` routes calls from the worker back to main, and `run_on_worker`
-//! dispatches closures to the worker with bidirectional communication.
+//! dispatches closures to the worker with bidirectional communication. The
+//! worker has a 16 MB stack — keep `proptest!` invocations on it modest (see
+//! the project `CLAUDE.md`).
 //!
 //! ## Initialization
 //!
 //! [`miniextendr_runtime_init`] must be called from R's main thread before any
 //! R FFI APIs. Typically done in `R_init_<pkgname>()`.
+//!
+//! ## Cross references
+//!
+//! - [`crate::unwind_protect::with_r_unwind_protect`] — catch R errors with
+//!   Rust cleanup; sibling to `with_r_thread`.
+//! - [`crate::ffi`] — checked vs `*_unchecked` FFI surface.
+//! - [`crate::ffi_guard`] — guard taxonomy across boundaries.
 
 use std::sync::OnceLock;
 use std::thread;

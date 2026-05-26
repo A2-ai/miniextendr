@@ -4,6 +4,12 @@
 //! `altrep_bridge.rs`, `unwind_protect.rs`, and `connection.rs`. This module
 //! extracts the common pattern into a single `guarded_ffi_call` function.
 //!
+//! Most user code never calls anything here. The proc-macro layer
+//! (`#[miniextendr]`) inserts the right guard at every Rust → R boundary it
+//! generates. Reach for these helpers when you're writing a callback or
+//! trampoline that the macros don't already cover (custom connections,
+//! manual ALTREP, raw FFI shims).
+//!
 //! ## Guard Modes
 //!
 //! - [`GuardMode::CatchUnwind`]: Wraps the closure in `catch_unwind`. On panic,
@@ -11,10 +17,27 @@
 //!   Used by worker and connection trampolines.
 //!
 //! - [`GuardMode::RUnwind`]: Uses `R_UnwindProtect` to catch both Rust panics
-//!   and R longjmps. Used by ALTREP callbacks that call R APIs.
+//!   and R longjmps. Used by ALTREP callbacks that call R APIs. Routes
+//!   through `crate::unwind_protect::with_r_unwind_protect_sourced`
+//!   (crate-private).
 //!
 //! The ALTREP-specific `Unsafe` mode (no protection at all) stays in
 //! `altrep_bridge.rs` since it has no general applicability.
+//!
+//! ## Tradeoffs vs raising R errors directly
+//!
+//! Don't reach for `Rf_error` / `Rf_errorcall` to fail out of a callback —
+//! the longjmp skips Rust destructors and the lint **MXL300** rejects it.
+//! Panic instead; whichever guard mode you pick converts the panic into the
+//! tagged-condition transport ([`crate::error_value`]) or, on the ALTREP
+//! `RUnwind` path, raises a structured `rust_*` condition via the
+//! crate-private `raise_rust_condition_via_stop` helper.
+//!
+//! ## Cross references
+//!
+//! - [`crate::worker::with_r_thread`] — main-thread routing entry point.
+//! - [`crate::unwind_protect::with_r_unwind_protect`] — the user-facing R
+//!   error catcher; consumed by `RUnwind` mode.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

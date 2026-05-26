@@ -1,6 +1,23 @@
 //! Raw ALTREP C API bindings.
 //!
-//! This module mirrors `R_ext/Altrep.h` and is intentionally low-level.
+//! This module mirrors `R_ext/Altrep.h` and is intentionally low-level. Prefer
+//! the `#[derive(AltrepInteger)]` / `AltrepReal` / `AltrepLogical` /
+//! `AltrepString` / `AltrepRaw` / `AltrepComplex` / `AltrepList` derives — or
+//! the `#[altrep(manual)]` opt-out — over wiring these typedefs by hand.
+//!
+//! See [`crate::altrep_traits`] for the guard-mode taxonomy (`unsafe` /
+//! `rust_unwind` / `r_unwind`) that gates panic and longjmp escape from
+//! callback bodies; [`crate::altrep_bridge`] is the trampoline layer that
+//! enforces those modes.
+//!
+//! # Calling these from a callback
+//!
+//! ALTREP callbacks are invoked by R on its main thread, so the
+//! [`#[r_ffi_checked]`](miniextendr_macros::r_ffi_checked) main-thread
+//! assertion would always pass. Inside a callback body you may therefore call
+//! `*_unchecked` variants of the R API (or the `r_unwind` guard's protected
+//! re-entry helpers) without tripping the **MXL301** lint. See
+//! [`crate::ffi`] for the broader checked-vs-unchecked story.
 
 #![allow(non_camel_case_types)]
 use crate::ffi::{DllInfo, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
