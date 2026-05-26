@@ -136,11 +136,6 @@ pub(crate) fn cov_fn_attr_check_interrupt(n: i32) -> i32 {
     n * 2
 }
 
-#[miniextendr(unsafe(main_thread))]
-pub(crate) fn cov_fn_attr_main_thread() -> i32 {
-    1
-}
-
 #[miniextendr(worker)]
 pub(crate) fn cov_fn_attr_worker(x: i32) -> i32 {
     x
@@ -197,13 +192,8 @@ pub(crate) fn cov_combo_worker_unwrap(x: i32) -> Result<i32, &'static str> {
     Ok(x)
 }
 
-#[miniextendr(unsafe(main_thread), check_interrupt)]
-pub(crate) fn cov_combo_mainthread_interrupt(x: i32) -> i32 {
-    x
-}
-
-#[miniextendr(unsafe(main_thread), visible, check_interrupt)]
-pub(crate) fn cov_combo_mainthread_visible_interrupt() {}
+#[miniextendr(visible, check_interrupt)]
+pub(crate) fn cov_combo_visible_interrupt() {}
 
 #[miniextendr(invisible, check_interrupt)]
 pub(crate) fn cov_combo_invisible_interrupt() -> i32 {
