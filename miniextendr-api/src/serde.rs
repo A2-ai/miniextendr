@@ -241,8 +241,8 @@ pub use ::serde::{Deserialize, Serialize};
 
 pub use columnar::{
     ColumnarDataFrame, DataFrameBuilder, DataFrameShape, NamedDataFrameListBuilder, ResultShape,
-    SplitResults, SplitShape, TypeSpec, hashmap_to_dataframe, iter_to_dataframe,
-    map_to_dataframe, result_to_dataframe, vec_to_dataframe, vec_to_dataframe_split,
+    SplitResults, SplitShape, TypeSpec, hashmap_to_dataframe, iter_to_dataframe, map_to_dataframe,
+    result_to_dataframe, vec_to_dataframe, vec_to_dataframe_split,
 };
 pub use dataframe_de::{
     BorrowedRows, dataframe_to_vec, dataframe_to_vec_borrowed, with_dataframe_rows,
