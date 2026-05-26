@@ -6,7 +6,7 @@
 #[cfg(feature = "connections")]
 use miniextendr_api::connection::{RConnectionImpl, RConnectionIo, RCustomConnection};
 #[cfg(feature = "connections")]
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 #[cfg(feature = "connections")]
 use miniextendr_api::miniextendr;
 #[cfg(feature = "connections")]

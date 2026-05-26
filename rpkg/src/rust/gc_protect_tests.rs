@@ -2,7 +2,8 @@
 //!
 //! These tests verify that the protection APIs work correctly.
 
-use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE, SexpExt};
+use miniextendr_api::prelude::SexpExt;
+use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::miniextendr;

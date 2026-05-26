@@ -88,7 +88,7 @@
 
 use miniextendr_api::Altrep;
 use miniextendr_api::IntoR;
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 // Package initialization — generates R_init_miniextendr() entry point.
@@ -683,7 +683,7 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
     use miniextendr_api::altrep_data1_as;
-    use miniextendr_api::sys::SexpExt;
+    use miniextendr_api::prelude::SexpExt;
 
     let result = if !x.is_altrep() {
         false
@@ -777,7 +777,8 @@ pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntData {
 /// @export
 #[miniextendr]
 pub fn altrep_from_list(x: SEXP) -> ListData {
-    use miniextendr_api::sys::{R_PreserveObject, SexpExt};
+    use miniextendr_api::prelude::SexpExt;
+    use miniextendr_api::sys::R_PreserveObject;
 
     if !x.is_list() {
         panic!("altrep_from_list: expected a list (VECSXP)");
@@ -968,7 +969,8 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
         // NA_LOGICAL in R is the same as NA_INTEGER = i32::MIN
         const NA_LOGICAL: i32 = i32::MIN;
         unsafe {
-            use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE, SexpExt};
+            use miniextendr_api::prelude::SexpExt;
+            use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
             let n = self.data.len();
             let state = Rf_allocVector(SEXPTYPE::LGLSXP, n as isize);
             for (i, v) in self.data.iter().enumerate() {
@@ -986,7 +988,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
     fn unserialize(state: SEXP) -> Option<Self> {
         const NA_LOGICAL: i32 = i32::MIN;
         {
-            use miniextendr_api::sys::SexpExt;
+            use miniextendr_api::prelude::SexpExt;
             let n = state.len();
             let mut data = Vec::with_capacity(n);
             for i in 0..n {
@@ -1551,7 +1553,7 @@ impl AltrepLen for ListData {
 
 impl AltListData for ListData {
     fn elt(&self, i: usize) -> SEXP {
-        use miniextendr_api::sys::SexpExt;
+        use miniextendr_api::prelude::SexpExt;
         self.list.vector_elt(i as miniextendr_api::sys::R_xlen_t)
     }
 }

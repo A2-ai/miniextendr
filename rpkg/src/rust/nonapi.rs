@@ -1,4 +1,4 @@
-use miniextendr_api::sys::{SEXP, SexpExt};
+use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
 

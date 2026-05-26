@@ -5,9 +5,8 @@ mod r_test_utils;
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use miniextendr_api::coerce::Coerced;
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
-use miniextendr_api::sys::{
-    R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
-};
+use miniextendr_api::prelude::{SEXP, SexpExt};
+use miniextendr_api::sys::{R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use std::collections::{BTreeSet, HashSet};
 
 #[derive(Default)]
@@ -246,7 +245,7 @@ fn test_error_cases() {
 /// Helper to create a VECSXP (R list) from SEXPs
 #[cfg(any(feature = "serde", feature = "aho-corasick"))]
 unsafe fn make_list(elements: &[SEXP], guard: &mut ProtectCount) -> SEXP {
-    use miniextendr_api::sys::SexpExt;
+    use miniextendr_api::prelude::SexpExt;
     let len = elements.len() as R_xlen_t;
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::VECSXP, len)) };
     for (i, &elem) in elements.iter().enumerate() {

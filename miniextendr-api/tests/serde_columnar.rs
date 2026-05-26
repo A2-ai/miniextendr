@@ -8,12 +8,12 @@ mod r_test_utils;
 
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::into_r::IntoR as _;
+use miniextendr_api::prelude::SexpExt as _;
 use miniextendr_api::serde::{
     DataFrameShape, NamedDataFrameListBuilder, ResultShape, SplitResults, SplitShape,
     hashmap_to_dataframe, map_to_dataframe, result_to_dataframe, vec_to_dataframe,
     vec_to_dataframe_split,
 };
-use miniextendr_api::sys::SexpExt as _;
 use serde::Serialize;
 
 // region: NamedDataFrameListBuilder

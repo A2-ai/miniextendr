@@ -1,7 +1,7 @@
 //! Borsh adapter tests -- binary serialization via R raw vectors.
 
 use miniextendr_api::borsh_impl::{borsh_from_raw, borsh_to_raw};
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::{Borsh, IntoR, RBorshOps, TryFromSexp, miniextendr};
 
 /// Test roundtripping a double vector through Borsh serialization and deserialization.

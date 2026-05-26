@@ -1,6 +1,6 @@
 //! Tests for R interrupt checking.
 
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 use miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise;
 

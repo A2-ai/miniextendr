@@ -977,7 +977,7 @@ impl<'a, T> Protected<'a, T> {
     ///
     /// ```ignore
     /// use miniextendr_api::{Protected, OwnedProtect};
-    /// use miniextendr_api::sys::SEXP;
+    /// use miniextendr_api::prelude::SEXP;
     ///
     /// unsafe fn wrap_view(sexp: SEXP, view: MyView<'_>) -> Protected<'_, MyView<'_>> {
     ///     // Protect the SEXP and bundle it with the view.

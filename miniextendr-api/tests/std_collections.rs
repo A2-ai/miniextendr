@@ -87,7 +87,8 @@ fn cow_slice_owned() {
 #[test]
 fn cow_slice_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+        use miniextendr_api::prelude::SexpExt;
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));

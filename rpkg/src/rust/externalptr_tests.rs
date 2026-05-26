@@ -1,7 +1,7 @@
 //! Tests for ExternalPtr functionality.
 
 use miniextendr_api::externalptr::ErasedExternalPtr;
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 /// A simple test struct for ExternalPtr
@@ -43,7 +43,7 @@ pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::Externa
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         match ExternalPtr::<Counter>::wrap_sexp(ptr) {
             Some(ext) => SEXP::scalar_integer(ext.value),
@@ -58,7 +58,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         // Get mutable access via downcast_mut on erased pointer
         let mut erased = ErasedExternalPtr::from_sexp(ptr);
@@ -85,7 +85,7 @@ pub fn extptr_point_new(x: f64, y: f64) -> miniextendr_api::externalptr::Externa
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         match ExternalPtr::<Point>::wrap_sexp(ptr) {
             Some(ext) => SEXP::scalar_real(ext.x),
@@ -101,7 +101,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         match ExternalPtr::<Point>::wrap_sexp(ptr) {
             Some(ext) => SEXP::scalar_real(ext.y),
@@ -117,7 +117,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         // Try to interpret a Point as a Counter - should return None
         match ExternalPtr::<Counter>::wrap_sexp(ptr) {
@@ -134,7 +134,7 @@ pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         // R's new("externalptr") creates a null external pointer
         // Our wrap_sexp should return None for it
@@ -151,7 +151,7 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         let erased = ErasedExternalPtr::from_sexp(ptr);
         if erased.is::<Counter>() {
@@ -168,7 +168,7 @@ pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     unsafe {
         let erased = ErasedExternalPtr::from_sexp(ptr);
         if erased.is::<Point>() {

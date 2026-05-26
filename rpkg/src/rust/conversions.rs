@@ -1,6 +1,7 @@
 //! Comprehensive conversions matrix for [`#[miniextendr]`](miniextendr_api::miniextendr) arguments and returns.
 
-use miniextendr_api::sys::{RLogical, Rboolean, SEXP};
+use miniextendr_api::prelude::SEXP;
+use miniextendr_api::sys::{RLogical, Rboolean};
 use miniextendr_api::{IntoR, ListMut, miniextendr};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 

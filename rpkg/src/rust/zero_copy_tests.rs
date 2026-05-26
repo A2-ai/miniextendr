@@ -3,7 +3,7 @@
 //! These fixtures verify that pointer recovery works: the SEXP returned by
 //! IntoR is the exact same SEXP that was passed to TryFromSexp.
 
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 use std::borrow::Cow;
 
@@ -61,7 +61,7 @@ pub fn zero_copy_vec_cow_str_all_borrowed(x: Vec<Cow<'static, str>>) -> bool {
 
 #[cfg(feature = "arrow")]
 mod arrow {
-    use miniextendr_api::sys::SEXP;
+    use miniextendr_api::prelude::SEXP;
     use miniextendr_api::miniextendr;
 
     /// Returns TRUE if Float64Array round-trip returns the same R object.

@@ -10,11 +10,11 @@
 
 mod r_test_utils;
 
+use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::rayon_bridge::{
     new_r_array, new_r_matrix, par_map, par_map2, par_map3, with_r_array, with_r_matrix,
     with_r_vec, with_r_vec_map,
 };
-use miniextendr_api::sys::{SEXP, SexpExt};
 
 /// Helper to read f64 values from an R REALSXP vector.
 unsafe fn read_real_vec(sexp: SEXP) -> Vec<f64> {

@@ -508,7 +508,7 @@ pub fn debug_shared_data_type_name() -> String {
 /// @export
 #[miniextendr]
 pub fn get_r_class(x: SEXP) -> SEXP {
-    use miniextendr_api::sys::SexpExt;
+    use miniextendr_api::prelude::SexpExt;
     x.get_class()
 }
 // endregion

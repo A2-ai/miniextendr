@@ -1,6 +1,6 @@
 //! Miscellaneous test functions.
 
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 // Test that wildcard `_` parameters work (transformed to synthetic names internally)

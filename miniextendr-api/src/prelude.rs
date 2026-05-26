@@ -74,12 +74,16 @@ pub use crate::{Sendable, with_r_thread};
 pub use crate::{r_print, r_println, r_warning};
 // endregion
 
-// region: FFI core types
+// region: Safe R-value surface
 //
-// The most-used vocabulary for working with R values. `SEXP` is the central
-// newtype; `SexpExt` is the ergonomic extension trait; the rest are R's
-// native element/vector types.
-pub use crate::{R_xlen_t, RLogical, RNativeType, Rboolean, Rcomplex, SEXP, SEXPTYPE, SexpExt};
+// `SEXP` is the central newtype; `SexpExt` is the ergonomic extension trait
+// that provides the safe higher-level methods. Raw FFI vocabulary
+// (`SEXPTYPE`, `R_xlen_t`, `RLogical`, `Rboolean`, `Rcomplex`, `RNativeType`)
+// is **not** re-exported here — those are low-level types that user code
+// should reach for explicitly via `miniextendr_api::sys::*` when genuinely
+// needed (rare; common in tests and macro-generated code). The prelude is
+// for the abstraction surface, not the raw R C API.
+pub use crate::{SEXP, SexpExt};
 // endregion
 
 // region: Optional feature re-exports

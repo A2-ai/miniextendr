@@ -2,8 +2,9 @@
 
 mod r_test_utils;
 
+use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::protect_pool::ProtectPool;
-use miniextendr_api::sys::{self, SEXP, SexpExt};
+use miniextendr_api::sys;
 
 #[test]
 #[ignore = "Requires R runtime; run with --ignored"]

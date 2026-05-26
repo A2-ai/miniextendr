@@ -1,6 +1,6 @@
 //! Tests for RThreadBuilder and thread safety.
 
-use miniextendr_api::sys::{SEXP, SexpExt};
+use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::thread::RThreadBuilder;
 

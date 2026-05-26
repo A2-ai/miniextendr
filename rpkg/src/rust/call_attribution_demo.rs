@@ -5,7 +5,7 @@
 //! `extern "C-unwind"`, which has no generated R wrapper and so no call slot.
 //! The R-side error rendering is dramatically different.
 
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 /// Wrapped path. The generated R wrapper passes `.call = match.call()` into the

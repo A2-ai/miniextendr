@@ -16,7 +16,8 @@ mod r_test_utils;
 #[cfg(feature = "arrow")]
 mod arrow_altrep_thread {
     use super::r_test_utils;
-    use miniextendr_api::sys::{self, SEXP, SexpExt};
+    use miniextendr_api::prelude::{SEXP, SexpExt};
+    use miniextendr_api::sys;
     use miniextendr_api::worker::is_r_main_thread;
 
     /// Create an ALTREP Float64Array with NAs and return the SEXP + protect it.

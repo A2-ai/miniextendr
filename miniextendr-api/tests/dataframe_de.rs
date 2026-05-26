@@ -689,7 +689,8 @@ fn non_dataframe_input_is_error() {
 mod factor_tests {
     use super::*;
     use miniextendr_api::factor::{build_factor, build_levels_sexp};
-    use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+    use miniextendr_api::prelude::{SEXP, SexpExt};
+    use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 
     /// Build a one-column data.frame whose sole column is an R factor.
     ///

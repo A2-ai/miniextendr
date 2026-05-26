@@ -13,7 +13,7 @@
 use miniextendr_api::arrow_impl::{
     Array, BooleanArray, Float64Array, Int32Array, RecordBatch, StringArray,
 };
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 // region: Float64Array NA patterns
@@ -389,7 +389,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
     let result_sexp = arr.into_sexp();
 
     // Read back from R to see what R thinks
-    use miniextendr_api::sys::SexpExt;
+    use miniextendr_api::prelude::SexpExt;
     let r_len = result_sexp.len();
     let mut result = vec![null_count, r_len as f64];
     for i in 0..r_len {

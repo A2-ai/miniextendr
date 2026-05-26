@@ -5,7 +5,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use miniextendr_api::sys::{SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::prelude::{SEXP, SexpExt};
+use miniextendr_api::sys::SEXPTYPE;
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
 #[cfg(feature = "jiff")]
@@ -279,7 +280,7 @@ pub fn gc_stress_dataframe_nested_enum() {
 #[miniextendr]
 pub fn gc_stress_native_sexp_altrep() {
     use crate::native_sexp_altrep_fixture::native_sexp_altrep_new;
-    use miniextendr_api::sys::SexpExt as _;
+    use miniextendr_api::prelude::SexpExt as _;
 
     // Construct a small ALTREP-backed integer vector.
     let values = vec![10i32, 20, 30, 40, 50];
@@ -332,7 +333,7 @@ pub fn gc_stress_jiff_zoned_vec() {
     let sexp = vec.into_posixct_sexp();
 
     // Force element access via the ALTREP Elt path.
-    use miniextendr_api::sys::SexpExt as _;
+    use miniextendr_api::prelude::SexpExt as _;
     let n = sexp.len();
     assert_eq!(n, 3);
     for i in 0..n {
@@ -1190,7 +1191,8 @@ pub fn gc_stress_split_collated() -> SEXP {
 pub fn gc_stress_factor_labels() -> i32 {
     use crate::serde::Deserialize;
     use miniextendr_api::factor::{build_factor, build_levels_sexp};
-    use miniextendr_api::sys::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+    use miniextendr_api::prelude::{SEXP, SexpExt};
+    use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
     use miniextendr_api::gc_protect::OwnedProtect;
     use miniextendr_api::serde::dataframe_to_vec;
 

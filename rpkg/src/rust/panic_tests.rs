@@ -1,6 +1,7 @@
 //! Panic, drop, and R error handling tests.
 
-use miniextendr_api::sys::{Rf_error, SEXP};
+use miniextendr_api::prelude::SEXP;
+use miniextendr_api::sys::Rf_error;
 use miniextendr_api::miniextendr;
 
 // region: MsgOnDrop for testing drop behavior

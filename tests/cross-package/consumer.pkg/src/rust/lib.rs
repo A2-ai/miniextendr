@@ -36,7 +36,7 @@ pub fn passthrough_ptr(ptr: SEXP) -> SEXP {
 /// @export
 #[miniextendr]
 pub fn is_external_ptr(sexp: SEXP) -> bool {
-    use miniextendr_api::sys::SexpExt;
+    use miniextendr_api::prelude::SexpExt;
     sexp.is_external_ptr()
 }
 

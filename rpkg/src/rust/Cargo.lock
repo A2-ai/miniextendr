@@ -1979,7 +1979,6 @@ dependencies = [
 [[package]]
 name = "miniextendr-api"
 version = "0.1.0"
-source = "git+https://github.com/A2-ai/miniextendr#0825c93a79e605b67c8e4a71b57f09ca4fc36070"
 dependencies = [
  "ahash 0.8.12",
  "aho-corasick",
@@ -2027,7 +2026,6 @@ dependencies = [
 [[package]]
 name = "miniextendr-lint"
 version = "0.1.0"
-source = "git+https://github.com/A2-ai/miniextendr#0825c93a79e605b67c8e4a71b57f09ca4fc36070"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2037,7 +2035,6 @@ dependencies = [
 [[package]]
 name = "miniextendr-macros"
 version = "0.1.0"
-source = "git+https://github.com/A2-ai/miniextendr#0825c93a79e605b67c8e4a71b57f09ca4fc36070"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3709,15 +3706,3 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
-
-[[patch.unused]]
-name = "miniextendr-api"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "miniextendr-lint"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "miniextendr-macros"
-version = "0.1.0"

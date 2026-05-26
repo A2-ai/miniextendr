@@ -2,8 +2,9 @@
 
 mod r_test_utils;
 
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::refcount_protect::RefCountedArena;
-use miniextendr_api::sys::{Rf_allocVector, SEXP, SEXPTYPE};
+use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
 
 // region: Basic protection tests
 
