@@ -50,6 +50,7 @@ use arrow_array::types::ArrowPrimitiveType;
 
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys;
 use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: RSourced trait — R buffer provenance for Arrow types
