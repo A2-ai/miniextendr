@@ -99,6 +99,11 @@ pub fn is_r_main_thread() -> bool {
 /// - From the worker thread (during `run_on_worker`): sends the work to
 ///   the main thread and blocks until completion
 ///
+/// The "main thread" the closure runs on is whichever thread called
+/// [`run_on_worker`]. Per the [`run_on_worker`] contract, that must be
+/// the R main thread (the thread that ran `miniextendr_runtime_init()`);
+/// otherwise R API calls inside the closure happen on the wrong thread.
+///
 /// # Panics
 ///
 /// - If `miniextendr_runtime_init()` hasn't been called yet
@@ -171,6 +176,23 @@ pub fn panic_message_to_r_error(msg: String, call: Option<SEXP>) -> ! {
 /// The caller handles the error (either tagged error value or `Rf_errorcall`).
 ///
 /// Without the `worker-thread` feature, runs inline on the current thread.
+///
+/// # Precondition: caller must be the R main thread
+///
+/// The main-thread event loop that drives [`with_r_thread`] callbacks
+/// runs on whatever thread invokes `run_on_worker`. R API calls fired
+/// from inside the closure are routed back to *that* thread — so if
+/// the caller isn't the R main thread, the callbacks land on the
+/// wrong thread silently.
+///
+/// In normal usage this contract is satisfied automatically:
+/// `#[miniextendr]` entry points are reached via `.Call`, which is
+/// always on R's main thread. Calling `run_on_worker` from a
+/// Rust-spawned thread is a programming error.
+///
+/// In debug builds the precondition is asserted via `debug_assert!`.
+/// Release builds skip the check (one fewer atomic load per dispatch);
+/// the `.Call` invariant is relied on instead.
 #[doc(hidden)]
 pub fn run_on_worker<F, T>(f: F) -> Result<T, String>
 where
@@ -466,6 +488,10 @@ mod worker_channel {
         // Re-entry guard: if we're already on the worker thread (inside a
         // run_on_worker job), a nested run_on_worker would deadlock because the
         // single worker thread can't pick up a new job while running the current one.
+        //
+        // Checked before the main-thread debug_assert so re-entry from the worker
+        // produces its specific message rather than the more general
+        // "must be called from the R main thread" assert (worker thread isn't main).
         if has_context() {
             panic!(
                 "run_on_worker called re-entrantly from within a worker context.\n\
@@ -475,6 +501,18 @@ mod worker_channel {
                  use with_r_thread() instead."
             );
         }
+
+        // Precondition: the caller is the R main thread. `dispatch_to_worker`
+        // runs the main-thread event loop on whatever thread invokes it, so
+        // a non-main caller silently routes `with_r_thread` callbacks to the
+        // wrong thread. `.Call` always lands here on R's main thread, so this
+        // is a programming error rather than a runtime condition — debug-only
+        // assert, no atomic load in release. See #730.
+        debug_assert!(
+            super::is_r_main_thread(),
+            "run_on_worker must be called from the R main thread \
+             (the thread that ran miniextendr_runtime_init); see #730"
+        );
 
         // Clone the worker's sender while holding the mutex briefly. The
         // clone outlives the lock, so sends happen without blocking other
@@ -769,38 +807,71 @@ mod tests {
 
         /// Calling `run_on_worker` from within worker code (re-entry) must be
         /// detected and panic, not deadlock.
+        ///
+        /// Dispatches from the current test thread rather than a spawned one.
+        /// `run_on_worker` requires the R main thread (#730), and a spawned
+        /// std::thread would trip the debug_assert before the re-entry check
+        /// gets a chance to run. If this test happens to run on a thread that
+        /// isn't `R_MAIN_THREAD_ID` (another test initialised first), skip —
+        /// the reentry behaviour is checked elsewhere on each invocation of
+        /// the suite.
         #[test]
         fn run_on_worker_reentry_panics_not_deadlocks() {
             miniextendr_runtime_init();
+            if !is_r_main_thread() {
+                return;
+            }
 
-            let (tx, rx) = std::sync::mpsc::sync_channel::<Result<String, String>>(1);
+            let result = run_on_worker(|| {
+                // Re-entry: this runs on the worker thread.
+                run_on_worker(|| 42).unwrap();
+            });
 
+            let msg = result.expect_err("re-entry should surface as Err");
+            assert!(
+                msg.contains("re-entr") || msg.contains("Re-entr"),
+                "expected re-entry error, got: {msg}"
+            );
+        }
+
+        /// `run_on_worker` from a non-main thread trips the debug-only
+        /// precondition assert (#730). Spawning a fresh std::thread guarantees
+        /// the caller isn't `R_MAIN_THREAD_ID`, regardless of which thread
+        /// `miniextendr_runtime_init` first ran on.
+        ///
+        /// `cfg(debug_assertions)` only — the assert is compiled out in
+        /// release, by design.
+        #[cfg(debug_assertions)]
+        #[test]
+        fn run_on_worker_from_non_main_thread_asserts_in_debug() {
+            miniextendr_runtime_init();
+
+            let (tx, rx) = std::sync::mpsc::sync_channel::<Result<String, ()>>(1);
             std::thread::spawn(move || {
-                let result = run_on_worker(|| {
-                    // Re-entry: this is on the worker thread already.
-                    run_on_worker(|| 42).unwrap();
-                });
-                match result {
-                    Err(msg) => {
-                        let _ = tx.send(Ok(msg));
-                    }
-                    Ok(()) => {
-                        let _ = tx.send(Err("re-entry was not detected".into()));
-                    }
-                }
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    run_on_worker(|| 0i32)
+                }));
+                let report = match outcome {
+                    Err(payload) => Ok(crate::unwind_protect::panic_payload_to_string(
+                        payload.as_ref(),
+                    )
+                    .into_owned()),
+                    Ok(_) => Err(()),
+                };
+                let _ = tx.send(report);
             });
 
             match rx.recv_timeout(std::time::Duration::from_secs(5)) {
                 Ok(Ok(msg)) => {
                     assert!(
-                        msg.contains("re-entr") || msg.contains("Re-entr"),
-                        "expected re-entry error, got: {msg}"
+                        msg.contains("R main thread"),
+                        "expected main-thread precondition assert, got: {msg}"
                     );
                 }
-                Ok(Err(msg)) => panic!("{msg}"),
-                Err(_) => {
-                    panic!("DEADLOCK: run_on_worker re-entry caused the test to hang for 5 seconds")
+                Ok(Err(())) => {
+                    panic!("debug_assert did not fire when run_on_worker was called from non-main")
                 }
+                Err(_) => panic!("test deadlocked waiting for debug_assert panic"),
             }
         }
     }
