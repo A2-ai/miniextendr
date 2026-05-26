@@ -646,6 +646,55 @@ pub fn gc_stress_iter_to_dataframe() -> SEXP {
     df.into_sexp()
 }
 
+/// Exercise `dispatch_to_dataframes` PROTECT discipline under GC pressure.
+///
+/// Synthesises a mixed Result-iterator (every third row is an Err with a
+/// distinct payload shape) and runs it through the streaming two-builder
+/// path. Each builder's `ProtectScope` plus the assembling
+/// `NamedDataFrameListBuilder` need to keep every protected SEXP live.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
+    use crate::serde::Serialize;
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{DispatchNames, dispatch_to_dataframes};
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        val: f64,
+    }
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let list = dispatch_to_dataframes(
+        (0i32..30).map(|i| {
+            if i % 3 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("skip_{i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    val: f64::from(i) * 0.5,
+                })
+            }
+        }),
+        Some(30),
+        DispatchNames::default(),
+    )
+    .expect("gc_stress_dispatch_to_dataframes: dispatch_to_dataframes failed");
+    list.into_sexp()
+}
+
 // endregion
 
 // region: DataFrameBuilder with_schema / grow_schema GC stress

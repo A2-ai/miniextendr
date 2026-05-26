@@ -958,6 +958,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_dataframe_to_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_map_to_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_iter_to_dataframe(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_dispatch_to_dataframes(_: SEXP) -> SEXP;
     pub fn C_gc_stress_native_sexp_altrep(_: SEXP) -> SEXP;
     pub fn C_gc_stress_builder_grow_schema(_: SEXP) -> SEXP;
     pub fn C_gc_stress_builder_with_schema(_: SEXP) -> SEXP;
@@ -6735,6 +6736,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_iter_to_dataframe".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_iter_to_dataframe) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_dispatch_to_dataframes".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dispatch_to_dataframes) }),
         numArgs: 1,
     },
     R_CallMethodDef {
