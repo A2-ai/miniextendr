@@ -30,7 +30,7 @@
 //! # Cross references
 //!
 //! - [`crate::worker::with_r_thread`] — preferred path for crossing back to R.
-//! - [`crate::ffi`] — checked vs `*_unchecked` FFI surface.
+//! - [`crate::sys`] — checked vs `*_unchecked` FFI surface.
 //!
 //! # Background
 //!

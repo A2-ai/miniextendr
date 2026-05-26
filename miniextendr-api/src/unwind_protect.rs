@@ -13,7 +13,7 @@
 //!   Wrap the R-calling section in [`with_r_unwind_protect`] so Rust
 //!   destructors run if R longjmps.
 //! - **Inside a [`with_r_unwind_protect`] body it is safe to use `*_unchecked`
-//!   variants of the R FFI** — see the [`crate::ffi`] module doc. The lint
+//!   variants of the R FFI** — see the [`crate::sys`] module doc. The lint
 //!   **MXL301** recognises this as one of the three contexts where bypassing
 //!   the main-thread assertion is valid (the other two being ALTREP callbacks
 //!   and [`crate::worker::with_r_thread`] bodies).

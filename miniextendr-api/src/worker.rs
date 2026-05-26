@@ -27,7 +27,7 @@
 //! - **Default to checked FFI variants** (`Rf_allocVector`, `INTEGER`, …) so
 //!   the debug-assertion catches accidental off-thread calls.
 //! - **Inside a [`with_r_thread`] body, the assertion is redundant** — the
-//!   `*_unchecked` variants in [`crate::ffi`] are safe to call there
+//!   `*_unchecked` variants in [`crate::sys`] are safe to call there
 //!   (recognised by the lint **MXL301**, alongside ALTREP callbacks and
 //!   [`crate::unwind_protect::with_r_unwind_protect`] bodies).
 //! - **Don't raise R errors directly** from worker-thread code. `Rf_error`
@@ -57,7 +57,7 @@
 //!
 //! - [`crate::unwind_protect::with_r_unwind_protect`] — catch R errors with
 //!   Rust cleanup; sibling to `with_r_thread`.
-//! - [`crate::ffi`] — checked vs `*_unchecked` FFI surface.
+//! - [`crate::sys`] — checked vs `*_unchecked` FFI surface.
 //! - [`crate::ffi_guard`] — guard taxonomy across boundaries.
 
 use std::sync::OnceLock;
