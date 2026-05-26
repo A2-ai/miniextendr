@@ -38,9 +38,8 @@
 //!
 //! miniextendr has several places where two or more APIs reach the same
 //! goal with different tradeoffs — a stricter / safer / more validated
-//! option, and a looser / easier / less protective one. The full matrix
-//! lives in [`docs/API_CHOICE_MATRIX.md`](https://github.com/A2-ai/miniextendr/blob/main/docs/API_CHOICE_MATRIX.md);
-//! the short version is:
+//! option, and a looser / easier / less protective one. The most common
+//! pairs are:
 //!
 //! | I'm reaching for... | Consider also | Why |
 //! |---|---|---|
@@ -53,8 +52,7 @@
 //! | hand-rolled [`TryFromSexp`] + [`IntoR`] | `#[derive(RSerializeNative)]` (serde feature) | serde is ergonomic for nested structs; hand-rolled is zero-overhead and fully controlled |
 //!
 //! Project-wide defaults are controlled by mutually-exclusive cargo
-//! features — see the "Project-wide Defaults" feature table below and
-//! [`docs/FEATURE_DEFAULTS.md`](https://github.com/A2-ai/miniextendr/blob/main/docs/FEATURE_DEFAULTS.md).
+//! features — see the "Project-wide Defaults" feature table below.
 //!
 //! ### Default opinion
 //!
