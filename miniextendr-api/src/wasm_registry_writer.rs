@@ -1,7 +1,7 @@
 //! Host-time generator of `wasm_registry.rs` — the WASM-side replacement for
 //! `linkme`'s runtime distributed-slice gather.
 //!
-//! On native builds, the cdylib runs [`write_wasm_registry_to_file`] to emit
+//! On native builds, the cdylib runs [`crate::wasm_registry_writer::write_wasm_registry_to_file`] to emit
 //! Rust source listing every `MX_CALL_DEFS` / `MX_ALTREP_REGISTRATIONS` /
 //! `MX_TRAIT_DISPATCH` entry as `extern "C" {}` declarations + ordinary
 //! `&[T]` static slices. On `wasm32-*` targets, the user crate compiles that

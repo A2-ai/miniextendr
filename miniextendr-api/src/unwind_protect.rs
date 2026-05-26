@@ -9,10 +9,10 @@
 //! ## Log drain
 //!
 //! Every call to `with_r_unwind_protect` (and its variants) drains the
-//! cross-thread log queue via [`drain_log_queue_if_available`] before
-//! returning or re-raising an R error. This ensures that records buffered by
-//! worker threads are flushed to R's console on every FFI exit — including
-//! error paths.
+//! cross-thread log queue via the crate-private `drain_log_queue_if_available`
+//! helper before returning or re-raising an R error. This ensures that records
+//! buffered by worker threads are flushed to R's console on every FFI exit —
+//! including error paths.
 use std::{
     any::Any,
     borrow::Cow,

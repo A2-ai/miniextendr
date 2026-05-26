@@ -479,8 +479,6 @@ impl_try_from_sexp_scalar_native!(crate::ffi::Rcomplex, CPLXSXP);
 /// To receive the raw SEXP without any conversion (including no materialization),
 /// use `extern "C-unwind"`.
 ///
-/// See `docs/ALTREP_SEXP.md` for the full guide.
-///
 /// # Safety
 ///
 /// SEXP handles are only valid on R's main thread. Use with
