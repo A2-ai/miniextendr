@@ -259,16 +259,16 @@ fn derive_simple_factor(
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
             type Error = std::convert::Infallible;
 
-            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
-            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
-                static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::ffi::SEXP> =
+            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+                static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::sys::SEXP> =
                     ::std::sync::OnceLock::new();
                 let levels = *LEVELS_CACHE.get_or_init(|| {
                     ::miniextendr_api::build_levels_sexp_cached(
@@ -282,7 +282,7 @@ fn derive_simple_factor(
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #where_clause {
             type Error = ::miniextendr_api::SexpError;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::sys::SEXP) -> Result<Self, Self::Error> {
                 ::miniextendr_api::factor_from_sexp(sexp)
             }
         }
@@ -483,16 +483,16 @@ fn derive_interaction_factor(
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
             type Error = std::convert::Infallible;
 
-            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
-            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
-                static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::ffi::SEXP> =
+            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+                static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::sys::SEXP> =
                     ::std::sync::OnceLock::new();
                 let levels = *LEVELS_CACHE.get_or_init(|| {
                     ::miniextendr_api::build_levels_sexp_cached(
@@ -506,7 +506,7 @@ fn derive_interaction_factor(
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #where_clause {
             type Error = ::miniextendr_api::SexpError;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::sys::SEXP) -> Result<Self, Self::Error> {
                 ::miniextendr_api::factor_from_sexp(sexp)
             }
         }

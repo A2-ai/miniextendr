@@ -14,7 +14,7 @@ Safe wrappers for building and evaluating R function calls from Rust.
 
 ```rust
 use miniextendr_api::expression::{RCall, REnv};
-use miniextendr_api::ffi::Rf_mkString;
+use miniextendr_api::sys::Rf_mkString;
 
 unsafe {
     // Call paste0("hello", " world") in base

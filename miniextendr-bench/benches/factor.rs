@@ -8,7 +8,7 @@
 //! Vector conversions show minimal difference since vector allocation dominates.
 
 use miniextendr_api::factor::{build_factor, build_levels_sexp};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::{FactorVec, IntoR, MatchArg, RFactor};
 
 fn main() {

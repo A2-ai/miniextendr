@@ -1,6 +1,6 @@
 //! `_unchecked` FFI call outside guard context.
 //!
-//! - MXL301: Warns on `ffi::*_unchecked()` calls in user code.
+//! - MXL301: Warns on `sys::*_unchecked()` calls in user code.
 //!   These bypass main-thread routing and must only be called inside
 //!   `with_r_unwind_protect`, `with_r_thread`, or similar guard closures.
 
@@ -17,7 +17,7 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
                     path,
                     *line,
                     format!(
-                        "`ffi::{}()` is a raw FFI call — only safe on R's main thread.",
+                        "`sys::{}()` is a raw FFI call — only safe on R's main thread.",
                         fn_name
                     ),
                 )

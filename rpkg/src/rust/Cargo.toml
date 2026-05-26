@@ -52,7 +52,6 @@ log = ["miniextendr-api/log", "dep:log"]
 indicatif = ["miniextendr-api/indicatif"]
 # Diagnostic / development features (shallow pass-through)
 macro-coverage = ["miniextendr-api/macro-coverage"]
-debug-preserve = ["miniextendr-api/debug-preserve"]
 growth-debug = ["miniextendr-api/growth-debug"]
 # Project-wide defaults for #[miniextendr] options
 default-strict = ["miniextendr-api/default-strict"]
@@ -69,7 +68,7 @@ full = [
     "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
     "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
     "either", "log", "worker-thread", "macro-coverage",
-    "debug-preserve", "growth-debug",
+    "growth-debug",
 ]
 
 [dependencies]

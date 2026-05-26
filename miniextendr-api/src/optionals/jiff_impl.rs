@@ -39,9 +39,9 @@ pub use jiff::civil::{Date, DateTime, Time};
 pub use jiff::{SignedDuration, Span, Timestamp, Zoned};
 
 use crate::cached_class::{date_class_sexp, set_posixct_tz, set_posixct_utc};
-use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 
 /// Unix epoch as a civil::Date constant.
 fn unix_epoch_date() -> Date {
@@ -884,7 +884,7 @@ impl IntoR for Vec<Option<Zoned>> {
 
 fn set_difftime_secs_class(sexp: SEXP) {
     unsafe {
-        use crate::ffi::SexpExt as _;
+        use crate::sys::SexpExt as _;
         // Build class = "difftime"
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         Rf_protect(class_sexp);
@@ -1588,14 +1588,14 @@ impl JiffZonedVec {
     /// This is the primary conversion path. The derive-generated [`IntoR`] impl
     /// produces a raw ALTREP without class/tzone; use this method instead when
     /// you want a fully-formed R POSIXct.
-    pub fn into_posixct_sexp(self) -> crate::ffi::SEXP {
+    pub fn into_posixct_sexp(self) -> crate::sys::SEXP {
         use crate::into_r::IntoRAltrep;
         let tzone = self.tzone.clone();
         let altrep = self.into_sexp_altrep();
         unsafe {
-            crate::ffi::Rf_protect(altrep);
+            crate::sys::Rf_protect(altrep);
             set_posixct_tz(altrep, &tzone);
-            crate::ffi::Rf_unprotect(1);
+            crate::sys::Rf_unprotect(1);
         }
         altrep
     }
@@ -1604,12 +1604,12 @@ impl JiffZonedVec {
 impl crate::from_r::TryFromSexp for JiffZonedVec {
     type Error = crate::from_r::SexpError;
 
-    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::SexpExt as _;
+    fn try_from_sexp(sexp: crate::sys::SEXP) -> Result<Self, Self::Error> {
+        use crate::sys::SexpExt as _;
         let actual = sexp.type_of();
-        if actual != crate::ffi::SEXPTYPE::REALSXP {
+        if actual != crate::sys::SEXPTYPE::REALSXP {
             return Err(crate::from_r::SexpTypeError {
-                expected: crate::ffi::SEXPTYPE::REALSXP,
+                expected: crate::sys::SEXPTYPE::REALSXP,
                 actual,
             }
             .into());
@@ -1619,7 +1619,7 @@ impl crate::from_r::TryFromSexp for JiffZonedVec {
         let tz_name: String = unsafe {
             let tzone_sym = crate::cached_class::tzone_symbol();
             let tzone_attr = sexp.get_attr(tzone_sym);
-            if tzone_attr.type_of() == crate::ffi::SEXPTYPE::STRSXP && tzone_attr.len() >= 1 {
+            if tzone_attr.type_of() == crate::sys::SEXPTYPE::STRSXP && tzone_attr.len() >= 1 {
                 let charsxp = tzone_attr.string_elt(0);
                 let cstr = std::ffi::CStr::from_ptr(charsxp.r_char());
                 cstr.to_string_lossy().into_owned()
@@ -1756,7 +1756,7 @@ pub mod vctrs_support {
 
         // STRSXP column — allocate and protect via OwnedProtect so it outlives
         // the List::from_raw_values call (which allocates a VECSXP and can GC).
-        let tz_col = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t) };
+        let tz_col = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as crate::sys::R_xlen_t) };
         // GC-SAFETY: _tz_guard keeps tz_col rooted until after from_raw_values.
         let _tz_guard = unsafe { crate::gc_protect::OwnedProtect::new(tz_col) };
 
@@ -1764,7 +1764,7 @@ pub mod vctrs_support {
             let ts = z.timestamp();
             ts_dst[i] = ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0);
             let iana = z.time_zone().iana_name().unwrap_or("UTC");
-            tz_col.set_string_elt(i as crate::ffi::R_xlen_t, SEXP::charsxp(iana));
+            tz_col.set_string_elt(i as crate::sys::R_xlen_t, SEXP::charsxp(iana));
         }
         // Guards (_ts_guard, _tz_guard) drop after from_raw_values returns —
         // at that point the VECSXP owns both columns via SET_VECTOR_ELT, keeping

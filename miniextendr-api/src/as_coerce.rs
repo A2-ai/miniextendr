@@ -225,7 +225,7 @@ pub trait AsList {
 /// return a vector with one element per item.
 pub trait AsCharacter {
     /// Convert to an R character vector.
-    fn as_character(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_character(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `numeric`/`double` via `as.numeric()`.
@@ -233,7 +233,7 @@ pub trait AsCharacter {
 /// The result should be an R numeric vector (REALSXP).
 pub trait AsNumeric {
     /// Convert to an R numeric vector.
-    fn as_numeric(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_numeric(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `integer` via `as.integer()`.
@@ -241,7 +241,7 @@ pub trait AsNumeric {
 /// The result should be an R integer vector (INTSXP).
 pub trait AsInteger {
     /// Convert to an R integer vector.
-    fn as_integer(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_integer(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `logical` via `as.logical()`.
@@ -249,7 +249,7 @@ pub trait AsInteger {
 /// The result should be an R logical vector (LGLSXP).
 pub trait AsLogical {
     /// Convert to an R logical vector.
-    fn as_logical(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_logical(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `matrix` via `as.matrix()`.
@@ -257,7 +257,7 @@ pub trait AsLogical {
 /// The result should be an R matrix with appropriate dimensions.
 pub trait AsMatrix {
     /// Convert to an R matrix.
-    fn as_matrix(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_matrix(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to a generic `vector` via `as.vector()`.
@@ -265,7 +265,7 @@ pub trait AsMatrix {
 /// This is the most general vector coercion, typically stripping attributes.
 pub trait AsVector {
     /// Convert to an R vector.
-    fn as_vector(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_vector(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `factor` via `as.factor()`.
@@ -273,7 +273,7 @@ pub trait AsVector {
 /// The result should be an R factor (integer vector with levels attribute).
 pub trait AsFactor {
     /// Convert to an R factor.
-    fn as_factor(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_factor(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `Date` via `as.Date()`.
@@ -281,7 +281,7 @@ pub trait AsFactor {
 /// The result should be an R Date object (numeric with "Date" class).
 pub trait AsDate {
     /// Convert to an R Date.
-    fn as_date(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_date(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `POSIXct` via `as.POSIXct()`.
@@ -289,7 +289,7 @@ pub trait AsDate {
 /// The result should be an R POSIXct object (numeric with "POSIXct", "POSIXt" class).
 pub trait AsPOSIXct {
     /// Convert to an R POSIXct.
-    fn as_posixct(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_posixct(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `complex` via `as.complex()`.
@@ -297,7 +297,7 @@ pub trait AsPOSIXct {
 /// The result should be an R complex vector (CPLXSXP).
 pub trait AsComplex {
     /// Convert to an R complex vector.
-    fn as_complex(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_complex(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `raw` via `as.raw()`.
@@ -305,7 +305,7 @@ pub trait AsComplex {
 /// The result should be an R raw vector (RAWSXP).
 pub trait AsRaw {
     /// Convert to an R raw vector.
-    fn as_raw(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_raw(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `environment` via `as.environment()`.
@@ -313,7 +313,7 @@ pub trait AsRaw {
 /// The result should be an R environment.
 pub trait AsEnvironment {
     /// Convert to an R environment.
-    fn as_environment(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_environment(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 
 /// Trait for types that can be coerced to `function` via `as.function()`.
@@ -321,7 +321,7 @@ pub trait AsEnvironment {
 /// The result should be an R function (closure).
 pub trait AsFunction {
     /// Convert to an R function.
-    fn as_function(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
+    fn as_function(&self) -> Result<crate::sys::SEXP, AsCoerceError>;
 }
 // endregion
 

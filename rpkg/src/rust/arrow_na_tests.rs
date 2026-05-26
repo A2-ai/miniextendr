@@ -13,7 +13,7 @@
 use miniextendr_api::arrow_impl::{
     Array, BooleanArray, Float64Array, Int32Array, RecordBatch, StringArray,
 };
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 // region: Float64Array NA patterns
@@ -366,7 +366,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
 
     // Fill with non-NA values
     for i in 0..n {
-        miniextendr_api::ffi::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64);
+        miniextendr_api::sys::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64);
     }
 
     // Create Arrow array — bitmap says "no nulls" (all values are valid)
@@ -375,7 +375,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
     let arr = Float64Array::new(scalar_buffer, None); // None = no nulls
 
     // Now mutate the R buffer AFTER Arrow array was created
-    miniextendr_api::ffi::SexpExt::set_real_elt(
+    miniextendr_api::sys::SexpExt::set_real_elt(
         &sexp,
         1, // set index 1 to NA
         miniextendr_api::altrep_traits::NA_REAL,
@@ -389,7 +389,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
     let result_sexp = arr.into_sexp();
 
     // Read back from R to see what R thinks
-    use miniextendr_api::ffi::SexpExt;
+    use miniextendr_api::prelude::SexpExt;
     let r_len = result_sexp.len();
     let mut result = vec![null_count, r_len as f64];
     for i in 0..r_len {

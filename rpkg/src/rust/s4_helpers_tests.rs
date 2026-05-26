@@ -1,6 +1,6 @@
 //! Test fixtures for s4_helpers (S4 slot access).
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::prelude::*;
 use miniextendr_api::s4_helpers;
 

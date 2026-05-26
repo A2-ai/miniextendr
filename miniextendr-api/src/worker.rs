@@ -27,7 +27,7 @@
 //! - **Default to checked FFI variants** (`Rf_allocVector`, `INTEGER`, …) so
 //!   the debug-assertion catches accidental off-thread calls.
 //! - **Inside a [`with_r_thread`] body, the assertion is redundant** — the
-//!   `*_unchecked` variants in [`crate::ffi`] are safe to call there
+//!   `*_unchecked` variants in [`crate::sys`] are safe to call there
 //!   (recognised by the lint **MXL301**, alongside ALTREP callbacks and
 //!   [`crate::unwind_protect::with_r_unwind_protect`] bodies).
 //! - **Don't raise R errors directly** from worker-thread code. `Rf_error`
@@ -57,13 +57,13 @@
 //!
 //! - [`crate::unwind_protect::with_r_unwind_protect`] — catch R errors with
 //!   Rust cleanup; sibling to `with_r_thread`.
-//! - [`crate::ffi`] — checked vs `*_unchecked` FFI surface.
+//! - [`crate::sys`] — checked vs `*_unchecked` FFI surface.
 //! - [`crate::ffi_guard`] — guard taxonomy across boundaries.
 
 use std::sync::OnceLock;
 use std::thread;
 
-use crate::ffi::{self, SEXP};
+use crate::sys::{self, SEXP};
 
 static R_MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 
@@ -164,8 +164,8 @@ pub fn panic_message_to_r_error(msg: String, call: Option<SEXP>) -> ! {
         .unwrap_or_else(|_| std::ffi::CString::new("Rust panic (invalid message)").unwrap());
     unsafe {
         match call {
-            Some(call) => ffi::Rf_errorcall_unchecked(call, c"%s".as_ptr(), c_msg.as_ptr()),
-            None => ffi::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr()),
+            Some(call) => sys::Rf_errorcall_unchecked(call, c"%s".as_ptr(), c_msg.as_ptr()),
+            None => sys::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr()),
         }
     }
 }
@@ -347,7 +347,7 @@ mod worker_channel {
     use std::thread;
 
     use super::Sendable;
-    use crate::ffi::{self, Rboolean, SEXP};
+    use crate::sys::{self, Rboolean, SEXP};
 
     type AnyJob = Box<dyn FnOnce() + Send>;
 
@@ -636,7 +636,7 @@ mod worker_channel {
 
                             #[cfg(feature = "nonapi")]
                             let error_msg = unsafe {
-                                let buf = ffi::R_curErrorBuf();
+                                let buf = sys::R_curErrorBuf();
                                 if buf.is_null() {
                                     "R error occurred".to_string()
                                 } else {
@@ -662,7 +662,7 @@ mod worker_channel {
                         }));
 
                         let panic_result = catch_unwind(AssertUnwindSafe(|| {
-                            ffi::R_UnwindProtect_C_unwind(
+                            sys::R_UnwindProtect_C_unwind(
                                 Some(trampoline),
                                 data.cast(),
                                 Some(cleanup_handler),
@@ -691,7 +691,7 @@ mod worker_channel {
                                 // Check if this was an R error (cleanup handler already sent response)
                                 if payload.downcast_ref::<RErrorMarker>().is_some() {
                                     drop(data);
-                                    ffi::R_ContinueUnwind(token);
+                                    sys::R_ContinueUnwind(token);
                                 }
                                 // Rust panic - return as error response
                                 Err(crate::unwind_protect::panic_payload_to_string(&*payload)

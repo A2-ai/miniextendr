@@ -83,9 +83,9 @@
 //! }
 //! ```
 
-use crate::ffi::{self, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{self, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::marker::PhantomData;
 
 // region: Type aliases
@@ -513,7 +513,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_rownames(&self) -> Option<SEXP> {
         unsafe {
-            let rownames = ffi::Rf_GetRowNames(self.sexp);
+            let rownames = sys::Rf_GetRowNames(self.sexp);
             if rownames.is_nil() {
                 None
             } else {
@@ -536,7 +536,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
             if dimnames.is_nil() {
                 return None;
             }
-            let colnames = ffi::Rf_GetColNames(dimnames);
+            let colnames = sys::Rf_GetColNames(dimnames);
             if colnames.is_nil() {
                 None
             } else {
@@ -625,12 +625,12 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
             .expect("array total length overflows usize");
 
         assert!(
-            total_len <= ffi::R_xlen_t::MAX as usize,
+            total_len <= sys::R_xlen_t::MAX as usize,
             "array total length {total_len} exceeds R_xlen_t::MAX"
         );
 
         // Allocate the vector
-        let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, total_len as ffi::R_xlen_t) };
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total_len as sys::R_xlen_t) };
 
         // Set dimensions
         unsafe { set_dims::<NDIM>(sexp, &dims) };
@@ -687,7 +687,7 @@ impl<T: RNativeType, const NDIM: usize> TryFromSexp for RArray<T, NDIM> {
 // Note: as_slice() is not available for coerced types - use to_vec_coerced() instead.
 
 use crate::coerce::TryCoerce;
-use crate::ffi::RLogical;
+use crate::sys::RLogical;
 
 /// Helper to validate all elements can be coerced.
 fn validate_coercion<S, T>(slice: &[S]) -> Result<(), SexpError>
@@ -793,10 +793,10 @@ impl_rarray_try_from_sexp_coerce!(RLogical => bool);
 
 impl<T: RNativeType, const NDIM: usize> IntoR for RArray<T, NDIM> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> SEXP {
@@ -859,7 +859,7 @@ unsafe fn get_dims<const NDIM: usize>(sexp: SEXP) -> [usize; NDIM] {
 unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
     unsafe {
         let (dim_sexp, dim_slice) = crate::into_r::alloc_r_vector::<i32>(NDIM);
-        ffi::Rf_protect(dim_sexp);
+        sys::Rf_protect(dim_sexp);
 
         for (slot, &d) in dim_slice.iter_mut().zip(dims.iter()) {
             *slot = i32::try_from(d).unwrap_or_else(|_| {
@@ -868,7 +868,7 @@ unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
         }
 
         sexp.set_dim(dim_sexp);
-        ffi::Rf_unprotect(1);
+        sys::Rf_unprotect(1);
     }
 }
 // endregion

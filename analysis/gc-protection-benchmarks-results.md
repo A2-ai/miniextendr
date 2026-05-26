@@ -1,5 +1,9 @@
 # GC Protection Benchmark Results (v6 — corrected)
 
+> **Historical**: the `preserve.rs` DLL preserve list (referenced below as
+> `dll_preserve`) was removed from `miniextendr-api`. The numbers stay here
+> as a record of how the alternatives compared at the time.
+
 Machine: Apple Silicon (aarch64), R embedded via miniextendr-engine, divan 0.1.21.
 **All benchmarks pre-allocate SEXPs outside the timed region** — numbers reflect
 pure protection overhead only, not R allocation cost.

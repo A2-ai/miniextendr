@@ -83,15 +83,15 @@ pub fn test_u8_add_one(x: u8) -> u8 {
 /// Test logical scalar identity roundtrip.
 /// @param x Logical scalar input.
 #[miniextendr]
-pub fn test_logical_identity(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+pub fn test_logical_identity(x: miniextendr_api::sys::Rboolean) -> miniextendr_api::sys::Rboolean {
     x
 }
 
 /// Test logical negation (TRUE becomes FALSE and vice versa).
 /// @param x Logical scalar input.
 #[miniextendr]
-pub fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
-    use miniextendr_api::ffi::Rboolean;
+pub fn test_logical_not(x: miniextendr_api::sys::Rboolean) -> miniextendr_api::sys::Rboolean {
+    use miniextendr_api::sys::Rboolean;
     match x {
         Rboolean::TRUE => Rboolean::FALSE,
         _ => Rboolean::TRUE,
@@ -103,10 +103,10 @@ pub fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::f
 /// @param b Logical scalar.
 #[miniextendr]
 pub fn test_logical_and(
-    a: miniextendr_api::ffi::Rboolean,
-    b: miniextendr_api::ffi::Rboolean,
-) -> miniextendr_api::ffi::Rboolean {
-    use miniextendr_api::ffi::Rboolean;
+    a: miniextendr_api::sys::Rboolean,
+    b: miniextendr_api::sys::Rboolean,
+) -> miniextendr_api::sys::Rboolean {
+    use miniextendr_api::sys::Rboolean;
     match (a, b) {
         (Rboolean::TRUE, Rboolean::TRUE) => Rboolean::TRUE,
         _ => Rboolean::FALSE,
@@ -206,7 +206,7 @@ pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
 /// Test getting the length of an RLogical slice.
 /// @param x Logical vector input.
 #[miniextendr]
-pub fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::RLogical]) -> i32 {
+pub fn test_logical_slice_len(x: &'static [miniextendr_api::sys::RLogical]) -> i32 {
     x.len() as i32
 }
 
@@ -214,9 +214,9 @@ pub fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::RLogical]) -> i
 /// @param x Logical vector input.
 #[miniextendr]
 pub fn test_logical_slice_any_true(
-    x: &'static [miniextendr_api::ffi::RLogical],
-) -> miniextendr_api::ffi::Rboolean {
-    use miniextendr_api::ffi::Rboolean;
+    x: &'static [miniextendr_api::sys::RLogical],
+) -> miniextendr_api::sys::Rboolean {
+    use miniextendr_api::sys::Rboolean;
     if x.iter().any(|v| v.to_option_bool() == Some(true)) {
         Rboolean::TRUE
     } else {
@@ -228,9 +228,9 @@ pub fn test_logical_slice_any_true(
 /// @param x Logical vector input.
 #[miniextendr]
 pub fn test_logical_slice_all_true(
-    x: &'static [miniextendr_api::ffi::RLogical],
-) -> miniextendr_api::ffi::Rboolean {
-    use miniextendr_api::ffi::Rboolean;
+    x: &'static [miniextendr_api::sys::RLogical],
+) -> miniextendr_api::sys::Rboolean {
+    use miniextendr_api::sys::Rboolean;
     if x.iter().all(|v| v.to_option_bool() == Some(true)) {
         Rboolean::TRUE
     } else {

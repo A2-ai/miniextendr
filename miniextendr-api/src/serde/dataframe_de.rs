@@ -58,8 +58,8 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::dataframe::DataFrameView;
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 
 // region: public API

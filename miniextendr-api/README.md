@@ -257,7 +257,6 @@ Default features:
 | Feature | Description |
 |---------|-------------|
 | `macro-coverage` | Emits extra expansion artifacts for `cargo expand` auditing. |
-| `debug-preserve` | Enables preserve-count diagnostics for tests and benchmarks. |
 | `growth-debug` | Tracks unexpected collection growth events. |
 
 See `Cargo.toml` and `docs/FEATURES.md` for the definitive feature list.

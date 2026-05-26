@@ -8,18 +8,18 @@
 //!
 //! R's random number generators maintain internal state that must be synchronized
 //! with R's `.Random.seed` variable. Before calling any RNG function like
-//! [`unif_rand()`][crate::ffi::unif_rand], you must call `GetRNGstate()` to load
+//! [`unif_rand()`][crate::sys::unif_rand], you must call `GetRNGstate()` to load
 //! the state. After generating random numbers, you must call `PutRNGstate()` to
 //! save it back—even if an error occurs.
 //!
 //! # Available RNG Functions
 //!
-//! After initializing RNG state, you can use these functions from [`crate::ffi`]:
+//! After initializing RNG state, you can use these functions from [`crate::sys`]:
 //!
-//! - [`unif_rand()`][crate::ffi::unif_rand] - Uniform random on `[0, 1)`
-//! - [`norm_rand()`][crate::ffi::norm_rand] - Standard normal random
-//! - [`exp_rand()`][crate::ffi::exp_rand] - Standard exponential random
-//! - [`R_unif_index(n)`][crate::ffi::R_unif_index] - Uniform integer on `[0, n)`
+//! - [`unif_rand()`][crate::sys::unif_rand] - Uniform random on `[0, 1)`
+//! - [`norm_rand()`][crate::sys::norm_rand] - Standard normal random
+//! - [`exp_rand()`][crate::sys::exp_rand] - Standard exponential random
+//! - [`R_unif_index(n)`][crate::sys::R_unif_index] - Uniform integer on `[0, n)`
 //!
 //! # Usage: The `#[miniextendr(rng)]` Attribute (Recommended)
 //!
@@ -27,7 +27,7 @@
 //! functions that need to generate random numbers:
 //!
 //! ```ignore
-//! use miniextendr_api::ffi::unif_rand;
+//! use miniextendr_api::sys::unif_rand;
 //!
 //! #[miniextendr(rng)]
 //! fn random_sample(n: i32) -> Vec<f64> {
@@ -75,7 +75,7 @@
 //!
 //! ```ignore
 //! use miniextendr_api::rng::RngGuard;
-//! use miniextendr_api::ffi::unif_rand;
+//! use miniextendr_api::sys::unif_rand;
 //!
 //! fn generate_random() -> f64 {
 //!     let _guard = RngGuard::new();
@@ -88,7 +88,7 @@
 //!
 //! ```ignore
 //! use miniextendr_api::rng::with_rng;
-//! use miniextendr_api::ffi::unif_rand;
+//! use miniextendr_api::sys::unif_rand;
 //!
 //! let value = with_rng(|| unsafe { unif_rand() });
 //! ```
@@ -107,7 +107,7 @@
 //! - Code already wrapped in `with_r_unwind_protect`
 //! - Scoped RNG access within a larger function
 
-use crate::ffi::{GetRNGstate, PutRNGstate};
+use crate::sys::{GetRNGstate, PutRNGstate};
 
 /// RAII guard for R's RNG state.
 ///
@@ -119,7 +119,7 @@ use crate::ffi::{GetRNGstate, PutRNGstate};
 ///
 /// ```ignore
 /// use miniextendr_api::rng::RngGuard;
-/// use miniextendr_api::ffi::unif_rand;
+/// use miniextendr_api::sys::unif_rand;
 ///
 /// fn generate_uniform() -> f64 {
 ///     let _guard = RngGuard::new();
@@ -180,7 +180,7 @@ impl Drop for RngGuard {
 ///
 /// ```ignore
 /// use miniextendr_api::rng::with_rng;
-/// use miniextendr_api::ffi::unif_rand;
+/// use miniextendr_api::sys::unif_rand;
 ///
 /// let values = with_rng(|| {
 ///     (0..10).map(|_| unsafe { unif_rand() }).collect::<Vec<_>>()

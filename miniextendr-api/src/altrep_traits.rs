@@ -33,7 +33,7 @@
 //! `#[altrep(rust_unwind)]` / `#[altrep(r_unwind)]`; bridging through these
 //! modes is handled by [`crate::altrep_bridge`].
 
-use crate::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
+use crate::sys::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use core::ffi::c_void;
 
 // region: ALTREP GUARD MODE

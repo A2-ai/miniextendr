@@ -362,25 +362,28 @@ for i in 0..n {
 R's default `--max-ppsize` is 50000. Unbounded patterns can overflow this limit
 with large inputs. Bounded patterns handle any size.
 
-## Preserve List
+## ProtectPool
 
 For objects that must survive across multiple `.Call` invocations:
 
 ```rust
-use miniextendr_api::preserve;
+use miniextendr_api::protect_pool::ProtectPool;
 
-// Protect an object (any-order release, not limited by ppsize)
-let cell = unsafe { preserve::insert(my_sexp) };
+// Pool backed by a VECSXP with generational keys (O(1) insert/release).
+let mut pool = unsafe { ProtectPool::new(16) };
+let key = unsafe { pool.insert(my_sexp) };
 
 // Later, release it (no LIFO constraint)
-unsafe { preserve::release(cell); }
+unsafe { pool.release(key); }
 ```
 
-Uses a circular doubly-linked cons list internally, itself protected via
-`R_PreserveObject`. Each SEXP is stored as the TAG of a cell node.
+`ProtectPool` keeps protected SEXPs in a VECSXP backing slot, indexed by
+generational keys (slotmap-style). Single VECSXP protect via
+`R_PreserveObject` on construction; per-insert is a slot write with no R
+allocation.
 
-Use `preserve` when you need to keep a small number of R objects alive across
-function calls (e.g., cached lookup tables).
+Use `ProtectPool` (or `R_PreserveObject` directly) when you need to keep R
+objects alive across function calls (e.g., cached lookup tables).
 
 ## Refcount Arenas
 
@@ -429,7 +432,7 @@ Need GC protection?
 │  ├─ Few values (< 100) → ProtectScope
 │  └─ Accumulator loop → ReprotectSlot
 ├─ Across .Call invocations?
-│  ├─ Small number (< 10) → preserve::insert
+│  ├─ Small number (< 10) → ProtectPool or R_PreserveObject
 │  └─ Many values (100+) → ThreadLocalArena / ThreadLocalHashArena
 └─ Hot loop with many SEXPs?
    └─ ThreadLocalFastHashArena (requires refcount-fast-hash feature)

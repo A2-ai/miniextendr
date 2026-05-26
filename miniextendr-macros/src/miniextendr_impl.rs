@@ -2720,8 +2720,8 @@ fn generate_method_match_arg_helpers(
             #[allow(non_snake_case)]
             #[unsafe(no_mangle)]
             pub extern "C-unwind" fn #helper_fn_ident(
-                __miniextendr_call: ::miniextendr_api::ffi::SEXP,
-            ) -> ::miniextendr_api::ffi::SEXP {
+                __miniextendr_call: ::miniextendr_api::sys::SEXP,
+            ) -> ::miniextendr_api::sys::SEXP {
                 ::miniextendr_api::choices_sexp::<#choices_ty>()
             }
 
@@ -2729,13 +2729,13 @@ fn generate_method_match_arg_helpers(
             #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[allow(non_upper_case_globals)]
             #[allow(non_snake_case)]
-            static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
-                ::miniextendr_api::ffi::R_CallMethodDef {
+            static #helper_def_ident: ::miniextendr_api::sys::R_CallMethodDef = unsafe {
+                ::miniextendr_api::sys::R_CallMethodDef {
                     name: #helper_c_name.as_ptr(),
                     fun: Some(::std::mem::transmute::<
                         unsafe extern "C-unwind" fn(
-                            ::miniextendr_api::ffi::SEXP,
-                        ) -> ::miniextendr_api::ffi::SEXP,
+                            ::miniextendr_api::sys::SEXP,
+                        ) -> ::miniextendr_api::sys::SEXP,
                         unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
                     >(#helper_fn_ident)),
                     numArgs: 1i32,
@@ -3023,7 +3023,7 @@ pub fn generate_as_coercion_trait_impls(parsed_impl: &ParsedImpl) -> TokenStream
                 ::core::result::Result<::miniextendr_api::List, ::miniextendr_api::as_coerce::AsCoerceError>
             },
             _ => quote! {
-                ::core::result::Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::as_coerce::AsCoerceError>
+                ::core::result::Result<::miniextendr_api::sys::SEXP, ::miniextendr_api::as_coerce::AsCoerceError>
             },
         };
 

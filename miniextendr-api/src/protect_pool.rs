@@ -6,7 +6,7 @@
 //! # Performance
 //!
 //! Benchmarked at 10.1 ns/op for single insert+release. Zero R allocation per
-//! insert (unlike `preserve.rs` DLL which allocates a CONSXP each time).
+//! insert (unlike `R_PreserveObject`, which allocates a CONSXP each time).
 //! See `analysis/gc-protection-benchmarks-results.md` for full data.
 //!
 //! # When to use
@@ -40,7 +40,7 @@
 //! No external dependencies for slot management. The generation counter per slot
 //! detects stale keys. Single free list for VECSXP slot reuse.
 
-use crate::ffi::{
+use crate::sys::{
     R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP,
     SEXPTYPE, SexpExt,
 };

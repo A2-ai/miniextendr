@@ -278,7 +278,7 @@ fn validate_extern_signature(
             return Err(syn::Error::new(
                 non_return_type.span(),
                 "extern \"C-unwind\" functions used with #[miniextendr] must return SEXP. \
-                 Add `-> miniextendr_api::ffi::SEXP` as the return type. \
+                 Add `-> miniextendr_api::SEXP` as the return type. \
                  If you want automatic type conversion, remove `extern \"C-unwind\"` and let \
                  the macro generate the C wrapper.",
             ));
@@ -293,7 +293,7 @@ fn validate_extern_signature(
                         format!(
                             "extern \"C-unwind\" functions must return SEXP, found `{path_to_sexp}`. \
                              R's .Call interface expects SEXP return values. \
-                             Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                             Change the return type to `miniextendr_api::SEXP`, or remove \
                              `extern \"C-unwind\"` to let the macro handle type conversion.",
                         ),
                     ));
@@ -304,7 +304,7 @@ fn validate_extern_signature(
                     output_type.span(),
                     "extern \"C-unwind\" functions must return SEXP. \
                      R's .Call interface expects SEXP return values. \
-                     Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                     Change the return type to `miniextendr_api::SEXP`, or remove \
                      `extern \"C-unwind\"` to let the macro handle type conversion.",
                 ));
             }
@@ -412,8 +412,8 @@ fn build_match_arg_helpers(
                 #[allow(non_snake_case)]
                 #[unsafe(no_mangle)]
                 pub extern "C-unwind" fn #helper_fn_ident(
-                    __miniextendr_call: ::miniextendr_api::ffi::SEXP,
-                ) -> ::miniextendr_api::ffi::SEXP {
+                    __miniextendr_call: ::miniextendr_api::SEXP,
+                ) -> ::miniextendr_api::SEXP {
                     ::miniextendr_api::choices_sexp::<#choices_ty>()
                 }
 
@@ -421,13 +421,13 @@ fn build_match_arg_helpers(
                 #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
                 #[allow(non_upper_case_globals)]
                 #[allow(non_snake_case)]
-                static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
-                    ::miniextendr_api::ffi::R_CallMethodDef {
+                static #helper_def_ident: ::miniextendr_api::sys::R_CallMethodDef = unsafe {
+                    ::miniextendr_api::sys::R_CallMethodDef {
                         name: #helper_c_name.as_ptr(),
                         fun: Some(std::mem::transmute::<
                             unsafe extern "C-unwind" fn(
-                                ::miniextendr_api::ffi::SEXP,
-                            ) -> ::miniextendr_api::ffi::SEXP,
+                                ::miniextendr_api::SEXP,
+                            ) -> ::miniextendr_api::SEXP,
                             unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
                         >(#helper_fn_ident)),
                         numArgs: 1i32,
@@ -1869,21 +1869,21 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
     };
 
     let expanded = quote::quote! {
-        impl #impl_generics ::miniextendr_api::ffi::RNativeType for #name #ty_generics #where_clause {
-            const SEXP_TYPE: ::miniextendr_api::ffi::SEXPTYPE =
-                <#inner_ty as ::miniextendr_api::ffi::RNativeType>::SEXP_TYPE;
+        impl #impl_generics ::miniextendr_api::sys::RNativeType for #name #ty_generics #where_clause {
+            const SEXP_TYPE: ::miniextendr_api::SEXPTYPE =
+                <#inner_ty as ::miniextendr_api::sys::RNativeType>::SEXP_TYPE;
 
             #[inline]
-            unsafe fn dataptr_mut(sexp: ::miniextendr_api::ffi::SEXP) -> *mut Self {
+            unsafe fn dataptr_mut(sexp: ::miniextendr_api::SEXP) -> *mut Self {
                 // Newtype is repr(transparent), so we can cast the pointer
                 unsafe {
-                    <#inner_ty as ::miniextendr_api::ffi::RNativeType>::dataptr_mut(sexp).cast()
+                    <#inner_ty as ::miniextendr_api::sys::RNativeType>::dataptr_mut(sexp).cast()
                 }
             }
 
             #[inline]
-            fn elt(sexp: ::miniextendr_api::ffi::SEXP, i: isize) -> Self {
-                let val = <#inner_ty as ::miniextendr_api::ffi::RNativeType>::elt(sexp, i);
+            fn elt(sexp: ::miniextendr_api::SEXP, i: isize) -> Self {
+                let val = <#inner_ty as ::miniextendr_api::sys::RNativeType>::elt(sexp, i);
                 #elt_ctor
             }
         }
@@ -2495,13 +2495,13 @@ pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// # Supported element types
 ///
 /// v1 supports column element types that implement
-/// `miniextendr_api::ffi::RNativeType`:
+/// `miniextendr_api::sys::RNativeType`:
 ///
 /// - `i32` — `INTSXP`
 /// - `f64` — `REALSXP`
 /// - `u8` — `RAWSXP`
-/// - `miniextendr_api::ffi::RLogical` — `LGLSXP`
-/// - `miniextendr_api::ffi::Rcomplex` — `CPLXSXP`
+/// - `miniextendr_api::sys::RLogical` — `LGLSXP`
+/// - `miniextendr_api::sys::Rcomplex` — `CPLXSXP`
 ///
 /// `String`/`&str` column types are not yet supported (character vectors
 /// don't expose a contiguous slice). `bool` is also not yet supported as
@@ -2719,7 +2719,7 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C-unwind" fn #fn_name(
-            dll: *mut ::miniextendr_api::ffi::DllInfo,
+            dll: *mut ::miniextendr_api::sys::DllInfo,
         ) {
             // wasm32: install the pre-generated runtime tables before
             // package_init runs. linkme didn't gather anything (the slices
@@ -2744,7 +2744,7 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         /// to exit cleanly. See `#103`.
         #[unsafe(no_mangle)]
         pub unsafe extern "C-unwind" fn #unload_name(
-            _dll: *mut ::miniextendr_api::ffi::DllInfo,
+            _dll: *mut ::miniextendr_api::sys::DllInfo,
         ) {
             ::miniextendr_api::worker::miniextendr_runtime_shutdown();
         }

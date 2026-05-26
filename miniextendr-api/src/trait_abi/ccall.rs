@@ -21,7 +21,7 @@
 //! All wrapper functions must be called from R's main thread.
 
 use crate::abi::{mx_erased, mx_tag};
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 use std::os::raw::c_void;
 
 // region: Direct extern declarations to mx_abi.rs functions (same .so)

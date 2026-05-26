@@ -1,6 +1,6 @@
 //! Tests for R dots (`...`) handling.
 
-use miniextendr_api::ffi::SexpExt;
+use miniextendr_api::prelude::SexpExt;
 use miniextendr_api::{miniextendr, typed_list};
 
 #[miniextendr]

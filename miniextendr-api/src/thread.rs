@@ -30,7 +30,7 @@
 //! # Cross references
 //!
 //! - [`crate::worker::with_r_thread`] — preferred path for crossing back to R.
-//! - [`crate::ffi`] — checked vs `*_unchecked` FFI surface.
+//! - [`crate::sys`] — checked vs `*_unchecked` FFI surface.
 //!
 //! # Background
 //!
@@ -60,7 +60,7 @@
 //!     let _guard = StackCheckGuard::disable();
 //!
 //!     // Now safe to call R APIs
-//!     unsafe { miniextendr_api::ffi::SEXP::scalar_integer_unchecked(42) };
+//!     unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) };
 //!
 //!     // Guard restores original limit on drop
 //! });
@@ -72,7 +72,7 @@
 //! R internals (`R_CStackLimit`, `R_CStackStart`, `R_CStackDir`).
 
 #[cfg(feature = "nonapi")]
-use crate::ffi::nonapi_stack::{
+use crate::sys::nonapi_stack::{
     get_r_cstack_dir, get_r_cstack_limit, get_r_cstack_start, set_r_cstack_limit,
 };
 
@@ -205,7 +205,7 @@ pub fn disable_stack_checking_permanently() {
 ///
 /// ```ignore
 /// let result = with_stack_checking_disabled(|| {
-///     unsafe { miniextendr_api::ffi::SEXP::scalar_integer_unchecked(42) }
+///     unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) }
 /// });
 /// ```
 #[cfg(feature = "nonapi")]
@@ -255,7 +255,7 @@ pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 ///
 /// let handle = spawn_with_r(|| {
 ///     // Safe to call R APIs here!
-///     let result = unsafe { miniextendr_api::ffi::SEXP::scalar_integer_unchecked(42) };
+///     let result = unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) };
 ///     result
 /// })?;
 ///
@@ -373,7 +373,7 @@ impl RThreadBuilder {
     ///
     /// ```ignore
     /// let result = RThreadBuilder::new()
-    ///     .spawn_join(|| unsafe { miniextendr_api::ffi::SEXP::scalar_integer_unchecked(42) })
+    ///     .spawn_join(|| unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) })
     ///     .unwrap();
     /// ```
     pub fn spawn_join<F, T>(self, f: F) -> std::thread::Result<T>

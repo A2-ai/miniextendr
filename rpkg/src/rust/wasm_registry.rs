@@ -4,10 +4,10 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      e3e1834a0b8a2018
+// content-hash:      ded03a6ab22b68a2
 
 use ::miniextendr_api::abi::mx_tag;
-use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
+use ::miniextendr_api::sys::{R_CallMethodDef, SEXP};
 use ::miniextendr_api::registry::{AltrepRegistration, TraitDispatchEntry};
 use ::core::ffi::c_void;
 
@@ -961,6 +961,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_map_to_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_iter_to_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_native_sexp_altrep(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_protect_discipline(_: SEXP) -> SEXP;
     pub fn C_gc_stress_builder_grow_schema(_: SEXP) -> SEXP;
     pub fn C_gc_stress_builder_with_schema(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_borrowed(_: SEXP) -> SEXP;
@@ -6758,6 +6759,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_native_sexp_altrep".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_native_sexp_altrep) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_protect_discipline".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_protect_discipline) }),
         numArgs: 1,
     },
     R_CallMethodDef {

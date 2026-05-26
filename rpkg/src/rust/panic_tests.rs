@@ -1,6 +1,7 @@
 //! Panic, drop, and R error handling tests.
 
-use miniextendr_api::ffi::{Rf_error, SEXP};
+use miniextendr_api::prelude::SEXP;
+use miniextendr_api::sys::Rf_error;
 use miniextendr_api::miniextendr;
 
 // region: MsgOnDrop for testing drop behavior
@@ -144,7 +145,7 @@ pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
     unsafe {
         // mxl::allow(MXL300)
-        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
+        ::miniextendr_api::sys::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     }
 }
 
@@ -165,7 +166,7 @@ pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
     unsafe {
         // mxl::allow(MXL300)
-        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
+        ::miniextendr_api::sys::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     }
 }
 
@@ -219,7 +220,7 @@ pub extern "C-unwind" fn C_just_panic() -> SEXP {
 pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
     let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
     let _ = dbg!(result);
-    ::miniextendr_api::ffi::SEXP::nil()
+    ::miniextendr_api::sys::SEXP::nil()
 }
 
 /// Test a direct Rf_error call via raw FFI.
@@ -243,7 +244,7 @@ pub extern "C-unwind" fn C_r_error_in_catch() -> SEXP {
             crate::raw_ffi::Rf_error(c"arg1".as_ptr())
         }))
         .unwrap();
-        miniextendr_api::ffi::SEXP::nil()
+        miniextendr_api::sys::SEXP::nil()
     }
 }
 
@@ -267,7 +268,7 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
     // Use checked Rf_error - will panic with clear message about wrong thread.
     // Since Rf_error returns !, the thread always panics, so unwrap_err is safe.
     let e = std::thread::spawn(|| unsafe {
-        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr()) // mxl::allow(MXL300)
+        miniextendr_api::sys::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr()) // mxl::allow(MXL300)
     })
     .join()
     .unwrap_err();
@@ -282,12 +283,12 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
 pub extern "C-unwind" fn C_r_print_in_thread() -> SEXP {
     // Use checked Rprintf - will panic with clear message about wrong thread.
     let result = std::thread::spawn(|| unsafe {
-        miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"arg1".as_ptr())
+        miniextendr_api::sys::Rprintf(c"%s".as_ptr(), c"arg1".as_ptr())
     })
     .join();
 
     match result {
-        Ok(()) => miniextendr_api::ffi::SEXP::nil(),
+        Ok(()) => miniextendr_api::sys::SEXP::nil(),
         Err(e) => panic!("{}", extract_panic_message(e)),
     }
 }

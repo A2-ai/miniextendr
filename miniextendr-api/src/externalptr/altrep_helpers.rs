@@ -5,7 +5,7 @@
 //! `#[r_data]` fields.
 
 use super::{ErasedExternalPtr, ExternalPtr, TypedExternal};
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 
 /// Extract the ALTREP data1 slot as a typed `ExternalPtr<T>`.
 ///
@@ -141,7 +141,7 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::ffi::SEXP;
+/// use miniextendr_api::SEXP;
 ///
 /// #[derive(ExternalPtr)]
 /// pub struct MyType {

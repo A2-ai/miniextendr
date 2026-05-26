@@ -21,8 +21,8 @@
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::coerce::TryCoerce;
-use crate::ffi::{RLogical, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, is_na_real};
+use crate::sys::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
 #[inline]
 pub(crate) fn coerce_value<R, T>(value: R) -> Result<T, SexpError>

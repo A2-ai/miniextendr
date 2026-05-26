@@ -135,7 +135,7 @@ impl TryRng for RRng {
     fn try_next_u32(&mut self) -> Result<u32, Infallible> {
         // R's unif_rand() returns a value in [0, 1)
         // Scale to full u32 range
-        let u = unsafe { crate::ffi::unif_rand() };
+        let u = unsafe { crate::sys::unif_rand() };
         // u * 2^32, but we need to be careful with floating point
         // Using the standard conversion: floor(u * (MAX + 1))
         Ok((u * (u32::MAX as f64 + 1.0)) as u32)
@@ -227,22 +227,22 @@ pub trait RDistributions {
 impl RDistributions for RRng {
     #[inline]
     fn standard_normal(&mut self) -> f64 {
-        unsafe { crate::ffi::norm_rand() }
+        unsafe { crate::sys::norm_rand() }
     }
 
     #[inline]
     fn standard_exp(&mut self) -> f64 {
-        unsafe { crate::ffi::exp_rand() }
+        unsafe { crate::sys::exp_rand() }
     }
 
     #[inline]
     fn uniform_index(&mut self, n: usize) -> usize {
-        unsafe { crate::ffi::R_unif_index(n as f64) as usize }
+        unsafe { crate::sys::R_unif_index(n as f64) as usize }
     }
 
     #[inline]
     fn uniform_f64(&mut self) -> f64 {
-        unsafe { crate::ffi::unif_rand() }
+        unsafe { crate::sys::unif_rand() }
     }
 }
 // endregion

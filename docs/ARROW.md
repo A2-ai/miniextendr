@@ -5,7 +5,7 @@ Zero-copy conversions between R vectors and Apache Arrow arrays.
 ## Quick Reference
 
 ```rust
-use miniextendr_api::{miniextendr, ffi::SEXP};
+use miniextendr_api::{miniextendr, SEXP};
 use miniextendr_api::optionals::arrow_impl::*;
 
 // R numeric → Arrow Float64Array → back to R: zero-copy both directions
@@ -253,7 +253,7 @@ pub fn generate_sequence(n: i32) -> SEXP {
 
     // Fill through the SEXP's raw pointer (before wrapping in Arrow)
     unsafe {
-        let ptr = miniextendr_api::ffi::REAL(sexp);
+        let ptr = miniextendr_api::sys::REAL(sexp);
         for i in 0..n {
             *ptr.add(i) = i as f64;
         }

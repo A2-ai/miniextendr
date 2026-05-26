@@ -20,7 +20,7 @@ macro_rules! __impl_inferbase {
             unsafe fn make_class(
                 class_name: *const i8,
                 pkg_name: *const i8,
-            ) -> $crate::ffi::altrep::R_altrep_class_t {
+            ) -> $crate::sys::altrep::R_altrep_class_t {
                 // Use stored DllInfo from package_init. R needs this to find
                 // the ALTREP class during cross-session deserialization (readRDS).
                 let dll = $crate::altrep_dll_info();
@@ -29,7 +29,7 @@ macro_rules! __impl_inferbase {
                 $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::$base)
             }
 
-            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+            unsafe fn install_methods(cls: $crate::sys::altrep::R_altrep_class_t) {
                 unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
                 unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
                 unsafe { $crate::altrep_bridge::$install_fn::<$ty>(cls) };
@@ -45,7 +45,7 @@ macro_rules! impl_inferbase_integer {
         $crate::__impl_inferbase!(
             $ty,
             Int,
-            $crate::ffi::altrep::R_make_altinteger_class,
+            $crate::sys::altrep::R_make_altinteger_class,
             install_int
         );
     };
@@ -58,7 +58,7 @@ macro_rules! impl_inferbase_real {
         $crate::__impl_inferbase!(
             $ty,
             Real,
-            $crate::ffi::altrep::R_make_altreal_class,
+            $crate::sys::altrep::R_make_altreal_class,
             install_real
         );
     };
@@ -71,7 +71,7 @@ macro_rules! impl_inferbase_logical {
         $crate::__impl_inferbase!(
             $ty,
             Logical,
-            $crate::ffi::altrep::R_make_altlogical_class,
+            $crate::sys::altrep::R_make_altlogical_class,
             install_lgl
         );
     };
@@ -84,7 +84,7 @@ macro_rules! impl_inferbase_raw {
         $crate::__impl_inferbase!(
             $ty,
             Raw,
-            $crate::ffi::altrep::R_make_altraw_class,
+            $crate::sys::altrep::R_make_altraw_class,
             install_raw
         );
     };
@@ -97,7 +97,7 @@ macro_rules! impl_inferbase_string {
         $crate::__impl_inferbase!(
             $ty,
             String,
-            $crate::ffi::altrep::R_make_altstring_class,
+            $crate::sys::altrep::R_make_altstring_class,
             install_str
         );
     };
@@ -110,7 +110,7 @@ macro_rules! impl_inferbase_complex {
         $crate::__impl_inferbase!(
             $ty,
             Complex,
-            $crate::ffi::altrep::R_make_altcomplex_class,
+            $crate::sys::altrep::R_make_altcomplex_class,
             install_cplx
         );
     };
@@ -123,7 +123,7 @@ macro_rules! impl_inferbase_list {
         $crate::__impl_inferbase!(
             $ty,
             List,
-            $crate::ffi::altrep::R_make_altlist_class,
+            $crate::sys::altrep::R_make_altlist_class,
             install_list
         );
     };

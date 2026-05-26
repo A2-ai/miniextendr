@@ -5,7 +5,7 @@
 //! `extern "C-unwind"`, which has no generated R wrapper and so no call slot.
 //! The R-side error rendering is dramatically different.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 /// Wrapped path. The generated R wrapper passes `.call = match.call()` into the
@@ -31,6 +31,6 @@ pub fn call_attr_with(_left: i32, _right: i32) -> i32 {
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_call_attr_without(_left: SEXP, _right: SEXP) -> SEXP {
     unsafe {
-        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"left + right is too risky".as_ptr()) // mxl::allow(MXL300)
+        ::miniextendr_api::sys::Rf_error(c"%s".as_ptr(), c"left + right is too risky".as_ptr()) // mxl::allow(MXL300)
     }
 }

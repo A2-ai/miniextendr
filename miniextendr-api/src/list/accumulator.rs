@@ -4,11 +4,11 @@
 //! `ListAccumulator` supports dynamic growth via `push`. It uses
 //! `ReprotectSlot` internally to maintain O(1) protect stack usage.
 
-use crate::ffi::SEXPTYPE::{STRSXP, VECSXP};
-use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::SexpError;
 use crate::gc_protect::{OwnedProtect, ProtectScope, ReprotectSlot, Root};
 use crate::into_r::IntoR;
+use crate::sys::SEXPTYPE::{STRSXP, VECSXP};
+use crate::sys::{self, SEXP, SexpExt};
 
 use super::ListMut;
 
@@ -74,7 +74,7 @@ impl<'a> ListAccumulator<'a> {
     pub unsafe fn new(scope: &'a ProtectScope, initial_cap: usize) -> Self {
         let cap = initial_cap.max(1); // At least 1 to avoid edge cases
         let cap_isize: isize = cap.try_into().expect("capacity exceeds isize::MAX");
-        let list_sexp = unsafe { ffi::Rf_allocVector(VECSXP, cap_isize) };
+        let list_sexp = unsafe { sys::Rf_allocVector(VECSXP, cap_isize) };
         let list = unsafe { scope.protect_with_index(list_sexp) };
         let temp = unsafe { scope.protect_with_index(SEXP::nil()) };
 
@@ -208,7 +208,7 @@ impl<'a> ListAccumulator<'a> {
         let old_list = self.list.get();
         unsafe {
             self.temp
-                .set_with(|| ffi::Rf_allocVector(VECSXP, new_cap_isize));
+                .set_with(|| sys::Rf_allocVector(VECSXP, new_cap_isize));
         }
         let new_list = self.temp.get();
 
@@ -270,12 +270,12 @@ impl<'a> ListAccumulator<'a> {
             unsafe {
                 // OwnedProtect handles Rf_protect/Rf_unprotect automatically.
                 // Rf_mkCharLenCE can allocate, so names_sexp must be protected.
-                let names_sexp = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, len_isize));
+                let names_sexp = OwnedProtect::new(sys::Rf_allocVector(STRSXP, len_isize));
                 for (i, name) in self.names.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(n) = name {
                         let _n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
-                        let charsxp = ffi::SEXP::charsxp(n);
+                        let charsxp = sys::SEXP::charsxp(n);
                         names_sexp.get().set_string_elt(idx, charsxp);
                     } else {
                         names_sexp.get().set_string_elt(idx, SEXP::blank_string());

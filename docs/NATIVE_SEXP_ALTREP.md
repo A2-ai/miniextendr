@@ -153,7 +153,7 @@ R tests are in `tests/testthat/test-native-sexp-altrep.R`.
 use miniextendr_api::altrep::RegisterAltrep;
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepDataptr, AltrepExtract, AltrepLen};
 use miniextendr_api::altrep_traits::{AltInteger, AltVec, Altrep, AltrepGuard};
-use miniextendr_api::ffi::{DATAPTR_RO, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE};
+use miniextendr_api::sys::{DATAPTR_RO, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{impl_inferbase_integer, miniextendr};
 

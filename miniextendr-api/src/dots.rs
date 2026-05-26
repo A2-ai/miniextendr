@@ -26,9 +26,9 @@
 //! }
 //! ```
 
-use crate::ffi::{SEXP, SexpExt};
 use crate::from_r::TryFromSexp;
 use crate::list::{List, ListFromSexpError};
+use crate::sys::{SEXP, SexpExt};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
 
 /// Rust type representing R's `...` (variadic arguments).

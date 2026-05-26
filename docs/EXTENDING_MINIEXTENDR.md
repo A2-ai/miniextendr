@@ -16,7 +16,7 @@ If your type has the same memory layout as `i32`, `f64`, `u8`, or `Rcomplex`, im
 ### Example: Newtype Wrapper
 
 ```rust
-use miniextendr_api::ffi::{RNativeType, SEXP, SEXPTYPE};
+use miniextendr_api::{RNativeType, SEXP, SEXPTYPE};
 
 /// A temperature in Celsius, stored as f64
 #[repr(transparent)]
@@ -27,7 +27,7 @@ impl RNativeType for Celsius {
 
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
         // Safe because Celsius is repr(transparent) over f64
-        miniextendr_api::ffi::REAL(sexp) as *mut Self
+        miniextendr_api::sys::REAL(sexp) as *mut Self
     }
 }
 ```
@@ -87,7 +87,7 @@ For types that don't match R's memory layout, implement the conversion traits di
 ### Example: Custom String Type
 
 ```rust
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::sys::SEXP;
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use miniextendr_api::into_r::IntoR;
 
@@ -202,7 +202,7 @@ fn process_dataset(data: &LargeDataset) -> f64 {
 ## Complete Example: Custom Numeric Type
 
 ```rust
-use miniextendr_api::ffi::{RNativeType, SEXP, SEXPTYPE};
+use miniextendr_api::{RNativeType, SEXP, SEXPTYPE};
 use miniextendr_api::markers::WidensToF64;
 
 /// Probability value in [0, 1]
@@ -229,7 +229,7 @@ impl RNativeType for Probability {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
 
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        miniextendr_api::ffi::REAL(sexp) as *mut Self
+        miniextendr_api::sys::REAL(sexp) as *mut Self
     }
 }
 

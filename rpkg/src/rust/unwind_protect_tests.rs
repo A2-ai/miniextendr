@@ -1,6 +1,6 @@
 //! Tests for `with_r_unwind_protect_or_raise` mechanism.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 use miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise;
 
@@ -32,7 +32,7 @@ pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
         || {
             let _a = SimpleDropMsg("stack resource");
             let _b = Box::new(SimpleDropMsg("heap resource"));
-            ::miniextendr_api::ffi::SEXP::scalar_integer(42)
+            ::miniextendr_api::sys::SEXP::scalar_integer(42)
         },
         None,
     )
@@ -59,7 +59,7 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
             // alive at this point. Rf_error diverges (returns !).
             unsafe {
                 // mxl::allow(MXL300)
-                ::miniextendr_api::ffi::Rf_error(
+                ::miniextendr_api::sys::Rf_error(
                     c"%s".as_ptr(),
                     c"intentional R error for testing".as_ptr(),
                 )
@@ -80,7 +80,7 @@ pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
             || {
                 eprintln!("[Rust] Inside protected function, about to trigger R error");
                 // mxl::allow(MXL300)
-                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr())
+                ::miniextendr_api::sys::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr())
             },
             None,
         )

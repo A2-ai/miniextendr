@@ -14,9 +14,9 @@
 pub use num_bigint::{BigInt, BigUint};
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
-use crate::ffi::{SEXP, SEXPTYPE};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{SEXP, SEXPTYPE};
 use std::str::FromStr;
 
 // region: Coerce/TryCoerce impls for BigInt and BigUint
@@ -305,10 +305,10 @@ impl TryFromSexp for Vec<Option<BigUint>> {
 
 impl IntoR for BigInt {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -318,10 +318,10 @@ impl IntoR for BigInt {
 
 impl IntoR for BigUint {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -331,10 +331,10 @@ impl IntoR for BigUint {
 
 impl IntoR for Option<BigInt> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -344,10 +344,10 @@ impl IntoR for Option<BigInt> {
 
 impl IntoR for Option<BigUint> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -357,10 +357,10 @@ impl IntoR for Option<BigUint> {
 
 impl IntoR for Vec<BigInt> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -373,10 +373,10 @@ impl IntoR for Vec<BigInt> {
 
 impl IntoR for Vec<BigUint> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -389,10 +389,10 @@ impl IntoR for Vec<BigUint> {
 
 impl IntoR for Vec<Option<BigInt>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -405,10 +405,10 @@ impl IntoR for Vec<Option<BigInt>> {
 
 impl IntoR for Vec<Option<BigUint>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {

@@ -35,8 +35,8 @@ use crate::altrep_traits::{
     AltComplex, AltInteger, AltList, AltLogical, AltRaw, AltReal, AltString, AltVec, Altrep,
     AltrepGuard,
 };
-use crate::ffi::altrep::R_altrep_class_t;
-use crate::ffi::*;
+use crate::sys::altrep::R_altrep_class_t;
+use crate::sys::*;
 use core::ffi::c_void;
 
 /// Dispatch an ALTREP callback through the guard mode selected by `T::GUARD`.
@@ -47,7 +47,7 @@ use core::ffi::c_void;
 /// - `Unsafe`: No protection — the closure runs directly.
 /// - `RustUnwind`: Wraps in [`catch_unwind`](std::panic::catch_unwind), converting
 ///   panics to `Rf_error` so they don't unwind through C frames.
-/// - `RUnwind`: Wraps in [`R_UnwindProtect`](crate::ffi::R_UnwindProtect), catching
+/// - `RUnwind`: Wraps in [`R_UnwindProtect`](crate::sys::R_UnwindProtect), catching
 ///   both Rust panics and R longjmps safely.
 #[inline(always)]
 fn guarded_altrep_call<T: Altrep, F, R>(f: F) -> R

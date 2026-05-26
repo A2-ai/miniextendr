@@ -3,7 +3,7 @@
 use miniextendr_api::connection::{
     EXPECTED_CONNECTIONS_VERSION, RCustomConnection, check_connections_version,
 };
-use miniextendr_api::ffi::R_CONNECTIONS_VERSION;
+use miniextendr_api::sys::R_CONNECTIONS_VERSION;
 
 #[test]
 fn connections_version_constant_matches() {

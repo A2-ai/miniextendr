@@ -63,10 +63,10 @@
 
 pub use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 
-use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::sys::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use nalgebra::Scalar;
 
 // region: Blanket implementations for DVector and DMatrix
@@ -166,7 +166,7 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
 
         // Create R matrix with RAII protection
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(
+            let mat = crate::sys::Rf_allocMatrix(
                 T::SEXP_TYPE,
                 i32::try_from(nrow).expect("nrow exceeds i32"),
                 i32::try_from(ncol).expect("ncol exceeds i32"),
@@ -288,7 +288,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(
+            let mat = crate::sys::Rf_allocMatrix(
                 T::SEXP_TYPE,
                 i32::try_from(R).expect("nrow exceeds i32"),
                 i32::try_from(C).expect("ncol exceeds i32"),
@@ -339,7 +339,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<S
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(m) => m.into_sexp(),
-            None => crate::ffi::SEXP::nil(),
+            None => crate::sys::SEXP::nil(),
         })
     }
 
@@ -347,7 +347,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<S
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(m) => unsafe { m.into_sexp_unchecked() },
-            None => crate::ffi::SEXP::nil(),
+            None => crate::sys::SEXP::nil(),
         })
     }
 }
@@ -977,8 +977,8 @@ where
 // GC protection uses R_PreserveObject/R_ReleaseObject (arbitrary-order release, survives
 // across .Call boundaries). Types are !Send + !Sync.
 
-use crate::ffi;
 use crate::from_r::SexpTypeError;
+use crate::sys;
 use nalgebra::base::Matrix;
 use nalgebra::base::allocator::Allocator;
 use nalgebra::base::default_allocator::DefaultAllocator;
@@ -1061,7 +1061,7 @@ impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
             .into());
         }
         let len = sexp.len();
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
             nrows: Dyn(len),
@@ -1076,8 +1076,8 @@ impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new_vector(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len as ffi::R_xlen_t) };
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, len as sys::R_xlen_t) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
@@ -1117,7 +1117,7 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
             }
             .into());
         }
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
             nrows: Dyn(nrows),
@@ -1133,8 +1133,8 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
     /// Must be called on R's main thread.
     pub unsafe fn new_matrix(nrows: usize, ncols: usize, init: impl FnOnce(&mut [T])) -> Self {
         let total = nrows * ncols;
-        let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, total as ffi::R_xlen_t) };
-        unsafe { crate::ffi::R_PreserveObject(sexp) };
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total as sys::R_xlen_t) };
+        unsafe { crate::sys::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, total) };
         init(slice);
@@ -1168,7 +1168,7 @@ impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
     /// directly to R (`.Call` return) or protect it immediately.
     pub unsafe fn into_sexp_unprotected(self) -> SEXP {
         let sexp = self.sexp;
-        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
+        unsafe { crate::sys::R_ReleaseObject(self.sexp) };
         std::mem::forget(self);
         sexp
     }
@@ -1182,7 +1182,7 @@ impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
 
 impl<T: RNativeType, R: Dim, C: Dim> Drop for RVecStorage<T, R, C> {
     fn drop(&mut self) {
-        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
+        unsafe { crate::sys::R_ReleaseObject(self.sexp) }
     }
 }
 
@@ -1197,7 +1197,7 @@ unsafe impl<T: RNativeType, C: Dim> RawStorage<T, Dyn, C> for RVecStorage<T, Dyn
         if self.total_len() == 0 {
             std::ptr::NonNull::<T>::dangling().as_ptr()
         } else {
-            unsafe { ffi::DATAPTR_RO(self.sexp).cast() }
+            unsafe { sys::DATAPTR_RO(self.sexp).cast() }
         }
     }
 
@@ -1676,9 +1676,9 @@ crate::impl_altinteger_from_data!(DVector<i32>, dataptr);
 use crate::altrep::RegisterAltrep;
 
 impl RegisterAltrep for DVector<f64> {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <DVector<f64> as crate::altrep_data::InferBase>::make_class(
@@ -1693,9 +1693,9 @@ impl RegisterAltrep for DVector<f64> {
 }
 
 impl RegisterAltrep for DVector<i32> {
-    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+    fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
         use std::sync::OnceLock;
-        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <DVector<i32> as crate::altrep_data::InferBase>::make_class(

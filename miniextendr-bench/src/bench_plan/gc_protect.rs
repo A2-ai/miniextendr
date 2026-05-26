@@ -7,6 +7,5 @@
 //! - `list_builders`: List::set_elt, set_elt_unchecked, ListBuilder, ListAccumulator, collect_list
 //! - `strvec_builders`: StrVec::set_elt, StrVecBuilder, collect patterns
 //! - `named_list`: ListBuilder with names vs manual allocation
-//! - `preserve`: preserve::insert/release vs R_PreserveObject/R_ReleaseObject
 //!
 //! Comprehensive coverage of all GC protection and builder APIs.

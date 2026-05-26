@@ -8,7 +8,7 @@
 
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
 use miniextendr_api::miniextendr;
-use miniextendr_api::{AltrepInteger, IntoR, ffi::SEXP};
+use miniextendr_api::{AltrepInteger, IntoR, sys::SEXP};
 
 // region: PanickingAltrep — plain panic from elt(), guard = RUnwind (default)
 

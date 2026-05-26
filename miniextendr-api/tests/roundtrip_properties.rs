@@ -49,14 +49,14 @@ where
 /// for vector types (INTSXP, REALSXP, LGLSXP, STRSXP) are unprotected and
 /// may be collected before `try_from_sexp()` reads them. This wrapper adds
 /// `Rf_protect` / `Rf_unprotect` around the roundtrip.
-unsafe fn protected_roundtrip<T: TryFromSexp>(sexp: miniextendr_api::ffi::SEXP) -> T
+unsafe fn protected_roundtrip<T: TryFromSexp>(sexp: miniextendr_api::sys::SEXP) -> T
 where
     T::Error: std::fmt::Debug,
 {
     unsafe {
-        miniextendr_api::ffi::Rf_protect(sexp);
+        miniextendr_api::sys::Rf_protect(sexp);
         let result = T::try_from_sexp(sexp).unwrap();
-        miniextendr_api::ffi::Rf_unprotect(1);
+        miniextendr_api::sys::Rf_unprotect(1);
         result
     }
 }

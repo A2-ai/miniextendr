@@ -17,10 +17,12 @@
 //! assertion would always pass. Inside a callback body you may therefore call
 //! `*_unchecked` variants of the R API (or the `r_unwind` guard's protected
 //! re-entry helpers) without tripping the **MXL301** lint. See
-//! [`crate::ffi`] for the broader checked-vs-unchecked story.
+//! [`crate::sys`] for the broader checked-vs-unchecked story.
 
 #![allow(non_camel_case_types)]
-use crate::ffi::{DllInfo, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
+use crate::SEXP;
+use crate::sexp_types::{R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXPTYPE};
+use crate::sys::DllInfo;
 
 /// Signature for ALTREP `coerce` method.
 pub type R_altrep_Coerce_method_t =

@@ -2,8 +2,8 @@
 
 use miniextendr_api::IntoR;
 use miniextendr_api::altrep_data::{AltIntegerData, AltRealData, AltrepDataptr, AltrepLen};
-use miniextendr_api::ffi;
-use miniextendr_api::ffi::SexpExt;
+use miniextendr_api::sys;
+use miniextendr_api::sys::SexpExt;
 use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
@@ -92,7 +92,7 @@ fn altrep_int_dataptr(size_idx: usize) {
     let data: Vec<i32> = (0..len as i32).collect();
     let sexp = (BenchInt { data }).into_sexp();
     unsafe {
-        let ptr = ffi::DATAPTR_RO(sexp).cast::<i32>();
+        let ptr = sys::DATAPTR_RO(sexp).cast::<i32>();
         divan::black_box(ptr);
     }
 }

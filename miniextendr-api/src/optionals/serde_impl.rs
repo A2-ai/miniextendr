@@ -179,10 +179,10 @@ impl JsonOptions {
         self
     }
 }
-use crate::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::sys::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::{
     impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
 };
@@ -590,10 +590,10 @@ impl_vec_option_try_from_sexp_list!(JsonValue);
 
 impl IntoR for JsonValue {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -603,26 +603,26 @@ impl IntoR for JsonValue {
 
 impl IntoR for Option<JsonValue> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
         match self {
             Some(value) => json_value_to_sexp(&value),
-            None => crate::ffi::SEXP::nil(),
+            None => crate::sys::SEXP::nil(),
         }
     }
 }
 
 impl IntoR for Vec<JsonValue> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -646,10 +646,10 @@ impl IntoR for Vec<JsonValue> {
 
 impl IntoR for Vec<Option<JsonValue>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -663,7 +663,7 @@ impl IntoR for Vec<Option<JsonValue>> {
         for (i, value) in self.iter().enumerate() {
             let elem = match value {
                 Some(v) => json_value_to_sexp(v),
-                None => crate::ffi::SEXP::nil(),
+                None => crate::sys::SEXP::nil(),
             };
             sexp.get()
                 .set_vector_elt(isize::try_from(i).expect("index overflow"), elem)
@@ -702,7 +702,7 @@ fn json_discriminant(v: &JsonValue) -> u8 {
 
 fn json_value_to_sexp(value: &JsonValue) -> SEXP {
     match value {
-        JsonValue::Null => crate::ffi::SEXP::nil(),
+        JsonValue::Null => crate::sys::SEXP::nil(),
         JsonValue::Bool(b) => {
             let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, 1) };
             sexp.set_logical_elt(0, if *b { 1 } else { 0 });

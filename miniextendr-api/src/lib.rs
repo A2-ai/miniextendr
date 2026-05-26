@@ -5,7 +5,7 @@
 //! Rust-powered R packages and exposing Rust types to R.
 //!
 //! At a glance:
-//! - FFI bindings + checked wrappers for R's C API (`ffi`, `r_ffi_checked`).
+//! - FFI bindings + checked wrappers for R's C API (`sys`, `r_ffi_checked`).
 //! - Conversions between Rust and R types (`IntoR`, `TryFromSexp`, `Coerce`).
 //! - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
 //! - Wrapper generation from Rust signatures (`#[miniextendr]`, automatic registration via linkme).
@@ -69,7 +69,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`] | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **Preserve list** | [`preserve`] | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`] | Across `.Call`s | Any order | Long-lived R objects |
 //! | **R ownership** | [`ExternalPtr`](struct@ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! Quick guide:
@@ -84,12 +84,13 @@
 //! } // UNPROTECT(n) called automatically
 //! ```
 //!
-//! **R objects surviving across `.Call`s** -> [`preserve`]
+//! **R objects surviving across `.Call`s** -> [`ProtectPool`] or `R_PreserveObject`
 //! ```ignore
-//! // In RAllocator or similar long-lived context
-//! let cell = unsafe { preserve::insert(backing_vec) };
+//! // ProtectPool: O(1) insert/release with generational keys
+//! let mut pool = unsafe { ProtectPool::new(16) };
+//! let key = unsafe { pool.insert(backing_vec) };
 //! // ... use across multiple .Calls ...
-//! unsafe { preserve::release(cell) };
+//! unsafe { pool.release(key) };
 //! ```
 //!
 //! **Rust data owned by R** -> [`ExternalPtr`](struct@ExternalPtr)
@@ -205,7 +206,6 @@
 //! |---------|-------------|
 //! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 //! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
-//! | `debug-preserve` | Enable `preserve::count()` diagnostic helpers (tests/benchmarks only) |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
 //! | `refcount-fast-hash` | Use ahash for refcount arenas (enabled by default, not DOS-resistant) |
 // Re-export linkme for use by generated code (distributed_slice entries)
@@ -260,10 +260,28 @@ pub mod altrep_traits;
 pub mod altrep_registration {
     pub use crate::altrep::RegisterAltrep;
 }
-/// Raw R FFI bindings and low-level SEXP utilities.
+/// Core type vocabulary for R values: `SEXPTYPE`, `R_xlen_t`, `Rcomplex`,
+/// `RLogical`, `Rboolean`, `RNativeType`, `cetype_t`.
+pub mod sexp_types;
+
+/// The `SEXP` newtype and inherent methods.
+pub mod sexp;
+
+/// `SexpExt` — the ergonomic extension trait on `SEXP`.
+pub mod sexp_ext;
+
+/// Raw R FFI bindings.
 ///
-/// Most users should prefer safe wrappers from higher-level modules.
-pub mod ffi;
+/// Most users should prefer safe wrappers from higher-level modules — see
+/// [`sexp`], [`sexp_ext`], and [`sexp_types`].
+pub mod sys;
+
+// Crate-root re-exports for the ergonomic API surface.
+pub use sexp::{SEXP, SEXPREC};
+pub use sexp_ext::SexpExt;
+pub use sexp_types::{
+    R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE, cetype_t,
+};
 
 /// Automatic registration internals.
 ///
@@ -381,13 +399,13 @@ static ALTREP_DLL_INFO: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::n
 
 /// Get the stored DllInfo pointer for ALTREP class registration.
 #[doc(hidden)]
-pub fn altrep_dll_info() -> *mut ffi::DllInfo {
+pub fn altrep_dll_info() -> *mut sys::DllInfo {
     ALTREP_DLL_INFO.load(Ordering::Acquire).cast()
 }
 
 /// Store the DllInfo pointer during package init.
 #[doc(hidden)]
-pub fn set_altrep_dll_info(dll: *mut ffi::DllInfo) {
+pub fn set_altrep_dll_info(dll: *mut sys::DllInfo) {
     ALTREP_DLL_INFO.store(dll.cast(), Ordering::Release);
 }
 
@@ -626,10 +644,6 @@ pub use externalptr::{
 
 // TypedExternal implementations for std types
 pub mod externalptr_std;
-
-// Deprecated: DLL preserve list. Use ProtectPool or R_PreserveObject instead.
-// Kept for benchmark comparisons.
-pub mod preserve;
 
 // GC protection toolkit (PROTECT stack RAII wrappers)
 pub mod gc_protect;

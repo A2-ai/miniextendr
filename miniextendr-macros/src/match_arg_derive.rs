@@ -214,7 +214,7 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #where_clause {
             type Error = ::miniextendr_api::SexpError;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::sys::SEXP) -> Result<Self, Self::Error> {
                 ::miniextendr_api::match_arg_from_sexp(sexp).map_err(Into::into)
             }
         }
@@ -222,15 +222,15 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
             type Error = std::convert::Infallible;
 
-            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
-            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
+            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
                 use ::miniextendr_api::match_arg::MatchArg;
                 self.to_choice().into_sexp()
             }

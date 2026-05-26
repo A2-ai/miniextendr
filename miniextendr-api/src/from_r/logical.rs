@@ -20,8 +20,8 @@
 //! Outbound counterpart: `bool` / `Option<bool>` impls in
 //! [`crate::into_r`].
 
-use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};
+use crate::sys::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 impl TryFromSexp for Rboolean {
     type Error = SexpError;
@@ -241,7 +241,7 @@ impl TryFromSexp for Option<u8> {
     }
 }
 
-impl TryFromSexp for Option<crate::ffi::Rcomplex> {
+impl TryFromSexp for Option<crate::sys::Rcomplex> {
     type Error = SexpError;
 
     #[inline]
@@ -251,7 +251,7 @@ impl TryFromSexp for Option<crate::ffi::Rcomplex> {
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let value: crate::ffi::Rcomplex = TryFromSexp::try_from_sexp(sexp)?;
+        let value: crate::sys::Rcomplex = TryFromSexp::try_from_sexp(sexp)?;
         let na_bits = NA_REAL.to_bits();
         if value.r.to_bits() == na_bits || value.i.to_bits() == na_bits {
             Ok(None)
@@ -267,7 +267,7 @@ impl TryFromSexp for Option<crate::ffi::Rcomplex> {
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let value: crate::ffi::Rcomplex = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        let value: crate::sys::Rcomplex = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         let na_bits = NA_REAL.to_bits();
         if value.r.to_bits() == na_bits || value.i.to_bits() == na_bits {
             Ok(None)

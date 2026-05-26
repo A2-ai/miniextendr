@@ -390,8 +390,8 @@ impl RCondition {
     /// # Safety
     ///
     /// Must be called from R's main thread.
-    pub unsafe fn from_tagged_sexp(sexp: crate::ffi::SEXP) -> Option<Self> {
-        use crate::ffi::SexpExt;
+    pub unsafe fn from_tagged_sexp(sexp: crate::sys::SEXP) -> Option<Self> {
+        use crate::sys::SexpExt;
 
         // Use SexpExt::inherits_class — wraps Rf_inherits, already main-thread.
         if !sexp.inherits_class(c"rust_condition_value") {
@@ -506,7 +506,7 @@ impl RCondition {
 ///
 /// Must be called from R's main thread. `sexp` must be a valid (possibly
 /// tagged) SEXP.
-pub unsafe fn repanic_if_rust_error(sexp: crate::ffi::SEXP) {
+pub unsafe fn repanic_if_rust_error(sexp: crate::sys::SEXP) {
     if let Some(cond) = unsafe { RCondition::from_tagged_sexp(sexp) } {
         std::panic::panic_any(cond);
     }

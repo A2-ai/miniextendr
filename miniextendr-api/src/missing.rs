@@ -67,8 +67,8 @@
 //! 2. `SEXP::missing_arg()` to be passed through `.Call()` to Rust
 //! 3. `Missing<T>` to detect it as `Missing::Absent`
 
-use crate::ffi::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
+use crate::sys::SEXP;
 
 /// Wrapper type that detects if an R argument was not passed (missing).
 ///

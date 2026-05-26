@@ -5,7 +5,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::prelude::{SEXP, SexpExt};
+use miniextendr_api::sys::SEXPTYPE;
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
 #[cfg(feature = "jiff")]
@@ -279,7 +280,7 @@ pub fn gc_stress_dataframe_nested_enum() {
 #[miniextendr]
 pub fn gc_stress_native_sexp_altrep() {
     use crate::native_sexp_altrep_fixture::native_sexp_altrep_new;
-    use miniextendr_api::ffi::SexpExt as _;
+    use miniextendr_api::prelude::SexpExt as _;
 
     // Construct a small ALTREP-backed integer vector.
     let values = vec![10i32, 20, 30, 40, 50];
@@ -300,7 +301,7 @@ pub fn gc_stress_native_sexp_altrep() {
     }
 
     // Force the Dataptr path (exercises `AltVec::dataptr`).
-    let _ptr = unsafe { miniextendr_api::ffi::DATAPTR_RO(sexp) };
+    let _ptr = unsafe { miniextendr_api::sys::DATAPTR_RO(sexp) };
 }
 
 /// Exercise `JiffZonedVec` ALTREP construction and element access under GC pressure.
@@ -332,7 +333,7 @@ pub fn gc_stress_jiff_zoned_vec() {
     let sexp = vec.into_posixct_sexp();
 
     // Force element access via the ALTREP Elt path.
-    use miniextendr_api::ffi::SexpExt as _;
+    use miniextendr_api::prelude::SexpExt as _;
     let n = sexp.len();
     assert_eq!(n, 3);
     for i in 0..n {
@@ -839,6 +840,80 @@ pub fn gc_stress_borrowed_rows() -> i32 {
 
 // endregion
 
+// region: STRSXP-building PROTECT discipline GC stress
+
+/// Exercise the PROTECT discipline of the migrated STRSXP-building / factor
+/// paths under GC pressure.
+///
+/// Drives:
+/// - `match_arg::choices_sexp` (via a derived `MatchArg` enum's `IntoR for Vec<T>`),
+/// - `match_arg::match_arg_vec_into_sexp` (same path),
+/// - `factor::build_factor_with_levels` (via `FactorVec` / `FactorOptionVec`
+///   blanket impls — bare `RFactor` enum, no caching),
+/// - `named_vector::set_names_on_sexp` (via `NamedVector<HashMap<String, i32>>`).
+///
+/// Each path allocates a fresh STRSXP and reads/writes elements across
+/// allocations that can fire GC — exactly the shape that broke in PR #344's
+/// `make_rust_condition_value`. No arguments — suitable for the fast
+/// gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_protect_discipline() {
+    use miniextendr_api::factor::{FactorOptionVec, FactorVec};
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::match_arg::MatchArg;
+    use miniextendr_api::NamedVector;
+
+    // FactorVec<Color> → build_factor_with_levels exercised on a no-cache path
+    // (RFactor blanket through FactorVec).
+    let fv: FactorVec<crate::factor_tests::Color> = FactorVec(vec![
+        crate::factor_tests::Color::Red,
+        crate::factor_tests::Color::Green,
+        crate::factor_tests::Color::Blue,
+        crate::factor_tests::Color::Red,
+    ]);
+    let _ = fv.into_sexp();
+
+    // FactorOptionVec<Color> with NA → same path, different indices builder.
+    let fov: FactorOptionVec<crate::factor_tests::Color> = FactorOptionVec(vec![
+        Some(crate::factor_tests::Color::Red),
+        None,
+        Some(crate::factor_tests::Color::Green),
+        None,
+    ]);
+    let _ = fov.into_sexp();
+
+    // Vec<Mode>: IntoR (Vec<T: MatchArg>) → match_arg_vec_into_sexp,
+    // exercising the STRSXP build loop with the R_BlankString short-circuit
+    // path skipped (no empty strings in CHOICES here).
+    let _ = miniextendr_api::match_arg::match_arg_vec_into_sexp(vec![
+        crate::match_arg_tests::Mode::Fast,
+        crate::match_arg_tests::Mode::Safe,
+        crate::match_arg_tests::Mode::Debug,
+    ]);
+
+    // choices_sexp<Mode> → STRSXP build with the same short-circuit branch.
+    let _ = miniextendr_api::match_arg::choices_sexp::<crate::match_arg_tests::Mode>();
+
+    // NamedVector<HashMap<String, i32>> → set_names_on_sexp STRSXP build.
+    let mut m = HashMap::new();
+    m.insert("alpha".to_string(), 1i32);
+    m.insert("beta".to_string(), 2);
+    m.insert("gamma".to_string(), 3);
+    let _ = NamedVector(m).into_sexp();
+
+    // Empty-key edge case: hits the `R_BlankString` short-circuit in
+    // `set_names_on_sexp`.
+    let mut m2 = HashMap::new();
+    m2.insert(String::new(), 42i32);
+    let _ = NamedVector(m2).into_sexp();
+
+    // CHOICES read-back to silence unused-warning on the MatchArg trait import
+    // (also a sanity check that the enum type is reachable at compile time).
+    let _ = <crate::match_arg_tests::Mode as MatchArg>::CHOICES.len();
+}
+
+// endregion
+
 // region: map_to_dataframe / result_to_dataframe / vec_to_dataframe_split helpers (#700, #697, #699)
 
 /// Exercise `map_to_dataframe` under GC pressure.
@@ -1116,7 +1191,8 @@ pub fn gc_stress_split_collated() -> SEXP {
 pub fn gc_stress_factor_labels() -> i32 {
     use crate::serde::Deserialize;
     use miniextendr_api::factor::{build_factor, build_levels_sexp};
-    use miniextendr_api::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+    use miniextendr_api::prelude::{SEXP, SexpExt};
+    use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
     use miniextendr_api::gc_protect::OwnedProtect;
     use miniextendr_api::serde::dataframe_to_vec;
 

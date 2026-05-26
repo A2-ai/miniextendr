@@ -3,7 +3,7 @@
 //! These fixtures verify that pointer recovery works: the SEXP returned by
 //! IntoR is the exact same SEXP that was passed to TryFromSexp.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 use std::borrow::Cow;
 
@@ -61,7 +61,7 @@ pub fn zero_copy_vec_cow_str_all_borrowed(x: Vec<Cow<'static, str>>) -> bool {
 
 #[cfg(feature = "arrow")]
 mod arrow {
-    use miniextendr_api::ffi::SEXP;
+    use miniextendr_api::prelude::SEXP;
     use miniextendr_api::miniextendr;
 
     /// Returns TRUE if Float64Array round-trip returns the same R object.
@@ -150,7 +150,7 @@ mod arrow {
     #[miniextendr]
     pub fn zero_copy_arrow_f64_altrep(
         x: miniextendr_api::arrow_impl::Float64Array,
-    ) -> miniextendr_api::ffi::SEXP {
+    ) -> miniextendr_api::sys::SEXP {
         use miniextendr_api::IntoRAltrep;
         // Compute creates a Rust-owned buffer (not R-backed)
         let computed: miniextendr_api::arrow_impl::Float64Array =
@@ -163,7 +163,7 @@ mod arrow {
     #[miniextendr]
     pub fn zero_copy_arrow_i32_altrep(
         x: miniextendr_api::arrow_impl::Int32Array,
-    ) -> miniextendr_api::ffi::SEXP {
+    ) -> miniextendr_api::sys::SEXP {
         use miniextendr_api::IntoRAltrep;
         let computed: miniextendr_api::arrow_impl::Int32Array =
             x.iter().map(|v| v.map(|i| i + 100)).collect();
@@ -173,7 +173,7 @@ mod arrow {
     /// Create a Vec<f64> ALTREP (not Arrow, just plain Rust vec).
     /// @export
     #[miniextendr]
-    pub fn zero_copy_vec_f64_altrep(n: i32) -> miniextendr_api::ffi::SEXP {
+    pub fn zero_copy_vec_f64_altrep(n: i32) -> miniextendr_api::sys::SEXP {
         use miniextendr_api::IntoRAltrep;
         let data: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
         data.into_sexp_altrep()
@@ -183,14 +183,14 @@ mod arrow {
     /// Tests the alloc_r_backed_buffer → pointer recovery round-trip.
     /// @export
     #[miniextendr]
-    pub fn zero_copy_alloc_r_backed(n: i32) -> miniextendr_api::ffi::SEXP {
+    pub fn zero_copy_alloc_r_backed(n: i32) -> miniextendr_api::sys::SEXP {
         use miniextendr_api::into_r::IntoR;
         use miniextendr_api::optionals::arrow_impl::alloc_r_backed_buffer;
         let n = n as usize;
         let (buffer, sexp) = unsafe { alloc_r_backed_buffer::<f64>(n) };
         // Fill via SexpExt element setters
         for i in 0..n {
-            miniextendr_api::ffi::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64 * 100.0);
+            miniextendr_api::sys::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64 * 100.0);
         }
         let values =
             miniextendr_api::optionals::arrow_impl::arrow_buffer::ScalarBuffer::<f64>::from(buffer);
@@ -201,7 +201,7 @@ mod arrow {
     /// Slice a Float64Array and return it — recovery should fail (different pointer).
     /// @export
     #[miniextendr]
-    pub fn zero_copy_arrow_f64_sliced(x: miniextendr_api::ffi::SEXP) -> bool {
+    pub fn zero_copy_arrow_f64_sliced(x: miniextendr_api::sys::SEXP) -> bool {
         use miniextendr_api::arrow_impl::Float64Array;
         use miniextendr_api::from_r::TryFromSexp;
         use miniextendr_api::into_r::IntoR;

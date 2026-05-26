@@ -1,12 +1,14 @@
-//! Low-level FFI bindings to R headers.
+//! Raw FFI bindings to R headers.
 //!
 //! This module mirrors R's C API closely and is intentionally thin. **You
-//! almost never call these directly from user code** — reach for the
-//! higher-level wrappers in the crate root (`SEXP` extensions, [`IntoR`],
-//! [`TryFromSexp`], [`with_r_thread`], [`with_r_unwind_protect`], the
-//! `#[miniextendr]` proc-macro). The items here exist so those wrappers can
-//! be written; treat them as the framework's escape hatch.
+//! almost never call these directly from user code** — prefer the
+//! higher-level wrappers: `SEXP` (in [`crate::sexp`]), [`SexpExt`] (in
+//! [`crate::sexp_ext`]), the type vocabulary in [`crate::sexp_types`], plus
+//! [`IntoR`], [`TryFromSexp`], [`with_r_thread`], [`with_r_unwind_protect`],
+//! and the `#[miniextendr]` proc-macro. The items here exist so those
+//! wrappers can be written; treat them as the framework's escape hatch.
 //!
+//! [`SexpExt`]: crate::sexp_ext::SexpExt
 //! [`IntoR`]: crate::IntoR
 //! [`TryFromSexp`]: crate::TryFromSexp
 //! [`with_r_thread`]: crate::worker::with_r_thread
@@ -51,1910 +53,23 @@
 //! - [`crate::error_value`] / [`mod@crate::condition`] — panic → R condition
 //!   transport.
 
-/// ALTREP-specific C API bindings.
+/// Raw ALTREP C API method type aliases.
 pub mod altrep;
 
-#[allow(non_camel_case_types)]
-/// R's extended vector length type (`R_xlen_t`).
-pub type R_xlen_t = isize;
-/// R byte element type used by `RAWSXP`.
-pub type Rbyte = ::std::os::raw::c_uchar;
-
-/// R's complex scalar layout (`Rcomplex`).
-#[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Rcomplex {
-    /// Real part.
-    pub r: f64,
-    /// Imaginary part.
-    pub i: f64,
-}
-
-/// R S-expression tag values (`SEXPTYPE`).
-#[repr(u32)]
-#[non_exhaustive]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum SEXPTYPE {
-    #[doc = " nil = NULL"]
-    NILSXP = 0,
-    #[doc = " symbols"]
-    SYMSXP = 1,
-    #[doc = " lists of dotted pairs"]
-    LISTSXP = 2,
-    #[doc = " closures"]
-    CLOSXP = 3,
-    #[doc = " environments"]
-    ENVSXP = 4,
-    #[doc = r" promises: \[un\]evaluated closure arguments"]
-    PROMSXP = 5,
-    #[doc = " language constructs (special lists)"]
-    LANGSXP = 6,
-    #[doc = " special forms"]
-    SPECIALSXP = 7,
-    #[doc = " builtin non-special forms"]
-    BUILTINSXP = 8,
-    #[doc = " \"scalar\" string type (internal only)"]
-    CHARSXP = 9,
-    #[doc = " logical vectors"]
-    LGLSXP = 10,
-    #[doc = " integer vectors"]
-    INTSXP = 13,
-    #[doc = " real variables"]
-    REALSXP = 14,
-    #[doc = " complex variables"]
-    CPLXSXP = 15,
-    #[doc = " string vectors"]
-    STRSXP = 16,
-    #[doc = " dot-dot-dot object"]
-    DOTSXP = 17,
-    #[doc = " make \"any\" args work"]
-    ANYSXP = 18,
-    #[doc = " generic vectors"]
-    VECSXP = 19,
-    #[doc = " expressions vectors"]
-    EXPRSXP = 20,
-    #[doc = " byte code"]
-    BCODESXP = 21,
-    #[doc = " external pointer"]
-    EXTPTRSXP = 22,
-    #[doc = " weak reference"]
-    WEAKREFSXP = 23,
-    #[doc = " raw bytes"]
-    RAWSXP = 24,
-    #[doc = " S4 non-vector"]
-    S4SXP = 25,
-    #[doc = " fresh node created in new page"]
-    NEWSXP = 30,
-    #[doc = " node released by GC"]
-    FREESXP = 31,
-    #[doc = " Closure or Builtin"]
-    FUNSXP = 99,
-}
-
-impl SEXPTYPE {
-    /// Alias for `S4SXP` (value 25).
-    ///
-    /// R defines both `OBJSXP` and `S4SXP` as value 25. `S4SXP` is retained
-    /// for backwards compatibility; `OBJSXP` is the preferred name.
-    pub const OBJSXP: SEXPTYPE = SEXPTYPE::S4SXP;
-
-    /// Get R's name for this SEXPTYPE (e.g. `"double"`, `"integer"`, `"list"`).
-    ///
-    /// Returns the same string as R's `typeof()` function.
-    #[inline]
-    pub fn type_name(self) -> &'static str {
-        let cstr = unsafe { Rf_type2char(self) };
-        // SAFETY: R's type names are static ASCII strings
-        unsafe { std::ffi::CStr::from_ptr(cstr) }
-            .to_str()
-            .unwrap_or("unknown")
-    }
-}
-
-#[repr(transparent)]
-#[derive(Debug)]
-/// Opaque underlying S-expression header type.
-pub struct SEXPREC(::std::os::raw::c_void);
-
-/// R's pointer type for S-expressions.
-///
-/// This is a newtype wrapper around `*mut SEXPREC` that implements Send and Sync.
-/// SEXP is just a handle (pointer) - the actual data it points to is managed by R's
-/// garbage collector and should only be accessed on R's main thread.
-///
-/// # Safety
-///
-/// While SEXP is Send+Sync (allowing it to be passed between threads), the data
-/// it points to must only be accessed on R's main thread. The miniextendr runtime
-/// enforces this through the worker thread pattern.
-///
-/// # Equality Semantics
-///
-/// IMPORTANT: The derived `PartialEq` compares **pointer equality**, not semantic equality.
-/// For proper R semantics (comparing object contents), use [`R_compute_identical`].
-///
-/// ```ignore
-/// // Pointer equality (fast, often wrong for R semantics)
-/// if sexp1 == sexp2 { ... }  // Only true if same pointer
-///
-/// // Semantic equality (correct R semantics)
-/// if R_compute_identical(sexp1, sexp2, 16) != 0 { ... }
-/// ```
-///
-/// **Hash trait removed**: SEXP no longer implements `Hash` because proper hashing
-/// would require deep content inspection via `R_compute_identical`, which is too
-/// expensive for general use. If you need SEXP as a HashMap key, use pointer identity:
-///
-/// ```ignore
-/// // Store by pointer identity (common pattern for R symbol lookups)
-/// let mut map: HashMap<*mut SEXPREC, Value> = HashMap::new();
-/// map.insert(sexp.as_ptr(), value);
-/// ```
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SEXP(pub *mut SEXPREC);
-
-// SAFETY: SEXP is just a pointer (memory address). Passing the address between
-// threads is safe. The actual data access is protected by miniextendr's runtime
-// which ensures R API calls happen on the main thread.
-unsafe impl Send for SEXP {}
-unsafe impl Sync for SEXP {}
-
-impl SEXP {
-    /// Create a C null pointer SEXP (0x0).
-    ///
-    /// This is **not** R's `NULL` value (`R_NilValue`). R's `NULL` is a real
-    /// heap-allocated singleton; a C null pointer is just address zero. Passing
-    /// `SEXP::null()` where R expects `R_NilValue` will corrupt R's GC state
-    /// and likely segfault.
-    ///
-    /// Use [`SEXP::nil()`] for R's `NULL`. Only use `null()` for low-level
-    /// pointer initialization, ALTREP Sum/Min/Max "can't compute" returns
-    /// (R checks `!= NULL`, not `!= R_NilValue`), or comparison against
-    /// uninitialized pointers.
-    ///
-    /// See also: [`SEXP::nil()`], [`SEXP::is_null()`], [`SexpExt::is_nil()`]
-    #[inline]
-    pub const fn null() -> Self {
-        Self(std::ptr::null_mut())
-    }
-
-    /// Return R's `NULL` singleton (`R_NilValue`).
-    ///
-    /// This is **not** a C null pointer — it points to R's actual nil object
-    /// on the heap. Use this for `.Call()` return values, SEXP arguments to
-    /// R API functions, and any slot in R data structures.
-    ///
-    /// See also: [`SEXP::null()`], [`SexpExt::is_nil()`], [`SEXP::is_null()`]
-    #[inline]
-    pub fn nil() -> Self {
-        unsafe { R_NilValue }
-    }
-
-    /// Check if this SEXP is a C null pointer (0x0).
-    ///
-    /// To check if an SEXP is R's `NULL` (`R_NilValue`), use
-    /// [`SexpExt::is_nil()`] instead.
-    ///
-    /// See also: [`SexpExt::is_nil()`], [`SexpExt::is_null_or_nil()`]
-    #[inline]
-    pub const fn is_null(self) -> bool {
-        self.0.is_null()
-    }
-
-    /// Get the raw pointer.
-    #[inline]
-    pub const fn as_ptr(self) -> *mut SEXPREC {
-        self.0
-    }
-
-    /// Create from a raw pointer.
-    #[inline]
-    pub const fn from_ptr(ptr: *mut SEXPREC) -> Self {
-        Self(ptr)
-    }
-
-    // region: String construction
-
-    /// Create a CHARSXP from a Rust `&str` (UTF-8).
-    #[inline]
-    pub fn charsxp(s: &str) -> SEXP {
-        let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-        unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), len, CE_UTF8) }
-    }
-
-    /// R's `NA_character_` singleton.
-    #[inline]
-    pub fn na_string() -> SEXP {
-        unsafe { R_NaString }
-    }
-
-    /// R's empty string `""` singleton.
-    #[inline]
-    pub fn blank_string() -> SEXP {
-        unsafe { R_BlankString }
-    }
-
-    /// Create an R symbol (SYMSXP) from a CHARSXP.
-    ///
-    /// Equivalent to `Rf_installChar(charsxp)`. The symbol is interned
-    /// in R's global symbol table and never garbage collected.
-    #[inline]
-    pub fn install_char(charsxp: SEXP) -> SEXP {
-        unsafe { Rf_installChar(charsxp) }
-    }
-
-    /// Create an R symbol (SYMSXP) from a Rust `&str`.
-    ///
-    /// Combines `SEXP::charsxp()` + `Rf_installChar` into one call.
-    /// The symbol is interned and never garbage collected.
-    #[inline]
-    pub fn symbol(name: &str) -> SEXP {
-        Self::install_char(Self::charsxp(name))
-    }
-
-    // endregion
-
-    // region: Scalar construction
-
-    /// Create a length-1 integer vector.
-    #[inline]
-    pub fn scalar_integer(x: i32) -> SEXP {
-        unsafe { Rf_ScalarInteger(x) }
-    }
-
-    /// Create a length-1 real vector.
-    #[inline]
-    pub fn scalar_real(x: f64) -> SEXP {
-        unsafe { Rf_ScalarReal(x) }
-    }
-
-    /// Create a length-1 logical vector.
-    #[inline]
-    pub fn scalar_logical(x: bool) -> SEXP {
-        unsafe { Rf_ScalarLogical(if x { 1 } else { 0 }) }
-    }
-
-    /// Create a length-1 logical vector from raw i32 (0=FALSE, 1=TRUE, NA_LOGICAL=NA).
-    #[inline]
-    /// Accepts 0 (FALSE), 1 (TRUE), or `NA_LOGICAL` (`i32::MIN`) for NA.
-    /// Prefer [`scalar_logical`](Self::scalar_logical) for non-NA values.
-    pub fn scalar_logical_raw(x: i32) -> SEXP {
-        unsafe { Rf_ScalarLogical(x) }
-    }
-
-    /// Create a length-1 raw vector.
-    #[inline]
-    pub fn scalar_raw(x: u8) -> SEXP {
-        unsafe { Rf_ScalarRaw(x) }
-    }
-
-    /// Create a length-1 complex vector.
-    #[inline]
-    pub fn scalar_complex(x: Rcomplex) -> SEXP {
-        unsafe { Rf_ScalarComplex(x) }
-    }
-
-    /// Create a length-1 character vector from a CHARSXP.
-    #[inline]
-    pub fn scalar_string(charsxp: SEXP) -> SEXP {
-        unsafe { Rf_ScalarString(charsxp) }
-    }
-
-    /// Create a length-1 character vector from a Rust `&str`.
-    #[inline]
-    pub fn scalar_string_from_str(s: &str) -> SEXP {
-        Self::scalar_string(Self::charsxp(s))
-    }
-
-    // Unchecked scalar constructors — skip the `with_r_thread` check.
-    // Use only inside ALTREP callbacks, `with_r_unwind_protect`, or `with_r_thread` blocks
-    // where the R-thread invariant is already established (see `#[r_ffi_checked]` docs).
-
-    /// Create a length-1 integer vector (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn scalar_integer_unchecked(x: i32) -> SEXP {
-        unsafe { Rf_ScalarInteger_unchecked(x) }
-    }
-
-    /// Create a length-1 real vector (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn scalar_real_unchecked(x: f64) -> SEXP {
-        unsafe { Rf_ScalarReal_unchecked(x) }
-    }
-
-    /// Create a length-1 logical vector from raw i32 (unchecked — no thread routing).
-    ///
-    /// Accepts 0 (FALSE), 1 (TRUE), or `NA_LOGICAL` (`i32::MIN`) for NA.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn scalar_logical_raw_unchecked(x: i32) -> SEXP {
-        unsafe { Rf_ScalarLogical_unchecked(x) }
-    }
-
-    /// Create a length-1 raw vector (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn scalar_raw_unchecked(x: u8) -> SEXP {
-        unsafe { Rf_ScalarRaw_unchecked(x) }
-    }
-
-    /// Create a length-1 complex vector (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn scalar_complex_unchecked(x: Rcomplex) -> SEXP {
-        unsafe { Rf_ScalarComplex_unchecked(x) }
-    }
-
-    /// Create a length-1 character vector from a CHARSXP (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn scalar_string_unchecked(charsxp: SEXP) -> SEXP {
-        unsafe { Rf_ScalarString_unchecked(charsxp) }
-    }
-
-    // endregion
-
-    // region: Vector allocation
-
-    /// Allocate an R list (VECSXP) of length `n`. Unprotected.
-    ///
-    /// Equivalent to `Rf_allocVector(VECSXP, n)`. Elements are initialised to `R_NilValue`.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread. The returned SEXP is unprotected —
-    /// wrap it in [`OwnedProtect`](crate::gc_protect::OwnedProtect) before any
-    /// other allocation that could trigger GC.
-    #[inline]
-    pub unsafe fn alloc_list(n: R_xlen_t) -> SEXP {
-        unsafe { Rf_allocVector(SEXPTYPE::VECSXP, n) }
-    }
-
-    /// Allocate an R character vector (STRSXP) of length `n`. Unprotected.
-    ///
-    /// Equivalent to `Rf_allocVector(STRSXP, n)`. Elements are initialised to `R_BlankString`.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread. The returned SEXP is unprotected —
-    /// wrap it in [`OwnedProtect`](crate::gc_protect::OwnedProtect) before any
-    /// other allocation that could trigger GC.
-    #[inline]
-    pub unsafe fn alloc_strsxp(n: R_xlen_t) -> SEXP {
-        unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n) }
-    }
-
-    // endregion
-
-    // region: R global symbols and singletons
-
-    /// R's `names` attribute symbol.
-    #[inline]
-    pub fn names_symbol() -> SEXP {
-        unsafe { R_NamesSymbol }
-    }
-
-    /// R's `dim` attribute symbol.
-    #[inline]
-    pub fn dim_symbol() -> SEXP {
-        unsafe { R_DimSymbol }
-    }
-
-    /// R's `dimnames` attribute symbol.
-    #[inline]
-    pub fn dimnames_symbol() -> SEXP {
-        unsafe { R_DimNamesSymbol }
-    }
-
-    /// R's `class` attribute symbol.
-    #[inline]
-    pub fn class_symbol() -> SEXP {
-        unsafe { R_ClassSymbol }
-    }
-
-    /// R's `levels` attribute symbol (factors).
-    #[inline]
-    pub fn levels_symbol() -> SEXP {
-        unsafe { R_LevelsSymbol }
-    }
-
-    /// R's `tsp` attribute symbol (time series).
-    #[inline]
-    pub fn tsp_symbol() -> SEXP {
-        unsafe { R_TspSymbol }
-    }
-
-    /// R's base namespace environment.
-    #[inline]
-    pub fn base_namespace() -> SEXP {
-        unsafe { R_BaseNamespace }
-    }
-
-    /// R's missing argument sentinel.
-    #[inline]
-    pub fn missing_arg() -> SEXP {
-        unsafe { R_MissingArg }
-    }
-
-    // endregion
-
-    // region: ALTREP data slot access
-
-    /// Get the raw SEXP in the ALTREP data1 slot.
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn altrep_data1_raw(self) -> SEXP {
-        unsafe { R_altrep_data1(self) }
-    }
-
-    /// Get the raw SEXP in the ALTREP data1 slot (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn altrep_data1_raw_unchecked(self) -> SEXP {
-        unsafe { R_altrep_data1_unchecked(self) }
-    }
-
-    /// Set the ALTREP data1 slot.
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn set_altrep_data1(self, v: SEXP) {
-        unsafe { R_set_altrep_data1(self, v) }
-    }
-
-    /// Get the raw SEXP in the ALTREP data2 slot.
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn altrep_data2_raw(self) -> SEXP {
-        unsafe { R_altrep_data2(self) }
-    }
-
-    /// Get the raw SEXP in the ALTREP data2 slot (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn altrep_data2_raw_unchecked(self) -> SEXP {
-        unsafe { R_altrep_data2_unchecked(self) }
-    }
-
-    /// Set the ALTREP data2 slot.
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn set_altrep_data2(self, v: SEXP) {
-        unsafe { R_set_altrep_data2(self, v) }
-    }
-
-    /// Set the ALTREP data2 slot (unchecked — no thread routing).
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn set_altrep_data2_unchecked(self, v: SEXP) {
-        unsafe { R_set_altrep_data2_unchecked(self, v) }
-    }
-
-    // endregion
-}
-
-impl Default for SEXP {
-    #[inline]
-    fn default() -> Self {
-        Self::null()
-    }
-}
-
-impl From<*mut SEXPREC> for SEXP {
-    #[inline]
-    fn from(ptr: *mut SEXPREC) -> Self {
-        Self(ptr)
-    }
-}
-
-impl From<SEXP> for *mut SEXPREC {
-    #[inline]
-    fn from(sexp: SEXP) -> Self {
-        sexp.0
-    }
-}
-
-/// Extension trait for SEXP providing safe(r) accessors and type checking.
-///
-/// This trait provides idiomatic Rust methods for working with SEXPs,
-/// equivalent to R's inline macros and type checking functions.
-pub trait SexpExt {
-    /// Get the type of this SEXP.
-    ///
-    /// Equivalent to `TYPEOF(x)` macro.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be valid (not null and not freed).
-    fn type_of(&self) -> SEXPTYPE;
-
-    /// Check if this SEXP is null or R_NilValue.
-    fn is_null_or_nil(&self) -> bool;
-
-    /// Get the length of this SEXP as `usize`.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be valid.
-    fn len(&self) -> usize;
-
-    /// Get the length as `R_xlen_t`.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be valid.
-    fn xlength(&self) -> R_xlen_t;
-
-    /// Get the length as `R_xlen_t` without thread checks.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from R's main thread. No debug assertions.
-    unsafe fn xlength_unchecked(&self) -> R_xlen_t;
-
-    /// Get the length without thread checks.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from R's main thread. No debug assertions.
-    unsafe fn len_unchecked(&self) -> usize;
-
-    /// Get a slice view of this SEXP's data.
-    ///
-    /// # Safety
-    ///
-    /// - The SEXP must be valid and of the correct type for `T`
-    /// - The SEXP must be protected from R's garbage collector for the entire
-    ///   duration the returned slice is used. This typically means the SEXP must
-    ///   be either:
-    ///   - An argument to a `.Call` function (protected by R's calling convention)
-    ///   - Explicitly protected via `PROTECT`/`UNPROTECT` or `R_PreserveObject`
-    ///   - Part of a protected container (e.g., element of a protected list)
-    /// - The returned slice has `'static` lifetime for API convenience, but this
-    ///   is a lie - the actual lifetime is tied to the SEXP's protection status.
-    ///   Holding the slice after the SEXP is unprotected is undefined behavior.
-    unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T];
-
-    /// Get a slice view without thread checks.
-    ///
-    /// # Safety
-    ///
-    /// - All safety requirements of [`as_slice`](Self::as_slice) apply
-    /// - Additionally, must be called from R's main thread (no debug assertions)
-    unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T];
-
-    /// Get a mutable slice view of this SEXP's data.
-    ///
-    /// # Safety
-    ///
-    /// - All safety requirements of [`as_slice`](Self::as_slice) apply.
-    /// - The caller must ensure **exclusive access**: no other `&[T]` or `&mut [T]`
-    ///   slices derived from this SEXP may exist simultaneously. Multiple calls to
-    ///   `as_mut_slice` on the same SEXP without dropping the previous slice is UB.
-    /// - The SEXP must not be shared (ALTREP or NAMED > 0 objects may alias).
-    unsafe fn as_mut_slice<T: RNativeType>(&self) -> &'static mut [T];
-
-    // Type checking methods (equivalent to R's type check macros)
-
-    /// Check if this SEXP is an integer vector (INTSXP).
-    fn is_integer(&self) -> bool;
-
-    /// Check if this SEXP is a real/numeric vector (REALSXP).
-    fn is_real(&self) -> bool;
-
-    /// Check if this SEXP is a logical vector (LGLSXP).
-    fn is_logical(&self) -> bool;
-
-    /// Check if this SEXP is a character/string vector (STRSXP).
-    fn is_character(&self) -> bool;
-
-    /// Check if this SEXP is a raw vector (RAWSXP).
-    fn is_raw(&self) -> bool;
-
-    /// Check if this SEXP is a complex vector (CPLXSXP).
-    fn is_complex(&self) -> bool;
-
-    /// Check if this SEXP is a list/generic vector (VECSXP).
-    fn is_list(&self) -> bool;
-
-    /// Check if this SEXP is an external pointer (EXTPTRSXP).
-    fn is_external_ptr(&self) -> bool;
-
-    /// Check if this SEXP is an environment (ENVSXP).
-    fn is_environment(&self) -> bool;
-
-    /// Check if this SEXP is a symbol (SYMSXP).
-    fn is_symbol(&self) -> bool;
-
-    /// Check if this SEXP is a language object (LANGSXP).
-    fn is_language(&self) -> bool;
-
-    /// Check if this SEXP is an ALTREP object.
-    ///
-    /// Equivalent to R's `ALTREP(x)` macro.
-    fn is_altrep(&self) -> bool;
-
-    /// Check if this `SEXP` contains any elements.
-    fn is_empty(&self) -> bool;
-
-    /// Check if this SEXP is R's `NULL` (NILSXP).
-    fn is_nil(&self) -> bool;
-
-    /// Check if this SEXP is a factor.
-    ///
-    /// Equivalent to R's `Rf_isFactor(x)`.
-    fn is_factor(&self) -> bool;
-
-    /// Check if this SEXP is a pairlist (LISTSXP or NILSXP).
-    ///
-    /// Equivalent to R's `Rf_isList(x)`.
-    fn is_pair_list(&self) -> bool;
-
-    /// Check if this SEXP is a matrix.
-    ///
-    /// Equivalent to R's `Rf_isMatrix(x)`.
-    fn is_matrix(&self) -> bool;
-
-    /// Check if this SEXP is an array.
-    ///
-    /// Equivalent to R's `Rf_isArray(x)`.
-    fn is_array(&self) -> bool;
-
-    /// Check if this SEXP is a function (closure, builtin, or special).
-    ///
-    /// Equivalent to R's `Rf_isFunction(x)`.
-    fn is_function(&self) -> bool;
-
-    /// Check if this SEXP is an S4 object.
-    ///
-    /// Equivalent to R's `Rf_isS4(x)`.
-    fn is_s4(&self) -> bool;
-
-    /// Check if this SEXP is a data.frame.
-    ///
-    /// Equivalent to R's `Rf_isDataFrame(x)`.
-    fn is_data_frame(&self) -> bool;
-
-    /// Check if this SEXP is a numeric type (integer, logical, or real, excluding factors).
-    ///
-    /// Equivalent to R's `Rf_isNumeric(x)`.
-    fn is_numeric(&self) -> bool;
-
-    /// Check if this SEXP is a number type (numeric or complex).
-    ///
-    /// Equivalent to R's `Rf_isNumber(x)`.
-    fn is_number(&self) -> bool;
-
-    /// Check if this SEXP is an atomic vector.
-    ///
-    /// Returns true for logical, integer, real, complex, character, and raw vectors.
-    fn is_vector_atomic(&self) -> bool;
-
-    /// Check if this SEXP is a vector list (VECSXP or EXPRSXP).
-    fn is_vector_list(&self) -> bool;
-
-    /// Check if this SEXP is a vector (atomic vector or list).
-    fn is_vector(&self) -> bool;
-
-    /// Check if this SEXP is an R "object" (has a class attribute).
-    fn is_object(&self) -> bool;
-
-    // region: Coercion and scalar extraction
-
-    /// Coerce this SEXP to the given type, returning a new SEXP.
-    ///
-    /// The result is guaranteed to have the requested SEXPTYPE.
-    /// Equivalent to R's `Rf_coerceVector(x, target)`.
-    fn coerce(&self, target: SEXPTYPE) -> SEXP;
-
-    /// Extract a scalar logical value.
-    ///
-    /// Returns `None` for `NA`. Coerces non-logical inputs.
-    /// Equivalent to R's `Rf_asLogical(x)`.
-    fn as_logical(&self) -> Option<bool>;
-
-    /// Extract a scalar integer value.
-    ///
-    /// Returns `None` for `NA_integer_`. Coerces non-integer inputs.
-    /// Equivalent to R's `Rf_asInteger(x)`.
-    fn as_integer(&self) -> Option<i32>;
-
-    /// Extract a scalar real value.
-    ///
-    /// Returns `None` for `NA_real_` (NaN). Coerces non-real inputs.
-    /// Equivalent to R's `Rf_asReal(x)`.
-    fn as_real(&self) -> Option<f64>;
-
-    /// Extract a scalar CHARSXP from this SEXP.
-    ///
-    /// The result is guaranteed to be a CHARSXP.
-    /// Equivalent to R's `Rf_asChar(x)`.
-    fn as_char(&self) -> SEXP;
-
-    // endregion
-
-    // region: Attribute access
-
-    /// Get an attribute by symbol.
-    fn get_attr(&self, name: SEXP) -> SEXP;
-
-    /// Get an attribute by symbol, returning `None` for `R_NilValue`.
-    fn get_attr_opt(&self, name: SEXP) -> Option<SEXP> {
-        let attr = self.get_attr(name);
-        if attr.is_nil() { None } else { Some(attr) }
-    }
-
-    /// Set an attribute by symbol.
-    fn set_attr(&self, name: SEXP, val: SEXP);
-
-    /// Get the `names` attribute.
-    fn get_names(&self) -> SEXP;
-
-    /// Set the `names` attribute.
-    fn set_names(&self, names: SEXP);
-
-    /// Get the `class` attribute.
-    fn get_class(&self) -> SEXP;
-
-    /// Set the `class` attribute.
-    fn set_class(&self, class: SEXP);
-
-    /// Get the `dim` attribute.
-    fn get_dim(&self) -> SEXP;
-
-    /// Set the `dim` attribute.
-    fn set_dim(&self, dim: SEXP);
-
-    /// Get the `dimnames` attribute.
-    fn get_dimnames(&self) -> SEXP;
-
-    /// Set the `dimnames` attribute.
-    fn set_dimnames(&self, dimnames: SEXP);
-
-    /// Get the `levels` attribute (factors).
-    fn get_levels(&self) -> SEXP;
-
-    /// Set the `levels` attribute (factors).
-    fn set_levels(&self, levels: SEXP);
-
-    /// Get the `row.names` attribute.
-    fn get_row_names(&self) -> SEXP;
-
-    /// Set the `row.names` attribute.
-    fn set_row_names(&self, row_names: SEXP);
-
-    /// Check if this SEXP inherits from a class.
-    ///
-    /// Equivalent to R's `inherits(x, "class_name")`.
-    fn inherits_class(&self, class: &std::ffi::CStr) -> bool;
-
-    // endregion
-
-    // region: String element access
-
-    /// Get the i-th CHARSXP element from a STRSXP.
-    ///
-    /// Equivalent to R's `STRING_ELT(x, i)`.
-    fn string_elt(&self, i: isize) -> SEXP;
-
-    /// Get the i-th string element as `Option<&str>`.
-    ///
-    /// Returns `None` for `NA_character_`. The returned `&str` borrows from R's
-    /// internal string cache (CHARSXP global pool) and is valid as long as the
-    /// parent STRSXP is protected from GC. The lifetime is tied to `&self` by
-    /// the borrow checker, but the true validity depends on GC protection —
-    /// do not hold the `&str` across allocation boundaries without ensuring
-    /// the SEXP remains protected.
-    fn string_elt_str(&self, i: isize) -> Option<&str>;
-
-    /// Set the i-th CHARSXP element of a STRSXP.
-    ///
-    /// Equivalent to R's `SET_STRING_ELT(x, i, v)`.
-    fn set_string_elt(&self, i: isize, charsxp: SEXP);
-
-    /// Check if this CHARSXP is `NA_character_`.
-    fn is_na_string(&self) -> bool;
-
-    // endregion
-
-    // region: List element access
-
-    /// Get the i-th element of a VECSXP (generic vector / list).
-    ///
-    /// Equivalent to R's `VECTOR_ELT(x, i)`.
-    fn vector_elt(&self, i: isize) -> SEXP;
-
-    /// Set the i-th element of a VECSXP.
-    ///
-    /// Equivalent to R's `SET_VECTOR_ELT(x, i, v)`.
-    fn set_vector_elt(&self, i: isize, val: SEXP);
-
-    // endregion
-
-    // region: Typed single-element access
-
-    /// Get the i-th integer element.
-    fn integer_elt(&self, i: isize) -> i32;
-    /// Get the i-th real element.
-    fn real_elt(&self, i: isize) -> f64;
-    /// Get the i-th logical element (raw i32: 0/1/NA_LOGICAL).
-    fn logical_elt(&self, i: isize) -> i32;
-    /// Get the i-th complex element.
-    fn complex_elt(&self, i: isize) -> Rcomplex;
-    /// Get the i-th raw element.
-    fn raw_elt(&self, i: isize) -> u8;
-
-    /// Set the i-th integer element.
-    fn set_integer_elt(&self, i: isize, v: i32);
-    /// Set the i-th real element.
-    fn set_real_elt(&self, i: isize, v: f64);
-    /// Set the i-th logical element (raw i32: 0/1/NA_LOGICAL).
-    fn set_logical_elt(&self, i: isize, v: i32);
-    /// Set the i-th complex element.
-    fn set_complex_elt(&self, i: isize, v: Rcomplex);
-    /// Set the i-th raw element.
-    fn set_raw_elt(&self, i: isize, v: u8);
-
-    // endregion
-
-    // region: Symbol and CHARSXP access
-
-    /// Get the print name (CHARSXP) of a symbol (SYMSXP).
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be a valid SYMSXP.
-    fn printname(&self) -> SEXP;
-
-    /// Get the C string pointer from a CHARSXP.
-    ///
-    /// The returned pointer is valid as long as the CHARSXP is protected.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be a valid CHARSXP.
-    fn r_char(&self) -> *const ::std::os::raw::c_char;
-
-    /// Get a `&str` from a CHARSXP. Returns `None` for `NA_character_`.
-    fn r_char_str(&self) -> Option<&str>;
-
-    // endregion
-
-    // region: Vector resizing
-
-    /// Resize a vector to a new length, returning a (possibly new) SEXP.
-    ///
-    /// If the new length is shorter, elements are truncated.
-    /// If longer, new elements are filled with NA/NULL.
-    /// Equivalent to R's `Rf_xlengthgets(x, newlen)`.
-    fn resize(&self, newlen: R_xlen_t) -> SEXP;
-
-    // endregion
-
-    // region: Duplication
-
-    /// Deep-copy this SEXP. Equivalent to R's `Rf_duplicate(x)`.
-    fn duplicate(&self) -> SEXP;
-
-    /// Shallow-copy this SEXP. Equivalent to R's `Rf_shallow_duplicate(x)`.
-    fn shallow_duplicate(&self) -> SEXP;
-
-    // endregion
-
-    // region: Unchecked variants (bypass thread-check, for perf-critical paths)
-
-    /// Get the i-th CHARSXP from a STRSXP. No thread check.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn string_elt_unchecked(&self, i: isize) -> SEXP;
-    /// Set the i-th CHARSXP of a STRSXP. No thread check.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn set_string_elt_unchecked(&self, i: isize, charsxp: SEXP);
-    /// Get the i-th element of a VECSXP. No thread check.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn vector_elt_unchecked(&self, i: isize) -> SEXP;
-    /// Set the i-th element of a VECSXP. No thread check.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn set_vector_elt_unchecked(&self, i: isize, val: SEXP);
-    /// Get an attribute by symbol. No thread check.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn get_attr_unchecked(&self, name: SEXP) -> SEXP;
-    /// Set an attribute by symbol. No thread check.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP);
-
-    /// Get C string pointer from a CHARSXP. No thread check.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread. The SEXP must be a valid CHARSXP.
-    unsafe fn r_char_unchecked(&self) -> *const ::std::os::raw::c_char;
-
-    // endregion
-}
-
-impl SexpExt for SEXP {
-    #[inline]
-    fn type_of(&self) -> SEXPTYPE {
-        unsafe { TYPEOF(*self) }
-    }
-
-    #[inline]
-    fn is_null_or_nil(&self) -> bool {
-        self.is_null() || std::ptr::addr_eq(self.0, unsafe { R_NilValue.0 })
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        unsafe { Rf_xlength(*self) as usize }
-    }
-
-    #[inline]
-    fn xlength(&self) -> R_xlen_t {
-        unsafe { Rf_xlength(*self) }
-    }
-
-    #[inline]
-    unsafe fn xlength_unchecked(&self) -> R_xlen_t {
-        unsafe { Rf_xlength_unchecked(*self) }
-    }
-
-    #[inline]
-    unsafe fn len_unchecked(&self) -> usize {
-        unsafe { Rf_xlength_unchecked(*self) as usize }
-    }
-
-    #[inline]
-    unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T] {
-        debug_assert!(
-            self.type_of() == T::SEXP_TYPE,
-            "SEXP type mismatch: expected {:?}, got {:?}",
-            T::SEXP_TYPE,
-            self.type_of()
-        );
-        let len = self.len();
-        if len == 0 {
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(DATAPTR_RO(*self).cast(), len) }
-        }
-    }
-
-    #[inline]
-    unsafe fn as_mut_slice<T: RNativeType>(&self) -> &'static mut [T] {
-        debug_assert!(
-            self.type_of() == T::SEXP_TYPE,
-            "SEXP type mismatch: expected {:?}, got {:?}",
-            T::SEXP_TYPE,
-            self.type_of()
-        );
-        let len = self.len();
-        if len == 0 {
-            &mut []
-        } else {
-            unsafe { std::slice::from_raw_parts_mut(T::dataptr_mut(*self), len) }
-        }
-    }
-
-    #[inline]
-    unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T] {
-        debug_assert!(
-            self.type_of() == T::SEXP_TYPE,
-            "SEXP type mismatch: expected {:?}, got {:?}",
-            T::SEXP_TYPE,
-            self.type_of()
-        );
-        let len = unsafe { self.len_unchecked() };
-        if len == 0 {
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(DATAPTR_RO_unchecked(*self).cast(), len) }
-        }
-    }
-
-    // Type checking methods
-
-    #[inline]
-    fn is_integer(&self) -> bool {
-        self.type_of() == SEXPTYPE::INTSXP
-    }
-
-    #[inline]
-    fn is_real(&self) -> bool {
-        self.type_of() == SEXPTYPE::REALSXP
-    }
-
-    #[inline]
-    fn is_logical(&self) -> bool {
-        self.type_of() == SEXPTYPE::LGLSXP
-    }
-
-    #[inline]
-    fn is_character(&self) -> bool {
-        self.type_of() == SEXPTYPE::STRSXP
-    }
-
-    #[inline]
-    fn is_raw(&self) -> bool {
-        self.type_of() == SEXPTYPE::RAWSXP
-    }
-
-    #[inline]
-    fn is_complex(&self) -> bool {
-        self.type_of() == SEXPTYPE::CPLXSXP
-    }
-
-    #[inline]
-    fn is_list(&self) -> bool {
-        self.type_of() == SEXPTYPE::VECSXP
-    }
-
-    #[inline]
-    fn is_external_ptr(&self) -> bool {
-        self.type_of() == SEXPTYPE::EXTPTRSXP
-    }
-
-    #[inline]
-    fn is_environment(&self) -> bool {
-        self.type_of() == SEXPTYPE::ENVSXP
-    }
-
-    #[inline]
-    fn is_symbol(&self) -> bool {
-        self.type_of() == SEXPTYPE::SYMSXP
-    }
-
-    #[inline]
-    fn is_language(&self) -> bool {
-        self.type_of() == SEXPTYPE::LANGSXP
-    }
-
-    #[inline]
-    fn is_altrep(&self) -> bool {
-        unsafe { ALTREP(*self) != 0 }
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    #[inline]
-    fn is_nil(&self) -> bool {
-        // Pointer comparison, not type dereference — safe on dangling pointers.
-        // R_NilValue is the singleton NILSXP; checking type_of() would crash
-        // on freed SEXPs during cleanup.
-        unsafe { std::ptr::addr_eq(self.0, R_NilValue.0) }
-    }
-
-    #[inline]
-    fn is_factor(&self) -> bool {
-        unsafe { Rf_isFactor(*self) != Rboolean::FALSE }
-    }
-
-    #[inline]
-    fn is_pair_list(&self) -> bool {
-        unsafe { Rf_isList(*self) != Rboolean::FALSE }
-    }
-
-    #[inline]
-    fn is_matrix(&self) -> bool {
-        unsafe { Rf_isMatrix(*self) != Rboolean::FALSE }
-    }
-
-    #[inline]
-    fn is_array(&self) -> bool {
-        unsafe { Rf_isArray(*self) != Rboolean::FALSE }
-    }
-
-    #[inline]
-    fn is_function(&self) -> bool {
-        unsafe { Rf_isFunction(*self) != Rboolean::FALSE }
-    }
-
-    #[inline]
-    fn is_s4(&self) -> bool {
-        unsafe { Rf_isS4(*self) != Rboolean::FALSE }
-    }
-
-    #[inline]
-    fn is_data_frame(&self) -> bool {
-        self.inherits_class(c"data.frame")
-    }
-
-    #[inline]
-    fn is_numeric(&self) -> bool {
-        let typ = self.type_of();
-        (typ == SEXPTYPE::INTSXP || typ == SEXPTYPE::LGLSXP || typ == SEXPTYPE::REALSXP)
-            && !self.is_factor()
-    }
-
-    #[inline]
-    fn is_number(&self) -> bool {
-        self.is_numeric() || self.is_complex()
-    }
-
-    #[inline]
-    fn is_vector_atomic(&self) -> bool {
-        matches!(
-            self.type_of(),
-            SEXPTYPE::LGLSXP
-                | SEXPTYPE::INTSXP
-                | SEXPTYPE::REALSXP
-                | SEXPTYPE::CPLXSXP
-                | SEXPTYPE::STRSXP
-                | SEXPTYPE::RAWSXP
-        )
-    }
-
-    #[inline]
-    fn is_vector_list(&self) -> bool {
-        let typ = self.type_of();
-        typ == SEXPTYPE::VECSXP || typ == SEXPTYPE::EXPRSXP
-    }
-
-    #[inline]
-    fn is_vector(&self) -> bool {
-        self.is_vector_atomic() || self.is_vector_list()
-    }
-
-    #[inline]
-    fn is_object(&self) -> bool {
-        unsafe { Rf_isObject(*self) != Rboolean::FALSE }
-    }
-
-    // region: Coercion and scalar extraction
-
-    #[inline]
-    fn coerce(&self, target: SEXPTYPE) -> SEXP {
-        unsafe { Rf_coerceVector(*self, target) }
-    }
-
-    #[inline]
-    fn as_logical(&self) -> Option<bool> {
-        let v = unsafe { Rf_asLogical(*self) };
-        if v == crate::altrep_traits::NA_LOGICAL {
-            None
-        } else {
-            Some(v != 0)
-        }
-    }
-
-    #[inline]
-    fn as_integer(&self) -> Option<i32> {
-        let v = unsafe { Rf_asInteger(*self) };
-        if v == crate::altrep_traits::NA_INTEGER {
-            None
-        } else {
-            Some(v)
-        }
-    }
-
-    #[inline]
-    fn as_real(&self) -> Option<f64> {
-        let v = unsafe { Rf_asReal(*self) };
-        if v.to_bits() == crate::altrep_traits::NA_REAL.to_bits() {
-            None
-        } else {
-            Some(v)
-        }
-    }
-
-    #[inline]
-    fn as_char(&self) -> SEXP {
-        unsafe { Rf_asChar(*self) }
-    }
-
-    // endregion
-
-    // region: Attribute access
-
-    #[inline]
-    fn get_attr(&self, name: SEXP) -> SEXP {
-        unsafe { Rf_getAttrib(*self, name) }
-    }
-
-    #[inline]
-    fn set_attr(&self, name: SEXP, val: SEXP) {
-        unsafe {
-            Rf_setAttrib(*self, name, val);
-        }
-    }
-
-    #[inline]
-    fn get_names(&self) -> SEXP {
-        unsafe { Rf_getAttrib(*self, R_NamesSymbol) }
-    }
-
-    #[inline]
-    fn set_names(&self, names: SEXP) {
-        unsafe {
-            Rf_namesgets(*self, names);
-        }
-    }
-
-    #[inline]
-    fn get_class(&self) -> SEXP {
-        unsafe { Rf_getAttrib(*self, R_ClassSymbol) }
-    }
-
-    #[inline]
-    fn set_class(&self, class: SEXP) {
-        unsafe {
-            Rf_classgets(*self, class);
-        }
-    }
-
-    #[inline]
-    fn get_dim(&self) -> SEXP {
-        unsafe { Rf_getAttrib(*self, R_DimSymbol) }
-    }
-
-    #[inline]
-    fn set_dim(&self, dim: SEXP) {
-        unsafe {
-            Rf_dimgets(*self, dim);
-        }
-    }
-
-    #[inline]
-    fn get_dimnames(&self) -> SEXP {
-        unsafe { Rf_getAttrib(*self, R_DimNamesSymbol) }
-    }
-
-    #[inline]
-    fn set_dimnames(&self, dimnames: SEXP) {
-        unsafe {
-            Rf_dimnamesgets(*self, dimnames);
-        }
-    }
-
-    #[inline]
-    fn get_levels(&self) -> SEXP {
-        unsafe { Rf_getAttrib(*self, R_LevelsSymbol) }
-    }
-
-    #[inline]
-    fn set_levels(&self, levels: SEXP) {
-        unsafe {
-            Rf_setAttrib(*self, R_LevelsSymbol, levels);
-        }
-    }
-
-    #[inline]
-    fn get_row_names(&self) -> SEXP {
-        unsafe { Rf_getAttrib(*self, R_RowNamesSymbol) }
-    }
-
-    #[inline]
-    fn set_row_names(&self, row_names: SEXP) {
-        unsafe {
-            Rf_setAttrib(*self, R_RowNamesSymbol, row_names);
-        }
-    }
-
-    #[inline]
-    fn inherits_class(&self, class: &std::ffi::CStr) -> bool {
-        unsafe { Rf_inherits(*self, class.as_ptr()) != Rboolean::FALSE }
-    }
-
-    // endregion
-
-    // region: String element access
-
-    #[inline]
-    fn string_elt(&self, i: isize) -> SEXP {
-        unsafe { STRING_ELT(*self, i) }
-    }
-
-    #[inline]
-    fn string_elt_str(&self, i: isize) -> Option<&str> {
-        unsafe {
-            let charsxp = STRING_ELT(*self, i);
-            if std::ptr::addr_eq(charsxp.0, R_NaString.0) {
-                return None;
-            }
-            let p = R_CHAR(charsxp);
-            Some(std::ffi::CStr::from_ptr(p).to_str().unwrap_or(""))
-        }
-    }
-
-    #[inline]
-    fn set_string_elt(&self, i: isize, charsxp: SEXP) {
-        unsafe { SET_STRING_ELT(*self, i, charsxp) }
-    }
-
-    #[inline]
-    fn is_na_string(&self) -> bool {
-        unsafe { std::ptr::addr_eq(self.0, R_NaString.0) }
-    }
-
-    // endregion
-
-    // region: List element access
-
-    #[inline]
-    fn vector_elt(&self, i: isize) -> SEXP {
-        unsafe { VECTOR_ELT(*self, i) }
-    }
-
-    #[inline]
-    fn set_vector_elt(&self, i: isize, val: SEXP) {
-        unsafe {
-            SET_VECTOR_ELT(*self, i, val);
-        }
-    }
-
-    // endregion
-
-    // region: Typed single-element access
-
-    #[inline]
-    fn integer_elt(&self, i: isize) -> i32 {
-        unsafe { INTEGER_ELT(*self, i) }
-    }
-    #[inline]
-    fn real_elt(&self, i: isize) -> f64 {
-        unsafe { REAL_ELT(*self, i) }
-    }
-    #[inline]
-    fn logical_elt(&self, i: isize) -> i32 {
-        unsafe { LOGICAL_ELT(*self, i) }
-    }
-    #[inline]
-    fn complex_elt(&self, i: isize) -> Rcomplex {
-        unsafe { COMPLEX_ELT(*self, i) }
-    }
-    #[inline]
-    fn raw_elt(&self, i: isize) -> u8 {
-        unsafe { RAW_ELT(*self, i) }
-    }
-    #[inline]
-    fn set_integer_elt(&self, i: isize, v: i32) {
-        unsafe { SET_INTEGER_ELT(*self, i, v) }
-    }
-    #[inline]
-    fn set_real_elt(&self, i: isize, v: f64) {
-        unsafe { SET_REAL_ELT(*self, i, v) }
-    }
-    #[inline]
-    fn set_logical_elt(&self, i: isize, v: i32) {
-        unsafe { SET_LOGICAL_ELT(*self, i, v) }
-    }
-    #[inline]
-    fn set_complex_elt(&self, i: isize, v: Rcomplex) {
-        unsafe { SET_COMPLEX_ELT(*self, i, v) }
-    }
-    #[inline]
-    fn set_raw_elt(&self, i: isize, v: u8) {
-        unsafe { SET_RAW_ELT(*self, i, v) }
-    }
-
-    // endregion
-
-    // region: Symbol and CHARSXP access
-
-    #[inline]
-    fn printname(&self) -> SEXP {
-        unsafe { PRINTNAME(*self) }
-    }
-
-    #[inline]
-    fn r_char(&self) -> *const ::std::os::raw::c_char {
-        unsafe { R_CHAR(*self) }
-    }
-
-    #[inline]
-    fn r_char_str(&self) -> Option<&str> {
-        if self.is_na_string() {
-            return None;
-        }
-        let p = unsafe { R_CHAR(*self) };
-        Some(
-            unsafe { std::ffi::CStr::from_ptr(p) }
-                .to_str()
-                .unwrap_or(""),
-        )
-    }
-
-    // endregion
-
-    // region: Vector resizing
-
-    #[inline]
-    fn resize(&self, newlen: R_xlen_t) -> SEXP {
-        unsafe { Rf_xlengthgets(*self, newlen) }
-    }
-
-    // endregion
-
-    // region: Duplication
-
-    #[inline]
-    fn duplicate(&self) -> SEXP {
-        unsafe { Rf_duplicate(*self) }
-    }
-
-    #[inline]
-    fn shallow_duplicate(&self) -> SEXP {
-        unsafe { Rf_shallow_duplicate(*self) }
-    }
-
-    // endregion
-
-    // region: Unchecked variants
-
-    #[inline]
-    unsafe fn string_elt_unchecked(&self, i: isize) -> SEXP {
-        unsafe { STRING_ELT_unchecked(*self, i) }
-    }
-
-    #[inline]
-    unsafe fn set_string_elt_unchecked(&self, i: isize, charsxp: SEXP) {
-        unsafe { SET_STRING_ELT_unchecked(*self, i, charsxp) }
-    }
-
-    #[inline]
-    unsafe fn vector_elt_unchecked(&self, i: isize) -> SEXP {
-        unsafe { VECTOR_ELT_unchecked(*self, i) }
-    }
-
-    #[inline]
-    unsafe fn set_vector_elt_unchecked(&self, i: isize, val: SEXP) {
-        unsafe {
-            SET_VECTOR_ELT_unchecked(*self, i, val);
-        }
-    }
-
-    #[inline]
-    unsafe fn get_attr_unchecked(&self, name: SEXP) -> SEXP {
-        unsafe { Rf_getAttrib_unchecked(*self, name) }
-    }
-
-    #[inline]
-    unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP) {
-        unsafe {
-            Rf_setAttrib_unchecked(*self, name, val);
-        }
-    }
-
-    #[inline]
-    unsafe fn r_char_unchecked(&self) -> *const ::std::os::raw::c_char {
-        unsafe { R_CHAR_unchecked(*self) }
-    }
-
-    // endregion
-}
-
-/// Extension trait for SEXP providing pairlist (cons cell) operations.
-///
-/// Pairlist nodes have three slots: CAR (value), CDR (next), and TAG (name).
-/// This trait encapsulates the raw C functions behind method calls.
-#[allow(dead_code)]
-pub(crate) trait PairListExt {
-    /// Create a cons cell with this SEXP as CAR and `cdr` as CDR.
-    fn cons(self, cdr: SEXP) -> SEXP;
-
-    /// Create a language cons cell with this SEXP as CAR and `cdr` as CDR.
-    fn lcons(self, cdr: SEXP) -> SEXP;
-
-    /// Get the CAR (head/value) of this pairlist node.
-    fn car(&self) -> SEXP;
-
-    /// Get the CDR (tail/rest) of this pairlist node.
-    fn cdr(&self) -> SEXP;
-
-    /// Get the TAG (name symbol) of this pairlist node.
-    fn tag(&self) -> SEXP;
-
-    /// Set the TAG (name symbol) of this pairlist node.
-    fn set_tag(&self, tag: SEXP);
-
-    /// Set the CAR (value) of this pairlist node.
-    fn set_car(&self, value: SEXP) -> SEXP;
-
-    /// Set the CDR (tail) of this pairlist node.
-    fn set_cdr(&self, tail: SEXP) -> SEXP;
-
-    /// Create a cons cell (no thread check).
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn cons_unchecked(self, cdr: SEXP) -> SEXP;
-
-    /// Get the CAR (no thread check).
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn car_unchecked(&self) -> SEXP;
-
-    /// Get the CDR (no thread check).
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn cdr_unchecked(&self) -> SEXP;
-
-    /// Set the TAG (no thread check).
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn set_tag_unchecked(&self, tag: SEXP);
-
-    /// Set the CAR (no thread check).
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn set_car_unchecked(&self, value: SEXP) -> SEXP;
-
-    /// Set the CDR (no thread check).
-    /// # Safety
-    /// Must be called from R's main thread.
-    unsafe fn set_cdr_unchecked(&self, tail: SEXP) -> SEXP;
-}
-
-impl PairListExt for SEXP {
-    #[inline]
-    fn cons(self, cdr: SEXP) -> SEXP {
-        unsafe { Rf_cons(self, cdr) }
-    }
-
-    #[inline]
-    fn lcons(self, cdr: SEXP) -> SEXP {
-        unsafe { Rf_lcons(self, cdr) }
-    }
-
-    #[inline]
-    fn car(&self) -> SEXP {
-        unsafe { CAR(*self) }
-    }
-
-    #[inline]
-    fn cdr(&self) -> SEXP {
-        unsafe { CDR(*self) }
-    }
-
-    #[inline]
-    fn tag(&self) -> SEXP {
-        unsafe { TAG(*self) }
-    }
-
-    #[inline]
-    fn set_tag(&self, tag: SEXP) {
-        unsafe { SET_TAG(*self, tag) }
-    }
-
-    #[inline]
-    fn set_car(&self, value: SEXP) -> SEXP {
-        unsafe { SETCAR(*self, value) }
-    }
-
-    #[inline]
-    fn set_cdr(&self, tail: SEXP) -> SEXP {
-        unsafe { SETCDR(*self, tail) }
-    }
-
-    #[inline]
-    unsafe fn cons_unchecked(self, cdr: SEXP) -> SEXP {
-        unsafe { Rf_cons_unchecked(self, cdr) }
-    }
-
-    #[inline]
-    unsafe fn car_unchecked(&self) -> SEXP {
-        unsafe { CAR_unchecked(*self) }
-    }
-
-    #[inline]
-    unsafe fn cdr_unchecked(&self) -> SEXP {
-        unsafe { CDR_unchecked(*self) }
-    }
-
-    #[inline]
-    unsafe fn set_tag_unchecked(&self, tag: SEXP) {
-        unsafe { SET_TAG_unchecked(*self, tag) }
-    }
-
-    #[inline]
-    unsafe fn set_car_unchecked(&self, value: SEXP) -> SEXP {
-        unsafe { SETCAR_unchecked(*self, value) }
-    }
-
-    #[inline]
-    unsafe fn set_cdr_unchecked(&self, tail: SEXP) -> SEXP {
-        unsafe { SETCDR_unchecked(*self, tail) }
-    }
-}
-
-/// Marker trait for types that correspond to R's native vector element types.
-///
-/// This enables blanket implementations for `TryFromSexp` and safe conversions.
-pub trait RNativeType: Sized + Copy + 'static {
-    /// The SEXPTYPE for vectors containing this element type.
-    const SEXP_TYPE: SEXPTYPE;
-
-    /// Get mutable pointer to vector data.
-    ///
-    /// For empty vectors (length 0), returns an aligned dangling pointer rather than
-    /// R's internal 0x1 sentinel, which isn't properly aligned for most types.
-    /// This allows safe creation of zero-length slices with `std::slice::from_raw_parts_mut`.
-    ///
-    /// # Safety
-    ///
-    /// - `sexp` must be a valid, non-null SEXP of the corresponding vector type.
-    /// - For ALTREP vectors, this may trigger materialization.
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self;
-
-    /// Read the i-th element via the appropriate `*_ELT` accessor.
-    ///
-    /// Goes through R's ALTREP dispatch for ALTREP vectors.
-    fn elt(sexp: SEXP, i: isize) -> Self;
-}
-
-/// R's logical element type (the contents of a `LGLSXP` vector).
-///
-/// In R, logical vectors are stored as `int` with possible values:
-/// - `0` for FALSE
-/// - `1` for TRUE
-/// - `NA_LOGICAL` (typically `INT_MIN`) for NA
-///
-/// **Important:** R may also contain other non-zero values in logical vectors
-/// (e.g., from low-level code). Those should be interpreted as TRUE.
-///
-/// This type is `repr(transparent)` over `i32` so *any* raw value is valid,
-/// avoiding UB when viewing `LGLSXP` data as a slice.
-#[repr(transparent)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub struct RLogical(i32);
-
-impl RLogical {
-    /// FALSE logical scalar.
-    pub const FALSE: Self = Self(0);
-    /// TRUE logical scalar.
-    pub const TRUE: Self = Self(1);
-    /// Missing logical scalar (`NA_LOGICAL`).
-    pub const NA: Self = Self(i32::MIN);
-
-    /// Construct directly from raw R logical storage.
-    #[inline]
-    pub const fn from_i32(raw: i32) -> Self {
-        Self(raw)
-    }
-
-    /// Get raw R logical storage value.
-    #[inline]
-    pub const fn to_i32(self) -> i32 {
-        self.0
-    }
-
-    /// Returns whether the value is `NA_LOGICAL`.
-    #[inline]
-    pub const fn is_na(self) -> bool {
-        self.0 == i32::MIN
-    }
-
-    /// Convert to Rust `Option<bool>` (`None` for `NA`).
-    #[inline]
-    pub const fn to_option_bool(self) -> Option<bool> {
-        match self.0 {
-            0 => Some(false),
-            i32::MIN => None,
-            _ => Some(true),
-        }
-    }
-}
-
-impl From<bool> for RLogical {
-    #[inline]
-    fn from(value: bool) -> Self {
-        if value { Self::TRUE } else { Self::FALSE }
-    }
-}
-
-impl RNativeType for i32 {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::INTSXP;
-
-    #[inline]
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe {
-            if Rf_xlength(sexp) == 0 {
-                std::ptr::NonNull::<Self>::dangling().as_ptr()
-            } else {
-                INTEGER(sexp)
-            }
-        }
-    }
-
-    #[inline]
-    fn elt(sexp: SEXP, i: isize) -> Self {
-        unsafe { INTEGER_ELT(sexp, i) }
-    }
-}
-
-impl RNativeType for f64 {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
-
-    #[inline]
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe {
-            if Rf_xlength(sexp) == 0 {
-                std::ptr::NonNull::<Self>::dangling().as_ptr()
-            } else {
-                REAL(sexp)
-            }
-        }
-    }
-
-    #[inline]
-    fn elt(sexp: SEXP, i: isize) -> Self {
-        unsafe { REAL_ELT(sexp, i) }
-    }
-}
-
-impl RNativeType for u8 {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::RAWSXP;
-
-    #[inline]
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe {
-            if Rf_xlength(sexp) == 0 {
-                std::ptr::NonNull::<Self>::dangling().as_ptr()
-            } else {
-                RAW(sexp)
-            }
-        }
-    }
-
-    #[inline]
-    fn elt(sexp: SEXP, i: isize) -> Self {
-        unsafe { RAW_ELT(sexp, i) }
-    }
-}
-
-impl RNativeType for RLogical {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::LGLSXP;
-
-    #[inline]
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        // LOGICAL returns *mut c_int, RLogical is repr(transparent) over i32
-        unsafe {
-            if Rf_xlength(sexp) == 0 {
-                std::ptr::NonNull::<Self>::dangling().as_ptr()
-            } else {
-                LOGICAL(sexp).cast()
-            }
-        }
-    }
-
-    #[inline]
-    fn elt(sexp: SEXP, i: isize) -> Self {
-        RLogical(unsafe { LOGICAL_ELT(sexp, i) })
-    }
-}
-
-impl RNativeType for Rcomplex {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::CPLXSXP;
-
-    #[inline]
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe {
-            if Rf_xlength(sexp) == 0 {
-                std::ptr::NonNull::<Self>::dangling().as_ptr()
-            } else {
-                COMPLEX(sexp)
-            }
-        }
-    }
-
-    #[inline]
-    fn elt(sexp: SEXP, i: isize) -> Self {
-        unsafe { COMPLEX_ELT(sexp, i) }
-    }
-}
-
-#[repr(i32)]
-#[non_exhaustive]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-/// Binary boolean used by many R C APIs.
-pub enum Rboolean {
-    /// False.
-    FALSE = 0,
-    /// True.
-    TRUE = 1,
-}
-
-impl From<bool> for Rboolean {
-    fn from(value: bool) -> Self {
-        match value {
-            true => Rboolean::TRUE,
-            false => Rboolean::FALSE,
-        }
-    }
-}
-
-impl From<Rboolean> for bool {
-    fn from(value: Rboolean) -> Self {
-        match value {
-            Rboolean::FALSE => false,
-            Rboolean::TRUE => true,
-        }
-    }
-}
-
-#[allow(non_camel_case_types)]
-/// C finalizer callback signature used by external pointers.
-pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(s: SEXP)>;
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[allow(non_camel_case_types)]
-/// Character encoding tag used by CHARSXP constructors.
-pub enum cetype_t {
-    /// Native locale encoding.
-    CE_NATIVE = 0,
-    /// UTF-8 encoding.
-    CE_UTF8 = 1,
-    /// Latin-1 encoding.
-    CE_LATIN1 = 2,
-    /// Raw bytes encoding.
-    CE_BYTES = 3,
-    /// Symbol encoding marker.
-    CE_SYMBOL = 5,
-    /// Any encoding accepted.
-    CE_ANY = 99,
-}
-pub use cetype_t::CE_UTF8;
+// Re-export the core type vocabulary so `sys::Foo` paths used inside this
+// crate and in macro-generated code keep resolving even though the types
+// live in their own modules. These are the same symbols as the crate-root
+// re-exports.
+pub use crate::sexp::{SEXP, SEXPREC};
+pub use crate::sexp_ext::SexpExt;
+pub use crate::sexp_types::{
+    CE_UTF8, R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE,
+    cetype_t,
+};
+// `PairListExt` is `pub(crate)`; re-export with the same visibility so
+// `crate::sys::PairListExt` resolves for in-crate callers but isn't part of
+// the public API surface.
+pub(crate) use crate::sexp_ext::PairListExt;
 
 // region: Connections types (gated behind `connections` feature)
 // WARNING: R's connection API is explicitly marked as UNSTABLE.
@@ -2145,18 +260,18 @@ unsafe extern "C-unwind" {
 
     #[doc(alias = "NA_STRING")]
     /// Missing string singleton — encapsulated by SEXP::na_string()
-    static R_NaString: SEXP;
+    pub static R_NaString: SEXP;
     /// Empty string CHARSXP — encapsulated by SEXP::blank_string()
-    static R_BlankString: SEXP;
+    pub static R_BlankString: SEXP;
     /// Symbol for `names` attribute.
     // Attribute symbols — encapsulated by SexpExt methods and SEXP::*_symbol()
-    static R_NamesSymbol: SEXP;
-    static R_DimSymbol: SEXP;
-    static R_DimNamesSymbol: SEXP;
-    static R_ClassSymbol: SEXP;
-    static R_RowNamesSymbol: SEXP;
-    static R_LevelsSymbol: SEXP;
-    static R_TspSymbol: SEXP;
+    pub static R_NamesSymbol: SEXP;
+    pub static R_DimSymbol: SEXP;
+    pub static R_DimNamesSymbol: SEXP;
+    pub static R_ClassSymbol: SEXP;
+    pub static R_RowNamesSymbol: SEXP;
+    pub static R_LevelsSymbol: SEXP;
+    pub static R_TspSymbol: SEXP;
 
     /// Global environment (`.GlobalEnv`).
     pub static R_GlobalEnv: SEXP;
@@ -2165,7 +280,7 @@ unsafe extern "C-unwind" {
     /// Empty root environment.
     pub static R_EmptyEnv: SEXP;
     /// Base package namespace — encapsulated by SEXP::base_namespace()
-    static R_BaseNamespace: SEXP;
+    pub static R_BaseNamespace: SEXP;
 
     /// The "missing argument" sentinel value.
     ///
@@ -2176,7 +291,7 @@ unsafe extern "C-unwind" {
     ///
     /// In R: `f <- function(x) missing(x); f()` returns `TRUE`.
     /// Encapsulated by SEXP::missing_arg()
-    static R_MissingArg: SEXP;
+    pub static R_MissingArg: SEXP;
 
     // Issue #112 cat. 10: kept pub(crate) — single-caller utilities; wrapping adds no value
     // Rinterface.h
@@ -2185,23 +300,20 @@ unsafe extern "C-unwind" {
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.
     #[cfg(feature = "nonapi")]
-    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API TRUE singleton.
-    static R_TrueValue: SEXP;
+    pub static R_TrueValue: SEXP;
     #[cfg(feature = "nonapi")]
-    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API FALSE singleton.
-    static R_FalseValue: SEXP;
+    pub static R_FalseValue: SEXP;
     #[cfg(feature = "nonapi")]
-    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API NA logical singleton.
-    static R_LogicalNAValue: SEXP;
+    pub static R_LogicalNAValue: SEXP;
 
     // Rinternals.h
     #[doc(alias = "mkChar")]
-    fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
+    pub fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
     #[doc(alias = "mkCharLen")]
-    fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
+    pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     #[doc(alias = "mkCharLenCE")]
     pub fn Rf_mkCharLenCE(
         x: *const ::std::os::raw::c_char,
@@ -2210,17 +322,17 @@ unsafe extern "C-unwind" {
     ) -> SEXP;
     #[doc(alias = "xlength")]
     #[doc(alias = "XLENGTH")]
-    fn Rf_xlength(x: SEXP) -> R_xlen_t;
+    pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
     #[doc(alias = "translateCharUTF8")]
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
     #[doc(alias = "getCharCE")]
-    fn Rf_getCharCE(x: SEXP) -> cetype_t;
+    pub fn Rf_getCharCE(x: SEXP) -> cetype_t;
     #[doc(alias = "charIsASCII")]
-    fn Rf_charIsASCII(x: SEXP) -> Rboolean;
+    pub fn Rf_charIsASCII(x: SEXP) -> Rboolean;
     #[doc(alias = "charIsUTF8")]
-    fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
+    pub fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
     #[doc(alias = "charIsLatin1")]
-    fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
+    pub fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
     // Issue #112 cat. 3: kept pub(crate) — only called from unwind_protect.rs; users go through with_r_unwind_protect
     pub(crate) fn R_MakeUnwindCont() -> SEXP;
@@ -2263,11 +375,11 @@ unsafe extern "C-unwind" {
     pub(crate) fn R_SetExternalPtrTag(s: SEXP, tag: SEXP);
     pub(crate) fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
     #[doc = " Added in R 3.4.0"]
-    fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
-    fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
-    fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
+    pub fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
+    pub fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
+    pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
     pub(crate) fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
-    fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
+    pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
     pub(crate) fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
 
     // R_ext/Rdynload.h - C-callable interface
@@ -2378,9 +490,9 @@ unsafe extern "C-unwind" {
         ncol: ::std::os::raw::c_int,
     ) -> SEXP;
     #[doc(alias = "allocArray")]
-    fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
+    pub fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
     #[doc(alias = "alloc3DArray")]
-    fn Rf_alloc3DArray(
+    pub fn Rf_alloc3DArray(
         sexptype: SEXPTYPE,
         nrow: ::std::os::raw::c_int,
         ncol: ::std::os::raw::c_int,
@@ -2392,33 +504,33 @@ unsafe extern "C-unwind" {
     #[doc(alias = "allocList")]
     pub(crate) fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocLang")]
-    fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocS4Object")]
-    fn Rf_allocS4Object() -> SEXP;
+    pub fn Rf_allocS4Object() -> SEXP;
     #[doc(alias = "allocSExp")]
-    fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
+    pub fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
 
     // Pairlist construction — encapsulated by PairListExt trait
-    fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
-    fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
+    pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
+    pub fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
 
     // Attribute manipulation — encapsulated by SexpExt methods
     #[doc(alias = "setAttrib")]
-    fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
+    pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h — scalar constructors; encapsulated by SEXP::scalar_*() / scalar_*_unchecked()
     #[doc(alias = "ScalarComplex")]
-    fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
+    pub fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
     #[doc(alias = "ScalarInteger")]
-    fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "ScalarLogical")]
-    fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "ScalarRaw")]
-    fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
+    pub fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
     #[doc(alias = "ScalarReal")]
-    fn Rf_ScalarReal(x: f64) -> SEXP;
+    pub fn Rf_ScalarReal(x: f64) -> SEXP;
     #[doc(alias = "ScalarString")]
-    fn Rf_ScalarString(x: SEXP) -> SEXP;
+    pub fn Rf_ScalarString(x: SEXP) -> SEXP;
 
     // Rinternals.h
     /// Non-API function - use DATAPTR_RO or DATAPTR_OR_NULL instead.
@@ -2426,7 +538,7 @@ unsafe extern "C-unwind" {
     #[cfg(feature = "nonapi")]
     pub(crate) fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
     pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
-    fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
+    pub fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
 
     // region: Cons Cell (Pairlist) Accessors
     //
@@ -2454,44 +566,44 @@ unsafe extern "C-unwind" {
 
     // Pairlist accessors — basic ops encapsulated by PairListExt trait,
     // compound accessors (CAAR, CADR, etc.) module-private since no callers exist.
-    fn CAR(e: SEXP) -> SEXP;
-    fn CDR(e: SEXP) -> SEXP;
-    fn CAAR(e: SEXP) -> SEXP;
-    fn CDAR(e: SEXP) -> SEXP;
-    fn CADR(e: SEXP) -> SEXP;
-    fn CDDR(e: SEXP) -> SEXP;
-    fn CADDR(e: SEXP) -> SEXP;
-    fn CADDDR(e: SEXP) -> SEXP;
-    fn CAD4R(e: SEXP) -> SEXP;
-    fn TAG(e: SEXP) -> SEXP;
-    fn SET_TAG(x: SEXP, y: SEXP);
-    fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
-    fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
-    fn SETCADR(x: SEXP, y: SEXP) -> SEXP;
-    fn SETCADDR(x: SEXP, y: SEXP) -> SEXP;
-    fn SETCADDDR(x: SEXP, y: SEXP) -> SEXP;
-    fn SETCAD4R(e: SEXP, y: SEXP) -> SEXP;
-    fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
-    fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
-    fn REAL_OR_NULL(x: SEXP) -> *const f64;
-    fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
-    fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
+    pub fn CAR(e: SEXP) -> SEXP;
+    pub fn CDR(e: SEXP) -> SEXP;
+    pub fn CAAR(e: SEXP) -> SEXP;
+    pub fn CDAR(e: SEXP) -> SEXP;
+    pub fn CADR(e: SEXP) -> SEXP;
+    pub fn CDDR(e: SEXP) -> SEXP;
+    pub fn CADDR(e: SEXP) -> SEXP;
+    pub fn CADDDR(e: SEXP) -> SEXP;
+    pub fn CAD4R(e: SEXP) -> SEXP;
+    pub fn TAG(e: SEXP) -> SEXP;
+    pub fn SET_TAG(x: SEXP, y: SEXP);
+    pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
+    pub fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
+    pub fn SETCADR(x: SEXP, y: SEXP) -> SEXP;
+    pub fn SETCADDR(x: SEXP, y: SEXP) -> SEXP;
+    pub fn SETCADDDR(x: SEXP, y: SEXP) -> SEXP;
+    pub fn SETCAD4R(e: SEXP, y: SEXP) -> SEXP;
+    pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
+    pub fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
+    pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
 
     // Element-wise accessors (ALTREP-aware) — encapsulated by SexpExt methods
-    fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
-    fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
-    fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
-    fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
-    fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
-    fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
-    fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
-    fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
+    pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
+    pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
+    pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
+    pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
+    pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
+    pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
+    pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
+    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
 
     // endregion
 
@@ -2501,46 +613,46 @@ unsafe extern "C-unwind" {
     ///
     /// For long vectors, use `Rf_xlength()` instead.
     /// Returns 0 for R_NilValue.
-    fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Get the length of a SEXP as `R_xlen_t` (supports long vectors).
     ///
     /// ALTREP-aware: will call ALTREP Length method if needed.
-    fn XLENGTH(x: SEXP) -> R_xlen_t;
+    pub fn XLENGTH(x: SEXP) -> R_xlen_t;
 
     /// Get the true length (allocated capacity) of a vector.
     ///
     /// May be larger than LENGTH for vectors with reserved space.
     /// ALTREP-aware.
-    fn TRUELENGTH(x: SEXP) -> R_xlen_t;
+    pub fn TRUELENGTH(x: SEXP) -> R_xlen_t;
 
     /// Get the attributes pairlist of a SEXP.
     ///
     /// Returns R_NilValue if no attributes.
-    fn ATTRIB(x: SEXP) -> SEXP;
+    pub fn ATTRIB(x: SEXP) -> SEXP;
 
     /// Set the attributes pairlist of a SEXP.
     ///
     /// # Safety
     ///
     /// `v` must be a pairlist or R_NilValue
-    fn SET_ATTRIB(x: SEXP, v: SEXP);
+    pub fn SET_ATTRIB(x: SEXP, v: SEXP);
 
     /// Check if SEXP has the "object" bit set (has a class).
     ///
     /// Returns non-zero if object has a class attribute.
-    fn OBJECT(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn OBJECT(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Set the "object" bit.
-    fn SET_OBJECT(x: SEXP, v: ::std::os::raw::c_int);
+    pub fn SET_OBJECT(x: SEXP, v: ::std::os::raw::c_int);
 
     /// Get the LEVELS field (for factors).
-    fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Set the LEVELS field (for factors).
     ///
     /// Returns the value that was set.
-    fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
+    pub fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 
     // endregion
 
@@ -2548,15 +660,15 @@ unsafe extern "C-unwind" {
 
     // Issue #112 cat. 6: pub(crate) — no AltrepSexpExt method yet; available for future callers
     pub(crate) fn ALTREP_CLASS(x: SEXP) -> SEXP;
-    fn R_altrep_data1(x: SEXP) -> SEXP;
-    fn R_altrep_data2(x: SEXP) -> SEXP;
-    fn R_set_altrep_data1(x: SEXP, v: SEXP);
-    fn R_set_altrep_data2(x: SEXP, v: SEXP);
+    pub fn R_altrep_data1(x: SEXP) -> SEXP;
+    pub fn R_altrep_data2(x: SEXP) -> SEXP;
+    pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
+    pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
 
     /// Check if a SEXP is an ALTREP object (returns non-zero if true).
     ///
     /// Use `SexpExt::is_altrep()` instead of calling this directly.
-    fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // endregion
 
@@ -2608,7 +720,7 @@ unsafe extern "C-unwind" {
 
     // region: Type checking — encapsulated by SexpExt::type_of()
 
-    fn TYPEOF(x: SEXP) -> SEXPTYPE;
+    pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
 
     // endregion
 
@@ -2616,10 +728,10 @@ unsafe extern "C-unwind" {
     #[doc(alias = "install")]
     pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
     /// Get the print name (CHARSXP) of a symbol (SYMSXP)
-    fn PRINTNAME(x: SEXP) -> SEXP;
+    pub fn PRINTNAME(x: SEXP) -> SEXP;
     /// Get the C string pointer from a CHARSXP — encapsulated by SexpExt::r_char()
     #[doc(alias = "CHAR")]
-    fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
+    pub fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // Attribute access
     // Attribute accessors — encapsulated by SexpExt methods
@@ -2627,19 +739,19 @@ unsafe extern "C-unwind" {
     ///
     /// Returns `R_NilValue` if the attribute is not set.
     #[doc(alias = "getAttrib")]
-    fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
+    pub fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
     /// Set the `names` attribute; returns the updated object.
     #[doc(alias = "namesgets")]
-    fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
+    pub fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
     /// Set the `dim` attribute; returns the updated object.
     #[doc(alias = "dimgets")]
-    fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
+    pub fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
 
     // Duplication
     #[doc(alias = "duplicate")]
-    fn Rf_duplicate(s: SEXP) -> SEXP;
+    pub fn Rf_duplicate(s: SEXP) -> SEXP;
     #[doc(alias = "shallow_duplicate")]
-    fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
+    pub fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
 
     // Object comparison
     /// Check if two R objects are identical (deep semantic equality).
@@ -2683,79 +795,79 @@ pub const IDENT_EXTPTR_AS_REF: ::std::os::raw::c_int = 64;
 unsafe extern "C-unwind" {
     // Type coercion — encapsulated by SexpExt methods
     #[doc(alias = "asLogical")]
-    fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "asInteger")]
-    fn Rf_asInteger(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn Rf_asInteger(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "asReal")]
-    fn Rf_asReal(x: SEXP) -> f64;
+    pub fn Rf_asReal(x: SEXP) -> f64;
     #[doc(alias = "asChar")]
-    fn Rf_asChar(x: SEXP) -> SEXP;
+    pub fn Rf_asChar(x: SEXP) -> SEXP;
     #[doc(alias = "coerceVector")]
-    fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
+    pub fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
 
     // Matrix utilities — no callers outside ffi.rs
     #[doc(alias = "nrows")]
-    fn Rf_nrows(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn Rf_nrows(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "ncols")]
-    fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
+    pub fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
 
     // Inheritance checking — encapsulated by SexpExt::inherits_class()
     #[doc(alias = "inherits")]
-    fn Rf_inherits(x: SEXP, klass: *const ::std::os::raw::c_char) -> Rboolean;
+    pub fn Rf_inherits(x: SEXP, klass: *const ::std::os::raw::c_char) -> Rboolean;
 
     // Type checking predicates — encapsulated by SexpExt type-check methods
     #[doc(alias = "isNull")]
-    fn Rf_isNull(s: SEXP) -> Rboolean;
+    pub fn Rf_isNull(s: SEXP) -> Rboolean;
     #[doc(alias = "isSymbol")]
-    fn Rf_isSymbol(s: SEXP) -> Rboolean;
+    pub fn Rf_isSymbol(s: SEXP) -> Rboolean;
     #[doc(alias = "isLogical")]
-    fn Rf_isLogical(s: SEXP) -> Rboolean;
+    pub fn Rf_isLogical(s: SEXP) -> Rboolean;
     #[doc(alias = "isReal")]
-    fn Rf_isReal(s: SEXP) -> Rboolean;
+    pub fn Rf_isReal(s: SEXP) -> Rboolean;
     #[doc(alias = "isComplex")]
-    fn Rf_isComplex(s: SEXP) -> Rboolean;
+    pub fn Rf_isComplex(s: SEXP) -> Rboolean;
     #[doc(alias = "isExpression")]
-    fn Rf_isExpression(s: SEXP) -> Rboolean;
+    pub fn Rf_isExpression(s: SEXP) -> Rboolean;
     #[doc(alias = "isEnvironment")]
-    fn Rf_isEnvironment(s: SEXP) -> Rboolean;
+    pub fn Rf_isEnvironment(s: SEXP) -> Rboolean;
     #[doc(alias = "isString")]
-    fn Rf_isString(s: SEXP) -> Rboolean;
+    pub fn Rf_isString(s: SEXP) -> Rboolean;
 
     // Composite type checking (from inline functions)
     #[doc(alias = "isArray")]
-    fn Rf_isArray(s: SEXP) -> Rboolean;
+    pub fn Rf_isArray(s: SEXP) -> Rboolean;
     #[doc(alias = "isMatrix")]
-    fn Rf_isMatrix(s: SEXP) -> Rboolean;
+    pub fn Rf_isMatrix(s: SEXP) -> Rboolean;
     #[doc(alias = "isList")]
-    fn Rf_isList(s: SEXP) -> Rboolean;
+    pub fn Rf_isList(s: SEXP) -> Rboolean;
     #[doc(alias = "isNewList")]
-    fn Rf_isNewList(s: SEXP) -> Rboolean;
+    pub fn Rf_isNewList(s: SEXP) -> Rboolean;
     #[doc(alias = "isPairList")]
-    fn Rf_isPairList(s: SEXP) -> Rboolean;
+    pub fn Rf_isPairList(s: SEXP) -> Rboolean;
     #[doc(alias = "isFunction")]
-    fn Rf_isFunction(s: SEXP) -> Rboolean;
+    pub fn Rf_isFunction(s: SEXP) -> Rboolean;
     #[doc(alias = "isPrimitive")]
-    fn Rf_isPrimitive(s: SEXP) -> Rboolean;
+    pub fn Rf_isPrimitive(s: SEXP) -> Rboolean;
     #[doc(alias = "isLanguage")]
-    fn Rf_isLanguage(s: SEXP) -> Rboolean;
+    pub fn Rf_isLanguage(s: SEXP) -> Rboolean;
     #[doc(alias = "isDataFrame")]
-    fn Rf_isDataFrame(s: SEXP) -> Rboolean;
+    pub fn Rf_isDataFrame(s: SEXP) -> Rboolean;
     #[doc(alias = "isFactor")]
-    fn Rf_isFactor(s: SEXP) -> Rboolean;
+    pub fn Rf_isFactor(s: SEXP) -> Rboolean;
     #[doc(alias = "isInteger")]
-    fn Rf_isInteger(s: SEXP) -> Rboolean;
+    pub fn Rf_isInteger(s: SEXP) -> Rboolean;
     #[doc(alias = "isObject")]
-    fn Rf_isObject(s: SEXP) -> Rboolean;
+    pub fn Rf_isObject(s: SEXP) -> Rboolean;
 
     // Pairlist utilities
     #[doc(alias = "elt")]
-    fn Rf_elt(list: SEXP, i: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_elt(list: SEXP, i: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "lastElt")]
-    fn Rf_lastElt(list: SEXP) -> SEXP;
+    pub fn Rf_lastElt(list: SEXP) -> SEXP;
     #[doc(alias = "nthcdr")]
-    fn Rf_nthcdr(list: SEXP, n: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_nthcdr(list: SEXP, n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "listAppend")]
-    fn Rf_listAppend(s: SEXP, t: SEXP) -> SEXP;
+    pub fn Rf_listAppend(s: SEXP, t: SEXP) -> SEXP;
 
     // More attribute setters (using R's "gets" suffix convention)
     //
@@ -2771,7 +883,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns the modified vector (like all "*gets" functions).
     #[doc(alias = "classgets")]
-    fn Rf_classgets(vec: SEXP, klass: SEXP) -> SEXP;
+    pub fn Rf_classgets(vec: SEXP, klass: SEXP) -> SEXP;
 
     /// Set the dimnames attribute of an array/matrix.
     ///
@@ -2782,7 +894,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns the modified vector.
     #[doc(alias = "dimnamesgets")]
-    fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
+    pub fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
     // Issue #112 cat. 10: kept pub(crate) — 2 callers each in factor.rs/matrix helpers; wrapping adds no value
     #[doc(alias = "GetRowNames")]
     pub(crate) fn Rf_GetRowNames(dimnames: SEXP) -> SEXP;
@@ -2791,22 +903,22 @@ unsafe extern "C-unwind" {
 
     // Environment operations
     #[doc(alias = "findVar")]
-    fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
+    pub fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
     #[doc(alias = "findVarInFrame")]
-    fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
+    pub fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
     #[doc(alias = "findVarInFrame3")]
-    fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
+    pub fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
     #[doc(alias = "defineVar")]
-    fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    pub fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "setVar")]
-    fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    pub fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "findFun")]
-    fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
+    pub fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
 
     /// Find a registered namespace by name. **Longjmps on error** — prefer
     /// `REnv::package_namespace()` which wraps this safely.
     #[doc(alias = "FindNamespace")]
-    fn R_FindNamespace(info: SEXP) -> SEXP;
+    pub fn R_FindNamespace(info: SEXP) -> SEXP;
 
     // Issue #112 cat. 9: kept pub(crate) — R_GetCurrentEnv used from s4_helpers.rs; R_tryEvalSilent from expression.rs
     /// Return the current execution environment (innermost closure on call
@@ -2818,7 +930,7 @@ unsafe extern "C-unwind" {
     #[doc(alias = "eval")]
     pub fn Rf_eval(expr: SEXP, rho: SEXP) -> SEXP;
     #[doc(alias = "applyClosure")]
-    fn Rf_applyClosure(
+    pub fn Rf_applyClosure(
         call: SEXP,
         op: SEXP,
         args: SEXP,
@@ -2826,13 +938,13 @@ unsafe extern "C-unwind" {
         suppliedvars: SEXP,
         check: Rboolean,
     ) -> SEXP;
-    fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
+    pub fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
     pub(crate) fn R_tryEvalSilent(
         expr: SEXP,
         env: SEXP,
         error_occurred: *mut ::std::os::raw::c_int,
     ) -> SEXP;
-    fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
+    pub fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
 }
 
 // region: Connections API (R_ext/Connections.h)
@@ -2921,10 +1033,10 @@ unsafe extern "C-unwind" {
 ///
 /// - `arg1` must be a valid SEXP
 #[allow(non_snake_case)]
-unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
+pub unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
     unsafe extern "C-unwind" {
         #[link_name = "Rf_isS4"]
-        fn Rf_isS4_original(arg1: SEXP) -> u32;
+        pub fn Rf_isS4_original(arg1: SEXP) -> u32;
     }
 
     unsafe {
@@ -3075,7 +1187,7 @@ pub mod nonapi_encoding {
 /// ```ignore
 /// #[cfg(feature = "nonapi")]
 /// unsafe {
-///     use miniextendr_api::ffi::nonapi_stack::*;
+///     use miniextendr_api::sys::nonapi_stack::*;
 ///     let saved = get_r_cstack_limit();
 ///     set_r_cstack_limit(usize::MAX); // disable checking
 ///     // ... call R APIs ...
@@ -3457,7 +1569,7 @@ unsafe extern "C-unwind" {
     pub fn R_unif_index(dn: f64) -> f64;
 
     /// Get the current discrete uniform sample method.
-    fn R_sample_kind() -> Sampletype;
+    pub fn R_sample_kind() -> Sampletype;
 }
 
 // endregion
@@ -3482,7 +1594,7 @@ unsafe extern "C-unwind" {
     ///     vmaxset(watermark); // frees buf
     /// }
     /// ```
-    fn vmaxget() -> *mut ::std::os::raw::c_void;
+    pub fn vmaxget() -> *mut ::std::os::raw::c_void;
 
     /// Set the R memory stack watermark, freeing memory allocated since the mark.
     ///
@@ -3490,7 +1602,7 @@ unsafe extern "C-unwind" {
     ///
     /// `ovmax` must be a value returned by `vmaxget()` called earlier in the
     /// same R evaluation context.
-    fn vmaxset(ovmax: *const ::std::os::raw::c_void);
+    pub fn vmaxset(ovmax: *const ::std::os::raw::c_void);
 
     /// Run the R garbage collector.
     ///
@@ -3500,7 +1612,7 @@ unsafe extern "C-unwind" {
     /// Check if the garbage collector is currently running.
     ///
     /// Returns non-zero if GC is in progress.
-    fn R_gc_running() -> ::std::os::raw::c_int;
+    pub fn R_gc_running() -> ::std::os::raw::c_int;
 
     /// Allocate memory on R's memory stack.
     ///
@@ -3515,14 +1627,14 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Pointer to allocated memory (as `char*` for compatibility with S).
-    fn R_alloc(nelem: usize, eltsize: ::std::os::raw::c_int) -> *mut ::std::os::raw::c_char;
+    pub fn R_alloc(nelem: usize, eltsize: ::std::os::raw::c_int) -> *mut ::std::os::raw::c_char;
 
     /// Allocate an array of long doubles on R's memory stack.
     ///
     /// # Parameters
     ///
     /// - `nelem`: Number of long double elements to allocate
-    fn R_allocLD(nelem: usize) -> *mut f64; // Note: f64 is close enough for most uses
+    pub fn R_allocLD(nelem: usize) -> *mut f64; // Note: f64 is close enough for most uses
 
     /// S compatibility: allocate zeroed memory on R's memory stack.
     ///
@@ -3530,7 +1642,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `nelem`: Number of elements
     /// - `eltsize`: Size of each element
-    fn S_alloc(
+    pub fn S_alloc(
         nelem: ::std::os::raw::c_long,
         eltsize: ::std::os::raw::c_int,
     ) -> *mut ::std::os::raw::c_char;
@@ -3540,7 +1652,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `ptr` must have been allocated by `S_alloc`.
-    fn S_realloc(
+    pub fn S_realloc(
         ptr: *mut ::std::os::raw::c_char,
         newsize: ::std::os::raw::c_long,
         oldsize: ::std::os::raw::c_long,
@@ -3551,19 +1663,22 @@ unsafe extern "C-unwind" {
     ///
     /// Triggers GC if allocation fails, then retries.
     /// Memory must be freed with `free()`.
-    fn R_malloc_gc(size: usize) -> *mut ::std::os::raw::c_void;
+    pub fn R_malloc_gc(size: usize) -> *mut ::std::os::raw::c_void;
 
     /// GC-aware calloc.
     ///
     /// Triggers GC if allocation fails, then retries.
     /// Memory must be freed with `free()`.
-    fn R_calloc_gc(nelem: usize, eltsize: usize) -> *mut ::std::os::raw::c_void;
+    pub fn R_calloc_gc(nelem: usize, eltsize: usize) -> *mut ::std::os::raw::c_void;
 
     /// GC-aware realloc.
     ///
     /// Triggers GC if allocation fails, then retries.
     /// Memory must be freed with `free()`.
-    fn R_realloc_gc(ptr: *mut ::std::os::raw::c_void, size: usize) -> *mut ::std::os::raw::c_void;
+    pub fn R_realloc_gc(
+        ptr: *mut ::std::os::raw::c_void,
+        size: usize,
+    ) -> *mut ::std::os::raw::c_void;
 }
 
 // endregion
@@ -3578,7 +1693,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `x`: Pointer to integer array
     /// - `n`: Number of elements
-    fn R_isort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+    pub fn R_isort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
 
     /// Sort a double vector in place (ascending order).
     ///
@@ -3586,7 +1701,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `x`: Pointer to double array
     /// - `n`: Number of elements
-    fn R_rsort(x: *mut f64, n: ::std::os::raw::c_int);
+    pub fn R_rsort(x: *mut f64, n: ::std::os::raw::c_int);
 
     /// Sort a complex vector in place.
     ///
@@ -3594,7 +1709,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `x`: Pointer to Rcomplex array
     /// - `n`: Number of elements
-    fn R_csort(x: *mut Rcomplex, n: ::std::os::raw::c_int);
+    pub fn R_csort(x: *mut Rcomplex, n: ::std::os::raw::c_int);
 
     /// Sort doubles in descending order, carrying along an index array.
     ///
@@ -3604,7 +1719,7 @@ unsafe extern "C-unwind" {
     /// - `ib`: Pointer to integer array (permuted alongside `a`)
     /// - `n`: Number of elements
     #[doc(alias = "Rf_revsort")]
-    fn revsort(a: *mut f64, ib: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+    pub fn revsort(a: *mut f64, ib: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
 
     /// Sort doubles with index array.
     ///
@@ -3613,7 +1728,11 @@ unsafe extern "C-unwind" {
     /// - `x`: Pointer to double array (sorted in place)
     /// - `indx`: Pointer to integer array (permuted alongside `x`)
     /// - `n`: Number of elements
-    fn rsort_with_index(x: *mut f64, indx: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+    pub fn rsort_with_index(
+        x: *mut f64,
+        indx: *mut ::std::os::raw::c_int,
+        n: ::std::os::raw::c_int,
+    );
 
     /// Partial sort integers (moves k-th smallest to position k).
     ///
@@ -3623,7 +1742,11 @@ unsafe extern "C-unwind" {
     /// - `n`: Number of elements
     /// - `k`: Target position (0-indexed)
     #[doc(alias = "Rf_iPsort")]
-    fn iPsort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+    pub fn iPsort(
+        x: *mut ::std::os::raw::c_int,
+        n: ::std::os::raw::c_int,
+        k: ::std::os::raw::c_int,
+    );
 
     /// Partial sort doubles (moves k-th smallest to position k).
     ///
@@ -3633,7 +1756,7 @@ unsafe extern "C-unwind" {
     /// - `n`: Number of elements
     /// - `k`: Target position (0-indexed)
     #[doc(alias = "Rf_rPsort")]
-    fn rPsort(x: *mut f64, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+    pub fn rPsort(x: *mut f64, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
 
     /// Partial sort complex numbers.
     ///
@@ -3643,7 +1766,7 @@ unsafe extern "C-unwind" {
     /// - `n`: Number of elements
     /// - `k`: Target position (0-indexed)
     #[doc(alias = "Rf_cPsort")]
-    fn cPsort(x: *mut Rcomplex, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+    pub fn cPsort(x: *mut Rcomplex, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
 
     /// Quicksort doubles in place.
     ///
@@ -3652,7 +1775,7 @@ unsafe extern "C-unwind" {
     /// - `v`: Pointer to double array
     /// - `i`: Start index (1-indexed for R compatibility)
     /// - `j`: End index (1-indexed)
-    fn R_qsort(v: *mut f64, i: usize, j: usize);
+    pub fn R_qsort(v: *mut f64, i: usize, j: usize);
 
     /// Quicksort doubles with index array.
     ///
@@ -3662,7 +1785,7 @@ unsafe extern "C-unwind" {
     /// - `indx`: Pointer to index array (permuted alongside v)
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    fn R_qsort_I(
+    pub fn R_qsort_I(
         v: *mut f64,
         indx: *mut ::std::os::raw::c_int,
         i: ::std::os::raw::c_int,
@@ -3676,7 +1799,7 @@ unsafe extern "C-unwind" {
     /// - `iv`: Pointer to integer array
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    fn R_qsort_int(iv: *mut ::std::os::raw::c_int, i: usize, j: usize);
+    pub fn R_qsort_int(iv: *mut ::std::os::raw::c_int, i: usize, j: usize);
 
     /// Quicksort integers with index array.
     ///
@@ -3686,7 +1809,7 @@ unsafe extern "C-unwind" {
     /// - `indx`: Pointer to index array
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    fn R_qsort_int_I(
+    pub fn R_qsort_int_I(
         iv: *mut ::std::os::raw::c_int,
         indx: *mut ::std::os::raw::c_int,
         i: ::std::os::raw::c_int,
@@ -3698,17 +1821,18 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Pointer to expanded path (in R's internal buffer, do not free).
-    fn R_ExpandFileName(s: *const ::std::os::raw::c_char) -> *const ::std::os::raw::c_char;
+    pub fn R_ExpandFileName(s: *const ::std::os::raw::c_char) -> *const ::std::os::raw::c_char;
 
     /// Convert string to double, always using '.' as decimal point.
     ///
     /// Also accepts "NA" as input, returning NA_REAL.
-    fn R_atof(str: *const ::std::os::raw::c_char) -> f64;
+    pub fn R_atof(str: *const ::std::os::raw::c_char) -> f64;
 
     /// Convert string to double with end pointer, using '.' as decimal point.
     ///
     /// Like `strtod()` but locale-independent.
-    fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char) -> f64;
+    pub fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char)
+    -> f64;
 
     /// Generate a temporary filename.
     ///
@@ -3720,7 +1844,7 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Newly allocated string (must be freed with `R_free_tmpnam`).
-    fn R_tmpnam(
+    pub fn R_tmpnam(
         prefix: *const ::std::os::raw::c_char,
         tempdir: *const ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_char;
@@ -3736,26 +1860,26 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Newly allocated string (must be freed with `R_free_tmpnam`).
-    fn R_tmpnam2(
+    pub fn R_tmpnam2(
         prefix: *const ::std::os::raw::c_char,
         tempdir: *const ::std::os::raw::c_char,
         fileext: *const ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_char;
 
     /// Free a temporary filename allocated by `R_tmpnam` or `R_tmpnam2`.
-    fn R_free_tmpnam(name: *mut ::std::os::raw::c_char);
+    pub fn R_free_tmpnam(name: *mut ::std::os::raw::c_char);
 
     /// Check for R stack overflow.
     ///
     /// Throws an R error if stack is nearly exhausted.
-    fn R_CheckStack();
+    pub fn R_CheckStack();
 
     /// Check for R stack overflow with extra space requirement.
     ///
     /// # Parameters
     ///
     /// - `extra`: Additional bytes needed
-    fn R_CheckStack2(extra: usize);
+    pub fn R_CheckStack2(extra: usize);
 
     /// Find the interval containing a value (binary search).
     ///
@@ -3774,7 +1898,7 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Interval index (1-indexed).
-    fn findInterval(
+    pub fn findInterval(
         xt: *const f64,
         n: ::std::os::raw::c_int,
         x: f64,
@@ -3786,7 +1910,7 @@ unsafe extern "C-unwind" {
 
     /// Extended interval finding with left-open option.
     #[allow(clippy::too_many_arguments)]
-    fn findInterval2(
+    pub fn findInterval2(
         xt: *const f64,
         n: ::std::os::raw::c_int,
         x: f64,
@@ -3806,7 +1930,7 @@ unsafe extern "C-unwind" {
     /// - `nc`: Number of columns
     /// - `maxes`: Output array for column maxima indices (1-indexed)
     /// - `ties_meth`: How to handle ties (1=first, 2=random, 3=last)
-    fn R_max_col(
+    pub fn R_max_col(
         matrix: *const f64,
         nr: *const ::std::os::raw::c_int,
         nc: *const ::std::os::raw::c_int,
@@ -3818,17 +1942,17 @@ unsafe extern "C-unwind" {
     ///
     /// Recognizes "FALSE", "false", "False", "F", "f", etc.
     #[doc(alias = "Rf_StringFalse")]
-    fn StringFalse(s: *const ::std::os::raw::c_char) -> Rboolean;
+    pub fn StringFalse(s: *const ::std::os::raw::c_char) -> Rboolean;
 
     /// Check if a string represents TRUE in R.
     ///
     /// Recognizes "TRUE", "true", "True", "T", "t", etc.
     #[doc(alias = "Rf_StringTrue")]
-    fn StringTrue(s: *const ::std::os::raw::c_char) -> Rboolean;
+    pub fn StringTrue(s: *const ::std::os::raw::c_char) -> Rboolean;
 
     /// Check if a string is blank (empty or only whitespace).
     #[doc(alias = "Rf_isBlankString")]
-    fn isBlankString(s: *const ::std::os::raw::c_char) -> Rboolean;
+    pub fn isBlankString(s: *const ::std::os::raw::c_char) -> Rboolean;
 }
 
 // endregion
@@ -3862,7 +1986,7 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Character count or -1 on error.
-    fn R_nchar(
+    pub fn R_nchar(
         x: SEXP,
         ntype: ::std::os::raw::c_int,
         allowNA: Rboolean,
@@ -3874,13 +1998,13 @@ unsafe extern "C-unwind" {
     ///
     /// Returns a string like "INTSXP", "REALSXP", etc.
     #[doc(alias = "type2char")]
-    fn Rf_type2char(sexptype: SEXPTYPE) -> *const ::std::os::raw::c_char;
+    pub fn Rf_type2char(sexptype: SEXPTYPE) -> *const ::std::os::raw::c_char;
 
     /// Print an R value to the console.
     ///
     /// Uses R's standard print method for the object.
     #[doc(alias = "PrintValue")]
-    fn Rf_PrintValue(x: SEXP);
+    pub fn Rf_PrintValue(x: SEXP);
 
     // Environment functions
 
@@ -3897,21 +2021,21 @@ unsafe extern "C-unwind" {
     /// Check if a variable exists in an environment frame.
     ///
     /// Does not search enclosing environments.
-    fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
+    pub fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
 
     /// Remove a variable from an environment frame.
     ///
     /// # Returns
     ///
     /// The removed value, or R_NilValue if not found.
-    fn R_removeVarFromFrame(symbol: SEXP, env: SEXP) -> SEXP;
+    pub fn R_removeVarFromFrame(symbol: SEXP, env: SEXP) -> SEXP;
 
     /// Get the top-level environment.
     ///
     /// Walks up enclosing environments until reaching a top-level env
     /// (global, namespace, or base).
     #[doc(alias = "topenv")]
-    fn Rf_topenv(target: SEXP, envir: SEXP) -> SEXP;
+    pub fn Rf_topenv(target: SEXP, envir: SEXP) -> SEXP;
 
     // Matching functions
 
@@ -3929,7 +2053,7 @@ unsafe extern "C-unwind" {
     ///
     /// Integer vector of match positions (1-indexed, nomatch for non-matches).
     #[doc(alias = "match")]
-    fn Rf_match(x: SEXP, table: SEXP, nomatch: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_match(x: SEXP, table: SEXP, nomatch: ::std::os::raw::c_int) -> SEXP;
 
     // Duplication and copying
 
@@ -3937,7 +2061,7 @@ unsafe extern "C-unwind" {
     ///
     /// Copies all attributes except names, dim, and dimnames.
     #[doc(alias = "copyMostAttrib")]
-    fn Rf_copyMostAttrib(source: SEXP, target: SEXP);
+    pub fn Rf_copyMostAttrib(source: SEXP, target: SEXP);
 
     /// Find first duplicated element.
     ///
@@ -3950,7 +2074,7 @@ unsafe extern "C-unwind" {
     ///
     /// 0 if no duplicates, otherwise 1-indexed position of first duplicate.
     #[doc(alias = "any_duplicated")]
-    fn Rf_any_duplicated(x: SEXP, fromLast: Rboolean) -> R_xlen_t;
+    pub fn Rf_any_duplicated(x: SEXP, fromLast: Rboolean) -> R_xlen_t;
 
     // S4 functions
 
@@ -3961,11 +2085,11 @@ unsafe extern "C-unwind" {
     /// - `object`: Object to convert
     /// - `flag`: Conversion flag
     #[doc(alias = "asS4")]
-    fn Rf_asS4(object: SEXP, flag: Rboolean, complete: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_asS4(object: SEXP, flag: Rboolean, complete: ::std::os::raw::c_int) -> SEXP;
 
     /// Get the S3 class of an S4 object.
     #[doc(alias = "S3Class")]
-    fn Rf_S3Class(object: SEXP) -> SEXP;
+    pub fn Rf_S3Class(object: SEXP) -> SEXP;
 
     // Option access
 
@@ -3977,13 +2101,13 @@ unsafe extern "C-unwind" {
     ///
     /// - `tag`: Symbol for option name
     #[doc(alias = "GetOption1")]
-    fn Rf_GetOption1(tag: SEXP) -> SEXP;
+    pub fn Rf_GetOption1(tag: SEXP) -> SEXP;
 
     /// Get the `digits` option.
     ///
     /// Returns the value of `getOption("digits")`.
     #[doc(alias = "GetOptionDigits")]
-    fn Rf_GetOptionDigits() -> ::std::os::raw::c_int;
+    pub fn Rf_GetOptionDigits() -> ::std::os::raw::c_int;
 
     /// Get the `width` option.
     ///
@@ -3995,11 +2119,11 @@ unsafe extern "C-unwind" {
 
     /// Check if a factor is ordered.
     #[doc(alias = "isOrdered")]
-    fn Rf_isOrdered(s: SEXP) -> Rboolean;
+    pub fn Rf_isOrdered(s: SEXP) -> Rboolean;
 
     /// Check if a factor is unordered.
     #[doc(alias = "isUnordered")]
-    fn Rf_isUnordered(s: SEXP) -> Rboolean;
+    pub fn Rf_isUnordered(s: SEXP) -> Rboolean;
 
     /// Check if a vector is unsorted.
     ///
@@ -4008,7 +2132,7 @@ unsafe extern "C-unwind" {
     /// - `x`: Vector to check
     /// - `strictly`: If TRUE, check for strictly increasing
     #[doc(alias = "isUnsorted")]
-    fn Rf_isUnsorted(x: SEXP, strictly: Rboolean) -> ::std::os::raw::c_int;
+    pub fn Rf_isUnsorted(x: SEXP, strictly: Rboolean) -> ::std::os::raw::c_int;
 
     // Expression and evaluation
 
@@ -4016,17 +2140,17 @@ unsafe extern "C-unwind" {
     ///
     /// Like R's `substitute()` function.
     #[doc(alias = "substitute")]
-    fn Rf_substitute(lang: SEXP, rho: SEXP) -> SEXP;
+    pub fn Rf_substitute(lang: SEXP, rho: SEXP) -> SEXP;
 
     /// Set vector length.
     ///
     /// For short vectors (length < 2^31).
     #[doc(alias = "lengthgets")]
-    fn Rf_lengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+    pub fn Rf_lengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
 
     /// Set vector length (long vector version).
     #[doc(alias = "xlengthgets")]
-    fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+    pub fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
 
     // Protection (indexed — see cost table in the "GC protection" region above)
 
@@ -4059,29 +2183,29 @@ unsafe extern "C-unwind" {
     /// - `val`: The value to associate
     /// - `fin`: Finalizer function (or R_NilValue)
     /// - `onexit`: Whether to run finalizer on R exit
-    fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: Rboolean) -> SEXP;
+    pub fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: Rboolean) -> SEXP;
 
     /// Create a weak reference with C finalizer.
-    fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: Rboolean) -> SEXP;
+    pub fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: Rboolean) -> SEXP;
 
     /// Get the key from a weak reference.
-    fn R_WeakRefKey(w: SEXP) -> SEXP;
+    pub fn R_WeakRefKey(w: SEXP) -> SEXP;
 
     /// Get the value from a weak reference.
-    fn R_WeakRefValue(w: SEXP) -> SEXP;
+    pub fn R_WeakRefValue(w: SEXP) -> SEXP;
 
     /// Run pending finalizers.
-    fn R_RunPendingFinalizers();
+    pub fn R_RunPendingFinalizers();
 
     // Conversion list/vector
 
     /// Convert a pairlist to a generic vector (list).
     #[doc(alias = "PairToVectorList")]
-    fn Rf_PairToVectorList(x: SEXP) -> SEXP;
+    pub fn Rf_PairToVectorList(x: SEXP) -> SEXP;
 
     /// Convert a generic vector (list) to a pairlist.
     #[doc(alias = "VectorToPairList")]
-    fn Rf_VectorToPairList(x: SEXP) -> SEXP;
+    pub fn Rf_VectorToPairList(x: SEXP) -> SEXP;
 
     // Install with CHARSXP
 
@@ -4089,7 +2213,7 @@ unsafe extern "C-unwind" {
     ///
     /// Like `Rf_install()` but takes a CHARSXP instead of C string.
     #[doc(alias = "installChar")]
-    fn Rf_installChar(x: SEXP) -> SEXP;
+    pub fn Rf_installChar(x: SEXP) -> SEXP;
 }
 
 // endregion

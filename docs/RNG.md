@@ -23,7 +23,7 @@ attribute (recommended) and manual RAII guards.
 ## Quick Start
 
 ```rust
-use miniextendr_api::ffi::unif_rand;
+use miniextendr_api::sys::unif_rand;
 
 #[miniextendr(rng)]
 pub fn random_sample(n: i32) -> Vec<f64> {
@@ -46,7 +46,7 @@ The recommended approach. Works on standalone functions, impl methods, and trait
 ### Standalone Functions
 
 ```rust
-use miniextendr_api::ffi::{unif_rand, norm_rand, exp_rand};
+use miniextendr_api::sys::{unif_rand, norm_rand, exp_rand};
 
 #[miniextendr(rng)]
 pub fn uniform_sample(n: i32) -> Vec<f64> {
@@ -111,7 +111,7 @@ RAII guard that calls `GetRNGstate()` on creation and `PutRNGstate()` on drop.
 
 ```rust
 use miniextendr_api::rng::RngGuard;
-use miniextendr_api::ffi::unif_rand;
+use miniextendr_api::sys::unif_rand;
 
 fn generate_random() -> f64 {
     let _guard = RngGuard::new();
@@ -126,7 +126,7 @@ Convenience function that wraps a closure in an `RngGuard` scope.
 
 ```rust
 use miniextendr_api::rng::with_rng;
-use miniextendr_api::ffi::unif_rand;
+use miniextendr_api::sys::unif_rand;
 
 let values = with_rng(|| {
     (0..10).map(|_| unsafe { unif_rand() }).collect::<Vec<_>>()
@@ -144,7 +144,7 @@ let values = with_rng(|| {
 
 ## Available RNG Functions
 
-After initializing RNG state (via attribute or guard), use these from `miniextendr_api::ffi`:
+After initializing RNG state (via attribute or guard), use these from `miniextendr_api::sys`:
 
 | Function | Distribution | Range |
 |----------|-------------|-------|
@@ -156,7 +156,7 @@ After initializing RNG state (via attribute or guard), use these from `miniexten
 All require `unsafe` because they access R's global RNG state.
 
 ```rust
-use miniextendr_api::ffi::{unif_rand, norm_rand, exp_rand, R_unif_index};
+use miniextendr_api::sys::{unif_rand, norm_rand, exp_rand, R_unif_index};
 
 #[miniextendr(rng)]
 pub fn rng_demo() -> Vec<f64> {

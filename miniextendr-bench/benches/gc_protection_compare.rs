@@ -1,15 +1,14 @@
 //! Head-to-head GC protection mechanism benchmarks.
 //!
-//! Compares protect stack, precious list, DLL preserve, and VECSXP pool
-//! variants under identical workloads. Uses `Bencher::with_inputs` to
+//! Compares protect stack, precious list, and VECSXP pool variants
+//! under identical workloads. Uses `Bencher::with_inputs` to
 //! pre-allocate SEXPs outside the timed region so we measure ONLY
 //! the protection overhead.
 //!
 //! See `plans/gc-protection-benchmarks.md`.
 
-use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, SEXP};
-use miniextendr_api::preserve;
 use miniextendr_api::protect_pool::ProtectPool;
+use miniextendr_api::sys::{self, R_PreserveObject, R_ReleaseObject, SEXP};
 use miniextendr_bench::pool_prototypes::{
     BTreeMapPool, DequePool, HashMapPool, IndexMapPool, SlotmapPool, VecPool,
 };
@@ -84,19 +83,6 @@ mod single_latency {
         bencher.bench_local(|| unsafe {
             R_PreserveObject(sexp);
             R_ReleaseObject(sexp);
-        });
-
-        unsafe { R_ReleaseObject(sexp) };
-    }
-
-    #[divan::bench]
-    fn dll_preserve(bencher: Bencher) {
-        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
-        unsafe { R_PreserveObject(sexp) };
-
-        bencher.bench_local(|| unsafe {
-            let cell = preserve::insert_unchecked(sexp);
-            preserve::release_unchecked(cell);
         });
 
         unsafe { R_ReleaseObject(sexp) };
@@ -184,23 +170,6 @@ mod batch_throughput {
     }
 
     #[divan::bench(args = [10, 100, 1_000, 10_000, 50_000])]
-    fn dll_preserve(bencher: Bencher, n: usize) {
-        let sexps = unsafe { prealloc_sexps(n) };
-
-        bencher.bench_local(|| unsafe {
-            let mut cells = Vec::with_capacity(n);
-            for &s in &sexps {
-                cells.push(preserve::insert_unchecked(s));
-            }
-            for cell in cells {
-                preserve::release_unchecked(cell);
-            }
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
-
-    #[divan::bench(args = [10, 100, 1_000, 10_000, 50_000])]
     fn vec_pool(bencher: Bencher, n: usize) {
         let sexps = unsafe { prealloc_sexps(n) };
         let mut pool = unsafe { VecPool::new(n.max(16)) };
@@ -260,26 +229,6 @@ mod churn {
             }
             for s in live {
                 R_ReleaseObject(s);
-            }
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
-
-    #[divan::bench(args = [1_000, 10_000, 100_000])]
-    fn dll_preserve(bencher: Bencher, n: usize) {
-        let sexps = unsafe { prealloc_sexps(n) };
-
-        bencher.bench_local(|| unsafe {
-            let mut live: Vec<SEXP> = Vec::new();
-            for (i, &s) in sexps.iter().enumerate() {
-                live.push(preserve::insert_unchecked(s));
-                if i % 3 == 0 && !live.is_empty() {
-                    preserve::release_unchecked(live.remove(0));
-                }
-            }
-            for cell in live {
-                preserve::release_unchecked(cell);
             }
         });
 
@@ -348,23 +297,6 @@ mod lifo_release {
         unsafe { release_prealloc(&sexps) };
     }
 
-    #[divan::bench(args = [10, 100, 1_000, 10_000])]
-    fn dll_preserve(bencher: Bencher, n: usize) {
-        let sexps = unsafe { prealloc_sexps(n) };
-
-        bencher.bench_local(|| unsafe {
-            let mut cells = Vec::with_capacity(n);
-            for &s in &sexps {
-                cells.push(preserve::insert_unchecked(s));
-            }
-            for cell in cells.into_iter().rev() {
-                preserve::release_unchecked(cell);
-            }
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
-
     // Precious list LIFO: release in reverse (most recently preserved first).
     // Default mode: O(1) per release (head of list). Hash mode: O(bucket).
     #[divan::bench(args = [10, 100, 1_000])]
@@ -391,25 +323,6 @@ mod lifo_release {
 mod random_release {
     use super::*;
     use divan::Bencher;
-
-    #[divan::bench(args = [100, 1_000, 10_000])]
-    fn dll_preserve(bencher: Bencher, n: usize) {
-        let sexps = unsafe { prealloc_sexps(n) };
-        let mut order: Vec<usize> = (0..n).collect();
-        shuffle(&mut order);
-
-        bencher.bench_local(|| unsafe {
-            let mut cells = Vec::with_capacity(n);
-            for &s in &sexps {
-                cells.push(preserve::insert_unchecked(s));
-            }
-            for &i in &order {
-                preserve::release_unchecked(cells[i]);
-            }
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
 
     #[divan::bench(args = [100, 1_000, 10_000])]
     fn vec_pool(bencher: Bencher, n: usize) {
@@ -486,30 +399,6 @@ mod bursty {
         unsafe { release_prealloc(&sexps) };
     }
 
-    #[divan::bench(args = [3, 10])]
-    fn dll_preserve(bencher: Bencher, rounds: usize) {
-        let sexps = unsafe { prealloc_sexps(BURST * rounds) };
-
-        bencher.bench_local(|| unsafe {
-            let mut kept: Vec<ffi::SEXP> = Vec::new();
-            for round in 0..rounds {
-                let mut cells = Vec::with_capacity(BURST);
-                for i in 0..BURST {
-                    cells.push(preserve::insert_unchecked(sexps[round * BURST + i]));
-                }
-                for cell in cells.drain(KEEP..) {
-                    preserve::release_unchecked(cell);
-                }
-                kept.extend(cells);
-            }
-            for cell in kept {
-                preserve::release_unchecked(cell);
-            }
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
-
     // Precious list: catastrophic at BURST=10k due to O(n²) release.
     // Use smaller burst to keep runtime reasonable.
     #[divan::bench(args = [3])]
@@ -518,7 +407,7 @@ mod bursty {
         let sexps = unsafe { prealloc_sexps(burst * rounds) };
 
         bencher.bench_local(|| unsafe {
-            let mut kept: Vec<ffi::SEXP> = Vec::new();
+            let mut kept: Vec<sys::SEXP> = Vec::new();
             for round in 0..rounds {
                 for i in 0..burst {
                     R_PreserveObject(sexps[round * burst + i]);
@@ -554,9 +443,9 @@ mod replace_in_loop {
 
         bencher.bench_local(|| unsafe {
             let mut idx: std::os::raw::c_int = 0;
-            ffi::R_ProtectWithIndex(sexps[0], std::ptr::from_mut(&mut idx));
+            sys::R_ProtectWithIndex(sexps[0], std::ptr::from_mut(&mut idx));
             for &s in &sexps[1..] {
-                ffi::R_Reprotect(s, idx);
+                sys::R_Reprotect(s, idx);
             }
             raw_ffi::Rf_unprotect(1);
         });
@@ -572,25 +461,9 @@ mod replace_in_loop {
         bencher.bench_local(|| unsafe {
             let slot = pool.insert(sexps[0]);
             for &s in &sexps[1..] {
-                raw_ffi::SET_VECTOR_ELT(pool.backing, slot as ffi::R_xlen_t, s);
+                raw_ffi::SET_VECTOR_ELT(pool.backing, slot as sys::R_xlen_t, s);
             }
             pool.release(slot);
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
-
-    #[divan::bench(args = [100, 1_000, 10_000])]
-    fn dll_reinsert(bencher: Bencher, n: usize) {
-        let sexps = unsafe { prealloc_sexps(n) };
-
-        bencher.bench_local(|| unsafe {
-            let mut cell = preserve::insert_unchecked(sexps[0]);
-            for &s in &sexps[1..] {
-                preserve::release_unchecked(cell);
-                cell = preserve::insert_unchecked(s);
-            }
-            preserve::release_unchecked(cell);
         });
 
         unsafe { release_prealloc(&sexps) };
@@ -720,7 +593,7 @@ mod unprotect_ptr_depth {
             for &s in &sexps[1..] {
                 raw_ffi::Rf_protect(s);
             }
-            ffi::Rf_unprotect_ptr(target);
+            sys::Rf_unprotect_ptr(target);
             if depth > 1 {
                 raw_ffi::Rf_unprotect((depth - 1) as i32);
             }
@@ -781,34 +654,11 @@ mod precious_list_scale {
 
 // endregion
 
-// region: Group 14 — DLL insert's protect stack interaction
+// region: Group 14 — Pool insert's protect stack interaction
 
-mod dll_stack_interaction {
+mod pool_stack_interaction {
     use super::*;
     use divan::Bencher;
-
-    #[divan::bench(args = [0, 100, 1_000, 10_000])]
-    fn dll_with_stack_depth(bencher: Bencher, stack_depth: usize) {
-        let fill_sexps = unsafe { prealloc_sexps(stack_depth) };
-        let test_sexp = unsafe { raw_ffi::Rf_ScalarInteger(99) };
-        unsafe { R_PreserveObject(test_sexp) };
-
-        bencher.bench_local(|| unsafe {
-            for &s in &fill_sexps {
-                raw_ffi::Rf_protect(s);
-            }
-            for _ in 0..100 {
-                let cell = preserve::insert_unchecked(test_sexp);
-                preserve::release_unchecked(cell);
-            }
-            if stack_depth > 0 {
-                raw_ffi::Rf_unprotect(stack_depth as i32);
-            }
-        });
-
-        unsafe { R_ReleaseObject(test_sexp) };
-        unsafe { release_prealloc(&fill_sexps) };
-    }
 
     #[divan::bench(args = [0, 100, 1_000, 10_000])]
     fn pool_with_stack_depth(bencher: Bencher, stack_depth: usize) {
@@ -1014,30 +864,11 @@ mod gc_and_memory {
     use divan::Bencher;
 
     // We can't directly count GC triggers from Rust, but we can measure
-    // the wall-time difference between mechanisms that allocate (DLL, precious)
+    // the wall-time difference between mechanisms that allocate (precious)
     // and those that don't (pool). The difference IS the GC pressure cost.
 
     // Measure: insert N with interleaved work allocations.
-    // DLL allocates 2N R objects (N protection CONSXP + N work SEXPs).
     // Pool allocates N R objects (N work SEXPs only).
-    // The timing difference is the cost of N extra CONSXP allocations.
-
-    #[divan::bench(args = [1_000, 10_000])]
-    fn dll_with_work_allocs(bencher: Bencher, n: usize) {
-        let sexps = unsafe { prealloc_sexps(n) };
-
-        bencher.bench_local(|| unsafe {
-            for (i, &s) in sexps.iter().enumerate() {
-                let cell = preserve::insert_unchecked(s);
-                // Simulate work allocation (interleaved with protection)
-                divan::black_box(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
-                preserve::release_unchecked(cell);
-                _ = i;
-            }
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
 
     #[divan::bench(args = [1_000, 10_000])]
     fn pool_with_work_allocs(bencher: Bencher, n: usize) {
@@ -1047,7 +878,7 @@ mod gc_and_memory {
         bencher.bench_local(|| unsafe {
             for (i, &s) in sexps.iter().enumerate() {
                 let slot = pool.insert(s);
-                divan::black_box(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
+                divan::black_box(raw_ffi::Rf_allocVector(sys::SEXPTYPE::INTSXP, 10));
                 pool.release(slot);
                 _ = i;
             }
@@ -1072,24 +903,6 @@ mod gc_and_memory {
             divan::black_box(slots.len());
             for slot in slots {
                 pool.release(slot);
-            }
-        });
-
-        unsafe { release_prealloc(&sexps) };
-    }
-
-    #[divan::bench(args = [1_000, 10_000, 100_000])]
-    fn dll_hold_n(bencher: Bencher, n: usize) {
-        let sexps = unsafe { prealloc_sexps(n) };
-
-        bencher.bench_local(|| unsafe {
-            let mut cells = Vec::with_capacity(n);
-            for &s in &sexps {
-                cells.push(preserve::insert_unchecked(s));
-            }
-            divan::black_box(cells.len());
-            for cell in cells {
-                preserve::release_unchecked(cell);
             }
         });
 

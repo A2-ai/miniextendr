@@ -13,7 +13,7 @@ use crate::altrep_traits::{
     KNOWN_UNSORTED, SORTED_DECR, SORTED_DECR_NA_1ST, SORTED_INCR, SORTED_INCR_NA_1ST,
     UNKNOWN_SORTEDNESS,
 };
-use crate::ffi::SEXP;
+use crate::sys::SEXP;
 
 /// Helper for ALTREP `get_region` implementations.
 ///
@@ -110,16 +110,16 @@ impl From<bool> for Logical {
 }
 
 /// Convert from RLogical (FFI type) to Logical (semantic type).
-impl From<crate::ffi::RLogical> for Logical {
-    fn from(r: crate::ffi::RLogical) -> Self {
+impl From<crate::sys::RLogical> for Logical {
+    fn from(r: crate::sys::RLogical) -> Self {
         Logical::from_r_int(r.to_i32())
     }
 }
 
 /// Convert from Logical (semantic type) to RLogical (FFI type).
-impl From<Logical> for crate::ffi::RLogical {
+impl From<Logical> for crate::sys::RLogical {
     fn from(l: Logical) -> Self {
-        crate::ffi::RLogical::from_i32(l.to_r_int())
+        crate::sys::RLogical::from_i32(l.to_r_int())
     }
 }
 // endregion
@@ -249,23 +249,23 @@ pub trait AltrepDataptr<T> {
 /// # Safety
 /// - `x` must be a valid ALTREP SEXP of element type `T`
 /// - Must be called on R's main thread
-pub unsafe fn materialize_altrep_data2<T: crate::ffi::RNativeType>(
+pub unsafe fn materialize_altrep_data2<T: crate::sys::RNativeType>(
     x: SEXP,
 ) -> *mut core::ffi::c_void {
     use crate::altrep_ext::AltrepSexpExt;
-    use crate::ffi::{self, SexpExt};
+    use crate::sys::{self, SexpExt};
 
     let n = x.len();
     let (vec, dst) = unsafe { crate::into_r::alloc_r_vector_unchecked::<T>(n) };
-    unsafe { ffi::Rf_protect_unchecked(vec) };
+    unsafe { sys::Rf_protect_unchecked(vec) };
     for (i, slot) in dst.iter_mut().enumerate() {
         *slot = T::elt(x, i as isize);
     }
 
     unsafe {
         AltrepSexpExt::set_altrep_data2(&x, vec);
-        ffi::Rf_unprotect_unchecked(1);
-        ffi::DATAPTR_RO_unchecked(vec).cast_mut()
+        sys::Rf_unprotect_unchecked(1);
+        sys::DATAPTR_RO_unchecked(vec).cast_mut()
     }
 }
 
@@ -318,7 +318,7 @@ pub trait AltrepExtract: Sized {
     ///
     /// - `x` must be a valid ALTREP SEXP whose data1 holds data of type `Self`
     /// - Must be called from R's main thread
-    unsafe fn altrep_extract_ref(x: crate::ffi::SEXP) -> &'static Self;
+    unsafe fn altrep_extract_ref(x: crate::sys::SEXP) -> &'static Self;
 
     /// Extract a mutable reference from the ALTREP data1 slot.
     ///
@@ -327,7 +327,7 @@ pub trait AltrepExtract: Sized {
     /// - `x` must be a valid ALTREP SEXP whose data1 holds data of type `Self`
     /// - Must be called from R's main thread
     /// - The caller must ensure no other references to the data exist
-    unsafe fn altrep_extract_mut(x: crate::ffi::SEXP) -> &'static mut Self;
+    unsafe fn altrep_extract_mut(x: crate::sys::SEXP) -> &'static mut Self;
 }
 
 /// Blanket implementation for types stored in ExternalPtr (the common case).
@@ -335,7 +335,7 @@ pub trait AltrepExtract: Sized {
 /// This is the default storage strategy: data1 is an EXTPTRSXP wrapping a
 /// `Box<Box<dyn Any>>` that downcasts to `&T`.
 impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
-    unsafe fn altrep_extract_ref(x: crate::ffi::SEXP) -> &'static Self {
+    unsafe fn altrep_extract_ref(x: crate::sys::SEXP) -> &'static Self {
         // SAFETY: ALTREP callbacks are always on R's main thread, so unchecked is safe.
         // `ExternalPtr` is a non-owning wrapper around an R SEXP — dropping it does NOT
         // deallocate the underlying data. The data lives in the ALTREP's data1 slot,
@@ -348,7 +348,7 @@ impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
         }
     }
 
-    unsafe fn altrep_extract_mut(x: crate::ffi::SEXP) -> &'static mut Self {
+    unsafe fn altrep_extract_mut(x: crate::sys::SEXP) -> &'static mut Self {
         // SAFETY: caller guarantees x is a valid ALTREP with ExternalPtr<T> in data1
         // and that no other references exist. ALTREP callbacks are on R's main thread.
         // `altrep_data1_mut_unchecked` goes through `ErasedExternalPtr::downcast_mut`
@@ -380,12 +380,12 @@ pub trait InferBase {
     unsafe fn make_class(
         class_name: *const i8,
         pkg_name: *const i8,
-    ) -> crate::ffi::altrep::R_altrep_class_t;
+    ) -> crate::sys::altrep::R_altrep_class_t;
 
     /// Install ALTREP methods on the class.
     ///
     /// # Safety
     /// Must be called during R initialization with a valid class handle.
-    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t);
+    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t);
 }
 // endregion

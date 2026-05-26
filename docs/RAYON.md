@@ -531,7 +531,7 @@ with_r_vec(n, |chunk, offset| {
 ```rust
 // WRONG: R API in closure - PANICS
 with_r_vec(n, |chunk, _| {
-    let sexp = unsafe { ffi::Rf_ScalarReal(1.0) };  // CRASH!
+    let sexp = unsafe { sys::Rf_ScalarReal(1.0) };  // CRASH!
 });
 
 // WRONG: with_r_thread inside closure - PANICS

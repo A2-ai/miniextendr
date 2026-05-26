@@ -54,7 +54,6 @@
     "worker-thread",
     "arrow",
     "macro-coverage",
-    "debug-preserve",
     "growth-debug"
   ],
   "rust-analyzer.check.command": "clippy",

@@ -17,11 +17,11 @@
 //! Outbound counterpart: `Vec<Option<T>>` impls in [`crate::into_r`].
 
 use crate::coerce::TryCoerce;
-use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{
     SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value, is_na_real,
     r_slice,
 };
+use crate::sys::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {
@@ -40,7 +40,7 @@ macro_rules! impl_vec_option_try_from_sexp {
                 }
 
                 let len = sexp.len();
-                let ptr = unsafe { crate::ffi::$dataptr(sexp) };
+                let ptr = unsafe { crate::sys::$dataptr(sexp) };
                 let slice = unsafe { r_slice(ptr, len) };
 
                 Ok(slice
@@ -72,7 +72,7 @@ macro_rules! impl_boxed_slice_option_try_from_sexp {
                 }
 
                 let len = sexp.len();
-                let ptr = unsafe { crate::ffi::$dataptr(sexp) };
+                let ptr = unsafe { crate::sys::$dataptr(sexp) };
                 let slice = unsafe { r_slice(ptr, len) };
 
                 Ok(slice
@@ -259,7 +259,7 @@ impl TryFromSexp for Vec<Option<String>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
 
             if charsxp == SEXP::na_string() {
                 result.push(None);

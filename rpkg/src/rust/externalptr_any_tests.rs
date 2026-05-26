@@ -4,7 +4,7 @@
 //! and downcast paths introduced by the `Box<Box<dyn Any>>` refactor.
 
 use miniextendr_api::externalptr::{ErasedExternalPtr, ExternalPtr};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::prelude::*;
 
 #[derive(ExternalPtr)]

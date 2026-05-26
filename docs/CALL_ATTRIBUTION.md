@@ -22,7 +22,7 @@ pub fn call_attr_with(_left: i32, _right: i32) -> i32 {
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_call_attr_without(_left: SEXP, _right: SEXP) -> SEXP {
     unsafe {
-        ::miniextendr_api::ffi::Rf_error(
+        ::miniextendr_api::sys::Rf_error(
             c"%s".as_ptr(),
             c"left + right is too risky".as_ptr(),
         )

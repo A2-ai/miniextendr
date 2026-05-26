@@ -30,14 +30,14 @@
 ///
 /// Panics if `s.len() > i32::MAX`.
 #[inline]
-pub unsafe fn checked_mkchar(s: &str) -> crate::ffi::SEXP {
+pub unsafe fn checked_mkchar(s: &str) -> crate::sys::SEXP {
     let _len = i32::try_from(s.len()).unwrap_or_else(|_| {
         panic!(
             "string length {} exceeds i32::MAX for Rf_mkCharLenCE",
             s.len()
         )
     });
-    crate::ffi::SEXP::charsxp(s)
+    crate::sys::SEXP::charsxp(s)
 }
 // endregion
 

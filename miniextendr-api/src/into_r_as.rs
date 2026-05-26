@@ -48,8 +48,8 @@
 //! ```
 
 use crate::coerce::{CoerceError, TryCoerce};
-use crate::ffi::{RLogical, SEXP};
 use crate::into_r::IntoR;
+use crate::sys::{RLogical, SEXP};
 use std::fmt;
 
 // region: Error type

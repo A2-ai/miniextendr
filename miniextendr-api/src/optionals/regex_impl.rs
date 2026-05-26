@@ -60,8 +60,8 @@
 
 pub use regex::Regex;
 
-use crate::ffi::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
+use crate::sys::SEXP;
 
 // region: Scalar conversions
 

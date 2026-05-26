@@ -111,7 +111,6 @@ The benchmarks use [divan](https://github.com/nvzqz/divan) which reports:
 | `altrep` | ALTREP materialization |
 | `trait_abi` | Cross-package trait dispatch |
 | `externalptr` | ExternalPtr creation/access |
-| `preserve` | GC protection overhead |
 
 ## Maintainer
 

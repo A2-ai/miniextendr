@@ -269,11 +269,11 @@ impl CWrapperContext {
         let mut sexp_idents: Vec<syn::Ident> = Vec::new();
 
         // First param is always __miniextendr_call for error context
-        c_params.push(quote!(__miniextendr_call: ::miniextendr_api::ffi::SEXP));
+        c_params.push(quote!(__miniextendr_call: ::miniextendr_api::sys::SEXP));
 
         // For instance methods, add self_sexp parameter
         if self.has_self {
-            c_params.push(quote!(self_sexp: ::miniextendr_api::ffi::SEXP));
+            c_params.push(quote!(self_sexp: ::miniextendr_api::sys::SEXP));
         }
 
         // Add regular parameters
@@ -290,7 +290,7 @@ impl CWrapperContext {
                     format_ident!("arg_{}", idx)
                 };
 
-                c_params.push(quote!(#param_ident: ::miniextendr_api::ffi::SEXP));
+                c_params.push(quote!(#param_ident: ::miniextendr_api::sys::SEXP));
                 rust_args.push(ident.clone());
                 sexp_idents.push(param_ident);
             }
@@ -376,7 +376,7 @@ impl CWrapperContext {
 
         let pre_call_checks = if self.check_interrupt {
             quote! {
-                unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
+                unsafe { ::miniextendr_api::sys::R_CheckUserInterrupt(); }
             }
         } else {
             TokenStream::new()
@@ -406,8 +406,8 @@ impl CWrapperContext {
                 #[doc = #source_loc_doc]
                 #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-                    unsafe { ::miniextendr_api::ffi::GetRNGstate(); }
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::sys::SEXP {
+                    unsafe { ::miniextendr_api::sys::GetRNGstate(); }
                     let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                         #unwind_protect_fn(
                             || {
@@ -420,7 +420,7 @@ impl CWrapperContext {
                         )
                     }));
                     // PutRNGstate runs after catch_unwind, before error handling
-                    unsafe { ::miniextendr_api::ffi::PutRNGstate(); }
+                    unsafe { ::miniextendr_api::sys::PutRNGstate(); }
                     match __result {
                         Ok(sexp) => sexp,
                         Err(payload) => { #rng_panic_handler },
@@ -434,7 +434,7 @@ impl CWrapperContext {
                 #[doc = #source_loc_doc]
                 #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::sys::SEXP {
                     #unwind_protect_fn(
                         || {
                             #pre_call_checks
@@ -484,7 +484,7 @@ impl CWrapperContext {
 
         let pre_call_checks = if self.check_interrupt {
             quote! {
-                unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
+                unsafe { ::miniextendr_api::sys::R_CheckUserInterrupt(); }
             }
         } else {
             TokenStream::new()
@@ -498,8 +498,8 @@ impl CWrapperContext {
         // RNG state management: GetRNGstate at start, PutRNGstate before returning/error handling
         let (rng_get, rng_put) = if self.rng {
             (
-                quote! { unsafe { ::miniextendr_api::ffi::GetRNGstate(); } },
-                quote! { unsafe { ::miniextendr_api::ffi::PutRNGstate(); } },
+                quote! { unsafe { ::miniextendr_api::sys::GetRNGstate(); } },
+                quote! { unsafe { ::miniextendr_api::sys::PutRNGstate(); } },
             )
         } else {
             (TokenStream::new(), TokenStream::new())
@@ -523,7 +523,7 @@ impl CWrapperContext {
             #[doc = #source_loc_doc]
             #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[unsafe(no_mangle)]
-            #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::sys::SEXP {
                 #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #pre_call_checks
@@ -567,7 +567,7 @@ impl CWrapperContext {
             ReturnHandling::Unit => {
                 quote! {
                     #call_expr;
-                    ::miniextendr_api::ffi::SEXP::nil()
+                    ::miniextendr_api::sys::SEXP::nil()
                 }
             }
             ReturnHandling::RawSexp => {
@@ -600,7 +600,7 @@ impl CWrapperContext {
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                         );
                     }
-                    ::miniextendr_api::ffi::SEXP::nil()
+                    ::miniextendr_api::sys::SEXP::nil()
                 }
             }
             ReturnHandling::OptionSexp => {
@@ -650,7 +650,7 @@ impl CWrapperContext {
                             &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                         );
                     }
-                    ::miniextendr_api::ffi::SEXP::nil()
+                    ::miniextendr_api::sys::SEXP::nil()
                 }
             }
             ReturnHandling::ResultSexp => {
@@ -686,7 +686,7 @@ impl CWrapperContext {
                     let __result = #call_expr;
                     match __result {
                         Ok(#result_ident) => #conversion,
-                        Err(()) => ::miniextendr_api::ffi::SEXP::nil(),
+                        Err(()) => ::miniextendr_api::sys::SEXP::nil(),
                     }
                 }
             }
@@ -739,7 +739,7 @@ impl CWrapperContext {
                     #call_expr;
                 };
                 let convert = quote! {
-                    ::miniextendr_api::ffi::SEXP::nil()
+                    ::miniextendr_api::sys::SEXP::nil()
                 };
                 (worker, convert)
             }
@@ -794,7 +794,7 @@ impl CWrapperContext {
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                         )
                     } else {
-                        ::miniextendr_api::ffi::SEXP::nil()
+                        ::miniextendr_api::sys::SEXP::nil()
                     }
                 };
                 (worker, convert)
@@ -851,7 +851,7 @@ impl CWrapperContext {
                 let worker = quote! { #call_expr };
                 let convert = quote! {
                     match __miniextendr_result {
-                        Ok(()) => ::miniextendr_api::ffi::SEXP::nil(),
+                        Ok(()) => ::miniextendr_api::sys::SEXP::nil(),
                         Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
                             &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                         ),
@@ -899,7 +899,7 @@ impl CWrapperContext {
                 let convert = quote! {
                     match __miniextendr_result {
                         Ok(#result_ident) => #unwind_fn(|| #conversion, None),
-                        Err(()) => ::miniextendr_api::ffi::SEXP::nil(),
+                        Err(()) => ::miniextendr_api::sys::SEXP::nil(),
                     }
                 };
                 (worker, convert)
@@ -1030,7 +1030,7 @@ impl CWrapperContext {
 
         // Build func_ptr_def for transmute
         let func_ptr_def: Vec<syn::Type> = (0..num_args)
-            .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
+            .map(|_| syn::parse_quote!(::miniextendr_api::sys::SEXP))
             .collect();
 
         let item_label = if let Some(ref type_ident) = self.type_context {
@@ -1056,11 +1056,11 @@ impl CWrapperContext {
             #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[allow(non_upper_case_globals)]
             #[allow(non_snake_case)]
-            static #call_method_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
-                ::miniextendr_api::ffi::R_CallMethodDef {
+            static #call_method_def_ident: ::miniextendr_api::sys::R_CallMethodDef = unsafe {
+                ::miniextendr_api::sys::R_CallMethodDef {
                     name: #c_ident_name.as_ptr(),
                     fun: Some(std::mem::transmute::<
-                        unsafe extern "C-unwind" fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
+                        unsafe extern "C-unwind" fn(#(#func_ptr_def),*) -> ::miniextendr_api::sys::SEXP,
                         unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void
                     >(#c_ident)),
                     numArgs: #num_args_lit,

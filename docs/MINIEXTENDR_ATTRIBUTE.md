@@ -71,7 +71,7 @@ Functions taking `SEXP` parameters automatically run on main thread.
 pub fn fast_add(x: i32, y: i32) -> i32 { x + y }
 
 #[miniextendr(unsafe(main_thread))]
-pub fn inspect_sexp(x: miniextendr_api::ffi::SEXP) -> i32 { /* ... */ }
+pub fn inspect_sexp(x: miniextendr_api::sys::SEXP) -> i32 { /* ... */ }
 ```
 
 #### Type Conversion

@@ -6,7 +6,7 @@
 //! with this module.
 
 use crate::abi::{mx_erased, mx_tag};
-use crate::ffi::{DllInfo, R_CallMethodDef};
+use crate::sys::{DllInfo, R_CallMethodDef};
 #[cfg(not(target_arch = "wasm32"))]
 use linkme::distributed_slice;
 use std::os::raw::c_void;
@@ -447,7 +447,7 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // 3. Register routines
     // Leak the Vec — init runs once at package load, so this is fine.
     unsafe {
-        crate::ffi::R_registerRoutines_unchecked(
+        crate::sys::R_registerRoutines_unchecked(
             dll,
             std::ptr::null(),
             call_defs.leak().as_ptr(),
@@ -1102,10 +1102,10 @@ fn scan_digits(haystack: &[u8], from: usize) -> Option<usize> {
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wrappers(
-    path_sexp: crate::ffi::SEXP,
-) -> crate::ffi::SEXP {
+    path_sexp: crate::sys::SEXP,
+) -> crate::sys::SEXP {
     unsafe {
-        use crate::ffi::{SEXP, SexpExt};
+        use crate::sys::{SEXP, SexpExt};
 
         let char_sexp = path_sexp.string_elt_unchecked(0);
         let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
@@ -1132,10 +1132,10 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wasm_registry(
-    path_sexp: crate::ffi::SEXP,
-) -> crate::ffi::SEXP {
+    path_sexp: crate::sys::SEXP,
+) -> crate::sys::SEXP {
     unsafe {
-        use crate::ffi::{SEXP, SexpExt};
+        use crate::sys::{SEXP, SexpExt};
 
         let char_sexp = path_sexp.string_elt_unchecked(0);
         let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());

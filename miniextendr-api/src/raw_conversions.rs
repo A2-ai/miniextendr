@@ -58,9 +58,9 @@ pub use bytemuck::{Pod, Zeroable};
 use std::fmt;
 use std::mem;
 
-use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{RAW, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 
 // region: Error type
 

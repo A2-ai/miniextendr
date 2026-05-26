@@ -14,9 +14,9 @@
 pub use ordered_float::OrderedFloat;
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::sys::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Coerce/TryCoerce impls for OrderedFloat
 
@@ -208,10 +208,10 @@ impl TryFromSexp for Vec<Option<OrderedFloat<f32>>> {
 
 impl IntoR for OrderedFloat<f64> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -221,10 +221,10 @@ impl IntoR for OrderedFloat<f64> {
 
 impl IntoR for OrderedFloat<f32> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -234,10 +234,10 @@ impl IntoR for OrderedFloat<f32> {
 
 impl IntoR for Option<OrderedFloat<f64>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -247,10 +247,10 @@ impl IntoR for Option<OrderedFloat<f64>> {
 
 impl IntoR for Option<OrderedFloat<f32>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -260,10 +260,10 @@ impl IntoR for Option<OrderedFloat<f32>> {
 
 impl IntoR for Vec<OrderedFloat<f64>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -276,10 +276,10 @@ impl IntoR for Vec<OrderedFloat<f64>> {
 
 impl IntoR for Vec<OrderedFloat<f32>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -292,10 +292,10 @@ impl IntoR for Vec<OrderedFloat<f32>> {
 
 impl IntoR for Vec<Option<OrderedFloat<f64>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -308,10 +308,10 @@ impl IntoR for Vec<Option<OrderedFloat<f64>>> {
 
 impl IntoR for Vec<Option<OrderedFloat<f32>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {

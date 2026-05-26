@@ -29,7 +29,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **Preserve list** | [`preserve`](crate::preserve) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Across `.Call`s | Any order | Long-lived R objects |
 //! | **R ownership** | [`ExternalPtr`](struct@crate::externalptr::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! ## When to Use ExternalPtr
@@ -43,7 +43,7 @@
 //! - You're allocating temporary R objects during computation
 //! - Protection is short-lived (within a single `.Call`)
 //!
-//! **Use [`preserve`](crate::preserve) instead when:**
+//! **Use [`ProtectPool`](crate::protect_pool::ProtectPool) instead when:**
 //! - You need R objects (not Rust values) to survive across `.Call`s
 //! - You need arbitrary-order release of protections
 //!
@@ -145,7 +145,7 @@ use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
 
-use crate::ffi::{
+use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
     R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
@@ -242,7 +242,7 @@ unsafe fn type_id_symbol_unchecked<T: TypedExternal>() -> SEXP {
 /// `sym` must be a valid SYMSXP.
 #[inline]
 fn symbol_name(sym: SEXP) -> &'static str {
-    use crate::ffi::SexpExt;
+    use crate::sys::SexpExt;
     let printname = sym.printname();
     let cstr = printname.r_char();
     let len = printname.len();
@@ -800,7 +800,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// or other contexts where you're certain you're on the main thread.
     #[inline]
     pub unsafe fn tag_unchecked(&self) -> SEXP {
-        unsafe { crate::ffi::R_ExternalPtrTag_unchecked(self.sexp) }
+        unsafe { crate::sys::R_ExternalPtrTag_unchecked(self.sexp) }
     }
 
     /// Returns the protected SEXP slot (user-protected objects).
@@ -831,7 +831,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// or other contexts where you're certain you're on the main thread.
     #[inline]
     pub unsafe fn protected_unchecked(&self) -> SEXP {
-        use crate::ffi::R_ExternalPtrProtected_unchecked;
+        use crate::sys::R_ExternalPtrProtected_unchecked;
 
         unsafe {
             let prot = R_ExternalPtrProtected_unchecked(self.sexp);
@@ -910,7 +910,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
         debug_assert_eq!(
             sexp.type_of(),
-            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            crate::sys::SEXPTYPE::EXTPTRSXP,
             "wrap_sexp: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
@@ -952,11 +952,11 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - The caller must ensure exclusive ownership
     /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
     pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
-        use crate::ffi::R_ExternalPtrAddr_unchecked;
+        use crate::sys::R_ExternalPtrAddr_unchecked;
 
         debug_assert_eq!(
             sexp.type_of(),
-            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            crate::sys::SEXPTYPE::EXTPTRSXP,
             "wrap_sexp_unchecked: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
@@ -995,7 +995,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
         debug_assert_eq!(
             sexp.type_of(),
-            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            crate::sys::SEXPTYPE::EXTPTRSXP,
             "wrap_sexp_with_error: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
@@ -1056,7 +1056,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
         debug_assert_eq!(
             sexp.type_of(),
-            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            crate::sys::SEXPTYPE::EXTPTRSXP,
             "from_sexp_unchecked: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );

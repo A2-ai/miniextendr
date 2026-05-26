@@ -130,10 +130,10 @@ fn render(level: Level, msg: &str) {
         let fmt = c"%s".as_ptr();
         match level {
             Level::Error | Level::Warn => {
-                crate::ffi::REprintf_unchecked(fmt, cmsg.as_ptr());
+                crate::sys::REprintf_unchecked(fmt, cmsg.as_ptr());
             }
             Level::Info | Level::Debug | Level::Trace => {
-                crate::ffi::Rprintf_unchecked(fmt, cmsg.as_ptr());
+                crate::sys::Rprintf_unchecked(fmt, cmsg.as_ptr());
             }
         }
     }
@@ -194,7 +194,7 @@ impl Log for RLogger {
             drain_log_queue();
             #[cfg(not(test))]
             unsafe {
-                crate::ffi::R_FlushConsole_unchecked();
+                crate::sys::R_FlushConsole_unchecked();
             }
         }
         // No-op on non-main threads: cannot call R API.
@@ -320,7 +320,7 @@ impl crate::TryFromSexp for log::LevelFilter {
     type Error = crate::SexpError;
 
     fn try_from_sexp(
-        sexp: crate::ffi::SEXP,
+        sexp: crate::sys::SEXP,
     ) -> Result<Self, <log::LevelFilter as crate::TryFromSexp>::Error> {
         crate::match_arg_from_sexp(sexp).map_err(Into::into)
     }
@@ -332,17 +332,17 @@ impl crate::TryFromSexp for log::LevelFilter {
 impl crate::IntoR for log::LevelFilter {
     type Error = std::convert::Infallible;
 
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
         Ok(self.into_sexp())
     }
 
     unsafe fn try_into_sexp_unchecked(
         self,
-    ) -> Result<crate::ffi::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
+    ) -> Result<crate::sys::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
         self.try_into_sexp()
     }
 
-    fn into_sexp(self) -> crate::ffi::SEXP {
+    fn into_sexp(self) -> crate::sys::SEXP {
         use crate::MatchArg;
         self.to_choice().into_sexp()
     }

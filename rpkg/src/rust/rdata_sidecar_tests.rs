@@ -3,7 +3,7 @@
 //! This module tests the R-side sidecar accessor generation with different class systems.
 
 use miniextendr_api::externalptr::{ExternalPtr, RSidecar};
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
 
 // region: Env (default) - standalone functions: Type_get_field(), Type_set_field()
@@ -58,7 +58,7 @@ pub fn rdata_sidecar_env_new(
     flag: bool,
     name: String,
 ) -> ExternalPtr<SidecarEnv> {
-    use miniextendr_api::ffi::SEXP;
+    use miniextendr_api::prelude::SEXP;
 
     ExternalPtr::new(SidecarEnv {
         _internal_value: 999,
@@ -321,7 +321,7 @@ impl SidecarRawSexp {}
 /// Test creating a SidecarRawSexp with all SEXP slots initialized to NULL.
 #[miniextendr]
 pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
-    use miniextendr_api::ffi::SEXP;
+    use miniextendr_api::prelude::SEXP;
 
     ExternalPtr::new(SidecarRawSexp {
         _r: RSidecar,

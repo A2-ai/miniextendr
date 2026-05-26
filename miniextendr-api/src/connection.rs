@@ -25,7 +25,7 @@
 //! > implementation without a compatibility layer."
 //!
 //! This module is gated behind the `connections` feature and should be used with caution.
-//! Always verify [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION)
+//! Always verify [`sys::R_CONNECTIONS_VERSION`](crate::sys::R_CONNECTIONS_VERSION)
 //! matches the expected version before using these APIs (see [`check_connections_version`]).
 //!
 //! # Usage
@@ -61,7 +61,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 
-use crate::ffi::{R_CONNECTIONS_VERSION, Rboolean, Rconnection, SEXP};
+use crate::sys::{R_CONNECTIONS_VERSION, Rboolean, Rconnection, SEXP};
 
 /// The expected R connections API version this module is compatible with.
 ///
@@ -72,7 +72,7 @@ pub const EXPECTED_CONNECTIONS_VERSION: c_int = 1;
 /// Compile-time compatibility assertion for the R connections ABI.
 ///
 /// Compares [`EXPECTED_CONNECTIONS_VERSION`] (what this crate was written for)
-/// against [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION)
+/// against [`sys::R_CONNECTIONS_VERSION`](crate::sys::R_CONNECTIONS_VERSION)
 /// (the version from R's headers when the FFI bindings were compiled).
 /// Both values are compile-time constants, so this is a static consistency
 /// check, not a dynamic probe of the running R session.
@@ -128,62 +128,35 @@ pub fn check_connections_version() {
 /// }
 /// ```
 pub unsafe fn check_connections_runtime() -> Result<(), String> {
-    use crate::expression::RCall;
-    use crate::ffi::{R_BaseEnv, Rf_protect, Rf_unprotect, SexpExt};
+    use crate::expression::{RCall, dollar_extract};
+    use crate::gc_protect::OwnedProtect;
+    use crate::sys::{R_BaseEnv, SexpExt};
 
     unsafe {
-        // Evaluate R.Version() in base env
-        let version_list = RCall::new("R.Version").eval(R_BaseEnv)?;
-        Rf_protect(version_list);
+        // Evaluate R.Version() in base env.
+        let version_list = OwnedProtect::new(RCall::new("R.Version").eval(R_BaseEnv)?);
 
-        // Extract $major
-        let major_sexp = RCall::new("$")
-            .arg(version_list)
-            .arg(crate::ffi::Rf_mkString(c"major".as_ptr()))
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(1);
-            })?;
-        Rf_protect(major_sexp);
+        // Extract $major / $minor — each guarded by an OwnedProtect that
+        // releases automatically if a later step short-circuits with `?`.
+        let major_sexp = OwnedProtect::new(dollar_extract(version_list.get(), "major")?);
+        let minor_sexp = OwnedProtect::new(dollar_extract(version_list.get(), "minor")?);
 
-        // Extract $minor
-        let minor_sexp = RCall::new("$")
-            .arg(version_list)
-            .arg(crate::ffi::Rf_mkString(c"minor".as_ptr()))
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(2);
-            })?;
-        Rf_protect(minor_sexp);
-
-        // Convert major (character) to integer via as.integer()
+        // Convert major (character) to integer via as.integer().
         let major_int = RCall::new("as.integer")
-            .arg(major_sexp)
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(3);
-            })?;
+            .arg(major_sexp.get())
+            .eval(R_BaseEnv)?;
         let major = major_int.as_integer().expect("R.Version()$major is not NA");
 
-        // Parse minor: it's a string like "3.1", we only need the part before the dot
+        // Parse minor: it's a string like "3.1" — only the part before the dot.
+        let minor_stripped = RCall::new("sub")
+            .arg(crate::sys::Rf_mkString(c"\\..*".as_ptr()))
+            .arg(crate::sys::Rf_mkString(c"".as_ptr()))
+            .arg(minor_sexp.get())
+            .eval(R_BaseEnv)?;
         let minor_int = RCall::new("as.integer")
-            .arg(
-                RCall::new("sub")
-                    .arg(crate::ffi::Rf_mkString(c"\\..*".as_ptr()))
-                    .arg(crate::ffi::Rf_mkString(c"".as_ptr()))
-                    .arg(minor_sexp)
-                    .eval(R_BaseEnv)
-                    .inspect_err(|_| {
-                        Rf_unprotect(3);
-                    })?,
-            )
-            .eval(R_BaseEnv)
-            .inspect_err(|_| {
-                Rf_unprotect(3);
-            })?;
+            .arg(minor_stripped)
+            .eval(R_BaseEnv)?;
         let minor = minor_int.as_integer().expect("R.Version()$minor is not NA");
-
-        Rf_unprotect(3); // version_list, major_sexp, minor_sexp
 
         // R_new_custom_connection requires R >= 4.3.0
         if major > 4 || (major == 4 && minor >= 3) {
@@ -240,7 +213,7 @@ impl ConnectionCapabilities {
     /// - `conn_sexp` must be a valid R connection object
     /// - Must be called from the R main thread
     pub unsafe fn from_sexp(conn_sexp: SEXP) -> Self {
-        let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+        let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
         let conn = handle.cast::<Rconn>().cast_const();
         unsafe {
             ConnectionCapabilities {
@@ -283,7 +256,7 @@ impl ConnectionCapabilities {
 /// - `conn_sexp` must be a valid R connection object
 /// - Must be called from the R main thread
 pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
-    let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+    let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
     let conn = handle.cast::<Rconn>().cast_const();
     unsafe {
         let mode = &(*conn).mode;
@@ -300,7 +273,7 @@ pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
 /// - `conn_sexp` must be a valid R connection object
 /// - Must be called from the R main thread
 pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
-    let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+    let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
     let conn = handle.cast::<Rconn>().cast_const();
     unsafe {
         let mode_ptr = (*conn).mode.as_ptr();
@@ -317,7 +290,7 @@ pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
 /// - `conn_sexp` must be a valid R connection object
 /// - Must be called from the R main thread
 pub unsafe fn connection_description(conn_sexp: SEXP) -> String {
-    let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+    let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
     let conn = handle.cast::<Rconn>().cast_const();
     unsafe {
         if (*conn).description.is_null() {
@@ -1043,7 +1016,7 @@ impl RCustomConnection {
             // free the temporary before R reads it (silent UAF, not caught
             // by basic tests because R has already copied the bytes by then).
             let mut conn_ptr: Rconnection = std::ptr::null_mut();
-            let sexp = crate::ffi::R_new_custom_connection(
+            let sexp = crate::sys::R_new_custom_connection(
                 self.description.as_ptr(),
                 self.mode.as_ptr(),
                 self.class_name.as_ptr(),
@@ -1154,7 +1127,7 @@ impl RCustomConnection {
 /// ```
 #[inline]
 pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
-    unsafe { crate::ffi::R_ReadConnection(conn, buf.as_mut_ptr().cast::<c_void>(), buf.len()) }
+    unsafe { crate::sys::R_ReadConnection(conn, buf.as_mut_ptr().cast::<c_void>(), buf.len()) }
 }
 
 /// Write data to an R connection.
@@ -1174,7 +1147,7 @@ pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
 /// ```
 #[inline]
 pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
-    unsafe { crate::ffi::R_WriteConnection(conn, buf.as_ptr().cast::<c_void>(), buf.len()) }
+    unsafe { crate::sys::R_WriteConnection(conn, buf.as_ptr().cast::<c_void>(), buf.len()) }
 }
 
 /// Get a connection handle from an R connection SEXP.
@@ -1195,7 +1168,7 @@ pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
 /// ```
 #[inline]
 pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
-    unsafe { crate::ffi::R_GetConnection(sexp) }
+    unsafe { crate::sys::R_GetConnection(sexp) }
 }
 // endregion
 
@@ -1264,18 +1237,13 @@ pub struct RStderr;
 // # Safety
 // Must be called from the R main thread.
 unsafe fn eval_base_connection(name: &std::ffi::CStr) -> SEXP {
-    use crate::ffi::{R_BaseEnv, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect};
+    use crate::expression::RCall;
     unsafe {
-        let call = Rf_lang1(Rf_install(name.as_ptr()));
-        Rf_protect(call);
-        // R_tryEvalSilent so an error becomes a panic rather than a longjmp.
-        let mut err: std::os::raw::c_int = 0;
-        let result = crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err);
-        Rf_unprotect(1); // call
-        if err != 0 {
-            panic!("failed to evaluate {}()", name.to_string_lossy());
-        }
-        result
+        // R_tryEvalSilent (inside RCall::eval) routes errors back as Err
+        // rather than longjmping.
+        RCall::from_cstr(name)
+            .eval_base()
+            .unwrap_or_else(|_| panic!("failed to evaluate {}()", name.to_string_lossy()))
     }
 }
 
@@ -1283,7 +1251,7 @@ impl std::io::Read for RStdin {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         unsafe {
             let sexp = eval_base_connection(c"stdin");
-            let conn = crate::ffi::R_GetConnection(sexp);
+            let conn = crate::sys::R_GetConnection(sexp);
             let n = read_connection(conn, buf);
             Ok(n)
         }
@@ -1328,9 +1296,9 @@ pub(crate) fn write_console_to(buf: &[u8], otype: std::os::raw::c_int) -> usize 
     unsafe {
         let ptr = tmp.as_ptr().cast::<std::os::raw::c_char>();
         if otype == 0 {
-            crate::ffi::Rprintf(c"%s".as_ptr(), ptr);
+            crate::sys::Rprintf(c"%s".as_ptr(), ptr);
         } else {
-            crate::ffi::REprintf(c"%s".as_ptr(), ptr);
+            crate::sys::REprintf(c"%s".as_ptr(), ptr);
         }
     }
     buf.len()
@@ -1410,44 +1378,24 @@ impl RNullConnection {
     /// Must be called from the R main thread.
     pub fn new() -> Self {
         unsafe {
-            use crate::ffi::{
-                R_BaseEnv, R_PreserveObject, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect,
-            };
-            // nullfile() — returns the platform null device path
-            let nullfile_sym = Rf_install(c"nullfile".as_ptr());
-            let nullfile_call = Rf_lang1(nullfile_sym);
-            Rf_protect(nullfile_call);
+            use crate::expression::RCall;
+            use crate::gc_protect::OwnedProtect;
+            use crate::sys::R_PreserveObject;
 
-            let mut err: std::os::raw::c_int = 0;
-            let null_path = crate::ffi::R_tryEvalSilent(nullfile_call, R_BaseEnv, &mut err);
-            Rf_unprotect(1); // nullfile_call
-            if err != 0 {
-                panic!("nullfile() failed");
-            }
-            Rf_protect(null_path);
+            // nullfile() — returns the platform null device path. Protect it
+            // while we build the file() call that references it as an arg.
+            let null_path = OwnedProtect::new(
+                RCall::new("nullfile")
+                    .eval_base()
+                    .unwrap_or_else(|_| panic!("nullfile() failed")),
+            );
 
-            // file(nullfile(), open = "w")
-            let file_sym = Rf_install(c"file".as_ptr());
-            let open_sym = Rf_install(c"open".as_ptr());
-            let open_str = crate::ffi::Rf_mkString(c"w".as_ptr());
-            Rf_protect(open_str);
-
-            // Build file(null_path, open = "w") as a pairlist
-            use crate::ffi::PairListExt;
-            let tail = open_str.cons(SEXP::nil());
-            Rf_protect(tail);
-            tail.set_tag(open_sym);
-            let mid = null_path.cons(tail);
-            Rf_protect(mid);
-            let call = file_sym.lcons(mid);
-            Rf_protect(call);
-
-            let sexp = crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err);
-            Rf_unprotect(5); // call, mid, tail, open_str, null_path
-
-            if err != 0 {
-                panic!("file(nullfile(), open=\"w\") failed");
-            }
+            // file(null_path, open = "w")
+            let sexp = RCall::new("file")
+                .arg(null_path.get())
+                .named_arg("open", crate::sys::Rf_mkString(c"w".as_ptr()))
+                .eval_base()
+                .unwrap_or_else(|_| panic!("file(nullfile(), open=\"w\") failed"));
 
             // Pin on the precious list so GC cannot collect it while we hold it.
             R_PreserveObject(sexp);
@@ -1490,17 +1438,12 @@ impl RNullConnection {
 
     // Inner: call R's close() on the SEXP and release from precious list.
     unsafe fn close_inner(&mut self) {
-        use crate::ffi::{
-            R_BaseEnv, R_ReleaseObject, Rf_install, Rf_lang2, Rf_protect, Rf_unprotect,
-        };
+        use crate::expression::RCall;
+        use crate::sys::R_ReleaseObject;
         unsafe {
-            let close_sym = Rf_install(c"close".as_ptr());
-            let call = Rf_lang2(close_sym, self.sexp);
-            Rf_protect(call);
-            let mut err: std::os::raw::c_int = 0;
-            crate::ffi::R_tryEvalSilent(call, R_BaseEnv, &mut err);
-            Rf_unprotect(1); // call
-            // Release from precious list regardless of whether close() errored.
+            // Ignore close() errors — we still need to release the precious-list
+            // reference (otherwise the SEXP leaks).
+            let _ = RCall::new("close").arg(self.sexp).eval_base();
             R_ReleaseObject(self.sexp);
         }
     }
@@ -1521,7 +1464,7 @@ impl std::io::Write for RNullConnection {
             ));
         }
         unsafe {
-            let conn = crate::ffi::R_GetConnection(self.sexp);
+            let conn = crate::sys::R_GetConnection(self.sexp);
             let n = write_connection(conn, buf);
             Ok(n)
         }

@@ -1,7 +1,7 @@
 //! Tests for rayon parallel computation integration.
 
 #[cfg(feature = "rayon")]
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::prelude::SEXP;
 #[cfg(feature = "rayon")]
 use miniextendr_api::miniextendr;
 #[cfg(feature = "rayon")]

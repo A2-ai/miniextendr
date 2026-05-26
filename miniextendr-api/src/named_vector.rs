@@ -23,9 +23,10 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
+use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
 
 // region: AtomicElement trait
 
@@ -213,18 +214,22 @@ impl<M> From<M> for NamedVector<M> {
 /// `sexp` must be a valid, protected SEXP. Caller must manage protect stack.
 pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
     unsafe {
-        let n = keys.len();
-        let names = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t);
-        ffi::Rf_protect(names);
+        let scope = ProtectScope::new();
+        let names = scope.alloc_strsxp(keys.len()).into_raw();
 
         for (i, key) in keys.iter().enumerate() {
             let s = key.as_ref();
-            let charsxp = SEXP::charsxp(s);
-            names.set_string_elt(i as ffi::R_xlen_t, charsxp);
+            // Preserve the R_BlankString short-circuit: skips hash-lookup
+            // on the interned empty CHARSXP for empty keys.
+            let charsxp = if s.is_empty() {
+                SEXP::blank_string()
+            } else {
+                SEXP::charsxp(s)
+            };
+            names.set_string_elt(i as sys::R_xlen_t, charsxp);
         }
 
         sexp.set_names(names);
-        ffi::Rf_unprotect(1);
     }
 }
 
@@ -247,7 +252,7 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
     let mut seen = HashSet::with_capacity(len);
 
     for i in 0..len {
-        let charsxp = names.string_elt(i as ffi::R_xlen_t);
+        let charsxp = names.string_elt(i as sys::R_xlen_t);
 
         // Reject NA names
         if charsxp == SEXP::na_string() {
@@ -281,19 +286,18 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
 
 impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
         let (keys, values): (Vec<String>, Vec<V>) = self.0.into_iter().unzip();
         let sexp = V::vec_to_sexp(values);
         unsafe {
-            ffi::Rf_protect(sexp);
-            set_names_on_sexp(sexp, &keys);
-            ffi::Rf_unprotect(1);
+            let guard = OwnedProtect::new(sexp);
+            set_names_on_sexp(guard.get(), &keys);
         }
         sexp
     }
@@ -301,19 +305,18 @@ impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
 
 impl<V: AtomicElement> IntoR for NamedVector<BTreeMap<String, V>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
         let (keys, values): (Vec<String>, Vec<V>) = self.0.into_iter().unzip();
         let sexp = V::vec_to_sexp(values);
         unsafe {
-            ffi::Rf_protect(sexp);
-            set_names_on_sexp(sexp, &keys);
-            ffi::Rf_unprotect(1);
+            let guard = OwnedProtect::new(sexp);
+            set_names_on_sexp(guard.get(), &keys);
         }
         sexp
     }

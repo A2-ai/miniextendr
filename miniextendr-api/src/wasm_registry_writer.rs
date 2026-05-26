@@ -102,7 +102,7 @@ fn format_body(
     writeln!(&mut out, "use ::miniextendr_api::abi::mx_tag;").unwrap();
     writeln!(
         &mut out,
-        "use ::miniextendr_api::ffi::{{R_CallMethodDef, SEXP}};"
+        "use ::miniextendr_api::sys::{{R_CallMethodDef, SEXP}};"
     )
     .unwrap();
     writeln!(

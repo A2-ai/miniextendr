@@ -1,7 +1,7 @@
 //! Iterator-backed ALTREP benchmarks.
 
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
-use miniextendr_api::ffi::SexpExt;
+use miniextendr_api::sys::SexpExt;
 use miniextendr_api::{IntoR, IterIntData};
 use miniextendr_bench::raw_ffi;
 
