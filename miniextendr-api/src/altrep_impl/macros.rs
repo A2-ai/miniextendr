@@ -305,10 +305,7 @@ macro_rules! __impl_altvec_string_dataptr {
                         // Inside ALTREP dispatch — _unchecked variants skip the
                         // with_r_thread debug-assert (MXL301 permits).
                         data2 = $crate::ffi::Rf_protect_unchecked(
-                            $crate::ffi::Rf_allocVector_unchecked(
-                                $crate::ffi::SEXPTYPE::STRSXP,
-                                n,
-                            ),
+                            $crate::ffi::Rf_allocVector_unchecked($crate::ffi::SEXPTYPE::STRSXP, n),
                         );
                         for j in 0..n {
                             $crate::ffi::SexpExt::set_string_elt(
@@ -1101,10 +1098,7 @@ macro_rules! __impl_altstring_methods {
                         // Inside ALTREP dispatch — _unchecked variants skip the
                         // with_r_thread debug-assert (MXL301 permits).
                         data2 = $crate::ffi::Rf_protect_unchecked(
-                            $crate::ffi::Rf_allocVector_unchecked(
-                                $crate::ffi::SEXPTYPE::STRSXP,
-                                n,
-                            ),
+                            $crate::ffi::Rf_allocVector_unchecked($crate::ffi::SEXPTYPE::STRSXP, n),
                         );
                         for j in 0..n {
                             $crate::ffi::SexpExt::set_string_elt(

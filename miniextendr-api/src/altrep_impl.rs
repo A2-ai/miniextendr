@@ -66,6 +66,6 @@ pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] 
 // them via `$crate::__impl_alt_*` paths.
 pub mod macros;
 
-pub mod builtins;
 pub mod arrays;
+pub mod builtins;
 pub mod static_slices;
