@@ -614,6 +614,100 @@ impl TypeSpec {
     }
 }
 
+/// Stream a `Result`-yielding iterator into a named `list(ok = df, err = df)`.
+///
+/// Maintains two [`DataFrameBuilder`]s and dispatches each row to the
+/// appropriate one based on its `Result` variant. The output names default to
+/// `"ok"` / `"err"`; pass [`DispatchNames`] to override.
+///
+/// Unlike a manual `iter.partition(Result::is_ok)` + two `iter_to_dataframe`
+/// calls, this preserves the streaming property — rows are dispatched as they
+/// arrive, no double-materialisation.
+///
+/// # Empty sides
+///
+/// A side that received zero rows produces a 0-row, 0-column data.frame in
+/// the returned named list. The list always has both slots so downstream R
+/// code can rely on a stable shape (`res$ok` / `res$err`).
+///
+/// # When to use this vs [`result_to_dataframe`]
+///
+/// Use [`super::result_to_dataframe`] when you already have a `&[Result<T, E>]`
+/// in memory; it offers richer shape control (`Auto` / `Collated` / `Split`
+/// with custom sentinel). Use `dispatch_to_dataframes` when the rows arrive
+/// incrementally and you specifically want the streaming two-builder shape.
+///
+/// # Errors
+///
+/// - A row fails to serialize (propagates from either builder).
+/// - Schema mismatch on later rows of the same variant.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::serde::dispatch_to_dataframes;
+///
+/// #[derive(Serialize)] struct Ok_ { id: i32, val: f64 }
+/// #[derive(Serialize)] struct Err_ { id: i32, reason: String }
+///
+/// let rows = (0..10).map(|i| if i % 3 == 0 {
+///     Err(Err_ { id: i, reason: "skip".into() })
+/// } else {
+///     Ok(Ok_ { id: i, val: i as f64 * 0.5 })
+/// });
+///
+/// let named = dispatch_to_dataframes(rows, None, DispatchNames::default())?;
+/// // named$ok  -> id, val
+/// // named$err -> id, reason
+/// ```
+pub fn dispatch_to_dataframes<O, E, I>(
+    iter: I,
+    nrow_hint: Option<usize>,
+    names: DispatchNames,
+) -> Result<crate::list::List, RSerdeError>
+where
+    O: Serialize,
+    E: Serialize,
+    I: IntoIterator<Item = Result<O, E>>,
+{
+    let mut ok_builder = DataFrameBuilder::<O>::new(nrow_hint);
+    let mut err_builder = DataFrameBuilder::<E>::new(nrow_hint);
+
+    for row in iter {
+        match row {
+            Ok(o) => ok_builder.push(o)?,
+            Err(e) => err_builder.push(e)?,
+        }
+    }
+
+    let ok_df = ok_builder.finish()?;
+    let err_df = err_builder.finish()?;
+
+    Ok(NamedDataFrameListBuilder::with_capacity(2)
+        .push(names.ok, ok_df)
+        .push(names.err, err_df)
+        .build())
+}
+
+/// Custom slot names for [`dispatch_to_dataframes`]'s output list.
+///
+/// Defaults to `ok = "ok"`, `err = "err"`. Override either or both via
+/// `DispatchNames { ok: "results".into(), err: "errors".into() }`.
+#[derive(Debug, Clone)]
+pub struct DispatchNames {
+    pub ok: String,
+    pub err: String,
+}
+
+impl Default for DispatchNames {
+    fn default() -> Self {
+        Self {
+            ok: "ok".to_string(),
+            err: "err".to_string(),
+        }
+    }
+}
+
 /// Builder for incremental data.frame assembly.
 ///
 /// Three schema modes:
