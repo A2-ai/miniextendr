@@ -58,8 +58,7 @@
 //! - [`crate::unwind_protect::with_r_unwind_protect`] — catch R errors with
 //!   Rust cleanup; sibling to `with_r_thread`.
 //! - [`crate::ffi`] — checked vs `*_unchecked` FFI surface.
-//! - `docs/THREADS.md` — full worker / main-thread story.
-//! - `docs/FFI_GUARD.md` — guard taxonomy across boundaries.
+//! - [`crate::ffi_guard`] — guard taxonomy across boundaries.
 
 use std::sync::OnceLock;
 use std::thread;

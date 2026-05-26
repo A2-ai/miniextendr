@@ -57,6 +57,8 @@
 //! - [`crate::worker::with_r_thread`] — routes a closure to R's main thread.
 //! - [`crate::ffi_guard`] — unified panic-catching trampoline that consumes
 //!   `with_r_unwind_protect_sourced` for ALTREP `RUnwind` mode.
+//! - [`crate::error_value`] / [`crate::condition`] — panic → R condition
+//!   transport.
 use std::{
     any::Any,
     borrow::Cow,

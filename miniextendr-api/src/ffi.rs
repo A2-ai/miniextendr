@@ -32,9 +32,7 @@
 //!        redundant.
 //!
 //! The build-time lint **MXL301** enforces this: any `*_unchecked` call
-//! outside those contexts is a compile-time error. See
-//! `docs/FFI_GUARD.md` and `miniextendr-lint/CLAUDE.md` for the rule's
-//! full surface.
+//! outside those contexts is a compile-time error.
 //!
 //! # Don't raise R errors directly
 //!
@@ -42,16 +40,16 @@
 //! which **skips Rust destructors** and leaks resources. The lint **MXL300**
 //! forbids them in user code. Use `panic!()` instead; the framework converts
 //! the panic into a structured R condition with `rust_*` class layering via
-//! the tagged-SEXP transport (see [`crate::error_value`] and the
-//! `docs/ERROR_HANDLING.md` manual chapter).
+//! the tagged-SEXP transport (see [`crate::error_value`]).
 //!
 //! # Cross references
 //!
-//! - `docs/FFI_GUARD.md` — guard taxonomy and worker-thread invariants.
-//! - `docs/THREADS.md` — worker / main-thread split.
-//! - `docs/ALTREP_GUARDS.md` — guard modes inside ALTREP callbacks.
-//! - `docs/ERROR_HANDLING.md` — panic → R condition transport.
-//! - `docs/API_CHOICE_MATRIX.md` — top-level API choices.
+//! - [`crate::ffi_guard`] — guard taxonomy and worker-thread invariants.
+//! - [`crate::thread`] / [`crate::worker`] — worker / main-thread split.
+//! - [`crate::altrep_traits`] / [`crate::altrep_bridge`] — guard modes
+//!   inside ALTREP callbacks.
+//! - [`crate::error_value`] / [`crate::condition`] — panic → R condition
+//!   transport.
 
 /// ALTREP-specific C API bindings.
 pub mod altrep;

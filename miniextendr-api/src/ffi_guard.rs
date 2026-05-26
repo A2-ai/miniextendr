@@ -38,7 +38,6 @@
 //! - [`crate::worker::with_r_thread`] — main-thread routing entry point.
 //! - [`crate::unwind_protect::with_r_unwind_protect`] — the user-facing R
 //!   error catcher; consumed by `RUnwind` mode.
-//! - `docs/FFI_GUARD.md` — guard taxonomy and panic flow.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

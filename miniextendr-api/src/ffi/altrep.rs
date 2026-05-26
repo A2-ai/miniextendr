@@ -5,9 +5,9 @@
 //! `AltrepString` / `AltrepRaw` / `AltrepComplex` / `AltrepList` derives — or
 //! the `#[altrep(manual)]` opt-out — over wiring these typedefs by hand.
 //!
-//! See `docs/ALTREP_GUARDS.md` for the guard-mode taxonomy (`unsafe` /
+//! See [`crate::altrep_traits`] for the guard-mode taxonomy (`unsafe` /
 //! `rust_unwind` / `r_unwind`) that gates panic and longjmp escape from
-//! callback bodies; `crate::altrep_bridge` is the trampoline layer that
+//! callback bodies; [`crate::altrep_bridge`] is the trampoline layer that
 //! enforces those modes.
 //!
 //! # Calling these from a callback
