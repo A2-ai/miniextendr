@@ -100,11 +100,8 @@ fn format_body(
     let mut out = String::new();
 
     writeln!(&mut out, "use ::miniextendr_api::abi::mx_tag;").unwrap();
-    writeln!(
-        &mut out,
-        "use ::miniextendr_api::sys::{{R_CallMethodDef, SEXP}};"
-    )
-    .unwrap();
+    writeln!(&mut out, "use ::miniextendr_api::SEXP;").unwrap();
+    writeln!(&mut out, "use ::miniextendr_api::sys::R_CallMethodDef;").unwrap();
     writeln!(
         &mut out,
         "use ::miniextendr_api::registry::{{AltrepRegistration, TraitDispatchEntry}};"
