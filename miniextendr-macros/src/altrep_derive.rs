@@ -402,7 +402,7 @@ impl AltrepAttrs {
 
         // 1. Altrep base (with or without serialize)
         let base_impl = if has_serialize {
-            quote! { ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics, #guard); }
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize); }
         } else {
             quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard); }
         };
@@ -808,12 +808,13 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         quote! {}
     } else if has_serialize {
         // Serialize requires expanding individual macros since impl_altlist_from_data!
-        // does not have a serialize variant. Use __impl_altrep_base_with_serialize!
-        // for the Altrep trait, then manually emit AltVec + AltList + InferBase.
+        // does not have a serialize variant. Use the `with_serialize` arm of
+        // `__impl_altrep_base!` for the Altrep trait, then manually emit AltVec +
+        // AltList + InferBase.
         if attrs.has_non_default_guard() {
             let guard = attrs.guard.as_ref().unwrap();
             quote! {
-                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics, #guard);
+                ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize);
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
@@ -826,7 +827,7 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             }
         } else {
             quote! {
-                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics);
+                ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, with_serialize);
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
