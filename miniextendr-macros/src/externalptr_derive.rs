@@ -419,7 +419,8 @@ fn generate_getter_body(
     // Helper: generate the pointer extraction code for Box<dyn Any> storage.
     // R_ExternalPtrAddr returns *mut Box<dyn Any>; we downcast to &T.
     let extract_ref = quote::quote! {
-        use ::miniextendr_api::sys::{R_ExternalPtrAddr, SEXP};
+        use ::miniextendr_api::SEXP;
+        use ::miniextendr_api::sys::R_ExternalPtrAddr;
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
             return SEXP::nil();
@@ -443,7 +444,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarInt => {
             quote::quote! {
-                use ::miniextendr_api::sys::SEXP;
+                use ::miniextendr_api::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_integer(data.#field_name)
@@ -452,7 +453,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarReal => {
             quote::quote! {
-                use ::miniextendr_api::sys::SEXP;
+                use ::miniextendr_api::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_real(data.#field_name)
@@ -461,7 +462,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarLogical => {
             quote::quote! {
-                use ::miniextendr_api::sys::SEXP;
+                use ::miniextendr_api::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_logical(data.#field_name)
@@ -470,7 +471,7 @@ fn generate_getter_body(
         }
         SlotKind::ScalarRaw => {
             quote::quote! {
-                use ::miniextendr_api::sys::SEXP;
+                use ::miniextendr_api::SEXP;
                 unsafe {
                     #extract_ref
                     SEXP::scalar_raw(data.#field_name)
@@ -534,7 +535,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarInt => {
             quote::quote! {
-                use ::miniextendr_api::sys::SexpExt;
+                use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = value.as_integer().unwrap_or(::miniextendr_api::altrep_traits::NA_INTEGER);
@@ -544,7 +545,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarReal => {
             quote::quote! {
-                use ::miniextendr_api::sys::SexpExt;
+                use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = value.as_real().unwrap_or(::miniextendr_api::altrep_traits::NA_REAL);
@@ -554,7 +555,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarLogical => {
             quote::quote! {
-                use ::miniextendr_api::sys::SexpExt;
+                use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = value.as_logical().unwrap_or(false);
@@ -564,7 +565,7 @@ fn generate_setter_body(
         }
         SlotKind::ScalarRaw => {
             quote::quote! {
-                use ::miniextendr_api::sys::{SexpExt, SEXPTYPE};
+                use ::miniextendr_api::{SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
                     let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
@@ -994,8 +995,8 @@ NULL
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #getter_fn_name(
-                x: ::miniextendr_api::sys::SEXP
-            ) -> ::miniextendr_api::sys::SEXP {
+                x: ::miniextendr_api::SEXP
+            ) -> ::miniextendr_api::SEXP {
                 #getter_body
             }
         });
@@ -1008,9 +1009,9 @@ NULL
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #setter_fn_name(
-                x: ::miniextendr_api::sys::SEXP,
-                value: ::miniextendr_api::sys::SEXP,
-            ) -> ::miniextendr_api::sys::SEXP {
+                x: ::miniextendr_api::SEXP,
+                value: ::miniextendr_api::SEXP,
+            ) -> ::miniextendr_api::SEXP {
                 #setter_body
             }
         });

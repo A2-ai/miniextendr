@@ -17,11 +17,12 @@
 //! - [`ListBuilder`] — fixed-size batch construction
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
+use crate::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
-use crate::sys::{self, SEXP, SexpExt};
+use crate::sys::{self};
+use crate::{SEXP, SexpExt};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
@@ -266,7 +267,7 @@ impl List {
     /// ```
     #[inline]
     pub fn set_class_str(self, classes: &[&str]) -> Self {
-        use crate::sys::SEXPTYPE::STRSXP;
+        use crate::SEXPTYPE::STRSXP;
 
         let n: isize = classes
             .len()
@@ -310,7 +311,7 @@ impl List {
     /// ```
     #[inline]
     pub fn set_names_str(self, names: &[&str]) -> Self {
-        use crate::sys::SEXPTYPE::STRSXP;
+        use crate::SEXPTYPE::STRSXP;
 
         let n: isize = names
             .len()
@@ -379,7 +380,7 @@ impl List {
     /// ```
     #[inline]
     pub fn set_row_names_str(self, row_names: &[&str]) -> Self {
-        use crate::sys::SEXPTYPE::STRSXP;
+        use crate::SEXPTYPE::STRSXP;
 
         let n: isize = row_names
             .len()
@@ -940,8 +941,8 @@ impl List {
     /// The input SEXPs should already be protected or be children of protected
     /// containers.
     pub fn from_scalars_or_list(elements: &[SEXP]) -> Self {
+        use crate::SEXPTYPE;
         use crate::into_r::alloc_r_vector;
-        use crate::sys::SEXPTYPE;
 
         if elements.is_empty() {
             return Self::from_raw_values(Vec::new());
@@ -975,10 +976,10 @@ impl List {
                 v
             },
             SEXPTYPE::LGLSXP => unsafe {
-                let (v, dst) = alloc_r_vector::<crate::sys::RLogical>(n);
+                let (v, dst) = alloc_r_vector::<crate::RLogical>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
                     *slot = *elem
-                        .as_slice::<crate::sys::RLogical>()
+                        .as_slice::<crate::RLogical>()
                         .first()
                         .expect("scalar has length 1");
                 }
@@ -1090,12 +1091,13 @@ impl IntoR for Vec<List> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt as _};
-            let n = self.len() as crate::sys::R_xlen_t;
+            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+            use crate::{SEXPTYPE, SexpExt as _};
+            let n = self.len() as crate::R_xlen_t;
             let out = Rf_allocVector(SEXPTYPE::VECSXP, n);
             Rf_protect(out);
             for (i, list) in self.into_iter().enumerate() {
-                out.set_vector_elt(i as crate::sys::R_xlen_t, list.0);
+                out.set_vector_elt(i as crate::R_xlen_t, list.0);
             }
             Rf_unprotect(1);
             out
@@ -1118,15 +1120,16 @@ impl IntoR for Vec<Option<List>> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt as _};
-            let n = self.len() as crate::sys::R_xlen_t;
+            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+            use crate::{SEXPTYPE, SexpExt as _};
+            let n = self.len() as crate::R_xlen_t;
             // VECSXP slots are zero-initialised to R_NilValue by Rf_allocVector,
             // so None elements require no explicit fill.
             let out = Rf_allocVector(SEXPTYPE::VECSXP, n);
             Rf_protect(out);
             for (i, opt) in self.into_iter().enumerate() {
                 if let Some(list) = opt {
-                    out.set_vector_elt(i as crate::sys::R_xlen_t, list.0);
+                    out.set_vector_elt(i as crate::R_xlen_t, list.0);
                 }
             }
             Rf_unprotect(1);

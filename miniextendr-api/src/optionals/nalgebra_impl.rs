@@ -66,7 +66,7 @@ pub use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 use crate::from_r::{SexpError, SexpLengthError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::{RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use nalgebra::Scalar;
 
 // region: Blanket implementations for DVector and DMatrix
@@ -339,7 +339,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<S
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(m) => m.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         })
     }
 
@@ -347,7 +347,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<S
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(m) => unsafe { m.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         })
     }
 }
@@ -1076,7 +1076,7 @@ impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new_vector(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, len as sys::R_xlen_t) };
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, len as R_xlen_t) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
@@ -1133,7 +1133,7 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
     /// Must be called on R's main thread.
     pub unsafe fn new_matrix(nrows: usize, ncols: usize, init: impl FnOnce(&mut [T])) -> Self {
         let total = nrows * ncols;
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total as sys::R_xlen_t) };
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total as R_xlen_t) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, total) };

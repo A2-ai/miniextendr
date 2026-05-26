@@ -50,7 +50,7 @@ use arrow_array::types::ArrowPrimitiveType;
 
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::sys::{self, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: RSourced trait — R buffer provenance for Arrow types
 
@@ -473,7 +473,7 @@ impl TryFromSexp for Float64Array {
         // Read element-by-element via elt() which works for all SEXP types.
         let values: Vec<Option<f64>> = (0..len)
             .map(|i| {
-                let v = f64::elt(sexp, i as sys::R_xlen_t);
+                let v = f64::elt(sexp, i as R_xlen_t);
                 if is_na_real(v) { None } else { Some(v) }
             })
             .collect();
@@ -516,7 +516,7 @@ impl TryFromSexp for Int32Array {
         // Read element-by-element via elt() which works for all SEXP types.
         let values: Vec<Option<i32>> = (0..len)
             .map(|i| {
-                let v = i32::elt(sexp, i as sys::R_xlen_t);
+                let v = i32::elt(sexp, i as R_xlen_t);
                 if v == NA_INTEGER { None } else { Some(v) }
             })
             .collect();
@@ -552,9 +552,7 @@ impl TryFromSexp for UInt8Array {
         }
 
         // Fallback: DATAPTR_RO returned null. Read element-by-element via elt().
-        let values: Vec<u8> = (0..len)
-            .map(|i| u8::elt(sexp, i as sys::R_xlen_t))
-            .collect();
+        let values: Vec<u8> = (0..len).map(|i| u8::elt(sexp, i as R_xlen_t)).collect();
         Ok(UInt8Array::from(values))
     }
 
@@ -1209,14 +1207,14 @@ impl IntoR for BooleanArray {
 
     fn into_sexp(self) -> SEXP {
         unsafe {
-            let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::sys::RLogical>(self.len());
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::RLogical>(self.len());
             for (i, slot) in dst.iter_mut().enumerate() {
                 *slot = if self.is_null(i) {
-                    crate::sys::RLogical::NA
+                    crate::RLogical::NA
                 } else if self.value(i) {
-                    crate::sys::RLogical::TRUE
+                    crate::RLogical::TRUE
                 } else {
-                    crate::sys::RLogical::FALSE
+                    crate::RLogical::FALSE
                 };
             }
             sexp

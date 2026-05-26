@@ -30,7 +30,7 @@
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::ProtectScope;
 use crate::into_r::IntoR;
-use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
+use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 
 /// Trait for enum types that support `match.arg`-style string conversion.
 ///
@@ -144,7 +144,7 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
             } else {
                 SEXP::charsxp(s)
             };
-            vec.set_string_elt(i as sys::R_xlen_t, charsxp);
+            vec.set_string_elt(i as R_xlen_t, charsxp);
         }
         vec
     }
@@ -176,8 +176,8 @@ fn factor_elt_to_choice<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
     }
     let levels = sexp.get_levels();
     // R factor indices are 1-based.
-    let level_idx = (idx - 1) as sys::R_xlen_t;
-    if level_idx < 0 || level_idx >= levels.len() as sys::R_xlen_t {
+    let level_idx = (idx - 1) as R_xlen_t;
+    if level_idx < 0 || level_idx >= levels.len() as R_xlen_t {
         return Err(MatchArgError::NoMatch {
             input: format!("<factor index {}>", idx),
             choices: <T as MatchArg>::CHOICES,
@@ -260,7 +260,7 @@ pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
             } else {
                 SEXP::charsxp(s)
             };
-            vec.set_string_elt(i as sys::R_xlen_t, charsxp);
+            vec.set_string_elt(i as R_xlen_t, charsxp);
         }
         vec
     }

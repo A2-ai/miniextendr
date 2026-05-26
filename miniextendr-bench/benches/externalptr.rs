@@ -194,7 +194,7 @@ fn baseline_box_large() {
 // region: Type-erased checks + downcasts
 
 struct ProtectedSexp {
-    sexp: miniextendr_api::sys::SEXP,
+    sexp: miniextendr_api::SEXP,
 }
 
 impl Drop for ProtectedSexp {

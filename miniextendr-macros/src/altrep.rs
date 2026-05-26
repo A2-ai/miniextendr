@@ -143,18 +143,19 @@ pub(crate) fn generate_direct_altrep_registration(
         impl ::miniextendr_api::IntoR for #ident #ty_generics #where_clause {
             type Error = ::core::convert::Infallible;
 
-            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
 
-            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+            fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 use ::miniextendr_api::altrep_registration::RegisterAltrep;
                 use ::miniextendr_api::externalptr::ExternalPtr;
-                use ::miniextendr_api::sys::{SEXP, Rf_protect, Rf_unprotect};
+                use ::miniextendr_api::SEXP;
+                use ::miniextendr_api::sys::{Rf_protect, Rf_unprotect};
 
                 let ext_ptr = ExternalPtr::new(self);
                 let cls = Self::get_or_init_class();
@@ -167,7 +168,7 @@ pub(crate) fn generate_direct_altrep_registration(
                 }
             }
 
-            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
                 use ::miniextendr_api::altrep_registration::RegisterAltrep;
                 use ::miniextendr_api::externalptr::ExternalPtr;
                 use ::miniextendr_api::sys::{Rf_protect_unchecked, Rf_unprotect_unchecked};
@@ -179,7 +180,7 @@ pub(crate) fn generate_direct_altrep_registration(
                     Rf_protect_unchecked(data1);
                     let altrep = cls.new_altrep_unchecked(
                         data1,
-                        ::miniextendr_api::sys::SEXP::nil(),
+                        ::miniextendr_api::SEXP::nil(),
                     );
                     Rf_unprotect_unchecked(1);
                     altrep
@@ -194,13 +195,13 @@ pub(crate) fn generate_direct_altrep_registration(
         impl ::miniextendr_api::TryFromSexp for #ref_ident {
             type Error = ::miniextendr_api::SexpTypeError;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::sys::SEXP) -> ::core::result::Result<Self, Self::Error> {
-                use ::miniextendr_api::sys::SEXPTYPE;
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
+                use ::miniextendr_api::SEXPTYPE;
 
-                if !::miniextendr_api::sys::SexpExt::is_altrep(&sexp) {
+                if !::miniextendr_api::SexpExt::is_altrep(&sexp) {
                     return Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::INTSXP,
-                        actual: ::miniextendr_api::sys::SexpExt::type_of(&sexp),
+                        actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     });
                 }
 
@@ -208,7 +209,7 @@ pub(crate) fn generate_direct_altrep_registration(
                     Some(ptr) => Ok(#ref_ident(ptr)),
                     None => Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::EXTPTRSXP,
-                        actual: ::miniextendr_api::sys::SexpExt::type_of(&sexp),
+                        actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     }),
                 }
             }
@@ -228,13 +229,13 @@ pub(crate) fn generate_direct_altrep_registration(
         impl ::miniextendr_api::TryFromSexp for #mut_ident {
             type Error = ::miniextendr_api::SexpTypeError;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::sys::SEXP) -> ::core::result::Result<Self, Self::Error> {
-                use ::miniextendr_api::sys::SEXPTYPE;
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
+                use ::miniextendr_api::SEXPTYPE;
 
-                if !::miniextendr_api::sys::SexpExt::is_altrep(&sexp) {
+                if !::miniextendr_api::SexpExt::is_altrep(&sexp) {
                     return Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::INTSXP,
-                        actual: ::miniextendr_api::sys::SexpExt::type_of(&sexp),
+                        actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     });
                 }
 
@@ -242,7 +243,7 @@ pub(crate) fn generate_direct_altrep_registration(
                     Some(ptr) => Ok(#mut_ident(ptr)),
                     None => Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::EXTPTRSXP,
-                        actual: ::miniextendr_api::sys::SexpExt::type_of(&sexp),
+                        actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     }),
                 }
             }

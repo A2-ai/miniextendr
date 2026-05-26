@@ -34,7 +34,7 @@
 
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::list::{List, ListFromSexpError};
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 use std::collections::HashSet;
 use std::ffi::CStr;
 

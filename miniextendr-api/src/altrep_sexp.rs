@@ -45,7 +45,8 @@
 //! ```
 
 use crate::from_r::r_slice;
-use crate::sys::{self, Rcomplex, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{self};
+use crate::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexpExt};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -231,7 +232,7 @@ impl AltrepSexp {
         let n = self.sexp.len();
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
-            let elt = self.sexp.string_elt(i as sys::R_xlen_t);
+            let elt = self.sexp.string_elt(i as R_xlen_t);
             if elt == SEXP::na_string() {
                 out.push(None);
             } else {

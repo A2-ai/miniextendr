@@ -52,8 +52,9 @@ fn bytes_empty() {
 #[test]
 fn bytes_from_raw_vector() {
     r_test_utils::with_r_thread(|| {
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 3));
@@ -77,8 +78,9 @@ fn bytes_from_raw_vector() {
 #[test]
 fn bytesmut_from_raw_vector() {
     r_test_utils::with_r_thread(|| {
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 4));
@@ -122,8 +124,8 @@ fn option_bytes_none() {
         let opt: Option<Bytes> = None;
         let sexp = opt.into_sexp();
 
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::SEXPTYPE;
         assert!(sexp.is_nil());
         assert_eq!(sexp.type_of(), SEXPTYPE::NILSXP);
     });

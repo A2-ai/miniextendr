@@ -1,9 +1,9 @@
 //! ALTREP benchmarks.
 
 use miniextendr_api::IntoR;
+use miniextendr_api::SexpExt;
 use miniextendr_api::altrep_data::{AltIntegerData, AltRealData, AltrepDataptr, AltrepLen};
 use miniextendr_api::sys;
-use miniextendr_api::sys::SexpExt;
 use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];

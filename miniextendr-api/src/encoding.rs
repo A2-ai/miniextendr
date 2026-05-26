@@ -57,7 +57,8 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         crate::worker::is_r_main_thread(),
         "must be called from R main thread"
     );
-    use crate::sys::{R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, SexpExt};
+    use crate::SexpExt;
+    use crate::sys::{R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect};
 
     unsafe {
         // Call l10n_info()
@@ -100,7 +101,8 @@ pub extern "C-unwind" fn miniextendr_encoding_init() {
     let _ = ENCODING_INFO.get_or_init(|| {
         #[cfg(feature = "nonapi")]
         unsafe {
-            use crate::sys::{Rboolean, nonapi_encoding};
+            use crate::Rboolean;
+            use crate::sys::nonapi_encoding;
 
             let native_encoding = {
                 let ptr = nonapi_encoding::R_nativeEncoding();

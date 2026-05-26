@@ -4,7 +4,7 @@ use miniextendr_macros::miniextendr;
 
 #[miniextendr]
 #[unsafe(no_mangle)]
-extern "C-unwind" fn C_bad(_dots: &miniextendr_api::Dots) -> miniextendr_api::sys::SEXP {
+extern "C-unwind" fn C_bad(_dots: &miniextendr_api::Dots) -> miniextendr_api::SEXP {
     std::ptr::null_mut()
 }
 

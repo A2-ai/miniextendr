@@ -56,20 +56,13 @@
 /// Raw ALTREP C API method type aliases.
 pub mod altrep;
 
-// Re-export the core type vocabulary so `sys::Foo` paths used inside this
-// crate and in macro-generated code keep resolving even though the types
-// live in their own modules. These are the same symbols as the crate-root
-// re-exports.
-pub use crate::sexp::{SEXP, SEXPREC};
-pub use crate::sexp_ext::SexpExt;
-pub use crate::sexp_types::{
-    CE_UTF8, R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE,
-    cetype_t,
-};
-// `PairListExt` is `pub(crate)`; re-export with the same visibility so
-// `crate::sys::PairListExt` resolves for in-crate callers but isn't part of
-// the public API surface.
-pub(crate) use crate::sexp_ext::PairListExt;
+// `extern "C-unwind"` signatures below reference the type vocabulary by
+// bare name. Bring it into scope as a private `use` (NOT `pub use`) — the
+// vocab's canonical home is the crate root (`crate::SEXP`, etc.) and
+// `crate::sexp_types` for the niche helpers. Adding these to the public
+// API of `sys::` would re-create the bridge.
+use crate::sexp::SEXP;
+use crate::sexp_types::{R_CFinalizer_t, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXPTYPE, cetype_t};
 
 // region: Connections types (gated behind `connections` feature)
 // WARNING: R's connection API is explicitly marked as UNSTABLE.

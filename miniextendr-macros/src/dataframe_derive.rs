@@ -808,22 +808,22 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = std::convert::Infallible;
 
             #[inline]
-            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
             #[inline]
-            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+            fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
             }
 
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
             }
         }
@@ -1254,7 +1254,7 @@ fn derive_struct_dataframe(
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                         let mut __df_pairs: Vec<(
                             String,
-                            ::miniextendr_api::sys::SEXP,
+                            ::miniextendr_api::SEXP,
                         )> = Vec::new();
                         #tag_push_pair
                         #(#pair_pushes)*

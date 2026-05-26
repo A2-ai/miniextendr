@@ -32,7 +32,8 @@ use crate::altrep_traits::NA_INTEGER;
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::{Rf_allocVector, Rf_install, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rf_allocVector, Rf_install};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Cached "factor" class STRSXP
 
@@ -470,10 +471,10 @@ impl<T> std::ops::DerefMut for FactorVec<T> {
 
 impl<T: RFactor> IntoR for FactorVec<T> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -569,10 +570,10 @@ pub trait UnitEnumFactor {
 
 impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {

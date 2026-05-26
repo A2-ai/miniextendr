@@ -11,11 +11,12 @@
 //! - Release order flexibility
 //! - High iteration counts
 
+use miniextendr_api::SEXPTYPE;
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::refcount_protect::{
     HashMapArena, RefCountedArena, ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
 };
-use miniextendr_api::sys::{self, Rf_allocVector, SEXPTYPE};
+use miniextendr_api::sys::{self, Rf_allocVector};
 use miniextendr_bench::raw_ffi;
 
 fn main() {

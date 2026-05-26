@@ -56,7 +56,7 @@
 //! All ABI operations are main-thread only. R invokes `.Call` on the main thread,
 //! and method shims do not route through `with_r_thread`.
 
-use crate::sys::SEXP;
+use crate::SEXP;
 use std::os::raw::c_void;
 
 /// Type tag for runtime type identification.

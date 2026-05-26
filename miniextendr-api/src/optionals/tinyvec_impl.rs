@@ -65,7 +65,7 @@ pub use tinyvec::{Array, ArrayVec, TinyVec};
 
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::sys::{RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: Blanket implementations for TinyVec and ArrayVec
 //
@@ -210,7 +210,7 @@ where
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(tv) => tv.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         })
     }
 
@@ -218,7 +218,7 @@ where
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(tv) => unsafe { tv.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         })
     }
 }
@@ -259,7 +259,7 @@ where
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(av) => av.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         })
     }
 
@@ -267,7 +267,7 @@ where
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(av) => unsafe { av.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         })
     }
 }

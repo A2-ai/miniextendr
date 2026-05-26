@@ -50,15 +50,15 @@ use crate::into_r::IntoR;
 impl IntoR for i64 {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         // i32::MIN is NA_integer_ in R, so exclude it from the integer range
         if self > i32::MIN as i64 && self <= i32::MAX as i64 {
             // Range guard verified — cast is safe
@@ -69,7 +69,7 @@ impl IntoR for i64 {
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         if self > i32::MIN as i64 && self <= i32::MAX as i64 {
             unsafe { (self as i32).into_sexp_unchecked() }
         } else {
@@ -85,15 +85,15 @@ impl IntoR for i64 {
 impl IntoR for u64 {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         if self <= i32::MAX as u64 {
             (self as i32).into_sexp()
         } else {
@@ -101,7 +101,7 @@ impl IntoR for u64 {
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         if self <= i32::MAX as u64 {
             unsafe { (self as i32).into_sexp_unchecked() }
         } else {
@@ -117,19 +117,19 @@ impl IntoR for u64 {
 impl IntoR for isize {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok((self as i64).into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         (self as i64).into_sexp()
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { (self as i64).into_sexp_unchecked() }
     }
 }
@@ -141,19 +141,19 @@ impl IntoR for isize {
 impl IntoR for usize {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok((self as u64).into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         (self as u64).into_sexp()
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { (self as u64).into_sexp_unchecked() }
     }
 }
@@ -164,51 +164,51 @@ macro_rules! impl_logical_into_r {
         impl IntoR for $ty {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
-                Ok(crate::sys::SEXP::scalar_logical_raw($to_i32(self)))
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+                Ok(crate::SEXP::scalar_logical_raw($to_i32(self)))
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
-                crate::sys::SEXP::scalar_logical_raw($to_i32(self))
+            fn into_sexp(self) -> crate::SEXP {
+                crate::SEXP::scalar_logical_raw($to_i32(self))
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
-                unsafe { crate::sys::SEXP::scalar_logical_raw_unchecked($to_i32(self)) }
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+                unsafe { crate::SEXP::scalar_logical_raw_unchecked($to_i32(self)) }
             }
         }
     };
 }
 
 impl_logical_into_r!(bool, |v: bool| i32::from(v));
-impl_logical_into_r!(crate::sys::Rboolean, |v: crate::sys::Rboolean| v as i32);
-impl_logical_into_r!(crate::sys::RLogical, crate::sys::RLogical::to_i32);
+impl_logical_into_r!(crate::Rboolean, |v: crate::Rboolean| v as i32);
+impl_logical_into_r!(crate::RLogical, crate::RLogical::to_i32);
 
 impl IntoR for Option<i32> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::scalar_integer(NA_INTEGER),
+            None => crate::SEXP::scalar_integer(NA_INTEGER),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::sys::SEXP::scalar_integer_unchecked(NA_INTEGER) },
+            None => unsafe { crate::SEXP::scalar_integer_unchecked(NA_INTEGER) },
         }
     }
 }
@@ -216,78 +216,78 @@ impl IntoR for Option<i32> {
 impl IntoR for Option<f64> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::scalar_real(NA_REAL),
+            None => crate::SEXP::scalar_real(NA_REAL),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::sys::SEXP::scalar_real_unchecked(NA_REAL) },
+            None => unsafe { crate::SEXP::scalar_real_unchecked(NA_REAL) },
         }
     }
 }
 
-impl IntoR for Option<crate::sys::Rboolean> {
+impl IntoR for Option<crate::Rboolean> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             // Rboolean is repr(i32), `as i32` is a no-op transmute
-            Some(v) => crate::sys::SEXP::scalar_logical_raw(v as i32),
-            None => crate::sys::SEXP::scalar_logical_raw(NA_LOGICAL),
+            Some(v) => crate::SEXP::scalar_logical_raw(v as i32),
+            None => crate::SEXP::scalar_logical_raw(NA_LOGICAL),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
-            Some(v) => unsafe { crate::sys::SEXP::scalar_logical_raw_unchecked(v as i32) },
-            None => unsafe { crate::sys::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
+            Some(v) => unsafe { crate::SEXP::scalar_logical_raw_unchecked(v as i32) },
+            None => unsafe { crate::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
         }
     }
 }
 
-impl IntoR for Option<crate::sys::RLogical> {
+impl IntoR for Option<crate::RLogical> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
-            Some(v) => crate::sys::SEXP::scalar_logical_raw(v.to_i32()),
-            None => crate::sys::SEXP::scalar_logical_raw(NA_LOGICAL),
+            Some(v) => crate::SEXP::scalar_logical_raw(v.to_i32()),
+            None => crate::SEXP::scalar_logical_raw(NA_LOGICAL),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
-            Some(v) => unsafe { crate::sys::SEXP::scalar_logical_raw_unchecked(v.to_i32()) },
-            None => unsafe { crate::sys::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
+            Some(v) => unsafe { crate::SEXP::scalar_logical_raw_unchecked(v.to_i32()) },
+            None => unsafe { crate::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
         }
     }
 }
@@ -295,25 +295,25 @@ impl IntoR for Option<crate::sys::RLogical> {
 impl IntoR for Option<bool> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::scalar_logical_raw(NA_LOGICAL),
+            None => crate::SEXP::scalar_logical_raw(NA_LOGICAL),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::sys::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
+            None => unsafe { crate::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
         }
     }
 }
@@ -326,19 +326,19 @@ macro_rules! impl_option_smart_i64_into_r {
         impl IntoR for Option<$t> {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 match self {
                     Some(x) if $fits_i32(x) => (x as i32).into_sexp(),
                     Some(x) => (x as f64).into_sexp(),
-                    None => crate::sys::SEXP::scalar_integer(NA_INTEGER),
+                    None => crate::SEXP::scalar_integer(NA_INTEGER),
                 }
             }
         }
@@ -357,15 +357,15 @@ macro_rules! impl_option_coerce_into_r {
         impl IntoR for Option<$from> {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.map(|x| x as $to).into_sexp())
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 self.map(|x| x as $to).into_sexp()
             }
         }
@@ -381,15 +381,15 @@ impl_option_coerce_into_r!(f32 => f64);
 impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.as_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.as_sexp())
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.as_sexp()
     }
 }
@@ -401,19 +401,19 @@ impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::Externa
 impl<T: crate::externalptr::IntoExternalPtr> IntoR for T {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         crate::externalptr::ExternalPtr::new(self).into_sexp()
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { crate::externalptr::ExternalPtr::new_unchecked(self).into_sexp() }
     }
 }
@@ -421,24 +421,24 @@ impl<T: crate::externalptr::IntoExternalPtr> IntoR for T {
 /// Helper to convert a string slice to R CHARSXP.
 /// Uses UTF-8 encoding. Empty strings return R_BlankString (static, no allocation).
 #[inline]
-pub(crate) fn str_to_charsxp(s: &str) -> crate::sys::SEXP {
+pub(crate) fn str_to_charsxp(s: &str) -> crate::SEXP {
     if s.is_empty() {
-        crate::sys::SEXP::blank_string()
+        crate::SEXP::blank_string()
     } else {
         let _len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-        crate::sys::SEXP::charsxp(s)
+        crate::SEXP::charsxp(s)
     }
 }
 
 /// Unchecked version of [`str_to_charsxp`].
 #[inline]
-pub(crate) unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::sys::SEXP {
+pub(crate) unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::SEXP {
     unsafe {
         if s.is_empty() {
-            crate::sys::SEXP::blank_string()
+            crate::SEXP::blank_string()
         } else {
             let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-            crate::sys::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), len, crate::sys::CE_UTF8)
+            crate::sys::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), len, crate::sexp_types::CE_UTF8)
         }
     }
 }
@@ -446,19 +446,19 @@ pub(crate) unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::sys::SEXP {
 impl IntoR for String {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         self.as_str().try_into_sexp()
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.as_str().into_sexp()
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.as_str().into_sexp_unchecked() }
     }
 }
@@ -466,22 +466,22 @@ impl IntoR for String {
 impl IntoR for char {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         // Convert char to a single-character string — always ≤ 4 bytes, cannot overflow i32
         let mut buf = [0u8; 4];
         let s = self.encode_utf8(&mut buf);
-        crate::sys::SEXP::scalar_string(str_to_charsxp(s))
+        crate::SEXP::scalar_string(str_to_charsxp(s))
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let mut buf = [0u8; 4];
         let s = self.encode_utf8(&mut buf);
         unsafe { s.into_sexp_unchecked() }
@@ -491,24 +491,24 @@ impl IntoR for char {
 impl IntoR for &str {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         let _len = i32::try_from(self.len())
             .map_err(|_| crate::into_r_error::IntoRError::StringTooLong { len: self.len() })?;
-        Ok(crate::sys::SEXP::scalar_string(str_to_charsxp(self)))
+        Ok(crate::SEXP::scalar_string(str_to_charsxp(self)))
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
-        crate::sys::SEXP::scalar_string(str_to_charsxp(self))
+    fn into_sexp(self) -> crate::SEXP {
+        crate::SEXP::scalar_string(str_to_charsxp(self))
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
             let charsxp = str_to_charsxp_unchecked(self);
-            crate::sys::SEXP::scalar_string_unchecked(charsxp)
+            crate::SEXP::scalar_string_unchecked(charsxp)
         }
     }
 }
@@ -516,38 +516,36 @@ impl IntoR for &str {
 impl IntoR for Option<&str> {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         match self {
             Some(s) => {
                 let _len = i32::try_from(s.len())
                     .map_err(|_| crate::into_r_error::IntoRError::StringTooLong { len: s.len() })?;
-                Ok(crate::sys::SEXP::scalar_string(str_to_charsxp(s)))
+                Ok(crate::SEXP::scalar_string(str_to_charsxp(s)))
             }
-            None => Ok(crate::sys::SEXP::scalar_string(
-                crate::sys::SEXP::na_string(),
-            )),
+            None => Ok(crate::SEXP::scalar_string(crate::SEXP::na_string())),
         }
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let charsxp = match self {
             Some(s) => str_to_charsxp(s),
-            None => crate::sys::SEXP::na_string(),
+            None => crate::SEXP::na_string(),
         };
-        crate::sys::SEXP::scalar_string(charsxp)
+        crate::SEXP::scalar_string(charsxp)
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
             let charsxp = match self {
                 Some(s) => str_to_charsxp_unchecked(s),
-                None => crate::sys::SEXP::na_string(),
+                None => crate::SEXP::na_string(),
             };
-            crate::sys::SEXP::scalar_string_unchecked(charsxp)
+            crate::SEXP::scalar_string_unchecked(charsxp)
         }
     }
 }
@@ -555,19 +553,19 @@ impl IntoR for Option<&str> {
 impl IntoR for Option<String> {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         self.as_deref().try_into_sexp()
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.as_deref().into_sexp()
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.as_deref().into_sexp_unchecked() }
     }
 }
@@ -585,30 +583,30 @@ where
 {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         match self {
             Some(&v) => v
                 .try_into_sexp()
                 .map_err(|e| crate::into_r_error::IntoRError::Inner(e.to_string())),
-            None => Ok(crate::sys::SEXP::nil()),
+            None => Ok(crate::SEXP::nil()),
         }
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(&v) => v.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(&v) => unsafe { v.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
 }

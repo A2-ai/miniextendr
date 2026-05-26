@@ -6,7 +6,8 @@
 use super::error::RSerdeError;
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
 /// Serializer that converts Rust values directly to R SEXP.

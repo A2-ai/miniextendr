@@ -61,7 +61,8 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 
-use crate::sys::{R_CONNECTIONS_VERSION, Rboolean, Rconnection, SEXP};
+use crate::sys::{R_CONNECTIONS_VERSION, Rconnection};
+use crate::{Rboolean, SEXP};
 
 /// The expected R connections API version this module is compatible with.
 ///
@@ -128,9 +129,10 @@ pub fn check_connections_version() {
 /// }
 /// ```
 pub unsafe fn check_connections_runtime() -> Result<(), String> {
+    use crate::SexpExt;
     use crate::expression::{RCall, dollar_extract};
     use crate::gc_protect::OwnedProtect;
-    use crate::sys::{R_BaseEnv, SexpExt};
+    use crate::sys::R_BaseEnv;
 
     unsafe {
         // Evaluate R.Version() in base env.

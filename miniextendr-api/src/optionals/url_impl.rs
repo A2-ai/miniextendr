@@ -44,7 +44,7 @@ use crate::from_r::{
     SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str,
 };
 use crate::into_r::IntoR;
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Scalar conversions
 
@@ -83,10 +83,10 @@ impl TryFromSexp for Url {
 
 impl IntoR for Url {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -137,10 +137,10 @@ impl TryFromSexp for Option<Url> {
 
 impl IntoR for Option<Url> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -169,7 +169,7 @@ impl TryFromSexp for Vec<Url> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
             if charsxp == SEXP::na_string() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for Vec<Url>",
@@ -194,10 +194,10 @@ impl TryFromSexp for Vec<Url> {
 
 impl IntoR for Vec<Url> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -227,7 +227,7 @@ impl TryFromSexp for Vec<Option<Url>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::sys::R_xlen_t);
+            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
             if charsxp == SEXP::na_string() {
                 result.push(None);
             } else {
@@ -250,10 +250,10 @@ impl TryFromSexp for Vec<Option<Url>> {
 
 impl IntoR for Vec<Option<Url>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {

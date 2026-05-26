@@ -27,18 +27,18 @@ macro_rules! impl_altrep_array_numeric {
         $(,)?
     ) => {
         impl<const N: usize> crate::altrep_traits::Altrep for [$elem; N] {
-            fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+            fn length(x: crate::SEXP) -> crate::R_xlen_t {
                 let data = unsafe {
                     <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
                 };
-                crate::altrep_data::AltrepLen::len(data) as crate::sys::R_xlen_t
+                crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
             }
         }
 
         impl<const N: usize> crate::altrep_traits::AltVec for [$elem; N] {
             const HAS_DATAPTR: bool = true;
 
-            fn dataptr(x: crate::sys::SEXP, _writable: bool) -> *mut core::ffi::c_void {
+            fn dataptr(x: crate::SEXP, _writable: bool) -> *mut core::ffi::c_void {
                 let data = unsafe {
                     <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_mut(x)
                 };
@@ -49,7 +49,7 @@ macro_rules! impl_altrep_array_numeric {
         impl<const N: usize> $alt_trait for [$elem; N] {
             const HAS_ELT: bool = true;
 
-            fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> $elem {
+            fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> $elem {
                 let data = unsafe {
                     <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
                 };
@@ -59,11 +59,11 @@ macro_rules! impl_altrep_array_numeric {
             const HAS_GET_REGION: bool = true;
 
             fn get_region(
-                x: crate::sys::SEXP,
-                start: crate::sys::R_xlen_t,
-                len: crate::sys::R_xlen_t,
+                x: crate::SEXP,
+                start: crate::R_xlen_t,
+                len: crate::R_xlen_t,
                 buf: &mut [$elem],
-            ) -> crate::sys::R_xlen_t {
+            ) -> crate::R_xlen_t {
                 if start < 0 || len <= 0 {
                     return 0;
                 }
@@ -71,7 +71,7 @@ macro_rules! impl_altrep_array_numeric {
                     <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
                 };
                 <[$elem; N] as $data_trait>::get_region(data, start as usize, len as usize, buf)
-                    as crate::sys::R_xlen_t
+                    as crate::R_xlen_t
             }
 
             $($($extra)*)?
@@ -103,7 +103,7 @@ macro_rules! altrep_array_no_na {
     ($elem:ty, $data_trait:path) => {
         const HAS_NO_NA: bool = true;
 
-        fn no_na(x: crate::sys::SEXP) -> i32 {
+        fn no_na(x: crate::SEXP) -> i32 {
             let data =
                 unsafe { <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
             <[$elem; N] as $data_trait>::no_na(data)
@@ -140,7 +140,7 @@ impl_altrep_array_numeric!(
     install_family_fn = install_raw,
 );
 impl_altrep_array_numeric!(
-    elem = crate::sys::Rcomplex,
+    elem = crate::Rcomplex,
     data_trait = crate::altrep_data::AltComplexData,
     alt_trait = crate::altrep_traits::AltComplex,
     rbase = crate::altrep::RBase::Complex,
@@ -150,10 +150,10 @@ impl_altrep_array_numeric!(
 
 // Logical arrays — bool != i32, no direct dataptr, elt returns i32 via to_r_int()
 impl<const N: usize> crate::altrep_traits::Altrep for [bool; N] {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data =
             unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        crate::altrep_data::AltrepLen::len(data) as crate::sys::R_xlen_t
+        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
     }
 }
 
@@ -162,7 +162,7 @@ impl<const N: usize> crate::altrep_traits::AltVec for [bool; N] {}
 impl<const N: usize> crate::altrep_traits::AltLogical for [bool; N] {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> i32 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
         let data =
             unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         <[bool; N] as crate::altrep_data::AltLogicalData>::elt(data, i.max(0) as usize).to_r_int()
@@ -170,7 +170,7 @@ impl<const N: usize> crate::altrep_traits::AltLogical for [bool; N] {
 
     const HAS_NO_NA: bool = true;
 
-    fn no_na(x: crate::sys::SEXP) -> i32 {
+    fn no_na(x: crate::SEXP) -> i32 {
         let data =
             unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         <[bool; N] as crate::altrep_data::AltLogicalData>::no_na(data)
@@ -208,22 +208,22 @@ impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
 impl<const N: usize> crate::altrep_traits::Altrep for [String; N] {
     const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
 
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data =
             unsafe { <[String; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        crate::altrep_data::AltrepLen::len(data) as crate::sys::R_xlen_t
+        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
     }
 }
 
 impl<const N: usize> crate::altrep_traits::AltVec for [String; N] {}
 
 impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> crate::sys::SEXP {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> crate::SEXP {
         let data =
             unsafe { <[String; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         match <[String; N] as crate::altrep_data::AltStringData>::elt(data, i.max(0) as usize) {
             Some(s) => unsafe { super::checked_mkchar(s) },
-            None => crate::sys::SEXP::na_string(),
+            None => crate::SEXP::na_string(),
         }
     }
 }

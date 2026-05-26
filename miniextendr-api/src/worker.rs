@@ -63,7 +63,8 @@
 use std::sync::OnceLock;
 use std::thread;
 
-use crate::sys::{self, SEXP};
+use crate::SEXP;
+use crate::sys::{self};
 
 static R_MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 
@@ -347,7 +348,8 @@ mod worker_channel {
     use std::thread;
 
     use super::Sendable;
-    use crate::sys::{self, Rboolean, SEXP};
+    use crate::sys;
+    use crate::{Rboolean, SEXP};
 
     type AnyJob = Box<dyn FnOnce() + Send>;
 

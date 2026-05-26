@@ -29,7 +29,7 @@
 /// }
 /// ```
 use crate::expression::{RCall, REnv};
-use crate::sys::{SEXP, SexpExt};
+use crate::{SEXP, SexpExt};
 use std::ffi::CStr;
 
 /// Get the `methods` package namespace for evaluating S4 functions.

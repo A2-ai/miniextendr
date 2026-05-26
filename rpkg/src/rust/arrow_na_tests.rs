@@ -366,7 +366,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
 
     // Fill with non-NA values
     for i in 0..n {
-        miniextendr_api::sys::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64);
+        miniextendr_api::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64);
     }
 
     // Create Arrow array — bitmap says "no nulls" (all values are valid)
@@ -375,7 +375,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
     let arr = Float64Array::new(scalar_buffer, None); // None = no nulls
 
     // Now mutate the R buffer AFTER Arrow array was created
-    miniextendr_api::sys::SexpExt::set_real_elt(
+    miniextendr_api::SexpExt::set_real_elt(
         &sexp,
         1, // set index 1 to NA
         miniextendr_api::altrep_traits::NA_REAL,

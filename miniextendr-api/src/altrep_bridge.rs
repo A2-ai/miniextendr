@@ -36,7 +36,7 @@ use crate::altrep_traits::{
     AltrepGuard,
 };
 use crate::sys::altrep::R_altrep_class_t;
-use crate::sys::*;
+use crate::{R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use core::ffi::c_void;
 
 /// Dispatch an ALTREP callback through the guard mode selected by `T::GUARD`.

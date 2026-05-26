@@ -14,10 +14,12 @@
 //! - `ListBuilder` vs manual list construction
 //! - `StrVecBuilder` vs manual string vector construction
 
+use miniextendr_api::SEXPTYPE;
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
 use miniextendr_api::list::{List, ListAccumulator, ListBuilder, collect_list};
+use miniextendr_api::sexp_types::CE_UTF8;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
-use miniextendr_api::sys::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+use miniextendr_api::sys::{self, Rf_allocVector, Rf_protect, Rf_unprotect};
 use miniextendr_bench::raw_ffi;
 
 fn main() {
@@ -260,7 +262,7 @@ fn strvec_manual_construction(size_idx: usize) {
 
         for i in 0..n {
             // UNSAFE: charsxp unprotected - GC risk! See doc comment above.
-            let charsxp = raw_ffi::Rf_mkCharLenCE("hello".as_ptr().cast(), 5, sys::CE_UTF8);
+            let charsxp = raw_ffi::Rf_mkCharLenCE("hello".as_ptr().cast(), 5, CE_UTF8);
             raw_ffi::SET_STRING_ELT(vec, i, charsxp);
         }
 
@@ -301,11 +303,7 @@ fn build_named_list_realistic() {
         // Logical
         builder.set(2, scope.protect_raw(raw_ffi::Rf_ScalarLogical(1)));
         // String - protect CHARSXP before passing to Rf_ScalarString
-        let s = scope.protect_raw(raw_ffi::Rf_mkCharLenCE(
-            "test".as_ptr().cast(),
-            4,
-            sys::CE_UTF8,
-        ));
+        let s = scope.protect_raw(raw_ffi::Rf_mkCharLenCE("test".as_ptr().cast(), 4, CE_UTF8));
         builder.set(3, scope.protect_raw(raw_ffi::Rf_ScalarString(s)));
         // Nested list
         let inner = ListBuilder::new(&scope, 2);

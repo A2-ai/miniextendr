@@ -3,7 +3,7 @@
 //! Measures the cost of calling R C-API functions through checked vs unchecked
 //! wrappers.
 
-use miniextendr_api::sys::{self, SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_bench::SIZES;
 use miniextendr_bench::raw_ffi;
 
@@ -17,7 +17,7 @@ fn main() {
 #[divan::bench(args = SIZES)]
 fn alloc_intsxp(n: usize) -> SEXP {
     unsafe {
-        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::INTSXP, n as sys::R_xlen_t);
+        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::INTSXP, n as R_xlen_t);
         divan::black_box(sexp)
     }
 }
@@ -25,7 +25,7 @@ fn alloc_intsxp(n: usize) -> SEXP {
 #[divan::bench(args = SIZES)]
 fn alloc_realsxp(n: usize) -> SEXP {
     unsafe {
-        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::REALSXP, n as sys::R_xlen_t);
+        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::REALSXP, n as R_xlen_t);
         divan::black_box(sexp)
     }
 }
@@ -33,7 +33,7 @@ fn alloc_realsxp(n: usize) -> SEXP {
 #[divan::bench(args = SIZES)]
 fn alloc_lglsxp(n: usize) -> SEXP {
     unsafe {
-        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::LGLSXP, n as sys::R_xlen_t);
+        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::LGLSXP, n as R_xlen_t);
         divan::black_box(sexp)
     }
 }
@@ -41,7 +41,7 @@ fn alloc_lglsxp(n: usize) -> SEXP {
 #[divan::bench(args = SIZES)]
 fn alloc_rawsxp(n: usize) -> SEXP {
     unsafe {
-        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::RAWSXP, n as sys::R_xlen_t);
+        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::RAWSXP, n as R_xlen_t);
         divan::black_box(sexp)
     }
 }
@@ -49,7 +49,7 @@ fn alloc_rawsxp(n: usize) -> SEXP {
 #[divan::bench(args = SIZES)]
 fn alloc_strsxp(n: usize) -> SEXP {
     unsafe {
-        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as sys::R_xlen_t);
+        let sexp = raw_ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
         divan::black_box(sexp)
     }
 }

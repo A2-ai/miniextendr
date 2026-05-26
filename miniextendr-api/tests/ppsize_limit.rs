@@ -19,8 +19,9 @@ use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::prelude::SexpExt;
 use miniextendr_api::strvec::StrVecBuilder;
-use miniextendr_api::sys::{self, Rf_allocVector, SEXPTYPE};
+use miniextendr_api::sys::Rf_allocVector;
 use miniextendr_api::thread::RThreadBuilder;
+use miniextendr_api::{SEXP, SEXPTYPE};
 
 // region: R initialization with small ppsize
 
@@ -180,7 +181,7 @@ fn list_builder_bounded_stack() {
         let builder = ListBuilder::new(&scope, 50);
 
         for i in 0..50 {
-            let child = scope.protect_raw(sys::SEXP::scalar_integer(i as i32));
+            let child = scope.protect_raw(SEXP::scalar_integer(i as i32));
             builder.set(i, child);
         }
 
@@ -239,7 +240,7 @@ fn list_set_elt_constant_stack() {
 
         // Use set_elt which internally protects/unprotects
         for i in 0..80 {
-            let child = sys::SEXP::scalar_integer(i as i32);
+            let child = SEXP::scalar_integer(i as i32);
             list.set_elt(i, child);
         }
 
@@ -273,7 +274,7 @@ fn nested_list_under_constraint() {
             // Fill the inner list using set_elt (constant stack per element)
             let inner = List::from_raw(slot.get());
             for j in 0..10 {
-                inner.set_elt(j, sys::SEXP::scalar_integer((i * 10 + j) as i32));
+                inner.set_elt(j, SEXP::scalar_integer((i * 10 + j) as i32));
             }
 
             // Set into outer list

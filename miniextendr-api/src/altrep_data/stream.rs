@@ -134,9 +134,9 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> InferBase for StreamingRealDat
 impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::Altrep
     for StreamingRealData<F>
 {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -150,7 +150,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltReal
 {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> f64 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> f64 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltRealData::elt(data, i as usize)
     }
@@ -158,13 +158,13 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltReal
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [f64],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 // endregion
@@ -294,9 +294,9 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> InferBase for StreamingIntData
 impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::Altrep
     for StreamingIntData<F>
 {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -310,7 +310,7 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltInteg
 {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> i32 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltIntegerData::elt(data, i as usize)
     }
@@ -318,13 +318,13 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltInteg
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [i32],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 // endregion

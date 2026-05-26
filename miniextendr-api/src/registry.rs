@@ -1101,11 +1101,9 @@ fn scan_digits(haystack: &[u8], from: usize) -> Option<usize> {
 /// `path_sexp` must be a valid STRSXP of length >= 1.
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn miniextendr_write_wrappers(
-    path_sexp: crate::sys::SEXP,
-) -> crate::sys::SEXP {
+pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> crate::SEXP {
     unsafe {
-        use crate::sys::{SEXP, SexpExt};
+        use crate::{SEXP, SexpExt};
 
         let char_sexp = path_sexp.string_elt_unchecked(0);
         let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
@@ -1131,11 +1129,9 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
 /// `path_sexp` must be a valid STRSXP of length >= 1.
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn miniextendr_write_wasm_registry(
-    path_sexp: crate::sys::SEXP,
-) -> crate::sys::SEXP {
+pub unsafe extern "C" fn miniextendr_write_wasm_registry(path_sexp: crate::SEXP) -> crate::SEXP {
     unsafe {
-        use crate::sys::{SEXP, SexpExt};
+        use crate::{SEXP, SexpExt};
 
         let char_sexp = path_sexp.string_elt_unchecked(0);
         let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());

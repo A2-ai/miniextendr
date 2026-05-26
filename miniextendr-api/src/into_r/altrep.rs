@@ -154,31 +154,31 @@ where
     T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
         let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
         let data1 = ext_ptr.as_sexp();
         // Protect data1 across new_altrep — it may allocate and trigger GC.
         unsafe {
             crate::sys::Rf_protect_unchecked(data1);
-            let out = cls.new_altrep(data1, crate::sys::SEXP::nil());
+            let out = cls.new_altrep(data1, crate::SEXP::nil());
             crate::sys::Rf_unprotect_unchecked(1);
             out
         }
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
         let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
         let data1 = ext_ptr.as_sexp();
         unsafe {
             crate::sys::Rf_protect_unchecked(data1);
-            let out = cls.new_altrep_unchecked(data1, crate::sys::SEXP::nil());
+            let out = cls.new_altrep_unchecked(data1, crate::SEXP::nil());
             crate::sys::Rf_unprotect_unchecked(1);
             out
         }
@@ -191,13 +191,13 @@ where
 /// functions, transparently passing the ALTREP SEXP back to R.
 impl IntoR for crate::altrep_sexp::AltrepSexp {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         // Safety: returning to R which is always the main thread context
         unsafe { self.as_raw() }
     }

@@ -2,9 +2,9 @@
 //!
 //! Using methods on SEXP (via `&self`) instead of free functions avoids
 //! `clippy::not_unsafe_ptr_arg_deref` in ALTREP trait implementations,
-//! mirroring the pattern established by [`SexpExt`](crate::sys::SexpExt).
+//! mirroring the pattern established by [`SexpExt`](crate::SexpExt).
 
-use crate::sys::SEXP;
+use crate::SEXP;
 
 /// ALTREP-specific extension methods for SEXP.
 ///

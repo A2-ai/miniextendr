@@ -98,7 +98,9 @@
 use crate::cached_class::{
     condition_names_sexp, rust_condition_attr_symbol, rust_condition_class_sexp,
 };
-use crate::sys::{self, SEXP, SexpExt};
+use crate::sexp_types::CE_UTF8;
+use crate::sys::{self};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// Canonical kind strings for tagged condition values.
 ///
@@ -186,13 +188,13 @@ pub fn make_rust_condition_value(
         // trigger old-to-new GC barriers; R-devel's GC fires more aggressively
         // here than R-release/oldrel, so unprotected intermediates corrupt the
         // heap on R-devel even when R 4.5/4.4 happen to survive (PR #344 fix).
-        let list = sys::Rf_allocVector(sys::SEXPTYPE::VECSXP, 4);
+        let list = sys::Rf_allocVector(SEXPTYPE::VECSXP, 4);
         sys::Rf_protect(list);
         let mut prot = 1;
 
         // Element 0: error message
         let msg_cstr = to_cstring_lossy(message, "<invalid error message>");
-        let msg_charsxp = sys::Rf_mkCharCE(msg_cstr.as_ptr(), sys::CE_UTF8);
+        let msg_charsxp = sys::Rf_mkCharCE(msg_cstr.as_ptr(), CE_UTF8);
         let msg_sexp = SEXP::scalar_string(msg_charsxp);
         sys::Rf_protect(msg_sexp);
         prot += 1;
@@ -200,7 +202,7 @@ pub fn make_rust_condition_value(
 
         // Element 1: kind string
         let kind_cstr = to_cstring_lossy(kind, kind::OTHER_RUST_ERROR);
-        let kind_charsxp = sys::Rf_mkCharCE(kind_cstr.as_ptr(), sys::CE_UTF8);
+        let kind_charsxp = sys::Rf_mkCharCE(kind_cstr.as_ptr(), CE_UTF8);
         let kind_sexp = SEXP::scalar_string(kind_charsxp);
         sys::Rf_protect(kind_sexp);
         prot += 1;
@@ -210,7 +212,7 @@ pub fn make_rust_condition_value(
         // Only the Some-branch allocates; nil is constant.
         let class_sexp = if let Some(class_name) = class {
             let class_cstr = to_cstring_lossy(class_name, "rust_condition");
-            let class_charsxp = sys::Rf_mkCharCE(class_cstr.as_ptr(), sys::CE_UTF8);
+            let class_charsxp = sys::Rf_mkCharCE(class_cstr.as_ptr(), CE_UTF8);
             let s = SEXP::scalar_string(class_charsxp);
             sys::Rf_protect(s);
             prot += 1;

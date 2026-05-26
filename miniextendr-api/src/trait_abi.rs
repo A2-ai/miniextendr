@@ -142,8 +142,8 @@ pub use conv::{check_arity, extract_arg, from_sexp, nil, rf_error, to_sexp, try_
 // with the reconstructed RCondition if the shim returned a tagged error SEXP.
 pub use crate::condition::repanic_if_rust_error;
 
+use crate::SEXP;
 use crate::abi::mx_tag;
-use crate::sys::SEXP;
 use std::os::raw::c_void;
 
 // region: TraitView - Trait for macro-generated View structs

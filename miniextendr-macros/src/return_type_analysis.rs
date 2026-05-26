@@ -170,7 +170,7 @@ fn analyze_option_type(
         *ctx.is_invisible = true;
         quote::quote! {
             match #rust_result_ident {
-                Some(()) => ::miniextendr_api::sys::SEXP::nil(),
+                Some(()) => ::miniextendr_api::SEXP::nil(),
                 None => ::miniextendr_api::error_value::make_rust_condition_value(
                     #option_none_error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                 ),
@@ -183,7 +183,7 @@ fn analyze_option_type(
         quote::quote! {
             match #rust_result_ident {
                 Some(v) => v,
-                None => ::miniextendr_api::sys::SEXP::nil(),
+                None => ::miniextendr_api::SEXP::nil(),
             }
         }
     } else {
@@ -229,7 +229,7 @@ fn analyze_result_type(
         if ok_is_unit {
             // Result<(), ()> - invisible, always returns NULL
             *ctx.is_invisible = true;
-            quote::quote! { ::miniextendr_api::sys::SEXP::nil() }
+            quote::quote! { ::miniextendr_api::SEXP::nil() }
         } else {
             // Result<T, ()> - convert to Result<T, NullOnErr> and use IntoR
             // IntoR for Result<T, NullOnErr> returns NULL on Err
@@ -260,7 +260,7 @@ fn analyze_result_type(
         *ctx.is_invisible = true;
         quote::quote! {
             match #rust_result_ident {
-                Ok(()) => ::miniextendr_api::sys::SEXP::nil(),
+                Ok(()) => ::miniextendr_api::SEXP::nil(),
                 Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
                     &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                 ),

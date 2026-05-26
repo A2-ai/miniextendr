@@ -4,7 +4,8 @@
 //! - Into R (empty strings): `R_BlankString` vs `Rf_mkCharLenCE(ptr, 0, CE_UTF8)`
 //! - From R: `CStr::from_ptr` (strlen scan) vs LENGTH-based slice construction
 
-use miniextendr_api::sys::{self, SEXP};
+use miniextendr_api::SEXP;
+use miniextendr_api::sexp_types::CE_UTF8;
 use miniextendr_bench::SIZES;
 use miniextendr_bench::raw_ffi;
 
@@ -23,7 +24,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
 /// Current approach: Rf_mkCharLenCE with length 0
 #[divan::bench]
 fn into_r_empty_mkcharlen() -> SEXP {
-    unsafe { raw_ffi::Rf_mkCharLenCE(b"".as_ptr().cast(), 0, sys::CE_UTF8) }
+    unsafe { raw_ffi::Rf_mkCharLenCE(b"".as_ptr().cast(), 0, CE_UTF8) }
 }
 
 /// Alternative: R_BlankString static (no FFI call, just static access)
@@ -43,7 +44,7 @@ fn into_r_str_mkcharlen(bencher: divan::Bencher, n: usize) {
         divan::black_box(raw_ffi::Rf_mkCharLenCE(
             s.as_ptr().cast(),
             n as i32,
-            sys::CE_UTF8,
+            CE_UTF8,
         ))
     });
 }

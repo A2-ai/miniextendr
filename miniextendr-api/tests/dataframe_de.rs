@@ -661,7 +661,8 @@ fn flat_field_with_underscore_fails_when_visitor_expects_flat_name() {
 #[test]
 fn non_dataframe_input_is_error() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::SEXPTYPE;
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
         // Allocate a plain list (not a data.frame)
         let list_sexp = unsafe {
             let s = Rf_allocVector(SEXPTYPE::VECSXP, 2);
@@ -688,9 +689,10 @@ fn non_dataframe_input_is_error() {
 
 mod factor_tests {
     use super::*;
+    use miniextendr_api::SEXPTYPE;
     use miniextendr_api::factor::{build_factor, build_levels_sexp};
     use miniextendr_api::prelude::{SEXP, SexpExt};
-    use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+    use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 
     /// Build a one-column data.frame whose sole column is an R factor.
     ///

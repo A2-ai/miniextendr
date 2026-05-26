@@ -167,9 +167,9 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
     let col_fields = fields.iter().map(|f| {
         let col_ident = format_ident!("{}_col", f.name);
         if f.optional {
-            quote! { #col_ident: ::std::option::Option<::miniextendr_api::sys::SEXP> }
+            quote! { #col_ident: ::std::option::Option<::miniextendr_api::SEXP> }
         } else {
-            quote! { #col_ident: ::miniextendr_api::sys::SEXP }
+            quote! { #col_ident: ::miniextendr_api::SEXP }
         }
     });
 
@@ -185,7 +185,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
                 pub fn #method_ident(&self) -> ::std::option::Option<&[#elem_ty]> {
                     self.#col_ident.map(|col| unsafe {
                         let len = self.nrow;
-                        let ptr = <#elem_ty as ::miniextendr_api::sys::RNativeType>::dataptr_mut(col)
+                        let ptr = <#elem_ty as ::miniextendr_api::RNativeType>::dataptr_mut(col)
                             as *const #elem_ty;
                         if len == 0 { &[] } else { ::std::slice::from_raw_parts(ptr, len) }
                     })
@@ -198,7 +198,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
                 pub fn #method_ident(&self) -> &[#elem_ty] {
                     unsafe {
                         let len = self.nrow;
-                        let ptr = <#elem_ty as ::miniextendr_api::sys::RNativeType>::dataptr_mut(self.#col_ident)
+                        let ptr = <#elem_ty as ::miniextendr_api::RNativeType>::dataptr_mut(self.#col_ident)
                             as *const #elem_ty;
                         if len == 0 { &[] } else { ::std::slice::from_raw_parts(ptr, len) }
                     }
@@ -214,12 +214,12 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
         let elem_ty = &f.elem_ty;
         if f.optional {
             quote! {
-                let #col_ident: ::std::option::Option<::miniextendr_api::sys::SEXP> = {
+                let #col_ident: ::std::option::Option<::miniextendr_api::SEXP> = {
                     match view.column_raw(#name_str) {
                         ::std::option::Option::None => ::std::option::Option::None,
                         ::std::option::Option::Some(col) => {
-                            let actual = ::miniextendr_api::sys::SexpExt::type_of(&col);
-                            let expected = <#elem_ty as ::miniextendr_api::sys::RNativeType>::SEXP_TYPE;
+                            let actual = ::miniextendr_api::SexpExt::type_of(&col);
+                            let expected = <#elem_ty as ::miniextendr_api::RNativeType>::SEXP_TYPE;
                             if actual != expected {
                                 __errs.push(::std::format!(
                                     "column `{}`: expected {} ({:?}), got {:?}",
@@ -238,20 +238,20 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             }
         } else {
             quote! {
-                let #col_ident: ::miniextendr_api::sys::SEXP = {
+                let #col_ident: ::miniextendr_api::SEXP = {
                     match view.column_raw(#name_str) {
                         ::std::option::Option::None => {
                             __errs.push(::std::format!(
                                 "missing required column `{}` (expected {} / {:?})",
                                 #name_str,
                                 ::std::stringify!(#elem_ty),
-                                <#elem_ty as ::miniextendr_api::sys::RNativeType>::SEXP_TYPE,
+                                <#elem_ty as ::miniextendr_api::RNativeType>::SEXP_TYPE,
                             ));
-                            ::miniextendr_api::sys::SEXP::nil()
+                            ::miniextendr_api::SEXP::nil()
                         }
                         ::std::option::Option::Some(col) => {
-                            let actual = ::miniextendr_api::sys::SexpExt::type_of(&col);
-                            let expected = <#elem_ty as ::miniextendr_api::sys::RNativeType>::SEXP_TYPE;
+                            let actual = ::miniextendr_api::SexpExt::type_of(&col);
+                            let expected = <#elem_ty as ::miniextendr_api::RNativeType>::SEXP_TYPE;
                             if actual != expected {
                                 __errs.push(::std::format!(
                                     "column `{}`: expected {} ({:?}), got {:?}",
@@ -299,7 +299,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
         #(#attrs)*
         #[allow(non_snake_case)]
         #vis struct #name {
-            sexp: ::miniextendr_api::sys::SEXP,
+            sexp: ::miniextendr_api::SEXP,
             nrow: usize,
             #( #col_fields, )*
         }
@@ -315,7 +315,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
 
             /// The backing SEXP (preserves the data.frame class attribute).
             #[inline]
-            pub fn as_sexp(&self) -> ::miniextendr_api::sys::SEXP { self.sexp }
+            pub fn as_sexp(&self) -> ::miniextendr_api::SEXP { self.sexp }
 
             #( #accessors )*
         }
@@ -324,9 +324,9 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             type Error = ::miniextendr_api::from_r::SexpError;
 
             fn try_from_sexp(
-                sexp: ::miniextendr_api::sys::SEXP,
+                sexp: ::miniextendr_api::SEXP,
             ) -> ::std::result::Result<Self, Self::Error> {
-                use ::miniextendr_api::sys::SexpExt as _;
+                use ::miniextendr_api::SexpExt as _;
 
                 // 1. Must be a data.frame.
                 if !sexp.is_data_frame() {

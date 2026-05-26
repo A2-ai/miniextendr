@@ -998,7 +998,7 @@ pub(super) fn derive_enum_dataframe(
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                         let mut __df_pairs: Vec<(
                             String,
-                            ::miniextendr_api::sys::SEXP,
+                            ::miniextendr_api::SEXP,
                         )> = Vec::new();
                         #tag_push_pair
                         #(#static_pair_pushes)*
@@ -1024,7 +1024,7 @@ pub(super) fn derive_enum_dataframe(
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                         // Explicit type annotation so the vec![] case (unit-only enum
                         // with no columns and no tag) doesn't hit E0282 inference failure.
-                        let __pairs: Vec<(&str, ::miniextendr_api::sys::SEXP)> = vec![
+                        let __pairs: Vec<(&str, ::miniextendr_api::SEXP)> = vec![
                             #tag_pair
                             #(#col_pairs),*
                         ];
@@ -1759,10 +1759,10 @@ pub(super) fn derive_enum_dataframe(
                     // Used when a unit-only enum value is returned directly from a #[miniextendr] fn.
                     impl ::miniextendr_api::IntoR for #row_name {
                         type Error = ::std::convert::Infallible;
-                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::sys::SEXP, Self::Error> {
+                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::SEXP, Self::Error> {
                             use ::std::sync::OnceLock;
                             const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
-                            static LEVELS_CACHE: OnceLock<::miniextendr_api::sys::SEXP> =
+                            static LEVELS_CACHE: OnceLock<::miniextendr_api::SEXP> =
                                 OnceLock::new();
                             let levels = *LEVELS_CACHE.get_or_init(|| {
                                 ::miniextendr_api::factor::build_levels_sexp_cached(LEVELS)
@@ -1809,7 +1809,7 @@ pub(super) fn derive_enum_dataframe(
                         for #row_name #ty_generics #where_clause
                     {
                         type Error = ::std::convert::Infallible;
-                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::sys::SEXP, Self::Error> {
+                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::SEXP, Self::Error> {
                             const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
                             let idx: i32 = match self {
                                 #(#row_name::#variant_idents => #indices,)*
@@ -2287,7 +2287,7 @@ fn generate_split_method(
                         // unprotects after each variant data.frame is built.
                         let #df_var = unsafe {
                             let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                            let mut #pairs_var: Vec<(String, ::miniextendr_api::sys::SEXP)> = Vec::new();
+                            let mut #pairs_var: Vec<(String, ::miniextendr_api::SEXP)> = Vec::new();
                             #(#static_pushes)*
                             ::miniextendr_api::list::List::from_raw_pairs(#pairs_var)
                                 .set_class_str(&["data.frame"])

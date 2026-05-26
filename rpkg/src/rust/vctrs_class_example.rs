@@ -14,7 +14,8 @@
 
 use crate::raw_ffi::Rf_duplicate;
 use miniextendr_api::prelude::{SEXP, SexpExt};
-use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
+use miniextendr_api::SEXPTYPE;
+use miniextendr_api::sys::Rf_allocVector;
 use miniextendr_api::gc_protect::OwnedProtect;
 use miniextendr_api::miniextendr;
 use miniextendr_api::vctrs::new_vctr;

@@ -1869,21 +1869,21 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
     };
 
     let expanded = quote::quote! {
-        impl #impl_generics ::miniextendr_api::sys::RNativeType for #name #ty_generics #where_clause {
+        impl #impl_generics ::miniextendr_api::RNativeType for #name #ty_generics #where_clause {
             const SEXP_TYPE: ::miniextendr_api::SEXPTYPE =
-                <#inner_ty as ::miniextendr_api::sys::RNativeType>::SEXP_TYPE;
+                <#inner_ty as ::miniextendr_api::RNativeType>::SEXP_TYPE;
 
             #[inline]
             unsafe fn dataptr_mut(sexp: ::miniextendr_api::SEXP) -> *mut Self {
                 // Newtype is repr(transparent), so we can cast the pointer
                 unsafe {
-                    <#inner_ty as ::miniextendr_api::sys::RNativeType>::dataptr_mut(sexp).cast()
+                    <#inner_ty as ::miniextendr_api::RNativeType>::dataptr_mut(sexp).cast()
                 }
             }
 
             #[inline]
             fn elt(sexp: ::miniextendr_api::SEXP, i: isize) -> Self {
-                let val = <#inner_ty as ::miniextendr_api::sys::RNativeType>::elt(sexp, i);
+                let val = <#inner_ty as ::miniextendr_api::RNativeType>::elt(sexp, i);
                 #elt_ctor
             }
         }
@@ -2495,13 +2495,13 @@ pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// # Supported element types
 ///
 /// v1 supports column element types that implement
-/// `miniextendr_api::sys::RNativeType`:
+/// `miniextendr_api::RNativeType`:
 ///
 /// - `i32` — `INTSXP`
 /// - `f64` — `REALSXP`
 /// - `u8` — `RAWSXP`
-/// - `miniextendr_api::sys::RLogical` — `LGLSXP`
-/// - `miniextendr_api::sys::Rcomplex` — `CPLXSXP`
+/// - `miniextendr_api::RLogical` — `LGLSXP`
+/// - `miniextendr_api::Rcomplex` — `CPLXSXP`
 ///
 /// `String`/`&str` column types are not yet supported (character vectors
 /// don't expose a contiguous slice). `bool` is also not yet supported as

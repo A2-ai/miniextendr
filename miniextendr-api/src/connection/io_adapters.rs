@@ -3,7 +3,7 @@
 //! Provides adapter types that wrap `std::io::{Read, Write, Seek}` implementations
 //! and expose them as R connections via [`RConnectionImpl`](super::RConnectionImpl).
 
-use crate::sys::SEXP;
+use crate::SEXP;
 
 use super::{RConnectionImpl, RCustomConnection};
 

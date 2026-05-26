@@ -7,7 +7,7 @@
 
 use miniextendr_api::TryFromSexp;
 use miniextendr_api::coerce::{Coerce, TryCoerce};
-use miniextendr_api::sys::{SEXPTYPE, SexpExt};
+use miniextendr_api::{SEXPTYPE, SexpExt};
 use miniextendr_bench::SIZES;
 
 fn main() {
@@ -136,7 +136,7 @@ fn vec_real_to_int_rust_coerce(size_idx: usize) {
 /// Direct: LGLSXP -> &[RLogical]
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn vec_lgl_direct(size_idx: usize) {
-    use miniextendr_api::sys::RLogical;
+    use miniextendr_api::RLogical;
     let sexp = fixtures().lgl_vec(size_idx);
     let slice: &[RLogical] = TryFromSexp::try_from_sexp(sexp).unwrap();
     divan::black_box(slice);
@@ -154,7 +154,7 @@ fn vec_lgl_to_int_r_coerce(size_idx: usize) {
 /// R-coerced: INTSXP -> LGLSXP -> &[RLogical]
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn vec_int_to_lgl_r_coerce(size_idx: usize) {
-    use miniextendr_api::sys::RLogical;
+    use miniextendr_api::RLogical;
     let sexp = fixtures().int_vec(size_idx);
     let coerced = sexp.coerce(SEXPTYPE::LGLSXP);
     let slice: &[RLogical] = TryFromSexp::try_from_sexp(coerced).unwrap();

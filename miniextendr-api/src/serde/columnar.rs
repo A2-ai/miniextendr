@@ -13,7 +13,8 @@ use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
-use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
 /// Generate serde `Serializer` error stubs for methods that should reject non-struct input.
@@ -2176,7 +2177,7 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
     unsafe {
         match col {
             ColumnBuffer::Logical(v) => {
-                let (sexp, dst) = alloc_r_vector::<crate::sys::RLogical>(nrow);
+                let (sexp, dst) = alloc_r_vector::<crate::RLogical>(nrow);
                 let dst_i32: &mut [i32] =
                     std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), nrow);
                 dst_i32.copy_from_slice(v);
@@ -2232,7 +2233,7 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                     Some(s) => s.is_nil(),
                 });
                 if all_null {
-                    let (sexp, dst) = alloc_r_vector::<crate::sys::RLogical>(nrow);
+                    let (sexp, dst) = alloc_r_vector::<crate::RLogical>(nrow);
                     let dst_i32: &mut [i32] =
                         std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), nrow);
                     dst_i32.fill(NA_LOGICAL);

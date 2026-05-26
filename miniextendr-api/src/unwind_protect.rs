@@ -70,8 +70,8 @@ use std::{
 // region: raise_rust_condition_via_stop — Approach 3 for ALTREP RUnwind path
 
 /// Cached `stop` symbol (permanently interned via `Rf_install`).
-fn stop_sym() -> crate::sys::SEXP {
-    static CACHE: OnceLock<crate::sys::SEXP> = OnceLock::new();
+fn stop_sym() -> crate::SEXP {
+    static CACHE: OnceLock<crate::SEXP> = OnceLock::new();
     *CACHE.get_or_init(|| unsafe { crate::sys::Rf_install(c"stop".as_ptr()) })
 }
 
@@ -104,12 +104,11 @@ fn stop_sym() -> crate::sys::SEXP {
 pub(crate) unsafe fn raise_rust_condition_via_stop(
     message: &str,
     class: Option<&str>,
-    call: Option<crate::sys::SEXP>,
+    call: Option<crate::SEXP>,
 ) -> ! {
-    use crate::sys::{
-        CE_UTF8, R_BaseEnv, Rf_allocVector, Rf_eval, Rf_lang2, Rf_mkCharCE, Rf_protect, SEXP,
-        SEXPTYPE, SexpExt,
-    };
+    use crate::sexp_types::CE_UTF8;
+    use crate::sys::{R_BaseEnv, Rf_allocVector, Rf_eval, Rf_lang2, Rf_mkCharCE, Rf_protect};
+    use crate::{SEXP, SEXPTYPE, SexpExt};
 
     unsafe {
         // Build the class vector: c([custom_class,] "rust_error", "simpleError", "error", "condition")
@@ -179,7 +178,8 @@ pub(crate) unsafe fn raise_rust_condition_via_stop(
 
 // endregion
 
-use crate::sys::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
+use crate::sys::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind};
+use crate::{Rboolean, SEXP};
 
 /// Global continuation token for R_UnwindProtect.
 ///
@@ -281,11 +281,11 @@ where
         match catch_unwind(AssertUnwindSafe(f)) {
             Ok(result) => {
                 data.result = Some(result);
-                crate::sys::SEXP::nil()
+                crate::SEXP::nil()
             }
             Err(payload) => {
                 data.panic_payload = Some(payload);
-                crate::sys::SEXP::nil()
+                crate::SEXP::nil()
             }
         }
     }

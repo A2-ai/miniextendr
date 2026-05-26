@@ -73,7 +73,8 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{self};
+use crate::{SEXP, SEXPREC, SEXPTYPE, SexpExt};
 
 /// Offset in bytes from SEXP address to data pointer for standard (non-ALTREP) vectors.
 ///
@@ -188,7 +189,7 @@ pub unsafe fn try_recover_r_sexp(
 
     // Compute candidate SEXP by subtracting header size.
     // wrapping_byte_sub is defined behavior for all pointer arithmetic.
-    let candidate_ptr = (data_ptr as *mut sys::SEXPREC).wrapping_byte_sub(offset);
+    let candidate_ptr = (data_ptr as *mut SEXPREC).wrapping_byte_sub(offset);
 
     let candidate = SEXP(candidate_ptr);
 
