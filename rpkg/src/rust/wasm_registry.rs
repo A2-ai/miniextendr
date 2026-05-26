@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      5d7a959b1ba2cc4f
+// content-hash:      6be5404c1e6ff9e2
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -951,6 +951,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_toml_array(_: SEXP) -> SEXP;
     pub fn C_gc_stress_borrowed_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_factor_labels(_: SEXP) -> SEXP;
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_collated(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_with_tag(_: SEXP) -> SEXP;
@@ -6701,6 +6702,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_dataframe_map".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_map) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_factor_labels".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_factor_labels) }),
         numArgs: 1,
     },
     R_CallMethodDef {

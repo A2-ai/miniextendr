@@ -81,3 +81,30 @@ test_that("gc_stress_with_dataframe_rows — survives gctorture(TRUE)", {
 })
 
 # endregion
+
+# region: gc_stress_factor_labels (issue #689) ---------------------------------
+
+test_that("gc_stress_factor_labels — round-trips factor column to labels", {
+  skip_if_not(
+    exists("gc_stress_factor_labels", mode = "function"),
+    "gc_stress_factor_labels not compiled (serde feature missing)"
+  )
+  # Fixture builds 30 rows cycling 1..3 over levels c("active","pending","archived")
+  # with NA cells at i %% 7 == 0.
+  n <- gc_stress_factor_labels()
+  expect_equal(n, 30L)
+})
+
+test_that("gc_stress_factor_labels — survives gctorture(TRUE)", {
+  skip_if_not(
+    exists("gc_stress_factor_labels", mode = "function"),
+    "gc_stress_factor_labels not compiled (serde feature missing)"
+  )
+  old <- gctorture(TRUE)
+  on.exit(gctorture(old), add = TRUE)
+
+  n <- gc_stress_factor_labels()
+  expect_equal(n, 30L)
+})
+
+# endregion

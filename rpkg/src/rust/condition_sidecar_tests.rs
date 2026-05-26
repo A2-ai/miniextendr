@@ -49,10 +49,7 @@ impl PanickingSidecar {
     /// Construct a sidecar-bearing R6 that will panic on `$boom()`.
     /// @param doom Message string surfaced when `boom()` panics.
     pub fn new(doom: String) -> Self {
-        Self {
-            _r: RSidecar,
-            doom,
-        }
+        Self { _r: RSidecar, doom }
     }
 
     /// Always panics with the stored `doom` message. Exercises the
@@ -74,10 +71,7 @@ impl PanickingSidecar {
 /// @param doom Message string surfaced when `boom()` panics.
 #[miniextendr]
 pub fn panicking_sidecar_new(doom: String) -> ExternalPtr<PanickingSidecar> {
-    ExternalPtr::new(PanickingSidecar {
-        _r: RSidecar,
-        doom,
-    })
+    ExternalPtr::new(PanickingSidecar { _r: RSidecar, doom })
 }
 
 /// Standalone fn that accepts the sidecar object and panics. Exercises the

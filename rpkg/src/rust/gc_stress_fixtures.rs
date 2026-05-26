@@ -1096,3 +1096,95 @@ pub fn gc_stress_split_collated() -> SEXP {
 }
 
 // endregion
+
+// region: factor-label dataframe_to_vec GC stress (issue #689)
+
+/// Exercise the factor-label path through `dataframe_to_vec` under GC
+/// pressure.
+///
+/// The factor branch in `CellDeserializer::deserialize_str/string/char/any`
+/// reads `levels` (via `Rf_getAttrib`) and dereferences `STRING_ELT` on the
+/// levels SEXP — a path that crosses a GC barrier. This fixture synthesises
+/// a one-column factor data.frame internally, then runs `dataframe_to_vec`
+/// to reconstruct `Vec<Row { status: String }>`. The intermediate factor +
+/// data.frame SEXPs are protected via `OwnedProtect`; the deserialiser must
+/// keep them rooted across the per-row label lookups.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_factor_labels() -> i32 {
+    use crate::serde::Deserialize;
+    use miniextendr_api::factor::{build_factor, build_levels_sexp};
+    use miniextendr_api::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+    use miniextendr_api::gc_protect::OwnedProtect;
+    use miniextendr_api::serde::dataframe_to_vec;
+
+    #[derive(Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        status: Option<String>,
+    }
+
+    let levels = ["active", "pending", "archived"];
+    // Build 30 rows cycling through codes 1..=3 to exercise multiple label
+    // hits per call, plus a few NA cells (NA_INTEGER → `status: None`).
+    const NA: i32 = i32::MIN; // NA_INTEGER
+    let codes: Vec<i32> = (0..30)
+        .map(|i| if i % 7 == 0 { NA } else { (i % 3) as i32 + 1 })
+        .collect();
+
+    // SAFETY: all R API calls happen on the worker thread (this fixture is
+    // invoked via the #[miniextendr] wrapper), and every transient
+    // allocation is protected before the next allocation can run GC.
+    let df = unsafe {
+        let levels_sexp = build_levels_sexp(&levels);
+        let _levels_guard = OwnedProtect::new(levels_sexp);
+        let col = build_factor(&codes, levels_sexp);
+        let _col_guard = OwnedProtect::new(col);
+
+        let list = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+        let _list_guard = OwnedProtect::new(list);
+        list.set_vector_elt(0, col);
+
+        let names_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _names_guard = OwnedProtect::new(names_sexp);
+        names_sexp.set_string_elt(0, SEXP::charsxp("status"));
+        list.set_names(names_sexp);
+
+        let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _class_guard = OwnedProtect::new(class_sexp);
+        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
+        list.set_class(class_sexp);
+
+        let row_names = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let _rn_guard = OwnedProtect::new(row_names);
+        let rn = row_names.as_mut_slice::<i32>();
+        rn[0] = i32::MIN;
+        rn[1] = -(codes.len() as i32);
+        list.set_row_names(row_names);
+
+        // Hand `list` to dataframe_to_vec while every transient is still
+        // protected — the inner guards drop at the end of this block, but
+        // by then the only live SEXP we care about (`list`) is unprotected
+        // and immediately consumed.
+        dataframe_to_vec::<Row>(list).expect("gc_stress_factor_labels: dataframe_to_vec failed")
+    };
+
+    assert_eq!(df.len(), codes.len());
+    let mut na_count = 0;
+    for (i, row) in df.iter().enumerate() {
+        match (&row.status, codes[i]) {
+            (None, NA) => na_count += 1,
+            (Some(label), code) if code != NA => assert!(
+                levels.contains(&label.as_str()),
+                "unexpected label at row {i}: {label}"
+            ),
+            other => panic!("row {i} mismatch: {:?} vs code {}", other, codes[i]),
+        }
+    }
+    assert!(na_count > 0, "fixture should exercise NA rows");
+    df.len() as i32
+}
+
+// endregion

@@ -20,6 +20,23 @@
 //! Visitors that want `&'sexp str` (a future zero-copy path) get the borrow
 //! directly. The unified shape pre-loads the seam for that future variant.
 //!
+//! # Factor columns
+//!
+//! R factor columns are `INTSXP` with a `levels` STRSXP attribute. Serde's
+//! type-driven visitor dispatch lets the cell deserialiser pick the right
+//! representation per field:
+//!
+//! - `String` / `Option<String>` / `char` — receives the level **label**
+//!   (e.g. `"active"`).
+//! - `i32` / `Option<i32>` / any other integer type — receives the 1-based
+//!   level **code**.
+//! - `serde_json::Value` / other `deserialize_any` consumers — receives the
+//!   label.
+//!
+//! Out-of-range factor codes (corruption via `attr<-`) raise an error;
+//! `NA_INTEGER` is translated to `visit_none` for `Option<…>` fields and
+//! [`RSerdeError::UnexpectedNa`] for non-optional fields. See [issue #689].
+//!
 //! # Limitations
 //!
 //! 1. **Nested struct un-flattening uses single-underscore prefix matching.**
@@ -34,10 +51,6 @@
 //!    will fail unless the column is renamed on the R side. `#[serde(flatten)]`
 //!    is not supported. See [issue #688] for the original ambiguity
 //!    discussion and [issue #689] for follow-up tracking.
-//! 2. **Factor columns deserialize as integer levels.** R factor columns are
-//!    `INTSXP` with a `levels` attribute; `dataframe_to_vec` treats them as `i32`.
-//!    Pre-convert with `as.character()` on the R side if you need the label string.
-//!    See [issue #689].
 //!
 //! [issue #688]: https://github.com/A2-ai/miniextendr/issues/688
 //! [issue #689]: https://github.com/A2-ai/miniextendr/issues/689
@@ -65,6 +78,7 @@ use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 /// | `integer` | `i32` / `Option<i32>` (also `i8`, `i16`, `i64`, `u*` via overflow check) |
 /// | `numeric` | `f64` / `Option<f64>` |
 /// | `character` | `String` / `Option<String>` |
+/// | `factor` | `String` / `Option<String>` (label) or `i32` / `Option<i32>` (1-based code) |
 /// | NA cell | `Option<T>` → `None`; non-optional → error |
 ///
 /// # Errors
@@ -81,9 +95,6 @@ use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 ///    whose name contains `_` are interpreted as nested-struct paths; rename
 ///    the R column if you need a flat string-typed field with an underscore.
 ///    `#[serde(flatten)]` is not supported.
-/// 2. **Factor columns** deserialize as their integer level codes (not the label
-///    strings). Pre-convert with `as.character()` on the R side if needed
-///    ([#689](https://github.com/A2-ai/miniextendr/issues/689)).
 pub fn dataframe_to_vec<T>(sexp: SEXP) -> Result<Vec<T>, RSerdeError>
 where
     T: for<'de> serde::Deserialize<'de>,
@@ -117,7 +128,7 @@ where
 /// # Limitations
 ///
 /// Same as [`dataframe_to_vec`] — single-underscore nested-struct path
-/// matching; factor columns as integers.
+/// matching.
 pub fn with_dataframe_rows<T, F, R>(sexp: SEXP, f: F) -> Result<R, RSerdeError>
 where
     T: for<'a> serde::Deserialize<'a>,
@@ -156,7 +167,7 @@ pub type BorrowedRows<'a, T> = crate::Protected<'a, Vec<T>>;
 /// source SEXP rooted for `'a`.
 ///
 /// Sister function to [`dataframe_to_vec`]: same per-row deserialisation,
-/// same flat-struct limitations ([#688], [#689]), but the returned handle
+/// same flat-struct limitations ([#688]), but the returned handle
 /// keeps the input SEXP protected on the R protect stack while the caller
 /// holds it. Use this when [`with_dataframe_rows`]'s closure shape is too
 /// restrictive — e.g., a parser that threads rows through multiple helper
@@ -178,7 +189,6 @@ pub type BorrowedRows<'a, T> = crate::Protected<'a, Vec<T>>;
 /// the issue thread on #671 for the design discussion.
 ///
 /// [#688]: https://github.com/A2-ai/miniextendr/issues/688
-/// [#689]: https://github.com/A2-ai/miniextendr/issues/689
 pub fn dataframe_to_vec_borrowed<'a, T>(sexp: SEXP) -> Result<BorrowedRows<'a, T>, RSerdeError>
 where
     T: for<'b> serde::Deserialize<'b>,
@@ -605,6 +615,49 @@ impl<'sexp, 'n> CellDeserializer<'sexp, 'n> {
     fn row_isize(&self) -> isize {
         self.row as isize
     }
+
+    /// Is the column an R factor (INTSXP + `class = "factor"`)?
+    fn is_factor_column(&self) -> bool {
+        self.col.is_factor()
+    }
+}
+
+/// Look up the factor label for cell `(col, row)`.
+///
+/// Caller must have already established `col.is_factor() == true`.
+/// Returns:
+///
+/// - `Ok(Some(&'sexp str))` — valid 1-based code; the borrow's lifetime
+///   matches the source SEXP (rooted by R's argument frame for the
+///   enclosing call).
+/// - `Ok(None)` — `NA_INTEGER` code.
+/// - `Err(_)` — code out of range vs. `length(levels)`.
+unsafe fn factor_label<'sexp>(
+    col: SEXP,
+    row: isize,
+    col_name: &str,
+) -> Result<Option<&'sexp str>, RSerdeError> {
+    let code = col.integer_elt(row);
+    if code == NA_INTEGER {
+        return Ok(None);
+    }
+    let levels = col.get_levels();
+    let n_levels = levels.xlength();
+    // R factor codes are 1-based; 0 and negatives are corruption.
+    // `code` is i32 (R's stored level index); `n_levels` is R_xlen_t (isize).
+    if code < 1 || (code as isize) > n_levels {
+        return Err(RSerdeError::Message(format!(
+            "column {:?}: factor code {} out of range (n_levels = {})",
+            col_name, code, n_levels,
+        )));
+    }
+    let charsxp = levels.string_elt((code - 1) as isize);
+    // SAFETY: `levels` is a STRSXP attribute of `col`, which is part of the
+    // data.frame SEXP rooted by R's argument frame for the enclosing call.
+    // The CHARSXP cache pointer is valid for the caller-chosen `'sexp`
+    // lifetime; turbofish from a `Deserializer<'de>` impl uses `'de = 'sexp`.
+    let s: &'sexp str = unsafe { charsxp_to_str(charsxp) };
+    Ok(Some(s))
 }
 
 impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
@@ -622,11 +675,26 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
                 }
             }
             SEXPTYPE::INTSXP => {
-                let v = self.col.integer_elt(i);
-                if v == NA_INTEGER {
-                    visitor.visit_none()
+                // Factors (INTSXP + class = "factor") surface as their level
+                // labels in `deserialize_any` — that's the most natural
+                // representation for self-describing consumers like
+                // `serde_json::Value`. Code-typed fields go through
+                // `deserialize_i32` instead and stay on the integer path.
+                if self.is_factor_column() {
+                    // SAFETY: `self.col` is a column of the data.frame SEXP
+                    // rooted by R's argument frame; CHARSXP borrows are valid
+                    // for `'de` (= `'sexp`).
+                    match unsafe { factor_label(self.col, i, self.col_name) }? {
+                        Some(s) => visitor.visit_borrowed_str(s),
+                        None => visitor.visit_none(),
+                    }
                 } else {
-                    visitor.visit_i32(v)
+                    let v = self.col.integer_elt(i);
+                    if v == NA_INTEGER {
+                        visitor.visit_none()
+                    } else {
+                        visitor.visit_i32(v)
+                    }
                 }
             }
             SEXPTYPE::REALSXP => {
@@ -816,14 +884,23 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
     }
 
     fn deserialize_char<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        if self.sexp_type() != SEXPTYPE::STRSXP {
+        let s: &'de str = if self.is_factor_column() {
+            // SAFETY: `self.col` is a column of the data.frame SEXP rooted by
+            // R's argument frame; CHARSXP borrows are valid for `'de`.
+            match unsafe { factor_label(self.col, self.row_isize(), self.col_name) }? {
+                Some(s) => s,
+                None => return Err(RSerdeError::UnexpectedNa),
+            }
+        } else if self.sexp_type() == SEXPTYPE::STRSXP {
+            let charsxp = self.col.string_elt(self.row_isize());
+            if charsxp == SEXP::na_string() {
+                return Err(RSerdeError::UnexpectedNa);
+            }
+            // SAFETY: SEXP rooted by the enclosing call; `'de` = `'sexp`.
+            unsafe { charsxp_to_str(charsxp) }
+        } else {
             return Err(self.type_mismatch("character"));
-        }
-        let charsxp = self.col.string_elt(self.row_isize());
-        if charsxp == SEXP::na_string() {
-            return Err(RSerdeError::UnexpectedNa);
-        }
-        let s: &'de str = unsafe { charsxp_to_str(charsxp) };
+        };
         let mut chars = s.chars();
         match (chars.next(), chars.next()) {
             (Some(c), None) => visitor.visit_char(c),
@@ -835,6 +912,19 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
     }
 
     fn deserialize_str<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        // Factor (INTSXP + class = "factor") → emit the label string.
+        // STRSXP → emit the CHARSXP borrow. Everything else → type mismatch.
+        // `DeserializeOwned` visitors handle the borrowed path via serde's
+        // default `visit_borrowed_str → visit_str` fallback, which copies into
+        // a `String`.
+        if self.is_factor_column() {
+            // SAFETY: `self.col` is a column of the data.frame SEXP rooted by
+            // R's argument frame; CHARSXP borrows are valid for `'de`.
+            return match unsafe { factor_label(self.col, self.row_isize(), self.col_name) }? {
+                Some(s) => visitor.visit_borrowed_str(s),
+                None => Err(RSerdeError::UnexpectedNa),
+            };
+        }
         if self.sexp_type() != SEXPTYPE::STRSXP {
             return Err(self.type_mismatch("character"));
         }
@@ -843,9 +933,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             return Err(RSerdeError::UnexpectedNa);
         }
         // SAFETY: The SEXP is rooted by R's argument frame for the duration
-        // of the enclosing call; `'de` equals `'sexp` here. `DeserializeOwned`
-        // visitors handle this via the default `visit_borrowed_str → visit_str`
-        // fallback, which copies into a `String`.
+        // of the enclosing call; `'de` equals `'sexp` here.
         let s: &'de str = unsafe { charsxp_to_str(charsxp) };
         visitor.visit_borrowed_str(s)
     }
