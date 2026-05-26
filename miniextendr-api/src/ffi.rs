@@ -48,7 +48,7 @@
 //! - [`crate::thread`] / [`crate::worker`] — worker / main-thread split.
 //! - [`crate::altrep_traits`] / [`crate::altrep_bridge`] — guard modes
 //!   inside ALTREP callbacks.
-//! - [`crate::error_value`] / [`crate::condition`] — panic → R condition
+//! - [`crate::error_value`] / [`mod@crate::condition`] — panic → R condition
 //!   transport.
 
 /// ALTREP-specific C API bindings.
