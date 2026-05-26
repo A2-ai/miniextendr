@@ -446,11 +446,44 @@ vendor:
     set -euo pipefail
     rust_dir="{{justfile_directory()}}/rpkg/src/rust"
     cargo_cfg="$rust_dir/.cargo/config.toml"
+    rpkg_toml="$rust_dir/Cargo.toml"
+    # Self-reference pin: cross-crate edits that touch the cargo surface of
+    # miniextendr-{api,macros,lint} (e.g. renaming a feature on the api crate
+    # alongside the rpkg consumer that requests it) only resolve consistently
+    # if cargo fetches all three from a single commit. Without a pin, cargo
+    # follows the bare git URL → origin's default branch (main) → the OLD api
+    # → feature-name mismatch with the consumer on the PR branch.
+    #
+    # Insert `rev = "<HEAD>"` into the three self-referencing dep lines for the
+    # duration of the lockfile regeneration. trap restores on exit. Cargo
+    # rejects same-URL [patch] overrides ("patches must point to different
+    # sources"), so direct dep modification is the simplest reliable lever.
+    # Requires HEAD to be reachable from a remote-tracking branch (CI always;
+    # local needs `git fetch` + the commit pushed).
+    head_sha=$(git -C "{{justfile_directory()}}" rev-parse HEAD 2>/dev/null || echo "")
+    pin_active=0
+    if [[ -n "$head_sha" ]] && \
+       git -C "{{justfile_directory()}}" branch -r --contains "$head_sha" 2>/dev/null | grep -q .; then
+      echo "vendor: pinning self-references to HEAD $head_sha"
+      cp "$rpkg_toml" "$rpkg_toml.tmp_just_vendor"
+      trap 'if [[ "$pin_active" == "1" && -f "$rpkg_toml.tmp_just_vendor" ]]; then mv "$rpkg_toml.tmp_just_vendor" "$rpkg_toml"; fi' EXIT
+      pin_active=1
+      for crate in miniextendr-api miniextendr-macros miniextendr-lint; do
+        # Match the bare git-URL dep line and append a rev qualifier. Idempotent.
+        sed -i.sedbak -E \
+          "s|^($crate = \\{ git = \"https://github.com/A2-ai/miniextendr\" \\})|${crate} = { git = \"https://github.com/A2-ai/miniextendr\", rev = \"${head_sha}\" }|" \
+          "$rpkg_toml"
+      done
+      rm -f "$rpkg_toml.sedbak"
+    else
+      echo "vendor: HEAD not on origin — resolving self-references from default branch"
+    fi
     # Regenerate lockfile in tarball-shape: temporarily move .cargo aside so
-    # cargo doesn't see the [patch] override and resolves git deps as-is.
-    # Entries for miniextendr-{api,lint,macros} get source = "git+url#<commit>",
-    # which is what cargo's source-replacement mechanism needs at offline
-    # install time.
+    # cargo doesn't see the path-based [patch] override and resolves git deps
+    # as-is. Entries for miniextendr-{api,lint,macros} get
+    # source = "git+url#<commit>" (or "git+url?rev=<sha>#<sha>" with the pin
+    # active), which is what cargo's source-replacement mechanism needs at
+    # offline install time.
     if [[ -f "$cargo_cfg" ]]; then
       mv "$cargo_cfg" "$cargo_cfg.tmp_just_vendor"
     fi
