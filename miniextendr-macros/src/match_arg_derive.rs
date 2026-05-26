@@ -4,6 +4,20 @@
 //! the `MatchArg` trait implementation for C-style enums, enabling automatic
 //! conversion between Rust enums and R character strings with partial matching.
 //!
+//! ## Tradeoff
+//!
+//! Without `#[derive(MatchArg)]`, an enum-shaped argument lands in the Rust
+//! function as a raw `String` that you match on by hand — invalid values
+//! surface as Rust `Err` deep in the body, with no R-side defaulting and no
+//! partial matching. `#[derive(MatchArg)]` shifts that work to the wrapper
+//! boundary: the generated R wrapper picks up `match.arg`-style **partial
+//! string matching** against the enum's variant list, fills in the first
+//! variant as the **R-visible default**, and rejects unknown values before
+//! the Rust function is even called. The variant list reaches the R side
+//! via a write-time placeholder (`MX_MATCH_ARG_CHOICES`) rather than a
+//! string baked into the proc macro, so adding a variant only requires
+//! re-running the build.
+//!
 //! ## Usage
 //!
 //! ```ignore

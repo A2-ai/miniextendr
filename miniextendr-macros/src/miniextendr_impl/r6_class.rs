@@ -1,4 +1,12 @@
 //! R6-class R wrapper generator.
+//!
+//! Generates an `R6::R6Class(...)` definition with **mutable, reference
+//! semantics**: `obj$method()` dispatches via R6, and `&mut self` methods
+//! modify state in place without re-binding `obj`. Supports private methods,
+//! active bindings (computed/settable properties), lifecycle hooks
+//! (`finalize`, `deep_clone`), and inheritance via `r6(inherit = ...)`.
+//! Slower than env (R6 dispatch chain) and requires the R6 package; no value
+//! semantics — for value-semantics formal OOP, use S7.
 
 use super::ParsedImpl;
 use crate::r_class_formatter::class_ref_or_verbatim;

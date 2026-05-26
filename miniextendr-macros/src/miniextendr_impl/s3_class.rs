@@ -1,4 +1,13 @@
 //! S3-class R wrapper generator.
+//!
+//! Generates **lightweight, single-dispatch** S3 generics with
+//! `<generic>.<class>` methods. Method dispatch is driven by the `class()`
+//! attribute vector — first match wins — so inheritance is "string-prefix"
+//! based and cheap. No formal slot validation, no multi-dispatch (vctrs-style
+//! double-dispatch is supported via `#[miniextendr(generic, class)]` for
+//! `vec_ptype2.a.b` patterns). Pick S3 for tidyverse interop and for
+//! extending existing base generics (`print`, `format`, `summary`); use S4/S7
+//! when you need validation or formal hierarchies.
 
 use super::ParsedImpl;
 
