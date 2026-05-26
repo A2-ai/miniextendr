@@ -1,8 +1,5 @@
 //! R6-class R wrapper generator.
 //!
-//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
-//! for the full decision tree.
-//!
 //! Generates an `R6::R6Class(...)` definition with **mutable, reference
 //! semantics**: `obj$method()` dispatches via R6, and `&mut self` methods
 //! modify state in place without re-binding `obj`. Supports private methods,

@@ -1,8 +1,5 @@
 //! S7-class R wrapper generator.
 //!
-//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
-//! for the full decision tree.
-//!
 //! Generates `S7::new_class(...)` with **value semantics, formal property
 //! validation, and parent-based inheritance**. Property attributes
 //! (`s7(getter)` / `s7(setter, prop = "...")`) compile to `S7::new_property`

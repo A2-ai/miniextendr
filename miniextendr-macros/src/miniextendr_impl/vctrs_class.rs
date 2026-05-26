@@ -1,9 +1,5 @@
 //! Vctrs class R wrapper generator.
 //!
-//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
-//! and [`VCTRS.md`](../../../docs/VCTRS.md) for the full design and the
-//! protocol method catalogue.
-//!
 //! Generates an S3 class that **integrates with the tidyverse `vctrs`
 //! package**: emits a `new_<class>` wrapper around `vctrs::new_vctr` /
 //! `new_rcrd` / `new_list_of` (selected via `VctrsKind`), plus the standard

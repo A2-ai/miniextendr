@@ -1,8 +1,5 @@
 //! Env-class R wrapper generator.
 //!
-//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
-//! for the full decision tree.
-//!
 //! Generates an R environment (`new.env(parent = emptyenv())`) that serves as
 //! the class namespace, with `obj$method()` dispatched through an `$.ClassName`
 //! S3 method. This is the **fastest** of the six class systems and has **no R

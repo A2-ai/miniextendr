@@ -1,8 +1,5 @@
 //! S3-class R wrapper generator.
 //!
-//! Tradeoff signpost — see [`CLASS_SYSTEMS.md`](../../../docs/CLASS_SYSTEMS.md)
-//! for the full decision tree.
-//!
 //! Generates **lightweight, single-dispatch** S3 generics with
 //! `<generic>.<class>` methods. Method dispatch is driven by the `class()`
 //! attribute vector — first match wins — so inheritance is "string-prefix"

@@ -1,8 +1,5 @@
 //! Parser for the `typed_list!` macro.
 //!
-//! Tradeoff signpost — see [`DOTS_TYPED_LIST.md`](../../docs/DOTS_TYPED_LIST.md)
-//! for the full design.
-//!
 //! Without `typed_list!`, an `#[miniextendr]` function that takes `...` reads
 //! the dots as raw `&Dots` and validates field names, types, and required-vs-
 //! optional shape **at runtime** inside the function body. `typed_list!`
