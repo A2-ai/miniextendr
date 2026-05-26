@@ -6,6 +6,26 @@
 //! Trait ABI wrapper infrastructure is automatically generated when you use
 //! `#[miniextendr]` on `impl Trait for Type` blocks.
 //!
+//! ## Sidecar codegen vs `#[miniextendr]` fns
+//!
+//! `#[derive(ExternalPtr)]` with `#[r_data]` fields emits a pair of C/R
+//! wrappers per sidecar field (`<Type>_get_<field>` /
+//! `<Type>_set_<field>`). **These wrappers do NOT go through
+//! `c_wrapper_builder::CWrapperContext`** — they are hand-rolled in this
+//! module so they can present the simplest signature R expects from a slot
+//! accessor:
+//!
+//! | Aspect | `#[miniextendr]` fn / method (`c_wrapper_builder`) | Sidecar accessor (here) |
+//! |---|---|---|
+//! | First C param | `__miniextendr_call: SEXP` | none |
+//! | C `numArgs` | 1 + user args | `1` (getter) / `2` (setter) |
+//! | R `.Call` | `.Call(C_…, .call = match.call(), …)` | `.Call(C_…, x)` / `.Call(C_…, x, value)` |
+//! | Error transport | tagged-condition SEXP via `with_r_unwind_protect_error_in_r` | tagged-condition SEXP, no call attribution |
+//!
+//! **Do not add `.call = match.call()` to a sidecar R wrapper.** The C
+//! function doesn't have a slot for it — R will throw "Incorrect number of
+//! arguments" at runtime. The two paths drifting apart is tracked in #348.
+//!
 //! ## Usage
 //!
 //! ### Basic (no traits)

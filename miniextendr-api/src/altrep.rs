@@ -3,13 +3,42 @@
 //! ## Architecture
 //!
 //! - **FFI**: Raw setters/types in `crate::ffi::altrep`
-//! - **Traits**: Safe traits in `crate::altrep_traits` (`Altrep`, `AltVec`, `AltInteger`, etc.)
+//! - **Traits**: Safe traits in [`crate::altrep_traits`] (`Altrep`, `AltVec`, `AltInteger`, etc.)
 //!   - Required methods: Compiler-enforced by trait definition
 //!   - Optional methods: Gated by HAS_* constants, defaults provided
-//! - **Bridge**: Generic `extern "C-unwind"` trampolines in `crate::altrep_bridge`
-//! - **Macro**: `#[miniextendr]` on a struct emits `impl RegisterAltrep` that:
-//!   - Creates the class handle via `R_make_alt*`
-//!   - Installs methods based on trait bounds and HAS_* consts
+//! - **Bridge**: Generic `extern "C-unwind"` trampolines in [`crate::altrep_bridge`]
+//! - **High-level data traits**: [`crate::altrep_data`] (`AltrepLen` +
+//!   `Alt*Data`) — implement with `&self` methods instead of raw SEXP.
+//! - **SEXP wrapper**: [`crate::altrep_sexp`] — `!Send + !Sync` wrapper that
+//!   prevents an ALTREP SEXP from crossing thread boundaries before
+//!   materialization.
+//! - **Derive**: `#[derive(AltrepInteger)]` / `AltrepReal` / `AltrepLogical`
+//!   / `AltrepRaw` / `AltrepString` / `AltrepComplex` / `AltrepList` on a
+//!   struct emits everything below: `Altrep`, `AltVec`, the family-specific
+//!   trait, `AltrepLen`, `Alt*Data`, an `impl RegisterAltrep`, and the
+//!   `R_make_alt*` registration. See the `altrep_derive` module in the
+//!   `miniextendr-macros` crate for the attribute reference and validation
+//!   rules.
+//!
+//! ## Two code paths
+//!
+//! 1. **Field-based derive** (default) — annotate fields with
+//!    `#[altrep(len = "field", elt = "field", class = "Name")]` and the
+//!    derive handles `length`/`elt`/registration.
+//! 2. **Manual** — `#[altrep(manual)]` skips `AltrepLen` / `Alt*Data` so you
+//!    hand-roll those traits (custom `elt`, `no_na`, `sum`, …); the
+//!    `impl_alt*_from_data!` registration is still emitted.
+//!
+//! Both paths route trampolines through the same guard mode selected by
+//! [`Altrep::GUARD`](crate::altrep_traits::Altrep::GUARD); guard modes are
+//! documented on [`crate::altrep_traits`].
+//!
+//! ## Threading
+//!
+//! ALTREP callbacks run on R's main thread — they receive raw `SEXP`
+//! arguments which are not `Send`. Do not route them through the worker
+//! thread; the trampolines bridge from C straight back into safe Rust on the
+//! main thread, with panic / longjmp handling per the chosen guard mode.
 
 use crate::ffi::altrep::{
     R_altrep_class_t, R_make_altcomplex_class, R_make_altinteger_class, R_make_altlist_class,

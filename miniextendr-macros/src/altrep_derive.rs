@@ -2,6 +2,57 @@
 //!
 //! These macros auto-implement `AltrepLen` and `Alt*Data` traits for simple field-based
 //! ALTREP types, reducing boilerplate for users.
+//!
+//! # Two paths: field-based vs manual
+//!
+//! `#[derive(AltrepInteger)]` (and the `Real` / `Logical` / `Raw` / `String`
+//! / `Complex` / `List` variants) drive one of two code paths:
+//!
+//! 1. **Field-based** *(default)* — point the derive at struct fields that
+//!    hold the vector length and a constant element value:
+//!
+//!    ```ignore
+//!    #[derive(AltrepInteger)]
+//!    #[altrep(len = "n", elt = "value", class = "Repeat")]
+//!    struct Repeat { n: usize, value: i32 }
+//!    ```
+//!
+//!    The derive emits `AltrepLen`, `AltIntegerData`, `Altrep`, `AltVec`,
+//!    `RegisterAltrep`, and the `R_make_altinteger_class` registration. No
+//!    extra trait impls required.
+//!
+//! 2. **Manual** — `#[altrep(manual)]` suppresses `AltrepLen` /
+//!    `AltIntegerData` generation so you can write the element-access logic
+//!    yourself. Registration (`impl_alt*_from_data!`) is still emitted —
+//!    `#[altrep(no_lowlevel)]` is the additional escape hatch when you also
+//!    want to control `Altrep` / `AltVec` directly.
+//!
+//! Pick by what your data looks like: a finite buffer that fits in a struct
+//! field → field-based; a computed element (`fibonacci(i)`) → manual.
+//!
+//! # Guard mode attribute
+//!
+//! The derive recognises `#[altrep(unsafe)]` / `#[altrep(rust_unwind)]` /
+//! `#[altrep(r_unwind)]` on the struct, which sets the runtime
+//! `Altrep::GUARD` const that the trampolines in `altrep_bridge` dispatch
+//! on. Default is `r_unwind` (safe for callbacks that call R APIs).
+//!
+//! # Derive validation rules
+//!
+//! Several `#[altrep(...)]` options conflict; the derive rejects illegal
+//! combinations at compile time:
+//!
+//! | Option | Allowed on families | Conflicts with |
+//! |---|---|---|
+//! | `subset` | integer, complex | `dataptr`, `list` |
+//! | `dataptr` | integer, real, logical, raw, string, complex | `subset`, `list` |
+//! | `serialize` | all except `list` | `list` |
+//! | `manual` | all | (none — turns off `AltrepLen`/`Alt*Data` generation) |
+//! | `no_lowlevel` | all | (none — also suppresses `impl_alt*_from_data!`) |
+//!
+//! The list family rejects `dataptr`, `subset`, and `serialize` — list
+//! elements are arbitrary SEXPs, so there is no contiguous buffer to expose
+//! and no zero-copy serialization story.
 
 use proc_macro2::TokenStream;
 use quote::quote;

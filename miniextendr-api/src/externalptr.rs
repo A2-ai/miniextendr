@@ -68,16 +68,55 @@
 //! # Type Identification
 //!
 //! Type safety is enforced via `Any::downcast` (Rust's `TypeId`). R symbols
-//! in the `tag` and `prot` slots are retained for display and error messages.
+//! in the `tag` and `prot` slots are retained for display and error messages
+//! but are **never authoritative** for downcast safety — the `Any` vtable is.
 //!
 //! Internally, data is stored as `Box<Box<dyn Any>>` — a thin pointer (fits
 //! in R's `R_ExternalPtrAddr`) pointing to a fat pointer (carries the `Any`
-//! vtable for runtime downcasting).
+//! vtable for runtime downcasting). The outer `Box` keeps the heap address
+//! stable so [`ExternalPtr::cached_ptr`](struct@ExternalPtr) can be cached
+//! once at construction.
 //!
 //! The `tag` slot holds a symbol (type name, for display).
 //! The `prot` slot holds a VECSXP (list) with two elements:
 //!   - Index 0: SYMSXP (interned type ID symbol, for error messages)
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
+//!
+//! ## `TYPE_NAME_CSTR` vs `TYPE_ID_CSTR`
+//!
+//! [`TypedExternal`] exposes two associated constants with distinct roles —
+//! mixing them up does not break type safety (`Any::downcast` is the real
+//! gate) but produces noisy diagnostics.
+//!
+//! | Constant | Role | Visible to R as | Authoritative? |
+//! |---|---|---|---|
+//! | `TYPE_NAME_CSTR` | Display tag | `class()` / `print()` | No |
+//! | `TYPE_ID_CSTR` | Error-message identifier on downcast failure | Stored in `prot[0]` | No (cosmetic; downcast uses `TypeId`) |
+//!
+//! `#[derive(ExternalPtr)]` fills both with sensible defaults; only override
+//! manually when implementing `TypedExternal` by hand.
+//!
+//! # Pointer provenance for `cached_ptr`
+//!
+//! `ExternalPtr` caches the data pointer at construction so `as_ref` /
+//! `as_mut` avoid an FFI call on every access. The cached `*mut T` **must**
+//! be derived from a mutable path so writes through `as_mut` are sound under
+//! Stacked Borrows:
+//!
+//! - `Box::into_raw(Box::new(value))` — preferred (the constructor path).
+//! - `&mut T` — when you already hold an exclusive reference.
+//! - `<Box<dyn Any>>::downcast_mut::<T>()` — when extracting from the inner box.
+//! - [`std::ptr::from_mut`] — when promoting a `&mut T` to a raw pointer.
+//!
+//! Caching a pointer derived from `&T` or `downcast_ref::<T>()` is **UB**
+//! the moment anything writes through it. Internal sites that touch
+//! `cached_ptr` are audited; the rule matters for the (rare) hand-rolled
+//! `TypedExternal` impl that bypasses [`ExternalPtr::new`].
+//!
+//! # See also
+//!
+//! - [`crate::altrep`] — when the alternative (an ALTREP class) makes more
+//!   sense than `ExternalPtr`.
 //!
 //! # ExternalPtr is Not an R Native Type
 //!

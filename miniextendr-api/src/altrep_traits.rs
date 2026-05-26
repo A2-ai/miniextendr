@@ -16,6 +16,22 @@
 //! | ALTSTRING | `length` + `elt` |
 //! | ALTLIST | `length` + `elt` |
 //! | Numeric types | `length` + (`elt` OR `dataptr` via HAS_*) |
+//!
+//! ## Guard mode ([`Altrep::GUARD`])
+//!
+//! Every ALTREP callback installed by this crate is wrapped according to the
+//! `const GUARD: AltrepGuard` on the implementing type. The three modes are
+//! selected per-type (not per-callback) and resolved at compile time:
+//!
+//! | Mode | What it wraps | Use when |
+//! |---|---|---|
+//! | [`AltrepGuard::Unsafe`] | nothing | callback is trivial, allocation-free, and cannot panic |
+//! | [`AltrepGuard::RustUnwind`] | [`catch_unwind`](std::panic::catch_unwind) | pure-Rust callback that may panic but never enters R API code |
+//! | [`AltrepGuard::RUnwind`] *(default)* | `R_UnwindProtect` (R's C API) | callback calls into R (e.g. `Rf_mkCharLenCE`, `Rf_allocVector`) and may longjmp |
+//!
+//! The derive surface exposes the same three modes as `#[altrep(unsafe)]` /
+//! `#[altrep(rust_unwind)]` / `#[altrep(r_unwind)]`; bridging through these
+//! modes is handled by [`crate::altrep_bridge`].
 
 use crate::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use core::ffi::c_void;
