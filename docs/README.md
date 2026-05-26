@@ -7,6 +7,7 @@ framework.
 
 | I want to... | Read |
 |---|---|
+| Choose between two miniextendr APIs that look similar | [API Choice Matrix](API_CHOICE_MATRIX.md) |
 | Build my first package | [Getting Started](GETTING_STARTED.md) |
 | Use the CLI tool | [miniextendr CLI](../miniextendr-cli/README.md) |
 | Use the R scaffolding helper | [minirextendr](MINIREXTENDR.md) |
@@ -30,6 +31,9 @@ framework.
 
 ### Core concepts
 
+- **[API Choice Matrix](API_CHOICE_MATRIX.md)** -- One-page index of every
+  place miniextendr offers a strict vs lax / safe vs fast / validated vs raw
+  choice, with one-line guidance and links to deep-dives
 - **[Architecture](ARCHITECTURE.md)** -- Crate structure, call flow, how Rust
   talks to R
 - **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp` / `IntoR`

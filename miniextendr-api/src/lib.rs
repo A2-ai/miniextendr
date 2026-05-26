@@ -34,6 +34,33 @@
 //! extracted) by the cdylib-based wrapper generator and committed into
 //! `R/miniextendr_wrappers.R` so CRAN builds do not require codegen.
 //!
+//! ## Choosing the right API
+//!
+//! miniextendr has several places where two or more APIs reach the same
+//! goal with different tradeoffs — a stricter / safer / more validated
+//! option, and a looser / easier / less protective one. The most common
+//! pairs are:
+//!
+//! | I'm reaching for... | Consider also | Why |
+//! |---|---|---|
+//! | default `IntoR` for `i64` / `u64` / `isize` / `usize` (silently widens to `REALSXP` on overflow) | `#[miniextendr(strict)]` → [`crate::strict`] helpers (panic on overflow) | strict catches the truncation bugs caused by R having no native 64-bit integer type |
+//! | [`Coerce`] (infallible widening) | [`TryCoerce`] (fallible) | the source range can exceed the target type |
+//! | `Rf_*_unchecked` FFI | checked variants | unchecked is only safe inside ALTREP callbacks, `with_r_unwind_protect`, or `with_r_thread` — MXL301 lint enforces |
+//! | `panic!(msg)` | `miniextendr_api::error!("msg", class = "...")` | typed conditions let R-side `tryCatch` handlers route by class |
+//! | raw `_dots: &Dots` | `#[miniextendr(dots = typed_list!(...))]` | validation moves from runtime to macro call site |
+//! | `#[derive(AltrepInteger)]` field-based | `#[altrep(manual)]` + handwritten traits | when custom storage or computed-on-access can't fit the derive |
+//! | hand-rolled [`TryFromSexp`] + [`IntoR`] | `#[derive(RSerializeNative)]` (serde feature) | serde is ergonomic for nested structs; hand-rolled is zero-overhead and fully controlled |
+//!
+//! Project-wide defaults are controlled by mutually-exclusive cargo
+//! features — see the "Project-wide Defaults" feature table below.
+//!
+//! ### Default opinion
+//!
+//! When in doubt, pick the **stricter** path. The framework's default
+//! stance is "fail loudly, leave a trail." The looser variants exist for
+//! cases where the cost is measured or the looser semantics are correct
+//! for your data — they are not the default.
+//!
 //! ## GC protection and ownership
 //!
 //! R's garbage collector can reclaim any SEXP that isn't protected. miniextendr
