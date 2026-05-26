@@ -951,7 +951,8 @@ impl std::ops::Deref for OwnedProtect {
 /// When constructed via [`Protected::new`], the inner [`OwnedProtect`] carries
 /// `!Send + !Sync` (via `NoSendSync`). When constructed via
 /// [`Protected::from_trusted`], the `_protect` field is `None` and the type
-/// becomes auto-`Send`/`Sync` — the same behaviour as [`ProtectedStrVec`] today.
+/// becomes auto-`Send`/`Sync` — the same behaviour as
+/// [`ProtectedStrVec`](crate::strvec::ProtectedStrVec) today.
 pub struct Protected<'a, T> {
     inner: T,
     _protect: Option<OwnedProtect>,
