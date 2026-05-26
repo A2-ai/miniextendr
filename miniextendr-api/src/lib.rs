@@ -270,10 +270,19 @@ pub mod sexp;
 /// `SexpExt` — the ergonomic extension trait on `SEXP`.
 pub mod sexp_ext;
 
-/// Raw R FFI bindings.
+/// Raw R FFI bindings — `extern "C-unwind"` blocks for `Rf_*` / `R_*` /
+/// `INTEGER` / etc., plus the ALTREP method type aliases under
+/// [`sys::altrep`]. The escape hatch for code that genuinely needs the raw
+/// R C API.
 ///
-/// Most users should prefer safe wrappers from higher-level modules — see
-/// [`sexp`], [`sexp_ext`], and [`sexp_types`].
+/// **Almost no user code should reach into this module.** The framework
+/// expects you to use the crate-root re-exports for the type vocabulary
+/// ([`SEXP`], [`SexpExt`], [`SEXPTYPE`], [`R_xlen_t`], …) and the
+/// higher-level safe wrappers ([`IntoR`], [`TryFromSexp`],
+/// [`worker::with_r_thread`], [`unwind_protect::with_r_unwind_protect`],
+/// the `#[miniextendr]` proc-macro). `sys::` is only here so those
+/// wrappers — and the rare hand-rolled FFI in tests or benchmarks — have
+/// something to call.
 pub mod sys;
 
 // Crate-root re-exports for the ergonomic API surface.

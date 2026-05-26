@@ -77,12 +77,15 @@ pub use crate::{r_print, r_println, r_warning};
 // region: Safe R-value surface
 //
 // `SEXP` is the central newtype; `SexpExt` is the ergonomic extension trait
-// that provides the safe higher-level methods. Raw FFI vocabulary
-// (`SEXPTYPE`, `R_xlen_t`, `RLogical`, `Rboolean`, `Rcomplex`, `RNativeType`)
-// is **not** re-exported here — those are low-level types that user code
-// should reach for explicitly via `miniextendr_api::sys::*` when genuinely
-// needed (rare; common in tests and macro-generated code). The prelude is
-// for the abstraction surface, not the raw R C API.
+// that provides the safe higher-level methods. The type vocabulary
+// (`SEXPTYPE`, `R_xlen_t`, `RLogical`, `Rboolean`, `Rcomplex`, `RNativeType`,
+// …) is **not** re-exported here — those are lower-level types that user
+// code should reach for explicitly at the crate root
+// (`miniextendr_api::SEXPTYPE`, `miniextendr_api::R_xlen_t`, …) when
+// genuinely needed (rare; common in tests and macro-generated code).
+// `miniextendr_api::sys::*` is the raw-FFI escape hatch — `extern
+// "C-unwind"` symbols and the ALTREP method type aliases only. The prelude
+// is for the abstraction surface, not the raw R C API.
 pub use crate::{SEXP, SexpExt};
 // endregion
 
