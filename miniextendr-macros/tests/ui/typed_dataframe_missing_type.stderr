@@ -1,0 +1,5 @@
+error: expected `:`
+ --> tests/ui/typed_dataframe_missing_type.rs:5:16
+  |
+5 |         subject,
+  |                ^

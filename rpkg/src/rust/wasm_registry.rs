@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      6be5404c1e6ff9e2
+// content-hash:      e3e1834a0b8a2018
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::ffi::{R_CallMethodDef, SEXP};
@@ -955,6 +955,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_collated(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_with_tag(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_typed_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_struct(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_to_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_map_to_dataframe(_: SEXP) -> SEXP;
@@ -1396,6 +1397,11 @@ unsafe extern "C-unwind" {
     pub fn C_tinyvec_roundtrip_int(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrayvec_roundtrip_dbl(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrayvec_roundtrip_int(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_theoph_nrow(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_strict_sum_x(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_theoph_flag_sum(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_theoph_has_flag(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_theoph_sum_conc(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_altrep_warn_on_elt(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_altrep_panic_on_elt(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_altrep_message_on_elt(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -6725,6 +6731,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_typed_dataframe".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_typed_dataframe) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_dataframe_struct".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_struct) }),
         numArgs: 1,
@@ -8927,6 +8938,31 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_arrayvec_roundtrip_int".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_arrayvec_roundtrip_int) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_theoph_nrow".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_theoph_nrow) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_strict_sum_x".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_strict_sum_x) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_theoph_flag_sum".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_theoph_flag_sum) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_theoph_has_flag".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_theoph_has_flag) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_theoph_sum_conc".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_theoph_sum_conc) }),
         numArgs: 2,
     },
     R_CallMethodDef {

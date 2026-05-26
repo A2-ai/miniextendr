@@ -230,6 +230,8 @@ pub use miniextendr_macros::miniextendr_init;
 #[doc(inline)]
 pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
+pub use miniextendr_macros::typed_dataframe;
+#[doc(inline)]
 pub use miniextendr_macros::typed_list;
 // Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
 // but they're in different namespaces (derive macros vs types/traits)

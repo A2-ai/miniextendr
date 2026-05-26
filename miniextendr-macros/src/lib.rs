@@ -158,6 +158,7 @@ mod list_macro;
 mod match_arg_keys;
 mod miniextendr_fn;
 mod type_inspect;
+mod typed_dataframe;
 mod typed_list;
 mod util;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
@@ -2460,6 +2461,102 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as typed_list::TypedListInput);
     typed_list::expand_typed_list(parsed).into()
+}
+
+/// Define a compile-time-validated wrapper for an R `data.frame` input.
+///
+/// `typed_dataframe!` mirrors [`typed_list!`] for the data.frame shape:
+/// declare the columns once, get a struct that implements [`TryFromSexp`]
+/// (validating both the `data.frame` class and per-column SEXPTYPE) plus
+/// per-column borrowed accessors that return `&[T]`.
+///
+/// # Syntax
+///
+/// ```ignore
+/// typed_dataframe! {
+///     /// The shape we accept for the Theoph PK dataset.
+///     pub TheophDf {
+///         subject: i32,
+///         weight: f64,
+///         dose: f64,
+///         flag: Option<i32>,   // optional column
+///     }
+/// }
+/// ```
+///
+/// For strict mode (reject any column not declared):
+/// ```ignore
+/// typed_dataframe! {
+///     @exact;
+///     pub Strict { x: i32 }
+/// }
+/// ```
+///
+/// # Supported element types
+///
+/// v1 supports column element types that implement
+/// `miniextendr_api::ffi::RNativeType`:
+///
+/// - `i32` — `INTSXP`
+/// - `f64` — `REALSXP`
+/// - `u8` — `RAWSXP`
+/// - `miniextendr_api::ffi::RLogical` — `LGLSXP`
+/// - `miniextendr_api::ffi::Rcomplex` — `CPLXSXP`
+///
+/// `String`/`&str` column types are not yet supported (character vectors
+/// don't expose a contiguous slice). `bool` is also not yet supported as
+/// a direct field type — use `RLogical` and convert per-element, or
+/// follow the open follow-up issues from PR #698.
+///
+/// # Generated API
+///
+/// For each `name: T` column the macro emits:
+/// - `pub fn name(&self) -> &[T]` (required)
+/// - `pub fn name(&self) -> Option<&[T]>` (optional, `Option<T>`)
+///
+/// Plus housekeeping:
+/// - `pub fn nrow(&self) -> usize`
+/// - `pub fn ncol(&self) -> usize` (count of *declared* columns)
+/// - `pub fn as_sexp(&self) -> SEXP`
+///
+/// All borrowed accessors are bound to `&self`; the SEXP is protected
+/// by the surrounding `#[miniextendr]` call wrapper while the struct is
+/// alive.
+///
+/// # Error reporting
+///
+/// `TryFromSexp::try_from_sexp` batches every per-column error into a
+/// single `SexpError::InvalidValue`, so the R user sees one diagnostic
+/// covering all missing or wrong-typed columns rather than a sequence of
+/// stop-on-first-failure messages.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, typed_dataframe};
+///
+/// typed_dataframe! {
+///     pub TheophDf {
+///         subject: i32,
+///         weight: f64,
+///         dose: f64,
+///     }
+/// }
+///
+/// #[miniextendr]
+/// pub fn theoph_nrow(df: TheophDf) -> i32 {
+///     // df.subject() -> &[i32], df.weight() -> &[f64]
+///     // Lengths are guaranteed equal across columns (data.frame invariant).
+///     df.nrow() as i32
+/// }
+/// ```
+///
+/// [`typed_list!`]: macro@typed_list
+/// [`TryFromSexp`]: trait@miniextendr_api::from_r::TryFromSexp
+#[proc_macro]
+pub fn typed_dataframe(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed = syn::parse_macro_input!(input as typed_dataframe::TypedDataframeInput);
+    typed_dataframe::expand_typed_dataframe(parsed).into()
 }
 
 /// Construct an R list from Rust values.

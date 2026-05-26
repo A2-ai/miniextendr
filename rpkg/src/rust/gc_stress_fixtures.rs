@@ -1188,3 +1188,128 @@ pub fn gc_stress_factor_labels() -> i32 {
 }
 
 // endregion
+
+// region: typed_dataframe! (#698)
+
+/// Exercise the `typed_dataframe!`-generated `TryFromSexp` impl under GC
+/// pressure.
+///
+/// Synthesises an R `data.frame` from scratch, drives it through
+/// `TheophDf::try_from_sexp`, and then forces every per-column borrowed
+/// accessor to read its slice. The accessors call
+/// `RNativeType::dataptr_mut` which is the path most likely to surface
+/// PROTECT-discipline bugs (each column is allocated then promoted into a
+/// generic VECSXP via `from_raw_pairs`, then attribute-tagged into a
+/// data.frame).
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_typed_dataframe() {
+    use crate::typed_dataframe_tests::TheophDf;
+    use miniextendr_api::IntoR as _;
+    use miniextendr_api::from_r::TryFromSexp as _;
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::list::List;
+
+    // Construct a Theoph-shaped data.frame internally.
+    //
+    // Each column SEXP must be PROTECTed before `List::from_raw_pairs`
+    // takes ownership — the docs say "The input SEXPs should already
+    // be protected." Without this, gctorture(TRUE) (and even normal
+    // R-devel runs) can reap unprotected column SEXPs while the names
+    // STRSXP is being built.
+    let nrow = 12usize;
+    let subject: Vec<i32> = (0..nrow as i32).collect();
+    let weight: Vec<f64> = (0..nrow).map(|i| 60.0 + i as f64).collect();
+    let dose: Vec<f64> = vec![320.0; nrow];
+    let time: Vec<f64> = (0..nrow).map(|i| i as f64 * 0.5).collect();
+    let conc: Vec<f64> = (0..nrow).map(|i| 1.0 + i as f64 * 0.1).collect();
+
+    let scope = unsafe { ProtectScope::new() };
+    let subject_sexp = unsafe { scope.protect_raw(subject.into_sexp()) };
+    let weight_sexp = unsafe { scope.protect_raw(weight.into_sexp()) };
+    let dose_sexp = unsafe { scope.protect_raw(dose.into_sexp()) };
+    let time_sexp = unsafe { scope.protect_raw(time.into_sexp()) };
+    let conc_sexp = unsafe { scope.protect_raw(conc.into_sexp()) };
+
+    let list = List::from_raw_pairs(vec![
+        ("subject", subject_sexp),
+        ("weight", weight_sexp),
+        ("dose", dose_sexp),
+        ("time", time_sexp),
+        ("conc", conc_sexp),
+    ]);
+    let df = list
+        .as_data_frame()
+        .expect("synthetic data.frame promotion should succeed");
+    let sexp = df.as_sexp();
+
+    // Drive the validating TryFromSexp path. The result stores per-column
+    // SEXPs as plain fields; the surrounding data.frame SEXP is owned by
+    // `df` (held alive by `sexp`).
+    let theoph = TheophDf::try_from_sexp(sexp).expect("TheophDf validation should succeed");
+
+    // Force every accessor to read its slice — this calls
+    // `dataptr_mut` on every column SEXP, exercising any PROTECT
+    // problems in storage.
+    let subj_sum: i32 = theoph.subject().iter().copied().sum();
+    let weight_sum: f64 = theoph.weight().iter().copied().sum();
+    let dose_sum: f64 = theoph.dose().iter().copied().sum();
+    let time_sum: f64 = theoph.time().iter().copied().sum();
+    let conc_sum: f64 = theoph.conc().iter().copied().sum();
+    assert_eq!(theoph.nrow(), nrow);
+    assert!(subj_sum >= 0);
+    assert!(weight_sum > 0.0);
+    assert!(dose_sum > 0.0);
+    assert!(time_sum >= 0.0);
+    assert!(conc_sum > 0.0);
+
+    // Optional column was absent in this fixture.
+    assert!(theoph.flag().is_none());
+
+    drop(theoph);
+    drop(df);
+    drop(scope);
+
+    // Now repeat the dance with the optional column populated, so the
+    // `Option<SEXP>` storage path is also stressed.
+    let subject2: Vec<i32> = (0..nrow as i32).collect();
+    let weight2: Vec<f64> = (0..nrow).map(|i| 50.0 + i as f64).collect();
+    let dose2: Vec<f64> = vec![160.0; nrow];
+    let time2: Vec<f64> = (0..nrow).map(|i| i as f64).collect();
+    let conc2: Vec<f64> = (0..nrow).map(|i| 2.0 + i as f64 * 0.25).collect();
+    let flag2: Vec<i32> = (0..nrow as i32).map(|i| i % 2).collect();
+
+    let scope2 = unsafe { ProtectScope::new() };
+    let subject2_sexp = unsafe { scope2.protect_raw(subject2.into_sexp()) };
+    let weight2_sexp = unsafe { scope2.protect_raw(weight2.into_sexp()) };
+    let dose2_sexp = unsafe { scope2.protect_raw(dose2.into_sexp()) };
+    let time2_sexp = unsafe { scope2.protect_raw(time2.into_sexp()) };
+    let conc2_sexp = unsafe { scope2.protect_raw(conc2.into_sexp()) };
+    let flag2_sexp = unsafe { scope2.protect_raw(flag2.into_sexp()) };
+
+    let list2 = List::from_raw_pairs(vec![
+        ("subject", subject2_sexp),
+        ("weight", weight2_sexp),
+        ("dose", dose2_sexp),
+        ("time", time2_sexp),
+        ("conc", conc2_sexp),
+        ("flag", flag2_sexp),
+    ]);
+    let df2 = list2
+        .as_data_frame()
+        .expect("synthetic data.frame promotion should succeed");
+    let sexp2 = df2.as_sexp();
+
+    let theoph2 =
+        TheophDf::try_from_sexp(sexp2).expect("TheophDf validation should succeed (with flag)");
+    let flag_sum: i32 = theoph2
+        .flag()
+        .expect("flag column should be present")
+        .iter()
+        .copied()
+        .sum();
+    assert!(flag_sum >= 0);
+}
+
+// endregion

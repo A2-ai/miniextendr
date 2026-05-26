@@ -1,0 +1,5 @@
+error: expected `exact` after @; use `@exact;` for strict mode
+ --> tests/ui/typed_dataframe_unknown_mode.rs:4:6
+  |
+4 |     @strict;
+  |      ^^^^^^
