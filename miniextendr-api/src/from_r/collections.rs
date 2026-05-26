@@ -3,6 +3,16 @@
 //! Named R lists convert to `HashMap<String, V>` / `BTreeMap<String, V>`.
 //! Unnamed R vectors convert to `HashSet<T>` / `BTreeSet<T>` for native types.
 //! Nested lists convert to `Vec<HashMap<String, V>>` etc.
+//!
+//! # Tradeoff
+//!
+//! These impls live on [`TryFromSexp`](crate::from_r::TryFromSexp), so the
+//! shape (named-vs-unnamed) is strictly enforced and element conversion
+//! delegates to the `V: TryFromSexp` bound. Failure mode: feeding an unnamed
+//! list into a `HashMap<String, V>` parameter yields a `SexpError`, not
+//! silently empty keys.
+//!
+//! Outbound counterpart: [`crate::into_r::collections`].
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 

@@ -91,9 +91,15 @@ miniextendr-lint = { path = "../path/to/miniextendr-lint" }
 ## Diagnostics
 
 ```r
-miniextendr_doctor()       # Comprehensive project health check
-miniextendr_check()        # Full R CMD check workflow
+miniextendr_doctor()              # Comprehensive project health check
+miniextendr_check()               # Full R CMD check workflow (requires cargo)
+miniextendr_check_static()        # Fast static check -- no Rust compile, works on un-vendored packages
 ```
+
+`miniextendr_check_static()` uses `--install=fake` so `./configure` and
+`cargo` are never invoked. Use it for fast iteration, sandbox environments,
+or pre-vendor sanity checks. Run `miniextendr_check()` for full validation
+before a CRAN submission.
 
 ## Vendoring
 

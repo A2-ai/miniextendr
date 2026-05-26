@@ -4,12 +4,56 @@
 //!
 //! 1. **[`RCondition`] enum** — the internal panic payload used by `error!()`,
 //!    `warning!()`, `message!()`, and `condition!()` macros. Caught by
-//!    `with_r_unwind_protect` before the generic panic→error path, then
-//!    forwarded to R as a structured condition with `rust_*` class layering.
+//!    [`crate::unwind_protect::with_r_unwind_protect`] before the generic
+//!    panic→error path, then forwarded to R as a structured condition with
+//!    `rust_*` class layering via
+//!    [`crate::error_value::make_rust_condition_value`].
 //!
 //! 2. **[`AsRError`] struct** — wraps any `E: std::error::Error` and
 //!    preserves the full error chain (cause/source) when converting to an R
 //!    error message. Use as the `Err` type in `Result` returns.
+//!
+//! # When to reach for what
+//!
+//! There are three Rust→R error-emission paths and they are not
+//! interchangeable. The crate-level rationale (why tagged-SEXP at all, what
+//! `error_in_r` defaults imply, and the `with_r_unwind_protect` leak) lives
+//! on [`crate::error_value`]; the practical picking-one summary:
+//!
+//! - **`panic!`** — escape hatch. Becomes class `c("rust_error",
+//!   "simpleError", "error", "condition")` with `kind = "panic"`. Use for
+//!   genuine bugs or impossible states. Cheapest in source; coarsest in R
+//!   (callers can only match `rust_error` / `error`, not a specific class).
+//! - **`error!` / `warning!` / `message!` / `condition!`** (this module) —
+//!   typed conditions. Same transport, but allow an optional `class =
+//!   "name"` so R-side `tryCatch` can route by class. `warning!` /
+//!   `message!` / `condition!` are the only way to emit non-error
+//!   conditions; `panic!` is always an error.
+//! - **`Result<T, E>` with [`AsRError<E>`]** — value-style propagation
+//!   through Rust code. Converts at the boundary; `kind = "result_err"`.
+//!   Best when the failure path is real-and-recoverable in Rust and the
+//!   error chain (`std::error::Error::source`) is worth preserving.
+//!
+//! `Rf_error` is *not* on this list. Direct `Rf_error` skips Rust
+//! destructors unconditionally and is forbidden by lint MXL300; see
+//! [`crate::error_value`] for the full reasoning.
+//!
+//! # Macro-vs-module name collision
+//!
+//! `#[macro_export]` puts each macro at the *crate root*, where `error!` and
+//! `condition!` collide with the same-named modules `pub mod error` and `pub
+//! mod condition`. The practical implication: `use miniextendr_api::{error,
+//! condition}` imports the *modules*, not the macros, and a subsequent
+//! `error!(...)` call fails to resolve.
+//!
+//! Workarounds, in rough order of ergonomics:
+//!
+//! 1. Invoke via fully-qualified path: `miniextendr_api::error!("...")`.
+//! 2. `use miniextendr_api as mx;` then `mx::error!("...")`.
+//! 3. `warning!` and `message!` have no module conflict — `use
+//!    miniextendr_api::{warning, message};` works directly.
+//!
+//! See the individual macro docs for the per-macro reminder.
 //!
 //! # Condition macros
 //!
@@ -112,20 +156,38 @@ pub enum RCondition {
 /// An optional `class = "name"` form prepends a custom class for programmatic catching:
 /// `c("name", "rust_error", "simpleError", "error", "condition")`.
 ///
+/// # See also
+///
+/// - [`crate::warning!`] / [`crate::message!`] / [`crate::condition!`] — the
+///   non-error sibling kinds (warning continues execution; message is muffled
+///   by `suppressMessages`; condition is silent without a handler).
+/// - [`std::panic!`] — escape hatch with the same `rust_error` class layering
+///   but no custom-class slot. Use for true bugs / impossible states; reach for
+///   `error!` when callers might want to route by class.
+/// - [`AsRError`] — wraps `Result<_, E: std::error::Error>` for value-style
+///   propagation through Rust code; converts at the boundary.
+/// - [`crate::error_value`] — module-level rationale for the tagged-SEXP
+///   transport and the `error_in_r` default.
+///
+/// **Name-collision note.** Because `pub mod error` exists at the crate root,
+/// `use miniextendr_api::error` imports the module rather than this macro.
+/// Invoke via `miniextendr_api::error!(...)` (fully qualified) or via
+/// `mx::error!(...)` after `use miniextendr_api as mx;`.
+///
 /// # Examples
 ///
 /// ```ignore
-/// use miniextendr_api::error;
+/// use miniextendr_api as mx;
 ///
 /// #[miniextendr]
 /// fn fail() {
-///     error!("something went wrong: {}", 42);
+///     mx::error!("something went wrong: {}", 42);
 /// }
 ///
 /// // With a custom class for tryCatch:
 /// #[miniextendr]
 /// fn typed_fail(name: &str) {
-///     error!(class = "my_error", "missing field: {name}");
+///     mx::error!(class = "my_error", "missing field: {name}");
 /// }
 /// ```
 ///
@@ -159,6 +221,18 @@ macro_rules! error {
 /// The raised condition has class `c("rust_warning", "simpleWarning", "warning", "condition")`.
 ///
 /// An optional `class = "name"` form prepends a custom class.
+///
+/// # See also
+///
+/// - [`crate::error!`] — fatal sibling; aborts the call instead of continuing.
+/// - [`crate::message!`] / [`crate::condition!`] — softer signal kinds (muffled
+///   by `suppressMessages` / silent without handler, respectively).
+/// - [`std::panic!`] — escape hatch when "continue after this" is not a sensible
+///   semantic.
+/// - [`crate::error_value`] — tagged-SEXP transport rationale.
+///
+/// No name-collision caveat: there is no `pub mod warning`, so
+/// `use miniextendr_api::warning;` then `warning!(...)` works directly.
 ///
 /// # Example
 ///
@@ -204,6 +278,16 @@ macro_rules! warning {
 /// The raised condition has class `c("rust_message", "simpleMessage", "message", "condition")`.
 /// Muffled by `suppressMessages()` automatically (standard R restart mechanism).
 ///
+/// # See also
+///
+/// - [`crate::warning!`] / [`crate::condition!`] — louder/quieter sibling kinds.
+/// - [`crate::error!`] — for fatal failures.
+/// - [`std::panic!`] — escape hatch.
+/// - [`crate::error_value`] — tagged-SEXP transport rationale.
+///
+/// No name-collision caveat: there is no `pub mod message`, so
+/// `use miniextendr_api::message;` then `message!(...)` works directly.
+///
 /// # Example
 ///
 /// ```ignore
@@ -237,6 +321,19 @@ macro_rules! message {
 /// The raised condition has class `c("rust_condition", "simpleCondition", "condition")`.
 ///
 /// An optional `class = "name"` form prepends a custom class.
+///
+/// # See also
+///
+/// - [`crate::error!`] / [`crate::warning!`] / [`crate::message!`] — louder
+///   condition kinds. Pick `condition!` when "no handler = silent" is the
+///   right default (progress events, structured logging hooks).
+/// - [`std::panic!`] — escape hatch when the failure cannot be ignored.
+/// - [`crate::error_value`] — tagged-SEXP transport rationale.
+///
+/// **Name-collision note.** Because `pub mod condition` exists at the crate
+/// root, `use miniextendr_api::condition` imports the module rather than this
+/// macro. Invoke via `miniextendr_api::condition!(...)` (fully qualified) or
+/// via `mx::condition!(...)` after `use miniextendr_api as mx;`.
 ///
 /// # Example
 ///

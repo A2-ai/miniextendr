@@ -554,6 +554,58 @@ pub fn gc_stress_with_dataframe_rows() -> f64 {
     .expect("gc_stress_with_dataframe_rows: with_dataframe_rows failed")
 }
 
+/// Exercise `dataframe_to_vec` nested-struct un-flattening under GC pressure.
+///
+/// Synthesizes 10 rows of a nested `Person { name, address: Address { city, zip } }`
+/// struct via `vec_to_dataframe`, then reconstructs them via `dataframe_to_vec`
+/// using the single-underscore prefix-matching path. Returns the row count.
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_dataframe_to_vec_nested() -> i32 {
+    use crate::serde::{Deserialize, Serialize};
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{dataframe_to_vec, vec_to_dataframe};
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct Address {
+        city: String,
+        zip: String,
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct Person {
+        name: String,
+        address: Address,
+    }
+
+    let original: Vec<Person> = (0i32..10)
+        .map(|i| Person {
+            name: format!("person_{}", i),
+            address: Address {
+                city: format!("city_{}", i),
+                zip: format!("{:05}", i * 1000),
+            },
+        })
+        .collect();
+
+    let sexp = vec_to_dataframe(&original)
+        .expect("gc_stress_dataframe_to_vec_nested: vec_to_dataframe failed")
+        .into_sexp();
+
+    let back: Vec<Person> = dataframe_to_vec(sexp)
+        .expect("gc_stress_dataframe_to_vec_nested: dataframe_to_vec failed");
+
+    assert_eq!(back.len(), original.len());
+    for (a, b) in original.iter().zip(back.iter()) {
+        assert_eq!(a, b);
+    }
+
+    back.len() as i32
+}
+
 // endregion
 
 // region: Streaming serialize GC stress
@@ -591,6 +643,143 @@ pub fn gc_stress_iter_to_dataframe() -> SEXP {
         None,
     )
     .expect("gc_stress_iter_to_dataframe: iter_to_dataframe failed");
+    df.into_sexp()
+}
+
+/// Exercise `dispatch_to_dataframes` PROTECT discipline under GC pressure.
+///
+/// Synthesises a mixed Result-iterator (every third row is an Err with a
+/// distinct payload shape) and runs it through the streaming two-builder
+/// path. Each builder's `ProtectScope` plus the assembling
+/// `NamedDataFrameListBuilder` need to keep every protected SEXP live.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
+    use crate::serde::Serialize;
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{DispatchNames, dispatch_to_dataframes};
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        val: f64,
+    }
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let list = dispatch_to_dataframes(
+        (0i32..30).map(|i| {
+            if i % 3 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("skip_{i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    val: f64::from(i) * 0.5,
+                })
+            }
+        }),
+        Some(30),
+        DispatchNames::default(),
+    )
+    .expect("gc_stress_dispatch_to_dataframes: dispatch_to_dataframes failed");
+    list.into_sexp()
+}
+
+// endregion
+
+// region: DataFrameBuilder with_schema / grow_schema GC stress
+
+/// Exercise [`DataFrameBuilder::with_schema`] PROTECT discipline under GC
+/// pressure. Builds a pre-declared schema, pushes 50 rows including a
+/// `None`-bearing optional column, then assembles via `finish()`. Verifies
+/// the per-builder `ProtectScope` keeps every protected SEXP live across
+/// the fill loop and final assembly.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_builder_with_schema() -> SEXP {
+    use crate::serde::Serialize;
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{DataFrameBuilder, TypeSpec};
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        id: i32,
+        ratio: f64,
+        tag: Option<String>,
+    }
+
+    let mut b = DataFrameBuilder::<Row>::with_schema(
+        [
+            ("id", TypeSpec::Integer),
+            ("ratio", TypeSpec::Real),
+            // Optional(Character) keeps the column character-typed even if
+            // the first row's `tag` is None.
+            ("tag", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+        ],
+        Some(50),
+    );
+    for i in 0..50i32 {
+        b.push(Row {
+            id: i,
+            ratio: f64::from(i) * 0.25,
+            tag: if i % 3 == 0 {
+                None
+            } else {
+                Some(format!("tag_{i}"))
+            },
+        })
+        .expect("gc_stress_builder_with_schema: push failed");
+    }
+    let df = b
+        .finish()
+        .expect("gc_stress_builder_with_schema: finish failed");
+    df.into_sexp()
+}
+
+/// Exercise [`DataFrameBuilder::grow_schema`] PROTECT discipline under GC
+/// pressure. Pushes 30 heterogeneous `BTreeMap` rows that progressively
+/// introduce new keys, forcing the back-fill path to allocate columns and
+/// NA-fill prior rows. Verifies the grown columns stay rooted and
+/// length-aligned through `finish()`.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_builder_grow_schema() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::DataFrameBuilder;
+    use std::collections::BTreeMap;
+
+    let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+    for i in 0..30i32 {
+        let mut row: BTreeMap<String, i32> = BTreeMap::new();
+        row.insert("base".into(), i);
+        // Introduce a fresh key every 5 rows to drive the back-fill path.
+        if i % 5 == 0 {
+            row.insert(format!("k_{i}"), i * 10);
+        }
+        // A common second column that appears from row 1 onward.
+        if i >= 1 {
+            row.insert("common".into(), i + 100);
+        }
+        b.push(row).expect("gc_stress_builder_grow_schema: push failed");
+    }
+    let df = b
+        .finish()
+        .expect("gc_stress_builder_grow_schema: finish failed");
     df.into_sexp()
 }
 
@@ -720,6 +909,481 @@ pub fn gc_stress_protect_discipline() {
     // CHOICES read-back to silence unused-warning on the MatchArg trait import
     // (also a sanity check that the enum type is reachable at compile time).
     let _ = <crate::match_arg_tests::Mode as MatchArg>::CHOICES.len();
+}
+
+// endregion
+
+// region: map_to_dataframe / result_to_dataframe / vec_to_dataframe_split helpers (#700, #697, #699)
+
+/// Exercise `map_to_dataframe` under GC pressure.
+///
+/// Allocates a `BTreeMap<i32, KvValue>`, serialises through the helper,
+/// converts to SEXP. Touches the same SEXP-storage code paths as
+/// `vec_to_dataframe` (its underlying call) — `gctorture(TRUE)` validates
+/// the schema-discovery / column-buffer / character-column protections.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_map_to_dataframe() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::map_to_dataframe;
+    use std::collections::BTreeMap;
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct KvValue {
+        score: f64,
+        label: String,
+    }
+
+    let mut map: BTreeMap<i32, KvValue> = BTreeMap::new();
+    for i in 0..40i32 {
+        map.insert(
+            i,
+            KvValue {
+                score: f64::from(i) * 1.25,
+                label: format!("entry_{i}"),
+            },
+        );
+    }
+
+    map_to_dataframe(&map, "id")
+        .expect("gc_stress_map_to_dataframe: map_to_dataframe failed")
+        .into_sexp()
+}
+
+/// Exercise `result_to_dataframe(Auto)` under GC pressure with mixed Ok/Err
+/// rows. Exercises the split path (intermediate `ColumnarDataFrame` pair +
+/// `NamedDataFrameListBuilder` assembly in `IntoR for DataFrameShape`).
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_result_to_dataframe_auto() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{ResultShape, result_to_dataframe};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        value: f64,
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let rows: Vec<Result<OkRow, ErrRow>> = (0..40i32)
+        .map(|i| {
+            if i % 3 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("err {i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    value: f64::from(i) * 1.5,
+                })
+            }
+        })
+        .collect();
+
+    result_to_dataframe(
+        &rows,
+        ResultShape::Auto {
+            empty_ok_sentinel: (),
+        },
+    )
+    .expect("gc_stress_result_to_dataframe_auto: helper failed")
+    .into_sexp()
+}
+
+/// Exercise `result_to_dataframe(Collated)` under GC pressure. Union-schema
+/// emission goes through the `TaggedVariantRow`/`MapForwarder` path.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_result_to_dataframe_collated() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{ResultShape, result_to_dataframe};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        value: f64,
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let rows: Vec<Result<OkRow, ErrRow>> = (0..30i32)
+        .map(|i| {
+            if i % 4 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("err {i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    value: f64::from(i) * 2.0,
+                })
+            }
+        })
+        .collect();
+
+    result_to_dataframe::<_, _, ()>(&rows, ResultShape::Collated)
+        .expect("gc_stress_result_to_dataframe_collated: helper failed")
+        .into_sexp()
+}
+
+/// Exercise `result_to_dataframe(Split)` with all-Err input → sentinel
+/// path. Validates that the user-supplied sentinel SEXP is rooted while
+/// the outer named list is assembled.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_result_to_dataframe_split_sentinel() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{ResultShape, result_to_dataframe};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let rows: Vec<Result<OkRow, ErrRow>> = (0..25i32)
+        .map(|i| {
+            Err(ErrRow {
+                id: i,
+                reason: format!("err {i}"),
+            })
+        })
+        .collect();
+
+    // Sentinel is a String — ends up as an STRSXP and exercises the
+    // protect-around-CHARSXP-allocation path inside DataFrameShape::IntoR.
+    result_to_dataframe(
+        &rows,
+        ResultShape::Split {
+            empty_ok_sentinel: String::from("no ok rows"),
+        },
+    )
+    .expect("gc_stress_result_to_dataframe_split_sentinel: helper failed")
+    .into_sexp()
+}
+
+/// Exercise `vec_to_dataframe_split(PerVariantListWithTag)` under GC
+/// pressure. The tag-column prepend allocates a per-partition STRSXP that
+/// must be protected through the `prepend_column` VECSXP reshuffle.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_split_with_tag() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{SplitShape, vec_to_dataframe_split};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    enum Event {
+        Click { x: f64, y: f64 },
+        Scroll { delta: f64 },
+        KeyPress { code: String },
+    }
+
+    let rows: Vec<Event> = (0..30i32)
+        .map(|i| match i % 3 {
+            0 => Event::Click {
+                x: f64::from(i),
+                y: f64::from(i) * 2.0,
+            },
+            1 => Event::Scroll {
+                delta: f64::from(i) * -0.5,
+            },
+            _ => Event::KeyPress {
+                code: format!("k{i}"),
+            },
+        })
+        .collect();
+
+    vec_to_dataframe_split(
+        &rows,
+        SplitShape::PerVariantListWithTag {
+            column: "variant".into(),
+        },
+    )
+    .expect("gc_stress_split_with_tag: helper failed")
+    .into_sexp()
+}
+
+/// Exercise `vec_to_dataframe_split(Collated)` under GC pressure. Drives
+/// the `TaggedVariantRow` / `MapForwarder` collation path through the
+/// schema-union machinery in `ColumnarDataFrame::from_rows`.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_split_collated() -> SEXP {
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::{SplitShape, vec_to_dataframe_split};
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    enum Event {
+        Click { x: f64, y: f64 },
+        Scroll { delta: f64 },
+        KeyPress { code: String },
+    }
+
+    let rows: Vec<Event> = (0..30i32)
+        .map(|i| match i % 3 {
+            0 => Event::Click {
+                x: f64::from(i),
+                y: f64::from(i) * 2.0,
+            },
+            1 => Event::Scroll {
+                delta: f64::from(i) * -0.5,
+            },
+            _ => Event::KeyPress {
+                code: format!("k{i}"),
+            },
+        })
+        .collect();
+
+    vec_to_dataframe_split(
+        &rows,
+        SplitShape::Collated {
+            column: "kind".into(),
+        },
+    )
+    .expect("gc_stress_split_collated: helper failed")
+    .into_sexp()
+}
+
+// endregion
+
+// region: factor-label dataframe_to_vec GC stress (issue #689)
+
+/// Exercise the factor-label path through `dataframe_to_vec` under GC
+/// pressure.
+///
+/// The factor branch in `CellDeserializer::deserialize_str/string/char/any`
+/// reads `levels` (via `Rf_getAttrib`) and dereferences `STRING_ELT` on the
+/// levels SEXP — a path that crosses a GC barrier. This fixture synthesises
+/// a one-column factor data.frame internally, then runs `dataframe_to_vec`
+/// to reconstruct `Vec<Row { status: String }>`. The intermediate factor +
+/// data.frame SEXPs are protected via `OwnedProtect`; the deserialiser must
+/// keep them rooted across the per-row label lookups.
+///
+/// No arguments — suitable for the fast gctorture no-arg sweep.
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_factor_labels() -> i32 {
+    use crate::serde::Deserialize;
+    use miniextendr_api::factor::{build_factor, build_levels_sexp};
+    use miniextendr_api::sys::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+    use miniextendr_api::gc_protect::OwnedProtect;
+    use miniextendr_api::serde::dataframe_to_vec;
+
+    #[derive(Deserialize, PartialEq, Debug)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        status: Option<String>,
+    }
+
+    let levels = ["active", "pending", "archived"];
+    // Build 30 rows cycling through codes 1..=3 to exercise multiple label
+    // hits per call, plus a few NA cells (NA_INTEGER → `status: None`).
+    const NA: i32 = i32::MIN; // NA_INTEGER
+    let codes: Vec<i32> = (0..30)
+        .map(|i| if i % 7 == 0 { NA } else { (i % 3) as i32 + 1 })
+        .collect();
+
+    // SAFETY: all R API calls happen on the worker thread (this fixture is
+    // invoked via the #[miniextendr] wrapper), and every transient
+    // allocation is protected before the next allocation can run GC.
+    let df = unsafe {
+        let levels_sexp = build_levels_sexp(&levels);
+        let _levels_guard = OwnedProtect::new(levels_sexp);
+        let col = build_factor(&codes, levels_sexp);
+        let _col_guard = OwnedProtect::new(col);
+
+        let list = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+        let _list_guard = OwnedProtect::new(list);
+        list.set_vector_elt(0, col);
+
+        let names_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _names_guard = OwnedProtect::new(names_sexp);
+        names_sexp.set_string_elt(0, SEXP::charsxp("status"));
+        list.set_names(names_sexp);
+
+        let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _class_guard = OwnedProtect::new(class_sexp);
+        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
+        list.set_class(class_sexp);
+
+        let row_names = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let _rn_guard = OwnedProtect::new(row_names);
+        let rn = row_names.as_mut_slice::<i32>();
+        rn[0] = i32::MIN;
+        rn[1] = -(codes.len() as i32);
+        list.set_row_names(row_names);
+
+        // Hand `list` to dataframe_to_vec while every transient is still
+        // protected — the inner guards drop at the end of this block, but
+        // by then the only live SEXP we care about (`list`) is unprotected
+        // and immediately consumed.
+        dataframe_to_vec::<Row>(list).expect("gc_stress_factor_labels: dataframe_to_vec failed")
+    };
+
+    assert_eq!(df.len(), codes.len());
+    let mut na_count = 0;
+    for (i, row) in df.iter().enumerate() {
+        match (&row.status, codes[i]) {
+            (None, NA) => na_count += 1,
+            (Some(label), code) if code != NA => assert!(
+                levels.contains(&label.as_str()),
+                "unexpected label at row {i}: {label}"
+            ),
+            other => panic!("row {i} mismatch: {:?} vs code {}", other, codes[i]),
+        }
+    }
+    assert!(na_count > 0, "fixture should exercise NA rows");
+    df.len() as i32
+}
+
+// endregion
+
+// region: typed_dataframe! (#698)
+
+/// Exercise the `typed_dataframe!`-generated `TryFromSexp` impl under GC
+/// pressure.
+///
+/// Synthesises an R `data.frame` from scratch, drives it through
+/// `TheophDf::try_from_sexp`, and then forces every per-column borrowed
+/// accessor to read its slice. The accessors call
+/// `RNativeType::dataptr_mut` which is the path most likely to surface
+/// PROTECT-discipline bugs (each column is allocated then promoted into a
+/// generic VECSXP via `from_raw_pairs`, then attribute-tagged into a
+/// data.frame).
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_typed_dataframe() {
+    use crate::typed_dataframe_tests::TheophDf;
+    use miniextendr_api::IntoR as _;
+    use miniextendr_api::from_r::TryFromSexp as _;
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::list::List;
+
+    // Construct a Theoph-shaped data.frame internally.
+    //
+    // Each column SEXP must be PROTECTed before `List::from_raw_pairs`
+    // takes ownership — the docs say "The input SEXPs should already
+    // be protected." Without this, gctorture(TRUE) (and even normal
+    // R-devel runs) can reap unprotected column SEXPs while the names
+    // STRSXP is being built.
+    let nrow = 12usize;
+    let subject: Vec<i32> = (0..nrow as i32).collect();
+    let weight: Vec<f64> = (0..nrow).map(|i| 60.0 + i as f64).collect();
+    let dose: Vec<f64> = vec![320.0; nrow];
+    let time: Vec<f64> = (0..nrow).map(|i| i as f64 * 0.5).collect();
+    let conc: Vec<f64> = (0..nrow).map(|i| 1.0 + i as f64 * 0.1).collect();
+
+    let scope = unsafe { ProtectScope::new() };
+    let subject_sexp = unsafe { scope.protect_raw(subject.into_sexp()) };
+    let weight_sexp = unsafe { scope.protect_raw(weight.into_sexp()) };
+    let dose_sexp = unsafe { scope.protect_raw(dose.into_sexp()) };
+    let time_sexp = unsafe { scope.protect_raw(time.into_sexp()) };
+    let conc_sexp = unsafe { scope.protect_raw(conc.into_sexp()) };
+
+    let list = List::from_raw_pairs(vec![
+        ("subject", subject_sexp),
+        ("weight", weight_sexp),
+        ("dose", dose_sexp),
+        ("time", time_sexp),
+        ("conc", conc_sexp),
+    ]);
+    let df = list
+        .as_data_frame()
+        .expect("synthetic data.frame promotion should succeed");
+    let sexp = df.as_sexp();
+
+    // Drive the validating TryFromSexp path. The result stores per-column
+    // SEXPs as plain fields; the surrounding data.frame SEXP is owned by
+    // `df` (held alive by `sexp`).
+    let theoph = TheophDf::try_from_sexp(sexp).expect("TheophDf validation should succeed");
+
+    // Force every accessor to read its slice — this calls
+    // `dataptr_mut` on every column SEXP, exercising any PROTECT
+    // problems in storage.
+    let subj_sum: i32 = theoph.subject().iter().copied().sum();
+    let weight_sum: f64 = theoph.weight().iter().copied().sum();
+    let dose_sum: f64 = theoph.dose().iter().copied().sum();
+    let time_sum: f64 = theoph.time().iter().copied().sum();
+    let conc_sum: f64 = theoph.conc().iter().copied().sum();
+    assert_eq!(theoph.nrow(), nrow);
+    assert!(subj_sum >= 0);
+    assert!(weight_sum > 0.0);
+    assert!(dose_sum > 0.0);
+    assert!(time_sum >= 0.0);
+    assert!(conc_sum > 0.0);
+
+    // Optional column was absent in this fixture.
+    assert!(theoph.flag().is_none());
+
+    drop(theoph);
+    drop(df);
+    drop(scope);
+
+    // Now repeat the dance with the optional column populated, so the
+    // `Option<SEXP>` storage path is also stressed.
+    let subject2: Vec<i32> = (0..nrow as i32).collect();
+    let weight2: Vec<f64> = (0..nrow).map(|i| 50.0 + i as f64).collect();
+    let dose2: Vec<f64> = vec![160.0; nrow];
+    let time2: Vec<f64> = (0..nrow).map(|i| i as f64).collect();
+    let conc2: Vec<f64> = (0..nrow).map(|i| 2.0 + i as f64 * 0.25).collect();
+    let flag2: Vec<i32> = (0..nrow as i32).map(|i| i % 2).collect();
+
+    let scope2 = unsafe { ProtectScope::new() };
+    let subject2_sexp = unsafe { scope2.protect_raw(subject2.into_sexp()) };
+    let weight2_sexp = unsafe { scope2.protect_raw(weight2.into_sexp()) };
+    let dose2_sexp = unsafe { scope2.protect_raw(dose2.into_sexp()) };
+    let time2_sexp = unsafe { scope2.protect_raw(time2.into_sexp()) };
+    let conc2_sexp = unsafe { scope2.protect_raw(conc2.into_sexp()) };
+    let flag2_sexp = unsafe { scope2.protect_raw(flag2.into_sexp()) };
+
+    let list2 = List::from_raw_pairs(vec![
+        ("subject", subject2_sexp),
+        ("weight", weight2_sexp),
+        ("dose", dose2_sexp),
+        ("time", time2_sexp),
+        ("conc", conc2_sexp),
+        ("flag", flag2_sexp),
+    ]);
+    let df2 = list2
+        .as_data_frame()
+        .expect("synthetic data.frame promotion should succeed");
+    let sexp2 = df2.as_sexp();
+
+    let theoph2 =
+        TheophDf::try_from_sexp(sexp2).expect("TheophDf validation should succeed (with flag)");
+    let flag_sum: i32 = theoph2
+        .flag()
+        .expect("flag column should be present")
+        .iter()
+        .copied()
+        .sum();
+    assert!(flag_sum >= 0);
 }
 
 // endregion

@@ -306,6 +306,8 @@ miniextendr_vendor <- function(path = ".") {
 #'   or `"note"`. Passed to [rcmdcheck::rcmdcheck()].
 #' @param build_args Character vector of extra arguments passed to `R CMD build`.
 #' @return The [rcmdcheck::rcmdcheck()] result object, invisibly.
+#' @seealso [miniextendr_check_static()] for a fast no-compile variant suitable
+#'   for un-vendored packages.
 #' @export
 miniextendr_check <- function(path = ".",
                                args = c("--as-cran", "--no-manual"),

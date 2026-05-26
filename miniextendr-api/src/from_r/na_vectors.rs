@@ -4,6 +4,17 @@
 //! Covers native types (i32, f64, u8), logical (bool, Rboolean, RLogical),
 //! string (`Option<String>`), complex (`Option<Rcomplex>`), and coerced
 //! numeric types (`Option<i64>`, `Option<u64>`, etc.).
+//!
+//! # Tradeoff
+//!
+//! Use the NA-unaware sibling impls (`Vec<T>`, `Box<[T]>`) when R guarantees
+//! no NA — they're cheaper (no per-element `Option` discriminant) and reject
+//! NA at conversion time. Failure mode of binding plain `Vec<i32>` when the
+//! R caller can pass `NA_integer_`: a single `NA` element silently round-trips
+//! as `i32::MIN`, the R NA sentinel, which is a footgun for arithmetic
+//! downstream.
+//!
+//! Outbound counterpart: `Vec<Option<T>>` impls in [`crate::into_r`].
 
 use crate::coerce::TryCoerce;
 use crate::from_r::{

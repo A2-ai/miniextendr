@@ -1,5 +1,14 @@
 //! Parser for the `typed_list!` macro.
 //!
+//! Without `typed_list!`, an `#[miniextendr]` function that takes `...` reads
+//! the dots as raw `&Dots` and validates field names, types, and required-vs-
+//! optional shape **at runtime** inside the function body. `typed_list!`
+//! lifts that shape into the macro signature: writing
+//! `#[miniextendr(dots = typed_list!(alpha => numeric(4), beta? => "list"))]`
+//! generates a `dots_typed` binding with strongly-typed accessors, validates
+//! field names/types at the call boundary, and surfaces a single batched
+//! diagnostic on shape mismatch instead of one-error-per-field.
+//!
 //! Parses syntax like:
 //! ```ignore
 //! typed_list!(

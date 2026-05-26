@@ -3,6 +3,16 @@
 //! Used by `#[miniextendr(unwrap_in_r)]` to pass Results to R as lists
 //! with `ok` and `err` fields, instead of unwrapping in Rust.
 //! Also provides `NullOnErr` for `Result<T, ()>` → NULL-on-error semantics.
+//!
+//! # Tradeoff
+//!
+//! These impls only fire under `#[miniextendr(unwrap_in_r)]` (Result-as-value).
+//! Without that attribute, a `Result<T, E>` return acts as an **error
+//! boundary**: `Err(e)` panics with `Debug`-formatted `e`, the framework's
+//! tagged-condition transport carries it to R, and the wrapper raises a
+//! classed `rust_*` condition. Failure mode of opting into `unwrap_in_r`
+//! without telling R callers: they suddenly need to inspect `$ok` / `$err`
+//! on every return value instead of using `tryCatch`.
 
 use std::collections::HashMap;
 

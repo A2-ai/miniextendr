@@ -1,4 +1,12 @@
 //! Vctrs class R wrapper generator.
+//!
+//! Generates an S3 class that **integrates with the tidyverse `vctrs`
+//! package**: emits a `new_<class>` wrapper around `vctrs::new_vctr` /
+//! `new_rcrd` / `new_list_of` (selected via `VctrsKind`), plus the standard
+//! `vec_ptype2` / `vec_cast` self-coercion methods so the type composes
+//! cleanly inside `tibble`, `dplyr`, and `tidyr`. Pick vctrs when your Rust
+//! type is "a vector of X" and you want first-class tibble columns; use
+//! plain S3/S7 for scalar-like objects.
 
 use super::{ParsedImpl, VctrsKind};
 

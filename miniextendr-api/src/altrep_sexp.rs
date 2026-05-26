@@ -43,9 +43,6 @@
 //! // Or use the convenience helper on any SEXP:
 //! let safe_sexp = unsafe { ensure_materialized(sexp) };
 //! ```
-//!
-//! See also: `docs/ALTREP_SEXP.md` for the full guide on receiving ALTREP
-//! vectors from R.
 
 use crate::from_r::r_slice;
 use crate::sys::{self, Rcomplex, SEXP, SEXPTYPE, SexpExt};

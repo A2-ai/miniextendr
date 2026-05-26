@@ -13,7 +13,11 @@
 //! User code should use:
 //! - `panic!()` — for unrecoverable Rust errors (becomes `rust_error` in R)
 //! - `error!()` / `warning!()` / `message!()` / `condition!()` — for structured
-//!   R conditions (see `crate::condition`)
+//!   R conditions (see [`mod@crate::condition`])
+//!
+//! See [`crate::error_value`] for the tagged-SEXP layout, the
+//! `error_in_r` default + `no_error_in_r` / `unwrap_in_r` opt-outs, and the
+//! PROTECT-discipline gotcha that R-devel surfaces.
 //!
 //! ## When `Rf_error` still fires (framework-internal)
 //!
@@ -29,7 +33,7 @@
 //! `with_r_unwind_protect_sourced` → `raise_rust_condition_via_stop`, which
 //! preserves `rust_*` class layering without going through `r_stop`.
 //!
-//! [`r_stop`] is `pub(crate)` — no user code should depend on it.
+//! `r_stop` is `pub(crate)` — no user code should depend on it.
 //!
 //! # Example
 //!

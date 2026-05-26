@@ -50,6 +50,7 @@ pub use crate::{
     RFactor,
     list,
     miniextendr,
+    typed_dataframe,
     typed_list,
 };
 // endregion

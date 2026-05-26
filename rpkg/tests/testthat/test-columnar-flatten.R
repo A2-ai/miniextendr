@@ -228,3 +228,123 @@ test_that("empty input split returns an empty list()", {
   expect_false(is.data.frame(result))
   expect_equal(length(result), 0)
 })
+
+# region: vec_to_dataframe_split with-tag + collated shapes (closes #699)
+
+test_that("PerVariantListWithTag prepends variant column to each partition", {
+  result <- test_columnar_split_with_tag()
+
+  expect_type(result, "list")
+  expect_setequal(names(result), c("Click", "Scroll"))
+
+  click <- result$Click
+  expect_s3_class(click, "data.frame")
+  expect_equal(names(click)[1], "variant")
+  expect_equal(click$variant, c("Click", "Click"))
+  expect_true(all(c("x", "y") %in% names(click)))
+
+  scroll <- result$Scroll
+  expect_s3_class(scroll, "data.frame")
+  expect_equal(names(scroll)[1], "variant")
+  expect_equal(scroll$variant, "Scroll")
+  expect_true("delta" %in% names(scroll))
+})
+
+test_that("Collated shape returns a single data.frame with union schema + variant column", {
+  df <- test_columnar_split_collated()
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 3)
+  expect_equal(names(df)[1], "variant")
+  expect_true(all(c("x", "y", "delta") %in% names(df)))
+  expect_equal(df$variant, c("Click", "Scroll", "Click"))
+
+  # Click rows: x and y set, delta NA
+  expect_equal(df$x[c(1, 3)], c(1.0, 5.0))
+  expect_true(is.na(df$delta[1]))
+  expect_true(is.na(df$delta[3]))
+
+  # Scroll row: delta set, x and y NA
+  expect_equal(df$delta[2], -3.0)
+  expect_true(is.na(df$x[2]))
+  expect_true(is.na(df$y[2]))
+})
+
+# endregion
+
+# region: map_to_dataframe (closes #700)
+
+test_that("map_to_dataframe over BTreeMap returns key column first", {
+  df <- test_map_to_dataframe_btreemap()
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 3)
+  expect_equal(names(df)[1], "subject")
+  expect_true(all(c("cmax", "tmax") %in% names(df)))
+
+  # BTreeMap is ordered, so subject column should be sorted 1,2,3
+  expect_equal(df$subject, c(1L, 2L, 3L))
+  expect_equal(df$cmax, c(10.5, 8.1, 12.0))
+  expect_equal(df$tmax, c(2.0, 3.5, 1.0))
+})
+
+test_that("hashmap_to_dataframe sorts by key for deterministic order", {
+  df <- test_hashmap_to_dataframe()
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 3)
+  expect_equal(names(df)[1], "subject")
+  # HashMap iteration order is unspecified, but the helper sorts by key.
+  expect_equal(df$subject, c(1L, 2L, 3L))
+  expect_equal(df$cmax, c(10.5, 8.1, 12.0))
+})
+
+# endregion
+
+# region: result_to_dataframe (closes #697)
+
+test_that("result_to_dataframe(Auto) returns bare data.frame on all-Ok", {
+  df <- test_result_to_dataframe_auto_all_ok()
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 2)
+  expect_equal(sort(names(df)), sort(c("id", "value")))
+})
+
+test_that("result_to_dataframe(Auto) returns list(results, error) on mixed input", {
+  res <- test_result_to_dataframe_auto_mixed()
+  expect_type(res, "list")
+  expect_equal(names(res), c("results", "error"))
+  expect_s3_class(res$results, "data.frame")
+  expect_s3_class(res$error, "data.frame")
+  expect_equal(nrow(res$results), 2)
+  expect_equal(nrow(res$error), 1)
+  expect_equal(res$error$reason, "bad")
+})
+
+test_that("result_to_dataframe(Collated) produces single data.frame with is_error", {
+  df <- test_result_to_dataframe_collated()
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 3)
+  expect_equal(names(df)[1], "is_error")
+  expect_equal(df$is_error, c(FALSE, TRUE, FALSE))
+  # Union schema: id (in both variants) + value + reason
+  expect_true(all(c("id", "value", "reason") %in% names(df)))
+  # Ok rows: value set, reason NA
+  expect_equal(df$value[c(1, 3)], c(1.0, 3.0))
+  expect_true(is.na(df$reason[1]))
+  # Err row: reason set, value NA
+  expect_equal(df$reason[2], "bad")
+  expect_true(is.na(df$value[2]))
+})
+
+test_that("result_to_dataframe(Split) with all-Err puts sentinel in results slot", {
+  res <- test_result_to_dataframe_split_all_err()
+  expect_type(res, "list")
+  expect_equal(names(res), c("results", "error"))
+  # No Ok rows → sentinel `()` lands as NULL on the R side
+  expect_null(res$results)
+  expect_s3_class(res$error, "data.frame")
+  expect_equal(nrow(res$error), 2)
+})
+
+# endregion

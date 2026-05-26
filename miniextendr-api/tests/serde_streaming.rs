@@ -9,8 +9,11 @@
 mod r_test_utils;
 
 use miniextendr_api::IntoR as _;
-use miniextendr_api::serde::{DataFrameBuilder, RSerdeError, iter_to_dataframe, vec_to_dataframe};
-use miniextendr_api::sys::SexpExt as _;
+use miniextendr_api::serde::{
+    DataFrameBuilder, DispatchNames, RSerdeError, TypeSpec, dispatch_to_dataframes,
+    iter_to_dataframe, vec_to_dataframe,
+};
+use miniextendr_api::sys::{SEXPTYPE, SexpExt as _};
 use serde::Serialize;
 
 // region: round-trip equivalence with vec_to_dataframe
@@ -166,6 +169,118 @@ fn dataframe_builder_missing_field_na_pads() {
 
 // endregion
 
+// region: with_schema / grow_schema (#693 / #692)
+
+#[test]
+fn with_schema_skips_discovery_first_row_none_keeps_declared_type() {
+    r_test_utils::with_r_thread(|| {
+        // Pre-declared schema: column "b" is Optional(Character). The first
+        // row's `b` is None — default discovery would have made this a logical
+        // NA column. With `with_schema`, it stays character.
+        let mut b = DataFrameBuilder::<Optional>::with_schema(
+            [
+                ("a", TypeSpec::Optional(Box::new(TypeSpec::Integer))),
+                ("b", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+            ],
+            None,
+        );
+        b.push(Optional { a: None, b: None }).unwrap();
+        b.push(Optional {
+            a: Some(2),
+            b: Some("x".into()),
+        })
+        .unwrap();
+        let df = b.finish().unwrap().into_sexp();
+        assert_eq!(df.xlength(), 2, "two columns");
+        // We check the *types* survived rather than the values to keep the
+        // assertion robust against NA encodings. With default discovery the
+        // first-row None would have made both columns LGLSXP — Optional()
+        // pins them to the declared base type.
+        let col_a = df.vector_elt(0);
+        let col_b = df.vector_elt(1);
+        assert_ne!(
+            col_a.type_of(),
+            SEXPTYPE::LGLSXP,
+            "column 'a' degraded to logical despite Optional(Integer)"
+        );
+        assert_ne!(
+            col_b.type_of(),
+            SEXPTYPE::LGLSXP,
+            "column 'b' degraded to logical despite Optional(Character)"
+        );
+    });
+}
+
+#[test]
+fn with_schema_rejects_unknown_field_at_runtime() {
+    r_test_utils::with_r_thread(|| {
+        let mut b = DataFrameBuilder::<Plain>::with_schema(
+            [("id", TypeSpec::Integer), ("val", TypeSpec::Real)],
+            None,
+        );
+        // `name` is not in the declared schema — strict filler rejects.
+        let err = b
+            .push(Plain {
+                id: 1,
+                val: 2.0,
+                name: "x".into(),
+            })
+            .unwrap_err();
+        assert!(
+            matches!(err, RSerdeError::Message(ref m) if m.contains("name")),
+            "expected strict rejection of 'name', got: {err:?}"
+        );
+    });
+}
+
+#[test]
+fn grow_schema_back_fills_na_on_new_field_end_to_end() {
+    r_test_utils::with_r_thread(|| {
+        use std::collections::BTreeMap;
+        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+        let r1: BTreeMap<String, i32> = [("a".into(), 1)].into_iter().collect();
+        let r2: BTreeMap<String, i32> = [("a".into(), 2), ("b".into(), 3)].into_iter().collect();
+        let r3: BTreeMap<String, i32> = [("a".into(), 4), ("c".into(), 99)].into_iter().collect();
+        b.push(r1).unwrap();
+        b.push(r2).unwrap();
+        b.push(r3).unwrap();
+        let df = b.finish().unwrap().into_sexp();
+        // Three columns (a, b, c), each of length 3.
+        assert_eq!(df.xlength(), 3, "expected 3 columns after growth");
+        for i in 0..3 {
+            assert_eq!(
+                df.vector_elt(i).xlength(),
+                3,
+                "column {i} length mismatch after back-fill"
+            );
+        }
+    });
+}
+
+#[test]
+fn grow_schema_combined_with_with_schema_end_to_end() {
+    r_test_utils::with_r_thread(|| {
+        use std::collections::BTreeMap;
+        // Declare one column up front, let the rest grow.
+        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::with_schema(
+            [("a", TypeSpec::Integer)],
+            None,
+        )
+        .grow_schema();
+        let r1: BTreeMap<String, i32> = [("a".into(), 10)].into_iter().collect();
+        let r2: BTreeMap<String, i32> = [("a".into(), 20), ("d".into(), 7)].into_iter().collect();
+        b.push(r1).unwrap();
+        b.push(r2).unwrap();
+        let df = b.finish().unwrap().into_sexp();
+        assert_eq!(df.xlength(), 2, "declared + grown columns");
+        for i in 0..2 {
+            assert_eq!(df.vector_elt(i).xlength(), 2);
+        }
+    });
+}
+
+// endregion
+
 // region: DataFrameBuilder direct surface
 
 #[test]
@@ -187,6 +302,133 @@ fn dataframe_builder_len_is_empty_finish() {
 
         let df = builder.finish().unwrap().into_sexp();
         assert_eq!(df.vector_elt(0).xlength(), 1);
+    });
+}
+
+// endregion
+
+// region: dispatch_to_dataframes (#691)
+
+#[derive(Debug, Clone, Serialize)]
+struct OkRow {
+    id: i32,
+    val: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ErrRow {
+    id: i32,
+    reason: String,
+}
+
+#[test]
+fn dispatch_to_dataframes_mixed() {
+    r_test_utils::with_r_thread(|| {
+        let rows = (0..6).map(|i| {
+            if i % 3 == 0 {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("skip_{i}"),
+                })
+            } else {
+                Ok(OkRow {
+                    id: i,
+                    val: i as f64 * 0.5,
+                })
+            }
+        });
+
+        let list = dispatch_to_dataframes(rows, Some(6), DispatchNames::default()).unwrap();
+        let sexp = list.into_sexp();
+        let names_sexp = sexp.get_names();
+        let names: Vec<String> = (0..names_sexp.xlength())
+            .map(|i| names_sexp.string_elt_str(i).unwrap_or("").to_string())
+            .collect();
+        assert_eq!(names, vec!["ok".to_string(), "err".to_string()]);
+
+        // ok side: 4 rows (i = 1, 2, 4, 5); cols: id, val
+        let ok_df = sexp.vector_elt(0);
+        assert_eq!(ok_df.xlength(), 2);
+        assert_eq!(ok_df.vector_elt(0).xlength(), 4);
+
+        // err side: 2 rows (i = 0, 3); cols: id, reason
+        let err_df = sexp.vector_elt(1);
+        assert_eq!(err_df.xlength(), 2);
+        assert_eq!(err_df.vector_elt(0).xlength(), 2);
+    });
+}
+
+#[test]
+fn dispatch_to_dataframes_all_ok() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<OkRow, ErrRow>> = (0..3)
+            .map(|i| {
+                Ok(OkRow {
+                    id: i,
+                    val: i as f64,
+                })
+            })
+            .collect();
+
+        let list = dispatch_to_dataframes(rows, None, DispatchNames::default()).unwrap();
+        let sexp = list.into_sexp();
+        let ok_df = sexp.vector_elt(0);
+        let err_df = sexp.vector_elt(1);
+
+        assert_eq!(ok_df.vector_elt(0).xlength(), 3);
+        // empty err side: 0 columns / 0 rows
+        assert_eq!(err_df.xlength(), 0);
+    });
+}
+
+#[test]
+fn dispatch_to_dataframes_all_err() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<OkRow, ErrRow>> = (0..3)
+            .map(|i| {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("bad_{i}"),
+                })
+            })
+            .collect();
+
+        let list = dispatch_to_dataframes(rows, None, DispatchNames::default()).unwrap();
+        let sexp = list.into_sexp();
+        let ok_df = sexp.vector_elt(0);
+        let err_df = sexp.vector_elt(1);
+
+        assert_eq!(ok_df.xlength(), 0);
+        assert_eq!(err_df.vector_elt(0).xlength(), 3);
+    });
+}
+
+#[test]
+fn dispatch_to_dataframes_custom_names() {
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Result<OkRow, ErrRow>> = vec![
+            Ok(OkRow { id: 1, val: 1.0 }),
+            Err(ErrRow {
+                id: 2,
+                reason: "bad".into(),
+            }),
+        ];
+
+        let list = dispatch_to_dataframes(
+            rows,
+            None,
+            DispatchNames {
+                ok: "results".into(),
+                err: "errors".into(),
+            },
+        )
+        .unwrap();
+        let sexp = list.into_sexp();
+        let names_sexp = sexp.get_names();
+        let names: Vec<String> = (0..names_sexp.xlength())
+            .map(|i| names_sexp.string_elt_str(i).unwrap_or("").to_string())
+            .collect();
+        assert_eq!(names, vec!["results".to_string(), "errors".to_string()]);
     });
 }
 

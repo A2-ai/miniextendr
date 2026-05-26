@@ -11,6 +11,7 @@
 #     just clippy             - Run lints
 #     just fmt                - Format Rust code
 #     just lint               - Run miniextendr-lint on rpkg
+#     just cargo-lock-restore - Undo rpkg/src/rust/Cargo.lock drift from local builds
 #
 #   rpkg (example R package):
 #     just configure          - Configure R package build (dev mode, no vendoring)
@@ -179,6 +180,21 @@ update *cargo_flags:
     cargo update --manifest-path "$rust_dir/Cargo.toml" {{cargo_flags}}
     just lock-shape-check
 
+# Restore rpkg/src/rust/Cargo.lock from the git index (preserves staged
+# changes — matters for the `just vendor` flow which stages a tarball-shape
+# lockfile before commit; if nothing is staged the index equals HEAD, so this
+# is effectively a HEAD-restore).
+#
+# `just check / clippy / build / test / doc / doc-check` invoke cargo with
+# `--config "patch.'https://github.com/A2-ai/miniextendr'.<crate>.path=…"`,
+# which causes cargo to drop the `source = "git+…#<sha>"` line for each
+# workspace sibling. The committed lockfile must keep those lines (CRAN/
+# tarball builds resolve `vendor/` against them). The drifting recipes
+# auto-chain this restore as their last line; run it manually to clean up
+# if a recipe aborted mid-way.
+cargo-lock-restore:
+    git restore --worktree -- rpkg/src/rust/Cargo.lock
+
 # Check all crates
 alias cargo-check := check
 check *cargo_flags:
@@ -186,6 +202,7 @@ check *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo check --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    @just cargo-lock-restore
 
 # Build all crates
 alias cargo-build := build
@@ -194,6 +211,7 @@ build *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    @just cargo-lock-restore
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
@@ -202,6 +220,7 @@ clippy *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    @just cargo-lock-restore
 
 # Run miniextendr-lint on rpkg (checks #[miniextendr] consistency)
 # The lint runs as a build script; this command triggers it via cargo check.
@@ -234,6 +253,7 @@ doc-check *cargo_flags: configure-all
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    @just cargo-lock-restore
 
 # Build and open documentation
 alias cargo-doc := doc
@@ -242,6 +262,7 @@ doc *cargo_flags: configure-all
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    @just cargo-lock-restore
     if command -v open >/dev/null 2>&1; then \
       open rpkg/src/rust/target/doc/rpkg/index.html >/dev/null 2>&1 || \
         echo "doc: unable to open generated docs (skipping)"; \
@@ -279,6 +300,7 @@ test *args:
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo test --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo test --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
     && root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --workspace --no-fail-fast $cargo_flags --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" -- --no-capture $test_args)
+    @just cargo-lock-restore
 
 # Run benchmarks (miniextendr-bench)
 alias cargo-bench := bench
@@ -1083,7 +1105,8 @@ vendor-sync-diff:
 # Check that rpkg/src/rust/Cargo.lock is in tarball-shape.
 #
 # Tarball-shape (post-#408):
-#   - miniextendr-{api,lint,macros} must use git+url#<sha> sources, not path+.
+#   - miniextendr-{api,lint,macros} have source = "git+https://github.com/A2-ai/miniextendr#<sha>"
+#     (not path+, not missing entirely).
 #   - no [[patch.unused]] blocks (signals a wider [patch.crates-io] than
 #     the manifest needs; produces spurious commit-time diff).
 #
@@ -1098,16 +1121,20 @@ lock-shape-check:
         exit 0
     fi
     bad=0
-    if grep -q 'source = "path+' "$lock"; then
-        echo "lock-shape-check: $lock has path+... sources (tarball-shape violation)" >&2
-        bad=1
-    fi
+    for crate in miniextendr-api miniextendr-lint miniextendr-macros; do
+        if ! grep -A 3 "^name = \"$crate\"$" "$lock" \
+                | grep -q '^source = "git+https://github\.com/A2-ai/miniextendr'; then
+            echo "lock-shape-check: $lock — $crate missing canonical git+url source" >&2
+            bad=1
+        fi
+    done
     if grep -qE '^\[\[patch\.unused\]\]' "$lock"; then
         echo "lock-shape-check: $lock has [[patch.unused]] blocks (narrow [patch.crates-io])" >&2
         bad=1
     fi
     if [ $bad -eq 1 ]; then
-        echo "  Run: just vendor    # regenerates canonical shape" >&2
+        echo "  Run: just cargo-lock-restore    # restore from HEAD" >&2
+        echo "    or just vendor                # regenerate canonical shape" >&2
         exit 1
     fi
     echo "lock-shape-check: OK"

@@ -62,6 +62,73 @@ So the regen flow is:
 That's exactly what `just vendor` (in this repo) and
 `miniextendr::miniextendr_vendor()` (for scaffolded packages) do.
 
+## The cross-crate cargo-surface chicken-and-egg
+
+The regen flow above (move `.cargo/config.toml` aside, `cargo generate-lockfile`,
+move back) has one corner case it can't solve: **a PR that changes the cargo
+surface of `miniextendr-{api,macros,lint}` and the rpkg consumer in the same
+commit.** Typical example: renaming a feature like `default-coerce` →
+`coerce-default` everywhere.
+
+Symptom — `just vendor`, `Bootstrap Vendor Test`, R CMD check, CRAN-like check
+all fail with:
+
+```
+error: failed to select a version for `miniextendr-api`.
+package `miniextendr` depends on `miniextendr-api` with feature `coerce-default`
+but `miniextendr-api` does not have that feature.
+ available features: ... default-coerce, default-r6, default-s7, default-strict, ...
+```
+
+Why: with the patch override moved aside, `cargo generate-lockfile` follows
+the bare git URL (`https://github.com/A2-ai/miniextendr`, no rev) to origin's
+default branch (`main`). main still has the *old* feature names; the PR's
+rpkg/src/rust/Cargo.toml asks for the *new* names; cargo errors. The fix
+would be to make cargo resolve the api crate at the PR's own HEAD instead
+of main — but cargo has no clean mechanism for that.
+
+### Why cargo can't fix it cleanly
+
+Cargo's lockfile model fundamentally couples source attribution with
+resolution. To get `source = "git+url#<sha>"` recorded, cargo must
+*resolve* the dep against that git URL — it can't be told to "resolve
+locally but record a git source." Specifically:
+
+| Attempted lever | Cargo's response |
+|---|---|
+| `dep = { path = "...", git = "..." }` | rejected: *"specification is ambiguous. Only one of `git` or `path` is allowed."* |
+| `[patch."url"] dep = { git = "url", rev = "..." }` (same URL) | rejected: *"patches must point to different sources."* |
+| Same-URL patch via different scheme (`https` vs `ssh`) | URLs are normalized; same rejection. |
+| Hand-inject `source = "git+url#<sha>"` into Cargo.lock | cargo strips it on the next `cargo metadata` / `cargo build` — the patch override is authoritative for source attribution. |
+| `cargo update -p <crate> --precise <sha>` | only works for already-resolved deps; can't bootstrap from the failing resolve. |
+
+The one lever that *does* work is modifying the dep declaration itself to
+include `rev = "<HEAD_SHA>"` — but that means mutating
+`rpkg/src/rust/Cargo.toml` (a tracked file) for the duration of the regen,
+which is its own correctness hazard (trap-restore, SIGKILL window, accidental
+commit). Not worth permanent machinery.
+
+### Policy: admin-merge after eyeballing
+
+Cross-crate cargo-surface changes happen rarely (feature renames, removing
+a public re-export, etc.). When the bootstrap test fails on such a PR:
+
+1. **Read the diff.** Confirm the rename is coordinated — the new feature/symbol
+   exists on miniextendr-api *and* is what rpkg/src/rust/Cargo.toml asks for.
+   Check `git log --stat` for the PR shows changes to both crates.
+2. **Admin-merge.** The CI failure is a transitional state, not a real defect.
+   Once the PR lands on main, the next bootstrap test on any unrelated PR
+   will pass — the rename is now what main has.
+3. **Do not** add temporary `rev` pins to `rpkg/src/rust/Cargo.toml`,
+   modify `just vendor` to inject rev pins, or otherwise build permanent
+   infrastructure to make this single class of PR pass CI. The Bootstrap
+   Vendor Test failing on cross-crate renames is a *correct signal* that
+   deserves human eyeballing, not automated bypass.
+
+This was explored as part of PR #710 (`default-* → *-default` rename) and
+PR #735 (the rev-pin workaround, withdrawn). See those PRs for the
+investigation trail.
+
 ## When does the lock drift?
 
 Any cargo invocation that runs with the patch override active will rewrite

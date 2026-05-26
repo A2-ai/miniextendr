@@ -2,6 +2,17 @@
 //!
 //! - `HashMap<String, V>` / `BTreeMap<String, V>` → named R list
 //! - `HashSet<T>` / `BTreeSet<T>` → unnamed R vector (via Vec intermediary)
+//!
+//! # Tradeoff
+//!
+//! Choose `BTreeMap` over `HashMap` when stable element order in the resulting
+//! R list matters (testthat snapshots, deterministic file output) — `HashMap`
+//! iteration order is unspecified and varies between runs. The same applies
+//! to `BTreeSet` vs `HashSet`. Failure mode of using `HashMap` for a result
+//! the user `expect_equal()`s by position: flaky tests across runs / R
+//! versions.
+//!
+//! Inbound counterpart: [`crate::from_r::collections`].
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
