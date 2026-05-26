@@ -199,7 +199,11 @@ fn map_to_dataframe_btreemap_basic() {
 
         let df = map_to_dataframe(&map, "subject").unwrap();
         let sexp = df.into_sexp();
-        assert_eq!(sexp.xlength(), 3, "expected 3 columns: subject + cmax + tmax");
+        assert_eq!(
+            sexp.xlength(),
+            3,
+            "expected 3 columns: subject + cmax + tmax"
+        );
 
         let names = sexp.get_names();
         assert_eq!(names.string_elt_str(0), Some("subject"));
@@ -246,10 +250,8 @@ struct ErrRow {
 #[test]
 fn result_to_dataframe_auto_all_ok_bare() {
     r_test_utils::with_r_thread(|| {
-        let rows: Vec<Result<Obs, ErrRow>> = vec![
-            Ok(Obs { id: 1, value: 1.0 }),
-            Ok(Obs { id: 2, value: 2.0 }),
-        ];
+        let rows: Vec<Result<Obs, ErrRow>> =
+            vec![Ok(Obs { id: 1, value: 1.0 }), Ok(Obs { id: 2, value: 2.0 })];
         let shape = result_to_dataframe(
             &rows,
             ResultShape::Auto {
@@ -416,12 +418,7 @@ fn split_collated_empty_input_errors() {
 
     r_test_utils::with_r_thread(|| {
         let rows: Vec<E> = Vec::new();
-        let res = vec_to_dataframe_split(
-            &rows,
-            SplitShape::Collated {
-                column: "k".into(),
-            },
-        );
+        let res = vec_to_dataframe_split(&rows, SplitShape::Collated { column: "k".into() });
         assert!(res.is_err(), "collated empty input must error");
     });
 }

@@ -2568,8 +2568,7 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                 Ok(DataFrameShape::PerVariantList(Vec::new()))
             }
             SplitShape::Collated { .. } => Err(RSerdeError::Message(
-                "vec_to_dataframe_split(Collated): empty input — variant set is unknowable"
-                    .into(),
+                "vec_to_dataframe_split(Collated): empty input — variant set is unknowable".into(),
             )),
         };
     }
@@ -2657,8 +2656,9 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     // SAFETY: R main thread. `make_strsxp_repeat` returns an
                     // unprotected STRSXP; protect across `prepend_column`'s
                     // internal allocations (drop → alloc_list → alloc_strsxp).
-                    let tag_protect =
-                        unsafe { crate::OwnedProtect::new(make_strsxp_repeat(name, indices.len())) };
+                    let tag_protect = unsafe {
+                        crate::OwnedProtect::new(make_strsxp_repeat(name, indices.len()))
+                    };
                     let out = df.prepend_column(col_name, *tag_protect);
                     drop(tag_protect);
                     out
@@ -2768,7 +2768,8 @@ impl<T: Serialize> RoutedInner<'_, T> {
             map,
             suppress: self.suppress_field,
         };
-        self.inner.serialize(VariantStrippingMapForwarder { forwarder })
+        self.inner
+            .serialize(VariantStrippingMapForwarder { forwarder })
     }
 }
 
