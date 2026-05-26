@@ -183,11 +183,7 @@ fn with_schema_skips_discovery_first_row_none_keeps_declared_type() {
             ],
             None,
         );
-        b.push(Optional {
-            a: None,
-            b: None,
-        })
-        .unwrap();
+        b.push(Optional { a: None, b: None }).unwrap();
         b.push(Optional {
             a: Some(2),
             b: Some("x".into()),

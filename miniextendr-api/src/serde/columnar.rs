@@ -3754,10 +3754,7 @@ mod tests {
             .expect_err("strict mode should reject field 'b' not in schema");
         match err {
             RSerdeError::Message(m) => {
-                assert!(
-                    m.contains("row introduced field"),
-                    "unexpected error: {m}"
-                );
+                assert!(m.contains("row introduced field"), "unexpected error: {m}");
             }
             other => panic!("expected Message variant, got {other:?}"),
         }
@@ -3771,8 +3768,7 @@ mod tests {
             x: i32,
             extra: i32,
         }
-        let mut b =
-            DataFrameBuilder::<R>::with_schema([("x", TypeSpec::Integer)], None);
+        let mut b = DataFrameBuilder::<R>::with_schema([("x", TypeSpec::Integer)], None);
         let err = b
             .push(R { x: 1, extra: 9 })
             .expect_err("'extra' not declared");
