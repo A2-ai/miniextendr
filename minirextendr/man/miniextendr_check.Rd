@@ -30,3 +30,7 @@ Builds the package tarball and runs R CMD check. Ensures dependencies
 are vendored so the check works in the isolated temp directory where
 R CMD check unpacks the tarball.
 }
+\seealso{
+\code{\link[=miniextendr_check_static]{miniextendr_check_static()}} for a fast no-compile variant suitable
+for un-vendored packages.
+}
