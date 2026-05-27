@@ -249,6 +249,15 @@ fi
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
+dnl wasm32/webR side-modules require position-independent objects: webR's
+dnl webr-vars.mk links the Rust staticlib into a `-s SIDE_MODULE=1` shared
+dnl object via emcc, and emscripten only accepts PIC input for a side module.
+dnl `-s SIDE_MODULE=1` itself is an emcc *link* flag (applied by R via
+dnl webr-vars.mk, not by cargo) so it is NOT added here — the staticlib is a
+dnl `cargo build --lib` archive that is never linked by cargo. See #494.
+if test "$is_wasm_install" = true; then
+  ENV_RUSTFLAGS="$ENV_RUSTFLAGS -C relocation-model=pic"
+fi
 AC_SUBST([ENV_RUSTFLAGS])
 
 AC_ARG_VAR([CARGO_HOME], [cargo registry/cache directory (defaults to ~/.cargo; \
