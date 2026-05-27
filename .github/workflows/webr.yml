@@ -107,7 +107,10 @@ jobs:
       - name: Install miniextendr's hard R Imports + autoconf
         run: |
           set -euo pipefail
-          apt-get update && apt-get install -y --no-install-recommends autoconf
+          # `file` is used by the "Verify wasm side-module landed" step below to
+          # confirm the output is wasm and not ELF; the webR base image doesn't
+          # ship it. `autoconf` is needed by rpkg/configure.
+          apt-get update && apt-get install -y --no-install-recommends autoconf file
           mkdir -p "$R_LIBS_USER"
           # Install via the host R that Phase 2 uses, so transitive deps land
           # in a library Phase 2's lazy-load will see. `dependencies = c(...)`
