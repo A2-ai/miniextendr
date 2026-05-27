@@ -136,25 +136,31 @@ jobs:
           set -euo pipefail
           rm -f rpkg/src/*.o rpkg/src/*.so
           ( cd rpkg && CC=emcc bash ./configure )
-          # --no-byte-compile: the byte-compile/lazy-load step at the tail
-          # of R CMD INSTALL runs under the *host* (Linux x86_64) R but
-          # --library points at the wasm tree, so host R tries to dyn.load
-          # the wasm grDevices.so / methods.so during startup and dies with
-          # "invalid ELF header". rwasm's package-build path uses the same
-          # --no-byte-compile flag for the same reason — matches upstream.
-          # (r-wasm/rwasm:R/build.R, R CMD INSTALL flag set.)
+          # Install to an empty *host-side* temp library, NOT directly into
+          # /opt/webr/wasm/.../library. R CMD INSTALL's tail-end lazy-load
+          # spawns a sub-R that adds --library to .libPaths(), and if that
+          # path contains the wasm-built grDevices.so / methods.so the
+          # sub-R dies with 'invalid ELF header' on startup. rwasm uses
+          # the same pattern (install to tempfile() lib_dir, then copy
+          # the resulting tarball into place — r-wasm/rwasm:R/build.R, see
+          # the "empty library otherwise R might try to load wasm packages"
+          # comment). --no-byte-compile mirrors rwasm's flag set too.
+          mkdir -p /tmp/wasm-lib
           WASM_TOOLS=/opt/webr/tools \
           R_SOURCE=/opt/webr/R/build/R-4.5.1 \
           R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk \
           /opt/webr/host/R-4.5.1/bin/R CMD INSTALL \
-              --library=/opt/webr/wasm/R-4.5.1/lib/R/library \
+              --library=/tmp/wasm-lib \
               --no-docs --no-test-load --no-staged-install --no-byte-compile \
               rpkg
 
       - name: Verify wasm side-module landed
         run: |
           set -euo pipefail
-          libdir=/opt/webr/wasm/R-4.5.1/lib/R/library/miniextendr
+          libdir=/tmp/wasm-lib/miniextendr
           test -d "$libdir"
           ls -la "$libdir/libs/"
           file "$libdir/libs/"miniextendr.so
+          # Sanity: side-module must be wasm, not ELF (would mean Phase 2
+          # silently fell back to native compilation).
+          file "$libdir/libs/"miniextendr.so | grep -qi "WebAssembly\|wasm"
