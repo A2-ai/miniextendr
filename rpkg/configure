@@ -2495,9 +2495,6 @@ fi
 
 
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
-if test "$is_wasm_install" = true; then
-  ENV_RUSTFLAGS="$ENV_RUSTFLAGS -C relocation-model=pic"
-fi
 
 
 
