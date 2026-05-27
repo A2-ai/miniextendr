@@ -960,6 +960,10 @@ pub fn write_r_wrappers_to_file(path: &str) {
 /// A match requires `(` + one or more non-`()`/non-newline chars + `.rs:` +
 /// ASCII digits + `:` + ASCII digits + `)`. Malformed or non-`.rs` patterns
 /// are left untouched.
+///
+/// Host-only: the sole caller is [`write_r_wrappers_to_file`], gated off on
+/// wasm32 (the cdylib wrapper-gen pass doesn't run there).
+#[cfg(not(target_arch = "wasm32"))]
 fn wrappers_semantically_equal(a: &str, b: &str) -> bool {
     normalize_source_locs(a) == normalize_source_locs(b)
 }
@@ -969,6 +973,7 @@ fn wrappers_semantically_equal(a: &str, b: &str) -> bool {
 /// Returns a [`std::borrow::Cow::Borrowed`] slice when no replacements are
 /// needed (zero-allocation fast path for the common case where the file has
 /// never been written or is truly unchanged).
+#[cfg(not(target_arch = "wasm32"))]
 fn normalize_source_locs(s: &str) -> std::borrow::Cow<'_, str> {
     // Fast path: bail early if there is no `.rs:` anywhere in the string.
     if !s.contains(".rs:") {
@@ -1052,6 +1057,7 @@ fn normalize_source_locs(s: &str) -> std::borrow::Cow<'_, str> {
 
 /// Find the first occurrence of `needle` in `haystack[from..]`.
 /// Returns the absolute index in `haystack`, or `None`.
+#[cfg(not(target_arch = "wasm32"))]
 #[inline]
 fn find_substr(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
     let window = haystack.get(from..)?;
@@ -1063,6 +1069,7 @@ fn find_substr(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
 
 /// Find the first byte equal to `needle` in `haystack[from..]`.
 /// Returns the absolute index, or `None`.
+#[cfg(not(target_arch = "wasm32"))]
 #[inline]
 fn memchr(haystack: &[u8], from: usize, needle: u8) -> Option<usize> {
     haystack[from..]
@@ -1074,6 +1081,7 @@ fn memchr(haystack: &[u8], from: usize, needle: u8) -> Option<usize> {
 /// Advance past a run of ASCII digits starting at `haystack[from]`.
 /// Returns the absolute index of the first non-digit byte, or `None` if
 /// there are no digits at `from` (empty run is not valid).
+#[cfg(not(target_arch = "wasm32"))]
 #[inline]
 fn scan_digits(haystack: &[u8], from: usize) -> Option<usize> {
     let start = haystack.get(from..)?;

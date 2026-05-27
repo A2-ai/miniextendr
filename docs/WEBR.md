@@ -78,10 +78,14 @@ just docker-webr-smoke         # full smoke: build wasm side-module + load in
 the container, then prints a testthat pass/fail/skip summary:
 
 1. **Native `R CMD INSTALL` of `rpkg`** against `/opt/R/current/bin/R` to run
-   the cdylib pass and regenerate `rpkg/src/rust/wasm_registry.rs` — the
-   committed version is a stub (zero-length slices, content-hash
-   `0000000000000000`). Without this step the wasm build technically
-   succeeds but the package registers zero R routines.
+   the cdylib pass and regenerate `rpkg/src/rust/wasm_registry.rs`. rpkg's
+   committed snapshot is a *real* one (it's committed in lockstep with the
+   wrapper / macro surface — see "Generated artifacts" in the root
+   `CLAUDE.md`), but this step guarantees it's fresh against the working
+   tree: a stale snapshot would register the wrong set of R routines under
+   wasm. (The cross-package fixtures under `tests/cross-package/` ship
+   deliberately *empty* stubs — content-hash `0000000000000000` — since
+   they're never deployed to webR; see #493.)
 2. **wasm32 install** — `CC=emcc bash rpkg/configure` followed by
    `R CMD INSTALL --no-test-load --no-staged-install` against
    `/opt/webr/host/R-4.5.1/bin/R` (webR's own host R) with
