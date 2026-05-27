@@ -92,6 +92,15 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      # Shared R library readable by BOTH R binaries in this job:
+      #   Phase 1 native pass → /opt/R/current/bin/R
+      #   Phase 2 wasm pass   → /opt/webr/host/R-4.5.1/bin/R
+      # These two R installs have disjoint default library paths in the
+      # webR base image, so without a shared R_LIBS_USER Phase 2's lazy-load
+      # sub-R can't find transitive Imports (lifecycle → rlang) installed by
+      # the setup step. Both Rs honour R_LIBS_USER ahead of their site lib.
+      R_LIBS_USER: /tmp/r-shared-lib
     steps:
       - uses: actions/checkout@v6
 
@@ -99,8 +108,15 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update && apt-get install -y --no-install-recommends autoconf
-          /opt/R/current/bin/Rscript -e \
-            'install.packages(c("cli","lifecycle","R6","S7","vctrs"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest")'
+          mkdir -p "$R_LIBS_USER"
+          # Install via the host R that Phase 2 uses, so transitive deps land
+          # in a library Phase 2's lazy-load will see. `dependencies = c(...)`
+          # pulls rlang in via lifecycle/vctrs without us having to enumerate.
+          /opt/webr/host/R-4.5.1/bin/Rscript -e \
+            'install.packages(c("cli","lifecycle","R6","S7","vctrs"), dependencies = c("Depends","Imports","LinkingTo"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest", lib=Sys.getenv("R_LIBS_USER"))'
+          # Sanity-check the transitive set landed.
+          /opt/webr/host/R-4.5.1/bin/Rscript -e \
+            'pkgs <- c("cli","lifecycle","rlang","R6","S7","vctrs"); miss <- setdiff(pkgs, rownames(installed.packages(lib.loc=Sys.getenv("R_LIBS_USER")))); if (length(miss)) stop("Missing: ", paste(miss, collapse=", "))'
 
       - name: Cache cargo registry + git
         uses: actions/cache@v4
