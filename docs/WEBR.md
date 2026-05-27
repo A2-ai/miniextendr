@@ -3,16 +3,20 @@
 Building miniextendr for [webR](https://docs.r-wasm.org/webr/latest/) — R
 compiled to WebAssembly via Emscripten.
 
-**Status: supported for local dev.** `wasm32-unknown-emscripten` cargo-check
-runs on every PR (`.github/workflows/webr.yml`); a local
-`just docker-webr-smoke` recipe drives the full install path inside the
-pinned webR Docker image and runs the testthat suite under wasm.
+**Status: supported, CI-validated.** Three CI tiers run in
+`.github/workflows/webr.yml`: tier 1 (`wasm32-unknown-emscripten`
+cargo-check, every PR), tier 2 (full `R CMD INSTALL` of `rpkg` inside the
+webR container — emcc side-module link), and tier 3 (a webR Node session
+that drives `library(miniextendr)` against the wasm install). A local
+`just docker-webr-smoke` recipe drives the same path inside the pinned
+webR Docker image.
 
-Tracking: umbrella #470. Open follow-ups: #482 (gate `link_to_r()` on
-target_arch), #491 (CI tier 2 — Docker `R CMD INSTALL`), #492 (CI tier 3 —
-Node smoke in CI), #493 (cross-package wasm stubs), #494 (verify
-side-module `RUSTFLAGS` against `rwasm`), #495 (cross-crate trait
-dispatch), #496 (mirror webR base image).
+Tracking: umbrella #470. Merged: #491 (tier 2), #493 (cross-package wasm
+stubs), #494 (side-module `RUSTFLAGS` — `-Zdefault-visibility=hidden`),
+#496 (mirror webR base image). Open follow-ups: #482 (gate `link_to_r()`
+on target_arch), #492 (tier 3 Node smoke), #495 (cross-crate trait
+dispatch), #745 (drop redundant `-C relocation-model=pic`), #752
+(dependency guidance — see "Dependencies and webR" below).
 
 ## Target
 
@@ -91,11 +95,13 @@ the container, then prints a testthat pass/fail/skip summary:
    `/opt/webr/host/R-4.5.1/bin/R` (webR's own host R) with
    `R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk`. Result lands at
    `/opt/webr/wasm/R-4.5.1/lib/R/library/miniextendr/`.
-3. **webR Node session** — `@r-wasm/webr` linked from `/opt/webr/src`,
-   NODEFS-mounts the wasm R lib tree, calls `library(miniextendr)`, then
-   runs `testthat::test_local()`. Many tests fail under wasm (worker
-   thread / fork / threading assumptions); the script reports counts and
-   exits 0 as long as the package itself loads.
+3. **webR Node session** — imports webR's bundled ESM directly from
+   `file:///opt/webr/dist/webr.mjs` (see "The `/opt/webr/dist` import
+   gotcha" below), NODEFS-mounts the wasm R lib tree, calls
+   `library(miniextendr)`, then runs `testthat::test_local()`. Many tests
+   fail under wasm (worker thread / fork / threading assumptions); the
+   script reports counts and exits 0 as long as the package itself loads.
+   The CI tier-3 equivalent lives in `tests/webr-node-smoke/smoke.mjs`.
 
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
 wasm32 build). Subsequent runs reuse the docker image and most cargo
@@ -156,24 +162,93 @@ be exported during the wasm install — `webr-vars.mk` references both.
   by Phase 1's native build and shipped through into Phase 2's source tree.
 - **Worker thread is off.** R-on-WASM is single-threaded; the
   `worker-thread` feature must be disabled. Already feature-gated.
-- **`RUSTFLAGS` for the side-module link** are not yet locked in. The
-  proposed set is `-C relocation-model=pic -C link-args=-s SIDE_MODULE=1`;
-  `rwasm`'s flags are the canonical reference and the smoke script is the
-  empirical validator. If the wasm side-module fails to link, that's the
-  next thing to verify against `rwasm`. Tracked via #494.
+- **`RUSTFLAGS` for the side-module** are set by `rpkg/configure.ac`'s
+  `is_wasm_install` branch (and mirrored into the minirextendr templates):
+  `-C relocation-model=pic -Zdefault-visibility=hidden` (#494). The
+  `-Zdefault-visibility=hidden` flag is load-bearing, not cosmetic: webR
+  links the Rust staticlib into a `-s SIDE_MODULE=1` shared object, and
+  without hidden default visibility the staticlib exports ~3000 mangled
+  stdlib/dep symbols into the side-module's EXPORT table. webR's JS-side
+  `dyn.load` then fails — `TypeError: Cannot read properties of undefined`
+  on the pinned emcc, or a hard `emcc: error: invalid export name` on emcc
+  4.0.8+. Hiding symbols by default leaves only the `#[no_mangle] extern
+  "C"` entry points exported. This is `savvy`'s approach
+  (yutannihilation/savvy#372), endorsed by webR's maintainer
+  (r-wasm/webr#532). Note `-s SIDE_MODULE=1` is an emcc *link* flag supplied
+  by `webr-vars.mk`, not a `RUSTFLAG` — the staticlib is a `cargo build
+  --lib` archive cargo never links. `-C relocation-model=pic` is likely the
+  wasm32-emscripten default (tier-2 links fine without it); #745 tracks
+  dropping it once tier-3 confirms the runtime load is unaffected.
+
+## The `/opt/webr/dist` import gotcha
+
+To run a webR session in Node *inside the webR base image*, import webR's
+bundled ESM by absolute file URL:
+
+```js
+import { WebR } from "file:///opt/webr/dist/webr.mjs";
+```
+
+Do **not** `npm install file:///opt/webr/src` (the obvious-looking move).
+webR's Dockerfile builds the JS dist with `cd src && make` — esbuild emits
+the bundle to `$(WEBR_ROOT)/dist`, i.e. `/opt/webr/dist/webr.mjs` — then
+runs `cd src && make clean`, whose clean target removes only
+`src/dist` (`PKG_DIST`). So in the shipped image the `webr` npm package's
+`main: dist/webr.mjs` resolves under the package dir to the *deleted*
+`/opt/webr/src/dist/webr.mjs`, while the root `/opt/webr/dist/webr.mjs`
+survives. `esbuild --prod` produces a self-contained bundle, so the direct
+import needs no `npm install` / `node_modules`. Bonus: that dist was built
+by the same image (webR HEAD + R 4.5.1), so its `R.bin.wasm` matches the R
+your wasm package was compiled against — no npm-registry version-coupling.
+
+Use `baseUrl: "file:///opt/webr/dist/"` so webR fetches `R.bin.wasm` and its
+worker from the same surviving dir.
+
+## Dependencies and webR
+
+The wasm `R CMD INSTALL` finishes with a lazy-load / byte-compile step that
+spawns a *host* R whose `.libPaths()` points into the wasm library tree (see
+"Two R installations" above). If your package's `NAMESPACE` eagerly imports
+a **compiled** package — `importFrom(somePkg, …)` or `import(somePkg)` where
+`somePkg` ships a `.so` — that step calls `loadNamespace(somePkg)`, the host
+R tries to `dyn.load` the wasm-built `somePkg.so`, and dies:
+
+```
+unable to load shared object '.../somePkg.so': invalid ELF header
+```
+
+This is the same host-R-loads-a-wasm-object failure that bites webR's own
+base packages (handled by installing to an empty temp library; see tier 2 /
+#491), but here it's triggered by *your package's own declared imports*, so
+the framework can't paper over it for you.
+
+**Guidance:**
+
+- **Pure-R dependencies** (rlang, lifecycle, cli, glue, …) are safe to
+  `importFrom` — they have no `.so` for the host R to choke on.
+- **Compiled or heavy dependencies you only need at runtime** (Shiny, DBI
+  backends, data.table, …) belong in `Suggests`, not `Imports`. Call them
+  with `pkg::fn()` behind a `rlang::check_installed()` /
+  `requireNamespace()` guard. That keeps them out of the namespace-load
+  graph, so the wasm install's lazy-load never reaches for their `.so`.
+
+This mirrors what the astra downstream did (moved its Shiny stack to
+`Suggests` + `::`). Tracked in #752; a future `minirextendr_doctor()` /
+`miniextendr_check_static()` lint may flag eager `importFrom` of
+known-compiled packages.
 
 ## CI
 
-`.github/workflows/webr.yml` runs `cargo check --target
-wasm32-unknown-emscripten -p miniextendr-api` on every PR matching the
-paths filter (`miniextendr-api/**`, `miniextendr-macros/**`,
+`.github/workflows/webr.yml` runs three tiers. **Tier 1** is `cargo check
+--target wasm32-unknown-emscripten -p miniextendr-api` on every PR matching
+the paths filter (`miniextendr-api/**`, `miniextendr-macros/**`,
 `miniextendr-engine/**`, `miniextendr-lint/**`, `rpkg/**`,
 `tests/cross-package/**`, `Cargo.{toml,lock}`, `Dockerfile.webr`,
 `.github/workflows/webr.yml`). It catches cfg-gating regressions and
 macro-emission bugs that fail to compile on wasm32; it does **not** catch
 link errors or runtime issues — those are tier 2/3 work.
 
-The job sets `R_HOME=$RUNNER_TEMP` because
+The tier-1 job sets `R_HOME=$RUNNER_TEMP` because
 `miniextendr-api/build.rs::link_to_r()` unconditionally invokes `R RHOME`
 and the runner has no R installed. The `rpkg/src/rust` cargo check is
 currently dropped from tier 1 because `rpkg/configure` invokes `Rscript`
@@ -182,11 +257,28 @@ gating `link_to_r()` on `CARGO_CFG_TARGET_ARCH != "wasm32"` so the
 dummy-R_HOME workaround can disappear and the rpkg cargo-check can rejoin
 tier 1.
 
+**Tier 2 + 3** run as a single `webr-install` job inside the webR container
+(`ghcr.io/a2-ai/webr-mirror`, a digest-preserved mirror of
+`ghcr.io/r-wasm/webr` — see #496 / `.github/workflows/mirror-webr.yml`).
+The job runs the same three phases as the local smoke: Phase 1 (native
+install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
+`/tmp/wasm-lib/miniextendr`, the empirical validator for the side-module
+`RUSTFLAGS`), then **tier 3** — the Node + webR session
+(`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
+installs the package's Imports from `repo.r-wasm.org`, and drives
+`library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
+is what proves it *loads* in a real webR runtime.
+
 ## See also
 
 - Issue #470 — umbrella tracking issue for webR/WASM support.
-- Issue #495 — cross-crate trait dispatch on WASM (follow-up).
-- `tests/webr-smoke.sh` — the local end-to-end smoke runner.
+- Issue #492 — CI tier 3 (Node smoke); #495 — cross-crate trait dispatch;
+  #745 — drop redundant PIC flag; #752 — dependency guidance.
+- `tests/webr-node-smoke/smoke.mjs` — the CI tier-3 Node runner.
+- `tests/webr-smoke.sh` — the local end-to-end smoke runner. (Its Phase 3
+  still uses the old `npm install file:///opt/webr/src` approach, which is
+  broken in the current image — port it to the `/opt/webr/dist` import when
+  next touched.)
 - `.webr/` — vendored clone of the webR repo for offline reference.
 - `.webr/Dockerfile` — upstream Rust toolchain install we inherit.
 - `.webr/packages/webr-vars.mk` — the Makevars override webR uses for
