@@ -249,14 +249,29 @@ fi
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
-dnl wasm32/webR side-modules require position-independent objects: webR's
-dnl webr-vars.mk links the Rust staticlib into a `-s SIDE_MODULE=1` shared
-dnl object via emcc, and emscripten only accepts PIC input for a side module.
-dnl `-s SIDE_MODULE=1` itself is an emcc *link* flag (applied by R via
-dnl webr-vars.mk, not by cargo) so it is NOT added here — the staticlib is a
-dnl `cargo build --lib` archive that is never linked by cargo. See #494.
+dnl wasm32/webR side-modules need two RUSTFLAGS adjustments. See #494.
+dnl
+dnl 1. -C relocation-model=pic
+dnl    webR's webr-vars.mk links the Rust staticlib into a `-s SIDE_MODULE=1`
+dnl    shared object via emcc, which only accepts position-independent input.
+dnl    (`-s SIDE_MODULE=1` itself is an emcc *link* flag applied by R, not by
+dnl    cargo — the staticlib is a `cargo build --lib` archive cargo never
+dnl    links.) Likely already the wasm32-emscripten default; kept explicit
+dnl    pending #745's runtime-load confirmation.
+dnl
+dnl 2. -Zdefault-visibility=hidden
+dnl    Without it, the Rust staticlib drags ~3000 mangled stdlib/dep symbols
+dnl    into the side-module's EXPORT table. webR's JS-side dyn.load then fails
+dnl    (`TypeError: Cannot read properties of undefined` on the pinned emcc; a
+dnl    hard `emcc: error: invalid export name` on emcc 4.0.8+). Hiding all
+dnl    symbols by default leaves only our `#[no_mangle] extern "C"` entry
+dnl    points exported, so the default SIDE_MODULE=1 export set stays tiny.
+dnl    This is savvy's approach (yutannihilation/savvy#372), endorsed by
+dnl    webR's maintainer (r-wasm/webr#532). It is a nightly -Z flag, but the
+dnl    wasm target already mandates nightly via -Z build-std, so it adds no
+dnl    new constraint.
 if test "$is_wasm_install" = true; then
-  ENV_RUSTFLAGS="$ENV_RUSTFLAGS -C relocation-model=pic"
+  ENV_RUSTFLAGS="$ENV_RUSTFLAGS -C relocation-model=pic -Zdefault-visibility=hidden"
 fi
 AC_SUBST([ENV_RUSTFLAGS])
 
