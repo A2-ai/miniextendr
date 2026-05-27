@@ -213,18 +213,25 @@ jobs:
       # wasm install Phase 2 just produced. The emcc link step alone is not
       # proof the side-module is actually loadable — tier 3 is.
       #
-      # The runner files live in tests/webr-node-smoke/ so they're auditable
-      # and editable outside this YAML; this step just `npm install`s the
-      # local webR link and execs the runner with a hard wall-clock cap.
-      - name: Tier 3 — npm install (link local webR)
-        working-directory: tests/webr-node-smoke
+      # We import webR's bundled ESM directly from /opt/webr/dist/webr.mjs
+      # instead of `npm install`-ing it. webR's Dockerfile builds the dist with
+      # `cd src && make` (esbuild → $(WEBR_ROOT)/dist, i.e. /opt/webr/dist) but
+      # then runs `cd src && make clean`, which deletes src/dist (PKG_DIST) —
+      # so the npm package's `main: dist/webr.mjs` resolves to a path that no
+      # longer exists, while the root /opt/webr/dist (DIST) survives cleanup.
+      # Bonus: that dist was built by this same image (webR HEAD + R 4.5.1), so
+      # its R.bin.wasm matches the R our wasm package was built against — no
+      # registry version-coupling. The runner lives in tests/webr-node-smoke/.
+      - name: Tier 3 — locate webR's bundled dist
         run: |
           set -euo pipefail
-          # webR's npm source lives at /opt/webr/src in the base image; the
-          # package.json here points at it via a `file:` link so npm just
-          # symlinks (no registry traffic, no token).
-          test -d /opt/webr/src || { echo "::error::/opt/webr/src missing — base image regression?"; exit 1; }
-          npm install --prefer-offline 2>&1 | tail -20
+          if [ ! -f /opt/webr/dist/webr.mjs ]; then
+            echo "::error::/opt/webr/dist/webr.mjs not found — base image layout changed."
+            echo "--- /opt/webr/dist ---"; ls -la /opt/webr/dist 2>&1 || true
+            echo "--- webr.mjs anywhere under /opt/webr ---"; find /opt/webr -name 'webr.mjs' 2>/dev/null || true
+            exit 1
+          fi
+          echo "Found webR ESM at /opt/webr/dist/webr.mjs"
 
       - name: Tier 3 — run Node + webR smoke (library(miniextendr))
         working-directory: tests/webr-node-smoke

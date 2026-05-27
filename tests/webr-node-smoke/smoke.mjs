@@ -9,15 +9,21 @@
 //
 // Expected layout when this script runs:
 //   /tmp/wasm-lib/miniextendr/      ← tier-2 R CMD INSTALL output
-//   /opt/webr/src/                  ← webR npm source (file: link)
-//   /opt/webr/dist/                 ← webR distribution (baseUrl)
+//   /opt/webr/dist/webr.mjs         ← webR's bundled ESM (also baseUrl)
+//
+// We import webR's bundled ESM by absolute file URL rather than as an npm
+// module. The webR base image builds /opt/webr/dist (esbuild output) but
+// then `cd src && make clean`s away src/dist, so the `webr` package's
+// `main: dist/webr.mjs` no longer resolves — the root /opt/webr/dist
+// survives, so we point straight at it. esbuild --prod bundles webR into a
+// self-contained .mjs, so no node_modules / npm install is needed.
 //
 // Hard miniextendr Imports (cli/lifecycle/R6/S7/vctrs) are fetched from
 // repo.r-wasm.org via `webR.installPackages` before the library load.
 // If the network fetch fails the smoke aborts loudly — we cannot prove
 // the side-module is healthy without the deps that its NAMESPACE pulls in.
 
-import { WebR } from "webr";
+import { WebR } from "file:///opt/webr/dist/webr.mjs";
 
 const WASM_LIB_MOUNT = "/wasm-rlib";
 const HOST_WASM_LIB = "/tmp/wasm-lib";
