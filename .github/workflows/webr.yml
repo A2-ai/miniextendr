@@ -64,6 +64,122 @@ jobs:
 
       # rpkg/configure invokes ${R_HOME}/bin/Rscript directly for feature
       # detection (configure.ac:133, :275, :473). The dummy R_HOME has no
-      # Rscript binary, so configure fails. Deferred to a follow-up that either
-      # adds r-lib/actions/setup-r@v2 or waits for the build.rs wasm32 guard
-      # (see #482). Only miniextendr-api is checked in tier 1.
+      # Rscript binary, so configure fails on this bare-ubuntu runner.
+      # Tier 2 (below) runs inside the webR container which has real R, so the
+      # full rpkg install path is exercised there instead.
+
+  # ── Tier 2: full wasm32 R CMD INSTALL inside webR's own container ─────────
+  # Closes #491. Runs Phase 1 (native install → regenerates wasm_registry.rs
+  # via the cdylib pass) + Phase 2 (CC=emcc wasm install via webr-vars.mk),
+  # mirroring tests/webr-smoke.sh. CI's amd64 runners have no Rosetta and
+  # plenty of disk (the local arm64 dev path hits both limits). This is also
+  # the empirical validator for #494's `-C relocation-model=pic` flag: if the
+  # emcc side-module link rejects non-PIC objects, Phase 2 fails here.
+  #
+  # The container image must stay digest-aligned with Dockerfile.webr's
+  # WEBR_BASE — bump both together. The S7 + autoconf installs mirror the
+  # Dockerfile.webr layers (Dockerfile.webr is the local dev image and bakes
+  # them in; CI installs inline so we don't need to publish miniextendr-webr-dev).
+  webr-install:
+    name: wasm32 R CMD INSTALL (tier 2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/r-wasm/webr@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
+    # The webR base image's /bin/sh is dash; every step here uses
+    # `set -euo pipefail` which is bash-only. Pin the shell at the job level
+    # so individual steps don't have to repeat `shell: bash`.
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Shared R library readable by BOTH R binaries in this job:
+      #   Phase 1 native pass → /opt/R/current/bin/R
+      #   Phase 2 wasm pass   → /opt/webr/host/R-4.5.1/bin/R
+      # These two R installs have disjoint default library paths in the
+      # webR base image, so without a shared R_LIBS_USER Phase 2's lazy-load
+      # sub-R can't find transitive Imports (lifecycle → rlang) installed by
+      # the setup step. Both Rs honour R_LIBS_USER ahead of their site lib.
+      R_LIBS_USER: /tmp/r-shared-lib
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install miniextendr's hard R Imports + autoconf
+        run: |
+          set -euo pipefail
+          # `file` is used by the "Verify wasm side-module landed" step below to
+          # confirm the output is wasm and not ELF; the webR base image doesn't
+          # ship it. `autoconf` is needed by rpkg/configure.
+          apt-get update && apt-get install -y --no-install-recommends autoconf file
+          mkdir -p "$R_LIBS_USER"
+          # Install via the host R that Phase 2 uses, so transitive deps land
+          # in a library Phase 2's lazy-load will see. `dependencies = c(...)`
+          # pulls rlang in via lifecycle/vctrs without us having to enumerate.
+          /opt/webr/host/R-4.5.1/bin/Rscript -e \
+            'install.packages(c("cli","lifecycle","R6","S7","vctrs"), dependencies = c("Depends","Imports","LinkingTo"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest", lib=Sys.getenv("R_LIBS_USER"))'
+          # Sanity-check the transitive set landed.
+          /opt/webr/host/R-4.5.1/bin/Rscript -e \
+            'pkgs <- c("cli","lifecycle","rlang","R6","S7","vctrs"); miss <- setdiff(pkgs, rownames(installed.packages(lib.loc=Sys.getenv("R_LIBS_USER")))); if (length(miss)) stop("Missing: ", paste(miss, collapse=", "))'
+
+      - name: Cache cargo registry + git
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/cargo/registry
+            /usr/local/cargo/git
+          key: webr-tier2-cargo-${{ hashFiles('Cargo.lock', 'rpkg/src/rust/Cargo.lock') }}
+          restore-keys: |
+            webr-tier2-cargo-
+
+      - name: Phase 1 — native R CMD INSTALL (regenerate wasm_registry.rs)
+        run: |
+          set -euo pipefail
+          # Defensive scrub (matches tests/webr-smoke.sh); CI runners are
+          # ephemeral so the cross-platform stale-.o trap doesn't apply here,
+          # but staying byte-identical with the local smoke avoids drift.
+          rm -f rpkg/src/*.o rpkg/src/*.so
+          ( cd rpkg && bash ./configure )
+          mkdir -p /tmp/native-lib
+          /opt/R/current/bin/R CMD INSTALL --no-test-load --library=/tmp/native-lib rpkg
+
+      - name: Verify Phase 1 regenerated wasm_registry.rs
+        run: |
+          set -euo pipefail
+          ch=$(grep 'content-hash:' rpkg/src/rust/wasm_registry.rs | awk '{print $NF}')
+          echo "content-hash=$ch"
+          # A stub snapshot would be all-zero; the cdylib pass must rewrite it.
+          test "$ch" != "0000000000000000"
+
+      - name: Phase 2 — wasm32 R CMD INSTALL (validates #494 PIC flag)
+        run: |
+          set -euo pipefail
+          rm -f rpkg/src/*.o rpkg/src/*.so
+          ( cd rpkg && CC=emcc bash ./configure )
+          # Install to an empty *host-side* temp library, NOT directly into
+          # /opt/webr/wasm/.../library. R CMD INSTALL's tail-end lazy-load
+          # spawns a sub-R that adds --library to .libPaths(), and if that
+          # path contains the wasm-built grDevices.so / methods.so the
+          # sub-R dies with 'invalid ELF header' on startup. rwasm uses
+          # the same pattern (install to tempfile() lib_dir, then copy
+          # the resulting tarball into place — r-wasm/rwasm:R/build.R, see
+          # the "empty library otherwise R might try to load wasm packages"
+          # comment). --no-byte-compile mirrors rwasm's flag set too.
+          mkdir -p /tmp/wasm-lib
+          WASM_TOOLS=/opt/webr/tools \
+          R_SOURCE=/opt/webr/R/build/R-4.5.1 \
+          R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk \
+          /opt/webr/host/R-4.5.1/bin/R CMD INSTALL \
+              --library=/tmp/wasm-lib \
+              --no-docs --no-test-load --no-staged-install --no-byte-compile \
+              rpkg
+
+      - name: Verify wasm side-module landed
+        run: |
+          set -euo pipefail
+          libdir=/tmp/wasm-lib/miniextendr
+          test -d "$libdir"
+          ls -la "$libdir/libs/"
+          file "$libdir/libs/"miniextendr.so
+          # Sanity: side-module must be wasm, not ELF (would mean Phase 2
+          # silently fell back to native compilation).
+          file "$libdir/libs/"miniextendr.so | grep -qi "WebAssembly\|wasm"

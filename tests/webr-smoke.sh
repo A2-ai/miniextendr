@@ -212,13 +212,27 @@ phase_wasm_build() {
         # (same stale-mtime trap as Phase 1, but native-poisoning-wasm here).
         rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
         ( cd /work/rpkg && CC=emcc bash ./configure )
+        # Install to an empty host-side temp library, NOT directly into the
+        # wasm tree. INSTALL's tail-end lazy-load spawns a sub-R that adds
+        # --library to .libPaths(); if that path contains wasm grDevices.so
+        # the sub-R dies with 'invalid ELF header' on startup. rwasm uses
+        # tempfile() lib_dir for the same reason (see
+        # r-wasm/rwasm:R/build.R, 'empty library otherwise R might try to
+        # load wasm packages' comment), then copies into the final tree.
+        # --no-byte-compile mirrors rwasm's flag set.
+        rm -rf /tmp/wasm-lib && mkdir -p /tmp/wasm-lib
         WASM_TOOLS=${WASM_TOOLS} \
         R_SOURCE=${R_SOURCE} \
         R_MAKEVARS_USER=${WEBR_VARS_MK} \
         ${R_HOST_EXE} CMD INSTALL \
-            --library=${R_WASM_LIB} \
-            --no-docs --no-test-load --no-staged-install \
+            --library=/tmp/wasm-lib \
+            --no-docs --no-test-load --no-staged-install --no-byte-compile \
             /work/rpkg
+        # Publish the wasm-installed package into the real wasm library so
+        # the Phase 3 Node runner (which FS.mounts ${R_WASM_LIB}) can find it.
+        mkdir -p ${R_WASM_LIB}
+        rm -rf ${R_WASM_LIB}/miniextendr
+        cp -a /tmp/wasm-lib/miniextendr ${R_WASM_LIB}/miniextendr
     "
 
     # Verify the wasm library was installed
