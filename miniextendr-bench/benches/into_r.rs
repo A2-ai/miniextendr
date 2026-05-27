@@ -3,7 +3,7 @@
 //! Measures the cost of converting Rust types to R SEXP values.
 
 use miniextendr_api::IntoR;
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::SEXP;
 use miniextendr_bench::{LARGE_SIZES, SIZES};
 
 fn main() {
@@ -103,7 +103,7 @@ fn slice_f64(bencher: divan::Bencher, n: usize) {
 
 // region: Vector conversions - logical (RLogical)
 
-use miniextendr_api::sys::RLogical;
+use miniextendr_api::RLogical;
 
 fn make_logical_vec(n: usize) -> Vec<RLogical> {
     (0..n)

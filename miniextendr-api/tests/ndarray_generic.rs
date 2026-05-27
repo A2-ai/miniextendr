@@ -12,8 +12,9 @@ use miniextendr_api::{Array0, Array1, Array2, Array3, ArrayD};
 fn array1_i32_blanket_impl() {
     // Verify blanket impl works for i32
     r_test_utils::with_r_thread(|| {
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 4));
@@ -40,8 +41,9 @@ fn array1_i32_blanket_impl() {
 fn array1_u8_blanket_impl() {
     // Verify blanket impl works for u8 (raw)
     r_test_utils::with_r_thread(|| {
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 3));
@@ -66,8 +68,9 @@ fn array1_u8_blanket_impl() {
 fn array2_i32_blanket_impl() {
     // Verify blanket impl works for i32 matrices
     r_test_utils::with_r_thread(|| {
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocMatrix, Rf_protect, Rf_unprotect};
 
         unsafe {
             // Create 2x3 matrix
@@ -96,8 +99,9 @@ fn array2_i32_blanket_impl() {
 fn array3_i32_blanket_impl() {
     // Verify blanket impl works for 3D arrays
     r_test_utils::with_r_thread(|| {
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 
         unsafe {
             // Create 2x3x2 = 12 element 3D array
@@ -162,8 +166,9 @@ fn array1_f64_roundtrip() {
 fn arrayd_dynamic_dims() {
     // Test ArrayD with dynamic number of dimensions
     r_test_utils::with_r_thread(|| {
+        use miniextendr_api::SEXPTYPE;
         use miniextendr_api::prelude::SexpExt;
-        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 
         unsafe {
             // Create 3D array: 2x3x2
@@ -198,7 +203,8 @@ fn arrayd_dynamic_dims() {
 fn array_blanket_coverage_all_rnative_types() {
     // Verify blanket impl works for all RNativeType: i32, f64, u8, RLogical
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::sys::{RLogical, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+        use miniextendr_api::{RLogical, SEXPTYPE};
         use ndarray::Array1;
 
         unsafe {

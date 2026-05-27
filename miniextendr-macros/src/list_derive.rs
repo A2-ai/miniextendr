@@ -322,22 +322,22 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = std::convert::Infallible;
 
             #[inline]
-            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
             #[inline]
-            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+            fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
             }
 
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
             }
         }
@@ -362,22 +362,22 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
             type Error = std::convert::Infallible;
 
             #[inline]
-            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
             #[inline]
-            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+            fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
             }
 
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
             }
         }
@@ -402,22 +402,22 @@ pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> 
             type Error = std::convert::Infallible;
 
             #[inline]
-            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
             #[inline]
-            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+            fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
             }
 
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
             }
         }
@@ -443,24 +443,24 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = std::convert::Infallible;
 
             #[inline]
-            fn try_into_sexp(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
 
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
 
             #[inline]
-            fn into_sexp(self) -> ::miniextendr_api::sys::SEXP {
+            fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::into_r::IntoR::into_sexp(
                     ::miniextendr_api::convert::AsRNative(self)
                 )
             }
 
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::into_r::IntoR::into_sexp_unchecked(
                     ::miniextendr_api::convert::AsRNative(self)
                 )

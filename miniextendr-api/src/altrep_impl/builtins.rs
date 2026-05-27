@@ -396,7 +396,7 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Vec_Option_Cow_str
 );
 impl_builtin_altrep_family!(
-    Vec<crate::sys::Rcomplex>,
+    Vec<crate::Rcomplex>,
     complex,
     dataptr,
     __mx_altrep_reg_builtin_Vec_Rcomplex,
@@ -469,7 +469,7 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Box_String
 );
 impl_builtin_altrep_family!(
-    Box<[crate::sys::Rcomplex]>,
+    Box<[crate::Rcomplex]>,
     complex,
     dataptr,
     __mx_altrep_reg_builtin_Box_Rcomplex,
@@ -500,7 +500,7 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Cow_u8
 );
 impl_builtin_altrep_family!(
-    std::borrow::Cow<'static, [crate::sys::Rcomplex]>,
+    std::borrow::Cow<'static, [crate::Rcomplex]>,
     complex,
     dataptr,
     __mx_altrep_reg_builtin_Cow_Rcomplex,
@@ -557,7 +557,7 @@ impl_register_altrep_builtin!(Vec<bool>, "Vec_bool");
 impl_register_altrep_builtin!(Vec<u8>, "Vec_u8");
 impl_register_altrep_builtin!(Vec<String>, "Vec_String");
 impl_register_altrep_builtin!(Vec<Option<String>>, "Vec_Option_String");
-impl_register_altrep_builtin!(Vec<crate::sys::Rcomplex>, "Vec_Rcomplex");
+impl_register_altrep_builtin!(Vec<crate::Rcomplex>, "Vec_Rcomplex");
 
 // Range types - RegisterAltrep only
 impl_register_altrep_builtin!(std::ops::Range<i32>, "Range_i32");
@@ -570,16 +570,13 @@ impl_register_altrep_builtin!(Box<[f64]>, "Box_f64");
 impl_register_altrep_builtin!(Box<[bool]>, "Box_bool");
 impl_register_altrep_builtin!(Box<[u8]>, "Box_u8");
 impl_register_altrep_builtin!(Box<[String]>, "Box_String");
-impl_register_altrep_builtin!(Box<[crate::sys::Rcomplex]>, "Box_Rcomplex");
+impl_register_altrep_builtin!(Box<[crate::Rcomplex]>, "Box_Rcomplex");
 
 // Cow types - RegisterAltrep for zero-copy borrow from R
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [i32]>, "Cow_i32");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [f64]>, "Cow_f64");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [u8]>, "Cow_u8");
-impl_register_altrep_builtin!(
-    std::borrow::Cow<'static, [crate::sys::Rcomplex]>,
-    "Cow_Rcomplex"
-);
+impl_register_altrep_builtin!(std::borrow::Cow<'static, [crate::Rcomplex]>, "Cow_Rcomplex");
 
 // Cow string vector types
 impl_register_altrep_builtin!(Vec<std::borrow::Cow<'static, str>>, "Vec_Cow_str");

@@ -5,9 +5,10 @@
 
 mod r_test_utils;
 
+use miniextendr_api::SEXPTYPE;
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope, Protected, tls};
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
+use miniextendr_api::sys::Rf_allocVector;
 
 // region: Balance tests
 
@@ -239,7 +240,7 @@ fn owned_protect_deref() {
         let guard = OwnedProtect::new(SEXP::scalar_real(std::f64::consts::PI));
 
         // Deref to get &SEXP
-        let sexp: &miniextendr_api::sys::SEXP = &guard;
+        let sexp: &miniextendr_api::SEXP = &guard;
         assert!(!sexp.is_null());
     });
 }

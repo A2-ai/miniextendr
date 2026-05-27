@@ -220,7 +220,7 @@ pub extern "C-unwind" fn C_just_panic() -> SEXP {
 pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
     let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
     let _ = dbg!(result);
-    ::miniextendr_api::sys::SEXP::nil()
+    ::miniextendr_api::SEXP::nil()
 }
 
 /// Test a direct Rf_error call via raw FFI.
@@ -244,7 +244,7 @@ pub extern "C-unwind" fn C_r_error_in_catch() -> SEXP {
             crate::raw_ffi::Rf_error(c"arg1".as_ptr())
         }))
         .unwrap();
-        miniextendr_api::sys::SEXP::nil()
+        miniextendr_api::SEXP::nil()
     }
 }
 
@@ -288,7 +288,7 @@ pub extern "C-unwind" fn C_r_print_in_thread() -> SEXP {
     .join();
 
     match result {
-        Ok(()) => miniextendr_api::sys::SEXP::nil(),
+        Ok(()) => miniextendr_api::SEXP::nil(),
         Err(e) => panic!("{}", extract_panic_message(e)),
     }
 }

@@ -15,7 +15,8 @@
 //! This expands to an `extern "C-unwind" fn R_init_mypkg(dll)` that calls
 //! [`package_init`](crate::init::package_init) with the appropriate package name.
 
-use crate::sys::{DllInfo, R_forceSymbols, R_useDynamicSymbols, Rboolean};
+use crate::Rboolean;
+use crate::sys::{DllInfo, R_forceSymbols, R_useDynamicSymbols};
 use std::ffi::CStr;
 
 /// Initialize a miniextendr R package.

@@ -38,8 +38,8 @@
 macro_rules! cached_symbol {
     ($(#[$meta:meta])* $vis:vis fn $name:ident() = $cstr:expr) => {
         $(#[$meta])*
-        $vis fn $name() -> $crate::sys::SEXP {
-            static CACHE: ::std::sync::OnceLock<$crate::sys::SEXP> = ::std::sync::OnceLock::new();
+        $vis fn $name() -> $crate::SEXP {
+            static CACHE: ::std::sync::OnceLock<$crate::SEXP> = ::std::sync::OnceLock::new();
             *CACHE.get_or_init(|| unsafe { $crate::sys::Rf_install($cstr.as_ptr()) })
         }
     };
@@ -69,13 +69,13 @@ pub(crate) use cached_symbol;
 macro_rules! cached_strsxp {
     ($(#[$meta:meta])* $vis:vis fn $name:ident() = [$($cstr:expr),+ $(,)?]) => {
         $(#[$meta])*
-        $vis fn $name() -> $crate::sys::SEXP {
-            static CACHE: ::std::sync::OnceLock<$crate::sys::SEXP> = ::std::sync::OnceLock::new();
+        $vis fn $name() -> $crate::SEXP {
+            static CACHE: ::std::sync::OnceLock<$crate::SEXP> = ::std::sync::OnceLock::new();
             *CACHE.get_or_init(|| unsafe {
-                use $crate::sys::SexpExt as _;
+                use $crate::SexpExt as _;
                 let strings: &[&::std::ffi::CStr] = &[$($cstr),+];
                 let sexp = $crate::sys::Rf_allocVector(
-                    $crate::sys::SEXPTYPE::STRSXP,
+                    $crate::SEXPTYPE::STRSXP,
                     strings.len() as ::std::primitive::isize,
                 );
                 $crate::sys::R_PreserveObject(sexp);
@@ -106,8 +106,8 @@ pub(crate) use cached_strsxp;
 /// from any module.
 #[doc(hidden)]
 #[inline]
-pub(crate) fn permanent_charsxp(name: &std::ffi::CStr) -> crate::sys::SEXP {
-    use crate::sys::SexpExt;
+pub(crate) fn permanent_charsxp(name: &std::ffi::CStr) -> crate::SEXP {
+    use crate::SexpExt;
     unsafe { crate::sys::Rf_install(name.as_ptr()) }.printname()
 }
 
@@ -204,8 +204,8 @@ cached_symbol!(
 ///
 /// `sexp` must be a valid REALSXP. Must be called on R's main thread.
 #[cfg(any(feature = "time", feature = "jiff"))]
-pub fn set_posixct_utc(sexp: crate::sys::SEXP) {
-    use crate::sys::SexpExt as _;
+pub fn set_posixct_utc(sexp: crate::SEXP) {
+    use crate::SexpExt as _;
     sexp.set_class(posixct_class_sexp());
     sexp.set_attr(tzone_symbol(), utc_tzone_sexp());
 }
@@ -219,13 +219,13 @@ pub fn set_posixct_utc(sexp: crate::sys::SEXP) {
 ///
 /// `sexp` must be a valid REALSXP. Must be called on R's main thread.
 #[cfg(feature = "jiff")]
-pub fn set_posixct_tz(sexp: crate::sys::SEXP, iana: &str) {
-    use crate::sys::SexpExt as _;
+pub fn set_posixct_tz(sexp: crate::SEXP, iana: &str) {
+    use crate::SexpExt as _;
     sexp.set_class(posixct_class_sexp());
     // Build a one-element STRSXP for the tzone attribute.
     unsafe {
-        let tzone_charsxp = crate::sys::SEXP::charsxp(iana);
-        let tzone_sexp = crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::STRSXP, 1);
+        let tzone_charsxp = crate::SEXP::charsxp(iana);
+        let tzone_sexp = crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, 1);
         crate::sys::Rf_protect(tzone_sexp);
         tzone_sexp.set_string_elt(0, tzone_charsxp);
         sexp.set_attr(tzone_symbol(), tzone_sexp);

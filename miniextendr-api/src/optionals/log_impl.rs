@@ -320,7 +320,7 @@ impl crate::TryFromSexp for log::LevelFilter {
     type Error = crate::SexpError;
 
     fn try_from_sexp(
-        sexp: crate::sys::SEXP,
+        sexp: crate::SEXP,
     ) -> Result<Self, <log::LevelFilter as crate::TryFromSexp>::Error> {
         crate::match_arg_from_sexp(sexp).map_err(Into::into)
     }
@@ -332,17 +332,17 @@ impl crate::TryFromSexp for log::LevelFilter {
 impl crate::IntoR for log::LevelFilter {
     type Error = std::convert::Infallible;
 
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
         Ok(self.into_sexp())
     }
 
     unsafe fn try_into_sexp_unchecked(
         self,
-    ) -> Result<crate::sys::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
+    ) -> Result<crate::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
         self.try_into_sexp()
     }
 
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         use crate::MatchArg;
         self.to_choice().into_sexp()
     }

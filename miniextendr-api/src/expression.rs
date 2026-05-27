@@ -26,10 +26,9 @@
 //! ```
 
 use crate::gc_protect::{OwnedProtect, ProtectScope};
-use crate::sys::{
-    self, PairListExt, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, SEXP,
-    SexpExt,
-};
+use crate::sexp_ext::PairListExt;
+use crate::sys::{self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install};
+use crate::{SEXP, SexpExt};
 use std::ffi::{CStr, CString};
 
 // region: RSymbol
@@ -232,7 +231,7 @@ impl REnv {
 /// unsafe {
 ///     // seq_len(10)
 ///     let result = RCall::new("seq_len")
-///         .arg(sys::SEXP::scalar_integer(10))
+///         .arg(SEXP::scalar_integer(10))
 ///         .eval_base()?;
 ///
 ///     // paste(x, collapse = ", ")

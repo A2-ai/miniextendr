@@ -30,7 +30,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
         .expect("failed to spawn thread");
 
     let result = handle.join().expect("thread panicked");
-    miniextendr_api::sys::SEXP::scalar_integer(result)
+    miniextendr_api::SEXP::scalar_integer(result)
 }
 
 /// Test RThreadBuilder spawn_join convenience method.
@@ -46,5 +46,5 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
         })
         .expect("thread failed");
 
-    miniextendr_api::sys::SEXP::scalar_integer(result)
+    miniextendr_api::SEXP::scalar_integer(result)
 }

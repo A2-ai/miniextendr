@@ -485,8 +485,8 @@ fn generate_concrete_vtable_shims(
             unsafe extern "C" fn #shim_name(
                 data: *mut ::std::os::raw::c_void,
                 argc: i32,
-                argv: *const ::miniextendr_api::sys::SEXP,
-            ) -> ::miniextendr_api::sys::SEXP {
+                argv: *const ::miniextendr_api::SEXP,
+            ) -> ::miniextendr_api::SEXP {
                 unsafe {
                     ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
                 }

@@ -111,7 +111,7 @@ use crate::coerce::TryCoerce;
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
-use crate::sys::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: Blanket implementations for ndarray types where T: RNativeType
 
@@ -677,7 +677,7 @@ impl_all_arrays_try_from_sexp_coerce!(f64 => f32);
 // endregion
 
 // region: Logical coercions: R logical (RLogical) -> bool
-impl_all_arrays_try_from_sexp_coerce!(crate::sys::RLogical => bool);
+impl_all_arrays_try_from_sexp_coerce!(crate::RLogical => bool);
 // endregion
 
 // region: Array2 conversions
@@ -752,7 +752,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, data.len() as crate::sys::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, data.len() as crate::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -797,7 +797,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -842,7 +842,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -883,7 +883,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -931,7 +931,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -1099,7 +1099,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, data.len() as crate::sys::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, data.len() as crate::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -1140,7 +1140,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
             let scope = ProtectScope::new();
 
             let arr = scope
-                .alloc_vector(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t)
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
@@ -1587,8 +1587,8 @@ impl<T: RNativeType + Clone, const NDIM: usize> From<&RArray<T, NDIM>> for Array
 // Default behavior: `Array1<f64>` → copies to R vector (via IntoR)
 // Explicit ExternalPtr: `ExternalPtr::new(arr)` → wraps without copying
 
+use crate::Rcomplex;
 use crate::externalptr::TypedExternal;
-use crate::sys::Rcomplex;
 
 // Helper macro for implementing TypedExternal for ndarray types.
 // For these well-known library types, we use the descriptive name as both
@@ -2772,7 +2772,7 @@ impl<T: RNativeType> RndVec<T> {
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { crate::sys::Rf_allocVector(T::SEXP_TYPE, len as crate::sys::R_xlen_t) };
+        let sexp = unsafe { crate::sys::Rf_allocVector(T::SEXP_TYPE, len as crate::R_xlen_t) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };

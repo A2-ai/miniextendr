@@ -8,7 +8,7 @@
 // - S7-style: S7Point
 // - Trait dispatch: SimpleCounter implements shared Counter trait
 
-use miniextendr_api::{ExternalPtr, sys::SEXP, miniextendr, trait_abi::ccall};
+use miniextendr_api::{ExternalPtr, SEXP, miniextendr, trait_abi::ccall};
 // Condition macros — use fully-qualified paths to avoid module/macro name collision
 // (pub mod error and pub mod condition at crate root shadow the macros if imported).
 

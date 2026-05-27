@@ -165,9 +165,10 @@
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
 use crate::sys::{
-    R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList, Rf_allocMatrix,
-    Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
+    R_NewEnv, R_ProtectWithIndex, R_Reprotect, Rf_allocList, Rf_allocMatrix, Rf_allocVector,
+    Rf_protect, Rf_unprotect,
 };
+use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::cell::Cell;
 use core::marker::PhantomData;
 use std::rc::Rc;
@@ -601,7 +602,7 @@ impl ProtectScope {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn scalar_complex<'a>(&'a self, x: crate::sys::Rcomplex) -> Root<'a> {
+    pub unsafe fn scalar_complex<'a>(&'a self, x: crate::Rcomplex) -> Root<'a> {
         unsafe { self.protect(SEXP::scalar_complex(x)) }
     }
 
@@ -680,9 +681,9 @@ impl ProtectScope {
             self.protect(R_NewEnv(
                 parent,
                 if hash {
-                    crate::sys::Rboolean::TRUE
+                    crate::Rboolean::TRUE
                 } else {
-                    crate::sys::Rboolean::FALSE
+                    crate::Rboolean::FALSE
                 },
                 size,
             ))
@@ -726,8 +727,8 @@ impl ProtectScope {
     /// | `i32` | `INTSXP` |
     /// | `f64` | `REALSXP` |
     /// | `u8` | `RAWSXP` |
-    /// | [`RLogical`](crate::sys::RLogical) | `LGLSXP` |
-    /// | [`Rcomplex`](crate::sys::Rcomplex) | `CPLXSXP` |
+    /// | [`RLogical`](crate::RLogical) | `LGLSXP` |
+    /// | [`Rcomplex`](crate::Rcomplex) | `CPLXSXP` |
     ///
     /// # Safety
     ///
@@ -1502,7 +1503,7 @@ mod tests {
         // This should panic because there's no active scope
         // Note: Can't actually call protect without R, but we test the panic message
         unsafe {
-            let _ = tls::protect(crate::sys::SEXP(std::ptr::null_mut()));
+            let _ = tls::protect(crate::SEXP(std::ptr::null_mut()));
         }
     }
     // endregion
@@ -1562,7 +1563,7 @@ mod tests {
         // never dereference the SEXP itself, only the already-constructed inner)
         let v = vec![1i32, 2, 3];
         let p = unsafe {
-            Protected::<'static, Vec<i32>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<i32>>::from_trusted(crate::SEXP(core::ptr::null_mut()), v)
         };
         assert_eq!(p.get(), &[1, 2, 3]);
     }
@@ -1572,7 +1573,7 @@ mod tests {
     fn protected_deref_reaches_inner() {
         let v = vec![10i32, 20];
         let p = unsafe {
-            Protected::<'static, Vec<i32>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<i32>>::from_trusted(crate::SEXP(core::ptr::null_mut()), v)
         };
         // Deref should let us call Vec methods directly.
         assert_eq!(p.len(), 2);
@@ -1583,7 +1584,7 @@ mod tests {
     fn protected_into_inner_moves_value() {
         let v = vec![42i32];
         let p = unsafe {
-            Protected::<'static, Vec<i32>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<i32>>::from_trusted(crate::SEXP(core::ptr::null_mut()), v)
         };
         let got = p.into_inner();
         assert_eq!(got, [42]);
@@ -1594,7 +1595,7 @@ mod tests {
     fn protected_from_trusted_does_not_hold_protect() {
         let v: Vec<u8> = vec![];
         let p = unsafe {
-            Protected::<'static, Vec<u8>>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), v)
+            Protected::<'static, Vec<u8>>::from_trusted(crate::SEXP(core::ptr::null_mut()), v)
         };
         // This test uses `from_trusted` to avoid touching the protect stack;
         // `Protected::new` would require an initialized R runtime (see
@@ -1607,7 +1608,7 @@ mod tests {
     #[test]
     fn protected_from_trusted_compile_check() {
         let p = unsafe {
-            Protected::<'static, i32>::from_trusted(crate::sys::SEXP(core::ptr::null_mut()), 99)
+            Protected::<'static, i32>::from_trusted(crate::SEXP(core::ptr::null_mut()), 99)
         };
         assert_eq!(*p, 99);
     }

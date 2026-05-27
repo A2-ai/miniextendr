@@ -4,11 +4,12 @@
 //! `ListAccumulator` supports dynamic growth via `push`. It uses
 //! `ReprotectSlot` internally to maintain O(1) protect stack usage.
 
+use crate::SEXPTYPE::{STRSXP, VECSXP};
 use crate::from_r::SexpError;
 use crate::gc_protect::{OwnedProtect, ProtectScope, ReprotectSlot, Root};
 use crate::into_r::IntoR;
-use crate::sys::SEXPTYPE::{STRSXP, VECSXP};
-use crate::sys::{self, SEXP, SexpExt};
+use crate::sys::{self};
+use crate::{SEXP, SexpExt};
 
 use super::ListMut;
 
@@ -275,7 +276,7 @@ impl<'a> ListAccumulator<'a> {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(n) = name {
                         let _n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
-                        let charsxp = sys::SEXP::charsxp(n);
+                        let charsxp = SEXP::charsxp(n);
                         names_sexp.get().set_string_elt(idx, charsxp);
                     } else {
                         names_sexp.get().set_string_elt(idx, SEXP::blank_string());

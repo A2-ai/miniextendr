@@ -6,7 +6,7 @@
 //! misaligned 0x1 sentinel for empty vector data pointers).
 
 use miniextendr_api::IntoR;
-use miniextendr_api::sys::{SEXP, SexpExt};
+use miniextendr_api::{SEXP, SexpExt};
 use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];

@@ -19,7 +19,7 @@
 //! (`i8`/`i16`/`u16`/`u32`/`f32`/`i64`/`u64`/`isize`/`usize`). The strict
 //! inbound alternative is the bare `TryFromSexp` impl on the matching R
 //! native type (`i32`, `f64`, …), which rejects mismatched
-//! [`SEXPTYPE`](crate::sys::SEXPTYPE)s outright. Failure mode of relying on
+//! [`SEXPTYPE`](crate::SEXPTYPE)s outright. Failure mode of relying on
 //! coercion in a function that should be strict: a Rust `i32` argument
 //! silently accepts `1.7` (REALSXP) and truncates.
 //!
@@ -40,7 +40,7 @@
 //! ```
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::sys::{Rboolean, Rcomplex};
+use crate::{Rboolean, Rcomplex};
 
 /// Infallible coercion from `Self` to type `R`.
 ///
@@ -518,7 +518,7 @@ impl TryCoerce<bool> for Rboolean {
     }
 }
 
-impl TryCoerce<bool> for crate::sys::RLogical {
+impl TryCoerce<bool> for crate::RLogical {
     type Error = LogicalCoerceError;
 
     #[inline]

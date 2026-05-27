@@ -50,10 +50,8 @@
 //! These use ahash instead of SipHash for improved throughput. Not DOS-resistant,
 //! but suitable for local, non-hostile environments.
 
-use crate::sys::{
-    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP,
-    SEXPTYPE, SexpExt,
-};
+use crate::sys::{R_PreserveObject, R_ReleaseObject, Rf_allocVector, Rf_protect, Rf_unprotect};
+use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;

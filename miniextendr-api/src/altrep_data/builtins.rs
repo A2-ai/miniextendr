@@ -13,7 +13,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use crate::altrep_traits::NA_REAL;
-use crate::sys::{Rcomplex, SEXP};
+use crate::{Rcomplex, SEXP};
 
 use super::{
     AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,

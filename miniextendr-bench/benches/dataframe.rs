@@ -4,7 +4,7 @@
 //! conversion for named structs, enums with field-union alignment, and
 //! varying row/column counts.
 
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::SEXP;
 use miniextendr_api::{DataFrameRow, IntoDataFrame, IntoList, IntoR};
 
 fn main() {

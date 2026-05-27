@@ -40,10 +40,8 @@
 //! No external dependencies for slot management. The generation counter per slot
 //! detects stale keys. Single free list for VECSXP slot reuse.
 
-use crate::sys::{
-    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP,
-    SEXPTYPE, SexpExt,
-};
+use crate::sys::{R_PreserveObject, R_ReleaseObject, Rf_allocVector, Rf_protect, Rf_unprotect};
+use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 use std::marker::PhantomData;
 use std::rc::Rc;
 

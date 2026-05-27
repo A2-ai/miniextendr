@@ -54,7 +54,8 @@ use std::io;
 
 use crate::connection::{RStderr, RStdout, Rconn};
 use crate::into_r::IntoR;
-use crate::sys::{R_PreserveObject, R_ReleaseObject, SEXP, SexpExt};
+use crate::sys::{R_PreserveObject, R_ReleaseObject};
+use crate::{SEXP, SexpExt};
 
 // region: TermKind — precomputed dispatch kind
 

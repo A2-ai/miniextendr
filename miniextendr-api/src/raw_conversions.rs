@@ -60,7 +60,8 @@ use std::mem;
 
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::sys::{RAW, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{RAW, Rf_allocVector};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Error type
 

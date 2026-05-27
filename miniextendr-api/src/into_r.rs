@@ -44,9 +44,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
+use crate::SexpExt;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::gc_protect::OwnedProtect;
-use crate::sys::SexpExt;
 
 /// Trait for converting Rust types to R SEXP values.
 ///
@@ -84,14 +84,14 @@ pub trait IntoR {
     /// Try to convert this value to an R SEXP.
     ///
     /// This is the **required** method. All other methods delegate to it.
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error>;
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error>;
 
     /// Try to convert to SEXP without thread safety checks.
     ///
     /// # Safety
     ///
     /// Must be called from R's main thread.
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error>
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error>
     where
         Self: Sized,
     {
@@ -101,7 +101,7 @@ pub trait IntoR {
     /// Convert this value to an R SEXP, panicking on error.
     ///
     /// In debug builds, asserts that we're on R's main thread.
-    fn into_sexp(self) -> crate::sys::SEXP
+    fn into_sexp(self) -> crate::SEXP
     where
         Self: Sized,
     {
@@ -118,7 +118,7 @@ pub trait IntoR {
     /// Must be called from R's main thread. In debug builds, this still
     /// calls the checked version by default, but implementations may
     /// skip thread assertions for performance.
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP
     where
         Self: Sized,
     {
@@ -127,41 +127,41 @@ pub trait IntoR {
     }
 }
 
-impl IntoR for crate::sys::SEXP {
+impl IntoR for crate::SEXP {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self)
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self)
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self
     }
 }
 
-impl IntoR for crate::worker::Sendable<crate::sys::SEXP> {
+impl IntoR for crate::worker::Sendable<crate::SEXP> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.0)
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.0)
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.0
     }
 }
 
-impl From<crate::worker::Sendable<crate::sys::SEXP>> for crate::sys::SEXP {
+impl From<crate::worker::Sendable<crate::SEXP>> for crate::SEXP {
     #[inline]
-    fn from(s: crate::worker::Sendable<crate::sys::SEXP>) -> Self {
+    fn from(s: crate::worker::Sendable<crate::SEXP>) -> Self {
         s.0
     }
 }
@@ -169,32 +169,32 @@ impl From<crate::worker::Sendable<crate::sys::SEXP>> for crate::sys::SEXP {
 impl IntoR for () {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
-        Ok(crate::sys::SEXP::nil())
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(crate::SEXP::nil())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
-        crate::sys::SEXP::nil()
+    fn into_sexp(self) -> crate::SEXP {
+        crate::SEXP::nil()
     }
 }
 
 impl IntoR for std::convert::Infallible {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
-        Ok(crate::sys::SEXP::nil())
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(crate::SEXP::nil())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
-        crate::sys::SEXP::nil()
+    fn into_sexp(self) -> crate::SEXP {
+        crate::SEXP::nil()
     }
 }
 
@@ -204,20 +204,20 @@ macro_rules! impl_scalar_into_r {
         impl IntoR for $ty {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
-                Ok(crate::sys::SEXP::$checked(self))
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+                Ok(crate::SEXP::$checked(self))
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
-                crate::sys::SEXP::$checked(self)
+            fn into_sexp(self) -> crate::SEXP {
+                crate::SEXP::$checked(self)
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
-                unsafe { crate::sys::SEXP::$unchecked(self) }
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+                unsafe { crate::SEXP::$unchecked(self) }
             }
         }
     };
@@ -226,38 +226,34 @@ macro_rules! impl_scalar_into_r {
 impl_scalar_into_r!(i32, scalar_integer, scalar_integer_unchecked);
 impl_scalar_into_r!(f64, scalar_real, scalar_real_unchecked);
 impl_scalar_into_r!(u8, scalar_raw, scalar_raw_unchecked);
-impl_scalar_into_r!(
-    crate::sys::Rcomplex,
-    scalar_complex,
-    scalar_complex_unchecked
-);
+impl_scalar_into_r!(crate::Rcomplex, scalar_complex, scalar_complex_unchecked);
 
-impl IntoR for Option<crate::sys::Rcomplex> {
+impl IntoR for Option<crate::Rcomplex> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::scalar_complex(crate::sys::Rcomplex {
+            None => crate::SEXP::scalar_complex(crate::Rcomplex {
                 r: NA_REAL,
                 i: NA_REAL,
             }),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
             None => unsafe {
-                crate::sys::SEXP::scalar_complex_unchecked(crate::sys::Rcomplex {
+                crate::SEXP::scalar_complex_unchecked(crate::Rcomplex {
                     r: NA_REAL,
                     i: NA_REAL,
                 })
@@ -272,19 +268,19 @@ macro_rules! impl_into_r_via_coerce {
         impl IntoR for $from {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(crate::coerce::Coerce::<$to>::coerce(self).into_sexp())
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 crate::coerce::Coerce::<$to>::coerce(self).into_sexp()
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe { crate::coerce::Coerce::<$to>::coerce(self).into_sexp_unchecked() }
             }
         }
@@ -318,19 +314,19 @@ macro_rules! impl_into_r_vec_native {
         impl IntoR for Vec<$t> {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { vec_to_sexp(&self) })
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 unsafe { vec_to_sexp(&self) }
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe { vec_to_sexp_unchecked(&self) }
             }
         }
@@ -340,51 +336,51 @@ macro_rules! impl_into_r_vec_native {
 impl_into_r_vec_native!(i32);
 impl_into_r_vec_native!(f64);
 impl_into_r_vec_native!(u8);
-impl_into_r_vec_native!(crate::sys::RLogical);
-impl_into_r_vec_native!(crate::sys::Rcomplex);
+impl_into_r_vec_native!(crate::RLogical);
+impl_into_r_vec_native!(crate::Rcomplex);
 
 impl<T> IntoR for &[T]
 where
-    T: crate::sys::RNativeType,
+    T: crate::RNativeType,
 {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { vec_to_sexp(self) })
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe { vec_to_sexp(self) }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { vec_to_sexp_unchecked(self) }
     }
 }
 
 impl<T> IntoR for Box<[T]>
 where
-    T: crate::sys::RNativeType,
+    T: crate::RNativeType,
 {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { vec_to_sexp(&self) })
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { vec_to_sexp_unchecked(&self) })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe { vec_to_sexp(&self) }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { vec_to_sexp_unchecked(&self) }
     }
 }
@@ -404,11 +400,11 @@ where
 ///
 /// Must be called from R's main thread.
 #[inline]
-pub(crate) unsafe fn alloc_r_vector<T: crate::sys::RNativeType>(
+pub(crate) unsafe fn alloc_r_vector<T: crate::RNativeType>(
     n: usize,
-) -> (crate::sys::SEXP, &'static mut [T]) {
+) -> (crate::SEXP, &'static mut [T]) {
     unsafe {
-        let sexp = crate::sys::Rf_allocVector(T::SEXP_TYPE, n as crate::sys::R_xlen_t);
+        let sexp = crate::sys::Rf_allocVector(T::SEXP_TYPE, n as crate::R_xlen_t);
         let slice = crate::from_r::r_slice_mut(T::dataptr_mut(sexp), n);
         (sexp, slice)
     }
@@ -420,11 +416,11 @@ pub(crate) unsafe fn alloc_r_vector<T: crate::sys::RNativeType>(
 ///
 /// Must be called from R's main thread.
 #[inline]
-pub(crate) unsafe fn alloc_r_vector_unchecked<T: crate::sys::RNativeType>(
+pub(crate) unsafe fn alloc_r_vector_unchecked<T: crate::RNativeType>(
     n: usize,
-) -> (crate::sys::SEXP, &'static mut [T]) {
+) -> (crate::SEXP, &'static mut [T]) {
     unsafe {
-        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::sys::R_xlen_t);
+        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::R_xlen_t);
         let slice = crate::from_r::r_slice_mut(T::dataptr_mut(sexp), n);
         (sexp, slice)
     }
@@ -434,7 +430,7 @@ pub(crate) unsafe fn alloc_r_vector_unchecked<T: crate::sys::RNativeType>(
 
 /// Convert a slice to an R vector (checked) using `copy_from_slice`.
 #[inline]
-unsafe fn vec_to_sexp<T: crate::sys::RNativeType>(slice: &[T]) -> crate::sys::SEXP {
+unsafe fn vec_to_sexp<T: crate::RNativeType>(slice: &[T]) -> crate::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector::<T>(slice.len());
         dst.copy_from_slice(slice);
@@ -444,7 +440,7 @@ unsafe fn vec_to_sexp<T: crate::sys::RNativeType>(slice: &[T]) -> crate::sys::SE
 
 /// Convert a slice to an R vector (unchecked) using `copy_from_slice`.
 #[inline]
-unsafe fn vec_to_sexp_unchecked<T: crate::sys::RNativeType>(slice: &[T]) -> crate::sys::SEXP {
+unsafe fn vec_to_sexp_unchecked<T: crate::RNativeType>(slice: &[T]) -> crate::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector_unchecked::<T>(slice.len());
         dst.copy_from_slice(slice);
@@ -463,15 +459,15 @@ macro_rules! impl_vec_coerce_into_r {
         impl IntoR for Vec<$from> {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$to>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
@@ -481,7 +477,7 @@ macro_rules! impl_vec_coerce_into_r {
                 }
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$to>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
@@ -495,15 +491,15 @@ macro_rules! impl_vec_coerce_into_r {
         impl IntoR for &[$from] {
             type Error = std::convert::Infallible;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$to>(self.len());
                     for (slot, &val) in dst.iter_mut().zip(self.iter()) {
@@ -513,7 +509,7 @@ macro_rules! impl_vec_coerce_into_r {
                 }
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$to>(self.len());
                     for (slot, &val) in dst.iter_mut().zip(self.iter()) {
@@ -541,13 +537,13 @@ macro_rules! impl_vec_smart_i64_into_r {
     ($t:ty, $fits_i32:expr) => {
         impl IntoR for Vec<$t> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 unsafe {
                     if self.iter().all(|&x| $fits_i32(x)) {
                         let (sexp, dst) = alloc_r_vector::<i32>(self.len());
@@ -566,7 +562,7 @@ macro_rules! impl_vec_smart_i64_into_r {
                     }
                 }
             }
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
                     if self.iter().all(|&x| $fits_i32(x)) {
                         let (sexp, dst) = alloc_r_vector_unchecked::<i32>(self.len());
@@ -610,22 +606,22 @@ pub use result::*;
 ///
 /// Enables direct conversion of fixed-size arrays to R vectors.
 /// Useful for SHA hashes, fixed-size byte patterns, etc.
-impl<T: crate::sys::RNativeType, const N: usize> IntoR for [T; N] {
+impl<T: crate::RNativeType, const N: usize> IntoR for [T; N] {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.as_slice().into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.as_slice().into_sexp()
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.as_slice().into_sexp_unchecked() }
     }
 }
@@ -638,20 +634,20 @@ use std::collections::VecDeque;
 /// Convert `VecDeque<T>` to R vector where T: RNativeType.
 impl<T> IntoR for VecDeque<T>
 where
-    T: crate::sys::RNativeType,
+    T: crate::RNativeType,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let vec: Vec<T> = self.into_iter().collect();
         vec.into_sexp()
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let vec: Vec<T> = self.into_iter().collect();
         unsafe { vec.into_sexp_unchecked() }
     }
@@ -668,19 +664,19 @@ use std::collections::BinaryHeap;
 /// Elements are returned in arbitrary order, not sorted.
 impl<T> IntoR for BinaryHeap<T>
 where
-    T: crate::sys::RNativeType + Ord,
+    T: crate::RNativeType + Ord,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_vec().into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.into_vec().into_sexp()
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.into_vec().into_sexp_unchecked() }
     }
 }
@@ -693,9 +689,7 @@ use std::borrow::Cow;
 /// Try SEXP pointer recovery for a borrowed Cow slice.
 #[inline]
 #[allow(clippy::ptr_arg)] // Need &Cow to inspect Borrowed vs Owned variant
-fn try_recover_cow_slice<T: crate::sys::RNativeType>(
-    cow: &Cow<'_, [T]>,
-) -> Option<crate::sys::SEXP> {
+fn try_recover_cow_slice<T: crate::RNativeType>(cow: &Cow<'_, [T]>) -> Option<crate::SEXP> {
     if let Cow::Borrowed(slice) = cow {
         unsafe {
             crate::r_memory::try_recover_r_sexp(
@@ -717,22 +711,22 @@ fn try_recover_cow_slice<T: crate::sys::RNativeType>(
 /// falls through to the standard copy path.
 impl<T> IntoR for Cow<'_, [T]>
 where
-    T: crate::sys::RNativeType + Clone,
+    T: crate::RNativeType + Clone,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         if let Some(sexp) = try_recover_cow_slice(&self) {
             return sexp;
         }
         self.as_ref().into_sexp()
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         if let Some(sexp) = try_recover_cow_slice(&self) {
             return sexp;
         }
@@ -744,19 +738,19 @@ where
 impl IntoR for Cow<'_, str> {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         self.as_ref().try_into_sexp()
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.as_ref().into_sexp()
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.as_ref().into_sexp_unchecked() }
     }
 }
@@ -794,19 +788,19 @@ macro_rules! impl_lossy_string_into_r {
         impl IntoR for $owned_ty {
             type Error = crate::into_r_error::IntoRError;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 self.to_string_lossy().into_owned().try_into_sexp()
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 self.to_string_lossy().into_owned().into_sexp()
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe { self.to_string_lossy().into_owned().into_sexp_unchecked() }
             }
         }
@@ -815,19 +809,19 @@ macro_rules! impl_lossy_string_into_r {
         impl IntoR for $ref_ty {
             type Error = crate::into_r_error::IntoRError;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 self.to_string_lossy().into_owned().try_into_sexp()
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 self.to_string_lossy().into_owned().into_sexp()
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe { self.to_string_lossy().into_owned().into_sexp_unchecked() }
             }
         }
@@ -836,19 +830,19 @@ macro_rules! impl_lossy_string_into_r {
         impl IntoR for Option<$owned_ty> {
             type Error = crate::into_r_error::IntoRError;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 self.map(|v| v.to_string_lossy().into_owned()).try_into_sexp()
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 self.map(|v| v.to_string_lossy().into_owned()).into_sexp()
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
                     self.map(|v| v.to_string_lossy().into_owned())
                         .into_sexp_unchecked()
@@ -859,20 +853,20 @@ macro_rules! impl_lossy_string_into_r {
         $(#[$vec_meta])*
         impl IntoR for Vec<$owned_ty> {
             type Error = crate::into_r_error::IntoRError;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 let strings: Vec<String> = self
                     .into_iter()
                     .map(|v| v.to_string_lossy().into_owned())
                     .collect();
                 strings.into_sexp()
             }
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 let strings: Vec<String> = self
                     .into_iter()
                     .map(|v| v.to_string_lossy().into_owned())
@@ -884,20 +878,20 @@ macro_rules! impl_lossy_string_into_r {
         $(#[$vec_option_meta])*
         impl IntoR for Vec<Option<$owned_ty>> {
             type Error = crate::into_r_error::IntoRError;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 let strings: Vec<Option<String>> = self
                     .into_iter()
                     .map(|opt| opt.map(|v| v.to_string_lossy().into_owned()))
                     .collect();
                 strings.into_sexp()
             }
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 let strings: Vec<Option<String>> = self
                     .into_iter()
                     .map(|opt| opt.map(|v| v.to_string_lossy().into_owned()))
@@ -948,13 +942,13 @@ macro_rules! impl_set_coerce_into_r {
     ($from:ty) => {
         impl IntoR for HashSet<$from> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 let vec: Vec<i32> = self.into_iter().map(|x| i32::from(x)).collect();
                 vec.into_sexp()
             }
@@ -962,13 +956,13 @@ macro_rules! impl_set_coerce_into_r {
 
         impl IntoR for BTreeSet<$from> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 let vec: Vec<i32> = self.into_iter().map(|x| i32::from(x)).collect();
                 vec.into_sexp()
             }
@@ -988,28 +982,28 @@ impl_set_coerce_into_r!(u16);
 // This differs from Option<scalar> which returns NA for None.
 
 /// Convert `Option<Vec<T>>` to R: Some(vec) → vector, None → NULL.
-impl<T: crate::sys::RNativeType> IntoR for Option<Vec<T>> {
+impl<T: crate::RNativeType> IntoR for Option<Vec<T>> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
 }
@@ -1018,25 +1012,25 @@ impl<T: crate::sys::RNativeType> IntoR for Option<Vec<T>> {
 impl IntoR for Option<Vec<String>> {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
 }
@@ -1045,25 +1039,25 @@ impl IntoR for Option<Vec<String>> {
 impl<V: IntoR> IntoR for Option<HashMap<String, V>> {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
 }
@@ -1072,79 +1066,79 @@ impl<V: IntoR> IntoR for Option<HashMap<String, V>> {
 impl<V: IntoR> IntoR for Option<BTreeMap<String, V>> {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
 }
 
 /// Convert `Option<HashSet<T>>` to R: Some(set) -> vector, None -> NULL.
-impl<T: crate::sys::RNativeType + Eq + Hash> IntoR for Option<HashSet<T>> {
+impl<T: crate::RNativeType + Eq + Hash> IntoR for Option<HashSet<T>> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
 }
 
 /// Convert `Option<BTreeSet<T>>` to R: Some(set) -> vector, None -> NULL.
-impl<T: crate::sys::RNativeType + Ord> IntoR for Option<BTreeSet<T>> {
+impl<T: crate::RNativeType + Ord> IntoR for Option<BTreeSet<T>> {
     type Error = std::convert::Infallible;
     #[inline]
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
     #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     #[inline]
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => crate::sys::SEXP::nil(),
+            None => crate::SEXP::nil(),
         }
     }
 }
@@ -1155,25 +1149,25 @@ macro_rules! impl_option_collection_into_r {
         impl IntoR for Option<$ty> {
             type Error = crate::into_r_error::IntoRError;
             #[inline]
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
             #[inline]
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 match self {
                     Some(v) => v.into_sexp(),
-                    None => crate::sys::SEXP::nil(),
+                    None => crate::SEXP::nil(),
                 }
             }
             #[inline]
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 match self {
                     Some(v) => unsafe { v.into_sexp_unchecked() },
-                    None => crate::sys::SEXP::nil(),
+                    None => crate::SEXP::nil(),
                 }
             }
         }
@@ -1190,17 +1184,15 @@ impl_option_collection_into_r!(
 );
 
 /// Helper: allocate STRSXP and fill from a string iterator (checked).
-pub(crate) fn str_iter_to_strsxp<'a>(
-    iter: impl ExactSizeIterator<Item = &'a str>,
-) -> crate::sys::SEXP {
+pub(crate) fn str_iter_to_strsxp<'a>(iter: impl ExactSizeIterator<Item = &'a str>) -> crate::SEXP {
     unsafe {
-        let n: crate::sys::R_xlen_t = iter
+        let n: crate::R_xlen_t = iter
             .len()
             .try_into()
             .expect("string vec length exceeds isize::MAX");
-        let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::STRSXP, n));
+        let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
         for (i, s) in iter.enumerate() {
-            let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+            let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp(s);
             sexp.set_string_elt(idx, charsxp);
         }
@@ -1211,18 +1203,18 @@ pub(crate) fn str_iter_to_strsxp<'a>(
 /// Helper: allocate STRSXP and fill from a string iterator (unchecked).
 pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
-) -> crate::sys::SEXP {
+) -> crate::SEXP {
     unsafe {
-        let n: crate::sys::R_xlen_t = iter
+        let n: crate::R_xlen_t = iter
             .len()
             .try_into()
             .expect("string vec length exceeds isize::MAX");
         let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-            crate::sys::SEXPTYPE::STRSXP,
+            crate::SEXPTYPE::STRSXP,
             n,
         ));
         for (i, s) in iter.enumerate() {
-            let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+            let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp_unchecked(s);
             sexp.set_string_elt_unchecked(idx, charsxp);
         }
@@ -1233,17 +1225,17 @@ pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
 /// Convert `Vec<String>` to R character vector (STRSXP).
 impl IntoR for Vec<String> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         str_iter_to_strsxp(self.iter().map(|s| s.as_str()))
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_str())) }
     }
 }
@@ -1251,17 +1243,17 @@ impl IntoR for Vec<String> {
 /// Convert `&[String]` to R character vector (STRSXP).
 impl IntoR for &[String] {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         str_iter_to_strsxp(self.iter().map(|s| s.as_str()))
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_str())) }
     }
 }
@@ -1269,16 +1261,16 @@ impl IntoR for &[String] {
 /// Convert `Box<[String]>` to R character vector (STRSXP).
 impl IntoR for Box<[String]> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         str_iter_to_strsxp(self.iter().map(|s| s.as_str()))
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_str())) }
     }
 }
@@ -1286,17 +1278,17 @@ impl IntoR for Box<[String]> {
 /// Convert &[&str] to R character vector (STRSXP).
 impl IntoR for &[&str] {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         str_iter_to_strsxp(self.iter().copied())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { str_iter_to_strsxp_unchecked(self.iter().copied()) }
     }
 }
@@ -1304,16 +1296,16 @@ impl IntoR for &[&str] {
 /// Convert `Vec<Cow<'_, str>>` to R character vector (STRSXP).
 impl IntoR for Vec<std::borrow::Cow<'_, str>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         str_iter_to_strsxp(self.iter().map(|s| s.as_ref()))
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_ref())) }
     }
 }
@@ -1321,16 +1313,16 @@ impl IntoR for Vec<std::borrow::Cow<'_, str>> {
 /// Convert `Box<[Cow<'_, str>]>` to R character vector (STRSXP).
 impl IntoR for Box<[std::borrow::Cow<'_, str>]> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         str_iter_to_strsxp(self.iter().map(|s| s.as_ref()))
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_ref())) }
     }
 }
@@ -1340,46 +1332,45 @@ impl IntoR for Box<[std::borrow::Cow<'_, str>]> {
 /// `None` values become `NA_character_` in R.
 impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
-            let n: crate::sys::R_xlen_t = self
+            let n: crate::R_xlen_t = self
                 .len()
                 .try_into()
                 .expect("vec length exceeds isize::MAX");
-            let sexp =
-                OwnedProtect::new(crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::STRSXP, n));
+            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
             for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp(s.as_ref()),
-                    None => crate::sys::SEXP::na_string(),
+                    None => crate::SEXP::na_string(),
                 };
                 sexp.set_string_elt(idx, charsxp);
             }
             *sexp
         }
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
-            let n: crate::sys::R_xlen_t = self
+            let n: crate::R_xlen_t = self
                 .len()
                 .try_into()
                 .expect("vec length exceeds isize::MAX");
             let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-                crate::sys::SEXPTYPE::STRSXP,
+                crate::SEXPTYPE::STRSXP,
                 n,
             ));
             for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp_unchecked(s.as_ref()),
-                    None => crate::sys::SEXP::na_string(),
+                    None => crate::SEXP::na_string(),
                 };
                 sexp.set_string_elt_unchecked(idx, charsxp);
             }
@@ -1394,46 +1385,45 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
 /// `None` values become `NA_character_` in R. Borrowed analogue of `Vec<Option<String>>`.
 impl IntoR for Vec<Option<&str>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
-            let n: crate::sys::R_xlen_t = self
+            let n: crate::R_xlen_t = self
                 .len()
                 .try_into()
                 .expect("vec length exceeds isize::MAX");
-            let sexp =
-                OwnedProtect::new(crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::STRSXP, n));
+            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
             for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp(s),
-                    None => crate::sys::SEXP::na_string(),
+                    None => crate::SEXP::na_string(),
                 };
                 sexp.set_string_elt(idx, charsxp);
             }
             *sexp
         }
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
-            let n: crate::sys::R_xlen_t = self
+            let n: crate::R_xlen_t = self
                 .len()
                 .try_into()
                 .expect("vec length exceeds isize::MAX");
             let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-                crate::sys::SEXPTYPE::STRSXP,
+                crate::SEXPTYPE::STRSXP,
                 n,
             ));
             for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp_unchecked(s),
-                    None => crate::sys::SEXP::na_string(),
+                    None => crate::SEXP::na_string(),
                 };
                 sexp.set_string_elt_unchecked(idx, charsxp);
             }
@@ -1446,17 +1436,17 @@ impl IntoR for Vec<Option<&str>> {
 /// Convert `Vec<&str>` to R character vector (STRSXP).
 impl IntoR for Vec<&str> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         self.as_slice().into_sexp()
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.as_slice().into_sexp_unchecked() }
     }
 }
@@ -1467,25 +1457,24 @@ impl IntoR for Vec<&str> {
 /// Convert `Vec<Vec<T>>` to R list of vectors (VECSXP of typed vectors).
 impl<T> IntoR for Vec<Vec<T>>
 where
-    T: crate::sys::RNativeType,
+    T: crate::RNativeType,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::VECSXP, n as crate::sys::R_xlen_t);
+            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
             }
 
             crate::sys::Rf_unprotect(1);
@@ -1493,18 +1482,16 @@ where
         }
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list = crate::sys::Rf_allocVector_unchecked(
-                crate::sys::SEXPTYPE::VECSXP,
-                n as crate::sys::R_xlen_t,
-            );
+            let list =
+                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
             }
 
             crate::sys::Rf_unprotect(1);
@@ -1516,39 +1503,36 @@ where
 /// Convert `Vec<&[T]>` to R list of typed vectors (VECSXP).
 ///
 /// Borrowed analogue of `Vec<Vec<T>>` — each slice is copied into a fresh R vector.
-impl<T: crate::sys::RNativeType> IntoR for Vec<&[T]> {
+impl<T: crate::RNativeType> IntoR for Vec<&[T]> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::VECSXP, n as crate::sys::R_xlen_t);
+            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
             }
             crate::sys::Rf_unprotect(1);
             list
         }
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list = crate::sys::Rf_allocVector_unchecked(
-                crate::sys::SEXPTYPE::VECSXP,
-                n as crate::sys::R_xlen_t,
-            );
+            let list =
+                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
             }
             crate::sys::Rf_unprotect(1);
             list
@@ -1561,37 +1545,34 @@ impl<T: crate::sys::RNativeType> IntoR for Vec<&[T]> {
 /// Borrowed analogue of `Vec<Vec<String>>`.
 impl IntoR for Vec<&[String]> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::VECSXP, n as crate::sys::R_xlen_t);
+            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
             }
             crate::sys::Rf_unprotect(1);
             list
         }
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list = crate::sys::Rf_allocVector_unchecked(
-                crate::sys::SEXPTYPE::VECSXP,
-                n as crate::sys::R_xlen_t,
-            );
+            let list =
+                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
             }
             crate::sys::Rf_unprotect(1);
             list
@@ -1602,22 +1583,21 @@ impl IntoR for Vec<&[String]> {
 /// Convert `Vec<Vec<String>>` to R list of character vectors.
 impl IntoR for Vec<Vec<String>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::VECSXP, n as crate::sys::R_xlen_t);
+            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
             }
 
             crate::sys::Rf_unprotect(1);
@@ -1625,18 +1605,16 @@ impl IntoR for Vec<Vec<String>> {
         }
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list = crate::sys::Rf_allocVector_unchecked(
-                crate::sys::SEXPTYPE::VECSXP,
-                n as crate::sys::R_xlen_t,
-            );
+            let list =
+                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
             }
 
             crate::sys::Rf_unprotect(1);
@@ -1655,13 +1633,13 @@ macro_rules! impl_vec_option_into_r {
     ($t:ty, $na_value:expr) => {
         impl IntoR for Vec<Option<$t>> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$t>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
@@ -1671,7 +1649,7 @@ macro_rules! impl_vec_option_into_r {
                 }
             }
 
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$t>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
@@ -1695,13 +1673,13 @@ macro_rules! impl_vec_option_smart_i64_into_r {
     ($t:ty, $fits_i32:expr) => {
         impl IntoR for Vec<Option<$t>> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 unsafe {
                     if self.iter().all(|opt| match opt {
                         Some(x) => $fits_i32(*x),
@@ -1745,13 +1723,13 @@ macro_rules! impl_vec_option_coerce_into_r {
     ($from:ty => $to:ty) => {
         impl IntoR for Vec<Option<$from>> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 // Delegate to the target Option type's impl (coerce inline)
                 let coerced: Vec<Option<$to>> = self
                     .into_iter()
@@ -1772,9 +1750,9 @@ impl_vec_option_coerce_into_r!(f32 => f64);
 /// Helper: allocate LGLSXP and fill from an i32 iterator (checked).
 ///
 /// Uses `alloc_r_vector` — logical vectors are `RLogical` (repr(transparent) i32).
-fn logical_iter_to_lglsxp(n: usize, iter: impl Iterator<Item = i32>) -> crate::sys::SEXP {
+fn logical_iter_to_lglsxp(n: usize, iter: impl Iterator<Item = i32>) -> crate::SEXP {
     unsafe {
-        let (sexp, dst) = alloc_r_vector::<crate::sys::RLogical>(n);
+        let (sexp, dst) = alloc_r_vector::<crate::RLogical>(n);
         // RLogical is repr(transparent) over i32, safe to write i32 values.
         let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
         for (slot, val) in dst_i32.iter_mut().zip(iter) {
@@ -1788,9 +1766,9 @@ fn logical_iter_to_lglsxp(n: usize, iter: impl Iterator<Item = i32>) -> crate::s
 unsafe fn logical_iter_to_lglsxp_unchecked(
     n: usize,
     iter: impl Iterator<Item = i32>,
-) -> crate::sys::SEXP {
+) -> crate::SEXP {
     unsafe {
-        let (sexp, dst) = alloc_r_vector_unchecked::<crate::sys::RLogical>(n);
+        let (sexp, dst) = alloc_r_vector_unchecked::<crate::RLogical>(n);
         let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
         for (slot, val) in dst_i32.iter_mut().zip(iter) {
             *slot = val;
@@ -1802,18 +1780,18 @@ unsafe fn logical_iter_to_lglsxp_unchecked(
 /// Convert `Vec<bool>` to R logical vector.
 impl IntoR for Vec<bool> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let n = self.len();
         logical_iter_to_lglsxp(n, self.into_iter().map(i32::from))
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let n = self.len();
         unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(i32::from)) }
     }
@@ -1822,17 +1800,17 @@ impl IntoR for Vec<bool> {
 /// Convert `Box<[bool]>` to R logical vector.
 impl IntoR for Box<[bool]> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let n = self.len();
         logical_iter_to_lglsxp(n, self.iter().map(|&v| i32::from(v)))
     }
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let n = self.len();
         unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| i32::from(v))) }
     }
@@ -1841,18 +1819,18 @@ impl IntoR for Box<[bool]> {
 /// Convert `&[bool]` to R logical vector.
 impl IntoR for &[bool] {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let n = self.len();
         logical_iter_to_lglsxp(n, self.iter().map(|&v| i32::from(v)))
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let n = self.len();
         unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| i32::from(v))) }
     }
@@ -1863,18 +1841,18 @@ macro_rules! impl_vec_option_logical_into_r {
         $(#[$meta])*
         impl IntoR for Vec<Option<$t>> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 let n = self.len();
                 logical_iter_to_lglsxp(n, self.into_iter().map($convert))
             }
 
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 let n = self.len();
                 unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map($convert)) }
             }
@@ -1893,16 +1871,16 @@ impl_vec_option_logical_into_r!(
 );
 impl_vec_option_logical_into_r!(
     /// Convert `Vec<Option<Rboolean>>` to R logical vector with NA support.
-    crate::sys::Rboolean,
-    |v: Option<crate::sys::Rboolean>| match v {
+    crate::Rboolean,
+    |v: Option<crate::Rboolean>| match v {
         Some(b) => b as i32,
         None => NA_LOGICAL,
     }
 );
 impl_vec_option_logical_into_r!(
     /// Convert `Vec<Option<RLogical>>` to R logical vector with NA support.
-    crate::sys::RLogical,
-    |v: Option<crate::sys::RLogical>| match v {
+    crate::RLogical,
+    |v: Option<crate::RLogical>| match v {
         Some(b) => b.to_i32(),
         None => NA_LOGICAL,
     }
@@ -1913,26 +1891,25 @@ impl_vec_option_logical_into_r!(
 /// `None` values become `NA_character_` in R.
 impl IntoR for Vec<Option<String>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
-            let n: crate::sys::R_xlen_t = self
+            let n: crate::R_xlen_t = self
                 .len()
                 .try_into()
                 .expect("vec length exceeds isize::MAX");
-            let sexp =
-                OwnedProtect::new(crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::STRSXP, n));
+            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
 
             for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp(s),
-                    None => crate::sys::SEXP::na_string(),
+                    None => crate::SEXP::na_string(),
                 };
                 sexp.set_string_elt(idx, charsxp);
             }
@@ -1941,22 +1918,22 @@ impl IntoR for Vec<Option<String>> {
         }
     }
 
-    unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
-            let n: crate::sys::R_xlen_t = self
+            let n: crate::R_xlen_t = self
                 .len()
                 .try_into()
                 .expect("vec length exceeds isize::MAX");
             let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-                crate::sys::SEXPTYPE::STRSXP,
+                crate::SEXPTYPE::STRSXP,
                 n,
             ));
 
             for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::sys::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp_unchecked(s),
-                    None => crate::sys::SEXP::na_string(),
+                    None => crate::SEXP::na_string(),
                 };
                 sexp.set_string_elt_unchecked(idx, charsxp);
             }
@@ -1976,23 +1953,23 @@ macro_rules! impl_tuple_into_r {
     (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
         impl<$($T: IntoR),+> IntoR for ($($T,)+) {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 unsafe {
                     let list = crate::sys::Rf_allocVector(
-                        crate::sys::SEXPTYPE::VECSXP,
-                        $n as crate::sys::R_xlen_t
+                        crate::SEXPTYPE::VECSXP,
+                        $n as crate::R_xlen_t
                     );
                     crate::sys::Rf_protect(list);
 
                     $(
 
-                            list.set_vector_elt($idx as crate::sys::R_xlen_t, self.$idx.into_sexp()
+                            list.set_vector_elt($idx as crate::R_xlen_t, self.$idx.into_sexp()
                         );
                     )+
 
@@ -2001,17 +1978,17 @@ macro_rules! impl_tuple_into_r {
                 }
             }
 
-            unsafe fn into_sexp_unchecked(self) -> crate::sys::SEXP {
+            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
                     let list = crate::sys::Rf_allocVector_unchecked(
-                        crate::sys::SEXPTYPE::VECSXP,
-                        $n as crate::sys::R_xlen_t
+                        crate::SEXPTYPE::VECSXP,
+                        $n as crate::R_xlen_t
                     );
                     crate::sys::Rf_protect(list);
 
                     $(
 
-                            list.set_vector_elt_unchecked($idx as crate::sys::R_xlen_t, self.$idx.into_sexp_unchecked()
+                            list.set_vector_elt_unchecked($idx as crate::R_xlen_t, self.$idx.into_sexp_unchecked()
                         );
                     )+
 
@@ -2066,7 +2043,7 @@ impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
 /// # Example
 ///
 /// ```rust,ignore
-/// use miniextendr_api::{miniextendr, IntoRAltrep, IntoR, sys::SEXP};
+/// use miniextendr_api::{miniextendr, IntoRAltrep, IntoR, SEXP};
 ///
 /// #[miniextendr]
 /// fn large_dataset() -> SEXP {
@@ -2089,14 +2066,14 @@ pub trait IntoRAltrep {
     ///
     /// This is equivalent to `Altrep(self).into_sexp()` but more discoverable
     /// and explicit about the zero-copy intent.
-    fn into_sexp_altrep(self) -> crate::sys::SEXP;
+    fn into_sexp_altrep(self) -> crate::SEXP;
 
     /// Convert to R SEXP using ALTREP, skipping debug thread assertions.
     ///
     /// # Safety
     ///
     /// Caller must ensure they are on R's main thread.
-    unsafe fn into_sexp_altrep_unchecked(self) -> crate::sys::SEXP
+    unsafe fn into_sexp_altrep_unchecked(self) -> crate::SEXP
     where
         Self: Sized,
     {
@@ -2119,11 +2096,11 @@ impl<T> IntoRAltrep for T
 where
     T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
 {
-    fn into_sexp_altrep(self) -> crate::sys::SEXP {
+    fn into_sexp_altrep(self) -> crate::SEXP {
         Altrep(self).into_sexp()
     }
 
-    unsafe fn into_sexp_altrep_unchecked(self) -> crate::sys::SEXP {
+    unsafe fn into_sexp_altrep_unchecked(self) -> crate::SEXP {
         unsafe { Altrep(self).into_sexp_unchecked() }
     }
 }
@@ -2135,26 +2112,25 @@ where
 /// Each boxed slice becomes an R vector.
 impl<T> IntoR for Vec<Box<[T]>>
 where
-    T: crate::sys::RNativeType,
+    T: crate::RNativeType,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::VECSXP, n as crate::sys::R_xlen_t);
+            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
 
             for (i, boxed_slice) in self.into_iter().enumerate() {
                 let vec: Vec<T> = boxed_slice.into_vec();
                 let inner_sexp = vec.into_sexp();
-                list.set_vector_elt(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
             }
 
             crate::sys::Rf_unprotect(1);
@@ -2166,23 +2142,22 @@ where
 /// Convert `Vec<Box<[String]>>` to R list of character vectors.
 impl IntoR for Vec<Box<[String]>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
             let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::VECSXP, n as crate::sys::R_xlen_t);
+            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
 
             for (i, boxed_slice) in self.into_iter().enumerate() {
                 let vec: Vec<String> = boxed_slice.into_vec();
                 let inner_sexp = vec.into_sexp();
-                list.set_vector_elt(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
             }
 
             crate::sys::Rf_unprotect(1);
@@ -2195,28 +2170,25 @@ impl IntoR for Vec<Box<[String]>> {
 /// Each array becomes an R vector.
 impl<T, const N: usize> IntoR for Vec<[T; N]>
 where
-    T: crate::sys::RNativeType,
+    T: crate::RNativeType,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         unsafe {
             let len = self.len();
-            let list = crate::sys::Rf_allocVector(
-                crate::sys::SEXPTYPE::VECSXP,
-                len as crate::sys::R_xlen_t,
-            );
+            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, len as crate::R_xlen_t);
             crate::sys::Rf_protect(list);
 
             for (i, array) in self.into_iter().enumerate() {
                 let vec: Vec<T> = array.into();
                 let inner_sexp = vec.into_sexp();
-                list.set_vector_elt(i as crate::sys::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
             }
 
             crate::sys::Rf_unprotect(1);
@@ -2226,16 +2198,16 @@ where
 }
 
 /// Helper: convert a Vec of IntoR items to an R list (VECSXP).
-fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::sys::SEXP {
+fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::SEXP {
     unsafe {
         let n = items.len();
         let list = OwnedProtect::new(crate::sys::Rf_allocVector(
-            crate::sys::SEXPTYPE::VECSXP,
-            n as crate::sys::R_xlen_t,
+            crate::SEXPTYPE::VECSXP,
+            n as crate::R_xlen_t,
         ));
         for (i, item) in items.into_iter().enumerate() {
             list.get()
-                .set_vector_elt(i as crate::sys::R_xlen_t, item.into_sexp());
+                .set_vector_elt(i as crate::R_xlen_t, item.into_sexp());
         }
         *list
     }
@@ -2245,37 +2217,37 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::sys::SEXP {
 
 /// Helper: convert `Vec<Option<C: IntoR>>` to a VECSXP, with `None` mapping to
 /// `R_NilValue` (NULL) and `Some(v)` mapping to whatever `v.into_sexp()` produces.
-fn vec_option_of_into_r_to_list<T: IntoR>(items: Vec<Option<T>>) -> crate::sys::SEXP {
+fn vec_option_of_into_r_to_list<T: IntoR>(items: Vec<Option<T>>) -> crate::SEXP {
     unsafe {
         let n = items.len();
         let list = OwnedProtect::new(crate::sys::Rf_allocVector(
-            crate::sys::SEXPTYPE::VECSXP,
-            n as crate::sys::R_xlen_t,
+            crate::SEXPTYPE::VECSXP,
+            n as crate::R_xlen_t,
         ));
         for (i, item) in items.into_iter().enumerate() {
             let elt = match item {
                 Some(v) => v.into_sexp(),
-                None => crate::sys::SEXP::nil(),
+                None => crate::SEXP::nil(),
             };
-            list.get().set_vector_elt(i as crate::sys::R_xlen_t, elt);
+            list.get().set_vector_elt(i as crate::R_xlen_t, elt);
         }
         *list
     }
 }
 
 /// Convert `Vec<Option<Vec<T>>>` to R list where `None` → NULL, `Some(v)` → typed vector.
-impl<T: crate::sys::RNativeType> IntoR for Vec<Option<Vec<T>>>
+impl<T: crate::RNativeType> IntoR for Vec<Option<Vec<T>>>
 where
     Vec<T>: IntoR,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2283,30 +2255,30 @@ where
 /// Convert `Vec<Option<Vec<String>>>` to R list where `None` → NULL, `Some(v)` → character vector.
 impl IntoR for Vec<Option<Vec<String>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
 
 /// Convert `Vec<Option<HashSet<T>>>` to R list where `None` → NULL, `Some(s)` → unordered vector.
-impl<T: crate::sys::RNativeType + Eq + Hash> IntoR for Vec<Option<HashSet<T>>>
+impl<T: crate::RNativeType + Eq + Hash> IntoR for Vec<Option<HashSet<T>>>
 where
     HashSet<T>: IntoR,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2314,30 +2286,30 @@ where
 /// Convert `Vec<Option<HashSet<String>>>` to R list where `None` → NULL, `Some(s)` → character vector.
 impl IntoR for Vec<Option<HashSet<String>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
 
 /// Convert `Vec<Option<BTreeSet<T>>>` to R list where `None` → NULL, `Some(s)` → sorted vector.
-impl<T: crate::sys::RNativeType + Ord> IntoR for Vec<Option<BTreeSet<T>>>
+impl<T: crate::RNativeType + Ord> IntoR for Vec<Option<BTreeSet<T>>>
 where
     BTreeSet<T>: IntoR,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2345,13 +2317,13 @@ where
 /// Convert `Vec<Option<BTreeSet<String>>>` to R list where `None` → NULL, `Some(s)` → sorted character vector.
 impl IntoR for Vec<Option<BTreeSet<String>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2359,13 +2331,13 @@ impl IntoR for Vec<Option<BTreeSet<String>>> {
 /// Convert `Vec<Option<HashMap<String, V>>>` to R list where `None` → NULL, `Some(m)` → named list.
 impl<V: IntoR> IntoR for Vec<Option<HashMap<String, V>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2373,13 +2345,13 @@ impl<V: IntoR> IntoR for Vec<Option<HashMap<String, V>>> {
 /// Convert `Vec<Option<BTreeMap<String, V>>>` to R list where `None` → NULL, `Some(m)` → named list.
 impl<V: IntoR> IntoR for Vec<Option<BTreeMap<String, V>>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2387,15 +2359,15 @@ impl<V: IntoR> IntoR for Vec<Option<BTreeMap<String, V>>> {
 /// Convert `Vec<Option<&[T]>>` to R list where `None` → NULL, `Some(s)` → typed vector.
 ///
 /// Borrowed analogue of `Vec<Option<Vec<T>>>` — each slice is copied into a fresh R vector.
-impl<T: crate::sys::RNativeType> IntoR for Vec<Option<&[T]>> {
+impl<T: crate::RNativeType> IntoR for Vec<Option<&[T]>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2405,13 +2377,13 @@ impl<T: crate::sys::RNativeType> IntoR for Vec<Option<&[T]>> {
 /// Borrowed analogue of `Vec<Option<Vec<String>>>`.
 impl IntoR for Vec<Option<&[String]>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         vec_option_of_into_r_to_list(self)
     }
 }
@@ -2420,18 +2392,18 @@ impl IntoR for Vec<Option<&[String]>> {
 
 /// Convert `Vec<HashSet<T>>` to R list of vectors (for RNativeType elements).
 /// Each HashSet becomes an R vector (unordered).
-impl<T: crate::sys::RNativeType> IntoR for Vec<std::collections::HashSet<T>>
+impl<T: crate::RNativeType> IntoR for Vec<std::collections::HashSet<T>>
 where
     Vec<T>: IntoR,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let converted: Vec<Vec<T>> = self.into_iter().map(|s| s.into_iter().collect()).collect();
         vec_of_into_r_to_list(converted)
     }
@@ -2439,18 +2411,18 @@ where
 
 /// Convert `Vec<BTreeSet<T>>` to R list of vectors (for RNativeType elements).
 /// Each BTreeSet becomes an R vector (sorted).
-impl<T: crate::sys::RNativeType> IntoR for Vec<std::collections::BTreeSet<T>>
+impl<T: crate::RNativeType> IntoR for Vec<std::collections::BTreeSet<T>>
 where
     Vec<T>: IntoR,
 {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let converted: Vec<Vec<T>> = self.into_iter().map(|s| s.into_iter().collect()).collect();
         vec_of_into_r_to_list(converted)
     }
@@ -2459,13 +2431,13 @@ where
 /// Convert `Vec<HashSet<String>>` to R list of character vectors.
 impl IntoR for Vec<std::collections::HashSet<String>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let converted: Vec<Vec<String>> =
             self.into_iter().map(|s| s.into_iter().collect()).collect();
         vec_of_into_r_to_list(converted)
@@ -2475,13 +2447,13 @@ impl IntoR for Vec<std::collections::HashSet<String>> {
 /// Convert `Vec<BTreeSet<String>>` to R list of character vectors.
 impl IntoR for Vec<std::collections::BTreeSet<String>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
-    fn into_sexp(self) -> crate::sys::SEXP {
+    fn into_sexp(self) -> crate::SEXP {
         let converted: Vec<Vec<String>> =
             self.into_iter().map(|s| s.into_iter().collect()).collect();
         vec_of_into_r_to_list(converted)
@@ -2493,13 +2465,13 @@ macro_rules! impl_vec_map_into_r {
         $(#[$meta])*
         impl<V: IntoR> IntoR for Vec<$map_ty<String, V>> {
             type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
                 Ok(self.into_sexp())
             }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
                 self.try_into_sexp()
             }
-            fn into_sexp(self) -> crate::sys::SEXP {
+            fn into_sexp(self) -> crate::SEXP {
                 vec_of_maps_to_list(self)
             }
         }
@@ -2516,15 +2488,14 @@ impl_vec_map_into_r!(
 );
 
 /// Helper to convert a Vec of map-like types to an R list of named lists.
-fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::sys::SEXP {
+fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::SEXP {
     unsafe {
         let n = vec.len();
-        let list =
-            crate::sys::Rf_allocVector(crate::sys::SEXPTYPE::VECSXP, n as crate::sys::R_xlen_t);
+        let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
         crate::sys::Rf_protect(list);
 
         for (i, map) in vec.into_iter().enumerate() {
-            list.set_vector_elt(i as crate::sys::R_xlen_t, map.into_sexp());
+            list.set_vector_elt(i as crate::R_xlen_t, map.into_sexp());
         }
 
         crate::sys::Rf_unprotect(1);
@@ -2537,9 +2508,9 @@ fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::sys::SEXP {
 
 #[cfg(feature = "connections")]
 mod connections_into_r {
+    use crate::SEXP;
     use crate::connection::{RNullConnection, RStderr, RStdin, RStdout};
     use crate::into_r::IntoR;
-    use crate::sys::SEXP;
 
     // Evaluate a no-arg base function and return the resulting SEXP (unprotected).
     //
@@ -2621,8 +2592,8 @@ mod connections_into_r {
 
 #[cfg(feature = "connections")]
 mod txt_progress_bar_into_r {
+    use crate::SEXP;
     use crate::into_r::IntoR;
-    use crate::sys::SEXP;
     use crate::txt_progress_bar::RTxtProgressBar;
 
     /// Transfer ownership of the `RTxtProgressBar` back to R.

@@ -85,7 +85,7 @@
 
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::sys::{self, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::marker::PhantomData;
 
 // region: Type aliases
@@ -625,12 +625,12 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
             .expect("array total length overflows usize");
 
         assert!(
-            total_len <= sys::R_xlen_t::MAX as usize,
+            total_len <= R_xlen_t::MAX as usize,
             "array total length {total_len} exceeds R_xlen_t::MAX"
         );
 
         // Allocate the vector
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total_len as sys::R_xlen_t) };
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total_len as R_xlen_t) };
 
         // Set dimensions
         unsafe { set_dims::<NDIM>(sexp, &dims) };
@@ -686,8 +686,9 @@ impl<T: RNativeType, const NDIM: usize> TryFromSexp for RArray<T, NDIM> {
 // but can be coerced from one. The RArray wraps the source SEXP directly (zero-copy).
 // Note: as_slice() is not available for coerced types - use to_vec_coerced() instead.
 
+use crate::RLogical;
 use crate::coerce::TryCoerce;
-use crate::sys::RLogical;
+use crate::sys::{self};
 
 /// Helper to validate all elements can be coerced.
 fn validate_coercion<S, T>(slice: &[S]) -> Result<(), SexpError>
@@ -793,10 +794,10 @@ impl_rarray_try_from_sexp_coerce!(RLogical => bool);
 
 impl<T: RNativeType, const NDIM: usize> IntoR for RArray<T, NDIM> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> SEXP {

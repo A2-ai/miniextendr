@@ -54,7 +54,8 @@ pub use indexmap::IndexMap;
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::{R_xlen_t, Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::Rf_allocVector;
+use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 
 // region: TryFromSexp for IndexMap<String, T>
 

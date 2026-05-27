@@ -328,10 +328,10 @@ impl AltIntegerData for ConstantIntData {
 
 // Serialization support: save as [value, len], reconstruct on load
 impl miniextendr_api::altrep_data::AltrepSerialize for ConstantIntData {
-    fn serialized_state(&self) -> miniextendr_api::sys::SEXP {
+    fn serialized_state(&self) -> miniextendr_api::SEXP {
         vec![self.value, self.len as i32].into_sexp()
     }
-    fn unserialize(state: miniextendr_api::sys::SEXP) -> Option<Self> {
+    fn unserialize(state: miniextendr_api::SEXP) -> Option<Self> {
         let v: Vec<i32> = miniextendr_api::TryFromSexp::try_from_sexp(state).ok()?;
         if v.len() != 2 {
             return None;
@@ -970,7 +970,8 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
         const NA_LOGICAL: i32 = i32::MIN;
         unsafe {
             use miniextendr_api::prelude::SexpExt;
-            use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
+            use miniextendr_api::SEXPTYPE;
+            use miniextendr_api::sys::Rf_allocVector;
             let n = self.data.len();
             let state = Rf_allocVector(SEXPTYPE::LGLSXP, n as isize);
             for (i, v) in self.data.iter().enumerate() {
@@ -1098,7 +1099,7 @@ pub fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
 // -----------------------------------------------------------------------------
 
 use miniextendr_api::altrep_data::AltComplexData;
-use miniextendr_api::sys::Rcomplex;
+use miniextendr_api::Rcomplex;
 
 #[derive(miniextendr_api::AltrepComplex)]
 #[altrep(class = "UnitCircle", manual)]
@@ -1223,10 +1224,10 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for SimpleVecIntData {
 }
 
 impl miniextendr_api::altrep_data::AltrepSerialize for SimpleVecIntData {
-    fn serialized_state(&self) -> miniextendr_api::sys::SEXP {
+    fn serialized_state(&self) -> miniextendr_api::SEXP {
         <Vec<i32> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
     }
-    fn unserialize(state: miniextendr_api::sys::SEXP) -> Option<Self> {
+    fn unserialize(state: miniextendr_api::SEXP) -> Option<Self> {
         <Vec<i32> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
             .map(|data| Self { data })
     }
@@ -1259,12 +1260,12 @@ impl AltStringData for StringVecData {
 }
 
 impl miniextendr_api::altrep_data::AltrepSerialize for StringVecData {
-    fn serialized_state(&self) -> miniextendr_api::sys::SEXP {
+    fn serialized_state(&self) -> miniextendr_api::SEXP {
         <Vec<Option<String>> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(
             &self.data,
         )
     }
-    fn unserialize(state: miniextendr_api::sys::SEXP) -> Option<Self> {
+    fn unserialize(state: miniextendr_api::SEXP) -> Option<Self> {
         <Vec<Option<String>> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
             .map(|data| Self { data })
     }
@@ -1305,10 +1306,10 @@ impl miniextendr_api::altrep_data::AltrepDataptr<u8> for SimpleVecRawData {
 }
 
 impl miniextendr_api::altrep_data::AltrepSerialize for SimpleVecRawData {
-    fn serialized_state(&self) -> miniextendr_api::sys::SEXP {
+    fn serialized_state(&self) -> miniextendr_api::SEXP {
         <Vec<u8> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
     }
-    fn unserialize(state: miniextendr_api::sys::SEXP) -> Option<Self> {
+    fn unserialize(state: miniextendr_api::SEXP) -> Option<Self> {
         <Vec<u8> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
             .map(|data| Self { data })
     }
@@ -1350,10 +1351,10 @@ impl miniextendr_api::altrep_data::AltrepDataptr<f64> for InferredVecRealData {
 }
 
 impl miniextendr_api::altrep_data::AltrepSerialize for InferredVecRealData {
-    fn serialized_state(&self) -> miniextendr_api::sys::SEXP {
+    fn serialized_state(&self) -> miniextendr_api::SEXP {
         <Vec<f64> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
     }
-    fn unserialize(state: miniextendr_api::sys::SEXP) -> Option<Self> {
+    fn unserialize(state: miniextendr_api::SEXP) -> Option<Self> {
         <Vec<f64> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
             .map(|data| Self { data })
     }
@@ -1395,10 +1396,10 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for BoxedIntsData {
 }
 
 impl miniextendr_api::altrep_data::AltrepSerialize for BoxedIntsData {
-    fn serialized_state(&self) -> miniextendr_api::sys::SEXP {
+    fn serialized_state(&self) -> miniextendr_api::SEXP {
         <Box<[i32]> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
     }
-    fn unserialize(state: miniextendr_api::sys::SEXP) -> Option<Self> {
+    fn unserialize(state: miniextendr_api::SEXP) -> Option<Self> {
         <Box<[i32]> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
             .map(|data| Self { data })
     }
@@ -1538,7 +1539,7 @@ pub struct ListData {
 impl Drop for ListData {
     fn drop(&mut self) {
         unsafe {
-            if self.list != miniextendr_api::sys::SEXP::nil() {
+            if self.list != miniextendr_api::SEXP::nil() {
                 miniextendr_api::sys::R_ReleaseObject(self.list);
             }
         }
@@ -1554,7 +1555,7 @@ impl AltrepLen for ListData {
 impl AltListData for ListData {
     fn elt(&self, i: usize) -> SEXP {
         use miniextendr_api::prelude::SexpExt;
-        self.list.vector_elt(i as miniextendr_api::sys::R_xlen_t)
+        self.list.vector_elt(i as miniextendr_api::R_xlen_t)
     }
 }
 

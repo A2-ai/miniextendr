@@ -6,8 +6,8 @@
 //! (`@exact`) mode.
 
 use miniextendr_api::list::List;
-use miniextendr_api::sys::{self, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::typed_list::{TypeSpec, TypedEntry, TypedListSpec, validate_list};
+use miniextendr_api::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_bench::raw_ffi;
 
 fn main() {
@@ -20,20 +20,14 @@ fn main() {
 /// Build a named VECSXP with `n` numeric(1) entries named "f0", "f1", ..., "f{n-1}".
 fn make_numeric_list(n: usize) -> SEXP {
     unsafe {
-        let list = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
-            SEXPTYPE::VECSXP,
-            n as sys::R_xlen_t,
-        ));
-        let names = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
-            SEXPTYPE::STRSXP,
-            n as sys::R_xlen_t,
-        ));
+        let list = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(SEXPTYPE::VECSXP, n as R_xlen_t));
+        let names = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t));
 
         for i in 0..n {
-            list.set_vector_elt(i as sys::R_xlen_t, SEXP::scalar_real(i as f64));
+            list.set_vector_elt(i as R_xlen_t, SEXP::scalar_real(i as f64));
 
             let key = format!("f{i}");
-            names.set_string_elt(i as sys::R_xlen_t, SEXP::charsxp(&key));
+            names.set_string_elt(i as R_xlen_t, SEXP::charsxp(&key));
         }
 
         list.set_names(names);
@@ -89,14 +83,8 @@ fn make_mixed_spec(n: usize) -> TypedListSpec {
 /// Build a named list with mixed types matching `make_mixed_spec`.
 fn make_mixed_list(n: usize) -> SEXP {
     unsafe {
-        let list = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
-            SEXPTYPE::VECSXP,
-            n as sys::R_xlen_t,
-        ));
-        let names = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
-            SEXPTYPE::STRSXP,
-            n as sys::R_xlen_t,
-        ));
+        let list = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(SEXPTYPE::VECSXP, n as R_xlen_t));
+        let names = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t));
 
         for i in 0..n {
             let val = match i % 4 {
@@ -105,10 +93,10 @@ fn make_mixed_list(n: usize) -> SEXP {
                 2 => SEXP::scalar_string_from_str("x"),
                 _ => SEXP::scalar_logical(true),
             };
-            list.set_vector_elt(i as sys::R_xlen_t, val);
+            list.set_vector_elt(i as R_xlen_t, val);
 
             let key = format!("f{i}");
-            names.set_string_elt(i as sys::R_xlen_t, SEXP::charsxp(&key));
+            names.set_string_elt(i as R_xlen_t, SEXP::charsxp(&key));
         }
 
         list.set_names(names);

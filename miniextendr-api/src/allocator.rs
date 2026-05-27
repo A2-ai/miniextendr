@@ -37,8 +37,9 @@
 //! For long-lived allocations or critical cleanup requirements, consider using
 //! Rust's standard allocator instead.
 
-use crate::sys::{R_PreserveObject_unchecked, R_ReleaseObject_unchecked, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{R_PreserveObject_unchecked, R_ReleaseObject_unchecked};
 use crate::worker::{has_worker_context, is_r_main_thread, with_r_thread};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 use core::{
     alloc::{GlobalAlloc, Layout},
     mem, ptr,

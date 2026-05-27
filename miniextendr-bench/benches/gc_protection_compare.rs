@@ -8,7 +8,8 @@
 //! See `plans/gc-protection-benchmarks.md`.
 
 use miniextendr_api::protect_pool::ProtectPool;
-use miniextendr_api::sys::{self, R_PreserveObject, R_ReleaseObject, SEXP};
+use miniextendr_api::sys::{self, R_PreserveObject, R_ReleaseObject};
+use miniextendr_api::{R_xlen_t, SEXP, SEXPTYPE};
 use miniextendr_bench::pool_prototypes::{
     BTreeMapPool, DequePool, HashMapPool, IndexMapPool, SlotmapPool, VecPool,
 };
@@ -407,7 +408,7 @@ mod bursty {
         let sexps = unsafe { prealloc_sexps(burst * rounds) };
 
         bencher.bench_local(|| unsafe {
-            let mut kept: Vec<sys::SEXP> = Vec::new();
+            let mut kept: Vec<SEXP> = Vec::new();
             for round in 0..rounds {
                 for i in 0..burst {
                     R_PreserveObject(sexps[round * burst + i]);
@@ -461,7 +462,7 @@ mod replace_in_loop {
         bencher.bench_local(|| unsafe {
             let slot = pool.insert(sexps[0]);
             for &s in &sexps[1..] {
-                raw_ffi::SET_VECTOR_ELT(pool.backing, slot as sys::R_xlen_t, s);
+                raw_ffi::SET_VECTOR_ELT(pool.backing, slot as R_xlen_t, s);
             }
             pool.release(slot);
         });
@@ -878,7 +879,7 @@ mod gc_and_memory {
         bencher.bench_local(|| unsafe {
             for (i, &s) in sexps.iter().enumerate() {
                 let slot = pool.insert(s);
-                divan::black_box(raw_ffi::Rf_allocVector(sys::SEXPTYPE::INTSXP, 10));
+                divan::black_box(raw_ffi::Rf_allocVector(SEXPTYPE::INTSXP, 10));
                 pool.release(slot);
                 _ = i;
             }

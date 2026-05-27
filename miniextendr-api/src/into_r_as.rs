@@ -49,7 +49,7 @@
 
 use crate::coerce::{CoerceError, TryCoerce};
 use crate::into_r::IntoR;
-use crate::sys::{RLogical, SEXP};
+use crate::{RLogical, SEXP};
 use std::fmt;
 
 // region: Error type

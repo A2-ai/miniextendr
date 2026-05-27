@@ -143,7 +143,7 @@
 //! ```ignore
 //! // UNSAFE: _unchecked variants don't route to main thread
 //! data.par_iter().map(|x| {
-//!     unsafe { sys::SEXP::scalar_real_unchecked(*x) }  // UB! No routing
+//!     unsafe { SEXP::scalar_real_unchecked(*x) }  // UB! No routing
 //! }).collect()
 //! ```
 //!
@@ -193,8 +193,8 @@
 //! on primitive types (`i32`, `f64`, `bool`, etc.) and standard Rust collections.
 
 use crate::IntoR;
-use crate::sys::{RNativeType, SEXP, SexpExt};
 use crate::worker::with_r_thread;
+use crate::{RNativeType, SEXP, SexpExt};
 
 #[cfg(feature = "rayon")]
 pub use rayon;
@@ -267,7 +267,7 @@ where
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, len as crate::sys::R_xlen_t);
+        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, len as crate::R_xlen_t);
         crate::sys::Rf_protect_unchecked(sexp);
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
@@ -582,8 +582,7 @@ where
     // Allocate, set dims, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp =
-            crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::sys::R_xlen_t);
+        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::R_xlen_t);
         crate::sys::Rf_protect_unchecked(sexp);
 
         let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector_unchecked::<i32>(NDIM);
@@ -1269,10 +1268,8 @@ pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
         // Allocate, protect, and get data pointer on the R main thread
         use crate::worker::Sendable;
         let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-            let sexp = crate::sys::Rf_allocVector_unchecked(
-                Self::Item::SEXP_TYPE,
-                len as crate::sys::R_xlen_t,
-            );
+            let sexp =
+                crate::sys::Rf_allocVector_unchecked(Self::Item::SEXP_TYPE, len as crate::R_xlen_t);
             crate::sys::Rf_protect_unchecked(sexp);
             let ptr = Self::Item::dataptr_mut(sexp);
             (sexp, Sendable(ptr))

@@ -1,10 +1,10 @@
+use crate::Rcomplex;
 use crate::altrep_data::{
     AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,
     AltrepLen, IterComplexData, IterIntCoerceData, IterIntData, IterIntFromBoolData,
     IterLogicalData, IterRawData, IterRealCoerceData, IterRealData, IterStringData, Logical,
     Sortedness,
 };
-use crate::sys::Rcomplex;
 
 #[test]
 pub(crate) fn test_logical_to_r_int() {

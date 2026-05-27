@@ -25,7 +25,7 @@ use crate::from_r::{
     SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
     charsxp_to_str_unchecked,
 };
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// Convert R character vector (STRSXP) to Rust &str.
 ///

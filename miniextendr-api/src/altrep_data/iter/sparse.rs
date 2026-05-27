@@ -253,9 +253,9 @@ impl<I: Iterator<Item = i32> + 'static> InferBase for SparseIterIntData<I> {
 }
 
 impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::Altrep for SparseIterIntData<I> {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -264,7 +264,7 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltVec for SparseI
 impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger for SparseIterIntData<I> {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> i32 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltIntegerData::elt(data, i as usize)
     }
@@ -272,13 +272,13 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger for Spa
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [i32],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 
@@ -356,9 +356,9 @@ impl<I: Iterator<Item = f64> + 'static> InferBase for SparseIterRealData<I> {
 }
 
 impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::Altrep for SparseIterRealData<I> {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -367,7 +367,7 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltVec for SparseI
 impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for SparseIterRealData<I> {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> f64 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> f64 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltRealData::elt(data, i as usize)
     }
@@ -375,13 +375,13 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for Sparse
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [f64],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 
@@ -455,9 +455,9 @@ impl<I: Iterator<Item = bool> + 'static> InferBase for SparseIterLogicalData<I> 
 }
 
 impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep for SparseIterLogicalData<I> {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -468,7 +468,7 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltLogical
 {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> i32 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltLogicalData::elt(data, i as usize).to_r_int()
     }
@@ -476,13 +476,13 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltLogical
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [i32],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltLogicalData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltLogicalData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 
@@ -555,9 +555,9 @@ impl<I: Iterator<Item = u8> + 'static> InferBase for SparseIterRawData<I> {
 }
 
 impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::Altrep for SparseIterRawData<I> {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -566,7 +566,7 @@ impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltVec for SparseIt
 impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltRaw for SparseIterRawData<I> {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> u8 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> u8 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltRawData::elt(data, i as usize)
     }
@@ -574,27 +574,27 @@ impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltRaw for SparseIt
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [u8],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRawData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltRawData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 
 /// Sparse iterator-backed complex number vector.
 pub struct SparseIterComplexData<I>
 where
-    I: Iterator<Item = crate::sys::Rcomplex>,
+    I: Iterator<Item = crate::Rcomplex>,
 {
-    state: SparseIterState<I, crate::sys::Rcomplex>,
+    state: SparseIterState<I, crate::Rcomplex>,
 }
 
 impl<I> SparseIterComplexData<I>
 where
-    I: Iterator<Item = crate::sys::Rcomplex>,
+    I: Iterator<Item = crate::Rcomplex>,
 {
     /// Create from an iterator with explicit length.
     pub fn from_iter(iter: I, len: usize) -> Self {
@@ -606,7 +606,7 @@ where
 
 impl<I> SparseIterComplexData<I>
 where
-    I: ExactSizeIterator<Item = crate::sys::Rcomplex>,
+    I: ExactSizeIterator<Item = crate::Rcomplex>,
 {
     /// Create from an ExactSizeIterator (length auto-detected).
     pub fn from_exact_iter(iter: I) -> Self {
@@ -618,7 +618,7 @@ where
 
 impl<I> AltrepLen for SparseIterComplexData<I>
 where
-    I: Iterator<Item = crate::sys::Rcomplex>,
+    I: Iterator<Item = crate::Rcomplex>,
 {
     fn len(&self) -> usize {
         self.state.len()
@@ -627,25 +627,25 @@ where
 
 impl<I> AltComplexData for SparseIterComplexData<I>
 where
-    I: Iterator<Item = crate::sys::Rcomplex>,
+    I: Iterator<Item = crate::Rcomplex>,
 {
-    fn elt(&self, i: usize) -> crate::sys::Rcomplex {
-        self.state.get_element(i).unwrap_or(crate::sys::Rcomplex {
+    fn elt(&self, i: usize) -> crate::Rcomplex {
+        self.state.get_element(i).unwrap_or(crate::Rcomplex {
             r: f64::NAN,
             i: f64::NAN,
         })
     }
 
-    fn as_slice(&self) -> Option<&[crate::sys::Rcomplex]> {
+    fn as_slice(&self) -> Option<&[crate::Rcomplex]> {
         None
     }
 
-    fn get_region(&self, start: usize, len: usize, buf: &mut [crate::sys::Rcomplex]) -> usize {
+    fn get_region(&self, start: usize, len: usize, buf: &mut [crate::Rcomplex]) -> usize {
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
-impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> crate::externalptr::TypedExternal
+impl<I: Iterator<Item = crate::Rcomplex> + 'static> crate::externalptr::TypedExternal
     for SparseIterComplexData<I>
 {
     const TYPE_NAME: &'static str = "SparseIterComplexData";
@@ -653,7 +653,7 @@ impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> crate::externalptr::Typ
     const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::SparseIterComplexData\0";
 }
 
-impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> InferBase for SparseIterComplexData<I> {
+impl<I: Iterator<Item = crate::Rcomplex> + 'static> InferBase for SparseIterComplexData<I> {
     const BASE: crate::altrep::RBase = crate::altrep::RBase::Complex;
 
     unsafe fn make_class(
@@ -672,26 +672,26 @@ impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> InferBase for SparseIte
     }
 }
 
-impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> crate::altrep_traits::Altrep
+impl<I: Iterator<Item = crate::Rcomplex> + 'static> crate::altrep_traits::Altrep
     for SparseIterComplexData<I>
 {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
-impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> crate::altrep_traits::AltVec
+impl<I: Iterator<Item = crate::Rcomplex> + 'static> crate::altrep_traits::AltVec
     for SparseIterComplexData<I>
 {
 }
 
-impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> crate::altrep_traits::AltComplex
+impl<I: Iterator<Item = crate::Rcomplex> + 'static> crate::altrep_traits::AltComplex
     for SparseIterComplexData<I>
 {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> crate::sys::Rcomplex {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> crate::Rcomplex {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltComplexData::elt(data, i as usize)
     }
@@ -699,13 +699,13 @@ impl<I: Iterator<Item = crate::sys::Rcomplex> + 'static> crate::altrep_traits::A
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
-        buf: &mut [crate::sys::Rcomplex],
-    ) -> crate::sys::R_xlen_t {
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
+        buf: &mut [crate::Rcomplex],
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltComplexData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltComplexData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 // endregion

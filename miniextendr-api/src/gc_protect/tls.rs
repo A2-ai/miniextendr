@@ -27,7 +27,7 @@
 //! }
 //! ```
 use super::ProtectScope;
-use crate::sys::SEXP;
+use crate::SEXP;
 use std::cell::RefCell;
 use std::ptr::NonNull;
 

@@ -5,13 +5,14 @@
 //!
 //! No runtime initialization is required — construction helpers use only base R FFI.
 
-use crate::sys::SEXP;
+use crate::SEXP;
 
 // region: Construction helpers (Phase A)
 
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
-use crate::sys::{R_xlen_t, Rf_allocVector, SEXPTYPE, SexpExt};
+use crate::sys::Rf_allocVector;
+use crate::{R_xlen_t, SEXPTYPE, SexpExt};
 
 /// Error type for vctrs object construction.
 ///
@@ -487,7 +488,7 @@ pub fn new_list_of(
 
     // Set size attribute if provided
     if let Some(s) = size {
-        let size_sexp = crate::sys::SEXP::scalar_integer(s);
+        let size_sexp = crate::SEXP::scalar_integer(s);
         data.set_attr(crate::cached_class::size_symbol(), size_sexp);
     }
 

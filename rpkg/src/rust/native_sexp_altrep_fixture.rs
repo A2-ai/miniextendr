@@ -48,9 +48,8 @@ use std::sync::OnceLock;
 
 use miniextendr_api::altrep::RegisterAltrep;
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepDataptr, AltrepExtract, AltrepLen};
-use miniextendr_api::sys::{
-    DATAPTR_RO, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt as _,
-};
+use miniextendr_api::{R_xlen_t, SEXP, SEXPTYPE, SexpExt as _};
+use miniextendr_api::sys::{DATAPTR_RO, Rf_allocVector, Rf_protect, Rf_unprotect};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{impl_inferbase_integer, miniextendr};
 

@@ -26,7 +26,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
-use crate::sys::{self, SEXP, SEXPTYPE, SexpExt};
+use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 
 // region: AtomicElement trait
 
@@ -226,7 +226,7 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
             } else {
                 SEXP::charsxp(s)
             };
-            names.set_string_elt(i as sys::R_xlen_t, charsxp);
+            names.set_string_elt(i as R_xlen_t, charsxp);
         }
 
         sexp.set_names(names);
@@ -252,7 +252,7 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
     let mut seen = HashSet::with_capacity(len);
 
     for i in 0..len {
-        let charsxp = names.string_elt(i as sys::R_xlen_t);
+        let charsxp = names.string_elt(i as R_xlen_t);
 
         // Reject NA names
         if charsxp == SEXP::na_string() {
@@ -286,10 +286,10 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
 
 impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
@@ -305,10 +305,10 @@ impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
 
 impl<V: AtomicElement> IntoR for NamedVector<BTreeMap<String, V>> {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {

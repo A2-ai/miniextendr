@@ -6,7 +6,7 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::from_r::charsxp_to_str;
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
 /// Deserializer that converts R SEXP to Rust values.

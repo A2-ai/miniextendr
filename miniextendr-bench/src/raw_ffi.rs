@@ -3,7 +3,7 @@
 //! These re-declare R C API functions that miniextendr-api has privatized.
 //! Bench code needs direct access to measure overhead of safe wrappers.
 
-use miniextendr_api::sys::{R_xlen_t, Rboolean, Rcomplex, SEXP, SEXPTYPE};
+use miniextendr_api::{R_xlen_t, Rboolean, Rcomplex, SEXP, SEXPTYPE};
 
 #[allow(non_snake_case, dead_code)]
 unsafe extern "C-unwind" {
@@ -28,7 +28,7 @@ unsafe extern "C-unwind" {
     pub fn Rf_mkCharLenCE(
         s: *const std::os::raw::c_char,
         len: i32,
-        encoding: miniextendr_api::sys::cetype_t,
+        encoding: miniextendr_api::cetype_t,
     ) -> SEXP;
     pub fn Rf_isNewList(s: SEXP) -> Rboolean;
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;

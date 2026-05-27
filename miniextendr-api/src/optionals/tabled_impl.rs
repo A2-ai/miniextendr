@@ -49,7 +49,8 @@ pub use tabled::{Table, Tabled};
 
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::Rf_allocVector;
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Helper functions
 
@@ -194,10 +195,10 @@ pub fn table_to_string_styled<T: Tabled>(rows: &[T], style: &str) -> String {
 
 impl IntoR for Table {
     type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::sys::SEXP, Self::Error> {
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
     }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::sys::SEXP, Self::Error> {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
         self.try_into_sexp()
     }
     /// Convert a Table to an R character scalar.

@@ -10,8 +10,7 @@ use miniextendr_api::altrep_data::{
     AltComplexData, AltIntegerData, AltRealData, AltStringData, AltrepDataptr, AltrepLen,
 };
 use miniextendr_api::sys;
-use miniextendr_api::sys::Rcomplex;
-use miniextendr_api::sys::SexpExt;
+use miniextendr_api::{R_xlen_t, Rcomplex, SexpExt};
 use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
@@ -185,7 +184,7 @@ mod guard_modes {
         let sexp = data.into_sexp();
         let mut sum = 0i64;
         for i in 0..len {
-            sum += sexp.integer_elt(i as sys::R_xlen_t) as i64;
+            sum += sexp.integer_elt(i as R_xlen_t) as i64;
         }
         divan::black_box(sum);
     }
@@ -198,7 +197,7 @@ mod guard_modes {
         let sexp = data.into_sexp();
         let mut sum = 0i64;
         for i in 0..len {
-            sum += sexp.integer_elt(i as sys::R_xlen_t) as i64;
+            sum += sexp.integer_elt(i as R_xlen_t) as i64;
         }
         divan::black_box(sum);
     }
@@ -211,7 +210,7 @@ mod guard_modes {
         let sexp = data.into_sexp();
         let mut sum = 0i64;
         for i in 0..len {
-            sum += sexp.integer_elt(i as sys::R_xlen_t) as i64;
+            sum += sexp.integer_elt(i as R_xlen_t) as i64;
         }
         divan::black_box(sum);
     }
@@ -223,7 +222,7 @@ mod guard_modes {
         let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
         let mut sum = 0i64;
         for i in 0..len {
-            sum += sexp.integer_elt(i as sys::R_xlen_t) as i64;
+            sum += sexp.integer_elt(i as R_xlen_t) as i64;
         }
         divan::black_box(sum);
     }
@@ -254,7 +253,7 @@ mod materialization {
         let sexp = (BenchIntVec { data }).into_sexp();
         let mut sum: i64 = 0;
         for i in 0..len {
-            sum += sexp.integer_elt(i as sys::R_xlen_t) as i64;
+            sum += sexp.integer_elt(i as R_xlen_t) as i64;
         }
         divan::black_box(sum);
     }
@@ -419,7 +418,7 @@ mod complex_altrep {
         let sexp = (BenchComplex { data }).into_sexp();
         let mut sum_r = 0.0f64;
         for i in 0..len {
-            sum_r += sexp.complex_elt(i as sys::R_xlen_t).r;
+            sum_r += sexp.complex_elt(i as R_xlen_t).r;
         }
         divan::black_box(sum_r);
     }
@@ -481,7 +480,7 @@ mod zero_alloc {
         let sexp = data.into_sexp();
         let mut sum = 0.0f64;
         for i in 0..len {
-            sum += sexp.real_elt(i as sys::R_xlen_t);
+            sum += sexp.real_elt(i as R_xlen_t);
         }
         divan::black_box(sum);
     }
@@ -494,7 +493,7 @@ mod zero_alloc {
         let sexp = (BenchRealVec { data }).into_sexp();
         let mut sum = 0.0f64;
         for i in 0..len {
-            sum += sexp.real_elt(i as sys::R_xlen_t);
+            sum += sexp.real_elt(i as R_xlen_t);
         }
         divan::black_box(sum);
     }

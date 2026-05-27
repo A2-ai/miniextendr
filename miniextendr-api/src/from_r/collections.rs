@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
-use crate::sys::{RLogical, SEXP, SEXPTYPE, SexpExt};
+use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_map_try_from_sexp {
     ($(#[$meta:meta])* $map_ty:ident, $create:expr) => {
@@ -101,7 +101,7 @@ where
 
     for i in 0..len {
         let key = if has_names {
-            let charsxp = names.string_elt(i as crate::sys::R_xlen_t);
+            let charsxp = names.string_elt(i as crate::R_xlen_t);
             if charsxp == SEXP::na_string() {
                 String::new()
             } else {
@@ -117,7 +117,7 @@ where
             return Err(SexpError::DuplicateName(key));
         }
 
-        let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+        let elem = sexp.vector_elt(i as crate::R_xlen_t);
         let value = V::try_from_sexp(elem).map_err(|e| e.into())?;
         map.extend(std::iter::once((key, value)));
     }
@@ -170,7 +170,7 @@ where
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+        let elem = sexp.vector_elt(i as crate::R_xlen_t);
         let map = M::try_from_sexp(elem).map_err(Into::into)?;
         result.push(map);
     }
@@ -214,7 +214,7 @@ impl_vec_try_from_sexp_native!(i32);
 impl_vec_try_from_sexp_native!(f64);
 impl_vec_try_from_sexp_native!(u8);
 impl_vec_try_from_sexp_native!(RLogical);
-impl_vec_try_from_sexp_native!(crate::sys::Rcomplex);
+impl_vec_try_from_sexp_native!(crate::Rcomplex);
 
 macro_rules! impl_boxed_slice_try_from_sexp_native {
     ($t:ty) => {
@@ -233,5 +233,5 @@ impl_boxed_slice_try_from_sexp_native!(i32);
 impl_boxed_slice_try_from_sexp_native!(f64);
 impl_boxed_slice_try_from_sexp_native!(u8);
 impl_boxed_slice_try_from_sexp_native!(RLogical);
-impl_boxed_slice_try_from_sexp_native!(crate::sys::Rcomplex);
+impl_boxed_slice_try_from_sexp_native!(crate::Rcomplex);
 // endregion

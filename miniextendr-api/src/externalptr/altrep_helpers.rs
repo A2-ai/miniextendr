@@ -5,7 +5,7 @@
 //! `#[r_data]` fields.
 
 use super::{ErasedExternalPtr, ExternalPtr, TypedExternal};
-use crate::sys::SEXP;
+use crate::SEXP;
 
 /// Extract the ALTREP data1 slot as a typed `ExternalPtr<T>`.
 ///

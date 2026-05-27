@@ -77,7 +77,7 @@ struct CustomStorageData {
 /// This is a compile-time test only — runtime testing requires a full ALTREP registration
 /// path that bypasses ExternalPtr, which is future work.
 impl AltrepExtract for CustomStorageData {
-    unsafe fn altrep_extract_ref(x: miniextendr_api::sys::SEXP) -> &'static Self {
+    unsafe fn altrep_extract_ref(x: miniextendr_api::SEXP) -> &'static Self {
         // In a real implementation, this would extract data from the SEXP directly
         // (e.g., from an INTSXP stored in data1). For compile-time testing, we just
         // prove the trait is implementable.
@@ -85,7 +85,7 @@ impl AltrepExtract for CustomStorageData {
         panic!("compile-time only — not callable without R runtime")
     }
 
-    unsafe fn altrep_extract_mut(x: miniextendr_api::sys::SEXP) -> &'static mut Self {
+    unsafe fn altrep_extract_mut(x: miniextendr_api::SEXP) -> &'static mut Self {
         let _ = x;
         panic!("compile-time only — not callable without R runtime")
     }

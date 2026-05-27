@@ -6,7 +6,7 @@
 // - Verifies trait dispatch works across package boundaries
 // - Implements its own Counter (DoubleCounter) for bidirectional testing
 
-use miniextendr_api::{ExternalPtr, sys::SEXP, sys::SexpExt, miniextendr, trait_abi::ccall};
+use miniextendr_api::{ExternalPtr, SEXP, SexpExt, miniextendr, trait_abi::ccall};
 
 miniextendr_api::miniextendr_init!();
 
@@ -62,7 +62,7 @@ pub fn has_class(x: SEXP, class_name: String) -> bool {
     }
     let len = class_attr.len();
     for i in 0..len {
-        if let Some(name) = class_attr.string_elt_str(i as miniextendr_api::sys::R_xlen_t)
+        if let Some(name) = class_attr.string_elt_str(i as miniextendr_api::R_xlen_t)
             && name == class_name
         {
             return true;

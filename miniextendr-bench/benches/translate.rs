@@ -1,6 +1,7 @@
 use std::ffi::CStr;
 
-use miniextendr_api::sys::{self, SEXP};
+use miniextendr_api::SEXP;
+use miniextendr_api::sys;
 use miniextendr_bench::raw_ffi;
 
 fn main() {

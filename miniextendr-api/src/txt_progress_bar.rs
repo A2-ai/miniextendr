@@ -27,7 +27,8 @@
 use std::marker::PhantomData;
 
 use crate::gc_protect::OwnedProtect;
-use crate::sys::{R_PreserveObject, R_ReleaseObject, SEXP, SexpExt};
+use crate::sys::{R_PreserveObject, R_ReleaseObject};
+use crate::{SEXP, SexpExt};
 
 // region: RTxtProgressBar struct
 
@@ -290,8 +291,8 @@ impl RTxtProgressBarBuilder {
 // # Safety
 // Must be called from the R main thread.
 unsafe fn build_inner(opts: RTxtProgressBarBuilder) -> RTxtProgressBar {
+    use crate::SEXP;
     use crate::expression::{RCall, REnv};
-    use crate::sys::SEXP;
 
     unsafe {
         // Resolve the utils namespace — utils is always loaded (base default).
@@ -342,8 +343,8 @@ unsafe fn build_inner(opts: RTxtProgressBarBuilder) -> RTxtProgressBar {
 // # Safety
 // Must be called from the R main thread.
 unsafe fn set_txt_progress_bar_inner(sexp: SEXP, value: f64) -> Result<(), String> {
+    use crate::SEXP;
     use crate::expression::RCall;
-    use crate::sys::SEXP;
 
     unsafe {
         let val_sexp = OwnedProtect::new(SEXP::scalar_real(value));

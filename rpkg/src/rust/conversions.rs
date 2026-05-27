@@ -1,7 +1,7 @@
 //! Comprehensive conversions matrix for [`#[miniextendr]`](miniextendr_api::miniextendr) arguments and returns.
 
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::sys::{RLogical, Rboolean};
+use miniextendr_api::{RLogical, Rboolean};
 use miniextendr_api::{IntoR, ListMut, miniextendr};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -1503,7 +1503,7 @@ pub fn conv_as_named_list_array() -> AsNamedList<[(String, f64); 2]> {
 
 /// Return test: `AsNamedList` with heterogeneous SEXP values -> R named list.
 #[miniextendr]
-pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::sys::SEXP)>>
+pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::SEXP)>>
 {
     use miniextendr_api::IntoR;
     AsNamedList(vec![
@@ -1591,14 +1591,14 @@ pub fn conv_as_named_list_ext_trait() -> AsNamedList<Vec<(&'static str, i32)>> {
 
 /// Return test: `AsNamedList` from a borrowed slice -> R named list via SEXP.
 #[miniextendr]
-pub fn conv_as_named_list_slice() -> miniextendr_api::sys::SEXP {
+pub fn conv_as_named_list_slice() -> miniextendr_api::SEXP {
     let pairs: &[(&str, i32)] = &[("x", 10), ("y", 20), ("z", 30)];
     AsNamedList(pairs).into_sexp()
 }
 
 /// Return test: `AsNamedVector` from a borrowed slice -> R named double vector via SEXP.
 #[miniextendr]
-pub fn conv_as_named_vector_slice() -> miniextendr_api::sys::SEXP {
+pub fn conv_as_named_vector_slice() -> miniextendr_api::SEXP {
     let pairs: &[(&str, f64)] = &[("a", 1.5), ("b", 2.5)];
     AsNamedVector(pairs).into_sexp()
 }

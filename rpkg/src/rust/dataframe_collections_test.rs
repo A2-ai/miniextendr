@@ -282,7 +282,7 @@ pub struct WithOptMapAsList {
 
 impl IntoList for WithOptMapAsList {
     fn into_list(self) -> miniextendr_api::List {
-        use miniextendr_api::{IntoR, sys::SEXP};
+        use miniextendr_api::{IntoR, SEXP};
         let counts_sexp = match self.counts {
             Some(m) => m.into_list().into_sexp(),
             None => SEXP::nil(),

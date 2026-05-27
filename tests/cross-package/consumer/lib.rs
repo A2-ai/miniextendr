@@ -5,7 +5,7 @@
 // - Provides generic functions that work with any Counter implementation
 // - Can operate on objects created by producer package
 
-use miniextendr_api::{miniextendr, externalptr::ErasedExternalPtr, sys::SEXP};
+use miniextendr_api::{miniextendr, externalptr::ErasedExternalPtr, SEXP};
 
 // region: Shared trait definition (must match producer exactly)
 

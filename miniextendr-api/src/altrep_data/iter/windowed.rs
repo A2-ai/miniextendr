@@ -299,9 +299,9 @@ impl<I: Iterator<Item = i32> + 'static> InferBase for WindowedIterIntData<I> {
 }
 
 impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::Altrep for WindowedIterIntData<I> {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -312,7 +312,7 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger
 {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> i32 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltIntegerData::elt(data, i as usize)
     }
@@ -320,13 +320,13 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [i32],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 
@@ -405,9 +405,9 @@ impl<I: Iterator<Item = f64> + 'static> InferBase for WindowedIterRealData<I> {
 }
 
 impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::Altrep for WindowedIterRealData<I> {
-    fn length(x: crate::sys::SEXP) -> crate::sys::R_xlen_t {
+    fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::sys::R_xlen_t
+        data.len() as crate::R_xlen_t
     }
 }
 
@@ -416,7 +416,7 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltVec for Windowe
 impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for WindowedIterRealData<I> {
     const HAS_ELT: bool = true;
 
-    fn elt(x: crate::sys::SEXP, i: crate::sys::R_xlen_t) -> f64 {
+    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> f64 {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
         AltRealData::elt(data, i as usize)
     }
@@ -424,13 +424,13 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for Window
     const HAS_GET_REGION: bool = true;
 
     fn get_region(
-        x: crate::sys::SEXP,
-        start: crate::sys::R_xlen_t,
-        len: crate::sys::R_xlen_t,
+        x: crate::SEXP,
+        start: crate::R_xlen_t,
+        len: crate::R_xlen_t,
         buf: &mut [f64],
-    ) -> crate::sys::R_xlen_t {
+    ) -> crate::R_xlen_t {
         let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::sys::R_xlen_t
+        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
     }
 }
 // endregion

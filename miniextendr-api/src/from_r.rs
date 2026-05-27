@@ -53,7 +53,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::altrep_traits::NA_REAL;
 use crate::coerce::TryCoerce;
-use crate::sys::{RLogical, SEXP, SEXPTYPE, SexpExt};
+use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
 /// Check if an f64 value is R's NA_real_ (a specific NaN bit pattern).
 ///
@@ -475,7 +475,7 @@ impl TryFromSexp for i32 {
 impl_try_from_sexp_scalar_native!(f64, REALSXP);
 impl_try_from_sexp_scalar_native!(u8, RAWSXP);
 impl_try_from_sexp_scalar_native!(RLogical, LGLSXP);
-impl_try_from_sexp_scalar_native!(crate::sys::Rcomplex, CPLXSXP);
+impl_try_from_sexp_scalar_native!(crate::Rcomplex, CPLXSXP);
 
 /// Pass-through conversion for raw SEXP values with ALTREP auto-materialization.
 ///
@@ -558,7 +558,7 @@ mod references;
 /// to use blanket impls without needing helper functions.
 impl<T> TryFromSexp for &[T]
 where
-    T: crate::sys::RNativeType + Copy,
+    T: crate::RNativeType + Copy,
 {
     type Error = SexpTypeError;
 
@@ -596,7 +596,7 @@ where
 /// no two `&mut` borrows alias the same SEXP.
 impl<T> TryFromSexp for &mut [T]
 where
-    T: crate::sys::RNativeType + Copy,
+    T: crate::RNativeType + Copy,
 {
     type Error = SexpTypeError;
 
@@ -632,7 +632,7 @@ where
 /// Blanket impl for `Option<&[T]>` where T: RNativeType
 impl<T> TryFromSexp for Option<&[T]>
 where
-    T: crate::sys::RNativeType + Copy,
+    T: crate::RNativeType + Copy,
 {
     type Error = SexpError;
 
@@ -659,7 +659,7 @@ where
 /// Blanket impl for `Option<&mut [T]>` where T: RNativeType
 impl<T> TryFromSexp for Option<&mut [T]>
 where
-    T: crate::sys::RNativeType + Copy,
+    T: crate::RNativeType + Copy,
 {
     type Error = SexpError;
 
@@ -727,7 +727,7 @@ mod collections;
 /// Useful for SHA hashes ([u8; 32]), fixed-size patterns, etc.
 impl<T, const N: usize> TryFromSexp for [T; N]
 where
-    T: crate::sys::RNativeType + Copy,
+    T: crate::RNativeType + Copy,
 {
     type Error = SexpError;
 
@@ -765,7 +765,7 @@ use std::collections::VecDeque;
 /// Blanket impl: Convert R vector to `VecDeque<T>` where T: RNativeType.
 impl<T> TryFromSexp for VecDeque<T>
 where
-    T: crate::sys::RNativeType + Copy,
+    T: crate::RNativeType + Copy,
 {
     type Error = SexpTypeError;
 
@@ -790,7 +790,7 @@ use std::collections::BinaryHeap;
 /// Creates a binary heap from the R vector elements.
 impl<T> TryFromSexp for BinaryHeap<T>
 where
-    T: crate::sys::RNativeType + Copy + Ord,
+    T: crate::RNativeType + Copy + Ord,
 {
     type Error = SexpTypeError;
 
@@ -934,7 +934,7 @@ where
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+            let elem = sexp.vector_elt(i as crate::R_xlen_t);
             let inner: Vec<T> = Vec::<T>::try_from_sexp(elem).map_err(Into::into)?;
             result.push(inner);
         }
@@ -956,7 +956,7 @@ where
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+            let elem = sexp.vector_elt(i as crate::R_xlen_t);
             let inner: Vec<T> =
                 unsafe { Vec::<T>::try_from_sexp_unchecked(elem).map_err(Into::into)? };
             result.push(inner);
@@ -1299,7 +1299,7 @@ mod connections_from_r {
 
     use crate::connection::{RNullConnection, RStderr, RStdin, RStdout, Rconn};
     use crate::from_r::{SexpError, TryFromSexp};
-    use crate::sys::{Rboolean, SEXP};
+    use crate::{Rboolean, SEXP};
 
     // Read the connection description and class fields from an Rconn handle.
     //
@@ -1446,8 +1446,9 @@ mod connections_from_r {
 #[cfg(feature = "connections")]
 mod txt_progress_bar_from_r {
     use crate::from_r::{SexpError, TryFromSexp};
-    use crate::sys::{R_PreserveObject, SEXP, SexpExt};
+    use crate::sys::R_PreserveObject;
     use crate::txt_progress_bar::RTxtProgressBar;
+    use crate::{SEXP, SexpExt};
 
     impl TryFromSexp for RTxtProgressBar {
         type Error = SexpError;
@@ -1483,18 +1484,16 @@ macro_rules! impl_option_try_from_sexp {
         impl $crate::from_r::TryFromSexp for Option<$t> {
             type Error = $crate::from_r::SexpError;
 
-            fn try_from_sexp(sexp: $crate::sys::SEXP) -> Result<Self, Self::Error> {
-                use $crate::sys::{SEXPTYPE, SexpExt};
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                use $crate::{SEXPTYPE, SexpExt};
                 if sexp.type_of() == SEXPTYPE::NILSXP {
                     return Ok(None);
                 }
                 <$t as $crate::from_r::TryFromSexp>::try_from_sexp(sexp).map(Some)
             }
 
-            unsafe fn try_from_sexp_unchecked(
-                sexp: $crate::sys::SEXP,
-            ) -> Result<Self, Self::Error> {
-                use $crate::sys::{SEXPTYPE, SexpExt};
+            unsafe fn try_from_sexp_unchecked(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                use $crate::{SEXPTYPE, SexpExt};
                 if sexp.type_of() == SEXPTYPE::NILSXP {
                     return Ok(None);
                 }
@@ -1515,9 +1514,9 @@ macro_rules! impl_vec_try_from_sexp_list {
         impl $crate::from_r::TryFromSexp for Vec<$t> {
             type Error = $crate::from_r::SexpError;
 
-            fn try_from_sexp(sexp: $crate::sys::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 use $crate::from_r::SexpTypeError;
-                use $crate::sys::{SEXPTYPE, SexpExt};
+                use $crate::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {
@@ -1531,17 +1530,15 @@ macro_rules! impl_vec_try_from_sexp_list {
                 let len = sexp.len();
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as $crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as $crate::R_xlen_t);
                     result.push(<$t as $crate::from_r::TryFromSexp>::try_from_sexp(elem)?);
                 }
                 Ok(result)
             }
 
-            unsafe fn try_from_sexp_unchecked(
-                sexp: $crate::sys::SEXP,
-            ) -> Result<Self, Self::Error> {
+            unsafe fn try_from_sexp_unchecked(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 use $crate::from_r::SexpTypeError;
-                use $crate::sys::{SEXPTYPE, SexpExt};
+                use $crate::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {
@@ -1555,7 +1552,7 @@ macro_rules! impl_vec_try_from_sexp_list {
                 let len = unsafe { sexp.len_unchecked() };
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
-                    let elem = unsafe { sexp.vector_elt_unchecked(i as $crate::sys::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt_unchecked(i as $crate::R_xlen_t) };
                     result.push(unsafe {
                         <$t as $crate::from_r::TryFromSexp>::try_from_sexp_unchecked(elem)?
                     });
@@ -1575,9 +1572,9 @@ macro_rules! impl_vec_option_try_from_sexp_list {
         impl $crate::from_r::TryFromSexp for Vec<Option<$t>> {
             type Error = $crate::from_r::SexpError;
 
-            fn try_from_sexp(sexp: $crate::sys::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 use $crate::from_r::SexpTypeError;
-                use $crate::sys::{SEXPTYPE, SexpExt};
+                use $crate::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {
@@ -1591,8 +1588,8 @@ macro_rules! impl_vec_option_try_from_sexp_list {
                 let len = sexp.len();
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as $crate::sys::R_xlen_t);
-                    if elem == $crate::sys::SEXP::nil() {
+                    let elem = sexp.vector_elt(i as $crate::R_xlen_t);
+                    if elem == $crate::SEXP::nil() {
                         result.push(None);
                     } else {
                         result.push(Some(<$t as $crate::from_r::TryFromSexp>::try_from_sexp(
@@ -1603,11 +1600,9 @@ macro_rules! impl_vec_option_try_from_sexp_list {
                 Ok(result)
             }
 
-            unsafe fn try_from_sexp_unchecked(
-                sexp: $crate::sys::SEXP,
-            ) -> Result<Self, Self::Error> {
+            unsafe fn try_from_sexp_unchecked(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 use $crate::from_r::SexpTypeError;
-                use $crate::sys::{SEXPTYPE, SexpExt};
+                use $crate::{SEXPTYPE, SexpExt};
 
                 let actual = sexp.type_of();
                 if actual != SEXPTYPE::VECSXP {
@@ -1621,8 +1616,8 @@ macro_rules! impl_vec_option_try_from_sexp_list {
                 let len = unsafe { sexp.len_unchecked() };
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
-                    let elem = unsafe { sexp.vector_elt_unchecked(i as $crate::sys::R_xlen_t) };
-                    if elem == $crate::sys::SEXP::nil() {
+                    let elem = unsafe { sexp.vector_elt_unchecked(i as $crate::R_xlen_t) };
+                    if elem == $crate::SEXP::nil() {
                         result.push(None);
                     } else {
                         result.push(Some(unsafe {

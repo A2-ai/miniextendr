@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use miniextendr_api::prelude::{SEXP, SexpExt};
-use miniextendr_api::sys::SEXPTYPE;
+use miniextendr_api::SEXPTYPE;
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::{IntoRAltrep, miniextendr};
 #[cfg(feature = "jiff")]
@@ -1192,7 +1192,8 @@ pub fn gc_stress_factor_labels() -> i32 {
     use crate::serde::Deserialize;
     use miniextendr_api::factor::{build_factor, build_levels_sexp};
     use miniextendr_api::prelude::{SEXP, SexpExt};
-    use miniextendr_api::sys::{Rf_allocVector, SEXPTYPE};
+    use miniextendr_api::SEXPTYPE;
+    use miniextendr_api::sys::Rf_allocVector;
     use miniextendr_api::gc_protect::OwnedProtect;
     use miniextendr_api::serde::dataframe_to_vec;
 
@@ -1343,8 +1344,6 @@ pub fn gc_stress_typed_dataframe() {
     // Optional column was absent in this fixture.
     assert!(theoph.flag().is_none());
 
-    drop(theoph);
-    drop(df);
     drop(scope);
 
     // Now repeat the dance with the optional column populated, so the

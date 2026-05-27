@@ -21,7 +21,7 @@
 //! storage); see [`crate::into_r`] for the owned equivalents.
 
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
-use crate::sys::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_ref_conversions_for {
     ($t:ty) => {
@@ -192,7 +192,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     let value: &'static $t = TryFromSexp::try_from_sexp(elem)?;
                     out.push(value);
                 }
@@ -218,7 +218,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                     } else {
@@ -249,7 +249,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
                     let ptr = std::ptr::from_mut(value);
                     if ptrs.iter().any(|&p| p == ptr) {
@@ -284,7 +284,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                         continue;
@@ -322,7 +322,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     let slice: &'static [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                     out.push(slice);
@@ -349,7 +349,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                     } else {
@@ -381,7 +381,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     let slice: &'static mut [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                     if !slice.is_empty() {
@@ -419,7 +419,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::sys::R_xlen_t);
+                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                         continue;
@@ -449,5 +449,5 @@ impl_ref_conversions_for!(i32);
 impl_ref_conversions_for!(f64);
 impl_ref_conversions_for!(u8);
 impl_ref_conversions_for!(RLogical);
-impl_ref_conversions_for!(crate::sys::Rcomplex);
+impl_ref_conversions_for!(crate::Rcomplex);
 // endregion

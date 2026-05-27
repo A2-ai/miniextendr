@@ -448,7 +448,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
                 /// - Must be called on R's main thread
                 #[inline]
-                pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::sys::SEXP) -> Option<Self> {
+                pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Option<Self> {
                     <Self as ::miniextendr_api::TraitView>::try_from_sexp(sexp)
                 }
 
@@ -458,7 +458,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 ///
                 /// Same as `try_from_sexp`.
                 #[inline]
-                pub unsafe fn from_sexp(sexp: ::miniextendr_api::sys::SEXP) -> Self {
+                pub unsafe fn from_sexp(sexp: ::miniextendr_api::SEXP) -> Self {
                     Self::try_from_sexp(sexp)
                         .expect(concat!("Object does not implement ", #trait_name_str, " trait"))
                 }
@@ -629,7 +629,7 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
     // Generate vtable call
     let vtable_call = if argc > 0 {
         quote::quote! {
-            let args: [::miniextendr_api::sys::SEXP; #argc as usize] = [#(#arg_conversions),*];
+            let args: [::miniextendr_api::SEXP; #argc as usize] = [#(#arg_conversions),*];
             ((*self.vtable).#method_name)(self.data, #argc, args.as_ptr())
         }
     } else {
@@ -797,8 +797,8 @@ fn generate_method_shim(
         unsafe extern "C" fn #shim_name<#(#trait_type_params,)* #impl_t: #trait_bound #(+ #impl_bounds)*>(
             data: *mut ::std::os::raw::c_void,
             argc: i32,
-            argv: *const ::miniextendr_api::sys::SEXP,
-        ) -> ::miniextendr_api::sys::SEXP
+            argv: *const ::miniextendr_api::SEXP,
+        ) -> ::miniextendr_api::SEXP
         #where_clause
         {
             // Check arity (before unwind protect - uses r_stop which doesn't return)

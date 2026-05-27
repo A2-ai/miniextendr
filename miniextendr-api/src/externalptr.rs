@@ -148,10 +148,10 @@ use std::ptr::{self, NonNull};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
-    R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
-    Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
-    Rf_unprotect_unchecked, SEXP, SEXPTYPE, SexpExt,
+    R_RegisterCFinalizerEx_unchecked, Rf_allocVector, Rf_allocVector_unchecked, Rf_install,
+    Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
 };
+use crate::{Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// A wrapper around a raw pointer that implements [`Send`].
 ///
@@ -242,7 +242,7 @@ unsafe fn type_id_symbol_unchecked<T: TypedExternal>() -> SEXP {
 /// `sym` must be a valid SYMSXP.
 #[inline]
 fn symbol_name(sym: SEXP) -> &'static str {
-    use crate::sys::SexpExt;
+    use crate::SexpExt;
     let printname = sym.printname();
     let cstr = printname.r_char();
     let len = printname.len();
@@ -910,7 +910,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
         debug_assert_eq!(
             sexp.type_of(),
-            crate::sys::SEXPTYPE::EXTPTRSXP,
+            crate::SEXPTYPE::EXTPTRSXP,
             "wrap_sexp: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
@@ -956,7 +956,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         debug_assert_eq!(
             sexp.type_of(),
-            crate::sys::SEXPTYPE::EXTPTRSXP,
+            crate::SEXPTYPE::EXTPTRSXP,
             "wrap_sexp_unchecked: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
@@ -995,7 +995,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
         debug_assert_eq!(
             sexp.type_of(),
-            crate::sys::SEXPTYPE::EXTPTRSXP,
+            crate::SEXPTYPE::EXTPTRSXP,
             "wrap_sexp_with_error: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
@@ -1056,7 +1056,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
         debug_assert_eq!(
             sexp.type_of(),
-            crate::sys::SEXPTYPE::EXTPTRSXP,
+            crate::SEXPTYPE::EXTPTRSXP,
             "from_sexp_unchecked: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );

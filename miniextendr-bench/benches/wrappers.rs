@@ -9,7 +9,9 @@
 //! - `argument_coercion`: wrapper path with type coercion
 //! - `class_methods`: Env/R6/S3/S4/S7-style method invocation overhead
 
-use miniextendr_api::sys::{self, SexpExt};
+use miniextendr_api::sexp_types::CE_UTF8;
+use miniextendr_api::sys;
+use miniextendr_api::{SEXP, SEXPTYPE, SexpExt};
 use miniextendr_bench::raw_ffi;
 use std::os::raw::c_char;
 
@@ -26,12 +28,7 @@ enum ParseStatus {
 }
 
 unsafe extern "C" {
-    fn R_ParseVector(
-        text: sys::SEXP,
-        n: i32,
-        status: *mut ParseStatus,
-        srcfile: sys::SEXP,
-    ) -> sys::SEXP;
+    fn R_ParseVector(text: SEXP, n: i32, status: *mut ParseStatus, srcfile: SEXP) -> SEXP;
 }
 
 /// RAII guard that calls `Rf_unprotect(n)` on drop.
@@ -57,19 +54,16 @@ impl Drop for ProtectGuard {
 
 /// Pre-parsed R expression with protection.
 struct ParsedExpr {
-    expr: sys::SEXP,
+    expr: SEXP,
     _guard: ProtectGuard,
 }
 
 /// Parse an R string into a protected expression ready for `Rf_eval`.
 unsafe fn parse_and_protect(code: &str) -> ParsedExpr {
     unsafe {
-        let code_sexp = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(sys::SEXPTYPE::STRSXP, 1));
-        let charsxp = raw_ffi::Rf_mkCharLenCE(
-            code.as_ptr().cast::<c_char>(),
-            code.len() as i32,
-            sys::CE_UTF8,
-        );
+        let code_sexp = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let charsxp =
+            raw_ffi::Rf_mkCharLenCE(code.as_ptr().cast::<c_char>(), code.len() as i32, CE_UTF8);
         raw_ffi::SET_STRING_ELT(code_sexp, 0, charsxp);
 
         let mut status = ParseStatus::PARSE_NULL;
@@ -95,7 +89,7 @@ unsafe fn parse_and_protect(code: &str) -> ParsedExpr {
 }
 
 /// Evaluate an R code string and return the result (unprotected).
-unsafe fn r_eval_string(code: &str) -> sys::SEXP {
+unsafe fn r_eval_string(code: &str) -> SEXP {
     unsafe {
         let parsed = parse_and_protect(code);
         raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv)

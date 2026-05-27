@@ -33,7 +33,7 @@
 use crate::coerce::TryCoerce;
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
-use crate::sys::{SEXP, SEXPTYPE, SexpExt};
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// Convert `i64` to R integer, panicking if outside i32 range.
 ///
