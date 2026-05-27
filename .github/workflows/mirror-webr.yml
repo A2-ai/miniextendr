@@ -1,0 +1,102 @@
+name: Mirror webR base image
+
+# Closes #496. Pulls the upstream `ghcr.io/r-wasm/webr` digest currently pinned
+# in Dockerfile.webr and re-publishes it to `ghcr.io/a2-ai/webr-mirror`, so
+# CI's webR-tier-2/3 jobs (#491/#492) and our local dev image don't depend on
+# upstream registry availability or rate limits.
+#
+# Cadence model (per #496):
+#   - Dockerfile.webr's `WEBR_BASE` ARG is the single source of truth for which
+#     digest we want.
+#   - This cron just keeps that digest fresh in our mirror (idempotent re-push).
+#   - When upstream rolls and we want to consume the newer image, bump
+#     Dockerfile.webr's pin deliberately in a PR; next cron tick mirrors the
+#     new pin automatically. No floating tags.
+#
+# Cutover (one-time, after first successful run of this workflow):
+#   1. Make `ghcr.io/a2-ai/webr-mirror` public via the GitHub package settings
+#      (first push creates it as private, inheriting the source repo's perms).
+#   2. Switch consumers to the mirror by replacing `ghcr.io/r-wasm/webr@<digest>`
+#      with `ghcr.io/a2-ai/webr-mirror@<same-digest>` — the digest is content-
+#      addressable so the image bytes are identical. Affects Dockerfile.webr's
+#      `WEBR_BASE` default and `.github/workflows/webr.yml`'s `webr-install`
+#      container.
+
+on:
+  schedule:
+    - cron: '13 5 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile.webr'
+      - '.github/workflows/mirror-webr.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: mirror-webr
+  cancel-in-progress: false
+
+env:
+  DEST_REPO: ghcr.io/a2-ai/webr-mirror
+
+jobs:
+  mirror:
+    name: Copy pinned digest into ghcr.io/a2-ai/webr-mirror
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read pinned digest from Dockerfile.webr
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=$(grep -E '^ARG WEBR_BASE=' Dockerfile.webr | head -1 | sed -E 's/^ARG WEBR_BASE=//')
+          if [[ -z "$src" || "$src" != *"@sha256:"* ]]; then
+            echo "::error::Could not extract a digest-pinned WEBR_BASE from Dockerfile.webr (got: '$src')."
+            exit 1
+          fi
+          digest="${src##*@}"
+          short="${digest#sha256:}"
+          short12="${short:0:12}"
+          {
+            echo "src=$src"
+            echo "digest=$digest"
+            echo "short12=$short12"
+          } >>"$GITHUB_OUTPUT"
+          echo "Source pin:  $src"
+          echo "Full digest: $digest"
+          echo "Short tag:   $short12"
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | crane auth login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Copy pinned digest into mirror
+        run: |
+          set -euo pipefail
+          src='${{ steps.pin.outputs.src }}'
+          dest='${{ env.DEST_REPO }}:${{ steps.pin.outputs.short12 }}'
+          echo "Copying $src → $dest (digest preserved)"
+          crane copy "$src" "$dest"
+
+      - name: Verify mirror digest matches upstream pin
+        run: |
+          set -euo pipefail
+          dest='${{ env.DEST_REPO }}:${{ steps.pin.outputs.short12 }}'
+          got=$(crane digest "$dest")
+          want='${{ steps.pin.outputs.digest }}'
+          if [[ "$got" != "$want" ]]; then
+            echo "::error::Mirror digest drift — got $got, want $want."
+            exit 1
+          fi
+          echo "Mirror digest matches pin: $got"
