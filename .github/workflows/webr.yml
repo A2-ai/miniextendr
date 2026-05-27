@@ -136,19 +136,19 @@ jobs:
           set -euo pipefail
           rm -f rpkg/src/*.o rpkg/src/*.so
           ( cd rpkg && CC=emcc bash ./configure )
-          # R_DEFAULT_PACKAGES=NULL: the byte-compile/lazy-load step at the
-          # tail of R CMD INSTALL runs under the *host* (Linux x86_64) R, but
-          # --library points at the wasm tree (wasm .so files). Without this,
-          # host R tries to dyn.load grDevices.so / methods.so / etc. from
-          # the wasm library at startup and dies with "invalid ELF header".
-          # Matches what rwasm's package-build path uses internally.
+          # --no-byte-compile: the byte-compile/lazy-load step at the tail
+          # of R CMD INSTALL runs under the *host* (Linux x86_64) R but
+          # --library points at the wasm tree, so host R tries to dyn.load
+          # the wasm grDevices.so / methods.so during startup and dies with
+          # "invalid ELF header". rwasm's package-build path uses the same
+          # --no-byte-compile flag for the same reason — matches upstream.
+          # (r-wasm/rwasm:R/build.R, R CMD INSTALL flag set.)
           WASM_TOOLS=/opt/webr/tools \
           R_SOURCE=/opt/webr/R/build/R-4.5.1 \
           R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk \
-          R_DEFAULT_PACKAGES=NULL \
           /opt/webr/host/R-4.5.1/bin/R CMD INSTALL \
               --library=/opt/webr/wasm/R-4.5.1/lib/R/library \
-              --no-docs --no-test-load --no-staged-install \
+              --no-docs --no-test-load --no-staged-install --no-byte-compile \
               rpkg
 
       - name: Verify wasm side-module landed

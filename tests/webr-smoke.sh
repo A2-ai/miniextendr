@@ -212,16 +212,15 @@ phase_wasm_build() {
         # (same stale-mtime trap as Phase 1, but native-poisoning-wasm here).
         rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
         ( cd /work/rpkg && CC=emcc bash ./configure )
-        # R_DEFAULT_PACKAGES=NULL: see .github/workflows/webr.yml. Byte-compile
-        # at the tail of INSTALL runs under host R; default packages live in
-        # the wasm library and are unloadable from x86_64.
+        # --no-byte-compile: byte-compile at the tail of INSTALL runs under
+        # host R against the wasm library tree → 'invalid ELF header' on
+        # auto-loaded default packages. Mirrors r-wasm/rwasm:R/build.R.
         WASM_TOOLS=${WASM_TOOLS} \
         R_SOURCE=${R_SOURCE} \
         R_MAKEVARS_USER=${WEBR_VARS_MK} \
-        R_DEFAULT_PACKAGES=NULL \
         ${R_HOST_EXE} CMD INSTALL \
             --library=${R_WASM_LIB} \
-            --no-docs --no-test-load --no-staged-install \
+            --no-docs --no-test-load --no-staged-install --no-byte-compile \
             /work/rpkg
     "
 
