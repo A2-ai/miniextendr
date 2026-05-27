@@ -1249,9 +1249,11 @@ bump-version version:
 
 # ── Local webR/wasm dev container ────────────────────────────────────────────
 #
-# `Dockerfile.webr` inherits ghcr.io/r-wasm/webr (digest-pinned) and layers
-# `just`, `autoconf`, dev tools. See the Dockerfile header for what's already
-# in the base. Use this when reproducing webR/wasm32 build issues locally.
+# `Dockerfile.webr` inherits the webR base via ghcr.io/a2-ai/webr-mirror
+# (digest-pinned, identical bytes to upstream — see .github/workflows/mirror-webr.yml)
+# and layers `just`, `autoconf`, dev tools. See the Dockerfile header for
+# what's already in the base. Use this when reproducing webR/wasm32 build
+# issues locally.
 
 docker_webr_image := "miniextendr-webr-dev:latest"
 
