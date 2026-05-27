@@ -48,6 +48,15 @@ RUN ARCH="$(dpkg --print-architecture)" \
 # uses for fast iteration). Build-dep-free — single binary install via cargo.
 RUN cargo install cargo-limit --locked --version "0.0.13"
 
+# miniextendr's hard R `Imports` (rpkg/DESCRIPTION) must be present in the
+# native R so Phase 1 of the webR smoke (`tests/webr-smoke.sh`: native
+# `R CMD INSTALL` running the cdylib wrapper-gen pass) and CI tier 2 (#491)
+# can resolve them. The base webR image ships cli / lifecycle / R6 / vctrs but
+# not S7; install the full hard set so the smoke doesn't depend on the base
+# image's exact package roster. `methods` is part of base R. The posit PM
+# `__linux__/noble` repo serves binaries, so this is a fast layer.
+RUN /opt/R/current/bin/Rscript -e 'install.packages(c("cli", "lifecycle", "R6", "S7", "vctrs"), repos = "https://packagemanager.posit.co/cran/__linux__/noble/latest")'
+
 # Sanity checks — fail the build immediately if the inherited toolchain
 # regressed or our layered tools are missing, instead of debugging a weird
 # later failure inside a working container.
@@ -58,6 +67,7 @@ RUN set -eux \
     && emcc --version >/dev/null \
     && /opt/R/current/bin/R --version >/dev/null \
     && Rscript -e 'stopifnot(requireNamespace("rwasm", quietly=TRUE))' \
+    && /opt/R/current/bin/Rscript -e 'stopifnot(requireNamespace("S7", quietly=TRUE))' \
     && just --version >/dev/null \
     && autoconf --version >/dev/null \
     && command -v cargo-lcheck >/dev/null \

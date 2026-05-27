@@ -108,12 +108,12 @@ cleanup() {
     if [[ $_cleanup_done -eq 1 ]]; then return; fi
     _cleanup_done=1
 
-    log "Running cleanup: restoring native Makevars..."
+    log "Running cleanup: scrubbing build objects + restoring native Makevars..."
     docker_run "
         set -euo pipefail
-        cd /work
-        bash rpkg/configure 2>/dev/null || true
-    " || warn "Cleanup configure failed — rpkg/src/Makevars may still be in wasm-mode. Run: bash rpkg/configure"
+        rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
+        ( cd /work/rpkg && bash ./configure ) 2>/dev/null || true
+    " || warn "Cleanup configure failed — rpkg/src/Makevars may still be in wasm-mode. Run: cd rpkg && bash ./configure"
 
     if [[ $KEEP -eq 0 ]]; then
         log "Removing ${SMOKE_TMP} inside container..."
@@ -170,11 +170,17 @@ phase_native_install() {
     docker_run "
         set -euo pipefail
         mkdir -p ${SMOKE_TMP}/native-lib
-        cd /work
-        bash rpkg/configure
+        # Scrub stale build objects: the bind-mounted /work is shared with the
+        # host, so host-arch (e.g. macOS arm64) *.o/*.so from a prior
+        # 'just rcmdinstall' have newer mtimes than their .c sources. R then
+        # skips recompiling and the native build links the wrong object format
+        # ('unknown file type'). cargo's target dir is triple-namespaced, so it
+        # is unaffected.
+        rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
+        ( cd /work/rpkg && bash ./configure )
         ${R_NATIVE_EXE} CMD INSTALL --no-test-load \
             --library=${SMOKE_TMP}/native-lib \
-            rpkg
+            /work/rpkg
     "
 
     # Verify wasm_registry.rs was regenerated (content-hash must not be stub value)
@@ -202,8 +208,10 @@ phase_wasm_build() {
     log "Running wasm32 R CMD INSTALL inside container..."
     docker_run "
         set -euo pipefail
-        cd /work
-        CC=emcc bash rpkg/configure
+        # Scrub Phase 1's native objects so emcc recompiles .c -> wasm .o
+        # (same stale-mtime trap as Phase 1, but native-poisoning-wasm here).
+        rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
+        ( cd /work/rpkg && CC=emcc bash ./configure )
         WASM_TOOLS=${WASM_TOOLS} \
         R_SOURCE=${R_SOURCE} \
         R_MAKEVARS_USER=${WEBR_VARS_MK} \
