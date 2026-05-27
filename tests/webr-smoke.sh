@@ -212,9 +212,13 @@ phase_wasm_build() {
         # (same stale-mtime trap as Phase 1, but native-poisoning-wasm here).
         rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
         ( cd /work/rpkg && CC=emcc bash ./configure )
+        # R_DEFAULT_PACKAGES=NULL: see .github/workflows/webr.yml. Byte-compile
+        # at the tail of INSTALL runs under host R; default packages live in
+        # the wasm library and are unloadable from x86_64.
         WASM_TOOLS=${WASM_TOOLS} \
         R_SOURCE=${R_SOURCE} \
         R_MAKEVARS_USER=${WEBR_VARS_MK} \
+        R_DEFAULT_PACKAGES=NULL \
         ${R_HOST_EXE} CMD INSTALL \
             --library=${R_WASM_LIB} \
             --no-docs --no-test-load --no-staged-install \
