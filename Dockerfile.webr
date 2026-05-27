@@ -2,9 +2,11 @@
 #
 # Local dev container for testing miniextendr R packages under webR.
 #
-# Inherits the upstream `ghcr.io/r-wasm/webr` image so we don't re-stage
-# Emscripten, flang, nightly Rust + `wasm32-unknown-emscripten` + `rust-src`,
-# or the host/wasm R trees. We layer just enough on top to run `just`-based
+# Inherits the webR base image (originally `ghcr.io/r-wasm/webr`, now pulled
+# via our digest-preserved mirror `ghcr.io/a2-ai/webr-mirror` — see
+# `.github/workflows/mirror-webr.yml`) so we don't re-stage Emscripten,
+# flang, nightly Rust + `wasm32-unknown-emscripten` + `rust-src`, or the
+# host/wasm R trees. We layer just enough on top to run `just`-based
 # workflows and have a comfortable interactive shell.
 #
 # Usage (local dev):
@@ -16,7 +18,14 @@
 #                via PR; webR's `:main` tag rolls without notice.
 #   JUST_VERSION — `just` release to install. Apt's version is too old.
 
-ARG WEBR_BASE=ghcr.io/r-wasm/webr@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
+# Mirror lives at ghcr.io/a2-ai/webr-mirror; digest is preserved by
+# `.github/workflows/mirror-webr.yml` (closes #496), so the image bytes
+# are identical to ghcr.io/r-wasm/webr at the same sha256. Mirroring
+# insulates CI from upstream rolling the `:main` tag or pruning old
+# digests. Bump deliberately via PR: edit the digest here, then run the
+# mirror workflow (or wait for the weekly cron) before CI references
+# the new tag.
+ARG WEBR_BASE=ghcr.io/a2-ai/webr-mirror@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
 FROM ${WEBR_BASE}
 
 ARG JUST_VERSION=1.36.0

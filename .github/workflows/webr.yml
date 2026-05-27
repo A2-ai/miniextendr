@@ -30,6 +30,12 @@ on:
 
 permissions:
   contents: read
+  # Needed for the tier-2 job to pull ghcr.io/a2-ai/webr-mirror, which is
+  # currently a private GHCR package. The `credentials:` block on the job
+  # container reads $GITHUB_TOKEN with this scope. Once the mirror package
+  # is flipped public via the org UI, both this permission line and the
+  # `credentials:` block below can be dropped (tracked as follow-up).
+  packages: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -85,7 +91,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container:
-      image: ghcr.io/r-wasm/webr@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
+      # Pulled from the mirror at ghcr.io/a2-ai/webr-mirror (closes #496),
+      # which `.github/workflows/mirror-webr.yml` keeps digest-aligned with
+      # upstream ghcr.io/r-wasm/webr — image bytes are identical at this
+      # sha256. Bump in lockstep with Dockerfile.webr's WEBR_BASE.
+      image: ghcr.io/a2-ai/webr-mirror@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
+      # The mirror package is currently private; auth via the job's
+      # GITHUB_TOKEN (workflow-level `packages: read` permission above).
+      # Drop both once the package is made public via the org UI.
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     # The webR base image's /bin/sh is dash; every step here uses
     # `set -euo pipefail` which is bash-only. Pin the shell at the job level
     # so individual steps don't have to repeat `shell: bash`.
