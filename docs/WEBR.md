@@ -95,13 +95,14 @@ the container, then prints a testthat pass/fail/skip summary:
    `/opt/webr/host/R-4.5.1/bin/R` (webR's own host R) with
    `R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk`. Result lands at
    `/opt/webr/wasm/R-4.5.1/lib/R/library/miniextendr/`.
-3. **webR Node session** — imports webR's bundled ESM directly from
-   `file:///opt/webr/dist/webr.mjs` (see "The `/opt/webr/dist` import
-   gotcha" below), NODEFS-mounts the wasm R lib tree, calls
-   `library(miniextendr)`, then runs `testthat::test_local()`. Many tests
-   fail under wasm (worker thread / fork / threading assumptions); the
-   script reports counts and exits 0 as long as the package itself loads.
-   The CI tier-3 equivalent lives in `tests/webr-node-smoke/smoke.mjs`.
+3. **webR Node session** — loads webR via
+   `createRequire("/opt/webr/dist/webr.cjs")` (see "The `/opt/webr/dist`
+   import gotcha" below for why not the `.mjs`), NODEFS-mounts the wasm
+   R lib tree, calls `library(miniextendr)`, then runs
+   `testthat::test_local()`. Many tests fail under wasm (worker thread /
+   fork / threading assumptions); the script reports counts and exits 0
+   as long as the package itself loads. The CI tier-3 equivalent lives in
+   `tests/webr-node-smoke/smoke.mjs`.
 
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
 wasm32 build). Subsequent runs reuse the docker image and most cargo
@@ -182,27 +183,45 @@ be exported during the wasm install — `webr-vars.mk` references both.
 
 ## The `/opt/webr/dist` import gotcha
 
-To run a webR session in Node *inside the webR base image*, import webR's
-bundled ESM by absolute file URL:
+To run a webR session in Node *inside the webR base image*, load webR's
+bundled CommonJS via `createRequire`:
 
 ```js
-import { WebR } from "file:///opt/webr/dist/webr.mjs";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { WebR } = require("/opt/webr/dist/webr.cjs");
 ```
 
-Do **not** `npm install file:///opt/webr/src` (the obvious-looking move).
-webR's Dockerfile builds the JS dist with `cd src && make` — esbuild emits
-the bundle to `$(WEBR_ROOT)/dist`, i.e. `/opt/webr/dist/webr.mjs` — then
-runs `cd src && make clean`, whose clean target removes only
-`src/dist` (`PKG_DIST`). So in the shipped image the `webr` npm package's
-`main: dist/webr.mjs` resolves under the package dir to the *deleted*
-`/opt/webr/src/dist/webr.mjs`, while the root `/opt/webr/dist/webr.mjs`
-survives. `esbuild --prod` produces a self-contained bundle, so the direct
-import needs no `npm install` / `node_modules`. Bonus: that dist was built
-by the same image (webR HEAD + R 4.5.1), so its `R.bin.wasm` matches the R
-your wasm package was compiled against — no npm-registry version-coupling.
+There are two pitfalls to walk through, neither obvious:
 
-Use `baseUrl: "file:///opt/webr/dist/"` so webR fetches `R.bin.wasm` and its
-worker from the same surviving dir.
+1. **Do not `npm install file:///opt/webr/src`.** webR's Dockerfile
+   builds the JS dist with `cd src && make` — esbuild emits the bundle to
+   `$(WEBR_ROOT)/dist`, i.e. `/opt/webr/dist/webr.{cjs,mjs}` — then runs
+   `cd src && make clean`, whose clean target removes only `src/dist`
+   (`PKG_DIST`). So in the shipped image the `webr` npm package's
+   `main: dist/webr.mjs` resolves under the package dir to the *deleted*
+   `/opt/webr/src/dist/webr.mjs`, while the root `/opt/webr/dist`
+   survives. No `npm install` / `node_modules` is needed — esbuild's
+   `--prod` output is a self-contained bundle.
+2. **Do not `import "file:///opt/webr/dist/webr.mjs"`.** The bundle
+   references `__dirname`, which is defined in CommonJS modules but
+   undefined in ES module scope, so evaluating it as ESM throws
+   immediately:
+
+       ReferenceError: __dirname is not defined in ES module scope
+
+   The `.cjs` sibling is the same code as a CommonJS module, where Node
+   provides `__dirname` natively. Loading it via `createRequire` from an
+   ESM file keeps your runner ESM (so you still have top-level `await`)
+   while routing webR's bundle through Node's CJS loader.
+
+Bonus property of using `/opt/webr/dist` rather than a registry-installed
+`webr`: that dist was built by the same image (webR HEAD + R 4.5.1), so
+its `R.bin.wasm` matches the R your wasm package was compiled against —
+no version coupling.
+
+Use `baseUrl: "file:///opt/webr/dist/"` so webR fetches `R.bin.wasm` and
+its worker from the same surviving dir.
 
 ## Dependencies and webR
 
