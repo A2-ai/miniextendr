@@ -219,22 +219,30 @@ jobs:
       # Node) and a *Node* bundle to /opt/webr/src/dist/ (webr.cjs +
       # webr.mjs, both with a `__dirname`/`__filename`/`createRequire`
       # banner so the ESM build runs in Node). The image's Dockerfile
-      # runs `cd src && make clean` after the initial build, which wipes
-      # /opt/webr/src/dist — so the Node bundles vanish, leaving only the
-      # browser bundle behind. `node_modules` survives, so we re-run
-      # esbuild here to restore the Node bundles. R.wasm/R.js/vfs stay in
-      # /opt/webr/dist — we point webR at them via `baseUrl`, no copy.
+      # (see .webr/Dockerfile lines 107-108) deliberately strips both
+      # `src/node_modules` and `src/dist` to shrink the published image,
+      # so we restore them here. `package-lock.json` survives, so `npm
+      # ci` is deterministic and pins the JS bundle to the exact versions
+      # that built the surviving /opt/webr/dist/R.wasm — no drift between
+      # the bundle's runtime and the R.wasm it loads. R.wasm/R.js/vfs
+      # stay in /opt/webr/dist; we point webR at them via `baseUrl`.
       - name: Tier 3 — rebuild webR's Node bundles
         run: |
           set -euo pipefail
           cd /opt/webr/src
-          if [ ! -d node_modules ]; then
-            echo "::error::/opt/webr/src/node_modules absent — base image layout changed."
+          if [ ! -f package-lock.json ]; then
+            echo "::error::/opt/webr/src/package-lock.json absent — base image layout changed."
+            ls -la /opt/webr/src/ 2>&1 || true
             exit 1
           fi
-          # `npm run build` runs `tsc --emitDeclarationOnly && tsx ./esbuild.ts`
-          # which emits both browser (../dist/*) and Node (./dist/*) outputs.
-          # The browser outputs already exist; the Node ones get recreated.
+          # node_modules + dist are both stripped by the image's
+          # Dockerfile; reinstall + rebuild. ~2-5 min on a warm runner.
+          npm ci --no-audit --no-fund
+          # `npm run build` runs `tsc --emitDeclarationOnly && tsx
+          # ./esbuild.ts`, which emits browser (../dist/*) and Node
+          # (./dist/*) outputs. We only need the Node ones; the browser
+          # webr.mjs in /opt/webr/dist gets rewritten in place, which is
+          # fine — we don't load it.
           npm run build -- --prod
           test -f /opt/webr/src/dist/webr.mjs
           test -f /opt/webr/src/dist/webr.cjs
