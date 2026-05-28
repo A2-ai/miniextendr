@@ -219,13 +219,23 @@ jobs:
       # Node) and a *Node* bundle to /opt/webr/src/dist/ (webr.cjs +
       # webr.mjs, both with a `__dirname`/`__filename`/`createRequire`
       # banner so the ESM build runs in Node). The image's Dockerfile
-      # (see .webr/Dockerfile lines 107-108) deliberately strips both
-      # `src/node_modules` and `src/dist` to shrink the published image,
-      # so we restore them here. `package-lock.json` survives, so `npm
-      # ci` is deterministic and pins the JS bundle to the exact versions
-      # that built the surviving /opt/webr/dist/R.wasm — no drift between
-      # the bundle's runtime and the R.wasm it loads. R.wasm/R.js/vfs
-      # stay in /opt/webr/dist; we point webR at them via `baseUrl`.
+      # (see .webr/Dockerfile lines 107-108) deliberately strips
+      # src/node_modules, src/dist, AND webR/config.ts (via `make clean`)
+      # to shrink the published image, so we restore them here. We invoke
+      # the upstream Makefile's `$(PKG_DIST)/webr.mjs` target, which is
+      # what webR uses internally for `npm pack` — it chains
+      # node_modules ← `npm ci`, webR/config.ts ← sed from .in,
+      # `npm run build` ← tsc + esbuild, and a final asset-copy of
+      # R.wasm/R.js/vfs/webr-worker.js out of /opt/webr/dist into
+      # /opt/webr/src/dist. The bundle then resolves all runtime assets
+      # via its own __dirname, no `baseUrl` override needed. End-to-end
+      # this takes ~20s on a warm runner and is byte-locked to the
+      # versions that built the image's R.wasm.
+      #
+      # Validated locally end-to-end against the same base image:
+      # `make /opt/webr/src/dist/webr.mjs` succeeds in ~19s,
+      # `import { WebR } from .../webr.mjs` boots, evalR("1+1") returns
+      # {"type":"double","values":[2]}.
       - name: Tier 3 — rebuild webR's Node bundles
         run: |
           set -euo pipefail
@@ -235,17 +245,12 @@ jobs:
             ls -la /opt/webr/src/ 2>&1 || true
             exit 1
           fi
-          # node_modules + dist are both stripped by the image's
-          # Dockerfile; reinstall + rebuild. ~2-5 min on a warm runner.
-          npm ci --no-audit --no-fund
-          # `npm run build` runs `tsc --emitDeclarationOnly && tsx
-          # ./esbuild.ts`, which emits browser (../dist/*) and Node
-          # (./dist/*) outputs. We only need the Node ones; the browser
-          # webr.mjs in /opt/webr/dist gets rewritten in place, which is
-          # fine — we don't load it.
-          npm run build -- --prod
+          # Make target uses an absolute path because PKG_DIST is
+          # computed dynamically — see .webr/src/Makefile for the rule.
+          make /opt/webr/src/dist/webr.mjs
           test -f /opt/webr/src/dist/webr.mjs
           test -f /opt/webr/src/dist/webr.cjs
+          test -f /opt/webr/src/dist/R.wasm  # asset copy step ran
           ls -la /opt/webr/src/dist/
 
       - name: Tier 3 — run Node + webR smoke (library(miniextendr))
