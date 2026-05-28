@@ -9,29 +9,24 @@
 //
 // Expected layout when this script runs:
 //   /tmp/wasm-lib/miniextendr/      ← tier-2 R CMD INSTALL output
-//   /opt/webr/dist/webr.cjs         ← webR's bundled CommonJS (loaded here)
-//   /opt/webr/dist/                 ← also baseUrl for R.bin.wasm / worker
+//   /opt/webr/src/dist/webr.mjs     ← Node-targeted webR bundle (loaded here)
+//   /opt/webr/dist/                 ← baseUrl for R.bin.wasm / worker / vfs
 //
-// We load webR via `createRequire`-ing `/opt/webr/dist/webr.cjs` rather
-// than `import`-ing `/opt/webr/dist/webr.mjs`. webR's Dockerfile builds
-// /opt/webr/dist (esbuild output) but then `cd src && make clean`s away
-// src/dist, so the `webr` package's `main: dist/webr.mjs` no longer
-// resolves — and even the surviving `/opt/webr/dist/webr.mjs` can't be
-// imported as ESM, because esbuild emits `__dirname` references in the
-// bundle and `__dirname` is undefined in ES module scope
-// (ReferenceError: __dirname is not defined in ES module scope). The
-// `.cjs` sibling has the same code as a CommonJS module, where Node
-// provides `__dirname` natively. We pull it in via createRequire so
-// smoke.mjs itself stays ESM.
+// webR's esbuild config (.webr/src/esbuild.ts) emits two distinct
+// bundles: a *browser* one at /opt/webr/dist/webr.mjs (which stubs out
+// `fs`/`worker_threads`/`url`/etc and can't run in Node), and a *Node*
+// one at /opt/webr/src/dist/webr.{cjs,mjs} (the .mjs has a banner
+// defining __dirname/__filename/createRequire so the ESM build works in
+// Node). The image's Dockerfile runs `cd src && make clean` which
+// removes /opt/webr/src/dist; the CI workflow rebuilds it via
+// `npm run build` before this script runs.
 //
 // Hard miniextendr Imports (cli/lifecycle/R6/S7/vctrs) are fetched from
 // repo.r-wasm.org via `webR.installPackages` before the library load.
 // If the network fetch fails the smoke aborts loudly — we cannot prove
 // the side-module is healthy without the deps that its NAMESPACE pulls in.
 
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { WebR } = require("/opt/webr/dist/webr.cjs");
+import { WebR } from "file:///opt/webr/src/dist/webr.mjs";
 
 const WASM_LIB_MOUNT = "/wasm-rlib";
 const HOST_WASM_LIB = "/tmp/wasm-lib";
