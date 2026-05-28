@@ -10,16 +10,24 @@
 // Expected layout when this script runs:
 //   /tmp/wasm-lib/miniextendr/      ← tier-2 R CMD INSTALL output
 //   /opt/webr/src/dist/webr.mjs     ← Node-targeted webR bundle (loaded here)
-//   /opt/webr/dist/                 ← baseUrl for R.bin.wasm / worker / vfs
+//   /opt/webr/src/dist/R.wasm       ← R runtime + workers + vfs
+//   /opt/webr/src/dist/webr-worker.js
+//   /opt/webr/src/dist/vfs/
 //
 // webR's esbuild config (.webr/src/esbuild.ts) emits two distinct
 // bundles: a *browser* one at /opt/webr/dist/webr.mjs (which stubs out
 // `fs`/`worker_threads`/`url`/etc and can't run in Node), and a *Node*
 // one at /opt/webr/src/dist/webr.{cjs,mjs} (the .mjs has a banner
 // defining __dirname/__filename/createRequire so the ESM build works in
-// Node). The image's Dockerfile runs `cd src && make clean` which
-// removes /opt/webr/src/dist; the CI workflow rebuilds it via
-// `npm run build` before this script runs.
+// Node). The image's Dockerfile wipes both `src/node_modules` and
+// `src/dist`; the CI workflow rebuilds them via the upstream Makefile
+// `$(PKG_DIST)/webr.mjs` target, which also copies R.wasm/R.js/vfs/
+// webr-worker.js out of /opt/webr/dist into /opt/webr/src/dist so the
+// bundle resolves all runtime assets via its own __dirname — no
+// `baseUrl` override needed. (And we MUST NOT set a `file://` baseUrl:
+// Node 18+'s `new Worker(string)` rejects file:// URL strings with
+// ERR_WORKER_PATH, so the bundle would crash at init building the
+// webr-worker.js worker path off such a baseUrl.)
 //
 // Hard miniextendr Imports (cli/lifecycle/R6/S7/vctrs) are fetched from
 // repo.r-wasm.org via `webR.installPackages` before the library load.
@@ -46,10 +54,7 @@ function unwrapScalar(rJsResult) {
 
 async function main() {
   console.log("[tier3] Initialising webR...");
-  const webR = new WebR({
-    baseUrl: "file:///opt/webr/dist/",
-    interactive: false,
-  });
+  const webR = new WebR({ interactive: false });
   await webR.init();
   console.log("[tier3] webR initialised.");
 
