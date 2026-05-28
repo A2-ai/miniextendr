@@ -9,21 +9,29 @@
 //
 // Expected layout when this script runs:
 //   /tmp/wasm-lib/miniextendr/      ← tier-2 R CMD INSTALL output
-//   /opt/webr/dist/webr.mjs         ← webR's bundled ESM (also baseUrl)
+//   /opt/webr/dist/webr.cjs         ← webR's bundled CommonJS (loaded here)
+//   /opt/webr/dist/                 ← also baseUrl for R.bin.wasm / worker
 //
-// We import webR's bundled ESM by absolute file URL rather than as an npm
-// module. The webR base image builds /opt/webr/dist (esbuild output) but
-// then `cd src && make clean`s away src/dist, so the `webr` package's
-// `main: dist/webr.mjs` no longer resolves — the root /opt/webr/dist
-// survives, so we point straight at it. esbuild --prod bundles webR into a
-// self-contained .mjs, so no node_modules / npm install is needed.
+// We load webR via `createRequire`-ing `/opt/webr/dist/webr.cjs` rather
+// than `import`-ing `/opt/webr/dist/webr.mjs`. webR's Dockerfile builds
+// /opt/webr/dist (esbuild output) but then `cd src && make clean`s away
+// src/dist, so the `webr` package's `main: dist/webr.mjs` no longer
+// resolves — and even the surviving `/opt/webr/dist/webr.mjs` can't be
+// imported as ESM, because esbuild emits `__dirname` references in the
+// bundle and `__dirname` is undefined in ES module scope
+// (ReferenceError: __dirname is not defined in ES module scope). The
+// `.cjs` sibling has the same code as a CommonJS module, where Node
+// provides `__dirname` natively. We pull it in via createRequire so
+// smoke.mjs itself stays ESM.
 //
 // Hard miniextendr Imports (cli/lifecycle/R6/S7/vctrs) are fetched from
 // repo.r-wasm.org via `webR.installPackages` before the library load.
 // If the network fetch fails the smoke aborts loudly — we cannot prove
 // the side-module is healthy without the deps that its NAMESPACE pulls in.
 
-import { WebR } from "file:///opt/webr/dist/webr.mjs";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { WebR } = require("/opt/webr/dist/webr.cjs");
 
 const WASM_LIB_MOUNT = "/wasm-rlib";
 const HOST_WASM_LIB = "/tmp/wasm-lib";

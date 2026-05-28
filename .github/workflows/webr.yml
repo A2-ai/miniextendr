@@ -213,25 +213,29 @@ jobs:
       # wasm install Phase 2 just produced. The emcc link step alone is not
       # proof the side-module is actually loadable — tier 3 is.
       #
-      # We import webR's bundled ESM directly from /opt/webr/dist/webr.mjs
-      # instead of `npm install`-ing it. webR's Dockerfile builds the dist with
-      # `cd src && make` (esbuild → $(WEBR_ROOT)/dist, i.e. /opt/webr/dist) but
-      # then runs `cd src && make clean`, which deletes src/dist (PKG_DIST) —
-      # so the npm package's `main: dist/webr.mjs` resolves to a path that no
-      # longer exists, while the root /opt/webr/dist (DIST) survives cleanup.
-      # Bonus: that dist was built by this same image (webR HEAD + R 4.5.1), so
-      # its R.bin.wasm matches the R our wasm package was built against — no
-      # registry version-coupling. The runner lives in tests/webr-node-smoke/.
+      # We load webR via `createRequire("/opt/webr/dist/webr.cjs")` rather
+      # than `import "/opt/webr/dist/webr.mjs"`. webR's Dockerfile builds
+      # /opt/webr/dist with `cd src && make` (esbuild → $(WEBR_ROOT)/dist)
+      # then runs `cd src && make clean`, which deletes src/dist (PKG_DIST)
+      # — so the `webr` npm package's `main: dist/webr.mjs` no longer
+      # resolves, while the root /opt/webr/dist (DIST) survives cleanup.
+      # That dist was built by this same image (webR HEAD + R 4.5.1), so
+      # its R.bin.wasm matches our wasm package — no version coupling.
+      # The .mjs sibling can't be imported as ESM: esbuild emits
+      # `__dirname` references in the bundle and `__dirname` is undefined
+      # in ES module scope. The .cjs variant is the same code as a
+      # CommonJS module, where Node provides `__dirname` natively.
       - name: Tier 3 — locate webR's bundled dist
         run: |
           set -euo pipefail
-          if [ ! -f /opt/webr/dist/webr.mjs ]; then
-            echo "::error::/opt/webr/dist/webr.mjs not found — base image layout changed."
+          if [ ! -f /opt/webr/dist/webr.cjs ]; then
+            echo "::error::/opt/webr/dist/webr.cjs not found — base image layout changed."
             echo "--- /opt/webr/dist ---"; ls -la /opt/webr/dist 2>&1 || true
-            echo "--- webr.mjs anywhere under /opt/webr ---"; find /opt/webr -name 'webr.mjs' 2>/dev/null || true
+            echo "--- webr.{cjs,mjs} anywhere under /opt/webr ---"
+            find /opt/webr \( -name 'webr.cjs' -o -name 'webr.mjs' \) 2>/dev/null || true
             exit 1
           fi
-          echo "Found webR ESM at /opt/webr/dist/webr.mjs"
+          echo "Found webR CJS at /opt/webr/dist/webr.cjs"
 
       - name: Tier 3 — run Node + webR smoke (library(miniextendr))
         working-directory: tests/webr-node-smoke
