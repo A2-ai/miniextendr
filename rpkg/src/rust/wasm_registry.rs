@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      8b675171870a7ab6
+// content-hash:      59e798f0aa259bb0
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1513,6 +1513,9 @@ unsafe extern "C-unwind" {
     pub fn C_R6SensorReading__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6SensorReading__value(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6SensorReading__raw_bytes(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_unified_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_unified_roundtrip_count(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_gc_stress_unified_dataframe(_: SEXP) -> SEXP;
     pub fn C_float_ceil(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_float_powi(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_float_sqrt(_: SEXP, _: SEXP) -> SEXP;
@@ -9532,6 +9535,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_R6SensorReading__raw_bytes".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_R6SensorReading__raw_bytes) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_unified_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_unified_roundtrip) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_unified_roundtrip_count".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_unified_roundtrip_count) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_unified_dataframe".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_unified_dataframe) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_float_ceil".as_ptr(),

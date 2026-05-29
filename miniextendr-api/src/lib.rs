@@ -519,9 +519,7 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 
 // The unified owned data.frame type + conversion trait family
 pub mod dataframe;
-pub use dataframe::{
-    DataFrame, DataFrameError, DataFrameView, FromDataFrame, IntoDataFrame,
-};
+pub use dataframe::{DataFrame, DataFrameError, DataFrameView, FromDataFrame, IntoDataFrame};
 
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
