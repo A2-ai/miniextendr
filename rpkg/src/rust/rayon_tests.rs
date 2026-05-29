@@ -135,6 +135,64 @@ pub fn rayon_with_r_dataframe(n: i32) -> SEXP {
         .build()
 }
 
+/// Test RDataFrameBuilder with a **wide** shape (many short columns).
+///
+/// Builds a data.frame of `ncol` numeric columns named `c0`, `c1`, … each of
+/// `nrow` rows. Column `j` holds `row * 1000 + j` so the test can verify every
+/// cell landed in the right column and row. This is the column-dominated end of
+/// the flattened scheduler.
+///
+/// @param nrow Number of rows.
+/// @param ncol Number of columns.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_dataframe_wide(nrow: i32, ncol: i32) -> SEXP {
+    let mut builder = RDataFrameBuilder::new(nrow as usize);
+    for j in 0..ncol as usize {
+        builder = builder.column::<f64>(format!("c{j}"), move |chunk: &mut [f64], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = ((offset + i) * 1000 + j) as f64;
+            }
+        });
+    }
+    builder.build()
+}
+
+/// Test RDataFrameBuilder with a **skewed** shape (one long numeric column plus
+/// several tiny character columns).
+///
+/// The numeric column `big` has `nrow` rows (`big[i] = i`); two character
+/// columns `t0`, `t1` also have `nrow` rows but compute a trivial value with an
+/// `NA` on every third row. Under the flattened scheduler the long column's
+/// chunks should be stolen by threads that finish the small columns first.
+///
+/// @param nrow Number of rows.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_dataframe_skewed(nrow: i32) -> SEXP {
+    RDataFrameBuilder::new(nrow as usize)
+        .column::<f64>("big", |chunk: &mut [f64], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = (offset + i) as f64;
+            }
+        })
+        .column_str("t0", |i: usize| {
+            if i % 3 == 2 {
+                None
+            } else {
+                Some(format!("a{i}"))
+            }
+        })
+        .column_str("t1", |i: usize| {
+            if i % 3 == 2 {
+                None
+            } else {
+                Some(format!("b{i}"))
+            }
+        })
+        .build()
+}
+
 /// Test parallel reduce computing sum, min, max, and mean of a numeric vector.
 /// @param x Numeric vector input.
 #[cfg(feature = "rayon")]

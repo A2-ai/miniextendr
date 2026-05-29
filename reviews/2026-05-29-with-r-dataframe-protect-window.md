@@ -52,3 +52,17 @@ hold if the caller re-protects *before the next allocation*. Collecting several
 such results into a `Vec` first and protecting later is a use-after-free under
 gctorture. Don't mix RAII `OwnedProtect` with manual bulk `Rf_unprotect(n)` on
 the same stack region — the LIFO interleaving bites.
+
+## Follow-up: flattened scheduler (rayon-flatten-granularity branch)
+The follow-up that reworks `build()` into a single flat `(column, row-range)`
+work-list keeps the same discipline but tightens it: native columns are now
+allocated **and** re-protected inside each column's `alloc` step (so the protect
+happens before the *next* column's allocation, with no GC gap), and character
+columns hold **no** SEXP during the parallel phase (they fill an owned
+`Vec<Option<String>>`), so their `STRSXP` is allocated + protected only during
+serial assembly. The assembly counts protections explicitly
+(`native_protected`, one per column regardless of kind) and balances them with a
+single `Rf_unprotect(native_protected + 1)` + immediate `Rf_protect(df)` — no
+allocation in the gap, no RAII/manual mix. Re-verified with a gctorture(TRUE)
+sweep over the balanced + few-long-columns fixture and the wide/tall/skewed
+builders (36/36 ok, 0 fail) and the full testthat suite (FAIL 0, PASS 6134).

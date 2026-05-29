@@ -201,9 +201,29 @@ Same as above but return `RMatrix<T>` / `RArray<T, NDIM>` instead of raw SEXP.
 `with_r_matrix` fills a *homogeneous* matrix. `RDataFrameBuilder` is its
 heterogeneous-column analogue: you declare a set of typed columns — each with
 its own element type and fill closure — and the builder allocates every column
-serially on the R thread, fills each (already-allocated, contiguous) column
-buffer **in parallel**, then assembles a `data.frame` (`VECSXP` + `names` +
-compact `row.names` + `class = "data.frame"`).
+serially on the R thread, fills them all in **one flat parallel pass**, then
+assembles a `data.frame` (`VECSXP` + `names` + compact `row.names` +
+`class = "data.frame"`).
+
+The fill is **flattened** to a single `(column, row-range)` work-list rather
+than one task per column. There are two axes of parallelism — column-granular
+(one task per column) and row-slice-granular (split one column into row ranges,
+as [`with_r_vec`](#with_r_vec) does). The builder does not choose: it splits
+each column into `chunk_size = max(1, nrow / (current_num_threads() * 4))`-row
+chunks (same heuristic as `with_r_vec`) and runs a single `par_iter` over the
+combined list, letting rayon's work-stealing balance both axes:
+
+- **wide** (100 cols × short) → ~100+ items, column-dominated.
+- **tall** (3 cols × 10M rows) → each column shatters into `~nthreads*4` chunks
+  → hundreds of items, so even 3 columns saturate the pool.
+- **skewed** (1 huge col + many tiny) → the huge column's chunks get stolen by
+  threads idle after the small columns.
+
+This also avoids the per-column barrier and repeated pool spin-up of a "fill
+each column, each internally parallel" (nested `par_iter`) shape. On a 14-core
+box, a 3-column × 4M-row compute-bound fill is ~3.6× faster flattened than the
+column-granular scheduler (which keeps only 3 of 14 cores busy), with far
+tighter tail latency — see `miniextendr-bench/benches/rayon.rs`.
 
 ```rust
 use miniextendr_api::rayon_bridge::RDataFrameBuilder;

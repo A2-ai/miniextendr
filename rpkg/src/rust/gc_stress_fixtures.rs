@@ -1394,18 +1394,36 @@ pub fn gc_stress_typed_dataframe() {
 /// Exercise `RDataFrameBuilder` parallel column-fill under GC pressure.
 ///
 /// Builds a heterogeneous data.frame (numeric `x`, integer `y`, character
-/// `label` with interspersed `NA`) via the parallel builder. The builder
-/// allocates each column SEXP serially, holds them protected across subsequent
-/// column / names / row.names / class allocations, and assembles the parent
-/// `VECSXP`. This is exactly the SEXP-across-allocation path that needs a
+/// `label` with interspersed `NA`) via the parallel builder, across two column
+/// shapes:
+///
+/// 1. A balanced 3-column frame (`x`/`y`/`label`).
+/// 2. A **few-long-columns** frame (one numeric + one character, both spanning
+///    enough rows to split into many row-range chunks) — the shape the flattened
+///    `(column, row-range)` work-list targets, and the one most likely to expose
+///    a PROTECT-window bug because the parallel pass touches many disjoint slices
+///    of the same column buffers.
+///
+/// The builder allocates each column SEXP serially, holds them protected across
+/// subsequent column / names / row.names / class allocations, and assembles the
+/// parent `VECSXP`. This is exactly the SEXP-across-allocation path that needs a
 /// gctorture pass. No arguments — suitable for the fast gctorture sweep.
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn gc_stress_dataframe_rayon() {
+    // Shape 1: balanced 3-column frame.
+    build_and_check_rayon_df(200);
+
+    // Shape 2: few-long-columns frame (the flattening target).
+    build_and_check_rayon_df_tall(5000);
+}
+
+/// Build a 3-column (`f64`/`i32`/`character`) rayon data.frame and assert it.
+#[cfg(feature = "rayon")]
+fn build_and_check_rayon_df(nrow: usize) {
     use miniextendr_api::gc_protect::ProtectScope;
     use miniextendr_api::rayon_bridge::RDataFrameBuilder;
 
-    let nrow = 200usize;
     let df = RDataFrameBuilder::new(nrow)
         .column::<f64>("x", |chunk: &mut [f64], offset: usize| {
             for (i, slot) in chunk.iter_mut().enumerate() {
@@ -1452,6 +1470,58 @@ pub fn gc_stress_dataframe_rayon() {
     let mut na_count = 0usize;
     for i in 0..nrow as isize {
         if label.string_elt_str(i).is_none() {
+            na_count += 1;
+        }
+    }
+    assert!(na_count > 0);
+
+    drop(scope);
+}
+
+/// Build a few-long-columns rayon data.frame (one `f64` + one character column,
+/// `nrow` rows) and assert it. This shape splits each column into many row-range
+/// chunks, exercising the flattened work-list's disjoint-slice writes.
+#[cfg(feature = "rayon")]
+fn build_and_check_rayon_df_tall(nrow: usize) {
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::rayon_bridge::RDataFrameBuilder;
+
+    let df = RDataFrameBuilder::new(nrow)
+        .column::<f64>("v", |chunk: &mut [f64], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = (offset + i) as f64 * 0.5;
+            }
+        })
+        .column_str("s", |i: usize| {
+            if i % 11 == 10 {
+                None
+            } else {
+                Some(format!("v_{i}"))
+            }
+        })
+        .build();
+
+    let scope = unsafe { ProtectScope::new() };
+    let df = unsafe { scope.protect_raw(df) };
+    assert!(df.is_data_frame());
+    assert_eq!(df.xlength(), 2);
+
+    let v = df.vector_elt(0);
+    let s = df.vector_elt(1);
+    assert_eq!(v.xlength() as usize, nrow);
+    assert_eq!(s.xlength() as usize, nrow);
+
+    // Every native slot must equal its index formula — catches any chunk that
+    // was skipped or double-written by the flattened scheduler.
+    let v_slice: &[f64] = unsafe { v.as_slice() };
+    for (i, &val) in v_slice.iter().enumerate() {
+        assert_eq!(val, i as f64 * 0.5);
+    }
+
+    // Touch every CHARSXP including the NA slots.
+    let mut na_count = 0usize;
+    for i in 0..nrow as isize {
+        if s.string_elt_str(i).is_none() {
             na_count += 1;
         }
     }
