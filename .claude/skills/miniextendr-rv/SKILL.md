@@ -200,7 +200,7 @@ If any of these fail, you're in safe mode — see the fix recipes above.
 
 - Installing `rv` itself or `rig` itself (both are global / system installs;
   see their upstream docs).
-- CRAN corpus management (`just rv-add-cran-corpus` / `just rv-remove-cran-corpus`)
+- CRAN corpus management (`just bindgen-corpus-add-packages` / `just bindgen-corpus-remove-packages`)
   — see comments in `justfile`.
 - `renv` migration — this repo is rv-native and has no `renv.lock`.
 

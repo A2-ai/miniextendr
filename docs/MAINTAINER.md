@@ -65,11 +65,12 @@ apt-get install autoconf automake
 When changing proc-macros, the full sequence is:
 
 ```bash
-just configure          # 1. Vendor macro crates to rpkg/vendor/
-just rcmdinstall        # 2. Build and install R package
-just devtools-document  # 3. Regenerate R wrappers
-just rcmdinstall        # 4. Rebuild with updated wrappers
+just configure && just rcmdinstall && just force-document
 ```
+
+Use `just force-document` (not `just devtools-document`) after macro changes —
+it bypasses `roxygen2::needs_roxygenize()`'s mtime cache, which may not catch
+macro-layer output changes. `just devtools-document` is for pure R/roxygen changes.
 
 ### Quick Iteration
 
@@ -167,17 +168,25 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs:
 
 ## Vendoring for CRAN
 
-R packages submitted to CRAN must be self-contained. The `configure` script handles vendoring:
+R packages submitted to CRAN must be self-contained. The `vendor` recipe (which
+calls `cargo-revendor`) produces the offline bundle:
 
 ```bash
-just configure
+just vendor
 ```
 
 This:
 
-1. Syncs `miniextendr-api` and `miniextendr-macros` to `rpkg/vendor/`
-2. Vendors crates.io dependencies (proc-macro2, quote, syn, etc.)
-3. Generates `.cargo/config.toml` for offline builds
+1. Regenerates `Cargo.lock` in tarball-shape (git-URL sources for the
+   `miniextendr-{api,lint,macros}` workspace crates)
+2. Vendors all crates.io dependencies (proc-macro2, quote, syn, etc.) into `rpkg/vendor/`
+3. Compresses the result to `rpkg/inst/vendor.tar.xz`
+
+`just configure` does **no** vendoring in dev mode — it only generates
+`Makevars` and `.cargo/config.toml`, and auto-detects tarball mode from the
+presence of `inst/vendor.tar.xz`. Once the tarball exists, `configure` unpacks
+it and writes the offline `[source]` replacement; delete it with
+`just clean-vendor-leak` to return to source-mode dev iteration.
 
 ## Useful Commands
 

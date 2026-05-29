@@ -204,5 +204,5 @@ impl MyType { /* ... */ }
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors
-2. **Check NAMESPACE**: if a function exists in Rust but not in R, run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile)
+2. **Check NAMESPACE**: if a function exists in Rust but not in R, run [`just rcmdinstall && just force-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) (`force-document` bypasses roxygen2's mtime cache, which can miss macro-layer wrapper changes)
 3. **Feature-gated modules**: use `#[cfg]` on `mod` declarations for conditional compilation
