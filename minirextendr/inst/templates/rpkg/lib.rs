@@ -7,12 +7,19 @@ miniextendr_api::miniextendr_init!();
 // 1. Add your #[miniextendr] function below
 // 2. Rebuild:
 //
-//      Rscript -e 'devtools::document()'  # Compiles Rust + generates R wrappers
-//      Rscript -e 'devtools::install()'   # Install the package
+//      Rscript -e 'minirextendr::miniextendr_build()'
 //
-//    devtools::document() handles everything in one step: bootstrap.R runs
-//    ./configure, make compiles Rust, R wrappers are generated via linkme,
-//    and roxygen2 updates NAMESPACE — no manual ./configure or two-pass install.
+//    miniextendr_build() runs autoconf + ./configure, compiles Rust, generates
+//    the R wrappers (R/<pkg>-wrappers.R) via linkme, installs the package, and
+//    updates NAMESPACE + man/ with roxygen2 — all in one step.
+//
+//    Do NOT install with a bare `devtools::install()` / `R CMD INSTALL .` /
+//    `devtools::document()`: the package's bootstrap step vendors dependencies
+//    into inst/vendor.tar.xz, which flips ./configure into offline "tarball"
+//    mode. Tarball mode ships pre-generated wrappers and SKIPS wrapper
+//    generation, so on a fresh build those paths produce an empty namespace
+//    (library() exposes no functions). miniextendr_build() sets
+//    MINIEXTENDR_FORCE_WRAPPER_GEN so wrappers are regenerated regardless.
 
 /// A simple function that adds two numbers
 ///
