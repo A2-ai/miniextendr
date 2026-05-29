@@ -835,6 +835,15 @@ jobs:
         run: Rscript -e "testthat::test_local()"
 
       - name: Run tests with heap checking (3 rounds, randomized order)
+        # Heap checking (glibc MALLOC_CHECK_, 3 randomized rounds) is the
+        # GC-discipline guard, but it runs ~30+ min and reliably overruns the
+        # 45-min job budget (bumped 30 -> 45 in #732 and still cancelling).
+        # Gate it on PRs behind the `heap-check` label so routine PRs stay fast;
+        # still run it unconditionally on push-to-main, the weekly schedule, and
+        # manual dispatch so merged code keeps its GC safety net.
+        if: >-
+          github.event_name != 'pull_request' ||
+          contains(github.event.pull_request.labels.*.name, 'heap-check')
         working-directory: rpkg
         shell: bash
         env:
