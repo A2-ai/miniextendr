@@ -182,29 +182,46 @@ be exported during the wasm install — `webr-vars.mk` references both.
   confirmed the runtime load is unaffected — wasm32-unknown-emscripten is
   position-independent by default, so the flag was a no-op.)
 
-## The `/opt/webr/dist` import gotcha
+## Running a webR session in Node (the two-bundle gotcha)
 
-To run a webR session in Node *inside the webR base image*, import webR's
-bundled ESM by absolute file URL:
+webR's esbuild config emits **two** bundles and only one runs in Node:
+
+| Bundle | Path | Runtime |
+|---|---|---|
+| **browser** | `/opt/webr/dist/webr.mjs` | browser only — stubs out `fs`/`worker_threads`/`url` via `blankImportPlugin`, *crashes in Node* |
+| **Node** | `/opt/webr/src/dist/{webr.mjs,webr.cjs}` | Node — the `.mjs` carries a `__dirname`/`__filename`/`createRequire` banner |
+
+So the Node runner imports the **Node** bundle, with **no** `baseUrl`:
 
 ```js
-import { WebR } from "file:///opt/webr/dist/webr.mjs";
+import { WebR } from "file:///opt/webr/src/dist/webr.mjs";
+const webR = new WebR({ interactive: false });   // NO file:// baseUrl
 ```
 
-Do **not** `npm install file:///opt/webr/src` (the obvious-looking move).
-webR's Dockerfile builds the JS dist with `cd src && make` — esbuild emits
-the bundle to `$(WEBR_ROOT)/dist`, i.e. `/opt/webr/dist/webr.mjs` — then
-runs `cd src && make clean`, whose clean target removes only
-`src/dist` (`PKG_DIST`). So in the shipped image the `webr` npm package's
-`main: dist/webr.mjs` resolves under the package dir to the *deleted*
-`/opt/webr/src/dist/webr.mjs`, while the root `/opt/webr/dist/webr.mjs`
-survives. `esbuild --prod` produces a self-contained bundle, so the direct
-import needs no `npm install` / `node_modules`. Bonus: that dist was built
-by the same image (webR HEAD + R 4.5.1), so its `R.bin.wasm` matches the R
-your wasm package was compiled against — no npm-registry version-coupling.
+Two non-obvious constraints:
 
-Use `baseUrl: "file:///opt/webr/dist/"` so webR fetches `R.bin.wasm` and its
-worker from the same surviving dir.
+1. **The image deletes `src/dist` and `src/node_modules`** (its Dockerfile runs
+   `make clean` to shrink the published image, see `.webr/Dockerfile`). You must
+   **rebuild the Node bundle first**: `cd /opt/webr/src && make
+   /opt/webr/src/dist/webr.mjs`. That target chains `npm ci` →
+   `webR/config.ts` (sed from `.in`) → `npm run build` (tsc + esbuild) → an
+   asset-copy of `R.wasm`/`R.js`/`vfs`/`webr-worker.js` out of
+   `/opt/webr/dist` into `/opt/webr/src/dist`, so the bundle resolves all
+   runtime assets via its own `__dirname` — hence no `baseUrl` needed (~20s on
+   a warm runner).
+2. **Do NOT set a `file://` baseUrl.** Node 18+'s `new Worker(string)` rejects
+   `file://` URL strings with `ERR_WORKER_PATH`, so the bundle crashes at init
+   while building the `webr-worker.js` worker path. (This is the trap the old
+   `import { WebR } from "file:///opt/webr/dist/webr.mjs"` + `baseUrl` advice
+   walked straight into — that imported the *browser* bundle, which can't run
+   in Node at all.)
+
+`tests/webr-node-smoke/smoke.mjs` (CI tier-3) is the worked reference; its
+header comment is the source of truth for the bundle layout. The Node process
+must `webR.close()` (terminates the worker) and call `process.exit()` in a
+top-level `.finally()` — otherwise the worker keeps Node's event loop alive and
+the run hangs until the watchdog `timeout` kills it (exit 124, see
+`reviews/2026-05-29-tier3-webr-node-smoke-exit-hang.md`).
 
 ## Dependencies and webR
 
@@ -276,11 +293,12 @@ is what proves it *loads* in a real webR runtime.
 - Issue #470 — umbrella tracking issue for webR/WASM support.
 - Issue #495 — cross-crate trait dispatch; #752 — dependency guidance;
   #755 — pin a tagged base-image digest; #788 — arm64-native dev image.
-- `tests/webr-node-smoke/smoke.mjs` — the CI tier-3 Node runner.
-- `tests/webr-smoke.sh` — the local end-to-end smoke runner. (Its Phase 3
-  still uses the old `npm install file:///opt/webr/src` approach, which is
-  broken in the current image — port it to the `/opt/webr/dist` import when
-  next touched.)
+- `tests/webr-node-smoke/smoke.mjs` — the CI tier-3 Node runner (single source
+  of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
+- `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
+  `webr.yml` tier-2/3 job step-for-step (Phase 2 → `/tmp/wasm-lib`, Phase 3 →
+  `make` the Node bundle, then run `smoke.mjs`). The base image is amd64-only,
+  so it can't be exercised on an arm64 dev box today — tracked in #788.
 - `.webr/` — vendored clone of the webR repo for offline reference.
 - `.webr/Dockerfile` — upstream Rust toolchain install we inherit.
 - `.webr/packages/webr-vars.mk` — the Makevars override webR uses for
