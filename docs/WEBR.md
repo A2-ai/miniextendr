@@ -14,11 +14,11 @@ webR Docker image.
 Tracking: umbrella #470. Shipped: tier 1/2/3 CI (#480 / #491 / #492),
 cross-package wasm stubs (#493), side-module `RUSTFLAGS`
 (`-Zdefault-visibility=hidden`, #494), `link_to_r()` wasm gating (#482), webR
-base-image mirror (#496), and the redundant `-C relocation-model=pic` flag
-dropped (#745). Open follow-ups: #495 (cross-crate trait dispatch), #752
-(dependency guidance — see "Dependencies and webR" below), #755 (pin a tagged
-base-image digest), #788 (arm64-native dev image), #747 (drop mirror creds once
-the GHCR package is public).
+base-image mirror (#496), the redundant `-C relocation-model=pic` flag
+dropped (#745), and the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
+release (#755). Open follow-ups: #495 (cross-crate trait dispatch), #752
+(dependency guidance — see "Dependencies and webR" below), #788 (arm64-native
+dev image), #747 (drop mirror creds once the GHCR package is public).
 
 ## Target
 
@@ -94,9 +94,9 @@ the container, then prints a testthat pass/fail/skip summary:
    they're never deployed to webR; see #493.)
 2. **wasm32 install** — `CC=emcc bash rpkg/configure` followed by
    `R CMD INSTALL --no-test-load --no-staged-install` against
-   `/opt/webr/host/R-4.5.1/bin/R` (webR's own host R) with
+   `/opt/webr/host/R-4.6.0/bin/R` (webR's own host R) with
    `R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk`. Result lands at
-   `/opt/webr/wasm/R-4.5.1/lib/R/library/miniextendr/`.
+   `/opt/webr/wasm/R-4.6.0/lib/R/library/miniextendr/`.
 3. **webR Node session** — imports webR's bundled ESM directly from
    `file:///opt/webr/dist/webr.mjs` (see "The `/opt/webr/dist` import
    gotcha" below), NODEFS-mounts the wasm R lib tree, calls
@@ -141,11 +141,11 @@ right one:
 
 | Path | Use |
 |---|---|
-| `/opt/R/current/bin/R` | Native (rig-managed 4.5.1). Phase 1 of the smoke script — host cdylib + wrapper-gen. |
-| `/opt/webr/host/R-4.5.1/bin/R` | webR's own host R, configured for wasm cross-compilation. Phase 2 — wasm `R CMD INSTALL` with `webr-vars.mk`. |
-| `/opt/webr/wasm/R-4.5.1/lib/R/library/` | wasm R library tree where the side-module ends up. NODEFS-mounted into the webR Node session. |
+| `/opt/R/current/bin/R` | Native (rig-managed 4.6.0). Phase 1 of the smoke script — host cdylib + wrapper-gen. |
+| `/opt/webr/host/R-4.6.0/bin/R` | webR's own host R, configured for wasm cross-compilation. Phase 2 — wasm `R CMD INSTALL` with `webr-vars.mk`. |
+| `/opt/webr/wasm/R-4.6.0/lib/R/library/` | wasm R library tree where the side-module ends up. NODEFS-mounted into the webR Node session. |
 
-`R_SOURCE=/opt/webr/R/build/R-4.5.1` and `WASM_TOOLS=/opt/webr/tools` must
+`R_SOURCE=/opt/webr/R/build/R-4.6.0` and `WASM_TOOLS=/opt/webr/tools` must
 be exported during the wasm install — `webr-vars.mk` references both.
 
 ## Other webR build constraints
@@ -292,7 +292,7 @@ is what proves it *loads* in a real webR runtime.
 
 - Issue #470 — umbrella tracking issue for webR/WASM support.
 - Issue #495 — cross-crate trait dispatch; #752 — dependency guidance;
-  #755 — pin a tagged base-image digest; #788 — arm64-native dev image.
+  #788 — arm64-native dev image.
 - `tests/webr-node-smoke/smoke.mjs` — the CI tier-3 Node runner (single source
   of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green

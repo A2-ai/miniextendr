@@ -26,7 +26,7 @@ MX_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ── Constants ───────────────────────────────────────────────────────────────
 
 IMAGE="miniextendr-webr-dev:latest"
-R_VERSION="4.5.1"
+R_VERSION="4.6.0"
 WEBR_ROOT="/opt/webr"
 R_HOST_EXE="${WEBR_ROOT}/host/R-${R_VERSION}/bin/R"
 R_NATIVE_EXE="/opt/R/current/bin/R"
