@@ -70,6 +70,21 @@ jobs:
       - name: cargo check (miniextendr-api)
         run: cargo check -p miniextendr-api --target wasm32-unknown-emscripten
 
+      # Cross-package crates (#493) ship deliberately-empty wasm_registry.rs
+      # stubs so they can compile on wasm32. Without a CI check those stubs are
+      # dead weight that could silently rot when the macro cfg-gating changes.
+      # This compiles both standalone-workspace crates on wasm32 to guard the
+      # gating. It validates COMPILE only — runtime cross-crate trait dispatch
+      # under the wasm_registry codegen is the separate open follow-up (#495).
+      - name: cargo check (cross-package crates)
+        run: |
+          set -euo pipefail
+          for crate in tests/cross-package/producer.pkg tests/cross-package/consumer.pkg; do
+            echo "::group::$crate (wasm32)"
+            ( cd "$crate/src/rust" && cargo check --target wasm32-unknown-emscripten )
+            echo "::endgroup::"
+          done
+
       # rpkg/configure invokes ${R_HOME}/bin/Rscript directly for feature
       # detection (configure.ac:133, :275, :473). The dummy R_HOME has no
       # Rscript binary, so configure fails on this bare-ubuntu runner.
