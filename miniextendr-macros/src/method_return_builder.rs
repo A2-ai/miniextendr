@@ -94,12 +94,21 @@ impl ReturnStrategy {
     /// Determine the return strategy for a parsed method.
     ///
     /// - Methods that return `Self` use `ReturnSelf`
-    /// - `&mut self` methods returning `()` use `ChainableMutation`
+    /// - In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
+    ///   `&mut self -> ()` methods use `ChainableMutation`. Both return the
+    ///   receiver object (`x` / `invisible(self)`) so the call composes under
+    ///   the native pipe (`obj |> set_a(1) |> set_b(2)`); the C wrapper hands
+    ///   back the same ExternalPtr handle (see
+    ///   [`crate::c_wrapper_builder::ReturnHandling::SelfHandle`]).
     /// - All other methods use `Direct`
     pub fn for_method(method: &ParsedMethod) -> Self {
+        // In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
+        // `&mut self -> ()` mutators both return the receiver object.
+        let is_self_ref_builder = method.returns_self_ref() && method.env.is_instance();
+        let is_unit_mutator = method.env.is_mut() && method.returns_unit();
         if method.returns_self() {
             ReturnStrategy::ReturnSelf
-        } else if method.env.is_mut() && method.returns_unit() {
+        } else if is_self_ref_builder || is_unit_mutator {
             ReturnStrategy::ChainableMutation
         } else {
             ReturnStrategy::Direct

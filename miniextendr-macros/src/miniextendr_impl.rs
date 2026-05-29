@@ -2051,6 +2051,23 @@ impl ParsedMethod {
                 if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)))
     }
 
+    /// Returns true if this method returns a reference to `Self` (`&Self` or
+    /// `&mut Self`) — the idiomatic Rust in-place builder signature.
+    ///
+    /// These methods mutate (`&mut self`) or read (`&self`) the receiver and
+    /// return a borrow of the same value so calls can be chained in Rust
+    /// (`b.set_a(1).set_b(2)`). On the R side this maps to a pipe-friendly free
+    /// function (S3) / chainable instance method that returns the *same*
+    /// ExternalPtr handle, so the R idiom `obj |> set_a(1) |> set_b(2)` works
+    /// with in-place value semantics (no clone). See
+    /// [`crate::c_wrapper_builder::ReturnHandling::SelfHandle`].
+    pub fn returns_self_ref(&self) -> bool {
+        matches!(&self.sig.output, syn::ReturnType::Type(_, ty)
+            if matches!(ty.as_ref(), syn::Type::Reference(r)
+                if matches!(r.elem.as_ref(), syn::Type::Path(p)
+                    if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))))
+    }
+
     /// Returns true if this method has no return type (returns unit `()`).
     pub fn returns_unit(&self) -> bool {
         match &self.sig.output {
@@ -2553,6 +2570,12 @@ pub fn generate_method_c_wrapper(
     // Determine return handling strategy
     let return_handling = if method.returns_self() {
         ReturnHandling::ExternalPtr
+    } else if method.returns_self_ref() && method.env.is_instance() {
+        // In-place builder (`&mut self -> &mut Self` / `&self -> Self`): the
+        // method mutates/borrows the receiver and returns a borrow of it. Hand
+        // back the same ExternalPtr handle (`self_sexp`) so chaining preserves
+        // identity with no clone. See `ReturnHandling::SelfHandle`.
+        ReturnHandling::SelfHandle
     } else if method.method_attrs.unwrap_in_r && output_is_result(&method.sig.output) {
         ReturnHandling::IntoR
     } else {
