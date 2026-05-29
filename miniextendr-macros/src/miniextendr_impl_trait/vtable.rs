@@ -835,7 +835,7 @@ pub(super) fn is_self_ref_type(ty: &syn::Type) -> bool {
 
 /// Generate a C wrapper function and `R_CallMethodDef` for a single trait method.
 ///
-/// Uses [`CWrapperContext`] builder to produce:
+/// Uses `CWrapperContext` builder to produce:
 /// - An `extern "C"` function callable from R via `.Call()`
 /// - A `R_CallMethodDef` constant for symbol registration
 ///

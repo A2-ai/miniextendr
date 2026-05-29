@@ -129,7 +129,7 @@ struct AltrepAttrs {
     generate_lowlevel: bool,
     /// Collected option flags (`dataptr`, `serialize`, `subset`) passed to the runtime macro.
     lowlevel_options: Vec<syn::Ident>,
-    /// Guard mode override for ALTREP trampoline callbacks. Maps to [`AltrepGuard`] variants:
+    /// Guard mode override for ALTREP trampoline callbacks. Maps to `AltrepGuard` variants:
     /// - `Unsafe` -- no protection
     /// - `RustUnwind` -- `catch_unwind` only
     /// - `RUnwind` -- `with_r_unwind_protect` (default)

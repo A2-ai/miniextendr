@@ -202,7 +202,7 @@ fn collect_dep_names(cargo_toml: &Path, section: &str) -> Result<Vec<String>> {
     Ok(names)
 }
 
-/// Prune [features] entries that reference removed deps, in-place.
+/// Prune `[features]` entries that reference removed deps, in-place.
 fn prune_dangling_features_inplace(cargo_toml: &Path, removed_deps: &[String]) -> Result<()> {
     let content = std::fs::read_to_string(cargo_toml)?;
     let pruned = prune_dangling_feature_refs(&content, removed_deps);
@@ -214,7 +214,7 @@ fn prune_dangling_features_inplace(cargo_toml: &Path, removed_deps: &[String]) -
 
 /// Remove feature array entries that reference removed dependencies.
 ///
-/// Cargo validates ALL [features] entries at parse time regardless of which
+/// Cargo validates ALL `[features]` entries at parse time regardless of which
 /// features are enabled. After dev-dependencies are stripped, any feature
 /// referencing `"<dep>/..."`, `"<dep>?/..."`, or exactly `"<dep>"` for a
 /// removed dep becomes a dangling reference that breaks every consumer.

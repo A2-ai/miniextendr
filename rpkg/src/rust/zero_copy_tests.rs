@@ -37,7 +37,7 @@ pub fn zero_copy_cow_i32_identity(x: SEXP) -> bool {
 
 // region: Cow<str> scalar
 
-/// Returns TRUE if Cow<str> from R is Cow::Borrowed (zero-copy).
+/// Returns TRUE if `Cow<str>` from R is Cow::Borrowed (zero-copy).
 /// @export
 #[miniextendr]
 pub fn zero_copy_cow_str_is_borrowed(x: Cow<'static, str>) -> bool {
@@ -48,7 +48,7 @@ pub fn zero_copy_cow_str_is_borrowed(x: Cow<'static, str>) -> bool {
 
 // region: Vec<Cow<str>>
 
-/// Returns TRUE if all elements of Vec<Cow<str>> are Cow::Borrowed.
+/// Returns TRUE if all elements of `Vec<Cow<str>>` are Cow::Borrowed.
 /// @export
 #[miniextendr]
 pub fn zero_copy_vec_cow_str_all_borrowed(x: Vec<Cow<'static, str>>) -> bool {

@@ -187,7 +187,7 @@ pub struct FileData {
     pub export_control: HashMap<String, (bool, bool, usize)>,
 
     // Impl method details for per-method lint rules
-    /// Methods per inherent impl type: type_name → Vec<ImplMethodEntry>.
+    /// Methods per inherent impl type: type_name → `Vec<ImplMethodEntry>`.
     pub impl_methods: HashMap<String, Vec<ImplMethodEntry>>,
 
     // Doc-comment roxygen tags per function/impl name

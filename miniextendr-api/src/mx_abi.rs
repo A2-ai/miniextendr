@@ -16,7 +16,7 @@ use std::ffi::CStr;
 use std::sync::OnceLock;
 
 /// The tag symbol used to identify miniextendr external pointers.
-/// SEXP is Send+Sync so OnceLock<SEXP> works directly.
+/// SEXP is Send+Sync so `OnceLock<SEXP>` works directly.
 static MX_TAG: OnceLock<SEXP> = OnceLock::new();
 
 /// Get the miniextendr tag symbol, initializing it if needed.

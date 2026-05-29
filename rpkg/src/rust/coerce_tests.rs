@@ -195,7 +195,7 @@ pub fn test_per_arg_coerce_both(
 }
 
 // Test 14: Per-argument coerce - Vec coercion
-/// Test per-argument coercion on a Vec parameter (Vec<i32> coerced to Vec<u16>).
+/// Test per-argument coercion on a Vec parameter (`Vec<i32>` coerced to `Vec<u16>`).
 /// @param x Integer vector coerced element-wise to u16.
 /// @param y Integer scalar added to the sum.
 #[miniextendr]

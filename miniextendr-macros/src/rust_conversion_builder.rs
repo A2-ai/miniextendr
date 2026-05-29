@@ -106,7 +106,7 @@ impl RustConversionBuilder {
         }
     }
 
-    /// Like [`conversion_stmt`] but without a type annotation on the binding.
+    /// Like `conversion_stmt` but without a type annotation on the binding.
     fn conversion_stmt_untyped(
         &self,
         try_expr: TokenStream,

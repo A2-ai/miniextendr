@@ -182,7 +182,7 @@ pub(crate) fn sha256_hex(data: &[u8]) -> String {
 
 /// Recompute `.cargo-checksum.json` for every crate directory in `vendor_dir`.
 ///
-/// This replaces [`clear_checksums`][crate::vendor::clear_checksums]: instead
+/// This replaces `clear_checksums`: instead
 /// of writing `{"files":{}}` (empty files map, null package), we preserve the
 /// original `package` hash (matching the committed `Cargo.lock`) and recompute
 /// the `files` map from the trimmed disk contents.

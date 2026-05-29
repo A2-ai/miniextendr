@@ -223,14 +223,14 @@ struct Cli {
     flat_dirs: bool,
 
     /// Vendor external (crates.io/git) dependencies only.
-    /// Writes vendor/<name>-<version>/ dirs; never touches local crate dirs.
+    /// Writes `vendor/<name>-<version>/` dirs; never touches local crate dirs.
     /// Incompatible with --freeze, --compress, --source-marker, --blank-md,
     /// and --strict-freeze.
     #[arg(long, conflicts_with = "local_only")]
     external_only: bool,
 
     /// Vendor local workspace crates only.
-    /// Writes vendor/<name>/ (flat) dirs; never touches external dirs.
+    /// Writes `vendor/<name>/` (flat) dirs; never touches external dirs.
     /// Requires externals to already be on disk (checked via
     /// .revendor-cache-external) when --freeze, --compress, --source-marker,
     /// or --blank-md are also given.

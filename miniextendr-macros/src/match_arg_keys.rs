@@ -1,7 +1,7 @@
 //! Write-time placeholder & symbol-name formatting for the match_arg pipeline.
 //!
 //! Tradeoff signpost: this module is the **wiring** between the
-//! `#[derive(MatchArg)]` proc macro (see [`match_arg_derive`]) and the
+//! `#[derive(MatchArg)]` proc macro (see `match_arg_derive`) and the
 //! cdylib's write-time substitution pass. The `match.arg` codegen path
 //! deliberately splits responsibilities — the proc macro emits placeholders
 //! into the R wrapper, and the cdylib resolves them to a concrete `c("a",

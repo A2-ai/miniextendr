@@ -9,7 +9,7 @@ use miniextendr_api::{
     SexpExt, miniextendr, sys,
 };
 
-/// Test struct for as.<class> coercion methods.
+/// Test struct for `as.<class>` coercion methods.
 ///
 /// This struct contains sample data to test conversion to data.frame, list, and character.
 #[derive(ExternalPtr)]

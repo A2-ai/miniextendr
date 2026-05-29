@@ -770,7 +770,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 /// Generate IntoR impls for types with `to_string_lossy()` (owned scalar, ref scalar,
-/// Option, Vec, Vec<Option>). Used for PathBuf/&Path and OsString/&OsStr.
+/// Option, Vec, `Vec<Option>`). Used for PathBuf/&Path and OsString/&OsStr.
 macro_rules! impl_lossy_string_into_r {
     (
         $(#[$owned_meta:meta])*

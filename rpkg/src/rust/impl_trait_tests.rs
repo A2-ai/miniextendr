@@ -15,7 +15,7 @@ pub fn impl_return_string() -> impl IntoR {
     String::from("hello from impl IntoR")
 }
 
-/// `-> impl IntoR` with Vec<i32> behind it.
+/// `-> impl IntoR` with `Vec<i32>` behind it.
 #[miniextendr]
 pub fn impl_return_vec() -> impl IntoR {
     vec![10, 20, 30]
