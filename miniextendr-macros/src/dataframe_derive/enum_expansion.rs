@@ -1836,44 +1836,48 @@ pub(super) fn derive_enum_dataframe(
     };
     // endregion
 
-    // region: Public IntoDataFrame on Vec<Row> (the unified build verb for enums)
+    // region: DataFrameRowConvert on Row — orphan-rule bridge (enums: build-only, no reader)
     //
-    // Enums have no R→Rust reader, so only `IntoDataFrame` is emitted (no `FromDataFrame`).
-    // `into_dataframe_par` uses the parallel scatter-write builder when one was generated for
-    // this shape; otherwise it falls back to the sequential transposition.
+    // Same rationale as the struct path: `impl IntoDataFrame for Vec<Row>` is an orphan-rule
+    // violation in the user crate, so the derive implements the local `DataFrameRowConvert`
+    // marker on the local enum `Row`, and miniextendr_api's blanket provides the public
+    // `Vec<Row>: IntoDataFrame`. Enums have no R→Rust reader, so `rows_from_dataframe` keeps the
+    // trait default (`None`). The build delegates to the companion engine via
+    // `ColumnSource::into_dataframe`; the parallel path uses the #777 scatter-write builder when
+    // one was generated for this shape, else the sequential transposition.
     let has_par_builder = !from_rows_par_method.is_empty();
-    let into_dataframe_par_body = if has_par_builder {
+    let rows_into_dataframe_par_body = if has_par_builder {
         quote! {
-            ::miniextendr_api::dataframe::IntoDataFrame::into_dataframe(
-                <#df_name #ty_generics>::from_rows_par(self),
+            ::miniextendr_api::convert::ColumnSource::into_dataframe(
+                <#df_name #ty_generics>::from_rows_par(rows),
             )
         }
     } else {
-        quote! { self.into_dataframe() }
+        quote! { Self::rows_into_dataframe(rows) }
     };
-    let into_dataframe_trait_impl = quote! {
-        impl #impl_generics ::miniextendr_api::dataframe::IntoDataFrame
-            for Vec<#row_name #ty_generics> #where_clause
+    let datarow_convert_impl = quote! {
+        impl #impl_generics ::miniextendr_api::dataframe::DataFrameRowConvert
+            for #row_name #ty_generics #where_clause
         {
-            fn into_dataframe(
-                self,
+            fn rows_into_dataframe(
+                rows: Vec<Self>,
             ) -> ::core::result::Result<
                 ::miniextendr_api::dataframe::DataFrame,
                 ::miniextendr_api::dataframe::DataFrameError,
             > {
-                ::miniextendr_api::dataframe::IntoDataFrame::into_dataframe(
-                    <#row_name #ty_generics>::to_dataframe(self),
+                ::miniextendr_api::convert::ColumnSource::into_dataframe(
+                    <#row_name #ty_generics>::to_dataframe(rows),
                 )
             }
 
             #[cfg(feature = "rayon")]
-            fn into_dataframe_par(
-                self,
+            fn rows_into_dataframe_par(
+                rows: Vec<Self>,
             ) -> ::core::result::Result<
                 ::miniextendr_api::dataframe::DataFrame,
                 ::miniextendr_api::dataframe::DataFrameError,
             > {
-                #into_dataframe_par_body
+                #rows_into_dataframe_par_body
             }
         }
     };
@@ -1888,7 +1892,7 @@ pub(super) fn derive_enum_dataframe(
         #split_method
         #marker_impl
         #payload_fields_impl
-        #into_dataframe_trait_impl
+        #datarow_convert_impl
         #(#struct_assertions)*
         #(#payload_collision_assertions)*
         #(#sibling_collision_assertions)*

@@ -601,16 +601,44 @@ pub trait ColumnSource {
         }
         out
     }
+
+    /// Assemble this source into a validated [`DataFrame`].
+    ///
+    /// The column engine always sets the `data.frame` class (even for an empty frame); the one
+    /// exception is the unnamed-row degradation, which returns a bare unclassed empty list — the
+    /// old `panic!("unnamed list elements")` case, now a clean `Err(UnnamedColumns)`.
+    ///
+    /// This is the bridge from the internal column-assembly engine to the public [`DataFrame`].
+    /// We deliberately do **not** offer a blanket `impl<T: ColumnSource> IntoDataFrame for T`:
+    /// `#[derive(DataFrameRow)]` emits a *concrete* `impl IntoDataFrame for Vec<Row>` per row
+    /// type (and serde uses the `SerdeRows<T>` newtype), so a generic `for T` blanket would
+    /// coherence-conflict with every one of those (the compiler treats `Vec<Row>: ColumnSource`
+    /// as possibly-true). The derive's `into_dataframe` glue calls this method instead.
+    fn into_dataframe(self) -> Result<DataFrame, DataFrameError>
+    where
+        Self: Sized,
+    {
+        use crate::SexpExt as _;
+        let sexp = self.into_column_list().as_sexp();
+        if !sexp.is_data_frame() {
+            return Err(DataFrameError::UnnamedColumns);
+        }
+        Ok(unsafe { DataFrame::from_built_sexp(sexp) })
+    }
 }
+// endregion
+
+// region: DataFrameRowConvert — orphan-rule bridge for `Vec<Row>` conversions
 
 /// Row → DataFrame conversion glue emitted by `#[derive(DataFrameRow)]` on the **row type**.
 ///
-/// The orphan rule forbids the derive from writing `impl IntoDataFrame for Vec<Row>` in the
-/// user crate (both `IntoDataFrame` and `Vec` are foreign there). Instead the derive
-/// implements this `#[doc(hidden)]` trait on the local `Row` type, and `miniextendr_api`
-/// provides blanket [`IntoDataFrame`] / [`FromDataFrame`] impls for `Vec<T: DataFrameRowConvert>`
-/// (both trait and blanket are local here, so the orphan rule is satisfied). Users still call
-/// the public `rows.into_dataframe()?` / `Vec::<Row>::from_dataframe(&df)?` verbs.
+/// The orphan rule forbids the derive from writing `impl IntoDataFrame for Vec<Row>` in the user
+/// crate: both `IntoDataFrame` and `Vec` are foreign there, and `Row` only appears *covered*
+/// inside `Vec<_>`, so there is no uncovered local type. Instead the derive implements this
+/// `#[doc(hidden)]` trait on the local `Row` type (legal — `Row` is local), and `miniextendr_api`
+/// carries the blanket [`IntoDataFrame`] / [`FromDataFrame`] impls for `Vec<T: DataFrameRowConvert>`
+/// below (legal — `IntoDataFrame` is local *here*). Users still call the public
+/// `rows.into_dataframe()?` / `Vec::<Row>::from_dataframe(&df)?` verbs.
 #[doc(hidden)]
 pub trait DataFrameRowConvert: Sized {
     /// Build a [`DataFrame`] from a row vector (sequential).
@@ -622,8 +650,8 @@ pub trait DataFrameRowConvert: Sized {
         Self::rows_into_dataframe(rows)
     }
 
-    /// Read a row vector out of a [`DataFrame`]. `None` means this row shape has no reader
-    /// (only the simple-scalar shape does); the blanket surfaces that as a clear error.
+    /// Read a row vector out of a [`DataFrame`]. `None` means this row shape has no reader (only
+    /// the simple scalar-field shape does); the blanket surfaces that as a clear error.
     fn rows_from_dataframe(_df: &DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
         None
     }
@@ -633,6 +661,15 @@ pub trait DataFrameRowConvert: Sized {
     fn rows_from_dataframe_par(df: &DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
         Self::rows_from_dataframe(df)
     }
+}
+
+/// Error returned by `Vec::<Row>::from_dataframe` when the row shape has no R→Rust reader.
+fn no_reader_error() -> DataFrameError {
+    DataFrameError::Conversion(
+        "this DataFrameRow shape has no R→Rust reader (only simple scalar-field structs do); \
+         see the unified-DataFrame follow-up issue"
+            .to_string(),
+    )
 }
 
 impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T> {
@@ -648,47 +685,13 @@ impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T> {
 
 impl<T: DataFrameRowConvert> FromDataFrame for Vec<T> {
     fn from_dataframe(df: &DataFrame) -> Result<Self, DataFrameError> {
-        T::rows_from_dataframe(df).unwrap_or_else(|| {
-            Err(DataFrameError::Conversion(
-                "this DataFrameRow shape has no R→Rust reader (only simple scalar-field \
-                 structs do); see the unified-DataFrame follow-up issue"
-                    .to_string(),
-            ))
-        })
+        T::rows_from_dataframe(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 
     #[cfg(feature = "rayon")]
     fn from_dataframe_par(df: &DataFrame) -> Result<Self, DataFrameError> {
-        T::rows_from_dataframe_par(df).unwrap_or_else(|| {
-            Err(DataFrameError::Conversion(
-                "this DataFrameRow shape has no R→Rust reader (only simple scalar-field \
-                 structs do); see the unified-DataFrame follow-up issue"
-                    .to_string(),
-            ))
-        })
+        T::rows_from_dataframe_par(df).unwrap_or_else(|| Err(no_reader_error()))
     }
-}
-
-/// Wrap a `data.frame`-shaped column [`List`] (from a [`ColumnSource`]) as a validated
-/// [`DataFrame`].
-///
-/// The column engine always sets the `data.frame` class (even for an empty frame); the one
-/// exception is the unnamed-row degradation, which returns a bare unclassed empty list — the
-/// old `panic!("unnamed list elements")` case, now a clean `Err(UnnamedColumns)`.
-///
-/// We do **not** provide a blanket `impl<T: ColumnSource> IntoDataFrame for T`: that would
-/// coherence-conflict with the `impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T>` blanket
-/// (a downstream `Vec<X>: ColumnSource` could overlap). Instead, [`ColumnSource`] types reach a
-/// `DataFrame` through this helper (used by the derive glue and `SerdeRows`).
-pub fn column_source_into_dataframe<T: ColumnSource>(
-    src: T,
-) -> Result<DataFrame, DataFrameError> {
-    let list = src.into_column_list();
-    let sexp = list.as_sexp();
-    if !sexp.is_data_frame() {
-        return Err(DataFrameError::UnnamedColumns);
-    }
-    Ok(unsafe { DataFrame::from_built_sexp(sexp) })
 }
 // endregion
 

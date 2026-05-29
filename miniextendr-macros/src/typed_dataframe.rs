@@ -282,7 +282,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             const __DECLARED: &[&str] = &[#( #declared_names ),*];
             let mut __extras: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
             for col_name in view.names() {
-                if !__DECLARED.contains(&col_name) {
+                if !__DECLARED.contains(&col_name.as_str()) {
                     __extras.push(col_name.to_string());
                 }
             }
