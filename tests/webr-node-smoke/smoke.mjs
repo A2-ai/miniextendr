@@ -52,9 +52,13 @@ function unwrapScalar(rJsResult) {
   return String(rJsResult);
 }
 
+// Module-scoped so the top-level teardown can terminate webR's worker even
+// when main() bails on an error path.
+let webR;
+
 async function main() {
   console.log("[tier3] Initialising webR...");
-  const webR = new WebR({ interactive: false });
+  webR = new WebR({ interactive: false });
   await webR.init();
   console.log("[tier3] webR initialised.");
 
@@ -118,7 +122,28 @@ async function main() {
   console.log("[tier3] Tier-3 PASSED.");
 }
 
-main().catch((e) => {
-  console.error("[tier3] Uncaught runner error:", e && e.stack ? e.stack : e);
-  process.exitCode = 1;
-});
+// webR boots a dedicated worker (Node `worker_threads`) to host the R runtime.
+// That worker — plus the channel listeners and the open NODEFS mount — keeps
+// Node's event loop alive after main() resolves, so the process never exits on
+// its own. Under CI that means a fully *successful* run still hangs until
+// `timeout 900 node smoke.mjs` kills it with exit code 124 (the failure this
+// runner was hitting). webR.close() terminates the worker; the explicit
+// process.exit() then guarantees a prompt, deterministic exit regardless of any
+// residual handles. This is a pass/fail CI gate, so an explicit exit code is
+// exactly the contract we want. All the meaningful "[tier3] …" lines are
+// emitted before we get here, so force-exiting can't truncate them.
+main()
+  .catch((e) => {
+    console.error("[tier3] Uncaught runner error:", e && e.stack ? e.stack : e);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    if (webR) {
+      try {
+        webR.close();
+      } catch {
+        // Best-effort teardown — we're exiting anyway.
+      }
+    }
+    process.exit(process.exitCode ?? 0);
+  });
