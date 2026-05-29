@@ -177,6 +177,62 @@ test_that("rayon_with_r_dataframe handles zero rows", {
   expect_identical(names(df), c("x", "y", "label"))
 })
 
+test_that("rayon_dataframe_wide fills a wide (many-column) frame correctly", {
+  # Wide shape: more columns than threads; column-dominated work-list.
+  nrow <- 20L
+  ncol <- 32L
+  df <- rayon_dataframe_wide(nrow, ncol)
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), nrow)
+  expect_equal(ncol(df), ncol)
+  expect_identical(names(df), paste0("c", 0:(ncol - 1)))
+
+  # Every cell c<j>[i] == i * 1000 + j — verifies no cross-column scatter.
+  for (j in seq_len(ncol)) {
+    expected <- (0:(nrow - 1)) * 1000 + (j - 1)
+    expect_equal(df[[j]], as.numeric(expected),
+                 info = paste("column", j - 1))
+  }
+})
+
+test_that("rayon_dataframe_wide handles a tall single chunk per column", {
+  # Tall shape: few columns x many rows -> each column shatters into chunks.
+  nrow <- 200000L
+  ncol <- 3L
+  skip_on_cran()
+  df <- rayon_dataframe_wide(nrow, ncol)
+
+  expect_equal(nrow(df), nrow)
+  expect_equal(ncol(df), ncol)
+  # Spot-check first/last rows of each column.
+  for (j in seq_len(ncol)) {
+    expect_equal(df[[j]][1], as.numeric(j - 1))
+    expect_equal(df[[j]][nrow], as.numeric((nrow - 1) * 1000 + (j - 1)))
+  }
+})
+
+test_that("rayon_dataframe_skewed fills one long + several tiny columns", {
+  # Skewed shape: one long numeric column + two short character columns.
+  nrow <- 5000L
+  df <- rayon_dataframe_skewed(nrow)
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), nrow)
+  expect_equal(ncol(df), 3)
+  expect_identical(names(df), c("big", "t0", "t1"))
+
+  expect_type(df$big, "double")
+  expect_equal(df$big, as.numeric(0:(nrow - 1)))
+
+  # Character columns: NA on every third row (i %% 3 == 2).
+  is_na <- (0:(nrow - 1)) %% 3 == 2
+  expected_t0 <- ifelse(is_na, NA_character_, paste0("a", 0:(nrow - 1)))
+  expected_t1 <- ifelse(is_na, NA_character_, paste0("b", 0:(nrow - 1)))
+  expect_identical(df$t0, expected_t0)
+  expect_identical(df$t1, expected_t1)
+})
+
 test_that("rayon handles large parallel workload", {
   skip_on_cran()
 
