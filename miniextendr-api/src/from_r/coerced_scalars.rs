@@ -21,8 +21,21 @@
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::coerce::TryCoerce;
-use crate::from_r::{SexpError, TryFromSexp, is_na_real};
+use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};
 use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
+
+/// NA-rejecting error for a logical (`LGLSXP`) scalar that holds `NA`.
+///
+/// The bare integer/float scalar paths must reject `NA_logical_` rather than
+/// silently coercing R's `NA_LOGICAL` sentinel (`i32::MIN`) into a finite
+/// number. Mirrors the guard the bare `i32` (`INTSXP`) impl already applies.
+#[inline]
+fn lglsxp_na_error() -> SexpError {
+    SexpNaError {
+        sexp_type: SEXPTYPE::LGLSXP,
+    }
+    .into()
+}
 
 #[inline]
 pub(crate) fn coerce_value<R, T>(value: R) -> Result<T, SexpError>
@@ -61,6 +74,9 @@ where
         }
         SEXPTYPE::LGLSXP => {
             let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+            if value.is_na() {
+                return Err(lglsxp_na_error());
+            }
             coerce_value(value.to_i32())
         }
         _ => Err(SexpError::InvalidValue(format!(
@@ -96,6 +112,9 @@ where
         }
         SEXPTYPE::LGLSXP => {
             let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            if value.is_na() {
+                return Err(lglsxp_na_error());
+            }
             coerce_value(value.to_i32())
         }
         _ => Err(SexpError::InvalidValue(format!(
@@ -318,6 +337,9 @@ impl TryFromSexp for f32 {
             }
             SEXPTYPE::LGLSXP => {
                 let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                if value.is_na() {
+                    return Err(lglsxp_na_error());
+                }
                 Ok(value.to_i32() as f32)
             }
             _ => Err(SexpError::InvalidValue(format!(
@@ -345,6 +367,9 @@ impl TryFromSexp for f32 {
             }
             SEXPTYPE::LGLSXP => {
                 let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                if value.is_na() {
+                    return Err(lglsxp_na_error());
+                }
                 Ok(value.to_i32() as f32)
             }
             _ => Err(SexpError::InvalidValue(format!(
@@ -629,6 +654,9 @@ impl TryFromSexp for usize {
             SEXPTYPE::LGLSXP => {
                 use crate::coerce::TryCoerce;
                 let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                if value.is_na() {
+                    return Err(lglsxp_na_error());
+                }
                 value
                     .to_i32()
                     .try_coerce()
@@ -738,6 +766,9 @@ impl TryFromSexp for isize {
             SEXPTYPE::LGLSXP => {
                 use crate::coerce::Coerce;
                 let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                if value.is_na() {
+                    return Err(lglsxp_na_error());
+                }
                 Ok(value.to_i32().coerce())
             }
             _ => Err(SexpError::InvalidValue(format!(
