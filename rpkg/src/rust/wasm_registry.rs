@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      a6219f56435c215a
+// content-hash:      25b85e8a461c40fd
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1363,6 +1363,9 @@ unsafe extern "C-unwind" {
     pub fn C_call_attr_without(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_create_large_par_events(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_create_large_par_points(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_par_read_points_checksum(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_seq_read_points_checksum(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_gc_stress_dataframe_par_reader(_: SEXP) -> SEXP;
     pub fn C_decimal_add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_decimal_mul(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_decimal_round(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -8766,6 +8769,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_create_large_par_points".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_create_large_par_points) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_par_read_points_checksum".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_par_read_points_checksum) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_seq_read_points_checksum".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_seq_read_points_checksum) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_dataframe_par_reader".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_par_reader) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_decimal_add".as_ptr(),

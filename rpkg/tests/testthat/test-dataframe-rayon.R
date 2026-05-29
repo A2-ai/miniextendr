@@ -26,3 +26,30 @@ test_that("sequential fallback (below threshold)", {
   expect_equal(nrow(df), 100)
   expect_equal(df$x, as.numeric(0:99))
 })
+
+test_that("parallel from-R reader agrees with sequential and round-trips", {
+  df <- data.frame(
+    x = c(1.5, 2.5, 3.5),
+    y = c(10, 20, 30),
+    label = c("a", "bb", "ccc"),
+    stringsAsFactors = FALSE
+  )
+  expected <- sum(df$x + df$y + nchar(df$label))
+  expect_equal(par_read_points_checksum(df), expected)
+  expect_equal(seq_read_points_checksum(df), expected)
+})
+
+test_that("parallel from-R reader round-trips a generated data.frame", {
+  df <- create_large_par_points(5000L)
+  expected <- sum(df$x + df$y + nchar(df$label))
+  expect_equal(par_read_points_checksum(df), expected)
+  # Parallel and sequential readers must agree on every row.
+  expect_equal(par_read_points_checksum(df), seq_read_points_checksum(df))
+})
+
+test_that("parallel from-R reader handles a zero-row data.frame", {
+  df <- create_large_par_points(0L)
+  expect_equal(nrow(df), 0)
+  expect_equal(par_read_points_checksum(df), 0)
+  expect_equal(seq_read_points_checksum(df), 0)
+})
