@@ -111,6 +111,19 @@ miniextendr_build <- function(path = ".", install = TRUE) {
     if (!requireNamespace("devtools", quietly = TRUE)) {
       cli::cli_warn("devtools not installed, skipping install step")
     } else {
+      # Force the cdylib wrapper-gen pass (R/<pkg>-wrappers.R + wasm_registry.rs)
+      # even if an inst/vendor.tar.xz latch has flipped configure into tarball
+      # mode, which otherwise skips it. Without this a build run against a
+      # leaked tarball installs stale wrappers and library() exposes no
+      # functions. Restore the prior value on exit so the override doesn't leak
+      # into the rest of the R session.
+      old_force <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = NA)
+      Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = "1")
+      on.exit(
+        if (is.na(old_force)) Sys.unsetenv("MINIEXTENDR_FORCE_WRAPPER_GEN")
+        else Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = old_force),
+        add = TRUE
+      )
       tryCatch(
         devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE),
         error = function(e) {

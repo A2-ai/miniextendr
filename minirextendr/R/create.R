@@ -7,12 +7,11 @@
 #' `use_miniextendr()`.
 #'
 #' @param path Path where to create the package
-#' @param open Whether to open the new project in RStudio
-#' @param rstudio Whether to create an RStudio project file
+#' @inheritParams usethis::create_package
 #' @return Path to the created package (invisibly)
 #' @export
 create_miniextendr_package <- function(path, open = interactive(),
-                                        rstudio = TRUE) {
+                                        rstudio = TRUE, check_name = FALSE) {
   # Validate package name (derived from directory basename)
   # R package names: ASCII letters, digits, and dots only.
   # Must start with a letter and not end with a dot. Minimum 2 characters.
@@ -30,7 +29,7 @@ create_miniextendr_package <- function(path, open = interactive(),
     path,
     open = FALSE,
     rstudio = rstudio,
-    check_name = FALSE
+    check_name = check_name
   )
 
   # Set project to the new package
