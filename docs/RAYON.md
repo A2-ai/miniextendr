@@ -194,6 +194,52 @@ with_r_array([2, 3, 4], |slab: &mut [f64], slab_idx: usize| {
 
 Same as above but return `RMatrix<T>` / `RArray<T, NDIM>` instead of raw SEXP.
 
+### Data Frame
+
+#### `RDataFrameBuilder`: heterogeneous parallel column fill
+
+`with_r_matrix` fills a *homogeneous* matrix. `RDataFrameBuilder` is its
+heterogeneous-column analogue: you declare a set of typed columns — each with
+its own element type and fill closure — and the builder allocates every column
+serially on the R thread, fills each (already-allocated, contiguous) column
+buffer **in parallel**, then assembles a `data.frame` (`VECSXP` + `names` +
+compact `row.names` + `class = "data.frame"`).
+
+```rust
+use miniextendr_api::rayon_bridge::RDataFrameBuilder;
+
+let df: SEXP = RDataFrameBuilder::new(1000)
+    // Native column: closure receives (chunk, offset), exactly like with_r_vec.
+    .column::<f64>("x", |chunk: &mut [f64], offset: usize| {
+        for (i, slot) in chunk.iter_mut().enumerate() {
+            *slot = ((offset + i) as f64).sqrt();
+        }
+    })
+    .column::<i32>("y", |chunk: &mut [i32], offset: usize| {
+        for (i, slot) in chunk.iter_mut().enumerate() {
+            *slot = (offset + i) as i32;
+        }
+    })
+    // Character column: closure returns Option<String> per row;
+    // None becomes NA_character_.
+    .column_str("label", |i: usize| Some(format!("row_{i}")))
+    .build();
+```
+
+- `column::<T>(name, f)` adds a native-typed column (`f64`/`i32`/`RLogical`/`u8`/
+  `Rcomplex`). The fill closure has the same `(chunk, offset)` shape as
+  [`with_r_vec`](#with_r_vec) and writes directly into R memory.
+- `column_str(name, f)` adds a character (`STRSXP`) column. Because building
+  `CHARSXP`s requires R allocation (forbidden on Rayon threads), the per-row
+  `Option<String>` values are computed in parallel into a plain `Vec`, then the
+  `CHARSXP`s are set serially on the R thread.
+
+The builder owns the PROTECT discipline internally: every column SEXP is kept
+protected from the moment it is built until it is rooted in the parent
+`VECSXP`, and the `names` / `row.names` transients are protected across each
+allocation. The returned SEXP is unprotected and becomes the caller's
+responsibility (return it from a `#[miniextendr]` fn, or PROTECT it).
+
 ### Reduction
 
 ```rust

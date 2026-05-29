@@ -1388,3 +1388,76 @@ pub fn gc_stress_typed_dataframe() {
 }
 
 // endregion
+
+// region: rayon RDataFrameBuilder
+
+/// Exercise `RDataFrameBuilder` parallel column-fill under GC pressure.
+///
+/// Builds a heterogeneous data.frame (numeric `x`, integer `y`, character
+/// `label` with interspersed `NA`) via the parallel builder. The builder
+/// allocates each column SEXP serially, holds them protected across subsequent
+/// column / names / row.names / class allocations, and assembles the parent
+/// `VECSXP`. This is exactly the SEXP-across-allocation path that needs a
+/// gctorture pass. No arguments — suitable for the fast gctorture sweep.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn gc_stress_dataframe_rayon() {
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::rayon_bridge::RDataFrameBuilder;
+
+    let nrow = 200usize;
+    let df = RDataFrameBuilder::new(nrow)
+        .column::<f64>("x", |chunk: &mut [f64], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = ((offset + i) as f64).sqrt();
+            }
+        })
+        .column::<i32>("y", |chunk: &mut [i32], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = (offset + i) as i32 * 3;
+            }
+        })
+        .column_str("label", |i: usize| {
+            if i % 7 == 6 {
+                None
+            } else {
+                Some(format!("row_{i}"))
+            }
+        })
+        .build();
+
+    // Force materialization of every column under the same protect scope so any
+    // stale/freed column surfaces. The builder leaves `df` unprotected, so
+    // protect it before reading.
+    let scope = unsafe { ProtectScope::new() };
+    let df = unsafe { scope.protect_raw(df) };
+    assert!(df.is_data_frame());
+    assert_eq!(df.xlength(), 3);
+
+    let x = df.vector_elt(0);
+    let y = df.vector_elt(1);
+    let label = df.vector_elt(2);
+    assert_eq!(x.xlength() as usize, nrow);
+    assert_eq!(y.xlength() as usize, nrow);
+    assert_eq!(label.xlength() as usize, nrow);
+
+    let x_slice: &[f64] = unsafe { x.as_slice() };
+    let y_slice: &[i32] = unsafe { y.as_slice() };
+    let x_sum: f64 = x_slice.iter().copied().sum();
+    let y_sum: i32 = y_slice.iter().copied().sum();
+    assert!(x_sum > 0.0);
+    assert!(y_sum > 0);
+
+    // Touch each CHARSXP, including the NA slots.
+    let mut na_count = 0usize;
+    for i in 0..nrow as isize {
+        if label.string_elt_str(i).is_none() {
+            na_count += 1;
+        }
+    }
+    assert!(na_count > 0);
+
+    drop(scope);
+}
+
+// endregion

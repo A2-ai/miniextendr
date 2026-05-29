@@ -675,6 +675,251 @@ where
 
 // endregion
 
+// region: with_r_dataframe — parallel heterogeneous column fill
+
+/// A single column's allocate-then-fill plan.
+///
+/// Each entry is a boxed closure that, given the row count, allocates the
+/// column's R SEXP **serially on the R/worker thread** and fills it in parallel
+/// via Rayon, returning the (unprotected) column SEXP. The builder re-protects
+/// each column before allocating the next, then stores them into the parent
+/// `VECSXP`.
+#[cfg(feature = "rayon")]
+type ColumnPlan = Box<dyn FnOnce(usize) -> SEXP + Send>;
+
+/// Builder for assembling an R `data.frame` whose columns are filled in parallel.
+///
+/// This is the heterogeneous-column analogue of [`with_r_matrix`]: instead of one
+/// homogeneous matrix, you declare a set of typed columns (each with its own
+/// element type and fill closure) and the builder:
+///
+/// 1. Allocates each column's R vector **serially on the R/worker thread**
+///    (strict PROTECT discipline — the dangerous part).
+/// 2. Fills each already-allocated, contiguous column buffer **in parallel** via
+///    Rayon. No R API calls happen inside the parallel region.
+/// 3. Assembles the columns into a `VECSXP`, sets `names`, compact
+///    `row.names` (`c(NA_integer_, -nrow)`), and `class = "data.frame"`.
+///
+/// # Column kinds
+///
+/// - [`column::<T>`][RDataFrameBuilder::column] — a native-typed column
+///   (`f64`/`i32`/`RLogical`/`u8`/`Rcomplex`). The fill closure receives a
+///   mutable chunk and its offset, exactly like [`with_r_vec`]. The buffer is R
+///   memory, filled directly with zero intermediate allocation.
+/// - [`column_str`][RDataFrameBuilder::column_str] — a character (`STRSXP`)
+///   column. Because building `CHARSXP`s requires R allocation (forbidden on
+///   Rayon threads), the per-row `Option<String>` values are computed in
+///   parallel into a plain `Vec`, then the `CHARSXP`s are set **serially** on
+///   the R thread. `None` becomes `NA_character_`.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::RDataFrameBuilder;
+///
+/// let df: SEXP = RDataFrameBuilder::new(1000)
+///     .column::<f64>("x", |chunk, offset| {
+///         for (i, slot) in chunk.iter_mut().enumerate() {
+///             *slot = ((offset + i) as f64).sqrt();
+///         }
+///     })
+///     .column::<i32>("y", |chunk, offset| {
+///         for (i, slot) in chunk.iter_mut().enumerate() {
+///             *slot = (offset + i) as i32;
+///         }
+///     })
+///     .column_str("label", |i| Some(format!("row_{i}")))
+///     .build();
+/// ```
+///
+/// # Protection
+///
+/// Every column SEXP is PROTECTed from allocation through insertion into the
+/// `VECSXP`; the names / row.names / class transients are likewise protected
+/// across each subsequent allocation. After [`build`][RDataFrameBuilder::build]
+/// returns, the resulting data.frame SEXP is unprotected and becomes the
+/// caller's responsibility (return it from a `#[miniextendr]` fn, or PROTECT it).
+#[cfg(feature = "rayon")]
+pub struct RDataFrameBuilder {
+    nrow: usize,
+    names: Vec<String>,
+    columns: Vec<ColumnPlan>,
+}
+
+#[cfg(feature = "rayon")]
+impl RDataFrameBuilder {
+    /// Start building a data.frame with `nrow` rows.
+    pub fn new(nrow: usize) -> Self {
+        // Compact row.names uses i32, so nrow must fit in i32; this also implies
+        // it fits in R_xlen_t on all supported pointer widths.
+        assert!(
+            nrow <= i32::MAX as usize,
+            "RDataFrameBuilder: nrow {} exceeds i32 maximum (compact row.names)",
+            nrow
+        );
+        Self {
+            nrow,
+            names: Vec::new(),
+            columns: Vec::new(),
+        }
+    }
+
+    /// Add a native-typed column (`f64`/`i32`/`RLogical`/`u8`/`Rcomplex`).
+    ///
+    /// The fill closure `f(chunk, offset)` is dispatched in parallel over chunks
+    /// of the (already-allocated) R column buffer, identical in shape to
+    /// [`with_r_vec`]. Chunk boundaries are deterministic for a given `nrow` and
+    /// thread count.
+    pub fn column<T>(
+        mut self,
+        name: impl Into<String>,
+        f: impl Fn(&mut [T], usize) + Send + Sync + 'static,
+    ) -> Self
+    where
+        T: RNativeType + Send + Sync,
+    {
+        self.names.push(name.into());
+        self.columns.push(Box::new(move |nrow| with_r_vec(nrow, f)));
+        self
+    }
+
+    /// Add a character (`STRSXP`) column.
+    ///
+    /// The fill closure `f(i)` returns the value for row `i` as `Option<String>`,
+    /// where `None` maps to `NA_character_`. Values are computed in parallel into
+    /// a `Vec`, then set into the R `STRSXP` serially on the R thread (CHARSXP
+    /// allocation cannot happen on Rayon threads).
+    pub fn column_str(
+        mut self,
+        name: impl Into<String>,
+        f: impl Fn(usize) -> Option<String> + Send + Sync + 'static,
+    ) -> Self {
+        self.names.push(name.into());
+        self.columns
+            .push(Box::new(move |nrow| build_str_column(nrow, f)));
+        self
+    }
+
+    /// Allocate, fill, and assemble the data.frame. Returns the `VECSXP` SEXP.
+    pub fn build(self) -> SEXP {
+        let RDataFrameBuilder {
+            nrow,
+            names,
+            columns,
+        } = self;
+        let ncol = columns.len();
+        assert_eq!(
+            names.len(),
+            ncol,
+            "RDataFrameBuilder: names/columns length mismatch"
+        );
+
+        // Build each column. Each plan allocates its SEXP serially, runs its
+        // parallel fill, then returns an *unprotected* SEXP (the plan's own
+        // protect guard drops on return). We must therefore re-PROTECT each
+        // column on the R thread *immediately* after it is built, before the
+        // next plan's allocation can trigger a GC that would free it. These
+        // per-column protections are balanced during assembly below, once every
+        // column has been rooted in the parent VECSXP via `SET_VECTOR_ELT`.
+        let column_sexps: Vec<crate::worker::Sendable<SEXP>> = columns
+            .into_iter()
+            .map(|plan| {
+                let col = plan(nrow);
+                // Protect the freshly-built column on the R/worker thread.
+                with_r_thread(move || unsafe {
+                    crate::sys::Rf_protect_unchecked(col);
+                    crate::worker::Sendable(col)
+                })
+            })
+            .collect();
+
+        // Assemble on the R thread with strict PROTECT discipline. We are inside
+        // `with_r_thread`, a known-safe context, so `_unchecked` FFI is correct
+        // here (MXL301).
+        //
+        // PROTECT-stack invariant on entry: the build loop above left `ncol`
+        // column SEXPs protected, stack bottom-to-top `[col0, col1, …]`.
+        with_r_thread(move || unsafe {
+            use crate::SEXPTYPE::{INTSXP, STRSXP, VECSXP};
+
+            // Allocate the parent list and protect it; stack is now
+            // `[col0, …, col_{ncol-1}, df]`.
+            let df = crate::sys::Rf_allocVector_unchecked(VECSXP, ncol as crate::R_xlen_t);
+            crate::sys::Rf_protect_unchecked(df);
+
+            // Root every column in the parent (SET_VECTOR_ELT does not allocate).
+            for (i, crate::worker::Sendable(col)) in column_sexps.into_iter().enumerate() {
+                df.set_vector_elt_unchecked(i as isize, col);
+            }
+
+            // The columns are now reachable from `df`, so their individual
+            // protections are no longer needed. Drop all `ncol + 1` protections
+            // (the columns and `df`) and immediately re-protect `df` — no
+            // allocation happens between the two calls, so `df` cannot be
+            // collected in the gap.
+            crate::sys::Rf_unprotect_unchecked(ncol as i32 + 1);
+            crate::sys::Rf_protect_unchecked(df);
+
+            // names: STRSXP of column names. Protect across CHARSXP allocations.
+            let names_sexp = crate::sys::Rf_allocVector_unchecked(STRSXP, ncol as crate::R_xlen_t);
+            crate::sys::Rf_protect_unchecked(names_sexp);
+            for (i, name) in names.iter().enumerate() {
+                let charsxp = SEXP::charsxp(name);
+                names_sexp.set_string_elt_unchecked(i as isize, charsxp);
+            }
+            df.set_names(names_sexp);
+            crate::sys::Rf_unprotect_unchecked(1); // names_sexp now reachable via df
+
+            // Compact row.names: c(NA_integer_, -nrow).
+            let row_names = crate::sys::Rf_allocVector_unchecked(INTSXP, 2);
+            crate::sys::Rf_protect_unchecked(row_names);
+            row_names.set_integer_elt(0, i32::MIN); // NA_integer_
+            row_names.set_integer_elt(1, -(nrow as i32));
+            df.set_row_names(row_names);
+            crate::sys::Rf_unprotect_unchecked(1); // row_names now reachable via df
+
+            // class = "data.frame" (cached STRSXP — no fresh allocation).
+            df.set_class(crate::cached_class::data_frame_class_sexp());
+
+            // Balance the remaining `df` protection. No allocation follows, so
+            // `df` survives until the caller takes ownership.
+            crate::sys::Rf_unprotect_unchecked(1);
+            df
+        })
+    }
+}
+
+/// Build a `STRSXP` column: compute `Option<String>` per row in parallel, then
+/// set CHARSXPs serially on the R thread.
+#[cfg(feature = "rayon")]
+fn build_str_column<F>(nrow: usize, f: F) -> SEXP
+where
+    F: Fn(usize) -> Option<String> + Send + Sync,
+{
+    // Phase 1: pure-Rust parallel compute into an owned Vec (no R API calls).
+    let values: Vec<Option<String>> = if nrow == 0 {
+        Vec::new()
+    } else {
+        (0..nrow).into_par_iter().map(&f).collect()
+    };
+
+    // Phase 2: allocate STRSXP and set CHARSXPs serially on the R thread.
+    with_r_thread(move || unsafe {
+        use crate::SEXPTYPE::STRSXP;
+        let sexp = crate::sys::Rf_allocVector_unchecked(STRSXP, nrow as crate::R_xlen_t);
+        let _guard = crate::gc_protect::OwnedProtect::new(sexp);
+        for (i, v) in values.iter().enumerate() {
+            match v {
+                Some(s) => sexp.set_string_elt_unchecked(i as isize, SEXP::charsxp(s)),
+                None => sexp.set_string_elt_unchecked(i as isize, SEXP::na_string()),
+            }
+        }
+        sexp
+    })
+}
+
+// endregion
+
 // region: Parallel reduction
 
 /// Parallel reduction operations.

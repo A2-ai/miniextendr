@@ -142,6 +142,41 @@ test_that("rayon_in_thread returns FALSE when called from R", {
   expect_false(result)
 })
 
+test_that("rayon_with_r_dataframe builds a correct heterogeneous data.frame", {
+  n <- 50L
+  df <- rayon_with_r_dataframe(n)
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), n)
+  expect_equal(ncol(df), 3)
+  expect_identical(names(df), c("x", "y", "label"))
+
+  # Column types.
+  expect_type(df$x, "double")
+  expect_type(df$y, "integer")
+  expect_type(df$label, "character")
+
+  # Column values (filled in parallel).
+  expect_equal(df$x, sqrt(as.numeric(0:(n - 1))))
+  expect_equal(df$y, (0:(n - 1)) * 2L)
+
+  # Character column: every fifth row (i %% 5 == 4) is NA, else "row_<i>".
+  expected_label <- ifelse((0:(n - 1)) %% 5 == 4, NA_character_,
+                           paste0("row_", 0:(n - 1)))
+  expect_identical(df$label, expected_label)
+
+  # Compact row.names form (1:n).
+  expect_identical(rownames(df), as.character(seq_len(n)))
+})
+
+test_that("rayon_with_r_dataframe handles zero rows", {
+  df <- rayon_with_r_dataframe(0L)
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 0)
+  expect_equal(ncol(df), 3)
+  expect_identical(names(df), c("x", "y", "label"))
+})
+
 test_that("rayon handles large parallel workload", {
   skip_on_cran()
 

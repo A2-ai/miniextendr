@@ -8,7 +8,7 @@ use miniextendr_api::miniextendr;
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::{
-    par_map, par_map2, par_map3, with_r_matrix, with_r_vec, with_r_vec_map,
+    RDataFrameBuilder, par_map, par_map2, par_map3, with_r_matrix, with_r_vec, with_r_vec_map,
 };
 
 /// Test parallel sum of a numeric vector using rayon.
@@ -101,6 +101,38 @@ pub fn rayon_with_r_matrix(nrow: i32, ncol: i32) -> SEXP {
             *slot = (row * col_idx) as f64;
         }
     })
+}
+
+/// Test RDataFrameBuilder: parallel column-fill into a heterogeneous data.frame.
+///
+/// Builds a three-column data.frame (numeric `x`, integer `y`, character
+/// `label`) of `n` rows, with each column's buffer filled in parallel via rayon.
+/// The character column also exercises the `None -> NA_character_` path on every
+/// fifth row.
+///
+/// @param n Number of rows to create.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_with_r_dataframe(n: i32) -> SEXP {
+    RDataFrameBuilder::new(n as usize)
+        .column::<f64>("x", |chunk: &mut [f64], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = ((offset + i) as f64).sqrt();
+            }
+        })
+        .column::<i32>("y", |chunk: &mut [i32], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = (offset + i) as i32 * 2;
+            }
+        })
+        .column_str("label", |i: usize| {
+            if i % 5 == 4 {
+                None
+            } else {
+                Some(format!("row_{i}"))
+            }
+        })
+        .build()
 }
 
 /// Test parallel reduce computing sum, min, max, and mean of a numeric vector.

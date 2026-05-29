@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      0f07cfe747f92c30
+// content-hash:      02c5ce4843bcf884
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -290,6 +290,7 @@ unsafe extern "C-unwind" {
     pub fn C_rayon_parallel_stats(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_rayon_with_r_vec_map(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_rayon_parallel_sum_int(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_rayon_with_r_dataframe(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_rayon_parallel_filter_positive(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_test_new_rcrd(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_test_new_vctr(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -956,6 +957,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_collated(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_with_tag(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_dataframe_rayon(_: SEXP) -> SEXP;
     pub fn C_gc_stress_typed_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_struct(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_to_vec(_: SEXP) -> SEXP;
@@ -3412,6 +3414,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_rayon_parallel_sum_int".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rayon_parallel_sum_int) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_rayon_with_r_dataframe".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rayon_with_r_dataframe) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -6742,6 +6749,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_split_with_tag".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_split_with_tag) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_dataframe_rayon".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_dataframe_rayon) }),
         numArgs: 1,
     },
     R_CallMethodDef {
