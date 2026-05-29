@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-05-14 09:21:02
-+++ b/monorepo/rpkg/bootstrap.R	2026-04-28 10:42:41
+--- a/monorepo/rpkg/bootstrap.R	2026-05-29 21:33:05
++++ b/monorepo/rpkg/bootstrap.R	2026-05-29 21:33:05
 @@ -1,119 +1,11 @@
 -# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
@@ -130,8 +130,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
  
  if (.Platform$OS.type == "windows") {
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-05-27 23:43:02
-+++ b/monorepo/rpkg/configure.ac	2026-05-27 23:43:30
+--- a/monorepo/rpkg/configure.ac	2026-05-29 23:07:52
++++ b/monorepo/rpkg/configure.ac	2026-05-29 23:08:17
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -280,7 +280,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl   --profile release → target/release/
  if test "$CARGO_PROFILE" = "dev"; then
    CARGO_PROFILE_DIR="debug"
-@@ -248,27 +209,22 @@
+@@ -248,25 +209,21 @@
  fi
  
 +dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
@@ -288,18 +288,10 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +
  AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
  : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
--dnl wasm32/webR side-modules need two RUSTFLAGS adjustments. See #494.
-+dnl wasm32/webR side-modules need two RUSTFLAGS adjustments.
+-dnl wasm32/webR side-modules need one RUSTFLAGS adjustment. See #494.
++dnl wasm32/webR side-modules need one RUSTFLAGS adjustment.
  dnl
- dnl 1. -C relocation-model=pic
- dnl    webR's webr-vars.mk links the Rust staticlib into a `-s SIDE_MODULE=1`
- dnl    shared object via emcc, which only accepts position-independent input.
--dnl    (`-s SIDE_MODULE=1` itself is an emcc *link* flag applied by R, not by
--dnl    cargo — the staticlib is a `cargo build --lib` archive cargo never
--dnl    links.) Likely already the wasm32-emscripten default; kept explicit
--dnl    pending #745's runtime-load confirmation.
- dnl
- dnl 2. -Zdefault-visibility=hidden
+ dnl -Zdefault-visibility=hidden
 -dnl    Without it, the Rust staticlib drags ~3000 mangled stdlib/dep symbols
 -dnl    into the side-module's EXPORT table. webR's JS-side dyn.load then fails
 -dnl    (`TypeError: Cannot read properties of undefined` on the pinned emcc; a
@@ -316,9 +308,17 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl    entry points exported. This is a nightly -Z flag, but the wasm target
 +dnl    already requires nightly via -Z build-std, so it adds no new constraint.
 +dnl    (savvy's approach; endorsed by webR's maintainer, r-wasm/webr#532.)
+ dnl
+-dnl `-C relocation-model=pic` used to be set here too but was dropped (#745):
+-dnl PR #749 proved the emcc side-module link succeeds without it, and tier-3
+-dnl (#492) confirms the module still loads at runtime. wasm32-unknown-emscripten
+-dnl is position-independent by default, so the explicit flag was a no-op. Do not
+-dnl re-add without re-running the #749 experiment.
++dnl (`-C relocation-model=pic` was dropped — wasm32-unknown-emscripten is
++dnl position-independent by default, so it was a no-op. See miniextendr #745.)
  if test "$is_wasm_install" = true; then
-   ENV_RUSTFLAGS="$ENV_RUSTFLAGS -C relocation-model=pic -Zdefault-visibility=hidden"
-@@ -296,4 +252,8 @@
+   ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
+@@ -294,4 +251,8 @@
  AC_SUBST([CARGO_BUILD_TARGET])
  
 +dnl Compute Cargo libdir path:
@@ -327,7 +327,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
  if test -n "$CARGO_BUILD_TARGET"; then
    CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
-@@ -303,21 +263,29 @@
+@@ -301,21 +262,29 @@
  AC_SUBST([CARGO_LIBDIR])
  
 -AC_MSG_NOTICE([R_HOME               = $R_HOME])
@@ -367,7 +367,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -336,18 +304,20 @@
+@@ -334,18 +303,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -397,20 +397,20 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -576,4 +546,5 @@
+@@ -574,4 +545,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -806,5 +777,5 @@
+@@ -804,5 +776,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -822,13 +793,22 @@
+@@ -820,13 +792,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
@@ -436,8 +436,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-05-27 23:43:02
-+++ b/rpkg/configure.ac	2026-05-27 23:43:17
+--- a/rpkg/configure.ac	2026-05-29 23:07:52
++++ b/rpkg/configure.ac	2026-05-29 23:08:31
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -532,7 +532,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl   --profile release → target/release/
  if test "$CARGO_PROFILE" = "dev"; then
    CARGO_PROFILE_DIR="debug"
-@@ -248,27 +261,22 @@
+@@ -248,25 +261,21 @@
  fi
  
 +dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
@@ -540,18 +540,10 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +
  AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
  : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
--dnl wasm32/webR side-modules need two RUSTFLAGS adjustments. See #494.
-+dnl wasm32/webR side-modules need two RUSTFLAGS adjustments.
+-dnl wasm32/webR side-modules need one RUSTFLAGS adjustment. See #494.
++dnl wasm32/webR side-modules need one RUSTFLAGS adjustment.
  dnl
- dnl 1. -C relocation-model=pic
- dnl    webR's webr-vars.mk links the Rust staticlib into a `-s SIDE_MODULE=1`
- dnl    shared object via emcc, which only accepts position-independent input.
--dnl    (`-s SIDE_MODULE=1` itself is an emcc *link* flag applied by R, not by
--dnl    cargo — the staticlib is a `cargo build --lib` archive cargo never
--dnl    links.) Likely already the wasm32-emscripten default; kept explicit
--dnl    pending #745's runtime-load confirmation.
- dnl
- dnl 2. -Zdefault-visibility=hidden
+ dnl -Zdefault-visibility=hidden
 -dnl    Without it, the Rust staticlib drags ~3000 mangled stdlib/dep symbols
 -dnl    into the side-module's EXPORT table. webR's JS-side dyn.load then fails
 -dnl    (`TypeError: Cannot read properties of undefined` on the pinned emcc; a
@@ -568,9 +560,17 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl    entry points exported. This is a nightly -Z flag, but the wasm target
 +dnl    already requires nightly via -Z build-std, so it adds no new constraint.
 +dnl    (savvy's approach; endorsed by webR's maintainer, r-wasm/webr#532.)
+ dnl
+-dnl `-C relocation-model=pic` used to be set here too but was dropped (#745):
+-dnl PR #749 proved the emcc side-module link succeeds without it, and tier-3
+-dnl (#492) confirms the module still loads at runtime. wasm32-unknown-emscripten
+-dnl is position-independent by default, so the explicit flag was a no-op. Do not
+-dnl re-add without re-running the #749 experiment.
++dnl (`-C relocation-model=pic` was dropped — wasm32-unknown-emscripten is
++dnl position-independent by default, so it was a no-op. See miniextendr #745.)
  if test "$is_wasm_install" = true; then
-   ENV_RUSTFLAGS="$ENV_RUSTFLAGS -C relocation-model=pic -Zdefault-visibility=hidden"
-@@ -296,4 +304,8 @@
+   ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
+@@ -294,4 +303,8 @@
  AC_SUBST([CARGO_BUILD_TARGET])
  
 +dnl Compute Cargo libdir path:
@@ -579,7 +579,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
  if test -n "$CARGO_BUILD_TARGET"; then
    CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
-@@ -303,21 +315,29 @@
+@@ -301,21 +314,29 @@
  AC_SUBST([CARGO_LIBDIR])
  
 -AC_MSG_NOTICE([R_HOME               = $R_HOME])
@@ -619,7 +619,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -336,18 +356,20 @@
+@@ -334,18 +355,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -649,20 +649,20 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -576,4 +598,5 @@
+@@ -574,4 +597,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -806,5 +829,5 @@
+@@ -804,5 +828,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -822,13 +845,22 @@
+@@ -820,13 +844,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
