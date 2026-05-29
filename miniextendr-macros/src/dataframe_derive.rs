@@ -861,12 +861,12 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
             }
 
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
             }
         }
     })
@@ -1268,7 +1268,7 @@ fn derive_struct_dataframe(
                     quote! {
                         {
                             let __inner_df = <#inner_ty>::to_dataframe(self.#col_name);
-                            let __inner_cols = ::miniextendr_api::convert::IntoDataFrame::into_named_columns(__inner_df);
+                            let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(__inner_df);
                             for (__inner_col_name, __inner_col_sexp) in __inner_cols {
                                 // Protect the source column SEXP across subsequent allocations.
                                 let __src = __scope.protect_raw(__inner_col_sexp);
@@ -1284,11 +1284,11 @@ fn derive_struct_dataframe(
             .collect();
 
         quote! {
-            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
-                fn into_data_frame(self) -> ::miniextendr_api::List {
+            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
+                fn into_column_list(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
-                    // SAFETY: into_data_frame only runs on the R main thread.
+                    // SAFETY: into_column_list only runs on the R main thread.
                     // ProtectScope keeps each column SEXP rooted across the
                     // next column's allocations; from_raw_pairs writes them
                     // into the parent VECSXP before we drop the scope.
@@ -1309,8 +1309,8 @@ fn derive_struct_dataframe(
         }
     } else {
         quote! {
-            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
-                fn into_data_frame(self) -> ::miniextendr_api::List {
+            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
+                fn into_column_list(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
                     // SAFETY: see auto-expand branch.
@@ -2164,6 +2164,95 @@ fn derive_struct_dataframe(
         })
         .collect();
 
+    // region: DataFrameRowConvert on Row — orphan-rule bridge for the public verbs
+    //
+    // The derive cannot write `impl IntoDataFrame for Vec<Row>` directly: the orphan rule
+    // forbids it (both `IntoDataFrame` and `Vec` are foreign in the user crate, and `Row` is
+    // only *covered* inside `Vec<_>`). Instead it implements the local `DataFrameRowConvert`
+    // marker on the local `Row`; miniextendr_api's blanket
+    // `impl<T: DataFrameRowConvert> IntoDataFrame/FromDataFrame for Vec<T>` then gives users the
+    // public verbs `rows.into_dataframe()?` / `Vec::<Row>::from_dataframe(&df)?`. The methods
+    // delegate to the companion engine (`to_dataframe` → `ColumnSource::into_dataframe`), the
+    // merged parallel builder (#777 `from_rows_par`) and reader (#765 `try_from_dataframe[_par]`),
+    // converting the reader's bare `String` error into the unified `DataFrameError`.
+
+    // The parallel build uses the scatter-write builder when one was generated for this shape;
+    // otherwise it falls back to the sequential transposition.
+    let has_par_builder = !from_rows_par_method.is_empty();
+    let rows_into_dataframe_par_body = if has_par_builder {
+        quote! {
+            ::miniextendr_api::convert::ColumnSource::into_dataframe(
+                <#df_name #ty_generics>::from_rows_par(rows),
+            )
+        }
+    } else {
+        quote! { Self::rows_into_dataframe(rows) }
+    };
+
+    // Readers are overridden only for the simple scalar shape that has an R→Rust reader
+    // (`try_from_dataframe`). Other shapes use the trait default (`None`), surfaced by the
+    // blanket as a clear `DataFrameError`.
+    let reader_overrides = if simple_scalar_reader {
+        quote! {
+            fn rows_from_dataframe(
+                df: &::miniextendr_api::dataframe::DataFrame,
+            ) -> ::core::option::Option<::core::result::Result<
+                Vec<Self>,
+                ::miniextendr_api::dataframe::DataFrameError,
+            >> {
+                ::core::option::Option::Some(
+                    <#row_name #ty_generics>::try_from_dataframe(df.as_sexp())
+                        .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion),
+                )
+            }
+
+            #[cfg(feature = "rayon")]
+            fn rows_from_dataframe_par(
+                df: &::miniextendr_api::dataframe::DataFrame,
+            ) -> ::core::option::Option<::core::result::Result<
+                Vec<Self>,
+                ::miniextendr_api::dataframe::DataFrameError,
+            >> {
+                ::core::option::Option::Some(
+                    <#row_name #ty_generics>::try_from_dataframe_par(df.as_sexp())
+                        .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion),
+                )
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
+    let datarow_convert_impl = quote! {
+        impl #impl_generics ::miniextendr_api::dataframe::DataFrameRowConvert
+            for #row_name #ty_generics #where_clause
+        {
+            fn rows_into_dataframe(
+                rows: Vec<Self>,
+            ) -> ::core::result::Result<
+                ::miniextendr_api::dataframe::DataFrame,
+                ::miniextendr_api::dataframe::DataFrameError,
+            > {
+                ::miniextendr_api::convert::ColumnSource::into_dataframe(
+                    <#row_name #ty_generics>::to_dataframe(rows),
+                )
+            }
+
+            #[cfg(feature = "rayon")]
+            fn rows_into_dataframe_par(
+                rows: Vec<Self>,
+            ) -> ::core::result::Result<
+                ::miniextendr_api::dataframe::DataFrame,
+                ::miniextendr_api::dataframe::DataFrameError,
+            > {
+                #rows_into_dataframe_par_body
+            }
+
+            #reader_overrides
+        }
+    };
+    // endregion
+
     Ok(quote! {
         #dataframe_struct
         #into_dataframe_impl
@@ -2174,6 +2263,7 @@ fn derive_struct_dataframe(
         #trait_check
         #marker_impl
         #payload_fields_impl
+        #datarow_convert_impl
         #(#struct_assertions)*
     })
     // endregion

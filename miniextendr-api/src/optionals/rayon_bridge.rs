@@ -950,12 +950,18 @@ impl RDataFrameBuilder {
         self
     }
 
-    /// Allocate, fill, and assemble the data.frame. Returns the `VECSXP` SEXP.
+    /// Allocate, fill, and assemble the [`DataFrame`](crate::dataframe::DataFrame).
     ///
     /// Flattens every column into a single `(column_index, row-range)` work-list
     /// and runs one parallel pass over it (see the type-level docs for the
     /// scheduling argument), then assembles the `data.frame` on the R thread.
-    pub fn build(self) -> SEXP {
+    pub fn build(self) -> crate::dataframe::DataFrame {
+        // SAFETY: `build_sexp` returns a well-formed data.frame VECSXP.
+        unsafe { crate::dataframe::DataFrame::from_built_sexp(self.build_sexp()) }
+    }
+
+    /// Assemble and return the raw `VECSXP` SEXP (internal; prefer [`build`](Self::build)).
+    fn build_sexp(self) -> SEXP {
         let RDataFrameBuilder {
             nrow,
             names,

@@ -5,7 +5,8 @@
 //! varying row/column counts.
 
 use miniextendr_api::SEXP;
-use miniextendr_api::{DataFrameRow, IntoDataFrame, IntoList, IntoR};
+use miniextendr_api::dataframe::ColumnSource;
+use miniextendr_api::{DataFrameRow, IntoList, IntoR};
 
 fn main() {
     miniextendr_bench::init();
@@ -170,28 +171,28 @@ mod transpose {
 mod full_pipeline {
     use super::*;
 
-    /// Point3: transpose + into_data_frame (SEXP conversion).
+    /// Point3: transpose + into_column_list (SEXP conversion).
     #[divan::bench(args = ROW_COUNTS)]
     fn point3_to_sexp(n: usize) -> SEXP {
         let rows = make_point3(n);
         let df = Point3::to_dataframe(rows);
-        divan::black_box(df.into_data_frame().as_sexp().into_sexp())
+        divan::black_box(df.into_column_list().as_sexp().into_sexp())
     }
 
-    /// MixedRow: transpose + into_data_frame (String allocation overhead).
+    /// MixedRow: transpose + into_column_list (String allocation overhead).
     #[divan::bench(args = ROW_COUNTS)]
     fn mixed_to_sexp(n: usize) -> SEXP {
         let rows = make_mixed(n);
         let df = MixedRow::to_dataframe(rows);
-        divan::black_box(df.into_data_frame().as_sexp().into_sexp())
+        divan::black_box(df.into_column_list().as_sexp().into_sexp())
     }
 
-    /// EventRow enum: transpose + into_data_frame (Option<T> columns).
+    /// EventRow enum: transpose + into_column_list (Option<T> columns).
     #[divan::bench(args = ROW_COUNTS)]
     fn event_to_sexp(n: usize) -> SEXP {
         let rows = make_events(n);
         let df = EventRow::to_dataframe(rows);
-        divan::black_box(df.into_data_frame().as_sexp().into_sexp())
+        divan::black_box(df.into_column_list().as_sexp().into_sexp())
     }
 }
 // endregion
@@ -205,14 +206,14 @@ mod sexp_conversion {
     #[divan::bench(args = ROW_COUNTS)]
     fn point3_into_df(n: usize) -> SEXP {
         let df = Point3::to_dataframe(make_point3(n));
-        divan::black_box(df.into_data_frame().as_sexp().into_sexp())
+        divan::black_box(df.into_column_list().as_sexp().into_sexp())
     }
 
     /// Wide10DataFrame → SEXP (10 numeric columns).
     #[divan::bench(args = ROW_COUNTS)]
     fn wide10_into_df(n: usize) -> SEXP {
         let df = Wide10::to_dataframe(make_wide10(n));
-        divan::black_box(df.into_data_frame().as_sexp().into_sexp())
+        divan::black_box(df.into_column_list().as_sexp().into_sexp())
     }
 }
 // endregion

@@ -89,16 +89,30 @@ unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
 
 /// A data.frame produced by the columnar serializer.
 ///
-/// Supports post-assembly customization via builder-style methods:
-///
-/// ```ignore
-/// ColumnarDataFrame::from_rows(&rows)?
-///     .rename("hashes_blake3", "hash")
-///     .with_column("status", status_sexp)
-///     .drop("internal_id")
-/// ```
+/// **Internal/legacy.** The public data-frame type is
+/// [`DataFrame`](crate::dataframe::DataFrame); the serde column path now surfaces a
+/// `DataFrame` via [`IntoDataFrame`](crate::dataframe::IntoDataFrame). This newtype is
+/// retained as the serde assembler's internal return shape and is tracked for removal
+/// (see the unified-DataFrame follow-up issues). Convert with
+/// `DataFrame::from(columnar)` / `ColumnarDataFrame::from(df)`.
+#[doc(hidden)]
 pub struct ColumnarDataFrame {
     sexp: SEXP,
+}
+
+impl From<ColumnarDataFrame> for crate::dataframe::DataFrame {
+    #[inline]
+    fn from(c: ColumnarDataFrame) -> Self {
+        // SAFETY: `ColumnarDataFrame` always wraps a well-formed data.frame SEXP.
+        unsafe { crate::dataframe::DataFrame::from_built_sexp(c.sexp) }
+    }
+}
+
+impl From<crate::dataframe::DataFrame> for ColumnarDataFrame {
+    #[inline]
+    fn from(df: crate::dataframe::DataFrame) -> Self {
+        ColumnarDataFrame { sexp: df.as_sexp() }
+    }
 }
 
 impl ColumnarDataFrame {
@@ -387,9 +401,9 @@ impl crate::IntoR for ColumnarDataFrame {
 impl<T: crate::list::IntoList> From<crate::convert::DataFrame<T>> for ColumnarDataFrame {
     fn from(df: crate::convert::DataFrame<T>) -> Self {
         use crate::IntoR;
-        use crate::convert::IntoDataFrame;
+        use crate::dataframe::ColumnSource;
         ColumnarDataFrame {
-            sexp: df.into_data_frame().into_sexp(),
+            sexp: df.into_column_list().into_sexp(),
         }
     }
 }
@@ -399,20 +413,9 @@ impl crate::from_r::TryFromSexp for ColumnarDataFrame {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // Validate it's a data.frame before wrapping
-        crate::dataframe::DataFrameView::from_sexp(sexp)
+        crate::dataframe::DataFrame::from_sexp(sexp)
             .map(ColumnarDataFrame::from)
             .map_err(|e| crate::from_r::SexpError::InvalidValue(e.to_string()))
-    }
-}
-
-/// Convert a `DataFrameView` (received from R) into a `ColumnarDataFrame`
-/// for post-hoc customization (rename, drop, select).
-impl From<crate::dataframe::DataFrameView> for ColumnarDataFrame {
-    fn from(view: crate::dataframe::DataFrameView) -> Self {
-        use crate::IntoR;
-        ColumnarDataFrame {
-            sexp: view.into_sexp(),
-        }
     }
 }
 

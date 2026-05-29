@@ -59,7 +59,7 @@ use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::dataframe::DataFrameView;
 use crate::from_r::charsxp_to_str;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{OwnedProtect, SEXP, SEXPTYPE, SexpExt};
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 
 // region: public API
@@ -102,6 +102,12 @@ where
     if is_empty_dataframe(sexp) {
         return Ok(Vec::new());
     }
+    // Root the input across deserialisation. A real `.Call` caller gets this from
+    // R's argument frame, but a Rust caller may hand in a freshly-built,
+    // unprotected data.frame; `deserialize_rows` allocates (→ GC under
+    // `gctorture(TRUE)`), which would otherwise reclaim the input and its `names`
+    // STRSXP and recycle the slot. See reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md.
+    let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
     deserialize_rows(&view)
 }
@@ -118,8 +124,9 @@ where
 /// CHARSXP cache, use the `BorrowedRows<'a, T>` RAII type from #671b (ships
 /// separately on top of [`Protected`](crate::Protected)).
 ///
-/// The input SEXP remains protected by R's argument frame for the duration of
-/// the call, so no extra `OwnedProtect` is needed inside this function.
+/// The input SEXP is rooted with an `OwnedProtect` for the duration of the call,
+/// so a Rust caller passing a freshly-built data.frame is safe under GC (a
+/// `.Call` caller's argument frame would also protect it).
 ///
 /// # Errors
 ///
@@ -138,6 +145,8 @@ where
         let rows: Vec<T> = Vec::new();
         return Ok(f(&rows));
     }
+    // Root the input across deserialisation — see [`dataframe_to_vec`].
+    let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
     let rows: Vec<T> = deserialize_rows(&view)?;
     Ok(f(&rows))
@@ -196,6 +205,10 @@ where
     let rows: Vec<T> = if is_empty_dataframe(sexp) {
         Vec::new()
     } else {
+        // Root the input across deserialisation (see [`dataframe_to_vec`]); this
+        // guard drops at the end of the block, before `Protected::new` re-protects
+        // `sexp` for the returned handle (keeps the `UNPROTECT(1)` order correct).
+        let _input = unsafe { OwnedProtect::new(sexp) };
         let view =
             DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
         deserialize_rows(&view)?
@@ -208,6 +221,57 @@ where
     // - `rows` carries no SEXP-internal borrows under the `for<'b>` bound
     //   (DeserializeOwned-equivalent), so `'a` is satisfied trivially.
     Ok(unsafe { crate::Protected::new(sexp, rows) })
+}
+
+// endregion
+
+// region: Public IntoDataFrame / FromDataFrame on serde rows
+
+/// Wrapper that converts `Vec<T: Serialize>` into a [`DataFrame`](crate::dataframe::DataFrame)
+/// through the two-phase columnar serializer (schema discovery + column fill), the richer
+/// serde build path than the per-row `IntoList` transposition.
+///
+/// ```ignore
+/// use miniextendr_api::dataframe::IntoDataFrame;
+/// use miniextendr_api::serde::SerdeRows;
+///
+/// let df = SerdeRows(people).into_dataframe()?;
+/// ```
+pub struct SerdeRows<T>(pub Vec<T>);
+
+impl<T: serde::Serialize> crate::dataframe::IntoDataFrame for SerdeRows<T> {
+    fn into_dataframe(
+        self,
+    ) -> Result<crate::dataframe::DataFrame, crate::dataframe::DataFrameError> {
+        let columnar = crate::serde::ColumnarDataFrame::from_rows(&self.0)?;
+        Ok(crate::dataframe::DataFrame::from(columnar))
+    }
+}
+
+/// Read a `data.frame` into `SerdeRows<T>` via serde (the [`dataframe_to_vec`] path),
+/// surfacing a [`DataFrameError`](crate::dataframe::DataFrameError).
+///
+/// Reading targets the [`SerdeRows`] wrapper (rather than a blanket `Vec<T>`) so the serde
+/// read path never collides with the concrete `FromDataFrame for Vec<Row>` impls that
+/// `#[derive(DataFrameRow)]` emits when a row also derives `Deserialize`. Unwrap via
+/// `SerdeRows.0` or [`SerdeRows::into_inner`].
+impl<T> crate::dataframe::FromDataFrame for SerdeRows<T>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    fn from_dataframe(
+        df: &crate::dataframe::DataFrame,
+    ) -> Result<Self, crate::dataframe::DataFrameError> {
+        Ok(SerdeRows(dataframe_to_vec(df.as_sexp())?))
+    }
+}
+
+impl<T> SerdeRows<T> {
+    /// Unwrap the inner `Vec<T>`.
+    #[inline]
+    pub fn into_inner(self) -> Vec<T> {
+        self.0
+    }
 }
 
 // endregion

@@ -246,7 +246,7 @@ pub use columnar::{
     vec_to_dataframe_split,
 };
 pub use dataframe_de::{
-    BorrowedRows, dataframe_to_vec, dataframe_to_vec_borrowed, with_dataframe_rows,
+    BorrowedRows, SerdeRows, dataframe_to_vec, dataframe_to_vec_borrowed, with_dataframe_rows,
 };
 pub use de::RDeserializer;
 pub use error::RSerdeError;
