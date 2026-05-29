@@ -438,6 +438,48 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
 
     Ok(FieldTypeKind::Scalar)
 }
+
+/// Scalar element types whose `Vec<T>` (and `Vec<Option<T>>`) round-trips through
+/// `TryFromSexp` — the supported field types for the parallel from-R reader
+/// (`try_from_dataframe_par`). This is intentionally narrower than
+/// `FieldTypeKind::Scalar`: set/opaque collection types (`HashSet<…>`,
+/// `BTreeSet<…>`) also classify as `Scalar` but do NOT implement `Vec<_>:
+/// TryFromSexp`, so they must be excluded from the reader path.
+const READER_SCALAR_NAMES: &[&str] = &[
+    "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "String",
+];
+
+/// True if `ty` is a bare known-scalar ident, or `Option<bare-known-scalar>`.
+///
+/// These are exactly the field types for which the parallel from-R reader can
+/// pull a column out as `Vec<ty>` via `TryFromSexp`.
+fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
+    fn is_bare_scalar(ty: &syn::Type) -> bool {
+        if let syn::Type::Path(tp) = ty
+            && tp.qself.is_none()
+            && tp.path.leading_colon.is_none()
+            && let Some(seg) = tp.path.segments.last()
+            && matches!(seg.arguments, syn::PathArguments::None)
+        {
+            return READER_SCALAR_NAMES.contains(&seg.ident.to_string().as_str());
+        }
+        false
+    }
+
+    if is_bare_scalar(ty) {
+        return true;
+    }
+    // Option<scalar>
+    if let syn::Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last()
+        && seg.ident == "Option"
+        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+    {
+        return is_bare_scalar(inner);
+    }
+    false
+}
 // endregion
 
 // region: Resolved field model (struct path)
@@ -1880,6 +1922,150 @@ fn derive_struct_dataframe(
     };
     // endregion
 
+    // region: from-R readers (try_from_dataframe / try_from_dataframe_par, #738)
+    //
+    // Read an R `data.frame` SEXP directly into `Vec<Self>` without first
+    // materialising a companion `#df_name`. Only the simple scalar shape is
+    // supported here: a named struct whose every field is `ResolvedField::Single`
+    // with `!needs_into_list`, no `#[dataframe(tag)]`, and no `#[dataframe(skip)]`
+    // fields. Expansion / struct-flatten / as_list / tag / skip shapes fall back
+    // to the column-oriented `from_dataframe(companion)` path (no parallel reader
+    // is generated for them — tracked in the follow-up issue referenced in the PR).
+    //
+    // The parallel variant (`#[cfg(feature = "rayon")]`) splits cleanly along the
+    // R-thread boundary:
+    //   1. On the R/worker thread, each column is pulled out of the data.frame as
+    //      an owned `Vec<FieldTy>` via `DataFrameView::column`. This MATERIALISES
+    //      any ALTREP column (the conversion iterates every element), so no
+    //      un-materialised ALTREP and no SEXP reaches the rayon region.
+    //   2. Off-thread, `(0..nrow).into_par_iter()` assembles each `Self` from the
+    //      pre-extracted, owned column vecs by index — pure Rust, zero R API calls.
+    // Only true single-column scalar fields (i32 / f64 / bool / String /
+    // Option<scalar> / …) are read here — these are exactly the field types whose
+    // companion `Vec<FieldTy>` round-trips through `TryFromSexp`. List-column /
+    // expansion / map / struct field types (`Box<[T]>`, `[T; N]`, `HashMap`, …)
+    // resolve as `Single` too but do NOT implement `Vec<_>: TryFromSexp`, so they
+    // are excluded by the `classify_field_type(...) == Scalar` check below and fall
+    // back to the column-oriented `from_dataframe(companion)` reader.
+    let simple_scalar_reader = can_iterate
+        && !has_tag
+        && skipped_fields.is_empty()
+        && resolved.iter().all(|rf| match rf {
+            ResolvedField::Single(d) => !d.needs_into_list && is_reader_scalar_ty(&d.ty),
+            _ => false,
+        });
+
+    let reader_methods = if simple_scalar_reader {
+        // Per-field column extraction + row-assembly fragments.
+        let mut col_extract: Vec<TokenStream> = Vec::new();
+        let mut row_build_seq: Vec<TokenStream> = Vec::new();
+        let mut row_build_par: Vec<TokenStream> = Vec::new();
+        for rf in &resolved {
+            let ResolvedField::Single(data) = rf else {
+                unreachable!("simple_scalar_reader guard ensures all fields are Single");
+            };
+            let rust_name = &data.rust_name;
+            let col_var = format_ident!("__col_{}", data.rust_name);
+            let col_name_str = &data.col_name_str;
+            let field_ty = &data.ty;
+            // Pull the named column's raw SEXP, then convert the whole column to an
+            // owned `Vec<FieldTy>` via the field type's own `TryFromSexp`. This
+            // copies out of R (NA-aware) and MATERIALISES any ALTREP column (the
+            // conversion visits every element) — all on the R/worker thread, before
+            // the parallel region. We bypass `DataFrameView::column` because its
+            // bound (`Error = SexpError`) is tighter than the scalar element types'
+            // `TryFromSexp::Error` (`SexpTypeError`).
+            col_extract.push(quote! {
+                let #col_var: Vec<#field_ty> = {
+                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                        ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
+                    })?;
+                    <Vec<#field_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                        .map_err(|e| ::std::format!(
+                            "column `{}` could not be converted to the expected type: {}",
+                            #col_name_str, e
+                        ))?
+                };
+                if #col_var.len() != __nrow {
+                    return ::core::result::Result::Err(::std::format!(
+                        "column `{}` has length {} but data.frame has {} rows",
+                        #col_name_str, #col_var.len(), __nrow
+                    ));
+                }
+            });
+            // Sequential: move each element out of the owned column vec by draining.
+            row_build_seq.push(quote! { #rust_name: #col_var.next().unwrap() });
+            // Parallel: index by row, cloning the scalar out of the owned column.
+            row_build_par.push(quote! { #rust_name: #col_var[__i].clone() });
+        }
+
+        let par_col_idents: Vec<syn::Ident> = resolved
+            .iter()
+            .map(|rf| {
+                let ResolvedField::Single(data) = rf else {
+                    unreachable!();
+                };
+                format_ident!("__col_{}", data.rust_name)
+            })
+            .collect();
+
+        let seq_drain_decls: Vec<TokenStream> = par_col_idents
+            .iter()
+            .map(|id| quote! { let mut #id = #id.into_iter(); })
+            .collect();
+
+        quote! {
+            /// Read an R `data.frame` directly into a `Vec<Self>` (sequential).
+            ///
+            /// Each column is materialised out of R (NA-aware, ALTREP-materialising)
+            /// and the rows are assembled by transposing column-major into row-major.
+            ///
+            /// Only available for simple scalar-field structs. Returns `Err` with a
+            /// descriptive message if a column is missing, mis-typed, or ragged.
+            pub fn try_from_dataframe(
+                sexp: ::miniextendr_api::SEXP,
+            ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+                let __view = ::miniextendr_api::dataframe::DataFrameView::from_sexp(sexp)
+                    .map_err(|e| e.to_string())?;
+                let __nrow = __view.nrow();
+                #(#col_extract)*
+                #(#seq_drain_decls)*
+                let mut __rows: Vec<Self> = Vec::with_capacity(__nrow);
+                for _ in 0..__nrow {
+                    __rows.push(Self { #(#row_build_seq),* });
+                }
+                ::core::result::Result::Ok(__rows)
+            }
+
+            /// Read an R `data.frame` directly into a `Vec<Self>` (parallel).
+            ///
+            /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R
+            /// thread via rayon. Safety: all SEXP access (column extraction, ALTREP
+            /// materialisation) happens up front on the R/worker thread; the
+            /// `into_par_iter()` region touches only pre-extracted owned column vecs
+            /// and makes no R API calls.
+            #[cfg(feature = "rayon")]
+            pub fn try_from_dataframe_par(
+                sexp: ::miniextendr_api::SEXP,
+            ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                let __view = ::miniextendr_api::dataframe::DataFrameView::from_sexp(sexp)
+                    .map_err(|e| e.to_string())?;
+                let __nrow = __view.nrow();
+                #(#col_extract)*
+                // Pure-Rust parallel row assembly: no SEXP, no R API calls.
+                let __rows: Vec<Self> = (0..__nrow)
+                    .into_par_iter()
+                    .map(|__i| Self { #(#row_build_par),* })
+                    .collect();
+                ::core::result::Result::Ok(__rows)
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+    // endregion
+
     // region: DataFrame type methods (from_rows, from_rows_par)
     let df_methods = quote! {
         impl #impl_generics #df_name #ty_generics #where_clause {
@@ -1905,6 +2091,8 @@ fn derive_struct_dataframe(
             }
 
             #from_dataframe_method
+
+            #reader_methods
         }
     };
 
