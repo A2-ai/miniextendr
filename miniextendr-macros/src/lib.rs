@@ -2749,12 +2749,19 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             ::miniextendr_api::worker::miniextendr_runtime_shutdown();
         }
 
-        /// Linker anchor: stub.c references this symbol to force the linker to pull
-        /// in the user crate's archive member from the staticlib. With codegen-units = 1,
-        /// this single member contains all linkme distributed_slice entries.
-        /// The name is package-independent so stub.c doesn't need configure substitution.
+        /// Linker anchor: stub.c takes the address of this symbol to force the
+        /// linker to pull in the user crate's archive member from the staticlib.
+        /// With codegen-units = 1, this single member contains all linkme
+        /// distributed_slice entries. The name is package-independent so stub.c
+        /// doesn't need configure substitution.
+        ///
+        /// Defined as a function rather than a static so it stays exported under
+        /// the webR wasm RUSTFLAG -Zdefault-visibility=hidden, which keeps
+        /// no_mangle functions exported (like the R_init entry point) but hides
+        /// no_mangle statics. A hidden anchor breaks wasm side-module dlopen
+        /// (bad export type, undefined). See miniextendr webR notes (#494).
         #[unsafe(no_mangle)]
-        pub static miniextendr_force_link: ::std::ffi::c_char = 0;
+        pub extern "C" fn miniextendr_force_link() {}
     };
 
     expanded.into()

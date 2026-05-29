@@ -4,5 +4,5 @@
 // miniextendr_force_link is a package-independent symbol emitted by
 // miniextendr_init!() that forces the linker to pull in the user crate's
 // archive member (containing all linkme distributed_slice entries).
-extern const char miniextendr_force_link;
-const void *miniextendr_anchor = &miniextendr_force_link;
+extern void miniextendr_force_link(void);
+void (*const miniextendr_anchor)(void) = miniextendr_force_link;
