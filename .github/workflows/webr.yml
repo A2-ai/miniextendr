@@ -9,6 +9,7 @@ on:
       - 'miniextendr-lint/**'
       - 'rpkg/**'
       - 'tests/cross-package/**'
+      - 'tests/webr-node-smoke/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'Dockerfile.webr'
@@ -22,6 +23,7 @@ on:
       - 'miniextendr-lint/**'
       - 'rpkg/**'
       - 'tests/cross-package/**'
+      - 'tests/webr-node-smoke/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'Dockerfile.webr'
@@ -74,13 +76,19 @@ jobs:
       # Tier 2 (below) runs inside the webR container which has real R, so the
       # full rpkg install path is exercised there instead.
 
-  # ── Tier 2: full wasm32 R CMD INSTALL inside webR's own container ─────────
-  # Closes #491. Runs Phase 1 (native install → regenerates wasm_registry.rs
-  # via the cdylib pass) + Phase 2 (CC=emcc wasm install via webr-vars.mk),
-  # mirroring tests/webr-smoke.sh. CI's amd64 runners have no Rosetta and
-  # plenty of disk (the local arm64 dev path hits both limits). This is also
-  # the empirical validator for #494's `-C relocation-model=pic` flag: if the
-  # emcc side-module link rejects non-PIC objects, Phase 2 fails here.
+  # ── Tier 2 + 3: full wasm32 R CMD INSTALL + Node smoke ──────────────────
+  # Closes #491 (tier 2) and #492 (tier 3 — Node + webR runtime smoke).
+  # Runs as a single job because all three phases share the same container,
+  # filesystem state, and `/tmp/wasm-lib/miniextendr` artifact:
+  #   - Phase 1: native install → regenerates wasm_registry.rs via cdylib pass.
+  #   - Phase 2: CC=emcc wasm install via webr-vars.mk → /tmp/wasm-lib/miniextendr.
+  #   - Phase 3: Node + webR session NODEFS-mounts /tmp/wasm-lib, installs
+  #              Imports from repo.r-wasm.org, drives library(miniextendr).
+  # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners have no Rosetta
+  # and plenty of disk (the local arm64 dev path hits both limits). Phase 2
+  # is also the empirical validator for #494's `-C relocation-model=pic`
+  # flag: if the emcc side-module link rejects non-PIC objects, Phase 2
+  # fails here.
   #
   # The container image must stay digest-aligned with Dockerfile.webr's
   # WEBR_BASE — bump both together. The S7 + autoconf installs mirror the
@@ -199,3 +207,58 @@ jobs:
           # Sanity: side-module must be wasm, not ELF (would mean Phase 2
           # silently fell back to native compilation).
           file "$libdir/libs/"miniextendr.so | grep -qi "WebAssembly\|wasm"
+
+      # ── Tier 3 (#492): Node + webR runtime smoke ─────────────────────────────
+      # Drives library(miniextendr) inside a webR Node session against the
+      # wasm install Phase 2 just produced. The emcc link step alone is not
+      # proof the side-module is actually loadable — tier 3 is.
+      #
+      # webR's esbuild config (.webr/src/esbuild.ts) emits TWO sets of
+      # outputs: a *browser* bundle to /opt/webr/dist/ (stubs out
+      # fs/worker_threads/url/etc via blankImportPlugin — cannot run in
+      # Node) and a *Node* bundle to /opt/webr/src/dist/ (webr.cjs +
+      # webr.mjs, both with a `__dirname`/`__filename`/`createRequire`
+      # banner so the ESM build runs in Node). The image's Dockerfile
+      # (see .webr/Dockerfile lines 107-108) deliberately strips
+      # src/node_modules, src/dist, AND webR/config.ts (via `make clean`)
+      # to shrink the published image, so we restore them here. We invoke
+      # the upstream Makefile's `$(PKG_DIST)/webr.mjs` target, which is
+      # what webR uses internally for `npm pack` — it chains
+      # node_modules ← `npm ci`, webR/config.ts ← sed from .in,
+      # `npm run build` ← tsc + esbuild, and a final asset-copy of
+      # R.wasm/R.js/vfs/webr-worker.js out of /opt/webr/dist into
+      # /opt/webr/src/dist. The bundle then resolves all runtime assets
+      # via its own __dirname, no `baseUrl` override needed. End-to-end
+      # this takes ~20s on a warm runner and is byte-locked to the
+      # versions that built the image's R.wasm.
+      #
+      # Validated locally end-to-end against the same base image:
+      # `make /opt/webr/src/dist/webr.mjs` succeeds in ~19s,
+      # `import { WebR } from .../webr.mjs` boots, evalR("1+1") returns
+      # {"type":"double","values":[2]}.
+      - name: Tier 3 — rebuild webR's Node bundles
+        run: |
+          set -euo pipefail
+          cd /opt/webr/src
+          if [ ! -f package-lock.json ]; then
+            echo "::error::/opt/webr/src/package-lock.json absent — base image layout changed."
+            ls -la /opt/webr/src/ 2>&1 || true
+            exit 1
+          fi
+          # Make target uses an absolute path because PKG_DIST is
+          # computed dynamically — see .webr/src/Makefile for the rule.
+          make /opt/webr/src/dist/webr.mjs
+          test -f /opt/webr/src/dist/webr.mjs
+          test -f /opt/webr/src/dist/webr.cjs
+          test -f /opt/webr/src/dist/R.wasm  # asset copy step ran
+          ls -la /opt/webr/src/dist/
+
+      - name: Tier 3 — run Node + webR smoke (library(miniextendr))
+        working-directory: tests/webr-node-smoke
+        run: |
+          set -euo pipefail
+          # Hard wall-clock cap: webR init + Imports install + library load
+          # should take well under 10 min on a clean runner. If we ever hit
+          # 15 min the runner has wedged on something — fail visibly rather
+          # than burning the 90-min job timeout.
+          timeout 900 node smoke.mjs
