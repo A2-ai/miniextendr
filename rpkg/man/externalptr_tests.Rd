@@ -72,13 +72,13 @@ unsafe_C_extptr_type_mismatch_test(ptr)
 \description{
 Create a new Point ExternalPtr with the given coordinates
 
-Test ErasedExternalPtr::is::\if{html}{\out{<Point>}}() type check
+Test \verb{ErasedExternalPtr::is::<Point>}() type check
 
 Test that wrap_sexp returns None for a null external pointer (R's new("externalptr"))
 
 Create a new Counter ExternalPtr with the given initial value
 
-Test ErasedExternalPtr::is::\if{html}{\out{<Counter>}}() type check
+Test \verb{ErasedExternalPtr::is::<Counter>}() type check
 
 Get the current value from a Counter ExternalPtr
 
