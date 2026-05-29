@@ -216,10 +216,18 @@ jobs:
           shared-key: rust-lint
           cache-on-failure: true
 
+      # `just fmt-check` iterates every manifest (root workspace +
+      # rpkg/src/rust + tests/cross-package/*), not just the root workspace —
+      # the non-root manifests are separate cargo workspaces that `cargo fmt
+      # --all` alone never reaches. `cargo fmt --check` needs no dep
+      # resolution / .cargo/config.toml, so this runs without `just configure`.
+      - name: Install just
+        uses: taiki-e/install-action@just
+
       - name: Rustfmt
         id: rustfmt
         continue-on-error: true
-        run: cargo fmt --all -- --check 2>&1 | tee "$RUNNER_TEMP/rustfmt.log"
+        run: just fmt-check 2>&1 | tee "$RUNNER_TEMP/rustfmt.log"
         shell: bash
 
       - name: Clippy (default features)

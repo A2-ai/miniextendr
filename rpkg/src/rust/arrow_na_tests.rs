@@ -13,8 +13,8 @@
 use miniextendr_api::arrow_impl::{
     Array, BooleanArray, Float64Array, Int32Array, RecordBatch, StringArray,
 };
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 
 // region: Float64Array NA patterns
 

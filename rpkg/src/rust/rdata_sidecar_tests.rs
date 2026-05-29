@@ -3,8 +3,8 @@
 //! This module tests the R-side sidecar accessor generation with different class systems.
 
 use miniextendr_api::externalptr::{ExternalPtr, RSidecar};
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 
 // region: Env (default) - standalone functions: Type_get_field(), Type_set_field()
 

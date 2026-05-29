@@ -550,18 +550,12 @@ struct BadRow {
 
 fn make_mixed_rows() -> Vec<Result<GoodRow, BadRow>> {
     vec![
-        Ok(GoodRow {
-            id: 1,
-            value: 1.0,
-        }),
+        Ok(GoodRow { id: 1, value: 1.0 }),
         Err(BadRow {
             id: 2,
             reason: "bad".into(),
         }),
-        Ok(GoodRow {
-            id: 3,
-            value: 3.0,
-        }),
+        Ok(GoodRow { id: 3, value: 3.0 }),
     ]
 }
 
@@ -572,14 +566,8 @@ fn make_mixed_rows() -> Vec<Result<GoodRow, BadRow>> {
 pub fn test_result_to_dataframe_auto_all_ok() -> DataFrameShape {
     use miniextendr_api::serde::ResultShape;
     let rows: Vec<Result<GoodRow, BadRow>> = vec![
-        Ok(GoodRow {
-            id: 1,
-            value: 1.0,
-        }),
-        Ok(GoodRow {
-            id: 2,
-            value: 2.0,
-        }),
+        Ok(GoodRow { id: 1, value: 1.0 }),
+        Ok(GoodRow { id: 2, value: 2.0 }),
     ];
     miniextendr_api::serde::result_to_dataframe(
         &rows,

@@ -2,9 +2,9 @@
 //!
 //! These functions are exposed to R for testing the vctrs integration.
 
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::list::List;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::vctrs::{VctrsBuildError, new_list_of, new_rcrd, new_vctr};
 
 // region: Construction helper tests

@@ -1,9 +1,9 @@
 //! Jiff adapter tests — roundtrip and extraction fixtures for all jiff types.
 use miniextendr_api::cached_class::set_posixct_utc;
-use miniextendr_api::prelude::SEXP;
-use miniextendr_api::sys::{Rf_protect, Rf_unprotect};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
+use miniextendr_api::sys::{Rf_protect, Rf_unprotect};
 use miniextendr_api::{
     AltRealData, AltrepLen, JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, JiffZonedVec,
     SignedDuration, Span, Timestamp, Zoned,

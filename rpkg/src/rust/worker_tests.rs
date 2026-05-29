@@ -1,7 +1,7 @@
 //! Tests for worker thread (run_on_worker) and with_r_thread functionality.
 
-use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::worker::{panic_message_to_r_error, run_on_worker, with_r_thread};
 
 use crate::externalptr_tests::{Counter, Point};
@@ -338,8 +338,8 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 
     // Create ExternalPtrs on main thread
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::prelude::SexpExt;
     use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::prelude::SexpExt;
 
     unsafe {
         let scope = ProtectScope::new();

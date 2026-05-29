@@ -88,8 +88,8 @@
 
 use miniextendr_api::Altrep;
 use miniextendr_api::IntoR;
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 
 // Package initialization — generates R_init_miniextendr() entry point.
 // Replaces the previous entrypoint.c with a pure-Rust implementation.
@@ -221,6 +221,7 @@ mod num_traits_adapter_tests;
 mod ordered_float_adapter_tests;
 mod panic_telemetry_tests;
 mod panic_tests;
+mod pipe_builder_tests;
 mod protect_pool_tests;
 mod r6_default_tests;
 mod r6_noexport_field_tests;
@@ -234,7 +235,6 @@ mod rayon_tests;
 mod rdata_sidecar_tests;
 mod receiver_tests;
 mod refcount_protect_tests;
-mod pipe_builder_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rng_tests;
@@ -971,8 +971,8 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
         // NA_LOGICAL in R is the same as NA_INTEGER = i32::MIN
         const NA_LOGICAL: i32 = i32::MIN;
         unsafe {
-            use miniextendr_api::prelude::SexpExt;
             use miniextendr_api::SEXPTYPE;
+            use miniextendr_api::prelude::SexpExt;
             use miniextendr_api::sys::Rf_allocVector;
             let n = self.data.len();
             let state = Rf_allocVector(SEXPTYPE::LGLSXP, n as isize);
@@ -1100,8 +1100,8 @@ pub fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
 // This demonstrates ALTREP for complex vectors
 // -----------------------------------------------------------------------------
 
-use miniextendr_api::altrep_data::AltComplexData;
 use miniextendr_api::Rcomplex;
+use miniextendr_api::altrep_data::AltComplexData;
 
 #[derive(miniextendr_api::AltrepComplex)]
 #[altrep(class = "UnitCircle", manual)]
