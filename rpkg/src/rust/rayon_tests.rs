@@ -3,6 +3,8 @@
 #[cfg(feature = "rayon")]
 use miniextendr_api::prelude::SEXP;
 #[cfg(feature = "rayon")]
+use miniextendr_api::dataframe::DataFrame;
+#[cfg(feature = "rayon")]
 use miniextendr_api::miniextendr;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
@@ -113,7 +115,7 @@ pub fn rayon_with_r_matrix(nrow: i32, ncol: i32) -> SEXP {
 /// @param n Number of rows to create.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn rayon_with_r_dataframe(n: i32) -> SEXP {
+pub fn rayon_with_r_dataframe(n: i32) -> DataFrame {
     RDataFrameBuilder::new(n as usize)
         .column::<f64>("x", |chunk: &mut [f64], offset: usize| {
             for (i, slot) in chunk.iter_mut().enumerate() {
@@ -146,7 +148,7 @@ pub fn rayon_with_r_dataframe(n: i32) -> SEXP {
 /// @param ncol Number of columns.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn rayon_dataframe_wide(nrow: i32, ncol: i32) -> SEXP {
+pub fn rayon_dataframe_wide(nrow: i32, ncol: i32) -> DataFrame {
     let mut builder = RDataFrameBuilder::new(nrow as usize);
     for j in 0..ncol as usize {
         builder = builder.column::<f64>(format!("c{j}"), move |chunk: &mut [f64], offset: usize| {
@@ -169,7 +171,7 @@ pub fn rayon_dataframe_wide(nrow: i32, ncol: i32) -> SEXP {
 /// @param nrow Number of rows.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn rayon_dataframe_skewed(nrow: i32) -> SEXP {
+pub fn rayon_dataframe_skewed(nrow: i32) -> DataFrame {
     RDataFrameBuilder::new(nrow as usize)
         .column::<f64>("big", |chunk: &mut [f64], offset: usize| {
             for (i, slot) in chunk.iter_mut().enumerate() {

@@ -212,6 +212,57 @@ where
 
 // endregion
 
+// region: Public IntoDataFrame / FromDataFrame on serde rows
+
+/// Wrapper that converts `Vec<T: Serialize>` into a [`DataFrame`](crate::dataframe::DataFrame)
+/// through the two-phase columnar serializer (schema discovery + column fill), the richer
+/// serde build path than the per-row `IntoList` transposition.
+///
+/// ```ignore
+/// use miniextendr_api::dataframe::IntoDataFrame;
+/// use miniextendr_api::serde::SerdeRows;
+///
+/// let df = SerdeRows(people).into_dataframe()?;
+/// ```
+pub struct SerdeRows<T>(pub Vec<T>);
+
+impl<T: serde::Serialize> crate::dataframe::IntoDataFrame for SerdeRows<T> {
+    fn into_dataframe(
+        self,
+    ) -> Result<crate::dataframe::DataFrame, crate::dataframe::DataFrameError> {
+        let columnar = crate::serde::ColumnarDataFrame::from_rows(&self.0)?;
+        Ok(crate::dataframe::DataFrame::from(columnar))
+    }
+}
+
+/// Read a `data.frame` into `SerdeRows<T>` via serde (the [`dataframe_to_vec`] path),
+/// surfacing a [`DataFrameError`](crate::dataframe::DataFrameError).
+///
+/// Reading targets the [`SerdeRows`] wrapper (rather than a blanket `Vec<T>`) so the serde
+/// read path never collides with the concrete `FromDataFrame for Vec<Row>` impls that
+/// `#[derive(DataFrameRow)]` emits when a row also derives `Deserialize`. Unwrap via
+/// `SerdeRows.0` or [`SerdeRows::into_inner`].
+impl<T> crate::dataframe::FromDataFrame for SerdeRows<T>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    fn from_dataframe(
+        df: &crate::dataframe::DataFrame,
+    ) -> Result<Self, crate::dataframe::DataFrameError> {
+        Ok(SerdeRows(dataframe_to_vec(df.as_sexp())?))
+    }
+}
+
+impl<T> SerdeRows<T> {
+    /// Unwrap the inner `Vec<T>`.
+    #[inline]
+    pub fn into_inner(self) -> Vec<T> {
+        self.0
+    }
+}
+
+// endregion
+
 // region: empty-df short-circuit
 
 /// Detect a 0-row 0-column data.frame for which `DataFrameView::from_sexp`

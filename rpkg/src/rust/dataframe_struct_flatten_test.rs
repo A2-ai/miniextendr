@@ -378,8 +378,8 @@ pub fn gc_stress_struct_flatten() -> List {
         })
         .collect();
     let df = FlatLocated::to_dataframe(rows);
-    use miniextendr_api::convert::IntoDataFrame as _;
-    df.into_data_frame()
+    use miniextendr_api::convert::ColumnSource as _;
+    df.into_column_list()
 }
 
 /// Drives nested flattening under gctorture.
@@ -397,8 +397,8 @@ pub fn gc_stress_struct_flatten_nested() -> List {
         })
         .collect();
     let df = FlatNested::to_dataframe(rows);
-    use miniextendr_api::convert::IntoDataFrame as _;
-    df.into_data_frame()
+    use miniextendr_api::convert::ColumnSource as _;
+    df.into_column_list()
 }
 
 // endregion

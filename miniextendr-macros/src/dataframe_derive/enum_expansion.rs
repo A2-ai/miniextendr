@@ -963,7 +963,7 @@ pub(super) fn derive_enum_dataframe(
                         // Call Inner::to_dataframe and extract named column SEXPs.
                         let __inner_df = <#inner_ty>::to_dataframe(__inner_rows);
                         // into_named_columns consumes __inner_df and returns (name, SEXP) pairs.
-                        let __inner_cols = ::miniextendr_api::convert::IntoDataFrame::into_named_columns(__inner_df);
+                        let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(__inner_df);
                         // Scatter each column back to full _n_rows with NA/NULL-fill,
                         // preserving the source column's SEXPTYPE.
                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
@@ -986,11 +986,11 @@ pub(super) fn derive_enum_dataframe(
             .collect();
 
         quote! {
-            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
-                fn into_data_frame(self) -> ::miniextendr_api::List {
+            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
+                fn into_column_list(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
-                    // SAFETY: into_data_frame only runs on the R main thread.
+                    // SAFETY: into_column_list only runs on the R main thread.
                     // ProtectScope keeps each column SEXP rooted across the
                     // next column's allocations; from_raw_pairs writes them
                     // into the parent VECSXP before we drop the scope.
@@ -1015,8 +1015,8 @@ pub(super) fn derive_enum_dataframe(
         }
     } else {
         quote! {
-            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
-                fn into_data_frame(self) -> ::miniextendr_api::List {
+            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
+                fn into_column_list(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
                     // SAFETY: see auto-expand branch.
@@ -1836,6 +1836,49 @@ pub(super) fn derive_enum_dataframe(
     };
     // endregion
 
+    // region: Public IntoDataFrame on Vec<Row> (the unified build verb for enums)
+    //
+    // Enums have no R→Rust reader, so only `IntoDataFrame` is emitted (no `FromDataFrame`).
+    // `into_dataframe_par` uses the parallel scatter-write builder when one was generated for
+    // this shape; otherwise it falls back to the sequential transposition.
+    let has_par_builder = !from_rows_par_method.is_empty();
+    let into_dataframe_par_body = if has_par_builder {
+        quote! {
+            ::miniextendr_api::dataframe::IntoDataFrame::into_dataframe(
+                <#df_name #ty_generics>::from_rows_par(self),
+            )
+        }
+    } else {
+        quote! { self.into_dataframe() }
+    };
+    let into_dataframe_trait_impl = quote! {
+        impl #impl_generics ::miniextendr_api::dataframe::IntoDataFrame
+            for Vec<#row_name #ty_generics> #where_clause
+        {
+            fn into_dataframe(
+                self,
+            ) -> ::core::result::Result<
+                ::miniextendr_api::dataframe::DataFrame,
+                ::miniextendr_api::dataframe::DataFrameError,
+            > {
+                ::miniextendr_api::dataframe::IntoDataFrame::into_dataframe(
+                    <#row_name #ty_generics>::to_dataframe(self),
+                )
+            }
+
+            #[cfg(feature = "rayon")]
+            fn into_dataframe_par(
+                self,
+            ) -> ::core::result::Result<
+                ::miniextendr_api::dataframe::DataFrame,
+                ::miniextendr_api::dataframe::DataFrameError,
+            > {
+                #into_dataframe_par_body
+            }
+        }
+    };
+    // endregion
+
     Ok(quote! {
         #dataframe_struct
         #into_dataframe_impl
@@ -1845,6 +1888,7 @@ pub(super) fn derive_enum_dataframe(
         #split_method
         #marker_impl
         #payload_fields_impl
+        #into_dataframe_trait_impl
         #(#struct_assertions)*
         #(#payload_collision_assertions)*
         #(#sibling_collision_assertions)*
@@ -2267,7 +2311,7 @@ fn generate_split_method(
                                 vec![quote! {
                                     {
                                         let __inner_df = <#inner_ty>::to_dataframe(#buf);
-                                        let __inner_cols = ::miniextendr_api::convert::IntoDataFrame::into_named_columns(__inner_df);
+                                        let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(__inner_df);
                                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
                                             let __prefixed = format!("{}_{}", #base_str, __inner_col_name);
                                             #pairs_var.push((

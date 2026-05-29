@@ -16,7 +16,7 @@
 //!
 //! - `#[derive(PreferList)]` -- convert via `IntoList::into_list`
 //! - `#[derive(PreferExternalPtr)]` -- wrap in `ExternalPtr::new`
-//! - `#[derive(PreferDataFrame)]` -- convert via `IntoDataFrame::into_data_frame`
+//! - `#[derive(PreferDataFrame)]` -- convert via `ColumnSource::into_column_list`
 //! - `#[derive(PreferRNativeType)]` -- convert via `AsRNative` wrapper
 //!
 //! ## Field Attributes
@@ -413,12 +413,12 @@ pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> 
 
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
             }
 
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
             }
         }
     };

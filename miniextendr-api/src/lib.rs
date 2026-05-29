@@ -517,9 +517,11 @@ pub mod panic_telemetry;
 pub mod ffi_guard;
 pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback};
 
-// Runtime wrapper for R data.frame objects
+// The unified owned data.frame type + conversion trait family
 pub mod dataframe;
-pub use dataframe::{DataFrameError, DataFrameView};
+pub use dataframe::{
+    DataFrame, DataFrameError, DataFrameView, FromDataFrame, IntoDataFrame,
+};
 
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
@@ -606,8 +608,8 @@ pub mod typed_list;
 pub use convert::{
     AsDisplay, AsDisplayVec, AsExternalPtr, AsExternalPtrExt, AsFromStr, AsFromStrVec, AsList,
     AsListExt, AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsRNative,
-    AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, DataFrame, IntoDataFrame,
-    ToDataFrame, ToDataFrameExt,
+    AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, ColumnSource, ToDataFrame,
+    ToDataFrameExt,
 };
 #[cfg(feature = "serde")]
 pub use convert::{AsSerializeRow, SerializeDataFrame};

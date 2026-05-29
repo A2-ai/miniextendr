@@ -1448,7 +1448,7 @@ fn build_and_check_rayon_df(nrow: usize) {
     // stale/freed column surfaces. The builder leaves `df` unprotected, so
     // protect it before reading.
     let scope = unsafe { ProtectScope::new() };
-    let df = unsafe { scope.protect_raw(df) };
+    let df = unsafe { scope.protect_raw(df.as_sexp()) };
     assert!(df.is_data_frame());
     assert_eq!(df.xlength(), 3);
 
@@ -1502,7 +1502,7 @@ fn build_and_check_rayon_df_tall(nrow: usize) {
         .build();
 
     let scope = unsafe { ProtectScope::new() };
-    let df = unsafe { scope.protect_raw(df) };
+    let df = unsafe { scope.protect_raw(df.as_sexp()) };
     assert!(df.is_data_frame());
     assert_eq!(df.xlength(), 2);
 
