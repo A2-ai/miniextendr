@@ -85,6 +85,7 @@ fn from_r_suite() {
         test_string_conversions();
         test_coerced_conversions();
         test_error_cases();
+        test_na_logical_bare_scalar_rejected();
     });
 }
 
@@ -238,6 +239,66 @@ fn test_error_cases() {
         let big_int = guard.protect(SEXP::scalar_integer(1000));
         let coerced_err: Result<Coerced<u8, i32>, SexpError> = TryFromSexp::try_from_sexp(big_int);
         assert!(matches!(coerced_err, Err(SexpError::InvalidValue(_))));
+    }
+}
+
+/// Regression test for #761: a bare integer / float scalar conversion from a
+/// `LGLSXP` holding `NA_logical_` must return `Err(SexpError::Na(_))`, NOT the
+/// silently-coerced `NA_LOGICAL` sentinel (`i32::MIN`). The `Option<T>` path
+/// must keep returning `Ok(None)`, and non-NA logicals must keep working.
+fn test_na_logical_bare_scalar_rejected() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let na_log = guard.protect(SEXP::scalar_logical_raw(NA_LOGICAL));
+        let true_log = guard.protect(SEXP::scalar_logical(true));
+        let false_log = guard.protect(SEXP::scalar_logical(false));
+
+        // The coerced multi-source integer/float targets (i64/u64/i8/i16/u16/
+        // u32/isize/usize/f32) accept a LGLSXP and must reject NA with
+        // SexpError::Na rather than coercing R's NA_LOGICAL sentinel
+        // (i32::MIN). Bare `i32`/`f64` are the *strict* native paths and
+        // reject LGLSXP outright (SexpError::Type), so they're not exercised
+        // here — only the coerced targets had the silent-passthrough bug.
+        let err = <i64 as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "i64: {err:?}");
+        let err = <i8 as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "i8: {err:?}");
+        let err = <i16 as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "i16: {err:?}");
+        let err = <u16 as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "u16: {err:?}");
+        let err = <u32 as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "u32: {err:?}");
+        let err = <u64 as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "u64: {err:?}");
+        let err = <f32 as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "f32: {err:?}");
+        let err = <usize as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "usize: {err:?}");
+        let err = <isize as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
+        assert!(matches!(err, SexpError::Na(_)), "isize: {err:?}");
+
+        // The Option<T> path still maps NA logical to None.
+        let opt_i64: Option<i64> = TryFromSexp::try_from_sexp(na_log).unwrap();
+        assert!(opt_i64.is_none());
+        let opt_isize: Option<isize> = TryFromSexp::try_from_sexp(na_log).unwrap();
+        assert!(opt_isize.is_none());
+        let opt_usize: Option<usize> = TryFromSexp::try_from_sexp(na_log).unwrap();
+        assert!(opt_usize.is_none());
+        let opt_f32: Option<f32> = TryFromSexp::try_from_sexp(na_log).unwrap();
+        assert!(opt_f32.is_none());
+
+        // Non-NA logicals still coerce on the coerced path: TRUE -> 1, FALSE -> 0.
+        let one: i64 = TryFromSexp::try_from_sexp(true_log).unwrap();
+        let zero: i64 = TryFromSexp::try_from_sexp(false_log).unwrap();
+        assert_eq!(one, 1);
+        assert_eq!(zero, 0);
+        let one_f32: f32 = TryFromSexp::try_from_sexp(true_log).unwrap();
+        assert_eq!(one_f32, 1.0);
+        let zero_isize: isize = TryFromSexp::try_from_sexp(false_log).unwrap();
+        assert_eq!(zero_isize, 0);
+        let one_usize: usize = TryFromSexp::try_from_sexp(true_log).unwrap();
+        assert_eq!(one_usize, 1);
     }
 }
 
