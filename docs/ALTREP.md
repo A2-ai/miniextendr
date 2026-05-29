@@ -1582,7 +1582,7 @@ impl OptionallyMaterialized {
 
 ### "Error: could not find function"
 - Ensure constructor function has `#[miniextendr]` and is `pub`
-- Run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) after adding new functions
+- Run [`just rcmdinstall && just force-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) after adding new functions (`force-document` bypasses roxygen2's mtime cache, which can miss macro-layer wrapper changes)
 
 ### Elements return wrong values
 - Check your `elt()` implementation

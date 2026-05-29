@@ -38,26 +38,28 @@ R can't find a C compiler or Rust toolchain.
 Run the full rebuild workflow:
 
 ```bash
-just configure          # Sync workspace crates to vendor/
+just configure          # Generate Makevars and .cargo/config.toml
 just rcmdinstall        # Compile and install
 ```
 
 If you changed **macros** specifically:
 
 ```bash
-just configure          # 1. Sync macro crate to vendor/
-just rcmdinstall        # 2. Build with new macros
-just devtools-document  # 3. Regenerate R wrappers using new macros
-just rcmdinstall        # 4. Rebuild with regenerated wrappers
+just configure && just rcmdinstall && just force-document
 ```
+
+`rcmdinstall` regenerates `R/miniextendr-wrappers.R` from the new macro output;
+`force-document` then runs roxygen2 over the updated wrappers. Use
+`force-document` (not `devtools-document`) here — it bypasses
+`needs_roxygenize()`'s mtime cache, which may not catch macro-layer changes.
 
 ### Stale R wrappers after macro changes
 
 Symptoms: R wrappers don't reflect your new `#[miniextendr]` functions.
 
 ```bash
-just devtools-document  # Regenerate R/miniextendr-wrappers.R
-just rcmdinstall        # Rebuild with new wrappers
+just rcmdinstall        # Regenerate R/miniextendr-wrappers.R from macro output
+just force-document     # Re-run roxygen2 over the updated wrappers
 ```
 
 ---
@@ -70,11 +72,11 @@ Functions exist in Rust but aren't callable from R. Check in order:
 
 1. **Function is `pub`** -- non-pub functions don't get `@export` in R wrappers
 2. **Function has `#[miniextendr]`** -- check the attribute is present
-3. **NAMESPACE is stale** -- run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to regenerate
+3. **NAMESPACE is stale** -- run [`just force-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) (after `rcmdinstall`) to regenerate
 
 Quick fix:
 ```bash
-just devtools-document && just rcmdinstall
+just rcmdinstall && just force-document
 ```
 
 **Note:** The lint tool ([`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)) catches issues #1 and #2 at build time.
@@ -134,7 +136,7 @@ After modifying workspace crates (miniextendr-api, miniextendr-macros, etc.):
 
 ```bash
 just vendor-sync-check  # Check for drift
-just configure          # Refresh vendored copies
+just vendor             # Refresh vendored copies (rpkg/vendor/ + inst/vendor.tar.xz)
 ```
 
 ### Editing generated files has no effect
@@ -157,7 +159,7 @@ Add `#[miniextendr]` to the function or impl block. Registration is automatic vi
 
 ### Lint passes but functions are still invisible to R
 
-Ensure the function is `pub` and has `#[miniextendr]`, then run `just devtools-document` to regenerate R wrappers.
+Ensure the function is `pub` and has `#[miniextendr]`, then run `just rcmdinstall && just force-document` to regenerate R wrappers.
 
 ---
 
