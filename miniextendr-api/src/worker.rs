@@ -134,8 +134,9 @@ where
         return f();
     }
 
-    // Not on main thread — need worker-thread feature for routing
-    #[cfg(not(feature = "worker-thread"))]
+    // Not on main thread — need worker-thread routing (absent on wasm, where
+    // there is only the single R thread, so this branch is unreachable there).
+    #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     {
         panic!(
             "with_r_thread called from a non-main thread without the `worker-thread` feature.\n\
@@ -147,7 +148,7 @@ where
         );
     }
 
-    #[cfg(feature = "worker-thread")]
+    #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
     {
         worker_channel::route_to_main_thread(f)
     }
@@ -200,12 +201,18 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    #[cfg(not(feature = "worker-thread"))]
+    // On wasm there is no worker thread even when the feature is enabled
+    // (R-on-wasm is single-threaded; emscripten has no usable pthreads), so we
+    // run inline — identical to a non-`worker-thread` build. The feature stays
+    // *enabled* on wasm so worker-gated routines still compile and the
+    // pre-generated `wasm_registry.rs` (built with the feature) has no dangling
+    // entries. See `worker_active` reasoning at the top of the worker functions.
+    #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     {
         Ok(f())
     }
 
-    #[cfg(feature = "worker-thread")]
+    #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
     {
         let result = worker_channel::dispatch_to_worker(f);
         if let Err(ref msg) = result {
@@ -224,7 +231,9 @@ where
 pub extern "C-unwind" fn miniextendr_runtime_init() {
     static RUN_ONCE: std::sync::Once = std::sync::Once::new();
 
-    #[cfg(feature = "worker-thread")]
+    // wasm: never spawn a worker (single-threaded; spawning traps at load).
+    // Falls through to the inline init path below even with the feature on.
+    #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
     {
         RUN_ONCE.call_once_force(|x| {
             if x.is_poisoned() {
@@ -266,7 +275,7 @@ pub extern "C-unwind" fn miniextendr_runtime_init() {
         });
     }
 
-    #[cfg(not(feature = "worker-thread"))]
+    #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     {
         RUN_ONCE.call_once(|| {
             let _ = R_MAIN_THREAD_ID.set(std::thread::current().id());
@@ -294,7 +303,9 @@ pub extern "C-unwind" fn miniextendr_runtime_init() {
 #[doc(hidden)]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_runtime_shutdown() {
-    #[cfg(feature = "worker-thread")]
+    // wasm never spawns a worker, so there is nothing to join (and the channel
+    // was never initialised) — skip shutdown there even with the feature on.
+    #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
     {
         worker_channel::shutdown();
     }
@@ -306,11 +317,11 @@ pub extern "C-unwind" fn miniextendr_runtime_shutdown() {
 
 /// Check whether the current thread has a worker routing context.
 pub(crate) fn has_worker_context() -> bool {
-    #[cfg(feature = "worker-thread")]
+    #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
     {
         worker_channel::has_context()
     }
-    #[cfg(not(feature = "worker-thread"))]
+    #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     {
         false
     }
@@ -337,8 +348,13 @@ fn assert_runtime_initialized() {
 // endregion
 
 // region: Worker channel infrastructure (only with worker-thread feature)
+//
+// Compiled only on non-wasm worker-thread builds. On wasm the feature stays
+// enabled (so worker-gated routines compile and `wasm_registry.rs` matches),
+// but every caller above takes the inline path, so this module is omitted to
+// avoid dead-code and to keep the single-threaded wasm side-module clean.
 
-#[cfg(feature = "worker-thread")]
+#[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
 mod worker_channel {
     use std::any::Any;
     use std::cell::RefCell;
