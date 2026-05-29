@@ -1,8 +1,8 @@
 //! Comprehensive conversions matrix for [`#[miniextendr]`](miniextendr_api::miniextendr) arguments and returns.
 
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::{RLogical, Rboolean};
 use miniextendr_api::{IntoR, ListMut, miniextendr};
+use miniextendr_api::{RLogical, Rboolean};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 // -----------------------------------------------------------------------------
@@ -1503,8 +1503,7 @@ pub fn conv_as_named_list_array() -> AsNamedList<[(String, f64); 2]> {
 
 /// Return test: `AsNamedList` with heterogeneous SEXP values -> R named list.
 #[miniextendr]
-pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::SEXP)>>
-{
+pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::SEXP)>> {
     use miniextendr_api::IntoR;
     AsNamedList(vec![
         ("name".into(), "Alice".to_string().into_sexp()),

@@ -5,9 +5,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::SEXPTYPE;
 use miniextendr_api::into_r::IntoR;
+use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::{IntoRAltrep, miniextendr};
 #[cfg(feature = "jiff")]
 use miniextendr_api::{JiffZonedVec, Timestamp};
@@ -596,8 +596,8 @@ pub fn gc_stress_dataframe_to_vec_nested() -> i32 {
         .expect("gc_stress_dataframe_to_vec_nested: vec_to_dataframe failed")
         .into_sexp();
 
-    let back: Vec<Person> = dataframe_to_vec(sexp)
-        .expect("gc_stress_dataframe_to_vec_nested: dataframe_to_vec failed");
+    let back: Vec<Person> =
+        dataframe_to_vec(sexp).expect("gc_stress_dataframe_to_vec_nested: dataframe_to_vec failed");
 
     assert_eq!(back.len(), original.len());
     for (a, b) in original.iter().zip(back.iter()) {
@@ -776,7 +776,8 @@ pub fn gc_stress_builder_grow_schema() -> SEXP {
         if i >= 1 {
             row.insert("common".into(), i + 100);
         }
-        b.push(row).expect("gc_stress_builder_grow_schema: push failed");
+        b.push(row)
+            .expect("gc_stress_builder_grow_schema: push failed");
     }
     let df = b
         .finish()
@@ -858,10 +859,10 @@ pub fn gc_stress_borrowed_rows() -> i32 {
 /// gctorture no-arg fixture sweep.
 #[miniextendr]
 pub fn gc_stress_protect_discipline() {
+    use miniextendr_api::NamedVector;
     use miniextendr_api::factor::{FactorOptionVec, FactorVec};
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::match_arg::MatchArg;
-    use miniextendr_api::NamedVector;
 
     // FactorVec<Color> → build_factor_with_levels exercised on a no-cache path
     // (RFactor blanket through FactorVec).
@@ -1190,12 +1191,12 @@ pub fn gc_stress_split_collated() -> SEXP {
 #[miniextendr]
 pub fn gc_stress_factor_labels() -> i32 {
     use crate::serde::Deserialize;
-    use miniextendr_api::factor::{build_factor, build_levels_sexp};
-    use miniextendr_api::prelude::{SEXP, SexpExt};
     use miniextendr_api::SEXPTYPE;
-    use miniextendr_api::sys::Rf_allocVector;
+    use miniextendr_api::factor::{build_factor, build_levels_sexp};
     use miniextendr_api::gc_protect::OwnedProtect;
+    use miniextendr_api::prelude::{SEXP, SexpExt};
     use miniextendr_api::serde::dataframe_to_vec;
+    use miniextendr_api::sys::Rf_allocVector;
 
     #[derive(Deserialize, PartialEq, Debug)]
     #[serde(crate = "crate::serde")]

@@ -1,7 +1,7 @@
 //! Tests for RThreadBuilder and thread safety.
 
-use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::thread::RThreadBuilder;
 
 /// Test RThreadBuilder spawn with explicit stack size and thread name.

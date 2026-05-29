@@ -72,7 +72,11 @@ impl GreetingBuilder {
     /// Takes `&self` (not `self`) so the R object remains valid afterwards, and
     /// returns a different type (`String`) converted to R via `IntoR`.
     pub fn build(&self) -> String {
-        let name = if self.name.is_empty() { "world" } else { &self.name };
+        let name = if self.name.is_empty() {
+            "world"
+        } else {
+            &self.name
+        };
         let greeting = format!("Hello, {}{}", name, self.punctuation);
         if self.loud {
             greeting.to_uppercase()

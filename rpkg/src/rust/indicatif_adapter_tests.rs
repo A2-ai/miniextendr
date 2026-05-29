@@ -1,9 +1,9 @@
 //! indicatif adapter tests — R connection-routed progress bar integration.
 
 use miniextendr_api::connection::{RNullConnection, RStderr};
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::progress::{
     RTerm, term_like_connection, term_like_connection_with_hz, term_like_stderr,
     term_like_stderr_with_hz, term_like_stdout, term_like_stdout_with_hz,

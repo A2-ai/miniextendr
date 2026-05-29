@@ -1,7 +1,7 @@
 //! Tests for `with_r_unwind_protect_or_raise` mechanism.
 
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 use miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise;
 
 /// Simple RAII type that prints when dropped (without using with_r to avoid deadlocks).
