@@ -21,6 +21,8 @@ latch that switches between source and CRAN tarball builds.
 - "What is the install-mode latch and how does it leak?"
 - "How do I add a cargo feature flag to the build?"
 - "What are the m4 quoting pitfalls in configure.ac?"
+- "Why does `just check`/`build`/`test` keep rewriting `rpkg/src/rust/Cargo.lock`?"
+- "How do I verify the committed R wrappers / NAMESPACE / man are in sync?"
 
 ## Key concepts
 
@@ -206,6 +208,13 @@ key targets are:
 In tarball mode, Makevars also scrubs `vendor/`, `rust-target/`, and
 `.cargo/` after a successful build to save installed-package size.
 
+The generated wrappers (`R/miniextendr-wrappers.R`), plus `NAMESPACE`, `man/`,
+and `src/rust/wasm_registry.rs`, are committed and must stay in sync with the
+`#[miniextendr]` Rust source. `just wrappers-sync-check` installs rpkg, runs
+`devtools::document`, and fails on any diff in those paths — catching the
+inverse of the pre-commit hook, which only fires when `*-wrappers.R` is itself
+staged (#602). Regenerate with `just rcmdinstall && just force-document`.
+
 ### configure → cargo feature flags
 
 `configure` auto-detects optional features via `tools/detect-features.R`. The
@@ -254,13 +263,33 @@ If the generated `configure` script itself needs to change, edit
 ### Cargo.lock mismatch during build
 
 Source mode (no tarball):
-- Cargo rewrites the lock freely. Mismatches are tolerated.
+- Cargo rewrites `rpkg/src/rust/Cargo.lock` freely; drift is tolerated at build
+  time. But the dev-loop recipes `just check / build / clippy / doc / doc-check
+  / test` invoke cargo with
+  `--config "patch.'https://github.com/A2-ai/miniextendr'.<crate>.path=…"`,
+  which makes cargo *drop* the `source = "git+…#<sha>"` line for each workspace
+  sibling (`miniextendr-{api,lint,macros}`). The committed lock must keep those
+  lines — CRAN/tarball builds resolve `vendor/` against them. Each of those
+  recipes auto-chains `just cargo-lock-restore` (a `git restore --worktree` of
+  `rpkg/src/rust/Cargo.lock` from the index/HEAD) as its last line. If a recipe
+  aborts mid-way and leaves the lock drifted, run `just cargo-lock-restore`
+  manually (#709).
 
 Tarball mode:
-- configure runs `tools/lock-shape-check.R` to verify the lock is in
-  tarball-shape (no `checksum =` lines, no path-based framework-crate sources).
+- configure runs `tools/lock-shape-check.R` to verify framework crates carry
+  `source = "git+https://github.com/A2-ai/miniextendr#<sha>"` (not `path+`).
+  `checksum = "..."` lines ARE allowed post-#408 — cargo-revendor recomputes a
+  matching `.cargo-checksum.json`. `[[patch.unused]]` is not checked here.
 - If the check fails, the Cargo.lock in the tarball drifted from the vendored
   sources. Run `just vendor` from a clean source state to regenerate.
+
+Committed-lock check (pre-commit + CI): `just lock-shape-check` asserts the
+checked-in `rpkg/src/rust/Cargo.lock` keeps canonical `git+url#<sha>` sources
+for `miniextendr-{api,lint,macros}` and has no `[[patch.unused]]` blocks
+(over-broad `[patch.crates-io]`). It prints two recovery paths: `just
+cargo-lock-restore` (restore from HEAD) or `just vendor` (regenerate canonical
+shape). This is the source-shape counterpart to the tarball-shape
+`tools/lock-shape-check.R` above.
 
 ### Why is my configure failing with an error in AC_CONFIG_COMMANDS?
 
