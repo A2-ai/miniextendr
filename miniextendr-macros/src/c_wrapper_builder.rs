@@ -52,6 +52,13 @@ pub enum ReturnHandling {
     RawSexp,
     /// Returns `Self` -- wraps the value in an `ExternalPtr` via `ExternalPtr::new`.
     ExternalPtr,
+    /// Returns `&Self` / `&mut Self` (an in-place builder) -- evaluates the call
+    /// for its side effect (the mutation already happened through `&mut self`),
+    /// discards the returned borrow, and returns the *same* `self_sexp` handle
+    /// unchanged. This gives R in-place value semantics with no clone: the R
+    /// object the user piped in is returned verbatim, wrapping the now-mutated
+    /// Rust value. Only valid for instance methods (requires `self_sexp`).
+    SelfHandle,
     /// Returns an arbitrary type `T: IntoR` -- converts via `IntoR::into_sexp`.
     IntoR,
     /// Returns `Option<()>` -- raises an error on `None`, otherwise emits `R_NilValue`.
@@ -583,6 +590,17 @@ impl CWrapperContext {
                     )
                 }
             }
+            ReturnHandling::SelfHandle => {
+                // In-place builder: the `&mut self` method mutated the value
+                // pointed to by `self_sexp`. Evaluate the call only for that
+                // side effect, drop the returned `&Self`/`&mut Self` borrow
+                // immediately (the trailing `;` ends its lifetime), and hand
+                // back the SAME ExternalPtr handle. No clone, no rewrap.
+                quote! {
+                    let _ = #call_expr;
+                    self_sexp
+                }
+            }
             ReturnHandling::IntoR => {
                 let result_ident = format_ident!("__result");
                 let conversion = self.sexp_conversion_expr(&result_ident);
@@ -942,6 +960,15 @@ impl CWrapperContext {
                     )
                 };
                 (worker, convert)
+            }
+            ReturnHandling::SelfHandle => {
+                // `SelfHandle` is only assigned to instance methods, which always
+                // run on the main thread (the `&self`/`&mut self` borrow can't
+                // cross to the worker). It therefore never reaches the worker
+                // return-handling path.
+                unreachable!(
+                    "ReturnHandling::SelfHandle is instance-only and always uses the main thread"
+                )
             }
         }
     }

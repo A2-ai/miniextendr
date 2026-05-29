@@ -234,6 +234,7 @@ mod rayon_tests;
 mod rdata_sidecar_tests;
 mod receiver_tests;
 mod refcount_protect_tests;
+mod pipe_builder_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rng_tests;

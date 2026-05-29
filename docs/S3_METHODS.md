@@ -127,6 +127,76 @@ pub fn species() -> String { "Homo sapiens".into() }
 // → person_species <- function() { .Call(C_Person__species) }
 ```
 
+## Functional builders (native pipe `|>`)
+
+An idiomatic Rust builder mutates the receiver in place and returns `&mut Self`
+so steps chain: `b.set_a(1).set_b(2)`. On the S3 path this maps to a
+**pipe-friendly free function**: the generated generic takes the object as its
+first argument and returns the (same, mutated) object, so it composes under R's
+native pipe operator `|>` (R 4.1+).
+
+```rust
+use miniextendr_api::{miniextendr, ExternalPtr};
+
+#[derive(ExternalPtr)]
+pub struct GreetingBuilder {
+    name: String,
+    punctuation: String,
+    loud: bool,
+}
+
+#[miniextendr(s3)]
+impl GreetingBuilder {
+    pub fn new() -> Self { /* empty defaults */ }
+
+    // Builder steps: `&mut self -> &mut Self`.
+    pub fn set_name(&mut self, name: String) -> &mut Self {
+        self.name = name;
+        self
+    }
+    pub fn set_loud(&mut self, loud: bool) -> &mut Self {
+        self.loud = loud;
+        self
+    }
+
+    // Terminal step: `&self -> T` (a different type), converted to R via `IntoR`.
+    pub fn build(&self) -> String { /* render the greeting */ }
+}
+```
+
+In R, every step is a free function whose first argument is the object, so the
+whole pipeline reads naturally:
+
+```r
+new_greetingbuilder() |>
+  set_name("World") |>
+  set_loud(TRUE) |>
+  build()
+#> [1] "HELLO, WORLD."
+```
+
+**Value semantics.** A `&mut self -> &mut Self` step mutates the underlying Rust
+value *in place* and the wrapper returns the **same** `ExternalPtr` handle —
+there is no clone and no re-wrap, so object identity is preserved
+(`identical(x, set_name(x, "a"))` is `TRUE`). This is the same reference
+semantics as `&mut self -> ()` mutators (which return the object via the
+`Chainable Mutation` strategy); the only difference is that returning
+`&mut Self` lets the same method *also* chain in Rust.
+
+The terminal `build()` takes `&self` (not `self`) so the R object stays valid
+afterwards, and returns a different type (`String` here) through the usual
+`IntoR` conversion. Consuming `self` builders (`fn build(self) -> T`) are
+rejected — R uses reference semantics via `ExternalPtr`, so the R handle would
+outlive the consumed Rust value.
+
+> The generated generic is named after the Rust method (`set_name`,
+> `set_loud`, `build`), so pick method names that don't collide with existing
+> generics or base-R functions in the importing package.
+
+This works on the default S3 / `ExternalPtr` path today. Env / R6 / S4 / S7
+support for `&Self`/`&mut Self` returns is tracked in
+[#769](https://github.com/A2-ai/miniextendr/issues/769).
+
 ## Implementing `print`
 
 R convention: `print()` displays output and returns `invisible(x)` so the object
@@ -322,7 +392,9 @@ pub fn tbl_sum_my_tbl(x: SEXP, _dots: ...) -> Vec<String> { ... }
 | `print` | `&mut self` | `()` | `.Call(...); invisible(x)` | Returns self invisibly |
 | `print` | `&self` | `()` | `.Call(...)` | Returns NULL (works but unconventional) |
 | custom | `&self` | any | `.Call(...)` | Returns value directly |
-| custom | `&mut self` | `()` | `.Call(...); invisible(x)` | Chainable mutation |
+| custom | `&mut self` | `()` | `.Call(...); x` | Chainable mutation |
+| builder | `&mut self` | `&mut Self` | `.Call(...); x` | In-place builder; returns same handle, pipes under `\|>` |
+| builder | `&self` | `&Self` | `.Call(...); x` | Read-only builder step; returns same handle |
 
 ## See Also
 

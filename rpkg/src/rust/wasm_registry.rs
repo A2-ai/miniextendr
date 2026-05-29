@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      25b85e8a461c40fd
+// content-hash:      0f07cfe747f92c30
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1036,6 +1036,15 @@ unsafe extern "C-unwind" {
     pub fn C_jiff_counted_altrep_elt_count(_: SEXP) -> SEXP;
     pub fn C_jiff_half_second_before_epoch(_: SEXP) -> SEXP;
     pub fn C_jiff_timestamp_as_millisecond(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_PipeCounter__new(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_PipeCounter__bump(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_PipeCounter__peek(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_PipeCounter__twice(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_GreetingBuilder__new(_: SEXP) -> SEXP;
+    pub fn C_GreetingBuilder__build(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_GreetingBuilder__set_loud(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_GreetingBuilder__set_name(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_GreetingBuilder__set_punctuation(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_protect_pool_multi(_: SEXP) -> SEXP;
     pub fn C_protect_pool_roundtrip(_: SEXP) -> SEXP;
     pub fn C_sha2_sha256(_: SEXP, _: SEXP) -> SEXP;
@@ -7134,6 +7143,51 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_jiff_timestamp_as_millisecond".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_jiff_timestamp_as_millisecond) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_PipeCounter__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_PipeCounter__new) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_PipeCounter__bump".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_PipeCounter__bump) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_PipeCounter__peek".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_PipeCounter__peek) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_PipeCounter__twice".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_PipeCounter__twice) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_GreetingBuilder__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_GreetingBuilder__new) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_GreetingBuilder__build".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_GreetingBuilder__build) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_GreetingBuilder__set_loud".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_GreetingBuilder__set_loud) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_GreetingBuilder__set_name".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_GreetingBuilder__set_name) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_GreetingBuilder__set_punctuation".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_GreetingBuilder__set_punctuation) }),
+        numArgs: 3,
     },
     R_CallMethodDef {
         name: c"C_protect_pool_multi".as_ptr(),

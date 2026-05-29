@@ -754,6 +754,72 @@ fn returns_self_method_chains_in_env() {
 }
 
 #[test]
+fn self_ref_builder_returns_object_in_s3() {
+    // `&mut self -> &mut Self` builder methods must compose under R's native
+    // pipe: the generated S3 free function takes the object first and returns
+    // the (same) object, so chaining works.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn set_width(&mut self, w: i32) -> &mut Self { unimplemented!() }
+            pub fn finish(&self) -> String { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+
+    // The builder step is a free function dispatching on `x` and returning `x`
+    // (the same handle), not the raw `.Call()` result.
+    assert!(wrapper.contains("set_width.Builder <- function(x, w, ...)"));
+    let set_width_body = wrapper
+        .split("set_width.Builder <- function(x, w, ...) {")
+        .nth(1)
+        .expect("set_width method body");
+    let set_width_body = set_width_body.split('}').next().unwrap();
+    assert!(
+        set_width_body.lines().any(|l| l.trim() == "x"),
+        "self-ref builder should return `x`, got:\n{set_width_body}"
+    );
+    // The terminal accessor returns the converted value directly.
+    assert!(wrapper.contains("finish.Builder <- function(x, ...)"));
+}
+
+#[test]
+fn self_ref_builder_uses_self_handle_return() {
+    use crate::c_wrapper_builder::ReturnHandling;
+
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn set_width(&mut self, w: i32) -> &mut Self { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let method = parsed
+        .methods
+        .iter()
+        .find(|m| m.ident == "set_width")
+        .unwrap();
+    assert!(method.returns_self_ref());
+    assert!(!method.returns_self());
+
+    let r_wrappers_const = syn::parse_quote! { R_WRAPPERS_TEST };
+    let tokens =
+        crate::miniextendr_impl::generate_method_c_wrapper(&parsed, method, &r_wrappers_const)
+            .to_string();
+    // The C wrapper hands the same SEXP handle back (no clone / rewrap).
+    assert!(tokens.contains("self_sexp"));
+
+    // And the strategy resolves to ChainableMutation (returns the object).
+    assert_eq!(
+        crate::ReturnStrategy::for_method(method),
+        crate::ReturnStrategy::ChainableMutation
+    );
+    // Sanity: SelfHandle exists and is distinct.
+    let _ = ReturnHandling::SelfHandle;
+}
+
+#[test]
 fn returns_unit_method_in_r6() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {
