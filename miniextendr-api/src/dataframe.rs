@@ -3,7 +3,7 @@
 //! [`DataFrame`] is **the** data-frame type: a single owned wrapper around a built
 //! `data.frame` SEXP that serves every direction —
 //!
-//! - **build** (Rust → R): [`IntoDataFrame::into_dataframe`] / [`IntoDataFrameExt::into_dataframe_par`],
+//! - **build** (Rust → R): [`IntoDataFrame::into_dataframe`] / [`into_dataframe_par`](IntoDataFrame::into_dataframe_par),
 //! - **read** (R → Rust): [`DataFrame::column`] / [`FromDataFrame::from_dataframe`],
 //! - **edit** (post-assembly): [`DataFrame::rename`] / [`DataFrame::drop`] / [`DataFrame::select`] / …
 //!
@@ -113,8 +113,7 @@ impl From<crate::serde::RSerdeError> for DataFrameError {
 ///
 /// Wraps a built VECSXP carrying the `data.frame` class + `row.names`. A single coherent
 /// type for building (Rust → R), reading (R → Rust), and post-assembly editing — replacing
-/// the historical trio of `convert::DataFrame<T>` (row buffer), `ColumnarDataFrame` (built
-/// SEXP), and `DataFrameView` (read wrapper).
+/// the historical row-buffer / built-SEXP / read-wrapper trio with one coherent type.
 ///
 /// # Building
 ///
@@ -181,7 +180,7 @@ impl DataFrame {
         Ok(Self { sexp })
     }
 
-    // region: Read API (absorbed from the old DataFrameView)
+    // region: Read API (R → Rust column / row access)
 
     /// Get a column by name, converting each element to type `T`.
     ///
@@ -693,13 +692,6 @@ impl<T: DataFrameRowConvert> FromDataFrame for Vec<T> {
         T::rows_from_dataframe_par(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 }
-// endregion
-
-// region: Back-compat type aliases (tracked for removal)
-
-/// Deprecated alias for [`DataFrame`]. The read-wrapper role is now part of `DataFrame`.
-#[doc(hidden)]
-pub type DataFrameView = DataFrame;
 // endregion
 
 // region: nrow extraction from row.names

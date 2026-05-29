@@ -37,5 +37,5 @@ gc_stress_dataframe_par_reader()
 \description{
 Exercises the parallel from-R reader \code{ParPoint::try_from_dataframe_par}: columns are pulled out of R on the R thread, rows are assembled off-thread via rayon, then we recompute a checksum to prove the rows materialised correctly.
 
-No-arg so the fast \code{gctorture(TRUE)} sweep over \code{rpkg}'s exports exercises it. Synthesises a \code{ParPoint} data.frame SEXP internally, then drives the parallel reader. The SEXP-touching part is the per-column extraction (each \code{DataFrameView::column} call allocates an owned \code{Vec} and may trigger GC); the parallel region itself makes no R API calls. Driving this under gctorture proves the extraction step's PROTECT discipline holds before rayon takes over.
+No-arg so the fast \code{gctorture(TRUE)} sweep over \code{rpkg}'s exports exercises it. Synthesises a \code{ParPoint} data.frame SEXP internally, then drives the parallel reader. The SEXP-touching part is the per-column extraction (each \code{DataFrame::column} call allocates an owned \code{Vec} and may trigger GC); the parallel region itself makes no R API calls. Driving this under gctorture proves the extraction step's PROTECT discipline holds before rayon takes over.
 }

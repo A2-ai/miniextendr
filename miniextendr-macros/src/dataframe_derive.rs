@@ -1935,7 +1935,7 @@ fn derive_struct_dataframe(
     // The parallel variant (`#[cfg(feature = "rayon")]`) splits cleanly along the
     // R-thread boundary:
     //   1. On the R/worker thread, each column is pulled out of the data.frame as
-    //      an owned `Vec<FieldTy>` via `DataFrameView::column`. This MATERIALISES
+    //      an owned `Vec<FieldTy>` via `DataFrame::column`. This MATERIALISES
     //      any ALTREP column (the conversion iterates every element), so no
     //      un-materialised ALTREP and no SEXP reaches the rayon region.
     //   2. Off-thread, `(0..nrow).into_par_iter()` assembles each `Self` from the
@@ -1972,7 +1972,7 @@ fn derive_struct_dataframe(
             // owned `Vec<FieldTy>` via the field type's own `TryFromSexp`. This
             // copies out of R (NA-aware) and MATERIALISES any ALTREP column (the
             // conversion visits every element) — all on the R/worker thread, before
-            // the parallel region. We bypass `DataFrameView::column` because its
+            // the parallel region. We bypass `DataFrame::column` because its
             // bound (`Error = SexpError`) is tighter than the scalar element types'
             // `TryFromSexp::Error` (`SexpTypeError`).
             col_extract.push(quote! {
@@ -2025,7 +2025,7 @@ fn derive_struct_dataframe(
             pub fn try_from_dataframe(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
-                let __view = ::miniextendr_api::dataframe::DataFrameView::from_sexp(sexp)
+                let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| e.to_string())?;
                 let __nrow = __view.nrow();
                 #(#col_extract)*
@@ -2049,7 +2049,7 @@ fn derive_struct_dataframe(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
                 use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                let __view = ::miniextendr_api::dataframe::DataFrameView::from_sexp(sexp)
+                let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| e.to_string())?;
                 let __nrow = __view.nrow();
                 #(#col_extract)*
