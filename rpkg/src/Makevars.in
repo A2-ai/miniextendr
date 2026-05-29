@@ -49,9 +49,10 @@ export CARGO_HOME
 # all must be defined FIRST to be the default target.
 # Depend on both $(SHLIB) and $(WRAPPERS_R) so that:
 #   1. Staticlib builds first ($(SHLIB) needs $(CARGO_AR)), warming the incremental cache
-#   2. On native: cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
-#   3. On native: R wrappers are generated from the cdylib
-#   On wasm32: $(WRAPPERS_R) has no cdylib prereq — pre-generated files are expected.
+#   2. cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
+#   3. R wrappers are generated from the cdylib
+#   On wasm32/tarball: the cdylib prereq's recipe is a no-op, so the committed
+#   wrappers are reused without building (or loading) a cdylib.
 all: $(SHLIB) $(WRAPPERS_R)
 	@# Source install: touch Cargo.toml so pkgbuild always thinks sources changed
 	@# (dev iteration with devtools::load_all() / install() relies on this).
@@ -117,7 +118,11 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 # wasm_registry.rs or the wasm32 build registers stale routines).
 # NAMESPACE is NOT generated here — use devtools::document() for that.
 #
-# Three-way split on build mode:
+# Three-way split on build mode, branched at the shell level (not with GNU make
+# ifeq/ifndef conditionals) so this Makevars stays portable POSIX make and the
+# package needs no "SystemRequirements: GNU make". $(CARGO_CDYLIB) is always a
+# prerequisite, but its recipe is a no-op in the wasm32 / tarball-without-FORCE
+# modes (see below), so the cdylib is built only when this recipe loads it.
 #   wasm32  : cdylib is a .wasm SIDE_MODULE that host R cannot dyn.load;
 #             expects pre-generated files from the host devtools::document() pass.
 #   tarball : R/<pkg>-wrappers.R is already committed and ships in the tarball;
@@ -126,54 +131,44 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 #             a tarball that was manually stripped of its wrappers file.
 #             Set MINIEXTENDR_FORCE_WRAPPER_GEN to override (debugging only).
 #   dev     : full cdylib build + wrapper generation (normal dev/CI flow).
-ifeq ($(IS_WASM_INSTALL),true)
-$(WRAPPERS_R):
-	@echo "wasm32 install: skipping wrapper-gen (pre-generated R/$(PACKAGE_NAME)-wrappers.R + src/rust/wasm_registry.rs expected)"
-	@touch $(WRAPPERS_R)
-else ifeq ($(IS_TARBALL_INSTALL),true)
-ifndef MINIEXTENDR_FORCE_WRAPPER_GEN
-$(WRAPPERS_R):
-	@echo "tarball install: using pre-shipped R/$(PACKAGE_NAME)-wrappers.R"
-	@if [ ! -f '$(WRAPPERS_R)' ]; then \
-	  echo "ERROR: tarball is missing pre-generated $(WRAPPERS_R)" >&2; \
-	  exit 1; \
+$(WRAPPERS_R): $(CARGO_CDYLIB)
+	@set -e; \
+	if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
+	  echo "wasm32 install: skipping wrapper-gen (pre-generated R/$(PACKAGE_NAME)-wrappers.R + src/rust/wasm_registry.rs expected)"; \
+	  touch '$(WRAPPERS_R)'; \
+	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; then \
+	  echo "tarball install: using pre-shipped R/$(PACKAGE_NAME)-wrappers.R"; \
+	  if [ ! -f '$(WRAPPERS_R)' ]; then \
+	    echo "ERROR: tarball is missing pre-generated $(WRAPPERS_R)" >&2; \
+	    exit 1; \
+	  fi; \
+	  touch '$(WRAPPERS_R)'; \
+	else \
+	  if [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
+	    echo "MINIEXTENDR_FORCE_WRAPPER_GEN set: regenerating wrappers from cdylib (tarball mode override)..."; \
+	  else \
+	    echo "Generating R wrappers + wasm_registry.rs..."; \
+	  fi; \
+	  _cdylib='$(CARGO_CDYLIB)'; \
+	  _wrappers='$(WRAPPERS_R)'; \
+	  _wasm_registry='$(WASM_REGISTRY_RS)'; \
+	  if command -v cygpath >/dev/null 2>&1; then \
+	    _cdylib=$$(cygpath -m "$$_cdylib"); \
+	    _wrappers=$$(cygpath -m "$$_wrappers"); \
+	    _wasm_registry=$$(cygpath -m "$$_wasm_registry"); \
+	  fi; \
+	  MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); .Call(getNativeSymbolInfo('miniextendr_write_wasm_registry', lib), '$$_wasm_registry'); dyn.unload('$$_cdylib') }))"; \
+	  echo "Removing cdylib to prevent linker collision with staticlib..."; \
+	  rm -f '$(CARGO_CDYLIB)'; \
 	fi
-	@touch $(WRAPPERS_R)
-else
-$(WRAPPERS_R): $(CARGO_CDYLIB)
-	@echo "MINIEXTENDR_FORCE_WRAPPER_GEN set: regenerating wrappers from cdylib (tarball mode override)..."
-	@_cdylib='$(CARGO_CDYLIB)'; \
-	_wrappers='$(WRAPPERS_R)'; \
-	_wasm_registry='$(WASM_REGISTRY_RS)'; \
-	if command -v cygpath >/dev/null 2>&1; then \
-	  _cdylib=$$(cygpath -m "$$_cdylib"); \
-	  _wrappers=$$(cygpath -m "$$_wrappers"); \
-	  _wasm_registry=$$(cygpath -m "$$_wasm_registry"); \
-	fi; \
-	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); .Call(getNativeSymbolInfo('miniextendr_write_wasm_registry', lib), '$$_wasm_registry'); dyn.unload('$$_cdylib') }))"
-	@echo "Removing cdylib to prevent linker collision with staticlib..."
-	@rm -f '$(CARGO_CDYLIB)'
-endif
-else
-$(WRAPPERS_R): $(CARGO_CDYLIB)
-	@echo "Generating R wrappers + wasm_registry.rs..."
-	@_cdylib='$(CARGO_CDYLIB)'; \
-	_wrappers='$(WRAPPERS_R)'; \
-	_wasm_registry='$(WASM_REGISTRY_RS)'; \
-	if command -v cygpath >/dev/null 2>&1; then \
-	  _cdylib=$$(cygpath -m "$$_cdylib"); \
-	  _wrappers=$$(cygpath -m "$$_wrappers"); \
-	  _wasm_registry=$$(cygpath -m "$$_wasm_registry"); \
-	fi; \
-	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); .Call(getNativeSymbolInfo('miniextendr_write_wasm_registry', lib), '$$_wasm_registry'); dyn.unload('$$_cdylib') }))"
-	@echo "Removing cdylib to prevent linker collision with staticlib..."
-	@rm -f '$(CARGO_CDYLIB)'
-endif
 
 # Build cdylib for wrapper generation.
 # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
-$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
+# No-op in wasm32 / tarball-without-FORCE installs (the guard exits early): those
+# modes reuse the committed wrappers and never need a cdylib.
+$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) $(CARGO_AR)
 	@set -e; \
+	if [ "$(IS_WASM_INSTALL)" = "true" ] || { [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; }; then exit 0; fi; \
 	TARGET_OPT=""; \
 	CDYLIB_LINK_ARGS=""; \
 	for obj in $(OBJECTS); do CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
