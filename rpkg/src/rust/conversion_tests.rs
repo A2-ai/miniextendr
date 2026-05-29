@@ -249,14 +249,14 @@ pub fn strict_echo_i64(x: i64) -> i64 {
     x
 }
 
-/// Test strict-mode Vec<i64> identity roundtrip.
+/// Test strict-mode `Vec<i64>` identity roundtrip.
 /// @param x Integer or numeric vector (must be INTSXP or REALSXP in strict mode).
 #[miniextendr(strict)]
 pub fn strict_echo_vec_i64(x: Vec<i64>) -> Vec<i64> {
     x
 }
 
-/// Test strict-mode Vec<Option<i64>> roundtrip with NA preservation.
+/// Test strict-mode `Vec<Option<i64>>` roundtrip with NA preservation.
 /// @param x Integer or numeric vector with possible NA values.
 #[miniextendr(strict)]
 pub fn strict_echo_vec_option_i64(x: Vec<Option<i64>>) -> Vec<Option<i64>> {

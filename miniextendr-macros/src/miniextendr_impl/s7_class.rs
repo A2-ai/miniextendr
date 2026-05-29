@@ -94,7 +94,7 @@ fn class_ref_or_any_or_verbatim(name: &str) -> String {
 /// For bare user-defined path types the macro emits the same
 /// `.__MX_CLASS_REF_<Type>__` placeholder used for parent-class and
 /// `convert_from`/`convert_to` references (see [`#154`]). The resolver in
-/// [`miniextendr_api::registry::write_r_wrappers_to_file`] swaps the
+/// `miniextendr_api::registry::write_r_wrappers_to_file` swaps the
 /// placeholder for the R-visible class name recorded in `MX_CLASS_NAMES`
 /// — so `class = "Override"` on an S7 impl block is honored, and child
 /// class properties tighten from `class_any` to the real class.

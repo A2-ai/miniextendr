@@ -20,7 +20,7 @@ use crate::miniextendr_impl::ParsedMethod;
 /// hand off to the shared helper and return from the enclosing function.
 ///
 /// The helper dispatches on `.val$kind` (see
-/// [`miniextendr_api::error_value::kind`] for canonical kind strings):
+/// `miniextendr_api::error_value::kind` for canonical kind strings):
 ///
 /// - `error` / `panic` / `result_err` / `none_err` / `conversion` (and any
 ///   unknown kind) — `stop()` longjmps with the appropriate `rust_*` class

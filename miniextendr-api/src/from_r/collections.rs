@@ -6,13 +6,13 @@
 //!
 //! # Tradeoff
 //!
-//! These impls live on [`TryFromSexp`](crate::from_r::TryFromSexp), so the
+//! These impls live on [`TryFromSexp`], so the
 //! shape (named-vs-unnamed) is strictly enforced and element conversion
 //! delegates to the `V: TryFromSexp` bound. Failure mode: feeding an unnamed
 //! list into a `HashMap<String, V>` parameter yields a `SexpError`, not
 //! silently empty keys.
 //!
-//! Outbound counterpart: [`crate::into_r::collections`].
+//! Outbound counterpart: `crate::into_r::collections`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 

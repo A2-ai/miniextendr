@@ -499,7 +499,7 @@ enum ResolvedField {
     ExpandedFixed(Box<ExpandedFixedData>),
     /// Expanded variable vec with pinned width: `name: Vec<T>` + `width = N`.
     ExpandedVec(Box<ExpandedVecData>),
-    /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime from max row length.
+    /// Auto-expanded `Vec<T>`/`Box<[T]>`: column count determined at runtime from max row length.
     AutoExpandVec(Box<AutoExpandVecData>),
     /// Struct field whose inner type implements `DataFrameRow` (issue #485).
     /// Companion holds `Vec<Inner>`; `into_data_frame` calls `Inner::to_dataframe`
@@ -585,7 +585,7 @@ struct AutoExpandVecData {
     col_name_str: String,
     /// Element type T.
     elem_ty: syn::Type,
-    /// Container type for companion struct (Vec<T> or Box<[T]>).
+    /// Container type for companion struct (`Vec<T>` or `Box<[T]>`).
     container_ty: syn::Type,
     /// Index in tuple struct.
     tuple_index: Option<syn::Index>,
@@ -2410,9 +2410,9 @@ pub(super) enum EnumResolvedField {
     Single(Box<EnumSingleFieldData>),
     /// Expanded from [T; N].
     ExpandedFixed(Box<EnumExpandedFixedData>),
-    /// Expanded from Vec<T> with pinned width.
+    /// Expanded from `Vec<T>` with pinned width.
     ExpandedVec(Box<EnumExpandedVecData>),
-    /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime.
+    /// Auto-expanded `Vec<T>`/`Box<[T]>`: column count determined at runtime.
     AutoExpandVec(Box<EnumAutoExpandVecData>),
     /// `HashMap<K,V>` or `BTreeMap<K,V>` → two parallel list-columns: `<field>_keys`, `<field>_values`.
     Map(Box<EnumMapFieldData>),
@@ -2515,7 +2515,7 @@ pub(super) struct EnumAutoExpandVecData {
     pub(super) rust_name: syn::Ident,
     /// Element type.
     pub(super) elem_ty: syn::Type,
-    /// Container type for companion struct (Vec<T> or Box<[T]>).
+    /// Container type for companion struct (`Vec<T>` or `Box<[T]>`).
     pub(super) container_ty: syn::Type,
 }
 

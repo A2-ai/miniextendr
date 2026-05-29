@@ -1,4 +1,4 @@
-//! Tests for RSidecar and #[r_data] functionality.
+//! Tests for RSidecar and `#[r_data]` functionality.
 //!
 //! This module tests the R-side sidecar accessor generation with different class systems.
 
@@ -14,7 +14,7 @@ use miniextendr_api::miniextendr;
 #[externalptr(env)]
 pub struct SidecarEnv {
     /// Regular Rust field (not exposed to R) - intentionally unused to demonstrate
-    /// that non-#[r_data] fields are private to Rust.
+    /// that non-`#[r_data]` fields are private to Rust.
     _internal_value: i32,
 
     /// Selector - enables R accessors

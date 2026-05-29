@@ -7,7 +7,7 @@
 //!
 //! # Tradeoff
 //!
-//! These [`TryFromSexp`](crate::from_r::TryFromSexp) impls reject mismatched
+//! These [`TryFromSexp`] impls reject mismatched
 //! [`SEXPTYPE`]s — there is no looser coercion path for `Cow` / `PathBuf` /
 //! `OsString`. The `'static` lifetime on `Cow` borrows is valid only for the
 //! duration of the enclosing `.Call`; if you need an owned value that
@@ -312,7 +312,7 @@ impl_set_string_try_from_sexp!(
 // region: String-wrapper type conversions (PathBuf, OsString)
 
 /// Generate TryFromSexp impls for types that are `From<String>` (scalar, Option,
-/// Vec, Vec<Option>). Used for PathBuf and OsString which delegate to String conversion.
+/// Vec, `Vec<Option>`). Used for PathBuf and OsString which delegate to String conversion.
 macro_rules! impl_string_wrapper_try_from_sexp {
     (
         $(#[$scalar_meta:meta])*

@@ -108,11 +108,11 @@ Returns TRUE if \verb{Cow<[i32]>} round-trip returns the same R object
 
 Round-trip \verb{Cow<[f64]>} and return the result
 
-Returns TRUE if Cow\if{html}{\out{<str>}} from R is Cow::Borrowed (zero-copy)
+Returns TRUE if \verb{Cow<str>} from R is Cow::Borrowed (zero-copy)
 
 Count unique non-NA strings via ProtectedStrVec
 
-Returns TRUE if all elements of Vec<Cow\if{html}{\out{<str>}}> are Cow::Borrowed
+Returns TRUE if all elements of \verb{Vec<Cow<str>>} are Cow::Borrowed
 
 Allocate an R-backed Arrow buffer, fill it, return as Float64Array
 

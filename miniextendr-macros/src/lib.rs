@@ -2466,7 +2466,7 @@ pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// Define a compile-time-validated wrapper for an R `data.frame` input.
 ///
 /// `typed_dataframe!` mirrors [`typed_list!`] for the data.frame shape:
-/// declare the columns once, get a struct that implements [`TryFromSexp`]
+/// declare the columns once, get a struct that implements `TryFromSexp`
 /// (validating both the `data.frame` class and per-column SEXPTYPE) plus
 /// per-column borrowed accessors that return `&[T]`.
 ///
@@ -2552,7 +2552,6 @@ pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```
 ///
 /// [`typed_list!`]: macro@typed_list
-/// [`TryFromSexp`]: trait@miniextendr_api::from_r::TryFromSexp
 #[proc_macro]
 pub fn typed_dataframe(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as typed_dataframe::TypedDataframeInput);

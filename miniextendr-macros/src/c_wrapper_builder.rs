@@ -72,7 +72,7 @@ pub enum ReturnHandling {
     ///
     /// Use this variant explicitly via [`CWrapperContextBuilder::return_handling`] when
     /// the type has a direct `IntoR` impl for the whole `Option`. The auto-detector
-    /// [`detect_return_handling`] conservatively returns [`OptionIntoRUnwrap`] instead
+    /// `detect_return_handling` conservatively returns `OptionIntoRUnwrap` instead
     /// since it cannot resolve trait impls at macro expansion time.
     #[allow(dead_code)]
     // Used via explicit return_handling() call; auto-detect uses OptionIntoRUnwrap
@@ -167,7 +167,7 @@ pub struct CWrapperContext {
     /// Set by `#[miniextendr(strict)]`.
     pub strict: bool,
     /// Parameter names with `#[miniextendr(match_arg, several_ok)]` — use
-    /// `match_arg_vec_from_sexp` (instead of `TryFromSexp`) for the Vec<T> conversion
+    /// `match_arg_vec_from_sexp` (instead of `TryFromSexp`) for the `Vec<T>` conversion
     /// so each element is validated against the enum's `MatchArg::CHOICES`.
     ///
     /// Scalar `match_arg` doesn't need entries here because R-side `match.arg()`
@@ -1431,7 +1431,7 @@ pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnH
 /// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, or `ResultIntoR`
 /// - Anything else -> [`IntoR`](ReturnHandling::IntoR)
 ///
-/// Note: The default for `Option<T>` (non-unit, non-SEXP) is [`OptionIntoRUnwrap`] (unwrap
+/// Note: The default for `Option<T>` (non-unit, non-SEXP) is `OptionIntoRUnwrap` (unwrap
 /// first, error on `None`), which preserves the historical behavior for impl methods.
 /// Use [`ReturnHandling::OptionIntoR`] explicitly when the type has a direct
 /// `impl IntoR for Option<T>` (e.g., `Option<&T>`, `Option<Vec<T>>`, `Option<i32>`).

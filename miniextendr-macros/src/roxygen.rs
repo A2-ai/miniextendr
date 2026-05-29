@@ -636,7 +636,7 @@ pub(crate) fn doc_conflict_warnings(
 /// - `@return` / `@returns` — impl blocks have no return value.
 /// - `@examples` — examples belong on the method that is being demonstrated.
 /// - `@export` — redundant: export for class-level docs is handled by
-///   [`ClassDocBuilder`], which emits `@export` based on the impl block's
+///   `ClassDocBuilder`, which emits `@export` based on the impl block's
 ///   `internal` / `noexport` attrs, not on user-supplied roxygen.
 const METHOD_ONLY_TAGS: &[&str] = &["param", "return", "returns", "examples", "export"];
 
@@ -654,7 +654,7 @@ fn roxygen_tag_name(tag: &str) -> Option<&str> {
 ///
 /// Method-specific tags (`@param`, `@return`, `@returns`, `@examples`,
 /// `@export`) on an impl block are meaningless — they belong on individual
-/// methods, or (for `@export`) are emitted by [`ClassDocBuilder`]. When users
+/// methods, or (for `@export`) are emitted by `ClassDocBuilder`. When users
 /// put them on impl blocks, the tags leak into the class-level Rd file where
 /// R CMD check warns about "documented arguments not in \\usage" and similar.
 ///

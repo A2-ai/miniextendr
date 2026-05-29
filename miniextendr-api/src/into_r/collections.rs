@@ -12,7 +12,7 @@
 //! the user `expect_equal()`s by position: flaky tests across runs / R
 //! versions.
 //!
-//! Inbound counterpart: [`crate::from_r::collections`].
+//! Inbound counterpart: `crate::from_r::collections`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;

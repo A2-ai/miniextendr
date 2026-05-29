@@ -394,7 +394,7 @@ where
 }
 
 /// Like [`with_r_unwind_protect_or_raise`], but reports panics with a custom
-/// [`PanicSource`].
+/// `PanicSource`.
 ///
 /// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
 /// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.

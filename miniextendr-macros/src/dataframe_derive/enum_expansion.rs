@@ -41,7 +41,7 @@ use std::collections::HashMap;
 ///
 /// Fields with `#[dataframe(expand)]` on `Vec<T>` types get dynamic column counts
 /// determined at runtime from the maximum row length across all rows. These are
-/// tracked separately from the static [`ColumnRegistry`](super::ColumnRegistry).
+/// tracked separately from the static [`ColumnRegistry`].
 ///
 /// Returns `Err` if the enum has no variants or if type conflicts arise without
 /// `#[dataframe(conflicts = "string")]`.

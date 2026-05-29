@@ -334,7 +334,7 @@ fn feature_rule_list(ctx: &ProjectContext, json: bool) -> Result<()> {
 
 // --- Helpers ---
 
-/// Enable a feature in the [features] section by adding it to default or as standalone.
+/// Enable a feature in the `[features]` section by adding it to default or as standalone.
 fn enable_cargo_feature(ctx: &ProjectContext, feature: &str, quiet: bool) -> Result<()> {
     let manifest = ctx.require_cargo_manifest()?;
     let content = std::fs::read_to_string(manifest)?;

@@ -15,7 +15,7 @@ use std::collections::VecDeque;
 
 // region: VecPool — Vec<usize> free list (LIFO reuse)
 
-/// VECSXP pool with Vec<usize> free list (LIFO slot reuse).
+/// VECSXP pool with `Vec<usize>` free list (LIFO slot reuse).
 ///
 /// Simplest possible pool. Stale handles are not detected.
 pub struct VecPool {
@@ -94,7 +94,7 @@ impl Drop for VecPool {
 
 // region: DequePool — VecDeque<usize> free list (FIFO reuse)
 
-/// VECSXP pool with VecDeque<usize> free list (FIFO slot reuse).
+/// VECSXP pool with `VecDeque<usize>` free list (FIFO slot reuse).
 ///
 /// Released slots go to the back; allocations come from the front.
 /// Delays reuse of recently-freed slots.

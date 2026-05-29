@@ -418,7 +418,7 @@ impl<'a> MethodContext<'a> {
         }
     }
 
-    /// Build `if (missing(param)) param <- quote(expr=)` prelude lines for Missing<T> parameters.
+    /// Build `if (missing(param)) param <- quote(expr=)` prelude lines for `Missing<T>` parameters.
     ///
     /// Skips params that have a user-specified default (they get the default in formals instead).
     pub fn missing_prelude(&self) -> Vec<String> {

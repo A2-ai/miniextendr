@@ -145,7 +145,7 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Test ErasedExternalPtr::is::<Counter>() type check.
+/// Test `ErasedExternalPtr::is::<Counter>`() type check.
 /// @param ptr ExternalPtr to test.
 #[miniextendr]
 #[unsafe(no_mangle)]
@@ -162,7 +162,7 @@ pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Test ErasedExternalPtr::is::<Point>() type check.
+/// Test `ErasedExternalPtr::is::<Point>`() type check.
 /// @param ptr ExternalPtr to test.
 #[miniextendr]
 #[unsafe(no_mangle)]
