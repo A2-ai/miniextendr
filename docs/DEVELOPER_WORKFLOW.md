@@ -53,11 +53,13 @@ just devtools-test      # 3. Run R tests
 ### After changing proc macros or `#[miniextendr]` attributes
 
 ```bash
-just configure          # 1. Configure
-just rcmdinstall        # 2. Build (compiles new macros)
-just devtools-document  # 3. Regenerate R wrappers (runs macros)
-just rcmdinstall        # 4. Rebuild with updated wrappers
+just configure && just rcmdinstall && just force-document
 ```
+
+Use `just force-document` (not `just devtools-document`) here — it bypasses
+`roxygen2::needs_roxygenize()`'s mtime cache, which may not catch macro-layer
+output changes made via `rcmdinstall`. Use `just devtools-document` only for
+pure R/roxygen changes where no proc-macro output changed.
 
 ### Adding a new `#[miniextendr]` function
 
@@ -120,20 +122,20 @@ The function exists in Rust but isn't callable from R. Check:
 
 1. Function is `pub`
 2. Function has the `#[miniextendr]` attribute
-3. Run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to regenerate NAMESPACE
+3. Run [`just force-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to regenerate NAMESPACE
 
 Quick fix:
 
 ```bash
-just configure && just rcmdinstall && just devtools-document && just rcmdinstall
+just configure && just rcmdinstall && just force-document
 ```
 
 ### Stale R wrappers after macro changes
 
-Same fix: run the full 4-step workflow:
+Same fix:
 
 ```bash
-just configure && just rcmdinstall && just devtools-document && just rcmdinstall
+just configure && just rcmdinstall && just force-document
 ```
 
 ### Permission errors during install
