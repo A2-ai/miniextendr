@@ -1,11 +1,11 @@
 //! Tests for rayon parallel computation integration.
 
 #[cfg(feature = "rayon")]
-use miniextendr_api::prelude::SEXP;
-#[cfg(feature = "rayon")]
 use miniextendr_api::dataframe::DataFrame;
 #[cfg(feature = "rayon")]
 use miniextendr_api::miniextendr;
+#[cfg(feature = "rayon")]
+use miniextendr_api::prelude::SEXP;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
@@ -151,11 +151,12 @@ pub fn rayon_with_r_dataframe(n: i32) -> DataFrame {
 pub fn rayon_dataframe_wide(nrow: i32, ncol: i32) -> DataFrame {
     let mut builder = RDataFrameBuilder::new(nrow as usize);
     for j in 0..ncol as usize {
-        builder = builder.column::<f64>(format!("c{j}"), move |chunk: &mut [f64], offset: usize| {
-            for (i, slot) in chunk.iter_mut().enumerate() {
-                *slot = ((offset + i) * 1000 + j) as f64;
-            }
-        });
+        builder =
+            builder.column::<f64>(format!("c{j}"), move |chunk: &mut [f64], offset: usize| {
+                for (i, slot) in chunk.iter_mut().enumerate() {
+                    *slot = ((offset + i) * 1000 + j) as f64;
+                }
+            });
     }
     builder.build()
 }

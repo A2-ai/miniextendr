@@ -1,8 +1,8 @@
 //! Tests for ExternalPtr functionality.
 
 use miniextendr_api::externalptr::ErasedExternalPtr;
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 
 /// A simple test struct for ExternalPtr
 #[derive(miniextendr_api::ExternalPtr, Debug)]

@@ -5,8 +5,8 @@
 
 use miniextendr_api::as_coerce::AsCoerceError;
 use miniextendr_api::{
-    ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, SEXP, SEXPTYPE,
-    SexpExt, miniextendr, sys,
+    ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, SEXP, SEXPTYPE, SexpExt,
+    miniextendr, sys,
 };
 
 /// Test struct for `as.<class>` coercion methods.

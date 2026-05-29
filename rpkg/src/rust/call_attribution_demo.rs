@@ -5,8 +5,8 @@
 //! `extern "C-unwind"`, which has no generated R wrapper and so no call slot.
 //! The R-side error rendering is dramatically different.
 
-use miniextendr_api::prelude::SEXP;
 use miniextendr_api::miniextendr;
+use miniextendr_api::prelude::SEXP;
 
 /// Wrapped path. The generated R wrapper passes `.call = match.call()` into the
 /// C entry; on panic, `Rf_errorcall(call, msg)` shows the user's call frame.

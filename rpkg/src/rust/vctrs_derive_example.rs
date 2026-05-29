@@ -116,10 +116,7 @@ impl DerivedRational {
 /// @param d Denominator values.
 /// @return A derived_rational record vector.
 #[miniextendr]
-pub fn new_derived_rational(
-    n: Vec<i32>,
-    d: Vec<i32>,
-) -> Result<miniextendr_api::SEXP, String> {
+pub fn new_derived_rational(n: Vec<i32>, d: Vec<i32>) -> Result<miniextendr_api::SEXP, String> {
     let rational = DerivedRational::new(n, d)?;
     rational.into_vctrs().map_err(|e| e.to_string())
 }
@@ -160,9 +157,7 @@ impl DerivedIntLists {
 /// @param x A list of integer vectors.
 /// @return A derived_int_lists list_of vector.
 #[miniextendr]
-pub fn new_derived_int_lists(
-    x: miniextendr_api::SEXP,
-) -> Result<miniextendr_api::SEXP, String> {
+pub fn new_derived_int_lists(x: miniextendr_api::SEXP) -> Result<miniextendr_api::SEXP, String> {
     use miniextendr_api::from_r::TryFromSexp;
     let lists: Vec<Vec<i32>> = TryFromSexp::try_from_sexp(x).map_err(|e| format!("{:?}", e))?;
     let int_lists = DerivedIntLists::new(lists);
