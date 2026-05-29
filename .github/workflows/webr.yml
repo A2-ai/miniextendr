@@ -101,9 +101,10 @@ jobs:
   #              Imports from repo.r-wasm.org, drives library(miniextendr).
   # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners have no Rosetta
   # and plenty of disk (the local arm64 dev path hits both limits). Phase 2
-  # is also the empirical validator for #494's `-C relocation-model=pic`
-  # flag: if the emcc side-module link rejects non-PIC objects, Phase 2
-  # fails here.
+  # is also the empirical validator for the side-module RUSTFLAGS
+  # (`-Zdefault-visibility=hidden`): if the emcc side-module link breaks under
+  # them, Phase 2 fails here. (#494's `-C relocation-model=pic` was validated
+  # here too, until #745 confirmed it redundant and dropped it.)
   #
   # The container image must stay digest-aligned with Dockerfile.webr's
   # WEBR_BASE — bump both together. The S7 + autoconf installs mirror the
@@ -118,7 +119,7 @@ jobs:
       # which `.github/workflows/mirror-webr.yml` keeps digest-aligned with
       # upstream ghcr.io/r-wasm/webr — image bytes are identical at this
       # sha256. Bump in lockstep with Dockerfile.webr's WEBR_BASE.
-      image: ghcr.io/a2-ai/webr-mirror@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
+      image: ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
       # The mirror package is currently private; auth via the job's
       # GITHUB_TOKEN (workflow-level `packages: read` permission above).
       # Drop both once the package is made public via the org UI.
@@ -134,7 +135,7 @@ jobs:
     env:
       # Shared R library readable by BOTH R binaries in this job:
       #   Phase 1 native pass → /opt/R/current/bin/R
-      #   Phase 2 wasm pass   → /opt/webr/host/R-4.5.1/bin/R
+      #   Phase 2 wasm pass   → /opt/webr/host/R-4.6.0/bin/R
       # These two R installs have disjoint default library paths in the
       # webR base image, so without a shared R_LIBS_USER Phase 2's lazy-load
       # sub-R can't find transitive Imports (lifecycle → rlang) installed by
@@ -154,10 +155,10 @@ jobs:
           # Install via the host R that Phase 2 uses, so transitive deps land
           # in a library Phase 2's lazy-load will see. `dependencies = c(...)`
           # pulls rlang in via lifecycle/vctrs without us having to enumerate.
-          /opt/webr/host/R-4.5.1/bin/Rscript -e \
+          /opt/webr/host/R-4.6.0/bin/Rscript -e \
             'install.packages(c("cli","lifecycle","R6","S7","vctrs"), dependencies = c("Depends","Imports","LinkingTo"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest", lib=Sys.getenv("R_LIBS_USER"))'
           # Sanity-check the transitive set landed.
-          /opt/webr/host/R-4.5.1/bin/Rscript -e \
+          /opt/webr/host/R-4.6.0/bin/Rscript -e \
             'pkgs <- c("cli","lifecycle","rlang","R6","S7","vctrs"); miss <- setdiff(pkgs, rownames(installed.packages(lib.loc=Sys.getenv("R_LIBS_USER")))); if (length(miss)) stop("Missing: ", paste(miss, collapse=", "))'
 
       - name: Cache cargo registry + git
@@ -189,7 +190,7 @@ jobs:
           # A stub snapshot would be all-zero; the cdylib pass must rewrite it.
           test "$ch" != "0000000000000000"
 
-      - name: Phase 2 — wasm32 R CMD INSTALL (validates #494 PIC flag)
+      - name: Phase 2 — wasm32 R CMD INSTALL (validates side-module RUSTFLAGS)
         run: |
           set -euo pipefail
           rm -f rpkg/src/*.o rpkg/src/*.so
@@ -205,9 +206,9 @@ jobs:
           # comment). --no-byte-compile mirrors rwasm's flag set too.
           mkdir -p /tmp/wasm-lib
           WASM_TOOLS=/opt/webr/tools \
-          R_SOURCE=/opt/webr/R/build/R-4.5.1 \
+          R_SOURCE=/opt/webr/R/build/R-4.6.0 \
           R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk \
-          /opt/webr/host/R-4.5.1/bin/R CMD INSTALL \
+          /opt/webr/host/R-4.6.0/bin/R CMD INSTALL \
               --library=/tmp/wasm-lib \
               --no-docs --no-test-load --no-staged-install --no-byte-compile \
               rpkg

@@ -42,6 +42,13 @@ concurrency:
 
 env:
   DEST_REPO: ghcr.io/a2-ai/webr-mirror
+  # Always seed FROM upstream by digest, never from the mirror. Post-cutover
+  # WEBR_BASE points at DEST_REPO itself (#755), so sourcing from WEBR_BASE
+  # verbatim would be a self-copy that can't seed a *new* digest. The digest
+  # is content-addressable, so upstream and mirror bytes are identical at the
+  # same sha256 — we just re-derive the upstream reference from the pinned
+  # digest below.
+  UPSTREAM_REPO: ghcr.io/r-wasm/webr
 
 jobs:
   mirror:
@@ -56,22 +63,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          src=$(grep -E '^ARG WEBR_BASE=' Dockerfile.webr | head -1 | sed -E 's/^ARG WEBR_BASE=//')
-          if [[ -z "$src" || "$src" != *"@sha256:"* ]]; then
-            echo "::error::Could not extract a digest-pinned WEBR_BASE from Dockerfile.webr (got: '$src')."
+          raw=$(grep -E '^ARG WEBR_BASE=' Dockerfile.webr | head -1 | sed -E 's/^ARG WEBR_BASE=//')
+          if [[ -z "$raw" || "$raw" != *"@sha256:"* ]]; then
+            echo "::error::Could not extract a digest-pinned WEBR_BASE from Dockerfile.webr (got: '$raw')."
             exit 1
           fi
-          digest="${src##*@}"
+          digest="${raw##*@}"
           short="${digest#sha256:}"
           short12="${short:0:12}"
+          # Source is upstream-by-digest regardless of which repo WEBR_BASE
+          # names (see UPSTREAM_REPO comment above).
+          src="${UPSTREAM_REPO}@${digest}"
           {
             echo "src=$src"
             echo "digest=$digest"
             echo "short12=$short12"
           } >>"$GITHUB_OUTPUT"
-          echo "Source pin:  $src"
-          echo "Full digest: $digest"
-          echo "Short tag:   $short12"
+          echo "WEBR_BASE pin:   $raw"
+          echo "Upstream source: $src"
+          echo "Full digest:     $digest"
+          echo "Short tag:        $short12"
 
       - name: Install crane
         uses: imjasonh/setup-crane@v0.4
