@@ -49,7 +49,14 @@ run_with_logging <- function(command, args = character(),
         if (length(to_restore) > 0) do.call(Sys.setenv, as.list(to_restore))
       }, add = TRUE)
     }
-    system2(command, args = args, stdout = TRUE, stderr = TRUE)
+    # The exit status is captured deterministically via attr(output, "status")
+    # below and surfaced through $status/$success. On a non-zero exit with
+    # captured output, base R *also* raises a "running command ... had status N"
+    # warning -- redundant noise here, since the failure is a handled, expected
+    # outcome. Suppress it so callers' logs (and tests) stay clean. (#798)
+    suppressWarnings(
+      system2(command, args = args, stdout = TRUE, stderr = TRUE)
+    )
   }
 
   if (!is.null(wd)) {
@@ -124,5 +131,8 @@ run_command <- function(command, args = character(), wd = NULL) {
     old_wd <- setwd(wd)
     on.exit(setwd(old_wd), add = TRUE)
   }
-  system2(command, args = args, stdout = TRUE, stderr = TRUE)
+  # Callers inspect attr(result, "status") to detect failure (a non-zero exit is
+  # an expected, handled outcome -- e.g. probing `git rev-parse` outside a repo).
+  # Suppress base R's redundant "running command ... had status N" warning. (#798)
+  suppressWarnings(system2(command, args = args, stdout = TRUE, stderr = TRUE))
 }

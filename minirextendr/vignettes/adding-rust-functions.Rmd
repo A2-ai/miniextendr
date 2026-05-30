@@ -313,7 +313,7 @@ handles the dispatch automatically. Two things to be aware of:
 
 ## Next Steps
 
-- See the [type conversion reference](../docs/TYPE_CONVERSIONS.md) for the
+- See the [type conversion reference](https://a2-ai.github.io/miniextendr/manual/type-conversions/) for the
   full list of supported types, NA handling, and coercion rules.
 - For class systems (R6, S7, environment classes), see the miniextendr
   documentation.

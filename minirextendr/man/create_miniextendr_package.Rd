@@ -4,14 +4,35 @@
 \alias{create_miniextendr_package}
 \title{Create a new miniextendr package}
 \usage{
-create_miniextendr_package(path, open = interactive(), rstudio = TRUE)
+create_miniextendr_package(
+  path,
+  open = interactive(),
+  rstudio = TRUE,
+  check_name = FALSE
+)
 }
 \arguments{
 \item{path}{Path where to create the package}
 
-\item{open}{Whether to open the new project in RStudio}
+\item{open}{If \code{TRUE}, \link[usethis:proj_activate]{activates} the new project:
+\itemize{
+\item If using RStudio or Positron, the new project is opened in a new session,
+window, or browser tab, depending on the product (RStudio or Positron)
+and context (desktop or server).
+\item Otherwise, the working directory and active project of the current R
+session are changed to the new project.
+}}
 
-\item{rstudio}{Whether to create an RStudio project file}
+\item{rstudio}{If \code{TRUE}, calls \code{\link[usethis:use_rstudio]{use_rstudio()}} to make the new package or
+project into an \href{https://r-pkgs.org/workflow101.html#sec-workflow101-rstudio-projects}{RStudio Project}.
+
+If \code{FALSE}, the goal is to ensure that the directory can be recognized as
+a project by, for example, the \href{https://here.r-lib.org}{here} package. If
+the project is neither an R package nor a Quarto project, a sentinel
+\code{.here} file is placed to mark the project root.}
+
+\item{check_name}{Whether to check if the name is valid for CRAN and throw an
+error if not.}
 }
 \value{
 Path to the created package (invisibly)
