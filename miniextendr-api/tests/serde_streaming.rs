@@ -1,4 +1,4 @@
-//! Integration tests for `iter_to_dataframe` and `DataFrameBuilder`.
+//! Integration tests for `iter_to_dataframe` and `SerdeRowBuilder`.
 //!
 //! Streaming counterpart to `vec_to_dataframe`. Schema is taken from the
 //! first row; later rows must match (strict mode) — fields missing from a
@@ -12,7 +12,7 @@ use miniextendr_api::IntoR as _;
 use miniextendr_api::SEXPTYPE;
 use miniextendr_api::prelude::SexpExt as _;
 use miniextendr_api::serde::{
-    DataFrameBuilder, DispatchNames, RSerdeError, TypeSpec, dispatch_to_dataframes,
+    DispatchNames, RSerdeError, SerdeRowBuilder, TypeSpec, dispatch_to_dataframes,
     iter_to_dataframe, vec_to_dataframe,
 };
 use serde::Serialize;
@@ -127,7 +127,7 @@ fn iter_to_dataframe_empty_yields_empty_dataframe() {
 #[test]
 fn dataframe_builder_strict_rejects_new_fields() {
     r_test_utils::with_r_thread(|| {
-        let mut builder = DataFrameBuilder::<serde_json::Value>::new(None);
+        let mut builder = SerdeRowBuilder::<serde_json::Value>::new(None);
 
         // Use serde_json::Value so we can push heterogeneous shapes via Serialize.
         let row1: serde_json::Value = serde_json::json!({ "x": 1 });
@@ -146,7 +146,7 @@ fn dataframe_builder_strict_rejects_new_fields() {
 fn dataframe_builder_missing_field_na_pads() {
     r_test_utils::with_r_thread(|| {
         // Same struct, but second row's b=None — should NA-pad, not error.
-        let mut builder = DataFrameBuilder::<Optional>::new(None);
+        let mut builder = SerdeRowBuilder::<Optional>::new(None);
         builder
             .push(Optional {
                 a: Some(1),
@@ -178,7 +178,7 @@ fn with_schema_skips_discovery_first_row_none_keeps_declared_type() {
         // Pre-declared schema: column "b" is Optional(Character). The first
         // row's `b` is None — default discovery would have made this a logical
         // NA column. With `with_schema`, it stays character.
-        let mut b = DataFrameBuilder::<Optional>::with_schema(
+        let mut b = SerdeRowBuilder::<Optional>::with_schema(
             [
                 ("a", TypeSpec::Optional(Box::new(TypeSpec::Integer))),
                 ("b", TypeSpec::Optional(Box::new(TypeSpec::Character))),
@@ -215,7 +215,7 @@ fn with_schema_skips_discovery_first_row_none_keeps_declared_type() {
 #[test]
 fn with_schema_rejects_unknown_field_at_runtime() {
     r_test_utils::with_r_thread(|| {
-        let mut b = DataFrameBuilder::<Plain>::with_schema(
+        let mut b = SerdeRowBuilder::<Plain>::with_schema(
             [("id", TypeSpec::Integer), ("val", TypeSpec::Real)],
             None,
         );
@@ -238,7 +238,7 @@ fn with_schema_rejects_unknown_field_at_runtime() {
 fn grow_schema_back_fills_na_on_new_field_end_to_end() {
     r_test_utils::with_r_thread(|| {
         use std::collections::BTreeMap;
-        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+        let mut b = SerdeRowBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
         let r1: BTreeMap<String, i32> = [("a".into(), 1)].into_iter().collect();
         let r2: BTreeMap<String, i32> = [("a".into(), 2), ("b".into(), 3)].into_iter().collect();
         let r3: BTreeMap<String, i32> = [("a".into(), 4), ("c".into(), 99)].into_iter().collect();
@@ -263,11 +263,9 @@ fn grow_schema_combined_with_with_schema_end_to_end() {
     r_test_utils::with_r_thread(|| {
         use std::collections::BTreeMap;
         // Declare one column up front, let the rest grow.
-        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::with_schema(
-            [("a", TypeSpec::Integer)],
-            None,
-        )
-        .grow_schema();
+        let mut b =
+            SerdeRowBuilder::<BTreeMap<String, i32>>::with_schema([("a", TypeSpec::Integer)], None)
+                .grow_schema();
         let r1: BTreeMap<String, i32> = [("a".into(), 10)].into_iter().collect();
         let r2: BTreeMap<String, i32> = [("a".into(), 20), ("d".into(), 7)].into_iter().collect();
         b.push(r1).unwrap();
@@ -282,12 +280,12 @@ fn grow_schema_combined_with_with_schema_end_to_end() {
 
 // endregion
 
-// region: DataFrameBuilder direct surface
+// region: SerdeRowBuilder direct surface
 
 #[test]
 fn dataframe_builder_len_is_empty_finish() {
     r_test_utils::with_r_thread(|| {
-        let mut builder = DataFrameBuilder::<Plain>::new(Some(4));
+        let mut builder = SerdeRowBuilder::<Plain>::new(Some(4));
         assert!(builder.is_empty());
         assert_eq!(builder.len(), 0);
 

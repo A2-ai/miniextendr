@@ -267,7 +267,7 @@ impl DataFrame {
     }
     // endregion
 
-    // region: Post-assembly editing (absorbed from the old ColumnarDataFrame)
+    // region: Post-assembly editing (absorbed from the old serde columnar assembler)
 
     /// Rename a column. No-op if `from` doesn't match any column name.
     pub fn rename(self, from: &str, to: &str) -> Self {

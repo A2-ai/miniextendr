@@ -119,9 +119,9 @@ fn na_on_non_option_field_errors() {
     r_test_utils::with_r_thread(|| {
         // Build a data.frame with mixed Some/None for column `x`. A single
         // all-None row would degrade x to a logical-NA column (see CLAUDE.md
-        // "FFI / codegen gotchas: ColumnarDataFrame::from_rows all-None
-        // columns"); we need at least one Some to keep x as INTSXP so the
-        // deserialiser sees a real INTSXP NA cell.
+        // "FFI / codegen gotchas: vec_to_dataframe all-None columns"); we need
+        // at least one Some to keep x as INTSXP so the deserialiser sees a
+        // real INTSXP NA cell.
         let rows_with_na = vec![
             OptionRow {
                 x: Some(1),

@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
+use crate::dataframe::DataFrame;
 use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
@@ -66,357 +67,112 @@ macro_rules! reject_non_struct {
     };
 }
 
-/// Read a column name from an R STRSXP names vector at index `i`.
+/// Convert a slice of serializable structs to an R
+/// [`DataFrame`](crate::dataframe::DataFrame) in columnar layout.
 ///
-/// # Safety
-/// `names_sexp` must be a valid STRSXP and `i` must be in bounds.
-unsafe fn col_name(names_sexp: SEXP, i: isize) -> &'static str {
-    unsafe {
-        let s = names_sexp.string_elt(i);
-        let p = s.r_char();
-        std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
-    }
-}
-
-/// Copy class and row.names attributes from one data.frame SEXP to another.
+/// Each field of `T` becomes a column (R atomic vector). Nested structs are
+/// recursively flattened into prefixed columns (`parent_child` naming).
 ///
-/// # Safety
-/// Both SEXPs must be valid VECSXPs.
-unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
-    to.set_class(from.get_class());
-    to.set_row_names(from.get_row_names());
-}
-
-/// A data.frame produced by the columnar serializer.
+/// This is the serde column path's `Rust → R` entry point. It produces the same
+/// [`DataFrame`](crate::dataframe::DataFrame) the rest of the unified interface uses
+/// (the same type returned by [`IntoDataFrame`](crate::dataframe::IntoDataFrame)), so the
+/// result supports post-assembly editing through [`DataFrame`]'s own methods:
 ///
-/// **Internal/legacy.** The public data-frame type is
-/// [`DataFrame`](crate::dataframe::DataFrame); the serde column path now surfaces a
-/// `DataFrame` via [`IntoDataFrame`](crate::dataframe::IntoDataFrame). This newtype is
-/// retained as the serde assembler's internal return shape and is tracked for removal
-/// (see the unified-DataFrame follow-up issues). Convert with
-/// `DataFrame::from(columnar)` / `ColumnarDataFrame::from(df)`.
-#[doc(hidden)]
-pub struct ColumnarDataFrame {
-    sexp: SEXP,
-}
-
-impl From<ColumnarDataFrame> for crate::dataframe::DataFrame {
-    #[inline]
-    fn from(c: ColumnarDataFrame) -> Self {
-        // SAFETY: `ColumnarDataFrame` always wraps a well-formed data.frame SEXP.
-        unsafe { crate::dataframe::DataFrame::from_built_sexp(c.sexp) }
-    }
-}
-
-impl From<crate::dataframe::DataFrame> for ColumnarDataFrame {
-    #[inline]
-    fn from(df: crate::dataframe::DataFrame) -> Self {
-        ColumnarDataFrame { sexp: df.as_sexp() }
-    }
-}
-
-impl ColumnarDataFrame {
-    /// Convert a slice of serializable structs to an R data.frame in columnar layout.
-    ///
-    /// Each field of `T` becomes a column (R atomic vector). Nested structs are
-    /// recursively flattened into prefixed columns (`parent_child` naming).
-    ///
-    /// The result supports post-assembly customization:
-    ///
-    /// ```ignore
-    /// ColumnarDataFrame::from_rows(&rows)?
-    ///     .rename("hashes_blake3", "hash")
-    ///     .with_column("status", status_sexp)
-    ///     .drop("internal_id")
-    /// ```
-    ///
-    /// # Supported Field Types
-    ///
-    /// | Rust Type | R Column Type |
-    /// |-----------|---------------|
-    /// | `bool` | `logical` |
-    /// | `i8/i16/i32` | `integer` |
-    /// | `i64/u64/f32/f64` | `numeric` |
-    /// | `String/&str` | `character` |
-    /// | `Option<T>` | Same type with NA for `None` |
-    /// | `Option<T>` (every row `None`) | `logical` NA column — R coerces to the surrounding type on first use (`c(NA, 1L)` → integer, `c(NA, "x")` → character) |
-    /// | Nested struct | Recursively flattened with `parent_child` naming |
-    /// | Other | Falls back to per-element list column |
-    pub fn from_rows<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
-        if rows.is_empty() {
-            return Ok(ColumnarDataFrame {
-                sexp: empty_dataframe(),
-            });
-        }
-
-        // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
-        let mut acc = SchemaAccumulator::new(SchemaMode::Union);
-        for row in rows {
-            // Skip rows that fail discovery (e.g., top-level None) — Union mode tolerates partial probes.
-            let _ = acc.feed(row);
-        }
-        let schema = acc.finalize()?;
-        let ncol = schema.fields.len();
-        let nrow = rows.len();
-
-        if ncol == 0 {
-            return Err(RSerdeError::Message(
-                "ColumnarDataFrame::from_rows: type has no fields".into(),
-            ));
-        }
-
-        // Phase 2: Allocate column buffers
-        let mut columns: Vec<ColumnBuffer> = schema
-            .fields
-            .iter()
-            .map(|f| ColumnBuffer::new(f.col_type, nrow))
-            .collect();
-
-        // Roots every SEXP that lands in a `ColumnBuffer::Generic` (via
-        // `RSerializer::serialize`) for the duration of this call. Without
-        // this, the unprotected SEXPs in the generic-list buffer can be
-        // GC'd before `assemble_dataframe` reads them — surfaced under
-        // `gctorture(TRUE)` and on glibc-strict R runtimes.
-        let scope = unsafe { crate::ProtectScope::new() };
-
-        // Phase 3: Fill columns from all rows
-        let mut filled = vec![false; ncol];
-        for row in rows {
-            let filler = ColumnFiller {
-                columns: &mut columns,
-                field_map: &schema.field_map,
-                filled: &mut filled,
-                col_start: 0,
-                col_count: ncol,
-                is_top_level: true,
-                pending_key: None,
-                scope: &scope,
-                strict: false,
-            };
-            row.serialize(filler)?;
-        }
-
-        // Phase 4: Assemble data.frame. `assemble_with_scope` sequences
-        // `assemble_dataframe(...)` followed by `drop(scope)` so the
-        // protected SEXPs in `ColumnBuffer::Generic` cells are still rooted
-        // while `set_vector_elt` copies them into the parent VECSXP.
-        Ok(unsafe { assemble_with_scope(&schema, &columns, nrow, scope) })
+/// ```ignore
+/// vec_to_dataframe(&rows)?
+///     .rename("hashes_blake3", "hash")
+///     .with_column("status", status_sexp)
+///     .drop("internal_id")
+/// ```
+///
+/// # Supported Field Types
+///
+/// | Rust Type | R Column Type |
+/// |-----------|---------------|
+/// | `bool` | `logical` |
+/// | `i8/i16/i32` | `integer` |
+/// | `i64/u64/f32/f64` | `numeric` |
+/// | `String/&str` | `character` |
+/// | `Option<T>` | Same type with NA for `None` |
+/// | `Option<T>` (every row `None`) | `logical` NA column — R coerces to the surrounding type on first use (`c(NA, 1L)` → integer, `c(NA, "x")` → character) |
+/// | Nested struct | Recursively flattened with `parent_child` naming |
+/// | Other | Falls back to per-element list column |
+pub fn vec_to_dataframe<T: Serialize>(
+    rows: &[T],
+) -> Result<crate::dataframe::DataFrame, RSerdeError> {
+    if rows.is_empty() {
+        // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
+        return Ok(unsafe { crate::dataframe::DataFrame::from_built_sexp(empty_dataframe()) });
     }
 
-    /// Rename a column. No-op if `from` doesn't match any column name.
-    pub fn rename(self, from: &str, to: &str) -> Self {
-        unsafe {
-            let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::nil() {
-                return self;
-            }
-            let ncol = names_sexp.xlength();
-            for i in 0..ncol {
-                if col_name(names_sexp, i) == from {
-                    names_sexp.set_string_elt(i, SEXP::charsxp(to));
-                    break;
-                }
-            }
-        }
-        self
+    // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
+    let mut acc = SchemaAccumulator::new(SchemaMode::Union);
+    for row in rows {
+        // Skip rows that fail discovery (e.g., top-level None) — Union mode tolerates partial probes.
+        let _ = acc.feed(row);
+    }
+    let schema = acc.finalize()?;
+    let ncol = schema.fields.len();
+    let nrow = rows.len();
+
+    if ncol == 0 {
+        return Err(RSerdeError::Message(
+            "vec_to_dataframe: type has no fields".into(),
+        ));
     }
 
-    /// Strip a prefix from all column names that start with it.
-    /// E.g., `.strip_prefix("metadata_")` turns `metadata_size` into `size`.
-    pub fn strip_prefix(self, prefix: &str) -> Self {
-        unsafe {
-            let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::nil() {
-                return self;
-            }
-            let ncol = names_sexp.xlength();
-            for i in 0..ncol {
-                let name = col_name(names_sexp, i);
-                if let Some(stripped) = name.strip_prefix(prefix) {
-                    names_sexp.set_string_elt(i, SEXP::charsxp(stripped));
-                }
-            }
-        }
-        self
+    // Phase 2: Allocate column buffers
+    let mut columns: Vec<ColumnBuffer> = schema
+        .fields
+        .iter()
+        .map(|f| ColumnBuffer::new(f.col_type, nrow))
+        .collect();
+
+    // Roots every SEXP that lands in a `ColumnBuffer::Generic` (via
+    // `RSerializer::serialize`) for the duration of this call. Without
+    // this, the unprotected SEXPs in the generic-list buffer can be
+    // GC'd before `assemble_dataframe` reads them — surfaced under
+    // `gctorture(TRUE)` and on glibc-strict R runtimes.
+    let scope = unsafe { crate::ProtectScope::new() };
+
+    // Phase 3: Fill columns from all rows
+    let mut filled = vec![false; ncol];
+    for row in rows {
+        let filler = ColumnFiller {
+            columns: &mut columns,
+            field_map: &schema.field_map,
+            filled: &mut filled,
+            col_start: 0,
+            col_count: ncol,
+            is_top_level: true,
+            pending_key: None,
+            scope: &scope,
+            strict: false,
+        };
+        row.serialize(filler)?;
     }
 
-    /// Remove a column by name. No-op if the column doesn't exist.
-    pub fn drop(self, col: &str) -> Self {
-        unsafe {
-            let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::nil() {
-                return self;
-            }
-            let ncol = names_sexp.xlength();
-            let drop_idx = (0..ncol).find(|&i| col_name(names_sexp, i) == col);
-            let Some(drop_idx) = drop_idx else {
-                return self;
-            };
-
-            let new_ncol = ncol - 1;
-            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(new_ncol));
-            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(new_ncol));
-
-            let mut j: isize = 0;
-            for i in 0..ncol {
-                if i == drop_idx {
-                    continue;
-                }
-                new_list.set_vector_elt(j, self.sexp.vector_elt(i));
-                new_names.set_string_elt(j, names_sexp.string_elt(i));
-                j += 1;
-            }
-
-            new_list.set_names(*new_names);
-            copy_df_attrs(self.sexp, *new_list);
-
-            ColumnarDataFrame { sexp: *new_list }
-        }
-    }
-
-    /// Keep only the named columns, in the order given. Unknown names are skipped.
-    pub fn select(self, cols: &[&str]) -> Self {
-        unsafe {
-            let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::nil() {
-                return self;
-            }
-            let ncol = names_sexp.xlength();
-
-            let indices: Vec<isize> = cols
-                .iter()
-                .filter_map(|&want| (0..ncol).find(|&i| col_name(names_sexp, i) == want))
-                .collect();
-
-            let new_ncol: isize = indices.len().try_into().expect("ncol overflow");
-            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(new_ncol));
-            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(new_ncol));
-
-            for (j, &src_idx) in indices.iter().enumerate() {
-                let j_r: isize = j.try_into().expect("index overflow");
-                new_list.set_vector_elt(j_r, self.sexp.vector_elt(src_idx));
-                new_names.set_string_elt(j_r, names_sexp.string_elt(src_idx));
-            }
-
-            new_list.set_names(*new_names);
-            copy_df_attrs(self.sexp, *new_list);
-
-            ColumnarDataFrame { sexp: *new_list }
-        }
-    }
-
-    /// Insert a column at index 0 (leftmost). If a column with the same
-    /// name already exists it is removed first so the prepended copy wins.
-    /// Caller is responsible for matching row length and for ensuring
-    /// `column` is a valid R vector; miniextendr does not validate.
-    pub fn prepend_column(self, name: &str, column: SEXP) -> Self {
-        // Drop any existing column with this name first to avoid duplicates.
-        let cleaned = self.drop(name);
-        unsafe {
-            let names_sexp = cleaned.sexp.get_names();
-            // For a freshly-built data.frame `get_names` always returns a STRSXP,
-            // but a defensive guard keeps us symmetric with `with_column`.
-            let ncol = if names_sexp == SEXP::nil() {
-                0
-            } else {
-                names_sexp.xlength()
-            };
-
-            let new_ncol = ncol + 1;
-            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(new_ncol));
-            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(new_ncol));
-
-            new_list.set_vector_elt(0, column);
-            new_names.set_string_elt(0, SEXP::charsxp(name));
-
-            for i in 0..ncol {
-                new_list.set_vector_elt(i + 1, cleaned.sexp.vector_elt(i));
-                new_names.set_string_elt(i + 1, names_sexp.string_elt(i));
-            }
-
-            new_list.set_names(*new_names);
-            copy_df_attrs(cleaned.sexp, *new_list);
-
-            ColumnarDataFrame { sexp: *new_list }
-        }
-    }
-
-    /// Upsert a column: replace the column named `name` with `column` if it
-    /// already exists, otherwise append `column` at the end. Caller is
-    /// responsible for matching row length and for ensuring `column` is a
-    /// valid R vector; miniextendr does not validate.
-    pub fn with_column(self, name: &str, column: SEXP) -> Self {
-        unsafe {
-            let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::nil() {
-                return self;
-            }
-            let ncol = names_sexp.xlength();
-            for i in 0..ncol {
-                if col_name(names_sexp, i) == name {
-                    self.sexp.set_vector_elt(i, column);
-                    return self;
-                }
-            }
-
-            // Not found — append at the end. Reallocate the list and names,
-            // copy over existing entries, add the new column.
-            let new_ncol = ncol + 1;
-            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(new_ncol));
-            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(new_ncol));
-
-            for i in 0..ncol {
-                new_list.set_vector_elt(i, self.sexp.vector_elt(i));
-                new_names.set_string_elt(i, names_sexp.string_elt(i));
-            }
-            new_list.set_vector_elt(ncol, column);
-            new_names.set_string_elt(ncol, SEXP::charsxp(name));
-
-            new_list.set_names(*new_names);
-            copy_df_attrs(self.sexp, *new_list);
-
-            ColumnarDataFrame { sexp: *new_list }
-        }
-    }
-}
-
-impl crate::IntoR for ColumnarDataFrame {
-    type Error = std::convert::Infallible;
-
-    fn into_sexp(self) -> SEXP {
-        self.sexp
-    }
-
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.sexp)
-    }
-
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        Ok(self.sexp)
-    }
-}
-
-impl crate::from_r::TryFromSexp for ColumnarDataFrame {
-    type Error = crate::from_r::SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // Validate it's a data.frame before wrapping
-        crate::dataframe::DataFrame::from_sexp(sexp)
-            .map(ColumnarDataFrame::from)
-            .map_err(|e| crate::from_r::SexpError::InvalidValue(e.to_string()))
-    }
-}
-
-/// Convenience alias for [`ColumnarDataFrame::from_rows`].
-#[inline]
-pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
-    ColumnarDataFrame::from_rows(rows)
+    // Phase 4: Assemble data.frame. `assemble_with_scope` sequences
+    // `assemble_dataframe(...)` followed by `drop(scope)` so the
+    // protected SEXPs in `ColumnBuffer::Generic` cells are still rooted
+    // while `set_vector_elt` copies them into the parent VECSXP.
+    Ok(unsafe { assemble_with_scope(&schema, &columns, nrow, scope) })
 }
 
 // region: NamedDataFrameListBuilder
 
-/// Assemble a named list whose elements are [`ColumnarDataFrame`]s,
+/// Assemble a named list whose elements are [`DataFrame`]s,
 /// without per-result `OwnedProtect` bookkeeping.
+///
+/// # Why this is distinct from [`DataFrame::builder`]
+///
+/// [`DataFrame::builder`](crate::dataframe::DataFrame::builder) and
+/// [`SerdeRowBuilder`] both produce a *single* [`DataFrame`]. This builder
+/// produces a different shape — a named *list of* data.frames, e.g.
+/// `list(results = df, error = df)` — so it deliberately keeps its own name
+/// rather than folding into the `DataFrame::builder` vocabulary. Its inputs
+/// are [`DataFrame`]s (typically from [`vec_to_dataframe`]); its output is a
+/// [`List`](crate::list::List).
 ///
 /// Each [`push`](NamedDataFrameListBuilder::push) protects the input
 /// data.frame's SEXP via an internal [`ProtectScope`](crate::ProtectScope);
@@ -470,11 +226,11 @@ impl NamedDataFrameListBuilder {
     /// Append a named data.frame. The input's SEXP is protected
     /// internally for the lifetime of the builder.
     #[must_use]
-    pub fn push<S: Into<String>>(mut self, name: S, df: ColumnarDataFrame) -> Self {
+    pub fn push<S: Into<String>>(mut self, name: S, df: DataFrame) -> Self {
         use crate::IntoR as _;
         let sexp = df.into_sexp();
         // SAFETY: R main thread (constructor invariant); sexp is a valid
-        // VECSXP just produced by ColumnarDataFrame::into_sexp.
+        // VECSXP just produced by DataFrame::into_sexp.
         unsafe {
             self.scope.protect_raw(sexp);
         }
@@ -515,7 +271,7 @@ impl Default for NamedDataFrameListBuilder {
 
 // endregion
 
-// region: Streaming serialize (iter_to_dataframe + DataFrameBuilder)
+// region: Streaming serialize (iter_to_dataframe + SerdeRowBuilder)
 
 /// Stream rows from an iterator into a columnar data.frame.
 ///
@@ -549,29 +305,26 @@ impl Default for NamedDataFrameListBuilder {
 /// let rows = (0..10).map(|i| Row { id: i, name: format!("item_{i}") });
 /// let df = iter_to_dataframe(rows, Some(10))?;
 /// ```
-pub fn iter_to_dataframe<T, I>(
-    iter: I,
-    nrow_hint: Option<usize>,
-) -> Result<ColumnarDataFrame, RSerdeError>
+pub fn iter_to_dataframe<T, I>(iter: I, nrow_hint: Option<usize>) -> Result<DataFrame, RSerdeError>
 where
     T: Serialize,
     I: IntoIterator<Item = T>,
 {
-    let mut builder = DataFrameBuilder::<T>::new(nrow_hint);
+    let mut builder = SerdeRowBuilder::<T>::new(nrow_hint);
     for row in iter {
         builder.push(row)?;
     }
     builder.finish()
 }
 
-/// User-facing column type descriptor for [`DataFrameBuilder::with_schema`].
+/// User-facing column type descriptor for [`SerdeRowBuilder::with_schema`].
 ///
 /// Maps onto the internal `ColumnType` and unlocks an NA-tolerance hint via
 /// `Optional(_)`. The wrapper does **not** change the underlying column type —
 /// `Optional(Integer)` produces an integer column where `None` lands as
 /// `NA_INTEGER`. Without the hint, an all-`None` column discovered from the
 /// first row would otherwise degrade to a logical-NA column (see
-/// `ColumnarDataFrame::from_rows` doc).
+/// `vec_to_dataframe` doc).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeSpec {
     /// R `logical` column (`bool`).
@@ -608,7 +361,7 @@ impl TypeSpec {
 
 /// Stream a `Result`-yielding iterator into a named `list(ok = df, err = df)`.
 ///
-/// Maintains two [`DataFrameBuilder`]s and dispatches each row to the
+/// Maintains two [`SerdeRowBuilder`]s and dispatches each row to the
 /// appropriate one based on its `Result` variant. The output names default to
 /// `"ok"` / `"err"`; pass [`DispatchNames`] to override.
 ///
@@ -662,8 +415,8 @@ where
     E: Serialize,
     I: IntoIterator<Item = Result<O, E>>,
 {
-    let mut ok_builder = DataFrameBuilder::<O>::new(nrow_hint);
-    let mut err_builder = DataFrameBuilder::<E>::new(nrow_hint);
+    let mut ok_builder = SerdeRowBuilder::<O>::new(nrow_hint);
+    let mut err_builder = SerdeRowBuilder::<E>::new(nrow_hint);
 
     for row in iter {
         match row {
@@ -704,17 +457,17 @@ impl Default for DispatchNames {
 ///
 /// Three schema modes:
 ///
-/// 1. **Default** ([`DataFrameBuilder::new`]) — schema discovered from the
+/// 1. **Default** ([`SerdeRowBuilder::new`]) — schema discovered from the
 ///    first [`push`](Self::push); subsequent rows that introduce new fields
 ///    are rejected.
-/// 2. **Pre-declared** ([`DataFrameBuilder::with_schema`]) — schema fixed at
+/// 2. **Pre-declared** ([`SerdeRowBuilder::with_schema`]) — schema fixed at
 ///    construction; first push skips discovery; later pushes must conform.
-/// 3. **Growing** ([`DataFrameBuilder::grow_schema`]) — new fields seen in
+/// 3. **Growing** ([`SerdeRowBuilder::grow_schema`]) — new fields seen in
 ///    later rows are added on-the-fly and back-filled with NA on prior rows.
 ///    Composes with [`with_schema`](Self::with_schema) to start from a
 ///    declared partial schema.
 ///
-/// Call [`finish`](Self::finish) to produce the [`ColumnarDataFrame`].
+/// Call [`finish`](Self::finish) to produce the [`DataFrame`].
 ///
 /// Use [`iter_to_dataframe`] when an iterator suffices; reach for this when
 /// you need explicit control over push points (conditional skipping,
@@ -723,14 +476,14 @@ impl Default for DispatchNames {
 /// # Examples
 ///
 /// ```rust,ignore
-/// # use miniextendr_api::serde::{DataFrameBuilder, TypeSpec};
+/// # use miniextendr_api::serde::{SerdeRowBuilder, TypeSpec};
 /// # use serde::Serialize;
 /// #[derive(Serialize)]
 /// struct Row { id: i32, label: Option<String> }
 ///
 /// // Pre-declared schema. Optional(Character) keeps the column character-typed
 /// // even if the first row's label is None.
-/// let mut b = DataFrameBuilder::<Row>::with_schema(
+/// let mut b = SerdeRowBuilder::<Row>::with_schema(
 ///     [
 ///         ("id", TypeSpec::Integer),
 ///         ("label", TypeSpec::Optional(Box::new(TypeSpec::Character))),
@@ -741,7 +494,7 @@ impl Default for DispatchNames {
 /// b.push(Row { id: 2, label: Some("two".into()) }).unwrap();
 /// let df = b.finish().unwrap();
 /// ```
-pub struct DataFrameBuilder<T: Serialize> {
+pub struct SerdeRowBuilder<T: Serialize> {
     /// Schema set on first push (default mode), at construction
     /// ([`with_schema`](Self::with_schema)), or grown lazily ([`grow_schema`](Self::grow_schema)).
     schema: Option<Schema>,
@@ -761,7 +514,7 @@ pub struct DataFrameBuilder<T: Serialize> {
     _marker: core::marker::PhantomData<fn(T)>,
 }
 
-impl<T: Serialize> DataFrameBuilder<T> {
+impl<T: Serialize> SerdeRowBuilder<T> {
     /// Create a new builder with schema discovered on first [`push`](Self::push).
     ///
     /// `nrow_hint` pre-sizes column buffers; `None` is acceptable.
@@ -799,12 +552,12 @@ impl<T: Serialize> DataFrameBuilder<T> {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use miniextendr_api::serde::{DataFrameBuilder, TypeSpec};
+    /// # use miniextendr_api::serde::{SerdeRowBuilder, TypeSpec};
     /// # use serde::Serialize;
     /// #[derive(Serialize)]
     /// struct R { id: i32, name: String }
     ///
-    /// let mut b = DataFrameBuilder::<R>::with_schema(
+    /// let mut b = SerdeRowBuilder::<R>::with_schema(
     ///     [("id", TypeSpec::Integer), ("name", TypeSpec::Character)],
     ///     Some(100),
     /// );
@@ -862,7 +615,7 @@ impl<T: Serialize> DataFrameBuilder<T> {
     /// added on the fly and back-filled with NA on prior rows.
     ///
     /// Composes with [`with_schema`](Self::with_schema) — call
-    /// `DataFrameBuilder::with_schema(...).grow_schema()` to start with a
+    /// `SerdeRowBuilder::with_schema(...).grow_schema()` to start with a
     /// declared partial schema and let new fields appear as rows arrive.
     ///
     /// Cost: O(new_fields × existing_nrow) on each push that introduces a
@@ -879,10 +632,10 @@ impl<T: Serialize> DataFrameBuilder<T> {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use miniextendr_api::serde::DataFrameBuilder;
+    /// # use miniextendr_api::serde::SerdeRowBuilder;
     /// # use std::collections::BTreeMap;
     /// // Heterogeneous rows: each row is a map; later rows introduce new keys.
-    /// let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+    /// let mut b = SerdeRowBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
     ///
     /// let r1: BTreeMap<String, i32> = [("a".into(), 1)].into_iter().collect();
     /// let r2: BTreeMap<String, i32> = [("a".into(), 2), ("b".into(), 3)].into_iter().collect();
@@ -936,7 +689,7 @@ impl<T: Serialize> DataFrameBuilder<T> {
         };
         // ColumnFiller::SerializeStruct::end calls pad_unfilled, which
         // NA-pads any column the row didn't touch and resets `filled` for
-        // the next push — same flow as ColumnarDataFrame::from_rows.
+        // the next push — same flow as vec_to_dataframe.
         row.serialize(filler)?;
 
         self.nrow += 1;
@@ -1004,11 +757,10 @@ impl<T: Serialize> DataFrameBuilder<T> {
     ///
     /// An empty builder produces an empty 0-row 0-column data.frame
     /// (matching `vec_to_dataframe(&[])`).
-    pub fn finish(self) -> Result<ColumnarDataFrame, RSerdeError> {
+    pub fn finish(self) -> Result<DataFrame, RSerdeError> {
         let Some(schema) = self.schema else {
-            return Ok(ColumnarDataFrame {
-                sexp: empty_dataframe(),
-            });
+            // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
+            return Ok(unsafe { DataFrame::from_built_sexp(empty_dataframe()) });
         };
         // SAFETY: nrow columns × matching lengths invariant maintained by push.
         // `assemble_with_scope` runs `assemble_dataframe` then drops the scope —
@@ -1106,8 +858,8 @@ fn resolve_candidates(candidates: &mut Vec<Candidate>) -> Candidate {
 
 /// Mode controls accumulation strictness and the final empty-schema error wording.
 ///
-/// `SingleRow` produces the `DataFrameBuilder: first row has no fields` error; `Union`
-/// produces the `ColumnarDataFrame::from_rows: no fields discovered from any row` error.
+/// `SingleRow` produces the `SerdeRowBuilder: first row has no fields` error; `Union`
+/// produces the `vec_to_dataframe: no fields discovered from any row` error.
 /// Field collection itself is identical — both feed candidates into the same lattice
 /// resolver. SingleRow callers feed exactly once; Union callers feed per row.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1235,10 +987,8 @@ impl SchemaAccumulator {
 
         if unified_fields.is_empty() {
             return Err(RSerdeError::Message(match self.mode {
-                SchemaMode::SingleRow => "DataFrameBuilder: first row has no fields".into(),
-                SchemaMode::Union => {
-                    "ColumnarDataFrame::from_rows: no fields discovered from any row".into()
-                }
+                SchemaMode::SingleRow => "SerdeRowBuilder: first row has no fields".into(),
+                SchemaMode::Union => "vec_to_dataframe: no fields discovered from any row".into(),
             }));
         }
 
@@ -1391,10 +1141,7 @@ impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
         })
     }
 
-    reject_non_struct!(
-        "ColumnarDataFrame::from_rows: expected struct",
-        allow_some_none
-    );
+    reject_non_struct!("vec_to_dataframe: expected struct", allow_some_none);
 }
 
 struct SchemaStructDiscoverer<'a> {
@@ -1908,8 +1655,8 @@ struct ColumnFiller<'a> {
     pending_key: Option<String>,
     scope: &'a crate::ProtectScope,
     /// When true, fields not in the schema produce an error instead of being
-    /// silently ignored. `DataFrameBuilder` sets this to enforce first-row
-    /// schema; `ColumnarDataFrame::from_rows` leaves it false because its
+    /// silently ignored. `SerdeRowBuilder` sets this to enforce first-row
+    /// schema; `vec_to_dataframe` leaves it false because its
     /// schema is the union of all rows (so misses can't happen).
     strict: bool,
 }
@@ -1947,11 +1694,11 @@ impl ColumnFiller<'_> {
             None => {
                 // Field not in schema. The union-schema path (from_rows) never
                 // hits this because the schema absorbed every row's keys; the
-                // streaming path (DataFrameBuilder, strict=true) does, when a
+                // streaming path (SerdeRowBuilder, strict=true) does, when a
                 // later row introduces a new field.
                 if self.strict {
                     return Err(RSerdeError::Message(format!(
-                        "DataFrameBuilder: row introduced field {key:?} not in initial schema"
+                        "SerdeRowBuilder: row introduced field {key:?} not in initial schema"
                     )));
                 }
             }
@@ -2093,10 +1840,10 @@ fn empty_dataframe() -> SEXP {
 
 /// Assemble column buffers into a data.frame, then drop `scope` only after the
 /// assembled VECSXP has copied every protected element. The returned
-/// [`ColumnarDataFrame`] is rooted by the caller's protection of its SEXP.
+/// [`DataFrame`] is rooted by the caller's protection of its SEXP.
 ///
 /// Centralises the protect-scope drop discipline shared by
-/// [`ColumnarDataFrame::from_rows`] and [`DataFrameBuilder::finish`].
+/// [`vec_to_dataframe`] and [`SerdeRowBuilder::finish`].
 ///
 /// # Safety
 ///
@@ -2107,10 +1854,11 @@ unsafe fn assemble_with_scope(
     columns: &[ColumnBuffer],
     nrow: usize,
     scope: crate::ProtectScope,
-) -> ColumnarDataFrame {
-    let df = ColumnarDataFrame {
-        sexp: unsafe { assemble_dataframe(&schema.fields, columns, nrow) },
-    };
+) -> DataFrame {
+    // SAFETY: `assemble_dataframe` builds a well-formed data.frame SEXP from the
+    // column buffers; the caller upholds the main-thread + length invariants.
+    let df =
+        unsafe { DataFrame::from_built_sexp(assemble_dataframe(&schema.fields, columns, nrow)) };
     drop(scope);
     df
 }
@@ -2774,7 +2522,7 @@ pub enum DataFrameShape {
     /// - [`result_to_dataframe`] under [`Auto`](ResultShape::Auto) when
     ///   every row is `Ok`, and always under
     ///   [`Collated`](ResultShape::Collated).
-    Bare(ColumnarDataFrame),
+    Bare(DataFrame),
 
     /// `list(results = <df | sentinel>, error = df)`.
     ///
@@ -2785,7 +2533,7 @@ pub enum DataFrameShape {
         /// The Ok partition.
         results: SplitResults,
         /// The error partition (always present, possibly zero-row).
-        error: ColumnarDataFrame,
+        error: DataFrame,
     },
 
     /// `list(VariantA = df, VariantB = df, …)`.
@@ -2795,7 +2543,7 @@ pub enum DataFrameShape {
     /// [`PerVariantListWithTag`](SplitShape::PerVariantListWithTag) when
     /// the input contains more than one variant. Order matches first-seen
     /// order in the input slice.
-    PerVariantList(Vec<(String, ColumnarDataFrame)>),
+    PerVariantList(Vec<(String, DataFrame)>),
 }
 
 /// Result partition for [`DataFrameShape::Split`].
@@ -2805,7 +2553,7 @@ pub enum DataFrameShape {
 /// zero-row data.frame.
 pub enum SplitResults {
     /// At least one `Ok` row — partition has a concrete data.frame.
-    Some(ColumnarDataFrame),
+    Some(DataFrame),
     /// No `Ok` rows — sentinel SEXP supplied by the caller via
     /// `empty_ok_sentinel`.
     ///
@@ -2938,7 +2686,7 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     tag_field: tag_field.map(str::to_string),
                 })
                 .collect();
-            let df = ColumnarDataFrame::from_rows(&wrapped)?;
+            let df = vec_to_dataframe(&wrapped)?;
             Ok(DataFrameShape::Bare(df))
         }
         SplitShape::PerVariantList | SplitShape::PerVariantListWithTag { .. } => {
@@ -2958,19 +2706,20 @@ pub fn vec_to_dataframe_split<T: Serialize>(
             };
 
             // Build per-partition data.frames. We don't use NamedDataFrameListBuilder
-            // here because we want to return owned ColumnarDataFrames, not a List.
+            // here because we want to return owned DataFrames, not a List.
             // Single-variant short-circuit needs to inspect the count below.
-            let mut partitions: Vec<(String, ColumnarDataFrame)> = Vec::with_capacity(groups.len());
+            let mut partitions: Vec<(String, DataFrame)> = Vec::with_capacity(groups.len());
 
             for (name, indices) in &groups {
                 let is_unit = infos[indices[0]].is_unit;
 
                 let df = if is_unit {
                     let sexp = unit_variant_dataframe(indices.len());
-                    ColumnarDataFrame { sexp }
+                    // SAFETY: `unit_variant_dataframe` returns a well-formed data.frame SEXP.
+                    unsafe { DataFrame::from_built_sexp(sexp) }
                 } else if tag_field.is_some() {
                     let refs: Vec<&T> = indices.iter().map(|&i| &rows[i]).collect();
-                    let df = ColumnarDataFrame::from_rows(&refs)?;
+                    let df = vec_to_dataframe(&refs)?;
                     if let Some(tf) = tag_field {
                         df.drop(tf)
                     } else {
@@ -2979,7 +2728,7 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                 } else {
                     let wrapped: Vec<VariantPayload<&T>> =
                         indices.iter().map(|&i| VariantPayload(&rows[i])).collect();
-                    ColumnarDataFrame::from_rows(&wrapped)?
+                    vec_to_dataframe(&wrapped)?
                 };
 
                 let df = if let Some(col_name) = tag_column.as_deref() {
@@ -3396,7 +3145,7 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 /// Output column order: `<key_column>` first, then `V`'s flattened serde
 /// fields in declaration order. Nested struct flattening, `#[serde(flatten)]`,
 /// and `#[serde(skip_serializing_if)]` all work the same way as in
-/// [`ColumnarDataFrame::from_rows`].
+/// [`vec_to_dataframe`].
 ///
 /// `BTreeMap`'s ordered iteration gives a deterministic row order. For
 /// [`HashMap`](std::collections::HashMap), see [`hashmap_to_dataframe`].
@@ -3425,7 +3174,7 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 pub fn map_to_dataframe<K, V>(
     map: &std::collections::BTreeMap<K, V>,
     key_column: &str,
-) -> Result<ColumnarDataFrame, RSerdeError>
+) -> Result<DataFrame, RSerdeError>
 where
     K: Serialize,
     V: Serialize,
@@ -3438,7 +3187,7 @@ where
             value: v,
         })
         .collect();
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
 }
 
 /// Serialize a [`HashMap`](std::collections::HashMap) to an R data.frame.
@@ -3456,7 +3205,7 @@ where
 pub fn hashmap_to_dataframe<K, V>(
     map: &std::collections::HashMap<K, V>,
     key_column: &str,
-) -> Result<ColumnarDataFrame, RSerdeError>
+) -> Result<DataFrame, RSerdeError>
 where
     K: Serialize + Ord,
     V: Serialize,
@@ -3472,7 +3221,7 @@ where
             value: v,
         })
         .collect();
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
 }
 
 /// Wrapper that serializes a single `(K, V)` map entry as a struct/map
@@ -3581,13 +3330,13 @@ where
             // Union-schema across T and E, with is_error column.
             let wrapped: Vec<CollatedResultRow<'_, T, E>> =
                 rows.iter().map(CollatedResultRow::from).collect();
-            let df = ColumnarDataFrame::from_rows(&wrapped)?;
+            let df = vec_to_dataframe(&wrapped)?;
             Ok(DataFrameShape::Bare(df))
         }
         ResultShape::Auto { empty_ok_sentinel } => {
             let (oks, errs) = partition_results(rows);
             if errs.is_empty() {
-                let df = ColumnarDataFrame::from_rows(&oks)?;
+                let df = vec_to_dataframe(&oks)?;
                 Ok(DataFrameShape::Bare(df))
             } else {
                 build_split(oks, errs, empty_ok_sentinel)
@@ -3622,12 +3371,12 @@ where
     E: Serialize,
     S: crate::IntoR,
 {
-    let error_df = ColumnarDataFrame::from_rows(&errs)?;
+    let error_df = vec_to_dataframe(&errs)?;
     let results = if oks.is_empty() {
         let sentinel = empty_ok_sentinel.into_sexp();
         SplitResults::None(sentinel)
     } else {
-        let df = ColumnarDataFrame::from_rows(&oks)?;
+        let df = vec_to_dataframe(&oks)?;
         SplitResults::Some(df)
     };
     Ok(DataFrameShape::Split {
@@ -3749,7 +3498,7 @@ mod tests {
 
     // endregion
 
-    // region: DataFrameBuilder::with_schema (#693)
+    // region: SerdeRowBuilder::with_schema (#693)
 
     #[derive(Serialize)]
     struct WideRow {
@@ -3762,7 +3511,7 @@ mod tests {
     /// length. First push therefore skips discovery — the schema is fixed.
     #[test]
     fn with_schema_allocates_columns_up_front() {
-        let b = DataFrameBuilder::<WideRow>::with_schema(
+        let b = SerdeRowBuilder::<WideRow>::with_schema(
             [
                 ("a", TypeSpec::Integer),
                 ("b", TypeSpec::Optional(Box::new(TypeSpec::Character))),
@@ -3790,7 +3539,7 @@ mod tests {
     /// allocation in unit tests).
     #[test]
     fn with_schema_optional_first_none_keeps_declared_type() {
-        let mut b = DataFrameBuilder::<WideRow>::with_schema(
+        let mut b = SerdeRowBuilder::<WideRow>::with_schema(
             [
                 ("a", TypeSpec::Integer),
                 ("b", TypeSpec::Optional(Box::new(TypeSpec::Character))),
@@ -3833,7 +3582,7 @@ mod tests {
             One(R1),
             Two(R2),
         }
-        let mut b = DataFrameBuilder::<Either>::new(None);
+        let mut b = SerdeRowBuilder::<Either>::new(None);
         b.push(Either::One(R1 { a: 1 })).expect("first push");
         let err = b
             .push(Either::Two(R2 { a: 2, b: 99 }))
@@ -3854,7 +3603,7 @@ mod tests {
             x: i32,
             extra: i32,
         }
-        let mut b = DataFrameBuilder::<R>::with_schema([("x", TypeSpec::Integer)], None);
+        let mut b = SerdeRowBuilder::<R>::with_schema([("x", TypeSpec::Integer)], None);
         let err = b
             .push(R { x: 1, extra: 9 })
             .expect_err("'extra' not declared");
@@ -3866,7 +3615,7 @@ mod tests {
 
     // endregion
 
-    // region: DataFrameBuilder::grow_schema (#692)
+    // region: SerdeRowBuilder::grow_schema (#692)
 
     /// `grow_schema()` lets a later row introduce a new field. The new
     /// column is back-filled with `self.nrow` NA values so its length
@@ -3874,7 +3623,7 @@ mod tests {
     #[test]
     fn grow_schema_back_fills_na_on_new_field() {
         use std::collections::BTreeMap;
-        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+        let mut b = SerdeRowBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
         let r1: BTreeMap<String, i32> = [("a".to_string(), 1)].into_iter().collect();
         let r2: BTreeMap<String, i32> = [("a".to_string(), 2), ("b".to_string(), 3)]
             .into_iter()
@@ -3901,11 +3650,9 @@ mod tests {
     #[test]
     fn grow_schema_combined_with_with_schema() {
         use std::collections::BTreeMap;
-        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::with_schema(
-            [("a", TypeSpec::Integer)],
-            None,
-        )
-        .grow_schema();
+        let mut b =
+            SerdeRowBuilder::<BTreeMap<String, i32>>::with_schema([("a", TypeSpec::Integer)], None)
+                .grow_schema();
         let r1: BTreeMap<String, i32> = [("a".to_string(), 10)].into_iter().collect();
         let r2: BTreeMap<String, i32> = [("a".to_string(), 20), ("c".to_string(), 99)]
             .into_iter()
@@ -3932,7 +3679,7 @@ mod tests {
     #[test]
     fn grow_schema_noop_when_no_new_fields() {
         use std::collections::BTreeMap;
-        let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+        let mut b = SerdeRowBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
         let r: BTreeMap<String, i32> = [("k".to_string(), 5)].into_iter().collect();
         b.push(r.clone()).unwrap();
         let pre_len = b.schema.as_ref().unwrap().fields.len();
