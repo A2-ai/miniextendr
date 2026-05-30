@@ -500,3 +500,68 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     detach(paste0("package:", pkg_name), character.only = TRUE, unload = TRUE)
   })
 })
+
+# -----------------------------------------------------------------------------
+# Standalone (non-monorepo) end-to-end
+# -----------------------------------------------------------------------------
+
+# Standalone counterpart to the monorepo round-trip above, and the in-suite home
+# for the #757 / #775 regression (it lived as a standalone bash script + bespoke
+# CI job before; see #805). create_miniextendr_package() + miniextendr_build()
+# scaffold a package that sits outside any .git ancestor, so configure
+# auto-vendors and flips into *tarball mode* mid-install. Tarball mode skips the
+# cdylib wrapper-gen pass unless MINIEXTENDR_FORCE_WRAPPER_GEN is set, which
+# miniextendr_build() does (#757). Before that fix the install produced a
+# wrappers-less, empty-namespace package and library() exposed nothing.
+#
+# Unlike the monorepo tests, create_miniextendr_package() takes no local_path, so
+# it scaffolds against miniextendr `main` and this test is network-dependent
+# (vendors via cargo-revendor). Heavy maintainer/nightly check; #805 tracks
+# wiring it into a scheduled CI run rather than the per-PR suite.
+test_that("standalone scaffolding builds in tarball mode and exposes functions", {
+  skip_e2e()
+  skip_if_not(nzchar(Sys.which("cargo-revendor")),
+              "cargo-revendor not available (tarball-mode auto-vendor)")
+
+  pkg_name <- "mxroundtrip"
+  tmp <- tempfile("standalone-e2e-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  pkg_path <- file.path(tmp, pkg_name)
+
+  # Install the throwaway package into a temp library so the dev/CI base library
+  # stays clean: miniextendr_build(install = TRUE) -> devtools::install lands in
+  # .libPaths()[1], and library() below resolves there.
+  templib <- file.path(tmp, "library")
+  dir.create(templib)
+
+  withr::with_libpaths(templib, action = "prefix", {
+    suppressMessages(
+      create_miniextendr_package(pkg_path, open = FALSE, rstudio = FALSE)
+    )
+    suppressMessages(
+      miniextendr_build(pkg_path, install = TRUE)
+    )
+
+    # Wrapper-gen ran and emitted the scaffolded exports (the #757 symptom is an
+    # absent wrappers file).
+    wrappers <- file.path(pkg_path, "R", paste0(pkg_name, "-wrappers.R"))
+    expect_true(file.exists(wrappers),
+                info = "tarball-mode build skipped wrapper-gen (#757 regression)")
+    wrappers_src <- paste(readLines(wrappers, warn = FALSE), collapse = "\n")
+    expect_match(wrappers_src, "add", fixed = TRUE)
+    expect_match(wrappers_src, "hello", fixed = TRUE)
+
+    # NAMESPACE exports them (empty-namespace bug symptom).
+    namespace_src <- paste(readLines(file.path(pkg_path, "NAMESPACE"), warn = FALSE),
+                           collapse = "\n")
+    expect_match(namespace_src, "export(add)", fixed = TRUE)
+    expect_match(namespace_src, "export(hello)", fixed = TRUE)
+
+    # Installed package loads and the functions actually run.
+    library(pkg_name, character.only = TRUE)
+    expect_equal(add(2, 3), 5)
+    expect_equal(hello("loop"), "Hello, loop!")
+    detach(paste0("package:", pkg_name), character.only = TRUE, unload = TRUE)
+  })
+})
