@@ -38,7 +38,17 @@ test_that("run_with_logging reports success for a zero-exit command", {
   rscript <- find_rscript()
   skip_if_not(nzchar(rscript), "Rscript not found on PATH")
 
-  result <- minirextendr:::run_with_logging(rscript, "--version", log_prefix = "test-zero")
+  # Run an *empty* R script: a no-op program that exits 0 on every platform and
+  # R version. `Rscript --version` is not portable here -- on some Linux R
+  # builds it returns a non-zero status, which made this a false negative on CI
+  # (#799). The path is metacharacter-free, mirroring the non-zero sibling
+  # above, since system2() with captured output goes through `sh -c` and does
+  # not shell-quote its arguments.
+  empty <- file.path(tempdir(), "minirextendr-empty-9f3c.R")
+  file.create(empty)
+  on.exit(unlink(empty), add = TRUE)
+
+  result <- minirextendr:::run_with_logging(rscript, empty, log_prefix = "test-zero")
 
   expect_true(result$success)
   expect_null(result$status)
