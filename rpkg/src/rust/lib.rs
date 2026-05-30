@@ -157,6 +157,7 @@ mod convert_pref_tests;
 mod dataframe_derive_alignment_tests;
 mod dataframe_enum_payload_matrix;
 mod dataframe_examples;
+mod dataframe_reader_roundtrip_test;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
 mod dataframe_struct_flatten_test;

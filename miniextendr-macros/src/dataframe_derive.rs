@@ -449,24 +449,32 @@ const READER_SCALAR_NAMES: &[&str] = &[
     "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "String",
 ];
 
+/// True if `ty` is a bare known-scalar ident (no `Option`, no generic args).
+///
+/// These are the element types whose `Vec<Option<ty>>` round-trips through
+/// `TryFromSexp` — required for the *column-expansion* readers, which read each
+/// expanded slot as `Vec<Option<elem>>` (the write side wraps every slot in
+/// `Option`). Allowing `Option<scalar>` here would ask for `Vec<Option<Option<…>>>`,
+/// which has no `TryFromSexp` impl.
+fn is_bare_reader_scalar_ty(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(tp) = ty
+        && tp.qself.is_none()
+        && tp.path.leading_colon.is_none()
+        && let Some(seg) = tp.path.segments.last()
+        && matches!(seg.arguments, syn::PathArguments::None)
+    {
+        return READER_SCALAR_NAMES.contains(&seg.ident.to_string().as_str());
+    }
+    false
+}
+
 /// True if `ty` is a bare known-scalar ident, or `Option<bare-known-scalar>`.
 ///
-/// These are exactly the field types for which the parallel from-R reader can
-/// pull a column out as `Vec<ty>` via `TryFromSexp`.
+/// These are exactly the field types for which the from-R reader can pull a
+/// column out as `Vec<ty>` via `TryFromSexp` (scalar `Single` fields and
+/// `[T; N]` fixed-array elements, neither of which adds an `Option` wrapper).
 fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
-    fn is_bare_scalar(ty: &syn::Type) -> bool {
-        if let syn::Type::Path(tp) = ty
-            && tp.qself.is_none()
-            && tp.path.leading_colon.is_none()
-            && let Some(seg) = tp.path.segments.last()
-            && matches!(seg.arguments, syn::PathArguments::None)
-        {
-            return READER_SCALAR_NAMES.contains(&seg.ident.to_string().as_str());
-        }
-        false
-    }
-
-    if is_bare_scalar(ty) {
+    if is_bare_reader_scalar_ty(ty) {
         return true;
     }
     // Option<scalar>
@@ -476,9 +484,41 @@ fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
         && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
         && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
     {
-        return is_bare_scalar(inner);
+        return is_bare_reader_scalar_ty(inner);
     }
     false
+}
+
+/// True if a resolved struct field can be read back out of an R `data.frame`.
+///
+/// Determines whether the struct gets a generated `try_from_dataframe` reader.
+/// Each shape's reader is the inverse of its column-expansion write rule:
+/// - `Single` scalar: one column read as `Vec<ty>` (excludes `as_list`, opaque
+///   `Map`/collection columns — those classify as `Single` but lack `Vec<_>:
+///   TryFromSexp`).
+/// - `ExpandedFixed` (`[T; N]`): `N` columns regrouped into the array.
+/// - `ExpandedVec` / `AutoExpandVec` (`Vec<T>`): suffixed `Option` columns
+///   flattened back per row (bare-scalar elements only).
+/// - `Struct` (nested `DataFrameRow`): always eligible — the reader routes the
+///   un-prefixed sub-frame through the inner type's `DataFrameRowConvert`, which
+///   degrades to a clear runtime error if the inner shape itself has no reader.
+///
+/// Borrowed expansion origins (`&[T]` / `&[T; N]`) are not readable (owned R data
+/// can't produce a borrow) — flagged via `readable` at resolve time.
+fn field_reader_capable(rf: &ResolvedField) -> bool {
+    match rf {
+        ResolvedField::Single(d) => !d.needs_into_list && is_reader_scalar_ty(&d.ty),
+        ResolvedField::ExpandedFixed(d) => d.readable && is_reader_scalar_ty(&d.elem_ty),
+        ResolvedField::ExpandedVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
+        ResolvedField::AutoExpandVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
+        ResolvedField::Struct(_) => true,
+    }
+}
+
+/// True if `ty` is a borrowed reference (`&[T]`, `&[T; N]`, `&str`, …). Such
+/// expansion fields can't be reconstructed by value in the R→Rust reader.
+fn field_is_borrowed_ref(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Reference(_))
 }
 // endregion
 
@@ -539,6 +579,10 @@ struct ExpandedFixedData {
     len: usize,
     /// Index in tuple struct.
     tuple_index: Option<syn::Index>,
+    /// Whether the field can be reconstructed by value in the R→Rust reader.
+    /// `false` for a borrowed origin (`&[T; N]`) — owned R data can't produce a
+    /// borrow, so the struct gets no reader (see [`field_reader_capable`]).
+    readable: bool,
 }
 
 /// Data for [`ResolvedField::ExpandedVec`].
@@ -553,6 +597,10 @@ struct ExpandedVecData {
     width: usize,
     /// Index in tuple struct.
     tuple_index: Option<syn::Index>,
+    /// Whether the field can be reconstructed by value in the R→Rust reader.
+    /// `false` for a borrowed origin (`&[T]`); `Vec<T>` / `Box<[T]>` are readable
+    /// (the reader collects a `Vec<T>` and `.into()`-converts to the field type).
+    readable: bool,
 }
 
 /// Data for [`ResolvedField::Struct`].
@@ -589,6 +637,9 @@ struct AutoExpandVecData {
     container_ty: syn::Type,
     /// Index in tuple struct.
     tuple_index: Option<syn::Index>,
+    /// Whether the field can be reconstructed by value in the R→Rust reader.
+    /// `false` for a borrowed origin (`&[T]`); `Vec<T>` / `Box<[T]>` are readable.
+    readable: bool,
 }
 
 /// Resolve a struct field into a [`ResolvedField`], applying field attributes.
@@ -670,6 +721,7 @@ fn resolve_struct_field(
                 elem_ty: elem_ty.clone(),
                 len,
                 tuple_index,
+                readable: !field_is_borrowed_ref(ty),
             }),
         ))),
         FieldTypeKind::VariableVec(elem_ty)
@@ -683,6 +735,7 @@ fn resolve_struct_field(
                         elem_ty: elem_ty.clone(),
                         width,
                         tuple_index,
+                        readable: !field_is_borrowed_ref(ty),
                     },
                 ))))
             } else if field_attrs.expand {
@@ -694,6 +747,7 @@ fn resolve_struct_field(
                         elem_ty: elem_ty.clone(),
                         container_ty: ty.clone(),
                         tuple_index,
+                        readable: !field_is_borrowed_ref(ty),
                     },
                 ))))
             } else {
@@ -1922,65 +1976,67 @@ fn derive_struct_dataframe(
     };
     // endregion
 
-    // region: from-R readers (try_from_dataframe / try_from_dataframe_par, #738)
+    // region: from-R readers (try_from_dataframe / try_from_dataframe_par, #738/#782)
     //
     // Read an R `data.frame` SEXP directly into `Vec<Self>` without first
-    // materialising a companion `#df_name`. Only the simple scalar shape is
-    // supported here: a named struct whose every field is `ResolvedField::Single`
-    // with `!needs_into_list`, no `#[dataframe(tag)]`, and no `#[dataframe(skip)]`
-    // fields. Expansion / struct-flatten / as_list / tag / skip shapes fall back
-    // to the column-oriented `from_dataframe(companion)` path (no parallel reader
-    // is generated for them — tracked in the follow-up issue referenced in the PR).
+    // materialising a companion `#df_name`. A reader is generated for every
+    // *named* struct whose fields are all reader-capable (see
+    // `field_reader_capable`): scalar `Single` fields, column-expansion fields
+    // (`[T; N]` / `Vec<T>` + `width`/`expand`), and struct-flatten fields (nested
+    // `DataFrameRow`). Each shape's reader is the exact inverse of its write rule
+    // — regroup the suffixed expansion columns, un-prefix and recurse into the
+    // nested reader. `tag` / `skip` / `as_list` / opaque-`Map` / tuple / unit
+    // shapes are not reader-capable and fall through to the trait default (a clear
+    // runtime `DataFrameError`); enum readers are tracked separately (#782 PR 2).
     //
     // The parallel variant (`#[cfg(feature = "rayon")]`) splits cleanly along the
-    // R-thread boundary:
-    //   1. On the R/worker thread, each column is pulled out of the data.frame as
-    //      an owned `Vec<FieldTy>` via `DataFrame::column`. This MATERIALISES
-    //      any ALTREP column (the conversion iterates every element), so no
-    //      un-materialised ALTREP and no SEXP reaches the rayon region.
-    //   2. Off-thread, `(0..nrow).into_par_iter()` assembles each `Self` from the
-    //      pre-extracted, owned column vecs by index — pure Rust, zero R API calls.
-    // Only true single-column scalar fields (i32 / f64 / bool / String /
-    // Option<scalar> / …) are read here — these are exactly the field types whose
-    // companion `Vec<FieldTy>` round-trips through `TryFromSexp`. List-column /
-    // expansion / map / struct field types (`Box<[T]>`, `[T; N]`, `HashMap`, …)
-    // resolve as `Single` too but do NOT implement `Vec<_>: TryFromSexp`, so they
-    // are excluded by the `classify_field_type(...) == Scalar` check below and fall
-    // back to the column-oriented `from_dataframe(companion)` reader.
-    let simple_scalar_reader = can_iterate
+    // R-thread boundary: all SEXP access (column extraction, ALTREP
+    // materialisation, sub-frame selection + recursive nested reads) happens up
+    // front on the R/worker thread; only then does `(0..nrow).into_par_iter()`
+    // assemble each `Self` from the pre-extracted, owned column data by index —
+    // pure Rust, zero R API calls. Shapes containing a struct-flatten field would
+    // need `Inner: Clone` for by-index parallel assembly, so their `_par` reader
+    // delegates to the sequential one (which moves) rather than imposing `Clone`.
+    let struct_reader = !is_tuple_struct
+        && !is_unit_struct
         && !has_tag
         && skipped_fields.is_empty()
-        && resolved.iter().all(|rf| match rf {
-            ResolvedField::Single(d) => !d.needs_into_list && is_reader_scalar_ty(&d.ty),
-            _ => false,
-        });
+        && !resolved.is_empty()
+        && resolved.iter().all(field_reader_capable);
 
-    let reader_methods = if simple_scalar_reader {
-        // Per-field column extraction + row-assembly fragments.
-        let mut col_extract: Vec<TokenStream> = Vec::new();
-        let mut row_build_seq: Vec<TokenStream> = Vec::new();
-        let mut row_build_par: Vec<TokenStream> = Vec::new();
-        for rf in &resolved {
-            let ResolvedField::Single(data) = rf else {
-                unreachable!("simple_scalar_reader guard ensures all fields are Single");
-            };
-            let rust_name = &data.rust_name;
-            let col_var = format_ident!("__col_{}", data.rust_name);
-            let col_name_str = &data.col_name_str;
-            let field_ty = &data.ty;
-            // Pull the named column's raw SEXP, then convert the whole column to an
-            // owned `Vec<FieldTy>` via the field type's own `TryFromSexp`. This
-            // copies out of R (NA-aware) and MATERIALISES any ALTREP column (the
-            // conversion visits every element) — all on the R/worker thread, before
-            // the parallel region. We bypass `DataFrame::column` because its
-            // bound (`Error = SexpError`) is tighter than the scalar element types'
-            // `TryFromSexp::Error` (`SexpTypeError`).
-            col_extract.push(quote! {
-                let #col_var: Vec<#field_ty> = {
+    let has_autoexpand_field = resolved
+        .iter()
+        .any(|rf| matches!(rf, ResolvedField::AutoExpandVec(_)));
+    let has_struct_field = resolved
+        .iter()
+        .any(|rf| matches!(rf, ResolvedField::Struct(_)));
+
+    let reader_methods = if struct_reader {
+        // Per-field fragments:
+        //   extracts   — prelude statements (R-thread): pull/convert columns, run
+        //                length checks, materialise nested sub-frames.
+        //   seq_decls  — draining-iterator decls for the sequential row loop.
+        //   seq_builds — `field: expr` in the sequential `Self { … }` literal
+        //                (drains moved columns; indexes only `AutoExpandVec`).
+        //   par_builds — `field: expr` in the parallel `Self { … }` literal
+        //                (by-index `.clone()`; scalars only — never reached when
+        //                a struct-flatten field is present).
+        let mut extracts: Vec<TokenStream> = Vec::new();
+        let mut seq_decls: Vec<TokenStream> = Vec::new();
+        let mut seq_builds: Vec<TokenStream> = Vec::new();
+        let mut par_builds: Vec<TokenStream> = Vec::new();
+
+        // Pull a named column out of R as an owned `Vec<#elem>` via `TryFromSexp`
+        // (NA-aware, ALTREP-materialising), then length-check it against `__nrow`.
+        // Bypasses `DataFrame::column` because its `Error = SexpError` bound is
+        // tighter than the scalar element types' `TryFromSexp::Error`.
+        let pull_col = |col_var: &syn::Ident, col_name_str: &str, elem_ty: &syn::Type| {
+            quote! {
+                let #col_var: Vec<#elem_ty> = {
                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
-                    <Vec<#field_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                    <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
                         .map_err(|e| ::std::format!(
                             "column `{}` could not be converted to the expected type: {}",
                             #col_name_str, e
@@ -1992,35 +2048,222 @@ fn derive_struct_dataframe(
                         #col_name_str, #col_var.len(), __nrow
                     ));
                 }
-            });
-            // Sequential: move each element out of the owned column vec by draining.
-            row_build_seq.push(quote! { #rust_name: #col_var.next().unwrap() });
-            // Parallel: index by row, cloning the scalar out of the owned column.
-            row_build_par.push(quote! { #rust_name: #col_var[__i].clone() });
+            }
+        };
+
+        for rf in &resolved {
+            match rf {
+                ResolvedField::Single(data) => {
+                    let rust_name = &data.rust_name;
+                    let col_var = format_ident!("__col_{}", rust_name);
+                    let it_var = format_ident!("__it_{}", rust_name);
+                    extracts.push(pull_col(&col_var, &data.col_name_str, &data.ty));
+                    seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
+                    seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
+                    par_builds.push(quote! { #rust_name: #col_var[__i].clone() });
+                }
+                // `[T; N]` → columns `base_1..base_N`, each a plain `Vec<elem>`.
+                // Regroup into the fixed array per row.
+                ResolvedField::ExpandedFixed(data) => {
+                    let rust_name = &data.rust_name;
+                    let elem_ty = &data.elem_ty;
+                    let mut it_nexts: Vec<TokenStream> = Vec::new();
+                    let mut idx_clones: Vec<TokenStream> = Vec::new();
+                    for k in 1..=data.len {
+                        let col_var = format_ident!("__ef_{}_{}", rust_name, k);
+                        let it_var = format_ident!("__efit_{}_{}", rust_name, k);
+                        let col_name_str = format!("{}_{}", data.base_name, k);
+                        extracts.push(pull_col(&col_var, &col_name_str, elem_ty));
+                        seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
+                        it_nexts.push(quote! { #it_var.next().unwrap() });
+                        idx_clones.push(quote! { #col_var[__i].clone() });
+                    }
+                    seq_builds.push(quote! { #rust_name: [ #(#it_nexts),* ] });
+                    par_builds.push(quote! { #rust_name: [ #(#idx_clones),* ] });
+                }
+                // `Vec<T>` + `width = N` → columns `base_1..base_N`, each
+                // `Vec<Option<elem>>`. Flatten the N optionals per row back into a
+                // `Vec<elem>` (trailing-NA padding from the write side drops out).
+                ResolvedField::ExpandedVec(data) => {
+                    let rust_name = &data.rust_name;
+                    let elem_ty = &data.elem_ty;
+                    let opt_ty: syn::Type = syn::parse_quote!(::core::option::Option<#elem_ty>);
+                    let mut it_nexts: Vec<TokenStream> = Vec::new();
+                    let mut idx_clones: Vec<TokenStream> = Vec::new();
+                    for k in 1..=data.width {
+                        let col_var = format_ident!("__ev_{}_{}", rust_name, k);
+                        let it_var = format_ident!("__evit_{}_{}", rust_name, k);
+                        let col_name_str = format!("{}_{}", data.base_name, k);
+                        extracts.push(pull_col(&col_var, &col_name_str, &opt_ty));
+                        seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
+                        it_nexts.push(quote! { #it_var.next().unwrap() });
+                        idx_clones.push(quote! { #col_var[__i].clone() });
+                    }
+                    // `.into()` converts the collected `Vec<elem>` to the field's
+                    // own container type (`Vec<T>` identity or `Box<[T]>`).
+                    seq_builds.push(quote! {
+                        #rust_name: [ #(#it_nexts),* ]
+                            .into_iter().flatten().collect::<Vec<#elem_ty>>().into()
+                    });
+                    par_builds.push(quote! {
+                        #rust_name: [ #(#idx_clones),* ]
+                            .into_iter().flatten().collect::<Vec<#elem_ty>>().into()
+                    });
+                }
+                // `Vec<T>`/`Box<[T]>` + `expand` → a runtime-determined number of
+                // columns `name_1..name_k`, each `Vec<Option<elem>>`. Discover them
+                // by walking `name_<i>` until the first gap, then flatten per row.
+                ResolvedField::AutoExpandVec(data) => {
+                    let rust_name = &data.rust_name;
+                    let elem_ty = &data.elem_ty;
+                    let cols_var = format_ident!("__aev_{}", rust_name);
+                    let col_name_str = &data.col_name_str;
+                    extracts.push(quote! {
+                        let #cols_var: Vec<Vec<::core::option::Option<#elem_ty>>> = {
+                            let mut __cols: Vec<Vec<::core::option::Option<#elem_ty>>> =
+                                ::std::vec::Vec::new();
+                            let mut __k: usize = 1;
+                            loop {
+                                let __cn = ::std::format!("{}_{}", #col_name_str, __k);
+                                match __view.column_raw(&__cn) {
+                                    ::core::option::Option::Some(__s) => {
+                                        let __c: Vec<::core::option::Option<#elem_ty>> =
+                                            <Vec<::core::option::Option<#elem_ty>> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
+                                                .map_err(|e| ::std::format!(
+                                                    "column `{}` could not be converted to the expected type: {}",
+                                                    __cn, e
+                                                ))?;
+                                        if __c.len() != __nrow {
+                                            return ::core::result::Result::Err(::std::format!(
+                                                "column `{}` has length {} but data.frame has {} rows",
+                                                __cn, __c.len(), __nrow
+                                            ));
+                                        }
+                                        __cols.push(__c);
+                                        __k += 1;
+                                    }
+                                    ::core::option::Option::None => break,
+                                }
+                            }
+                            __cols
+                        };
+                    });
+                    // Both seq and par index by row (`__i`): the columns are a
+                    // `Vec<Vec<…>>`, so there is nothing to drain field-wise.
+                    let build = quote! {
+                        #rust_name: #cols_var
+                            .iter()
+                            .filter_map(|__c| __c[__i].clone())
+                            .collect::<Vec<#elem_ty>>()
+                            .into()
+                    };
+                    seq_builds.push(build.clone());
+                    par_builds.push(build);
+                }
+                // Nested `DataFrameRow` (#485): the inner type's columns were
+                // written under a `<base>_` prefix. Select those parent columns,
+                // strip the prefix into a fresh sub-frame, and recurse through the
+                // inner type's `DataFrameRowConvert` reader. Routing through the
+                // trait (rather than `Inner::try_from_dataframe`) keeps this
+                // compiling even when the inner shape has no reader — it degrades
+                // to a clear runtime error instead.
+                ResolvedField::Struct(data) => {
+                    let rust_name = &data.rust_name;
+                    let inner_ty = &data.inner_ty;
+                    let vec_var = format_ident!("__sf_{}", rust_name);
+                    let it_var = format_ident!("__sfit_{}", rust_name);
+                    let base = &data.col_name_str;
+                    let prefix_lit = format!("{}_", data.col_name_str);
+                    extracts.push(quote! {
+                        let #vec_var: Vec<#inner_ty> = {
+                            let __prefix: &str = #prefix_lit;
+                            let __names = __view.names();
+                            let __sel: Vec<&str> = __names
+                                .iter()
+                                .filter(|__n| __n.starts_with(__prefix))
+                                .map(|__n| __n.as_str())
+                                .collect();
+                            if __sel.is_empty() {
+                                return ::core::result::Result::Err(::std::format!(
+                                    "struct column `{}`: no columns with prefix `{}` found in the data.frame",
+                                    #base, __prefix
+                                ));
+                            }
+                            // `select` builds a fresh list (shared column SEXPs, a
+                            // fresh names vector); protect it across the CHARSXP
+                            // allocations in `strip_prefix` and the recursive read.
+                            let __sub_df = __view.select(&__sel);
+                            let __guard = unsafe {
+                                ::miniextendr_api::OwnedProtect::new(__sub_df.as_sexp())
+                            };
+                            let __sub = ::miniextendr_api::dataframe::DataFrame::from_sexp(__guard.get())
+                                .map_err(|e| e.to_string())?
+                                .strip_prefix(__prefix);
+                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub) {
+                                ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
+                                ::core::option::Option::Some(::core::result::Result::Err(__e)) => {
+                                    return ::core::result::Result::Err(::std::format!(
+                                        "struct column `{}`: {}", #base, __e
+                                    ));
+                                }
+                                ::core::option::Option::None => {
+                                    return ::core::result::Result::Err(::std::format!(
+                                        "struct column `{}`: nested type has no data.frame reader", #base
+                                    ));
+                                }
+                            };
+                            drop(__guard);
+                            __out
+                        };
+                        if #vec_var.len() != __nrow {
+                            return ::core::result::Result::Err(::std::format!(
+                                "struct column `{}` produced {} rows but data.frame has {} rows",
+                                #base, #vec_var.len(), __nrow
+                            ));
+                        }
+                    });
+                    seq_decls.push(quote! { let mut #it_var = #vec_var.into_iter(); });
+                    seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
+                    par_builds.push(quote! { #rust_name: #vec_var[__i].clone() });
+                }
+            }
         }
 
-        let par_col_idents: Vec<syn::Ident> = resolved
-            .iter()
-            .map(|rf| {
-                let ResolvedField::Single(data) = rf else {
-                    unreachable!();
-                };
-                format_ident!("__col_{}", data.rust_name)
-            })
-            .collect();
+        // Only `AutoExpandVec` builds reference `__i` in the sequential loop; bind
+        // the counter only then to avoid an `unused_variables` warning.
+        let seq_counter = if has_autoexpand_field {
+            quote! { __i }
+        } else {
+            quote! { _ }
+        };
 
-        let seq_drain_decls: Vec<TokenStream> = par_col_idents
-            .iter()
-            .map(|id| quote! { let mut #id = #id.into_iter(); })
-            .collect();
+        // A struct-flatten field would need `Inner: Clone` for by-index parallel
+        // assembly. Rather than impose that, the parallel reader delegates to the
+        // sequential one (which moves) whenever a struct field is present.
+        let par_body = if has_struct_field {
+            quote! { Self::try_from_dataframe(sexp) }
+        } else {
+            quote! {
+                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
+                    .map_err(|e| e.to_string())?;
+                let __nrow = __view.nrow();
+                #(#extracts)*
+                let __rows: Vec<Self> = (0..__nrow)
+                    .into_par_iter()
+                    .map(|__i| Self { #(#par_builds),* })
+                    .collect();
+                ::core::result::Result::Ok(__rows)
+            }
+        };
 
         quote! {
             /// Read an R `data.frame` directly into a `Vec<Self>` (sequential).
             ///
             /// Each column is materialised out of R (NA-aware, ALTREP-materialising)
             /// and the rows are assembled by transposing column-major into row-major.
-            ///
-            /// Only available for simple scalar-field structs. Returns `Err` with a
+            /// Column-expansion fields are regrouped and nested-struct fields are
+            /// read from their `<field>_`-prefixed sub-frame. Returns `Err` with a
             /// descriptive message if a column is missing, mis-typed, or ragged.
             pub fn try_from_dataframe(
                 sexp: ::miniextendr_api::SEXP,
@@ -2028,11 +2271,11 @@ fn derive_struct_dataframe(
                 let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| e.to_string())?;
                 let __nrow = __view.nrow();
-                #(#col_extract)*
-                #(#seq_drain_decls)*
+                #(#extracts)*
+                #(#seq_decls)*
                 let mut __rows: Vec<Self> = Vec::with_capacity(__nrow);
-                for _ in 0..__nrow {
-                    __rows.push(Self { #(#row_build_seq),* });
+                for #seq_counter in 0..__nrow {
+                    __rows.push(Self { #(#seq_builds),* });
                 }
                 ::core::result::Result::Ok(__rows)
             }
@@ -2041,24 +2284,14 @@ fn derive_struct_dataframe(
             ///
             /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R
             /// thread via rayon. Safety: all SEXP access (column extraction, ALTREP
-            /// materialisation) happens up front on the R/worker thread; the
-            /// `into_par_iter()` region touches only pre-extracted owned column vecs
-            /// and makes no R API calls.
+            /// materialisation, nested sub-frame reads) happens up front on the
+            /// R/worker thread; the `into_par_iter()` region touches only
+            /// pre-extracted owned data and makes no R API calls.
             #[cfg(feature = "rayon")]
             pub fn try_from_dataframe_par(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
-                    .map_err(|e| e.to_string())?;
-                let __nrow = __view.nrow();
-                #(#col_extract)*
-                // Pure-Rust parallel row assembly: no SEXP, no R API calls.
-                let __rows: Vec<Self> = (0..__nrow)
-                    .into_par_iter()
-                    .map(|__i| Self { #(#row_build_par),* })
-                    .collect();
-                ::core::result::Result::Ok(__rows)
+                #par_body
             }
         }
     } else {
@@ -2189,10 +2422,11 @@ fn derive_struct_dataframe(
         quote! { Self::rows_into_dataframe(rows) }
     };
 
-    // Readers are overridden only for the simple scalar shape that has an R→Rust reader
-    // (`try_from_dataframe`). Other shapes use the trait default (`None`), surfaced by the
-    // blanket as a clear `DataFrameError`.
-    let reader_overrides = if simple_scalar_reader {
+    // Readers are overridden for every reader-capable struct shape (scalar,
+    // column-expansion, struct-flatten — see `struct_reader` / `try_from_dataframe`).
+    // Other shapes use the trait default (`None`), surfaced by the blanket as a
+    // clear `DataFrameError`.
+    let reader_overrides = if struct_reader {
         quote! {
             fn rows_from_dataframe(
                 df: &::miniextendr_api::dataframe::DataFrame,
