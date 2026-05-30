@@ -27,7 +27,7 @@
 
 #![allow(dead_code)]
 
-use miniextendr_api::convert::ToDataFrame;
+use miniextendr_api::{DataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // region: Inner types
@@ -204,16 +204,18 @@ pub struct QualLocated {
 // region: #[miniextendr] entrypoints — one per case + multi-row variants
 
 #[miniextendr]
-pub fn flat_basic_1row() -> ToDataFrame<FlatLocatedDataFrame> {
-    ToDataFrame(FlatLocated::to_dataframe(vec![FlatLocated {
+pub fn flat_basic_1row() -> DataFrame {
+    vec![FlatLocated {
         id: 1,
         origin: FlatPoint { x: 1.0, y: 2.0 },
-    }]))
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_basic_nrow() -> ToDataFrame<FlatLocatedDataFrame> {
-    ToDataFrame(FlatLocated::to_dataframe(vec![
+pub fn flat_basic_nrow() -> DataFrame {
+    vec![
         FlatLocated {
             id: 1,
             origin: FlatPoint { x: 1.0, y: 2.0 },
@@ -226,17 +228,19 @@ pub fn flat_basic_nrow() -> ToDataFrame<FlatLocatedDataFrame> {
             id: 3,
             origin: FlatPoint { x: 5.0, y: 6.0 },
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_basic_zero_rows() -> ToDataFrame<FlatLocatedDataFrame> {
-    ToDataFrame(FlatLocated::to_dataframe(vec![]))
+pub fn flat_basic_zero_rows() -> DataFrame {
+    Vec::<FlatLocated>::new().into_dataframe().unwrap()
 }
 
 #[miniextendr]
-pub fn flat_two_struct_fields() -> ToDataFrame<FlatSegmentDataFrame> {
-    ToDataFrame(FlatSegment::to_dataframe(vec![
+pub fn flat_two_struct_fields() -> DataFrame {
+    vec![
         FlatSegment {
             id: 10,
             a: FlatPoint { x: 1.0, y: 2.0 },
@@ -247,12 +251,14 @@ pub fn flat_two_struct_fields() -> ToDataFrame<FlatSegmentDataFrame> {
             a: FlatPoint { x: 5.0, y: 6.0 },
             b: FlatPoint { x: 7.0, y: 8.0 },
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_mixed_inner_types() -> ToDataFrame<FlatTaggedDataFrame> {
-    ToDataFrame(FlatTagged::to_dataframe(vec![
+pub fn flat_mixed_inner_types() -> DataFrame {
+    vec![
         FlatTagged {
             id: 1,
             owner: FlatPerson {
@@ -267,20 +273,24 @@ pub fn flat_mixed_inner_types() -> ToDataFrame<FlatTaggedDataFrame> {
                 age: 50,
             },
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_renamed_inner() -> ToDataFrame<FlatRenamedDataFrame> {
-    ToDataFrame(FlatRenamed::to_dataframe(vec![FlatRenamed {
+pub fn flat_renamed_inner() -> DataFrame {
+    vec![FlatRenamed {
         id: 1,
         origin: FlatPoint { x: 1.0, y: 2.0 },
-    }]))
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_skip_inner() -> ToDataFrame<FlatSkipDataFrame> {
-    ToDataFrame(FlatSkip::to_dataframe(vec![
+pub fn flat_skip_inner() -> DataFrame {
+    vec![
         FlatSkip {
             id: 1,
             origin: FlatPoint { x: 1.0, y: 2.0 },
@@ -289,12 +299,14 @@ pub fn flat_skip_inner() -> ToDataFrame<FlatSkipDataFrame> {
             id: 2,
             origin: FlatPoint { x: 3.0, y: 4.0 },
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_as_list_inner() -> ToDataFrame<FlatAsListDataFrame> {
-    ToDataFrame(FlatAsList::to_dataframe(vec![
+pub fn flat_as_list_inner() -> DataFrame {
+    vec![
         FlatAsList {
             id: 1,
             origin: FlatPoint { x: 1.0, y: 2.0 },
@@ -303,12 +315,14 @@ pub fn flat_as_list_inner() -> ToDataFrame<FlatAsListDataFrame> {
             id: 2,
             origin: FlatPoint { x: 3.0, y: 4.0 },
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_mixed_order() -> ToDataFrame<FlatMixedOrderDataFrame> {
-    ToDataFrame(FlatMixedOrder::to_dataframe(vec![
+pub fn flat_mixed_order() -> DataFrame {
+    vec![
         FlatMixedOrder {
             id: 1,
             p: FlatPoint { x: 1.0, y: 2.0 },
@@ -319,20 +333,24 @@ pub fn flat_mixed_order() -> ToDataFrame<FlatMixedOrderDataFrame> {
             p: FlatPoint { x: 3.0, y: 4.0 },
             label: "second".to_string(),
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_tuple_struct() -> ToDataFrame<FlatPairDataFrame> {
-    ToDataFrame(FlatPair::to_dataframe(vec![
+pub fn flat_tuple_struct() -> DataFrame {
+    vec![
         FlatPair(FlatPoint { x: 1.0, y: 2.0 }, FlatPoint { x: 3.0, y: 4.0 }),
         FlatPair(FlatPoint { x: 5.0, y: 6.0 }, FlatPoint { x: 7.0, y: 8.0 }),
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
-pub fn flat_nested_struct() -> ToDataFrame<FlatNestedDataFrame> {
-    ToDataFrame(FlatNested::to_dataframe(vec![
+pub fn flat_nested_struct() -> DataFrame {
+    vec![
         FlatNested {
             id: 1,
             inner: FlatInner {
@@ -347,17 +365,21 @@ pub fn flat_nested_struct() -> ToDataFrame<FlatNestedDataFrame> {
                 sub: FlatSubInner { depth: 200.0 },
             },
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// Multi-segment-path field: `geom::QualPoint` (fix for issue #514).
 /// Returns a 1-row data.frame with columns `id`, `pos_qx`, `pos_qy`.
 #[miniextendr]
-pub fn qual_located_basic() -> ToDataFrame<QualLocatedDataFrame> {
-    ToDataFrame(QualLocated::to_dataframe(vec![QualLocated {
+pub fn qual_located_basic() -> DataFrame {
+    vec![QualLocated {
         id: 42,
         origin: geom::QualPoint { qx: 1.5, qy: 2.5 },
-    }]))
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion
@@ -496,8 +518,8 @@ const _: () = {
 /// Expected columns: `id`, `origin_x`, `origin_y`.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_basic_par() -> ToDataFrame<FlatLocatedDataFrame> {
-    ToDataFrame(FlatLocatedDataFrame::from_rows_par(vec![
+pub fn flat_basic_par() -> DataFrame {
+    vec![
         FlatLocated {
             id: 1,
             origin: FlatPoint { x: 1.0, y: 2.0 },
@@ -510,15 +532,17 @@ pub fn flat_basic_par() -> ToDataFrame<FlatLocatedDataFrame> {
             id: 3,
             origin: FlatPoint { x: 5.0, y: 6.0 },
         },
-    ]))
+    ]
+    .into_dataframe_par()
+    .unwrap()
 }
 
 /// `from_rows_par` for the two-struct-fields case (FlatSegment).
 /// Expected columns: `id`, `a_x`, `a_y`, `b_x`, `b_y`.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_two_struct_fields_par() -> ToDataFrame<FlatSegmentDataFrame> {
-    ToDataFrame(FlatSegmentDataFrame::from_rows_par(vec![
+pub fn flat_two_struct_fields_par() -> DataFrame {
+    vec![
         FlatSegment {
             id: 10,
             a: FlatPoint { x: 1.0, y: 2.0 },
@@ -529,15 +553,17 @@ pub fn flat_two_struct_fields_par() -> ToDataFrame<FlatSegmentDataFrame> {
             a: FlatPoint { x: 5.0, y: 6.0 },
             b: FlatPoint { x: 7.0, y: 8.0 },
         },
-    ]))
+    ]
+    .into_dataframe_par()
+    .unwrap()
 }
 
 /// `from_rows_par` for the `as_list` opt-out case (FlatAsList).
 /// Expected columns: `id`, `origin` (list column).
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_as_list_par() -> ToDataFrame<FlatAsListDataFrame> {
-    ToDataFrame(FlatAsListDataFrame::from_rows_par(vec![
+pub fn flat_as_list_par() -> DataFrame {
+    vec![
         FlatAsList {
             id: 1,
             origin: FlatPoint { x: 1.0, y: 2.0 },
@@ -546,15 +572,17 @@ pub fn flat_as_list_par() -> ToDataFrame<FlatAsListDataFrame> {
             id: 2,
             origin: FlatPoint { x: 3.0, y: 4.0 },
         },
-    ]))
+    ]
+    .into_dataframe_par()
+    .unwrap()
 }
 
 /// `from_rows_par` for the nested struct-in-struct case (FlatNested).
 /// Expected columns: `id`, `inner_a`, `inner_sub_depth`.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_nested_par() -> ToDataFrame<FlatNestedDataFrame> {
-    ToDataFrame(FlatNestedDataFrame::from_rows_par(vec![
+pub fn flat_nested_par() -> DataFrame {
+    vec![
         FlatNested {
             id: 1,
             inner: FlatInner {
@@ -569,7 +597,9 @@ pub fn flat_nested_par() -> ToDataFrame<FlatNestedDataFrame> {
                 sub: FlatSubInner { depth: 200.0 },
             },
         },
-    ]))
+    ]
+    .into_dataframe_par()
+    .unwrap()
 }
 
 // endregion

@@ -57,7 +57,7 @@
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::dataframe::DataFrameView;
+use crate::dataframe::DataFrame;
 use crate::from_r::charsxp_to_str;
 use crate::{OwnedProtect, SEXP, SEXPTYPE, SexpExt};
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
@@ -108,7 +108,7 @@ where
     // `gctorture(TRUE)`), which would otherwise reclaim the input and its `names`
     // STRSXP and recycle the slot. See reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md.
     let _input = unsafe { OwnedProtect::new(sexp) };
-    let view = DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
+    let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
     deserialize_rows(&view)
 }
 
@@ -147,7 +147,7 @@ where
     }
     // Root the input across deserialisation — see [`dataframe_to_vec`].
     let _input = unsafe { OwnedProtect::new(sexp) };
-    let view = DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
+    let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
     let rows: Vec<T> = deserialize_rows(&view)?;
     Ok(f(&rows))
 }
@@ -193,7 +193,7 @@ pub type BorrowedRows<'a, T> = crate::Protected<'a, Vec<T>>;
 /// `T: for<'b> serde::Deserialize<'b>` is equivalent to `DeserializeOwned`
 /// today, so character fields materialise as `String` (no zero-copy yet).
 /// The `'a` lifetime ties the protect entry to the returned handle; future
-/// work threading `'a` through [`DataFrameView`](crate::dataframe::DataFrameView)
+/// work threading `'a` through [`DataFrame`](crate::dataframe::DataFrame)
 /// would enable true zero-copy `T = Borrowed<'a> { name: &'a str }` — see
 /// the issue thread on #671 for the design discussion.
 ///
@@ -209,13 +209,12 @@ where
         // guard drops at the end of the block, before `Protected::new` re-protects
         // `sexp` for the returned handle (keeps the `UNPROTECT(1)` order correct).
         let _input = unsafe { OwnedProtect::new(sexp) };
-        let view =
-            DataFrameView::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
+        let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
         deserialize_rows(&view)?
     };
     // SAFETY:
     // - Caller is on the R main thread (entry via #[miniextendr] wrapper).
-    // - `sexp` is a valid SEXP — DataFrameView::from_sexp validated it for
+    // - `sexp` is a valid SEXP — DataFrame::from_sexp validated it for
     //   the non-empty path; the empty short-circuit checked is_data_frame +
     //   xlength == 0.
     // - `rows` carries no SEXP-internal borrows under the `for<'b>` bound
@@ -278,7 +277,7 @@ impl<T> SerdeRows<T> {
 
 // region: empty-df short-circuit
 
-/// Detect a 0-row 0-column data.frame for which `DataFrameView::from_sexp`
+/// Detect a 0-row 0-column data.frame for which `DataFrame::from_sexp`
 /// would error on the missing names attribute.
 ///
 /// `vec_to_dataframe(&[])` returns such a value (a VECSXP of length 0 with
@@ -295,13 +294,13 @@ fn is_empty_dataframe(sexp: SEXP) -> bool {
 
 /// Row deserializer.
 ///
-/// The lifetime `'sexp` ties cell deserializers to `DataFrameView`'s borrow of
+/// The lifetime `'sexp` ties cell deserializers to `DataFrame`'s borrow of
 /// the source SEXP. The `impl<'de> Deserializer<'de> for RowDeserializer<'de>`
 /// constrains `'de = 'sexp` so visitors that want `&'de str` see a borrow
 /// rooted in the SEXP's CHARSXP cache; `String`-wanting visitors fall back
 /// through serde's default `visit_borrowed_str → visit_str`.
 struct RowDeserializer<'sexp> {
-    view: &'sexp DataFrameView,
+    view: &'sexp DataFrame,
     row: usize,
     /// Ordered list of column names from the SEXP's `names` attribute.
     /// Shared across the top-level row and every nested `RowMapAccess` so
@@ -310,7 +309,7 @@ struct RowDeserializer<'sexp> {
 }
 
 impl<'sexp> RowDeserializer<'sexp> {
-    fn new(view: &'sexp DataFrameView, row: usize) -> Self {
+    fn new(view: &'sexp DataFrame, row: usize) -> Self {
         let column_names = ordered_column_names(view);
         Self {
             view,
@@ -361,10 +360,10 @@ impl<'de> Deserializer<'de> for RowDeserializer<'de> {
 
 /// Collect the data.frame's column names in *file* (i.e., R-side) order.
 ///
-/// `DataFrameView::names()` is HashMap-backed and unordered, but nested
+/// `DataFrame::names()` is HashMap-backed and unordered, but nested
 /// prefix matching needs deterministic enumeration that matches what
 /// `vec_to_dataframe`'s columnar serializer emits.
-fn ordered_column_names(view: &DataFrameView) -> std::rc::Rc<[String]> {
+fn ordered_column_names(view: &DataFrame) -> std::rc::Rc<[String]> {
     let list = view.as_list();
     let Some(names_sexp) = list.names() else {
         return std::rc::Rc::from(Vec::<String>::new().into_boxed_slice());
@@ -397,7 +396,7 @@ fn ordered_column_names(view: &DataFrameView) -> std::rc::Rc<[String]> {
 /// `deserialize_*` decides whether to read a scalar cell or recurse via
 /// [`MaybeNestedDeserializer`].
 struct RowMapAccess<'sexp> {
-    view: &'sexp DataFrameView,
+    view: &'sexp DataFrame,
     row: usize,
     column_names: std::rc::Rc<[String]>,
     prefix: String,
@@ -409,7 +408,7 @@ struct RowMapAccess<'sexp> {
 
 impl<'sexp> RowMapAccess<'sexp> {
     fn new(
-        view: &'sexp DataFrameView,
+        view: &'sexp DataFrame,
         row: usize,
         column_names: std::rc::Rc<[String]>,
         prefix: &str,
@@ -496,7 +495,7 @@ impl<'de> MapAccess<'de> for RowMapAccess<'de> {
 /// scalar fields) and a nested prefix (for nested struct fields). The
 /// visitor's `deserialize_*` call picks which one.
 struct MaybeNestedDeserializer<'sexp> {
-    view: &'sexp DataFrameView,
+    view: &'sexp DataFrame,
     row: usize,
     column_names: std::rc::Rc<[String]>,
     /// Full column name (`prefix + head`) for the scalar interpretation.
@@ -1046,7 +1045,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
 /// (`T: for<'de> Deserialize<'de>`) lets the call site pick `'de = 'sexp`
 /// internally — visitors that want `&'sexp str` see a borrow rooted in the
 /// SEXP, `DeserializeOwned` visitors copy via serde's default fallback.
-fn deserialize_rows<'sexp, T>(view: &'sexp DataFrameView) -> Result<Vec<T>, RSerdeError>
+fn deserialize_rows<'sexp, T>(view: &'sexp DataFrame) -> Result<Vec<T>, RSerdeError>
 where
     T: for<'de> serde::Deserialize<'de>,
 {

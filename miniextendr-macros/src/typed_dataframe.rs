@@ -342,7 +342,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
                 }
 
                 // 2. Build the view for O(1) name lookup + nrow extraction.
-                let view = ::miniextendr_api::dataframe::DataFrameView::from_sexp(sexp)
+                let view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| ::miniextendr_api::from_r::SexpError::InvalidValue(
                         ::std::format!("{}: {}", #struct_name_str, e)
                     ))?;

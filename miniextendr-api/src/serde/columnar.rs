@@ -396,18 +396,6 @@ impl crate::IntoR for ColumnarDataFrame {
     }
 }
 
-/// Convert a row-oriented `DataFrame<T>` into a `ColumnarDataFrame` for
-/// post-assembly customization (rename, drop, select).
-impl<T: crate::list::IntoList> From<crate::convert::DataFrame<T>> for ColumnarDataFrame {
-    fn from(df: crate::convert::DataFrame<T>) -> Self {
-        use crate::IntoR;
-        use crate::dataframe::ColumnSource;
-        ColumnarDataFrame {
-            sexp: df.into_column_list().into_sexp(),
-        }
-    }
-}
-
 impl crate::from_r::TryFromSexp for ColumnarDataFrame {
     type Error = crate::from_r::SexpError;
 

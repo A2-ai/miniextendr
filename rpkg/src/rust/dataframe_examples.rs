@@ -1,6 +1,6 @@
 //! Examples and tests for data frame conversion features.
 
-use miniextendr_api::convert::ToDataFrame;
+use miniextendr_api::{DataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // Test with homogeneous types first
@@ -14,9 +14,9 @@ pub struct Point {
 ///
 /// @export
 #[miniextendr]
-pub fn create_points_df() -> ToDataFrame<PointDataFrame> {
+pub fn create_points_df() -> DataFrame {
     let rows = vec![Point { x: 1.0, y: 2.0 }, Point { x: 3.0, y: 4.0 }];
-    ToDataFrame(Point::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 
 // Test with just two different types first
@@ -50,7 +50,7 @@ pub struct Person {
 ///
 /// @export
 #[miniextendr]
-pub fn create_people_df() -> ToDataFrame<PersonDataFrame> {
+pub fn create_people_df() -> DataFrame {
     let rows = vec![
         Person {
             name: "Alice".to_string(),
@@ -71,7 +71,7 @@ pub fn create_people_df() -> ToDataFrame<PersonDataFrame> {
             is_student: true,
         },
     ];
-    ToDataFrame(Person::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 
 // region: Enum align examples
@@ -89,7 +89,7 @@ pub enum EventRow {
 ///
 /// @export
 #[miniextendr]
-pub fn create_events_df() -> ToDataFrame<EventRowDataFrame> {
+pub fn create_events_df() -> DataFrame {
     let rows = vec![
         EventRow::Click {
             id: 1,
@@ -106,7 +106,7 @@ pub fn create_events_df() -> ToDataFrame<EventRowDataFrame> {
             message: "not found".to_string(),
         },
     ];
-    ToDataFrame(EventRow::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 
 /// Enum align without tag column.
@@ -121,7 +121,7 @@ pub enum ShapeRow {
 ///
 /// @export
 #[miniextendr]
-pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
+pub fn create_shapes_df() -> DataFrame {
     let rows = vec![
         ShapeRow::Circle {
             radius: 5.0,
@@ -137,7 +137,7 @@ pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
             area: std::f64::consts::PI,
         },
     ];
-    ToDataFrame(ShapeRow::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 // endregion
 
@@ -270,7 +270,7 @@ pub struct PointExpanded {
 ///
 /// @export
 #[miniextendr]
-pub fn create_expanded_points_df() -> ToDataFrame<PointExpandedDataFrame> {
+pub fn create_expanded_points_df() -> DataFrame {
     let rows = vec![
         PointExpanded {
             label: "A".to_string(),
@@ -281,7 +281,7 @@ pub fn create_expanded_points_df() -> ToDataFrame<PointExpandedDataFrame> {
             coords: [4.0, 5.0, 6.0],
         },
     ];
-    ToDataFrame(PointExpanded::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 
 /// Struct with skip, rename, and pinned Vec expansion.
@@ -299,7 +299,7 @@ pub struct ScoredItem {
 ///
 /// @export
 #[miniextendr]
-pub fn create_scored_items_df() -> ToDataFrame<ScoredItemDataFrame> {
+pub fn create_scored_items_df() -> DataFrame {
     let rows = vec![
         ScoredItem {
             name: "alpha".to_string(),
@@ -317,7 +317,7 @@ pub fn create_scored_items_df() -> ToDataFrame<ScoredItemDataFrame> {
             scores: vec![],
         },
     ];
-    ToDataFrame(ScoredItem::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 
 /// Enum with array expansion in variants.
@@ -332,7 +332,7 @@ pub enum SensorReading {
 ///
 /// @export
 #[miniextendr]
-pub fn create_sensor_readings_df() -> ToDataFrame<SensorReadingDataFrame> {
+pub fn create_sensor_readings_df() -> DataFrame {
     let rows = vec![
         SensorReading::Xyz {
             sensor_id: 1,
@@ -347,7 +347,7 @@ pub fn create_sensor_readings_df() -> ToDataFrame<SensorReadingDataFrame> {
             values: [7.0, 8.0, 9.0],
         },
     ];
-    ToDataFrame(SensorReading::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 // endregion
 

@@ -88,12 +88,16 @@ let rows = SerdeRows::<Row>::from_dataframe(&df)?.into_inner();
 
 | Was | Now |
 |---|---|
-| `ColumnarDataFrame`, `DataFrameView`, `convert::DataFrame<T>` (three types) | one `DataFrame` |
-| `Row::to_dataframe(rows)` + companion `IntoR` | `rows.into_dataframe()?` |
+| `DataFrameView`, `convert::DataFrame<T>` (duplicate `DataFrame` types) | one `DataFrame` |
+| `ToDataFrame<Companion>` return wrapper + `value.to_data_frame()` | `rows.into_dataframe()?` |
+| `convert::SerializeDataFrame<T>` / `AsSerializeRow<T>` | `serde::SerdeRows(rows).into_dataframe()?` |
 | `Row::try_from_dataframe(sexp)` (bare `String` error) | `Vec::<Row>::from_dataframe(&df)?` (`DataFrameError`) |
 | `RDataFrameBuilder::new(n)` | `DataFrame::builder(n)` |
 | four conversion error types | one `DataFrameError` |
 
-The legacy companion methods (`to_dataframe`, `from_rows`, `try_from_dataframe`)
-remain as the internal engine the trait impls delegate to; the redundant
-public *types* are demoted behind the new façade and tracked for removal.
+The redundant public types above have been **removed** (#781) — there is no
+backwards-compat shim. The legacy companion methods (`to_dataframe`, `from_rows`,
+`try_from_dataframe`) remain as the internal engine the trait impls delegate to.
+The serde columnar assembler (`serde::ColumnarDataFrame` and its builder/streamer
+type names) is still present as a serde-internal representation; converging its
+naming with the façade is tracked separately in #783.

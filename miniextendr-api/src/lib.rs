@@ -519,7 +519,7 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 
 // The unified owned data.frame type + conversion trait family
 pub mod dataframe;
-pub use dataframe::{DataFrame, DataFrameError, DataFrameView, FromDataFrame, IntoDataFrame};
+pub use dataframe::{DataFrame, DataFrameError, FromDataFrame, IntoDataFrame};
 
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
@@ -606,11 +606,8 @@ pub mod typed_list;
 pub use convert::{
     AsDisplay, AsDisplayVec, AsExternalPtr, AsExternalPtrExt, AsFromStr, AsFromStrVec, AsList,
     AsListExt, AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsRNative,
-    AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, ColumnSource, ToDataFrame,
-    ToDataFrameExt,
+    AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, ColumnSource,
 };
-#[cfg(feature = "serde")]
-pub use convert::{AsSerializeRow, SerializeDataFrame};
 pub use into_r::Lazy;
 pub use list::{
     IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, TryFromList, collect_list,

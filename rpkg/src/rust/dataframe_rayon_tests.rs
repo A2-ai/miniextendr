@@ -1,5 +1,5 @@
 use miniextendr_api::SEXP;
-use miniextendr_api::convert::ToDataFrame;
+use miniextendr_api::{DataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
 
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -14,7 +14,7 @@ pub struct ParPoint {
 /// @param n Number of rows to create.
 /// @export
 #[miniextendr]
-pub fn create_large_par_points(n: i32) -> ToDataFrame<ParPointDataFrame> {
+pub fn create_large_par_points(n: i32) -> DataFrame {
     let rows: Vec<ParPoint> = (0..n)
         .map(|i| ParPoint {
             x: i as f64,
@@ -22,7 +22,7 @@ pub fn create_large_par_points(n: i32) -> ToDataFrame<ParPointDataFrame> {
             label: format!("pt_{i}"),
         })
         .collect();
-    ToDataFrame(ParPoint::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 
 /// Read a `ParPoint` data.frame in parallel and return the row count.
@@ -62,7 +62,7 @@ pub enum ParEvent {
 /// @param n Number of rows to create.
 /// @export
 #[miniextendr]
-pub fn create_large_par_events(n: i32) -> ToDataFrame<ParEventDataFrame> {
+pub fn create_large_par_events(n: i32) -> DataFrame {
     let rows: Vec<ParEvent> = (0..n)
         .map(|i| {
             if i % 2 == 0 {
@@ -78,7 +78,7 @@ pub fn create_large_par_events(n: i32) -> ToDataFrame<ParEventDataFrame> {
             }
         })
         .collect();
-    ToDataFrame(ParEvent::to_dataframe(rows))
+    rows.into_dataframe().unwrap()
 }
 
 /// GC-stress fixture for the parallel from-R reader (`try_from_dataframe_par`).
@@ -86,7 +86,7 @@ pub fn create_large_par_events(n: i32) -> ToDataFrame<ParEventDataFrame> {
 /// No-arg so the fast `gctorture(TRUE)` sweep over `rpkg`'s exports exercises it.
 /// Synthesises a `ParPoint` data.frame SEXP internally, then drives the parallel
 /// reader. The SEXP-touching part is the per-column extraction (each
-/// `DataFrameView::column` call allocates an owned `Vec` and may trigger GC); the
+/// `DataFrame::column` call allocates an owned `Vec` and may trigger GC); the
 /// parallel region itself makes no R API calls. Driving this under gctorture
 /// proves the extraction step's PROTECT discipline holds before rayon takes over.
 ///
@@ -105,7 +105,7 @@ pub fn gc_stress_dataframe_par_reader() {
     // Build a real data.frame SEXP and keep it protected across the reads —
     // the column-extraction step allocates, and gctorture must not collect the
     // backing data.frame out from under us.
-    let df_sexp = ToDataFrame(ParPoint::to_dataframe(rows)).into_sexp();
+    let df_sexp = rows.into_dataframe().unwrap().into_sexp();
     // SAFETY: runs on the R thread; `df_sexp` is a freshly-allocated valid SEXP.
     let df_guard = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(df_sexp) };
     let df_sexp = df_guard.get();

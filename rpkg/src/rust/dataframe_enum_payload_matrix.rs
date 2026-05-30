@@ -20,7 +20,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use miniextendr_api::convert::ToDataFrame;
+use miniextendr_api::{DataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // region: 0a. Vec<i32> opaque (no expand/width → list-column) ─────────────────
@@ -62,13 +62,15 @@ pub fn vec_opaque_split_nv1r() -> List {
 }
 
 #[miniextendr]
-pub fn vec_opaque_align_nvnr() -> ToDataFrame<VecOpaqueEventDataFrame> {
-    ToDataFrame(VecOpaqueEvent::to_dataframe(vec![
+pub fn vec_opaque_align_nvnr() -> DataFrame {
+    vec![
         vec_opaque_payload("a", vec![1, 2, 3]),
         VecOpaqueEvent::NoItems { label: "b".into() },
         vec_opaque_payload("c", vec![4, 5]),
         VecOpaqueEvent::NoItems { label: "d".into() },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
@@ -122,13 +124,15 @@ pub fn hashset_split_nv1r() -> List {
 }
 
 #[miniextendr]
-pub fn hashset_align_nvnr() -> ToDataFrame<HashSetEventDataFrame> {
-    ToDataFrame(HashSetEvent::to_dataframe(vec![
+pub fn hashset_align_nvnr() -> DataFrame {
+    vec![
         hashset_payload(1, &["a", "b"]),
         HashSetEvent::Untagged { id: 2 },
         hashset_payload(3, &["c"]),
         HashSetEvent::Untagged { id: 4 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
@@ -182,13 +186,15 @@ pub fn btreeset_split_nv1r() -> List {
 }
 
 #[miniextendr]
-pub fn btreeset_align_nvnr() -> ToDataFrame<BTreeSetEventDataFrame> {
-    ToDataFrame(BTreeSetEvent::to_dataframe(vec![
+pub fn btreeset_align_nvnr() -> DataFrame {
+    vec![
         btreeset_payload("a", &[3, 1, 2]),
         BTreeSetEvent::NoCats { label: "b".into() },
         btreeset_payload("c", &[5, 4]),
         BTreeSetEvent::NoCats { label: "d".into() },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
@@ -258,12 +264,14 @@ pub fn vec_width_split_nvnr() -> List {
 }
 
 #[miniextendr]
-pub fn vec_width_align_nvnr() -> ToDataFrame<VecWidthEventDataFrame> {
-    ToDataFrame(VecWidthEvent::to_dataframe(vec![
+pub fn vec_width_align_nvnr() -> DataFrame {
+    vec![
         vec_width_payload("a", vec![1.0, 2.0, 3.0]),
         VecWidthEvent::NoScore { label: "b".into() },
         vec_width_payload("c", vec![4.0]),
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion
@@ -323,12 +331,14 @@ pub fn vec_expand_split_nvnr() -> List {
 }
 
 #[miniextendr]
-pub fn vec_expand_align_nvnr() -> ToDataFrame<VecExpandEventDataFrame> {
-    ToDataFrame(VecExpandEvent::to_dataframe(vec![
+pub fn vec_expand_align_nvnr() -> DataFrame {
+    vec![
         vec_expand_payload("a", vec![1.0, 2.0]),
         VecExpandEvent::NoVals { label: "b".into() },
         vec_expand_payload("c", vec![3.0]),
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion
@@ -378,12 +388,14 @@ pub fn array_split_nvnr() -> List {
 }
 
 #[miniextendr]
-pub fn array_align_nvnr() -> ToDataFrame<ArrayEventDataFrame> {
-    ToDataFrame(ArrayEvent::to_dataframe(vec![
+pub fn array_align_nvnr() -> DataFrame {
+    vec![
         array_payload(1, [10.0, 20.0]),
         ArrayEvent::NoCoords { id: 2 },
         array_payload(3, [30.0, 40.0]),
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion
@@ -443,12 +455,14 @@ pub fn boxed_slice_split_nvnr() -> List {
 }
 
 #[miniextendr]
-pub fn boxed_slice_align_nvnr() -> ToDataFrame<BoxedSliceEventDataFrame> {
-    ToDataFrame(BoxedSliceEvent::to_dataframe(vec![
+pub fn boxed_slice_align_nvnr() -> DataFrame {
+    vec![
         boxed_slice_payload("a", &[1.0, 2.0, 3.0]),
         BoxedSliceEvent::NoBuffer { name: "b".into() },
         boxed_slice_payload("c", &[4.0]),
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion
@@ -535,8 +549,8 @@ pub fn borrowed_str_split_nv1r() -> List {
 }
 
 #[miniextendr]
-pub fn borrowed_str_align_nvnr() -> ToDataFrame<BorrowedStrEventDataFrame<'static>> {
-    ToDataFrame(BorrowedStrEvent::to_dataframe(vec![
+pub fn borrowed_str_align_nvnr() -> DataFrame {
+    vec![
         BorrowedStrEvent::Named {
             id: 1,
             name: "alice",
@@ -547,7 +561,9 @@ pub fn borrowed_str_align_nvnr() -> ToDataFrame<BorrowedStrEventDataFrame<'stati
             name: "carol",
         },
         BorrowedStrEvent::Bare { id: 4 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
@@ -619,8 +635,8 @@ pub fn borrowed_slice_split_nv1r() -> List {
 }
 
 #[miniextendr]
-pub fn borrowed_slice_align_nvnr() -> ToDataFrame<BorrowedSliceEventDataFrame<'static>> {
-    ToDataFrame(BorrowedSliceEvent::to_dataframe(vec![
+pub fn borrowed_slice_align_nvnr() -> DataFrame {
+    vec![
         BorrowedSliceEvent::Buffer {
             label: "a".into(),
             data: &[1.0, 2.0, 3.0],
@@ -631,7 +647,9 @@ pub fn borrowed_slice_align_nvnr() -> ToDataFrame<BorrowedSliceEventDataFrame<'s
             data: &[4.0],
         },
         BorrowedSliceEvent::NoBuffer { label: "d".into() },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 #[miniextendr]
@@ -729,17 +747,19 @@ pub fn hashmap_split_nv1r() -> List {
 
 /// 1v1r align: one variant (Tally), one row.
 #[miniextendr]
-pub fn hashmap_align_1v1r() -> ToDataFrame<HashMapEventDataFrame> {
-    ToDataFrame(HashMapEvent::to_dataframe(vec![HashMapEvent::Tally {
+pub fn hashmap_align_1v1r() -> DataFrame {
+    vec![HashMapEvent::Tally {
         label: "a".into(),
         tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
-    }]))
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// 1vNr align: one variant (Tally), multiple rows.
 #[miniextendr]
-pub fn hashmap_align_1vnr() -> ToDataFrame<HashMapEventDataFrame> {
-    ToDataFrame(HashMapEvent::to_dataframe(vec![
+pub fn hashmap_align_1vnr() -> DataFrame {
+    vec![
         HashMapEvent::Tally {
             label: "x".into(),
             tally: HashMap::from([("x".to_string(), 5i32)]),
@@ -752,25 +772,29 @@ pub fn hashmap_align_1vnr() -> ToDataFrame<HashMapEventDataFrame> {
             label: "z".into(),
             tally: HashMap::from([("p".to_string(), 10i32), ("q".to_string(), 20i32)]),
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// Nv1r align: both variants, one row each.
 #[miniextendr]
-pub fn hashmap_align_nv1r() -> ToDataFrame<HashMapEventDataFrame> {
-    ToDataFrame(HashMapEvent::to_dataframe(vec![
+pub fn hashmap_align_nv1r() -> DataFrame {
+    vec![
         HashMapEvent::Tally {
             label: "a".into(),
             tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
         },
         HashMapEvent::Empty { label: "b".into() },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// NvNr align: both variants, multiple rows each.
 #[miniextendr]
-pub fn hashmap_align_nvnr() -> ToDataFrame<HashMapEventDataFrame> {
-    ToDataFrame(HashMapEvent::to_dataframe(vec![
+pub fn hashmap_align_nvnr() -> DataFrame {
+    vec![
         HashMapEvent::Tally {
             label: "a".into(),
             tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
@@ -781,7 +805,9 @@ pub fn hashmap_align_nvnr() -> ToDataFrame<HashMapEventDataFrame> {
             tally: HashMap::from([("x".to_string(), 5i32)]),
         },
         HashMapEvent::Empty { label: "d".into() },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// NvNr split: both variants, multiple rows each.
@@ -847,17 +873,19 @@ pub fn btreemap_split_nv1r() -> List {
 
 /// 1v1r align: one variant (Tally), one row.
 #[miniextendr]
-pub fn btreemap_align_1v1r() -> ToDataFrame<BTreeMapEventDataFrame> {
-    ToDataFrame(BTreeMapEvent::to_dataframe(vec![BTreeMapEvent::Tally {
+pub fn btreemap_align_1v1r() -> DataFrame {
+    vec![BTreeMapEvent::Tally {
         label: "a".into(),
         tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
-    }]))
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// 1vNr align: one variant (Tally), multiple rows.
 #[miniextendr]
-pub fn btreemap_align_1vnr() -> ToDataFrame<BTreeMapEventDataFrame> {
-    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+pub fn btreemap_align_1vnr() -> DataFrame {
+    vec![
         BTreeMapEvent::Tally {
             label: "x".into(),
             tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
@@ -870,25 +898,29 @@ pub fn btreemap_align_1vnr() -> ToDataFrame<BTreeMapEventDataFrame> {
             label: "w".into(),
             tally: BTreeMap::from([("m".to_string(), 7i32)]),
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// Nv1r align: both variants, one row each.
 #[miniextendr]
-pub fn btreemap_align_nv1r() -> ToDataFrame<BTreeMapEventDataFrame> {
-    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+pub fn btreemap_align_nv1r() -> DataFrame {
+    vec![
         BTreeMapEvent::Tally {
             label: "a".into(),
             tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
         },
         BTreeMapEvent::Empty { label: "b".into() },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// NvNr align: both variants, multiple rows each.
 #[miniextendr]
-pub fn btreemap_align_nvnr() -> ToDataFrame<BTreeMapEventDataFrame> {
-    ToDataFrame(BTreeMapEvent::to_dataframe(vec![
+pub fn btreemap_align_nvnr() -> DataFrame {
+    vec![
         BTreeMapEvent::Tally {
             label: "a".into(),
             tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
@@ -899,7 +931,9 @@ pub fn btreemap_align_nvnr() -> ToDataFrame<BTreeMapEventDataFrame> {
             tally: BTreeMap::from([("m".to_string(), 7i32)]),
         },
         BTreeMapEvent::Empty { label: "d".into() },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// NvNr split: both variants, multiple rows each.
@@ -1183,8 +1217,8 @@ pub fn struct_flatten_split_nvnr() -> List {
 
 /// NvNr align: aligned data frame with NA-fill for absent variant.
 #[miniextendr]
-pub fn struct_flatten_align_nvnr() -> ToDataFrame<StructFlattenEventDataFrame> {
-    ToDataFrame(StructFlattenEvent::to_dataframe(vec![
+pub fn struct_flatten_align_nvnr() -> DataFrame {
+    vec![
         StructFlattenEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
@@ -1195,7 +1229,9 @@ pub fn struct_flatten_align_nvnr() -> ToDataFrame<StructFlattenEventDataFrame> {
         },
         StructFlattenEvent::Other { id: 3 },
         StructFlattenEvent::Other { id: 4 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion: Flatten fixtures
@@ -1261,8 +1297,8 @@ pub fn struct_list_split_nvnr() -> List {
 
 /// NvNr align (as_list): aligned data frame, origin as list-column.
 #[miniextendr]
-pub fn struct_list_align_nvnr() -> ToDataFrame<StructListEventDataFrame> {
-    ToDataFrame(StructListEvent::to_dataframe(vec![
+pub fn struct_list_align_nvnr() -> DataFrame {
+    vec![
         StructListEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
@@ -1273,7 +1309,9 @@ pub fn struct_list_align_nvnr() -> ToDataFrame<StructListEventDataFrame> {
         },
         StructListEvent::Other { id: 3 },
         StructListEvent::Other { id: 4 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion: as_list fixtures
@@ -1488,19 +1526,19 @@ pub fn nested_flatten_split_nvnr() -> List {
 
 /// 1v1r align (flatten): single Tracked row, aligned data frame.
 #[miniextendr]
-pub fn nested_flatten_align_1v1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
-    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
-        NestedFlattenEvent::Tracked {
-            id: 1,
-            status: Status::Ok,
-        },
-    ]))
+pub fn nested_flatten_align_1v1r() -> DataFrame {
+    vec![NestedFlattenEvent::Tracked {
+        id: 1,
+        status: Status::Ok,
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// 1vNr align (flatten): multiple Tracked rows, aligned data frame.
 #[miniextendr]
-pub fn nested_flatten_align_1vnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
-    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
+pub fn nested_flatten_align_1vnr() -> DataFrame {
+    vec![
         NestedFlattenEvent::Tracked {
             id: 1,
             status: Status::Ok,
@@ -1513,25 +1551,29 @@ pub fn nested_flatten_align_1vnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
             id: 3,
             status: Status::Err { code: 500 },
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// Nv1r align (flatten): one Tracked, one Other — NA-fill for Other rows.
 #[miniextendr]
-pub fn nested_flatten_align_nv1r() -> ToDataFrame<NestedFlattenEventDataFrame> {
-    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
+pub fn nested_flatten_align_nv1r() -> DataFrame {
+    vec![
         NestedFlattenEvent::Tracked {
             id: 1,
             status: Status::Ok,
         },
         NestedFlattenEvent::Other { id: 2 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// NvNr align (flatten): multiple rows across both variants — NA-fill for Other rows.
 #[miniextendr]
-pub fn nested_flatten_align_nvnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
-    ToDataFrame(NestedFlattenEvent::to_dataframe(vec![
+pub fn nested_flatten_align_nvnr() -> DataFrame {
+    vec![
         NestedFlattenEvent::Tracked {
             id: 1,
             status: Status::Ok,
@@ -1542,7 +1584,9 @@ pub fn nested_flatten_align_nvnr() -> ToDataFrame<NestedFlattenEventDataFrame> {
         },
         NestedFlattenEvent::Other { id: 3 },
         NestedFlattenEvent::Other { id: 4 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion: Flatten fixtures
@@ -1608,19 +1652,19 @@ pub fn nested_factor_split_nvnr() -> List {
 
 /// 1v1r align (as_factor): single Move row.
 #[miniextendr]
-pub fn nested_factor_align_1v1r() -> ToDataFrame<NestedFactorEventDataFrame> {
-    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
-        NestedFactorEvent::Move {
-            id: 1,
-            dir: Direction::North,
-        },
-    ]))
+pub fn nested_factor_align_1v1r() -> DataFrame {
+    vec![NestedFactorEvent::Move {
+        id: 1,
+        dir: Direction::North,
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// 1vNr align (as_factor): multiple Move rows.
 #[miniextendr]
-pub fn nested_factor_align_1vnr() -> ToDataFrame<NestedFactorEventDataFrame> {
-    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
+pub fn nested_factor_align_1vnr() -> DataFrame {
+    vec![
         NestedFactorEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1633,25 +1677,29 @@ pub fn nested_factor_align_1vnr() -> ToDataFrame<NestedFactorEventDataFrame> {
             id: 3,
             dir: Direction::East,
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// Nv1r align (as_factor): one Move and one Stop — NA for Stop's dir.
 #[miniextendr]
-pub fn nested_factor_align_nv1r() -> ToDataFrame<NestedFactorEventDataFrame> {
-    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
+pub fn nested_factor_align_nv1r() -> DataFrame {
+    vec![
         NestedFactorEvent::Move {
             id: 1,
             dir: Direction::West,
         },
         NestedFactorEvent::Stop { id: 2 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// NvNr align (as_factor): aligned data frame with NA-fill for dir in Stop rows.
 #[miniextendr]
-pub fn nested_factor_align_nvnr() -> ToDataFrame<NestedFactorEventDataFrame> {
-    ToDataFrame(NestedFactorEvent::to_dataframe(vec![
+pub fn nested_factor_align_nvnr() -> DataFrame {
+    vec![
         NestedFactorEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1662,7 +1710,9 @@ pub fn nested_factor_align_nvnr() -> ToDataFrame<NestedFactorEventDataFrame> {
         },
         NestedFactorEvent::Stop { id: 3 },
         NestedFactorEvent::Stop { id: 4 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion: as_factor fixtures
@@ -1728,17 +1778,19 @@ pub fn nested_list_split_nvnr() -> List {
 
 /// 1v1r align (as_list): single Move row.
 #[miniextendr]
-pub fn nested_list_align_1v1r() -> ToDataFrame<NestedListEventDataFrame> {
-    ToDataFrame(NestedListEvent::to_dataframe(vec![NestedListEvent::Move {
+pub fn nested_list_align_1v1r() -> DataFrame {
+    vec![NestedListEvent::Move {
         id: 1,
         dir: Direction::North,
-    }]))
+    }]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// 1vNr align (as_list): multiple Move rows.
 #[miniextendr]
-pub fn nested_list_align_1vnr() -> ToDataFrame<NestedListEventDataFrame> {
-    ToDataFrame(NestedListEvent::to_dataframe(vec![
+pub fn nested_list_align_1vnr() -> DataFrame {
+    vec![
         NestedListEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1751,25 +1803,29 @@ pub fn nested_list_align_1vnr() -> ToDataFrame<NestedListEventDataFrame> {
             id: 3,
             dir: Direction::East,
         },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// Nv1r align (as_list): one Move and one Stop — NULL for Stop's dir.
 #[miniextendr]
-pub fn nested_list_align_nv1r() -> ToDataFrame<NestedListEventDataFrame> {
-    ToDataFrame(NestedListEvent::to_dataframe(vec![
+pub fn nested_list_align_nv1r() -> DataFrame {
+    vec![
         NestedListEvent::Move {
             id: 1,
             dir: Direction::West,
         },
         NestedListEvent::Stop { id: 2 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 /// NvNr align (as_list): aligned data frame with NULL-fill for dir in Stop rows.
 #[miniextendr]
-pub fn nested_list_align_nvnr() -> ToDataFrame<NestedListEventDataFrame> {
-    ToDataFrame(NestedListEvent::to_dataframe(vec![
+pub fn nested_list_align_nvnr() -> DataFrame {
+    vec![
         NestedListEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1780,7 +1836,9 @@ pub fn nested_list_align_nvnr() -> ToDataFrame<NestedListEventDataFrame> {
         },
         NestedListEvent::Stop { id: 3 },
         NestedListEvent::Stop { id: 4 },
-    ]))
+    ]
+    .into_dataframe()
+    .unwrap()
 }
 
 // endregion: as_list fixtures
