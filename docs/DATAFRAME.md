@@ -1,48 +1,24 @@
 # Data Frame Conversion in miniextendr
 
-miniextendr provides comprehensive support for converting between Rust types and R data frames, with three complementary approaches offering different trade-offs between ergonomics and flexibility.
+miniextendr converts between Rust types and R data frames through one owned `DataFrame` type and two conversion verbs that mirror the scalar/vector surface (`IntoR` and `TryFromSexp`). One verb builds a data frame from a vector of rows; the other reads a data frame back into rows. Both verbs live on the data, errors are a single `DataFrameError`, and missing cells round-trip as nullable fields.
 
-## Overview
+## The two verbs
 
-| Approach | Best For | Code Generation | Flexibility |
-|----------|----------|-----------------|-------------|
-| `#[derive(DataFrameRow)]` | Type-safe, ergonomic APIs | ✅ Generates DataFrame type | ⭐⭐⭐ Easy |
-| `DataFrame<T>` | Generic, reusable code | ❌ No codegen | ⭐⭐ Moderate |
-| `impl IntoDataFrame` | Full control, complex cases | ❌ Manual impl | ⭐ Advanced |
+| Trait | Method | Direction | Scalar analogue |
+|---|---|---|---|
+| `IntoDataFrame` | `rows.into_dataframe()? -> DataFrame` | Rust → R | `IntoR` |
+| `FromDataFrame` | `Vec::<Row>::from_dataframe(&df)? -> Vec<Row>` | R → Rust | `TryFromSexp` |
 
-## Core Traits
+The verbs are implemented **on the data** (`Vec<Row>` / `&DataFrame`), not on a companion type. There is one error type (`DataFrameError`) and one NA contract: a missing cell maps to `None` in an `Option<T>` field, and `None` maps back to `NA`.
 
-### `IntoDataFrame`
+For the full design rationale and the orphan-rule mechanics behind the blanket impls, see [`DATAFRAME_INTERFACE.md`](DATAFRAME_INTERFACE.md).
 
-The foundational trait for converting Rust types to R data frames.
+## Quick start
 
-```rust
-pub trait IntoDataFrame {
-    fn into_data_frame(self) -> List;
-}
-```
-
-**Key Points:**
-
-- Consumes `self` (owning conversion)
-- Returns a `List` with data.frame attributes
-- Used by all other approaches under the hood
-
-**Related:**
-
-- `AsDataFrame` (in `as_coerce` module) - S3 coercion methods for `as.data.frame()` on ExternalPtr types
-- `IntoDataFrame` (this trait) - Direct conversion for return values
-
----
-
-## Approach 1: Derive Macro (Recommended)
-
-Use `#[derive(DataFrameRow)]` for the most ergonomic experience. The macro generates a companion DataFrame type and all necessary conversions.
-
-### Basic Usage
+`#[derive(DataFrameRow)]` is the primary path: derive it on a row struct, then return `DataFrame` from a `#[miniextendr]` function.
 
 ```rust
-use miniextendr_api::{miniextendr, DataFrameRow, IntoList};
+use miniextendr_api::{DataFrame, DataFrameRow, IntoList, miniextendr};
 
 #[derive(Clone, IntoList, DataFrameRow)]
 struct Measurement {
@@ -51,28 +27,57 @@ struct Measurement {
     sensor: String,
 }
 
-// Auto-generates:
-// - struct MeasurementDataFrame { time: Vec<f64>, value: Vec<f64>, sensor: Vec<String> }
-// - impl IntoDataFrame for MeasurementDataFrame
-// - impl From<Vec<Measurement>> for MeasurementDataFrame
-// - impl IntoIterator for MeasurementDataFrame -> Measurement
-// - Measurement::to_dataframe() and from_dataframe() methods
-
 #[miniextendr]
-fn get_measurements() -> MeasurementDataFrame {
+fn get_measurements() -> DataFrame {
     let rows = vec![
         Measurement { time: 1.0, value: 10.0, sensor: "A".into() },
         Measurement { time: 2.0, value: 20.0, sensor: "B".into() },
         Measurement { time: 3.0, value: 30.0, sensor: "C".into() },
     ];
-
-    Measurement::to_dataframe(rows)  // or: rows.into()
+    rows.into_dataframe().unwrap()
 }
 ```
 
-### Heterogeneous Types
+The reverse direction reads a `DataFrame` argument back into rows:
 
-The derive macro fully supports different types in different fields:
+```rust
+#[miniextendr]
+fn round_trip(df: DataFrame) -> DataFrame {
+    let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df).unwrap();
+    rows.into_dataframe().unwrap()
+}
+```
+
+`DataFrame` implements both `IntoR` (yields the backing `data.frame` SEXP) and `TryFromSexp` (validates the `data.frame` class on the way in), so it flows through `#[miniextendr]` signatures like any other type.
+
+## The owned `DataFrame` type
+
+`DataFrame` wraps a validated `data.frame` SEXP. Beyond the conversion verbs, it offers read accessors and cheap column-level transforms (each consuming `self` and returning a new `DataFrame`):
+
+```rust
+let df: DataFrame = rows.into_dataframe()?;
+
+df.nrow();                       // row count
+df.ncol();                       // column count
+df.names();                      // Vec<String> of column names
+df.contains_column("sensor");    // bool
+
+let values: Vec<f64> = df.column("value").unwrap();   // typed column accessor
+let raw: SEXP = df.column_raw("sensor").unwrap();      // untyped column SEXP
+
+let df = df
+    .rename("value", "reading")  // rename a column
+    .drop("time")                // remove a column
+    .select(&["sensor", "reading"]); // keep/reorder a subset
+```
+
+Use `DataFrame::from_sexp(sexp)` to validate an arbitrary SEXP, and `as_sexp()` / `as_list()` to drop down to the raw representation when you need it.
+
+## `#[derive(DataFrameRow)]` in depth
+
+### Heterogeneous types
+
+The derive supports different types in different fields; each field keeps its R type:
 
 ```rust
 #[derive(Clone, IntoList, DataFrameRow)]
@@ -82,15 +87,11 @@ struct Person {
     height: f64,       // numeric in R
     is_student: bool,  // logical in R
 }
-
-// Each field maintains its distinct type throughout conversion
 ```
 
-### Collection Expansion
+### Collection expansion
 
-Fixed-size arrays `[T; N]` are **automatically expanded** into N suffixed columns.
-Use `#[dataframe(expand)]` or `#[dataframe(unnest)]` explicitly if desired,
-though arrays expand by default.
+Fixed-size arrays `[T; N]` are **automatically expanded** into N suffixed columns. `#[dataframe(expand)]` / `#[dataframe(unnest)]` request it explicitly, though arrays expand by default.
 
 ```rust
 #[derive(Clone, DataFrameRow)]
@@ -98,19 +99,11 @@ struct Point3D {
     label: String,
     coords: [f64; 3],  // → coords_1, coords_2, coords_3
 }
-
-// Generates:
-// struct Point3DDataFrame {
-//     label: Vec<String>,
-//     coords_1: Vec<f64>,
-//     coords_2: Vec<f64>,
-//     coords_3: Vec<f64>,
-// }
 ```
 
 For `Vec<T>`, `Box<[T]>`, and `&[T]`, two expansion modes are available:
 
-**Fixed width** (`width = N`): Expands into exactly N columns at compile time.
+**Fixed width** (`width = N`): expands into exactly N columns at compile time.
 
 ```rust
 #[derive(Clone, DataFrameRow)]
@@ -121,11 +114,10 @@ struct Scored {
 }
 ```
 
-- Shorter vecs: padded with `NA`
-- **Longer vecs: truncated to N** (extra elements silently dropped)
+- Shorter vecs: padded with `NA`.
+- **Longer vecs: truncated to N** (extra elements silently dropped).
 
-**Auto-expand** (`expand` or `unnest`): Column count determined at runtime
-from the maximum length across all rows.
+**Auto-expand** (`expand` or `unnest`): column count determined at runtime from the maximum length across all rows.
 
 ```rust
 #[derive(Clone, DataFrameRow)]
@@ -136,26 +128,20 @@ struct Measured {
 }
 ```
 
-- Shorter vecs: padded with `NA`
-- All elements preserved (no truncation)
-- If all vecs are empty: no expansion columns produced
+- Shorter vecs: padded with `NA`.
+- All elements preserved (no truncation).
+- If all vecs are empty: no expansion columns produced.
 
-`Box<[T]>` and `&[T]` work identically to `Vec<T>` for all expansion modes. They
-share the same `.get()`, `.len()`, and indexing behavior.
+`Box<[T]>` and `&[T]` work identically to `Vec<T>` for all expansion modes. Without `width` or `expand`/`unnest`, `Vec<T>`, `Box<[T]>`, and `&[T]` stay as opaque single columns (list columns in R).
 
-**Note:** Using `&[T]` introduces a lifetime parameter on both the row struct and
-the generated companion struct (e.g., `FooDataFrame<'a>`). This is zero-cost: `&[T]`
-is `Copy` (just a fat pointer), so pushing into the companion struct copies only the
-pointer, not the data.
+**Note:** using `&[T]` introduces a lifetime parameter on both the row struct and the generated companion struct (e.g., `FooDataFrame<'a>`). This is zero-cost: `&[T]` is `Copy` (just a fat pointer), so pushing into the companion struct copies only the pointer, not the data.
 
-Without `width` or `expand`/`unnest`, `Vec<T>`, `Box<[T]>`, and `&[T]` stay as opaque single columns (list columns in R).
-
-### Field-Level Attributes
+### Field-level attributes
 
 ```rust
 #[derive(Clone, DataFrameRow)]
 struct Row {
-    #[dataframe(skip)]           // Omit from DataFrame
+    #[dataframe(skip)]           // Omit from data frame
     internal_id: u64,
 
     #[dataframe(rename = "lbl")] // Custom column name
@@ -171,7 +157,7 @@ struct Row {
 
 | Attribute | Effect | Valid On |
 |-----------|--------|----------|
-| `skip` | Omit field from DataFrame | Any field |
+| `skip` | Omit field from data frame | Any field |
 | `rename = "name"` | Custom column name | Any field |
 | `as_list` | Suppress expansion | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
 | `expand` | Explicit expansion (default for `[T; N]`; auto-expand for `Vec<T>`/`Box<[T]>`/`&[T]`) | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
@@ -180,11 +166,11 @@ struct Row {
 
 **Conflicts:** `as_list + expand`/`unnest`, `as_list + width` are compile errors.
 
-**Note on round-tripping:** Structs with expanded fields don't generate `IntoIterator` or `from_dataframe()`, since the companion struct shape differs from the original. Use `to_dataframe()` only.
+**Round-tripping:** structs with expanded fields don't get a `from_dataframe` reader, since the column shape no longer matches the original struct. Calling `Vec::<Row>::from_dataframe(&df)` on such a shape returns a clear `DataFrameError` rather than failing to compile. The reverse-direction reader is emitted for **simple scalar-field structs**; extending it to expansion/flatten/map shapes is tracked as a follow-up (see [`DATAFRAME_INTERFACE.md`](DATAFRAME_INTERFACE.md)).
 
-### Other Collection Types
+### Other collection types
 
-Non-expanded collection fields work natively for both struct and enum DataFrameRows:
+Non-expanded collection fields work natively for both struct and enum `DataFrameRow`s:
 
 ```rust
 use std::collections::{HashSet, BTreeSet};
@@ -198,9 +184,9 @@ struct ComplexRow {
 }
 ```
 
-In **struct** DataFrameRows the columns land as `Vec<C>` and convert to a VECSXP list-column. In **enum** DataFrameRows they land as `Vec<Option<C>>` with `None` for variants that don't carry the field — these convert to a VECSXP list-column with `NULL` for absent rows. See [`docs/CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md#vecoptionc-for-collection-element-types) for the full set of supported `C`.
+In **struct** `DataFrameRow`s the columns land as `Vec<C>` and convert to a VECSXP list-column. In **enum** `DataFrameRow`s they land as `Vec<Option<C>>` with `None` for variants that don't carry the field — these convert to a VECSXP list-column with `NULL` for absent rows. See [`CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md#vecoptionc-for-collection-element-types) for the full set of supported `C`.
 
-`HashMap<K, V>` / `BTreeMap<K, V>` variant fields are supported and expand to two parallel list-columns (see [Map fields](#map-fields--parallel-list-column-expansion) below). Struct-typed and nested-enum variant fields are covered in [Nested enum fields](#nested-enum-fields--flatten--opt-outs) below.
+`HashMap<K, V>` / `BTreeMap<K, V>` variant fields expand to two parallel list-columns (see [Map fields](#map-fields--parallel-list-column-expansion) below). Struct-typed and nested-enum variant fields are covered in [Nested enum fields](#nested-enum-fields--flatten--opt-outs) below.
 
 ### Map fields — parallel list-column expansion
 
@@ -221,7 +207,7 @@ enum Event {
 
 Absent-variant rows produce `NULL` in both columns (not NA). An empty map produces `character(0)` / `integer(0)`, not `NULL`.
 
-**HashMap ordering**: `HashMap` iteration order is non-deterministic. Keys and values are parallel within a single row, but the key order may differ across rows and across runs. Use `setequal` or sort-based comparison in R tests, never `expect_equal` on unsorted key vectors.
+**HashMap ordering**: `HashMap` iteration order is non-deterministic. Keys and values are parallel within a single row, but the key order may differ across rows and runs. Use `setequal` or sort-based comparison in R tests, never `expect_equal` on unsorted key vectors.
 
 **BTreeMap ordering**: keys are always in sorted order per the `BTreeMap` contract. `expect_equal` is safe.
 
@@ -246,9 +232,9 @@ struct Row {
 }
 ```
 
-**Type aliases** are not automatically unwrapped — `type Counts = HashMap<String, i32>; field: Counts` has `Counts` as the last segment, so map expansion is not triggered. Use the concrete type directly (`field: HashMap<String, i32>`), or annotate with `#[dataframe(as_list)]`. See [#604](https://github.com/A2-ai/miniextendr/issues/604) for tracking.
+**Type aliases** are not automatically unwrapped — `type Counts = HashMap<String, i32>; field: Counts` has `Counts` as the last segment, so map expansion is not triggered. Use the concrete type directly (`field: HashMap<String, i32>`), or annotate with `#[dataframe(as_list)]`. See [#604](https://github.com/A2-ai/miniextendr/issues/604).
 
-Note: multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field or an import alias to a newtype wrapper if a non-DataFrameRow stdlib type needs to be stored.
+Multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field, or an import alias to a newtype wrapper, if a non-`DataFrameRow` stdlib type needs to be stored.
 
 ### Nested enum fields — flatten + opt-outs
 
@@ -297,7 +283,7 @@ enum Move {
 
 Factor levels are the variant idents in declaration order. `is.factor(df$dir)` returns `TRUE`. Annotating a payload-bearing enum with `as_factor` is a compile error (missing `UnitEnumFactor` implementation).
 
-**Note on generic unit enums**: `#[derive(DataFrameRow)]` auto-emits `UnitEnumFactor` only when the enum has no generic type parameters (`impl_generics.is_empty()`). Generic unit enums must implement `UnitEnumFactor` manually if `as_factor` is needed.
+**Generic unit enums**: `#[derive(DataFrameRow)]` auto-emits `UnitEnumFactor` only when the enum has no generic type parameters (`impl_generics.is_empty()`). Generic unit enums must implement `UnitEnumFactor` manually if `as_factor` is needed.
 
 #### `as_list` — opaque list-column
 
@@ -329,9 +315,9 @@ enum Good {
 }
 ```
 
-### Enum Align Mode
+### Enum align mode
 
-Enums derive a companion DataFrame where each variant's fields contribute to a unified schema. Fields absent in a variant are filled with `None` (→ NA in R):
+Enums build a unified schema where each variant's fields contribute columns. Fields absent in a variant are filled with `None` (→ NA in R):
 
 ```rust
 #[derive(Clone, DataFrameRow)]
@@ -342,6 +328,16 @@ enum Event {
     Error { id: i64, code: i32, message: String },
 }
 
+#[miniextendr]
+fn get_events() -> DataFrame {
+    let rows = vec![
+        Event::Click { id: 1, x: 1.5, y: 2.5 },
+        Event::Impression { id: 2, slot: "top_banner".into() },
+        Event::Error { id: 3, code: 404, message: "not found".into() },
+    ];
+    rows.into_dataframe().unwrap()
+}
+
 // In R:
 //   _type       id    x     y   slot        code  message
 //   Click       1     1.5   2.5 NA          NA    NA
@@ -350,12 +346,12 @@ enum Event {
 ```
 
 **Key points:**
-- All enum columns are `Vec<Option<T>>` (absent fields get `None`)
-- `tag = "col"` adds a variant discriminator column
-- `align` is implicit for enums (accepted but not required)
-- Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — same lifetime is propagated through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are still rejected (MXL112); see CLAUDE.md.
+- All enum columns are `Vec<Option<T>>` (absent fields get `None`).
+- `tag = "col"` adds a variant discriminator column.
+- `align` is implicit for enums (accepted but not required).
+- Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — the same lifetime propagates through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are still rejected (MXL112); see CLAUDE.md.
 
-#### Type Conflicts Across Variants
+#### Type conflicts across variants
 
 If two variants use the same field name with different types, the derive fails by default. Use `conflicts = "string"` to coerce all conflicting columns to String:
 
@@ -368,7 +364,7 @@ enum Mixed {
 }
 ```
 
-#### Enum Field Attributes
+#### Enum field attributes
 
 All field-level attributes (`skip`, `rename`, `as_list`, `width`) work in enum variants too:
 
@@ -381,186 +377,119 @@ enum Observation {
 }
 ```
 
-### Enum Split Mode (`to_dataframe_split`)
+### Enum split mode (`to_dataframe_split`)
 
-Alongside `to_dataframe` (which produces a single aligned data.frame with `NA`/`NULL` fill for variants that don't carry a field), enums also expose `to_dataframe_split` which partitions the rows by variant. Each partition is a data.frame with **only that variant's own columns** — no `NA`-filled columns from sibling variants.
+Alongside the aligned form (`into_dataframe()`, which produces a single data frame with `NA`/`NULL` fill for variants that don't carry a field), enums also expose `to_dataframe_split`, which partitions the rows by variant. Each partition is a data frame with **only that variant's own columns** — no `NA`-filled columns from sibling variants. It returns an `miniextendr_api::List` (a bare `data.frame` for a single-variant enum, a named list otherwise), so a `#[miniextendr]` function returns `List`:
 
-| Variants × rows in input | Return type |
-|--------------------------|-------------|
+| Variants × rows in input | R return |
+|--------------------------|----------|
 | **Single-variant enum**, any number of rows | bare `data.frame` |
-| **Multi-variant enum**, mixed rows | named `list` of data.frames, one per variant in `snake_case` |
+| **Multi-variant enum**, mixed rows | named `list` of data frames, one per variant in `snake_case` |
 
 ```rust
-let rows = vec![
-    Event::Click      { id: 1, x: 1.5, y: 2.5 },
-    Event::Impression { id: 2, slot: "top_banner".to_string() },
-    Event::Error      { id: 3, code: 404, message: "not found".to_string() },
-];
-Event::to_dataframe_split(rows)
-// In R: list(click = <1-row df with id, x, y>,
-//            impression = <1-row df with id, slot>,
-//            error = <1-row df with id, code, message>)
-```
-
-Variants absent from the input still appear in the result as 0-row data.frames carrying that variant's column shape. Unit variants produce a 0-column data.frame with the correct row count. Tuple variants name positional columns `_0`, `_1`, … . See the cardinality matrix in `rpkg/tests/testthat/test-dataframe-enum-payload-matrix.R` for the full set of guarantees (PR #463).
-
-### With Serde (when `serde` feature enabled)
-
-```rust
-use serde::Serialize;
-
-#[derive(Serialize, DataFrameRow)]  // Serialize implies IntoList!
-struct Reading {
-    timestamp: f64,
-    temperature: f64,
-    humidity: f64,
-}
+use miniextendr_api::List;
 
 #[miniextendr]
-fn get_readings() -> ReadingDataFrame {
-    Reading::to_dataframe(vec![
-        Reading { timestamp: 1.0, temperature: 20.5, humidity: 65.0 },
-        Reading { timestamp: 2.0, temperature: 21.0, humidity: 63.0 },
-    ])
+fn split_events() -> List {
+    let rows = vec![
+        Event::Click { id: 1, x: 1.5, y: 2.5 },
+        Event::Impression { id: 2, slot: "top_banner".into() },
+        Event::Error { id: 3, code: 404, message: "not found".into() },
+    ];
+    Event::to_dataframe_split(rows)
+    // In R: list(click = <1-row df with id, x, y>,
+    //            impression = <1-row df with id, slot>,
+    //            error = <1-row df with id, code, message>)
 }
 ```
 
-### Generated Methods
+Variants absent from the input still appear in the result as 0-row data frames carrying that variant's column shape. Unit variants produce a 0-column data frame with the correct row count. Tuple variants name positional columns `_0`, `_1`, … . See the cardinality matrix in `rpkg/tests/testthat/test-dataframe-enum-payload-matrix.R` for the full set of guarantees (PR #463).
 
-The derive macro adds these methods to your row type:
-
-```rust
-impl Measurement {
-    /// Name of the generated companion DataFrame type
-    pub const DATAFRAME_TYPE_NAME: &'static str = "MeasurementDataFrame";
-
-    /// Transpose rows to columns
-    pub fn to_dataframe(rows: Vec<Self>) -> MeasurementDataFrame;
-
-    /// Transpose columns back to rows
-    pub fn from_dataframe(df: MeasurementDataFrame) -> Vec<Self>;
-}
-```
-
-For enums, the derive additionally generates:
-
-```rust
-impl Event {
-    /// Partition rows by variant. Returns `data.frame` for single-variant enums,
-    /// or a named `list` of per-variant data.frames otherwise. See "Enum Split Mode".
-    pub fn to_dataframe_split(rows: Vec<Self>) -> miniextendr_api::List;
-}
-```
-
-### Iterating Over Rows
-
-The generated DataFrame type implements `IntoIterator`:
-
-```rust
-let df = get_measurements();
-
-// Iterate over rows
-for measurement in df {
-    println!("Time: {}, Value: {}", measurement.time, measurement.value);
-}
-
-// Or collect back to Vec
-let rows: Vec<Measurement> = df.into_iter().collect();
-```
-
-### Requirements
-
-The row type must implement `IntoList`:
-
-- Automatically via `#[derive(IntoList)]`
-- Via `#[derive(Serialize)]` when `serde` feature is enabled
-- Via manual implementation using `List::from_raw_pairs()` (for heterogeneous fields)
-
-### Container Attributes
+### Container attributes
 
 ```rust
 #[derive(DataFrameRow)]
 #[dataframe(
-    name = "Measurements",     // Custom DataFrame name (default: {StructName}DataFrame)
+    name = "Measurements",     // Custom companion type name (default: {StructName}DataFrame)
     tag = "_type",             // Add variant discriminator column (enums)
-    parallel,                  // Enable rayon parallel fill (requires `rayon` feature)
+    align,                     // Unified schema with NA fill (implicit for enums)
     conflicts = "string",      // Coerce type conflicts to String (enums)
 )]
 struct Measurement { /* ... */ }
 ```
 
-### Parallel Fill with Rayon
+### Requirements
 
-Every `DataFrameRow` companion type gets explicit sequential and parallel constructors.
-The parallel path requires the `rayon` feature.
+A struct row type must implement `IntoList`:
 
-```toml
-# Cargo.toml
-[dependencies]
-miniextendr-api = { version = "0.1", features = ["rayon"] }
-```
+- Automatically via `#[derive(IntoList)]`.
+- Via `#[derive(Serialize)]` when the `serde` feature is enabled (`Serialize` implies `IntoList`).
+- Via a manual `impl IntoList` using `List::from_raw_pairs()` (for heterogeneous fields).
+
+Enum `DataFrameRow`s generate their own `IntoList`; you don't add it separately.
+
+## Reading data frames back (`FromDataFrame`)
+
+`Vec::<Row>::from_dataframe(&df)?` transposes columns back into rows:
 
 ```rust
-#[derive(Clone, IntoList, DataFrameRow)]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-    pub label: String,
+let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df)?;
+for m in &rows {
+    println!("time {} value {}", m.time, m.value);
 }
+```
 
+The reader is emitted for **simple scalar-field structs**. Calling it on a shape without a reader (expansion / struct-flatten / nested-enum / map columns) returns a `DataFrameError::Conversion` at runtime rather than failing to compile — so generic code can attempt the read and handle the error.
+
+## Parallel fast paths (`feature = "rayon"`)
+
+Explicit `_par` variants produce the **same** `DataFrame` / `Vec<Row>` as the sequential verbs — parallelism is an opt-in method, not a hidden threshold:
+
+```rust
+let df   = rows.into_dataframe_par()?;             // parallel (column, row-range) fill
+let rows = Vec::<Measurement>::from_dataframe_par(&df)?; // off-main-thread row assembly
+```
+
+Dropping `_par` (building without the `rayon` feature) degrades cleanly to the sequential call — the verb name is stable across feature sets.
+
+```rust
 #[miniextendr]
-pub fn big_points() -> PointDataFrame {
+fn big_points() -> DataFrame {
     let points: Vec<Point> = (0..100_000)
-        .map(|i| Point { x: i as f64, y: (i * 2) as f64, label: format!("p{}", i) })
+        .map(|i| Point { x: i as f64, y: (i * 2) as f64 })
         .collect();
-    // Explicit parallel - always uses rayon, no threshold check
-    PointDataFrame::from_rows_par(points)
+    points.into_dataframe_par().unwrap()  // explicit parallel fill
 }
 ```
 
-**Generated methods on every companion type:**
+Parallel fill is most beneficial for large row counts (10k+), wide data frames (many fields), or expensive per-field conversions. For small data frames, prefer the sequential `into_dataframe()` to avoid rayon overhead.
 
-- `DfType::from_rows(rows)`: sequential push-based fill (always available)
-- `DfType::from_rows_par(rows)`: parallel scatter-write via `ColumnWriter` (`#[cfg(feature = "rayon")]`)
-- `From<Vec<Row>>` / `RowType::to_dataframe(rows)`: sequential (unchanged)
+## Heterogeneous columns without a row type (`feature = "rayon"`)
 
-**How `from_rows_par` works:**
-
-- Pre-allocates column vectors to exact size, then fills indices in parallel
-- Uses `rayon::par_iter()` with `ColumnWriter<T>` for safe concurrent writes to disjoint indices
-- No threshold: the caller explicitly opts in to parallelism
-
-**Enum support:** Parallel fill also works with enum DataFrameRow types:
+When you are filling columns directly (not transposing a `Vec<Row>`), use `DataFrame::builder(nrow)`. `column::<T>` takes a native element type (`f64` / `i32` / `RLogical` / `u8` / `Rcomplex`) and a chunk-fill closure; `column_str` builds a character column from a per-row closure returning `Option<String>` (`None` → `NA_character_`). `build()` yields a `DataFrame`:
 
 ```rust
-#[derive(Clone, DataFrameRow)]
-#[dataframe(tag = "_kind")]
-pub enum Event {
-    Click { id: i32, x: f64, y: f64 },
-    Impression { id: i32, slot: String },
-}
-
-// Use the parallel path:
-let df = EventDataFrame::from_rows_par(events);
+let df = DataFrame::builder(nrow)
+    .column::<f64>("x", |chunk, offset| {
+        for (i, slot) in chunk.iter_mut().enumerate() {
+            *slot = (offset + i) as f64;
+        }
+    })
+    .column_str("label", |i| Some(format!("p{i}")))
+    .build();
 ```
 
-**Performance:** Parallel fill is most beneficial for:
-- Large row counts (10k+)
-- Structs with many fields (wide data frames)
-- Expensive `Clone`/conversion per field
+Each column's buffer is filled in parallel over disjoint row ranges, then assembled into a `data.frame` on the R thread.
 
-For small data frames, use `from_rows` to avoid rayon overhead.
+## serde rows
 
-### Columnar Serialization via Serde
-
-When you have types that already implement `serde::Serialize`, you can convert them
-directly to R data frames without deriving `DataFrameRow`:
+Types that derive `serde::Serialize` / `Deserialize` convert through the `SerdeRows<T>` newtype, which keeps the serde path from colliding with the derive's concrete `Vec<Row>` conversions:
 
 ```rust
-use serde::Serialize;
-use miniextendr_api::serde::ColumnarDataFrame;
+use miniextendr_api::serde::SerdeRows;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct LogEntry {
     timestamp: f64,
     level: String,
@@ -568,354 +497,82 @@ struct LogEntry {
 }
 
 #[miniextendr]
-fn get_logs() -> miniextendr_api::sys::SEXP {
+fn get_logs() -> DataFrame {
     let logs = vec![
         LogEntry { timestamp: 1.0, level: "INFO".into(), message: "started".into() },
         LogEntry { timestamp: 2.0, level: "ERROR".into(), message: "failed".into() },
     ];
-    ColumnarDataFrame::from_rows(&logs).expect("serialization failed")
+    SerdeRows(logs).into_dataframe().unwrap()
 }
+
+// Reading back:
+//   let logs = SerdeRows::<LogEntry>::from_dataframe(&df)?.into_inner();
 ```
 
-Requires the `serde` feature. Column types are inferred from serde field types:
+Column types are inferred from serde field types:
 
-| Rust Type | R Column |
+| Rust type | R column |
 |-----------|----------|
 | `bool` | logical |
-| `i8`/`i16`/`i32` | integer |
-| `i64`/`u64`/`f32`/`f64` | numeric |
-| `String`/`&str` | character |
-| `Option<T>` | Same type with `NA` for `None` |
+| `i8` / `i16` / `i32` | integer |
+| `i64` / `u64` / `f32` / `f64` | numeric |
+| `String` / `&str` | character |
+| `Option<T>` | same type, `NA` for `None` |
 
-This is useful when you already have serde-serializable types and don't want to
-add `IntoList` + `DataFrameRow` derives. For new types, prefer `#[derive(DataFrameRow)]`
-which gives you a typed companion type and better ergonomics.
+This is useful when you already have serde-serializable types and don't want to add `IntoList` + `DataFrameRow` derives. For new types, prefer `#[derive(DataFrameRow)]`, which gives you a typed companion type and the reverse-direction reader.
 
----
+Requires the `serde` feature.
 
-## Approach 2: `DataFrame<T>`
+## Missing data
 
-Generic type for transposing row-oriented data. Works with any `T: IntoList`.
-
-### With IntoList Types
+Use `Option<T>` for nullable fields. `None` becomes `NA` in R, and `NA` reads back as `None`:
 
 ```rust
-#[derive(IntoList)]
-struct Point {
-    x: f64,
-    y: f64,
-}
-
-#[miniextendr]
-fn points() -> DataFrame<Point> {
-    DataFrame::from_rows(vec![
-        Point { x: 1.0, y: 2.0 },
-        Point { x: 3.0, y: 4.0 },
-    ])
-}
-```
-
-### With Serialize Types
-
-When the `serde` feature is enabled, use `from_serialize()` for the simplest experience:
-
-```rust
-use serde::Serialize;
-use miniextendr_api::SerializeDataFrame;
-
-#[derive(Serialize)]
-struct Event {
-    timestamp: f64,
-    message: String,
-}
-
-#[miniextendr]
-fn events() -> SerializeDataFrame<Event> {
-    let events = vec![
-        Event { timestamp: 1.0, message: "start".into() },
-        Event { timestamp: 2.0, message: "end".into() },
-    ];
-    SerializeDataFrame::from_serialize(events)
-}
-```
-
-`SerializeDataFrame<T>` is a type alias for `DataFrame<AsSerializeRow<T>>`, and `from_serialize()` handles wrapping each row automatically.
-
-**Alternative (explicit wrapping):**
-
-If you prefer the explicit form or need more control:
-
-```rust
-#[miniextendr]
-fn events() -> DataFrame<AsSerializeRow<Event>> {
-    DataFrame::from_rows(vec![
-        AsSerializeRow(Event { timestamp: 1.0, message: "start".into() }),
-        AsSerializeRow(Event { timestamp: 2.0, message: "end".into() }),
-    ])
-}
-```
-
-### Methods
-
-```rust
-impl<T: IntoList> DataFrame<T> {
-    pub fn new() -> Self;
-    pub fn from_rows(rows: Vec<T>) -> Self;
-    pub fn push(&mut self, row: T);
-    pub fn len(&self) -> usize;
-    pub fn is_empty(&self) -> bool;
-}
-
-// Also implements FromIterator
-let df: DataFrame<Point> = points.into_iter().collect();
-```
-
----
-
-## Approach 3: Manual Implementation
-
-For full control or complex scenarios, implement `IntoDataFrame` manually.
-
-### Column-Oriented Data (Homogeneous Types)
-
-For data frames where all columns have the same element type, use `List::from_pairs()`:
-
-```rust
-struct TimeSeries {
-    timestamps: Vec<f64>,
-    values: Vec<f64>,
-}
-
-impl IntoDataFrame for TimeSeries {
-    fn into_data_frame(self) -> List {
-        List::from_pairs(vec![
-            ("timestamp", self.timestamps),
-            ("value", self.values),
-        ])
-        .set_class_str(&["data.frame"])
-        .set_row_names_int(self.timestamps.len())
-    }
-}
-
-#[miniextendr]
-fn time_series() -> TimeSeries {
-    TimeSeries {
-        timestamps: vec![1.0, 2.0, 3.0],
-        values: vec![10.0, 20.0, 30.0],
-    }
-}
-// Automatically converts to data.frame via IntoR
-```
-
-### Column-Oriented Data (Heterogeneous Types)
-
-**Important:** For data frames with different column types, use `List::from_raw_pairs()` instead of `from_pairs()`:
-
-```rust
-use miniextendr_api::IntoR;
-
-struct MixedData {
-    names: Vec<String>,
-    ages: Vec<i32>,
-    heights: Vec<f64>,
-}
-
-impl IntoDataFrame for MixedData {
-    fn into_data_frame(self) -> List {
-        List::from_raw_pairs(vec![
-            ("name", self.names.into_sexp()),
-            ("age", self.ages.into_sexp()),
-            ("height", self.heights.into_sexp()),
-        ])
-        .set_class_str(&["data.frame"])
-        .set_row_names_int(self.names.len())
-    }
-}
-```
-
-**Why?** `from_pairs()` is generic over a single type `T: IntoR`, so all columns must have the same type. `from_raw_pairs()` accepts pre-converted `SEXP` values, allowing heterogeneous columns.
-
-### Call-Site Control with Wrappers
-
-Force conversion for a specific return without changing the type's default:
-
-```rust
-#[miniextendr]
-fn as_dataframe() -> ToDataFrame<TimeSeries> {
-    ToDataFrame(TimeSeries { /* ... */ })
-}
-
-// Or use the extension trait
-#[miniextendr]
-fn with_extension() -> ToDataFrame<TimeSeries> {
-    TimeSeries { /* ... */ }.to_data_frame()
-}
-```
-
-### Type-Level Default with `PreferDataFrame`
-
-Make a type always convert to data.frame when returned:
-
-```rust
-#[derive(PreferDataFrame)]
-struct MyData {
-    // ... fields ...
-}
-
-impl IntoDataFrame for MyData {
-    fn into_data_frame(self) -> List {
-        // ... implementation ...
-    }
-}
-
-#[miniextendr]
-fn get_data() -> MyData {  // Automatically becomes data.frame in R
-    MyData { /* ... */ }
-}
-```
-
----
-
-## Comparison: Row vs Column Oriented
-
-### Row-Oriented (Vec of structs)
-
-```rust
-vec![
-    Measurement { time: 1.0, value: 10.0 },
-    Measurement { time: 2.0, value: 20.0 },
-]
-```
-
-**Pros:**
-
-- Natural Rust data structure
-- Easy to work with in Rust code
-- Type-safe field access
-
-**Cons:**
-
-- Needs transposition for R
-- Memory layout not optimal for R
-
-### Column-Oriented (Struct of Vecs)
-
-```rust
-MeasurementDataFrame {
-    time: vec![1.0, 2.0],
-    value: vec![10.0, 20.0],
-}
-```
-
-**Pros:**
-
-- Direct R data.frame representation
-- No transposition needed
-- Memory efficient for R
-
-**Cons:**
-
-- Less ergonomic in Rust
-- Easy to create invalid data (mismatched lengths)
-
----
-
-## Best Practices
-
-### Choosing an Approach
-
-1. **Use `#[derive(DataFrameRow)]`** when:
-   - You have row-oriented data in Rust
-   - You want type-safe field access
-   - You want automatic conversions
-
-2. **Use `DataFrame<T>`** when:
-   - You need generic code over many row types
-   - You're working with existing IntoList types
-   - You want runtime flexibility
-
-3. **Use manual `impl IntoDataFrame`** when:
-   - You already have column-oriented data
-   - You need custom data.frame attributes
-   - You're handling complex validation
-
-### Handling Missing Data
-
-Use `Option<T>` for nullable fields:
-
-```rust
-#[derive(IntoList, DataFrameRow)]
+#[derive(Clone, IntoList, DataFrameRow)]
 struct Record {
     id: i32,
-    value: Option<f64>,  // Becomes NA in R when None
+    value: Option<f64>,  // NA in R when None
 }
 ```
 
-### Validation
+## `DataFrameError`
 
-Always validate column lengths when manually constructing data frames:
+A single error type covers every failure mode of both verbs:
 
-```rust
-impl IntoDataFrame for MyData {
-    fn into_data_frame(self) -> List {
-        assert_eq!(self.col1.len(), self.col2.len(), "Column length mismatch");
+| Variant | Meaning |
+|---------|---------|
+| `NotList(msg)` | The SEXP is not a VECSXP. |
+| `NotDataFrame` | The object does not inherit from `data.frame`. |
+| `NoNames` | The list has no `names` attribute (columns must be named). |
+| `BadRowNames(msg)` | Could not extract `nrow` from the `row.names` attribute. |
+| `UnequalLengths { expected, column, actual }` | Columns have unequal lengths. |
+| `UnnamedColumns` | A row could not be turned into named columns. |
+| `Conversion(msg)` | A serde or other conversion failure, carried as a message (also covers "this shape has no reader"). |
 
-        List::from_pairs(vec![
-            ("col1", self.col1),
-            ("col2", self.col2),
-        ])
-        .set_class_str(&["data.frame"])
-        .set_row_names_int(self.col1.len())
-    }
-}
-```
+It implements `std::error::Error` and `From<RSerdeError>`, so `?` works in functions that mix serde and data-frame conversions.
 
----
+## Migration from the legacy surface
 
-## Implementation Notes
+The redundant public types below were **removed** (#781) — there is no backwards-compat shim. If you have older code, map it to the façade:
 
-### Row Names
+| Was | Now |
+|---|---|
+| `DataFrameView`, `convert::DataFrame<T>` | one `DataFrame` |
+| `DataFrame::from_rows(rows)` (typed row buffer) | `rows.into_dataframe()?` |
+| `ToDataFrame<Companion>` wrapper + `value.to_data_frame()` | `rows.into_dataframe()?` |
+| `convert::SerializeDataFrame<T>` / `AsSerializeRow<T>` / `from_serialize()` | `serde::SerdeRows(rows).into_dataframe()?` |
+| `impl IntoDataFrame for X { fn into_data_frame(self) -> List }` | derive `DataFrameRow`, or build a `DataFrame` via `DataFrame::builder(n)` |
+| `Row::try_from_dataframe(sexp)` (bare `String` error) | `Vec::<Row>::from_dataframe(&df)?` (`DataFrameError`) |
+| `RDataFrameBuilder::new(n)` | `DataFrame::builder(n)` |
+| four conversion error types | one `DataFrameError` |
 
-R data frames require row names. miniextendr provides two helpers:
+The companion type that `#[derive(DataFrameRow)]` generates (`{Name}DataFrame`, with `to_dataframe` / `from_rows` / `from_rows_par` / `from_dataframe` and `IntoIterator`) still exists as the engine the façade verbs delegate to. The serde columnar assembler (`serde::ColumnarDataFrame`) is still present as a serde-internal representation; converging its naming with the façade is tracked in #783.
 
-```rust
-list.set_row_names_int(n)     // Compact: c(NA, -n) form
-list.set_row_names(names_vec)  // Explicit: character vector
-```
+## Feature flags
 
-### Class Attribute
-
-Data frames need the `"data.frame"` class:
-
-```rust
-list.set_class_str(&["data.frame"])
-```
-
-For subclasses (e.g., tibbles):
-
-```rust
-list.set_class_str(&["tbl_df", "tbl", "data.frame"])
-```
-
-### Empty Data Frames
-
-```rust
-List::from_raw_pairs(Vec::<(&str, SEXP)>::new())
-    .set_class_str(&["data.frame"])
-    .set_row_names_int(0)
-```
-
----
-
-## Feature Flags
-
-- **Base functionality**: No features required
-- **Serde integration**: Requires `serde` feature
-  - Enables `impl IntoList for T: Serialize`
-  - Enables `AsSerializeRow<T>` wrapper
-  - Allows `#[derive(Serialize, DataFrameRow)]`
-
----
+- **Base functionality**: no features required.
+- **`serde`**: enables `impl IntoList for T: Serialize`, the `SerdeRows<T>` wrapper, and `#[derive(Serialize, DataFrameRow)]`.
+- **`rayon`**: enables the `_par` verbs and `DataFrame::builder`.
 
 ## Examples
 
