@@ -250,6 +250,23 @@ jobs:
           -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_all.log"
         shell: bash
 
+      # cargo-revendor is a standalone workspace excluded from the root
+      # workspace, so the `--workspace` clippy steps above never reach it
+      # (#778). It has no R linkage, so it lints without configure/R setup.
+      - name: Clippy (cargo-revendor)
+        id: clippy_revendor
+        continue-on-error: true
+        run: cargo clippy --manifest-path cargo-revendor/Cargo.toml --all-targets --locked -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_revendor.log"
+        shell: bash
+
+      - name: Rustdoc (cargo-revendor)
+        id: doc_revendor
+        continue-on-error: true
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --no-deps --document-private-items --manifest-path cargo-revendor/Cargo.toml --locked 2>&1 | tee "$RUNNER_TEMP/doc_revendor.log"
+        shell: bash
+
       - name: Fail if any Rust check failed
         if: always()
         shell: bash
@@ -260,10 +277,14 @@ jobs:
           rustfmt="${{ steps.rustfmt.outcome }}"
           clippy_default="${{ steps.clippy_default.outcome }}"
           clippy_all="${{ steps.clippy_all.outcome }}"
+          clippy_revendor="${{ steps.clippy_revendor.outcome }}"
+          doc_revendor="${{ steps.doc_revendor.outcome }}"
 
-          echo "rustfmt:         $rustfmt"
-          echo "clippy_default:  $clippy_default"
-          echo "clippy_all:      $clippy_all"
+          echo "rustfmt:          $rustfmt"
+          echo "clippy_default:   $clippy_default"
+          echo "clippy_all:       $clippy_all"
+          echo "clippy_revendor:  $clippy_revendor"
+          echo "doc_revendor:     $doc_revendor"
           echo
 
           dump_failed() {
@@ -280,9 +301,11 @@ jobs:
             fi
           }
 
-          dump_failed rustfmt         "$rustfmt"
-          dump_failed clippy_default  "$clippy_default"
-          dump_failed clippy_all      "$clippy_all"
+          dump_failed rustfmt          "$rustfmt"
+          dump_failed clippy_default   "$clippy_default"
+          dump_failed clippy_all       "$clippy_all"
+          dump_failed clippy_revendor  "$clippy_revendor"
+          dump_failed doc_revendor     "$doc_revendor"
 
           if [[ "$failed" -ne 0 ]]; then
             echo "::error::One or more Rust checks failed (output dumped above)"
