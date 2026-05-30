@@ -792,7 +792,13 @@ jobs:
   r-tests:
     name: R tests / Linux
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # This job bundles unit tests + the 3-round randomized gctorture heap-check
+    # + the Valgrind ALTREP pass; the total runs ~47 min and outgrew the prior
+    # 45-min cap (itself a 30->45 bump in #732), so the tip-of-main run was
+    # being cancelled by timeout. Use the 90 min the other heavy jobs here use.
+    # If it overruns again, split the heap-check/Valgrind into their own job(s)
+    # rather than bumping a third time.
+    timeout-minutes: 90
     needs: changes
     if: needs.changes.outputs.r == 'true'
 
