@@ -1,21 +1,20 @@
 # Tests for system command execution helpers (R/system.R)
 
-# Resolve a usable Rscript binary, or skip. Returns "" when unavailable.
+# Resolve the Rscript that ships with the running R, or "" if absent.
+# Use R.home("bin") rather than Sys.which("Rscript"): under `R CMD check` the
+# bare name resolves to a wrapper on PATH that exits non-zero with "'Rscript'
+# should not be used without a path -- see par. 1.6 of the manual". Addressing
+# it by its home path (the method Writing R Extensions sec. 1.6 prescribes)
+# invokes the real interpreter and sidesteps the wrapper.
 find_rscript <- function() {
-  rscript <- Sys.which("Rscript")
-  if (!nzchar(rscript)) {
-    cand <- file.path(
-      R.home("bin"),
-      if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript"
-    )
-    if (file.exists(cand)) rscript <- cand
-  }
-  rscript
+  exe <- if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript"
+  cand <- file.path(R.home("bin"), exe)
+  if (file.exists(cand)) cand else ""
 }
 
 test_that("run_with_logging captures a non-zero exit without leaking a warning", {
   rscript <- find_rscript()
-  skip_if_not(nzchar(rscript), "Rscript not found on PATH")
+  skip_if_not(nzchar(rscript), "Rscript not found")
 
   # Point Rscript at a file that does not exist: deterministic non-zero exit,
   # no shell metacharacters in the argument. base R raises a
@@ -36,14 +35,12 @@ test_that("run_with_logging captures a non-zero exit without leaking a warning",
 
 test_that("run_with_logging reports success for a zero-exit command", {
   rscript <- find_rscript()
-  skip_if_not(nzchar(rscript), "Rscript not found on PATH")
+  skip_if_not(nzchar(rscript), "Rscript not found")
 
-  # Run an *empty* R script: a no-op program that exits 0 on every platform and
-  # R version. `Rscript --version` is not portable here -- on some Linux R
-  # builds it returns a non-zero status, which made this a false negative on CI
-  # (#799). The path is metacharacter-free, mirroring the non-zero sibling
-  # above, since system2() with captured output goes through `sh -c` and does
-  # not shell-quote its arguments.
+  # Run an *empty* R script: a no-op program that exits 0. The path is
+  # metacharacter-free, mirroring the non-zero sibling above, since system2()
+  # with captured output goes through `sh -c` and does not shell-quote its
+  # arguments.
   empty <- file.path(tempdir(), "minirextendr-empty-9f3c.R")
   file.create(empty)
   on.exit(unlink(empty), add = TRUE)

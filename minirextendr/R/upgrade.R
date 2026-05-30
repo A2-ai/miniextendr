@@ -152,7 +152,7 @@ find_rpkg_subdir <- function(path) {
   if (length(matches) > 1) {
     cli::cli_abort(c(
       "Multiple rpkg subdirectories detected in {.path {path}}:",
-      setNames(matches, rep("*", length(matches))),
+      stats::setNames(matches, rep("*", length(matches))),
       "i" = "Pass {.code rpkg_subdir = '<name>'} explicitly to disambiguate."
     ))
   }
