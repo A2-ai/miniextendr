@@ -11,12 +11,14 @@ that drives `library(miniextendr)` against the wasm install). A local
 `just docker-webr-smoke` recipe drives the same path inside the pinned
 webR Docker image.
 
-Tracking: umbrella #470. Merged: #491 (tier 2), #493 (cross-package wasm
-stubs), #494 (side-module `RUSTFLAGS` — `-Zdefault-visibility=hidden`),
-#496 (mirror webR base image). Open follow-ups: #482 (gate `link_to_r()`
-on target_arch), #492 (tier 3 Node smoke), #495 (cross-crate trait
-dispatch), #745 (drop redundant `-C relocation-model=pic`), #752
-(dependency guidance — see "Dependencies and webR" below).
+Tracking: umbrella #470. Shipped: tier 1/2/3 CI (#480 / #491 / #492),
+cross-package wasm stubs (#493), side-module `RUSTFLAGS`
+(`-Zdefault-visibility=hidden`, #494), `link_to_r()` wasm gating (#482), webR
+base-image mirror (#496), the redundant `-C relocation-model=pic` flag
+dropped (#745), and the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
+release (#755). Open follow-ups: #495 (cross-crate trait dispatch), #752
+(dependency guidance — see "Dependencies and webR" below), #788 (arm64-native
+dev image), #747 (drop mirror creds once the GHCR package is public).
 
 ## Target
 
@@ -92,9 +94,9 @@ the container, then prints a testthat pass/fail/skip summary:
    they're never deployed to webR; see #493.)
 2. **wasm32 install** — `CC=emcc bash rpkg/configure` followed by
    `R CMD INSTALL --no-test-load --no-staged-install` against
-   `/opt/webr/host/R-4.5.1/bin/R` (webR's own host R) with
+   `/opt/webr/host/R-4.6.0/bin/R` (webR's own host R) with
    `R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk`. Result lands at
-   `/opt/webr/wasm/R-4.5.1/lib/R/library/miniextendr/`.
+   `/opt/webr/wasm/R-4.6.0/lib/R/library/miniextendr/`.
 3. **webR Node session** — imports webR's bundled ESM directly from
    `file:///opt/webr/dist/webr.mjs` (see "The `/opt/webr/dist` import
    gotcha" below), NODEFS-mounts the wasm R lib tree, calls
@@ -139,11 +141,11 @@ right one:
 
 | Path | Use |
 |---|---|
-| `/opt/R/current/bin/R` | Native (rig-managed 4.5.1). Phase 1 of the smoke script — host cdylib + wrapper-gen. |
-| `/opt/webr/host/R-4.5.1/bin/R` | webR's own host R, configured for wasm cross-compilation. Phase 2 — wasm `R CMD INSTALL` with `webr-vars.mk`. |
-| `/opt/webr/wasm/R-4.5.1/lib/R/library/` | wasm R library tree where the side-module ends up. NODEFS-mounted into the webR Node session. |
+| `/opt/R/current/bin/R` | Native (rig-managed 4.6.0). Phase 1 of the smoke script — host cdylib + wrapper-gen. |
+| `/opt/webr/host/R-4.6.0/bin/R` | webR's own host R, configured for wasm cross-compilation. Phase 2 — wasm `R CMD INSTALL` with `webr-vars.mk`. |
+| `/opt/webr/wasm/R-4.6.0/lib/R/library/` | wasm R library tree where the side-module ends up. NODEFS-mounted into the webR Node session. |
 
-`R_SOURCE=/opt/webr/R/build/R-4.5.1` and `WASM_TOOLS=/opt/webr/tools` must
+`R_SOURCE=/opt/webr/R/build/R-4.6.0` and `WASM_TOOLS=/opt/webr/tools` must
 be exported during the wasm install — `webr-vars.mk` references both.
 
 ## Other webR build constraints
@@ -164,45 +166,62 @@ be exported during the wasm install — `webr-vars.mk` references both.
   `worker-thread` feature must be disabled. Already feature-gated.
 - **`RUSTFLAGS` for the side-module** are set by `rpkg/configure.ac`'s
   `is_wasm_install` branch (and mirrored into the minirextendr templates):
-  `-C relocation-model=pic -Zdefault-visibility=hidden` (#494). The
-  `-Zdefault-visibility=hidden` flag is load-bearing, not cosmetic: webR
-  links the Rust staticlib into a `-s SIDE_MODULE=1` shared object, and
-  without hidden default visibility the staticlib exports ~3000 mangled
-  stdlib/dep symbols into the side-module's EXPORT table. webR's JS-side
-  `dyn.load` then fails — `TypeError: Cannot read properties of undefined`
-  on the pinned emcc, or a hard `emcc: error: invalid export name` on emcc
-  4.0.8+. Hiding symbols by default leaves only the `#[no_mangle] extern
-  "C"` entry points exported. This is `savvy`'s approach
+  `-Zdefault-visibility=hidden` (#494). This flag is load-bearing, not
+  cosmetic: webR links the Rust staticlib into a `-s SIDE_MODULE=1` shared
+  object, and without hidden default visibility the staticlib exports ~3000
+  mangled stdlib/dep symbols into the side-module's EXPORT table. webR's
+  JS-side `dyn.load` then fails — `TypeError: Cannot read properties of
+  undefined` on the pinned emcc, or a hard `emcc: error: invalid export name`
+  on emcc 4.0.8+. Hiding symbols by default leaves only the `#[no_mangle]
+  extern "C"` entry points exported. This is `savvy`'s approach
   (yutannihilation/savvy#372), endorsed by webR's maintainer
   (r-wasm/webr#532). Note `-s SIDE_MODULE=1` is an emcc *link* flag supplied
   by `webr-vars.mk`, not a `RUSTFLAG` — the staticlib is a `cargo build
-  --lib` archive cargo never links. `-C relocation-model=pic` is likely the
-  wasm32-emscripten default (tier-2 links fine without it); #745 tracks
-  dropping it once tier-3 confirms the runtime load is unaffected.
+  --lib` archive cargo never links. (`-C relocation-model=pic` was set here
+  too until #745: PR #749 proved the link succeeds without it and tier-3
+  confirmed the runtime load is unaffected — wasm32-unknown-emscripten is
+  position-independent by default, so the flag was a no-op.)
 
-## The `/opt/webr/dist` import gotcha
+## Running a webR session in Node (the two-bundle gotcha)
 
-To run a webR session in Node *inside the webR base image*, import webR's
-bundled ESM by absolute file URL:
+webR's esbuild config emits **two** bundles and only one runs in Node:
+
+| Bundle | Path | Runtime |
+|---|---|---|
+| **browser** | `/opt/webr/dist/webr.mjs` | browser only — stubs out `fs`/`worker_threads`/`url` via `blankImportPlugin`, *crashes in Node* |
+| **Node** | `/opt/webr/src/dist/{webr.mjs,webr.cjs}` | Node — the `.mjs` carries a `__dirname`/`__filename`/`createRequire` banner |
+
+So the Node runner imports the **Node** bundle, with **no** `baseUrl`:
 
 ```js
-import { WebR } from "file:///opt/webr/dist/webr.mjs";
+import { WebR } from "file:///opt/webr/src/dist/webr.mjs";
+const webR = new WebR({ interactive: false });   // NO file:// baseUrl
 ```
 
-Do **not** `npm install file:///opt/webr/src` (the obvious-looking move).
-webR's Dockerfile builds the JS dist with `cd src && make` — esbuild emits
-the bundle to `$(WEBR_ROOT)/dist`, i.e. `/opt/webr/dist/webr.mjs` — then
-runs `cd src && make clean`, whose clean target removes only
-`src/dist` (`PKG_DIST`). So in the shipped image the `webr` npm package's
-`main: dist/webr.mjs` resolves under the package dir to the *deleted*
-`/opt/webr/src/dist/webr.mjs`, while the root `/opt/webr/dist/webr.mjs`
-survives. `esbuild --prod` produces a self-contained bundle, so the direct
-import needs no `npm install` / `node_modules`. Bonus: that dist was built
-by the same image (webR HEAD + R 4.5.1), so its `R.bin.wasm` matches the R
-your wasm package was compiled against — no npm-registry version-coupling.
+Two non-obvious constraints:
 
-Use `baseUrl: "file:///opt/webr/dist/"` so webR fetches `R.bin.wasm` and its
-worker from the same surviving dir.
+1. **The image deletes `src/dist` and `src/node_modules`** (its Dockerfile runs
+   `make clean` to shrink the published image, see `.webr/Dockerfile`). You must
+   **rebuild the Node bundle first**: `cd /opt/webr/src && make
+   /opt/webr/src/dist/webr.mjs`. That target chains `npm ci` →
+   `webR/config.ts` (sed from `.in`) → `npm run build` (tsc + esbuild) → an
+   asset-copy of `R.wasm`/`R.js`/`vfs`/`webr-worker.js` out of
+   `/opt/webr/dist` into `/opt/webr/src/dist`, so the bundle resolves all
+   runtime assets via its own `__dirname` — hence no `baseUrl` needed (~20s on
+   a warm runner).
+2. **Do NOT set a `file://` baseUrl.** Node 18+'s `new Worker(string)` rejects
+   `file://` URL strings with `ERR_WORKER_PATH`, so the bundle crashes at init
+   while building the `webr-worker.js` worker path. (This is the trap the old
+   `import { WebR } from "file:///opt/webr/dist/webr.mjs"` + `baseUrl` advice
+   walked straight into — that imported the *browser* bundle, which can't run
+   in Node at all.)
+
+`tests/webr-node-smoke/smoke.mjs` (CI tier-3) is the worked reference; its
+header comment is the source of truth for the bundle layout. The Node process
+must `webR.close()` (terminates the worker) and call `process.exit()` in a
+top-level `.finally()` — otherwise the worker keeps Node's event loop alive and
+the run hangs until the watchdog `timeout` kills it (exit 124, see
+`reviews/2026-05-29-tier3-webr-node-smoke-exit-hang.md`).
 
 ## Dependencies and webR
 
@@ -272,13 +291,14 @@ is what proves it *loads* in a real webR runtime.
 ## See also
 
 - Issue #470 — umbrella tracking issue for webR/WASM support.
-- Issue #492 — CI tier 3 (Node smoke); #495 — cross-crate trait dispatch;
-  #745 — drop redundant PIC flag; #752 — dependency guidance.
-- `tests/webr-node-smoke/smoke.mjs` — the CI tier-3 Node runner.
-- `tests/webr-smoke.sh` — the local end-to-end smoke runner. (Its Phase 3
-  still uses the old `npm install file:///opt/webr/src` approach, which is
-  broken in the current image — port it to the `/opt/webr/dist` import when
-  next touched.)
+- Issue #495 — cross-crate trait dispatch; #752 — dependency guidance;
+  #788 — arm64-native dev image.
+- `tests/webr-node-smoke/smoke.mjs` — the CI tier-3 Node runner (single source
+  of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
+- `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
+  `webr.yml` tier-2/3 job step-for-step (Phase 2 → `/tmp/wasm-lib`, Phase 3 →
+  `make` the Node bundle, then run `smoke.mjs`). The base image is amd64-only,
+  so it can't be exercised on an arm64 dev box today — tracked in #788.
 - `.webr/` — vendored clone of the webR repo for offline reference.
 - `.webr/Dockerfile` — upstream Rust toolchain install we inherit.
 - `.webr/packages/webr-vars.mk` — the Makevars override webR uses for

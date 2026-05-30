@@ -213,21 +213,20 @@ dnl It equals the Rust crate name (hyphens/dots → underscores)
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
-dnl wasm32/webR side-modules need two RUSTFLAGS adjustments.
+dnl wasm32/webR side-modules need one RUSTFLAGS adjustment.
 dnl
-dnl 1. -C relocation-model=pic
-dnl    webR's webr-vars.mk links the Rust staticlib into a `-s SIDE_MODULE=1`
-dnl    shared object via emcc, which only accepts position-independent input.
-dnl
-dnl 2. -Zdefault-visibility=hidden
+dnl -Zdefault-visibility=hidden
 dnl    Without it, the Rust staticlib drags thousands of mangled stdlib/dep
 dnl    symbols into the side-module's EXPORT table and webR's dyn.load fails.
 dnl    Hiding all symbols by default leaves only your `#[no_mangle] extern "C"`
 dnl    entry points exported. This is a nightly -Z flag, but the wasm target
 dnl    already requires nightly via -Z build-std, so it adds no new constraint.
 dnl    (savvy's approach; endorsed by webR's maintainer, r-wasm/webr#532.)
+dnl
+dnl (`-C relocation-model=pic` was dropped — wasm32-unknown-emscripten is
+dnl position-independent by default, so it was a no-op. See miniextendr #745.)
 if test "$is_wasm_install" = true; then
-  ENV_RUSTFLAGS="$ENV_RUSTFLAGS -C relocation-model=pic -Zdefault-visibility=hidden"
+  ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
 fi
 AC_SUBST([ENV_RUSTFLAGS])
 

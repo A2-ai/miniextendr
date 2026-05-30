@@ -24,8 +24,10 @@
 # insulates CI from upstream rolling the `:main` tag or pruning old
 # digests. Bump deliberately via PR: edit the digest here, then run the
 # mirror workflow (or wait for the weekly cron) before CI references
-# the new tag.
-ARG WEBR_BASE=ghcr.io/a2-ai/webr-mirror@sha256:0b9e6e41134275d186633cc0b2564f0d03c66b36c0412fdbae51c7572cdbdd40
+# the new tag. Prefer a *tagged release* digest over a `:main` snapshot —
+# the pin below is webR v0.6.0 (bundles R 4.6.0), not an orphaned `:main`
+# snapshot (see #755).
+ARG WEBR_BASE=ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
 FROM ${WEBR_BASE}
 
 ARG JUST_VERSION=1.36.0
