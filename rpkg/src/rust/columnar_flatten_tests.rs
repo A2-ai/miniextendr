@@ -3,9 +3,10 @@
 
 use crate::serde::Serialize;
 use miniextendr_api::IntoR;
+use miniextendr_api::dataframe::DataFrame;
 use miniextendr_api::miniextendr;
 use miniextendr_api::serde::{
-    ColumnarDataFrame, DataFrameShape, SplitShape, vec_to_dataframe_split,
+    DataFrameShape, SplitShape, vec_to_dataframe, vec_to_dataframe_split,
 };
 
 // region: Test types
@@ -99,7 +100,7 @@ enum TaggedEvent {
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_nested() -> ColumnarDataFrame {
+pub fn test_columnar_nested() -> DataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -110,12 +111,12 @@ pub fn test_columnar_nested() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_optional_struct() -> ColumnarDataFrame {
+pub fn test_columnar_optional_struct() -> DataFrame {
     let rows = vec![
         WithOptionalStruct {
             name: "has".into(),
@@ -130,12 +131,12 @@ pub fn test_columnar_optional_struct() -> ColumnarDataFrame {
             extra: Some(Inner { x: 5.0, y: 6.0 }),
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_deep_nesting() -> ColumnarDataFrame {
+pub fn test_columnar_deep_nesting() -> DataFrame {
     let rows = vec![
         Deep {
             a: "x".into(),
@@ -152,12 +153,12 @@ pub fn test_columnar_deep_nesting() -> ColumnarDataFrame {
             },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_serde_flatten() -> ColumnarDataFrame {
+pub fn test_columnar_serde_flatten() -> DataFrame {
     let rows = vec![
         WithFlatten {
             id: 1,
@@ -168,12 +169,12 @@ pub fn test_columnar_serde_flatten() -> ColumnarDataFrame {
             coords: Inner { x: 30.0, y: 40.0 },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_skip_serializing_if() -> ColumnarDataFrame {
+pub fn test_columnar_skip_serializing_if() -> DataFrame {
     let rows = vec![
         WithSkip {
             name: "a".into(),
@@ -191,12 +192,12 @@ pub fn test_columnar_skip_serializing_if() -> ColumnarDataFrame {
             value: 3.0,
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_rename() -> ColumnarDataFrame {
+pub fn test_columnar_rename() -> DataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -207,7 +208,7 @@ pub fn test_columnar_rename() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
         .expect("from_rows")
         .rename("point_x", "px")
         .rename("point_y", "py")
@@ -215,22 +216,22 @@ pub fn test_columnar_rename() -> ColumnarDataFrame {
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_rename_noop() -> ColumnarDataFrame {
+pub fn test_columnar_rename_noop() -> DataFrame {
     let rows = vec![Inner { x: 1.0, y: 2.0 }];
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
         .expect("from_rows")
         .rename("nonexistent", "z")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_empty() -> ColumnarDataFrame {
-    ColumnarDataFrame::from_rows::<Inner>(&[]).expect("from_rows")
+pub fn test_columnar_empty() -> DataFrame {
+    vec_to_dataframe::<Inner>(&[]).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_drop() -> ColumnarDataFrame {
+pub fn test_columnar_drop() -> DataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -241,14 +242,12 @@ pub fn test_columnar_drop() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows)
-        .expect("from_rows")
-        .drop("point_y")
+    vec_to_dataframe(&rows).expect("from_rows").drop("point_y")
 }
 
 /// @export
 #[miniextendr]
-pub fn test_columnar_select() -> ColumnarDataFrame {
+pub fn test_columnar_select() -> DataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -259,7 +258,7 @@ pub fn test_columnar_select() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
         .expect("from_rows")
         .select(&["point_y", "label"])
 }
@@ -269,7 +268,7 @@ pub fn test_columnar_select() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_with_column_replace() -> ColumnarDataFrame {
+pub fn test_columnar_with_column_replace() -> DataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
     struct Row {
@@ -282,7 +281,7 @@ pub fn test_columnar_with_column_replace() -> ColumnarDataFrame {
         Row { id: 3, value: 30.0 },
     ];
     let replacement = vec!["a".to_string(), "b".to_string(), "c".to_string()].into_sexp();
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
         .expect("from_rows")
         .with_column("id", replacement)
 }
@@ -291,10 +290,10 @@ pub fn test_columnar_with_column_replace() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_with_column_append() -> ColumnarDataFrame {
+pub fn test_columnar_with_column_append() -> DataFrame {
     let rows = vec![Inner { x: 1.0, y: 2.0 }, Inner { x: 3.0, y: 4.0 }];
     let new_col = vec!["first".to_string(), "second".to_string()].into_sexp();
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
         .expect("from_rows")
         .with_column("label", new_col)
 }
@@ -303,7 +302,7 @@ pub fn test_columnar_with_column_append() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_strip_prefix() -> ColumnarDataFrame {
+pub fn test_columnar_strip_prefix() -> DataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -314,7 +313,7 @@ pub fn test_columnar_strip_prefix() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows)
+    vec_to_dataframe(&rows)
         .expect("from_rows")
         .strip_prefix("point_")
 }
@@ -324,7 +323,7 @@ pub fn test_columnar_strip_prefix() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_untagged_enum() -> ColumnarDataFrame {
+pub fn test_columnar_untagged_enum() -> DataFrame {
     let rows = vec![
         WithUntaggedEnum {
             path: "a.txt".into(),
@@ -347,20 +346,20 @@ pub fn test_columnar_untagged_enum() -> ColumnarDataFrame {
             },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// Internally tagged enum: "kind" column acts as discriminator.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_tagged_enum() -> ColumnarDataFrame {
+pub fn test_columnar_tagged_enum() -> DataFrame {
     let rows = vec![
         TaggedEvent::Click { x: 10.0, y: 20.0 },
         TaggedEvent::Scroll { delta: -3.5 },
         TaggedEvent::Click { x: 30.0, y: 40.0 },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // region: vec_to_dataframe_split fixtures
@@ -472,7 +471,7 @@ struct CmaxValue {
 ///
 /// @export
 #[miniextendr]
-pub fn test_map_to_dataframe_btreemap() -> ColumnarDataFrame {
+pub fn test_map_to_dataframe_btreemap() -> DataFrame {
     use std::collections::BTreeMap;
     let mut map: BTreeMap<i32, CmaxValue> = BTreeMap::new();
     map.insert(
@@ -503,7 +502,7 @@ pub fn test_map_to_dataframe_btreemap() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_hashmap_to_dataframe() -> ColumnarDataFrame {
+pub fn test_hashmap_to_dataframe() -> DataFrame {
     use std::collections::HashMap;
     let mut map: HashMap<i32, CmaxValue> = HashMap::new();
     map.insert(

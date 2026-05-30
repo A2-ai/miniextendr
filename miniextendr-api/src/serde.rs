@@ -240,8 +240,8 @@ mod traits;
 pub use ::serde::{Deserialize, Serialize};
 
 pub use columnar::{
-    ColumnarDataFrame, DataFrameBuilder, DataFrameShape, DispatchNames, NamedDataFrameListBuilder,
-    ResultShape, SplitResults, SplitShape, TypeSpec, dispatch_to_dataframes, hashmap_to_dataframe,
+    DataFrameShape, DispatchNames, NamedDataFrameListBuilder, ResultShape, SerdeRowBuilder,
+    SplitResults, SplitShape, TypeSpec, dispatch_to_dataframes, hashmap_to_dataframe,
     iter_to_dataframe, map_to_dataframe, result_to_dataframe, vec_to_dataframe,
     vec_to_dataframe_split,
 };

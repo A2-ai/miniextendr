@@ -98,6 +98,9 @@ let rows = SerdeRows::<Row>::from_dataframe(&df)?.into_inner();
 The redundant public types above have been **removed** (#781) — there is no
 backwards-compat shim. The legacy companion methods (`to_dataframe`, `from_rows`,
 `try_from_dataframe`) remain as the internal engine the trait impls delegate to.
-The serde columnar assembler (`serde::ColumnarDataFrame` and its builder/streamer
-type names) is still present as a serde-internal representation; converging its
-naming with the façade is tracked separately in #783.
+The serde columnar assembler has been aligned with the façade (#783): the internal
+columnar newtype is now folded into `DataFrame` (all serde column helpers return
+`DataFrame` directly), and the streaming serde-row builder is now `SerdeRowBuilder`
+(paired with `SerdeRows`). Two serde-side builders remain distinct from
+`DataFrame::builder`: `SerdeRowBuilder<T>` for incremental serde rows assembled into
+one `DataFrame`, and `NamedDataFrameListBuilder` for a named list of frames.

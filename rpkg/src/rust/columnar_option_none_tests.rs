@@ -1,12 +1,13 @@
-//! Tests for `ColumnarDataFrame::from_rows` all-`None` column downgrade.
+//! Tests for `vec_to_dataframe` all-`None` column downgrade.
 //!
 //! When every row has `None` for an `Option<T>` field, the column lands as a
 //! logical NA vector (LGLSXP) rather than `list(NULL, NULL, …)`.  R coerces
 //! logical NA to the surrounding type on first use.
 
 use crate::serde::Serialize;
+use miniextendr_api::dataframe::DataFrame;
 use miniextendr_api::miniextendr;
-use miniextendr_api::serde::ColumnarDataFrame;
+use miniextendr_api::serde::vec_to_dataframe;
 use std::collections::HashMap;
 
 // region: Test types
@@ -118,19 +119,19 @@ enum EventDifferentNested {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_u64_all_none_single() -> ColumnarDataFrame {
+pub fn test_columnar_opt_u64_all_none_single() -> DataFrame {
     let rows = vec![WithOptU64 {
         name: "a".into(),
         stored: None,
     }];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// All-None `Option<u64>` column — multiple rows.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_u64_all_none_multi() -> ColumnarDataFrame {
+pub fn test_columnar_opt_u64_all_none_multi() -> DataFrame {
     let rows = vec![
         WithOptU64 {
             name: "a".into(),
@@ -145,31 +146,31 @@ pub fn test_columnar_opt_u64_all_none_multi() -> ColumnarDataFrame {
             stored: None,
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// All-None `Option<String>` column.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_string_all_none() -> ColumnarDataFrame {
+pub fn test_columnar_opt_string_all_none() -> DataFrame {
     let rows = vec![
         WithOptString { id: 1, label: None },
         WithOptString { id: 2, label: None },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// All-None `Option<bool>` column.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_bool_all_none() -> ColumnarDataFrame {
+pub fn test_columnar_opt_bool_all_none() -> DataFrame {
     let rows = vec![
         WithOptBool { id: 1, flag: None },
         WithOptBool { id: 2, flag: None },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// All-None `Option<UserStruct>` — nested struct with all entries `None`.
@@ -180,36 +181,36 @@ pub fn test_columnar_opt_bool_all_none() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_user_struct_all_none() -> ColumnarDataFrame {
+pub fn test_columnar_opt_user_struct_all_none() -> DataFrame {
     let rows = vec![
         WithOptUserStruct { id: 1, point: None },
         WithOptUserStruct { id: 2, point: None },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// All-None `Option<HashMap<…>>` — foreign generic, downgrade still fires.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_hashmap_all_none() -> ColumnarDataFrame {
+pub fn test_columnar_opt_hashmap_all_none() -> DataFrame {
     let rows = vec![
         WithOptHashMap { id: 1, attrs: None },
         WithOptHashMap { id: 2, attrs: None },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// All-None `Option<Vec<u8>>` — downgrade fires (no values, no list semantics to preserve).
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_bytes_all_none() -> ColumnarDataFrame {
+pub fn test_columnar_opt_bytes_all_none() -> DataFrame {
     let rows = vec![
         WithOptBytes { id: 1, data: None },
         WithOptBytes { id: 2, data: None },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // endregion
@@ -220,7 +221,7 @@ pub fn test_columnar_opt_bytes_all_none() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_u64_mixed() -> ColumnarDataFrame {
+pub fn test_columnar_opt_u64_mixed() -> DataFrame {
     let rows = vec![
         WithOptU64 {
             name: "a".into(),
@@ -235,14 +236,14 @@ pub fn test_columnar_opt_u64_mixed() -> ColumnarDataFrame {
             stored: Some(99),
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// Mixed `Option<String>`: some rows have values.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_opt_string_mixed() -> ColumnarDataFrame {
+pub fn test_columnar_opt_string_mixed() -> DataFrame {
     let rows = vec![
         WithOptString {
             id: 1,
@@ -250,7 +251,7 @@ pub fn test_columnar_opt_string_mixed() -> ColumnarDataFrame {
         },
         WithOptString { id: 2, label: None },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // endregion
@@ -261,7 +262,7 @@ pub fn test_columnar_opt_string_mixed() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_bytes_with_values() -> ColumnarDataFrame {
+pub fn test_columnar_bytes_with_values() -> DataFrame {
     let rows = vec![
         WithOptBytes {
             id: 1,
@@ -272,7 +273,7 @@ pub fn test_columnar_bytes_with_values() -> ColumnarDataFrame {
             data: Some(vec![4u8, 5]),
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // endregion
@@ -284,7 +285,7 @@ pub fn test_columnar_bytes_with_values() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_bytes_and_opt_none() -> ColumnarDataFrame {
+pub fn test_columnar_bytes_and_opt_none() -> DataFrame {
     let rows = vec![
         WithBytesAndOpt {
             raw: vec![1u8, 2],
@@ -295,7 +296,7 @@ pub fn test_columnar_bytes_and_opt_none() -> ColumnarDataFrame {
             stored: None,
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // endregion
@@ -307,7 +308,7 @@ pub fn test_columnar_bytes_and_opt_none() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_flatten_all_none() -> ColumnarDataFrame {
+pub fn test_columnar_flatten_all_none() -> DataFrame {
     let rows = vec![
         WithFlattenedOptField {
             id: 1,
@@ -324,7 +325,7 @@ pub fn test_columnar_flatten_all_none() -> ColumnarDataFrame {
             },
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // endregion
@@ -335,9 +336,9 @@ pub fn test_columnar_flatten_all_none() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_enum_all_none() -> ColumnarDataFrame {
+pub fn test_columnar_enum_all_none() -> DataFrame {
     let rows = vec![EventWithOptX::A { x: None }, EventWithOptX::A { x: None }];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// Enum: variant-A rows with `x = None`, then one variant-B row with `x = Some(42)`.
@@ -349,12 +350,12 @@ pub fn test_columnar_enum_all_none() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_enum_some_flips_type() -> ColumnarDataFrame {
+pub fn test_columnar_enum_some_flips_type() -> DataFrame {
     let rows = vec![
         EventWithOptX::A { x: None },
         EventWithOptX::B { x: Some(42) },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // endregion
@@ -368,14 +369,14 @@ pub fn test_columnar_enum_some_flips_type() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_schema_upgrade_scalar() -> ColumnarDataFrame {
+pub fn test_columnar_schema_upgrade_scalar() -> DataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
     struct Row {
         x: Option<u64>,
     }
     let rows = vec![Row { x: None }, Row { x: Some(42) }];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// First-row `point = None`, second row `point = Some(Point{x:1.0, y:2.0})`.
@@ -385,7 +386,7 @@ pub fn test_columnar_schema_upgrade_scalar() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_schema_upgrade_nested() -> ColumnarDataFrame {
+pub fn test_columnar_schema_upgrade_nested() -> DataFrame {
     let rows = vec![
         WithOptPoint { id: 1, point: None },
         WithOptPoint {
@@ -393,7 +394,7 @@ pub fn test_columnar_schema_upgrade_nested() -> ColumnarDataFrame {
             point: Some(InnerStruct { x: 1.0, y: 2.0 }),
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// Multiple leading None rows before a Some value.
@@ -403,7 +404,7 @@ pub fn test_columnar_schema_upgrade_nested() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_schema_upgrade_multi_none_first() -> ColumnarDataFrame {
+pub fn test_columnar_schema_upgrade_multi_none_first() -> DataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
     struct Row {
@@ -415,7 +416,7 @@ pub fn test_columnar_schema_upgrade_multi_none_first() -> ColumnarDataFrame {
         Row { x: Some(42) },
         Row { x: None },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 /// Compound-vs-compound with different struct shapes: existing-wins semantics.
@@ -436,7 +437,7 @@ pub fn test_columnar_schema_upgrade_multi_none_first() -> ColumnarDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_compound_different_shapes() -> ColumnarDataFrame {
+pub fn test_columnar_compound_different_shapes() -> DataFrame {
     let rows = vec![
         EventDifferentNested::A { value: 1.0 },
         EventDifferentNested::B {
@@ -444,7 +445,7 @@ pub fn test_columnar_compound_different_shapes() -> ColumnarDataFrame {
             extra: 3.0,
         },
     ];
-    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+    vec_to_dataframe(&rows).expect("from_rows")
 }
 
 // endregion

@@ -389,8 +389,8 @@ pub fn gc_stress_toml_array() {
 
 /// Exercise `NamedDataFrameListBuilder` SEXP protection under GC pressure.
 ///
-/// Pushes two `ColumnarDataFrame`s (synthesised internally) into a
-/// `NamedDataFrameListBuilder` and calls `build()`.  Each `push` stores the
+/// Pushes two `DataFrame`s (synthesised internally via `vec_to_dataframe`) into
+/// a `NamedDataFrameListBuilder` and calls `build()`.  Each `push` stores the
 /// input SEXP in an internal `Vec<SEXP>` (protected by the builder's
 /// `ProtectScope`), making this the canonical gctorture coverage for the
 /// SEXP-storage-across-allocations path in the builder.
@@ -698,9 +698,9 @@ pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
 
 // endregion
 
-// region: DataFrameBuilder with_schema / grow_schema GC stress
+// region: SerdeRowBuilder with_schema / grow_schema GC stress
 
-/// Exercise [`DataFrameBuilder::with_schema`] PROTECT discipline under GC
+/// Exercise [`SerdeRowBuilder::with_schema`] PROTECT discipline under GC
 /// pressure. Builds a pre-declared schema, pushes 50 rows including a
 /// `None`-bearing optional column, then assembles via `finish()`. Verifies
 /// the per-builder `ProtectScope` keeps every protected SEXP live across
@@ -712,7 +712,7 @@ pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
 pub fn gc_stress_builder_with_schema() -> SEXP {
     use crate::serde::Serialize;
     use miniextendr_api::into_r::IntoR as _;
-    use miniextendr_api::serde::{DataFrameBuilder, TypeSpec};
+    use miniextendr_api::serde::{SerdeRowBuilder, TypeSpec};
 
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
@@ -722,7 +722,7 @@ pub fn gc_stress_builder_with_schema() -> SEXP {
         tag: Option<String>,
     }
 
-    let mut b = DataFrameBuilder::<Row>::with_schema(
+    let mut b = SerdeRowBuilder::<Row>::with_schema(
         [
             ("id", TypeSpec::Integer),
             ("ratio", TypeSpec::Real),
@@ -750,7 +750,7 @@ pub fn gc_stress_builder_with_schema() -> SEXP {
     df.into_sexp()
 }
 
-/// Exercise [`DataFrameBuilder::grow_schema`] PROTECT discipline under GC
+/// Exercise [`SerdeRowBuilder::grow_schema`] PROTECT discipline under GC
 /// pressure. Pushes 30 heterogeneous `BTreeMap` rows that progressively
 /// introduce new keys, forcing the back-fill path to allocate columns and
 /// NA-fill prior rows. Verifies the grown columns stay rooted and
@@ -761,10 +761,10 @@ pub fn gc_stress_builder_with_schema() -> SEXP {
 #[miniextendr]
 pub fn gc_stress_builder_grow_schema() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
-    use miniextendr_api::serde::DataFrameBuilder;
+    use miniextendr_api::serde::SerdeRowBuilder;
     use std::collections::BTreeMap;
 
-    let mut b = DataFrameBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
+    let mut b = SerdeRowBuilder::<BTreeMap<String, i32>>::new(None).grow_schema();
     for i in 0..30i32 {
         let mut row: BTreeMap<String, i32> = BTreeMap::new();
         row.insert("base".into(), i);
@@ -956,7 +956,7 @@ pub fn gc_stress_map_to_dataframe() -> SEXP {
 }
 
 /// Exercise `result_to_dataframe(Auto)` under GC pressure with mixed Ok/Err
-/// rows. Exercises the split path (intermediate `ColumnarDataFrame` pair +
+/// rows. Exercises the split path (intermediate `DataFrame` pair +
 /// `NamedDataFrameListBuilder` assembly in `IntoR for DataFrameShape`).
 #[cfg(feature = "serde")]
 #[miniextendr]
@@ -1131,7 +1131,7 @@ pub fn gc_stress_split_with_tag() -> SEXP {
 
 /// Exercise `vec_to_dataframe_split(Collated)` under GC pressure. Drives
 /// the `TaggedVariantRow` / `MapForwarder` collation path through the
-/// schema-union machinery in `ColumnarDataFrame::from_rows`.
+/// schema-union machinery in `vec_to_dataframe`.
 #[cfg(feature = "serde")]
 #[miniextendr]
 pub fn gc_stress_split_collated() -> SEXP {
@@ -1209,7 +1209,7 @@ pub fn gc_stress_factor_labels() -> i32 {
     // hits per call, plus a few NA cells (NA_INTEGER → `status: None`).
     const NA: i32 = i32::MIN; // NA_INTEGER
     let codes: Vec<i32> = (0..30)
-        .map(|i| if i % 7 == 0 { NA } else { (i % 3) as i32 + 1 })
+        .map(|i| if i % 7 == 0 { NA } else { i % 3 + 1 })
         .collect();
 
     // SAFETY: all R API calls happen on the worker thread (this fixture is
