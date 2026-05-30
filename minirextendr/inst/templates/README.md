@@ -106,8 +106,6 @@ Templates use mustache-style `{{variable}}` substitution:
 Additionally, `.in` files use autoconf `@PLACEHOLDER@` markers expanded during
 `bash ./configure`:
 
-- `@PACKAGE_TARNAME_RS@`
-- `@PACKAGE_TARNAME_RS_UPPERCASE@`
 - `@CARGO_STATICLIB_NAME@`
 
 ## Template snapshot testing

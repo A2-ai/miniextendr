@@ -29,26 +29,6 @@ with_project <- function(path, .local_envir = parent.frame()) {
   invisible()
 }
 
-#' Temporarily set environment variables and evaluate an expression
-#'
-#' @param env Named character vector of env vars to set
-#' @param expr Expression to evaluate
-#' @return Result of evaluating `expr`
-#' @noRd
-with_envvars <- function(env, expr) {
-  if (length(env) == 0) return(expr)
-  old <- Sys.getenv(names(env), unset = NA)
-  names(old) <- names(env)  # Sys.getenv drops names when unset= is used
-  do.call(Sys.setenv, as.list(env))
-  on.exit({
-    to_unset <- names(old)[is.na(old)]
-    to_restore <- old[!is.na(old)]
-    if (length(to_unset) > 0) Sys.unsetenv(to_unset)
-    if (length(to_restore) > 0) do.call(Sys.setenv, as.list(to_restore))
-  }, add = TRUE)
-  expr
-}
-
 # Template type for current session (used by template functions)
 .template_type <- new.env(parent = emptyenv())
 .template_type$current <- "rpkg"
@@ -106,19 +86,6 @@ detect_project_type <- function(path = usethis::proj_get()) {
   NULL
 }
 
-#' Check if project is inside a Rust project
-#'
-#' Walks up the directory tree to find a Cargo.toml, indicating
-#' the R package is embedded in a Rust project context.
-#'
-#' @param path Path to check
-#' @return TRUE if inside a Rust project, FALSE otherwise
-#' @noRd
-is_in_rust_project <- function(path = usethis::proj_get()) {
-  rust_root <- find_rust_root(path)
-  !is.null(rust_root)
-}
-
 #' Find the root of a Rust project
 #'
 #' Walks up the directory tree to find a directory containing Cargo.toml.
@@ -149,36 +116,6 @@ find_root_with_file <- function(filename, path) {
 #' @noRd
 find_rust_root <- function(path = usethis::proj_get()) {
   find_root_with_file("Cargo.toml", path)
-}
-
-#' Check if project is inside a Cargo workspace
-#'
-#' Looks for a Cargo.toml with `[workspace]` in the current directory or parent.
-#' A workspace allows multiple crates to share dependencies.
-#'
-#' @param path Path to check
-#' @return TRUE if inside a workspace, FALSE otherwise
-#' @noRd
-is_in_rust_workspace <- function(path = usethis::proj_get()) {
-  # Check current directory
-  cargo_toml <- file.path(path, "Cargo.toml")
-  if (file.exists(cargo_toml)) {
-    cargo_content <- readLines(cargo_toml, warn = FALSE)
-    if (any(grepl("^\\[workspace\\]", cargo_content))) {
-      return(TRUE)
-    }
-  }
-
-  # Check parent (for rpkg/ inside monorepo)
-  parent_cargo <- file.path(dirname(path), "Cargo.toml")
-  if (file.exists(parent_cargo)) {
-    parent_content <- readLines(parent_cargo, warn = FALSE)
-    if (any(grepl("^\\[workspace\\]", parent_content))) {
-      return(TRUE)
-    }
-  }
-
-  FALSE
 }
 
 #' Get path to package template
@@ -352,18 +289,6 @@ mx_desc_get_field <- function(field, file, default = NA_character_) {
   if (is.na(val)) default else trimws(val)
 }
 
-#' Read full DESCRIPTION as a named list
-#'
-#' @param file Path to DESCRIPTION
-#' @return Named list of field values
-#' @noRd
-mx_desc_read <- function(file) {
-  dcf <- read.dcf(file)
-  vals <- as.list(dcf[1, ])
-  # Preserve original field order by reading raw lines
-  vals
-}
-
 #' Set fields in a DESCRIPTION file
 #'
 #' @param file Path to DESCRIPTION
@@ -495,17 +420,6 @@ mx_desc_set_dep <- function(file, pkg, type = "Imports", version = NULL) {
 #' @noRd
 to_rust_name <- function(name) {
   gsub("[.-]", "_", name)
-}
-
-#' Convert R package name to tarname
-#'
-#' Matches autoconf's PACKAGE_TARNAME derivation (lowercase, dots to hyphens).
-#'
-#' @param name R package name
-#' @return Tarname (lowercase, dots replaced with hyphens)
-#' @noRd
-to_tarname <- function(name) {
-  tolower(gsub("\\.", "-", name))
 }
 
 #' Get package name from Cargo.toml

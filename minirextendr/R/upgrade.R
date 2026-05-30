@@ -257,8 +257,8 @@ check_configure_ac_drift <- function() {
   text <- paste(content, collapse = "\n")
 
   missing <- character()
-  if (!grepl("PACKAGE_TARNAME_RS", text, fixed = TRUE)) {
-    missing <- c(missing, "PACKAGE_TARNAME_RS substitution")
+  if (!grepl("CARGO_STATICLIB_NAME", text, fixed = TRUE)) {
+    missing <- c(missing, "CARGO_STATICLIB_NAME substitution")
   }
   if (!grepl("AC_CONFIG_AUX_DIR", text, fixed = TRUE)) {
     missing <- c(missing, "AC_CONFIG_AUX_DIR([tools])")
