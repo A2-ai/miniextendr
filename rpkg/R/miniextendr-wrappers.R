@@ -20759,7 +20759,7 @@ uuid_roundtrip_vec <- function(uuids) {
   .val
 }
 
-# Generated from Rust fn `arith_seq` (lib.rs:438:8)
+# Generated from Rust fn `arith_seq` (lib.rs:439:8)
 #' @title arith seq
 #' @param from (no documentation available)
 #' @param step (no documentation available)
@@ -20780,7 +20780,7 @@ arith_seq <- function(from, step, length_out) {
   .val
 }
 
-# Generated from Rust fn `boxed_raw` (lib.rs:1734:8)
+# Generated from Rust fn `boxed_raw` (lib.rs:1735:8)
 #' @title Create a Box<\[u8\]> ALTREP raw vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -21884,7 +21884,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `boxed_ints` (lib.rs:1416:8)
+# Generated from Rust fn `boxed_ints` (lib.rs:1417:8)
 #' @title Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -22568,7 +22568,7 @@ derived_rational_class_info <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_reals` (lib.rs:1704:8)
+# Generated from Rust fn `boxed_reals` (lib.rs:1705:8)
 #' @title Create a Box<\[f64\]> ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -22585,7 +22585,7 @@ boxed_reals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `lazy_string` (lib.rs:1049:8)
+# Generated from Rust fn `lazy_string` (lib.rs:1050:8)
 #' @title Create a lazy string ALTREP that computes elements on demand
 #' @rdname lazy_string_altrep
 #' @param prefix String prefix for generated elements.
@@ -22605,7 +22605,7 @@ lazy_string <- function(prefix, n) {
   .val
 }
 
-# Generated from Rust fn `leaked_ints` (lib.rs:1479:8)
+# Generated from Rust fn `leaked_ints` (lib.rs:1480:8)
 #' @title Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -22622,7 +22622,7 @@ leaked_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `static_ints` (lib.rs:1466:8)
+# Generated from Rust fn `static_ints` (lib.rs:1467:8)
 #' @title Create an ALTREP integer vector backed by a static slice (`&'static [i32]`)
 #' @rdname altrep_special
 #' @return An ALTREP integer vector with values 10, 20, 30, 40, 50.
@@ -22634,7 +22634,7 @@ static_ints <- function() {
   .val
 }
 
-# Generated from Rust fn `unit_circle` (lib.rs:1144:8)
+# Generated from Rust fn `unit_circle` (lib.rs:1145:8)
 #' @title Create a complex ALTREP of n points on the unit circle (e^(i*2*pi*k/n))
 #' @rdname altrep_special
 #' @param n Number of points on the unit circle.
@@ -23244,7 +23244,7 @@ typed_df_theoph_sum_conc <- function(df) {
   .val
 }
 
-# Generated from Rust fn `constant_int` (lib.rs:353:8)
+# Generated from Rust fn `constant_int` (lib.rs:354:8)
 #' @title Create a constant-value integer ALTREP vector (10 elements, all 42)
 #' @rdname constant_altrep
 #' @return An ALTREP integer vector.
@@ -23256,7 +23256,7 @@ constant_int <- function() {
   .val
 }
 
-# Generated from Rust fn `lazy_int_seq` (lib.rs:661:8)
+# Generated from Rust fn `lazy_int_seq` (lib.rs:662:8)
 #' @title Create a lazy integer sequence ALTREP (like R's `seq()`)
 #' @description Elements are computed on demand; materialization is deferred until R needs the full data pointer.
 #' @rdname altrep_constructors
@@ -23280,7 +23280,7 @@ lazy_int_seq <- function(from, to, by) {
   .val
 }
 
-# Generated from Rust fn `lazy_squares` (lib.rs:823:8)
+# Generated from Rust fn `lazy_squares` (lib.rs:824:8)
 #' @title Example: Lazy computation - compute on demand
 #' @param n Length of the sequence.
 #' @export
@@ -23613,7 +23613,7 @@ bitflags_from_truncate <- function(value) {
   .val
 }
 
-# Generated from Rust fn `test_columnar_drop` (columnar_flatten_tests.rs:233:8)
+# Generated from Rust fn `test_columnar_drop` (columnar_flatten_tests.rs:234:8)
 #' @title test columnar drop
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23624,7 +23624,7 @@ test_columnar_drop <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_empty` (columnar_flatten_tests.rs:227:8)
+# Generated from Rust fn `test_columnar_empty` (columnar_flatten_tests.rs:228:8)
 #' @title test columnar empty
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23635,7 +23635,7 @@ test_columnar_empty <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_nested` (columnar_flatten_tests.rs:102:8)
+# Generated from Rust fn `test_columnar_nested` (columnar_flatten_tests.rs:103:8)
 #' @title test columnar nested
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23646,7 +23646,7 @@ test_columnar_nested <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_rename` (columnar_flatten_tests.rs:199:8)
+# Generated from Rust fn `test_columnar_rename` (columnar_flatten_tests.rs:200:8)
 #' @title test columnar rename
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23657,7 +23657,7 @@ test_columnar_rename <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_select` (columnar_flatten_tests.rs:251:8)
+# Generated from Rust fn `test_columnar_select` (columnar_flatten_tests.rs:250:8)
 #' @title test columnar select
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23668,7 +23668,7 @@ test_columnar_select <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_empty_split` (columnar_flatten_tests.rs:417:8)
+# Generated from Rust fn `test_columnar_empty_split` (columnar_flatten_tests.rs:416:8)
 #' @title Empty input split — variant set is unknowable, returns an empty named list
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23679,7 +23679,7 @@ test_columnar_empty_split <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_rename_noop` (columnar_flatten_tests.rs:218:8)
+# Generated from Rust fn `test_columnar_rename_noop` (columnar_flatten_tests.rs:219:8)
 #' @title test columnar rename noop
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23690,7 +23690,7 @@ test_columnar_rename_noop <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_tagged_enum` (columnar_flatten_tests.rs:357:8)
+# Generated from Rust fn `test_columnar_tagged_enum` (columnar_flatten_tests.rs:356:8)
 #' @title Internally tagged enum: "kind" column acts as discriminator
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23701,7 +23701,7 @@ test_columnar_tagged_enum <- function() {
   .val
 }
 
-# Generated from Rust fn `test_hashmap_to_dataframe` (columnar_flatten_tests.rs:506:8)
+# Generated from Rust fn `test_hashmap_to_dataframe` (columnar_flatten_tests.rs:505:8)
 #' @title hashmap_to_dataframe over HashMap<i32, CmaxValue>
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23712,7 +23712,7 @@ test_hashmap_to_dataframe <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_deep_nesting` (columnar_flatten_tests.rs:138:8)
+# Generated from Rust fn `test_columnar_deep_nesting` (columnar_flatten_tests.rs:139:8)
 #' @title test columnar deep nesting
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23723,7 +23723,7 @@ test_columnar_deep_nesting <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_strip_prefix` (columnar_flatten_tests.rs:306:8)
+# Generated from Rust fn `test_columnar_strip_prefix` (columnar_flatten_tests.rs:305:8)
 #' @title strip_prefix: remove "point_" from column names
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23734,7 +23734,7 @@ test_columnar_strip_prefix <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_serde_flatten` (columnar_flatten_tests.rs:160:8)
+# Generated from Rust fn `test_columnar_serde_flatten` (columnar_flatten_tests.rs:161:8)
 #' @title test columnar serde flatten
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23745,7 +23745,7 @@ test_columnar_serde_flatten <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_untagged_enum` (columnar_flatten_tests.rs:327:8)
+# Generated from Rust fn `test_columnar_untagged_enum` (columnar_flatten_tests.rs:326:8)
 #' @title Untagged enum: Ok rows have status+size, Err rows have error
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23756,7 +23756,7 @@ test_columnar_untagged_enum <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_split_collated` (columnar_flatten_tests.rs:445:8)
+# Generated from Rust fn `test_columnar_split_collated` (columnar_flatten_tests.rs:444:8)
 #' @title Collated split: single data.frame with union schema + variant column
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23767,7 +23767,7 @@ test_columnar_split_collated <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_split_with_tag` (columnar_flatten_tests.rs:426:8)
+# Generated from Rust fn `test_columnar_split_with_tag` (columnar_flatten_tests.rs:425:8)
 #' @title Externally-tagged enum split WITH a variant-tag column on each partition
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23778,7 +23778,7 @@ test_columnar_split_with_tag <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_optional_struct` (columnar_flatten_tests.rs:118:8)
+# Generated from Rust fn `test_columnar_optional_struct` (columnar_flatten_tests.rs:119:8)
 #' @title test columnar optional struct
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23789,7 +23789,7 @@ test_columnar_optional_struct <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_ext_tagged_split` (columnar_flatten_tests.rs:379:8)
+# Generated from Rust fn `test_columnar_ext_tagged_split` (columnar_flatten_tests.rs:378:8)
 #' @title Externally-tagged enum split: per-variant data.frames, no NA columns
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23800,7 +23800,7 @@ test_columnar_ext_tagged_split <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_int_tagged_split` (columnar_flatten_tests.rs:392:8)
+# Generated from Rust fn `test_columnar_int_tagged_split` (columnar_flatten_tests.rs:391:8)
 #' @title Internally-tagged enum split: tag column dropped, per-variant data.frames
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23811,7 +23811,7 @@ test_columnar_int_tagged_split <- function() {
   .val
 }
 
-# Generated from Rust fn `test_map_to_dataframe_btreemap` (columnar_flatten_tests.rs:475:8)
+# Generated from Rust fn `test_map_to_dataframe_btreemap` (columnar_flatten_tests.rs:474:8)
 #' @title map_to_dataframe over BTreeMap<i32, CmaxValue>
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23822,7 +23822,7 @@ test_map_to_dataframe_btreemap <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_with_column_append` (columnar_flatten_tests.rs:294:8)
+# Generated from Rust fn `test_columnar_with_column_append` (columnar_flatten_tests.rs:293:8)
 #' @title with_column: append a new column when the name doesn't exist
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23833,7 +23833,7 @@ test_columnar_with_column_append <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_skip_serializing_if` (columnar_flatten_tests.rs:176:8)
+# Generated from Rust fn `test_columnar_skip_serializing_if` (columnar_flatten_tests.rs:177:8)
 #' @title test columnar skip serializing if
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23844,7 +23844,7 @@ test_columnar_skip_serializing_if <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_with_column_replace` (columnar_flatten_tests.rs:272:8)
+# Generated from Rust fn `test_columnar_with_column_replace` (columnar_flatten_tests.rs:271:8)
 #' @title with_column: replace an existing integer column with a character SEXP of matching length
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23855,7 +23855,7 @@ test_columnar_with_column_replace <- function() {
   .val
 }
 
-# Generated from Rust fn `test_result_to_dataframe_collated` (columnar_flatten_tests.rs:600:8)
+# Generated from Rust fn `test_result_to_dataframe_collated` (columnar_flatten_tests.rs:599:8)
 #' @title result_to_dataframe under Collated → single data.frame with is_error column
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23866,7 +23866,7 @@ test_result_to_dataframe_collated <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_single_variant_split` (columnar_flatten_tests.rs:405:8)
+# Generated from Rust fn `test_columnar_single_variant_split` (columnar_flatten_tests.rs:404:8)
 #' @title Single-variant externally-tagged split returns a bare data.frame
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23877,7 +23877,7 @@ test_columnar_single_variant_split <- function() {
   .val
 }
 
-# Generated from Rust fn `test_result_to_dataframe_auto_mixed` (columnar_flatten_tests.rs:585:8)
+# Generated from Rust fn `test_result_to_dataframe_auto_mixed` (columnar_flatten_tests.rs:584:8)
 #' @title result_to_dataframe under Auto with mixed Ok/Err → list(results=, error=)
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23888,7 +23888,7 @@ test_result_to_dataframe_auto_mixed <- function() {
   .val
 }
 
-# Generated from Rust fn `test_result_to_dataframe_auto_all_ok` (columnar_flatten_tests.rs:566:8)
+# Generated from Rust fn `test_result_to_dataframe_auto_all_ok` (columnar_flatten_tests.rs:565:8)
 #' @title result_to_dataframe under Auto with all-Ok input → bare data.frame
 #' @rdname columnar_flatten_tests
 #' @export
@@ -23899,7 +23899,7 @@ test_result_to_dataframe_auto_all_ok <- function() {
   .val
 }
 
-# Generated from Rust fn `test_result_to_dataframe_split_all_err` (columnar_flatten_tests.rs:613:8)
+# Generated from Rust fn `test_result_to_dataframe_split_all_err` (columnar_flatten_tests.rs:612:8)
 #' @title result_to_dataframe under Split with all-Err input → sentinel in results slot
 #' @rdname columnar_flatten_tests
 #' @export
@@ -24316,7 +24316,7 @@ streaming_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_complex` (lib.rs:1764:8)
+# Generated from Rust fn `boxed_complex` (lib.rs:1765:8)
 #' @title Create a Box<\[Rcomplex\]> ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -24333,7 +24333,7 @@ boxed_complex <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_strings` (lib.rs:1749:8)
+# Generated from Rust fn `boxed_strings` (lib.rs:1750:8)
 #' @title Create a Box<\[String\]> ALTREP string vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -24350,7 +24350,7 @@ boxed_strings <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_real` (lib.rs:404:8)
+# Generated from Rust fn `constant_real` (lib.rs:405:8)
 #' @title Create a constant-value real ALTREP vector (10 elements, all pi)
 #' @rdname constant_altrep
 #' @return An ALTREP real vector.
@@ -24362,7 +24362,7 @@ constant_real <- function() {
   .val
 }
 
-# Generated from Rust fn `repeating_raw` (lib.rs:1090:8)
+# Generated from Rust fn `repeating_raw` (lib.rs:1091:8)
 #' @title Create a repeating raw byte pattern ALTREP vector
 #' @rdname lazy_string_altrep
 #' @param pattern A raw vector containing the byte pattern to repeat.
@@ -24447,7 +24447,7 @@ gc_stress_unified_dataframe <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `bench_vec_copy` (lib.rs:856:8)
+# Generated from Rust fn `bench_vec_copy` (lib.rs:857:8)
 #' @title Create a vector of given size using regular copy (IntoR)
 #' @param n Length of the vector.
 #' @export
@@ -24462,7 +24462,7 @@ bench_vec_copy <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_logicals` (lib.rs:1719:8)
+# Generated from Rust fn `boxed_logicals` (lib.rs:1720:8)
 #' @title Create a Box<\[bool\]> ALTREP logical vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -24479,7 +24479,7 @@ boxed_logicals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_range` (lib.rs:1585:8)
+# Generated from Rust fn `iter_int_range` (lib.rs:1586:8)
 #' @title Create an integer ALTREP from a collected range iterator
 #' @rdname altrep_iterators
 #' @param from Start of range (inclusive).
@@ -24499,7 +24499,7 @@ iter_int_range <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `iter_raw_bytes` (lib.rs:1617:8)
+# Generated from Rust fn `iter_raw_bytes` (lib.rs:1618:8)
 #' @title Create a raw bytes ALTREP via iterator collect (cycling 0..255)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -24516,7 +24516,7 @@ iter_raw_bytes <- function(n) {
   .val
 }
 
-# Generated from Rust fn `small_vec_copy` (lib.rs:804:8)
+# Generated from Rust fn `small_vec_copy` (lib.rs:805:8)
 #' @title Example: Small data - regular copy is fine
 #' @export
 #' @source Generated by miniextendr from Rust fn `small_vec_copy`
@@ -24526,7 +24526,7 @@ small_vec_copy <- function() {
   .val
 }
 
-# Generated from Rust fn `static_strings` (lib.rs:1523:8)
+# Generated from Rust fn `static_strings` (lib.rs:1524:8)
 #' @title Create an ALTREP string vector backed by a static string slice
 #' @rdname altrep_special
 #' @return An ALTREP string vector with 4 static entries.
@@ -24538,7 +24538,7 @@ static_strings <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_int_altrep` (lib.rs:1664:8)
+# Generated from Rust fn `vec_int_altrep` (lib.rs:1665:8)
 #' @title Create a `Vec<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -24906,7 +24906,7 @@ json_serialize_point <- function(x, y) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_raw` (lib.rs:761:8)
+# Generated from Rust fn `altrep_from_raw` (lib.rs:762:8)
 #' @title Create an ALTREP raw vector from raw bytes
 #' @rdname altrep_constructors
 #' @param x A raw vector.
@@ -24920,7 +24920,7 @@ altrep_from_raw <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int` (lib.rs:1863:8)
+# Generated from Rust fn `sparse_iter_int` (lib.rs:1864:8)
 #' @title Create a sparse integer iterator ALTREP that skips elements
 #' @description Elements are computed on-demand using Iterator::nth(). Once an element is skipped (a higher index is accessed first), it cannot be retrieved and will return NA.
 #' @rdname sparse_altrep
@@ -24941,7 +24941,7 @@ sparse_iter_int <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_raw` (lib.rs:2012:8)
+# Generated from Rust fn `sparse_iter_raw` (lib.rs:2013:8)
 #' @title Create a sparse raw iterator ALTREP (cycling bytes 0..255)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -24958,7 +24958,7 @@ sparse_iter_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_real_altrep` (lib.rs:1675:8)
+# Generated from Rust fn `vec_real_altrep` (lib.rs:1676:8)
 #' @title Create a `Vec<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -25091,7 +25091,7 @@ complex_roundtrip_vec <- function(v) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_list` (lib.rs:781:8)
+# Generated from Rust fn `altrep_from_list` (lib.rs:782:8)
 #' @title Create an ALTREP list from an R list, preserving the original SEXP
 #' @rdname altrep_constructors
 #' @param x An R list (VECSXP).
@@ -25104,7 +25104,7 @@ altrep_from_list <- function(x) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_altrep` (lib.rs:868:8)
+# Generated from Rust fn `bench_vec_altrep` (lib.rs:869:8)
 #' @title Create a vector of given size using ALTREP zero-copy
 #' @param n Length of the vector.
 #' @export
@@ -25119,7 +25119,7 @@ bench_vec_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_logical` (lib.rs:912:8)
+# Generated from Rust fn `constant_logical` (lib.rs:913:8)
 #' @title Create a constant-value logical ALTREP vector
 #' @rdname constant_altrep
 #' @param value Integer encoding of the logical value (0 = FALSE, NA_integer_ = NA, other = TRUE).
@@ -25139,7 +25139,7 @@ constant_logical <- function(value, n) {
   .val
 }
 
-# Generated from Rust fn `large_vec_altrep` (lib.rs:812:8)
+# Generated from Rust fn `large_vec_altrep` (lib.rs:813:8)
 #' @title Example: Large data - ALTREP avoids copy
 #' @export
 #' @source Generated by miniextendr from Rust fn `large_vec_altrep`
@@ -25149,7 +25149,7 @@ large_vec_altrep <- function() {
   .val
 }
 
-# Generated from Rust fn `range_i64_altrep` (lib.rs:1794:8)
+# Generated from Rust fn `range_i64_altrep` (lib.rs:1795:8)
 #' @title Create a `Range<i64>` ALTREP real vector (i64 stored as f64 bit patterns)
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -25169,7 +25169,7 @@ range_i64_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `range_int_altrep` (lib.rs:1783:8)
+# Generated from Rust fn `range_int_altrep` (lib.rs:1784:8)
 #' @title Create a `Range<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -25189,7 +25189,7 @@ range_int_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_real` (lib.rs:1926:8)
+# Generated from Rust fn `sparse_iter_real` (lib.rs:1927:8)
 #' @title Create a sparse real iterator ALTREP with arithmetic progression
 #' @rdname sparse_altrep
 #' @param from Start value.
@@ -25375,7 +25375,7 @@ make_no_lowlevel_altrep <- function(length) {
   .val
 }
 
-# Generated from Rust fn `test_columnar_enum_all_none` (columnar_option_none_tests.rs:338:8)
+# Generated from Rust fn `test_columnar_enum_all_none` (columnar_option_none_tests.rs:339:8)
 #' @title Enum: all variant-A rows have `x = None` → logical NA column
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25386,7 +25386,7 @@ test_columnar_enum_all_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_u64_mixed` (columnar_option_none_tests.rs:223:8)
+# Generated from Rust fn `test_columnar_opt_u64_mixed` (columnar_option_none_tests.rs:224:8)
 #' @title Mixed `Option<u64>`: some rows have values, no downgrade
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25397,7 +25397,7 @@ test_columnar_opt_u64_mixed <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_flatten_all_none` (columnar_option_none_tests.rs:310:8)
+# Generated from Rust fn `test_columnar_flatten_all_none` (columnar_option_none_tests.rs:311:8)
 #' @title `#[serde(flatten)]` with all-None inner field: the flattened optional field becomes a logical NA column
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25408,7 +25408,7 @@ test_columnar_flatten_all_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_string_mixed` (columnar_option_none_tests.rs:245:8)
+# Generated from Rust fn `test_columnar_opt_string_mixed` (columnar_option_none_tests.rs:246:8)
 #' @title Mixed `Option<String>`: some rows have values
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25419,7 +25419,7 @@ test_columnar_opt_string_mixed <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_bytes_with_values` (columnar_option_none_tests.rs:264:8)
+# Generated from Rust fn `test_columnar_bytes_with_values` (columnar_option_none_tests.rs:265:8)
 #' @title `Vec<u8>` field with values — stays a list column regardless
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25430,7 +25430,7 @@ test_columnar_bytes_with_values <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_bool_all_none` (columnar_option_none_tests.rs:167:8)
+# Generated from Rust fn `test_columnar_opt_bool_all_none` (columnar_option_none_tests.rs:168:8)
 #' @title All-None `Option<bool>` column
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25441,7 +25441,7 @@ test_columnar_opt_bool_all_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_bytes_and_opt_none` (columnar_option_none_tests.rs:287:8)
+# Generated from Rust fn `test_columnar_bytes_and_opt_none` (columnar_option_none_tests.rs:288:8)
 #' @title `Vec<u8>` column with values alongside an all-None `Option<u64>` column
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25452,7 +25452,7 @@ test_columnar_bytes_and_opt_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_bytes_all_none` (columnar_option_none_tests.rs:207:8)
+# Generated from Rust fn `test_columnar_opt_bytes_all_none` (columnar_option_none_tests.rs:208:8)
 #' @title All-None `Option<Vec<u8>>` — downgrade fires (no values, no list semantics to preserve)
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25463,7 +25463,7 @@ test_columnar_opt_bytes_all_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_string_all_none` (columnar_option_none_tests.rs:155:8)
+# Generated from Rust fn `test_columnar_opt_string_all_none` (columnar_option_none_tests.rs:156:8)
 #' @title All-None `Option<String>` column
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25474,7 +25474,7 @@ test_columnar_opt_string_all_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_enum_some_flips_type` (columnar_option_none_tests.rs:352:8)
+# Generated from Rust fn `test_columnar_enum_some_flips_type` (columnar_option_none_tests.rs:353:8)
 #' @title Enum: variant-A rows with `x = None`, then one variant-B row with `x = Some(42)`
 #' @description With the two-phase discovery, the probe scans all rows before resolving the schema.  Variant-B's `x = Some(42u64)` contributes a `Scalar(Real)` candidate which beats the `Scalar(Generic)` from variant-A's `x = None`.  The column ends up as a numeric vector with `NA` in row 1.
 #' @rdname columnar_option_none_tests
@@ -25486,7 +25486,7 @@ test_columnar_enum_some_flips_type <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_hashmap_all_none` (columnar_option_none_tests.rs:195:8)
+# Generated from Rust fn `test_columnar_opt_hashmap_all_none` (columnar_option_none_tests.rs:196:8)
 #' @title All-None `Option<HashMap<…>>` — foreign generic, downgrade still fires
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25497,7 +25497,7 @@ test_columnar_opt_hashmap_all_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_schema_upgrade_nested` (columnar_option_none_tests.rs:388:8)
+# Generated from Rust fn `test_columnar_schema_upgrade_nested` (columnar_option_none_tests.rs:389:8)
 #' @title First-row `point = None`, second row `point = Some(Point{x:1.0, y:2.0})`
 #' @description Two-phase discovery: `Compound` candidate from row 2 beats `Scalar(Generic)` from row 1.  Result: columns `point_x` and `point_y`, with NA in row 1.
 #' @rdname columnar_option_none_tests
@@ -25509,7 +25509,7 @@ test_columnar_schema_upgrade_nested <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_schema_upgrade_scalar` (columnar_option_none_tests.rs:371:8)
+# Generated from Rust fn `test_columnar_schema_upgrade_scalar` (columnar_option_none_tests.rs:372:8)
 #' @title First-row `x = None`, second row `x = Some(42u64)`
 #' @description Two-phase discovery: the `Scalar(Real)` candidate from row 2 beats `Scalar(Generic)` from row 1.  Result: numeric column with NA at index 1.
 #' @rdname columnar_option_none_tests
@@ -25521,7 +25521,7 @@ test_columnar_schema_upgrade_scalar <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_u64_all_none_multi` (columnar_option_none_tests.rs:133:8)
+# Generated from Rust fn `test_columnar_opt_u64_all_none_multi` (columnar_option_none_tests.rs:134:8)
 #' @title All-None `Option<u64>` column — multiple rows
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25532,7 +25532,7 @@ test_columnar_opt_u64_all_none_multi <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_u64_all_none_single` (columnar_option_none_tests.rs:121:8)
+# Generated from Rust fn `test_columnar_opt_u64_all_none_single` (columnar_option_none_tests.rs:122:8)
 #' @title All-None `Option<u64>` column — single row (the dvs2 trigger case)
 #' @rdname columnar_option_none_tests
 #' @export
@@ -25543,7 +25543,7 @@ test_columnar_opt_u64_all_none_single <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_opt_user_struct_all_none` (columnar_option_none_tests.rs:183:8)
+# Generated from Rust fn `test_columnar_opt_user_struct_all_none` (columnar_option_none_tests.rs:184:8)
 #' @title All-None `Option<UserStruct>` — nested struct with all entries `None`
 #' @description When every row is `None`, the probe never sees any struct fields, so struct expansion never fires.  The entire `point` field becomes a single logical NA column under the field name `"point"` — not per-subfield `"point_x"`/`"point_y"`.
 #' @rdname columnar_option_none_tests
@@ -25555,7 +25555,7 @@ test_columnar_opt_user_struct_all_none <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_compound_different_shapes` (columnar_option_none_tests.rs:439:8)
+# Generated from Rust fn `test_columnar_compound_different_shapes` (columnar_option_none_tests.rs:440:8)
 #' @title Compound-vs-compound with different struct shapes: existing-wins semantics
 #' @description Rows alternate between variant A (has `value` only) and variant B (has `value` and `extra`).  The `extra` field only appears in B rows; `value` appears in both. Because both rows contribute scalar candidates for `value`, the first non-Generic wins.  The schema discovers both `value` and `extra` fields (from their respective rows) because they are distinct keys — they are *not* the same compound key.
 #' @details This fixture tests that the per-key candidate accumulation works correctly for an enum with fields that differ between variants.
@@ -25570,7 +25570,7 @@ test_columnar_compound_different_shapes <- function() {
   .val
 }
 
-# Generated from Rust fn `test_columnar_schema_upgrade_multi_none_first` (columnar_option_none_tests.rs:406:8)
+# Generated from Rust fn `test_columnar_schema_upgrade_multi_none_first` (columnar_option_none_tests.rs:407:8)
 #' @title Multiple leading None rows before a Some value
 #' @description Rows: None, None, Some(42u64), None.  Two-phase discovery resolves the column to `Scalar(Real)`.  Result: numeric column with NA at positions 1, 2, 4.
 #' @rdname columnar_option_none_tests
@@ -25630,7 +25630,7 @@ native_sexp_altrep_new <- function(values) {
   .val
 }
 
-# Generated from Rust fn `boxed_data_altrep` (lib.rs:839:8)
+# Generated from Rust fn `boxed_data_altrep` (lib.rs:840:8)
 #' @title Example: Using into_altrep() to store wrapper
 #' @param n Length of the vector.
 #' @export
@@ -25645,7 +25645,7 @@ boxed_data_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_from_u16` (lib.rs:1642:8)
+# Generated from Rust fn `iter_int_from_u16` (lib.rs:1643:8)
 #' @title Create an integer ALTREP from u16-range values coerced to i32 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -25662,7 +25662,7 @@ iter_int_from_u16 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_real_squares` (lib.rs:1595:8)
+# Generated from Rust fn `iter_real_squares` (lib.rs:1596:8)
 #' @title Create a real ALTREP of squared values (0, 1, 4, 9, ...) via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -25679,7 +25679,7 @@ iter_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_string_items` (lib.rs:1628:8)
+# Generated from Rust fn `iter_string_items` (lib.rs:1629:8)
 #' @title Create a string ALTREP via iterator collect ("item_0", "item_1", ...)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -25696,7 +25696,7 @@ iter_string_items <- function(n) {
   .val
 }
 
-# Generated from Rust fn `range_real_altrep` (lib.rs:1805:8)
+# Generated from Rust fn `range_real_altrep` (lib.rs:1806:8)
 #' @title Create a `Range<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -25831,7 +25831,7 @@ ordered_float_roundtrip_vec <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_compact_int` (lib.rs:712:8)
+# Generated from Rust fn `altrep_compact_int` (lib.rs:713:8)
 #' @title Create a compact integer ALTREP from a lazy arithmetic sequence with printing on materialization
 #' @rdname altrep_constructors
 #' @param n Number of elements.
@@ -25854,7 +25854,7 @@ altrep_compact_int <- function(n, start, step) {
   .val
 }
 
-# Generated from Rust fn `iter_real_from_f32` (lib.rs:1653:8)
+# Generated from Rust fn `iter_real_from_f32` (lib.rs:1654:8)
 #' @title Create a real ALTREP from f32-precision values coerced to f64 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -25871,7 +25871,7 @@ iter_real_from_f32 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_complex_altrep` (lib.rs:1686:8)
+# Generated from Rust fn `vec_complex_altrep` (lib.rs:1687:8)
 #' @title Create a `Vec<Rcomplex>` ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -25937,7 +25937,7 @@ condition_panic_with_int_payload <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `altrep_from_doubles` (lib.rs:731:8)
+# Generated from Rust fn `altrep_from_doubles` (lib.rs:732:8)
 #' @title Create an ALTREP real vector from a double vector
 #' @rdname altrep_constructors
 #' @param x A double vector.
@@ -25951,7 +25951,7 @@ altrep_from_doubles <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_strings` (lib.rs:741:8)
+# Generated from Rust fn `altrep_from_strings` (lib.rs:742:8)
 #' @title Create an ALTREP string vector from a character vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A character vector (may contain NA values).
@@ -25965,7 +25965,7 @@ altrep_from_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_logical` (lib.rs:1967:8)
+# Generated from Rust fn `sparse_iter_logical` (lib.rs:1968:8)
 #' @title Create a sparse logical iterator ALTREP (alternating TRUE/FALSE)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -25982,7 +25982,7 @@ sparse_iter_logical <- function(n) {
   .val
 }
 
-# Generated from Rust fn `array_align_nvnr` (dataframe_enum_payload_matrix.rs:381:8)
+# Generated from Rust fn `array_align_nvnr` (dataframe_enum_payload_matrix.rs:391:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `array_align_nvnr`
@@ -25993,7 +25993,7 @@ array_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `array_split_1v1r` (dataframe_enum_payload_matrix.rs:350:8)
+# Generated from Rust fn `array_split_1v1r` (dataframe_enum_payload_matrix.rs:360:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `array_split_1v1r`
@@ -26004,7 +26004,7 @@ array_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `array_split_1vnr` (dataframe_enum_payload_matrix.rs:355:8)
+# Generated from Rust fn `array_split_1vnr` (dataframe_enum_payload_matrix.rs:365:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `array_split_1vnr`
@@ -26015,7 +26015,7 @@ array_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `array_split_nv1r` (dataframe_enum_payload_matrix.rs:363:8)
+# Generated from Rust fn `array_split_nv1r` (dataframe_enum_payload_matrix.rs:373:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `array_split_nv1r`
@@ -26026,7 +26026,7 @@ array_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `array_split_nvnr` (dataframe_enum_payload_matrix.rs:371:8)
+# Generated from Rust fn `array_split_nvnr` (dataframe_enum_payload_matrix.rs:381:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `array_split_nvnr`
@@ -26037,7 +26037,7 @@ array_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_align_1v1r` (dataframe_enum_payload_matrix.rs:732:8)
+# Generated from Rust fn `hashmap_align_1v1r` (dataframe_enum_payload_matrix.rs:750:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_align_1v1r`
@@ -26048,7 +26048,7 @@ hashmap_align_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_align_1vnr` (dataframe_enum_payload_matrix.rs:741:8)
+# Generated from Rust fn `hashmap_align_1vnr` (dataframe_enum_payload_matrix.rs:761:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_align_1vnr`
@@ -26059,7 +26059,7 @@ hashmap_align_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_align_nv1r` (dataframe_enum_payload_matrix.rs:760:8)
+# Generated from Rust fn `hashmap_align_nv1r` (dataframe_enum_payload_matrix.rs:782:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_align_nv1r`
@@ -26070,7 +26070,7 @@ hashmap_align_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_align_nvnr` (dataframe_enum_payload_matrix.rs:772:8)
+# Generated from Rust fn `hashmap_align_nvnr` (dataframe_enum_payload_matrix.rs:796:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_align_nvnr`
@@ -26081,7 +26081,7 @@ hashmap_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_split_1v1r` (dataframe_enum_payload_matrix.rs:692:8)
+# Generated from Rust fn `hashmap_split_1v1r` (dataframe_enum_payload_matrix.rs:710:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_split_1v1r`
@@ -26092,7 +26092,7 @@ hashmap_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_split_1vnr` (dataframe_enum_payload_matrix.rs:701:8)
+# Generated from Rust fn `hashmap_split_1vnr` (dataframe_enum_payload_matrix.rs:719:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_split_1vnr`
@@ -26103,7 +26103,7 @@ hashmap_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_split_nv1r` (dataframe_enum_payload_matrix.rs:720:8)
+# Generated from Rust fn `hashmap_split_nv1r` (dataframe_enum_payload_matrix.rs:738:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_split_nv1r`
@@ -26114,7 +26114,7 @@ hashmap_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `hashmap_split_nvnr` (dataframe_enum_payload_matrix.rs:789:8)
+# Generated from Rust fn `hashmap_split_nvnr` (dataframe_enum_payload_matrix.rs:815:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashmap_split_nvnr`
@@ -26125,7 +26125,7 @@ hashmap_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `hashset_align_nvnr` (dataframe_enum_payload_matrix.rs:125:8)
+# Generated from Rust fn `hashset_align_nvnr` (dataframe_enum_payload_matrix.rs:127:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashset_align_nvnr`
@@ -26136,7 +26136,7 @@ hashset_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `hashset_split_1v1r` (dataframe_enum_payload_matrix.rs:103:8)
+# Generated from Rust fn `hashset_split_1v1r` (dataframe_enum_payload_matrix.rs:105:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashset_split_1v1r`
@@ -26147,7 +26147,7 @@ hashset_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `hashset_split_1vnr` (dataframe_enum_payload_matrix.rs:108:8)
+# Generated from Rust fn `hashset_split_1vnr` (dataframe_enum_payload_matrix.rs:110:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashset_split_1vnr`
@@ -26158,7 +26158,7 @@ hashset_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `hashset_split_nv1r` (dataframe_enum_payload_matrix.rs:117:8)
+# Generated from Rust fn `hashset_split_nv1r` (dataframe_enum_payload_matrix.rs:119:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashset_split_nv1r`
@@ -26169,7 +26169,7 @@ hashset_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `hashset_split_nvnr` (dataframe_enum_payload_matrix.rs:135:8)
+# Generated from Rust fn `hashset_split_nvnr` (dataframe_enum_payload_matrix.rs:139:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `hashset_split_nvnr`
@@ -26180,7 +26180,7 @@ hashset_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_align_1v1r` (dataframe_enum_payload_matrix.rs:850:8)
+# Generated from Rust fn `btreemap_align_1v1r` (dataframe_enum_payload_matrix.rs:876:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_align_1v1r`
@@ -26191,7 +26191,7 @@ btreemap_align_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_align_1vnr` (dataframe_enum_payload_matrix.rs:859:8)
+# Generated from Rust fn `btreemap_align_1vnr` (dataframe_enum_payload_matrix.rs:887:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_align_1vnr`
@@ -26202,7 +26202,7 @@ btreemap_align_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_align_nv1r` (dataframe_enum_payload_matrix.rs:878:8)
+# Generated from Rust fn `btreemap_align_nv1r` (dataframe_enum_payload_matrix.rs:908:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_align_nv1r`
@@ -26213,7 +26213,7 @@ btreemap_align_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_align_nvnr` (dataframe_enum_payload_matrix.rs:890:8)
+# Generated from Rust fn `btreemap_align_nvnr` (dataframe_enum_payload_matrix.rs:922:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_align_nvnr`
@@ -26224,7 +26224,7 @@ btreemap_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_split_1v1r` (dataframe_enum_payload_matrix.rs:810:8)
+# Generated from Rust fn `btreemap_split_1v1r` (dataframe_enum_payload_matrix.rs:836:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_split_1v1r`
@@ -26235,7 +26235,7 @@ btreemap_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_split_1vnr` (dataframe_enum_payload_matrix.rs:819:8)
+# Generated from Rust fn `btreemap_split_1vnr` (dataframe_enum_payload_matrix.rs:845:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_split_1vnr`
@@ -26246,7 +26246,7 @@ btreemap_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_split_nv1r` (dataframe_enum_payload_matrix.rs:838:8)
+# Generated from Rust fn `btreemap_split_nv1r` (dataframe_enum_payload_matrix.rs:864:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_split_nv1r`
@@ -26257,7 +26257,7 @@ btreemap_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `btreemap_split_nvnr` (dataframe_enum_payload_matrix.rs:907:8)
+# Generated from Rust fn `btreemap_split_nvnr` (dataframe_enum_payload_matrix.rs:941:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreemap_split_nvnr`
@@ -26268,7 +26268,7 @@ btreemap_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `btreeset_align_nvnr` (dataframe_enum_payload_matrix.rs:185:8)
+# Generated from Rust fn `btreeset_align_nvnr` (dataframe_enum_payload_matrix.rs:189:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreeset_align_nvnr`
@@ -26279,7 +26279,7 @@ btreeset_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `btreeset_split_1v1r` (dataframe_enum_payload_matrix.rs:163:8)
+# Generated from Rust fn `btreeset_split_1v1r` (dataframe_enum_payload_matrix.rs:167:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreeset_split_1v1r`
@@ -26290,7 +26290,7 @@ btreeset_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `btreeset_split_1vnr` (dataframe_enum_payload_matrix.rs:168:8)
+# Generated from Rust fn `btreeset_split_1vnr` (dataframe_enum_payload_matrix.rs:172:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreeset_split_1vnr`
@@ -26301,7 +26301,7 @@ btreeset_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `btreeset_split_nv1r` (dataframe_enum_payload_matrix.rs:177:8)
+# Generated from Rust fn `btreeset_split_nv1r` (dataframe_enum_payload_matrix.rs:181:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreeset_split_nv1r`
@@ -26312,7 +26312,7 @@ btreeset_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `btreeset_split_nvnr` (dataframe_enum_payload_matrix.rs:195:8)
+# Generated from Rust fn `btreeset_split_nvnr` (dataframe_enum_payload_matrix.rs:201:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `btreeset_split_nvnr`
@@ -26323,7 +26323,7 @@ btreeset_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `singleton_split_1v1r` (dataframe_enum_payload_matrix.rs:464:8)
+# Generated from Rust fn `singleton_split_1v1r` (dataframe_enum_payload_matrix.rs:478:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `singleton_split_1v1r`
@@ -26334,7 +26334,7 @@ singleton_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `singleton_split_1vnr` (dataframe_enum_payload_matrix.rs:472:8)
+# Generated from Rust fn `singleton_split_1vnr` (dataframe_enum_payload_matrix.rs:486:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `singleton_split_1vnr`
@@ -26345,7 +26345,7 @@ singleton_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_width_align_nvnr` (dataframe_enum_payload_matrix.rs:261:8)
+# Generated from Rust fn `vec_width_align_nvnr` (dataframe_enum_payload_matrix.rs:267:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_width_align_nvnr`
@@ -26356,7 +26356,7 @@ vec_width_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_width_split_1v1r` (dataframe_enum_payload_matrix.rs:229:8)
+# Generated from Rust fn `vec_width_split_1v1r` (dataframe_enum_payload_matrix.rs:235:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_width_split_1v1r`
@@ -26367,7 +26367,7 @@ vec_width_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_width_split_1vnr` (dataframe_enum_payload_matrix.rs:234:8)
+# Generated from Rust fn `vec_width_split_1vnr` (dataframe_enum_payload_matrix.rs:240:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_width_split_1vnr`
@@ -26378,7 +26378,7 @@ vec_width_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_width_split_nv1r` (dataframe_enum_payload_matrix.rs:243:8)
+# Generated from Rust fn `vec_width_split_nv1r` (dataframe_enum_payload_matrix.rs:249:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_width_split_nv1r`
@@ -26389,7 +26389,7 @@ vec_width_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_width_split_nvnr` (dataframe_enum_payload_matrix.rs:251:8)
+# Generated from Rust fn `vec_width_split_nvnr` (dataframe_enum_payload_matrix.rs:257:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_width_split_nvnr`
@@ -26400,7 +26400,7 @@ vec_width_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_expand_align_nvnr` (dataframe_enum_payload_matrix.rs:326:8)
+# Generated from Rust fn `vec_expand_align_nvnr` (dataframe_enum_payload_matrix.rs:334:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_expand_align_nvnr`
@@ -26411,7 +26411,7 @@ vec_expand_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_expand_split_1v1r` (dataframe_enum_payload_matrix.rs:294:8)
+# Generated from Rust fn `vec_expand_split_1v1r` (dataframe_enum_payload_matrix.rs:302:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_expand_split_1v1r`
@@ -26422,7 +26422,7 @@ vec_expand_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_expand_split_1vnr` (dataframe_enum_payload_matrix.rs:299:8)
+# Generated from Rust fn `vec_expand_split_1vnr` (dataframe_enum_payload_matrix.rs:307:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_expand_split_1vnr`
@@ -26433,7 +26433,7 @@ vec_expand_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_expand_split_nv1r` (dataframe_enum_payload_matrix.rs:308:8)
+# Generated from Rust fn `vec_expand_split_nv1r` (dataframe_enum_payload_matrix.rs:316:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_expand_split_nv1r`
@@ -26444,7 +26444,7 @@ vec_expand_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_expand_split_nvnr` (dataframe_enum_payload_matrix.rs:316:8)
+# Generated from Rust fn `vec_expand_split_nvnr` (dataframe_enum_payload_matrix.rs:324:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_expand_split_nvnr`
@@ -26499,7 +26499,7 @@ vec_opaque_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_opaque_split_nvnr` (dataframe_enum_payload_matrix.rs:75:8)
+# Generated from Rust fn `vec_opaque_split_nvnr` (dataframe_enum_payload_matrix.rs:77:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `vec_opaque_split_nvnr`
@@ -26510,7 +26510,7 @@ vec_opaque_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_slice_align_nvnr` (dataframe_enum_payload_matrix.rs:446:8)
+# Generated from Rust fn `boxed_slice_align_nvnr` (dataframe_enum_payload_matrix.rs:458:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `boxed_slice_align_nvnr`
@@ -26521,7 +26521,7 @@ boxed_slice_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_slice_split_1v1r` (dataframe_enum_payload_matrix.rs:414:8)
+# Generated from Rust fn `boxed_slice_split_1v1r` (dataframe_enum_payload_matrix.rs:426:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `boxed_slice_split_1v1r`
@@ -26532,7 +26532,7 @@ boxed_slice_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_slice_split_1vnr` (dataframe_enum_payload_matrix.rs:419:8)
+# Generated from Rust fn `boxed_slice_split_1vnr` (dataframe_enum_payload_matrix.rs:431:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `boxed_slice_split_1vnr`
@@ -26543,7 +26543,7 @@ boxed_slice_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_slice_split_nv1r` (dataframe_enum_payload_matrix.rs:428:8)
+# Generated from Rust fn `boxed_slice_split_nv1r` (dataframe_enum_payload_matrix.rs:440:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `boxed_slice_split_nv1r`
@@ -26554,7 +26554,7 @@ boxed_slice_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_slice_split_nvnr` (dataframe_enum_payload_matrix.rs:436:8)
+# Generated from Rust fn `boxed_slice_split_nvnr` (dataframe_enum_payload_matrix.rs:448:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `boxed_slice_split_nvnr`
@@ -26565,7 +26565,7 @@ boxed_slice_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_align_1v1r` (dataframe_enum_payload_matrix.rs:1731:8)
+# Generated from Rust fn `nested_list_align_1v1r` (dataframe_enum_payload_matrix.rs:1781:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_align_1v1r`
@@ -26576,7 +26576,7 @@ nested_list_align_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_align_1vnr` (dataframe_enum_payload_matrix.rs:1740:8)
+# Generated from Rust fn `nested_list_align_1vnr` (dataframe_enum_payload_matrix.rs:1792:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_align_1vnr`
@@ -26587,7 +26587,7 @@ nested_list_align_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_align_nv1r` (dataframe_enum_payload_matrix.rs:1759:8)
+# Generated from Rust fn `nested_list_align_nv1r` (dataframe_enum_payload_matrix.rs:1813:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_align_nv1r`
@@ -26598,7 +26598,7 @@ nested_list_align_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_align_nvnr` (dataframe_enum_payload_matrix.rs:1771:8)
+# Generated from Rust fn `nested_list_align_nvnr` (dataframe_enum_payload_matrix.rs:1827:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_align_nvnr`
@@ -26609,7 +26609,7 @@ nested_list_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_split_1v1r` (dataframe_enum_payload_matrix.rs:1674:8)
+# Generated from Rust fn `nested_list_split_1v1r` (dataframe_enum_payload_matrix.rs:1724:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_split_1v1r`
@@ -26620,7 +26620,7 @@ nested_list_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_split_1vnr` (dataframe_enum_payload_matrix.rs:1683:8)
+# Generated from Rust fn `nested_list_split_1vnr` (dataframe_enum_payload_matrix.rs:1733:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_split_1vnr`
@@ -26631,7 +26631,7 @@ nested_list_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_split_nv1r` (dataframe_enum_payload_matrix.rs:1702:8)
+# Generated from Rust fn `nested_list_split_nv1r` (dataframe_enum_payload_matrix.rs:1752:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_split_nv1r`
@@ -26642,7 +26642,7 @@ nested_list_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_list_split_nvnr` (dataframe_enum_payload_matrix.rs:1714:8)
+# Generated from Rust fn `nested_list_split_nvnr` (dataframe_enum_payload_matrix.rs:1764:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_list_split_nvnr`
@@ -26653,7 +26653,7 @@ nested_list_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_list_align_nvnr` (dataframe_enum_payload_matrix.rs:1264:8)
+# Generated from Rust fn `struct_list_align_nvnr` (dataframe_enum_payload_matrix.rs:1300:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_list_align_nvnr`
@@ -26664,7 +26664,7 @@ struct_list_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_list_split_1v1r` (dataframe_enum_payload_matrix.rs:1207:8)
+# Generated from Rust fn `struct_list_split_1v1r` (dataframe_enum_payload_matrix.rs:1243:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_list_split_1v1r`
@@ -26675,7 +26675,7 @@ struct_list_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_list_split_1vnr` (dataframe_enum_payload_matrix.rs:1216:8)
+# Generated from Rust fn `struct_list_split_1vnr` (dataframe_enum_payload_matrix.rs:1252:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_list_split_1vnr`
@@ -26686,7 +26686,7 @@ struct_list_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_list_split_nv1r` (dataframe_enum_payload_matrix.rs:1235:8)
+# Generated from Rust fn `struct_list_split_nv1r` (dataframe_enum_payload_matrix.rs:1271:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_list_split_nv1r`
@@ -26697,7 +26697,7 @@ struct_list_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_list_split_nvnr` (dataframe_enum_payload_matrix.rs:1247:8)
+# Generated from Rust fn `struct_list_split_nvnr` (dataframe_enum_payload_matrix.rs:1283:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_list_split_nvnr`
@@ -26708,7 +26708,7 @@ struct_list_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_str_align_nvnr` (dataframe_enum_payload_matrix.rs:538:8)
+# Generated from Rust fn `borrowed_str_align_nvnr` (dataframe_enum_payload_matrix.rs:552:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_str_align_nvnr`
@@ -26719,7 +26719,7 @@ borrowed_str_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_str_split_1v1r` (dataframe_enum_payload_matrix.rs:501:8)
+# Generated from Rust fn `borrowed_str_split_1v1r` (dataframe_enum_payload_matrix.rs:515:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_str_split_1v1r`
@@ -26730,7 +26730,7 @@ borrowed_str_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_str_split_1vnr` (dataframe_enum_payload_matrix.rs:510:8)
+# Generated from Rust fn `borrowed_str_split_1vnr` (dataframe_enum_payload_matrix.rs:524:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_str_split_1vnr`
@@ -26741,7 +26741,7 @@ borrowed_str_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_str_split_nv1r` (dataframe_enum_payload_matrix.rs:526:8)
+# Generated from Rust fn `borrowed_str_split_nv1r` (dataframe_enum_payload_matrix.rs:540:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_str_split_nv1r`
@@ -26752,7 +26752,7 @@ borrowed_str_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_str_split_nvnr` (dataframe_enum_payload_matrix.rs:554:8)
+# Generated from Rust fn `borrowed_str_split_nvnr` (dataframe_enum_payload_matrix.rs:570:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_str_split_nvnr`
@@ -26763,7 +26763,7 @@ borrowed_str_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_align_1v1r` (dataframe_enum_payload_matrix.rs:1611:8)
+# Generated from Rust fn `nested_factor_align_1v1r` (dataframe_enum_payload_matrix.rs:1655:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_align_1v1r`
@@ -26774,7 +26774,7 @@ nested_factor_align_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_align_1vnr` (dataframe_enum_payload_matrix.rs:1622:8)
+# Generated from Rust fn `nested_factor_align_1vnr` (dataframe_enum_payload_matrix.rs:1666:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_align_1vnr`
@@ -26785,7 +26785,7 @@ nested_factor_align_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_align_nv1r` (dataframe_enum_payload_matrix.rs:1641:8)
+# Generated from Rust fn `nested_factor_align_nv1r` (dataframe_enum_payload_matrix.rs:1687:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_align_nv1r`
@@ -26796,7 +26796,7 @@ nested_factor_align_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_align_nvnr` (dataframe_enum_payload_matrix.rs:1653:8)
+# Generated from Rust fn `nested_factor_align_nvnr` (dataframe_enum_payload_matrix.rs:1701:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_align_nvnr`
@@ -26807,7 +26807,7 @@ nested_factor_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_split_1v1r` (dataframe_enum_payload_matrix.rs:1554:8)
+# Generated from Rust fn `nested_factor_split_1v1r` (dataframe_enum_payload_matrix.rs:1598:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_split_1v1r`
@@ -26818,7 +26818,7 @@ nested_factor_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_split_1vnr` (dataframe_enum_payload_matrix.rs:1563:8)
+# Generated from Rust fn `nested_factor_split_1vnr` (dataframe_enum_payload_matrix.rs:1607:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_split_1vnr`
@@ -26829,7 +26829,7 @@ nested_factor_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_split_nv1r` (dataframe_enum_payload_matrix.rs:1582:8)
+# Generated from Rust fn `nested_factor_split_nv1r` (dataframe_enum_payload_matrix.rs:1626:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_split_nv1r`
@@ -26840,7 +26840,7 @@ nested_factor_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_factor_split_nvnr` (dataframe_enum_payload_matrix.rs:1594:8)
+# Generated from Rust fn `nested_factor_split_nvnr` (dataframe_enum_payload_matrix.rs:1638:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_factor_split_nvnr`
@@ -26851,7 +26851,7 @@ nested_factor_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_slice_align_nvnr` (dataframe_enum_payload_matrix.rs:622:8)
+# Generated from Rust fn `borrowed_slice_align_nvnr` (dataframe_enum_payload_matrix.rs:638:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_slice_align_nvnr`
@@ -26862,7 +26862,7 @@ borrowed_slice_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_slice_split_1v1r` (dataframe_enum_payload_matrix.rs:582:8)
+# Generated from Rust fn `borrowed_slice_split_1v1r` (dataframe_enum_payload_matrix.rs:598:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_slice_split_1v1r`
@@ -26873,7 +26873,7 @@ borrowed_slice_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_slice_split_1vnr` (dataframe_enum_payload_matrix.rs:591:8)
+# Generated from Rust fn `borrowed_slice_split_1vnr` (dataframe_enum_payload_matrix.rs:607:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_slice_split_1vnr`
@@ -26884,7 +26884,7 @@ borrowed_slice_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_slice_split_nv1r` (dataframe_enum_payload_matrix.rs:610:8)
+# Generated from Rust fn `borrowed_slice_split_nv1r` (dataframe_enum_payload_matrix.rs:626:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_slice_split_nv1r`
@@ -26895,7 +26895,7 @@ borrowed_slice_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `borrowed_slice_split_nvnr` (dataframe_enum_payload_matrix.rs:638:8)
+# Generated from Rust fn `borrowed_slice_split_nvnr` (dataframe_enum_payload_matrix.rs:656:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `borrowed_slice_split_nvnr`
@@ -26906,7 +26906,7 @@ borrowed_slice_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_align_1v1r` (dataframe_enum_payload_matrix.rs:1491:8)
+# Generated from Rust fn `nested_flatten_align_1v1r` (dataframe_enum_payload_matrix.rs:1529:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_align_1v1r`
@@ -26917,7 +26917,7 @@ nested_flatten_align_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_align_1vnr` (dataframe_enum_payload_matrix.rs:1502:8)
+# Generated from Rust fn `nested_flatten_align_1vnr` (dataframe_enum_payload_matrix.rs:1540:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_align_1vnr`
@@ -26928,7 +26928,7 @@ nested_flatten_align_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_align_nv1r` (dataframe_enum_payload_matrix.rs:1521:8)
+# Generated from Rust fn `nested_flatten_align_nv1r` (dataframe_enum_payload_matrix.rs:1561:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_align_nv1r`
@@ -26939,7 +26939,7 @@ nested_flatten_align_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_align_nvnr` (dataframe_enum_payload_matrix.rs:1533:8)
+# Generated from Rust fn `nested_flatten_align_nvnr` (dataframe_enum_payload_matrix.rs:1575:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_align_nvnr`
@@ -26950,7 +26950,7 @@ nested_flatten_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_split_1v1r` (dataframe_enum_payload_matrix.rs:1434:8)
+# Generated from Rust fn `nested_flatten_split_1v1r` (dataframe_enum_payload_matrix.rs:1472:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_split_1v1r`
@@ -26961,7 +26961,7 @@ nested_flatten_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_split_1vnr` (dataframe_enum_payload_matrix.rs:1443:8)
+# Generated from Rust fn `nested_flatten_split_1vnr` (dataframe_enum_payload_matrix.rs:1481:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_split_1vnr`
@@ -26972,7 +26972,7 @@ nested_flatten_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_split_nv1r` (dataframe_enum_payload_matrix.rs:1462:8)
+# Generated from Rust fn `nested_flatten_split_nv1r` (dataframe_enum_payload_matrix.rs:1500:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_split_nv1r`
@@ -26983,7 +26983,7 @@ nested_flatten_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `nested_flatten_split_nvnr` (dataframe_enum_payload_matrix.rs:1474:8)
+# Generated from Rust fn `nested_flatten_split_nvnr` (dataframe_enum_payload_matrix.rs:1512:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `nested_flatten_split_nvnr`
@@ -26994,7 +26994,7 @@ nested_flatten_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_flatten_align_nvnr` (dataframe_enum_payload_matrix.rs:1186:8)
+# Generated from Rust fn `struct_flatten_align_nvnr` (dataframe_enum_payload_matrix.rs:1220:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_flatten_align_nvnr`
@@ -27005,7 +27005,7 @@ struct_flatten_align_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_flatten_split_1v1r` (dataframe_enum_payload_matrix.rs:1129:8)
+# Generated from Rust fn `struct_flatten_split_1v1r` (dataframe_enum_payload_matrix.rs:1163:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_flatten_split_1v1r`
@@ -27016,7 +27016,7 @@ struct_flatten_split_1v1r <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_flatten_split_1vnr` (dataframe_enum_payload_matrix.rs:1138:8)
+# Generated from Rust fn `struct_flatten_split_1vnr` (dataframe_enum_payload_matrix.rs:1172:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_flatten_split_1vnr`
@@ -27027,7 +27027,7 @@ struct_flatten_split_1vnr <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_flatten_split_nv1r` (dataframe_enum_payload_matrix.rs:1157:8)
+# Generated from Rust fn `struct_flatten_split_nv1r` (dataframe_enum_payload_matrix.rs:1191:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_flatten_split_nv1r`
@@ -27038,7 +27038,7 @@ struct_flatten_split_nv1r <- function() {
   .val
 }
 
-# Generated from Rust fn `struct_flatten_split_nvnr` (dataframe_enum_payload_matrix.rs:1169:8)
+# Generated from Rust fn `struct_flatten_split_nvnr` (dataframe_enum_payload_matrix.rs:1203:8)
 #' @title dataframe enum payload matrix
 #' @rdname dataframe_enum_payload_matrix
 #' @source Generated by miniextendr from Rust fn `struct_flatten_split_nvnr`
@@ -27049,7 +27049,7 @@ struct_flatten_split_nvnr <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_basic_par` (dataframe_struct_flatten_test.rs:499:8)
+# Generated from Rust fn `flat_basic_par` (dataframe_struct_flatten_test.rs:521:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_basic_par`
@@ -27071,7 +27071,7 @@ flat_basic_1row <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_basic_nrow` (dataframe_struct_flatten_test.rs:215:8)
+# Generated from Rust fn `flat_basic_nrow` (dataframe_struct_flatten_test.rs:217:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_basic_nrow`
@@ -27082,7 +27082,7 @@ flat_basic_nrow <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_nested_par` (dataframe_struct_flatten_test.rs:556:8)
+# Generated from Rust fn `flat_nested_par` (dataframe_struct_flatten_test.rs:584:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_nested_par`
@@ -27093,7 +27093,7 @@ flat_nested_par <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_skip_inner` (dataframe_struct_flatten_test.rs:282:8)
+# Generated from Rust fn `flat_skip_inner` (dataframe_struct_flatten_test.rs:292:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_skip_inner`
@@ -27104,7 +27104,7 @@ flat_skip_inner <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_as_list_par` (dataframe_struct_flatten_test.rs:539:8)
+# Generated from Rust fn `flat_as_list_par` (dataframe_struct_flatten_test.rs:565:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_as_list_par`
@@ -27115,7 +27115,7 @@ flat_as_list_par <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_mixed_order` (dataframe_struct_flatten_test.rs:310:8)
+# Generated from Rust fn `flat_mixed_order` (dataframe_struct_flatten_test.rs:324:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_mixed_order`
@@ -27126,7 +27126,7 @@ flat_mixed_order <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_tuple_struct` (dataframe_struct_flatten_test.rs:326:8)
+# Generated from Rust fn `flat_tuple_struct` (dataframe_struct_flatten_test.rs:342:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_tuple_struct`
@@ -27137,7 +27137,7 @@ flat_tuple_struct <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_as_list_inner` (dataframe_struct_flatten_test.rs:296:8)
+# Generated from Rust fn `flat_as_list_inner` (dataframe_struct_flatten_test.rs:308:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_as_list_inner`
@@ -27148,7 +27148,7 @@ flat_as_list_inner <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_nested_struct` (dataframe_struct_flatten_test.rs:334:8)
+# Generated from Rust fn `flat_nested_struct` (dataframe_struct_flatten_test.rs:352:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_nested_struct`
@@ -27159,7 +27159,7 @@ flat_nested_struct <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_renamed_inner` (dataframe_struct_flatten_test.rs:274:8)
+# Generated from Rust fn `flat_renamed_inner` (dataframe_struct_flatten_test.rs:282:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_renamed_inner`
@@ -27170,7 +27170,7 @@ flat_renamed_inner <- function() {
   .val
 }
 
-# Generated from Rust fn `qual_located_basic` (dataframe_struct_flatten_test.rs:356:8)
+# Generated from Rust fn `qual_located_basic` (dataframe_struct_flatten_test.rs:376:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `qual_located_basic`
@@ -27181,7 +27181,7 @@ qual_located_basic <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_basic_zero_rows` (dataframe_struct_flatten_test.rs:233:8)
+# Generated from Rust fn `flat_basic_zero_rows` (dataframe_struct_flatten_test.rs:237:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_basic_zero_rows`
@@ -27192,7 +27192,7 @@ flat_basic_zero_rows <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_mixed_inner_types` (dataframe_struct_flatten_test.rs:254:8)
+# Generated from Rust fn `flat_mixed_inner_types` (dataframe_struct_flatten_test.rs:260:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_mixed_inner_types`
@@ -27203,7 +27203,7 @@ flat_mixed_inner_types <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_two_struct_fields` (dataframe_struct_flatten_test.rs:238:8)
+# Generated from Rust fn `flat_two_struct_fields` (dataframe_struct_flatten_test.rs:242:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_two_struct_fields`
@@ -27214,7 +27214,7 @@ flat_two_struct_fields <- function() {
   .val
 }
 
-# Generated from Rust fn `gc_stress_struct_flatten` (dataframe_struct_flatten_test.rs:370:8)
+# Generated from Rust fn `gc_stress_struct_flatten` (dataframe_struct_flatten_test.rs:392:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `gc_stress_struct_flatten`
@@ -27225,7 +27225,7 @@ gc_stress_struct_flatten <- function() {
   .val
 }
 
-# Generated from Rust fn `flat_two_struct_fields_par` (dataframe_struct_flatten_test.rs:520:8)
+# Generated from Rust fn `flat_two_struct_fields_par` (dataframe_struct_flatten_test.rs:544:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `flat_two_struct_fields_par`
@@ -27236,7 +27236,7 @@ flat_two_struct_fields_par <- function() {
   .val
 }
 
-# Generated from Rust fn `gc_stress_struct_flatten_nested` (dataframe_struct_flatten_test.rs:387:8)
+# Generated from Rust fn `gc_stress_struct_flatten_nested` (dataframe_struct_flatten_test.rs:409:8)
 #' @title dataframe struct flatten test
 #' @rdname dataframe_struct_flatten_test
 #' @source Generated by miniextendr from Rust fn `gc_stress_struct_flatten_nested`
@@ -27247,7 +27247,7 @@ gc_stress_struct_flatten_nested <- function() {
   .val
 }
 
-# Generated from Rust fn `altrep_from_integers` (lib.rs:771:8)
+# Generated from Rust fn `altrep_from_integers` (lib.rs:772:8)
 #' @title Create an ALTREP integer vector from an integer vector
 #' @rdname altrep_constructors
 #' @param x An integer vector.
@@ -27261,7 +27261,7 @@ altrep_from_integers <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_logicals` (lib.rs:751:8)
+# Generated from Rust fn `altrep_from_logicals` (lib.rs:752:8)
 #' @title Create an ALTREP logical vector from a logical vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A logical vector (may contain NA values).
@@ -27274,7 +27274,7 @@ altrep_from_logicals <- function(x) {
   .val
 }
 
-# Generated from Rust fn `integer_sequence_list` (lib.rs:1190:8)
+# Generated from Rust fn `integer_sequence_list` (lib.rs:1191:8)
 #' @title Create a list ALTREP where each element is an integer sequence
 #' @param n Number of elements in the list.
 #' @return A list where element i contains the vector 1:i.
@@ -27295,7 +27295,7 @@ integer_sequence_list <- function(n) {
   .val
 }
 
-# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2053:8)
+# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2054:8)
 #' @title Returns a vector of enabled feature names for this build
 #' @description This function is useful for R tests to skip tests when features are not enabled.
 #' @name rpkg_enabled_features
@@ -27306,6 +27306,148 @@ integer_sequence_list <- function(n) {
 #' @source Generated by miniextendr from Rust fn `rpkg_enabled_features`
 rpkg_enabled_features <- function() {
   .val <- .Call(C_rpkg_enabled_features, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_auto_roundtrip` (dataframe_reader_roundtrip_test.rs:156:8)
+#' @title Auto-expand `Vec<f64>` round-trip
+#' @param df data.frame with `name` and `values_*` columns.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_auto_roundtrip`
+reader_auto_roundtrip <- function(df) {
+  .val <- .Call(C_reader_auto_roundtrip, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_fixed_roundtrip` (dataframe_reader_roundtrip_test.rs:126:8)
+#' @title `Vec::<RFixedRow>::from_dataframe(&df)` → rebuild
+#' @param df data.frame with `id` and `coords_1`/`coords_2`/`coords_3`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_fixed_roundtrip`
+reader_fixed_roundtrip <- function(df) {
+  .val <- .Call(C_reader_fixed_roundtrip, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_pinned_roundtrip` (dataframe_reader_roundtrip_test.rs:136:8)
+#' @title Pinned-width `Vec<f64>` round-trip
+#' @param df data.frame with `name` and `scores_1`/`scores_2`/`scores_3`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_pinned_roundtrip`
+reader_pinned_roundtrip <- function(df) {
+  .val <- .Call(C_reader_pinned_roundtrip, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_flatten_roundtrip` (dataframe_reader_roundtrip_test.rs:176:8)
+#' @title Struct-flatten round-trip
+#' @param df data.frame with `id`, `origin_x`, `origin_y`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_flatten_roundtrip`
+reader_flatten_roundtrip <- function(df) {
+  .val <- .Call(C_reader_flatten_roundtrip, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_auto_box_roundtrip` (dataframe_reader_roundtrip_test.rs:166:8)
+#' @title Auto-expand `Box<[i32]>` round-trip
+#' @param df data.frame with `tag` and `xs_*` columns.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_auto_box_roundtrip`
+reader_auto_box_roundtrip <- function(df) {
+  .val <- .Call(C_reader_auto_box_roundtrip, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_fixed_roundtrip_par` (dataframe_reader_roundtrip_test.rs:262:8)
+#' @title Parallel fixed-array round-trip (real off-thread assembly)
+#' @param df data.frame with `id` and `coords_1`/`coords_2`/`coords_3`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_fixed_roundtrip_par`
+reader_fixed_roundtrip_par <- function(df) {
+  .val <- .Call(C_reader_fixed_roundtrip_par, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_box_pinned_roundtrip` (dataframe_reader_roundtrip_test.rs:146:8)
+#' @title Pinned-width `Box<[f64]>` round-trip
+#' @param df data.frame with `k` and `vals_1`/`vals_2`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_box_pinned_roundtrip`
+reader_box_pinned_roundtrip <- function(df) {
+  .val <- .Call(C_reader_box_pinned_roundtrip, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_flatten_roundtrip_par` (dataframe_reader_roundtrip_test.rs:273:8)
+#' @title Parallel struct-flatten round-trip (delegates to sequential)
+#' @param df data.frame with `id`, `origin_x`, `origin_y`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_flatten_roundtrip_par`
+reader_flatten_roundtrip_par <- function(df) {
+  .val <- .Call(C_reader_flatten_roundtrip_par, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `reader_flatten_mixed_roundtrip` (dataframe_reader_roundtrip_test.rs:186:8)
+#' @title Struct-flatten with a `String` inner column
+#' @param df data.frame with `id`, `owner_label`, `owner_age`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_flatten_mixed_roundtrip`
+reader_flatten_mixed_roundtrip <- function(df) {
+  .val <- .Call(C_reader_flatten_mixed_roundtrip, .call = match.call(), df)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Generated from Rust fn `gc_stress_reader_nested_flatten` (dataframe_reader_roundtrip_test.rs:232:8)
+#' @title Drives the recursive (three-level) struct-flatten reader under gctorture
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `gc_stress_reader_nested_flatten`
+gc_stress_reader_nested_flatten <- function() {
+  .val <- .Call(C_gc_stress_reader_nested_flatten, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `gc_stress_reader_struct_flatten` (dataframe_reader_roundtrip_test.rs:214:8)
+#' @title Drives the basic struct-flatten reader under gctorture
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `gc_stress_reader_struct_flatten`
+gc_stress_reader_struct_flatten <- function() {
+  .val <- .Call(C_gc_stress_reader_struct_flatten, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `reader_flatten_nested_roundtrip` (dataframe_reader_roundtrip_test.rs:196:8)
+#' @title Recursive (three-level) struct-flatten round-trip
+#' @param df data.frame with `id`, `mid_a`, `mid_leaf_z`.
+#' @rdname dataframe_reader_roundtrip_test
+#' @export
+#' @source Generated by miniextendr from Rust fn `reader_flatten_nested_roundtrip`
+reader_flatten_nested_roundtrip <- function(df) {
+  .val <- .Call(C_reader_flatten_nested_roundtrip, .call = match.call(), df)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -27321,7 +27463,7 @@ standalone_dataframe_roundtrip <- function() {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1879:8)
+# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1880:8)
 #' @title Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -27338,7 +27480,7 @@ sparse_iter_int_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_logical_alternating` (lib.rs:1606:8)
+# Generated from Rust fn `iter_logical_alternating` (lib.rs:1607:8)
 #' @title Create an alternating TRUE/FALSE logical ALTREP via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -27355,7 +27497,7 @@ iter_logical_alternating <- function(n) {
   .val
 }
 
-# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:686:26)
+# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:687:26)
 #' @title Check if a lazy integer sequence ALTREP has been materialized
 #' @description Takes raw SEXP (extern "C-unwind") because auto-materialization in `TryFromSexp` for SEXP would trigger materialization before we can inspect it.
 #' @rdname altrep_constructors

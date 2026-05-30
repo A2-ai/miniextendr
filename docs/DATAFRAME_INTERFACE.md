@@ -67,11 +67,24 @@ local `Row` type, and `miniextendr_api` carries the blanket
 `impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T>`. You still call the public
 verbs — the indirection is invisible.
 
-`FromDataFrame` is emitted only for **simple scalar-field structs** (the shapes
-with an R→Rust reader). Calling `from_dataframe` on a shape without a reader
-(expansion / struct-flatten / nested-enum / map columns) returns a clear
-`DataFrameError` rather than failing to compile. Extending the reader to those
-shapes is tracked in the follow-up issue.
+`FromDataFrame` is emitted for every **struct** row shape: simple scalar fields,
+column expansion (`[T; N]`, `Vec<T>` + `width`, `Vec<T>`/`Box<[T]>` + `expand`),
+and struct-flatten (nested `DataFrameRow` fields, including several levels of
+nesting). Each reader is the exact inverse of its writer — it regroups the
+suffixed expansion columns and reads each `<field>_`-prefixed sub-frame back
+through the nested type's own reader.
+
+A few struct shapes still have no reader and return a clear `DataFrameError` from
+`from_dataframe` (rather than failing to compile): borrowed fields (`&[T]` /
+`&str` — owned R data can't produce a borrow), `#[dataframe(skip)]` fields (the
+column was never written), `#[dataframe(as_list)]` and opaque collection columns
+(`HashMap`, `HashSet`, a bare `Vec<T>` with no expansion), and `#[dataframe(tag)]`
+structs. **Enum** row shapes have no reader yet either; both gaps are tracked in
+the follow-up issue.
+
+Ragged `width`/`expand` columns round-trip losslessly because the writer only
+ever pads *trailing* slots with `NA`: the reader flattens the present values back
+into the `Vec`, and re-writing pads the same trailing slots again.
 
 ## serde rows
 

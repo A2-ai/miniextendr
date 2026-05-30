@@ -649,8 +649,9 @@ pub trait DataFrameRowConvert: Sized {
         Self::rows_into_dataframe(rows)
     }
 
-    /// Read a row vector out of a [`DataFrame`]. `None` means this row shape has no reader (only
-    /// the simple scalar-field shape does); the blanket surfaces that as a clear error.
+    /// Read a row vector out of a [`DataFrame`]. `None` means this row shape has no reader
+    /// (scalar, column-expansion, and struct-flatten struct shapes do; enum shapes and
+    /// `tag`/`skip`/`as_list`/opaque-`Map` shapes do not); the blanket surfaces that as a clear error.
     fn rows_from_dataframe(_df: &DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
         None
     }
@@ -665,8 +666,9 @@ pub trait DataFrameRowConvert: Sized {
 /// Error returned by `Vec::<Row>::from_dataframe` when the row shape has no R→Rust reader.
 fn no_reader_error() -> DataFrameError {
     DataFrameError::Conversion(
-        "this DataFrameRow shape has no R→Rust reader (only simple scalar-field structs do); \
-         see the unified-DataFrame follow-up issue"
+        "this DataFrameRow shape has no R→Rust reader (scalar, column-expansion, and \
+         struct-flatten struct shapes do; enum shapes and tag/skip/as_list/opaque-map \
+         shapes do not)"
             .to_string(),
     )
 }
