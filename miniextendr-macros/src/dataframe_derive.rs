@@ -496,6 +496,9 @@ fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
 /// - `Single` scalar: one column read as `Vec<ty>` (excludes `as_list`, opaque
 ///   `Map`/collection columns — those classify as `Single` but lack `Vec<_>:
 ///   TryFromSexp`).
+/// - `Single` owned list-column: `Vec<scalar>` / `Box<[scalar]>` stored as a
+///   VECSXP list-column; the reader deserialises each row's element via
+///   `Vec<elem>: TryFromSexp` and `.into()`-converts to the field type (#809).
 /// - `ExpandedFixed` (`[T; N]`): `N` columns regrouped into the array.
 /// - `ExpandedVec` / `AutoExpandVec` (`Vec<T>`): suffixed `Option` columns
 ///   flattened back per row (bare-scalar elements only).
@@ -507,7 +510,13 @@ fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
 /// can't produce a borrow) — flagged via `readable` at resolve time.
 fn field_reader_capable(rf: &ResolvedField) -> bool {
     match rf {
-        ResolvedField::Single(d) => !d.needs_into_list && is_reader_scalar_ty(&d.ty),
+        ResolvedField::Single(d) => {
+            !d.needs_into_list
+                && (is_reader_scalar_ty(&d.ty)
+                    || d.list_elem_ty
+                        .as_ref()
+                        .is_some_and(is_bare_reader_scalar_ty))
+        }
         ResolvedField::ExpandedFixed(d) => d.readable && is_reader_scalar_ty(&d.elem_ty),
         ResolvedField::ExpandedVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
         ResolvedField::AutoExpandVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
@@ -565,6 +574,13 @@ struct SingleFieldData {
     /// When `true`, the companion field type is overridden to `List` and
     /// `From<Vec<Row>>` calls `IntoList::into_list()` on each row value.
     needs_into_list: bool,
+    /// `Some(elem)` when this Single field is an un-annotated *owned* collection
+    /// (`Vec<scalar>` / `Box<[scalar]>`) stored as an opaque list-column (#809).
+    /// The reader deserialises the list-column back into the owned collection per
+    /// row via `Vec<elem>: TryFromSexp` then `.into()` to the field container type.
+    /// `None` for scalar Single, `as_list`, opaque `Map`/set columns, and borrowed
+    /// `&[T]` (not readable).
+    list_elem_ty: Option<syn::Type>,
 }
 
 /// Data for [`ResolvedField::ExpandedFixed`].
@@ -710,6 +726,7 @@ fn resolve_struct_field(
             ty: final_ty,
             tuple_index,
             needs_into_list,
+            list_elem_ty: None,
         }))));
     }
 
@@ -751,7 +768,10 @@ fn resolve_struct_field(
                     },
                 ))))
             } else {
-                // No expansion — keep as opaque single column
+                // No expansion — keep as opaque single column (list-column on R side).
+                // Readable owned collections (`Vec<scalar>` / `Box<[scalar]>`) record
+                // the element type for the list-column reader (#809). Borrowed `&[T]`
+                // is not readable (can't produce a borrow from owned R data).
                 Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
                     rust_name,
                     col_name,
@@ -759,6 +779,11 @@ fn resolve_struct_field(
                     ty: ty.clone(),
                     tuple_index,
                     needs_into_list: false,
+                    list_elem_ty: if field_is_borrowed_ref(ty) {
+                        None
+                    } else {
+                        Some((*elem_ty).clone())
+                    },
                 }))))
             }
         }
@@ -806,6 +831,7 @@ fn resolve_struct_field(
                 ty: ty.clone(),
                 tuple_index,
                 needs_into_list: false,
+                list_elem_ty: None,
             }))))
         }
     }
@@ -2057,10 +2083,67 @@ fn derive_struct_dataframe(
                     let rust_name = &data.rust_name;
                     let col_var = format_ident!("__col_{}", rust_name);
                     let it_var = format_ident!("__it_{}", rust_name);
-                    extracts.push(pull_col(&col_var, &data.col_name_str, &data.ty));
-                    seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
-                    seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
-                    par_builds.push(quote! { #rust_name: #col_var[__i].clone() });
+                    match &data.list_elem_ty {
+                        // Un-annotated owned collection: opaque list-column (VECSXP). Read
+                        // each row's element back via `Vec<elem>: TryFromSexp`, then
+                        // `.into()` to the field container type (`Vec<elem>` identity /
+                        // `Box<[elem]>`). A non-list column (e.g. an all-empty column
+                        // materialised as logical-NA) reads back as `__nrow` empty
+                        // collections. (#809)
+                        ::core::option::Option::Some(elem_ty) => {
+                            let field_ty = &data.ty;
+                            let col_name_str = &data.col_name_str;
+                            extracts.push(quote! {
+                                let #col_var: Vec<#field_ty> = {
+                                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                                        ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
+                                    })?;
+                                    // VECSXP check via `SexpExt::is_list` (UFCS — avoids the
+                                    // `List::is_list()` bug that calls `is_pair_list()` instead).
+                                    if <::miniextendr_api::SEXP as ::miniextendr_api::SexpExt>::is_list(&__col_sexp) {
+                                        let __list = unsafe {
+                                            ::miniextendr_api::list::List::from_raw(__col_sexp)
+                                        };
+                                        let __len = __list.len();
+                                        let mut __v: Vec<#field_ty> = ::std::vec::Vec::with_capacity(__len as usize);
+                                        for __j in 0..__len {
+                                            // in-bounds by construction (0..len)
+                                            let __elt = __list.get(__j).unwrap();
+                                            let __inner: Vec<#elem_ty> =
+                                                <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
+                                                    .map_err(|e| ::std::format!(
+                                                        "column `{}` element {} could not be converted to the expected type: {}",
+                                                        #col_name_str, __j, e
+                                                    ))?;
+                                            __v.push(::core::convert::Into::into(__inner));
+                                        }
+                                        __v
+                                    } else {
+                                        // Non-list column → every row is an empty collection.
+                                        (0..__nrow)
+                                            .map(|_| ::core::convert::Into::into(::std::vec::Vec::<#elem_ty>::new()))
+                                            .collect()
+                                    }
+                                };
+                                if #col_var.len() != __nrow {
+                                    return ::core::result::Result::Err(::std::format!(
+                                        "column `{}` has length {} but data.frame has {} rows",
+                                        #col_name_str, #col_var.len(), __nrow
+                                    ));
+                                }
+                            });
+                            seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
+                            seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
+                            par_builds.push(quote! { #rust_name: #col_var[__i].clone() });
+                        }
+                        // Scalar Single: unchanged (existing path).
+                        ::core::option::Option::None => {
+                            extracts.push(pull_col(&col_var, &data.col_name_str, &data.ty));
+                            seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
+                            seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
+                            par_builds.push(quote! { #rust_name: #col_var[__i].clone() });
+                        }
+                    }
                 }
                 // `[T; N]` → columns `base_1..base_N`, each a plain `Vec<elem>`.
                 // Regroup into the fixed array per row.

@@ -1,4 +1,4 @@
-//! Round-trip fixtures for the non-scalar `FromDataFrame` readers (#782).
+//! Round-trip fixtures for the non-scalar `FromDataFrame` readers (#782, #809).
 //!
 //! `#[derive(DataFrameRow)]` now generates an R→Rust reader
 //! (`try_from_dataframe` / `_par`, surfaced as `Vec::<Row>::from_dataframe(&df)`)
@@ -7,6 +7,9 @@
 //!   - column expansion: `[T; N]`, `Vec<T>` + `width`, `Vec<T>`/`Box<[T]>` + `expand`
 //!   - struct-flatten: nested `DataFrameRow` fields (`<field>_<inner>` prefix),
 //!     including recursion through several levels
+//!   - opaque list-columns: un-annotated `Vec<scalar>` / `Box<[scalar]>` fields
+//!     stored as VECSXP list-columns; each row's element is deserialized via
+//!     `Vec<elem>: TryFromSexp` and `.into()`-converted to the field container type
 //!
 //! Each `*_roundtrip(df)` reads a `data.frame` into `Vec<Row>` with the reader,
 //! then rebuilds it with the writer — so `roundtrip(make()) == make()` proves the
@@ -17,7 +20,9 @@
 //! The struct-flatten reader selects the `<field>_`-prefixed sub-columns into a
 //! fresh sub-frame (an R allocation) before recursing, so it carries the no-arg
 //! `gc_stress_reader_*` fixtures for the fast `gctorture(TRUE)` sweep, per
-//! `rpkg/CLAUDE.md`'s SEXP-storage convention.
+//! `rpkg/CLAUDE.md`'s SEXP-storage convention. The list-column reader does per-row
+//! R access in a loop, so it also ships a no-arg `gc_stress_reader_list_column`
+//! fixture.
 
 #![allow(dead_code)]
 
@@ -25,6 +30,44 @@ use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, IntoR, SEXP, miniextendr};
 
 // region: row types — one per reader shape
+
+// region: opaque list-column row types (#809)
+
+/// Opaque list-column `Vec<f64>` (un-annotated) → single list-column `data`.
+#[derive(Clone, Debug, PartialEq, IntoList, DataFrameRow)]
+pub struct RListVecRow {
+    pub id: i32,
+    pub data: Vec<f64>,
+}
+
+/// Opaque list-column `Box<[i32]>` → exercises `.into()` to the boxed slice.
+///
+/// `IntoList` is manual because `Box<[T]>` has no blanket `IntoR` impl that
+/// `#[derive(IntoList)]` can use directly (`into_vec().into_sexp()` is needed).
+#[derive(Clone, Debug, PartialEq, DataFrameRow)]
+pub struct RListBoxRow {
+    pub tag: String,
+    pub xs: Box<[i32]>,
+}
+
+impl ::miniextendr_api::list::IntoList for RListBoxRow {
+    fn into_list(self) -> ::miniextendr_api::List {
+        use ::miniextendr_api::IntoR;
+        ::miniextendr_api::List::from_raw_pairs(vec![
+            ("tag", self.tag.into_sexp()),
+            ("xs", self.xs.into_vec().into_sexp()),
+        ])
+    }
+}
+
+/// Two list-columns of differing element types in one row (`Vec<i32>` + `Vec<String>`).
+#[derive(Clone, Debug, PartialEq, IntoList, DataFrameRow)]
+pub struct RListMultiRow {
+    pub ids: Vec<i32>,
+    pub names: Vec<String>,
+}
+
+// endregion
 
 /// Fixed-array expansion: `coords: [f64; 3]` → columns `coords_1..coords_3`.
 #[derive(Clone, Debug, PartialEq, DataFrameRow)]
@@ -201,6 +244,52 @@ pub fn reader_flatten_nested_roundtrip(df: SEXP) -> SEXP {
 
 // endregion
 
+// region: opaque list-column round-trip entrypoints (#809)
+
+/// `Vec::<RListVecRow>::from_dataframe(&df)` → rebuild. Columns `id`, `data` (list-column).
+/// @param df data.frame with `id` (integer) and `data` (list of numeric vectors).
+/// @export
+#[miniextendr]
+pub fn reader_list_vec_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// `Vec::<RListBoxRow>::from_dataframe(&df)` → rebuild. Columns `tag`, `xs` (list-column).
+/// Exercises `.into()` from `Vec<i32>` to `Box<[i32]>` per row.
+/// @param df data.frame with `tag` (character) and `xs` (list of integer vectors).
+/// @export
+#[miniextendr]
+pub fn reader_list_box_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RListBoxRow> = <Vec<RListBoxRow>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// `Vec::<RListMultiRow>::from_dataframe(&df)` → rebuild. Columns `ids`, `names` (both list-columns).
+/// @param df data.frame with `ids` (list of integer vectors) and `names` (list of character vectors).
+/// @export
+#[miniextendr]
+pub fn reader_list_multi_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RListMultiRow> = <Vec<RListMultiRow>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// Parallel list-column round-trip (real off-thread index assembly). Columns `id`, `data`.
+/// @param df data.frame with `id` (integer) and `data` (list of numeric vectors).
+/// @export
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn reader_list_vec_roundtrip_par(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe_par(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+// endregion
+
 // region: gctorture fixtures (no-arg, self-contained)
 //
 // The struct-flatten reader allocates a fresh sub-frame (`select` + `strip_prefix`)
@@ -243,6 +332,22 @@ pub fn gc_stress_reader_nested_flatten() {
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
     let _back: Vec<RNestOuter> = <Vec<RNestOuter>>::from_dataframe(&df).unwrap();
+    let _ = df;
+}
+
+/// Drives the list-column reader under gctorture. The reader does per-row R access in
+/// a loop, so it must survive `gctorture(TRUE)` with SEXP elements protected correctly.
+/// @export
+#[miniextendr]
+pub fn gc_stress_reader_list_column() {
+    let rows: Vec<RListVecRow> = (0..16)
+        .map(|i| RListVecRow {
+            id: i,
+            data: vec![i as f64, (i as f64) * 2.0],
+        })
+        .collect();
+    let df = rows.clone().into_dataframe().unwrap();
+    let _back: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe(&df).unwrap();
     let _ = df;
 }
 

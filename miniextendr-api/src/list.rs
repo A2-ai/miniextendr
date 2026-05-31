@@ -49,9 +49,11 @@ pub struct ListMut(SEXP);
 
 impl List {
     /// Return true if the underlying SEXP is a list (VECSXP) according to R.
+    ///
+    /// Uses `SexpExt::is_list` (VECSXP check) — **not** `is_pair_list` (LISTSXP).
     #[inline]
     pub fn is_list(self) -> bool {
-        self.0.is_pair_list()
+        <SEXP as crate::SexpExt>::is_list(&self.0)
     }
 
     /// Wrap an existing `VECSXP` without additional checks.
