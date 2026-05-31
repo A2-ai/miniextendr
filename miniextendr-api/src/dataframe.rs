@@ -370,6 +370,137 @@ impl DataFrame {
         }
     }
 
+    /// Keep only the rows at the given 0-based indices, in order.
+    ///
+    /// Subsets every column (each a vector or list-column) to the specified rows
+    /// and rebuilds compact integer `row.names`. Used by the enum reader to
+    /// densify a flattened sub-frame before recursing into the inner type's reader.
+    ///
+    /// # PROTECT discipline
+    ///
+    /// Allocates one new column vector per column — `OwnedProtect`s the output list
+    /// across the loop so previously-built column SEXPs survive subsequent allocations.
+    pub fn select_rows(&self, idx: &[usize]) -> Self {
+        use crate::SexpExt as _;
+        use crate::sexp_types::SEXPTYPE;
+
+        unsafe {
+            let names_sexp = self.sexp.get_names();
+            let ncol = self.sexp.xlength();
+            let new_nrow = idx.len();
+            let new_nrow_isize: isize = new_nrow.try_into().expect("row count overflow");
+
+            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(ncol));
+            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(ncol));
+
+            for col_j in 0..ncol {
+                let src_col = self.sexp.vector_elt(col_j);
+                let stype = src_col.type_of();
+
+                // Build a new column vector of length `new_nrow` by copying the
+                // requested rows. The output list (new_list) is protected by
+                // OwnedProtect above; each intermediate allocation is only live
+                // until set_vector_elt copies the element into the protected list.
+                let new_col: SEXP = match stype {
+                    SEXPTYPE::REALSXP => {
+                        let out = crate::sys::Rf_allocVector(SEXPTYPE::REALSXP, new_nrow_isize);
+                        let _guard = crate::OwnedProtect::new(out);
+                        for (j, &row_i) in idx.iter().enumerate() {
+                            out.set_real_elt(j as isize, src_col.real_elt(row_i as isize));
+                        }
+                        out
+                    }
+                    SEXPTYPE::INTSXP => {
+                        let out = crate::sys::Rf_allocVector(SEXPTYPE::INTSXP, new_nrow_isize);
+                        let _guard = crate::OwnedProtect::new(out);
+                        for (j, &row_i) in idx.iter().enumerate() {
+                            out.set_integer_elt(j as isize, src_col.integer_elt(row_i as isize));
+                        }
+                        out
+                    }
+                    SEXPTYPE::LGLSXP => {
+                        let out = crate::sys::Rf_allocVector(SEXPTYPE::LGLSXP, new_nrow_isize);
+                        let _guard = crate::OwnedProtect::new(out);
+                        for (j, &row_i) in idx.iter().enumerate() {
+                            out.set_logical_elt(j as isize, src_col.logical_elt(row_i as isize));
+                        }
+                        out
+                    }
+                    SEXPTYPE::STRSXP => {
+                        let out = crate::sys::Rf_allocVector(SEXPTYPE::STRSXP, new_nrow_isize);
+                        // Protect out across CHARSXP string_elt copies — string_elt returns
+                        // a CHARSXP from the string pool (no allocation), but set_string_elt
+                        // may hash-intern on R-devel; protect defensively.
+                        let _guard = crate::OwnedProtect::new(out);
+                        for (j, &row_i) in idx.iter().enumerate() {
+                            let charsxp = src_col.string_elt(row_i as isize);
+                            out.set_string_elt(j as isize, charsxp);
+                        }
+                        out
+                    }
+                    SEXPTYPE::VECSXP => {
+                        // List-column: copy element-by-element (NULL for absent rows).
+                        let out = crate::sys::Rf_allocVector(SEXPTYPE::VECSXP, new_nrow_isize);
+                        let _guard = crate::OwnedProtect::new(out);
+                        for (j, &row_i) in idx.iter().enumerate() {
+                            let elt = src_col.vector_elt(row_i as isize);
+                            out.set_vector_elt(j as isize, elt);
+                        }
+                        out
+                    }
+                    _ => {
+                        // Unknown SEXPTYPE: fall back to a logical NA column of the right length.
+                        // This is a defensive path — normal data.frame columns are REAL/INT/LGL/STR/VEC.
+                        let out = crate::sys::Rf_allocVector(SEXPTYPE::LGLSXP, new_nrow_isize);
+                        let _guard = crate::OwnedProtect::new(out);
+                        for j in 0..new_nrow_isize {
+                            out.set_logical_elt(j, i32::MIN); // NA_logical
+                        }
+                        out
+                    }
+                };
+
+                // Root new_col in the protected output list BEFORE touching its
+                // attributes. The match arm's `OwnedProtect` guard has already
+                // dropped, so new_col is otherwise unprotected here — and
+                // `set_class`/`set_levels` (Rf_setAttrib) allocate and can trigger
+                // GC. set_vector_elt does not allocate, so this ordering keeps
+                // new_col reachable (via new_list) across every allocating call.
+                new_list.set_vector_elt(col_j, new_col);
+                if names_sexp != SEXP::nil() {
+                    new_names.set_string_elt(col_j, names_sexp.string_elt(col_j));
+                }
+
+                // Copy column attributes: class (for factor / Date / POSIXct) and
+                // levels (for factor columns). Safe now — new_col is rooted in the
+                // protected new_list, so GC during set_class/set_levels can't reap it.
+                let class_attr = src_col.get_class();
+                if class_attr != SEXP::nil() {
+                    new_col.set_class(class_attr);
+                }
+                let levels_attr = src_col.get_levels();
+                if levels_attr != SEXP::nil() {
+                    new_col.set_levels(levels_attr);
+                }
+            }
+
+            if names_sexp != SEXP::nil() {
+                new_list.set_names(*new_names);
+            }
+
+            // Set compact integer row.names (c(NA_integer_, -new_nrow)).
+            let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
+            let _rn_guard = crate::OwnedProtect::new(row_names);
+            rn[0] = i32::MIN;
+            rn[1] = -(new_nrow as i32);
+            new_list.set_row_names(row_names);
+            // Copy the data.frame class attribute.
+            new_list.set_class(self.sexp.get_class());
+
+            DataFrame { sexp: *new_list }
+        }
+    }
+
     /// Insert a column at index 0 (leftmost), removing any same-named column first.
     pub fn prepend_column(self, name: &str, column: SEXP) -> Self {
         let cleaned = self.drop(name);
@@ -650,8 +781,9 @@ pub trait DataFrameRowConvert: Sized {
     }
 
     /// Read a row vector out of a [`DataFrame`]. `None` means this row shape has no reader
-    /// (scalar, column-expansion, and struct-flatten struct shapes do; enum shapes and
-    /// `tag`/`skip`/`as_list`/opaque-`Map` shapes do not); the blanket surfaces that as a clear error.
+    /// (scalar, column-expansion, and struct-flatten struct shapes do; tagged enum shapes with
+    /// reader-capable fields do too; tagless/map-column/coerced/skip/`as_list` enum shapes and
+    /// opaque-map shapes do not); the blanket surfaces that as a clear error.
     fn rows_from_dataframe(_df: &DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
         None
     }
@@ -666,9 +798,9 @@ pub trait DataFrameRowConvert: Sized {
 /// Error returned by `Vec::<Row>::from_dataframe` when the row shape has no R→Rust reader.
 fn no_reader_error() -> DataFrameError {
     DataFrameError::Conversion(
-        "this DataFrameRow shape has no R→Rust reader (scalar, column-expansion, and \
-         struct-flatten struct shapes do; enum shapes and tag/skip/as_list/opaque-map \
-         shapes do not)"
+        "this DataFrameRow shape has no R→Rust reader (struct shapes with scalar/expansion/\
+         struct-flatten fields do; tagged enum shapes with reader-capable fields do; \
+         tagless/map-column/coerced/skip/as_list enum shapes and opaque-map shapes do not)"
             .to_string(),
     )
 }

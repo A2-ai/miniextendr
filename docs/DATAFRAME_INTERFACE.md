@@ -77,13 +77,23 @@ exact inverse of its writer — it regroups the suffixed expansion columns, read
 `<field>_`-prefixed sub-frame back through the nested type's own reader, and
 deserializes opaque list-column elements per row.
 
-A few struct shapes still have no reader and return a clear `DataFrameError` from
+`FromDataFrame` is also emitted for **tagged enum** row shapes (enums with
+`#[dataframe(tag = "...")]`): scalar `Single` fields (any variant mix of payload +
+unit variants), column-expansion fields (`[T; N]` fixed-array and `Vec<T>` + `width`
+in variants), struct-flatten variant fields (inner `DataFrameRow` structs), nested
+payload-bearing enum flatten (inner enum that itself has a reader), and `as_factor`
+unit-only nested enums. The reader reads the tag column first, then per-row dispatches
+to each active variant's field assemblers. Struct-flatten/nested-enum paths densify the
+sub-frame (keeping only present rows) before recursing into the inner reader.
+
+A few shapes still have no reader and return a clear `DataFrameError` from
 `from_dataframe` (rather than failing to compile): borrowed fields (`&[T]` /
 `&str` — owned R data can't produce a borrow), `#[dataframe(skip)]` fields (the
 column was never written), `#[dataframe(as_list)]` and opaque non-scalar collection
-columns (`HashMap`, `HashSet`, `Vec<Option<T>>` list-columns), and
-`#[dataframe(tag)]` structs. **Enum** row shapes have no reader yet; that gap is
-tracked in the follow-up issue.
+columns (`HashMap`, `HashSet`, `Vec<Option<T>>` list-columns), `#[dataframe(tag)]`
+structs, `#[dataframe(conflicts = "string")]` enums, **map-column enums**
+(`HashMap`/`BTreeMap` `_keys`/`_values` columns — tracked in issue #814), and
+tagless or `skip`-field enums.
 
 Ragged `width`/`expand` columns round-trip losslessly because the writer only
 ever pads *trailing* slots with `NA`: the reader flattens the present values back
