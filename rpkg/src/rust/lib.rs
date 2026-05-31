@@ -263,6 +263,7 @@ mod toml_adapter_tests;
 mod trait_abi_tests;
 mod trait_method_options_tests;
 mod typed_dataframe_tests;
+mod typed_df_attr_tests;
 mod unified_dataframe_tests;
 mod unwind_protect_tests;
 #[cfg(feature = "url")]

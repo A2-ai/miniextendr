@@ -723,6 +723,7 @@ pub fn miniextendr(
         s3_class,
         dots_spec,
         dots_span,
+        typed_df_specs,
         lifecycle,
         strict,
         internal,
@@ -1406,6 +1407,84 @@ pub fn miniextendr(
         original_item.block.stmts.insert(0, validation_stmt);
     }
 
+    // Validate typed_df_specs, generate hidden structs + inject bindings.
+    // Collect fn parameter idents for validation.
+    let fn_param_idents: Vec<syn::Ident> = parsed
+        .item()
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(pat_type) = arg
+                && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+            {
+                return Some(pat_ident.ident.clone());
+            }
+            None
+        })
+        .collect();
+
+    // Gather hidden struct definitions to emit alongside the original fn item.
+    let mut typed_df_structs: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    for spec in &typed_df_specs {
+        // Validate that the param exists in the fn signature.
+        if !fn_param_idents.contains(&spec.param) {
+            return syn::Error::new(
+                spec.span,
+                format!(
+                    "typed_df: parameter `{}` not found in function signature",
+                    spec.param
+                ),
+            )
+            .into_compile_error()
+            .into();
+        }
+
+        // Build unique hidden struct ident: __MiniextendrTypedDf_<fn>_<param>
+        let fn_ident = &parsed.item().sig.ident;
+        let hidden_name = quote::format_ident!("__MiniextendrTypedDf_{}_{}", fn_ident, spec.param);
+
+        // Synthesise the hidden struct definition.
+        let vis_private: syn::Visibility = syn::parse_quote! {};
+        let struct_ts = crate::typed_dataframe::expand_typed_dataframe_struct(
+            &[],
+            &vis_private,
+            &hidden_name,
+            &spec.columns.fields,
+            spec.columns.allow_extra,
+        );
+        typed_df_structs.push(struct_ts);
+
+        // Inject `let <param>_typed = ...;` binding at the top of the fn body.
+        let binding_ident = quote::format_ident!("{}_typed", spec.param);
+        let param_ident = &spec.param;
+        let param_str = param_ident.to_string();
+
+        let validation_stmt: syn::Stmt = syn::parse_quote! {
+            let #binding_ident = match
+                <#hidden_name as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(#param_ident)
+            {
+                ::std::result::Result::Ok(v) => v,
+                ::std::result::Result::Err(e) => ::std::panic!(
+                    "typed_df validation failed for `{}`: {}",
+                    #param_str,
+                    e
+                ),
+            };
+        };
+        original_item.block.stmts.insert(0, validation_stmt);
+    }
+    // Reverse insertion order so multiple specs appear top-to-bottom as declared.
+    // (Each is inserted at 0, so without reversal the last spec ends up first.)
+    if typed_df_specs.len() > 1 {
+        // The stmts we inserted are at indices 0..typed_df_specs.len().
+        // After the loop they are in reverse declaration order; re-reverse them.
+        let n = typed_df_specs.len();
+        let stmts_before_dots = if dots_spec.is_some() { 1 } else { 0 };
+        original_item.block.stmts[stmts_before_dots..stmts_before_dots + n].reverse();
+    }
+
     let original_item = original_item;
 
     // Generate match_arg choices helper C wrappers and R_CallMethodDef entries
@@ -1486,6 +1565,9 @@ pub fn miniextendr(
     );
 
     let expanded: proc_macro::TokenStream = quote::quote! {
+        // Hidden typed_df structs (one per typed_df spec, private to this module).
+        #(#typed_df_structs)*
+
         // rust function with doc link to R wrapper
         #[doc = #fn_r_wrapper_doc]
         #original_item

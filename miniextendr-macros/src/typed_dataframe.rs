@@ -41,6 +41,20 @@ pub struct TypedDataframeInput {
     pub allow_extra: bool,
 }
 
+/// A bare column list parsed from `typed_dataframe!(cols)` inside an attribute.
+///
+/// Used by `#[miniextendr(typed_df(param = typed_dataframe!(cols)))]` to describe
+/// the schema of a `data.frame` parameter inline.  Unlike [`TypedDataframeInput`]
+/// this has no name, visibility, or struct-level attributes — those are supplied
+/// by the `typed_df` codegen when it synthesises a hidden struct.
+pub struct TypedDataframeColumns {
+    /// Declared columns.
+    pub fields: Vec<TypedDataframeField>,
+    /// If `false`, the data.frame may not have extra (un-declared) columns.
+    /// Set via the optional leading `@exact;` prefix.
+    pub allow_extra: bool,
+}
+
 /// A single column declaration.
 pub struct TypedDataframeField {
     /// Field attributes (doc comments etc.).
@@ -53,23 +67,49 @@ pub struct TypedDataframeField {
     pub optional: bool,
 }
 
+/// Parse an optional `@exact;` prefix and return `allow_extra`.
+///
+/// Both [`TypedDataframeInput`] and [`TypedDataframeColumns`] share this prefix.
+fn parse_allow_extra(input: ParseStream) -> syn::Result<bool> {
+    if input.peek(Token![@]) {
+        input.parse::<Token![@]>()?;
+        let mode: Ident = input.parse()?;
+        if mode != "exact" {
+            return Err(syn::Error::new_spanned(
+                mode,
+                "expected `exact` after @; use `@exact;` for strict mode",
+            ));
+        }
+        input.parse::<Token![;]>()?;
+        Ok(false)
+    } else {
+        Ok(true)
+    }
+}
+
+impl Parse for TypedDataframeColumns {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let allow_extra = parse_allow_extra(input)?;
+        let fields_punct: Punctuated<TypedDataframeField, Token![,]> =
+            Punctuated::parse_terminated(input)?;
+        let fields: Vec<TypedDataframeField> = fields_punct.into_iter().collect();
+        if fields.is_empty() {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "typed_dataframe!(...) requires at least one column declaration",
+            ));
+        }
+        Ok(TypedDataframeColumns {
+            fields,
+            allow_extra,
+        })
+    }
+}
+
 impl Parse for TypedDataframeInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         // Optional @exact; prefix for strict mode.
-        let allow_extra = if input.peek(Token![@]) {
-            input.parse::<Token![@]>()?;
-            let mode: Ident = input.parse()?;
-            if mode != "exact" {
-                return Err(syn::Error::new_spanned(
-                    mode,
-                    "expected `exact` after @; use `@exact;` for strict mode",
-                ));
-            }
-            input.parse::<Token![;]>()?;
-            false
-        } else {
-            true
-        };
+        let allow_extra = parse_allow_extra(input)?;
 
         // Parse outer attributes (doc comments etc.).
         let attrs = input.call(Attribute::parse_outer)?;
@@ -150,17 +190,24 @@ fn unwrap_option(ty: &Type) -> Option<Type> {
     Some(inner.clone())
 }
 
-/// Expand a parsed `typed_dataframe!` into the generated struct, impls, and
-/// per-column accessors.
-pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
-    let TypedDataframeInput {
-        attrs,
-        vis,
-        name,
-        fields,
-        allow_extra,
-    } = input;
-
+/// Core struct expansion: generate the typed-data.frame struct, accessors, and
+/// `TryFromSexp` impl.
+///
+/// Called both from `expand_typed_dataframe` (the public `typed_dataframe!` macro)
+/// and from `lib.rs` when synthesising the hidden struct for a
+/// `#[miniextendr(typed_df(...))]` attribute.
+///
+/// `attrs`, `vis`, `name`, `fields`, `allow_extra` correspond exactly to the
+/// fields of [`TypedDataframeInput`]; they are taken as separate arguments so the
+/// caller can supply them from a [`TypedDataframeColumns`] without constructing a
+/// full `TypedDataframeInput`.
+pub fn expand_typed_dataframe_struct(
+    attrs: &[Attribute],
+    vis: &Visibility,
+    name: &Ident,
+    fields: &[TypedDataframeField],
+    allow_extra: bool,
+) -> TokenStream {
     let struct_name_str = name.to_string();
 
     // Per-field generated bits.
@@ -298,6 +345,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
     quote! {
         #(#attrs)*
         #[allow(non_snake_case)]
+        #[allow(non_camel_case_types)]
         #vis struct #name {
             sexp: ::miniextendr_api::SEXP,
             nrow: usize,
@@ -376,6 +424,21 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             }
         }
     }
+}
+
+/// Expand a parsed `typed_dataframe!` into the generated struct, impls, and
+/// per-column accessors.
+///
+/// Delegates to [`expand_typed_dataframe_struct`] with the fields from `input`.
+/// Behaviour is byte-identical to the pre-refactor implementation.
+pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
+    expand_typed_dataframe_struct(
+        &input.attrs,
+        &input.vis,
+        &input.name,
+        &input.fields,
+        input.allow_extra,
+    )
 }
 
 #[cfg(test)]

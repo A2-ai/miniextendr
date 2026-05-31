@@ -1043,7 +1043,19 @@ const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, n
      internal, noexport, export";
 
 /// Comma-separated list of fn-level nested options, for error messages.
-const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...)`";
+const FN_NESTED_OPTIONS_HELP: &str =
+    "`s3(...)`, `lifecycle(...)`, `defaults(...)`, `typed_df(...)`";
+
+/// A single `param = typed_dataframe!(cols)` entry inside
+/// `#[miniextendr(typed_df(...))]`.
+pub(crate) struct TypedDfSpec {
+    /// The function parameter whose raw `SEXP` value will be validated.
+    pub(crate) param: syn::Ident,
+    /// Parsed column schema (fields + `allow_extra` flag).
+    pub(crate) columns: crate::typed_dataframe::TypedDataframeColumns,
+    /// Span of the param ident in the attribute, used for error diagnostics.
+    pub(crate) span: proc_macro2::Span,
+}
 
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
@@ -1095,6 +1107,14 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) dots_spec: Option<proc_macro2::TokenStream>,
     /// Span of the `dots = ...` attribute for error reporting.
     pub(crate) dots_span: Option<proc_macro2::Span>,
+    /// Typed data.frame inline schema specs.
+    ///
+    /// Use `#[miniextendr(typed_df(param = typed_dataframe!(cols), ...))]` to
+    /// automatically validate a `data.frame` parameter at function entry and bind
+    /// the result to `<param>_typed`.
+    ///
+    /// Each entry: `(param ident, parsed column list, span for diagnostics)`.
+    pub(crate) typed_df_specs: Vec<TypedDfSpec>,
     /// Lifecycle specification for deprecation/experimental status.
     pub(crate) lifecycle: Option<crate::lifecycle::LifecycleSpec>,
     /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
@@ -1225,6 +1245,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut s3_class = None;
         let mut dots_spec = None;
         let mut dots_span = None;
+        let mut typed_df_specs: Vec<TypedDfSpec> = Vec::new();
         let mut lifecycle = None;
         let mut strict: Option<bool> = None;
         let mut internal = false;
@@ -1508,6 +1529,72 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             )
                         })?;
                         r_on_exit = Some(ROnExit { expr, add, after });
+                    } else if list.path.is_ident("typed_df") {
+                        // typed_df(param = typed_dataframe!(cols), ...)
+                        // Parse the inner list as Punctuated<MetaNameValue, ,>.
+                        let inner_nvs = list
+                            .parse_args_with(
+                                syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated,
+                            )
+                            .map_err(|e| {
+                                syn::Error::new(
+                                    e.span(),
+                                    format!(
+                                        "typed_df expects `param = typed_dataframe!(cols)` entries: {e}"
+                                    ),
+                                )
+                            })?;
+                        for nv in inner_nvs {
+                            let param = nv
+                                .path
+                                .get_ident()
+                                .cloned()
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        &nv.path,
+                                        "typed_df: expected a parameter name (identifier) on the left-hand side",
+                                    )
+                                })?;
+                            let param_span = param.span();
+                            // Check for duplicates.
+                            if typed_df_specs.iter().any(|s| s.param == param) {
+                                return Err(syn::Error::new_spanned(
+                                    &nv.path,
+                                    format!("typed_df: duplicate parameter `{param}`"),
+                                ));
+                            }
+                            // Right-hand side must be `typed_dataframe!(...)`.
+                            let columns = match &nv.value {
+                                syn::Expr::Macro(expr_macro)
+                                    if expr_macro.mac.path.is_ident("typed_dataframe") =>
+                                {
+                                    syn::parse2::<crate::typed_dataframe::TypedDataframeColumns>(
+                                        expr_macro.mac.tokens.clone(),
+                                    )
+                                    .map_err(|e| {
+                                        syn::Error::new(
+                                            e.span(),
+                                            format!(
+                                                "typed_df `{param}`: invalid typed_dataframe! spec: {e}"
+                                            ),
+                                        )
+                                    })?
+                                }
+                                _ => {
+                                    return Err(syn::Error::new_spanned(
+                                        &nv.value,
+                                        format!(
+                                            "typed_df entries expect `{param} = typed_dataframe!(...)`"
+                                        ),
+                                    ));
+                                }
+                            };
+                            typed_df_specs.push(TypedDfSpec {
+                                param,
+                                columns,
+                                span: param_span,
+                            });
+                        }
                     } else if let Some(ident) = list.path.get_ident() {
                         // Bool-flag parenthesized form (e.g. `strict(true)`) is not
                         // supported — write `strict` alone or `strict = true` instead.
@@ -1577,6 +1664,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             s3_class,
             dots_spec,
             dots_span,
+            typed_df_specs,
             lifecycle,
             strict: strict.unwrap_or(cfg!(feature = "default-strict")),
             internal,

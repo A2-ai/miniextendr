@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      05b9bd1ccce52d8b
+// content-hash:      fefc9ba810683845
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1228,6 +1228,10 @@ unsafe extern "C-unwind" {
     pub fn C_regex_is_match(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_regex_replace_all(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_regex_replace_first(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_attr_two(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_attr_nrow(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_attr_weight_sum(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_typed_df_attr_exact_optional(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_new_percent(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_format_percent(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_vec_proxy_percent(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -8127,6 +8131,26 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_regex_replace_first".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP, _>(C_regex_replace_first) }),
         numArgs: 4,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_attr_two".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_typed_df_attr_two) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_attr_nrow".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_attr_nrow) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_attr_weight_sum".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_attr_weight_sum) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_typed_df_attr_exact_optional".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_attr_exact_optional) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_new_percent".as_ptr(),
