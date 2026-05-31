@@ -130,6 +130,47 @@ test_that("reader gctorture fixtures drive the struct-flatten read path", {
   expect_no_error(gc_stress_reader_nested_flatten())
 })
 
+# region: opaque list-column readers (#809) ------------------------------------
+
+test_that("opaque Vec<f64> list-column reader round-trips (ragged)", {
+  df <- data.frame(id = c(1L, 2L, 3L))
+  df$data <- I(list(c(1, 2, 3), c(4), c(5, 6)))
+  out <- reader_list_vec_roundtrip(df)
+  expect_s3_class(out, "data.frame")
+  expect_equal(out$id, df$id)
+  expect_equal(unclass(out$data), list(c(1, 2, 3), c(4), c(5, 6)))
+})
+
+test_that("opaque Box<[i32]> list-column reader round-trips (.into() conversion)", {
+  df <- data.frame(tag = c("a", "b"), stringsAsFactors = FALSE)
+  df$xs <- I(list(c(7L, 8L), c(9L)))
+  out <- reader_list_box_roundtrip(df)
+  expect_equal(out$tag, df$tag)
+  expect_equal(unclass(out$xs), list(c(7L, 8L), c(9L)))
+})
+
+test_that("opaque multi-list-column reader round-trips (Vec<i32> + Vec<String>)", {
+  df <- data.frame(
+    ids   = I(list(c(1L, 2L), c(3L), integer(0))),
+    names = I(list(c("a", "b"), c("c"), character(0)))
+  )
+  out <- reader_list_multi_roundtrip(df)
+  expect_equal(unclass(out$ids),   list(c(1L, 2L), c(3L), integer(0)))
+  expect_equal(unclass(out$names), list(c("a", "b"), c("c"), character(0)))
+})
+
+test_that("opaque list-column reader handles empty per-row collections", {
+  df <- data.frame(id = c(1L, 2L))
+  df$data <- I(list(numeric(0), numeric(0)))
+  out <- reader_list_vec_roundtrip(df)
+  expect_equal(out$id, df$id)
+  expect_equal(unclass(out$data), list(numeric(0), numeric(0)))
+})
+
+test_that("reader gctorture fixtures drive the list-column read path", {
+  expect_no_error(gc_stress_reader_list_column())
+})
+
 test_that("parallel readers match the sequential result", {
   skip_if_missing_feature("rayon")
 
@@ -153,4 +194,11 @@ test_that("parallel readers match the sequential result", {
   expect_equal(out_flat_par$id, flat$id)
   expect_equal(out_flat_par$origin_x, flat$origin_x)
   expect_equal(out_flat_par$origin_y, flat$origin_y)
+
+  # list-column _par: real off-thread index assembly (#809)
+  lv <- data.frame(id = c(1L, 2L))
+  lv$data <- I(list(c(1.1, 2.2), c(3.3)))
+  out_lv_par <- reader_list_vec_roundtrip_par(lv)
+  expect_equal(out_lv_par$id, lv$id)
+  expect_equal(unclass(out_lv_par$data), list(c(1.1, 2.2), c(3.3)))
 })
