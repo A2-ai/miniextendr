@@ -55,38 +55,6 @@ macro_rules! impl_vec_option_try_from_sexp {
 impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
 impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
 
-/// Macro for NA-aware `R vector → Box<[Option<T>]>` conversions.
-macro_rules! impl_boxed_slice_option_try_from_sexp {
-    ($t:ty, $sexptype:ident, $dataptr:ident, $is_na:expr) => {
-        impl TryFromSexp for Box<[Option<$t>]> {
-            type Error = SexpError;
-
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::$sexptype {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::$sexptype,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let ptr = unsafe { crate::sys::$dataptr(sexp) };
-                let slice = unsafe { r_slice(ptr, len) };
-
-                Ok(slice
-                    .iter()
-                    .map(|&v| if $is_na(v) { None } else { Some(v) })
-                    .collect())
-            }
-        }
-    };
-}
-
-impl_boxed_slice_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
-impl_boxed_slice_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
-
 /// Convert R logical vector (LGLSXP) to `Vec<Option<bool>>` with NA support.
 impl TryFromSexp for Vec<Option<bool>> {
     type Error = SexpError;
@@ -119,16 +87,6 @@ impl TryFromSexp for Vec<Option<bool>> {
         let slice: &[RLogical] = unsafe { sexp.as_slice_unchecked() };
 
         Ok(slice.iter().map(|v| v.to_option_bool()).collect())
-    }
-}
-
-/// Convert R logical vector (LGLSXP) to `Box<[Option<bool>]>` with NA support.
-impl TryFromSexp for Box<[Option<bool>]> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<Option<bool>> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_boxed_slice())
     }
 }
 
@@ -269,16 +227,6 @@ impl TryFromSexp for Vec<Option<String>> {
         }
 
         Ok(result)
-    }
-}
-
-/// Convert R character vector to `Box<[Option<String>]>` with NA support.
-impl TryFromSexp for Box<[Option<String>]> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_boxed_slice())
     }
 }
 

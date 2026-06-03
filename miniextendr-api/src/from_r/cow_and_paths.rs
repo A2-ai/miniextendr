@@ -143,18 +143,6 @@ impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
     }
 }
 
-/// Convert R character vector to `Box<[Cow<'static, str>]>` — zero-copy per element.
-///
-/// **Warning:** `NA_character_` values are converted to `Cow::Borrowed("")`.
-impl TryFromSexp for Box<[Cow<'static, str>]> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<Cow<'static, str>> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_boxed_slice())
-    }
-}
-
 /// Convert R character vector to `Vec<String>`.
 ///
 /// # NA and Encoding Handling
@@ -200,18 +188,6 @@ impl TryFromSexp for Vec<String> {
         }
 
         Ok(result)
-    }
-}
-
-/// Convert R character vector to `Box<[String]>`.
-///
-/// **Warning:** `NA_character_` values are converted to empty string `""`.
-impl TryFromSexp for Box<[String]> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_boxed_slice())
     }
 }
 
