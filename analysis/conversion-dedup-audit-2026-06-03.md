@@ -443,6 +443,9 @@ macro count drops).
 
 # Part 3 — Implementation plan
 
+Tracked as **A2-ai/miniextendr#835** (umbrella). The future `#[derive(RVia)]`
+end-user feature noted below is flagged there as separate additive scope.
+
 ## Decision: which macro vehicle? (declarative vs proc-macro)
 
 The conversion impls live in `miniextendr-api`, and the existing 54 macros are
