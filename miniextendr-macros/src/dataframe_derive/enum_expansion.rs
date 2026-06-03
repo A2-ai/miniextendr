@@ -195,6 +195,7 @@ pub(super) fn derive_enum_dataframe(
                                     rust_name: rust_name.clone(),
                                     key_ty: key_ty.clone(),
                                     val_ty: val_ty.clone(),
+                                    map_ty: f.ty.clone(),
                                 })));
                             }
                             FieldTypeKind::Struct { inner_ty } => {
@@ -437,6 +438,7 @@ pub(super) fn derive_enum_dataframe(
                                     rust_name,
                                     key_ty: key_ty.clone(),
                                     val_ty: val_ty.clone(),
+                                    map_ty: f.ty.clone(),
                                 })));
                             }
                             FieldTypeKind::Struct { inner_ty } => {
@@ -2624,7 +2626,11 @@ fn generate_split_method(
 ///   (which accepts both bare scalars and `Option<scalar>`).
 /// - `is_factor` Single fields are reader-capable iff the inner type satisfies
 ///   `UnitEnumFactor` — guaranteed by the derive for unit-only enums.
-/// - `Map` fields are NOT reader-capable in v1 (deferred #814).
+/// - `Map` fields are reader-capable iff both `K` and `V` are bare scalar element
+///   types: the reader regroups the `<base>_keys` / `<base>_values` list-columns
+///   (each row a `Vec<K>` / `Vec<V>`) back into the map via `Vec<elem>: TryFromSexp`.
+///   `Option`-wrapped key/value element types are excluded (the writer emits them,
+///   but the reader path is restricted to the round-trippable bare-scalar set).
 fn enum_field_reader_capable(erf: &EnumResolvedField) -> bool {
     match erf {
         EnumResolvedField::Single(data) => {
@@ -2633,7 +2639,9 @@ fn enum_field_reader_capable(erf: &EnumResolvedField) -> bool {
         EnumResolvedField::ExpandedFixed(data) => is_reader_scalar_ty(&data.elem_ty),
         EnumResolvedField::ExpandedVec(data) => is_bare_reader_scalar_ty(&data.elem_ty),
         EnumResolvedField::AutoExpandVec(data) => is_bare_reader_scalar_ty(&data.elem_ty),
-        EnumResolvedField::Map(_) => false,   // deferred #814
+        EnumResolvedField::Map(data) => {
+            is_bare_reader_scalar_ty(&data.key_ty) && is_bare_reader_scalar_ty(&data.val_ty)
+        }
         EnumResolvedField::Struct(_) => true, // routes through inner DataFrameRowConvert
     }
 }
@@ -2721,6 +2729,19 @@ fn build_enum_reader(
         }
     }
 
+    // Collect Map column names (`<base>_keys` / `<base>_values`). These are registered
+    // in `columns` as `Vec<K>` / `Vec<V>` but have no `Vec<Option<Vec<_>>>: TryFromSexp`
+    // impl, so the generic loop below skips them; bespoke list-column extraction follows.
+    let mut map_col_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Map(data) = erf {
+                map_col_names.insert(format!("{}_keys", data.base_name));
+                map_col_names.insert(format!("{}_values", data.base_name));
+            }
+        }
+    }
+
     for col in columns {
         let col_name_str = col.col_name.to_string();
         let col_var = format_ident!("__col_{}", col.col_name);
@@ -2728,6 +2749,10 @@ fn build_enum_reader(
 
         // Skip Struct columns — they are handled separately via sub-frame densify.
         if struct_col_names.contains(&col_name_str) {
+            continue;
+        }
+        // Skip Map columns — handled separately via the list-column regroup below.
+        if map_col_names.contains(&col_name_str) {
             continue;
         }
 
@@ -2937,6 +2962,73 @@ fn build_enum_reader(
             }
         }
     }
+
+    // For each Map field, read the parallel `<base>_keys` / `<base>_values`
+    // list-columns back into `Vec<Option<Vec<K>>>` / `Vec<Option<Vec<V>>>`. The
+    // writer emits these via `Vec<Option<Vec<_>>>: IntoR` (a VECSXP where absent-
+    // variant rows are NULL and present rows are typed vectors), so the reader
+    // walks the VECSXP: NULL → `None`, typed vector → `Some(Vec<elem>)`. The
+    // per-row dispatch zips `keys[i]` and `values[i]` back into the map type.
+    let emit_map_col_extract = |col_var: &syn::Ident, col_name: &str, elem_ty: &syn::Type| {
+        quote! {
+            let #col_var: Vec<::core::option::Option<Vec<#elem_ty>>> = {
+                let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
+                    ::std::format!("column `{}` is missing from the data.frame", #col_name)
+                })?;
+                // VECSXP list-column: NULL → None, typed vector → Some(Vec<elem>).
+                // `SexpExt::is_list` via UFCS (avoids the `List::is_list` pair-list bug).
+                if <::miniextendr_api::SEXP as ::miniextendr_api::SexpExt>::is_list(&__col_sexp) {
+                    let __list = unsafe {
+                        ::miniextendr_api::list::List::from_raw(__col_sexp)
+                    };
+                    let __len = __list.len();
+                    let mut __v: Vec<::core::option::Option<Vec<#elem_ty>>> =
+                        ::std::vec::Vec::with_capacity(__len as usize);
+                    for __j in 0..__len {
+                        // in-bounds by construction (0..len)
+                        let __elt = __list.get(__j).unwrap();
+                        if __elt == ::miniextendr_api::SEXP::nil() {
+                            __v.push(::core::option::Option::None);
+                        } else {
+                            let __inner: Vec<#elem_ty> =
+                                <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
+                                    .map_err(|e| ::std::format!(
+                                        "column `{}` element {} could not be converted to the expected type: {}",
+                                        #col_name, __j, e
+                                    ))?;
+                            __v.push(::core::option::Option::Some(__inner));
+                        }
+                    }
+                    __v
+                } else {
+                    // Non-list column → no map present in any row.
+                    (0..__nrow).map(|_| ::core::option::Option::None).collect()
+                }
+            };
+            if #col_var.len() != __nrow {
+                return ::core::result::Result::Err(::std::format!(
+                    "column `{}` has length {} but data.frame has {} rows",
+                    #col_name, #col_var.len(), __nrow
+                ));
+            }
+        }
+    };
+    let mut seen_map: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Map(data) = erf
+                && seen_map.insert(data.base_name.clone())
+            {
+                let keys_name = format!("{}_keys", data.base_name);
+                let vals_name = format!("{}_values", data.base_name);
+                let keys_var = format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
+                let vals_var =
+                    format_ident!("__mapcol_{}_values", data.base_name.replace('-', "_"));
+                extracts.push(emit_map_col_extract(&keys_var, &keys_name, &data.key_ty));
+                extracts.push(emit_map_col_extract(&vals_var, &vals_name, &data.val_ty));
+            }
+        }
+    }
     // endregion
 
     // region: per-row dispatch match arms
@@ -3020,11 +3112,32 @@ fn build_enum_reader(
                             .into()
                     }
                 }
-                EnumResolvedField::Map(_) => {
-                    // Gates should have excluded this — unreachable in reader-capable enums.
-                    unreachable!(
-                        "Map fields should have been gated out by enum_field_reader_capable"
-                    )
+                EnumResolvedField::Map(data) => {
+                    let keys_var =
+                        format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
+                    let vals_var =
+                        format_ident!("__mapcol_{}_values", data.base_name.replace('-', "_"));
+                    let base = &data.base_name;
+                    let map_ty = &data.map_ty;
+                    quote! {
+                        #rust_name: {
+                            let __keys = #keys_var[__i].clone().ok_or_else(|| ::std::format!(
+                                "variant `{}` row {}: map column `{}` is NA but field is required",
+                                #variant_name_str, __i, #base
+                            ))?;
+                            let __vals = #vals_var[__i].clone().ok_or_else(|| ::std::format!(
+                                "variant `{}` row {}: map column `{}` is NA but field is required",
+                                #variant_name_str, __i, #base
+                            ))?;
+                            if __keys.len() != __vals.len() {
+                                return ::core::result::Result::Err(::std::format!(
+                                    "variant `{}` row {}: map column `{}` has {} keys but {} values",
+                                    #variant_name_str, __i, #base, __keys.len(), __vals.len()
+                                ));
+                            }
+                            __keys.into_iter().zip(__vals).collect::<#map_ty>()
+                        }
+                    }
                 }
                 EnumResolvedField::Struct(data) => {
                     let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
@@ -3107,7 +3220,35 @@ fn build_enum_reader(
                                 #cols_var.iter().filter_map(|__c| __c[__i].clone()).collect::<Vec<#elem_ty>>().into()
                             }
                         }
-                        EnumResolvedField::Map(_) => unreachable!(),
+                        EnumResolvedField::Map(data) => {
+                            let keys_var =
+                                format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
+                            let vals_var = format_ident!(
+                                "__mapcol_{}_values",
+                                data.base_name.replace('-', "_")
+                            );
+                            let base = &data.base_name;
+                            let map_ty = &data.map_ty;
+                            quote! {
+                                {
+                                    let __keys = #keys_var[__i].clone().ok_or_else(|| ::std::format!(
+                                        "variant `{}` row {}: map column `{}` is NA but field is required",
+                                        #variant_name_str, __i, #base
+                                    ))?;
+                                    let __vals = #vals_var[__i].clone().ok_or_else(|| ::std::format!(
+                                        "variant `{}` row {}: map column `{}` is NA but field is required",
+                                        #variant_name_str, __i, #base
+                                    ))?;
+                                    if __keys.len() != __vals.len() {
+                                        return ::core::result::Result::Err(::std::format!(
+                                            "variant `{}` row {}: map column `{}` has {} keys but {} values",
+                                            #variant_name_str, __i, #base, __keys.len(), __vals.len()
+                                        ));
+                                    }
+                                    __keys.into_iter().zip(__vals).collect::<#map_ty>()
+                                }
+                            }
+                        }
                         EnumResolvedField::Struct(data) => {
                             let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
                             let base = &data.base_name;

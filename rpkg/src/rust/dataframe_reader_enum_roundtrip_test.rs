@@ -10,13 +10,21 @@
 //!   - **Nested payload-bearing enum flatten** — inner enum read back via its own reader
 //!     after densifying the sub-frame with `DataFrame::select_rows`.
 //!   - **Struct-flatten variant field** — inner `DataFrameRow` struct.
+//!   - **Map columns** (`HashMap` / `BTreeMap`) — the `<field>_keys` / `<field>_values`
+//!     list-columns regrouped per row back into the map type.
 //!
 //! Each `*_roundtrip(df)` reads a `data.frame` into `Vec<E>` with the reader, then
 //! rebuilds it with the writer — so `roundtrip(make()) == make()` (R-side column
 //! equality) proves the reader reconstructs rows that re-serialise to the same frame.
 //!
+//! `BTreeMap` round-trips exactly (sorted key order is stable across both writes), so
+//! its fixtures use the same R-side full-frame equality as the other shapes. `HashMap`
+//! iteration order is non-deterministic, so the `_keys` / `_values` column *order* may
+//! differ between the two writes even though the maps are logically equal; its round-trip
+//! is therefore asserted in Rust (`re_map_h_roundtrip_ok`), where `HashMap` equality is
+//! order-independent.
+//!
 //! GC-stress fixtures (`gc_stress_reader_enum_*`) are in `gc_stress_fixtures.rs`.
-//! **Map-column enum readers** are deferred to a follow-up issue (#814).
 //!
 //! # Round-trip caveat
 //!
@@ -31,6 +39,7 @@
 use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
 use miniextendr_api::into_r::IntoR as _;
 use miniextendr_api::{DataFrameRow, IntoList, SEXP, miniextendr};
+use std::collections::{BTreeMap, HashMap};
 
 // region: enum row types
 
@@ -143,6 +152,40 @@ pub struct REPoint {
 pub enum RELoc {
     At { id: i32, p: REPoint },
     Nowhere { id: i32 },
+}
+
+// endregion
+
+// region: REMapB / REMapH — map-column regroup
+
+/// `BTreeMap` field. Columns: `_type`, `label` (String), `tally_keys` /
+/// `tally_values` (list-columns, Tally only). `BTreeMap` keeps sorted key order,
+/// so the round-trip is byte-stable across both writes.
+#[derive(Clone, Debug, PartialEq, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum REMapB {
+    Tally {
+        label: String,
+        tally: BTreeMap<String, i32>,
+    },
+    Empty {
+        label: String,
+    },
+}
+
+/// `HashMap` field — same column shape as [`REMapB`]. `HashMap` iteration order is
+/// non-deterministic, so the round-trip is asserted in Rust (order-independent map
+/// equality) rather than via R-side column equality.
+#[derive(Clone, Debug, PartialEq, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum REMapH {
+    Tally {
+        label: String,
+        tally: HashMap<String, i32>,
+    },
+    Empty {
+        label: String,
+    },
 }
 
 // endregion
@@ -356,6 +399,91 @@ pub fn re_loc_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
     let rows: Vec<RELoc> = <Vec<RELoc>>::from_dataframe_par(&frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
+}
+
+// endregion
+
+// region: REMapB round-trips (BTreeMap — deterministic)
+
+/// BTreeMap map-column round-trip. Columns: `_type`, `label`, `tally_keys`, `tally_values`.
+/// @param df data.frame from `re_map_b_align(...)`.
+/// @export
+#[miniextendr]
+pub fn re_map_b_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<REMapB> = <Vec<REMapB>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// Produce the writer output for a mixed REMapB frame. Includes an empty-map row
+/// (`tally_keys`/`tally_values` are `character(0)`/`integer(0)`) and an absent-variant
+/// row (both list cells NULL). @export
+#[miniextendr]
+pub fn re_map_b_align() -> SEXP {
+    vec![
+        REMapB::Tally {
+            label: "a".to_string(),
+            tally: BTreeMap::from([("x".to_string(), 1i32), ("y".to_string(), 2i32)]),
+        },
+        REMapB::Empty {
+            label: "b".to_string(),
+        },
+        REMapB::Tally {
+            label: "c".to_string(),
+            tally: BTreeMap::new(),
+        },
+        REMapB::Tally {
+            label: "d".to_string(),
+            tally: BTreeMap::from([("z".to_string(), 9i32)]),
+        },
+    ]
+    .into_dataframe()
+    .unwrap()
+    .into_sexp()
+}
+
+/// Parallel REMapB round-trip. @export
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn re_map_b_roundtrip_par(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<REMapB> = <Vec<REMapB>>::from_dataframe_par(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+// endregion
+
+// region: REMapH round-trip (HashMap — order-independent, asserted in Rust)
+
+/// HashMap map-column round-trip, asserted internally.
+///
+/// Builds a mixed `REMapH` frame (payload + empty-map + absent-variant rows), writes
+/// it, reads it back with the reader, and compares the reconstructed rows to the
+/// originals. `HashMap` equality is order-independent, so this proves the `_keys` /
+/// `_values` list-columns regroup back into the correct key→value associations
+/// regardless of iteration order. Returns `TRUE` on success. @export
+#[miniextendr]
+pub fn re_map_h_roundtrip_ok() -> bool {
+    let rows = vec![
+        REMapH::Tally {
+            label: "a".to_string(),
+            tally: HashMap::from([("x".to_string(), 1i32), ("y".to_string(), 2i32)]),
+        },
+        REMapH::Empty {
+            label: "b".to_string(),
+        },
+        REMapH::Tally {
+            label: "c".to_string(),
+            tally: HashMap::new(),
+        },
+        REMapH::Tally {
+            label: "d".to_string(),
+            tally: HashMap::from([("z".to_string(), 9i32), ("w".to_string(), 8i32)]),
+        },
+    ];
+    let df = rows.clone().into_dataframe().unwrap();
+    let back: Vec<REMapH> = <Vec<REMapH>>::from_dataframe(&df).unwrap();
+    back == rows
 }
 
 // endregion

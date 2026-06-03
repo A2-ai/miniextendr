@@ -2861,6 +2861,10 @@ pub(super) struct EnumMapFieldData {
     pub(super) key_ty: syn::Type,
     /// Value type V.
     pub(super) val_ty: syn::Type,
+    /// Full original field type (`HashMap<K, V>` / `BTreeMap<K, V>`). The reader
+    /// regroups the `_keys`/`_values` list-columns and `collect()`s back into this
+    /// exact map type — both `HashMap` and `BTreeMap` implement `FromIterator<(K, V)>`.
+    pub(super) map_ty: syn::Type,
 }
 
 /// Data for [`EnumResolvedField::Struct`].

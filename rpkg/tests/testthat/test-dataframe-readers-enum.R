@@ -76,12 +76,43 @@ test_that("re_loc: struct-flatten variant field round-trips via reader", {
   expect_equal(rt, ref_df)
 })
 
+test_that("re_map_b: BTreeMap map-column round-trips via reader", {
+  ref_df <- re_map_b_align()
+  rt <- re_map_b_roundtrip(ref_df)
+  expect_equal(rt[["_type"]], ref_df[["_type"]])
+  expect_equal(rt[["label"]], ref_df[["label"]])
+  # Map columns are list-columns of per-row key/value vectors.
+  expect_true(is.list(rt[["tally_keys"]]))
+  expect_true(is.list(rt[["tally_values"]]))
+  expect_equal(rt[["tally_keys"]], ref_df[["tally_keys"]])
+  expect_equal(rt[["tally_values"]], ref_df[["tally_values"]])
+  # Spot-check the individual rows: populated, absent (NULL), and empty-map.
+  expect_equal(rt[["tally_keys"]][[1]], c("x", "y"))
+  expect_equal(rt[["tally_values"]][[1]], c(1L, 2L))
+  expect_null(rt[["tally_keys"]][[2]])     # Empty variant → absent → NULL
+  expect_null(rt[["tally_values"]][[2]])
+  expect_equal(rt[["tally_keys"]][[3]], character(0)) # empty map → length-0 vector
+  expect_equal(rt[["tally_values"]][[3]], integer(0))
+  # BTreeMap is sorted+deterministic → full-frame equality holds.
+  expect_equal(rt, ref_df)
+})
+
+test_that("re_map_h: HashMap map-column round-trips (order-independent)", {
+  # HashMap iteration order is non-deterministic, so the round-trip is asserted
+  # in Rust where map equality ignores order. See module docs in the Rust fixture.
+  expect_true(re_map_h_roundtrip_ok())
+})
+
 test_that("gc stress: enum flatten reader runs clean", {
   expect_no_error(gc_stress_reader_enum_flatten())
 })
 
 test_that("gc stress: enum factor reader runs clean", {
   expect_no_error(gc_stress_reader_enum_factor())
+})
+
+test_that("gc stress: enum map reader runs clean", {
+  expect_no_error(gc_stress_reader_enum_map())
 })
 
 test_that("re_scalar: parallel round-trip matches sequential", {
@@ -113,5 +144,13 @@ test_that("re_loc: parallel round-trip (delegates to sequential) matches sequent
   ref_df  <- re_loc_align()
   seq_rt  <- re_loc_roundtrip(ref_df)
   par_rt  <- re_loc_roundtrip_par(ref_df)
+  expect_equal(par_rt, seq_rt)
+})
+
+test_that("re_map_b: parallel round-trip matches sequential", {
+  skip_if_missing_feature("rayon")
+  ref_df  <- re_map_b_align()
+  seq_rt  <- re_map_b_roundtrip(ref_df)
+  par_rt  <- re_map_b_roundtrip_par(ref_df)
   expect_equal(par_rt, seq_rt)
 })

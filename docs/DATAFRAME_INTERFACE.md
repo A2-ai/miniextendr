@@ -81,19 +81,22 @@ deserializes opaque list-column elements per row.
 `#[dataframe(tag = "...")]`): scalar `Single` fields (any variant mix of payload +
 unit variants), column-expansion fields (`[T; N]` fixed-array and `Vec<T>` + `width`
 in variants), struct-flatten variant fields (inner `DataFrameRow` structs), nested
-payload-bearing enum flatten (inner enum that itself has a reader), and `as_factor`
-unit-only nested enums. The reader reads the tag column first, then per-row dispatches
+payload-bearing enum flatten (inner enum that itself has a reader), `as_factor`
+unit-only nested enums, and **map-column fields** (`HashMap`/`BTreeMap` with bare-scalar
+keys and values — the `<field>_keys` / `<field>_values` list-columns are zipped back
+into the map per row). The reader reads the tag column first, then per-row dispatches
 to each active variant's field assemblers. Struct-flatten/nested-enum paths densify the
-sub-frame (keeping only present rows) before recursing into the inner reader.
+sub-frame (keeping only present rows) before recursing into the inner reader. `BTreeMap`
+round-trips byte-for-byte (sorted key order); `HashMap` preserves the key→value
+associations but not the (non-deterministic) column order.
 
 A few shapes still have no reader and return a clear `DataFrameError` from
 `from_dataframe` (rather than failing to compile): borrowed fields (`&[T]` /
 `&str` — owned R data can't produce a borrow), `#[dataframe(skip)]` fields (the
 column was never written), `#[dataframe(as_list)]` and opaque non-scalar collection
 columns (`HashMap`, `HashSet`, `Vec<Option<T>>` list-columns), `#[dataframe(tag)]`
-structs, `#[dataframe(conflicts = "string")]` enums, **map-column enums**
-(`HashMap`/`BTreeMap` `_keys`/`_values` columns — tracked in issue #814), and
-tagless or `skip`-field enums.
+structs, `#[dataframe(conflicts = "string")]` enums, and tagless or `skip`-field
+enums.
 
 Ragged `width`/`expand` columns round-trip losslessly because the writer only
 ever pads *trailing* slots with `NA`: the reader flattens the present values back

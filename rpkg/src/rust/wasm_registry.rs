@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      2fef4d9f2bc396f5
+// content-hash:      0a19f974c7afa200
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -960,6 +960,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_split_collated(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_with_tag(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_rayon(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_reader_enum_map(_: SEXP) -> SEXP;
     pub fn C_gc_stress_typed_dataframe(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_struct(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_to_vec(_: SEXP) -> SEXP;
@@ -1837,15 +1838,19 @@ unsafe extern "C-unwind" {
     pub fn C_altrep_from_logicals(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_loc_align(_: SEXP) -> SEXP;
     pub fn C_re_move_align(_: SEXP) -> SEXP;
+    pub fn C_re_map_b_align(_: SEXP) -> SEXP;
     pub fn C_re_expand_align(_: SEXP) -> SEXP;
     pub fn C_re_scalar_align(_: SEXP) -> SEXP;
     pub fn C_re_loc_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_tracked_align(_: SEXP) -> SEXP;
     pub fn C_re_move_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_re_map_b_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_expand_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_scalar_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_loc_roundtrip_par(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_tracked_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_re_map_h_roundtrip_ok(_: SEXP) -> SEXP;
+    pub fn C_re_map_b_roundtrip_par(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_expand_roundtrip_par(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_scalar_roundtrip_par(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_re_scalar_roundtrip_zero(_: SEXP, _: SEXP) -> SEXP;
@@ -6806,6 +6811,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_reader_enum_map".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_reader_enum_map) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_typed_dataframe".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_typed_dataframe) }),
         numArgs: 1,
@@ -11191,6 +11201,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_re_map_b_align".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_re_map_b_align) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_re_expand_align".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_re_expand_align) }),
         numArgs: 1,
@@ -11216,6 +11231,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_re_map_b_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_re_map_b_roundtrip) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_re_expand_roundtrip".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_re_expand_roundtrip) }),
         numArgs: 2,
@@ -11233,6 +11253,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_re_tracked_roundtrip".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_re_tracked_roundtrip) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_re_map_h_roundtrip_ok".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_re_map_h_roundtrip_ok) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_re_map_b_roundtrip_par".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_re_map_b_roundtrip_par) }),
         numArgs: 2,
     },
     R_CallMethodDef {
