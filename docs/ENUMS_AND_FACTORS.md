@@ -9,6 +9,13 @@ miniextendr provides two complementary systems for enum-like types:
 | `RFactor` | Factor (integer + levels) | No | - | Categorical data for `table()`, `lm()`, etc. |
 | `MatchArg` | Character scalar | Yes | First choice | Parameter validation (`match.arg()` style) |
 
+Both systems pass the enum **by value** (as a factor/string). If instead you want
+the enum to be a methods-bearing **instance** — an `ExternalPtr` wrapped with a
+class-system `impl` block — see
+[CLASS_SYSTEMS.md § Enums: value vs instance](CLASS_SYSTEMS.md#enums-value-vs-instance).
+Note the two are **mutually exclusive**: deriving `ExternalPtr` alongside
+`MatchArg`/`RFactor` is a compile error (`E0119`, conflicting `IntoR`).
+
 ## RFactor: enum as R Factor
 
 Maps a Rust enum to an R factor with levels. Each variant becomes a level.

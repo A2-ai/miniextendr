@@ -936,6 +936,62 @@ All functions require the R main thread and operate on raw SEXP values.
 
 ---
 
+## Enums: value vs instance
+
+A fieldless enum can be exposed to R in **two mutually-exclusive** ways. Pick one.
+
+**By value** — the enum crosses the boundary as an R character or factor and is
+reconstructed on each call; there is no persistent R object holding a Rust
+instance:
+
+- `#[derive(MatchArg)]` → R character scalar validated with `match.arg`.
+- `#[derive(RFactor)]` → R `factor` with integer codes and level labels.
+
+This is the right choice for a closed set of options passed as arguments. See
+[ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md).
+
+**By reference** — the enum is wrapped exactly like a struct: `#[derive(ExternalPtr)]`
+plus a class-system `impl` block. R holds an opaque pointer to a boxed instance,
+and the impl block's methods become R6/S3/S4/S7/env methods. The variants are
+internal state, invisible to R:
+
+```rust
+#[derive(Clone, Copy, ExternalPtr)]
+pub enum DType { F32, F64 }
+
+#[miniextendr(r6)]
+impl DType {
+    pub fn new_f32() -> Self { DType::F32 }
+    pub fn is_float(&self) -> bool { matches!(self, DType::F32 | DType::F64) }
+    pub fn size_bytes(&self) -> i32 { match self { DType::F32 => 4, DType::F64 => 8 } }
+}
+```
+
+Use this when the enum needs methods or object identity.
+
+### You cannot have both
+
+Deriving both `ExternalPtr` and `MatchArg`/`RFactor` on one type is a hard
+compile error:
+
+```
+error[E0119]: conflicting implementations of trait `IntoR` for type `DType`
+   = note: conflicting implementation in crate `miniextendr_api`:
+           - impl<T> IntoR for T where T: IntoExternalPtr;
+   = note: this error originates in the derive macro `MatchArg`
+```
+
+`ExternalPtr` supplies a blanket `impl<T> IntoR for T where T: IntoExternalPtr`,
+while `MatchArg`/`RFactor` generate their own `impl IntoR` (and a conflicting
+`TryFromSexp`). A type is therefore *either* a by-value enum *or* a by-reference
+instance — never both.
+
+If you want both a friendly string API *and* methods, keep the enum by-value and
+put the behaviour on a separate wrapper struct (or expose free functions that
+take the by-value enum).
+
+---
+
 ## Recommendations
 
 1. **Start with Env** for simple cases
