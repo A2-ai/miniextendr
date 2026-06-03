@@ -55,24 +55,28 @@
 //! │  ├── Rf_protect() during construction (temporary)               │
 //! │  ├── R_MakeExternalPtr() creates EXTPTRSXP                      │
 //! │  ├── R_RegisterCFinalizerEx() registers cleanup callback        │
-//! │  ├── R_PreserveObject() roots it for the Rust handle's lifetime  │
+//! │  ├── pool.insert() roots it for the Rust handle's lifetime       │
 //! │  └── Rf_unprotect() after construction complete                 │
 //! │                                                                 │
 //! │  Held in Rust (even across other R allocations, e.g. in a Vec)  │
-//! │  └── stays alive because the R_PreserveObject root is live      │
+//! │  └── stays alive — the pool's GC-traced VECSXP slot roots it     │
 //! │                                                                 │
 //! │  Return to R → R now also references the EXTPTRSXP              │
-//! │  └── Rust handle drops → R_ReleaseObject() drops the root,      │
+//! │  └── Rust handle drops → pool.release(key) drops the root,      │
 //! │      but R's own reference keeps it live                        │
 //! │                                                                 │
 //! │  R GC runs (no refs left) → finalizer (release_any) frees value │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 //!
-//! Owning handles (`new` / `from_raw` / `Clone`) take an `R_PreserveObject`
-//! root so they survive R allocations while held in Rust; *borrowed* views
-//! (`wrap_sexp` / `from_sexp` / `reborrow`) take no root — the object is kept
-//! alive by whatever R-side reference handed it to them.
+//! Owning handles (`new` / `from_raw` / `Clone`) root their `EXTPTRSXP` in a
+//! process-wide [`ProtectPool`](crate::protect_pool) so they survive R
+//! allocations while held in Rust; *borrowed* views (`wrap_sexp` / `from_sexp`
+//! / `reborrow`) take no root — the object is kept alive by whatever R-side
+//! reference handed it to them. The pool (O(1) any-order release) is used
+//! rather than `R_PreserveObject` because a `Vec<ExternalPtr>` releases its
+//! roots front-to-back, the O(n²) worst case for `R_ReleaseObject`'s
+//! precious-list scan — see `analysis/gc-protection-benchmarks-results.md`.
 //!
 //! # Type Identification
 //!
@@ -146,6 +150,7 @@
 
 use std::any::Any;
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -154,6 +159,7 @@ use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
 
+use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
@@ -369,20 +375,21 @@ pub struct ExternalPtr<T: TypedExternal> {
     /// - `R_ClearExternalPtr` is only called in methods that consume or finalize
     ///   (`into_raw`, `into_inner`, `release_any`).
     cached_ptr: NonNull<T>,
-    /// Whether this handle holds the R-side GC root taken at construction.
+    /// The [`ProtectPool`] key rooting this handle's `EXTPTRSXP`, or `None` for
+    /// borrowed views.
     ///
-    /// `true` for *owning* handles built from a fresh value (`new` /
+    /// `Some(key)` for *owning* handles built from a fresh value (`new` /
     /// `new_unchecked` / `from_raw` / `Clone` / `Default`): the constructor
-    /// `R_PreserveObject`s the `EXTPTRSXP` so it stays alive for the whole Rust
-    /// lifetime of the handle — including while it sits in a `Vec` across other
-    /// R allocations before being handed to R (#836). `Drop` / `into_raw` /
-    /// `into_inner` balance that with `R_ReleaseObject`.
+    /// roots the `EXTPTRSXP` in the main-thread pool so it stays alive for the
+    /// whole Rust lifetime of the handle — including while it sits in a `Vec`
+    /// across other R allocations before being handed to R (#836). `Drop` /
+    /// `into_raw` / `into_inner` release the root via the key.
     ///
-    /// `false` for *borrowed* views of an SEXP R already owns (`wrap_sexp*` /
+    /// `None` for *borrowed* views of an SEXP R already owns (`wrap_sexp*` /
     /// `from_sexp*` / `reborrow`): no root is taken, so none is released. The
     /// aliased object is kept alive by whatever R-side reference handed it to us
     /// (a `.Call` argument frame, an owning sibling handle, …).
-    owns: bool,
+    root: Option<ProtectKey>,
     _marker: PhantomData<T>,
 }
 
@@ -392,28 +399,88 @@ pub struct ExternalPtr<T: TypedExternal> {
 // 3. There is no concurrent access - only sequential hand-off between threads
 unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T> {}
 
+// region: ExternalPtr GC roots
+//
+// Owning `ExternalPtr` handles keep their `EXTPTRSXP` alive for the handle's
+// whole Rust lifetime by rooting it in a process-wide `ProtectPool` — a single
+// GC-traced VECSXP with Rust-side slot bookkeeping. This is what makes a naive
+// `Vec<ExternalPtr<T>>` GC-safe: every element stays rooted while later elements
+// allocate (#836).
+//
+// Why a pool and not `R_PreserveObject`: the pool releases in O(1) any order,
+// whereas `R_ReleaseObject` scans R's precious list (O(n)). A `Vec<ExternalPtr>`
+// drops front-to-back — oldest first, i.e. the entries deepest in R's LIFO
+// precious list — so `R_PreserveObject` rooting degrades to O(n²) on exactly
+// this workload (60–65× slower at 10k; see
+// analysis/gc-protection-benchmarks-results.md). The pool is the mechanism the
+// strategy analysis prescribes for ExternalPtr (analysis/gc-protection-strategies.md).
+//
+// `ProtectPool` is `!Send`/`!Sync` and lives in a `thread_local!` on R's main
+// thread. Every access happens there: roots are taken inside
+// `create_extptr_sexp[_unchecked]` (main-thread by contract / `with_r_thread`),
+// and released through `with_r_thread` from `Drop` / `into_raw` / `into_inner`.
+// The pool is wrapped in `ManuallyDrop` so it is never released at thread exit —
+// it is a session-lifetime root table, and running `R_ReleaseObject` on its
+// backing during R's own teardown would touch a half-freed R heap.
+
+thread_local! {
+    static EXTPTR_ROOTS: RefCell<Option<ManuallyDrop<ProtectPool>>> = const { RefCell::new(None) };
+}
+
+/// Root an owning handle's `EXTPTRSXP` in the main-thread pool.
+///
+/// Must run on R's main thread with `sexp` already protected by the caller (the
+/// pool may allocate while growing). Both hold inside
+/// `create_extptr_sexp[_unchecked]`.
+#[inline]
+fn root_owned(sexp: SEXP) -> ProtectKey {
+    EXTPTR_ROOTS.with_borrow_mut(|slot| {
+        let pool = slot.get_or_insert_with(|| {
+            // SAFETY: on R's main thread (caller contract); R is initialized
+            // (we are mid-`create_extptr_sexp`, allocating R objects).
+            ManuallyDrop::new(unsafe { ProtectPool::new(ProtectPool::DEFAULT_CAPACITY) })
+        });
+        // SAFETY: on R's main thread; `sexp` is live (protected by the caller).
+        unsafe { pool.insert(sexp) }
+    })
+}
+
+/// Release an owning handle's pool root. Stale keys are a safe no-op.
+///
+/// Must run on R's main thread (callers route through `with_r_thread`).
+#[inline]
+fn unroot_owned(key: ProtectKey) {
+    EXTPTR_ROOTS.with_borrow_mut(|slot| {
+        if let Some(pool) = slot.as_mut() {
+            // SAFETY: on R's main thread.
+            unsafe { pool.release(key) };
+        }
+    });
+}
+// endregion
+
 impl<T: TypedExternal> ExternalPtr<T> {
-    /// Build an *owning* handle (`owns = true`).
+    /// Build an *owning* handle rooted at `root`.
     ///
-    /// Pairs with the `R_PreserveObject` root that [`create_extptr_sexp`] /
-    /// [`create_extptr_sexp_unchecked`] take on the SEXP. The root is released
-    /// by `Drop` / `into_raw` / `into_inner`. Only the four fresh-value
-    /// constructors (`new` / `new_unchecked` / `from_raw` / `from_raw_unchecked`)
-    /// build through here.
+    /// Pairs with the [`ProtectPool`] root that [`create_extptr_sexp`] /
+    /// [`create_extptr_sexp_unchecked`] take on the SEXP (and return as the
+    /// key). The root is released by `Drop` / `into_raw` / `into_inner`. Only
+    /// the four fresh-value constructors (`new` / `new_unchecked` / `from_raw` /
+    /// `from_raw_unchecked`) build through here.
     ///
     /// [`create_extptr_sexp`]: Self::create_extptr_sexp
     /// [`create_extptr_sexp_unchecked`]: Self::create_extptr_sexp_unchecked
     #[inline]
-    fn from_owned_parts(sexp: SEXP, cached_ptr: NonNull<T>) -> Self {
+    fn from_owned_parts(sexp: SEXP, cached_ptr: NonNull<T>, root: ProtectKey) -> Self {
         Self {
             sexp,
             cached_ptr,
-            owns: true,
+            root: Some(root),
             _marker: PhantomData,
         }
     }
 
-    /// Build a *borrowed* view (`owns = false`) of an SEXP R already owns.
+    /// Build a *borrowed* view (`root = None`) of an SEXP R already owns.
     ///
     /// No GC root is taken and none is released — the aliased object is kept
     /// alive by the R-side reference that handed it to us. Used by every
@@ -423,29 +490,27 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             cached_ptr,
-            owns: false,
+            root: None,
             _marker: PhantomData,
         }
     }
 
-    /// Release the R-side root iff this handle owns it.
+    /// Release the pool root iff this handle owns one.
     ///
     /// Routed through [`with_r_thread`] because an owning `ExternalPtr` is
-    /// `Send` and may be dropped on the worker thread, while `R_ReleaseObject`
-    /// must run on R's main thread. `with_r_thread` runs the closure inline
-    /// when already on the main thread (the common case), so this is a direct
-    /// FFI call there and a thread hand-off only from the worker.
+    /// `Send` and may be dropped on the worker thread, while the pool lives on
+    /// R's main thread. `with_r_thread` runs the closure inline when already on
+    /// the main thread (the common case), so this is a direct pool release
+    /// there and a thread hand-off only from the worker. `ProtectKey` is `Copy`
+    /// + `Send` (two `u32`s), so it crosses the boundary by value.
     ///
     /// [`with_r_thread`]: crate::worker::with_r_thread
     #[inline]
     fn release_root_if_owned(&self) {
-        if !self.owns {
+        let Some(key) = self.root else {
             return;
-        }
-        // SAFETY: `Sendable` lets the raw SEXP cross the thread boundary; it is
-        // only ever dereferenced on R's main thread inside the closure.
-        let sexp = crate::worker::Sendable(self.sexp);
-        crate::worker::with_r_thread(move || unsafe { crate::sys::R_ReleaseObject(sexp.0) });
+        };
+        crate::worker::with_r_thread(move || unroot_owned(key));
     }
 
     /// Allocates memory on the heap and places `x` into it.
@@ -484,13 +549,15 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // Wrap in Sendable so it can be sent across thread boundary
         let sendable = unsafe { sendable_any_ptr_new(any_raw) };
 
-        // Use with_r_thread to run R API calls on main thread
-        let sexp = crate::worker::with_r_thread(move || {
+        // Use with_r_thread to run R API calls on main thread. The pool root is
+        // taken there (on the main thread, where the pool lives) and the key
+        // crosses back by value — `(SEXP, ProtectKey)` is `Send`.
+        let (sexp, root) = crate::worker::with_r_thread(move || {
             let any_raw = sendable_any_ptr_into_ptr(sendable);
             unsafe { Self::create_extptr_sexp_unchecked(any_raw) }
         });
 
-        Self::from_owned_parts(sexp, cached_ptr)
+        Self::from_owned_parts(sexp, cached_ptr, root)
     }
 
     /// Allocates memory on the heap and places `x` into it, without thread checks.
@@ -507,16 +574,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
         let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
 
-        let sexp = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
-        Self::from_owned_parts(sexp, cached_ptr)
+        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
+        Self::from_owned_parts(sexp, cached_ptr, root)
     }
 
     /// Create an EXTPTRSXP from a `*mut Box<dyn Any>`. Must be called from main thread.
     ///
     /// The `any_raw` is a thin pointer to a heap-allocated fat pointer (`Box<dyn Any>`).
-    /// R stores the thin pointer in `R_ExternalPtrAddr`.
+    /// R stores the thin pointer in `R_ExternalPtrAddr`. Returns the SEXP and the
+    /// [`ProtectPool`] key that roots it for the owning handle's lifetime.
     #[inline]
-    unsafe fn create_extptr_sexp(any_raw: *mut Box<dyn Any>) -> SEXP {
+    unsafe fn create_extptr_sexp(any_raw: *mut Box<dyn Any>) -> (SEXP, ProtectKey) {
         debug_assert!(
             !any_raw.is_null(),
             "create_extptr_sexp received null pointer"
@@ -537,13 +605,15 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Root the owning handle for its whole Rust lifetime so it survives R
         // allocations while held (e.g. element-by-element in a `Vec`) before
-        // reaching R (#836). Released by `release_root_if_owned`. Must happen
-        // here, on the main thread, because `new` returns the SEXP to the
-        // *calling* thread (possibly the worker) where R API is unavailable.
-        unsafe { crate::sys::R_PreserveObject(sexp) };
+        // reaching R (#836). The pool gives O(1) any-order release — see the
+        // `EXTPTR_ROOTS` docs for why that beats `R_PreserveObject` here. `sexp`
+        // is still protected, so the pool may safely allocate while growing.
+        // Must happen here, on the main thread, because `new` returns the SEXP
+        // to the *calling* thread (possibly the worker) where R API is gone.
+        let root = root_owned(sexp);
 
         unsafe { Rf_unprotect(2) };
-        sexp
+        (sexp, root)
     }
 
     /// Create an EXTPTRSXP from a `*mut Box<dyn Any>` without thread safety checks.
@@ -551,8 +621,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// # Safety
     ///
     /// Must be called from R's main thread. No debug assertions for thread safety.
+    ///
+    /// Returns the SEXP and the [`ProtectPool`] key that roots it.
     #[inline]
-    unsafe fn create_extptr_sexp_unchecked(any_raw: *mut Box<dyn Any>) -> SEXP {
+    unsafe fn create_extptr_sexp_unchecked(any_raw: *mut Box<dyn Any>) -> (SEXP, ProtectKey) {
         debug_assert!(
             !any_raw.is_null(),
             "create_extptr_sexp_unchecked received null pointer"
@@ -574,12 +646,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
         };
 
         // Root the owning handle (see `create_extptr_sexp` for the rationale).
-        // `R_PreserveObject` has no `_unchecked` variant — it is a raw extern,
-        // already free of thread-assertion bookkeeping.
-        unsafe { crate::sys::R_PreserveObject(sexp) };
+        // `root_owned` uses the pool's checked FFI, which runs inline here
+        // because the unchecked constructors are main-thread-by-contract; `sexp`
+        // is still protected, covering any allocation inside a pool grow.
+        let root = root_owned(sexp);
 
         unsafe { Rf_unprotect_unchecked(2) };
-        sexp
+        (sexp, root)
     }
 
     /// Constructs a new `ExternalPtr` with uninitialized contents.
@@ -623,8 +696,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let outer: Box<Box<dyn Any>> = Box::new(inner);
         let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
 
-        let sexp = unsafe { Self::create_extptr_sexp(any_raw) };
-        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) })
+        let (sexp, root) = unsafe { Self::create_extptr_sexp(any_raw) };
+        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) }, root)
     }
 
     /// Constructs an ExternalPtr from a raw pointer, without thread checks.
@@ -641,8 +714,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let outer: Box<Box<dyn Any>> = Box::new(inner);
         let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
 
-        let sexp = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
-        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) })
+        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
+        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) }, root)
     }
 
     /// Consumes the ExternalPtr, returning a raw pointer.

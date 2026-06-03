@@ -314,3 +314,43 @@ fn create_and_check_n_ptrs(bencher: divan::Bencher, n: usize) {
     });
 }
 // endregion
+
+// region: Vec<ExternalPtr> lifecycle (#836 — concurrent rooting + bulk release)
+//
+// Unlike `create_n_ptrs` (which drops each handle before allocating the next),
+// these hold all N handles alive *simultaneously* in a `Vec` and then release
+// them front-to-back when the `Vec` drops. This is the exact pattern that made
+// `R_PreserveObject` rooting O(N²) (release scans R's precious list per element)
+// and motivated rooting `ExternalPtr` through the O(1)-release `ProtectPool`
+// instead (#836). See `analysis/gc-protection-benchmarks-results.md` for the
+// mechanism-level precious-list vs pool comparison.
+
+const VEC_LIFECYCLE_COUNTS: &[usize] = &[100, 1_000, 10_000];
+
+/// Build a `Vec<ExternalPtr>` holding N handles concurrently, then drop it
+/// (build + bulk release — the realistic end-to-end `Vec<ExternalPtr>` cost).
+#[divan::bench(args = VEC_LIFECYCLE_COUNTS)]
+fn vec_lifecycle(bencher: divan::Bencher, n: usize) {
+    bencher.bench_local(|| {
+        let v: Vec<ExternalPtr<SmallPayload>> = (0..n)
+            .map(|i| ExternalPtr::new(SmallPayload { value: i as i64 }))
+            .collect();
+        divan::black_box(&v);
+        drop(v);
+    });
+}
+
+/// Isolate the *release* cost: build the `Vec` outside the timed region, time
+/// only its drop (the front-to-back root release). This is the operation whose
+/// asymptotics differ between `R_PreserveObject` (O(N²)) and `ProtectPool` (O(N)).
+#[divan::bench(args = VEC_LIFECYCLE_COUNTS)]
+fn vec_drop_release(bencher: divan::Bencher, n: usize) {
+    bencher
+        .with_inputs(|| {
+            (0..n)
+                .map(|i| ExternalPtr::new(SmallPayload { value: i as i64 }))
+                .collect::<Vec<ExternalPtr<SmallPayload>>>()
+        })
+        .bench_local_values(drop);
+}
+// endregion
