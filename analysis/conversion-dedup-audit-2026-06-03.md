@@ -438,3 +438,102 @@ macros, not a subset — a quick per-file consistency pass.
 All behaviour-preserving. After each, re-run `rustdoc_impl_inventory.py` and
 diff the `for`-type set — it must be unchanged (same impls exist; only the
 macro count drops).
+
+---
+
+# Part 3 — Implementation plan
+
+## Decision: which macro vehicle? (declarative vs proc-macro)
+
+The conversion impls live in `miniextendr-api`, and the existing 54 macros are
+all declarative `macro_rules!`. Three candidate vehicles for the new
+consolidating macros:
+
+| Vehicle | Fit | Verdict |
+|---|---|---|
+| **(a) declarative `macro_rules!`** in `miniextendr-api` | Function-like; takes `(X, Base, from_fn, into_fn)` and stamps the family. In-crate, zero new deps, consistent with the existing 54 macros, fast to compile, good hygiene for this shape. | **Use this.** |
+| **(b) function-like proc-macro** in `miniextendr-macros` | `miniextendr_via_base! { BigInt, base = String, … }`. Richer arg parsing, better error spans, can emit per-type doc comments. But cross-crate, heavier, and the win over (a) is marginal for a fixed 4-argument shape. | Only if (a)'s error messages/doc-gen become a real pain. Not the starting point. |
+| **(c) `#[derive(RConvert)]`** proc-macro | **Impossible for the work at hand**: `BigInt` / `OrderedFloat` / `Complex` are *foreign* types — you cannot place a `#[derive]` on a type defined in another crate, and the orphan rule blocks deriving conversions "for" them from our crate. | Reserve for a *future, separate* feature (below). Not applicable to deduping the existing optionals. |
+
+**The deciding fact is the orphan rule.** Every type we're deduping is foreign
+(`num_bigint::BigInt`, `ordered_float::OrderedFloat`, `num_complex::Complex`,
+`jiff::*`, `uuid::Uuid`, …). A derive needs to annotate the type's *definition*,
+which we don't own; an attribute/derive can't attach to a foreign type. So the
+conversions must be written as free-standing `impl` blocks in our crate, and the
+right tool to stamp out free-standing impls from a compact spec is a
+**function-like declarative macro**. Proc-macro machinery buys nothing here that
+`macro_rules!` doesn't, and costs a crate boundary.
+
+**Where a proc-macro *derive* genuinely wins (future, out of scope):** an
+end-user who defines their *own* newtype (`struct Money(Decimal)`,
+`struct UserId(Uuid)`) in their package owns that type and could write
+`#[derive(RVia)] #[rvia(base = Decimal)] struct Money(Decimal);` to get all
+six conversions for free. That's a real ergonomics feature for downstream
+packages, it slots into the existing `miniextendr-macros` derive ecosystem
+(`#[derive(ExternalPtr)]`, `#[derive(DataFrameRow)]`, …), and the declarative
+`impl_via_base!` from this plan becomes its codegen backend. **File as its own
+enhancement issue** — it is additive scope, not dedup, and shipping it does not
+require the dedup to land first (or vice-versa).
+
+## Macros to introduce (the toolkit)
+
+1. `impl_try_narrow!($target; $($from),+)` — collapses `impl_try_i32/u8/u16/i16/i8`. (P1-F4)
+2. `impl_widen!($($from => $to),+)` — the infallible `Coerce` duals. (M4)
+3. `impl_via_base!($X, $Base, $from_fn, $into_fn)` — the centrepiece. Emits, for
+   both `TryFromSexp` and `IntoR`: `X`, `Option<X>`, `Vec<X>`, `Vec<Option<X>>`,
+   `Box<[X]>`, `Box<[Option<X>]>` by delegating to `$Base`'s existing container
+   conversions and mapping through `$from_fn` / `$into_fn`. (M1 + M2)
+4. `Box<[T]>` / `Box<[Option<T>]>` delegation to `Vec` — a tiny blanket-ish macro
+   (or, where coherence permits, a real blanket) used by everything. (P1-F2 + M3)
+5. `impl_vec_into_r_as!($target_ty, $target_name; $from, $from_name)` — one macro
+   for both `Vec`/`&[]` and all three targets. (P1-F3)
+6. free fn `from_numeric_vec_with(sexp, elem_map)` — the shared SEXP-dispatch
+   shell behind `_vec` and `_vec_option`. (P1-F1)
+
+## Flat work list (one PR each, in order)
+
+Each PR: introduce/use the macro, delete the displaced impls, regenerate the
+rustdoc inventory and **diff the `for`-type set (must be unchanged)**, run
+`just test` + `just devtools-test` + the `clippy_all` feature set, and
+`gctorture(TRUE)` over any touched no-arg fixture if SEXP storage is on the path.
+
+1. **PR-1 `coerce` scalar macros** — add `impl_try_narrow!` + `impl_widen!`,
+   replace the 5 narrowing macros (`coerce.rs:533-672`) and 5 widening
+   one-liners (`:579-612`). Net: ~10 macros/impls → 2 macros. Zero risk.
+2. **PR-2 retire `Box<[…]>`** — add the `Vec`-delegating macro/blanket; delete
+   `impl_boxed_slice_option_try_from_sexp!` + `impl_boxed_slice_try_from_sexp_native!`
+   and the ~12 hand-rolled `Box<[X]>`/`Box<[Option<X>]>` `TryFromSexp` + 4 `IntoR`
+   impls. Resolves the bool-vs-f64 inconsistency.
+3. **PR-3 `impl_via_base!` (from_r)** — introduce the macro; convert
+   `num_bigint`, `rust_decimal`, `uuid`, `url`, `regex` (String base) and
+   `ordered_float`, `num_complex` (f64/Rcomplex base). **Risk: preserve each
+   type's existing `None` trigger** — `Option<X>` must inherit whatever
+   `Option<Base>` already does (NA_character_ for String, NA_real_ for f64, NULL
+   where present). The macro delegates to `Option<Base>`, so it inherits
+   correctly *by construction* — but add a test per type asserting the trigger.
+4. **PR-4 `impl_via_base!` (IntoR side)** — same types, outbound. Folds the
+   4-method wrapper for these into the macro. (M2)
+5. **PR-5 `jiff` / `time`** — the heaviest hand-rollers (24 + 12). Apply
+   `impl_via_base!` per scalar type; some are ExternalPtr-backed (Span/DateTime)
+   and stay as-is — only the String/f64-backed scalars convert.
+6. **PR-6 `IntoRAs`** — `impl_vec_into_r_as!` unifying target × container.
+7. **PR-7 `_vec`/`_vec_option` shell** — `from_numeric_vec_with`. Most
+   behavioural care (NA semantics); smallest type set, easy to test exhaustively.
+8. **PR-8 `IntoR` wrapper boilerplate** — sealed `IntoSexp` core + blanket `IntoR`
+   (or `impl_infallible_into_r!`); uniform `_unchecked` policy. Largest surface,
+   do last. (P1-F5)
+
+## Risks / invariants to hold
+
+- **`None`-trigger semantics must not change.** Today `Option<BigInt>` triggers
+  on NA_character_, `Option<Complex>` on NA/NULL, `Option<ExternalPtr>` on NILSXP.
+  `impl_via_base!` inherits the base's behaviour — verify, don't unify.
+- **Blanket coherence**: a blanket `impl<X> … for Vec<X>` collides with the
+  concrete native `Vec<i32>`/`Vec<f64>` impls without specialization — confirmed
+  dead end (M1b). Stay with macros.
+- **`_unchecked` fast paths**: the native numeric `Vec`/`Box` impls have real
+  `*_unchecked` bodies — keep them; only the delegating wrappers may collapse
+  unchecked to checked.
+- **Inventory diff is the oracle**: the whole point of the corpus tooling is that
+  every one of these PRs must leave `conversion-impl-inventory.md`'s `for`-type
+  set byte-identical. If an impl disappears, behaviour changed — stop.
