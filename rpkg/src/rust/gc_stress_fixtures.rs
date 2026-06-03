@@ -103,6 +103,50 @@ pub fn gc_stress_externalptr_vec() {
     }
 }
 
+/// Build an R `list()` of external pointers via `ExternalPtr::collect_into_r_list`
+/// under GC pressure, then read every element back through `R_ExternalPtrAddr`.
+///
+/// Regression fixture for the destination-rooting bulk builder — the safe, no-pool
+/// alternative to a hot `Vec<ExternalPtr>` build. `collect_into_r_list` creates
+/// each `EXTPTRSXP` *directly into the protected result list*, so every earlier
+/// element stays rooted by the list while later elements allocate. Under
+/// `gctorture(TRUE)` each per-element allocation forces a full GC; if the list
+/// did not root the elements (a missing `Rf_protect` or `SET_VECTOR_ELT`), the
+/// earlier ones would be collected and the readback would see a null
+/// `R_ExternalPtrAddr`.
+///
+/// The readback is allocation-free (`VECTOR_ELT` + `R_ExternalPtrAddr` are
+/// pointer reads), so no GC can fire between the build and the reads — the
+/// returned (caller-rooted-by-contract) list stays live on the Rust stack
+/// without us touching R's protect stack off the main thread.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_externalptr_collect_list() {
+    use miniextendr_api::externalptr::ExternalPtr;
+
+    let n: usize = 24;
+
+    // Bulk-build the list with no manual rooting and no pool: each element is
+    // allocated straight into the protected list inside `collect_into_r_list`.
+    let list = ExternalPtr::<SharedData>::collect_into_r_list((0..n).map(|i| SharedData {
+        x: i as f64,
+        y: (i * 2) as f64,
+        label: format!("item-{i}"),
+    }));
+
+    // Honest, allocation-free readback: a collected element has a null
+    // `R_ExternalPtrAddr`, so `wrap_sexp` returns `None`.
+    assert_eq!(list.len(), n, "collect_into_r_list produced wrong length");
+    for i in 0..n {
+        let elt = list.vector_elt(i as isize);
+        let reread = unsafe { ExternalPtr::<SharedData>::wrap_sexp(elt) }
+            .expect("collect_into_r_list element was collected (R_ExternalPtrAddr is null)");
+        assert_eq!(reread.get_x(), i as f64);
+        assert_eq!(reread.get_label(), format!("item-{i}"));
+    }
+}
+
 /// Exercise `Vec<Option<collection>>` conversions under GC pressure.
 ///
 /// Allocates `Vec<Option<Vec<i32>>>`, `Vec<Option<HashSet<String>>>`, and

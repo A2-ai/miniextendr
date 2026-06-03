@@ -61,3 +61,36 @@ at teardown). Also corrected the misleading `protect_pool.rs` doc comment.
 When a measured benchmark exists for a decision, read it before trusting prose —
 especially a comment whose stated precondition a new feature may have invalidated.
 "Measure before commit" applies to *mechanism choice*, not just micro-optimisations.
+
+## Follow-up: a bulk builder, not an `unsafe new_unprotected`
+
+The pool makes a held `Vec<ExternalPtr>` GC-safe, but for the common
+*build-many-then-hand-to-R* case it still pays a per-element price: a
+`ProtectPool` insert **and** release, a `with_r_thread` hop per element, and a
+second copy pass to lay the handles into an R list. The tempting "fix" was an
+`unsafe fn new_unprotected` that skips rooting for hot paths — but that re-arms
+the exact #836 footgun (unrooted handles collected mid-build) and, per the
+benches, would only recover the ~19 ns/elt pool cost.
+
+Instead we added a **safe** `ExternalPtr::collect_into_r_list(items)`: it builds
+each `EXTPTRSXP` straight into the *protected result list*, so the list roots
+every element the instant `SET_VECTOR_ELT` stores it — no unprotected window, no
+pool traffic, one `with_r_thread` hop for the whole batch, no copy pass.
+
+Benched (`miniextendr-bench/benches/externalptr.rs`, medians, Apple Silicon)
+producing the *same* artifact — a protected `VECSXP` of N external pointers:
+
+| N | `collect_into_r_list` | naive pool-then-list | speedup |
+|---|---|---|---|
+| 100 | 8.67 µs | 18.74 µs | 2.16× |
+| 1000 | 75.8 µs | 190.6 µs | 2.51× |
+| 10000 | 833.6 µs | 1.886 ms | 2.26× |
+
+The win (~2.3×) is far larger than the ~10% the pool insert/release alone would
+predict, because the destination build also collapses N `with_r_thread` hops to
+one and drops both the copy pass and the `Vec<ExternalPtr>` Drop traffic
+(`vec_lifecycle` ≈ `vec_pool_then_list` confirms the copy pass itself is nearly
+free). GC-safety verified: `gc_stress_externalptr_collect_list()` passes 40/40
+under `gctorture(TRUE)`. **Lesson:** when a hot path tempts an `unsafe` opt-out,
+check whether a *safe* restructuring (root via the destination) beats it — here
+it was both safer and ~2.3× faster.

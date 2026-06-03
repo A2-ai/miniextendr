@@ -78,6 +78,12 @@
 //! roots front-to-back, the O(n²) worst case for `R_ReleaseObject`'s
 //! precious-list scan — see `analysis/gc-protection-benchmarks-results.md`.
 //!
+//! When the end goal is an R `list()` of external pointers (rather than a
+//! `Vec<ExternalPtr>` you keep working with in Rust), prefer
+//! [`ExternalPtr::collect_into_r_list`](struct@ExternalPtr) — it builds each
+//! `EXTPTRSXP` straight into the protected result list, so the list roots every
+//! element and the pool is never touched at all.
+//!
 //! # Type Identification
 //!
 //! Type safety is enforced via `Any::downcast` (Rust's `TypeId`). R symbols
@@ -166,7 +172,7 @@ use crate::sys::{
     R_RegisterCFinalizerEx_unchecked, Rf_allocVector, Rf_allocVector_unchecked, Rf_install,
     Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
 };
-use crate::{Rboolean, SEXP, SEXPTYPE, SexpExt};
+use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// A wrapper around a raw pointer that implements [`Send`].
 ///
@@ -653,6 +659,120 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         unsafe { Rf_unprotect_unchecked(2) };
         (sexp, root)
+    }
+
+    /// Collect an iterator of values into a protected R list (`VECSXP`) holding
+    /// one fresh external pointer per item, rooting each via the destination
+    /// list instead of the [`ProtectPool`](crate::protect_pool).
+    ///
+    /// This is the GC-safe, allocation-lean way to hand many Rust values to R at
+    /// once — e.g. converting a `Vec<T>` into an R `list()` of external pointers.
+    /// Each `EXTPTRSXP` is created and **immediately** stored into the
+    /// already-protected result list, so the list roots it the instant it
+    /// exists: there is no unprotected window between element allocations, and
+    /// **no per-element pool traffic**.
+    ///
+    /// Contrast the naive `items.map(ExternalPtr::new).collect::<Vec<_>>()`,
+    /// which roots every handle in the process-wide pool (keeping the `Vec`
+    /// GC-safe while held — #836) only to release every root again when the `Vec`
+    /// drops, then still needs a second pass to copy the handles into a list.
+    /// Here the list *is* the root, so both the pool round-trip and the copy
+    /// pass are skipped. The whole batch also crosses to R's main thread in a
+    /// single [`with_r_thread`](crate::worker::with_r_thread) hop rather than one
+    /// per element.
+    ///
+    /// The returned `VECSXP` is **not** protected: the caller must protect it or
+    /// return it to R immediately, exactly like any other freshly built SEXP
+    /// (e.g. an [`IntoR`](crate::IntoR) result).
+    pub fn collect_into_r_list<I>(items: I) -> SEXP
+    where
+        I: IntoIterator<Item = T>,
+    {
+        // Box + type-erase every value on the *calling* thread (no R API needed),
+        // then ship only the raw thin pointers to the main thread — the same
+        // ownership transfer `new` performs, batched. `Sendable` carries the Vec
+        // across the boundary; the values are owned and handed off, never aliased.
+        let raws: Vec<*mut Box<dyn Any>> = items
+            .into_iter()
+            .map(|x| {
+                let inner: Box<dyn Any> = Box::new(x);
+                Box::into_raw(Box::new(inner))
+            })
+            .collect();
+        let sendable = crate::worker::Sendable(raws);
+
+        crate::worker::with_r_thread(move || {
+            let raws = sendable.0;
+            // SAFETY: `with_r_thread` runs this on R's main thread; every entry
+            // is a live `Box<Box<dyn Any>>` wrapping a `T`, ownership transferred.
+            unsafe { Self::build_extptr_list(&raws) }
+        })
+    }
+
+    /// Build a protected `VECSXP` of external pointers from already-erased boxes.
+    ///
+    /// Allocates the result list, protects it, then creates one `EXTPTRSXP` per
+    /// entry directly into its slot — rooted by the protected list, no pool. The
+    /// type symbols are interned once and reused (they are never GC'd, so they
+    /// stay valid across the allocating loop). Returns the list **unprotected**.
+    ///
+    /// # Safety
+    ///
+    /// Must run on R's main thread; each `raw` must be a live `Box<Box<dyn Any>>`
+    /// wrapping a `T`, with ownership transferred to the new external pointer.
+    unsafe fn build_extptr_list(raws: &[*mut Box<dyn Any>]) -> SEXP {
+        let n = R_xlen_t::try_from(raws.len()).expect("list length exceeds R_xlen_t::MAX");
+        let list = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, n) };
+        unsafe { Rf_protect_unchecked(list) };
+
+        let type_sym = unsafe { type_symbol_unchecked::<T>() };
+        let type_id_sym = unsafe { type_id_symbol_unchecked::<T>() };
+
+        for (i, &any_raw) in raws.iter().enumerate() {
+            let idx = R_xlen_t::try_from(i).expect("index exceeds R_xlen_t::MAX");
+            // SAFETY: main thread; `any_raw` owns a `T`; `list` is protected, so
+            // it roots each element the instant `set_vector_elt` stores it.
+            unsafe { Self::make_extptr_into_slot(any_raw, type_sym, type_id_sym, list, idx) };
+        }
+
+        unsafe { Rf_unprotect_unchecked(1) };
+        list
+    }
+
+    /// Create an `EXTPTRSXP` for `any_raw` and store it into `dest[idx]`.
+    ///
+    /// Mirrors [`create_extptr_sexp_unchecked`](Self::create_extptr_sexp_unchecked)
+    /// but roots the new pointer via `dest` (which the caller keeps protected)
+    /// instead of the pool — the element is live the instant it lands in the
+    /// protected list, so a bulk build pays no pool insert/release per element.
+    ///
+    /// # Safety
+    ///
+    /// Must run on R's main thread; `any_raw` must own a `T`; `dest` must be a
+    /// protected `VECSXP` with `idx` in bounds; `type_sym` / `type_id_sym` must
+    /// be the interned symbols for `T`.
+    #[inline]
+    unsafe fn make_extptr_into_slot(
+        any_raw: *mut Box<dyn Any>,
+        type_sym: SEXP,
+        type_id_sym: SEXP,
+        dest: SEXP,
+        idx: R_xlen_t,
+    ) {
+        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        unsafe { Rf_protect_unchecked(prot) };
+        unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
+
+        let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
+        unsafe { Rf_protect_unchecked(sexp) };
+        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE) };
+
+        // Root via the destination list instead of the pool: `dest` is protected
+        // by the caller, so storing `sexp` keeps it (and its `prot`) alive with
+        // no pool churn.
+        unsafe { dest.set_vector_elt_unchecked(idx, sexp) };
+
+        unsafe { Rf_unprotect_unchecked(2) };
     }
 
     /// Constructs a new `ExternalPtr` with uninitialized contents.
