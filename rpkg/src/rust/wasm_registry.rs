@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      8738902380064fa0
+// content-hash:      78e639b7ee605731
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1422,6 +1422,12 @@ unsafe extern "C-unwind" {
     pub fn C_typed_df_theoph_flag_sum(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_typed_df_theoph_has_flag(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_typed_df_theoph_sum_conc(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_veptr_sum_bags(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_veptr_make_bags(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_veptr_count_some(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_veptr_increment_bags(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_gc_stress_vec_externalptr(_: SEXP) -> SEXP;
+    pub fn C_veptr_make_bags_with_holes(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_altrep_warn_on_elt(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_altrep_panic_on_elt(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_altrep_message_on_elt(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -9098,6 +9104,36 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_typed_df_theoph_sum_conc".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_typed_df_theoph_sum_conc) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_veptr_sum_bags".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_veptr_sum_bags) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_veptr_make_bags".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_veptr_make_bags) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_veptr_count_some".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_veptr_count_some) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_veptr_increment_bags".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_veptr_increment_bags) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_vec_externalptr".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_vec_externalptr) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_veptr_make_bags_with_holes".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_veptr_make_bags_with_holes) }),
         numArgs: 2,
     },
     R_CallMethodDef {

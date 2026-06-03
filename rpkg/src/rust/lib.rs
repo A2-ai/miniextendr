@@ -269,6 +269,7 @@ mod unwind_protect_tests;
 mod url_adapter_tests;
 #[cfg(feature = "uuid")]
 mod uuid_adapter_tests;
+mod vec_externalptr_tests;
 mod visibility_tests;
 #[cfg(feature = "worker-thread")]
 mod worker_tests;
