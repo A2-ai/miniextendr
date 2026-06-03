@@ -50,4 +50,9 @@ python3 "$HERE/rustdoc_impl_inventory.py" target/doc/miniextendr_api.json \
   --traits TryFromSexp,IntoR,Coerce,TryCoerce,IntoRAs,RSerializeNative,RDeserializeNative,IntoRAltrep,AltrepSerialize \
   --out "$GEN/conversion-impl-inventory.md" >/dev/null
 echo "   conversion-impl-inventory.md"
+
+# Manual-vs-macro lens — hand-rolled impls a macro could absorb.
+python3 "$HERE/rustdoc_manual_vs_macro.py" target/doc/miniextendr_api.json \
+  --out "$GEN/conversion-manual-vs-macro.md" >/dev/null
+echo "   conversion-manual-vs-macro.md"
 echo ">> done -> $GEN"
