@@ -48,7 +48,7 @@ pub use rust_decimal::Decimal;
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
-use crate::into_r::IntoR;
+use crate::into_r::into_r_infallible;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use std::str::FromStr;
 
@@ -284,63 +284,20 @@ impl TryFromSexp for Vec<Option<Decimal>> {
     }
 }
 
-impl IntoR for Decimal {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.to_string().into_sexp()
-    }
-}
-
-impl IntoR for Option<Decimal> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.map(|v| v.to_string()).into_sexp()
-    }
-}
-
-impl IntoR for Vec<Decimal> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|v| v.to_string())
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
-
-impl IntoR for Vec<Option<Decimal>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|v| v.map(|val| val.to_string()))
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
+into_r_infallible!(Decimal, |this| this.to_string().into_sexp());
+into_r_infallible!(Option<Decimal>, |this| this
+    .map(|v| v.to_string())
+    .into_sexp());
+into_r_infallible!(Vec<Decimal>, |this| this
+    .into_iter()
+    .map(|v| v.to_string())
+    .collect::<Vec<_>>()
+    .into_sexp());
+into_r_infallible!(Vec<Option<Decimal>>, |this| this
+    .into_iter()
+    .map(|v| v.map(|val| val.to_string()))
+    .collect::<Vec<_>>()
+    .into_sexp());
 // endregion
 
 // region: RDecimalOps adapter trait
