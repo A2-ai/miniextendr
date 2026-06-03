@@ -19,9 +19,15 @@
 //! For temporaries within a `.Call`, use [`ProtectScope`](crate::gc_protect::ProtectScope)
 //! instead (7.4 ns/op, zero allocation, LIFO bulk cleanup).
 //!
-//! For a few long-lived objects that are never released in a loop (like ExternalPtr),
-//! use [`R_PreserveObject`] directly (13 ns/op, zero
-//! Rust-side bookkeeping).
+//! `R_PreserveObject` is only appropriate for a *singleton* object that is
+//! released (if ever) in LIFO order relative to other preserved objects — e.g.
+//! this pool's own backing VECSXP. It is **not** appropriate for objects held
+//! in bulk and released in arbitrary or FIFO order: `R_ReleaseObject`'s O(n)
+//! precious-list scan degrades to O(n²) on exactly that pattern (60–65× slower
+//! than this pool at 10k objects; see
+//! `analysis/gc-protection-benchmarks-results.md`). `ExternalPtr` roots through
+//! this pool for that reason — a `Vec<ExternalPtr>` releases its roots
+//! front-to-back, the worst case for the precious list.
 //!
 //! # Architecture
 //!

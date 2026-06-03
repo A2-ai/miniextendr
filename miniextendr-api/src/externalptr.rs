@@ -55,15 +55,34 @@
 //! │  ├── Rf_protect() during construction (temporary)               │
 //! │  ├── R_MakeExternalPtr() creates EXTPTRSXP                      │
 //! │  ├── R_RegisterCFinalizerEx() registers cleanup callback        │
+//! │  ├── pool.insert() roots it for the Rust handle's lifetime       │
 //! │  └── Rf_unprotect() after construction complete                 │
 //! │                                                                 │
-//! │  Return to R → R now owns the EXTPTRSXP                         │
-//! │  ├── SEXP is live as long as R has references                   │
-//! │  └── Rust value is accessible via ExternalPtr::wrap_sexp()      │
+//! │  Held in Rust (even across other R allocations, e.g. in a Vec)  │
+//! │  └── stays alive — the pool's GC-traced VECSXP slot roots it     │
 //! │                                                                 │
-//! │  R GC runs → finalizer called → Rust Drop executes              │
+//! │  Return to R → R now also references the EXTPTRSXP              │
+//! │  └── Rust handle drops → pool.release(key) drops the root,      │
+//! │      but R's own reference keeps it live                        │
+//! │                                                                 │
+//! │  R GC runs (no refs left) → finalizer (release_any) frees value │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
+//!
+//! Owning handles (`new` / `from_raw` / `Clone`) root their `EXTPTRSXP` in a
+//! process-wide [`ProtectPool`](crate::protect_pool) so they survive R
+//! allocations while held in Rust; *borrowed* views (`wrap_sexp` / `from_sexp`
+//! / `reborrow`) take no root — the object is kept alive by whatever R-side
+//! reference handed it to them. The pool (O(1) any-order release) is used
+//! rather than `R_PreserveObject` because a `Vec<ExternalPtr>` releases its
+//! roots front-to-back, the O(n²) worst case for `R_ReleaseObject`'s
+//! precious-list scan — see `analysis/gc-protection-benchmarks-results.md`.
+//!
+//! When the end goal is an R `list()` of external pointers (rather than a
+//! `Vec<ExternalPtr>` you keep working with in Rust), prefer
+//! [`ExternalPtr::collect_into_r_list`](struct@ExternalPtr) — it builds each
+//! `EXTPTRSXP` straight into the protected result list, so the list roots every
+//! element and the pool is never touched at all.
 //!
 //! # Type Identification
 //!
@@ -137,6 +156,7 @@
 
 use std::any::Any;
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -145,13 +165,14 @@ use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
 
+use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
     R_RegisterCFinalizerEx_unchecked, Rf_allocVector, Rf_allocVector_unchecked, Rf_install,
     Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
 };
-use crate::{Rboolean, SEXP, SEXPTYPE, SexpExt};
+use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// A wrapper around a raw pointer that implements [`Send`].
 ///
@@ -360,6 +381,21 @@ pub struct ExternalPtr<T: TypedExternal> {
     /// - `R_ClearExternalPtr` is only called in methods that consume or finalize
     ///   (`into_raw`, `into_inner`, `release_any`).
     cached_ptr: NonNull<T>,
+    /// The [`ProtectPool`] key rooting this handle's `EXTPTRSXP`, or `None` for
+    /// borrowed views.
+    ///
+    /// `Some(key)` for *owning* handles built from a fresh value (`new` /
+    /// `new_unchecked` / `from_raw` / `Clone` / `Default`): the constructor
+    /// roots the `EXTPTRSXP` in the main-thread pool so it stays alive for the
+    /// whole Rust lifetime of the handle — including while it sits in a `Vec`
+    /// across other R allocations before being handed to R (#836). `Drop` /
+    /// `into_raw` / `into_inner` release the root via the key.
+    ///
+    /// `None` for *borrowed* views of an SEXP R already owns (`wrap_sexp*` /
+    /// `from_sexp*` / `reborrow`): no root is taken, so none is released. The
+    /// aliased object is kept alive by whatever R-side reference handed it to us
+    /// (a `.Call` argument frame, an owning sibling handle, …).
+    root: Option<ProtectKey>,
     _marker: PhantomData<T>,
 }
 
@@ -369,7 +405,120 @@ pub struct ExternalPtr<T: TypedExternal> {
 // 3. There is no concurrent access - only sequential hand-off between threads
 unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T> {}
 
+// region: ExternalPtr GC roots
+//
+// Owning `ExternalPtr` handles keep their `EXTPTRSXP` alive for the handle's
+// whole Rust lifetime by rooting it in a process-wide `ProtectPool` — a single
+// GC-traced VECSXP with Rust-side slot bookkeeping. This is what makes a naive
+// `Vec<ExternalPtr<T>>` GC-safe: every element stays rooted while later elements
+// allocate (#836).
+//
+// Why a pool and not `R_PreserveObject`: the pool releases in O(1) any order,
+// whereas `R_ReleaseObject` scans R's precious list (O(n)). A `Vec<ExternalPtr>`
+// drops front-to-back — oldest first, i.e. the entries deepest in R's LIFO
+// precious list — so `R_PreserveObject` rooting degrades to O(n²) on exactly
+// this workload (60–65× slower at 10k; see
+// analysis/gc-protection-benchmarks-results.md). The pool is the mechanism the
+// strategy analysis prescribes for ExternalPtr (analysis/gc-protection-strategies.md).
+//
+// `ProtectPool` is `!Send`/`!Sync` and lives in a `thread_local!` on R's main
+// thread. Every access happens there: roots are taken inside
+// `create_extptr_sexp[_unchecked]` (main-thread by contract / `with_r_thread`),
+// and released through `with_r_thread` from `Drop` / `into_raw` / `into_inner`.
+// The pool is wrapped in `ManuallyDrop` so it is never released at thread exit —
+// it is a session-lifetime root table, and running `R_ReleaseObject` on its
+// backing during R's own teardown would touch a half-freed R heap.
+
+thread_local! {
+    static EXTPTR_ROOTS: RefCell<Option<ManuallyDrop<ProtectPool>>> = const { RefCell::new(None) };
+}
+
+/// Root an owning handle's `EXTPTRSXP` in the main-thread pool.
+///
+/// Must run on R's main thread with `sexp` already protected by the caller (the
+/// pool may allocate while growing). Both hold inside
+/// `create_extptr_sexp[_unchecked]`.
+#[inline]
+fn root_owned(sexp: SEXP) -> ProtectKey {
+    EXTPTR_ROOTS.with_borrow_mut(|slot| {
+        let pool = slot.get_or_insert_with(|| {
+            // SAFETY: on R's main thread (caller contract); R is initialized
+            // (we are mid-`create_extptr_sexp`, allocating R objects).
+            ManuallyDrop::new(unsafe { ProtectPool::new(ProtectPool::DEFAULT_CAPACITY) })
+        });
+        // SAFETY: on R's main thread; `sexp` is live (protected by the caller).
+        unsafe { pool.insert(sexp) }
+    })
+}
+
+/// Release an owning handle's pool root. Stale keys are a safe no-op.
+///
+/// Must run on R's main thread (callers route through `with_r_thread`).
+#[inline]
+fn unroot_owned(key: ProtectKey) {
+    EXTPTR_ROOTS.with_borrow_mut(|slot| {
+        if let Some(pool) = slot.as_mut() {
+            // SAFETY: on R's main thread.
+            unsafe { pool.release(key) };
+        }
+    });
+}
+// endregion
+
 impl<T: TypedExternal> ExternalPtr<T> {
+    /// Build an *owning* handle rooted at `root`.
+    ///
+    /// Pairs with the [`ProtectPool`] root that [`create_extptr_sexp`] /
+    /// [`create_extptr_sexp_unchecked`] take on the SEXP (and return as the
+    /// key). The root is released by `Drop` / `into_raw` / `into_inner`. Only
+    /// the four fresh-value constructors (`new` / `new_unchecked` / `from_raw` /
+    /// `from_raw_unchecked`) build through here.
+    ///
+    /// [`create_extptr_sexp`]: Self::create_extptr_sexp
+    /// [`create_extptr_sexp_unchecked`]: Self::create_extptr_sexp_unchecked
+    #[inline]
+    fn from_owned_parts(sexp: SEXP, cached_ptr: NonNull<T>, root: ProtectKey) -> Self {
+        Self {
+            sexp,
+            cached_ptr,
+            root: Some(root),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Build a *borrowed* view (`root = None`) of an SEXP R already owns.
+    ///
+    /// No GC root is taken and none is released — the aliased object is kept
+    /// alive by the R-side reference that handed it to us. Used by every
+    /// `wrap_sexp*` / `from_sexp*` / `reborrow` path.
+    #[inline]
+    fn from_borrowed_parts(sexp: SEXP, cached_ptr: NonNull<T>) -> Self {
+        Self {
+            sexp,
+            cached_ptr,
+            root: None,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Release the pool root iff this handle owns one.
+    ///
+    /// Routed through [`with_r_thread`] because an owning `ExternalPtr` is
+    /// `Send` and may be dropped on the worker thread, while the pool lives on
+    /// R's main thread. `with_r_thread` runs the closure inline when already on
+    /// the main thread (the common case), so this is a direct pool release
+    /// there and a thread hand-off only from the worker. `ProtectKey` is `Copy`
+    /// + `Send` (two `u32`s), so it crosses the boundary by value.
+    ///
+    /// [`with_r_thread`]: crate::worker::with_r_thread
+    #[inline]
+    fn release_root_if_owned(&self) {
+        let Some(key) = self.root else {
+            return;
+        };
+        crate::worker::with_r_thread(move || unroot_owned(key));
+    }
+
     /// Allocates memory on the heap and places `x` into it.
     ///
     /// Internally stores a `Box<Box<dyn Any>>` — a thin pointer (fits in R's
@@ -406,17 +555,15 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // Wrap in Sendable so it can be sent across thread boundary
         let sendable = unsafe { sendable_any_ptr_new(any_raw) };
 
-        // Use with_r_thread to run R API calls on main thread
-        let sexp = crate::worker::with_r_thread(move || {
+        // Use with_r_thread to run R API calls on main thread. The pool root is
+        // taken there (on the main thread, where the pool lives) and the key
+        // crosses back by value — `(SEXP, ProtectKey)` is `Send`.
+        let (sexp, root) = crate::worker::with_r_thread(move || {
             let any_raw = sendable_any_ptr_into_ptr(sendable);
             unsafe { Self::create_extptr_sexp_unchecked(any_raw) }
         });
 
-        Self {
-            sexp,
-            cached_ptr,
-            _marker: PhantomData,
-        }
+        Self::from_owned_parts(sexp, cached_ptr, root)
     }
 
     /// Allocates memory on the heap and places `x` into it, without thread checks.
@@ -433,20 +580,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
         let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
 
-        let sexp = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
-        Self {
-            sexp,
-            cached_ptr,
-            _marker: PhantomData,
-        }
+        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
+        Self::from_owned_parts(sexp, cached_ptr, root)
     }
 
     /// Create an EXTPTRSXP from a `*mut Box<dyn Any>`. Must be called from main thread.
     ///
     /// The `any_raw` is a thin pointer to a heap-allocated fat pointer (`Box<dyn Any>`).
-    /// R stores the thin pointer in `R_ExternalPtrAddr`.
+    /// R stores the thin pointer in `R_ExternalPtrAddr`. Returns the SEXP and the
+    /// [`ProtectPool`] key that roots it for the owning handle's lifetime.
     #[inline]
-    unsafe fn create_extptr_sexp(any_raw: *mut Box<dyn Any>) -> SEXP {
+    unsafe fn create_extptr_sexp(any_raw: *mut Box<dyn Any>) -> (SEXP, ProtectKey) {
         debug_assert!(
             !any_raw.is_null(),
             "create_extptr_sexp received null pointer"
@@ -465,8 +609,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // Non-generic finalizer — Box<dyn Any> vtable handles the concrete drop
         unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
 
+        // Root the owning handle for its whole Rust lifetime so it survives R
+        // allocations while held (e.g. element-by-element in a `Vec`) before
+        // reaching R (#836). The pool gives O(1) any-order release — see the
+        // `EXTPTR_ROOTS` docs for why that beats `R_PreserveObject` here. `sexp`
+        // is still protected, so the pool may safely allocate while growing.
+        // Must happen here, on the main thread, because `new` returns the SEXP
+        // to the *calling* thread (possibly the worker) where R API is gone.
+        let root = root_owned(sexp);
+
         unsafe { Rf_unprotect(2) };
-        sexp
+        (sexp, root)
     }
 
     /// Create an EXTPTRSXP from a `*mut Box<dyn Any>` without thread safety checks.
@@ -474,8 +627,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// # Safety
     ///
     /// Must be called from R's main thread. No debug assertions for thread safety.
+    ///
+    /// Returns the SEXP and the [`ProtectPool`] key that roots it.
     #[inline]
-    unsafe fn create_extptr_sexp_unchecked(any_raw: *mut Box<dyn Any>) -> SEXP {
+    unsafe fn create_extptr_sexp_unchecked(any_raw: *mut Box<dyn Any>) -> (SEXP, ProtectKey) {
         debug_assert!(
             !any_raw.is_null(),
             "create_extptr_sexp_unchecked received null pointer"
@@ -496,8 +651,128 @@ impl<T: TypedExternal> ExternalPtr<T> {
             R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE);
         };
 
+        // Root the owning handle (see `create_extptr_sexp` for the rationale).
+        // `root_owned` uses the pool's checked FFI, which runs inline here
+        // because the unchecked constructors are main-thread-by-contract; `sexp`
+        // is still protected, covering any allocation inside a pool grow.
+        let root = root_owned(sexp);
+
         unsafe { Rf_unprotect_unchecked(2) };
-        sexp
+        (sexp, root)
+    }
+
+    /// Collect an iterator of values into a protected R list (`VECSXP`) holding
+    /// one fresh external pointer per item, rooting each via the destination
+    /// list instead of the [`ProtectPool`](crate::protect_pool).
+    ///
+    /// This is the GC-safe, allocation-lean way to hand many Rust values to R at
+    /// once — e.g. converting a `Vec<T>` into an R `list()` of external pointers.
+    /// Each `EXTPTRSXP` is created and **immediately** stored into the
+    /// already-protected result list, so the list roots it the instant it
+    /// exists: there is no unprotected window between element allocations, and
+    /// **no per-element pool traffic**.
+    ///
+    /// Contrast the naive `items.map(ExternalPtr::new).collect::<Vec<_>>()`,
+    /// which roots every handle in the process-wide pool (keeping the `Vec`
+    /// GC-safe while held — #836) only to release every root again when the `Vec`
+    /// drops, then still needs a second pass to copy the handles into a list.
+    /// Here the list *is* the root, so both the pool round-trip and the copy
+    /// pass are skipped. The whole batch also crosses to R's main thread in a
+    /// single [`with_r_thread`](crate::worker::with_r_thread) hop rather than one
+    /// per element.
+    ///
+    /// The returned `VECSXP` is **not** protected: the caller must protect it or
+    /// return it to R immediately, exactly like any other freshly built SEXP
+    /// (e.g. an [`IntoR`](crate::IntoR) result).
+    pub fn collect_into_r_list<I>(items: I) -> SEXP
+    where
+        I: IntoIterator<Item = T>,
+    {
+        // Box + type-erase every value on the *calling* thread (no R API needed),
+        // then ship only the raw thin pointers to the main thread — the same
+        // ownership transfer `new` performs, batched. `Sendable` carries the Vec
+        // across the boundary; the values are owned and handed off, never aliased.
+        let raws: Vec<*mut Box<dyn Any>> = items
+            .into_iter()
+            .map(|x| {
+                let inner: Box<dyn Any> = Box::new(x);
+                Box::into_raw(Box::new(inner))
+            })
+            .collect();
+        let sendable = crate::worker::Sendable(raws);
+
+        crate::worker::with_r_thread(move || {
+            let raws = sendable.0;
+            // SAFETY: `with_r_thread` runs this on R's main thread; every entry
+            // is a live `Box<Box<dyn Any>>` wrapping a `T`, ownership transferred.
+            unsafe { Self::build_extptr_list(&raws) }
+        })
+    }
+
+    /// Build a protected `VECSXP` of external pointers from already-erased boxes.
+    ///
+    /// Allocates the result list, protects it, then creates one `EXTPTRSXP` per
+    /// entry directly into its slot — rooted by the protected list, no pool. The
+    /// type symbols are interned once and reused (they are never GC'd, so they
+    /// stay valid across the allocating loop). Returns the list **unprotected**.
+    ///
+    /// # Safety
+    ///
+    /// Must run on R's main thread; each `raw` must be a live `Box<Box<dyn Any>>`
+    /// wrapping a `T`, with ownership transferred to the new external pointer.
+    unsafe fn build_extptr_list(raws: &[*mut Box<dyn Any>]) -> SEXP {
+        let n = R_xlen_t::try_from(raws.len()).expect("list length exceeds R_xlen_t::MAX");
+        let list = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, n) };
+        unsafe { Rf_protect_unchecked(list) };
+
+        let type_sym = unsafe { type_symbol_unchecked::<T>() };
+        let type_id_sym = unsafe { type_id_symbol_unchecked::<T>() };
+
+        for (i, &any_raw) in raws.iter().enumerate() {
+            let idx = R_xlen_t::try_from(i).expect("index exceeds R_xlen_t::MAX");
+            // SAFETY: main thread; `any_raw` owns a `T`; `list` is protected, so
+            // it roots each element the instant `set_vector_elt` stores it.
+            unsafe { Self::make_extptr_into_slot(any_raw, type_sym, type_id_sym, list, idx) };
+        }
+
+        unsafe { Rf_unprotect_unchecked(1) };
+        list
+    }
+
+    /// Create an `EXTPTRSXP` for `any_raw` and store it into `dest[idx]`.
+    ///
+    /// Mirrors [`create_extptr_sexp_unchecked`](Self::create_extptr_sexp_unchecked)
+    /// but roots the new pointer via `dest` (which the caller keeps protected)
+    /// instead of the pool — the element is live the instant it lands in the
+    /// protected list, so a bulk build pays no pool insert/release per element.
+    ///
+    /// # Safety
+    ///
+    /// Must run on R's main thread; `any_raw` must own a `T`; `dest` must be a
+    /// protected `VECSXP` with `idx` in bounds; `type_sym` / `type_id_sym` must
+    /// be the interned symbols for `T`.
+    #[inline]
+    unsafe fn make_extptr_into_slot(
+        any_raw: *mut Box<dyn Any>,
+        type_sym: SEXP,
+        type_id_sym: SEXP,
+        dest: SEXP,
+        idx: R_xlen_t,
+    ) {
+        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        unsafe { Rf_protect_unchecked(prot) };
+        unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
+
+        let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
+        unsafe { Rf_protect_unchecked(sexp) };
+        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE) };
+
+        // Root via the destination list instead of the pool: `dest` is protected
+        // by the caller, so storing `sexp` keeps it (and its `prot`) alive with
+        // no pool churn.
+        unsafe { dest.set_vector_elt_unchecked(idx, sexp) };
+
+        unsafe { Rf_unprotect_unchecked(2) };
     }
 
     /// Constructs a new `ExternalPtr` with uninitialized contents.
@@ -541,12 +816,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let outer: Box<Box<dyn Any>> = Box::new(inner);
         let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
 
-        let sexp = unsafe { Self::create_extptr_sexp(any_raw) };
-        Self {
-            sexp,
-            cached_ptr: unsafe { NonNull::new_unchecked(raw) },
-            _marker: PhantomData,
-        }
+        let (sexp, root) = unsafe { Self::create_extptr_sexp(any_raw) };
+        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) }, root)
     }
 
     /// Constructs an ExternalPtr from a raw pointer, without thread checks.
@@ -563,12 +834,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let outer: Box<Box<dyn Any>> = Box::new(inner);
         let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
 
-        let sexp = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
-        Self {
-            sexp,
-            cached_ptr: unsafe { NonNull::new_unchecked(raw) },
-            _marker: PhantomData,
-        }
+        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
+        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) }, root)
     }
 
     /// Consumes the ExternalPtr, returning a raw pointer.
@@ -580,6 +847,11 @@ impl<T: TypedExternal> ExternalPtr<T> {
     #[inline]
     pub fn into_raw(this: Self) -> *mut T {
         let ptr = this.cached_ptr.as_ptr();
+
+        // Ownership of the R object leaves this handle: drop our GC root before
+        // `mem::forget` skips `Drop`. (`into_raw` already calls R API directly,
+        // so it is main-thread-contract — release directly, no thread hop.)
+        this.release_root_if_owned();
 
         // Recover and disassemble the Box<Box<dyn Any>> wrapper.
         // We need to free the wrapper allocations without dropping the T data.
@@ -632,6 +904,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Equivalent to `*boxed` (deref move) or `Box::into_inner`.
     #[inline]
     pub fn into_inner(this: Self) -> T {
+        // Ownership leaves this handle: drop our GC root before `mem::forget`.
+        this.release_root_if_owned();
+
         let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
 
         // Clear so finalizer is no-op
@@ -922,11 +1197,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
         if is_type_erased::<T>() {
             // Type-erased path: skip downcast, just use the raw pointer
             // (ExternalPtr<()> doesn't care about the concrete type)
-            return Some(Self {
-                sexp,
-                cached_ptr: unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) },
-                _marker: PhantomData,
-            });
+            return Some(Self::from_borrowed_parts(sexp, unsafe {
+                NonNull::new_unchecked(any_raw.cast::<T>())
+            }));
         }
 
         // Use downcast_mut (not downcast_ref) so cached_ptr gets mutable
@@ -935,11 +1208,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
         let concrete: &mut T = any_box.downcast_mut::<T>()?;
 
-        Some(Self {
-            sexp,
-            cached_ptr: unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) },
-            _marker: PhantomData,
-        })
+        Some(Self::from_borrowed_parts(sexp, unsafe {
+            NonNull::new_unchecked(ptr::from_mut(concrete))
+        }))
     }
 
     /// Attempt to wrap a SEXP as an ExternalPtr (unchecked version).
@@ -966,21 +1237,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         if is_type_erased::<T>() {
-            return Some(Self {
-                sexp,
-                cached_ptr: unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) },
-                _marker: PhantomData,
-            });
+            return Some(Self::from_borrowed_parts(sexp, unsafe {
+                NonNull::new_unchecked(any_raw.cast::<T>())
+            }));
         }
 
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
         let concrete: &mut T = any_box.downcast_mut::<T>()?;
 
-        Some(Self {
-            sexp,
-            cached_ptr: unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) },
-            _marker: PhantomData,
-        })
+        Some(Self::from_borrowed_parts(sexp, unsafe {
+            NonNull::new_unchecked(ptr::from_mut(concrete))
+        }))
     }
 
     /// Attempt to wrap a SEXP as an ExternalPtr, returning an error with type info on mismatch.
@@ -1005,20 +1272,16 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         if is_type_erased::<T>() {
-            return Ok(Self {
-                sexp,
-                cached_ptr: unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) },
-                _marker: PhantomData,
-            });
+            return Ok(Self::from_borrowed_parts(sexp, unsafe {
+                NonNull::new_unchecked(any_raw.cast::<T>())
+            }));
         }
 
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
         match any_box.downcast_mut::<T>() {
-            Some(concrete) => Ok(Self {
-                sexp,
-                cached_ptr: unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) },
-                _marker: PhantomData,
-            }),
+            Some(concrete) => Ok(Self::from_borrowed_parts(sexp, unsafe {
+                NonNull::new_unchecked(ptr::from_mut(concrete))
+            })),
             None => {
                 // Try to get the stored type name from R symbol for error reporting
                 let found = unsafe {
@@ -1071,11 +1334,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) }
         };
 
-        Self {
-            sexp,
-            cached_ptr,
-            _marker: PhantomData,
-        }
+        Self::from_borrowed_parts(sexp, cached_ptr)
     }
     // endregion
 
@@ -1422,27 +1681,18 @@ impl<T: TypedExternal> From<Box<T>> for ExternalPtr<T> {
     }
 }
 
-// Note: We intentionally don't implement Drop for ExternalPtr.
-// The R finalizer handles cleanup. If you need deterministic cleanup,
-// use `into_raw` and manage it yourself.
-
-// However, we need to think about what happens if the ExternalPtr is dropped
-// in Rust without going through R's GC. This is a design decision.
-
-// Option 1: No-op Drop (current) - R GC handles it eventually
-// Option 2: Clear the pointer and let the value leak
-// Option 3: Actually drop the value now
-
-// For now, we implement a no-op. R will clean up.
+// `Drop` releases the R-side GC root taken at construction (for *owning*
+// handles only) but never frees the pointee — that stays R's job, run by the
+// `release_any` finalizer when R garbage-collects the `EXTPTRSXP`. Dropping the
+// root just makes the object eligible for collection once R itself holds no
+// other reference; if R still references it (the usual case — it was returned
+// from a `.Call` or stored), it stays alive and the finalizer runs later.
+//
+// For deterministic *value* cleanup, use `ExternalPtr::into_inner` (moves the
+// value out) or `drop(Box::from_raw(ExternalPtr::into_raw(ptr)))`.
 impl<T: TypedExternal> Drop for ExternalPtr<T> {
     fn drop(&mut self) {
-        // The finalizer registered with R will handle cleanup.
-        // We don't do anything here to avoid double-free.
-        //
-        // If you want deterministic cleanup, use:
-        //   let _ = ExternalPtr::into_inner(ptr);
-        // or
-        //   drop(unsafe { Box::from_raw(ExternalPtr::into_raw(ptr)) });
+        self.release_root_if_owned();
     }
 }
 // endregion
