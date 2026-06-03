@@ -394,6 +394,99 @@ impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::Externa
     }
 }
 
+/// Build an R list (VECSXP) of external pointers from `Vec<ExternalPtr<T>>`.
+///
+/// GC discipline matters here and differs from the generic `Vec<T>` list
+/// helpers: the element `EXTPTRSXP`s already exist (created before
+/// `into_sexp`) and are **unprotected**, so allocating the VECSXP could
+/// collect them. We root every element first, then allocate the list, then
+/// fill — see [`vec_externalptr_to_list`].
+impl<T: crate::externalptr::TypedExternal> IntoR for Vec<crate::externalptr::ExternalPtr<T>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::SEXP {
+        vec_externalptr_to_list(self)
+    }
+}
+
+/// Build an R list (VECSXP) from `Vec<Option<ExternalPtr<T>>>`, with `None`
+/// mapping to `NULL` and `Some(ptr)` to the external pointer (issue #827).
+impl<T: crate::externalptr::TypedExternal> IntoR
+    for Vec<Option<crate::externalptr::ExternalPtr<T>>>
+{
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::SEXP {
+        vec_option_externalptr_to_list(self)
+    }
+}
+
+/// Allocate a VECSXP and populate it with the external pointers in `items`.
+///
+/// Unlike the atomic-vector list helpers — where each element SEXP is created
+/// *inside* the fill loop and stored straight into the already-protected list —
+/// the `EXTPTRSXP`s here were created earlier (in the function body that
+/// produced the `Vec`) and are not on the protect stack. `Rf_allocVector` can
+/// trigger GC, so we protect every element *before* allocating the list, fill,
+/// then let the [`ProtectScope`] release all `n + 1` protections at once. The
+/// returned list is the `.Call` result, which R protects.
+fn vec_externalptr_to_list<T: crate::externalptr::TypedExternal>(
+    items: Vec<crate::externalptr::ExternalPtr<T>>,
+) -> crate::SEXP {
+    use crate::SexpExt;
+    unsafe {
+        let scope = crate::gc_protect::ProtectScope::new();
+        let n = items.len();
+        for item in &items {
+            scope.protect_raw(item.as_sexp());
+        }
+        let list = scope.protect_raw(crate::sys::Rf_allocVector(
+            crate::SEXPTYPE::VECSXP,
+            n as crate::R_xlen_t,
+        ));
+        for (i, item) in items.iter().enumerate() {
+            list.set_vector_elt(i as crate::R_xlen_t, item.as_sexp());
+        }
+        list
+    }
+}
+
+/// As [`vec_externalptr_to_list`], but `None` elements become `NULL`.
+fn vec_option_externalptr_to_list<T: crate::externalptr::TypedExternal>(
+    items: Vec<Option<crate::externalptr::ExternalPtr<T>>>,
+) -> crate::SEXP {
+    use crate::SexpExt;
+    unsafe {
+        let scope = crate::gc_protect::ProtectScope::new();
+        let n = items.len();
+        for item in items.iter().flatten() {
+            scope.protect_raw(item.as_sexp());
+        }
+        let list = scope.protect_raw(crate::sys::Rf_allocVector(
+            crate::SEXPTYPE::VECSXP,
+            n as crate::R_xlen_t,
+        ));
+        for (i, item) in items.iter().enumerate() {
+            let elt = match item {
+                Some(ext) => ext.as_sexp(),
+                None => crate::SEXP::nil(),
+            };
+            list.set_vector_elt(i as crate::R_xlen_t, elt);
+        }
+        list
+    }
+}
+
 /// Blanket impl: Types marked with `IntoExternalPtr` get automatic `IntoR`.
 ///
 /// This wraps the value in `ExternalPtr<T>` automatically, so you can return
