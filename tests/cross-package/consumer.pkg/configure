@@ -3669,7 +3669,7 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
       echo "[build]"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
-    echo "configure: wrote $RPKG_CFG (source mode)"
+    echo "configure: wrote $RPKG_CFG (from-source mode)"
   fi
  ;;
     "cargo-lockfile-compat":C)

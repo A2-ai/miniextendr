@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-05-29 21:33:05
-+++ b/monorepo/rpkg/bootstrap.R	2026-05-29 21:33:05
+--- a/monorepo/rpkg/bootstrap.R	2026-05-14 09:21:02
++++ b/monorepo/rpkg/bootstrap.R	2026-04-28 10:42:41
 @@ -1,119 +1,11 @@
 -# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
@@ -130,8 +130,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
  
  if (.Platform$OS.type == "windows") {
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-05-29 23:07:52
-+++ b/monorepo/rpkg/configure.ac	2026-05-29 23:08:17
+--- a/monorepo/rpkg/configure.ac	2026-06-03 19:45:48
++++ b/monorepo/rpkg/configure.ac	2026-06-03 19:47:32
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -292,7 +292,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl wasm32/webR side-modules need one RUSTFLAGS adjustment.
  dnl
  dnl -Zdefault-visibility=hidden
--dnl    Without it, the Rust staticlib drags ~3000 mangled stdlib/dep symbols
+-dnl    Without it, the Rust staticlib drags roughly 3000 mangled stdlib/dep symbols
 -dnl    into the side-module's EXPORT table. webR's JS-side dyn.load then fails
 -dnl    (`TypeError: Cannot read properties of undefined` on the pinned emcc; a
 -dnl    hard `emcc: error: invalid export name` on emcc 4.0.8+). Hiding all
@@ -436,8 +436,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-05-29 23:07:52
-+++ b/rpkg/configure.ac	2026-05-29 23:08:31
+--- a/rpkg/configure.ac	2026-06-03 19:45:48
++++ b/rpkg/configure.ac	2026-06-03 19:47:31
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -544,7 +544,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl wasm32/webR side-modules need one RUSTFLAGS adjustment.
  dnl
  dnl -Zdefault-visibility=hidden
--dnl    Without it, the Rust staticlib drags ~3000 mangled stdlib/dep symbols
+-dnl    Without it, the Rust staticlib drags roughly 3000 mangled stdlib/dep symbols
 -dnl    into the side-module's EXPORT table. webR's JS-side dyn.load then fails
 -dnl    (`TypeError: Cannot read properties of undefined` on the pinned emcc; a
 -dnl    hard `emcc: error: invalid export name` on emcc 4.0.8+). Hiding all
