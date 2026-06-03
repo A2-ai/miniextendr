@@ -47,6 +47,62 @@ impl SharedData {
     }
 }
 
+/// Build a `Vec<ExternalPtr<T>>` the *naive* way and read every handle back
+/// through `R_ExternalPtrAddr`, under GC pressure.
+///
+/// This is the regression fixture for #836: `ExternalPtr::new` roots its
+/// `EXTPTRSXP` via `R_PreserveObject` for the handle's whole Rust lifetime, so
+/// the per-element allocation in `.map(ExternalPtr::new).collect()` cannot
+/// collect the earlier handles already sitting in the `Vec`. Pre-#836 this
+/// reliably corrupted under `gctorture(TRUE)`; the `#827` fixtures had to root
+/// each handle manually with a `ProtectScope`.
+///
+/// The readback re-wraps via `wrap_sexp` (the *honest* check — it inspects
+/// `R_ExternalPtrAddr`), not the cached `*mut T` `Deref`, which would read
+/// freed memory and silently "pass". The throwaway-batch loop also drives the
+/// new `Drop` → `R_ReleaseObject` path while the kept handles are still live.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_externalptr_vec() {
+    use miniextendr_api::externalptr::ExternalPtr;
+
+    let n = 24;
+
+    // NAIVE construction — no manual rooting. Each `ExternalPtr::new` allocates
+    // (prot VECSXP + EXTPTRSXP); under GC pressure those allocations would
+    // collect the earlier, unrooted handles pre-#836.
+    let handles: Vec<ExternalPtr<SharedData>> = (0..n)
+        .map(|i| {
+            ExternalPtr::new(SharedData {
+                x: i as f64,
+                y: (i * 2) as f64,
+                label: format!("bag-{i}"),
+            })
+        })
+        .collect();
+
+    // Churn the GC further while still holding every kept handle: build and
+    // immediately drop a second batch. The drop releases each throwaway's root
+    // (the new `Drop` path) and must not disturb the handles we keep.
+    for i in 0..n {
+        let _throwaway = ExternalPtr::new(SharedData {
+            x: -1.0,
+            y: i as f64,
+            label: String::from("throwaway"),
+        });
+    }
+
+    // Honest readback: a collected handle has a null `R_ExternalPtrAddr`, so
+    // `wrap_sexp` returns `None`.
+    for (i, h) in handles.iter().enumerate() {
+        let reread = unsafe { ExternalPtr::<SharedData>::wrap_sexp(h.as_sexp()) }
+            .expect("ExternalPtr handle was collected (R_ExternalPtrAddr is null)");
+        assert_eq!(reread.get_x(), i as f64);
+        assert_eq!(reread.get_label(), format!("bag-{i}"));
+    }
+}
+
 /// Exercise `Vec<Option<collection>>` conversions under GC pressure.
 ///
 /// Allocates `Vec<Option<Vec<i32>>>`, `Vec<Option<HashSet<String>>>`, and
