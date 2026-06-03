@@ -326,6 +326,33 @@ pub trait TryFromSexp: Sized {
     }
 }
 
+// region: Box<[T]> delegates to Vec<T>
+//
+// A boxed slice converts exactly like the owned vector — read the vector, then
+// `into_boxed_slice()` (an O(1), allocation-free shrink). This single blanket
+// replaces every hand-rolled / macro-generated `Box<[X]>` impl: any element
+// type whose `Vec<X>` is convertible gets `Box<[X]>` for free, inheriting the
+// vector impl's error type and NA semantics by construction.
+
+impl<T> TryFromSexp for Box<[T]>
+where
+    Vec<T>: TryFromSexp,
+{
+    type Error = <Vec<T> as TryFromSexp>::Error;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        <Vec<T> as TryFromSexp>::try_from_sexp(sexp).map(|v| v.into_boxed_slice())
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { <Vec<T> as TryFromSexp>::try_from_sexp_unchecked(sexp) }
+            .map(|v| v.into_boxed_slice())
+    }
+}
+// endregion
+
 macro_rules! impl_try_from_sexp_scalar_native {
     ($t:ty, $sexptype:ident) => {
         impl TryFromSexp for $t {
@@ -1118,15 +1145,6 @@ impl TryFromSexp for Vec<bool> {
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         Self::try_from_sexp(sexp)
-    }
-}
-
-impl TryFromSexp for Box<[bool]> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_boxed_slice())
     }
 }
 // endregion
