@@ -382,87 +382,26 @@ impl DataFrame {
     /// across the loop so previously-built column SEXPs survive subsequent allocations.
     pub fn select_rows(&self, idx: &[usize]) -> Self {
         use crate::SexpExt as _;
-        use crate::sexp_types::SEXPTYPE;
 
         unsafe {
             let names_sexp = self.sexp.get_names();
             let ncol = self.sexp.xlength();
             let new_nrow = idx.len();
-            let new_nrow_isize: isize = new_nrow.try_into().expect("row count overflow");
 
             let new_list = crate::OwnedProtect::new(SEXP::alloc_list(ncol));
             let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(ncol));
 
             for col_j in 0..ncol {
                 let src_col = self.sexp.vector_elt(col_j);
-                let stype = src_col.type_of();
 
-                // Build a new column vector of length `new_nrow` by copying the
-                // requested rows. The output list (new_list) is protected by
-                // OwnedProtect above; each intermediate allocation is only live
-                // until set_vector_elt copies the element into the protected list.
-                let new_col: SEXP = match stype {
-                    SEXPTYPE::REALSXP => {
-                        let out = crate::sys::Rf_allocVector(SEXPTYPE::REALSXP, new_nrow_isize);
-                        let _guard = crate::OwnedProtect::new(out);
-                        for (j, &row_i) in idx.iter().enumerate() {
-                            out.set_real_elt(j as isize, src_col.real_elt(row_i as isize));
-                        }
-                        out
-                    }
-                    SEXPTYPE::INTSXP => {
-                        let out = crate::sys::Rf_allocVector(SEXPTYPE::INTSXP, new_nrow_isize);
-                        let _guard = crate::OwnedProtect::new(out);
-                        for (j, &row_i) in idx.iter().enumerate() {
-                            out.set_integer_elt(j as isize, src_col.integer_elt(row_i as isize));
-                        }
-                        out
-                    }
-                    SEXPTYPE::LGLSXP => {
-                        let out = crate::sys::Rf_allocVector(SEXPTYPE::LGLSXP, new_nrow_isize);
-                        let _guard = crate::OwnedProtect::new(out);
-                        for (j, &row_i) in idx.iter().enumerate() {
-                            out.set_logical_elt(j as isize, src_col.logical_elt(row_i as isize));
-                        }
-                        out
-                    }
-                    SEXPTYPE::STRSXP => {
-                        let out = crate::sys::Rf_allocVector(SEXPTYPE::STRSXP, new_nrow_isize);
-                        // Protect out across CHARSXP string_elt copies — string_elt returns
-                        // a CHARSXP from the string pool (no allocation), but set_string_elt
-                        // may hash-intern on R-devel; protect defensively.
-                        let _guard = crate::OwnedProtect::new(out);
-                        for (j, &row_i) in idx.iter().enumerate() {
-                            let charsxp = src_col.string_elt(row_i as isize);
-                            out.set_string_elt(j as isize, charsxp);
-                        }
-                        out
-                    }
-                    SEXPTYPE::VECSXP => {
-                        // List-column: copy element-by-element (NULL for absent rows).
-                        let out = crate::sys::Rf_allocVector(SEXPTYPE::VECSXP, new_nrow_isize);
-                        let _guard = crate::OwnedProtect::new(out);
-                        for (j, &row_i) in idx.iter().enumerate() {
-                            let elt = src_col.vector_elt(row_i as isize);
-                            out.set_vector_elt(j as isize, elt);
-                        }
-                        out
-                    }
-                    _ => {
-                        // Unknown SEXPTYPE: fall back to a logical NA column of the right length.
-                        // This is a defensive path — normal data.frame columns are REAL/INT/LGL/STR/VEC.
-                        let out = crate::sys::Rf_allocVector(SEXPTYPE::LGLSXP, new_nrow_isize);
-                        let _guard = crate::OwnedProtect::new(out);
-                        for j in 0..new_nrow_isize {
-                            out.set_logical_elt(j, i32::MIN); // NA_logical
-                        }
-                        out
-                    }
-                };
+                // Gather the requested rows into a new dense column via the shared
+                // conversion helper (the row-selecting inverse of `scatter_column`).
+                // It returns an unprotected SEXP; we root it into the protected
+                // `new_list` immediately below, before any further allocation.
+                let new_col: SEXP = crate::convert::gather_column(src_col, idx);
 
                 // Root new_col in the protected output list BEFORE touching its
-                // attributes. The match arm's `OwnedProtect` guard has already
-                // dropped, so new_col is otherwise unprotected here — and
+                // attributes. `gather_column` returns an unprotected SEXP, and
                 // `set_class`/`set_levels` (Rf_setAttrib) allocate and can trigger
                 // GC. set_vector_elt does not allocate, so this ordering keeps
                 // new_col reachable (via new_list) across every allocating call.
