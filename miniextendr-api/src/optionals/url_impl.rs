@@ -43,7 +43,7 @@ pub use url::Url;
 use crate::from_r::{
     SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str,
 };
-use crate::into_r::IntoR;
+use crate::into_r::into_r_infallible;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Scalar conversions
@@ -81,18 +81,7 @@ impl TryFromSexp for Url {
     }
 }
 
-impl IntoR for Url {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.as_str().into_sexp()
-    }
-}
+into_r_infallible!(Url, |this| this.as_str().into_sexp());
 // endregion
 
 // region: Option conversions (NA support)
@@ -135,19 +124,10 @@ impl TryFromSexp for Option<Url> {
     }
 }
 
-impl IntoR for Option<Url> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        // Leverage Option<String>'s IntoR which handles NA correctly
-        self.map(|u| u.as_str().to_string()).into_sexp()
-    }
-}
+// Leverage Option<String>'s IntoR which handles NA correctly.
+into_r_infallible!(Option<Url>, |this| this
+    .map(|u| u.as_str().to_string())
+    .into_sexp());
 // endregion
 
 // region: Vector conversions
@@ -192,20 +172,12 @@ impl TryFromSexp for Vec<Url> {
     }
 }
 
-impl IntoR for Vec<Url> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        // Convert to Vec<String> and use its IntoR
-        let strings: Vec<String> = self.into_iter().map(|u| u.as_str().to_string()).collect();
-        strings.into_sexp()
-    }
-}
+// Convert to Vec<String> and use its IntoR.
+into_r_infallible!(Vec<Url>, |this| this
+    .into_iter()
+    .map(|u| u.as_str().to_string())
+    .collect::<Vec<String>>()
+    .into_sexp());
 // endregion
 
 // region: Vec<Option<Url>> conversions (NA-aware vectors)
@@ -248,23 +220,12 @@ impl TryFromSexp for Vec<Option<Url>> {
     }
 }
 
-impl IntoR for Vec<Option<Url>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        // Convert to Vec<Option<String>> and use its IntoR
-        let strings: Vec<Option<String>> = self
-            .into_iter()
-            .map(|opt| opt.map(|u| u.as_str().to_string()))
-            .collect();
-        strings.into_sexp()
-    }
-}
+// Convert to Vec<Option<String>> and use its IntoR.
+into_r_infallible!(Vec<Option<Url>>, |this| this
+    .into_iter()
+    .map(|opt| opt.map(|u| u.as_str().to_string()))
+    .collect::<Vec<Option<String>>>()
+    .into_sexp());
 // endregion
 
 // region: RUrlOps adapter trait

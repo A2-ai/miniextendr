@@ -314,3 +314,93 @@ fn create_and_check_n_ptrs(bencher: divan::Bencher, n: usize) {
     });
 }
 // endregion
+
+// region: Vec<ExternalPtr> lifecycle (#836 — concurrent rooting + bulk release)
+//
+// Unlike `create_n_ptrs` (which drops each handle before allocating the next),
+// these hold all N handles alive *simultaneously* in a `Vec` and then release
+// them front-to-back when the `Vec` drops. This is the exact pattern that made
+// `R_PreserveObject` rooting O(N²) (release scans R's precious list per element)
+// and motivated rooting `ExternalPtr` through the O(1)-release `ProtectPool`
+// instead (#836). See `analysis/gc-protection-benchmarks-results.md` for the
+// mechanism-level precious-list vs pool comparison.
+
+const VEC_LIFECYCLE_COUNTS: &[usize] = &[100, 1_000, 10_000];
+
+/// Build a `Vec<ExternalPtr>` holding N handles concurrently, then drop it
+/// (build + bulk release — the realistic end-to-end `Vec<ExternalPtr>` cost).
+#[divan::bench(args = VEC_LIFECYCLE_COUNTS)]
+fn vec_lifecycle(bencher: divan::Bencher, n: usize) {
+    bencher.bench_local(|| {
+        let v: Vec<ExternalPtr<SmallPayload>> = (0..n)
+            .map(|i| ExternalPtr::new(SmallPayload { value: i as i64 }))
+            .collect();
+        divan::black_box(&v);
+        drop(v);
+    });
+}
+
+/// Isolate the *release* cost: build the `Vec` outside the timed region, time
+/// only its drop (the front-to-back root release). This is the operation whose
+/// asymptotics differ between `R_PreserveObject` (O(N²)) and `ProtectPool` (O(N)).
+#[divan::bench(args = VEC_LIFECYCLE_COUNTS)]
+fn vec_drop_release(bencher: divan::Bencher, n: usize) {
+    bencher
+        .with_inputs(|| {
+            (0..n)
+                .map(|i| ExternalPtr::new(SmallPayload { value: i as i64 }))
+                .collect::<Vec<ExternalPtr<SmallPayload>>>()
+        })
+        .bench_local_values(drop);
+}
+// endregion
+
+// region: Vec<ExternalPtr> → R list (#827/#836 — pool-rooted vs destination-rooted)
+//
+// The end-to-end question behind a `Vec<ExternalPtr<T>>` → `list()` conversion:
+// is it cheaper to (a) build a pool-rooted `Vec<ExternalPtr>` and then copy each
+// handle into an R list, or (b) build each `EXTPTRSXP` straight into the
+// protected result list with `collect_into_r_list` (no pool, no copy pass)?
+// Both produce the *same* artifact — a protected `VECSXP` of N external pointers
+// — so the delta is exactly the per-element pool insert + release + copy that
+// (b) elides. This is the data behind preferring `collect_into_r_list` over a
+// `new_unprotected` escape hatch for the bulk path.
+
+/// (a) Pool path: build `Vec<ExternalPtr>` (roots N in the pool), copy each into
+/// an R list, then drop the `Vec` (releases N pool roots). The naive conversion.
+#[divan::bench(args = VEC_LIFECYCLE_COUNTS)]
+fn vec_pool_then_list(bencher: divan::Bencher, n: usize) {
+    use miniextendr_api::{R_xlen_t, SEXPTYPE};
+    use miniextendr_bench::raw_ffi;
+    bencher.bench_local(|| {
+        let v: Vec<ExternalPtr<SmallPayload>> = (0..n)
+            .map(|i| ExternalPtr::new(SmallPayload { value: i as i64 }))
+            .collect();
+        let list = unsafe { raw_ffi::Rf_allocVector(SEXPTYPE::VECSXP, n as R_xlen_t) };
+        unsafe { raw_ffi::Rf_protect(list) };
+        for (i, p) in v.iter().enumerate() {
+            unsafe { raw_ffi::SET_VECTOR_ELT(list, i as R_xlen_t, p.as_sexp()) };
+        }
+        divan::black_box(list);
+        // Drop the Vec while the list still protects every element: this is the
+        // front-to-back pool-root release the pool makes O(N).
+        drop(v);
+        unsafe { raw_ffi::Rf_unprotect(1) };
+    });
+}
+
+/// (b) Destination path: build each `EXTPTRSXP` straight into the protected list
+/// via `collect_into_r_list` — no pool traffic, no copy pass.
+#[divan::bench(args = VEC_LIFECYCLE_COUNTS)]
+fn vec_collect_into_list(bencher: divan::Bencher, n: usize) {
+    use miniextendr_bench::raw_ffi;
+    bencher.bench_local(|| {
+        let list = ExternalPtr::<SmallPayload>::collect_into_r_list(
+            (0..n).map(|i| SmallPayload { value: i as i64 }),
+        );
+        unsafe { raw_ffi::Rf_protect(list) };
+        divan::black_box(list);
+        unsafe { raw_ffi::Rf_unprotect(1) };
+    });
+}
+// endregion

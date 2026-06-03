@@ -43,7 +43,7 @@ pub use num_complex::Complex;
 
 use crate::altrep_traits::NA_REAL;
 use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
-use crate::into_r::IntoR;
+use crate::into_r::into_r_infallible;
 use crate::{Rcomplex, SEXP, SEXPTYPE, SexpExt};
 
 // region: Helper functions
@@ -121,18 +121,7 @@ impl TryFromSexp for Complex<f64> {
     }
 }
 
-impl IntoR for Complex<f64> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        SEXP::scalar_complex(to_rcomplex(self))
-    }
-}
+into_r_infallible!(Complex<f64>, |this| SEXP::scalar_complex(to_rcomplex(this)));
 // endregion
 
 // region: Option conversions (NA support)
@@ -171,21 +160,10 @@ impl TryFromSexp for Option<Complex<f64>> {
     }
 }
 
-impl IntoR for Option<Complex<f64>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        match self {
-            Some(c) => SEXP::scalar_complex(to_rcomplex(c)),
-            None => SEXP::scalar_complex(na_rcomplex()),
-        }
-    }
-}
+into_r_infallible!(Option<Complex<f64>>, |this| match this {
+    Some(c) => SEXP::scalar_complex(to_rcomplex(c)),
+    None => SEXP::scalar_complex(na_rcomplex()),
+});
 // endregion
 
 // region: Vector conversions
@@ -220,28 +198,19 @@ impl TryFromSexp for Vec<Complex<f64>> {
     }
 }
 
-impl IntoR for Vec<Complex<f64>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        use crate::sys::Rf_allocVector;
+into_r_infallible!(Vec<Complex<f64>>, |this| {
+    use crate::sys::Rf_allocVector;
 
-        let len = self.len();
-        let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::R_xlen_t) };
-        let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
+    let len = this.len();
+    let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::R_xlen_t) };
+    let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
 
-        for (i, c) in self.into_iter().enumerate() {
-            dst[i] = to_rcomplex(c);
-        }
-
-        sexp
+    for (i, c) in this.into_iter().enumerate() {
+        dst[i] = to_rcomplex(c);
     }
-}
+
+    sexp
+});
 // endregion
 
 // region: Vec<Option<Complex>> conversions (NA-aware vectors)
@@ -275,31 +244,22 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
     }
 }
 
-impl IntoR for Vec<Option<Complex<f64>>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        use crate::sys::Rf_allocVector;
+into_r_infallible!(Vec<Option<Complex<f64>>>, |this| {
+    use crate::sys::Rf_allocVector;
 
-        let len = self.len();
-        let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::R_xlen_t) };
-        let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
+    let len = this.len();
+    let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::R_xlen_t) };
+    let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
 
-        for (i, opt) in self.into_iter().enumerate() {
-            dst[i] = match opt {
-                Some(c) => to_rcomplex(c),
-                None => na_rcomplex(),
-            };
-        }
-
-        sexp
+    for (i, opt) in this.into_iter().enumerate() {
+        dst[i] = match opt {
+            Some(c) => to_rcomplex(c),
+            None => na_rcomplex(),
+        };
     }
-}
+
+    sexp
+});
 // endregion
 
 // region: RComplexOps adapter trait

@@ -15,7 +15,7 @@ pub use ordered_float::OrderedFloat;
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
-use crate::into_r::IntoR;
+use crate::into_r::into_r_infallible;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Coerce/TryCoerce impls for OrderedFloat
@@ -206,121 +206,34 @@ impl TryFromSexp for Vec<Option<OrderedFloat<f32>>> {
     }
 }
 
-impl IntoR for OrderedFloat<f64> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.0.into_sexp()
-    }
-}
-
-impl IntoR for OrderedFloat<f32> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        (self.0 as f64).into_sexp()
-    }
-}
-
-impl IntoR for Option<OrderedFloat<f64>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.map(|v| v.0).into_sexp()
-    }
-}
-
-impl IntoR for Option<OrderedFloat<f32>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.map(|v| v.0 as f64).into_sexp()
-    }
-}
-
-impl IntoR for Vec<OrderedFloat<f64>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|v| v.0)
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
-
-impl IntoR for Vec<OrderedFloat<f32>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|v| v.0 as f64)
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
-
-impl IntoR for Vec<Option<OrderedFloat<f64>>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|v| v.map(|val| val.0))
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
-
-impl IntoR for Vec<Option<OrderedFloat<f32>>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|v| v.map(|val| val.0 as f64))
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
+into_r_infallible!(OrderedFloat<f64>, |this| this.0.into_sexp());
+into_r_infallible!(OrderedFloat<f32>, |this| (this.0 as f64).into_sexp());
+into_r_infallible!(Option<OrderedFloat<f64>>, |this| this
+    .map(|v| v.0)
+    .into_sexp());
+into_r_infallible!(Option<OrderedFloat<f32>>, |this| this
+    .map(|v| v.0 as f64)
+    .into_sexp());
+into_r_infallible!(Vec<OrderedFloat<f64>>, |this| this
+    .into_iter()
+    .map(|v| v.0)
+    .collect::<Vec<_>>()
+    .into_sexp());
+into_r_infallible!(Vec<OrderedFloat<f32>>, |this| this
+    .into_iter()
+    .map(|v| v.0 as f64)
+    .collect::<Vec<_>>()
+    .into_sexp());
+into_r_infallible!(Vec<Option<OrderedFloat<f64>>>, |this| this
+    .into_iter()
+    .map(|v| v.map(|val| val.0))
+    .collect::<Vec<_>>()
+    .into_sexp());
+into_r_infallible!(Vec<Option<OrderedFloat<f32>>>, |this| this
+    .into_iter()
+    .map(|v| v.map(|val| val.0 as f64))
+    .collect::<Vec<_>>()
+    .into_sexp());
 // endregion
 
 // region: ROrderedFloatOps adapter trait

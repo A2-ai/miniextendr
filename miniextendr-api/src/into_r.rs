@@ -228,6 +228,50 @@ impl_scalar_into_r!(f64, scalar_real, scalar_real_unchecked);
 impl_scalar_into_r!(u8, scalar_raw, scalar_raw_unchecked);
 impl_scalar_into_r!(crate::Rcomplex, scalar_complex, scalar_complex_unchecked);
 
+/// Generate an infallible [`IntoR`] impl whose only real method is `into_sexp`.
+///
+/// Collapses the four-line boilerplate shell shared by every `Infallible`
+/// `IntoR` impl in the optional-type modules: `try_into_sexp` delegates to
+/// `into_sexp`, `try_into_sexp_unchecked` delegates to `try_into_sexp`, and
+/// `into_sexp_unchecked` is left as the trait default. Only the `into_sexp`
+/// body is supplied, as a closure-style `|recv| expr` binding the receiver
+/// (a macro cannot reuse a `self` that arrives through a fragment, so the
+/// caller names it). The generated methods are byte-identical to the
+/// hand-written shell, so this is purely a dedup.
+///
+/// ```ignore
+/// into_r_infallible!(Uuid, |this| this.to_string().into_sexp());
+/// into_r_infallible!(Vec<Uuid>,
+///     |this| this.into_iter().map(|u| u.to_string()).collect::<Vec<_>>().into_sexp());
+/// ```
+// Every consumer lives in a feature-gated `optionals` module, so with no
+// optional features enabled the macro and its re-export are genuinely unused.
+#[allow(unused_macros)]
+macro_rules! into_r_infallible {
+    ($ty:ty, |$recv:ident| $body:expr) => {
+        impl $crate::into_r::IntoR for $ty {
+            type Error = ::std::convert::Infallible;
+            #[inline]
+            fn try_into_sexp(self) -> ::core::result::Result<$crate::SEXP, Self::Error> {
+                ::core::result::Result::Ok(self.into_sexp())
+            }
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(
+                self,
+            ) -> ::core::result::Result<$crate::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+            #[inline]
+            fn into_sexp(self) -> $crate::SEXP {
+                let $recv = self;
+                $body
+            }
+        }
+    };
+}
+#[allow(unused_imports)]
+pub(crate) use into_r_infallible;
+
 impl IntoR for Option<crate::Rcomplex> {
     type Error = std::convert::Infallible;
     #[inline]
