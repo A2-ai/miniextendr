@@ -469,14 +469,34 @@ right tool to stamp out free-standing impls from a compact spec is a
 
 **Where a proc-macro *derive* genuinely wins (future, out of scope):** an
 end-user who defines their *own* newtype (`struct Money(Decimal)`,
-`struct UserId(Uuid)`) in their package owns that type and could write
-`#[derive(RVia)] #[rvia(base = Decimal)] struct Money(Decimal);` to get all
-six conversions for free. That's a real ergonomics feature for downstream
-packages, it slots into the existing `miniextendr-macros` derive ecosystem
-(`#[derive(ExternalPtr)]`, `#[derive(DataFrameRow)]`, …), and the declarative
-`impl_via_base!` from this plan becomes its codegen backend. **File as its own
-enhancement issue** — it is additive scope, not dedup, and shipping it does not
-require the dedup to land first (or vice-versa).
+`struct UserId(Uuid)`) owns that type and could derive the conversions by
+**forwarding to the inner field**, getting all six impls for free. This is a
+real ergonomics feature for downstream packages and slots into the existing
+`miniextendr-macros` derive ecosystem (`#[derive(ExternalPtr)]`,
+`#[derive(DataFrameRow)]`, …); the declarative `impl_via_base!` from this plan
+becomes its codegen backend.
+
+Prior art (investigated 2026-06-03), which also settles the naming:
+
+- **`derive_more`'s `#[from(forward)]`** is exactly this pattern. On a newtype
+  it emits a *generic* forwarding impl — `impl<__FromT> From<__FromT> for
+  Wrapper where Inner: From<__FromT>` (`derive_more/impl/src/from.rs:210`) — and
+  its `#[derive(FromStr)]` forwards via `Self(Inner::from_str(s)?)`. So the
+  established term is **`forward`** (e.g. `#[miniextendr(from = forward)]` or
+  `#[rconvert(forward)]`), not the invented "RVia". Note `derive_more` can't
+  generate it *for* us — it only forwards std traits (`From`/`FromStr`), not the
+  SEXP traits — so this is a new derive in `miniextendr-macros` modelled on it,
+  not a dependency.
+- **`derive-where`** is *orthogonal*: it solves the "perfect derive" /
+  custom-generic-bounds problem (`#[derive_where(Clone; T: Bound)]`), with no
+  forwarding. It is only relevant if this derive must support **generic** wrapper
+  types (`struct Tagged<T>(T)`), where its `; <bounds>` syntax is the precedent
+  for emitting a minimal where-clause. Not needed for the non-generic optionals.
+
+Neither touches the orphan-rule wall (both are derives on types you own), so the
+dedup work itself stays `macro_rules!`. **File the derive as its own enhancement
+issue** — additive scope, not dedup; shipping it doesn't require the dedup first
+(or vice-versa).
 
 ## Macros to introduce (the toolkit)
 
