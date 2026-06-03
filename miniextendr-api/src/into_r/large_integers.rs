@@ -394,6 +394,98 @@ impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::Externa
     }
 }
 
+/// Build an R list (VECSXP) of external pointers from `Vec<ExternalPtr<T>>`.
+///
+/// Each element `EXTPTRSXP` is rooted in the process-wide
+/// [`ProtectPool`](crate::protect_pool) for the lifetime of its `ExternalPtr`
+/// handle (#836/#841), so holding them in a `Vec` is GC-safe and laying them
+/// into a freshly allocated list needs no extra protection — see
+/// [`vec_externalptr_to_list`].
+impl<T: crate::externalptr::TypedExternal> IntoR for Vec<crate::externalptr::ExternalPtr<T>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::SEXP {
+        vec_externalptr_to_list(self)
+    }
+}
+
+/// Build an R list (VECSXP) from `Vec<Option<ExternalPtr<T>>>`, with `None`
+/// mapping to `NULL` and `Some(ptr)` to the external pointer (issue #827).
+impl<T: crate::externalptr::TypedExternal> IntoR
+    for Vec<Option<crate::externalptr::ExternalPtr<T>>>
+{
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::SEXP {
+        vec_option_externalptr_to_list(self)
+    }
+}
+
+/// Allocate a VECSXP and populate it with the external pointers in `items`.
+///
+/// Each element is rooted in the process-wide [`ProtectPool`] for as long as its
+/// `ExternalPtr` handle lives, and `items` owns those handles across the
+/// `Rf_allocVector` below — so allocating the list cannot collect them and no
+/// pre-protection is required. Storing into the freshly allocated list never
+/// allocates, so the list itself stays live until it becomes the `.Call`
+/// result, which R protects. (Before #841 the handles were unprotected, which
+/// forced a pre-protect of every element here.)
+///
+/// This receives *already-built* handles, so it can't use the faster
+/// [`ExternalPtr::collect_into_r_list`] — that builds fresh `EXTPTRSXP`s from
+/// owned `T` values and is the path to prefer when you start from a `Vec<T>`
+/// rather than a `Vec<ExternalPtr<T>>`.
+///
+/// [`ProtectPool`]: crate::protect_pool::ProtectPool
+/// [`ExternalPtr::collect_into_r_list`]: crate::externalptr::ExternalPtr::collect_into_r_list
+fn vec_externalptr_to_list<T: crate::externalptr::TypedExternal>(
+    items: Vec<crate::externalptr::ExternalPtr<T>>,
+) -> crate::SEXP {
+    use crate::SexpExt;
+    // SAFETY: return-value conversion runs on R's main thread (after
+    // `run_on_worker` hands the `Vec` back); every element is pool-rooted and
+    // kept alive by `items` across the single allocation.
+    unsafe {
+        let n = items.len();
+        let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
+        for (i, item) in items.iter().enumerate() {
+            list.set_vector_elt(i as crate::R_xlen_t, item.as_sexp());
+        }
+        list
+    }
+}
+
+/// As [`vec_externalptr_to_list`], but `None` elements become `NULL`.
+fn vec_option_externalptr_to_list<T: crate::externalptr::TypedExternal>(
+    items: Vec<Option<crate::externalptr::ExternalPtr<T>>>,
+) -> crate::SEXP {
+    use crate::SexpExt;
+    // SAFETY: see `vec_externalptr_to_list` — each `Some` handle is pool-rooted
+    // and kept alive by `items` across the allocation; `None` becomes `NULL`.
+    unsafe {
+        let n = items.len();
+        let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
+        for (i, item) in items.iter().enumerate() {
+            let elt = match item {
+                Some(ext) => ext.as_sexp(),
+                None => crate::SEXP::nil(),
+            };
+            list.set_vector_elt(i as crate::R_xlen_t, elt);
+        }
+        list
+    }
+}
+
 /// Blanket impl: Types marked with `IntoExternalPtr` get automatic `IntoR`.
 ///
 /// This wraps the value in `ExternalPtr<T>` automatically, so you can return

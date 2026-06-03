@@ -326,6 +326,33 @@ pub trait TryFromSexp: Sized {
     }
 }
 
+// region: Box<[T]> delegates to Vec<T>
+//
+// A boxed slice converts exactly like the owned vector — read the vector, then
+// `into_boxed_slice()` (an O(1), allocation-free shrink). This single blanket
+// replaces every hand-rolled / macro-generated `Box<[X]>` impl: any element
+// type whose `Vec<X>` is convertible gets `Box<[X]>` for free, inheriting the
+// vector impl's error type and NA semantics by construction.
+
+impl<T> TryFromSexp for Box<[T]>
+where
+    Vec<T>: TryFromSexp,
+{
+    type Error = <Vec<T> as TryFromSexp>::Error;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        <Vec<T> as TryFromSexp>::try_from_sexp(sexp).map(|v| v.into_boxed_slice())
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { <Vec<T> as TryFromSexp>::try_from_sexp_unchecked(sexp) }
+            .map(|v| v.into_boxed_slice())
+    }
+}
+// endregion
+
 macro_rules! impl_try_from_sexp_scalar_native {
     ($t:ty, $sexptype:ident) => {
         impl TryFromSexp for $t {
@@ -1120,15 +1147,6 @@ impl TryFromSexp for Vec<bool> {
         Self::try_from_sexp(sexp)
     }
 }
-
-impl TryFromSexp for Box<[bool]> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_boxed_slice())
-    }
-}
 // endregion
 
 // region: Direct HashSet / BTreeSet coercion conversions
@@ -1287,6 +1305,106 @@ impl<T: TypedExternal + Send> TryFromSexp for Option<ExternalPtr<T>> {
         }
         let ptr: ExternalPtr<T> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         Ok(Some(ptr))
+    }
+}
+
+/// Convert an R list (VECSXP) of external pointers to `Vec<ExternalPtr<T>>`.
+///
+/// Each element must be an `EXTPTRSXP` carrying a `T`; conversion delegates to
+/// [`ExternalPtr::<T>::try_from_sexp`] per element. This lets `#[miniextendr]`
+/// functions accept an R `list()` of opaque handles (issue #827). The blanket
+/// `impl_vec_try_from_sexp_list!` macro can't be used downstream for this — the
+/// orphan rule rejects `impl TryFromSexp for Vec<ExternalPtr<T>>` in user crates
+/// because both `Vec` and `TryFromSexp` are foreign there — so the impl lives
+/// here, keyed on `ExternalPtr<T>` to avoid colliding with the atomic-vector impls.
+impl<T: TypedExternal + Send> TryFromSexp for Vec<ExternalPtr<T>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::VECSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::VECSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+        for i in 0..len {
+            let elem = sexp.vector_elt(i as crate::R_xlen_t);
+            result.push(<ExternalPtr<T> as TryFromSexp>::try_from_sexp(elem)?);
+        }
+        Ok(result)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::VECSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::VECSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = unsafe { sexp.len_unchecked() };
+        let mut result = Vec::with_capacity(len);
+        for i in 0..len {
+            let elem = unsafe { sexp.vector_elt_unchecked(i as crate::R_xlen_t) };
+            result.push(unsafe { <ExternalPtr<T> as TryFromSexp>::try_from_sexp_unchecked(elem)? });
+        }
+        Ok(result)
+    }
+}
+
+/// Convert an R list (VECSXP) of external pointers / `NULL`s to
+/// `Vec<Option<ExternalPtr<T>>>`. `NULL` elements map to `None`; every other
+/// element must be an `EXTPTRSXP` carrying a `T` (issue #827).
+impl<T: TypedExternal + Send> TryFromSexp for Vec<Option<ExternalPtr<T>>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::VECSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::VECSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+        for i in 0..len {
+            let elem = sexp.vector_elt(i as crate::R_xlen_t);
+            result.push(<Option<ExternalPtr<T>> as TryFromSexp>::try_from_sexp(
+                elem,
+            )?);
+        }
+        Ok(result)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::VECSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::VECSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = unsafe { sexp.len_unchecked() };
+        let mut result = Vec::with_capacity(len);
+        for i in 0..len {
+            let elem = unsafe { sexp.vector_elt_unchecked(i as crate::R_xlen_t) };
+            result.push(unsafe {
+                <Option<ExternalPtr<T>> as TryFromSexp>::try_from_sexp_unchecked(elem)?
+            });
+        }
+        Ok(result)
     }
 }
 // endregion

@@ -406,26 +406,33 @@ where
     }
 }
 
+// A boxed slice converts exactly like the owned vector. `into_vec()` is an
+// O(1), allocation-free widen, so this one blanket subsumes every per-element
+// `Box<[X]>` impl (native, String, Cow, bool, …): any `Vec<X>: IntoR` element
+// gets `Box<[X]>` for free, inheriting the vector impl's error type and path.
+// Coherence-equivalent to the prior `impl<T: RNativeType> IntoR for Box<[T]>`:
+// both occupy the whole `Box<[T]>` slot (where-clauses don't narrow overlap),
+// so concrete downstream `impl IntoR for Box<[Local]>` stays just as available.
 impl<T> IntoR for Box<[T]>
 where
-    T: crate::RNativeType,
+    Vec<T>: IntoR,
 {
-    type Error = std::convert::Infallible;
+    type Error = <Vec<T> as IntoR>::Error;
     #[inline]
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(unsafe { vec_to_sexp(&self) })
+        self.into_vec().try_into_sexp()
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(unsafe { vec_to_sexp_unchecked(&self) })
+        unsafe { self.into_vec().try_into_sexp_unchecked() }
     }
     #[inline]
     fn into_sexp(self) -> crate::SEXP {
-        unsafe { vec_to_sexp(&self) }
+        self.into_vec().into_sexp()
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe { vec_to_sexp_unchecked(&self) }
+        unsafe { self.into_vec().into_sexp_unchecked() }
     }
 }
 
@@ -1302,23 +1309,6 @@ impl IntoR for &[String] {
     }
 }
 
-/// Convert `Box<[String]>` to R character vector (STRSXP).
-impl IntoR for Box<[String]> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        str_iter_to_strsxp(self.iter().map(|s| s.as_str()))
-    }
-    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_str())) }
-    }
-}
-
 /// Convert &[&str] to R character vector (STRSXP).
 impl IntoR for &[&str] {
     type Error = std::convert::Infallible;
@@ -1339,23 +1329,6 @@ impl IntoR for &[&str] {
 
 /// Convert `Vec<Cow<'_, str>>` to R character vector (STRSXP).
 impl IntoR for Vec<std::borrow::Cow<'_, str>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        str_iter_to_strsxp(self.iter().map(|s| s.as_ref()))
-    }
-    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_ref())) }
-    }
-}
-
-/// Convert `Box<[Cow<'_, str>]>` to R character vector (STRSXP).
-impl IntoR for Box<[std::borrow::Cow<'_, str>]> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
@@ -1838,25 +1811,6 @@ impl IntoR for Vec<bool> {
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let n = self.len();
         unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(i32::from)) }
-    }
-}
-
-/// Convert `Box<[bool]>` to R logical vector.
-impl IntoR for Box<[bool]> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        let n = self.len();
-        logical_iter_to_lglsxp(n, self.iter().map(|&v| i32::from(v)))
-    }
-    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        let n = self.len();
-        unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| i32::from(v))) }
     }
 }
 
