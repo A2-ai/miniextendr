@@ -396,11 +396,11 @@ impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::Externa
 
 /// Build an R list (VECSXP) of external pointers from `Vec<ExternalPtr<T>>`.
 ///
-/// GC discipline matters here and differs from the generic `Vec<T>` list
-/// helpers: the element `EXTPTRSXP`s already exist (created before
-/// `into_sexp`) and are **unprotected**, so allocating the VECSXP could
-/// collect them. We root every element first, then allocate the list, then
-/// fill — see [`vec_externalptr_to_list`].
+/// Each element `EXTPTRSXP` is rooted in the process-wide
+/// [`ProtectPool`](crate::protect_pool) for the lifetime of its `ExternalPtr`
+/// handle (#836/#841), so holding them in a `Vec` is GC-safe and laying them
+/// into a freshly allocated list needs no extra protection — see
+/// [`vec_externalptr_to_list`].
 impl<T: crate::externalptr::TypedExternal> IntoR for Vec<crate::externalptr::ExternalPtr<T>> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
@@ -433,27 +433,31 @@ impl<T: crate::externalptr::TypedExternal> IntoR
 
 /// Allocate a VECSXP and populate it with the external pointers in `items`.
 ///
-/// Unlike the atomic-vector list helpers — where each element SEXP is created
-/// *inside* the fill loop and stored straight into the already-protected list —
-/// the `EXTPTRSXP`s here were created earlier (in the function body that
-/// produced the `Vec`) and are not on the protect stack. `Rf_allocVector` can
-/// trigger GC, so we protect every element *before* allocating the list, fill,
-/// then let the [`ProtectScope`] release all `n + 1` protections at once. The
-/// returned list is the `.Call` result, which R protects.
+/// Each element is rooted in the process-wide [`ProtectPool`] for as long as its
+/// `ExternalPtr` handle lives, and `items` owns those handles across the
+/// `Rf_allocVector` below — so allocating the list cannot collect them and no
+/// pre-protection is required. Storing into the freshly allocated list never
+/// allocates, so the list itself stays live until it becomes the `.Call`
+/// result, which R protects. (Before #841 the handles were unprotected, which
+/// forced a pre-protect of every element here.)
+///
+/// This receives *already-built* handles, so it can't use the faster
+/// [`ExternalPtr::collect_into_r_list`] — that builds fresh `EXTPTRSXP`s from
+/// owned `T` values and is the path to prefer when you start from a `Vec<T>`
+/// rather than a `Vec<ExternalPtr<T>>`.
+///
+/// [`ProtectPool`]: crate::protect_pool::ProtectPool
+/// [`ExternalPtr::collect_into_r_list`]: crate::externalptr::ExternalPtr::collect_into_r_list
 fn vec_externalptr_to_list<T: crate::externalptr::TypedExternal>(
     items: Vec<crate::externalptr::ExternalPtr<T>>,
 ) -> crate::SEXP {
     use crate::SexpExt;
+    // SAFETY: return-value conversion runs on R's main thread (after
+    // `run_on_worker` hands the `Vec` back); every element is pool-rooted and
+    // kept alive by `items` across the single allocation.
     unsafe {
-        let scope = crate::gc_protect::ProtectScope::new();
         let n = items.len();
-        for item in &items {
-            scope.protect_raw(item.as_sexp());
-        }
-        let list = scope.protect_raw(crate::sys::Rf_allocVector(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
+        let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
         for (i, item) in items.iter().enumerate() {
             list.set_vector_elt(i as crate::R_xlen_t, item.as_sexp());
         }
@@ -466,16 +470,11 @@ fn vec_option_externalptr_to_list<T: crate::externalptr::TypedExternal>(
     items: Vec<Option<crate::externalptr::ExternalPtr<T>>>,
 ) -> crate::SEXP {
     use crate::SexpExt;
+    // SAFETY: see `vec_externalptr_to_list` — each `Some` handle is pool-rooted
+    // and kept alive by `items` across the allocation; `None` becomes `NULL`.
     unsafe {
-        let scope = crate::gc_protect::ProtectScope::new();
         let n = items.len();
-        for item in items.iter().flatten() {
-            scope.protect_raw(item.as_sexp());
-        }
-        let list = scope.protect_raw(crate::sys::Rf_allocVector(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
+        let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
         for (i, item) in items.iter().enumerate() {
             let elt = match item {
                 Some(ext) => ext.as_sexp(),

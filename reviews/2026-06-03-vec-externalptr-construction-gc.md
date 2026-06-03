@@ -35,22 +35,35 @@ subsequent `ExternalPtr::new` allocates, and under GC pressure that allocation
 collects the earlier handles (running their finalizers, freeing the boxes).
 
 The conversion code is *not* at fault: the argument side wraps already-rooted
-R-list elements, and the return-side `IntoR` (`vec_externalptr_to_list`) re-roots
-every handle under a `ProtectScope` before allocating the VECSXP. The hazard is
-purely in constructing the `Vec` before it reaches `IntoR`.
+R-list elements, and the hazard is purely in constructing the `Vec` before it
+reaches `IntoR`.
 
-## Fix (this PR) + follow-up
+## Fix
 
-- This PR: build the fixture `Vec`s under a `ProtectScope` that roots each
-  handle as it is created (`vec_externalptr_tests.rs::build_rooted`). The scope
-  covers the inter-element allocation window; `IntoR` covers the list
-  allocation; the hand-off gap between them is allocation-free. gctorture sweep
-  then passes 0 failures.
-- Follow-up #836: make `ExternalPtr` self-rooting for its Rust lifetime (root
-  owned handles on create, release on drop; do *not* root borrowed `wrap_sexp`
-  handles; prefer `ProtectPool` over O(n) `R_PreserveObject`). That lets the
-  natural `.map(ExternalPtr::new).collect()` be safe without the `build_rooted`
-  dance.
+Two iterations, both now landed:
+
+1. **Initial workaround (superseded):** build the fixture `Vec`s under a
+   `ProtectScope` that roots each handle as it is created
+   (`vec_externalptr_tests.rs::build_rooted`), and re-root every handle inside
+   the return-side `IntoR` (`vec_externalptr_to_list`) before allocating the
+   VECSXP. gctorture passed, but this only papered over the construction window
+   in *our* fixtures — a user's own `.map(ExternalPtr::new).collect()` would
+   still corrupt.
+
+2. **Root fix #836 (PR #841, merged):** owned `ExternalPtr` handles self-root in
+   the process-wide `ProtectPool` for their whole Rust lifetime (root on
+   create, release on drop; borrowed `wrap_sexp` handles take no root; the pool
+   beats O(n) `R_PreserveObject` because a `Vec<ExternalPtr>` releases
+   front-to-back). The natural `.map(ExternalPtr::new).collect()` is now GC-safe
+   for everyone.
+
+   With #841 merged, **this follow-up removed both workarounds**: the
+   `ProtectScope` re-protect in `vec_externalptr_to_list` /
+   `vec_option_externalptr_to_list` (the handed-in elements are already
+   pool-rooted, and the list fill is allocation-free) and the `build_rooted`
+   dance in the fixtures (which now build `Vec`s the natural way, so
+   `gc_stress_vec_externalptr` is a genuine regression witness for #836 rather
+   than a self-protected straw man).
 
 ## Lesson
 
