@@ -146,6 +146,42 @@ impl_identity!(u8);
 impl_identity!(Rcomplex);
 // endregion
 
+// region: Scalar coercion macros (shared by the widening / narrowing blocks below)
+
+/// Implement infallible widening `Coerce<$to>` for each `$from => $to` pair via `Into`.
+///
+/// For widenings that have no `From` impl (platform-dependent `isize`/`usize`,
+/// lossy int→float), write the `impl Coerce` by hand with an `as` cast instead.
+macro_rules! impl_widen {
+    ($($from:ty => $to:ty),+ $(,)?) => {
+        $(
+            impl Coerce<$to> for $from {
+                #[inline(always)]
+                fn coerce(self) -> $to {
+                    self.into()
+                }
+            }
+        )+
+    };
+}
+
+/// Implement fallible narrowing `TryCoerce<$target>` for each `$from` via
+/// `try_into` (overflow → `CoerceError::Overflow`).
+macro_rules! impl_try_narrow {
+    ($target:ty; $($from:ty),+ $(,)?) => {
+        $(
+            impl TryCoerce<$target> for $from {
+                type Error = CoerceError;
+                #[inline]
+                fn try_coerce(self) -> Result<$target, CoerceError> {
+                    self.try_into().map_err(|_| CoerceError::Overflow)
+                }
+            }
+        )+
+    };
+}
+// endregion
+
 // region: Widening conversions (blanket impls using marker traits)
 
 /// Blanket impl: Any type that widens to i32 can be coerced to i32.
@@ -173,40 +209,7 @@ impl<T: crate::markers::WidensToF64> Coerce<f64> for T {
 
 // region: Widening from u8 to larger integer/float types
 
-impl Coerce<i64> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> i64 {
-        self.into()
-    }
-}
-
-impl Coerce<isize> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> isize {
-        self.into()
-    }
-}
-
-impl Coerce<u64> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> u64 {
-        self.into()
-    }
-}
-
-impl Coerce<usize> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> usize {
-        self.into()
-    }
-}
-
-impl Coerce<f32> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> f32 {
-        self.into()
-    }
-}
+impl_widen!(u8 => i64, u8 => isize, u8 => u64, u8 => usize, u8 => f32);
 
 impl Coerce<f32> for i32 {
     #[inline(always)]
@@ -530,158 +533,32 @@ impl TryCoerce<bool> for crate::RLogical {
 
 // region: Narrowing to i32 (fallible)
 
-macro_rules! impl_try_i32 {
-    ($t:ty) => {
-        impl TryCoerce<i32> for $t {
-            type Error = CoerceError;
-            #[inline]
-            fn try_coerce(self) -> Result<i32, CoerceError> {
-                self.try_into().map_err(|_| CoerceError::Overflow)
-            }
-        }
-    };
-}
-
-impl_try_i32!(u32);
-impl_try_i32!(u64);
-impl_try_i32!(usize);
-impl_try_i32!(i64);
-impl_try_i32!(isize);
+impl_try_narrow!(i32; u32, u64, usize, i64, isize);
 // endregion
 
 // region: Narrowing to u8 (fallible)
 
-macro_rules! impl_try_u8 {
-    ($t:ty) => {
-        impl TryCoerce<u8> for $t {
-            type Error = CoerceError;
-            #[inline]
-            fn try_coerce(self) -> Result<u8, CoerceError> {
-                self.try_into().map_err(|_| CoerceError::Overflow)
-            }
-        }
-    };
-}
-
-impl_try_u8!(i8);
-impl_try_u8!(i16);
-impl_try_u8!(i32);
-impl_try_u8!(i64);
-impl_try_u8!(u16);
-impl_try_u8!(u32);
-impl_try_u8!(u64);
-impl_try_u8!(usize);
-impl_try_u8!(isize);
+impl_try_narrow!(u8; i8, i16, i32, i64, u16, u32, u64, usize, isize);
 // endregion
 
 // region: Widening to u16/i16/u32 (infallible)
 
-impl Coerce<u16> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> u16 {
-        self.into()
-    }
-}
-
-impl Coerce<i16> for i8 {
-    #[inline(always)]
-    fn coerce(self) -> i16 {
-        self.into()
-    }
-}
-
-impl Coerce<i16> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> i16 {
-        self.into()
-    }
-}
-
-impl Coerce<u32> for u8 {
-    #[inline(always)]
-    fn coerce(self) -> u32 {
-        self.into()
-    }
-}
-
-impl Coerce<u32> for u16 {
-    #[inline(always)]
-    fn coerce(self) -> u32 {
-        self.into()
-    }
-}
+impl_widen!(u8 => u16, i8 => i16, u8 => i16, u8 => u32, u16 => u32);
 // endregion
 
 // region: Narrowing to u16 (fallible)
 
-macro_rules! impl_try_u16 {
-    ($t:ty) => {
-        impl TryCoerce<u16> for $t {
-            type Error = CoerceError;
-            #[inline]
-            fn try_coerce(self) -> Result<u16, CoerceError> {
-                self.try_into().map_err(|_| CoerceError::Overflow)
-            }
-        }
-    };
-}
-
-impl_try_u16!(i8);
-impl_try_u16!(i16);
-impl_try_u16!(i32);
-impl_try_u16!(i64);
-impl_try_u16!(u32);
-impl_try_u16!(u64);
-impl_try_u16!(usize);
-impl_try_u16!(isize);
+impl_try_narrow!(u16; i8, i16, i32, i64, u32, u64, usize, isize);
 // endregion
 
 // region: Narrowing to i16 (fallible)
 
-macro_rules! impl_try_i16 {
-    ($t:ty) => {
-        impl TryCoerce<i16> for $t {
-            type Error = CoerceError;
-            #[inline]
-            fn try_coerce(self) -> Result<i16, CoerceError> {
-                self.try_into().map_err(|_| CoerceError::Overflow)
-            }
-        }
-    };
-}
-
-impl_try_i16!(i32);
-impl_try_i16!(i64);
-impl_try_i16!(u16);
-impl_try_i16!(u32);
-impl_try_i16!(u64);
-impl_try_i16!(usize);
-impl_try_i16!(isize);
+impl_try_narrow!(i16; i32, i64, u16, u32, u64, usize, isize);
 // endregion
 
 // region: Narrowing to i8 (fallible)
 
-macro_rules! impl_try_i8 {
-    ($t:ty) => {
-        impl TryCoerce<i8> for $t {
-            type Error = CoerceError;
-            #[inline]
-            fn try_coerce(self) -> Result<i8, CoerceError> {
-                self.try_into().map_err(|_| CoerceError::Overflow)
-            }
-        }
-    };
-}
-
-impl_try_i8!(i16);
-impl_try_i8!(i32);
-impl_try_i8!(i64);
-impl_try_i8!(u8);
-impl_try_i8!(u16);
-impl_try_i8!(u32);
-impl_try_i8!(u64);
-impl_try_i8!(usize);
-impl_try_i8!(isize);
+impl_try_narrow!(i8; i16, i32, i64, u8, u16, u32, u64, usize, isize);
 // endregion
 
 // region: Float to smaller integers (fallible)
