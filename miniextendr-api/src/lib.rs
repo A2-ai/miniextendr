@@ -244,7 +244,7 @@ pub use miniextendr_macros::Vctrs;
 pub use miniextendr_macros::{
     Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
     AltrepString, DataFrameRow, IntoList, MatchArg, PreferDataFrame, PreferExternalPtr, PreferList,
-    PreferRNativeType, RFactor, TryFromList,
+    PreferRNativeType, RConvert, RFactor, TryFromList,
 };
 
 pub mod altrep;

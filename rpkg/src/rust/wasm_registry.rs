@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      05b9bd1ccce52d8b
+// content-hash:      a5db6f6c067c631c
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1087,6 +1087,7 @@ unsafe extern "C-unwind" {
     pub fn C_uuid_version(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_uuid_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_uuid_roundtrip_vec(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_rconvert_docid_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrow_u8_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrow_f64_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrow_f64_sum(_: SEXP, _: SEXP) -> SEXP;
@@ -7421,6 +7422,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_uuid_roundtrip_vec".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_uuid_roundtrip_vec) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_rconvert_docid_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_rconvert_docid_roundtrip) }),
         numArgs: 2,
     },
     R_CallMethodDef {
