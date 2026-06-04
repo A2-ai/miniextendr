@@ -1,0 +1,5 @@
+error: this derive only works on single-field newtype structs
+ --> tests/ui/derive_newtype_on_enum.rs:6:6
+  |
+6 | enum Color {
+  |      ^^^^^

@@ -23,6 +23,24 @@ error[E0599]: no variant or associated item named `to_dataframe` found for enum 
    |
    = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
 
+error[E0277]: the trait bound `Status: miniextendr_api::dataframe::DataFrameRowConvert` is not satisfied
+  --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:15:32
+   |
+15 |     Tracked { id: i32, status: Status },
+   |                                ^^^^^^ unsatisfied trait bound
+   |
+help: the trait `miniextendr_api::dataframe::DataFrameRowConvert` is not implemented for `Status`
+  --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:7:1
+   |
+ 7 | enum Status {
+   | ^^^^^^^^^^^
+help: the trait `miniextendr_api::dataframe::DataFrameRowConvert` is implemented for `Outer`
+  --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:12:10
+   |
+12 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
 error[E0277]: the trait `DataFrameRow` is not implemented for `Status`
   --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:15:32
    |

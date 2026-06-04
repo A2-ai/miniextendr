@@ -1,5 +1,0 @@
-error: #[derive(RConvert)] requires a struct with exactly one field
- --> tests/ui/derive_rconvert_multi_field.rs:6:8
-  |
-6 | struct Pair(f64, f64);
-  |        ^^^^

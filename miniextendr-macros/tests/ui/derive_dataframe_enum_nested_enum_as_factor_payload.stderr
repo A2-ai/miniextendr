@@ -24,3 +24,21 @@ help: the trait `IntoR` is implemented for `FactorOptionVec<T>`
    | impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Status: UnitEnumFactor` is not satisfied
+  --> tests/ui/derive_dataframe_enum_nested_enum_as_factor_payload.rs:18:17
+   |
+18 |         status: Status,
+   |                 ^^^^^^ unsatisfied trait bound
+   |
+help: the trait `RFactor` is not implemented for `Status`
+  --> tests/ui/derive_dataframe_enum_nested_enum_as_factor_payload.rs:7:1
+   |
+ 7 | enum Status {
+   | ^^^^^^^^^^^
+   = note: required for `Status` to implement `UnitEnumFactor`
+note: required by a bound in `unit_factor_option_vec_from_sexp`
+  --> $WORKSPACE/miniextendr-api/src/factor.rs
+   |
+   | pub fn unit_factor_option_vec_from_sexp<T: UnitEnumFactor>(
+   |                                            ^^^^^^^^^^^^^^ required by this bound in `unit_factor_option_vec_from_sexp`

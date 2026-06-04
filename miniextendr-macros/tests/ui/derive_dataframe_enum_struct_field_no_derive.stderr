@@ -56,6 +56,48 @@ error[E0599]: no function or associated item named `to_dataframe` found for stru
    |
    = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
 
+error[E0277]: the trait bound `Point: miniextendr_api::dataframe::DataFrameRowConvert` is not satisfied
+  --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:14:32
+   |
+14 |     Located { id: i32, origin: Point },
+   |                                ^^^^^ unsatisfied trait bound
+   |
+help: the trait `miniextendr_api::dataframe::DataFrameRowConvert` is not implemented for `Point`
+  --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:6:1
+   |
+ 6 | struct Point {
+   | ^^^^^^^^^^^^
+help: the trait `miniextendr_api::dataframe::DataFrameRowConvert` is implemented for `Event`
+  --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:11:10
+   |
+11 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the method `clone` exists for enum `Option<Point>`, but its trait bounds were not satisfied
+  --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:11:10
+   |
+ 6 | struct Point {
+   | ------------ doesn't satisfy `Point: Clone`
+...
+11 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ method cannot be called on `Option<Point>` due to unsatisfied trait bounds
+   |
+  ::: $RUST/core/src/option.rs
+   |
+   | pub enum Option<T> {
+   | ------------------ doesn't satisfy `Option<Point>: Clone`
+   |
+   = note: the following trait bounds were not satisfied:
+           `Point: Clone`
+           which is required by `Option<Point>: Clone`
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `Point` with `#[derive(Clone)]`
+   |
+ 6 + #[derive(Clone)]
+ 7 | struct Point {
+   |
+
 error[E0277]: the trait `DataFrameRow` is not implemented for `Point`
   --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:14:32
    |

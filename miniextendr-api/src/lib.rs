@@ -240,11 +240,14 @@ pub use miniextendr_macros::typed_list;
 pub use miniextendr_macros::Vctrs;
 // Note: MatchArg derive macro is re-exported - it shares the name with the MatchArg trait
 // but they're in different namespaces (derive macros vs types/traits), same as RFactor.
+// The same applies to the `IntoR` and `TryFromSexp` derive macros, which share names with
+// the `IntoR` / `TryFromSexp` traits — `#[derive(IntoR)]` (macro namespace) and the trait
+// (type namespace) coexist, exactly like serde's `Serialize`.
 #[doc(inline)]
 pub use miniextendr_macros::{
     Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
-    AltrepString, DataFrameRow, IntoList, MatchArg, PreferDataFrame, PreferExternalPtr, PreferList,
-    PreferRNativeType, RConvert, RFactor, TryFromList,
+    AltrepString, DataFrameRow, IntoList, IntoR, MatchArg, PreferDataFrame, PreferExternalPtr,
+    PreferList, PreferRNativeType, RFactor, TryFromList, TryFromSexp,
 };
 
 pub mod altrep;
@@ -423,7 +426,11 @@ pub mod from_r;
 pub mod into_r;
 pub mod into_r_error;
 pub use into_r::{Altrep, IntoR, IntoRAltrep};
+/// Container conversions for forwarding newtypes (`#[derive(TryFromSexp)]` /
+/// `#[derive(IntoR)]`). See the module docs and issue #844.
+pub mod newtype;
 pub use into_r_error::IntoRError;
+pub use newtype::{FromRNewtype, IntoRNewtype, IntoRVecElement};
 pub mod into_r_as;
 pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod pump;
