@@ -14,9 +14,7 @@ use common::{
     create_simple_crate, create_workspace, git_init, read_vendor_toml, revendor_cmd,
 };
 
-// =============================================================================
-// Error cases (offline)
-// =============================================================================
+// region: Error cases (offline)
 
 #[test]
 fn error_missing_manifest() {
@@ -26,10 +24,9 @@ fn error_missing_manifest() {
         .failure()
         .stderr(predicates::str::contains("manifest not found"));
 }
+// endregion
 
-// =============================================================================
-// Simple single crate (network)
-// =============================================================================
+// region: Simple single crate (network)
 
 #[test]
 #[ignore] // network
@@ -64,10 +61,9 @@ cfg-if = "1"
     assert_valid_checksum(&vendor, "cfg-if");
     assert_vendor_missing(&vendor, "testpkg"); // target crate not vendored
 }
+// endregion
 
-// =============================================================================
-// Workspace with sibling dep (network)
-// =============================================================================
+// region: Workspace with sibling dep (network)
 
 #[test]
 #[ignore] // network
@@ -124,10 +120,9 @@ path = "lib.rs"
     assert_valid_checksum(&vendor, "cfg-if");
     assert_vendor_missing(&vendor, "rpkg");
 }
+// endregion
 
-// =============================================================================
-// Transitive local deps (network)
-// =============================================================================
+// region: Transitive local deps (network)
 
 #[test]
 #[ignore] // network
@@ -204,10 +199,9 @@ path = "lib.rs"
         mid_toml
     );
 }
+// endregion
 
-// =============================================================================
-// patch.crates-io pattern (network)
-// =============================================================================
+// region: patch.crates-io pattern (network)
 
 #[test]
 #[ignore] // network
@@ -280,10 +274,9 @@ path = "lib.rs"
     assert_vendor_has(&vendor, crate_name);
     assert_vendor_has(&vendor, "cfg-if");
 }
+// endregion
 
-// =============================================================================
-// Monorepo nested rpkg (network)
-// =============================================================================
+// region: Monorepo nested rpkg (network)
 
 #[test]
 #[ignore] // network
@@ -344,10 +337,9 @@ cfg-if = "1"
     assert_vendor_has(&vendor, crate_name);
     assert_vendor_has(&vendor, "cfg-if");
 }
+// endregion
 
-// =============================================================================
-// Workspace version inheritance (network)
-// =============================================================================
+// region: Workspace version inheritance (network)
 
 #[test]
 #[ignore] // network
@@ -410,10 +402,9 @@ path = "lib.rs"
         helper_toml
     );
 }
+// endregion
 
-// =============================================================================
-// Build dependencies (network)
-// =============================================================================
+// region: Build dependencies (network)
 
 #[test]
 #[ignore] // network
@@ -448,10 +439,9 @@ cfg-if = "1"
 
     assert_vendor_has(&vendor, "cfg-if");
 }
+// endregion
 
-// =============================================================================
-// Stripping via full pipeline (network)
-// =============================================================================
+// region: Stripping via full pipeline (network)
 
 #[test]
 #[ignore] // network
@@ -540,10 +530,9 @@ criterion = "0.5"
         "[dev-dependencies] should be stripped"
     );
 }
+// endregion
 
-// =============================================================================
-// Path rewriting (network)
-// =============================================================================
+// region: Path rewriting (network)
 
 #[test]
 #[ignore] // network
@@ -616,10 +605,9 @@ path = "lib.rs"
         liba_toml
     );
 }
+// endregion
 
-// =============================================================================
-// --no-strip flag (network)
-// =============================================================================
+// region: --no-strip flag (network)
 
 #[test]
 #[ignore] // network
@@ -655,10 +643,9 @@ cfg-if = "1"
     // With --no-strip, the cfg-if crate's files should be untouched
     // (cfg-if is tiny so it may not have tests, but the flag should work)
 }
+// endregion
 
-// =============================================================================
-// Broken crate with --no-verify (network)
-// =============================================================================
+// region: Broken crate with --no-verify (network)
 
 #[test]
 #[ignore] // network
@@ -712,10 +699,9 @@ path = "lib.rs"
 
     assert_vendor_has(&vendor, "broken");
 }
+// endregion
 
-// =============================================================================
-// Raw path deps (auto-versioned by cargo-revendor, fallback to direct copy)
-// =============================================================================
+// region: Raw path deps (auto-versioned by cargo-revendor, fallback to direct copy)
 
 #[test]
 #[ignore] // network
@@ -800,10 +786,9 @@ path = "lib.rs"
         original
     );
 }
+// endregion
 
-// =============================================================================
-// Path dep chain A → B → C
-// =============================================================================
+// region: Path dep chain A → B → C
 
 #[test]
 #[ignore] // network
@@ -899,10 +884,9 @@ path = "lib.rs"
         b_toml
     );
 }
+// endregion
 
-// =============================================================================
-// JSON output
-// =============================================================================
+// region: JSON output
 
 #[test]
 #[ignore] // network
@@ -942,10 +926,9 @@ cfg-if = "1"
     assert!(json["cached"].is_boolean());
     assert_eq!(json["cached"], false);
 }
+// endregion
 
-// =============================================================================
-// Caching (second run should be cached)
-// =============================================================================
+// region: Caching (second run should be cached)
 
 #[test]
 #[ignore] // network
@@ -1000,10 +983,9 @@ cfg-if = "1"
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("invalid JSON");
     assert_eq!(json["cached"], true, "second run should be cached");
 }
+// endregion
 
-// =============================================================================
-// --force bypasses cache
-// =============================================================================
+// region: --force bypasses cache
 
 #[test]
 #[ignore] // network
@@ -1054,10 +1036,9 @@ cfg-if = "1"
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("invalid JSON");
     assert_eq!(json["cached"], false, "--force should bypass cache");
 }
+// endregion
 
-// =============================================================================
-// Individual strip flags
-// =============================================================================
+// region: Individual strip flags
 
 #[test]
 #[ignore] // network
@@ -1127,10 +1108,9 @@ path = "lib.rs"
         "benches/ should NOT be stripped (only --strip-tests)"
     );
 }
+// endregion
 
-// =============================================================================
-// Empty vendor (no external deps)
-// =============================================================================
+// region: Empty vendor (no external deps)
 
 #[test]
 #[ignore] // network
@@ -1183,10 +1163,9 @@ path = "lib.rs"
 
     assert_vendor_has(&vendor, "mylib");
 }
+// endregion
 
-// =============================================================================
-// Config.toml and Cargo.lock output
-// =============================================================================
+// region: Config.toml and Cargo.lock output
 
 #[test]
 #[ignore] // network
@@ -1241,10 +1220,9 @@ cfg-if = "1"
         "Cargo.lock should still have dependency entries"
     );
 }
+// endregion
 
-// =============================================================================
-// Optional dependencies
-// =============================================================================
+// region: Optional dependencies
 
 #[test]
 #[ignore] // network
@@ -1279,10 +1257,9 @@ default = ["cfg-if"]
 
     assert_vendor_has(&vendor, "cfg-if");
 }
+// endregion
 
-// =============================================================================
-// Features on path deps
-// =============================================================================
+// region: Features on path deps
 
 #[test]
 #[ignore] // network
@@ -1338,10 +1315,9 @@ extra = []
 
     assert_vendor_has(&vendor, "mylib");
 }
+// endregion
 
-// =============================================================================
-// Workspace dependency inheritance (dep.workspace = true)
-// =============================================================================
+// region: Workspace dependency inheritance (dep.workspace = true)
 
 #[test]
 #[ignore] // network
@@ -1399,10 +1375,9 @@ path = "lib.rs"
     assert_vendor_has(&vendor, "mylib");
     assert_vendor_has(&vendor, "cfg-if");
 }
+// endregion
 
-// =============================================================================
-// Output directory already exists (should be replaced cleanly)
-// =============================================================================
+// region: Output directory already exists (should be replaced cleanly)
 
 #[test]
 #[ignore] // network
@@ -1441,3 +1416,4 @@ cfg-if = "1"
     assert_vendor_has(&vendor, "cfg-if");
     assert_vendor_missing(&vendor, "stale-crate");
 }
+// endregion

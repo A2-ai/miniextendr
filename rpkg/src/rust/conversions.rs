@@ -5,7 +5,6 @@ use miniextendr_api::{IntoR, ListMut, miniextendr};
 use miniextendr_api::{RLogical, Rboolean};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R integer -> Rust `i32` -> R integer.
 /// @param x Input value.
 #[miniextendr]
@@ -19,7 +18,6 @@ pub fn conv_i32_ret() -> i32 {
     1
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R double -> Rust `f64` -> R double.
 /// @param x Input value.
 #[miniextendr]
@@ -33,7 +31,6 @@ pub fn conv_f64_ret() -> f64 {
     1.25
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R raw element -> Rust `u8` -> R raw element.
 /// @param x Input value.
 #[miniextendr]
@@ -47,7 +44,6 @@ pub fn conv_u8_ret() -> u8 {
     7u8
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R logical -> Rust `Rboolean` -> R logical.
 /// @param x Input value.
 #[miniextendr]
@@ -61,7 +57,6 @@ pub fn conv_rbool_ret() -> Rboolean {
     Rboolean::TRUE
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R logical -> Rust `RLogical` -> R logical.
 /// @param x Input value.
 #[miniextendr]
@@ -75,7 +70,6 @@ pub fn conv_rlog_ret() -> RLogical {
     RLogical::TRUE
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R character scalar -> Rust `String` -> R character scalar.
 /// @param x Input value.
 #[miniextendr]
@@ -89,14 +83,12 @@ pub fn conv_string_ret() -> String {
     "hi".to_string()
 }
 
-// -----------------------------------------------------------------------------
 /// Return test: Rust `&str` -> R character scalar.
 #[miniextendr]
 pub fn conv_str_ret() -> &'static str {
     "hi"
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R SEXP -> Rust `SEXP` -> R SEXP (passthrough).
 /// @param x Input value.
 #[miniextendr]
@@ -110,7 +102,6 @@ pub fn conv_sexp_ret() -> SEXP {
     1i32.into_sexp()
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R numeric -> Rust `i64` -> R numeric.
 /// @param x Input value.
 #[miniextendr]
@@ -124,7 +115,6 @@ pub fn conv_i64_ret() -> i64 {
     1i64
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R numeric -> Rust `u64` -> R numeric.
 /// @param x Input value.
 #[miniextendr]
@@ -138,7 +128,6 @@ pub fn conv_u64_ret() -> u64 {
     1u64
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R numeric -> Rust `isize` -> R numeric.
 /// @param x Input value.
 #[miniextendr]
@@ -152,7 +141,6 @@ pub fn conv_isize_ret() -> isize {
     1isize
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R numeric -> Rust `usize` -> R numeric.
 /// @param x Input value.
 #[miniextendr]
@@ -166,7 +154,6 @@ pub fn conv_usize_ret() -> usize {
     1usize
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R integer -> Rust `i8` -> R integer.
 /// @param x Input value.
 #[miniextendr]
@@ -180,7 +167,6 @@ pub fn conv_i8_ret() -> i8 {
     1i8
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R integer -> Rust `i16` -> R integer.
 /// @param x Input value.
 #[miniextendr]
@@ -194,7 +180,6 @@ pub fn conv_i16_ret() -> i16 {
     1i16
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R integer -> Rust `u16` -> R integer.
 /// @param x Input value.
 #[miniextendr]
@@ -208,7 +193,6 @@ pub fn conv_u16_ret() -> u16 {
     1u16
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R integer -> Rust `u32` -> R integer.
 /// @param x Input value.
 #[miniextendr]
@@ -222,7 +206,6 @@ pub fn conv_u32_ret() -> u32 {
     1u32
 }
 
-// -----------------------------------------------------------------------------
 /// Roundtrip test: R double -> Rust `f32` -> R double.
 /// @param x Input value.
 #[miniextendr]
@@ -236,7 +219,6 @@ pub fn conv_f32_ret() -> f32 {
     1.5f32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<i32>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -256,7 +238,6 @@ pub fn conv_opt_i32_none() -> Option<i32> {
     None
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<f64>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -276,7 +257,6 @@ pub fn conv_opt_f64_none() -> Option<f64> {
     None
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<bool>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -296,7 +276,6 @@ pub fn conv_opt_bool_none() -> Option<bool> {
     None
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<String>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -316,7 +295,6 @@ pub fn conv_opt_string_none() -> Option<String> {
     None
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<i8>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -324,7 +302,6 @@ pub fn conv_opt_i8_is_some(x: Option<i8>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<i16>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -332,7 +309,6 @@ pub fn conv_opt_i16_is_some(x: Option<i16>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<i64>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -340,7 +316,6 @@ pub fn conv_opt_i64_is_some(x: Option<i64>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<isize>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -348,7 +323,6 @@ pub fn conv_opt_isize_is_some(x: Option<isize>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<u16>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -356,7 +330,6 @@ pub fn conv_opt_u16_is_some(x: Option<u16>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<u32>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -364,7 +337,6 @@ pub fn conv_opt_u32_is_some(x: Option<u32>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<u64>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -372,7 +344,6 @@ pub fn conv_opt_u64_is_some(x: Option<u64>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<usize>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -380,7 +351,6 @@ pub fn conv_opt_usize_is_some(x: Option<usize>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<f32>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -388,7 +358,6 @@ pub fn conv_opt_f32_is_some(x: Option<f32>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<u8>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -396,7 +365,6 @@ pub fn conv_opt_u8_is_some(x: Option<u8>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<Rboolean>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -404,7 +372,6 @@ pub fn conv_opt_rbool_is_some(x: Option<Rboolean>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Option<RLogical>` argument: returns 1 if Some, 0 if None (NA).
 /// @param x Input value or NULL.
 #[miniextendr]
@@ -412,7 +379,6 @@ pub fn conv_opt_rlog_is_some(x: Option<RLogical>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Test `&[i32]` slice argument: returns the length of the slice.
 /// @param x Input integer vector.
 #[miniextendr]
@@ -420,7 +386,6 @@ pub fn conv_slice_i32_len(x: &'static [i32]) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `&[f64]` slice argument: returns the length of the slice.
 /// @param x Input double vector.
 #[miniextendr]
@@ -428,7 +393,6 @@ pub fn conv_slice_f64_len(x: &'static [f64]) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `&[u8]` slice argument: returns the length of the slice.
 /// @param x Input raw vector.
 #[miniextendr]
@@ -436,7 +400,6 @@ pub fn conv_slice_u8_len(x: &'static [u8]) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `&[RLogical]` slice argument: returns the length of the slice.
 /// @param x Input logical vector.
 #[miniextendr]
@@ -444,7 +407,6 @@ pub fn conv_slice_rlog_len(x: &'static [RLogical]) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `&i32` reference argument: dereferences and returns the value.
 /// @param x Input integer reference.
 #[miniextendr]
@@ -522,7 +484,6 @@ pub fn conv_vec_mut_slice_i32_add_one(x: Vec<&'static mut [i32]>) -> i32 {
     total
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<i32>` argument: returns the length of the vector.
 /// @param x Input integer vector.
 #[miniextendr]
@@ -536,7 +497,6 @@ pub fn conv_vec_i32_ret() -> Vec<i32> {
     vec![1, 2, 3]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<f64>` argument: returns the length of the vector.
 /// @param x Input double vector.
 #[miniextendr]
@@ -550,7 +510,6 @@ pub fn conv_vec_f64_ret() -> Vec<f64> {
     vec![1.0, 2.0, 3.0]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<u8>` argument: returns the length of the vector.
 /// @param x Input raw vector.
 #[miniextendr]
@@ -564,7 +523,6 @@ pub fn conv_vec_u8_ret() -> Vec<u8> {
     vec![1u8, 2u8, 3u8]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<RLogical>` argument: returns the length of the vector.
 /// @param x Input logical vector.
 #[miniextendr]
@@ -578,7 +536,6 @@ pub fn conv_vec_rlog_ret() -> Vec<RLogical> {
     vec![RLogical::TRUE, RLogical::FALSE]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<bool>` argument: returns the length of the vector.
 /// @param x Input logical vector.
 #[miniextendr]
@@ -592,7 +549,6 @@ pub fn conv_vec_bool_ret() -> Vec<bool> {
     vec![true, false, true]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<String>` argument: returns the length of the vector.
 /// @param x Input character vector.
 #[miniextendr]
@@ -606,7 +562,6 @@ pub fn conv_vec_string_ret() -> Vec<String> {
     vec!["a".to_string(), "b".to_string()]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<i8>` argument: returns the length of the vector.
 /// @param x Input integer vector (coerced from R integer).
 #[miniextendr]
@@ -614,7 +569,6 @@ pub fn conv_vec_i8_len(x: Vec<i8>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<i16>` argument: returns the length of the vector.
 /// @param x Input integer vector (coerced from R integer).
 #[miniextendr]
@@ -622,7 +576,6 @@ pub fn conv_vec_i16_len(x: Vec<i16>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<i64>` argument: returns the length of the vector.
 /// @param x Input numeric vector (coerced from R numeric).
 #[miniextendr]
@@ -630,7 +583,6 @@ pub fn conv_vec_i64_len(x: Vec<i64>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<isize>` argument: returns the length of the vector.
 /// @param x Input numeric vector (coerced from R numeric).
 #[miniextendr]
@@ -638,7 +590,6 @@ pub fn conv_vec_isize_len(x: Vec<isize>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<u16>` argument: returns the length of the vector.
 /// @param x Input integer vector (coerced from R integer).
 #[miniextendr]
@@ -646,7 +597,6 @@ pub fn conv_vec_u16_len(x: Vec<u16>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<u32>` argument: returns the length of the vector.
 /// @param x Input integer vector (coerced from R integer).
 #[miniextendr]
@@ -654,7 +604,6 @@ pub fn conv_vec_u32_len(x: Vec<u32>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<u64>` argument: returns the length of the vector.
 /// @param x Input numeric vector (coerced from R numeric).
 #[miniextendr]
@@ -662,7 +611,6 @@ pub fn conv_vec_u64_len(x: Vec<u64>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<usize>` argument: returns the length of the vector.
 /// @param x Input numeric vector (coerced from R numeric).
 #[miniextendr]
@@ -670,7 +618,6 @@ pub fn conv_vec_usize_len(x: Vec<usize>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<f32>` argument: returns the length of the vector.
 /// @param x Input double vector (coerced from R double).
 #[miniextendr]
@@ -678,7 +625,6 @@ pub fn conv_vec_f32_len(x: Vec<f32>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<Option<i32>>` argument: returns the length of the vector.
 /// @param x Input integer vector (may contain NA).
 #[miniextendr]
@@ -692,7 +638,6 @@ pub fn conv_vec_opt_i32_ret() -> Vec<Option<i32>> {
     vec![Some(1), None, Some(3)]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<Option<f64>>` argument: returns the length of the vector.
 /// @param x Input double vector (may contain NA).
 #[miniextendr]
@@ -706,7 +651,6 @@ pub fn conv_vec_opt_f64_ret() -> Vec<Option<f64>> {
     vec![Some(1.0), None, Some(3.0)]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<Option<bool>>` argument: returns the length of the vector.
 /// @param x Input logical vector (may contain NA).
 #[miniextendr]
@@ -720,7 +664,6 @@ pub fn conv_vec_opt_bool_ret() -> Vec<Option<bool>> {
     vec![Some(true), None, Some(false)]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<Option<String>>` argument: returns the length of the vector.
 /// @param x Input character vector (may contain NA).
 #[miniextendr]
@@ -734,7 +677,6 @@ pub fn conv_vec_opt_string_ret() -> Vec<Option<String>> {
     vec![Some("a".to_string()), None, Some("b".to_string())]
 }
 
-// -----------------------------------------------------------------------------
 /// Return test: Rust `Vec<Option<RLogical>>` -> R logical vector with NA.
 #[miniextendr]
 pub fn conv_vec_opt_rlog_ret() -> Vec<Option<RLogical>> {
@@ -747,7 +689,6 @@ pub fn conv_vec_opt_rbool_ret() -> Vec<Option<Rboolean>> {
     vec![Some(Rboolean::TRUE), None, Some(Rboolean::FALSE)]
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Vec<Option<i8>>` argument: returns the length of the vector.
 /// @param x Input integer vector (may contain NA).
 #[miniextendr]
@@ -762,7 +703,6 @@ pub fn conv_vec_opt_u8_len(x: Vec<Option<u8>>) -> i32 {
     x.len() as i32
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashSet<i32>` argument: returns the number of unique elements.
 /// @param x Input integer vector (duplicates removed).
 #[miniextendr]
@@ -776,7 +716,6 @@ pub fn conv_hashset_i32_ret() -> HashSet<i32> {
     vec![1, 2, 3].into_iter().collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashSet<u8>` argument: returns the number of unique elements.
 /// @param x Input raw vector (duplicates removed).
 #[miniextendr]
@@ -790,7 +729,6 @@ pub fn conv_hashset_u8_ret() -> HashSet<u8> {
     vec![1u8, 2u8, 3u8].into_iter().collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashSet<String>` argument: returns the number of unique elements.
 /// @param x Input character vector (duplicates removed).
 #[miniextendr]
@@ -804,7 +742,6 @@ pub fn conv_hashset_string_ret() -> HashSet<String> {
     vec!["a".to_string(), "b".to_string()].into_iter().collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashSet<RLogical>` argument: returns the number of unique elements.
 /// @param x Input logical vector (duplicates removed).
 #[miniextendr]
@@ -818,7 +755,6 @@ pub fn conv_hashset_rlog_ret() -> HashSet<RLogical> {
     vec![RLogical::TRUE, RLogical::FALSE].into_iter().collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `BTreeSet<i32>` argument: returns the number of unique sorted elements.
 /// @param x Input integer vector (duplicates removed, sorted).
 #[miniextendr]
@@ -832,7 +768,6 @@ pub fn conv_btreeset_i32_ret() -> BTreeSet<i32> {
     vec![1, 2, 3].into_iter().collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `BTreeSet<u8>` argument: returns the number of unique sorted elements.
 /// @param x Input raw vector (duplicates removed, sorted).
 #[miniextendr]
@@ -846,7 +781,6 @@ pub fn conv_btreeset_u8_ret() -> BTreeSet<u8> {
     vec![1u8, 2u8, 3u8].into_iter().collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `BTreeSet<String>` argument: returns the number of unique sorted elements.
 /// @param x Input character vector (duplicates removed, sorted).
 #[miniextendr]
@@ -860,7 +794,6 @@ pub fn conv_btreeset_string_ret() -> BTreeSet<String> {
     vec!["a".to_string(), "b".to_string()].into_iter().collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashMap<String, i32>` argument: returns the number of entries.
 /// @param x Input named list of integers.
 #[miniextendr]
@@ -876,7 +809,6 @@ pub fn conv_hashmap_i32_ret() -> HashMap<String, i32> {
         .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashMap<String, f64>` argument: returns the number of entries.
 /// @param x Input named list of doubles.
 #[miniextendr]
@@ -892,7 +824,6 @@ pub fn conv_hashmap_f64_ret() -> HashMap<String, f64> {
         .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashMap<String, String>` argument: returns the number of entries.
 /// @param x Input named list of strings.
 #[miniextendr]
@@ -911,7 +842,6 @@ pub fn conv_hashmap_string_ret() -> HashMap<String, String> {
     .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `HashMap<String, RLogical>` argument: returns the number of entries.
 /// @param x Input named list of logicals.
 #[miniextendr]
@@ -930,7 +860,6 @@ pub fn conv_hashmap_rlog_ret() -> HashMap<String, RLogical> {
     .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `BTreeMap<String, i32>` argument: returns the number of entries.
 /// @param x Input named list of integers (sorted by key).
 #[miniextendr]
@@ -946,7 +875,6 @@ pub fn conv_btreemap_i32_ret() -> BTreeMap<String, i32> {
         .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `BTreeMap<String, f64>` argument: returns the number of entries.
 /// @param x Input named list of doubles (sorted by key).
 #[miniextendr]
@@ -962,7 +890,6 @@ pub fn conv_btreemap_f64_ret() -> BTreeMap<String, f64> {
         .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `BTreeMap<String, String>` argument: returns the number of entries.
 /// @param x Input named list of strings (sorted by key).
 #[miniextendr]
@@ -981,7 +908,6 @@ pub fn conv_btreemap_string_ret() -> BTreeMap<String, String> {
     .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `BTreeMap<String, RLogical>` argument: returns the number of entries.
 /// @param x Input named list of logicals (sorted by key).
 #[miniextendr]
@@ -1000,7 +926,6 @@ pub fn conv_btreemap_rlog_ret() -> BTreeMap<String, RLogical> {
     .collect()
 }
 
-// -----------------------------------------------------------------------------
 /// Test `ListMut` argument: sets the first element to 99 and returns the length.
 /// @param x Input list (first element mutated in-place).
 ///
@@ -1015,7 +940,6 @@ pub fn conv_list_mut_set_first(mut x: ListMut) -> i32 {
     len
 }
 
-// -----------------------------------------------------------------------------
 /// Test `Result<i32, ()>` argument: returns 1 if Ok, 0 if Err (NULL).
 /// @param x Input value (NULL becomes Err).
 #[miniextendr]
@@ -1030,7 +954,6 @@ pub fn conv_result_vec_i32_arg(x: Result<Vec<i32>, ()>) -> i32 {
     if x.is_ok() { 1 } else { 0 }
 }
 
-// -----------------------------------------------------------------------------
 /// Return test: `Ok(9)` as `Result<i32, ()>` -> R integer.
 #[miniextendr]
 pub fn conv_result_i32_ok() -> Result<i32, ()> {
@@ -1043,7 +966,6 @@ pub fn conv_result_i32_err() -> Result<i32, ()> {
     Err(())
 }
 
-// -----------------------------------------------------------------------------
 /// Return test: `Ok(9.5)` as `Result<f64, ()>` -> R double.
 #[miniextendr]
 pub fn conv_result_f64_ok() -> Result<f64, ()> {
@@ -1056,7 +978,6 @@ pub fn conv_result_f64_err() -> Result<f64, ()> {
     Err(())
 }
 
-// -----------------------------------------------------------------------------
 /// Return test: `Ok("ok")` as `Result<String, ()>` -> R character scalar.
 #[miniextendr]
 pub fn conv_result_string_ok() -> Result<String, ()> {
@@ -1069,7 +990,6 @@ pub fn conv_result_string_err() -> Result<String, ()> {
     Err(())
 }
 
-// -----------------------------------------------------------------------------
 /// Return test: `Ok(vec![1, 2])` as `Result<Vec<i32>, ()>` -> R integer vector.
 #[miniextendr]
 pub fn conv_result_vec_i32_ok() -> Result<Vec<i32>, ()> {
@@ -1084,7 +1004,7 @@ pub fn conv_result_vec_i32_err() -> Result<Vec<i32>, ()> {
 
 // region: Extended conversions - nested types, coercion, char
 
-// --- char conversions (char ↔ length-1 string) ---
+// region: char conversions (char ↔ length-1 string)
 /// Roundtrip test: R character scalar -> Rust `char` -> R character scalar.
 /// @param x Input single character.
 #[miniextendr]
@@ -1098,7 +1018,9 @@ pub fn conv_char_ret() -> char {
     'α' // Unicode char to test UTF-8
 }
 
-// --- Vec coercion (i8/i16/u16 → i32, f32 → f64) ---
+// endregion
+
+// region: Vec coercion (i8/i16/u16 → i32, f32 → f64)
 /// Return test: Rust `Vec<i8>` -> R integer vector (coerced via i32).
 #[miniextendr]
 pub fn conv_vec_i8_ret() -> Vec<i8> {
@@ -1123,7 +1045,9 @@ pub fn conv_vec_f32_ret() -> Vec<f32> {
     vec![1.5f32, 2.5f32, -0.5f32]
 }
 
-// --- HashSet/BTreeSet coercion (i8/i16/u16 → i32) ---
+// endregion
+
+// region: HashSet/BTreeSet coercion (i8/i16/u16 → i32)
 /// Return test: Rust `HashSet<i8>` -> R integer vector (coerced via i32).
 #[miniextendr]
 pub fn conv_hashset_i8_ret() -> HashSet<i8> {
@@ -1160,7 +1084,9 @@ pub fn conv_btreeset_u16_ret() -> BTreeSet<u16> {
     vec![1u16, 2u16, 100u16].into_iter().collect()
 }
 
-// --- Option<&T> return (copies value, None → NULL) ---
+// endregion
+
+// region: Option<&T> return (copies value, None → NULL)
 static OPT_REF_VALUE: i32 = 42;
 
 /// Return test: `Some(&42)` as `Option<&i32>` -> R integer.
@@ -1175,7 +1101,9 @@ pub fn conv_opt_ref_i32_none_ret() -> Option<&'static i32> {
     None
 }
 
-// --- Option<Vec<T>> (None → NULL, Some → vector) ---
+// endregion
+
+// region: Option<Vec<T>> (None → NULL, Some → vector)
 /// Test `Option<Vec<i32>>` argument: returns sum if Some, -999 if None (NULL).
 /// @param x Input integer vector or NULL.
 #[miniextendr]
@@ -1220,7 +1148,9 @@ pub fn conv_opt_vec_string_none_ret() -> Option<Vec<String>> {
     None
 }
 
-// --- Option<HashMap> (None → NULL, Some → named list) ---
+// endregion
+
+// region: Option<HashMap> (None → NULL, Some → named list)
 /// Test `Option<HashMap<String, i32>>` argument: returns sum if Some, -999 if None.
 /// @param x Input named list of integers or NULL.
 #[miniextendr]
@@ -1246,7 +1176,9 @@ pub fn conv_opt_hashmap_i32_none_ret() -> Option<HashMap<String, i32>> {
     None
 }
 
-// --- Option<HashSet> (None → NULL, Some → vector) ---
+// endregion
+
+// region: Option<HashSet> (None → NULL, Some → vector)
 /// Test `Option<HashSet<i32>>` argument: returns sum if Some, -999 if None.
 /// @param x Input integer vector or NULL.
 #[miniextendr]
@@ -1269,7 +1201,9 @@ pub fn conv_opt_hashset_i32_none_ret() -> Option<HashSet<i32>> {
     None
 }
 
-// --- Option<BTreeMap> (None → NULL, Some → named list) ---
+// endregion
+
+// region: Option<BTreeMap> (None → NULL, Some → named list)
 /// Test `Option<BTreeMap<String, i32>>` argument: returns sum if Some, -999 if None.
 /// @param x Input named list of integers or NULL.
 #[miniextendr]
@@ -1295,7 +1229,9 @@ pub fn conv_opt_btreemap_i32_none_ret() -> Option<BTreeMap<String, i32>> {
     None
 }
 
-// --- Vec<HashMap> (list of named lists → Vec<HashMap>) ---
+// endregion
+
+// region: Vec<HashMap> (list of named lists → Vec<HashMap>)
 /// Test `Vec<HashMap<String, i32>>` argument: returns the sum across all maps.
 /// @param x Input list of named integer lists.
 #[miniextendr]
@@ -1321,7 +1257,9 @@ pub fn conv_vec_hashmap_i32_ret() -> Vec<HashMap<String, i32>> {
     ]
 }
 
-// --- Vec<BTreeMap> (list of named lists → Vec<BTreeMap>) ---
+// endregion
+
+// region: Vec<BTreeMap> (list of named lists → Vec<BTreeMap>)
 /// Test `Vec<BTreeMap<String, i32>>` argument: returns the sum across all maps.
 /// @param x Input list of named integer lists.
 #[miniextendr]
@@ -1347,7 +1285,9 @@ pub fn conv_vec_btreemap_i32_ret() -> Vec<BTreeMap<String, i32>> {
     ]
 }
 
-// --- Vec<Vec<T>> (list of vectors) ---
+// endregion
+
+// region: Vec<Vec<T>> (list of vectors)
 /// Test `Vec<Vec<i32>>` argument: returns the sum across all inner vectors.
 /// @param x Input list of integer vectors.
 #[miniextendr]
@@ -1370,7 +1310,9 @@ pub fn conv_vec_vec_string_ret() -> Vec<Vec<String>> {
     ]
 }
 
-// --- Vec<Option<T>> for extended numeric types ---
+// endregion
+
+// region: Vec<Option<T>> for extended numeric types
 
 /// Return test: Rust `Vec<Option<i64>>` with small values -> R integer vector with NA.
 #[miniextendr]
@@ -1445,7 +1387,9 @@ pub fn conv_vec_option_u16_ret() -> Vec<Option<u16>> {
     vec![Some(1), None, Some(100)]
 }
 
-// --- Scalar Option<T> for extended numeric types ---
+// endregion
+
+// region: Scalar Option<T> for extended numeric types
 
 /// Return test: `Some(42)` as `Option<i64>` -> R integer (fits in i32).
 #[miniextendr]
@@ -1476,6 +1420,7 @@ pub fn conv_option_f32_some() -> Option<f32> {
 pub fn conv_option_u32_some() -> Option<u32> {
     Some(100)
 }
+// endregion
 // endregion
 
 // region: Named pair wrappers (AsNamedList / AsNamedVector)

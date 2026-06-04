@@ -2186,7 +2186,7 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::SEXP {
     }
 }
 
-// region: Vec<Option<Collection>> conversions ──────────────────────────────────
+// region: Vec<Option<Collection>> conversions
 
 /// Helper: convert `Vec<Option<C: IntoR>>` to a VECSXP, with `None` mapping to
 /// `R_NilValue` (NULL) and `Some(v)` mapping to whatever `v.into_sexp()` produces.

@@ -2078,9 +2078,7 @@ mod tests {
         assert_eq!(col[1], None);
     }
 
-    // =========================================================================
-    // ParCollectR / ParCollectRIndexed tests
-    // =========================================================================
+    // region: ParCollectR / ParCollectRIndexed tests
 
     #[test]
     fn test_par_collect_r_trait_exists() {
@@ -2131,4 +2129,5 @@ mod tests {
         assert!((result[1] - 1.0).abs() < 1e-10);
         assert!((result[4] - 2.0).abs() < 1e-10);
     }
+    // endregion
 }

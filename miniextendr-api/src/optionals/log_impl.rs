@@ -396,9 +396,7 @@ mod tests {
         q.push_back((level, msg.to_string()));
     }
 
-    // -------------------------------------------------------------------------
-    // default_level_is_off
-    // -------------------------------------------------------------------------
+    // region: default_level_is_off
 
     /// After `install_r_logger`, the max level is Off so info!/error! produce
     /// nothing (no queue entries, no rendered output).
@@ -420,10 +418,9 @@ mod tests {
         );
         assert!(take_rendered().is_empty(), "nothing should be rendered");
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // worker_buffering
-    // -------------------------------------------------------------------------
+    // region: worker_buffering
 
     /// A record logged from a non-main thread lands in QUEUE and is not
     /// rendered immediately.
@@ -447,10 +444,9 @@ mod tests {
             "worker records must not be rendered immediately"
         );
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // fifo_drain
-    // -------------------------------------------------------------------------
+    // region: fifo_drain
 
     /// Records enqueued in order are drained in the same order (FIFO).
     #[test]
@@ -473,10 +469,9 @@ mod tests {
             assert_eq!(r, &format!("msg-{i}"), "FIFO order violated at index {i}");
         }
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // overflow_accounting
-    // -------------------------------------------------------------------------
+    // region: overflow_accounting
 
     /// Enqueueing capacity+50 records results in exactly 50 dropped and the
     /// queue stays at QUEUE_CAPACITY.
@@ -501,10 +496,9 @@ mod tests {
             "queue must be capped at {QUEUE_CAPACITY}"
         );
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // overflow_warning_emitted_and_reset
-    // -------------------------------------------------------------------------
+    // region: overflow_warning_emitted_and_reset
 
     /// After overflow, the first drain emits a warning. A subsequent drain
     /// does NOT re-emit it.
@@ -538,10 +532,9 @@ mod tests {
             "unexpected overflow warning re-emitted in second drain; got: {second:?}"
         );
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // drain_on_error_path
-    // -------------------------------------------------------------------------
+    // region: drain_on_error_path
 
     /// A record buffered by a "worker" is visible in the rendered sink after
     /// the drain that the trampoline would call on error exit.
@@ -570,10 +563,9 @@ mod tests {
             "buffered record must be drained even on error path; got: {rendered:?}"
         );
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // std::thread spawn buffering (real thread, no fake override)
-    // -------------------------------------------------------------------------
+    // region: std::thread spawn buffering (real thread, no fake override)
 
     /// A record from a real `std::thread::spawn` thread is buffered (not
     /// rendered), and appears after drain on the "main thread".
@@ -604,10 +596,9 @@ mod tests {
             "got: {rendered:?}"
         );
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // MatchArg for LevelFilter
-    // -------------------------------------------------------------------------
+    // region: MatchArg for LevelFilter
 
     /// Every entry in CHOICES round-trips through `from_choice` + `to_choice`,
     /// and `CHOICES.len()` matches `LevelFilter::iter().count()` — this pins the
@@ -662,6 +653,7 @@ mod tests {
             );
         }
     }
+    // endregion
 }
 
 // endregion

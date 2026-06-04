@@ -448,13 +448,13 @@ pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
     data.into_sexp()
 }
 
-// -----------------------------------------------------------------------------
-// LazyIntSeq: Integer arithmetic sequence with lazy materialization
+// endregion
+
+// region: LazyIntSeq: Integer arithmetic sequence with lazy materialization
 // This demonstrates the Dataptr lazy materialization pattern:
 // - Elements are computed on-demand via Elt/Get_region
 // - Full buffer is only allocated when Dataptr is called
 // - Dataptr_or_null returns NULL until materialized
-// -----------------------------------------------------------------------------
 
 /// Data type for lazy integer sequence with materialization support
 #[derive(miniextendr_api::AltrepInteger)]
@@ -1098,10 +1098,10 @@ pub fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
     data.into_sexp()
 }
 
-// -----------------------------------------------------------------------------
-// UnitCircle: Complex numbers on the unit circle (e^(i*theta))
+// endregion
+
+// region: UnitCircle: Complex numbers on the unit circle (e^(i*theta))
 // This demonstrates ALTREP for complex vectors
-// -----------------------------------------------------------------------------
 
 use miniextendr_api::Rcomplex;
 use miniextendr_api::altrep_data::AltComplexData;
@@ -1149,10 +1149,10 @@ pub fn unit_circle(n: i32) -> SEXP {
     data.into_sexp()
 }
 
-// -----------------------------------------------------------------------------
-// IntegerSequenceList: List where each element is an integer vector 1:i
+// endregion
+
+// region: IntegerSequenceList: List where each element is an integer vector 1:i
 // This demonstrates ALTREP for list vectors (VECSXP)
-// -----------------------------------------------------------------------------
 
 #[derive(miniextendr_api::AltrepList)]
 #[altrep(class = "IntegerSequenceList", manual)]

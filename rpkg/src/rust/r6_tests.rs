@@ -206,7 +206,7 @@ impl R6Cloneable {
     }
 }
 
-// === R6 Inheritance ===
+// region: R6 Inheritance
 
 /// Base animal class for R6 inheritance testing.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -270,7 +270,9 @@ impl R6GoldenRetriever {
     }
 }
 
-// === R6 Portable Flag ===
+// endregion
+
+// region: R6 Portable Flag
 
 /// Non-portable R6 class for testing portable = FALSE flag.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -289,3 +291,4 @@ impl R6NonPortable {
         self.value
     }
 }
+// endregion
