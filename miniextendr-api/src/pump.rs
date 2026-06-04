@@ -192,9 +192,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
-    // -------------------------------------------------------------------------
-    // happy_path
-    // -------------------------------------------------------------------------
+    // region: happy_path
 
     /// Worker sends N messages, pump receives all, worker returns Ok.
     #[test]
@@ -221,10 +219,9 @@ mod tests {
         let got = received.lock().unwrap();
         assert_eq!(*got, vec![0, 1, 2, 3, 4]);
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // worker_returns_err
-    // -------------------------------------------------------------------------
+    // region: worker_returns_err
 
     /// Worker returns Err early; pump exits cleanly; run returns the worker's Err.
     #[test]
@@ -254,10 +251,9 @@ mod tests {
             "pump must not run if worker sends nothing"
         );
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // pump_panics
-    // -------------------------------------------------------------------------
+    // region: pump_panics
 
     /// Pump callback panics; worker is joined (no thread leak).
     ///
@@ -301,10 +297,9 @@ mod tests {
             "worker Drop did not run — possible thread leak"
         );
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // bounded_channel_no_deadlock_on_scope_drop
-    // -------------------------------------------------------------------------
+    // region: bounded_channel_no_deadlock_on_scope_drop
 
     /// Fill the bounded channel; break out of pump early; assert worker exits.
     ///
@@ -343,10 +338,9 @@ mod tests {
         // We get a panic from the pump, but no deadlock (test would hang otherwise).
         assert!(result.is_err(), "expected pump panic");
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // drain_logs_each_tick_default_on
-    // -------------------------------------------------------------------------
+    // region: drain_logs_each_tick_default_on
 
     /// With the `log` feature enabled: a log record from the worker is flushed
     /// to the render sink by the time the pump processes the next message.
@@ -425,6 +419,7 @@ mod tests {
             assert_eq!(result.unwrap(), 99u8);
         }
     }
+    // endregion
 }
 
 // endregion

@@ -2012,7 +2012,7 @@ fn extract_variant_info<T: Serialize>(row: &T) -> Option<VariantInfo> {
     })
 }
 
-// ── VariantNameExtractor ──────────────────────────────────────────────────────
+// region: VariantNameExtractor
 
 #[derive(Default)]
 struct VariantNameExtractor {
@@ -2269,8 +2269,9 @@ impl<'a> ser::Serializer for &'a mut VariantNameExtractor {
         Ok(NoopStructVariant)
     }
 }
+// endregion
 
-// ── VariantStrippingSerializer ────────────────────────────────────────────────
+// region: VariantStrippingSerializer
 
 struct VariantPayload<T>(T);
 
@@ -2447,8 +2448,9 @@ impl<S: ser::Serializer> ser::Serializer for VariantStrippingSerializer<S> {
         Ok(VariantAsStruct(s))
     }
 }
+// endregion
 
-// ── 0-column data.frame for unit variants ────────────────────────────────────
+// region: 0-column data.frame for unit variants
 
 fn unit_variant_dataframe(nrow: usize) -> SEXP {
     unsafe {
@@ -2464,8 +2466,9 @@ fn unit_variant_dataframe(nrow: usize) -> SEXP {
         list
     }
 }
+// endregion
 
-// ── vec_to_dataframe_split ────────────────────────────────────────────────────
+// region: vec_to_dataframe_split
 
 /// Output-shape selector for [`vec_to_dataframe_split`].
 ///
@@ -2782,7 +2785,7 @@ unsafe fn make_strsxp_repeat(value: &str, n: usize) -> SEXP {
         sexp
     }
 }
-
+// endregion
 // endregion
 
 // region: TaggedVariantRow (collated emit for vec_to_dataframe_split + result_to_dataframe)

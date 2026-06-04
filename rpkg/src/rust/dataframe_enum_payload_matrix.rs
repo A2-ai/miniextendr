@@ -23,8 +23,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use miniextendr_api::{DataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
-// region: 0a. Vec<i32> opaque (no expand/width → list-column) ─────────────────
-
+// region: 0a. Vec<i32> opaque (no expand/width → list-column)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum VecOpaqueEvent {
@@ -85,8 +84,7 @@ pub fn vec_opaque_split_nvnr() -> List {
 
 // endregion
 
-// region: 0b. HashSet<String> opaque (list-column, unordered elements) ─────────
-
+// region: 0b. HashSet<String> opaque (list-column, unordered elements)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum HashSetEvent {
@@ -147,8 +145,7 @@ pub fn hashset_split_nvnr() -> List {
 
 // endregion
 
-// region: 0c. BTreeSet<i32> opaque (list-column, sorted elements) ──────────────
-
+// region: 0c. BTreeSet<i32> opaque (list-column, sorted elements)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum BTreeSetEvent {
@@ -209,8 +206,7 @@ pub fn btreeset_split_nvnr() -> List {
 
 // endregion
 
-// region: 1. Vec<T> width = N (pinned expansion) ─────────────────────────────
-
+// region: 1. Vec<T> width = N (pinned expansion)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum VecWidthEvent {
@@ -276,8 +272,7 @@ pub fn vec_width_align_nvnr() -> DataFrame {
 
 // endregion
 
-// region: 3. Vec<T> expand (auto-expand, runtime column count) ───────────────
-
+// region: 3. Vec<T> expand (auto-expand, runtime column count)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum VecExpandEvent {
@@ -343,8 +338,7 @@ pub fn vec_expand_align_nvnr() -> DataFrame {
 
 // endregion
 
-// region: 4. [T; N] (auto-expand fixed array) ────────────────────────────────
-
+// region: 4. [T; N] (auto-expand fixed array)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum ArrayEvent {
@@ -400,8 +394,7 @@ pub fn array_align_nvnr() -> DataFrame {
 
 // endregion
 
-// region: 5. Box<[T]> with expand (auto-expand) ──────────────────────────────
-
+// region: 5. Box<[T]> with expand (auto-expand)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum BoxedSliceEvent {
@@ -467,8 +460,7 @@ pub fn boxed_slice_align_nvnr() -> DataFrame {
 
 // endregion
 
-// region: 5. Single-variant enum: bare-data.frame return from split ──────────
-
+// region: 5. Single-variant enum: bare-data.frame return from split
 #[derive(Clone, Debug, DataFrameRow)]
 pub enum SingletonRow {
     Only { id: i32, label: String },
@@ -502,8 +494,7 @@ pub fn singleton_split_1vnr() -> List {
 
 // endregion
 
-// region: 6. &str field (borrowed text → STRSXP with NA_character_) ──────────
-
+// region: 6. &str field (borrowed text → STRSXP with NA_character_)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum BorrowedStrEvent<'a> {
@@ -585,8 +576,7 @@ pub fn borrowed_str_split_nvnr() -> List {
 
 // endregion
 
-// region: 7. &[T] field opaque (borrowed slice → list-column with NULL) ──────
-
+// region: 7. &[T] field opaque (borrowed slice → list-column with NULL)
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum BorrowedSliceEvent<'a> {
@@ -671,8 +661,7 @@ pub fn borrowed_slice_split_nvnr() -> List {
 
 // endregion
 
-// region: 8. Map fields (HashMap<K,V> / BTreeMap<K,V>) ─────────────────────────
-//
+// region: 8. Map fields (HashMap<K,V> / BTreeMap<K,V>)
 // HashMap and BTreeMap fields expand to two parallel list-columns:
 //   `<field>_keys` and `<field>_values`.
 // Absent-variant rows produce NULL in both. An empty map produces integer(0)/character(0).
@@ -1120,8 +1109,7 @@ mod tests {
     // endregion: Map fields Rust unit tests
 }
 
-// region: 9. Struct fields (DataFrameRow flatten / as_list opt-out) ──────────────
-//
+// region: 9. Struct fields (DataFrameRow flatten / as_list opt-out)
 // Struct-typed variant fields flatten into prefixed columns by default.
 // The inner struct must #[derive(DataFrameRow)].
 // Per-field #[dataframe(as_list)] keeps the struct as an opaque list-column
@@ -1382,8 +1370,7 @@ mod struct_field_tests {
 
 // endregion: 9. Struct fields
 
-// region: 10. Nested enum fields (as_factor / flatten / as_list) ──────────────
-//
+// region: 10. Nested enum fields (as_factor / flatten / as_list)
 // Inner enum `Direction` is a unit-only enum that derives `DataFrameRow`.
 // The derive auto-emits `IntoR`, `IntoR for Vec<Option<Self>>`, and `IntoList`
 // so it can be used with `as_factor` (factor column) or `as_list` (list column)
