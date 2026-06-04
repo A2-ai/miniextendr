@@ -1063,7 +1063,57 @@ where
         .collect()
 }
 
+/// Shared SEXP-dispatch shell for coerced numeric/logical/raw vectors.
+///
+/// Reads INTSXP/REALSXP/RAWSXP/LGLSXP and applies the per-element map. The only
+/// behavioural axis (NA policy) lives entirely in the four closures the caller
+/// passes, so the NA-unaware [`try_from_sexp_numeric_vec`] and the NA-aware
+/// `try_from_sexp_numeric_option_vec` (in [`na_vectors`]) share one dispatch.
+/// LGLSXP NA (`NA_LOGICAL`) and INTSXP NA (`i32::MIN`) round through as raw
+/// sentinels here; any NA-to-`None` policy is the caller's closure to encode.
+#[inline]
+pub(crate) fn from_numeric_vec_with<U, FI, FD, FR, FL>(
+    sexp: SEXP,
+    map_i32: FI,
+    map_f64: FD,
+    map_u8: FR,
+    map_lgl: FL,
+) -> Result<Vec<U>, SexpError>
+where
+    FI: Fn(i32) -> Result<U, SexpError>,
+    FD: Fn(f64) -> Result<U, SexpError>,
+    FR: Fn(u8) -> Result<U, SexpError>,
+    FL: Fn(RLogical) -> Result<U, SexpError>,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let slice: &[i32] = unsafe { sexp.as_slice() };
+            slice.iter().copied().map(map_i32).collect()
+        }
+        SEXPTYPE::REALSXP => {
+            let slice: &[f64] = unsafe { sexp.as_slice() };
+            slice.iter().copied().map(map_f64).collect()
+        }
+        SEXPTYPE::RAWSXP => {
+            let slice: &[u8] = unsafe { sexp.as_slice() };
+            slice.iter().copied().map(map_u8).collect()
+        }
+        SEXPTYPE::LGLSXP => {
+            let slice: &[RLogical] = unsafe { sexp.as_slice() };
+            slice.iter().copied().map(map_lgl).collect()
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "expected integer, numeric, logical, or raw; got {:?}",
+            actual
+        ))),
+    }
+}
+
 /// Convert numeric/logical/raw vectors to `Vec<T>` with element-wise coercion.
+///
+/// NA-unaware: an R `NA` round-trips as the coerced sentinel rather than being
+/// rejected. Bind `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA.
 #[inline]
 fn try_from_sexp_numeric_vec<T>(sexp: SEXP) -> Result<Vec<T>, SexpError>
 where
@@ -1074,29 +1124,13 @@ where
     <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
     <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
 {
-    let actual = sexp.type_of();
-    match actual {
-        SEXPTYPE::INTSXP => {
-            let slice: &[i32] = unsafe { sexp.as_slice() };
-            coerce_slice_to_vec(slice)
-        }
-        SEXPTYPE::REALSXP => {
-            let slice: &[f64] = unsafe { sexp.as_slice() };
-            coerce_slice_to_vec(slice)
-        }
-        SEXPTYPE::RAWSXP => {
-            let slice: &[u8] = unsafe { sexp.as_slice() };
-            coerce_slice_to_vec(slice)
-        }
-        SEXPTYPE::LGLSXP => {
-            let slice: &[RLogical] = unsafe { sexp.as_slice() };
-            slice.iter().map(|v| coerce_value(v.to_i32())).collect()
-        }
-        _ => Err(SexpError::InvalidValue(format!(
-            "expected integer, numeric, logical, or raw; got {:?}",
-            actual
-        ))),
-    }
+    from_numeric_vec_with(
+        sexp,
+        coerce_value,
+        coerce_value,
+        coerce_value,
+        |v: RLogical| coerce_value(v.to_i32()),
+    )
 }
 
 /// Implement `TryFromSexp for Vec<$target>` by coercing from integer/real/logical/raw.
