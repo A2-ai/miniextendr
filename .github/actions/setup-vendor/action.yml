@@ -1,0 +1,29 @@
+name: Set up cargo-revendor and vendor
+description: >-
+  Install cargo-revendor from the in-repo crate, then optionally run
+  `just configure` + `just vendor` to seal the offline vendor tarball.
+  Centralises the install + configure + vendor preamble shared by the
+  R CMD check jobs in ci.yml (see issue #850). Requires `just` and a Rust
+  toolchain to already be on PATH (install them in the calling job first).
+inputs:
+  configure-and-vendor:
+    description: >-
+      When 'true' (default), run `just configure` then `just vendor` after
+      installing cargo-revendor. Set to 'false' for jobs that only need the
+      cargo-revendor binary (bootstrap-vendor-test) or that drive configure
+      and vendor as separate, non-adjacent steps themselves (sync-checks).
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Install cargo-revendor
+      shell: bash
+      run: cargo install --path cargo-revendor
+
+    - name: Configure and vendor
+      if: inputs.configure-and-vendor == 'true'
+      shell: bash
+      run: |
+        just configure
+        just vendor
