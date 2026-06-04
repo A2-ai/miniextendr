@@ -430,6 +430,35 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
 
     Ok(result)
 }
+
+/// Convert an R factor SEXP to a `Vec<Option<T>>` using [`UnitEnumFactor`] (NA → `None`).
+///
+/// Used by the enum DataFrame reader to reconstruct `as_factor` columns.
+/// Unlike `factor_option_vec_from_sexp` (which requires `RFactor + MatchArg`),
+/// this accepts any `UnitEnumFactor` — including `#[derive(DataFrameRow)]`
+/// unit-only enums that do not implement `RFactor`.
+#[inline]
+pub fn unit_factor_option_vec_from_sexp<T: UnitEnumFactor>(
+    sexp: SEXP,
+) -> Result<Vec<Option<T>>, SexpError> {
+    validate_factor_levels(sexp, T::FACTOR_LEVELS)?;
+
+    let len = sexp.len();
+    let mut result = Vec::with_capacity(len);
+
+    for i in 0..len {
+        let idx = sexp.integer_elt(i as isize);
+        if idx == NA_INTEGER {
+            result.push(None);
+        } else {
+            result.push(Some(T::from_factor_index(idx).ok_or_else(|| {
+                SexpError::InvalidValue("factor index out of range".into())
+            })?));
+        }
+    }
+
+    Ok(result)
+}
 // endregion
 
 // region: Newtype wrappers (for orphan rule workaround)
@@ -533,6 +562,9 @@ impl<T: RFactor + crate::match_arg::MatchArg> UnitEnumFactor for T {
     fn to_factor_index(self) -> i32 {
         self.to_level_index()
     }
+    fn from_factor_index(idx: i32) -> Option<Self> {
+        T::from_level_index(idx)
+    }
 }
 
 impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
@@ -560,12 +592,19 @@ impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
 ///
 /// `to_factor_index` must return a value in `1..=FACTOR_LEVELS.len() as i32`
 /// (or `NA_INTEGER` for missing) to produce a valid R factor SEXP.
-pub trait UnitEnumFactor {
+pub trait UnitEnumFactor: Sized {
     /// Ordered level names (in the same order as the enum variants).
     const FACTOR_LEVELS: &'static [&'static str];
 
     /// Convert `self` to a 1-based R factor level index.
     fn to_factor_index(self) -> i32;
+
+    /// Inverse: 1-based level index → variant, or `None` if out of range.
+    ///
+    /// Used by the enum DataFrame reader to reconstruct unit-only enum values
+    /// from an R factor column. The default blanket impl delegates to the
+    /// underlying `RFactor::from_level_index`.
+    fn from_factor_index(idx: i32) -> Option<Self>;
 }
 
 impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {

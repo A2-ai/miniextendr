@@ -117,7 +117,7 @@ impl<T: IntoList> IntoR for AsList<T> {
 // `Result<DataFrame, DataFrameError>`), which mirrors `IntoR` / `TryFromSexp`.
 pub use crate::dataframe::ColumnSource;
 
-// region: Struct-field scatter helper
+// region: Column gather/scatter helpers
 
 /// Scatter a typed column SEXP from a dense inner data frame into a new
 /// SEXP of length `n_rows`, placing `NA`/`NULL` at rows not in `present_idx`.
@@ -226,6 +226,97 @@ pub unsafe fn scatter_column(
                         out.set_vector_elt(row_i as isize, elt);
                     }
                 }
+                out
+            }
+        }
+    }
+}
+
+/// Gather the rows at `idx` (0-based, in order) from a contiguous primitive
+/// column into a fresh dense vector, where `out[j] = src[idx[j]]`.
+///
+/// Generic over the R element type: `f64`/`i32`/`RLogical`/`u8`/`Rcomplex` each
+/// resolve to the correct `REAL`/`INTEGER`/`LOGICAL`/`RAW`/`COMPLEX` storage via
+/// their `RNativeType` impl, so the copy is a plain slice gather with no
+/// per-element FFI call.
+///
+/// # Safety
+///
+/// R main thread; `src` must be a `T::SEXP_TYPE` vector and every index in `idx`
+/// must be `< xlength(src)`. The returned SEXP is unprotected (see
+/// [`gather_column`]). No allocation occurs between allocating `out` and filling
+/// it, so `out` cannot be reaped mid-gather.
+#[inline]
+unsafe fn gather_native<T: RNativeType + Copy>(src: crate::SEXP, idx: &[usize]) -> crate::SEXP {
+    unsafe {
+        use crate::SexpExt as _;
+        let src_vals: &[T] = src.as_slice::<T>();
+        let out = crate::sys::Rf_allocVector(T::SEXP_TYPE, idx.len() as isize);
+        let out_vals: &mut [T] = out.as_mut_slice::<T>();
+        for (dst, &row_i) in out_vals.iter_mut().zip(idx) {
+            *dst = src_vals[row_i];
+        }
+        out
+    }
+}
+
+/// Gather the rows at `idx` (0-based, in order) out of a typed column SEXP into a
+/// new dense SEXP of length `idx.len()`, where `out[j] = src[idx[j]]`.
+///
+/// The row-selecting inverse of [`scatter_column`]: where `scatter_column`
+/// places a dense column's values at sparse positions, `gather_column` pulls a
+/// dense subset out of a column by row index. Used by `DataFrame::select_rows`
+/// to densify a flattened sub-frame before the enum reader recurses.
+///
+/// Contiguous primitive columns (real/integer/logical/raw/complex) are copied as
+/// a slice gather via [`gather_native`]; string and list columns are copied
+/// element-by-element because they are write-barriered arrays of `SEXP` pointers,
+/// not flat buffers. The output type mirrors the input; any other type falls back
+/// to a logical `NA` column (normal `data.frame` columns never reach it).
+///
+/// Column attributes (`class`/`levels` for factor / Date / POSIXct) are **not**
+/// copied — the caller restores those after rooting the gathered column.
+///
+/// # Safety
+///
+/// Must be called on the R main thread. `src` must be a valid SEXP and every
+/// index in `idx` must be `< xlength(src)`. The returned SEXP is unprotected;
+/// the caller must root it (e.g. via `SET_VECTOR_ELT` into a protected list)
+/// before performing any allocation.
+#[doc(hidden)]
+pub unsafe fn gather_column(src: crate::SEXP, idx: &[usize]) -> crate::SEXP {
+    // SAFETY: caller guarantees R main thread, a valid `src`, and in-range indices.
+    #[allow(unused_unsafe)]
+    unsafe {
+        use crate::{RLogical, Rcomplex, SEXPTYPE, SexpExt as _};
+
+        match src.type_of() {
+            SEXPTYPE::REALSXP => gather_native::<f64>(src, idx),
+            SEXPTYPE::INTSXP => gather_native::<i32>(src, idx),
+            SEXPTYPE::LGLSXP => gather_native::<RLogical>(src, idx),
+            SEXPTYPE::RAWSXP => gather_native::<u8>(src, idx),
+            SEXPTYPE::CPLXSXP => gather_native::<Rcomplex>(src, idx),
+            SEXPTYPE::STRSXP => {
+                // Write-barriered CHARSXP-pointer array — copy element-by-element.
+                let out = crate::sys::Rf_allocVector(SEXPTYPE::STRSXP, idx.len() as isize);
+                for (j, &row_i) in idx.iter().enumerate() {
+                    out.set_string_elt(j as isize, src.string_elt(row_i as isize));
+                }
+                out
+            }
+            SEXPTYPE::VECSXP => {
+                // Write-barriered SEXP-pointer array (list-column) — element-by-element.
+                let out = crate::sys::Rf_allocVector(SEXPTYPE::VECSXP, idx.len() as isize);
+                for (j, &row_i) in idx.iter().enumerate() {
+                    out.set_vector_elt(j as isize, src.vector_elt(row_i as isize));
+                }
+                out
+            }
+            _ => {
+                // Unknown SEXPTYPE: fall back to a logical NA column of the right length.
+                let out = crate::sys::Rf_allocVector(SEXPTYPE::LGLSXP, idx.len() as isize);
+                let na_vals: &mut [RLogical] = out.as_mut_slice::<RLogical>();
+                na_vals.fill(RLogical::NA);
                 out
             }
         }

@@ -10,8 +10,8 @@ use syn::{DeriveInput, Fields};
 use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
-    EnumStructFieldData, FieldTypeKind, VariantInfo, VariantShape, classify_field_type,
-    parse_field_attrs,
+    EnumStructFieldData, FieldTypeKind, ResolvedColumn, VariantInfo, VariantShape,
+    classify_field_type, is_bare_reader_scalar_ty, is_reader_scalar_ty, parse_field_attrs,
 };
 use crate::naming;
 use std::collections::HashMap;
@@ -195,6 +195,7 @@ pub(super) fn derive_enum_dataframe(
                                     rust_name: rust_name.clone(),
                                     key_ty: key_ty.clone(),
                                     val_ty: val_ty.clone(),
+                                    map_ty: f.ty.clone(),
                                 })));
                             }
                             FieldTypeKind::Struct { inner_ty } => {
@@ -437,6 +438,7 @@ pub(super) fn derive_enum_dataframe(
                                     rust_name,
                                     key_ty: key_ty.clone(),
                                     val_ty: val_ty.clone(),
+                                    map_ty: f.ty.clone(),
                                 })));
                             }
                             FieldTypeKind::Struct { inner_ty } => {
@@ -1635,7 +1637,23 @@ pub(super) fn derive_enum_dataframe(
     };
     // endregion
 
+    // region: enum reader (#807) — computed here so `row_methods` can embed the methods
+    //
+    // Build the enum reader methods (if this enum is reader-capable). Must happen before
+    // `row_methods` since `row_methods` embeds the reader methods inline.
+    let enum_reader_early = build_enum_reader(
+        row_name,
+        &variant_infos,
+        &columns,
+        attrs,
+        &impl_generics,
+        &ty_generics,
+        where_clause,
+    );
+    // endregion
+
     // region: Generate associated methods
+    let enum_reader_methods = enum_reader_early.clone().unwrap_or_default();
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             /// Name of the generated DataFrame companion type.
@@ -1647,6 +1665,8 @@ pub(super) fn derive_enum_dataframe(
             pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
             }
+
+            #enum_reader_methods
         }
     };
 
@@ -1753,6 +1773,12 @@ pub(super) fn derive_enum_dataframe(
                                 #(#row_name::#variant_idents => #indices,)*
                             }
                         }
+                        fn from_factor_index(idx: i32) -> ::core::option::Option<Self> {
+                            match idx {
+                                #(#indices => ::core::option::Option::Some(#row_name::#variant_idents),)*
+                                _ => ::core::option::Option::None,
+                            }
+                        }
                     }
 
                     // impl IntoR for Self: single-element factor SEXP (cached levels via OnceLock).
@@ -1800,6 +1826,12 @@ pub(super) fn derive_enum_dataframe(
                                 #(#row_name::#variant_idents => #indices,)*
                             }
                         }
+                        fn from_factor_index(idx: i32) -> ::core::option::Option<Self> {
+                            match idx {
+                                #(#indices => ::core::option::Option::Some(#row_name::#variant_idents),)*
+                                _ => ::core::option::Option::None,
+                            }
+                        }
                     }
 
                     // impl IntoR: build levels SEXP on each call (no generic static allowed).
@@ -1836,15 +1868,20 @@ pub(super) fn derive_enum_dataframe(
     };
     // endregion
 
-    // region: DataFrameRowConvert on Row — orphan-rule bridge (enums: build-only, no reader)
+    // The enum reader was already computed above as `enum_reader_early`; alias it here
+    // for the DataFrameRowConvert override logic.
+    let enum_reader = enum_reader_early;
+
+    // region: DataFrameRowConvert on Row — orphan-rule bridge
     //
     // Same rationale as the struct path: `impl IntoDataFrame for Vec<Row>` is an orphan-rule
     // violation in the user crate, so the derive implements the local `DataFrameRowConvert`
     // marker on the local enum `Row`, and miniextendr_api's blanket provides the public
-    // `Vec<Row>: IntoDataFrame`. Enums have no R→Rust reader, so `rows_from_dataframe` keeps the
-    // trait default (`None`). The build delegates to the companion engine via
-    // `ColumnSource::into_dataframe`; the parallel path uses the #777 scatter-write builder when
-    // one was generated for this shape, else the sequential transposition.
+    // `Vec<Row>: IntoDataFrame`. Tagged enum shapes with reader-capable fields get a
+    // `rows_from_dataframe` override; other shapes keep the trait default (`None`).
+    // The build delegates to the companion engine via `ColumnSource::into_dataframe`;
+    // the parallel path uses the #777 scatter-write builder when one was generated
+    // for this shape, else the sequential transposition.
     let has_par_builder = !from_rows_par_method.is_empty();
     let rows_into_dataframe_par_body = if has_par_builder {
         quote! {
@@ -1855,6 +1892,45 @@ pub(super) fn derive_enum_dataframe(
     } else {
         quote! { Self::rows_into_dataframe(rows) }
     };
+
+    // rows_from_dataframe / rows_from_dataframe_par overrides (only when reader-capable).
+    let reader_override = if let Some(ref reader_ts) = enum_reader {
+        // Check whether the reader uses any Struct fields that would need Clone in par path.
+        let has_struct_field_any = variant_infos.iter().any(|vi| {
+            vi.fields
+                .iter()
+                .any(|f| matches!(f, EnumResolvedField::Struct(_)))
+        });
+        let par_reader_body = if has_struct_field_any {
+            quote! { Self::try_from_dataframe(__df.as_sexp()) }
+        } else {
+            quote! { Self::try_from_dataframe_par(__df.as_sexp()) }
+        };
+        let _ = reader_ts; // used below in row_methods
+        quote! {
+            fn rows_from_dataframe(
+                __df: &::miniextendr_api::dataframe::DataFrame,
+            ) -> ::core::option::Option<::core::result::Result<Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
+                ::core::option::Option::Some(
+                    <#row_name #ty_generics>::try_from_dataframe(__df.as_sexp())
+                        .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion)
+                )
+            }
+
+            #[cfg(feature = "rayon")]
+            fn rows_from_dataframe_par(
+                __df: &::miniextendr_api::dataframe::DataFrame,
+            ) -> ::core::option::Option<::core::result::Result<Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
+                ::core::option::Option::Some(
+                    #par_reader_body
+                        .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion)
+                )
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     let datarow_convert_impl = quote! {
         impl #impl_generics ::miniextendr_api::dataframe::DataFrameRowConvert
             for #row_name #ty_generics #where_clause
@@ -1879,6 +1955,8 @@ pub(super) fn derive_enum_dataframe(
             > {
                 #rows_into_dataframe_par_body
             }
+
+            #reader_override
         }
     };
     // endregion
@@ -2534,5 +2612,755 @@ fn generate_split_method(
             }
         }
     }
+}
+// endregion
+
+// region: enum reader (#807)
+
+/// Check whether an enum field is reader-capable.
+///
+/// Mirrors `field_reader_capable` from `dataframe_derive.rs` but for `EnumResolvedField`.
+/// Key differences vs the struct path:
+/// - `Single` enum fields are always `Vec<Option<ty>>` (even non-factor) because the
+///   writer wraps every cell in `Option`; so we only need `is_reader_scalar_ty`
+///   (which accepts both bare scalars and `Option<scalar>`).
+/// - `is_factor` Single fields are reader-capable iff the inner type satisfies
+///   `UnitEnumFactor` — guaranteed by the derive for unit-only enums.
+/// - `Map` fields are reader-capable iff both `K` and `V` are bare scalar element
+///   types: the reader regroups the `<base>_keys` / `<base>_values` list-columns
+///   (each row a `Vec<K>` / `Vec<V>`) back into the map via `Vec<elem>: TryFromSexp`.
+///   `Option`-wrapped key/value element types are excluded (the writer emits them,
+///   but the reader path is restricted to the round-trippable bare-scalar set).
+fn enum_field_reader_capable(erf: &EnumResolvedField) -> bool {
+    match erf {
+        EnumResolvedField::Single(data) => {
+            !data.needs_into_list && (data.is_factor || is_reader_scalar_ty(&data.ty))
+        }
+        EnumResolvedField::ExpandedFixed(data) => is_reader_scalar_ty(&data.elem_ty),
+        EnumResolvedField::ExpandedVec(data) => is_bare_reader_scalar_ty(&data.elem_ty),
+        EnumResolvedField::AutoExpandVec(data) => is_bare_reader_scalar_ty(&data.elem_ty),
+        EnumResolvedField::Map(data) => {
+            is_bare_reader_scalar_ty(&data.key_ty) && is_bare_reader_scalar_ty(&data.val_ty)
+        }
+        EnumResolvedField::Struct(_) => true, // routes through inner DataFrameRowConvert
+    }
+}
+
+/// Build the `try_from_dataframe` / `try_from_dataframe_par` methods for a tagged enum.
+///
+/// Returns `None` if the enum is not reader-capable (tagless, has skipped fields,
+/// has `conflicts = "string"`, or has a field type that can't be read back from R).
+/// When `None`, the enum keeps the `DataFrameRowConvert` trait default (`rows_from_dataframe
+/// → None`), which surfaces as a clear `DataFrameError::Conversion` at runtime.
+#[allow(clippy::too_many_arguments)]
+fn build_enum_reader(
+    row_name: &syn::Ident,
+    variant_infos: &[VariantInfo],
+    columns: &[ResolvedColumn],
+    attrs: &DataFrameAttrs,
+    _impl_generics: &syn::ImplGenerics<'_>,
+    _ty_generics: &syn::TypeGenerics<'_>,
+    _where_clause: Option<&syn::WhereClause>,
+) -> Option<TokenStream> {
+    // Gate 1: must have a tag column.
+    let tag_col_name = attrs.tag.as_deref()?;
+
+    // Gate 2: no skipped fields.
+    if variant_infos.iter().any(|vi| !vi.skipped_fields.is_empty()) {
+        return None;
+    }
+
+    // Gate 3: no string coercion.
+    if attrs.conflicts.is_some() {
+        return None;
+    }
+
+    // Gate 4: every field across all variants must be reader-capable.
+    if !variant_infos
+        .iter()
+        .all(|vi| vi.fields.iter().all(enum_field_reader_capable))
+    {
+        return None;
+    }
+
+    // Determine if any variant has a Struct field (affects _par strategy).
+    let has_struct_field = variant_infos.iter().any(|vi| {
+        vi.fields
+            .iter()
+            .any(|f| matches!(f, EnumResolvedField::Struct(_)))
+    });
+
+    // Auto-expand columns are discovered at runtime in the generated code — no prelude needed.
+
+    // region: column extraction prelude (R-thread, all SEXP access up front)
+    // Pull each schema column as Vec<Option<elem>> (every enum column is Option-wrapped
+    // because absent variants push None).
+    let mut extracts: Vec<TokenStream> = Vec::new();
+
+    // Tag column: pull as Vec<String>.
+    let tag_var = format_ident!("__tag");
+    extracts.push(quote! {
+        let #tag_var: Vec<::std::string::String> = {
+            let __tag_sexp = __view.column_raw(#tag_col_name).ok_or_else(|| {
+                ::std::format!("tag column `{}` is missing from the data.frame", #tag_col_name)
+            })?;
+            <Vec<::std::string::String> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__tag_sexp)
+                .map_err(|e| ::std::format!(
+                    "tag column `{}` could not be read as strings: {}",
+                    #tag_col_name, e
+                ))?
+        };
+        if #tag_var.len() != __nrow {
+            return ::core::result::Result::Err(::std::format!(
+                "tag column `{}` has length {} but data.frame has {} rows",
+                #tag_col_name, #tag_var.len(), __nrow
+            ));
+        }
+    });
+
+    // For each static schema column, pull as Vec<Option<ty>>.
+    // Collect which column names are Struct fields to handle densify separately.
+    let mut struct_col_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Struct(data) = erf {
+                struct_col_names.insert(data.base_name.clone());
+            }
+        }
+    }
+
+    // Collect Map column names (`<base>_keys` / `<base>_values`). These are registered
+    // in `columns` as `Vec<K>` / `Vec<V>` but have no `Vec<Option<Vec<_>>>: TryFromSexp`
+    // impl, so the generic loop below skips them; bespoke list-column extraction follows.
+    let mut map_col_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Map(data) = erf {
+                map_col_names.insert(format!("{}_keys", data.base_name));
+                map_col_names.insert(format!("{}_values", data.base_name));
+            }
+        }
+    }
+
+    for col in columns {
+        let col_name_str = col.col_name.to_string();
+        let col_var = format_ident!("__col_{}", col.col_name);
+        let ty = &col.ty;
+
+        // Skip Struct columns — they are handled separately via sub-frame densify.
+        if struct_col_names.contains(&col_name_str) {
+            continue;
+        }
+        // Skip Map columns — handled separately via the list-column regroup below.
+        if map_col_names.contains(&col_name_str) {
+            continue;
+        }
+
+        if col.is_factor {
+            // as_factor column: use unit_factor_option_vec_from_sexp.
+            extracts.push(quote! {
+                let #col_var: Vec<::core::option::Option<#ty>> = {
+                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                        ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
+                    })?;
+                    ::miniextendr_api::factor::unit_factor_option_vec_from_sexp::<#ty>(__col_sexp)
+                        .map_err(|e| ::std::format!(
+                            "factor column `{}` could not be read: {}",
+                            #col_name_str, e
+                        ))?
+                };
+                if #col_var.len() != __nrow {
+                    return ::core::result::Result::Err(::std::format!(
+                        "column `{}` has length {} but data.frame has {} rows",
+                        #col_name_str, #col_var.len(), __nrow
+                    ));
+                }
+            });
+        } else {
+            // Regular column: pull as Vec<Option<ty>> via TryFromSexp.
+            let opt_ty: syn::Type = syn::parse_quote!(::core::option::Option<#ty>);
+            extracts.push(quote! {
+                let #col_var: Vec<#opt_ty> = {
+                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                        ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
+                    })?;
+                    <Vec<#opt_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                        .map_err(|e| ::std::format!(
+                            "column `{}` could not be converted to the expected type: {}",
+                            #col_name_str, e
+                        ))?
+                };
+                if #col_var.len() != __nrow {
+                    return ::core::result::Result::Err(::std::format!(
+                        "column `{}` has length {} but data.frame has {} rows",
+                        #col_name_str, #col_var.len(), __nrow
+                    ));
+                }
+            });
+        }
+    }
+
+    // For each auto-expand field, discover columns at runtime.
+    // We collect the set of unique auto-expand base names across all variants.
+    let mut auto_expand_base_names: Vec<(String, syn::Type)> = Vec::new();
+    let mut seen_auto: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::AutoExpandVec(data) = erf
+                && seen_auto.insert(data.base_name.clone())
+            {
+                auto_expand_base_names.push((data.base_name.clone(), data.elem_ty.clone()));
+            }
+        }
+    }
+
+    for (base_name, elem_ty) in &auto_expand_base_names {
+        let cols_var = format_ident!("__aev_{}", base_name.replace('-', "_"));
+        let opt_elem_ty: syn::Type = syn::parse_quote!(::core::option::Option<#elem_ty>);
+        extracts.push(quote! {
+            let #cols_var: Vec<Vec<#opt_elem_ty>> = {
+                let mut __cols: Vec<Vec<#opt_elem_ty>> = ::std::vec::Vec::new();
+                let mut __k: usize = 1;
+                loop {
+                    let __cn = ::std::format!("{}_{}", #base_name, __k);
+                    match __view.column_raw(&__cn) {
+                        ::core::option::Option::Some(__s) => {
+                            let __c: Vec<#opt_elem_ty> =
+                                <Vec<#opt_elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
+                                    .map_err(|e| ::std::format!(
+                                        "column `{}` could not be converted: {}",
+                                        __cn, e
+                                    ))?;
+                            if __c.len() != __nrow {
+                                return ::core::result::Result::Err(::std::format!(
+                                    "column `{}` has length {} but data.frame has {} rows",
+                                    __cn, __c.len(), __nrow
+                                ));
+                            }
+                            __cols.push(__c);
+                            __k += 1;
+                        }
+                        ::core::option::Option::None => break,
+                    }
+                }
+                __cols
+            };
+        });
+    }
+
+    // For each Struct field, build a densified sub-Vec<Option<Inner>>.
+    // Approach: for each struct field base_name, collect the present_in indices from
+    // the variant_infos, build a presence mask, select+strip_prefix the sub-frame,
+    // densify it via select_rows, recurse via DataFrameRowConvert, scatter to
+    // Vec<Option<Inner>> of length __nrow.
+    let mut seen_struct: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Struct(data) = erf
+                && seen_struct.insert(data.base_name.clone())
+            {
+                let inner_ty = &data.inner_ty;
+                let base = &data.base_name;
+                let prefix_lit = format!("{}_", data.base_name);
+                let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
+
+                // Collect the variant names that contribute this field (for the mask).
+                let contributing_variant_names: Vec<String> = variant_infos
+                    .iter()
+                    .filter(|vi2| {
+                        vi2.fields.iter().any(
+                            |f| matches!(f, EnumResolvedField::Struct(d) if d.base_name == *base),
+                        )
+                    })
+                    .map(|vi2| vi2.name.to_string())
+                    .collect();
+
+                extracts.push(quote! {
+                    let #vec_var: Vec<::core::option::Option<#inner_ty>> = {
+                        // Build presence mask: row i is present iff its tag is one of the
+                        // variants that contribute this Struct field.
+                        let __contributing: &[&str] = &[#(#contributing_variant_names),*];
+                        let __present_indices: Vec<usize> = (0..__nrow)
+                            .filter(|&__i| __contributing.contains(&__tag[__i].as_str()))
+                            .collect();
+
+                        let __inner_result: Vec<#inner_ty> = if __present_indices.is_empty() {
+                            ::std::vec::Vec::new()
+                        } else {
+                            // Select the prefixed columns into a sub-frame, strip prefix,
+                            // densify to present rows only, then recurse via inner reader.
+                            let __prefix: &str = #prefix_lit;
+                            let __names = __view.names();
+                            let __sel: Vec<&str> = __names
+                                .iter()
+                                .filter(|__n| __n.starts_with(__prefix))
+                                .map(|__n| __n.as_str())
+                                .collect();
+                            if __sel.is_empty() {
+                                return ::core::result::Result::Err(::std::format!(
+                                    "struct column `{}`: no columns with prefix `{}` found",
+                                    #base, __prefix
+                                ));
+                            }
+                            let __sub_full = __view.select(&__sel);
+                            // Protect the sub-frame across strip_prefix + select_rows + recursive read.
+                            let __guard_full = unsafe {
+                                ::miniextendr_api::OwnedProtect::new(__sub_full.as_sexp())
+                            };
+                            let __sub_stripped = ::miniextendr_api::dataframe::DataFrame::from_sexp(
+                                __guard_full.get()
+                            )
+                            .map_err(|e| e.to_string())?
+                            .strip_prefix(__prefix);
+                            // Densify: only pass the present rows to the inner reader.
+                            let __guard_stripped = unsafe {
+                                ::miniextendr_api::OwnedProtect::new(__sub_stripped.as_sexp())
+                            };
+                            let __sub_dense = ::miniextendr_api::dataframe::DataFrame::from_sexp(
+                                __guard_stripped.get()
+                            )
+                            .map_err(|e| e.to_string())?
+                            .select_rows(&__present_indices);
+                            let __guard_dense = unsafe {
+                                ::miniextendr_api::OwnedProtect::new(__sub_dense.as_sexp())
+                            };
+                            let __sub_for_read = ::miniextendr_api::dataframe::DataFrame::from_sexp(
+                                __guard_dense.get()
+                            )
+                            .map_err(|e| e.to_string())?;
+                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub_for_read) {
+                                ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
+                                ::core::option::Option::Some(::core::result::Result::Err(__e)) => {
+                                    return ::core::result::Result::Err(::std::format!(
+                                        "struct column `{}`: {}", #base, __e
+                                    ));
+                                }
+                                ::core::option::Option::None => {
+                                    return ::core::result::Result::Err(::std::format!(
+                                        "struct column `{}`: nested type has no data.frame reader", #base
+                                    ));
+                                }
+                            };
+                            drop(__guard_dense);
+                            drop(__guard_stripped);
+                            drop(__guard_full);
+                            __out
+                        };
+
+                        // Scatter dense Vec<Inner> back to Vec<Option<Inner>> of length __nrow.
+                        let mut __result: Vec<::core::option::Option<#inner_ty>> =
+                            (0..__nrow).map(|_| ::core::option::Option::None).collect();
+                        let mut __dense_iter = __inner_result.into_iter();
+                        for &__i in &__present_indices {
+                            __result[__i] = ::core::option::Option::Some(
+                                __dense_iter.next().expect("dense iter must match present count")
+                            );
+                        }
+                        __result
+                    };
+                });
+            }
+        }
+    }
+
+    // For each Map field, read the parallel `<base>_keys` / `<base>_values`
+    // list-columns back into `Vec<Option<Vec<K>>>` / `Vec<Option<Vec<V>>>`. The
+    // writer emits these via `Vec<Option<Vec<_>>>: IntoR` (a VECSXP where absent-
+    // variant rows are NULL and present rows are typed vectors), so the reader
+    // walks the VECSXP: NULL → `None`, typed vector → `Some(Vec<elem>)`. The
+    // per-row dispatch zips `keys[i]` and `values[i]` back into the map type.
+    let emit_map_col_extract = |col_var: &syn::Ident, col_name: &str, elem_ty: &syn::Type| {
+        quote! {
+            let #col_var: Vec<::core::option::Option<Vec<#elem_ty>>> = {
+                let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
+                    ::std::format!("column `{}` is missing from the data.frame", #col_name)
+                })?;
+                // VECSXP list-column: NULL → None, typed vector → Some(Vec<elem>).
+                // `SexpExt::is_list` via UFCS (avoids the `List::is_list` pair-list bug).
+                if <::miniextendr_api::SEXP as ::miniextendr_api::SexpExt>::is_list(&__col_sexp) {
+                    let __list = unsafe {
+                        ::miniextendr_api::list::List::from_raw(__col_sexp)
+                    };
+                    let __len = __list.len();
+                    let mut __v: Vec<::core::option::Option<Vec<#elem_ty>>> =
+                        ::std::vec::Vec::with_capacity(__len as usize);
+                    for __j in 0..__len {
+                        // in-bounds by construction (0..len)
+                        let __elt = __list.get(__j).unwrap();
+                        if __elt == ::miniextendr_api::SEXP::nil() {
+                            __v.push(::core::option::Option::None);
+                        } else {
+                            let __inner: Vec<#elem_ty> =
+                                <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
+                                    .map_err(|e| ::std::format!(
+                                        "column `{}` element {} could not be converted to the expected type: {}",
+                                        #col_name, __j, e
+                                    ))?;
+                            __v.push(::core::option::Option::Some(__inner));
+                        }
+                    }
+                    __v
+                } else {
+                    // Non-list column → no map present in any row.
+                    (0..__nrow).map(|_| ::core::option::Option::None).collect()
+                }
+            };
+            if #col_var.len() != __nrow {
+                return ::core::result::Result::Err(::std::format!(
+                    "column `{}` has length {} but data.frame has {} rows",
+                    #col_name, #col_var.len(), __nrow
+                ));
+            }
+        }
+    };
+    let mut seen_map: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for vi in variant_infos {
+        for erf in &vi.fields {
+            if let EnumResolvedField::Map(data) = erf
+                && seen_map.insert(data.base_name.clone())
+            {
+                let keys_name = format!("{}_keys", data.base_name);
+                let vals_name = format!("{}_values", data.base_name);
+                let keys_var = format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
+                let vals_var =
+                    format_ident!("__mapcol_{}_values", data.base_name.replace('-', "_"));
+                extracts.push(emit_map_col_extract(&keys_var, &keys_name, &data.key_ty));
+                extracts.push(emit_map_col_extract(&vals_var, &vals_name, &data.val_ty));
+            }
+        }
+    }
+    // endregion
+
+    // region: per-row dispatch match arms
+    let mut match_arms: Vec<TokenStream> = Vec::new();
+    // Parallel variant: arms return Ok(row) instead of pushing to a Vec.
+    let mut par_match_arms: Vec<TokenStream> = Vec::new();
+
+    for (variant_idx, vi) in variant_infos.iter().enumerate() {
+        let variant_name_str = vi.name.to_string();
+        let variant_ident = &vi.name;
+
+        // Build the field expressions for this variant.
+        let mut field_exprs: Vec<TokenStream> = Vec::new();
+
+        for erf in &vi.fields {
+            let rust_name = erf.rust_name();
+
+            let expr = match erf {
+                EnumResolvedField::Single(data) => {
+                    let col_var = format_ident!("__col_{}", data.col_name);
+                    let col_name_str = data.col_name.to_string();
+                    if data.is_factor {
+                        quote! {
+                            #rust_name: #col_var[__i].clone().ok_or_else(|| ::std::format!(
+                                "variant `{}` row {}: factor column `{}` is NA but field is required",
+                                #variant_name_str, __i, #col_name_str
+                            ))?
+                        }
+                    } else {
+                        quote! {
+                            #rust_name: #col_var[__i].clone().ok_or_else(|| ::std::format!(
+                                "variant `{}` row {}: column `{}` is NA but field is required",
+                                #variant_name_str, __i, #col_name_str
+                            ))?
+                        }
+                    }
+                }
+                EnumResolvedField::ExpandedFixed(data) => {
+                    let elem_ty = &data.elem_ty;
+                    let len = data.len;
+                    let slots: Vec<TokenStream> = (1..=data.len)
+                        .map(|k| {
+                            let col_var = format_ident!("__col_{}_{}", data.base_name, k);
+                            let col_name_str = format!("{}_{}", data.base_name, k);
+                            quote! {
+                                #col_var[__i].clone().ok_or_else(|| ::std::format!(
+                                    "variant `{}` row {}: column `{}` is NA but field is required",
+                                    #variant_name_str, __i, #col_name_str
+                                ))?
+                            }
+                        })
+                        .collect();
+                    quote! {
+                        #rust_name: {
+                            let __arr: [#elem_ty; #len] = [ #(#slots),* ];
+                            __arr
+                        }
+                    }
+                }
+                EnumResolvedField::ExpandedVec(data) => {
+                    let elem_ty = &data.elem_ty;
+                    let slots: Vec<TokenStream> = (1..=data.width)
+                        .map(|k| {
+                            let col_var = format_ident!("__col_{}_{}", data.base_name, k);
+                            quote! { #col_var[__i].clone() }
+                        })
+                        .collect();
+                    quote! {
+                        #rust_name: [ #(#slots),* ]
+                            .into_iter().flatten().collect::<Vec<#elem_ty>>().into()
+                    }
+                }
+                EnumResolvedField::AutoExpandVec(data) => {
+                    let elem_ty = &data.elem_ty;
+                    let cols_var = format_ident!("__aev_{}", data.base_name.replace('-', "_"));
+                    quote! {
+                        #rust_name: #cols_var
+                            .iter()
+                            .filter_map(|__c| __c[__i].clone())
+                            .collect::<Vec<#elem_ty>>()
+                            .into()
+                    }
+                }
+                EnumResolvedField::Map(data) => {
+                    let keys_var =
+                        format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
+                    let vals_var =
+                        format_ident!("__mapcol_{}_values", data.base_name.replace('-', "_"));
+                    let base = &data.base_name;
+                    let map_ty = &data.map_ty;
+                    quote! {
+                        #rust_name: {
+                            let __keys = #keys_var[__i].clone().ok_or_else(|| ::std::format!(
+                                "variant `{}` row {}: map column `{}` is NA but field is required",
+                                #variant_name_str, __i, #base
+                            ))?;
+                            let __vals = #vals_var[__i].clone().ok_or_else(|| ::std::format!(
+                                "variant `{}` row {}: map column `{}` is NA but field is required",
+                                #variant_name_str, __i, #base
+                            ))?;
+                            if __keys.len() != __vals.len() {
+                                return ::core::result::Result::Err(::std::format!(
+                                    "variant `{}` row {}: map column `{}` has {} keys but {} values",
+                                    #variant_name_str, __i, #base, __keys.len(), __vals.len()
+                                ));
+                            }
+                            __keys.into_iter().zip(__vals).collect::<#map_ty>()
+                        }
+                    }
+                }
+                EnumResolvedField::Struct(data) => {
+                    let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
+                    let base = &data.base_name;
+                    quote! {
+                        #rust_name: #vec_var[__i].clone().ok_or_else(|| ::std::format!(
+                            "variant `{}` row {}: struct field `{}` is absent for this variant",
+                            #variant_name_str, __i, #base
+                        ))?
+                    }
+                }
+            };
+            field_exprs.push(expr);
+        }
+
+        // Build the match arm for this variant.
+        let arm_body = match vi.shape {
+            VariantShape::Named => {
+                if field_exprs.is_empty() {
+                    quote! { #row_name::#variant_ident {} }
+                } else {
+                    quote! { #row_name::#variant_ident { #(#field_exprs),* } }
+                }
+            }
+            VariantShape::Tuple => {
+                // For tuple variants we need positional args, not `rust_name: expr`.
+                // Rebuild expressions without the `rust_name:` prefix.
+                let positional_exprs: Vec<TokenStream> = vi.fields.iter().map(|erf| {
+                    match erf {
+                        EnumResolvedField::Single(data) => {
+                            let col_var = format_ident!("__col_{}", data.col_name);
+                            let col_name_str = data.col_name.to_string();
+                            if data.is_factor {
+                                quote! {
+                                    #col_var[__i].clone().ok_or_else(|| ::std::format!(
+                                        "variant `{}` row {}: factor column `{}` is NA but field is required",
+                                        #variant_name_str, __i, #col_name_str
+                                    ))?
+                                }
+                            } else {
+                                quote! {
+                                    #col_var[__i].clone().ok_or_else(|| ::std::format!(
+                                        "variant `{}` row {}: column `{}` is NA but field is required",
+                                        #variant_name_str, __i, #col_name_str
+                                    ))?
+                                }
+                            }
+                        }
+                        EnumResolvedField::ExpandedFixed(data) => {
+                            let elem_ty = &data.elem_ty;
+                            let len = data.len;
+                            let slots: Vec<TokenStream> = (1..=data.len)
+                                .map(|k| {
+                                    let col_var = format_ident!("__col_{}_{}", data.base_name, k);
+                                    let col_name_str = format!("{}_{}", data.base_name, k);
+                                    quote! {
+                                        #col_var[__i].clone().ok_or_else(|| ::std::format!(
+                                            "variant `{}` row {}: column `{}` is NA but field is required",
+                                            #variant_name_str, __i, #col_name_str
+                                        ))?
+                                    }
+                                })
+                                .collect();
+                            quote! { { let __arr: [#elem_ty; #len] = [ #(#slots),* ]; __arr } }
+                        }
+                        EnumResolvedField::ExpandedVec(data) => {
+                            let elem_ty = &data.elem_ty;
+                            let slots: Vec<TokenStream> = (1..=data.width)
+                                .map(|k| {
+                                    let col_var = format_ident!("__col_{}_{}", data.base_name, k);
+                                    quote! { #col_var[__i].clone() }
+                                })
+                                .collect();
+                            quote! { [ #(#slots),* ].into_iter().flatten().collect::<Vec<#elem_ty>>().into() }
+                        }
+                        EnumResolvedField::AutoExpandVec(data) => {
+                            let elem_ty = &data.elem_ty;
+                            let cols_var = format_ident!("__aev_{}", data.base_name.replace('-', "_"));
+                            quote! {
+                                #cols_var.iter().filter_map(|__c| __c[__i].clone()).collect::<Vec<#elem_ty>>().into()
+                            }
+                        }
+                        EnumResolvedField::Map(data) => {
+                            let keys_var =
+                                format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
+                            let vals_var = format_ident!(
+                                "__mapcol_{}_values",
+                                data.base_name.replace('-', "_")
+                            );
+                            let base = &data.base_name;
+                            let map_ty = &data.map_ty;
+                            quote! {
+                                {
+                                    let __keys = #keys_var[__i].clone().ok_or_else(|| ::std::format!(
+                                        "variant `{}` row {}: map column `{}` is NA but field is required",
+                                        #variant_name_str, __i, #base
+                                    ))?;
+                                    let __vals = #vals_var[__i].clone().ok_or_else(|| ::std::format!(
+                                        "variant `{}` row {}: map column `{}` is NA but field is required",
+                                        #variant_name_str, __i, #base
+                                    ))?;
+                                    if __keys.len() != __vals.len() {
+                                        return ::core::result::Result::Err(::std::format!(
+                                            "variant `{}` row {}: map column `{}` has {} keys but {} values",
+                                            #variant_name_str, __i, #base, __keys.len(), __vals.len()
+                                        ));
+                                    }
+                                    __keys.into_iter().zip(__vals).collect::<#map_ty>()
+                                }
+                            }
+                        }
+                        EnumResolvedField::Struct(data) => {
+                            let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
+                            let base = &data.base_name;
+                            quote! {
+                                #vec_var[__i].clone().ok_or_else(|| ::std::format!(
+                                    "variant `{}` row {}: struct field `{}` is absent",
+                                    #variant_name_str, __i, #base
+                                ))?
+                            }
+                        }
+                    }
+                }).collect();
+                quote! { #row_name::#variant_ident( #(#positional_exprs),* ) }
+            }
+            VariantShape::Unit => quote! { #row_name::#variant_ident },
+        };
+
+        let _ = variant_idx; // variant_idx used logically above via contributing_variant_names
+
+        // Sequential arm: push onto __rows.
+        match_arms.push(quote! {
+            #variant_name_str => {
+                __rows.push(#arm_body);
+            }
+        });
+        // Parallel arm: return Ok(row_value).
+        par_match_arms.push(quote! {
+            #variant_name_str => ::core::result::Result::Ok(#arm_body),
+        });
+    }
+    // endregion
+
+    // region: sequential body
+    let seq_body = quote! {
+        let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
+            .map_err(|e| e.to_string())?;
+        let __nrow = __view.nrow();
+        #(#extracts)*
+        let mut __rows: Vec<Self> = Vec::with_capacity(__nrow);
+        for __i in 0..__nrow {
+            match #tag_var[__i].as_str() {
+                #(#match_arms)*
+                __unknown => {
+                    return ::core::result::Result::Err(::std::format!(
+                        "unknown variant tag {:?} at row {}",
+                        __unknown, __i
+                    ));
+                }
+            }
+        }
+        ::core::result::Result::Ok(__rows)
+    };
+    // endregion
+
+    // region: parallel body
+    // For shapes with Struct fields, delegate to sequential (avoids Clone on par region).
+    // For pure-scalar/expansion shapes, extract all columns on the R thread then
+    // parallelize per-row dispatch over pre-extracted owned Vecs.
+    let par_body = if has_struct_field {
+        quote! { Self::try_from_dataframe(sexp) }
+    } else {
+        // Extract all columns on the R thread, then parallelize per-row dispatch.
+        quote! {
+            use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+            let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
+                .map_err(|e| e.to_string())?;
+            let __nrow = __view.nrow();
+            #(#extracts)*
+            let __rows: Vec<Self> = (0..__nrow)
+                .into_par_iter()
+                .map(|__i| -> ::core::result::Result<Self, ::std::string::String> {
+                    match #tag_var[__i].as_str() {
+                        #(#par_match_arms)*
+                        __unknown => {
+                            ::core::result::Result::Err(::std::format!(
+                                "unknown variant tag {:?} at row {}",
+                                __unknown, __i
+                            ))
+                        }
+                    }
+                })
+                .collect::<::core::result::Result<Vec<Self>, _>>()?;
+            ::core::result::Result::Ok(__rows)
+        }
+    };
+    // endregion
+
+    Some(quote! {
+        /// Read an R `data.frame` directly into a `Vec<Self>` (sequential).
+        ///
+        /// Reads the tag column first, then per-row dispatches to the active variant's
+        /// field assemblers. Each schema column is pre-extracted (NA-aware, ALTREP-
+        /// materialising). Returns `Err` with a descriptive message if a column is
+        /// missing, mis-typed, or if an unknown tag value is encountered.
+        pub fn try_from_dataframe(
+            sexp: ::miniextendr_api::SEXP,
+        ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+            #seq_body
+        }
+
+        /// Read an R `data.frame` directly into a `Vec<Self>` (parallel).
+        ///
+        /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R thread via
+        /// rayon. All SEXP access happens up front on the R/worker thread; the
+        /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
+        /// struct-flatten/nested-enum fields delegate to the sequential reader instead.
+        #[cfg(feature = "rayon")]
+        pub fn try_from_dataframe_par(
+            sexp: ::miniextendr_api::SEXP,
+        ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+            #par_body
+        }
+    })
 }
 // endregion

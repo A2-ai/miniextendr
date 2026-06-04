@@ -1632,3 +1632,132 @@ fn build_and_check_rayon_df_tall(nrow: usize) {
 }
 
 // endregion
+
+// region: enum reader GC-stress fixtures (#807)
+//
+// The enum reader allocates sub-frames (via `select` + `strip_prefix` + `select_rows`)
+// while holding column SEXPs — a pattern that requires PROTECT discipline across
+// the per-column loop. These no-arg fixtures exercise that path under gctorture(TRUE).
+
+/// Exercise the nested-payload enum flatten reader under GC pressure.
+///
+/// Builds a `RETracked` frame with the writer, holds the df SEXP live, then reads
+/// it back with `Vec::<RETracked>::from_dataframe`. The reader calls `select` +
+/// `strip_prefix` + `select_rows` + inner reader, each of which may fire GC.
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_reader_enum_flatten() {
+    use crate::dataframe_reader_enum_roundtrip_test::{REStatus, RETracked};
+    use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
+    use miniextendr_api::into_r::IntoR as _;
+
+    let rows = vec![
+        RETracked::Tracked {
+            id: 1,
+            status: REStatus::Ok,
+        },
+        RETracked::Tracked {
+            id: 2,
+            status: REStatus::Err { code: 500 },
+        },
+        RETracked::Other { id: 3 },
+        RETracked::Tracked {
+            id: 4,
+            status: REStatus::Ok,
+        },
+    ];
+    let df_sexp = rows.into_dataframe().unwrap().into_sexp();
+    // Root the writer-produced frame across the read-back. A Rust binding does NOT
+    // protect an R SEXP, so under gctorture(TRUE) the sub-frame select/densify
+    // allocations would reclaim the parent frame mid-read. In real usage the input
+    // frame is an R-rooted call argument; the fixture stands in for that root.
+    let _df_guard = unsafe { miniextendr_api::OwnedProtect::new(df_sexp) };
+    let frame = DataFrame::from_sexp(df_sexp).unwrap();
+    let back: Vec<RETracked> = <Vec<RETracked>>::from_dataframe(&frame).unwrap();
+    assert_eq!(back.len(), 4);
+}
+
+/// Exercise the as_factor unit-enum reader under GC pressure.
+///
+/// Builds a `REMove` frame with the writer, holds the df SEXP live, then reads
+/// it back with `Vec::<REMove>::from_dataframe`. The reader calls
+/// `unit_factor_option_vec_from_sexp` which validates levels and reads INTSXP
+/// elements — exercises the factor PROTECT path.
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_reader_enum_factor() {
+    use crate::dataframe_reader_enum_roundtrip_test::{REDir, REMove};
+    use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
+    use miniextendr_api::into_r::IntoR as _;
+
+    let rows = vec![
+        REMove::Move {
+            id: 1,
+            dir: REDir::East,
+        },
+        REMove::Stop { id: 2 },
+        REMove::Move {
+            id: 3,
+            dir: REDir::South,
+        },
+        REMove::Stop { id: 4 },
+        REMove::Move {
+            id: 5,
+            dir: REDir::North,
+        },
+    ];
+    let df_sexp = rows.into_dataframe().unwrap().into_sexp();
+    // Root the writer-produced frame across the read-back. A Rust binding does NOT
+    // protect an R SEXP, so under gctorture(TRUE) the factor-level allocations in the
+    // reader would reclaim the parent frame mid-read. In real usage the input frame is
+    // an R-rooted call argument; the fixture stands in for that root.
+    let _df_guard = unsafe { miniextendr_api::OwnedProtect::new(df_sexp) };
+    let frame = DataFrame::from_sexp(df_sexp).unwrap();
+    let back: Vec<REMove> = <Vec<REMove>>::from_dataframe(&frame).unwrap();
+    assert_eq!(back.len(), 5);
+}
+
+/// Exercise the map-column enum reader under GC pressure.
+///
+/// Builds a `REMapB` frame with the writer, holds the df SEXP live, then reads it
+/// back with `Vec::<REMapB>::from_dataframe`. The reader walks the `tally_keys` /
+/// `tally_values` VECSXP list-columns, converting each row's element via
+/// `Vec<elem>: TryFromSexp` — exercises the list-column regroup path (NULL rows,
+/// empty-map rows, and populated rows all present in the fixture frame).
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_reader_enum_map() {
+    use crate::dataframe_reader_enum_roundtrip_test::REMapB;
+    use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
+    use miniextendr_api::into_r::IntoR as _;
+    use std::collections::BTreeMap;
+
+    let rows = vec![
+        REMapB::Tally {
+            label: "a".to_string(),
+            tally: BTreeMap::from([("x".to_string(), 1i32), ("y".to_string(), 2i32)]),
+        },
+        REMapB::Empty {
+            label: "b".to_string(),
+        },
+        REMapB::Tally {
+            label: "c".to_string(),
+            tally: BTreeMap::new(),
+        },
+        REMapB::Tally {
+            label: "d".to_string(),
+            tally: BTreeMap::from([("z".to_string(), 9i32)]),
+        },
+    ];
+    let df_sexp = rows.into_dataframe().unwrap().into_sexp();
+    // Root the writer-produced frame across the read-back. A Rust binding does NOT
+    // protect an R SEXP, so under gctorture(TRUE) a later allocation would reclaim it
+    // mid-read. In real usage the input frame is an R-rooted call argument; the fixture
+    // stands in for that root.
+    let _df_guard = unsafe { miniextendr_api::OwnedProtect::new(df_sexp) };
+    let frame = DataFrame::from_sexp(df_sexp).unwrap();
+    let back: Vec<REMapB> = <Vec<REMapB>>::from_dataframe(&frame).unwrap();
+    assert_eq!(back.len(), 4);
+}
+
+// endregion

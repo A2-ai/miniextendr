@@ -445,7 +445,10 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
 /// `FieldTypeKind::Scalar`: set/opaque collection types (`HashSet<…>`,
 /// `BTreeSet<…>`) also classify as `Scalar` but do NOT implement `Vec<_>:
 /// TryFromSexp`, so they must be excluded from the reader path.
-const READER_SCALAR_NAMES: &[&str] = &[
+///
+/// `pub(super)` so `enum_expansion.rs` (in the `dataframe_derive` module dir)
+/// can reuse the same allow-list without duplication.
+pub(super) const READER_SCALAR_NAMES: &[&str] = &[
     "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "String",
 ];
 
@@ -456,7 +459,9 @@ const READER_SCALAR_NAMES: &[&str] = &[
 /// expanded slot as `Vec<Option<elem>>` (the write side wraps every slot in
 /// `Option`). Allowing `Option<scalar>` here would ask for `Vec<Option<Option<…>>>`,
 /// which has no `TryFromSexp` impl.
-fn is_bare_reader_scalar_ty(ty: &syn::Type) -> bool {
+///
+/// `pub(super)` so `enum_expansion.rs` can reuse it.
+pub(super) fn is_bare_reader_scalar_ty(ty: &syn::Type) -> bool {
     if let syn::Type::Path(tp) = ty
         && tp.qself.is_none()
         && tp.path.leading_colon.is_none()
@@ -473,7 +478,9 @@ fn is_bare_reader_scalar_ty(ty: &syn::Type) -> bool {
 /// These are exactly the field types for which the from-R reader can pull a
 /// column out as `Vec<ty>` via `TryFromSexp` (scalar `Single` fields and
 /// `[T; N]` fixed-array elements, neither of which adds an `Option` wrapper).
-fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
+///
+/// `pub(super)` so `enum_expansion.rs` can reuse it.
+pub(super) fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
     if is_bare_reader_scalar_ty(ty) {
         return true;
     }
@@ -2854,6 +2861,10 @@ pub(super) struct EnumMapFieldData {
     pub(super) key_ty: syn::Type,
     /// Value type V.
     pub(super) val_ty: syn::Type,
+    /// Full original field type (`HashMap<K, V>` / `BTreeMap<K, V>`). The reader
+    /// regroups the `_keys`/`_values` list-columns and `collect()`s back into this
+    /// exact map type — both `HashMap` and `BTreeMap` implement `FromIterator<(K, V)>`.
+    pub(super) map_ty: syn::Type,
 }
 
 /// Data for [`EnumResolvedField::Struct`].
