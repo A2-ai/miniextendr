@@ -800,6 +800,140 @@ fn na_vector_option_i32_empty_zero_sentinel() {
 
 // endregion
 
+// region: from_r — coerced multi-source vec shell (from_numeric_vec_with)
+//
+// The tests above hit the *native* Vec<Option<i32>>/Vec<Option<f64>> impls.
+// These exercise the *coerced* path (`try_from_sexp_numeric_{,option_}vec`,
+// served for i8/i16/i64/u16/u32/u64/isize/usize/f32) that both route through
+// the shared `from_numeric_vec_with` dispatch. They pin the previously
+// unverified REALSXP/LGLSXP option cells and the plain-path NA-round-through
+// contract that distinguishes the NA-unaware sibling from the NA-aware one.
+
+/// Coerced Vec<Option<i64>> from REALSXP: NA_real_ → None (bit-exact, not NaN).
+#[test]
+fn coerced_option_vec_i64_realsxp_na_becomes_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe {
+            let s = g.protect(Rf_allocVector(SEXPTYPE::REALSXP, 3));
+            let sl: &mut [f64] = s.as_mut_slice();
+            sl[0] = 1.0;
+            sl[1] = NA_REAL;
+            sl[2] = 3.0;
+            s
+        };
+        let v: Vec<Option<i64>> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, vec![Some(1i64), None, Some(3i64)]);
+    });
+}
+
+/// Coerced Vec<Option<i64>> from REALSXP: a regular NaN is Some, not None.
+#[test]
+fn coerced_option_vec_i64_realsxp_regular_nan_errors_not_na() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe {
+            let s = g.protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+            let sl: &mut [f64] = s.as_mut_slice();
+            sl[0] = f64::NAN; // plain IEEE NaN, NOT NA_real_
+            s
+        };
+        // f64::NAN is not NA_real_, so the element is not None; coercing a NaN to
+        // an integer fails, so the whole conversion errors rather than dropping it.
+        let result: Result<Vec<Option<i64>>, SexpError> = TryFromSexp::try_from_sexp(s);
+        assert!(
+            matches!(result, Err(SexpError::InvalidValue(_))),
+            "regular NaN must not be treated as NA"
+        );
+    });
+}
+
+/// Coerced Vec<Option<i64>> from LGLSXP: NA_LOGICAL → None, TRUE → 1, FALSE → 0.
+#[test]
+fn coerced_option_vec_i64_lglsxp_na_becomes_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe {
+            let s = g.protect(Rf_allocVector(SEXPTYPE::LGLSXP, 3));
+            s.set_logical_elt(0, 1); // TRUE
+            s.set_logical_elt(1, NA_LOGICAL);
+            s.set_logical_elt(2, 0); // FALSE
+            s
+        };
+        let v: Vec<Option<i64>> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, vec![Some(1i64), None, Some(0i64)]);
+    });
+}
+
+/// Coerced Vec<Option<i64>> from RAWSXP: raw has no NA, every byte is Some.
+#[test]
+fn coerced_option_vec_i64_rawsxp_all_some() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe {
+            let s = g.protect(Rf_allocVector(SEXPTYPE::RAWSXP, 3));
+            let sl: &mut [u8] = s.as_mut_slice();
+            sl[0] = 1;
+            sl[1] = 2;
+            sl[2] = 255;
+            s
+        };
+        let v: Vec<Option<i64>> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, vec![Some(1i64), Some(2i64), Some(255i64)]);
+    });
+}
+
+/// Plain (NA-unaware) coerced Vec<i64> from INTSXP: NA_integer_ rounds THROUGH
+/// as the i32::MIN sentinel, it is not dropped. This is the footgun documented
+/// on the na_vectors sibling and the contract the Option path avoids.
+#[test]
+fn coerced_plain_vec_i64_intsxp_na_round_through() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe {
+            let s = g.protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
+            let sl: &mut [i32] = s.as_mut_slice();
+            sl[0] = 1;
+            sl[1] = NA_INTEGER;
+            sl[2] = 3;
+            s
+        };
+        let v: Vec<i64> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, vec![1i64, i32::MIN as i64, 3i64]);
+    });
+}
+
+/// Plain (NA-unaware) coerced Vec<i64> from LGLSXP: NA_LOGICAL reads via to_i32()
+/// and rounds through as i32::MIN; TRUE → 1, FALSE → 0.
+#[test]
+fn coerced_plain_vec_i64_lglsxp_na_round_through() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe {
+            let s = g.protect(Rf_allocVector(SEXPTYPE::LGLSXP, 3));
+            s.set_logical_elt(0, 1); // TRUE
+            s.set_logical_elt(1, NA_LOGICAL);
+            s.set_logical_elt(2, 0); // FALSE
+            s
+        };
+        let v: Vec<i64> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, vec![1i64, i32::MIN as i64, 0i64]);
+    });
+}
+
+/// Coerced vec shell rejects an unsupported SEXPTYPE with the shared error.
+#[test]
+fn coerced_vec_i64_wrong_type_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { g.protect(SEXP::scalar_string_from_str("nope")) };
+        let result: Result<Vec<i64>, SexpError> = TryFromSexp::try_from_sexp(s);
+        assert!(matches!(result, Err(SexpError::InvalidValue(_))));
+    });
+}
+
+// endregion
+
 // region: from_r.rs (root) — NA_real_ identity via roundtrip, Vec<bool>, i32 NA guard
 
 /// NA_real_ roundtrip: f64 from an NA scalar returns the NA bit pattern.

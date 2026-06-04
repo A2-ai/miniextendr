@@ -18,8 +18,8 @@
 
 use crate::coerce::TryCoerce;
 use crate::from_r::{
-    SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value, is_na_real,
-    r_slice,
+    SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value,
+    from_numeric_vec_with, is_na_real, r_slice,
 };
 use crate::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -260,56 +260,32 @@ where
     <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
     <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
 {
-    let actual = sexp.type_of();
-    match actual {
-        SEXPTYPE::INTSXP => {
-            let slice: &[i32] = unsafe { sexp.as_slice() };
-            slice
-                .iter()
-                .map(|&v| {
-                    if v == crate::altrep_traits::NA_INTEGER {
-                        Ok(None)
-                    } else {
-                        coerce_value(v).map(Some)
-                    }
-                })
-                .collect()
-        }
-        SEXPTYPE::REALSXP => {
-            let slice: &[f64] = unsafe { sexp.as_slice() };
-            slice
-                .iter()
-                .map(|&v| {
-                    if is_na_real(v) {
-                        Ok(None)
-                    } else {
-                        coerce_value(v).map(Some)
-                    }
-                })
-                .collect()
-        }
-        SEXPTYPE::RAWSXP => {
-            let slice: &[u8] = unsafe { sexp.as_slice() };
-            slice.iter().map(|&v| coerce_value(v).map(Some)).collect()
-        }
-        SEXPTYPE::LGLSXP => {
-            let slice: &[RLogical] = unsafe { sexp.as_slice() };
-            slice
-                .iter()
-                .map(|&v| {
-                    if v.is_na() {
-                        Ok(None)
-                    } else {
-                        coerce_value(v.to_i32()).map(Some)
-                    }
-                })
-                .collect()
-        }
-        _ => Err(SexpError::InvalidValue(format!(
-            "expected integer, numeric, logical, or raw; got {:?}",
-            actual
-        ))),
-    }
+    from_numeric_vec_with(
+        sexp,
+        |v: i32| {
+            if v == crate::altrep_traits::NA_INTEGER {
+                Ok(None)
+            } else {
+                coerce_value(v).map(Some)
+            }
+        },
+        |v: f64| {
+            if is_na_real(v) {
+                Ok(None)
+            } else {
+                coerce_value(v).map(Some)
+            }
+        },
+        // RAWSXP has no NA in R: every byte is a value.
+        |v: u8| coerce_value(v).map(Some),
+        |v: RLogical| {
+            if v.is_na() {
+                Ok(None)
+            } else {
+                coerce_value(v.to_i32()).map(Some)
+            }
+        },
+    )
 }
 
 macro_rules! impl_vec_option_try_from_sexp_numeric {
