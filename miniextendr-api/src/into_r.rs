@@ -244,9 +244,6 @@ impl_scalar_into_r!(crate::Rcomplex, scalar_complex, scalar_complex_unchecked);
 /// into_r_infallible!(Vec<Uuid>,
 ///     |this| this.into_iter().map(|u| u.to_string()).collect::<Vec<_>>().into_sexp());
 /// ```
-// Every consumer lives in a feature-gated `optionals` module, so with no
-// optional features enabled the macro and its re-export are genuinely unused.
-#[allow(unused_macros)]
 macro_rules! into_r_infallible {
     ($ty:ty, |$recv:ident| $body:expr) => {
         impl $crate::into_r::IntoR for $ty {
@@ -1646,6 +1643,12 @@ impl IntoR for Vec<Vec<String>> {
 /// Macro for NA-aware `Vec<Option<T>> → R` vector conversions.
 ///
 /// Uses `alloc_r_vector` to get a mutable slice, then fills it.
+///
+/// Unlike the sibling `Vec<Option<T>>` macros (`impl_vec_option_smart_i64_into_r!`
+/// / `impl_vec_option_coerce_into_r!`, which route through `into_r_infallible!`
+/// and inherit the default-unchecked policy), this one is written out by hand
+/// because it carries a *real* `into_sexp_unchecked` path (`alloc_r_vector_unchecked`)
+/// that the others have no analogue for. The divergence is deliberate.
 macro_rules! impl_vec_option_into_r {
     ($t:ty, $na_value:expr) => {
         impl IntoR for Vec<Option<$t>> {
@@ -1688,41 +1691,32 @@ impl_vec_option_into_r!(i32, NA_INTEGER); // NA_integer_
 /// Allocates the R vector directly and coerces in-place — no intermediate Vec.
 macro_rules! impl_vec_option_smart_i64_into_r {
     ($t:ty, $fits_i32:expr) => {
-        impl IntoR for Vec<Option<$t>> {
-            type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-                Ok(self.into_sexp())
-            }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-                self.try_into_sexp()
-            }
-            fn into_sexp(self) -> crate::SEXP {
-                unsafe {
-                    if self.iter().all(|opt| match opt {
-                        Some(x) => $fits_i32(*x),
-                        None => true,
-                    }) {
-                        let (sexp, dst) = alloc_r_vector::<i32>(self.len());
-                        for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                            *slot = match val {
-                                Some(x) => x as i32,
-                                None => NA_INTEGER,
-                            };
-                        }
-                        sexp
-                    } else {
-                        let (sexp, dst) = alloc_r_vector::<f64>(self.len());
-                        for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                            *slot = match val {
-                                Some(x) => x as f64,
-                                None => NA_REAL,
-                            };
-                        }
-                        sexp
-                    }
+        // Default-unchecked policy, single-sourced through `into_r_infallible!`
+        // (no bespoke unchecked path — the checked allocation is the only one).
+        into_r_infallible!(Vec<Option<$t>>, |this| unsafe {
+            if this.iter().all(|opt| match opt {
+                Some(x) => $fits_i32(*x),
+                None => true,
+            }) {
+                let (sexp, dst) = alloc_r_vector::<i32>(this.len());
+                for (slot, val) in dst.iter_mut().zip(this.into_iter()) {
+                    *slot = match val {
+                        Some(x) => x as i32,
+                        None => NA_INTEGER,
+                    };
                 }
+                sexp
+            } else {
+                let (sexp, dst) = alloc_r_vector::<f64>(this.len());
+                for (slot, val) in dst.iter_mut().zip(this.into_iter()) {
+                    *slot = match val {
+                        Some(x) => x as f64,
+                        None => NA_REAL,
+                    };
+                }
+                sexp
             }
-        }
+        });
     };
 }
 
@@ -1738,23 +1732,15 @@ impl_vec_option_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 /// Delegates to the target type's `Vec<Option<$to>>` impl (which itself uses alloc_r_vector).
 macro_rules! impl_vec_option_coerce_into_r {
     ($from:ty => $to:ty) => {
-        impl IntoR for Vec<Option<$from>> {
-            type Error = std::convert::Infallible;
-            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-                Ok(self.into_sexp())
-            }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-                self.try_into_sexp()
-            }
-            fn into_sexp(self) -> crate::SEXP {
-                // Delegate to the target Option type's impl (coerce inline)
-                let coerced: Vec<Option<$to>> = self
-                    .into_iter()
-                    .map(|opt| opt.map(|x| <$to>::from(x)))
-                    .collect();
-                coerced.into_sexp()
-            }
-        }
+        // Default-unchecked policy, single-sourced through `into_r_infallible!`;
+        // `into_sexp` delegates to the target `Vec<Option<$to>>` impl.
+        into_r_infallible!(Vec<Option<$from>>, |this| {
+            let coerced: Vec<Option<$to>> = this
+                .into_iter()
+                .map(|opt| opt.map(|x| <$to>::from(x)))
+                .collect();
+            coerced.into_sexp()
+        });
     };
 }
 
@@ -2137,32 +2123,21 @@ where
     }
 }
 
-/// Convert `Vec<Box<[String]>>` to R list of character vectors.
-impl IntoR for Vec<Box<[String]>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
+// Convert `Vec<Box<[String]>>` to R list of character vectors.
+into_r_infallible!(Vec<Box<[String]>>, |this| unsafe {
+    let n = this.len();
+    let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
+    crate::sys::Rf_protect(list);
 
-            for (i, boxed_slice) in self.into_iter().enumerate() {
-                let vec: Vec<String> = boxed_slice.into_vec();
-                let inner_sexp = vec.into_sexp();
-                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-            }
-
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+    for (i, boxed_slice) in this.into_iter().enumerate() {
+        let vec: Vec<String> = boxed_slice.into_vec();
+        let inner_sexp = vec.into_sexp();
+        list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
     }
-}
+
+    crate::sys::Rf_unprotect(1);
+    list
+});
 
 /// Convert `Vec<[T; N]>` to R list of vectors.
 /// Each array becomes an R vector.
@@ -2250,19 +2225,10 @@ where
     }
 }
 
-/// Convert `Vec<Option<Vec<String>>>` to R list where `None` → NULL, `Some(v)` → character vector.
-impl IntoR for Vec<Option<Vec<String>>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        vec_option_of_into_r_to_list(self)
-    }
-}
+// Convert `Vec<Option<Vec<String>>>` to R list where `None` → NULL, `Some(v)` → character vector.
+into_r_infallible!(Vec<Option<Vec<String>>>, |this| {
+    vec_option_of_into_r_to_list(this)
+});
 
 /// Convert `Vec<Option<HashSet<T>>>` to R list where `None` → NULL, `Some(s)` → unordered vector.
 impl<T: crate::RNativeType + Eq + Hash> IntoR for Vec<Option<HashSet<T>>>
@@ -2281,19 +2247,10 @@ where
     }
 }
 
-/// Convert `Vec<Option<HashSet<String>>>` to R list where `None` → NULL, `Some(s)` → character vector.
-impl IntoR for Vec<Option<HashSet<String>>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        vec_option_of_into_r_to_list(self)
-    }
-}
+// Convert `Vec<Option<HashSet<String>>>` to R list where `None` → NULL, `Some(s)` → character vector.
+into_r_infallible!(Vec<Option<HashSet<String>>>, |this| {
+    vec_option_of_into_r_to_list(this)
+});
 
 /// Convert `Vec<Option<BTreeSet<T>>>` to R list where `None` → NULL, `Some(s)` → sorted vector.
 impl<T: crate::RNativeType + Ord> IntoR for Vec<Option<BTreeSet<T>>>
@@ -2312,19 +2269,10 @@ where
     }
 }
 
-/// Convert `Vec<Option<BTreeSet<String>>>` to R list where `None` → NULL, `Some(s)` → sorted character vector.
-impl IntoR for Vec<Option<BTreeSet<String>>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        vec_option_of_into_r_to_list(self)
-    }
-}
+// Convert `Vec<Option<BTreeSet<String>>>` to R list where `None` → NULL, `Some(s)` → sorted character vector.
+into_r_infallible!(Vec<Option<BTreeSet<String>>>, |this| {
+    vec_option_of_into_r_to_list(this)
+});
 
 /// Convert `Vec<Option<HashMap<String, V>>>` to R list where `None` → NULL, `Some(m)` → named list.
 impl<V: IntoR> IntoR for Vec<Option<HashMap<String, V>>> {
@@ -2370,21 +2318,11 @@ impl<T: crate::RNativeType> IntoR for Vec<Option<&[T]>> {
     }
 }
 
-/// Convert `Vec<Option<&[String]>>` to R list where `None` → NULL, `Some(s)` → character vector.
-///
-/// Borrowed analogue of `Vec<Option<Vec<String>>>`.
-impl IntoR for Vec<Option<&[String]>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        vec_option_of_into_r_to_list(self)
-    }
-}
+// Convert `Vec<Option<&[String]>>` to R list where `None` → NULL, `Some(s)` → character vector.
+// Borrowed analogue of `Vec<Option<Vec<String>>>`.
+into_r_infallible!(Vec<Option<&[String]>>, |this| vec_option_of_into_r_to_list(
+    this
+));
 
 // endregion
 
@@ -2426,37 +2364,17 @@ where
     }
 }
 
-/// Convert `Vec<HashSet<String>>` to R list of character vectors.
-impl IntoR for Vec<std::collections::HashSet<String>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        let converted: Vec<Vec<String>> =
-            self.into_iter().map(|s| s.into_iter().collect()).collect();
-        vec_of_into_r_to_list(converted)
-    }
-}
+// Convert `Vec<HashSet<String>>` to R list of character vectors.
+into_r_infallible!(Vec<std::collections::HashSet<String>>, |this| {
+    let converted: Vec<Vec<String>> = this.into_iter().map(|s| s.into_iter().collect()).collect();
+    vec_of_into_r_to_list(converted)
+});
 
-/// Convert `Vec<BTreeSet<String>>` to R list of character vectors.
-impl IntoR for Vec<std::collections::BTreeSet<String>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
-        let converted: Vec<Vec<String>> =
-            self.into_iter().map(|s| s.into_iter().collect()).collect();
-        vec_of_into_r_to_list(converted)
-    }
-}
+// Convert `Vec<BTreeSet<String>>` to R list of character vectors.
+into_r_infallible!(Vec<std::collections::BTreeSet<String>>, |this| {
+    let converted: Vec<Vec<String>> = this.into_iter().map(|s| s.into_iter().collect()).collect();
+    vec_of_into_r_to_list(converted)
+});
 
 macro_rules! impl_vec_map_into_r {
     ($(#[$meta:meta])* $map_ty:ident) => {
