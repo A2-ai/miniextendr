@@ -308,12 +308,12 @@ fn map_coerce_error(
 
 // region: Scalar implementations: -> i32 (R integer)
 
-macro_rules! impl_into_r_as_i32_scalar {
-    ($from:ty, $from_name:literal) => {
-        impl IntoRAs<i32> for $from {
+macro_rules! impl_into_r_as_scalar {
+    ($target:ty, $target_name:literal; $from:ty, $from_name:literal) => {
+        impl IntoRAs<$target> for $from {
             #[inline]
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-                let v: i32 = try_coerce_scalar(self, $from_name, "i32")?;
+                let v: $target = try_coerce_scalar(self, $from_name, $target_name)?;
                 Ok(v.into_sexp())
             }
         }
@@ -329,21 +329,21 @@ impl IntoRAs<i32> for i32 {
 }
 
 // Widening (infallible)
-impl_into_r_as_i32_scalar!(i8, "i8");
-impl_into_r_as_i32_scalar!(i16, "i16");
-impl_into_r_as_i32_scalar!(u8, "u8");
-impl_into_r_as_i32_scalar!(u16, "u16");
+impl_into_r_as_scalar!(i32, "i32"; i8, "i8");
+impl_into_r_as_scalar!(i32, "i32"; i16, "i16");
+impl_into_r_as_scalar!(i32, "i32"; u8, "u8");
+impl_into_r_as_scalar!(i32, "i32"; u16, "u16");
 
 // Narrowing (fallible)
-impl_into_r_as_i32_scalar!(i64, "i64");
-impl_into_r_as_i32_scalar!(isize, "isize");
-impl_into_r_as_i32_scalar!(u32, "u32");
-impl_into_r_as_i32_scalar!(u64, "u64");
-impl_into_r_as_i32_scalar!(usize, "usize");
+impl_into_r_as_scalar!(i32, "i32"; i64, "i64");
+impl_into_r_as_scalar!(i32, "i32"; isize, "isize");
+impl_into_r_as_scalar!(i32, "i32"; u32, "u32");
+impl_into_r_as_scalar!(i32, "i32"; u64, "u64");
+impl_into_r_as_scalar!(i32, "i32"; usize, "usize");
 
 // Float to int (fallible - must be integral and in range)
-impl_into_r_as_i32_scalar!(f32, "f32");
-impl_into_r_as_i32_scalar!(f64, "f64");
+impl_into_r_as_scalar!(i32, "i32"; f32, "f32");
+impl_into_r_as_scalar!(i32, "i32"; f64, "f64");
 
 // Bool to int
 impl IntoRAs<i32> for bool {
@@ -355,18 +355,6 @@ impl IntoRAs<i32> for bool {
 // endregion
 
 // region: Scalar implementations: -> f64 (R numeric)
-
-macro_rules! impl_into_r_as_f64_scalar {
-    ($from:ty, $from_name:literal) => {
-        impl IntoRAs<f64> for $from {
-            #[inline]
-            fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-                let v: f64 = try_coerce_scalar(self, $from_name, "f64")?;
-                Ok(v.into_sexp())
-            }
-        }
-    };
-}
 
 // Identity
 impl IntoRAs<f64> for f64 {
@@ -440,10 +428,10 @@ impl IntoRAs<f64> for u32 {
 }
 
 // Large integers: check precision (> 2^53 loses precision)
-impl_into_r_as_f64_scalar!(i64, "i64");
-impl_into_r_as_f64_scalar!(u64, "u64");
-impl_into_r_as_f64_scalar!(isize, "isize");
-impl_into_r_as_f64_scalar!(usize, "usize");
+impl_into_r_as_scalar!(f64, "f64"; i64, "i64");
+impl_into_r_as_scalar!(f64, "f64"; u64, "u64");
+impl_into_r_as_scalar!(f64, "f64"; isize, "isize");
+impl_into_r_as_scalar!(f64, "f64"; usize, "usize");
 
 // Bool to f64
 impl IntoRAs<f64> for bool {
@@ -456,18 +444,6 @@ impl IntoRAs<f64> for bool {
 
 // region: Scalar implementations: -> u8 (R raw)
 
-macro_rules! impl_into_r_as_u8_scalar {
-    ($from:ty, $from_name:literal) => {
-        impl IntoRAs<u8> for $from {
-            #[inline]
-            fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-                let v: u8 = try_coerce_scalar(self, $from_name, "u8")?;
-                Ok(v.into_sexp())
-            }
-        }
-    };
-}
-
 // Identity
 impl IntoRAs<u8> for u8 {
     #[inline]
@@ -477,17 +453,17 @@ impl IntoRAs<u8> for u8 {
 }
 
 // Narrowing (fallible)
-impl_into_r_as_u8_scalar!(i8, "i8");
-impl_into_r_as_u8_scalar!(i16, "i16");
-impl_into_r_as_u8_scalar!(i32, "i32");
-impl_into_r_as_u8_scalar!(i64, "i64");
-impl_into_r_as_u8_scalar!(isize, "isize");
-impl_into_r_as_u8_scalar!(u16, "u16");
-impl_into_r_as_u8_scalar!(u32, "u32");
-impl_into_r_as_u8_scalar!(u64, "u64");
-impl_into_r_as_u8_scalar!(usize, "usize");
-impl_into_r_as_u8_scalar!(f32, "f32");
-impl_into_r_as_u8_scalar!(f64, "f64");
+impl_into_r_as_scalar!(u8, "u8"; i8, "i8");
+impl_into_r_as_scalar!(u8, "u8"; i16, "i16");
+impl_into_r_as_scalar!(u8, "u8"; i32, "i32");
+impl_into_r_as_scalar!(u8, "u8"; i64, "i64");
+impl_into_r_as_scalar!(u8, "u8"; isize, "isize");
+impl_into_r_as_scalar!(u8, "u8"; u16, "u16");
+impl_into_r_as_scalar!(u8, "u8"; u32, "u32");
+impl_into_r_as_scalar!(u8, "u8"; u64, "u64");
+impl_into_r_as_scalar!(u8, "u8"; usize, "usize");
+impl_into_r_as_scalar!(u8, "u8"; f32, "f32");
+impl_into_r_as_scalar!(u8, "u8"; f64, "f64");
 // endregion
 
 // region: Scalar implementations: -> RLogical (R logical)
@@ -602,26 +578,26 @@ impl IntoRAs<String> for RLogical {
 
 // region: Vec implementations: -> i32 (R integer vector)
 
-macro_rules! impl_vec_into_r_as_i32 {
-    ($from:ty, $from_name:literal) => {
-        impl IntoRAs<i32> for Vec<$from> {
+macro_rules! impl_vec_into_r_as {
+    ($target:ty, $target_name:literal; $from:ty, $from_name:literal) => {
+        impl IntoRAs<$target> for Vec<$from> {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, val) in self.into_iter().enumerate() {
-                    let v: i32 =
-                        try_coerce_scalar(val, $from_name, "i32").map_err(|e| e.at_index(i))?;
+                    let v: $target = try_coerce_scalar(val, $from_name, $target_name)
+                        .map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())
             }
         }
 
-        impl IntoRAs<i32> for &[$from] {
+        impl IntoRAs<$target> for &[$from] {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, &val) in self.iter().enumerate() {
-                    let v: i32 =
-                        try_coerce_scalar(val, $from_name, "i32").map_err(|e| e.at_index(i))?;
+                    let v: $target = try_coerce_scalar(val, $from_name, $target_name)
+                        .map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())
@@ -645,17 +621,17 @@ impl IntoRAs<i32> for &[i32] {
     }
 }
 
-impl_vec_into_r_as_i32!(i8, "i8");
-impl_vec_into_r_as_i32!(i16, "i16");
-impl_vec_into_r_as_i32!(u8, "u8");
-impl_vec_into_r_as_i32!(u16, "u16");
-impl_vec_into_r_as_i32!(i64, "i64");
-impl_vec_into_r_as_i32!(isize, "isize");
-impl_vec_into_r_as_i32!(u32, "u32");
-impl_vec_into_r_as_i32!(u64, "u64");
-impl_vec_into_r_as_i32!(usize, "usize");
-impl_vec_into_r_as_i32!(f32, "f32");
-impl_vec_into_r_as_i32!(f64, "f64");
+impl_vec_into_r_as!(i32, "i32"; i8, "i8");
+impl_vec_into_r_as!(i32, "i32"; i16, "i16");
+impl_vec_into_r_as!(i32, "i32"; u8, "u8");
+impl_vec_into_r_as!(i32, "i32"; u16, "u16");
+impl_vec_into_r_as!(i32, "i32"; i64, "i64");
+impl_vec_into_r_as!(i32, "i32"; isize, "isize");
+impl_vec_into_r_as!(i32, "i32"; u32, "u32");
+impl_vec_into_r_as!(i32, "i32"; u64, "u64");
+impl_vec_into_r_as!(i32, "i32"; usize, "usize");
+impl_vec_into_r_as!(i32, "i32"; f32, "f32");
+impl_vec_into_r_as!(i32, "i32"; f64, "f64");
 
 // Vec<bool> -> i32
 impl IntoRAs<i32> for Vec<bool> {
@@ -674,34 +650,6 @@ impl IntoRAs<i32> for &[bool] {
 // endregion
 
 // region: Vec implementations: -> f64 (R numeric vector)
-
-macro_rules! impl_vec_into_r_as_f64 {
-    ($from:ty, $from_name:literal) => {
-        impl IntoRAs<f64> for Vec<$from> {
-            fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-                let mut result = Vec::with_capacity(self.len());
-                for (i, val) in self.into_iter().enumerate() {
-                    let v: f64 =
-                        try_coerce_scalar(val, $from_name, "f64").map_err(|e| e.at_index(i))?;
-                    result.push(v);
-                }
-                Ok(result.into_sexp())
-            }
-        }
-
-        impl IntoRAs<f64> for &[$from] {
-            fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-                let mut result = Vec::with_capacity(self.len());
-                for (i, &val) in self.iter().enumerate() {
-                    let v: f64 =
-                        try_coerce_scalar(val, $from_name, "f64").map_err(|e| e.at_index(i))?;
-                    result.push(v);
-                }
-                Ok(result.into_sexp())
-            }
-        }
-    };
-}
 
 // Identity - but check for finite values
 impl IntoRAs<f64> for Vec<f64> {
@@ -792,10 +740,10 @@ impl_vec_into_r_as_f64_infallible!(u16);
 impl_vec_into_r_as_f64_infallible!(u32);
 
 // Large integers - check precision
-impl_vec_into_r_as_f64!(i64, "i64");
-impl_vec_into_r_as_f64!(u64, "u64");
-impl_vec_into_r_as_f64!(isize, "isize");
-impl_vec_into_r_as_f64!(usize, "usize");
+impl_vec_into_r_as!(f64, "f64"; i64, "i64");
+impl_vec_into_r_as!(f64, "f64"; u64, "u64");
+impl_vec_into_r_as!(f64, "f64"; isize, "isize");
+impl_vec_into_r_as!(f64, "f64"; usize, "usize");
 
 // Vec<bool> -> f64
 impl IntoRAs<f64> for Vec<bool> {
@@ -818,34 +766,6 @@ impl IntoRAs<f64> for &[bool] {
 
 // region: Vec implementations: -> u8 (R raw vector)
 
-macro_rules! impl_vec_into_r_as_u8 {
-    ($from:ty, $from_name:literal) => {
-        impl IntoRAs<u8> for Vec<$from> {
-            fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-                let mut result = Vec::with_capacity(self.len());
-                for (i, val) in self.into_iter().enumerate() {
-                    let v: u8 =
-                        try_coerce_scalar(val, $from_name, "u8").map_err(|e| e.at_index(i))?;
-                    result.push(v);
-                }
-                Ok(result.into_sexp())
-            }
-        }
-
-        impl IntoRAs<u8> for &[$from] {
-            fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-                let mut result = Vec::with_capacity(self.len());
-                for (i, &val) in self.iter().enumerate() {
-                    let v: u8 =
-                        try_coerce_scalar(val, $from_name, "u8").map_err(|e| e.at_index(i))?;
-                    result.push(v);
-                }
-                Ok(result.into_sexp())
-            }
-        }
-    };
-}
-
 // Identity
 impl IntoRAs<u8> for Vec<u8> {
     #[inline]
@@ -861,17 +781,17 @@ impl IntoRAs<u8> for &[u8] {
     }
 }
 
-impl_vec_into_r_as_u8!(i8, "i8");
-impl_vec_into_r_as_u8!(i16, "i16");
-impl_vec_into_r_as_u8!(i32, "i32");
-impl_vec_into_r_as_u8!(i64, "i64");
-impl_vec_into_r_as_u8!(isize, "isize");
-impl_vec_into_r_as_u8!(u16, "u16");
-impl_vec_into_r_as_u8!(u32, "u32");
-impl_vec_into_r_as_u8!(u64, "u64");
-impl_vec_into_r_as_u8!(usize, "usize");
-impl_vec_into_r_as_u8!(f32, "f32");
-impl_vec_into_r_as_u8!(f64, "f64");
+impl_vec_into_r_as!(u8, "u8"; i8, "i8");
+impl_vec_into_r_as!(u8, "u8"; i16, "i16");
+impl_vec_into_r_as!(u8, "u8"; i32, "i32");
+impl_vec_into_r_as!(u8, "u8"; i64, "i64");
+impl_vec_into_r_as!(u8, "u8"; isize, "isize");
+impl_vec_into_r_as!(u8, "u8"; u16, "u16");
+impl_vec_into_r_as!(u8, "u8"; u32, "u32");
+impl_vec_into_r_as!(u8, "u8"; u64, "u64");
+impl_vec_into_r_as!(u8, "u8"; usize, "usize");
+impl_vec_into_r_as!(u8, "u8"; f32, "f32");
+impl_vec_into_r_as!(u8, "u8"; f64, "f64");
 // endregion
 
 // region: Vec implementations: -> RLogical (R logical vector)
