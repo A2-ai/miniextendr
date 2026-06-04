@@ -315,6 +315,11 @@ pub use indexmap_impl::{IndexMap, RIndexMapOps};
 
 // region: Date/Time
 
+// Shared macro for the REALSXP-backed datetime conversion matrix (8 impls per type).
+// Used by time_impl and jiff_impl; not a public export.
+#[cfg(any(feature = "time", feature = "jiff"))]
+mod datetime_realsxp;
+
 /// Time and date support via the `time` crate.
 ///
 /// Provides conversions between R date/time types and `time` crate types.
