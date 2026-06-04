@@ -38,6 +38,7 @@
 pub use jiff::civil::{Date, DateTime, Time};
 pub use jiff::{SignedDuration, Span, Timestamp, Zoned};
 
+use super::datetime_realsxp::impl_realsxp_datetime;
 use crate::cached_class::{date_class_sexp, set_posixct_tz, set_posixct_utc};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -50,275 +51,33 @@ fn unix_epoch_date() -> Date {
 }
 
 // region: Timestamp <-> POSIXct (UTC)
+//
+// Floor-based split: whole = floor(secs), fract in [0, 1) — correct for negative
+// timestamps (e.g. -1.2s → whole=-2, nanos=800_000_000, not -1s + 200_000_000ns).
 
-impl TryFromSexp for Timestamp {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        if sexp.len() != 1 {
-            return Err(SexpError::InvalidValue(format!(
-                "expected scalar POSIXct, got length {}",
-                sexp.len()
-            )));
-        }
-        let secs = sexp.real_elt(0);
-        if secs.is_nan() {
-            return Err(SexpError::Na(SexpNaError {
-                sexp_type: SEXPTYPE::REALSXP,
-            }));
-        }
-        // Floor-based split: correct for negative timestamps.
+impl_realsxp_datetime!(
+    Timestamp,
+    "POSIXct",
+    |secs: f64| {
         let whole = secs.floor() as i64;
-        let fract = secs - secs.floor(); // always in [0, 1)
-        let nanos = (fract * 1_000_000_000.0) as i32;
+        let nanos = ((secs - secs.floor()) * 1_000_000_000.0) as i32;
         Timestamp::new(whole, nanos)
             .map_err(|e| SexpError::InvalidValue(format!("jiff Timestamp out of range: {e}")))
-    }
-}
-
-impl IntoR for Timestamp {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-            Rf_protect(vec);
-            let secs =
-                self.as_second() as f64 + (self.subsec_nanosecond() as f64 / 1_000_000_000.0);
-            vec.set_real_elt(0, secs);
-            set_posixct_utc(vec);
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
-
-// endregion
-
-// region: Option<Timestamp>
-
-impl TryFromSexp for Option<Timestamp> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        if sexp.len() != 1 {
-            return Err(SexpError::InvalidValue(format!(
-                "expected scalar POSIXct, got length {}",
-                sexp.len()
-            )));
-        }
-        let secs = sexp.real_elt(0);
-        if secs.is_nan() {
-            return Ok(None);
-        }
-        let whole = secs.floor() as i64;
-        let fract = secs - secs.floor();
-        let nanos = (fract * 1_000_000_000.0) as i32;
-        Timestamp::new(whole, nanos)
-            .map(Some)
-            .map_err(|e| SexpError::InvalidValue(format!("jiff Timestamp out of range: {e}")))
-    }
-}
-
-impl IntoR for Option<Timestamp> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        match self {
-            Some(ts) => ts.into_sexp(),
-            None => unsafe {
-                let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-                Rf_protect(vec);
-                vec.set_real_elt(0, f64::NAN);
-                set_posixct_utc(vec);
-                Rf_unprotect(1);
-                vec
-            },
-        }
-    }
-}
-
-// endregion
-
-// region: Vec<Timestamp>
-
-impl TryFromSexp for Vec<Timestamp> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        let src: &[f64] = unsafe { sexp.as_slice() };
-        let mut result = Vec::with_capacity(src.len());
-        for (i, &secs) in src.iter().enumerate() {
-            if secs.is_nan() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for Vec<Timestamp>",
-                    i
-                )));
-            }
-            let whole = secs.floor() as i64;
-            let fract = secs - secs.floor();
-            let nanos = (fract * 1_000_000_000.0) as i32;
-            let ts = Timestamp::new(whole, nanos).map_err(|e| {
-                SexpError::InvalidValue(format!("jiff Timestamp out of range at index {i}: {e}"))
-            })?;
-            result.push(ts);
-        }
-        Ok(result)
-    }
-}
-
-impl IntoR for Vec<Timestamp> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
-            for (slot, ts) in dst.iter_mut().zip(self) {
-                *slot = ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0);
-            }
-            set_posixct_utc(vec);
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
-
-// endregion
-
-// region: Vec<Option<Timestamp>>
-
-impl TryFromSexp for Vec<Option<Timestamp>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        let src: &[f64] = unsafe { sexp.as_slice() };
-        let mut result = Vec::with_capacity(src.len());
-        for (i, &secs) in src.iter().enumerate() {
-            if secs.is_nan() {
-                result.push(None);
-            } else {
-                let whole = secs.floor() as i64;
-                let fract = secs - secs.floor();
-                let nanos = (fract * 1_000_000_000.0) as i32;
-                let ts = Timestamp::new(whole, nanos).map_err(|e| {
-                    SexpError::InvalidValue(format!(
-                        "jiff Timestamp out of range at index {i}: {e}"
-                    ))
-                })?;
-                result.push(Some(ts));
-            }
-        }
-        Ok(result)
-    }
-}
-
-impl IntoR for Vec<Option<Timestamp>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
-            for (slot, opt) in dst.iter_mut().zip(self) {
-                *slot = match opt {
-                    Some(ts) => {
-                        ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
-                    }
-                    None => f64::NAN,
-                };
-            }
-            set_posixct_utc(vec);
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
+    },
+    |ts: Timestamp| ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0),
+    |sexp: SEXP| set_posixct_utc(sexp)
+);
 
 // endregion
 
 // region: civil::Date <-> R Date
+//
+// R's Date class is stored as a double (days since 1970-01-01).
 
-impl TryFromSexp for Date {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        // R's Date class is stored as a double (days since 1970-01-01).
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        if sexp.len() != 1 {
-            return Err(SexpError::InvalidValue(format!(
-                "expected scalar Date, got length {}",
-                sexp.len()
-            )));
-        }
-        let days = sexp.real_elt(0);
-        if days.is_nan() {
-            return Err(SexpError::Na(SexpNaError {
-                sexp_type: SEXPTYPE::REALSXP,
-            }));
-        }
+impl_realsxp_datetime!(
+    Date,
+    "Date",
+    |days: f64| {
         let days_i64 = days.trunc() as i64;
         let span = Span::new()
             .try_days(days_i64)
@@ -326,222 +85,22 @@ impl TryFromSexp for Date {
         unix_epoch_date()
             .checked_add(span)
             .map_err(|e| SexpError::InvalidValue(format!("jiff Date arithmetic: {e}")))
-    }
-}
-
-impl IntoR for Date {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-            Rf_protect(vec);
-            // Date::since(epoch) → Span of days
-            let span = self.since(unix_epoch_date()).unwrap_or_default();
-            vec.set_real_elt(0, span.get_days() as f64);
-            vec.set_class(date_class_sexp());
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
-
-// endregion
-
-// region: Option<Date>
-
-impl TryFromSexp for Option<Date> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        if sexp.len() != 1 {
-            return Err(SexpError::InvalidValue(format!(
-                "expected scalar Date, got length {}",
-                sexp.len()
-            )));
-        }
-        let days = sexp.real_elt(0);
-        if days.is_nan() {
-            return Ok(None);
-        }
-        let days_i64 = days.trunc() as i64;
-        let span = Span::new()
-            .try_days(days_i64)
-            .map_err(|e| SexpError::InvalidValue(format!("jiff days out of range: {e}")))?;
-        unix_epoch_date()
-            .checked_add(span)
-            .map(Some)
-            .map_err(|e| SexpError::InvalidValue(format!("jiff Date arithmetic: {e}")))
-    }
-}
-
-impl IntoR for Option<Date> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        match self {
-            Some(d) => d.into_sexp(),
-            None => unsafe {
-                let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-                Rf_protect(vec);
-                vec.set_real_elt(0, f64::NAN);
-                vec.set_class(date_class_sexp());
-                Rf_unprotect(1);
-                vec
-            },
-        }
-    }
-}
-
-// endregion
-
-// region: Vec<Date>
-
-impl TryFromSexp for Vec<Date> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        let src: &[f64] = unsafe { sexp.as_slice() };
-        let mut result = Vec::with_capacity(src.len());
-        for (i, &days) in src.iter().enumerate() {
-            if days.is_nan() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for Vec<Date>",
-                    i
-                )));
-            }
-            let days_i64 = days.trunc() as i64;
-            let span = Span::new().try_days(days_i64).map_err(|e| {
-                SexpError::InvalidValue(format!("jiff days out of range at index {i}: {e}"))
-            })?;
-            let d = unix_epoch_date().checked_add(span).map_err(|e| {
-                SexpError::InvalidValue(format!("jiff Date arithmetic at index {i}: {e}"))
-            })?;
-            result.push(d);
-        }
-        Ok(result)
-    }
-}
-
-impl IntoR for Vec<Date> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
-            for (slot, d) in dst.iter_mut().zip(self) {
-                let span = d.since(unix_epoch_date()).unwrap_or_default();
-                *slot = span.get_days() as f64;
-            }
-            vec.set_class(date_class_sexp());
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
-
-// endregion
-
-// region: Vec<Option<Date>>
-
-impl TryFromSexp for Vec<Option<Date>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        let src: &[f64] = unsafe { sexp.as_slice() };
-        let mut result = Vec::with_capacity(src.len());
-        for (i, &days) in src.iter().enumerate() {
-            if days.is_nan() {
-                result.push(None);
-            } else {
-                let days_i64 = days.trunc() as i64;
-                let span = Span::new().try_days(days_i64).map_err(|e| {
-                    SexpError::InvalidValue(format!("jiff days out of range at index {i}: {e}"))
-                })?;
-                let d = unix_epoch_date().checked_add(span).map_err(|e| {
-                    SexpError::InvalidValue(format!("jiff Date arithmetic at index {i}: {e}"))
-                })?;
-                result.push(Some(d));
-            }
-        }
-        Ok(result)
-    }
-}
-
-impl IntoR for Vec<Option<Date>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
-            for (slot, opt) in dst.iter_mut().zip(self) {
-                *slot = match opt {
-                    Some(d) => {
-                        let span = d.since(unix_epoch_date()).unwrap_or_default();
-                        span.get_days() as f64
-                    }
-                    None => f64::NAN,
-                };
-            }
-            vec.set_class(date_class_sexp());
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
+    },
+    |d: Date| {
+        let span = d.since(unix_epoch_date()).unwrap_or_default();
+        span.get_days() as f64
+    },
+    |sexp: SEXP| sexp.set_class(date_class_sexp())
+);
 
 // endregion
 
 // region: Zoned <-> POSIXct (tz)
+//
+// Zoned stays hand-rolled: scalar decode reads the `tzone` attr from the SEXP
+// itself (not just the f64 value), and Vec<Zoned>::into_sexp picks the first
+// element's timezone for the tzone attribute. Neither path is a simple f64
+// base-map, so impl_realsxp_datetime! does not apply. See datetime_realsxp.rs.
 
 impl TryFromSexp for Zoned {
     type Error = SexpError;
@@ -882,6 +441,8 @@ impl IntoR for Vec<Option<Zoned>> {
 // endregion
 
 // region: SignedDuration <-> difftime
+//
+// Accept difftime as seconds regardless of "units" attr (v1 policy).
 
 fn set_difftime_secs_class(sexp: SEXP) {
     unsafe {
@@ -903,217 +464,17 @@ fn set_difftime_secs_class(sexp: SEXP) {
     }
 }
 
-impl TryFromSexp for SignedDuration {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        if sexp.len() != 1 {
-            return Err(SexpError::InvalidValue(format!(
-                "expected scalar difftime, got length {}",
-                sexp.len()
-            )));
-        }
-        let secs = sexp.real_elt(0);
-        if secs.is_nan() {
-            return Err(SexpError::Na(SexpNaError {
-                sexp_type: SEXPTYPE::REALSXP,
-            }));
-        }
-        // Accept difftime as seconds regardless of "units" attr for v1.
+impl_realsxp_datetime!(
+    SignedDuration,
+    "difftime",
+    |secs: f64| {
         let whole = secs.trunc() as i64;
         let frac_nanos = ((secs - secs.trunc()) * 1_000_000_000.0) as i32;
-        Ok(SignedDuration::new(whole, frac_nanos))
-    }
-}
-
-impl IntoR for SignedDuration {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-            Rf_protect(vec);
-            vec.set_real_elt(0, self.as_secs_f64());
-            set_difftime_secs_class(vec);
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
-
-// endregion
-
-// region: Option<SignedDuration> / Vec<SignedDuration> / Vec<Option<SignedDuration>>
-
-impl TryFromSexp for Option<SignedDuration> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        if sexp.len() != 1 {
-            return Err(SexpError::InvalidValue(format!(
-                "expected scalar difftime, got length {}",
-                sexp.len()
-            )));
-        }
-        let secs = sexp.real_elt(0);
-        if secs.is_nan() {
-            return Ok(None);
-        }
-        let whole = secs.trunc() as i64;
-        let frac_nanos = ((secs - secs.trunc()) * 1_000_000_000.0) as i32;
-        Ok(Some(SignedDuration::new(whole, frac_nanos)))
-    }
-}
-
-impl IntoR for Option<SignedDuration> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        match self {
-            Some(d) => d.into_sexp(),
-            None => unsafe {
-                let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-                Rf_protect(vec);
-                vec.set_real_elt(0, f64::NAN);
-                set_difftime_secs_class(vec);
-                Rf_unprotect(1);
-                vec
-            },
-        }
-    }
-}
-
-impl TryFromSexp for Vec<SignedDuration> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        let src: &[f64] = unsafe { sexp.as_slice() };
-        let mut result = Vec::with_capacity(src.len());
-        for (i, &secs) in src.iter().enumerate() {
-            if secs.is_nan() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for Vec<SignedDuration>",
-                    i
-                )));
-            }
-            let whole = secs.trunc() as i64;
-            let frac_nanos = ((secs - secs.trunc()) * 1_000_000_000.0) as i32;
-            result.push(SignedDuration::new(whole, frac_nanos));
-        }
-        Ok(result)
-    }
-}
-
-impl IntoR for Vec<SignedDuration> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
-            for (slot, d) in dst.iter_mut().zip(self) {
-                *slot = d.as_secs_f64();
-            }
-            set_difftime_secs_class(vec);
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
-
-impl TryFromSexp for Vec<Option<SignedDuration>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
-            }
-            .into());
-        }
-        let src: &[f64] = unsafe { sexp.as_slice() };
-        let mut result = Vec::with_capacity(src.len());
-        for &secs in src.iter() {
-            if secs.is_nan() {
-                result.push(None);
-            } else {
-                let whole = secs.trunc() as i64;
-                let frac_nanos = ((secs - secs.trunc()) * 1_000_000_000.0) as i32;
-                result.push(Some(SignedDuration::new(whole, frac_nanos)));
-            }
-        }
-        Ok(result)
-    }
-}
-
-impl IntoR for Vec<Option<SignedDuration>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        unsafe {
-            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
-            for (slot, opt) in dst.iter_mut().zip(self) {
-                *slot = match opt {
-                    Some(d) => d.as_secs_f64(),
-                    None => f64::NAN,
-                };
-            }
-            set_difftime_secs_class(vec);
-            Rf_unprotect(1);
-            vec
-        }
-    }
-}
+        Ok::<SignedDuration, SexpError>(SignedDuration::new(whole, frac_nanos))
+    },
+    |d: SignedDuration| d.as_secs_f64(),
+    |sexp: SEXP| set_difftime_secs_class(sexp)
+);
 
 // endregion
 
