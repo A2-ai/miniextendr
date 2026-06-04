@@ -46,6 +46,21 @@ test_that("uuid_max returns max UUID", {
   expect_false(uuid_is_nil(max))
 })
 
+test_that("RConvert newtype forwards scalar round-trip to inner Uuid", {
+  skip_if_missing_feature("uuid")
+  original <- "550e8400-e29b-41d4-a716-446655440000"
+  # DocId(Uuid) derives TryFromSexp + IntoR via #[derive(RConvert)];
+  # the value goes R-string -> DocId -> back to R-string unchanged.
+  expect_equal(rconvert_docid_roundtrip(original), original)
+})
+
+test_that("RConvert newtype inherits the inner type's parse error", {
+  skip_if_missing_feature("uuid")
+  # The derived TryFromSexp forwards to Uuid::try_from_sexp, so an invalid
+  # UUID string surfaces Uuid's own "invalid UUID" diagnostic, not a generic one.
+  expect_error(rconvert_docid_roundtrip("not-a-uuid"), "invalid UUID")
+})
+
 # =============================================================================
 # Regex feature tests
 # =============================================================================

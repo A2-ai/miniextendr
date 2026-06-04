@@ -190,6 +190,7 @@ mod typed_external_macro;
 // Factor support
 mod factor_derive;
 mod match_arg_derive;
+mod rconvert_derive;
 
 // Struct/enum dispatch for #[miniextendr] on structs and enums
 mod struct_enum_dispatch;
@@ -2311,6 +2312,46 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 pub fn derive_match_arg(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     match_arg_derive::derive_match_arg(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `RConvert`: forward R↔Rust conversions from a newtype to its inner type.
+///
+/// For a single-field newtype wrapping a type that already implements the
+/// conversion traits, this generates scalar `TryFromSexp` and `IntoR` impls that
+/// delegate to the inner type. The newtype inherits the inner type's exact
+/// behaviour — SEXPTYPE expectations, NA policy, error messages — with no
+/// per-type configuration.
+///
+/// # Usage
+///
+/// ```ignore
+/// use uuid::Uuid;
+///
+/// #[derive(RConvert)]
+/// struct UserId(Uuid);   // gains UserId: TryFromSexp + IntoR
+/// ```
+///
+/// # Attributes
+///
+/// - `#[rconvert(forward)]` — explicit (no-op) spelling of the default mode.
+/// - `#[rconvert(into = false)]` — emit only the `TryFromSexp` impl (for inner
+///   types that read from R but cannot be written back, e.g. `regex::Regex`).
+/// - `#[rconvert(from = false)]` — emit only the `IntoR` impl.
+///
+/// # Scalar only
+///
+/// Only the scalar impls are generated, not `Option<T>` / `Vec<T>` /
+/// `Vec<Option<T>>`. The orphan rule (E0117) forbids implementing a foreign
+/// trait for `Vec<LocalNewtype>` in a downstream crate (`Vec`/`Option` are not
+/// `#[fundamental]`, so the newtype is "covered"). This is the same limitation
+/// that applies to `#[derive(RNativeType)]`. To move a vector of newtypes across
+/// the boundary, accept the inner type's vector and wrap per element in the body.
+#[proc_macro_derive(RConvert, attributes(rconvert))]
+pub fn derive_rconvert(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    rconvert_derive::derive_rconvert(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

@@ -1,0 +1,5 @@
+error: #[derive(RConvert)] only works on newtype structs
+ --> tests/ui/derive_rconvert_on_enum.rs:6:6
+  |
+6 | enum Color {
+  |      ^^^^^
