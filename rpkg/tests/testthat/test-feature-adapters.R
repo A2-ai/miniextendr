@@ -46,19 +46,46 @@ test_that("uuid_max returns max UUID", {
   expect_false(uuid_is_nil(max))
 })
 
-test_that("RConvert newtype forwards scalar round-trip to inner Uuid", {
+test_that("newtype derive forwards scalar round-trip to inner Uuid", {
   skip_if_missing_feature("uuid")
   original <- "550e8400-e29b-41d4-a716-446655440000"
-  # DocId(Uuid) derives TryFromSexp + IntoR via #[derive(RConvert)];
-  # the value goes R-string -> DocId -> back to R-string unchanged.
-  expect_equal(rconvert_docid_roundtrip(original), original)
+  # DocId(Uuid) derives TryFromSexp + IntoR; the value goes
+  # R-string -> DocId -> back to R-string unchanged.
+  expect_equal(docid_roundtrip(original), original)
 })
 
-test_that("RConvert newtype inherits the inner type's parse error", {
+test_that("newtype derive inherits the inner type's parse error", {
   skip_if_missing_feature("uuid")
   # The derived TryFromSexp forwards to Uuid::try_from_sexp, so an invalid
   # UUID string surfaces Uuid's own "invalid UUID" diagnostic, not a generic one.
-  expect_error(rconvert_docid_roundtrip("not-a-uuid"), "invalid UUID")
+  expect_error(docid_roundtrip("not-a-uuid"), "invalid UUID")
+})
+
+test_that("newtype Vec<DocId> container blanket round-trips", {
+  skip_if_missing_feature("uuid")
+  # Vec<DocId> reads via the derived TryFromSexp container blanket and writes
+  # back via the IntoRVecElement-backed IntoR for Vec<T> — both forwarding to
+  # the inner Vec<Uuid> conversions (issue #844).
+  ids <- c(
+    "550e8400-e29b-41d4-a716-446655440000",
+    "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+  )
+  expect_equal(docid_roundtrip_vec(ids), ids)
+  expect_equal(docid_roundtrip_vec(character(0)), character(0))
+})
+
+test_that("newtype Vec<Option<DocId>> container blanket preserves NA", {
+  skip_if_missing_feature("uuid")
+  ids <- c("550e8400-e29b-41d4-a716-446655440000", NA, "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+  expect_equal(docid_roundtrip_opt_vec(ids), ids)
+})
+
+test_that("newtype Option<DocId> argument blanket reads NA as absent", {
+  skip_if_missing_feature("uuid")
+  # Option<DocId> reads via the derived TryFromSexp container blanket: a valid
+  # UUID string is present, NA_character_ is absent.
+  expect_true(docid_is_present("550e8400-e29b-41d4-a716-446655440000"))
+  expect_false(docid_is_present(NA_character_))
 })
 
 # =============================================================================

@@ -190,7 +190,7 @@ mod typed_external_macro;
 // Factor support
 mod factor_derive;
 mod match_arg_derive;
-mod rconvert_derive;
+mod newtype_derive;
 
 // Struct/enum dispatch for #[miniextendr] on structs and enums
 mod struct_enum_dispatch;
@@ -2316,42 +2316,50 @@ pub fn derive_match_arg(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         .into()
 }
 
-/// Derive `RConvert`: forward R↔Rust conversions from a newtype to its inner type.
+/// Derive `TryFromSexp` for a single-field newtype: forward the R → Rust
+/// conversion to the inner type.
 ///
-/// For a single-field newtype wrapping a type that already implements the
-/// conversion traits, this generates scalar `TryFromSexp` and `IntoR` impls that
-/// delegate to the inner type. The newtype inherits the inner type's exact
-/// behaviour — SEXPTYPE expectations, NA policy, error messages — with no
-/// per-type configuration.
+/// Generates a scalar `TryFromSexp` impl that delegates to the inner type (so the
+/// newtype inherits its exact SEXPTYPE checks, NA policy, and error text), plus a
+/// `FromRNewtype` marker impl. The marker lets `miniextendr-api`'s container
+/// blankets light up `Vec<T>` / `Option<T>` / `Vec<Option<T>>` automatically.
 ///
 /// # Usage
 ///
 /// ```ignore
 /// use uuid::Uuid;
 ///
-/// #[derive(RConvert)]
-/// struct UserId(Uuid);   // gains UserId: TryFromSexp + IntoR
+/// #[derive(TryFromSexp)]            // R -> Rust only
+/// struct Pattern(regex::Regex);
+///
+/// #[derive(TryFromSexp, IntoR)]     // round-trip; Vec/Option containers work too
+/// struct UserId(Uuid);
 /// ```
 ///
-/// # Attributes
-///
-/// - `#[rconvert(forward)]` — explicit (no-op) spelling of the default mode.
-/// - `#[rconvert(into = false)]` — emit only the `TryFromSexp` impl (for inner
-///   types that read from R but cannot be written back, e.g. `regex::Regex`).
-/// - `#[rconvert(from = false)]` — emit only the `IntoR` impl.
-///
-/// # Scalar only
-///
-/// Only the scalar impls are generated, not `Option<T>` / `Vec<T>` /
-/// `Vec<Option<T>>`. The orphan rule (E0117) forbids implementing a foreign
-/// trait for `Vec<LocalNewtype>` in a downstream crate (`Vec`/`Option` are not
-/// `#[fundamental]`, so the newtype is "covered"). This is the same limitation
-/// that applies to `#[derive(RNativeType)]`. To move a vector of newtypes across
-/// the boundary, accept the inner type's vector and wrap per element in the body.
-#[proc_macro_derive(RConvert, attributes(rconvert))]
-pub fn derive_rconvert(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+/// Direction is chosen by which derive you list — derive only `TryFromSexp` for
+/// inner types that read from R but cannot be written back (e.g. `regex::Regex`).
+#[proc_macro_derive(TryFromSexp)]
+pub fn derive_try_from_sexp(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    rconvert_derive::derive_rconvert(input)
+    newtype_derive::derive_try_from_sexp(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `IntoR` for a single-field newtype: forward the Rust → R conversion to
+/// the inner type.
+///
+/// Generates a scalar `IntoR` impl that delegates to the inner type, plus an
+/// `IntoRNewtype` marker (powering the `Option<T>` / `Vec<Option<T>>` container
+/// blankets) and a concrete `IntoRVecElement` impl (powering `Vec<T>`). See
+/// `#[derive(TryFromSexp)]` for usage.
+///
+/// Do not derive both `IntoR` and `MatchArg` on the same type: both feed the
+/// single `IntoR for Vec<T>` blanket slot and would collide (E0119).
+#[proc_macro_derive(IntoR)]
+pub fn derive_into_r(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    newtype_derive::derive_into_r(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

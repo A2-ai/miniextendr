@@ -345,11 +345,14 @@ pub(crate) use large_integers::{str_to_charsxp, str_to_charsxp_unchecked};
 // Concrete IntoR impls for Vec<T> where T: RNativeType.
 //
 // These are written as concrete impls rather than a blanket
-// `impl<T: RNativeType> IntoR for Vec<T>` to avoid a coherence conflict
-// with `impl<T: MatchArg> IntoR for Vec<T>` in match_arg.rs.
-// Both blankets would target `Vec<_>` for the same foreign trait, and the
-// Rust coherence checker (E0119) rejects them even when the bounds are
-// disjoint in practice, because negative trait bounds are not stable.
+// `impl<T: RNativeType> IntoR for Vec<T>` to avoid a coherence conflict with the
+// one `impl<T: IntoRVecElement> IntoR for Vec<T>` blanket (see `crate::newtype`):
+// `Vec<T>` admits exactly one open-bound `IntoR` blanket slot, and that slot is
+// the shared element-marker route used by `MatchArg` enums and `#[derive(IntoR)]`
+// newtypes. A second `RNativeType`-bounded blanket would be E0119 — negative
+// trait bounds are not stable, so coherence cannot prove the bounds disjoint.
+// Concrete per-type impls sidestep the slot entirely (concrete-vs-blanket is
+// allowed: the foreign R-native types provably do not implement the marker).
 macro_rules! impl_into_r_vec_native {
     ($t:ty) => {
         impl IntoR for Vec<$t> {

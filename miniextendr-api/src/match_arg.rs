@@ -29,7 +29,6 @@
 
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::ProtectScope;
-use crate::into_r::IntoR;
 use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 
 /// Trait for enum types that support `match.arg`-style string conversion.
@@ -246,7 +245,8 @@ fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
 /// Each element is written as its canonical choice string via [`MatchArg::to_choice`].
 /// Empty choice strings are stored as `R_BlankString` (parity with [`choices_sexp`]).
 ///
-/// Called by the `impl IntoR for Vec<T>` block emitted by `#[derive(MatchArg)]`.
+/// Called by the [`MatchArg`]→[`IntoRVecElement`](crate::newtype::IntoRVecElement)
+/// bridge below, which backs `IntoR for Vec<MyEnum>`.
 pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
     unsafe {
         let scope = ProtectScope::new();
@@ -266,26 +266,21 @@ pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
     }
 }
 
-/// Blanket [`IntoR`] for any vector of `MatchArg` values.
+/// Bridge: every [`MatchArg`] type is an [`IntoRVecElement`](crate::newtype::IntoRVecElement),
+/// so `Vec<MyEnum>` converts to an R character vector (STRSXP) via
+/// [`match_arg_vec_into_sexp`].
 ///
-/// Converts to an R character vector (STRSXP) via [`match_arg_vec_into_sexp`].
-/// This blanket impl lives in `miniextendr-api` (not in a derive macro) because
-/// `impl<T: MatchArg> IntoR for Vec<T>` in the user's crate would conflict
-/// with `impl<T: RNativeType> IntoR for Vec<T>` (E0119: coherence); stable
-/// Rust has no negative trait bounds to prove the two constraints are disjoint.
-impl<T: MatchArg> IntoR for Vec<T> {
-    type Error = std::convert::Infallible;
-
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-
-    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-
-    fn into_sexp(self) -> SEXP {
-        match_arg_vec_into_sexp(self)
+/// `IntoR for Vec<T>` has a single blanket slot (see [`crate::newtype`]). Routing
+/// `MatchArg` through `IntoRVecElement` lets `#[derive(IntoR)]` newtypes share
+/// that slot — a newtype implements `IntoRVecElement` concretely in its own crate,
+/// which coexists with this bridge because a local newtype is provably not
+/// `MatchArg` (deriving both `MatchArg` and `IntoR` on one type is an E0119
+/// coherence error, by design). Stable Rust has no negative trait bounds, so a
+/// *second* `impl<T: …> IntoR for Vec<T>` blanket would conflict directly; this
+/// indirection is what avoids that.
+impl<T: MatchArg> crate::newtype::IntoRVecElement for T {
+    fn elements_into_sexp(values: Vec<Self>) -> SEXP {
+        match_arg_vec_into_sexp(values)
     }
 }
 
