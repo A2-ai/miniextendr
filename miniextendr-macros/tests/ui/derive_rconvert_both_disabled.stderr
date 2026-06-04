@@ -1,0 +1,6 @@
+error: #[rconvert]: at least one of `from` / `into` must remain enabled
+ --> tests/ui/derive_rconvert_both_disabled.rs:6:1
+  |
+6 | / #[rconvert(from = false, into = false)]
+7 | | struct Useless(f64);
+  | |____________________^

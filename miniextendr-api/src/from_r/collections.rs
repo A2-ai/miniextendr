@@ -215,23 +215,4 @@ impl_vec_try_from_sexp_native!(f64);
 impl_vec_try_from_sexp_native!(u8);
 impl_vec_try_from_sexp_native!(RLogical);
 impl_vec_try_from_sexp_native!(crate::Rcomplex);
-
-macro_rules! impl_boxed_slice_try_from_sexp_native {
-    ($t:ty) => {
-        impl TryFromSexp for Box<[$t]> {
-            type Error = SexpTypeError;
-
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(slice.into())
-            }
-        }
-    };
-}
-
-impl_boxed_slice_try_from_sexp_native!(i32);
-impl_boxed_slice_try_from_sexp_native!(f64);
-impl_boxed_slice_try_from_sexp_native!(u8);
-impl_boxed_slice_try_from_sexp_native!(RLogical);
-impl_boxed_slice_try_from_sexp_native!(crate::Rcomplex);
 // endregion

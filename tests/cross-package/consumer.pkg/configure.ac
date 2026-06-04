@@ -39,7 +39,7 @@ RUST_SRC_DIR="$abs_rpkg_src/rust"
 dnl ---- install-mode detection ----
 dnl Single signal: presence of inst/vendor.tar.xz.
 dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is shipped inside
-dnl     the build artifact by `just vendor`. configure unpacks it, writes a
+dnl     the build artifact by `just vendor`; configure then unpacks it, writes a
 dnl     vendored cargo source replacement, and builds offline.
 dnl   Source install (R CMD INSTALL ., devtools::install, etc.):
 dnl     no tarball. configure leaves vendoring alone and lets cargo resolve
@@ -311,7 +311,7 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "@<:@build@:>@"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
-    echo "configure: wrote $RPKG_CFG (source mode)"
+    echo "configure: wrote $RPKG_CFG (from-source mode)"
   fi
 ],
 [IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"

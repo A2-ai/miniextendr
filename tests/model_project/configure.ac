@@ -410,7 +410,7 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "@<:@build@:>@"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
-    echo "configure: wrote $RPKG_CFG (source mode, monorepo override)"
+    echo "configure: wrote $RPKG_CFG (from-source mode, monorepo override)"
 
   else
     {
@@ -422,7 +422,7 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "@<:@build@:>@"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
-    echo "configure: wrote $RPKG_CFG (source mode, no monorepo siblings)"
+    echo "configure: wrote $RPKG_CFG (from-source mode, no monorepo siblings)"
   fi
 ],
 [IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"

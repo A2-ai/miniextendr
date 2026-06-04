@@ -36,7 +36,7 @@
 pub use uuid::Uuid;
 
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
-use crate::into_r::IntoR;
+use crate::into_r::into_r_infallible;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Scalar conversions
@@ -50,18 +50,7 @@ impl TryFromSexp for Uuid {
     }
 }
 
-impl IntoR for Uuid {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.to_string().into_sexp()
-    }
-}
+into_r_infallible!(Uuid, |this| this.to_string().into_sexp());
 // endregion
 
 // region: Option conversions (NA support)
@@ -80,18 +69,7 @@ impl TryFromSexp for Option<Uuid> {
     }
 }
 
-impl IntoR for Option<Uuid> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.map(|u| u.to_string()).into_sexp()
-    }
-}
+into_r_infallible!(Option<Uuid>, |this| this.map(|u| u.to_string()).into_sexp());
 // endregion
 
 // region: Vector conversions
@@ -137,21 +115,11 @@ impl TryFromSexp for Vec<Uuid> {
     }
 }
 
-impl IntoR for Vec<Uuid> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|u| u.to_string())
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
+into_r_infallible!(Vec<Uuid>, |this| this
+    .into_iter()
+    .map(|u| u.to_string())
+    .collect::<Vec<_>>()
+    .into_sexp());
 // endregion
 
 // region: Vec<Option<Uuid>> conversions (NA-aware vectors)
@@ -174,21 +142,11 @@ impl TryFromSexp for Vec<Option<Uuid>> {
     }
 }
 
-impl IntoR for Vec<Option<Uuid>> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> SEXP {
-        self.into_iter()
-            .map(|opt| opt.map(|u| u.to_string()))
-            .collect::<Vec<_>>()
-            .into_sexp()
-    }
-}
+into_r_infallible!(Vec<Option<Uuid>>, |this| this
+    .into_iter()
+    .map(|opt| opt.map(|u| u.to_string()))
+    .collect::<Vec<_>>()
+    .into_sexp());
 // endregion
 
 // region: RUuidOps adapter trait

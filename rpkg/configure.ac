@@ -252,7 +252,7 @@ AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 dnl wasm32/webR side-modules need one RUSTFLAGS adjustment. See #494.
 dnl
 dnl -Zdefault-visibility=hidden
-dnl    Without it, the Rust staticlib drags ~3000 mangled stdlib/dep symbols
+dnl    Without it, the Rust staticlib drags roughly 3000 mangled stdlib/dep symbols
 dnl    into the side-module's EXPORT table. webR's JS-side dyn.load then fails
 dnl    (`TypeError: Cannot read properties of undefined` on the pinned emcc; a
 dnl    hard `emcc: error: invalid export name` on emcc 4.0.8+). Hiding all
@@ -637,7 +637,7 @@ dnl   (cargo follows the git URL declared in Cargo.toml)
 dnl
 dnl WARNING: stale inst/vendor.tar.xz hazard.
 dnl   `just r-cmd-build` and `just r-cmd-check` create inst/vendor.tar.xz
-dnl   transiently and remove it via `trap ... EXIT`.  If the process is killed
+dnl   transiently and remove it via a `trap ... EXIT` handler; if the process is killed
 dnl   before the trap fires, the file is left behind.  Configure then detects
 dnl   it and sets IS_TARBALL_INSTALL=true, which (a) writes a tarball-mode
 dnl   config.toml here and (b) makes Makevars.in's post-build cleanup delete
@@ -733,7 +733,7 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "@<:@build@:>@"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
-    echo "configure: wrote $RPKG_CFG (source mode, monorepo override)"
+    echo "configure: wrote $RPKG_CFG (from-source mode, monorepo override)"
 
   else
     {
@@ -746,7 +746,7 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "@<:@build@:>@"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
     } > "$RPKG_CFG"
-    echo "configure: wrote $RPKG_CFG (source mode, no monorepo siblings)"
+    echo "configure: wrote $RPKG_CFG (from-source mode, no monorepo siblings)"
   fi
 ],
 [IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"

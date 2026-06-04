@@ -1,0 +1,4 @@
+docs/
+.cache
+__pycache__
+
