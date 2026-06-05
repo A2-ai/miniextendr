@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      ea0bf02ddb9c918d
+// content-hash:      bb05b3ff3c457118
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -895,9 +895,11 @@ unsafe extern "C-unwind" {
     pub fn C_test_fromjson_point_sum(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_mx_point_new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_mx_point_sum(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_mx_fit_create(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_mx_obs_create(_: SEXP) -> SEXP;
     pub fn C_mx_season_name(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_mx_derived_ints(_: SEXP) -> SEXP;
+    pub fn C_mx_fit_roundtrip(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_mx_record_create(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_mx_season_summer(_: SEXP) -> SEXP;
     pub fn C_mx_verbosity_check(_: SEXP, _: SEXP) -> SEXP;
@@ -6498,6 +6500,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_mx_fit_create".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_mx_fit_create) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
         name: c"C_mx_obs_create".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_mx_obs_create) }),
         numArgs: 1,
@@ -6511,6 +6518,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_mx_derived_ints".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_mx_derived_ints) }),
         numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_mx_fit_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_mx_fit_roundtrip) }),
+        numArgs: 3,
     },
     R_CallMethodDef {
         name: c"C_mx_record_create".as_ptr(),

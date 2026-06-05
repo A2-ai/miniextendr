@@ -229,9 +229,34 @@ fn derive_try_from_list_defaults_ignored_named_fields() {
     let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
     let s = normalize_tokens(expanded);
 
-    assert!(s.contains("get_named(\"a\")"));
-    assert!(!s.contains("get_named(\"b\")"));
+    assert!(s.contains("get_named_sexp(\"a\")"));
+    assert!(!s.contains("get_named_sexp(\"b\")"));
     assert!(s.contains("b:::core::default::Default::default()"));
+}
+
+#[test]
+fn derive_try_from_list_does_not_pin_error_type() {
+    // Regression for #861: the per-field bound must not pin
+    // `TryFromSexp::Error = SexpError`, otherwise fields like `Vec<f64>`
+    // (whose error is `SexpTypeError`) fail to compile with E0271. Instead we
+    // bound `TryFromSexp` and require the field error convert into `SexpError`.
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            estimate: Vec<f64>,
+            sigma: f64,
+        }
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    // No equality bound on the associated Error type.
+    assert!(!s.contains("TryFromSexp<Error="));
+    // Convertibility bound is present for the numeric-vector field.
+    assert!(s.contains("SexpError:::core::convert::From<<Vec<f64>as"));
+    // Conversion happens at extraction time.
+    assert!(s.contains("map_err(::miniextendr_api::from_r::SexpError::from)"));
 }
 
 #[test]
@@ -260,9 +285,9 @@ fn derive_try_from_list_defaults_ignored_tuple_fields() {
     let s = normalize_tokens(expanded);
 
     assert!(s.contains("expected:2"));
-    assert!(s.contains("get_index(0"));
-    assert!(s.contains("get_index(1"));
-    assert!(!s.contains("get_index(2"));
+    assert!(s.contains("get(0"));
+    assert!(s.contains("get(1"));
+    assert!(!s.contains("get(2"));
     assert!(s.contains("Self(_field0,::core::default::Default::default(),_field2)"));
 }
 

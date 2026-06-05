@@ -508,6 +508,15 @@ R external pointer.
 
 #### List Mode
 
+`#[miniextendr(list)]` makes a struct round-trip with an R **list**. It expands
+to three derives:
+
+| Derive | Direction | Role |
+|--------|-----------|------|
+| `IntoList` | Rust → R | `struct` → R list (one element per field) |
+| `TryFromList` | R → Rust | R list → `struct` (one field per element) |
+| `PreferList` | Rust → R | marker so the struct can be **returned directly** from a `#[miniextendr]` fn — `IntoR` routes through `IntoList` |
+
 ```rust
 #[miniextendr(list)]
 pub struct Record {
@@ -519,8 +528,62 @@ pub struct Record {
 pub fn make_record() -> Record {
     Record { name: "test".into(), value: 42 }
 }
-// R: list(name = "test", value = 42L)
+// R: make_record()  ->  list(name = "test", value = 42L)
 ```
+
+**Field shape determines list shape:**
+
+| Struct kind | R list produced |
+|-------------|-----------------|
+| Named (`struct R { a, b }`) | named list — `list(a = …, b = …)` |
+| Tuple (`struct R(A, B)`)    | unnamed list — `list(…, …)` (positional) |
+| Unit (`struct R`)           | empty list — `list()` |
+
+**Field type requirements.** Each non-ignored field's type must implement
+`IntoR` (for `IntoList`) and `TryFromSexp` (for `TryFromList`). Heterogeneous
+fields are fine — the list holds each element at its natural R type. This
+includes scalars (`i32`, `f64`, `String`, `bool`), vectors (`Vec<f64>`,
+`Vec<i32>`, `Vec<String>`), and `Option<T>` (→ `NULL` when `None`):
+
+```rust
+#[miniextendr(list)]
+pub struct FitResult {
+    pub estimate: Vec<f64>,   // numeric vector element
+    pub sigma: f64,           // length-1 numeric element
+}
+```
+
+**Skipping fields.** `#[into_list(ignore)]` drops a field from the list. On the
+way back (`TryFromList`) an ignored field is filled with `Default::default()`,
+so its type must implement `Default`:
+
+```rust
+#[miniextendr(list)]
+pub struct Cfg {
+    pub label: String,
+    #[into_list(ignore)]
+    cache: RefCell<Option<Vec<u8>>>,  // not in the R list; Default on the way back
+}
+```
+
+**Return-only by default.** List mode generates `PreferList` (return path) but
+**not** `TryFromSexp` on the struct, so a list-mode struct is *not* usable as a
+`#[miniextendr]` function argument directly. To reconstruct one from R, take a
+`List` parameter and call `try_from_list` yourself:
+
+```rust
+use miniextendr_api::list::{List, TryFromList};
+
+#[miniextendr]
+pub fn use_record(x: List) -> i32 {
+    let r = Record::try_from_list(x).expect("record list");
+    r.value
+}
+```
+
+`TryFromList` reports a `MissingField` error when a named element is absent and
+the field's own conversion error (e.g. a type mismatch) when an element is
+present but the wrong type.
 
 #### DataFrame Mode
 

@@ -219,12 +219,25 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                     continue;
                 }
 
-                bounds.push(parse_quote!(#ty: ::miniextendr_api::from_r::TryFromSexp<Error = ::miniextendr_api::from_r::SexpError>));
+                // Bound on `TryFromSexp` only — not the associated `Error`
+                // type — and require the field's error convert into `SexpError`
+                // (the trait's error). Pinning `Error = SexpError` rejected any
+                // field whose error is `SexpTypeError` etc. — e.g. `Vec<f64>`
+                // (#861). The `?`/`map_err` below performs the conversion.
+                bounds.push(parse_quote!(#ty: ::miniextendr_api::from_r::TryFromSexp));
+                bounds.push(parse_quote!(::miniextendr_api::from_r::SexpError: ::core::convert::From<<#ty as ::miniextendr_api::from_r::TryFromSexp>::Error>));
 
                 let name_str = ident.to_string();
+                // Fetch the raw element, then convert — so a present-but-wrong-type
+                // field reports the real conversion error instead of being
+                // misreported as a missing field.
                 field_extractions.push(quote! {
-                    let #ident: #ty = list.get_named(#name_str)
-                        .ok_or_else(|| ::miniextendr_api::from_r::SexpError::MissingField(#name_str.into()))?;
+                    let #ident: #ty = {
+                        let __elem = list.get_named_sexp(#name_str)
+                            .ok_or_else(|| ::miniextendr_api::from_r::SexpError::MissingField(#name_str.into()))?;
+                        <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)
+                            .map_err(::miniextendr_api::from_r::SexpError::from)?
+                    };
                 });
                 field_inits.push(quote! { #ident });
             }
@@ -256,17 +269,25 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 }
 
                 let ident = syn::Ident::new(&format!("_field{idx}"), f.span());
-                bounds.push(parse_quote!(#ty: ::miniextendr_api::from_r::TryFromSexp<Error = ::miniextendr_api::from_r::SexpError>));
+                // See the named-struct branch: bound `TryFromSexp` plus a
+                // convertibility bound into `SexpError`, not `Error = SexpError`
+                // (#861).
+                bounds.push(parse_quote!(#ty: ::miniextendr_api::from_r::TryFromSexp));
+                bounds.push(parse_quote!(::miniextendr_api::from_r::SexpError: ::core::convert::From<<#ty as ::miniextendr_api::from_r::TryFromSexp>::Error>));
 
                 let idx_isize = input_idx as isize;
                 field_extractions.push(quote! {
-                    let #ident: #ty = list.get_index(#idx_isize)
-                        .ok_or_else(|| ::miniextendr_api::from_r::SexpError::Length(
-                            ::miniextendr_api::from_r::SexpLengthError {
-                                expected: #input_fields,
-                                actual: list.len() as usize,
-                            }
-                        ))?;
+                    let #ident: #ty = {
+                        let __elem = list.get(#idx_isize)
+                            .ok_or_else(|| ::miniextendr_api::from_r::SexpError::Length(
+                                ::miniextendr_api::from_r::SexpLengthError {
+                                    expected: #input_fields,
+                                    actual: list.len() as usize,
+                                }
+                            ))?;
+                        <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)
+                            .map_err(::miniextendr_api::from_r::SexpError::from)?
+                    };
                 });
                 ctor_args.push(quote! { #ident });
                 input_idx += 1;

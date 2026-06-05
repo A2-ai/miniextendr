@@ -48,6 +48,51 @@ pub struct MxRecord {
 pub fn mx_record_create(name: String, value: i32) -> MxRecord {
     MxRecord { name, value }
 }
+
+/// Regression fixture for #861: a list-mode struct with a `Vec<f64>` field.
+///
+/// `Vec<f64>` implements `TryFromSexp` with `Error = SexpTypeError`, not
+/// `SexpError`. The `TryFromList` derive used to pin `Error = SexpError`, so
+/// this struct failed to compile with E0271. It now compiles, round-trips, and
+/// is returnable via `PreferList`.
+#[miniextendr(list)]
+pub struct MxFit {
+    pub estimate: Vec<f64>,
+    pub sigma: f64,
+}
+
+/// Construct an `MxFit` and return it as an R list (exercises `IntoList`).
+/// @param estimate Numeric vector of parameter estimates.
+/// @param sigma Numeric residual scale.
+#[miniextendr]
+pub fn mx_fit_create(estimate: Vec<f64>, sigma: f64) -> MxFit {
+    MxFit { estimate, sigma }
+}
+
+/// Round-trip an `MxFit` through `IntoList` and the (fixed) `TryFromList`
+/// derive, returning the reconstructed `estimate` vector. This is the only
+/// path that exercises the `Vec<f64>` field's `try_from_sexp` extraction at
+/// runtime — list-mode structs are not generated as `#[miniextendr]` argument
+/// types, so they cannot be reconstructed directly from an R call.
+/// @param estimate Numeric vector of parameter estimates.
+/// @param sigma Numeric residual scale.
+#[miniextendr]
+pub fn mx_fit_roundtrip(estimate: Vec<f64>, sigma: f64) -> Vec<f64> {
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::list::{IntoList, List, TryFromList};
+
+    let fit = MxFit { estimate, sigma };
+    // SAFETY: `#[miniextendr]` fns run on the R main thread. Protect the
+    // intermediate list SEXP across the read-back so GC cannot collect it.
+    unsafe {
+        let scope = miniextendr_api::gc_protect::ProtectScope::new();
+        let list_sexp = scope.protect_raw(fit.into_list().into_sexp());
+        let list = List::try_from_sexp(list_sexp).expect("into_list produces a VECSXP");
+        let restored = MxFit::try_from_list(list).expect("MxFit round-trip should succeed");
+        restored.estimate
+    }
+}
 // endregion
 
 // region: 3. #[miniextendr(dataframe)] on struct → DataFrameRow + PreferDataFrame
