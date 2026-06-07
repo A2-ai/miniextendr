@@ -11,7 +11,7 @@ skip_if_missing_feature("connections")
 test_that("string_input_connection reads multi-line content", {
   con <- string_input_connection("line1\nline2\nline3")
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_length(lines, 3)
   expect_equal(lines, c("line1", "line2", "line3"))
 })
@@ -19,7 +19,7 @@ test_that("string_input_connection reads multi-line content", {
 test_that("string_input_connection reads single line", {
   con <- string_input_connection("hello")
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_length(lines, 1)
   expect_equal(lines, "hello")
 })
@@ -27,7 +27,7 @@ test_that("string_input_connection reads single line", {
 test_that("string_input_connection reads empty string", {
   con <- string_input_connection("")
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_length(lines, 0)
 })
 
@@ -38,14 +38,14 @@ test_that("string_input_connection reads empty string", {
 test_that("counter_connection generates sequential integers", {
   con <- counter_connection(1L, 5L)
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_equal(lines, as.character(1:5))
 })
 
 test_that("counter_connection with single value", {
   con <- counter_connection(42L, 42L)
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_equal(lines, "42")
 })
 
@@ -58,7 +58,7 @@ test_that("memory_connection write then read roundtrip", {
   on.exit(close(con))
   writeLines("Hello, World!", con)
   seek(con, 0)
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_equal(lines, "Hello, World!")
 })
 
@@ -67,7 +67,7 @@ test_that("memory_connection write multiple lines", {
   on.exit(close(con))
   writeLines(c("foo", "bar", "baz"), con)
   seek(con, 0)
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_equal(lines, c("foo", "bar", "baz"))
 })
 
@@ -78,14 +78,14 @@ test_that("memory_connection write multiple lines", {
 test_that("uppercase_connection transforms to uppercase", {
   con <- uppercase_connection("hello world")
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_equal(lines, "HELLO WORLD")
 })
 
 test_that("uppercase_connection preserves non-alpha characters", {
   con <- uppercase_connection("abc 123 !@#")
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_equal(lines, "ABC 123 !@#")
 })
 
@@ -96,7 +96,7 @@ test_that("uppercase_connection preserves non-alpha characters", {
 test_that("rot13_connection encodes text", {
   con <- rot13_connection("hello")
   on.exit(close(con))
-  lines <- readLines(con)
+  lines <- readLines(con, warn = FALSE)
   expect_equal(lines, "uryyb")
 })
 
@@ -104,11 +104,11 @@ test_that("rot13 double-application returns original", {
   # ROT13 is its own inverse
   con1 <- rot13_connection("hello world")
   on.exit(close(con1), add = TRUE)
-  encoded <- readLines(con1)
+  encoded <- readLines(con1, warn = FALSE)
 
   con2 <- rot13_connection(encoded)
   on.exit(close(con2), add = TRUE)
-  decoded <- readLines(con2)
+  decoded <- readLines(con2, warn = FALSE)
 
   expect_equal(decoded, "hello world")
 })
