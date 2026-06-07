@@ -126,12 +126,12 @@ For each: entry-point signature, direction, feature gate, error type, cost.
 - Direction: **R → Rust** (the canonical typed input wrapper). Gate: **none**.
   Error: `DataFrameError`.
 
-#### `AsDataFrame` (coercion trait, distinct from `IntoDataFrame`)
+#### `RCoerceDataFrame` (coercion trait, distinct from `IntoDataFrame`)
 
-- `as_coerce::AsDataFrame { fn as_data_frame(&self) -> Result<List, AsCoerceError>; }`
-  (`as_coerce.rs:192`). Used by `#[miniextendr(as = "data.frame")]` to generate
+- `r_coerce::RCoerceDataFrame { fn as_data_frame(&self) -> Result<List, RCoerceError>; }`
+  (`r_coerce.rs:192`). Used by `#[miniextendr(as = "data.frame")]` to generate
   an S3 `as.data.frame()` method on an ExternalPtr type. Borrows `&self`.
-  Error: `AsCoerceError`. **Note**: this is the trait whose *name* the maintainer
+  Error: `RCoerceError`. **Note**: this is the trait whose *name* the maintainer
   floated as a candidate for the unified surface, but today it means something
   narrow (S3 coercion on a live R object), not "build a data.frame from Rust
   data."
@@ -221,7 +221,7 @@ R → Rust (read): `DataFrameView` (typed column pulls), `ColumnarDataFrame`
    confuse; the docs already need a "Comparison with `AsDataFrame`" sidebar
    (`convert.rs:225`). Three different things are called *builder*
    (`DataFrame<T>`, `serde::DataFrameBuilder<T>`, `RDataFrameBuilder`).
-2. **Error types.** `DataFrameError`, `RSerdeError`, `AsCoerceError`, and bare
+2. **Error types.** `DataFrameError`, `RSerdeError`, `RCoerceError`, and bare
    `String` (the `try_from_dataframe` branch) — four different failure types
    for "data frame conversion went wrong," none convertible into the others.
    `DataFrame<T>::into_data_frame` doesn't even return a `Result` — it `panic!`s.
@@ -450,9 +450,10 @@ the public verb surface.
   parameter into every `#[miniextendr]` signature (which can't carry generics,
   MXL112) and into docs; rejected as over-engineered.
 - **Alt C — `AsDataFrame` as the central trait** (the maintainer's floated name).
-  Rejected as the *primary* name because `as_*` already denotes borrowing S3
-  coercion across the `as_coerce` module (`AsList`, `AsCharacter`, …); reusing it
-  for consuming conversion would muddy a consistent convention. `IntoDataFrame` /
+  Rejected as the *primary* name because borrowing S3 coercion already owned a
+  parallel family in the `r_coerce` module (`RCoerceList`, `RCoerceCharacter`, …,
+  formerly `AsList`/`AsCharacter` before the 2026-06-07 rename); reusing an `As*`
+  verb for consuming conversion would muddy a consistent convention. `IntoDataFrame` /
   `FromDataFrame` mirror `Into`/`From` and `IntoR`/`TryFromSexp` exactly, which is
   the strongest intuition.
 - **Recommended — Alt (this doc):** one owned `DataFrame`, `IntoDataFrame` /
@@ -472,11 +473,13 @@ column accessors. The proposal stays closest to miniextendr's own
 ### 2.6 Open questions for the maintainer
 
 1. **Trait names:** `IntoDataFrame` / `FromDataFrame` (recommended, mirrors
-   `IntoR`/`TryFromSexp`) vs the floated `AsDataFrame` family? The latter
-   collides with the existing `as_coerce::AsDataFrame` S3 trait.
-2. **Fate of `as_coerce::AsDataFrame`:** keep it as a distinct S3-coercion trait
-   (borrow `&self`, used by `#[miniextendr(as = "data.frame")]`), or rename it
-   (e.g. `CoerceDataFrame`) so the consuming trait can own the obvious name?
+   `IntoR`/`TryFromSexp`) vs the floated `AsDataFrame` family? (Note 2026-06-07:
+   the cited collision is gone — the S3-coercion family was renamed
+   `As*` → `RCoerce*`, so `r_coerce::RCoerceDataFrame` no longer competes for the
+   `AsDataFrame` name. See `analysis/conversion-control-surface-2026-06-07.md`.)
+2. **Fate of `r_coerce::RCoerceDataFrame`:** keep it as a distinct S3-coercion trait
+   (borrow `&self`, used by `#[miniextendr(as = "data.frame")]`) — resolved
+   2026-06-07: kept and renamed out of the `As*` namespace.
 3. **Companion type visibility:** fully hide `RowDataFrame` (`#[doc(hidden)]`),
    or keep it opt-in via `#[dataframe(columns)]` for users who want
    column-oriented Rust access (struct-of-`Vec`s)?

@@ -4,11 +4,11 @@
 # for R's coercion generics like as.data.frame(), as.list(), as.character().
 
 # =============================================================================
-# AsCoerceTestData tests - successful coercions
+# RCoerceTestData tests - successful coercions
 # =============================================================================
 
-test_that("as.data.frame.AsCoerceTestData works", {
-  obj <- AsCoerceTestData$new(c("Alice", "Bob", "Charlie"), c(1.0, 2.0, 3.0))
+test_that("as.data.frame.RCoerceTestData works", {
+  obj <- RCoerceTestData$new(c("Alice", "Bob", "Charlie"), c(1.0, 2.0, 3.0))
 
   df <- as.data.frame(obj)
 
@@ -20,8 +20,8 @@ test_that("as.data.frame.AsCoerceTestData works", {
   expect_equal(df$value, c(1.0, 2.0, 3.0))
 })
 
-test_that("as.list.AsCoerceTestData works", {
-  obj <- AsCoerceTestData$new(c("x", "y"), c(10.0, 20.0))
+test_that("as.list.RCoerceTestData works", {
+  obj <- RCoerceTestData$new(c("x", "y"), c(10.0, 20.0))
 
   lst <- as.list(obj)
 
@@ -32,19 +32,19 @@ test_that("as.list.AsCoerceTestData works", {
   expect_equal(lst$values, c(10.0, 20.0))
 })
 
-test_that("as.character.AsCoerceTestData works", {
-  obj <- AsCoerceTestData$new(c("a", "b"), c(1.0, 2.0))
+test_that("as.character.RCoerceTestData works", {
+  obj <- RCoerceTestData$new(c("a", "b"), c(1.0, 2.0))
 
   chr <- as.character(obj)
 
   expect_type(chr, "character")
   expect_length(chr, 1)
-  expect_match(chr, "AsCoerceTestData")
+  expect_match(chr, "RCoerceTestData")
   expect_match(chr, "2 items")
 })
 
-test_that("as_numeric.AsCoerceTestData extracts numeric values", {
-  obj <- AsCoerceTestData$new(c("a", "b", "c"), c(1.5, 2.5, 3.5))
+test_that("as_numeric.RCoerceTestData extracts numeric values", {
+  obj <- RCoerceTestData$new(c("a", "b", "c"), c(1.5, 2.5, 3.5))
 
   # Note: R's as.numeric() is a primitive that doesn't dispatch S3 methods for
   # externalptr objects, so we use the as_numeric() wrapper instead.
@@ -54,8 +54,8 @@ test_that("as_numeric.AsCoerceTestData extracts numeric values", {
   expect_equal(num, c(1.5, 2.5, 3.5))
 })
 
-test_that("as.integer.AsCoerceTestData works", {
-  obj <- AsCoerceTestData$new(c("a", "b", "c"), c(10.9, 20.1, 30.5))
+test_that("as.integer.RCoerceTestData works", {
+  obj <- RCoerceTestData$new(c("a", "b", "c"), c(10.9, 20.1, 30.5))
 
   int <- as.integer(obj)
 
@@ -64,11 +64,11 @@ test_that("as.integer.AsCoerceTestData works", {
 })
 
 # =============================================================================
-# AsCoerceErrorTest tests - error handling
+# RCoerceErrorTest tests - error handling
 # =============================================================================
 
-test_that("as.data.frame.AsCoerceErrorTest returns error when empty", {
-  obj <- AsCoerceErrorTest$new(TRUE)  # is_empty = TRUE
+test_that("as.data.frame.RCoerceErrorTest returns error when empty", {
+  obj <- RCoerceErrorTest$new(TRUE)  # is_empty = TRUE
 
   expect_error(
     as.data.frame(obj),
@@ -76,8 +76,8 @@ test_that("as.data.frame.AsCoerceErrorTest returns error when empty", {
   )
 })
 
-test_that("as.data.frame.AsCoerceErrorTest works when not empty", {
-  obj <- AsCoerceErrorTest$new(FALSE)  # is_empty = FALSE
+test_that("as.data.frame.RCoerceErrorTest works when not empty", {
+  obj <- RCoerceErrorTest$new(FALSE)  # is_empty = FALSE
 
   df <- as.data.frame(obj)
 
@@ -86,8 +86,8 @@ test_that("as.data.frame.AsCoerceErrorTest works when not empty", {
   expect_equal(df$value, 42.0)
 })
 
-test_that("as.list.AsCoerceErrorTest returns NotSupported error", {
-  obj <- AsCoerceErrorTest$new(FALSE)
+test_that("as.list.RCoerceErrorTest returns NotSupported error", {
+  obj <- RCoerceErrorTest$new(FALSE)
 
   expect_error(
     as.list(obj),
@@ -95,8 +95,8 @@ test_that("as.list.AsCoerceErrorTest returns NotSupported error", {
   )
 })
 
-test_that("as.character.AsCoerceErrorTest returns custom error", {
-  obj <- AsCoerceErrorTest$new(FALSE)
+test_that("as.character.RCoerceErrorTest returns custom error", {
+  obj <- RCoerceErrorTest$new(FALSE)
 
   expect_error(
     as.character(obj),
@@ -108,8 +108,8 @@ test_that("as.character.AsCoerceErrorTest returns custom error", {
 # Edge cases
 # =============================================================================
 
-test_that("as.data.frame.AsCoerceTestData works with empty data", {
-  obj <- AsCoerceTestData$new(character(0), numeric(0))
+test_that("as.data.frame.RCoerceTestData works with empty data", {
+  obj <- RCoerceTestData$new(character(0), numeric(0))
 
   df <- as.data.frame(obj)
 
@@ -118,8 +118,8 @@ test_that("as.data.frame.AsCoerceTestData works with empty data", {
   expect_equal(ncol(df), 2)
 })
 
-test_that("as.list.AsCoerceTestData works with single element", {
-  obj <- AsCoerceTestData$new("only", 42.0)
+test_that("as.list.RCoerceTestData works with single element", {
+  obj <- RCoerceTestData$new("only", 42.0)
 
   lst <- as.list(obj)
 
@@ -128,7 +128,7 @@ test_that("as.list.AsCoerceTestData works with single element", {
 })
 
 test_that("len method works via S3 generic", {
-  obj <- AsCoerceTestData$new(c("a", "b", "c"), c(1, 2, 3))
+  obj <- RCoerceTestData$new(c("a", "b", "c"), c(1, 2, 3))
 
   expect_equal(len(obj), 3L)
 })
