@@ -31,26 +31,23 @@ fi
 # regenerates it from scratch via bootstrap.R.
 rm -f rpkg/inst/vendor.tar.xz
 
-# Stash the tracked Cargo.lock: bootstrap.R unconditionally deletes it and
-# runs `cargo generate-lockfile` when the latch is absent (see
-# rpkg/bootstrap.R lines ~78-100). Without this stash, a dev whose lockfile
-# pins different transitive checksums than `generate-lockfile` would produce
-# (e.g. workspace tip moved between revendor runs) ends up with a dirty
-# tracked file each time this test runs. The trap restores from the backup.
+# Stash the tracked Cargo.lock: bootstrap.R runs cargo-revendor, which resolves
+# the framework crates against the local workspace (patch active) and stamps the
+# canonical `source = "git+<url>#<sha>"` attribution back in (#883). The stamped
+# <sha> is the workspace's live git HEAD, so a dev whose HEAD has moved since the
+# committed lock was stamped ends up with a dirty tracked file each time this
+# test runs. The trap restores from the backup.
 CARGO_LOCK_BACKUP="/tmp/bootstrap-vendor-test-cargo-lock-$$.bak"
 cp rpkg/src/rust/Cargo.lock "$CARGO_LOCK_BACKUP"
 
 # Trap-clean producer artifacts (latch + configure outputs + built tarball)
 # so the test is idempotent on dev machines and matches the latch-leak
 # hygiene of `just r-cmd-build` (justfile r-cmd-build trap on line ~632).
-# Also restore Cargo.lock from the stash (see above) and clear bootstrap.R's
-# tmp_bootstrap_vendor sidecar in case bootstrap.R fails mid-way before its
-# own restore step runs.
+# Also restore Cargo.lock from the stash (see above).
 # Note: this trap also removes Makevars and .cargo/config.toml, so a
 # `just configure` is needed before the next dev iteration in this checkout.
 trap '
   rm -f rpkg/inst/vendor.tar.xz rpkg/src/Makevars rpkg/src/rust/.cargo/config.toml miniextendr_*.tar.gz
-  rm -f rpkg/src/rust/.cargo/config.toml.tmp_bootstrap_vendor
   rm -rf rpkg/vendor
   if [ -f "$CARGO_LOCK_BACKUP" ]; then
     mv "$CARGO_LOCK_BACKUP" rpkg/src/rust/Cargo.lock

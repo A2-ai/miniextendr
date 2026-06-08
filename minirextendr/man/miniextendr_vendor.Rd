@@ -15,8 +15,11 @@ Invisibly returns the path to the created tarball.
 \description{
 High-level workflow that vendors all crate dependencies and compresses
 them into \code{inst/vendor.tar.xz} for offline CRAN install. Wraps
-\code{\link[=vendor_crates_io]{vendor_crates_io()}} (which delegates to \code{cargo-revendor}) plus
-Cargo.lock checksum stripping and tarball compression.
+\code{\link[=vendor_crates_io]{vendor_crates_io()}} (which delegates to \code{cargo-revendor}) plus tarball
+compression. \code{cargo-revendor} resolves against the local workspace when a
+dev \verb{[patch."<git-url>"]} override is present (so a cross-crate rename
+resolves against the working tree, not git@main) and stamps the canonical
+\code{git+url#<sha>} source into \code{Cargo.lock}; checksum lines are retained.
 }
 \details{
 Run this before \verb{R CMD build} when preparing a CRAN submission.
