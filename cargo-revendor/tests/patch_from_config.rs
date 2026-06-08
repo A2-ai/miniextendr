@@ -375,6 +375,129 @@ no-config-lib = {{ git = "{git_url}" }}
     );
 }
 
+/// **P5** (loud-fail signal, #876) — when the `[patch."<git-url>"]` override IS
+/// present, the patched crate must appear in `--json local_crates`; the
+/// `just vendor` recipe greps exactly this signal to assert framework crates
+/// were vendored from the local workspace, not git@main.
+#[test]
+#[ignore] // invokes cargo vendor
+fn json_local_crates_includes_patched_crate() {
+    let git_upstream = create_local_git_crate(
+        "signal-lib",
+        r#"[package]
+name = "signal-lib"
+version = "0.5.0"
+edition = "2021"
+publish = false
+"#,
+        "pub fn signal() {}\npub fn patched() -> &'static str { \"GIT\" }\n",
+    );
+
+    let (_work, manifest) =
+        build_patch_workspace(&git_upstream.url(), "signal-lib", "0.5.0", "LOCAL_SIGNAL");
+    let vendor = manifest.parent().unwrap().join("vendor");
+
+    let output = revendor_cmd()
+        .arg("revendor")
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .arg("--output")
+        .arg(&vendor)
+        .arg("--json")
+        .output()
+        .expect("failed to run cargo-revendor");
+
+    assert!(output.status.success(), "vendor run should succeed");
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("invalid JSON output");
+    let locals: Vec<String> = json["local_crates"]
+        .as_array()
+        .expect("local_crates should be an array")
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        locals.iter().any(|c| c == "signal-lib"),
+        "patched crate must be reported as local; got {locals:?}"
+    );
+}
+
+/// **P6** (loud-fail signal, #876) — when there is NO `[patch]` override (the
+/// latch-leak shape: configure ran in tarball mode and wrote no `[patch]`), the
+/// crate is fetched from git and must NOT appear in `--json local_crates`. This
+/// is the exact condition the `just vendor` recipe turns into a non-zero exit.
+#[test]
+#[ignore] // invokes cargo vendor
+fn json_local_crates_excludes_git_fetched_crate() {
+    let git_upstream = create_local_git_crate(
+        "leak-lib",
+        r#"[package]
+name = "leak-lib"
+version = "0.6.0"
+edition = "2021"
+publish = false
+"#,
+        "pub fn leak() {}\n",
+    );
+    let git_url = git_upstream.url();
+
+    // A project depending on the git source but with NO .cargo/config.toml
+    // [patch] override — so cargo vendors leak-lib straight from git.
+    let work = tempfile::TempDir::new().unwrap();
+    let root = work.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "leak-proj"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+leak-lib = {{ git = "{git_url}" }}
+"#
+        ),
+    )
+    .unwrap();
+    std::fs::write(root.join("lib.rs"), "pub use leak_lib::leak;\n").unwrap();
+    git_init(&root);
+
+    let vendor = root.join("vendor");
+    let output = revendor_cmd()
+        .arg("revendor")
+        .arg("--manifest-path")
+        .arg(root.join("Cargo.toml"))
+        .arg("--output")
+        .arg(&vendor)
+        .arg("--json")
+        .output()
+        .expect("failed to run cargo-revendor");
+
+    assert!(output.status.success(), "vendor run should succeed");
+    // leak-lib was vendored (from git), but as an EXTERNAL crate.
+    assert_vendor_has(&vendor, "leak-lib");
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("invalid JSON output");
+    let locals: Vec<String> = json["local_crates"]
+        .as_array()
+        .expect("local_crates should be an array")
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        !locals.iter().any(|c| c == "leak-lib"),
+        "a git-fetched crate must NOT be reported as local — this is the signal \
+         `just vendor` turns into a loud failure (#876); got {locals:?}"
+    );
+}
+
 // Helper: build a workspace with a single `conflict-lib` member (no pkg subdir),
 // used for the `--source-root` test where the source root IS the workspace.
 fn build_lib_workspace(root: &Path, crate_name: &str, version: &str, marker: &str) {
