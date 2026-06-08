@@ -1018,27 +1018,6 @@ templates-check:
 
     diff -ruN "$tmp" "$tmp2"
 
-# CI-friendly: only prints diff when failing
-[script("bash")]
-templates-check-ci:
-    set -euo pipefail
-
-    test -f "{{patch_file}}"
-
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-
-    just _templates-upstream-populate "$tmp"
-
-    if [[ -s "{{patch_file}}" ]]; then
-      patch -d "$tmp" -p1 --forward --batch < "{{patch_file}}" >/dev/null
-    fi
-
-    if ! diff -ruN "$tmp" "{{local_root}}" >/dev/null; then
-      diff -ruN "$tmp" "{{local_root}}"
-      exit 1
-    fi
-
 # Check that shared recipe bodies in the two template justfiles stay in sync.
 # Recipes that are identical modulo {{rpkg}}/ path prefix are listed in the script.
 templates-recipes-check:
