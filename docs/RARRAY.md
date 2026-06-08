@@ -44,13 +44,13 @@ Supported element types (`T`) are those implementing `RNativeType`:
 ```rust
 use miniextendr_api::rarray::RMatrix;
 
-// RMatrix parameters require main_thread (RArray is !Send)
-#[miniextendr(unsafe(main_thread))]
+// RMatrix parameters run on the main thread automatically (RArray is !Send)
+#[miniextendr]
 pub fn matrix_sum(m: RMatrix<f64>) -> f64 {
     unsafe { m.as_slice().iter().sum() }
 }
 
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn column_means(m: RMatrix<f64>) -> Vec<f64> {
     let nrow = unsafe { m.nrow() };
     let ncol = unsafe { m.ncol() };
@@ -80,11 +80,12 @@ column_means(m)
 other threads because the underlying R APIs (`DATAPTR_RO`, etc.) must be called on
 the R main thread.
 
-Functions that accept `RArray`, `RMatrix`, or `RVector` parameters must use
-`#[miniextendr(unsafe(main_thread))]`:
+Functions that accept `RArray`, `RMatrix`, or `RVector` parameters run on the
+main thread automatically — these types are `!Send`, so the generated wrapper
+can only execute there. No attribute is required:
 
 ```rust
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn process(m: RMatrix<f64>) -> f64 {
     // Runs on main thread -- RMatrix access is safe
     unsafe { m.as_slice().iter().sum() }
@@ -94,7 +95,7 @@ pub fn process(m: RMatrix<f64>) -> f64 {
 To use the data in worker threads or parallel code, copy it first with `to_vec()`:
 
 ```rust
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn parallel_process(m: RMatrix<f64>) -> f64 {
     // Copy on main thread -- Vec<f64> is Send
     let data: Vec<f64> = unsafe { m.to_vec() };
@@ -259,7 +260,7 @@ is not available -- use `to_vec_coerced()` instead.
 | `bool` | `LGLSXP` (RLogical) | Logical conversion |
 
 ```rust
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn process_bool_matrix(m: RMatrix<bool>) -> Vec<bool> {
     unsafe { m.to_vec_coerced() }
 }
@@ -347,6 +348,6 @@ for row in 0..nrow {
 ## See Also
 
 - [Type Conversions](TYPE_CONVERSIONS.md) -- `TryFromSexp`/`IntoR` system
-- [`#[miniextendr]` Attribute](MINIEXTENDR_ATTRIBUTE.md) -- `unsafe(main_thread)` and other options
+- [`#[miniextendr]` Attribute](MINIEXTENDR_ATTRIBUTE.md) -- threading and other options
 - [Rayon Integration](RAYON.md) -- `with_r_matrix` and `new_r_matrix` for parallel matrix construction
 - [GC Protection](GC_PROTECT.md) -- Protecting allocated arrays from garbage collection

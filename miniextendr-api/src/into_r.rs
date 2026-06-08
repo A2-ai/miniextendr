@@ -38,7 +38,7 @@
 //!
 //! Use `into_sexp_unchecked` when you're certain you're on the main thread:
 //! - Inside ALTREP callbacks
-//! - Inside `#[miniextendr(unsafe(main_thread))]` functions
+//! - Inside standalone `#[miniextendr]` functions (they run on the main thread)
 //! - Inside `extern "C-unwind"` functions called directly by R
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

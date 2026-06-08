@@ -157,9 +157,9 @@ This means:
 
 For `#[miniextendr]` functions, this works naturally -- by default your function runs on the
 main thread, so progress bar output works directly. If using the `worker-thread` feature,
-operations that need R console access should use `unsafe(main_thread)` or run the progress
-bar update on the main thread. In practice, since indicatif batches draws, the simplest
-approach is to create the progress bar and call `pb.inc()` from your function directly.
+operations that need R console access should run the progress bar update on the main thread.
+In practice, since indicatif batches draws, the simplest approach is to create the progress
+bar and call `pb.inc()` from your function directly.
 
 See [THREADS.md](THREADS.md) for details on the worker thread model.
 
