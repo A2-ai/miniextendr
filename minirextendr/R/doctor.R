@@ -209,12 +209,14 @@ tarball-mode cleanup in Makevars. Fix: \\
   lock_path <- tryCatch(usethis::proj_path("src", "rust", "Cargo.lock"), error = function(e) NULL)
   if (!is.null(lock_path) && fs::file_exists(lock_path)) {
     lock_lines <- readLines(lock_path, warn = FALSE)
-    n_checksums <- sum(grepl("^checksum = ", lock_lines))
+    # Only `path+` source entries count as drift. `checksum = "..."` lines are
+    # canonical post-#408 (cargo-revendor writes valid .cargo-checksum.json), so
+    # they are allowed in tarball-shape and must not be flagged here.
     n_path <- sum(grepl('^source = "path\\+', lock_lines))
 
-    if (n_checksums > 0L || n_path > 0L) {
+    if (n_path > 0L) {
       cli::cli_alert_warning(
-        "{.path src/rust/Cargo.lock} has drifted into source-shape ({n_path} {.code path+} entr{?y/ies}, {n_checksums} {.code checksum =} line{?s})."
+        "{.path src/rust/Cargo.lock} has drifted into source-shape ({n_path} {.code path+} source entr{?y/ies})."
       )
       cli::cli_alert_info(
         "Run {.code miniextendr_repair_lock()} to restore tarball-shape."

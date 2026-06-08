@@ -18,12 +18,13 @@ Invisibly returns \code{TRUE} if the lock was repaired, \code{FALSE} if it
 was already in tarball-shape (no action taken).
 }
 \description{
-The committed \code{src/rust/Cargo.lock} must be in \strong{tarball-shape} (no
-\code{checksum = "..."} lines, no \code{path+...} source entries for the
-\verb{miniextendr-\{api,lint,macros\}} framework crates). Day-to-day
+The committed \code{src/rust/Cargo.lock} must be in \strong{tarball-shape}: no
+\code{path+...} source entries for the \verb{miniextendr-\{api,lint,macros\}} framework
+crates (those must carry \code{source = "git+https://...#<sha>"}). Day-to-day
 \code{devtools::install()}, \verb{cargo build}, or \code{devtools::document()} silently
-rewrites the lock in source-shape: checksums come back for crates.io deps
-and framework crates switch to \verb{path+file:///...} entries.
+rewrites the lock in source-shape, switching those framework crates to
+\verb{path+file:///...} entries (via the dev \verb{[patch."git+url"]} override), which
+are fatal at offline install time.
 }
 \details{
 \code{miniextendr_repair_lock()} is a sub-second lock-only repair:
@@ -31,10 +32,16 @@ and framework crates switch to \verb{path+file:///...} entries.
 \item Moves \code{.cargo/config.toml} aside temporarily so \verb{cargo update} runs
 without the \verb{[patch."git+url"]} override that would re-introduce
 \verb{path+} entries.
-\item Runs \verb{cargo update} to resolve the lockfile against the bare git URLs.
-\item Strips any remaining \code{checksum = "..."} lines.
+\item Runs \verb{cargo update} to resolve the lockfile against the bare git URLs,
+restoring \code{source = "git+https://...#<sha>"} attribution.
 \item Restores \code{.cargo/config.toml} on exit (success or error).
 }
+
+\code{checksum = "..."} lines are \strong{retained} — since #408, \code{cargo-revendor}
+writes valid \code{.cargo-checksum.json} files (real SHA-256s after CRAN-trim),
+so the lock's registry checksums verify successfully against the vendored
+sources at offline-install time. Retaining them keeps a repaired lock
+identical to a freshly vendored one (\code{\link[=miniextendr_vendor]{miniextendr_vendor()}}).
 
 This is the lightweight alternative to \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} -- use it
 during dev iteration when you only need a clean lock, not a fresh
