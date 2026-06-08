@@ -97,22 +97,26 @@ impl List {
     /// Get element at 0-based index and convert to type `T`.
     ///
     /// Returns `None` if index is out of bounds or conversion fails.
+    ///
+    /// The conversion error is discarded, so `T`'s `TryFromSexp::Error` is
+    /// unconstrained — any element type works, not only those whose error is
+    /// `SexpError`. Callers that need the error (e.g. to distinguish "missing"
+    /// from "wrong type") should use [`get`](Self::get) and convert directly.
     #[inline]
     pub fn get_index<T>(self, idx: isize) -> Option<T>
     where
-        T: TryFromSexp<Error = SexpError>,
+        T: TryFromSexp,
     {
         let sexp = self.get(idx)?;
         T::try_from_sexp(sexp).ok()
     }
 
-    /// Get element by name and convert to type `T`.
+    /// Get the raw element `SEXP` associated with `name`, without conversion.
     ///
-    /// Returns `None` if name not found or conversion fails.
-    pub fn get_named<T>(self, name: &str) -> Option<T>
-    where
-        T: TryFromSexp<Error = SexpError>,
-    {
+    /// Returns the element exactly as stored so callers can convert it with any
+    /// [`TryFromSexp`] error type — not only those whose error is `SexpError`.
+    /// Returns `None` when the list has no `names` attribute or no name matches.
+    pub fn get_named_sexp(self, name: &str) -> Option<SEXP> {
         let names_sexp = self.names()?;
         let n = self.len();
 
@@ -126,12 +130,26 @@ impl List {
             let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
             if let Ok(s) = name_cstr.to_str() {
                 if s == name {
-                    let elem = self.0.vector_elt(i);
-                    return T::try_from_sexp(elem).ok();
+                    return Some(self.0.vector_elt(i));
                 }
             }
         }
         None
+    }
+
+    /// Get element by name and convert to type `T`.
+    ///
+    /// Returns `None` if name not found or conversion fails.
+    ///
+    /// The conversion error is discarded, so `T`'s `TryFromSexp::Error` is
+    /// unconstrained. Use [`get_named_sexp`](Self::get_named_sexp) and convert
+    /// directly when you need to inspect the conversion failure.
+    pub fn get_named<T>(self, name: &str) -> Option<T>
+    where
+        T: TryFromSexp,
+    {
+        let sexp = self.get_named_sexp(name)?;
+        T::try_from_sexp(sexp).ok()
     }
 
     // region: Attribute getters (equivalent to R's GET_* macros)

@@ -68,11 +68,13 @@ impl NamedList {
 
     /// Get an element by name with O(1) lookup, converting to type `T`.
     ///
-    /// Returns `None` if the name is not found or conversion fails.
+    /// Returns `None` if the name is not found or conversion fails. The
+    /// conversion error is discarded, so `T`'s `TryFromSexp::Error` is
+    /// unconstrained; use [`get_raw`](Self::get_raw) when you need the error.
     #[inline]
     pub fn get<T>(&self, name: &str) -> Option<T>
     where
-        T: TryFromSexp<Error = SexpError>,
+        T: TryFromSexp,
     {
         let &idx = self.index.get(name)?;
         let idx_isize: isize = idx.try_into().ok()?;
@@ -94,7 +96,7 @@ impl NamedList {
     #[inline]
     pub fn get_index<T>(&self, idx: isize) -> Option<T>
     where
-        T: TryFromSexp<Error = SexpError>,
+        T: TryFromSexp,
     {
         self.list.get_index(idx)
     }

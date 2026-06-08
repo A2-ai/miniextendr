@@ -14,6 +14,20 @@ test_that("#[miniextendr(list)] on struct creates list-convertible type", {
   expect_equal(rec$value, 42L)
 })
 
+test_that("#[miniextendr(list)] supports Vec<f64> fields (#861)", {
+  # The TryFromList derive used to pin Error = SexpError, which rejected
+  # Vec<f64> (Error = SexpTypeError) at compile time. Returning the struct
+  # exercises IntoList with a numeric-vector field.
+  fit <- mx_fit_create(c(1.5, 2.5, 3.5), 0.25)
+  expect_type(fit, "list")
+  expect_equal(fit$estimate, c(1.5, 2.5, 3.5))
+  expect_equal(fit$sigma, 0.25)
+
+  # Round-trip through IntoList + TryFromList reconstructs the Vec<f64> field.
+  expect_equal(mx_fit_roundtrip(c(10, 20, 30), 1.0), c(10, 20, 30))
+  expect_equal(mx_fit_roundtrip(numeric(0), 0.0), numeric(0))
+})
+
 test_that("#[miniextendr(dataframe)] on struct creates data.frame", {
   df <- mx_obs_create()
   expect_s3_class(df, "data.frame")
