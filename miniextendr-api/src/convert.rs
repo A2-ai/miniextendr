@@ -58,6 +58,21 @@
 //! | Type should *always* convert one way | `Prefer*` derive |
 //! | Override conversion for one function | `As*` wrapper or `return` attribute |
 //! | Type has multiple valid representations | Don't use `Prefer*`; use `As*` or `return` |
+//!
+//! ## A note on the `Collect*` adapters (naming-convention boundary)
+//!
+//! This module also exposes [`Collect`], [`CollectStrings`], [`CollectNA`], and
+//! [`CollectNAInt`]. These are representation-forcing `IntoR` wrappers in the same
+//! spirit as the `As*` family, but they deliberately **do not** carry the `As*`
+//! prefix. The distinction is structural: the `As*` wrappers wrap a *finished value*
+//! `T` and re-route its conversion (`AsList<T>`, `AsExternalPtr<T>`, `AsRNative<T>`),
+//! whereas the `Collect*` wrappers wrap an *iterator* `I: ExactSizeIterator` and
+//! materialize it directly into a freshly allocated R vector. The `As*`-of-`T` shape
+//! ("convert this value *as* a list / pointer / native scalar") does not describe what
+//! these do — `Collect` names the operation (drain an iterator into an R vector),
+//! which is the more accurate verb. This divergence is intentional and tracked; see
+//! the conversion control-surface analysis (`analysis/conversion-control-surface-2026-06-07.md`,
+//! §3.4 / §4.5) and issue #871.
 
 use crate::RNativeType;
 use crate::externalptr::{ExternalPtr, IntoExternalPtr};
@@ -1060,6 +1075,15 @@ where
 // endregion
 
 // region: Collect — zero-allocation iterator-to-R-vector adapters
+//
+// Naming-convention exemption: the four `Collect*` types below are
+// representation-forcing `IntoR` wrappers, like the `As*` family above, but they
+// intentionally diverge from the `As*` prefix. `As*` wraps a finished value `T`
+// and re-routes its conversion; `Collect*` wraps an *iterator*
+// (`I: ExactSizeIterator`) and drains it straight into a freshly allocated R
+// vector. The `As*`-of-`T` shape does not describe an iterator adapter, so
+// `Collect` (the verb for the operation) is the accurate name. See the module-level
+// docs, `analysis/conversion-control-surface-2026-06-07.md` (§3.4 / §4.5), and #871.
 
 /// Write an `ExactSizeIterator` of native R types directly into an R vector.
 ///
@@ -1068,6 +1092,13 @@ where
 ///
 /// Requires `ExactSizeIterator` because R vectors must know their length
 /// at allocation time.
+///
+/// # Naming
+///
+/// `Collect` is in the representation-forcing wrapper family but does not take the
+/// `As*` prefix used by [`AsList`] / [`AsExternalPtr`] / [`AsRNative`]: those wrap a
+/// finished value `T`, whereas `Collect` wraps an *iterator* and materializes it into
+/// an R vector. The divergence is intentional — see the module docs and #871.
 ///
 /// # Example
 ///
@@ -1122,7 +1153,8 @@ where
 /// Write an `ExactSizeIterator` of `String` directly into an R character vector.
 ///
 /// Strings require per-element CHARSXP allocation (no bulk `copy_from_slice`),
-/// so this is a separate type from [`Collect`].
+/// so this is a separate type from [`Collect`]. Like [`Collect`], it is an
+/// iterator adapter and is exempt from the `As*` naming convention (see #871).
 ///
 /// # Example
 ///
@@ -1161,6 +1193,9 @@ where
 /// Write an `ExactSizeIterator` of `Option<T>` directly into an R vector with NA support.
 ///
 /// `None` values become `NA` in R. Works for `f64` and `i32`.
+///
+/// Like [`Collect`], this is an iterator adapter and is exempt from the `As*`
+/// naming convention (see #871).
 ///
 /// # Example
 ///
@@ -1212,6 +1247,9 @@ where
 }
 
 /// Write an `ExactSizeIterator` of `Option<i32>` directly into an R integer vector with NA.
+///
+/// Like [`Collect`], this is an iterator adapter and is exempt from the `As*`
+/// naming convention (see #871).
 pub struct CollectNAInt<I>(pub I);
 
 impl<I> IntoR for CollectNAInt<I>
