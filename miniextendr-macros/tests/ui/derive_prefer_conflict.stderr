@@ -1,0 +1,19 @@
+error[E0119]: conflicting implementations of trait `IntoR` for type `Model`
+  --> tests/ui/derive_prefer_conflict.rs:12:58
+   |
+12 | #[derive(Clone, Copy, IntoList, RNativeType, PreferList, PreferRNativeType)]
+   |                                              ----------  ^^^^^^^^^^^^^^^^^ conflicting implementation for `Model`
+   |                                              |
+   |                                              first implementation here
+   |
+   = note: this error originates in the derive macro `PreferRNativeType` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0592]: duplicate definitions with name `__miniextendr_conflicting_Prefer_derives__keep_ONE_or_use_call_site_As_wrappers`
+  --> tests/ui/derive_prefer_conflict.rs:12:46
+   |
+12 | #[derive(Clone, Copy, IntoList, RNativeType, PreferList, PreferRNativeType)]
+   |                                              ^^^^^^^^^^  ----------------- other definition for `__miniextendr_conflicting_Prefer_derives__keep_ONE_or_use_call_site_As_wrappers`
+   |                                              |
+   |                                              duplicate definitions for `__miniextendr_conflicting_Prefer_derives__keep_ONE_or_use_call_site_As_wrappers`
+   |
+   = note: this error originates in the derive macro `PreferList` (in Nightly builds, run with -Z macro-backtrace for more info)

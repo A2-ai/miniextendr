@@ -2150,8 +2150,13 @@ pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::Token
 /// Derive `PreferList`: emits an `IntoR` impl selecting list as the type's default
 /// Rust→R conversion (via `IntoList::into_list`).
 ///
-/// A type carries exactly one representation default: stacking two `Prefer*` derives
-/// is a compile error (conflicting `IntoR` impls).
+/// A type carries exactly one representation default: stacking two `Prefer*`
+/// derives is a compile error. Each `Prefer*` derive emits a fixed-name marker
+/// const, so a second one triggers a guided `duplicate definitions with name
+/// __miniextendr_conflicting_Prefer_derives__keep_ONE_or_use_call_site_As_wrappers`
+/// error (alongside the raw conflicting-`IntoR`-impl error) — keep one `Prefer*`,
+/// or drop them all and choose a representation per return value at the call site
+/// with an `As*` wrapper (`AsList`, `AsExternalPtr`, `AsDataFrame`, ...).
 ///
 /// # Example
 ///
