@@ -382,9 +382,13 @@ unexpected drift. See `minirextendr/CLAUDE.md` for templates-specific quirks.
 
 ### Site / docs sync
 
-`site/content/manual/` is generated from `docs/` by `scripts/docs-to-site.sh`.
-After editing `docs/`, run `just site-docs` and commit both. See
-`site/CLAUDE.md` for the full pipeline.
+`site/content/manual/*.md` is generated from `docs/` by `scripts/docs-to-site.sh`
+— and is **gitignored** (along with the `site/public/` Zola build) since #593.
+So edit `docs/*.md` only; there is **nothing to commit on the site side**. The
+Pages workflow (`.github/workflows/pages.yml`) regenerates the manual and rebuilds
+the site from `docs/` on every push to `main`, so the live site stays current
+automatically. To preview locally, run `just site-docs` (+ `just site-build`) —
+but don't `git add` the output. See `site/CLAUDE.md` for the full pipeline.
 
 ## Common issues
 
