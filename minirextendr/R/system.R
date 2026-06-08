@@ -39,7 +39,11 @@ run_with_logging <- function(command, args = character(),
   # Run command via system2 with env vars and working directory
   run_fn <- function() {
     if (length(env) > 0) {
-      old_env <- Sys.getenv(names(env), unset = NA)
+      # names = TRUE forces a named result regardless of length(env).
+      # Sys.getenv() auto-names only for length > 1, so a single-variable env
+      # would otherwise lose its name and the on.exit() restore below would
+      # call Sys.setenv("value") with no name -> "all arguments must be named".
+      old_env <- Sys.getenv(names(env), unset = NA, names = TRUE)
       do.call(Sys.setenv, as.list(env))
       on.exit({
         # Restore: unset vars that were previously unset, restore others
