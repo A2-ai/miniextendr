@@ -107,23 +107,27 @@ artifact for CRAN.
 ## What `just vendor` actually does
 
 ```text
-1. Move src/rust/.cargo/config.toml aside (so the [patch] override is inactive).
-2. Delete and regenerate src/rust/Cargo.lock with cargo against the bare git
-   URL — entries for miniextendr-{api,lint,macros} get
-   `source = "git+https://github.com/A2-ai/miniextendr#<commit>"`.
-3. Restore .cargo/config.toml.
-4. Run `cargo revendor` against the freshly regenerated lockfile, producing
-   rpkg/vendor/ and rpkg/inst/vendor.tar.xz.
-   cargo-revendor recomputes `.cargo-checksum.json` after CRAN-trim: the
-   original `package` hash (matching the lockfile's `checksum = ...` line) is
-   preserved and the `files` map is refreshed to reflect the trimmed files.
-   The committed Cargo.lock can therefore retain its `checksum = ...` lines.
+1. Run `cargo revendor` (the [patch."git+url"] override written by
+   `just configure` stays ACTIVE). cargo-revendor pins cargo's working dir to
+   the manifest dir, so it resolves miniextendr-{api,lint,macros} against the
+   LOCAL workspace checkout — a cross-crate feature/dep rename resolves against
+   the working tree, not git@main (#883). That leaves them as local (no-source)
+   lock entries, so cargo-revendor then STAMPS
+   `source = "git+https://github.com/A2-ai/miniextendr#<commit>"` back on.
+   It also recomputes `.cargo-checksum.json` after CRAN-trim: the original
+   `package` hash (matching the lockfile's `checksum = ...` line) is preserved
+   and the `files` map is refreshed to reflect the trimmed files, so the
+   committed Cargo.lock can retain its `checksum = ...` lines.
+2. Produce rpkg/vendor/ and rpkg/inst/vendor.tar.xz.
 ```
 
-Steps 1–3 ensure the lockfile carries the git source for the workspace crates,
-which cargo's source replacement needs to redirect to vendor at install time.
-Without that, source replacement reports "the source git+... requires a lock
-file to be present first before it can be used against vendored source code".
+The stamped git source is what cargo's source replacement needs to redirect to
+vendor at install time. Without it, source replacement reports "the source
+git+... requires a lock file to be present first before it can be used against
+vendored source code". The stamp is reconstructed *after* a local resolve
+rather than produced by resolving against bare git, which is what used to break
+coordinated cross-crate renames — see
+[Cargo.lock shape](./CARGO_LOCK_SHAPE.md) for the full story.
 
 ## Cargo.lock shape, drift, and why dev iteration may dirty it
 

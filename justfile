@@ -157,12 +157,15 @@ check-features:
     echo "=== All $passed/$total feature combinations passed ==="
 
 # Update Cargo.lock files across every tracked manifest.
-# rpkg's lock must stay in tarball-shape (no `path+...` sources for
-# miniextendr-{api,lint,macros}). We move .cargo/config.toml aside so the
-# [patch."git+url"] override doesn't bleed into the lock.
-# Checksums are NO LONGER stripped: cargo-revendor now writes valid
-# `.cargo-checksum.json` files that match the registry checksums, so the
-# committed lock can retain `checksum = "..."` lines.
+# rpkg's lock must stay in tarball-shape: framework crates carry
+# `source = "git+url#<sha>"`, no `path+...` sources. We KEEP the dev
+# [patch."git+url"] override active so cargo resolves against the local
+# workspace (a cross-crate feature/dep rename resolves against the working
+# tree, not git@main — #883), then `cargo revendor --stamp-lock` rewrites the
+# resulting local (no-`source`) framework entries back to the canonical
+# git+url#sha shape. No move-aside / bare-git dance.
+# Checksums are NOT stripped: cargo-revendor writes valid `.cargo-checksum.json`
+# files matching the registry checksums, so the lock retains `checksum = "..."`.
 alias cargo-update := update
 [script("bash")]
 update *cargo_flags:
@@ -174,10 +177,11 @@ update *cargo_flags:
     cargo update --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo update --manifest-path=tests/model_project/src/rust/Cargo.toml {{cargo_flags}}
     rust_dir="{{justfile_directory()}}/rpkg/src/rust"
-    cargo_cfg="$rust_dir/.cargo/config.toml"
-    if [[ -f "$cargo_cfg" ]]; then mv "$cargo_cfg" "$cargo_cfg.tmp_just_update"; fi
-    trap "[[ -f '$cargo_cfg.tmp_just_update' ]] && mv '$cargo_cfg.tmp_just_update' '$cargo_cfg'" EXIT
-    cargo update --manifest-path "$rust_dir/Cargo.toml" {{cargo_flags}}
+    # Run from rust_dir so cargo's CWD-relative config discovery picks up
+    # rust_dir/.cargo/config.toml's [patch] (resolve against the local
+    # workspace, not git@main). Then stamp the canonical git+url#sha back.
+    ( cd "$rust_dir" && cargo update {{cargo_flags}} )
+    cargo revendor --manifest-path "$rust_dir/Cargo.toml" --stamp-lock -v
     just lock-shape-check
 
 # Restore rpkg/src/rust/Cargo.lock from the git index (preserves staged
@@ -434,15 +438,22 @@ configure-fast:
 # (R CMD INSTALL ., devtools::install/test/load) never calls this recipe.
 #
 # Steps:
-#   1. Regenerate Cargo.lock against the bare git URL (no [patch] override),
-#      so the lockfile entries for miniextendr-{api,lint,macros} carry the
-#      `git+https://...#<commit>` source — required by cargo's source
-#      replacement mechanism when the tarball is later installed offline.
-#   2. Run cargo-revendor against the freshly-regenerated lockfile.
-#      cargo-revendor recomputes `.cargo-checksum.json` with real SHA-256s
-#      after CRAN-trim, so the committed Cargo.lock can retain its registry
-#      `checksum = "..."` lines (no post-vendor sed stripping needed).
-#   3. Compress vendor/ to inst/vendor.tar.xz.
+#   1. Run cargo-revendor. With [patch."git+url"] active (written by
+#      `just configure` in dev-monorepo mode), cargo-revendor resolves the
+#      dependency graph against the LOCAL workspace checkout — so a cross-crate
+#      feature/dep rename touching both a framework crate and rpkg resolves
+#      against the working tree, not git@main (#883). cargo-revendor then stamps
+#      the canonical `git+https://...#<commit>` source back into Cargo.lock
+#      (the shape cargo's source-replacement mechanism needs at offline install
+#      time), and recomputes `.cargo-checksum.json` with real SHA-256s after
+#      CRAN-trim, so the committed Cargo.lock keeps its registry checksums.
+#   2. Compress vendor/ to inst/vendor.tar.xz.
+#
+# This recipe assumes `just configure` already ran (the normal `just configure
+# && just vendor` flow), so .cargo/config.toml carries the [patch] override.
+# There is no longer any bare-git pre-resolution dance: removing the [patch]
+# before resolving was exactly the step that made cross-surface rename PRs
+# fail to resolve against git@main and forced the #710 admin-merge (#883).
 #
 # --force re-runs the full vendor even when cargo-revendor's cache thinks the
 # output is current. Cheap insurance against a stale committed tarball when
@@ -450,25 +461,10 @@ configure-fast:
 [script("bash")]
 vendor:
     set -euo pipefail
-    rust_dir="{{justfile_directory()}}/rpkg/src/rust"
-    cargo_cfg="$rust_dir/.cargo/config.toml"
-    # Regenerate lockfile in tarball-shape: temporarily move .cargo aside so
-    # cargo doesn't see the [patch] override and resolves git deps as-is.
-    # Entries for miniextendr-{api,lint,macros} get source = "git+url#<commit>",
-    # which is what cargo's source-replacement mechanism needs at offline
-    # install time.
-    if [[ -f "$cargo_cfg" ]]; then
-      mv "$cargo_cfg" "$cargo_cfg.tmp_just_vendor"
-    fi
-    rm -f "$rust_dir/Cargo.lock"
-    cargo generate-lockfile --manifest-path "$rust_dir/Cargo.toml"
-    if [[ -f "$cargo_cfg.tmp_just_vendor" ]]; then
-      mv "$cargo_cfg.tmp_just_vendor" "$cargo_cfg"
-    fi
     # cargo-revendor auto-reads [patch."git+url"] from .cargo/config.toml
-    # (written by `configure` in dev-monorepo mode) to copy miniextendr-{api,
-    # lint,macros} from this workspace checkout instead of fetching the git URL
-    # pinned in Cargo.lock. PRs that edit a workspace crate alongside rpkg get
+    # (written by `configure` in dev-monorepo mode) to resolve AND copy
+    # miniextendr-{api,lint,macros} from this workspace checkout instead of
+    # fetching the git URL. PRs that edit a workspace crate alongside rpkg get
     # their edits reflected in vendor/ and inst/vendor.tar.xz, so
     # `vendor-sync-check` passes and the offline tarball ships the PR's code.
     # `--source-root` is no longer needed here (kept as CLI flag for back-compat).
@@ -583,9 +579,15 @@ vendor-verify:
 # Also runs the #876 loud-fail regression: `just vendor` must exit non-zero when
 # a framework crate would be vendored from git instead of the local workspace.
 # See tests/vendor-loud-fail.sh.
+#
+# And the #883 cross-surface regression: a PR that adds a framework feature and
+# references it from rpkg in the same commit must vendor without admin-merge —
+# the framework crate resolves against the local workspace, not git@main.
+# See tests/vendor-cross-surface-rename.sh.
 test-bootstrap-vendor:
     bash tests/bootstrap-produces-vendor.sh
     bash tests/vendor-loud-fail.sh
+    bash tests/vendor-cross-surface-rename.sh
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document

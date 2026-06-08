@@ -236,6 +236,22 @@ struct Cli {
     /// or --blank-md are also given.
     #[arg(long, conflicts_with = "external_only")]
     local_only: bool,
+
+    /// Stamp-lock only: rewrite the framework crates' `source =` line in
+    /// Cargo.lock to `git+<url>#<sha>` and exit, without vendoring.
+    ///
+    /// Use after `cargo update` (or `cargo build`) has resolved the lock with
+    /// the dev `[patch."<git-url>"]` override active — which leaves
+    /// miniextendr-{api,lint,macros} as local (no-`source`) entries. This
+    /// reconstructs the canonical tarball-shape attribution that offline
+    /// source-replacement needs, so a lock-only regen (`just update`) keeps
+    /// the committed lock CRAN-installable even on a cross-crate rename (#883).
+    /// No-op (with a warning) when no `[patch."<git-url>"]` table is found.
+    #[arg(
+        long,
+        conflicts_with_all = ["external_only", "local_only", "freeze", "verify", "compress"]
+    )]
+    stamp_lock: bool,
 }
 
 /// Which phase(s) of vendoring to perform.
@@ -404,6 +420,12 @@ fn main() -> Result<()> {
         })
         .collect();
 
+    // Stamp-lock only: don't vendor; just reconstruct the git+url#sha source
+    // attribution for framework crates in an already-resolved lock.
+    if cli.stamp_lock {
+        return run_stamp_lock(&manifest_path, &lockfile, v);
+    }
+
     // Verify-only: don't vendor; just assert existing artifacts are in sync.
     if cli.verify {
         let sync_lockfiles: Vec<std::path::PathBuf> = sync_manifests
@@ -436,6 +458,56 @@ fn main() -> Result<()> {
         }
         Mode::LocalOnly => run_local_only(&cli, &manifest_path, &output, v),
     }
+}
+
+/// Stamp-lock only (`--stamp-lock`): rewrite framework crates' `source =` line
+/// in an already-resolved Cargo.lock to `git+<url>#<sha>`, without vendoring.
+///
+/// The git rev is the live HEAD of the local framework checkout (the same one
+/// the `[patch."<url>"]` table points at); a placeholder is used if HEAD can't
+/// be read. The rev is cosmetic — cargo's `[source."git+<url>"]` replacement
+/// keys on the URL, not the commit — but a real sha keeps the lock honest.
+///
+/// This is the lock-only counterpart of `run_full`'s step 9.5: it lets a
+/// dependency-bump recipe (`just update`) resolve against the local workspace
+/// (patch active, so cross-crate renames work) and still leave the committed
+/// lock in CRAN-installable tarball shape (#883).
+fn run_stamp_lock(
+    manifest_path: &std::path::Path,
+    lockfile: &std::path::Path,
+    v: Verbosity,
+) -> Result<()> {
+    let patch_url_map = metadata::discover_patch_url_map(manifest_path)
+        .context("failed to read [patch] URLs from .cargo/config.toml")?;
+    if patch_url_map.is_empty() {
+        if v.info() {
+            eprintln!(
+                "cargo-revendor --stamp-lock: no [patch.\"<git-url>\"] table found near {} — nothing to stamp",
+                manifest_path.display()
+            );
+        }
+        return Ok(());
+    }
+
+    // Local checkout paths for the patched framework crates (for `git rev-parse`).
+    let candidate_paths: Vec<std::path::PathBuf> =
+        metadata::discover_from_patch_config(manifest_path)
+            .context("failed to read [patch] entries from .cargo/config.toml")?
+            .into_iter()
+            .filter(|p| patch_url_map.contains_key(&p.name))
+            .map(|p| p.path)
+            .collect();
+
+    let rev = vendor::resolve_framework_rev(&candidate_paths, v);
+    let n = vendor::stamp_framework_git_sources(lockfile, &patch_url_map, &rev, v)?;
+    if v.info() {
+        eprintln!(
+            "cargo-revendor --stamp-lock: stamped git source on {n} framework crate(s) in {} (rev {})",
+            lockfile.display(),
+            &rev[..rev.len().min(12)]
+        );
+    }
+    Ok(())
 }
 
 /// Full vendor pass: external deps + local workspace crates (existing behavior).
@@ -682,6 +754,37 @@ fn run_full(
     }
     if v.debug() {
         eprintln!("{}", config_toml);
+    }
+
+    // Step 9.5: Stamp the framework crates' git source into Cargo.lock.
+    //
+    // The lock was resolved with the dev `[patch."<url>"]` path override active
+    // (cargo metadata, step 1b), so a cross-crate feature rename resolves against
+    // the LOCAL workspace instead of git@main (#883) — but that leaves the
+    // framework crates as local (no-`source`) entries. The offline tarball needs
+    // `source = "git+<url>#<sha>"` so cargo's `[source."git+<url>"]` replacement
+    // can redirect them to vendored-sources. Reconstruct that attribution here,
+    // BEFORE copying the lock into vendor/, rather than re-resolving against the
+    // bare git URL (the step that fails on a rename). Skipped under --freeze,
+    // which rewrites the manifest to vendor path deps instead.
+    if !cli.freeze {
+        let patch_url_map = metadata::discover_patch_url_map(manifest_path)
+            .context("failed to read [patch] URLs from .cargo/config.toml")?;
+        if !patch_url_map.is_empty() {
+            let candidate_paths: Vec<std::path::PathBuf> = local_pkgs
+                .iter()
+                .filter(|p| patch_url_map.contains_key(&p.name))
+                .map(|p| p.path.clone())
+                .collect();
+            let rev = vendor::resolve_framework_rev(&candidate_paths, v);
+            let n = vendor::stamp_framework_git_sources(lockfile, &patch_url_map, &rev, v)?;
+            if v.info() && n > 0 {
+                eprintln!(
+                    "  Stamped git source on {n} framework crate(s) in Cargo.lock (rev {})",
+                    &rev[..rev.len().min(12)]
+                );
+            }
+        }
     }
 
     // Step 10: Copy Cargo.lock to vendor/ (checksums retained — no stripping).

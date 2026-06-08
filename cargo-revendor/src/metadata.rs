@@ -13,11 +13,23 @@ pub struct LocalPackage {
     pub manifest_path: PathBuf,
 }
 
-/// Load cargo metadata for the given manifest
+/// Load cargo metadata for the given manifest.
+///
+/// Runs `cargo metadata` with the working directory set to the manifest's
+/// parent so that cargo's CWD-relative config discovery picks up that crate's
+/// `.cargo/config.toml`. For an R package in dev/source mode this carries the
+/// `[patch."<git-url>"]` table that redirects the framework crates to the local
+/// workspace checkout — so a cross-crate feature/dep rename (touching both a
+/// framework crate and its consumer) resolves against the PR's sources instead
+/// of git@main (#883). Without the CWD pin cargo would search upward from the
+/// process CWD (the repo root for `just vendor`) and never find the patch.
 pub fn load_metadata(manifest_path: &Path) -> Result<Metadata> {
-    MetadataCommand::new()
-        .manifest_path(manifest_path)
-        .exec()
+    let mut cmd = MetadataCommand::new();
+    cmd.manifest_path(manifest_path);
+    if let Some(dir) = manifest_path.parent() {
+        cmd.current_dir(dir);
+    }
+    cmd.exec()
         .with_context(|| format!("failed to load metadata from {}", manifest_path.display()))
 }
 
@@ -385,6 +397,90 @@ pub fn discover_from_patch_config(manifest_path: &Path) -> Result<Vec<LocalPacka
     }
 
     Ok(results)
+}
+
+/// Map each `[patch."<url>"]` crate to the git URL it is patched from.
+///
+/// This is the provenance the lockfile needs but `discover_from_patch_config`
+/// discards: when cargo resolves with a `[patch."<url>"]` path override active,
+/// the framework crates land in `Cargo.lock` as local (no `source`) entries.
+/// For the offline tarball, those entries must instead carry
+/// `source = "git+<url>#<sha>"` so cargo's `[source."git+<url>"]` replacement
+/// can redirect them to `vendored-sources`. This function recovers the
+/// `crate-name -> <url>` mapping from the same `.cargo/config.toml` walk so the
+/// lockfile can be stamped after resolution. See [`crate::vendor::stamp_framework_git_sources`].
+///
+/// The returned URL is normalized: any leading `git+` scheme prefix is stripped
+/// (cargo accepts `[patch."https://…"]` and `[patch."git+https://…"]`
+/// interchangeably; the lockfile/source-replacement form is `git+<url>`, which
+/// the stamper re-adds). Only entries whose `path` resolves to a readable
+/// `Cargo.toml` are included — an unresolvable patch path means the crate is
+/// vendored from its real git source, which is already lockfile-correct and
+/// must not be stamped.
+pub fn discover_patch_url_map(
+    manifest_path: &Path,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    let config_files = cargo_config_search_paths(manifest_path);
+    let mut map: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+
+    for config_path in &config_files {
+        if !config_path.exists() {
+            continue;
+        }
+        let content = std::fs::read_to_string(config_path)
+            .with_context(|| format!("failed to read {}", config_path.display()))?;
+        let doc: toml_edit::DocumentMut = content
+            .parse()
+            .with_context(|| format!("failed to parse TOML in {}", config_path.display()))?;
+
+        let config_dir = config_path
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap_or(config_path.parent().unwrap_or(config_path));
+
+        let Some(patch_tbl) = doc.get("patch").and_then(|v| v.as_table()) else {
+            continue;
+        };
+
+        for (url_key, url_entries) in patch_tbl.iter() {
+            let url = url_key.strip_prefix("git+").unwrap_or(url_key).to_string();
+            let Some(entries) = url_entries.as_table() else {
+                continue;
+            };
+            for (crate_name, crate_spec) in entries.iter() {
+                // First config file closest to the manifest wins.
+                if map.contains_key(crate_name) {
+                    continue;
+                }
+                let path_val = crate_spec
+                    .as_inline_table()
+                    .and_then(|t| t.get("path"))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        crate_spec
+                            .as_table()
+                            .and_then(|t| t.get("path"))
+                            .and_then(|v| v.as_str())
+                    });
+                let Some(path_val) = path_val else {
+                    continue; // not a path override
+                };
+                let crate_path = if Path::new(path_val).is_absolute() {
+                    PathBuf::from(path_val)
+                } else {
+                    config_dir.join(path_val)
+                };
+                // Only map entries that resolve to a real local crate — an
+                // unresolvable path is vendored from git (already lock-correct).
+                if !crate_path.join("Cargo.toml").exists() {
+                    continue;
+                }
+                map.insert(crate_name.to_string(), url.clone());
+            }
+        }
+    }
+
+    Ok(map)
 }
 
 /// Return the cargo config search path for a given manifest path, in
@@ -862,6 +958,53 @@ mod tests {
         let (_guard, manifest) = patch_config_fixture(body);
         let found = discover_from_patch_config(&manifest).unwrap();
         assert!(found.is_empty(), "no [patch] table → no local overrides");
+    }
+
+    // endregion
+
+    // region: discover_patch_url_map tests
+
+    #[test]
+    fn patch_url_map_records_url_for_resolvable_entry() {
+        // The resolvable [patch."<url>"] entry is mapped crate -> url.
+        let body = "[patch.\"https://github.com/A2-ai/miniextendr\"]\n\
+                    miniextendr-api = { path = \"../../../miniextendr-api\" }\n";
+        let (_guard, manifest) = patch_config_fixture(body);
+        let map = discover_patch_url_map(&manifest).unwrap();
+        assert_eq!(
+            map.get("miniextendr-api").map(String::as_str),
+            Some("https://github.com/A2-ai/miniextendr")
+        );
+    }
+
+    #[test]
+    fn patch_url_map_strips_git_plus_prefix() {
+        // cargo accepts [patch."git+https://…"]; the lockfile/source-replacement
+        // form is git+<url>, so the stored url must be the bare URL (the stamper
+        // re-adds git+). Verify the prefix is stripped.
+        let body = "[patch.\"git+https://github.com/A2-ai/miniextendr\"]\n\
+                    miniextendr-api = { path = \"../../../miniextendr-api\" }\n";
+        let (_guard, manifest) = patch_config_fixture(body);
+        let map = discover_patch_url_map(&manifest).unwrap();
+        assert_eq!(
+            map.get("miniextendr-api").map(String::as_str),
+            Some("https://github.com/A2-ai/miniextendr")
+        );
+    }
+
+    #[test]
+    fn patch_url_map_skips_unresolvable_path() {
+        // An unresolvable [patch] path means the crate is vendored from its real
+        // git source (already lock-correct) — it must NOT be stamped, so it is
+        // absent from the map.
+        let body = "[patch.\"https://github.com/A2-ai/miniextendr\"]\n\
+                    miniextendr-api = { path = \"../../../does-not-exist\" }\n";
+        let (_guard, manifest) = patch_config_fixture(body);
+        let map = discover_patch_url_map(&manifest).unwrap();
+        assert!(
+            map.is_empty(),
+            "unresolvable patch path must not be mapped; got {map:?}"
+        );
     }
 
     // endregion

@@ -52,26 +52,34 @@ git URL plus commit hash.
 
 So the regen flow is:
 
-1. Move `.cargo/config.toml` aside (so the patch override is inactive).
-2. Regenerate the lockfile against the bare git URL — entries for
-   miniextendr crates resolve to `source = "git+https://...#<commit>"`.
-3. Restore `.cargo/config.toml`.
-4. Run `cargo revendor` — it recomputes `.cargo-checksum.json` for each
+1. Resolve the lockfile with the dev `[patch."<git-url>"]` override **active**,
+   against the local workspace checkout. This is what makes a coordinated
+   cross-crate change resolve correctly (see below). The framework crates land
+   as local (no-`source`) entries at this point.
+2. Run `cargo revendor` — it **stamps** `source = "git+https://...#<commit>"`
+   back onto those entries (reconstructing the portable attribution that offline
+   source replacement matches), and recomputes `.cargo-checksum.json` for each
    crate after CRAN-trim, so the lock's `checksum =` lines stay valid.
 
-That's exactly what `just vendor` (in this repo) and
-`miniextendr::miniextendr_vendor()` (for scaffolded packages) do.
+That's exactly what `just vendor` / `just update` (in this repo) and
+`miniextendr::miniextendr_vendor()` (for scaffolded packages) do. There is no
+longer a "move `.cargo/config.toml` aside and resolve against bare git" step —
+that was what broke cross-crate renames (#883).
 
-## The cross-crate cargo-surface chicken-and-egg
+## The cross-crate cargo-surface case (solved by #883)
 
-The regen flow above (move `.cargo/config.toml` aside, `cargo generate-lockfile`,
-move back) has one corner case it can't solve: **a PR that changes the cargo
-surface of `miniextendr-{api,macros,lint}` and the rpkg consumer in the same
-commit.** Typical example: renaming a feature like `default-coerce` →
-`coerce-default` everywhere.
+There was one corner case the **bare-git** regen flow (move
+`.cargo/config.toml` aside, `cargo generate-lockfile`, move back) could never
+solve: **a PR that changes the cargo surface of `miniextendr-{api,macros,lint}`
+and the rpkg consumer in the same commit.** Typical example: renaming a feature
+like `default-coerce` → `coerce-default` everywhere.
 
-Symptom — `just vendor`, `Bootstrap Vendor Test`, R CMD check, CRAN-like check
-all fail with:
+With the patch override moved aside, `cargo generate-lockfile` followed the
+bare git URL (`https://github.com/A2-ai/miniextendr`, no rev) to origin's
+default branch (`main`). main still had the *old* feature names; the PR's
+`rpkg/src/rust/Cargo.toml` asked for the *new* names; cargo errored — across
+`just vendor`, the `Bootstrap Vendor Test`, R CMD check, and the CRAN-like
+check:
 
 ```
 error: failed to select a version for `miniextendr-api`.
@@ -80,54 +88,44 @@ but `miniextendr-api` does not have that feature.
  available features: ... default-coerce, default-r6, default-s7, default-strict, ...
 ```
 
-Why: with the patch override moved aside, `cargo generate-lockfile` follows
-the bare git URL (`https://github.com/A2-ai/miniextendr`, no rev) to origin's
-default branch (`main`). main still has the *old* feature names; the PR's
-rpkg/src/rust/Cargo.toml asks for the *new* names; cargo errors. The fix
-would be to make cargo resolve the api crate at the PR's own HEAD instead
-of main — but cargo has no clean mechanism for that.
+### Why cargo can't record a git source from a local resolve
 
-### Why cargo can't fix it cleanly
-
-Cargo's lockfile model fundamentally couples source attribution with
-resolution. To get `source = "git+url#<sha>"` recorded, cargo must
-*resolve* the dep against that git URL — it can't be told to "resolve
-locally but record a git source." Specifically:
+Cargo's lockfile model couples source attribution with resolution. To record
+`source = "git+url#<sha>"`, cargo must *resolve* the dep against that git URL —
+it can't be told to "resolve locally but record a git source." Every lever that
+looks like it might bridge the two is rejected:
 
 | Attempted lever | Cargo's response |
 |---|---|
 | `dep = { path = "...", git = "..." }` | rejected: *"specification is ambiguous. Only one of `git` or `path` is allowed."* |
 | `[patch."url"] dep = { git = "url", rev = "..." }` (same URL) | rejected: *"patches must point to different sources."* |
 | Same-URL patch via different scheme (`https` vs `ssh`) | URLs are normalized; same rejection. |
-| Hand-inject `source = "git+url#<sha>"` into Cargo.lock | cargo strips it on the next `cargo metadata` / `cargo build` — the patch override is authoritative for source attribution. |
+| Hand-inject `source = "git+url#<sha>"` into Cargo.lock | cargo strips it on the next `cargo metadata` / `cargo build` *while the patch is active* — the patch override is authoritative. |
 | `cargo update -p <crate> --precise <sha>` | only works for already-resolved deps; can't bootstrap from the failing resolve. |
 
-The one lever that *does* work is modifying the dep declaration itself to
-include `rev = "<HEAD_SHA>"` — but that means mutating
-`rpkg/src/rust/Cargo.toml` (a tracked file) for the duration of the regen,
-which is its own correctness hazard (trap-restore, SIGKILL window, accidental
-commit). Not worth permanent machinery.
+### How #883 resolves it
 
-### Policy: admin-merge after eyeballing
+Stop pre-resolving against bare git. Keep the `[patch."<git-url>"]` override
+**active** so cargo resolves the framework crates against the *local PR
+checkout* — which has the renamed feature — and let them land as local
+(no-`source`) entries. Then `cargo revendor` **stamps** the `git+<url>#<sha>`
+attribution back on, *after* resolution is done.
 
-Cross-crate cargo-surface changes happen rarely (feature renames, removing
-a public re-export, etc.). When the bootstrap test fails on such a PR:
+This decouples *resolution* (local, sees the PR's surface) from *source
+attribution* (git URL, what offline replacement needs). The hand-inject lever
+above fails only because the patch is still authoritative during a later
+re-resolve; the offline tarball build is **frozen** against `vendored-sources`,
+so nothing re-resolves and the stamped source survives. The stamped sha is the
+framework checkout's live `git HEAD` — cosmetic, since cargo's
+`[source."git+<url>"]` replacement keys on the URL, not the commit.
 
-1. **Read the diff.** Confirm the rename is coordinated — the new feature/symbol
-   exists on miniextendr-api *and* is what rpkg/src/rust/Cargo.toml asks for.
-   Check `git log --stat` for the PR shows changes to both crates.
-2. **Admin-merge.** The CI failure is a transitional state, not a real defect.
-   Once the PR lands on main, the next bootstrap test on any unrelated PR
-   will pass — the rename is now what main has.
-3. **Do not** add temporary `rev` pins to `rpkg/src/rust/Cargo.toml`,
-   modify `just vendor` to inject rev pins, or otherwise build permanent
-   infrastructure to make this single class of PR pass CI. The Bootstrap
-   Vendor Test failing on cross-crate renames is a *correct signal* that
-   deserves human eyeballing, not automated bypass.
+`cargo revendor --stamp-lock` exposes the stamp step on its own (no full
+re-vendor), for the lock-only `just update` recipe.
 
-This was explored as part of PR #710 (`default-* → *-default` rename) and
-PR #735 (the rev-pin workaround, withdrawn). See those PRs for the
-investigation trail.
+> Historically this was handled by **admin-merging the PR red** after eyeballing
+> the diff — the CI failure was treated as a transitional state. PR #710
+> (`default-* → *-default`) was the last PR to need that; PR #735 explored a
+> `rev`-pin workaround (withdrawn). #883 removed the need for both.
 
 ## When does the lock drift?
 
@@ -162,12 +160,13 @@ just vendor
 just update                # this repo
 miniextendr::miniextendr_vendor()  # scaffolded packages
 
-# Manual minimum (what the recipes do under the hood)
-mv rpkg/src/rust/.cargo/config.toml /tmp/cargo-config.toml.bak
-rm rpkg/src/rust/Cargo.lock
-cargo generate-lockfile --manifest-path rpkg/src/rust/Cargo.toml
-mv /tmp/cargo-config.toml.bak rpkg/src/rust/.cargo/config.toml
-# No checksum strip needed — cargo-revendor handles it during `just vendor`
+# Manual minimum (what `just update` does under the hood). Note the [patch]
+# override stays ACTIVE — cargo resolves locally, then cargo-revendor stamps
+# the git source. Run the cargo update from src/rust/ so cargo's CWD-relative
+# config discovery picks up .cargo/config.toml.
+( cd rpkg/src/rust && cargo update )
+cargo revendor --manifest-path rpkg/src/rust/Cargo.toml --stamp-lock
+# No checksum strip needed — checksum lines are retained.
 
 # Verify
 just lock-shape-check

@@ -593,7 +593,7 @@ write_wrapper_header <- function(pkg, args) {
 #'
 #' Two output shapes:
 #'   - When `r_shim.h` sits next to `path` (real `src/` install — see
-#'     [write_wrapper_header()]), include it. The shim wraps Rinternals.h
+#'     `write_wrapper_header()`), include it. The shim wraps Rinternals.h
 #'     in `#pragma clang diagnostic push/pop` to suppress clang 21+'s
 #'     `-Wunknown-warning-option` for R's `Boolean.h`. Required because
 #'     `-Wno-unknown-warning-option` in PKG_CFLAGS trips R CMD check

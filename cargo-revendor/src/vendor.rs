@@ -67,6 +67,14 @@ pub fn run_cargo_vendor(
 
     let mut cmd = Command::new("cargo");
     cmd.arg("vendor").arg("--manifest-path").arg(manifest_path);
+    // Pin CWD to the manifest's directory so cargo's config discovery picks up
+    // that crate's `.cargo/config.toml` `[patch."<git-url>"]` table — same
+    // reason as `load_metadata` (#883). cargo vendor re-resolves the dep graph,
+    // so without the patch a cross-crate rename would resolve framework crates
+    // against git@main and fail even though metadata already succeeded locally.
+    if let Some(dir) = manifest_path.parent() {
+        cmd.current_dir(dir);
+    }
     if versioned_dirs {
         cmd.arg("--versioned-dirs");
     }
@@ -612,6 +620,142 @@ pub fn copy_lock_to_vendor(lockfile: &Path, vendor_dir: &Path, v: crate::Verbosi
     }
 
     Ok(())
+}
+
+/// Placeholder commit used when the framework crate's git HEAD can't be read.
+/// Source replacement matches on URL, not commit, so any well-formed 40-hex
+/// sha works for the offline build — this only loses provenance.
+const PLACEHOLDER_GIT_REV: &str = "0000000000000000000000000000000000000000";
+
+/// Read the git HEAD commit of a local checkout, returning it only if it looks
+/// like a full 40-char hex sha.
+fn git_head_rev(dir: &Path) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8(out.stdout).ok()?.trim().to_string();
+    (sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit())).then_some(sha)
+}
+
+/// Resolve the commit sha to stamp as framework-crate provenance in Cargo.lock.
+///
+/// Tries `git rev-parse HEAD` in each candidate checkout (the local framework
+/// crate dirs) in turn; falls back to [`PLACEHOLDER_GIT_REV`] with a warning.
+/// The value is provenance only — cargo's `[source."git+<url>"]` replacement
+/// keys on the URL, never the commit — so a placeholder still builds offline.
+pub fn resolve_framework_rev(candidate_paths: &[PathBuf], v: crate::Verbosity) -> String {
+    for p in candidate_paths {
+        if let Some(sha) = git_head_rev(p) {
+            return sha;
+        }
+    }
+    if v.info() {
+        eprintln!(
+            "  warning: could not read git HEAD for framework provenance; \
+             stamping placeholder rev in Cargo.lock (offline build still works)"
+        );
+    }
+    PLACEHOLDER_GIT_REV.to_string()
+}
+
+/// Stamp `source = "git+<url>#<rev>"` onto the framework crates' `[[package]]`
+/// entries in `lockfile`.
+///
+/// Why this exists: the lock is resolved with the dev `[patch."<url>"]` path
+/// override active (so a cross-crate feature rename resolves against the LOCAL
+/// workspace, not git@main — see #883). That resolution records the framework
+/// crates as local (no `source`) entries. The offline tarball install, however,
+/// needs `source = "git+<url>#<sha>"` so cargo's `[source."git+<url>"]`
+/// replacement can redirect them to `vendored-sources`. We reconstruct that
+/// attribution here rather than re-resolving against the bare git URL (which is
+/// exactly the step that fails on a cross-crate rename).
+///
+/// `patch_url_map` is `crate-name -> <url>` (no `git+` prefix; see
+/// [`crate::metadata::discover_patch_url_map`]). Only packages named in the map
+/// are touched; for those, any existing `source`/`path` is replaced and the new
+/// `source` line is placed immediately after `version` to match cargo's own
+/// canonical key order (and the `grep -A3` lock-shape check). Returns the number
+/// of `[[package]]` entries stamped.
+pub fn stamp_framework_git_sources(
+    lockfile: &Path,
+    patch_url_map: &std::collections::BTreeMap<String, String>,
+    rev: &str,
+    v: crate::Verbosity,
+) -> Result<usize> {
+    if !lockfile.exists() || patch_url_map.is_empty() {
+        return Ok(0);
+    }
+
+    let content = std::fs::read_to_string(lockfile)
+        .with_context(|| format!("failed to read {}", lockfile.display()))?;
+    let mut doc: toml_edit::DocumentMut = content
+        .parse()
+        .with_context(|| format!("failed to parse {}", lockfile.display()))?;
+
+    let Some(packages) = doc
+        .get_mut("package")
+        .and_then(|p| p.as_array_of_tables_mut())
+    else {
+        return Ok(0);
+    };
+
+    let mut stamped = 0usize;
+    for table in packages.iter_mut() {
+        let Some(name) = table.get("name").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(url) = patch_url_map.get(name) else {
+            continue;
+        };
+        let source_val = format!("git+{url}#{rev}");
+
+        // Rebuild the table so `source` lands right after `version`, dropping any
+        // pre-existing `source` (we're overwriting it). cargo writes
+        // name/version/source/dependencies in that order; matching it keeps the
+        // lock-shape `grep -A3` and pre-commit hook happy.
+        let entries: Vec<(String, toml_edit::Item)> = table
+            .iter()
+            .filter(|(k, _)| *k != "source")
+            .map(|(k, item)| (k.to_string(), item.clone()))
+            .collect();
+        let existing_keys: Vec<String> = table.iter().map(|(k, _)| k.to_string()).collect();
+        for k in &existing_keys {
+            table.remove(k);
+        }
+        let mut placed = false;
+        for (k, item) in entries {
+            let is_version = k == "version";
+            table.insert(&k, item);
+            if is_version {
+                table.insert("source", toml_edit::value(source_val.clone()));
+                placed = true;
+            }
+        }
+        if !placed {
+            // No `version` key (shouldn't happen in a valid lock) — append source.
+            table.insert("source", toml_edit::value(source_val.clone()));
+        }
+        stamped += 1;
+    }
+
+    if stamped > 0 {
+        std::fs::write(lockfile, doc.to_string())
+            .with_context(|| format!("failed to write {}", lockfile.display()))?;
+        if v.debug() {
+            eprintln!(
+                "  Stamped git source on {stamped} framework crate(s) in {}",
+                lockfile.display()
+            );
+        }
+    }
+
+    Ok(stamped)
 }
 
 /// Find the single subdirectory in a directory (from tar extraction)
@@ -1637,4 +1781,135 @@ path = "../sibling"
         // dependency path is stripped
         assert!(!result.contains("../sibling"));
     }
+
+    // region: stamp_framework_git_sources (#883)
+
+    fn url_map(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn stamp_adds_git_source_after_version() {
+        // A framework crate resolved as a local (no-source) entry gains
+        // `source = "git+<url>#<rev>"` placed immediately after `version`.
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("Cargo.lock");
+        std::fs::write(
+            &lock,
+            r#"version = 4
+
+[[package]]
+name = "miniextendr-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#,
+        )
+        .unwrap();
+
+        let map = url_map(&[("miniextendr-api", "https://github.com/A2-ai/miniextendr")]);
+        let n = stamp_framework_git_sources(
+            &lock,
+            &map,
+            "abc1230000000000000000000000000000000000",
+            Verbosity(0),
+        )
+        .unwrap();
+        assert_eq!(n, 1);
+
+        let out = std::fs::read_to_string(&lock).unwrap();
+        // source line present with git+url#rev
+        assert!(out.contains(
+            "source = \"git+https://github.com/A2-ai/miniextendr#abc1230000000000000000000000000000000000\""
+        ));
+        // placed right after version: the `-A 3` lock-shape grep must see it.
+        let api_idx = out.find("name = \"miniextendr-api\"").unwrap();
+        let after = &out[api_idx..];
+        let version_line = after.find("version = ").unwrap();
+        let source_line = after.find("source = ").unwrap();
+        assert!(
+            source_line > version_line && source_line - version_line < 30,
+            "source must immediately follow version; got:\n{after}"
+        );
+        // The registry crate (not in the map) is untouched.
+        assert!(out.contains("source = \"registry+https://github.com/rust-lang/crates.io-index\""));
+    }
+
+    #[test]
+    fn stamp_overwrites_existing_path_source() {
+        // A drifted lock with `source = "path+..."` for a framework crate is
+        // rewritten to the canonical git source (no duplicate source key).
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("Cargo.lock");
+        std::fs::write(
+            &lock,
+            r#"version = 4
+
+[[package]]
+name = "miniextendr-macros"
+version = "0.1.0"
+source = "path+file:///home/dev/miniextendr/miniextendr-macros"
+dependencies = []
+"#,
+        )
+        .unwrap();
+
+        let map = url_map(&[("miniextendr-macros", "https://github.com/A2-ai/miniextendr")]);
+        let n = stamp_framework_git_sources(&lock, &map, &"f".repeat(40), Verbosity(0)).unwrap();
+        assert_eq!(n, 1);
+
+        let out = std::fs::read_to_string(&lock).unwrap();
+        assert!(
+            !out.contains("path+file://"),
+            "path source must be gone:\n{out}"
+        );
+        assert_eq!(
+            out.matches("source = ").count(),
+            1,
+            "exactly one source key (no duplicate):\n{out}"
+        );
+        assert!(out.contains(&format!(
+            "source = \"git+https://github.com/A2-ai/miniextendr#{}\"",
+            "f".repeat(40)
+        )));
+    }
+
+    #[test]
+    fn stamp_noop_when_map_empty_or_no_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("Cargo.lock");
+        let body = r#"version = 4
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+        std::fs::write(&lock, body).unwrap();
+
+        // Empty map → 0 stamped, file unchanged.
+        assert_eq!(
+            stamp_framework_git_sources(&lock, &url_map(&[]), &"0".repeat(40), Verbosity(0))
+                .unwrap(),
+            0
+        );
+        // Map with a name not in the lock → 0 stamped.
+        let map = url_map(&[("miniextendr-api", "https://github.com/A2-ai/miniextendr")]);
+        assert_eq!(
+            stamp_framework_git_sources(&lock, &map, &"0".repeat(40), Verbosity(0)).unwrap(),
+            0
+        );
+        assert_eq!(std::fs::read_to_string(&lock).unwrap(), body);
+    }
+
+    // endregion
 }
