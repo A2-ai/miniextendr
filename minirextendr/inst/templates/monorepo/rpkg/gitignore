@@ -20,7 +20,8 @@ ra-target/
 src/rust/ra_target/
 src/rust/target/
 
-# Vendor compression stamp file
+# Vendor tarball — generated at build/release time; never tracked.
+inst/vendor.tar.xz
 inst/.vendor.tar.xz.cksum
 
 # Intermediary files from configure.ac
