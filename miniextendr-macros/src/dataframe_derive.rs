@@ -2018,9 +2018,13 @@ fn derive_struct_dataframe(
     // (`[T; N]` / `Vec<T>` + `width`/`expand`), and struct-flatten fields (nested
     // `DataFrameRow`). Each shape's reader is the exact inverse of its write rule
     // — regroup the suffixed expansion columns, un-prefix and recurse into the
-    // nested reader. `tag` / `skip` / `as_list` / opaque-`Map` / tuple / unit
-    // shapes are not reader-capable and fall through to the trait default (a clear
-    // runtime `DataFrameError`); enum readers are tracked separately (#782 PR 2).
+    // nested reader. `skip` / `as_list` / opaque-`Map` / tuple / unit shapes are
+    // not reader-capable and fall through to the trait default (a clear runtime
+    // `DataFrameError`). Struct-path `HashMap`/`BTreeMap` (`Map`) columns are the
+    // one remaining shape with no reader — they resolve to an opaque single
+    // list-column rather than the enum path's `_keys`/`_values` split, so they are
+    // gated out here; tracked as a #764 follow-up. Tagged-enum and enum-`Map`
+    // readers already landed (#807/#816) — see `enum_expansion::build_enum_reader`.
     //
     // The parallel variant (`#[cfg(feature = "rayon")]`) splits cleanly along the
     // R-thread boundary: all SEXP access (column extraction, ALTREP
@@ -2909,4 +2913,141 @@ pub(super) struct VariantInfo {
 
 mod enum_expansion;
 use enum_expansion::derive_enum_dataframe;
+// endregion
+
+// region: tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Stringify the derive output (whitespace-normalised) for substring assertions.
+    fn expand(input: DeriveInput) -> String {
+        derive_dataframe_row(input).unwrap().to_string()
+    }
+
+    /// Scalar named struct: the baseline `try_from_dataframe_par` shape (#765).
+    /// Both the sequential and parallel readers must be emitted, and the parallel
+    /// one must drive a `into_par_iter()` row-assembly region.
+    #[test]
+    fn scalar_struct_gets_parallel_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Measurement {
+                time: f64,
+                value: f64,
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe"));
+        assert!(code.contains("fn try_from_dataframe_par"));
+        assert!(code.contains("into_par_iter"));
+    }
+
+    /// `[T; N]` fixed-array expansion field (#782/#808): the reader regroups the
+    /// `pos_1`/`pos_2` columns back into the array inside the parallel loop, with
+    /// zero SEXP access in `into_par_iter` (the invariant #764 protects).
+    #[test]
+    fn fixed_array_struct_gets_parallel_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Point {
+                #[dataframe(rename = "pos")]
+                pos: [f64; 2],
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe_par"));
+        assert!(code.contains("into_par_iter"));
+        // Regrouped from the suffixed expansion columns.
+        assert!(code.contains("pos_1"));
+        assert!(code.contains("pos_2"));
+    }
+
+    /// `Vec<T>` + `width = N` expansion field (#782/#808): the reader flattens the
+    /// `scores_1`/`scores_2` Option columns per row back into the vec.
+    #[test]
+    fn pinned_vec_struct_gets_parallel_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Scored {
+                #[dataframe(width = 2)]
+                scores: Vec<i32>,
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe_par"));
+        assert!(code.contains("into_par_iter"));
+        assert!(code.contains("scores_1"));
+        assert!(code.contains("scores_2"));
+    }
+
+    /// `Vec<T>` + `expand` auto-expansion field (#782/#808): the reader discovers
+    /// `tags_<i>` columns at runtime and flattens per row. Still a true parallel
+    /// reader (the column discovery happens on the R thread, up front).
+    #[test]
+    fn auto_expand_struct_gets_parallel_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Tagged {
+                #[dataframe(expand)]
+                tags: Vec<i32>,
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe_par"));
+        assert!(code.contains("into_par_iter"));
+    }
+
+    /// Struct-flatten field (#485/#808): the struct still gets readers, but the
+    /// parallel variant deliberately delegates to the sequential one to avoid
+    /// imposing `Inner: Clone` for by-index parallel assembly (#764 design note).
+    #[test]
+    fn struct_flatten_par_delegates_to_sequential() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Outer {
+                id: i32,
+                inner: Inner,
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe"));
+        assert!(code.contains("fn try_from_dataframe_par"));
+        // The `_par` body delegates rather than running its own `into_par_iter`.
+        assert!(code.contains("Self :: try_from_dataframe (sexp)"));
+    }
+
+    /// Tagged enum companion (#807/#816): enums now get full readers too, including
+    /// a parallel per-row tag-dispatch loop. Documents that the #764 "no reader at
+    /// all today" framing for enums is now stale.
+    #[test]
+    fn tagged_enum_gets_parallel_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            #[dataframe(tag = "_type")]
+            enum Event {
+                Click { x: i32, y: i32 },
+                Key { code: i32 },
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe"));
+        assert!(code.contains("fn try_from_dataframe_par"));
+        assert!(code.contains("into_par_iter"));
+    }
+
+    /// Known gap (issue follow-up to #764): a struct with a `HashMap`/`BTreeMap`
+    /// field is resolved as an opaque `Single` list-column (no `_keys`/`_values`
+    /// split like the enum path), is not reader-capable, and so gets NO reader.
+    /// Locks the current behaviour so the follow-up that adds struct-path Map
+    /// support flips this assertion deliberately. See `field_reader_capable`.
+    #[test]
+    fn struct_with_map_field_has_no_reader_yet() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Config {
+                opts: ::std::collections::HashMap<String, i32>,
+            }
+        });
+        assert!(
+            !code.contains("fn try_from_dataframe"),
+            "struct-path Map columns are not yet reader-capable (tracked as a #764 follow-up); \
+             if this assertion now fails, the reader was added — update/remove this test"
+        );
+    }
+}
 // endregion
