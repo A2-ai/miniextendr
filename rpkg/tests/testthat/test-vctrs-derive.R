@@ -23,6 +23,22 @@ test_that("new_derived_percent creates a vctrs vector", {
   expect_equal(length(x), 3)
 })
 
+test_that("AsVctrs wrapper and PreferVctrs derive match the manual into_vctrs path", {
+  skip_if_vctrs_disabled()
+
+  vals <- c(0.25, 0.5, 0.75)
+  manual <- new_derived_percent(vals)
+  as_vctrs <- new_derived_percent_as_vctrs(vals)
+  prefer <- new_derived_percent_prefer(vals)
+
+  # Both ergonomic forms produce a value identical to the hand-written
+  # `into_vctrs().map_err(...)` return.
+  expect_identical(as_vctrs, manual)
+  expect_identical(prefer, manual)
+  expect_s3_class(as_vctrs, "derived_percent")
+  expect_s3_class(prefer, "derived_percent")
+})
+
 test_that("derived_percent has correct class structure", {
   skip_if_vctrs_disabled()
 

@@ -124,7 +124,6 @@ mod altrep_sexp_tests;
 mod arrow_adapter_tests;
 #[cfg(feature = "arrow")]
 mod arrow_na_tests;
-mod as_coerce_tests;
 mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
 mod bigint_adapter_tests;
@@ -230,6 +229,7 @@ mod r6_noexport_field_tests;
 mod r6_tests;
 #[cfg(all(feature = "nalgebra", feature = "ndarray"))]
 mod r_backed_tests;
+mod r_coerce_tests;
 mod r_wrapper_attrs;
 mod rarray_tests;
 #[cfg(feature = "rayon")]

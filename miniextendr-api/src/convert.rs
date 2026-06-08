@@ -440,6 +440,102 @@ impl<T: RNativeType> IntoR for AsRNative<T> {
 }
 // endregion
 
+// region: DataFrame / Vctrs representation wrappers
+
+/// Wrap a value and convert it to an R `data.frame` via [`IntoDataFrame`] when returned.
+///
+/// Use this at a call site to force a single return value into a data.frame without making
+/// that the type's default representation (for the always-a-data.frame default, use
+/// `#[derive(PreferDataFrame)]` / `#[miniextendr(dataframe)]`). The inner `T` is typically a
+/// `Vec<Row>` where `Row` derives [`DataFrameRow`](crate::markers::DataFrameRow).
+///
+/// A failed conversion ([`DataFrameError`](crate::dataframe::DataFrameError)) surfaces in R as
+/// an error condition.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(DataFrameRow)]
+/// struct Point { x: f64, y: f64 }
+///
+/// #[miniextendr]
+/// fn grid() -> AsDataFrame<Vec<Point>> {
+///     AsDataFrame(vec![Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 1.0 }])
+/// }
+/// // In R: grid() returns a data.frame with columns x, y
+/// ```
+#[derive(Debug, Clone)]
+pub struct AsDataFrame<T: crate::dataframe::IntoDataFrame>(pub T);
+
+impl<T: crate::dataframe::IntoDataFrame> From<T> for AsDataFrame<T> {
+    fn from(value: T) -> Self {
+        AsDataFrame(value)
+    }
+}
+
+impl<T: crate::dataframe::IntoDataFrame> IntoR for AsDataFrame<T> {
+    type Error = crate::dataframe::DataFrameError;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.0.into_dataframe()?.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+}
+
+/// Wrap a value and convert it to a **vctrs** S3 vector via [`IntoVctrs`](crate::vctrs::IntoVctrs)
+/// when returned.
+///
+/// Use this at a call site to return a `#[derive(Vctrs)]` type as its R vctrs object without the
+/// manual `value.into_vctrs().map_err(...)` boilerplate. For a type that should *always* convert
+/// this way, use `#[derive(Vctrs, PreferVctrs)]` instead.
+///
+/// A failed build ([`VctrsBuildError`](crate::vctrs::VctrsBuildError)) surfaces in R as an error
+/// condition.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(Vctrs)]
+/// #[vctrs(class = "percent", base = "double")]
+/// struct Percent { #[vctrs(data)] values: Vec<f64> }
+///
+/// #[miniextendr]
+/// fn percent(x: Vec<f64>) -> AsVctrs<Percent> {
+///     AsVctrs(Percent { values: x })
+/// }
+/// ```
+#[cfg(feature = "vctrs")]
+#[derive(Debug, Clone)]
+pub struct AsVctrs<T: crate::vctrs::IntoVctrs>(pub T);
+
+#[cfg(feature = "vctrs")]
+impl<T: crate::vctrs::IntoVctrs> From<T> for AsVctrs<T> {
+    fn from(value: T) -> Self {
+        AsVctrs(value)
+    }
+}
+
+#[cfg(feature = "vctrs")]
+impl<T: crate::vctrs::IntoVctrs> IntoR for AsVctrs<T> {
+    type Error = crate::vctrs::VctrsBuildError;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        self.0.into_vctrs()
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+}
+// endregion
+
 // region: Named pair wrappers
 
 /// Wrap a tuple pair collection and convert it to a **named R list** (VECSXP).
@@ -723,6 +819,33 @@ pub trait AsRNativeExt: RNativeType + Sized {
 }
 
 impl<T: RNativeType> AsRNativeExt for T {}
+
+/// Extension trait for wrapping values as [`AsDataFrame`].
+///
+/// Automatically implemented for all `T: IntoDataFrame` (typically `Vec<Row>` where `Row`
+/// derives `DataFrameRow`).
+pub trait AsDataFrameExt: crate::dataframe::IntoDataFrame + Sized {
+    /// Wrap `self` in [`AsDataFrame`] for R data.frame conversion.
+    fn wrap_data_frame(self) -> AsDataFrame<Self> {
+        AsDataFrame(self)
+    }
+}
+
+impl<T: crate::dataframe::IntoDataFrame> AsDataFrameExt for T {}
+
+/// Extension trait for wrapping values as [`AsVctrs`].
+///
+/// Automatically implemented for all `T: IntoVctrs` (typically a `#[derive(Vctrs)]` type).
+#[cfg(feature = "vctrs")]
+pub trait AsVctrsExt: crate::vctrs::IntoVctrs + Sized {
+    /// Wrap `self` in [`AsVctrs`] for R vctrs conversion.
+    fn wrap_vctrs(self) -> AsVctrs<Self> {
+        AsVctrs(self)
+    }
+}
+
+#[cfg(feature = "vctrs")]
+impl<T: crate::vctrs::IntoVctrs> AsVctrsExt for T {}
 
 /// Extension trait for wrapping tuple pair collections as [`AsNamedList`].
 ///

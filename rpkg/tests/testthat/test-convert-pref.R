@@ -34,6 +34,15 @@ test_that("prefer = 'native' attribute returns an integer scalar identical to ex
   expect_identical(result, hybrid_as_native(1L))
 })
 
+test_that("AsDataFrame wrapper forces a data.frame return", {
+  df <- pref_rows_as_data_frame()
+  expect_s3_class(df, "data.frame")
+  expect_identical(nrow(df), 2L)
+  expect_identical(names(df), c("id", "label"))
+  expect_identical(df$id, c(1L, 2L))
+  expect_identical(df$label, c("a", "b"))
+})
+
 test_that("prefer = 'list' is a no-op when return type is Option<T>", {
   # prefer= only applies to plain-T returns (the IntoR variant in apply_return_pref).
   # For Option<T>, auto-detection produces OptionIntoR which passes through apply_return_pref

@@ -11,28 +11,28 @@
 //! path for `#[miniextendr]` arguments and return values. For that, see
 //! [`crate::from_r::TryFromSexp`] / [`crate::into_r::IntoR`] (and
 //! [`crate::coerce::Coerce`] / [`crate::strict`] for the lax/strict pairs).
-//! Failure mode of confusing the two: an `AsList` impl will not satisfy a
+//! Failure mode of confusing the two: an `RCoerceList` impl will not satisfy a
 //! `fn foo(_: MyType)` argument coming from R — that needs `TryFromSexp`.
 //!
 //! # Supported Conversions
 //!
 //! | R Generic | Rust Trait | Method |
 //! |-----------|------------|--------|
-//! | `as.data.frame` | [`AsDataFrame`] | `as_data_frame(&self)` |
-//! | `as.list` | [`AsList`] | `as_list(&self)` |
-//! | `as.character` | [`AsCharacter`] | `as_character(&self)` |
-//! | `as.numeric` / `as.double` | [`AsNumeric`] | `as_numeric(&self)` |
-//! | `as.integer` | [`AsInteger`] | `as_integer(&self)` |
-//! | `as.logical` | [`AsLogical`] | `as_logical(&self)` |
-//! | `as.matrix` | [`AsMatrix`] | `as_matrix(&self)` |
-//! | `as.vector` | [`AsVector`] | `as_vector(&self)` |
-//! | `as.factor` | [`AsFactor`] | `as_factor(&self)` |
-//! | `as.Date` | [`AsDate`] | `as_date(&self)` |
-//! | `as.POSIXct` | [`AsPOSIXct`] | `as_posixct(&self)` |
-//! | `as.complex` | [`AsComplex`] | `as_complex(&self)` |
-//! | `as.raw` | [`AsRaw`] | `as_raw(&self)` |
-//! | `as.environment` | [`AsEnvironment`] | `as_environment(&self)` |
-//! | `as.function` | [`AsFunction`] | `as_function(&self)` |
+//! | `as.data.frame` | [`RCoerceDataFrame`] | `as_data_frame(&self)` |
+//! | `as.list` | [`RCoerceList`] | `as_list(&self)` |
+//! | `as.character` | [`RCoerceCharacter`] | `as_character(&self)` |
+//! | `as.numeric` / `as.double` | [`RCoerceNumeric`] | `as_numeric(&self)` |
+//! | `as.integer` | [`RCoerceInteger`] | `as_integer(&self)` |
+//! | `as.logical` | [`RCoerceLogical`] | `as_logical(&self)` |
+//! | `as.matrix` | [`RCoerceMatrix`] | `as_matrix(&self)` |
+//! | `as.vector` | [`RCoerceVector`] | `as_vector(&self)` |
+//! | `as.factor` | [`RCoerceFactor`] | `as_factor(&self)` |
+//! | `as.Date` | [`RCoerceDate`] | `as_date(&self)` |
+//! | `as.POSIXct` | [`RCoercePOSIXct`] | `as_posixct(&self)` |
+//! | `as.complex` | [`RCoerceComplex`] | `as_complex(&self)` |
+//! | `as.raw` | [`RCoerceRaw`] | `as_raw(&self)` |
+//! | `as.environment` | [`RCoerceEnvironment`] | `as_environment(&self)` |
+//! | `as.function` | [`RCoerceFunction`] | `as_function(&self)` |
 //!
 //! # Usage with `#[miniextendr]`
 //!
@@ -40,7 +40,7 @@
 //!
 //! ```ignore
 //! use miniextendr_api::{miniextendr, ExternalPtr, List};
-//! use miniextendr_api::as_coerce::AsCoerceError;
+//! use miniextendr_api::r_coerce::RCoerceError;
 //!
 //! pub struct MyData {
 //!     names: Vec<String>,
@@ -55,9 +55,9 @@
 //!
 //!     /// Convert to data.frame
 //!     #[miniextendr(as = "data.frame")]
-//!     pub fn as_data_frame(&self) -> Result<List, AsCoerceError> {
+//!     pub fn as_data_frame(&self) -> Result<List, RCoerceError> {
 //!         if self.names.len() != self.values.len() {
-//!             return Err(AsCoerceError::InvalidData {
+//!             return Err(RCoerceError::InvalidData {
 //!                 message: "names and values must have same length".into(),
 //!             });
 //!         }
@@ -71,7 +71,7 @@
 //!
 //!     /// Convert to character representation
 //!     #[miniextendr(as = "character")]
-//!     pub fn as_character(&self) -> Result<String, AsCoerceError> {
+//!     pub fn as_character(&self) -> Result<String, RCoerceError> {
 //!         Ok(format!("MyData({} items)", self.values.len()))
 //!     }
 //! }
@@ -99,7 +99,7 @@ use std::fmt;
 /// This error type provides structured information about why a coercion failed,
 /// allowing for meaningful error messages in R.
 #[derive(Debug, Clone)]
-pub enum AsCoerceError {
+pub enum RCoerceError {
     /// The conversion is not supported for this type combination.
     ///
     /// Use this when a type fundamentally cannot be converted to the target type
@@ -135,7 +135,7 @@ pub enum AsCoerceError {
     Custom(String),
 }
 
-impl fmt::Display for AsCoerceError {
+impl fmt::Display for RCoerceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotSupported { from, to } => {
@@ -152,18 +152,18 @@ impl fmt::Display for AsCoerceError {
     }
 }
 
-impl std::error::Error for AsCoerceError {}
+impl std::error::Error for RCoerceError {}
 
 // Implement From<String> for convenient error creation
-impl From<String> for AsCoerceError {
+impl From<String> for RCoerceError {
     fn from(s: String) -> Self {
-        AsCoerceError::Custom(s)
+        RCoerceError::Custom(s)
     }
 }
 
-impl From<&str> for AsCoerceError {
+impl From<&str> for RCoerceError {
     fn from(s: &str) -> Self {
-        AsCoerceError::Custom(s.to_string())
+        RCoerceError::Custom(s.to_string())
     }
 }
 // endregion
@@ -175,11 +175,11 @@ impl From<&str> for AsCoerceError {
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::as_coerce::{AsDataFrame, AsCoerceError};
+/// use miniextendr_api::r_coerce::{RCoerceDataFrame, RCoerceError};
 /// use miniextendr_api::List;
 ///
-/// impl AsDataFrame for MyStruct {
-///     fn as_data_frame(&self) -> Result<List, AsCoerceError> {
+/// impl RCoerceDataFrame for MyStruct {
+///     fn as_data_frame(&self) -> Result<List, RCoerceError> {
 ///         Ok(List::from_pairs(vec![
 ///             ("col1", self.field1.clone()),
 ///             ("col2", self.field2.clone()),
@@ -189,14 +189,14 @@ impl From<&str> for AsCoerceError {
 ///     }
 /// }
 /// ```
-pub trait AsDataFrame {
+pub trait RCoerceDataFrame {
     /// Convert to an R data.frame.
     ///
     /// The returned List should have:
     /// - Named columns of equal length
     /// - Class attribute set to "data.frame"
     /// - row.names attribute set appropriately
-    fn as_data_frame(&self) -> Result<crate::List, AsCoerceError>;
+    fn as_data_frame(&self) -> Result<crate::List, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `list` via `as.list()`.
@@ -204,8 +204,8 @@ pub trait AsDataFrame {
 /// # Example
 ///
 /// ```ignore
-/// impl AsList for MyStruct {
-///     fn as_list(&self) -> Result<List, AsCoerceError> {
+/// impl RCoerceList for MyStruct {
+///     fn as_list(&self) -> Result<List, RCoerceError> {
 ///         Ok(List::from_pairs(vec![
 ///             ("field1", self.field1.clone()),
 ///             ("field2", self.field2.clone()),
@@ -213,9 +213,9 @@ pub trait AsDataFrame {
 ///     }
 /// }
 /// ```
-pub trait AsList {
+pub trait RCoerceList {
     /// Convert to an R list.
-    fn as_list(&self) -> Result<crate::List, AsCoerceError>;
+    fn as_list(&self) -> Result<crate::List, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `character` via `as.character()`.
@@ -223,105 +223,105 @@ pub trait AsList {
 /// This typically produces a string representation of the object.
 /// For single values, return a single-element vector; for collections,
 /// return a vector with one element per item.
-pub trait AsCharacter {
+pub trait RCoerceCharacter {
     /// Convert to an R character vector.
-    fn as_character(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_character(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `numeric`/`double` via `as.numeric()`.
 ///
 /// The result should be an R numeric vector (REALSXP).
-pub trait AsNumeric {
+pub trait RCoerceNumeric {
     /// Convert to an R numeric vector.
-    fn as_numeric(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_numeric(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `integer` via `as.integer()`.
 ///
 /// The result should be an R integer vector (INTSXP).
-pub trait AsInteger {
+pub trait RCoerceInteger {
     /// Convert to an R integer vector.
-    fn as_integer(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_integer(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `logical` via `as.logical()`.
 ///
 /// The result should be an R logical vector (LGLSXP).
-pub trait AsLogical {
+pub trait RCoerceLogical {
     /// Convert to an R logical vector.
-    fn as_logical(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_logical(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `matrix` via `as.matrix()`.
 ///
 /// The result should be an R matrix with appropriate dimensions.
-pub trait AsMatrix {
+pub trait RCoerceMatrix {
     /// Convert to an R matrix.
-    fn as_matrix(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_matrix(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to a generic `vector` via `as.vector()`.
 ///
 /// This is the most general vector coercion, typically stripping attributes.
-pub trait AsVector {
+pub trait RCoerceVector {
     /// Convert to an R vector.
-    fn as_vector(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_vector(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `factor` via `as.factor()`.
 ///
 /// The result should be an R factor (integer vector with levels attribute).
-pub trait AsFactor {
+pub trait RCoerceFactor {
     /// Convert to an R factor.
-    fn as_factor(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_factor(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `Date` via `as.Date()`.
 ///
 /// The result should be an R Date object (numeric with "Date" class).
-pub trait AsDate {
+pub trait RCoerceDate {
     /// Convert to an R Date.
-    fn as_date(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_date(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `POSIXct` via `as.POSIXct()`.
 ///
 /// The result should be an R POSIXct object (numeric with "POSIXct", "POSIXt" class).
-pub trait AsPOSIXct {
+pub trait RCoercePOSIXct {
     /// Convert to an R POSIXct.
-    fn as_posixct(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_posixct(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `complex` via `as.complex()`.
 ///
 /// The result should be an R complex vector (CPLXSXP).
-pub trait AsComplex {
+pub trait RCoerceComplex {
     /// Convert to an R complex vector.
-    fn as_complex(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_complex(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `raw` via `as.raw()`.
 ///
 /// The result should be an R raw vector (RAWSXP).
-pub trait AsRaw {
+pub trait RCoerceRaw {
     /// Convert to an R raw vector.
-    fn as_raw(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_raw(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `environment` via `as.environment()`.
 ///
 /// The result should be an R environment.
-pub trait AsEnvironment {
+pub trait RCoerceEnvironment {
     /// Convert to an R environment.
-    fn as_environment(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_environment(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 
 /// Trait for types that can be coerced to `function` via `as.function()`.
 ///
 /// The result should be an R function (closure).
-pub trait AsFunction {
+pub trait RCoerceFunction {
     /// Convert to an R function.
-    fn as_function(&self) -> Result<crate::SEXP, AsCoerceError>;
+    fn as_function(&self) -> Result<crate::SEXP, RCoerceError>;
 }
 // endregion
 
@@ -392,18 +392,18 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let err = AsCoerceError::NotSupported {
+        let err = RCoerceError::NotSupported {
             from: "MyType",
             to: "data.frame",
         };
         assert_eq!(err.to_string(), "cannot coerce MyType to data.frame");
 
-        let err = AsCoerceError::InvalidData {
+        let err = RCoerceError::InvalidData {
             message: "column lengths differ".to_string(),
         };
         assert_eq!(err.to_string(), "invalid data: column lengths differ");
 
-        let err = AsCoerceError::Custom("something went wrong".to_string());
+        let err = RCoerceError::Custom("something went wrong".to_string());
         assert_eq!(err.to_string(), "something went wrong");
     }
 
