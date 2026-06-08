@@ -1761,3 +1761,75 @@ pub fn gc_stress_reader_enum_map() {
 }
 
 // endregion
+
+// region: Arrow RecordBatch materialization (#867)
+
+/// Materialize a `RecordBatch` whose columns are *sliced views* of R-backed
+/// Arrow buffers, exercising `RecordBatch::into_sexp` → `arrow_array_to_sexp`
+/// → the per-array zero-copy SEXP-recovery path under GC pressure.
+///
+/// Regression fixture for #867. `test_df_subquery` segfaulted on the strict
+/// glibc Linux runner because DataFusion's contiguous-run filter optimization
+/// returns a *slice* of the R-backed input column: `values().as_ptr()` then
+/// points into the middle of the R vector, and the speculative
+/// `try_recover_r_sexp` probe (which subtracts the SEXPREC header offset)
+/// read off into unrelated memory and false-positived as a "recovered SEXP".
+/// The crash was heap-layout-dependent — deterministic on the strict runner,
+/// silent elsewhere — so a no-arg fixture is the only portable guard.
+///
+/// This fixture builds R-backed `Int32Array`/`Float64Array` columns, slices
+/// them (offset > 0, the exact filter-optimization shape), assembles a
+/// `RecordBatch`, and drives the production materialization. It then verifies
+/// the resulting data.frame holds the correct values — a false-positive
+/// recovery would yield wrong values or corrupt memory rather than copying.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr]
+pub fn gc_stress_arrow_sliced_recordbatch() {
+    use miniextendr_api::arrow_impl::{
+        ArrayRef, DataType, Field, Float64Array, Int32Array, RecordBatch, Schema,
+    };
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+    use std::sync::Arc;
+
+    // Build R-backed Arrow arrays from fresh R vectors, then slice them so the
+    // value pointer is advanced into the middle of the R buffer (offset = 2),
+    // matching DataFusion's contiguous-run filter output.
+    let xi_sexp = vec![1i32, 2, 3, 4, 5].into_sexp();
+    let _xi_guard = unsafe { miniextendr_api::OwnedProtect::new(xi_sexp) };
+    let xi = Int32Array::try_from_sexp(xi_sexp).expect("int32 from R");
+
+    let yf_sexp = vec![10.0f64, 20.0, 30.0, 40.0, 50.0].into_sexp();
+    let _yf_guard = unsafe { miniextendr_api::OwnedProtect::new(yf_sexp) };
+    let yf = Float64Array::try_from_sexp(yf_sexp).expect("float64 from R");
+
+    let x_slice = xi.slice(2, 3); // c(3L, 4L, 5L)
+    let y_slice = yf.slice(2, 3); // c(30, 40, 50)
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("x", DataType::Int32, false),
+        Field::new("y", DataType::Float64, false),
+    ]));
+    let cols: Vec<ArrayRef> = vec![Arc::new(x_slice), Arc::new(y_slice)];
+    let batch = RecordBatch::try_new(schema, cols).expect("record batch");
+
+    // Drive the production materialization (the path test_df_subquery hits).
+    let out = batch.into_sexp();
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+
+    // Honest check: the data.frame must hold the correct sliced values, proving
+    // the materialization copied rather than returning a bogus recovered SEXP.
+    let names = out.get_names();
+    assert_eq!(names.len(), 2);
+    let x_col = out.vector_elt(0);
+    let y_col = out.vector_elt(1);
+    let xs: &[i32] = unsafe { x_col.as_slice() };
+    let ys: &[f64] = unsafe { y_col.as_slice() };
+    assert_eq!(xs, [3, 4, 5]);
+    assert_eq!(ys, [30.0, 40.0, 50.0]);
+}
+
+// endregion
