@@ -84,14 +84,32 @@ miniextendr_configure <- function(path = ".") {
 #' Full R package build workflow
 #'
 #' Runs the complete R package build pipeline:
-#' autoconf -> configure -> R CMD INSTALL (compiles Rust + generates
-#' R wrappers via cdylib) -> roxygen2. This is the high-level workflow
-#' for building the entire package; for compiling just the Rust crate,
-#' use [cargo_build()] instead.
+#' autoconf -> configure -> `R CMD INSTALL` (compiles Rust + generates the
+#' `R/<pkg>-wrappers.R` file via the cdylib pass) -> roxygen2 -> conditional
+#' reinstall. This is the high-level workflow for building the entire package;
+#' for compiling just the Rust crate, use [cargo_build()] instead.
+#'
+#' @section Why a conditional reinstall:
+#' The `R/<pkg>-wrappers.R` file is generated *during* install, and its roxygen
+#' `@export` tags are what [devtools::document()] reads to write `NAMESPACE`.
+#' That creates a chicken-and-egg ordering: `document()` can only see the
+#' wrappers after install, but install collates `NAMESPACE` (the export set the
+#' installed image actually exposes) *before* `document()` rewrites it. On a
+#' first build — or any build that adds or renames an exported function — the
+#' freshly-installed image therefore lags the on-disk `NAMESPACE` by one build,
+#' and `library(pkg)` exposes nothing new until the package is built a second
+#' time.
+#'
+#' To collapse that into a single pass, this workflow snapshots `NAMESPACE`
+#' before and after `document()`. If `document()` changed it (new or renamed
+#' exports), the package is reinstalled once so the installed image matches the
+#' freshly-written `NAMESPACE`. The reinstall happens at most once: after it,
+#' the wrappers and `NAMESPACE` are already in their final form, so a repeat
+#' `document()` would be a fixpoint and no further install is needed.
 #'
 #' @param path Path to the R package root, or `NULL` to use the active project.
-#' @param install Whether to run `R CMD INSTALL` step. If `FALSE`, only
-#'   runs autoconf + configure.
+#' @param install Whether to run the `R CMD INSTALL` steps. If `FALSE`, only
+#'   runs autoconf + configure + roxygen2 (no compile, no reinstall).
 #' @return Invisibly returns TRUE on success
 #' @export
 miniextendr_build <- function(path = ".", install = TRUE) {
@@ -99,6 +117,7 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   cli::cli_h1("miniextendr build workflow")
 
   pkg_path <- usethis::proj_get()
+  has_devtools <- requireNamespace("devtools", quietly = TRUE)
 
   cli::cli_h2("Step 1: autoconf")
   miniextendr_autoconf()
@@ -108,45 +127,84 @@ miniextendr_build <- function(path = ".", install = TRUE) {
 
   if (install) {
     cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
-    if (!requireNamespace("devtools", quietly = TRUE)) {
+    if (!has_devtools) {
       cli::cli_warn("devtools not installed, skipping install step")
     } else {
-      # Force the cdylib wrapper-gen pass (R/<pkg>-wrappers.R + wasm_registry.rs)
-      # even if an inst/vendor.tar.xz latch has flipped configure into tarball
-      # mode, which otherwise skips it. Without this a build run against a
-      # leaked tarball installs stale wrappers and library() exposes no
-      # functions. Restore the prior value on exit so the override doesn't leak
-      # into the rest of the R session.
-      old_force <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = NA)
-      Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = "1")
-      on.exit(
-        if (is.na(old_force)) Sys.unsetenv("MINIEXTENDR_FORCE_WRAPPER_GEN")
-        else Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = old_force),
-        add = TRUE
-      )
-      tryCatch(
-        devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE),
-        error = function(e) {
-          cli::cli_abort(c(
-            "Package installation failed",
-            "i" = conditionMessage(e)
-          ))
-        }
-      )
+      install_pkg(pkg_path)
       cli::cli_alert_success("Installed package")
     }
   }
 
   cli::cli_h2("Step 4: roxygen2 (update NAMESPACE + man pages)")
-  if (!requireNamespace("devtools", quietly = TRUE)) {
+  if (!has_devtools) {
     cli::cli_warn("devtools not installed, skipping roxygen2 step")
   } else {
+    namespace_path <- fs::path(pkg_path, "NAMESPACE")
+    namespace_before <- namespace_digest(namespace_path)
+
     devtools::document(pkg_path)
     cli::cli_alert_success("Updated NAMESPACE and documentation")
+
+    namespace_after <- namespace_digest(namespace_path)
+
+    # Chicken-and-egg fix: the wrappers file is generated during install and
+    # document() reads its @export tags to write NAMESPACE. So the install in
+    # Step 3 collated the *previous* NAMESPACE — if document() just added or
+    # renamed exports, the installed image is one build behind. Reinstall once
+    # so library(pkg) exposes the new exports in a single miniextendr_build()
+    # pass. The reinstall is bounded to one pass: after it the wrappers and
+    # NAMESPACE are already final, so re-running document() would be a fixpoint.
+    if (install && has_devtools && !identical(namespace_before, namespace_after)) {
+      cli::cli_h2("Step 5: reinstall (NAMESPACE exports changed)")
+      cli::cli_alert_info(
+        "{.code document()} changed {.path NAMESPACE}; reinstalling so the \\
+         installed image exports the new wrappers."
+      )
+      install_pkg(pkg_path)
+      cli::cli_alert_success("Reinstalled against updated NAMESPACE")
+    }
   }
 
   cli::cli_alert_success("Build complete!")
   invisible(TRUE)
+}
+
+# Install the package via devtools, forcing the cdylib wrapper-gen pass.
+#
+# MINIEXTENDR_FORCE_WRAPPER_GEN forces regeneration of R/<pkg>-wrappers.R +
+# wasm_registry.rs even if an inst/vendor.tar.xz latch has flipped configure
+# into tarball mode (which otherwise skips it). Without this, a build run
+# against a leaked tarball installs stale wrappers and library() exposes no
+# functions. The prior value is restored on exit so the override doesn't leak
+# into the rest of the R session.
+install_pkg <- function(pkg_path) {
+  old_force <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = NA)
+  Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = "1")
+  on.exit(
+    if (is.na(old_force)) Sys.unsetenv("MINIEXTENDR_FORCE_WRAPPER_GEN")
+    else Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = old_force),
+    add = TRUE
+  )
+  tryCatch(
+    devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE),
+    error = function(e) {
+      cli::cli_abort(c(
+        "Package installation failed",
+        "i" = conditionMessage(e)
+      ))
+    }
+  )
+}
+
+# Stable fingerprint of a NAMESPACE file for diffing before/after document().
+# Returns NA_character_ when the file is absent (e.g. a brand-new package),
+# which compares unequal to any real content via identical() and so triggers
+# the reinstall on first build.
+namespace_digest <- function(namespace_path) {
+  if (!fs::file_exists(namespace_path)) {
+    return(NA_character_)
+  }
+  paste(readLines(namespace_path, warn = FALSE), collapse = "\n")
 }
 
 #' Prepare vendor tarball for CRAN submission
