@@ -25,5 +25,16 @@ runs:
       if: inputs.configure-and-vendor == 'true'
       shell: bash
       run: |
+        # Remove any pre-existing vendor tarball BEFORE `just configure`, so
+        # configure detects dev-monorepo (source) mode and writes the
+        # `[patch."git+url"]` → workspace-sibling overrides that `just vendor`'s
+        # cargo-revendor needs to vendor LOCAL crate edits. If a tarball is
+        # present (e.g. restored by an upstream `actions/cache` step), configure
+        # flips into tarball mode — writing a `[source]` replacement and NO
+        # `[patch]` — and cargo-revendor then finds "0 local packages", fetches
+        # the framework from git@main, and silently drops the in-PR workspace
+        # changes. That mis-vendors any PR that edits a miniextendr-* crate
+        # alongside rpkg (latch leak, #441 / #865).
+        rm -f rpkg/inst/vendor.tar.xz
         just configure
         just vendor
