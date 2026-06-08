@@ -737,29 +737,18 @@ where
 
 use std::borrow::Cow;
 
-/// Try SEXP pointer recovery for a borrowed Cow slice.
-#[inline]
-#[allow(clippy::ptr_arg)] // Need &Cow to inspect Borrowed vs Owned variant
-fn try_recover_cow_slice<T: crate::RNativeType>(cow: &Cow<'_, [T]>) -> Option<crate::SEXP> {
-    if let Cow::Borrowed(slice) = cow {
-        unsafe {
-            crate::r_memory::try_recover_r_sexp(
-                slice.as_ptr() as *const u8,
-                T::SEXP_TYPE,
-                slice.len(),
-            )
-        }
-    } else {
-        None
-    }
-}
-
 /// Convert `Cow<'_, [T]>` to R vector where T: RNativeType.
 ///
-/// For `Cow::Borrowed` slices that came from R (e.g., via `TryFromSexp`),
-/// SEXP pointer recovery is attempted — if the borrowed data points into
-/// an R vector, the original SEXP is returned without copying. Otherwise
-/// falls through to the standard copy path.
+/// Always copies into a fresh R vector via the `&[T]` path. We deliberately do
+/// *not* attempt speculative SEXP pointer recovery on the `Cow::Borrowed` arm:
+/// a bare `&[T]` carries no provenance metadata, so a borrowed *sub-slice* of
+/// an R vector (e.g. `&cow[2..5]`) is indistinguishable from a full borrow by
+/// pointer + length alone. Probing `data_ptr − header` for such a sub-slice
+/// reads provenance-free memory off the start of the R vector — the same hazard
+/// removed from the Arrow path in #867 (see #880). The Arrow `Buffer` can prove
+/// it is R-backed (`ptr_offset`/`capacity`); a `&[T]` cannot, so the only sound
+/// choice is the always-correct copy. `Cow` remains zero-copy on the *input*
+/// side (`TryFromSexp` → `Cow::Borrowed`); only the `IntoR` direction copies.
 impl<T> IntoR for Cow<'_, [T]>
 where
     T: crate::RNativeType + Clone,
@@ -772,15 +761,9 @@ where
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        if let Some(sexp) = try_recover_cow_slice(&self) {
-            return sexp;
-        }
         self.as_ref().into_sexp()
     }
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        if let Some(sexp) = try_recover_cow_slice(&self) {
-            return sexp;
-        }
         unsafe { self.as_ref().into_sexp_unchecked() }
     }
 }

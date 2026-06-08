@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      f6b3c40af20a5126
+// content-hash:      c878eea453d57f6f
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -734,11 +734,13 @@ unsafe extern "C-unwind" {
     pub fn C_S3TraitCounter__Counter__default_initial(_: SEXP) -> SEXP;
     pub fn C_S4TraitCounter__Counter__default_initial(_: SEXP) -> SEXP;
     pub fn C_S7TraitCounter__Counter__default_initial(_: SEXP) -> SEXP;
-    pub fn C_zero_copy_cow_f64_identity(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_zero_copy_cow_i32_identity(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_cow_f64_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_zero_copy_cow_i32_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_zero_copy_rcow_f64_identity(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_zero_copy_rcow_i32_identity(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_cow_str_is_borrowed(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_protected_strvec_unique(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_zero_copy_rcow_f64_mutated_is_copy(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_vec_cow_str_all_borrowed(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_alloc_r_backed(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_zero_copy_sexprec_offset(_: SEXP) -> SEXP;
@@ -960,6 +962,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
     pub fn C_gc_stress_factor_labels(_: SEXP) -> SEXP;
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_rcow_roundtrip(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_collated(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_with_tag(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_rayon(_: SEXP) -> SEXP;
@@ -981,6 +984,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_dataframe_nested_enum(_: SEXP) -> SEXP;
     pub fn C_gc_stress_named_df_list_builder(_: SEXP) -> SEXP;
     pub fn C_gc_stress_vec_option_collection(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_cow_subslice_roundtrip(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dispatch_to_dataframes(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_to_vec_nested(_: SEXP) -> SEXP;
     pub fn C_gc_stress_arrow_sliced_recordbatch(_: SEXP) -> SEXP;
@@ -5699,18 +5703,23 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
-        name: c"C_zero_copy_cow_f64_identity".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_cow_f64_identity) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_zero_copy_cow_i32_identity".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_cow_i32_identity) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
         name: c"C_zero_copy_cow_f64_roundtrip".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_cow_f64_roundtrip) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_zero_copy_cow_i32_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_cow_i32_roundtrip) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_zero_copy_rcow_f64_identity".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_rcow_f64_identity) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_zero_copy_rcow_i32_identity".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_rcow_i32_identity) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -5721,6 +5730,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_zero_copy_protected_strvec_unique".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_protected_strvec_unique) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_zero_copy_rcow_f64_mutated_is_copy".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zero_copy_rcow_f64_mutated_is_copy) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -6829,6 +6843,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_rcow_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_rcow_roundtrip) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_split_collated".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_split_collated) }),
         numArgs: 1,
@@ -6931,6 +6950,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_vec_option_collection".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_vec_option_collection) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_cow_subslice_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_cow_subslice_roundtrip) }),
         numArgs: 1,
     },
     R_CallMethodDef {

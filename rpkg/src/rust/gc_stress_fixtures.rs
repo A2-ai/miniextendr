@@ -1833,3 +1833,101 @@ pub fn gc_stress_arrow_sliced_recordbatch() {
 }
 
 // endregion
+
+// region: Cow<[T]> borrowed sub-slice round-trip (#880)
+
+/// Round-trip a `Cow::Borrowed` *sub-slice* of an R-backed vector through
+/// `IntoR`, exercising the `Cow<[T]>::into_sexp` copy path under GC pressure.
+///
+/// Regression guard for #880. A borrowed sub-slice (`&full[2..]`) points into
+/// the *middle* of an R vector: `slice.as_ptr()` is offset from the SEXP data
+/// start, so the old speculative `try_recover_r_sexp` probe (`data_ptr − header`)
+/// would read provenance-free memory off the front of the vector and could
+/// false-positive as a "recovered SEXP" — the same class of hazard #867 fixed
+/// for Arrow, but for a bare `&[T]` that carries no metadata to gate on. The
+/// fix removes the probe and always copies; this fixture proves the copy
+/// round-trips the correct sliced values without crashing or returning a bogus
+/// SEXP.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_cow_subslice_roundtrip() {
+    use miniextendr_api::from_r::TryFromSexp;
+    use std::borrow::Cow;
+
+    // R-backed source vectors. Keep them rooted across the allocations that
+    // `.into_sexp()` performs (mirrors a rooted call argument in real usage).
+    let f_sexp = vec![1.0f64, 2.0, 3.0, 4.0, 5.0].into_sexp();
+    let _f_guard = unsafe { miniextendr_api::OwnedProtect::new(f_sexp) };
+    let i_sexp = vec![10i32, 20, 30, 40, 50].into_sexp();
+    let _i_guard = unsafe { miniextendr_api::OwnedProtect::new(i_sexp) };
+
+    // Borrow as 'static slices (offset 0), then sub-slice into the middle so
+    // `as_ptr()` no longer points at the R vector's data start — the exact
+    // shape that defeated the old speculative recovery.
+    let f_cow: Cow<'static, [f64]> = TryFromSexp::try_from_sexp(f_sexp).unwrap();
+    let Cow::Borrowed(f_full) = f_cow else {
+        unreachable!("Cow<[f64]> from R is always Borrowed");
+    };
+    let i_cow: Cow<'static, [i32]> = TryFromSexp::try_from_sexp(i_sexp).unwrap();
+    let Cow::Borrowed(i_full) = i_cow else {
+        unreachable!("Cow<[i32]> from R is always Borrowed");
+    };
+
+    let f_sub: Cow<'static, [f64]> = Cow::Borrowed(&f_full[2..5]); // c(3, 4, 5)
+    let i_sub: Cow<'static, [i32]> = Cow::Borrowed(&i_full[1..4]); // c(20L, 30L, 40L)
+
+    let f_out = f_sub.into_sexp();
+    let _f_out_guard = unsafe { miniextendr_api::OwnedProtect::new(f_out) };
+    let i_out = i_sub.into_sexp();
+    let _i_out_guard = unsafe { miniextendr_api::OwnedProtect::new(i_out) };
+
+    // The copy must hold the correct sliced values — a bogus recovered SEXP
+    // would surface as wrong values (or corruption) rather than a clean copy.
+    let fs: &[f64] = unsafe { f_out.as_slice() };
+    let is: &[i32] = unsafe { i_out.as_slice() };
+    assert_eq!(fs, [3.0, 4.0, 5.0]);
+    assert_eq!(is, [20, 30, 40]);
+}
+
+// endregion
+
+// region: RCow<T> round-trip (safe zero-copy — #880)
+
+/// Drive `RCow<T>`'s borrowed (zero-copy) and owned (copy-on-write) `IntoR`
+/// paths under GC pressure.
+///
+/// Companion to `gc_stress_cow_subslice_roundtrip` (#880). `RCow` is the safe
+/// zero-copy round-trip type: its borrowed arm carries the source SEXP, so
+/// `IntoR` hands that SEXP straight back with no `data_ptr − header` probe. This
+/// fixture confirms (a) the borrowed round-trip returns the *same* SEXP, and
+/// (b) `to_mut()` forces a fresh, value-correct copy — both without corruption
+/// under `gctorture(TRUE)`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_rcow_roundtrip() {
+    use miniextendr_api::RCow;
+    use miniextendr_api::from_r::TryFromSexp;
+
+    let src = vec![1.0f64, 2.0, 3.0, 4.0, 5.0].into_sexp();
+    let _src_guard = unsafe { miniextendr_api::OwnedProtect::new(src) };
+
+    // Borrowed round-trip must return the *same* SEXP (true zero-copy).
+    let borrowed: RCow<'static, f64> = TryFromSexp::try_from_sexp(src).unwrap();
+    let back = borrowed.into_sexp();
+    assert_eq!(back, src, "borrowed RCow round-trip must be identity");
+
+    // Copy-on-write: mutating forces a fresh, value-correct R vector.
+    let mut owned: RCow<'static, f64> = TryFromSexp::try_from_sexp(src).unwrap();
+    for v in owned.to_mut() {
+        *v += 100.0;
+    }
+    let out = owned.into_sexp();
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    assert_ne!(out, src, "mutated RCow must be a fresh SEXP");
+    let vals: &[f64] = unsafe { out.as_slice() };
+    assert_eq!(vals, [101.0, 102.0, 103.0, 104.0, 105.0]);
+}
+
+// endregion
