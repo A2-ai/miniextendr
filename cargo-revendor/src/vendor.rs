@@ -1333,6 +1333,52 @@ pub fn regenerate_lockfile(
     Ok(())
 }
 
+/// Blank every `.md` file under `vendor_dir`, **except** those pulled into
+/// Rust source via `include_str!`/`include_bytes!`/`include!`.
+///
+/// Some crates use `.md` files as `format!` templates or doc-comment bodies
+/// (e.g. `derive_builder_core`'s `src/doc_tpl/builder_struct.md`). Blanking
+/// such a file turns `format!(include_str!("x.md"), name = …)` into
+/// `format!("", name = …)` — a hard compile error that breaks every
+/// vendored/tarball build whose dependency graph contains it (#828). Those
+/// files are left byte-for-byte intact, so the caller's subsequent
+/// `recompute_checksums` (which hashes actual disk contents) yields the
+/// correct, unchanged SHA-256 for them — no special checksum handling needed.
+///
+/// Returns the number of `.md` files left intact because they're
+/// source-referenced.
+fn blank_md_files(vendor_dir: &Path) -> Result<usize> {
+    // Build a per-crate set of source-referenced .md files (canonicalized).
+    let mut protected: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    for entry in std::fs::read_dir(vendor_dir)
+        .with_context(|| format!("failed to read vendor dir {}", vendor_dir.display()))?
+    {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            protected.extend(crate::strip::referenced_md_files(&entry.path()));
+        }
+    }
+
+    let mut skipped = 0usize;
+    for entry in walkdir::WalkDir::new(vendor_dir) {
+        let entry = entry?;
+        if entry.file_type().is_file()
+            && let Some(ext) = entry.path().extension()
+            && ext == "md"
+        {
+            // Canonicalize to match the canonical paths recorded in `protected`.
+            if let Ok(canon) = entry.path().canonicalize()
+                && protected.contains(&canon)
+            {
+                skipped += 1;
+                continue;
+            }
+            std::fs::write(entry.path(), "")?;
+        }
+    }
+    Ok(skipped)
+}
+
 /// Compress vendor/ into a .tar.xz tarball
 pub fn compress_vendor(
     vendor_dir: &Path,
@@ -1345,17 +1391,9 @@ pub fn compress_vendor(
     }
 
     if blank_md {
-        for entry in walkdir::WalkDir::new(vendor_dir) {
-            let entry = entry?;
-            if entry.file_type().is_file()
-                && let Some(ext) = entry.path().extension()
-                && ext == "md"
-            {
-                std::fs::write(entry.path(), "")?;
-            }
-        }
+        let skipped = blank_md_files(vendor_dir)?;
         if v.debug() {
-            eprintln!("  Blanked .md files in vendor/");
+            eprintln!("  Blanked .md files in vendor/ ({skipped} source-referenced kept intact)");
         }
 
         // Blanking .md invalidates the per-file SHA-256s in
@@ -1662,6 +1700,91 @@ external = { git = "https://example.com/ext" }
             Verbosity(0),
         )
         .unwrap();
+    }
+
+    // endregion
+
+    // region: blank_md (#828)
+
+    /// `--blank-md` must blank documentation `.md` (crate-root README, etc.)
+    /// but leave `.md` files that Rust source pulls in via `include_str!`
+    /// intact — blanking those produces a `format!("", …)` compile error and
+    /// breaks every vendored build whose deps include such a crate (#828).
+    ///
+    /// The intact file's checksum must also stay correct: because we don't
+    /// touch it, the post-blank `recompute_checksums` (hashing actual disk
+    /// contents) yields its unchanged SHA-256 automatically.
+    #[test]
+    fn blank_md_skips_include_str_referenced_files() {
+        use sha2::Digest;
+
+        let dir = tempfile::tempdir().unwrap();
+        let vendor = dir.path().join("vendor");
+        let crate_dir = vendor.join("tplcrate-0.1.0");
+        std::fs::create_dir_all(crate_dir.join("src/doc_tpl")).unwrap();
+
+        // Rust source that pulls a .md template into source via include_str!
+        // inside a format! call — the exact derive_builder_core shape.
+        std::fs::write(
+            crate_dir.join("src/lib.rs"),
+            r#"pub fn doc(name: &str) -> String {
+    format!(include_str!("doc_tpl/builder_struct.md"), struct_name = name)
+}
+"#,
+        )
+        .unwrap();
+        let tpl_body = "Builder for {struct_name}.\n";
+        std::fs::write(crate_dir.join("src/doc_tpl/builder_struct.md"), tpl_body).unwrap();
+
+        // A crate-root README that SHOULD be blanked (pure docs).
+        std::fs::write(crate_dir.join("README.md"), "# tplcrate\n\nDocs.\n").unwrap();
+
+        // Minimal .cargo-checksum.json with a package hash, so the recompute
+        // path is exercised end-to-end.
+        let pkg = "deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead";
+        std::fs::write(
+            crate_dir.join(".cargo-checksum.json"),
+            serde_json::json!({ "package": pkg, "files": {} }).to_string(),
+        )
+        .unwrap();
+
+        // Run the blank step (no tar).
+        let skipped = blank_md_files(&vendor).unwrap();
+        assert_eq!(skipped, 1, "exactly one source-referenced .md kept intact");
+
+        // The include_str! template must be byte-for-byte intact.
+        let tpl_after =
+            std::fs::read_to_string(crate_dir.join("src/doc_tpl/builder_struct.md")).unwrap();
+        assert_eq!(tpl_after, tpl_body, "include_str! .md must not be blanked");
+
+        // The crate-root README must be blanked.
+        let readme_after = std::fs::read_to_string(crate_dir.join("README.md")).unwrap();
+        assert_eq!(readme_after, "", "crate-root README must be blanked");
+
+        // Now recompute checksums (the production sequence) and confirm the
+        // intact template's recorded SHA-256 matches its real content, while
+        // the blanked README's recorded SHA-256 matches the empty string.
+        crate::checksum::recompute_checksums(&vendor).unwrap();
+        let raw = std::fs::read_to_string(crate_dir.join(".cargo-checksum.json")).unwrap();
+        let cksum: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let files = cksum["files"].as_object().unwrap();
+
+        let tpl_hash = format!("{:x}", sha2::Sha256::digest(tpl_body.as_bytes()));
+        assert_eq!(
+            files["src/doc_tpl/builder_struct.md"].as_str().unwrap(),
+            tpl_hash,
+            "checksum of intact template must match its real (unchanged) content"
+        );
+
+        let empty_hash = format!("{:x}", sha2::Sha256::digest(b""));
+        assert_eq!(
+            files["README.md"].as_str().unwrap(),
+            empty_hash,
+            "checksum of blanked README must match the empty string"
+        );
+
+        // package field preserved.
+        assert_eq!(cksum["package"].as_str().unwrap(), pkg);
     }
 
     // endregion
