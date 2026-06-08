@@ -1,27 +1,60 @@
 # Tests for zero-copy conversions (Cow, Arrow pointer recovery, ProtectedStrVec)
 
-# region: Cow<[T]> round-trip identity
+# region: Cow<[T]> round-trip (always copies — #880)
 
-test_that("Cow<[f64]> round-trip returns same R object (zero-copy)", {
+# The Cow<[T]> IntoR path no longer attempts speculative SEXP pointer recovery
+# (#880): a borrowed sub-slice carries no provenance to prove it points at an
+# R vector start, so the probe could read off into unrelated memory. The
+# round-trip now always copies — we verify the values survive, not identity.
+
+test_that("Cow<[f64]> round-trip preserves values", {
   x <- c(1.0, 2.0, 3.0)
-  expect_true(zero_copy_cow_f64_identity(x))
+  expect_equal(zero_copy_cow_f64_roundtrip(x), x)
 })
 
-test_that("Cow<[i32]> round-trip returns same R object (zero-copy)", {
-  # Use c() not 1:5 — the colon operator creates ALTREP compact sequences
-  # whose data isn't at a fixed offset from the SEXP header.
+test_that("Cow<[i32]> round-trip preserves values", {
   x <- c(1L, 2L, 3L, 4L, 5L)
-  expect_true(zero_copy_cow_i32_identity(x))
+  expect_equal(zero_copy_cow_i32_roundtrip(x), x)
 })
 
-test_that("Cow<[f64]> round-trip with NAs returns same object", {
+test_that("Cow<[f64]> round-trip with NAs preserves values", {
   x <- c(1.0, NA, 3.0)
-  expect_true(zero_copy_cow_f64_identity(x))
+  expect_equal(zero_copy_cow_f64_roundtrip(x), x)
 })
 
-test_that("Cow<[i32]> round-trip with NAs returns same object", {
+test_that("Cow<[i32]> round-trip with NAs preserves values", {
   x <- c(1L, NA, 3L)
-  expect_true(zero_copy_cow_i32_identity(x))
+  expect_equal(zero_copy_cow_i32_roundtrip(x), x)
+})
+
+# endregion
+
+# region: RCow<T> round-trip (safe zero-copy — #880)
+
+# RCow is the safe zero-copy replacement for the removed Cow<[T]> recovery: its
+# borrowed arm carries the source SEXP, so the round-trip returns the *same*
+# R object with no speculative pointer probe.
+
+test_that("RCow<f64> round-trip returns same R object (zero-copy)", {
+  x <- c(1.0, 2.0, 3.0)
+  expect_true(zero_copy_rcow_f64_identity(x))
+})
+
+test_that("RCow<i32> round-trip returns same R object (zero-copy)", {
+  x <- c(1L, 2L, 3L, 4L, 5L)
+  expect_true(zero_copy_rcow_i32_identity(x))
+})
+
+test_that("RCow<f64> round-trip with NAs returns same object", {
+  x <- c(1.0, NA, 3.0)
+  expect_true(zero_copy_rcow_f64_identity(x))
+})
+
+test_that("RCow copy-on-write yields a fresh, value-correct object", {
+  x <- c(1.0, 2.0, 3.0)
+  y <- zero_copy_rcow_f64_mutated_is_copy(x)
+  expect_equal(y, c(2.0, 4.0, 6.0))
+  expect_equal(x, c(1.0, 2.0, 3.0)) # input untouched (copy-on-write)
 })
 
 # endregion
@@ -71,12 +104,13 @@ test_that("Int32Array with NAs round-trip returns same object", {
 
 test_that("ALTREP compact integer (1:n) correctly falls through to copy", {
   # 1:5 creates an ALTREP compact sequence — data isn't at fixed offset
-  # from SEXP header. Recovery must fail gracefully, returning a copy.
+  # from SEXP header. Arrow recovery must fail gracefully, returning a copy.
   x <- 1:5
-  expect_false(zero_copy_cow_i32_identity(x))
   expect_false(zero_copy_arrow_i32_identity(x))
   # But values are preserved correctly
   expect_equal(miniextendr:::arrow_i32_roundtrip(x), c(1L, 2L, 3L, 4L, 5L))
+  # The Cow path always copies now (#880); values still round-trip correctly.
+  expect_equal(zero_copy_cow_i32_roundtrip(x), 1:5)
 })
 
 test_that("UInt8Array round-trip returns same R object (zero-copy)", {

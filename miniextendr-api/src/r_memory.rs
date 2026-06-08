@@ -6,8 +6,13 @@
 //! bit, and vecsxp.length) without calling any R functions.
 //!
 //! This is used by:
-//! - Arrow integration: zero-copy IntoR when the buffer is R-backed
-//! - `Cow<[T]>` IntoR round-trip
+//! - Arrow integration: zero-copy IntoR when the buffer is genuinely R-backed
+//!   (the value buffer must be unsliced and exactly sized — see #867)
+//!
+//! It is deliberately *not* used for `Cow<[T]>` IntoR: a bare `&[T]` carries no
+//! provenance metadata to prove it points at the start of an R vector, so a
+//! borrowed sub-slice would probe off into unrelated memory (the #880 hazard).
+//! That path always copies instead.
 //!
 //! # Initialization
 //!

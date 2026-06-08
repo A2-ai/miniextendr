@@ -80,12 +80,48 @@ pub fn sum_cow(x: Cow<'static, [f64]>) -> f64 {
     x.iter().sum()
 }
 
-// Round-trip: if x was borrowed from R, IntoR returns the original SEXP
+// Round-trip: input is zero-copy (Cow::Borrowed into R's INTSXP), but the
+// IntoR direction copies into a fresh R vector. Unlike Arrow buffers, a bare
+// &[T] carries no provenance to prove it points at an R vector start, so a
+// borrowed sub-slice can't be told apart from a full borrow — the copy is the
+// only sound choice (see #880).
 #[miniextendr]
 pub fn passthrough_cow(x: Cow<'static, [i32]>) -> Cow<'static, [i32]> {
-    x  // zero-copy: SEXP pointer recovery finds the original R vector
+    x  // zero-copy in; copy back out
 }
 ```
+
+### `RCow<'static, T>`: safe zero-copy round-trip
+
+When you want the round-trip back to R to *also* be zero-copy, use `RCow`
+instead of `Cow`. `RCow`'s borrowed arm remembers the source SEXP it was read
+from, so `IntoR` returns that exact R object — no copy, and no speculative
+pointer recovery (the reason `Cow<[T]>` can't do this safely; see #880):
+
+```rust
+use miniextendr_api::RCow;
+
+// Zero-copy BOTH directions: returns the original R vector unchanged.
+#[miniextendr]
+pub fn passthrough_rcow(x: RCow<'static, f64>) -> RCow<'static, f64> {
+    x
+}
+
+// Mutation triggers copy-on-write, then materializes a fresh R vector.
+#[miniextendr]
+pub fn doubled_rcow(mut x: RCow<'static, f64>) -> RCow<'static, f64> {
+    for v in x.to_mut() {
+        *v *= 2.0;
+    }
+    x
+}
+```
+
+A borrowed `RCow` can only be produced by reading an R vector (its fields are
+private), so — unlike `Cow::Borrowed(&slice[2..5])` — it can never be a
+sub-slice. That structural invariant is what makes returning the stored SEXP
+sound. Slice it via `Deref` to get a plain `&[T]`; use `to_mut()` /
+`into_owned()` when you need to mutate or keep the data past the call.
 
 ### `ProtectedStrVec` vs `StrVec`
 

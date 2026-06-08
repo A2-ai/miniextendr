@@ -608,6 +608,7 @@ pub mod dots;
 pub mod list;
 pub mod missing;
 pub mod named_vector;
+pub mod rcow;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
@@ -624,6 +625,7 @@ pub use list::{
 };
 pub use missing::{Missing, is_missing_arg};
 pub use named_vector::{AtomicElement, NamedVector};
+pub use rcow::{RBorrow, RCow};
 pub use strvec::{
     ProtectedStrVec, ProtectedStrVecCowIter, ProtectedStrVecIter, StrVec, StrVecBuilder,
     StrVecCowIter, StrVecIter,

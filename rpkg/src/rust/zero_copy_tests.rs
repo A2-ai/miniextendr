@@ -7,30 +7,74 @@ use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
 use std::borrow::Cow;
 
-// region: Cow<[T]> round-trip identity
+// region: Cow<[T]> round-trip (always copies — #880)
 
-/// Returns TRUE if `Cow<[f64]>` round-trip returns the same R object.
+// The `Cow<[T]>` IntoR path no longer attempts speculative SEXP pointer
+// recovery (#880): a borrowed sub-slice of an R vector carries no provenance
+// to distinguish it from a full borrow, so probing `data_ptr − header` would
+// read off into unrelated memory. The round-trip now always copies; these
+// fixtures verify the copy preserves values (object identity is intentionally
+// no longer guaranteed). `zero_copy_cow_f64_roundtrip` (below) covers f64.
+
+/// Round-trip `Cow<[i32]>` through TryFromSexp → IntoR and return the result.
+/// As of #880 this always copies into a fresh R vector.
 /// @export
 #[miniextendr]
-pub fn zero_copy_cow_f64_identity(x: SEXP) -> bool {
-    use miniextendr_api::from_r::TryFromSexp;
-    use miniextendr_api::into_r::IntoR;
-
-    let cow: Cow<'static, [f64]> = TryFromSexp::try_from_sexp(x).unwrap();
-    let result = cow.into_sexp();
-    result == x
-}
-
-/// Returns TRUE if `Cow<[i32]>` round-trip returns the same R object.
-/// @export
-#[miniextendr]
-pub fn zero_copy_cow_i32_identity(x: SEXP) -> bool {
+pub fn zero_copy_cow_i32_roundtrip(x: SEXP) -> SEXP {
     use miniextendr_api::from_r::TryFromSexp;
     use miniextendr_api::into_r::IntoR;
 
     let cow: Cow<'static, [i32]> = TryFromSexp::try_from_sexp(x).unwrap();
-    let result = cow.into_sexp();
-    result == x
+    cow.into_sexp()
+}
+
+// endregion
+
+// region: RCow<T> round-trip identity (safe zero-copy — #880)
+
+// `RCow` is the safe zero-copy-round-trip replacement for the recovery that was
+// removed from `Cow<[T]>` (#880). Its borrowed arm carries the source SEXP, so
+// IntoR hands the original R object back with no speculative pointer probe —
+// identity is preserved (result is the same SEXP that came in).
+
+/// Returns TRUE if `RCow<f64>` round-trip returns the same R object (zero-copy).
+/// @export
+#[miniextendr]
+pub fn zero_copy_rcow_f64_identity(x: SEXP) -> bool {
+    use miniextendr_api::RCow;
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+
+    let rc: RCow<'static, f64> = TryFromSexp::try_from_sexp(x).unwrap();
+    rc.into_sexp() == x
+}
+
+/// Returns TRUE if `RCow<i32>` round-trip returns the same R object (zero-copy).
+/// @export
+#[miniextendr]
+pub fn zero_copy_rcow_i32_identity(x: SEXP) -> bool {
+    use miniextendr_api::RCow;
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+
+    let rc: RCow<'static, i32> = TryFromSexp::try_from_sexp(x).unwrap();
+    rc.into_sexp() == x
+}
+
+/// Returns FALSE — a mutated `RCow` copies-on-write, so it is a new R object
+/// (but still value-correct, checked R-side).
+/// @export
+#[miniextendr]
+pub fn zero_copy_rcow_f64_mutated_is_copy(x: SEXP) -> SEXP {
+    use miniextendr_api::RCow;
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+
+    let mut rc: RCow<'static, f64> = TryFromSexp::try_from_sexp(x).unwrap();
+    for v in rc.to_mut() {
+        *v *= 2.0;
+    }
+    rc.into_sexp()
 }
 
 // endregion
