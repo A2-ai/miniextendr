@@ -1897,13 +1897,20 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
-if test ! -f "DESCRIPTION" || test ! -f "NAMESPACE"; then
+if test ! -f "DESCRIPTION"; then
   as_fn_error $? "configure must be run from the rpkg directory (where DESCRIPTION exists).
 
   If you're in the monorepo root, run:
     cd rpkg && ./configure
   Or use:
     just configure" "$LINENO" 5
+fi
+if test ! -f "NAMESPACE"; then
+  as_fn_error $? "NAMESPACE not found (DESCRIPTION is present, so the working directory is correct).
+
+  Generate it before configuring:
+    Rscript -e 'devtools::document()'
+  Or add a stub NAMESPACE if you have no roxygen tags yet." "$LINENO" 5
 fi
 
 
