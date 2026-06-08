@@ -272,7 +272,7 @@ GitHub Actions auto-deploys on push to `main` when `site/**`, `docs/**`, or `*/s
 
 `site/content/manual/` is **auto-generated from `docs/`** by `scripts/docs-to-site.sh` (1:1 conversion, not curated summaries). Edit `docs/*.md` only — never edit `site/content/manual/*.md` directly. The generator derives frontmatter (title + description) from each doc's `# Heading` and first paragraph. `site/content/_index.md` and anything outside `manual/` are hand-authored and must be edited directly.
 
-**After editing `docs/`, regenerate and commit both together**: `just site-docs && git add docs/ site/content/manual/ site/data/plans.json`. CI runs `docs-to-site.sh` itself before each deploy, so the live site is always correct — but the in-repo `site/content/manual/` drifts out of sync if you skip the regenerate step, making subsequent diffs noisy and masking unrelated site edits.
+**The generated manual (`site/content/manual/*.md`, except the hand-authored `_index.md`) and the Zola build output (`site/public/`) are gitignored** since #593 — so edit `docs/*.md` and commit only that; there is **nothing to commit on the site side**. CI runs `docs-to-site.sh` and rebuilds the site from `docs/` before each deploy, so the live site is always correct. To preview locally, run `just site-docs` (+ `just site-build`); don't `git add` the output.
 
 ### Site scripts
 
