@@ -3,7 +3,7 @@
 //! These tests verify that the `as = "..."` attribute generates proper S3 methods
 //! for R's coercion generics like `as.data.frame()`, `as.list()`, `as.character()`.
 
-use miniextendr_api::as_coerce::AsCoerceError;
+use miniextendr_api::r_coerce::RCoerceError;
 use miniextendr_api::{
     ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, SEXP, SEXPTYPE, SexpExt,
     miniextendr, sys,
@@ -13,26 +13,26 @@ use miniextendr_api::{
 ///
 /// This struct contains sample data to test conversion to data.frame, list, and character.
 #[derive(ExternalPtr)]
-pub struct AsCoerceTestData {
+pub struct RCoerceTestData {
     names: Vec<String>,
     values: Vec<f64>,
 }
 
 /// Another test struct that returns errors for certain conversions.
 #[derive(ExternalPtr)]
-pub struct AsCoerceErrorTest {
+pub struct RCoerceErrorTest {
     is_empty: bool,
 }
 
-// region: AsCoerceTestData impl
+// region: RCoerceTestData impl
 
 /// @title as.<class>() Coercion Test Type
-/// @name AsCoerceTestData
+/// @name RCoerceTestData
 /// @description Test type for as.data.frame, as.list, and as.character methods
 /// @param x An object.
 /// @param ... Additional arguments.
 #[miniextendr(s3)]
-impl AsCoerceTestData {
+impl RCoerceTestData {
     /// Create a new test data object.
     /// @param names Character vector of names.
     /// @param values Numeric vector of values.
@@ -49,9 +49,9 @@ impl AsCoerceTestData {
     ///
     /// Creates a data.frame with columns "name" and "value".
     #[miniextendr(as = "data.frame")]
-    pub fn as_data_frame(&self) -> Result<List, AsCoerceError> {
+    pub fn as_data_frame(&self) -> Result<List, RCoerceError> {
         if self.names.len() != self.values.len() {
-            return Err(AsCoerceError::InvalidData {
+            return Err(RCoerceError::InvalidData {
                 message: "names and values must have same length".into(),
             });
         }
@@ -84,7 +84,7 @@ impl AsCoerceTestData {
     ///
     /// Creates a list with "names" and "values" elements.
     #[miniextendr(as = "list")]
-    pub fn as_list(&self) -> Result<List, AsCoerceError> {
+    pub fn as_list(&self) -> Result<List, RCoerceError> {
         unsafe {
             let scope = ProtectScope::new();
             let builder = ListBuilder::new(&scope, 2);
@@ -105,9 +105,9 @@ impl AsCoerceTestData {
     ///
     /// Returns a single string describing the data.
     #[miniextendr(as = "character")]
-    pub fn as_character(&self) -> Result<SEXP, AsCoerceError> {
+    pub fn as_character(&self) -> Result<SEXP, RCoerceError> {
         let desc = format!(
-            "AsCoerceTestData({} items: {})",
+            "RCoerceTestData({} items: {})",
             self.values.len(),
             self.names.join(", ")
         );
@@ -124,7 +124,7 @@ impl AsCoerceTestData {
     ///
     /// Returns the values as a numeric vector.
     #[miniextendr(as = "numeric")]
-    pub fn as_numeric(&self) -> Result<SEXP, AsCoerceError> {
+    pub fn as_numeric(&self) -> Result<SEXP, RCoerceError> {
         Ok(self.values.clone().into_sexp())
     }
 
@@ -132,20 +132,20 @@ impl AsCoerceTestData {
     ///
     /// Returns the values truncated to integers.
     #[miniextendr(as = "integer")]
-    pub fn as_integer(&self) -> Result<SEXP, AsCoerceError> {
+    pub fn as_integer(&self) -> Result<SEXP, RCoerceError> {
         let ints: Vec<i32> = self.values.iter().map(|&v| v as i32).collect();
         Ok(ints.into_sexp())
     }
 }
 // endregion
 
-// region: AsCoerceErrorTest impl - tests error handling
+// region: RCoerceErrorTest impl - tests error handling
 
 /// @title as.<class>() Error Test Type
-/// @name AsCoerceErrorTest
+/// @name RCoerceErrorTest
 /// @param is_empty Logical; if TRUE, triggers error on as.data.frame.
 #[miniextendr(s3)]
-impl AsCoerceErrorTest {
+impl RCoerceErrorTest {
     /// Create a new error test object.
     /// @param is_empty Logical; if TRUE, triggers error on as.data.frame.
     pub fn new(is_empty: bool) -> Self {
@@ -154,9 +154,9 @@ impl AsCoerceErrorTest {
 
     /// Convert to data.frame - fails when empty.
     #[miniextendr(as = "data.frame")]
-    pub fn as_data_frame(&self) -> Result<List, AsCoerceError> {
+    pub fn as_data_frame(&self) -> Result<List, RCoerceError> {
         if self.is_empty {
-            return Err(AsCoerceError::InvalidData {
+            return Err(RCoerceError::InvalidData {
                 message: "cannot create data.frame from empty data".into(),
             });
         }
@@ -178,19 +178,17 @@ impl AsCoerceErrorTest {
 
     /// Convert to list - always returns "not supported" error.
     #[miniextendr(as = "list")]
-    pub fn as_list(&self) -> Result<List, AsCoerceError> {
-        Err(AsCoerceError::NotSupported {
-            from: "AsCoerceErrorTest",
+    pub fn as_list(&self) -> Result<List, RCoerceError> {
+        Err(RCoerceError::NotSupported {
+            from: "RCoerceErrorTest",
             to: "list",
         })
     }
 
     /// Convert to character - custom error message.
     #[miniextendr(as = "character")]
-    pub fn as_character(&self) -> Result<SEXP, AsCoerceError> {
-        Err(AsCoerceError::Custom(
-            "intentional error for testing".into(),
-        ))
+    pub fn as_character(&self) -> Result<SEXP, RCoerceError> {
+        Err(RCoerceError::Custom("intentional error for testing".into()))
     }
 }
 // endregion

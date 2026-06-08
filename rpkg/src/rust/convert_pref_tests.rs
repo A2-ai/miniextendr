@@ -4,7 +4,7 @@
 //! (ExternalPtr, IntoList, RNativeType) to ensure the wrapper forces the
 //! desired representation.
 
-use miniextendr_api::convert::{AsExternalPtr, AsList, AsRNative};
+use miniextendr_api::convert::{AsDataFrame, AsExternalPtr, AsList, AsRNative};
 use miniextendr_api::miniextendr;
 
 #[derive(
@@ -159,3 +159,32 @@ pub fn attr_prefer_list_option(x: Option<i32>) -> Option<i32> {
 pub fn plain_option_i32(x: Option<i32>) -> Option<i32> {
     x
 }
+
+// region: AsDataFrame call-site wrapper
+
+#[derive(miniextendr_api::DataFrameRow, miniextendr_api::IntoList)]
+pub struct PrefRow {
+    id: i32,
+    label: String,
+}
+
+#[miniextendr]
+/// @title Force data.frame conversion at the call site
+/// @rdname convert_pref_tests
+/// @description Wraps a `Vec<Row>` in `AsDataFrame` to force a `data.frame` return without making
+///   that the row type's default representation. A build failure surfaces in R as an error.
+/// @examples
+/// pref_rows_as_data_frame()
+pub fn pref_rows_as_data_frame() -> AsDataFrame<Vec<PrefRow>> {
+    AsDataFrame(vec![
+        PrefRow {
+            id: 1,
+            label: "a".to_string(),
+        },
+        PrefRow {
+            id: 2,
+            label: "b".to_string(),
+        },
+    ])
+}
+// endregion

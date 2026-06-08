@@ -237,7 +237,7 @@ pub use miniextendr_macros::typed_list;
 // but they're in different namespaces (derive macros vs types/traits)
 #[cfg(feature = "vctrs")]
 #[doc(inline)]
-pub use miniextendr_macros::Vctrs;
+pub use miniextendr_macros::{PreferVctrs, Vctrs};
 // Note: MatchArg derive macro is re-exported - it shares the name with the MatchArg trait
 // but they're in different namespaces (derive macros vs types/traits), same as RFactor.
 // The same applies to the `IntoR` and `TryFromSexp` derive macros, which share names with
@@ -574,27 +574,27 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 /// (`as.data.frame()`, `as.list()`, `as.character()`, etc.) for Rust types
 /// wrapped in [`ExternalPtr`](struct@ExternalPtr).
 ///
-/// See the [`as_coerce`] module documentation for usage examples.
-pub mod as_coerce;
-pub use as_coerce::{
-    // Core coercion traits
-    AsCharacter,
+/// See the [`r_coerce`] module documentation for usage examples.
+pub mod r_coerce;
+pub use r_coerce::{
+    // Core coercion traits (R's `as.<class>()` generics)
+    RCoerceCharacter,
+    RCoerceComplex,
+    RCoerceDataFrame,
+    RCoerceDate,
+    RCoerceEnvironment,
     // Error type
-    AsCoerceError,
-    AsComplex,
-    AsDataFrame,
-    AsDate,
-    AsEnvironment,
-    AsFactor,
-    AsFunction,
-    AsInteger,
-    AsList as AsListCoerce,
-    AsLogical,
-    AsMatrix,
-    AsNumeric,
-    AsPOSIXct,
-    AsRaw,
-    AsVector,
+    RCoerceError,
+    RCoerceFactor,
+    RCoerceFunction,
+    RCoerceInteger,
+    RCoerceList,
+    RCoerceLogical,
+    RCoerceMatrix,
+    RCoerceNumeric,
+    RCoercePOSIXct,
+    RCoerceRaw,
+    RCoerceVector,
     // Helpers
     SUPPORTED_AS_GENERICS,
     is_supported_as_generic,
@@ -611,10 +611,13 @@ pub mod named_vector;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
-    AsDisplay, AsDisplayVec, AsExternalPtr, AsExternalPtrExt, AsFromStr, AsFromStrVec, AsList,
-    AsListExt, AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsRNative,
-    AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, ColumnSource,
+    AsDataFrame, AsDataFrameExt, AsDisplay, AsDisplayVec, AsExternalPtr, AsExternalPtrExt,
+    AsFromStr, AsFromStrVec, AsList, AsListExt, AsNamedList, AsNamedListExt, AsNamedVector,
+    AsNamedVectorExt, AsRNative, AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings,
+    ColumnSource,
 };
+#[cfg(feature = "vctrs")]
+pub use convert::{AsVctrs, AsVctrsExt};
 pub use into_r::Lazy;
 pub use list::{
     IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, TryFromList, collect_list,
@@ -733,7 +736,6 @@ pub use trait_abi::TraitView;
 
 /// Marker traits for proc-macro derived types.
 pub mod markers;
-pub use markers::{PrefersDataFrame, PrefersExternalPtr, PrefersList, PrefersRNativeType};
 // endregion
 
 // region: Adapter Traits

@@ -2978,12 +2978,12 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
     lines.join("\n")
 }
 
-/// Generate `impl As*` trait impls for methods with `#[miniextendr(as = "...")]`.
+/// Generate `impl RCoerce*` trait impls for methods with `#[miniextendr(as = "...")]`.
 ///
 /// For each `as` coercion method, generates a forwarding trait impl:
 /// ```ignore
-/// impl ::miniextendr_api::as_coerce::AsDataFrame for MyType {
-///     fn as_data_frame(&self) -> Result<::miniextendr_api::List, ::miniextendr_api::as_coerce::AsCoerceError> {
+/// impl ::miniextendr_api::r_coerce::RCoerceDataFrame for MyType {
+///     fn as_data_frame(&self) -> Result<::miniextendr_api::List, ::miniextendr_api::r_coerce::RCoerceError> {
 ///         self.as_data_frame()  // inherent method preferred over trait method
 ///     }
 /// }
@@ -3015,23 +3015,23 @@ pub fn generate_as_coercion_trait_impls(parsed_impl: &ParsedImpl) -> TokenStream
         }
 
         // Map coercion target to (trait name, trait method name, return type tokens).
-        // Only the 15 standard targets that have corresponding traits in as_coerce.
+        // Only the 15 standard targets that have corresponding traits in r_coerce.
         let (trait_name, trait_method): (&str, &str) = match coercion_target {
-            "data.frame" => ("AsDataFrame", "as_data_frame"),
-            "list" => ("AsList", "as_list"),
-            "character" => ("AsCharacter", "as_character"),
-            "numeric" | "double" => ("AsNumeric", "as_numeric"),
-            "integer" => ("AsInteger", "as_integer"),
-            "logical" => ("AsLogical", "as_logical"),
-            "matrix" => ("AsMatrix", "as_matrix"),
-            "vector" => ("AsVector", "as_vector"),
-            "factor" => ("AsFactor", "as_factor"),
-            "Date" => ("AsDate", "as_date"),
-            "POSIXct" => ("AsPOSIXct", "as_posixct"),
-            "complex" => ("AsComplex", "as_complex"),
-            "raw" => ("AsRaw", "as_raw"),
-            "environment" => ("AsEnvironment", "as_environment"),
-            "function" => ("AsFunction", "as_function"),
+            "data.frame" => ("RCoerceDataFrame", "as_data_frame"),
+            "list" => ("RCoerceList", "as_list"),
+            "character" => ("RCoerceCharacter", "as_character"),
+            "numeric" | "double" => ("RCoerceNumeric", "as_numeric"),
+            "integer" => ("RCoerceInteger", "as_integer"),
+            "logical" => ("RCoerceLogical", "as_logical"),
+            "matrix" => ("RCoerceMatrix", "as_matrix"),
+            "vector" => ("RCoerceVector", "as_vector"),
+            "factor" => ("RCoerceFactor", "as_factor"),
+            "Date" => ("RCoerceDate", "as_date"),
+            "POSIXct" => ("RCoercePOSIXct", "as_posixct"),
+            "complex" => ("RCoerceComplex", "as_complex"),
+            "raw" => ("RCoerceRaw", "as_raw"),
+            "environment" => ("RCoerceEnvironment", "as_environment"),
+            "function" => ("RCoerceFunction", "as_function"),
             _ => continue, // Non-standard targets (tibble, data.table, etc.)
         };
 
@@ -3039,20 +3039,20 @@ pub fn generate_as_coercion_trait_impls(parsed_impl: &ParsedImpl) -> TokenStream
         let trait_method_ident = syn::Ident::new(trait_method, proc_macro2::Span::call_site());
         let user_method_ident = &method.ident;
 
-        // Return type: data.frame and list return Result<List, AsCoerceError>,
-        // all others return Result<SEXP, AsCoerceError>
+        // Return type: data.frame and list return Result<List, RCoerceError>,
+        // all others return Result<SEXP, RCoerceError>
         let return_type = match coercion_target {
             "data.frame" | "list" => quote! {
-                ::core::result::Result<::miniextendr_api::List, ::miniextendr_api::as_coerce::AsCoerceError>
+                ::core::result::Result<::miniextendr_api::List, ::miniextendr_api::r_coerce::RCoerceError>
             },
             _ => quote! {
-                ::core::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::as_coerce::AsCoerceError>
+                ::core::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::r_coerce::RCoerceError>
             },
         };
 
         impls.push(quote! {
             #(#cfg_attrs)*
-            impl ::miniextendr_api::as_coerce::#trait_ident for #type_ident {
+            impl ::miniextendr_api::r_coerce::#trait_ident for #type_ident {
                 fn #trait_method_ident(&self) -> #return_type {
                     self.#user_method_ident()
                 }

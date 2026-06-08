@@ -16,7 +16,7 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 - `condition.rs` — `RCondition` enum + `error!`/`warning!`/`message!`/`condition!` macros + `AsRError<E: Error>`.
 - `from_r.rs` — `TryFromSexp` + `r_slice` / `r_slice_mut` (handle R's 0x1 empty-vector data pointer).
 - `into_r.rs` — `IntoR` impls; `Box<[T]>` blanket + `bool`/`String` overrides.
-- `coerce.rs` / `as_coerce.rs` / `strict.rs` — conversion paths; strict-mode checked variants.
+- `coerce.rs` / `r_coerce.rs` / `strict.rs` — conversion paths; strict-mode checked variants. `r_coerce.rs` holds the `RCoerce*` S3-coercion trait family (`#[miniextendr(as = "…")]`).
 - `externalptr.rs` — `Box<Box<dyn Any>>` storage, `Any::downcast` for safety, non-generic `release_any` finalizer.
 - `altrep.rs` / `altrep_impl.rs` / `altrep_bridge.rs` / `altrep_traits.rs` — ALTREP guard modes (`unsafe`/`rust_unwind`/`r_unwind`), trampolines stay on main thread.
 - `panic_telemetry.rs` — RwLock-based panic hook.

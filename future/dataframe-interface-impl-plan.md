@@ -11,7 +11,7 @@ Implements the maintainer-locked decisions from `future/dataframe-interface-rede
 3. **Land-then-migrate**: this PR lands the new surface and absorbs the already-merged rayon
    work (#765 reader, #768 `RDataFrameBuilder`, #777 flattened fill) onto it.
 4. One owned `DataFrame` type, one `DataFrameError`, one NA contract.
-5. Leave `as_coerce::AsDataFrame` (S3 coercion) alone — different concept, no name collision
+5. Leave `r_coerce::RCoerceDataFrame` (S3 coercion) alone — different concept, no name collision
    with `Into`/`From`.
 
 ## Scope cut (complete-coherent increment)

@@ -10,7 +10,7 @@ R has a standard pattern for type coercion using `as.<class>()` generics like `a
 
 ```rust
 use miniextendr_api::{miniextendr, List, ProtectScope, ListBuilder, IntoR};
-use miniextendr_api::as_coerce::AsCoerceError;
+use miniextendr_api::r_coerce::RCoerceError;
 
 #[derive(ExternalPtr)]
 pub struct Person {
@@ -26,7 +26,7 @@ impl Person {
 
     /// Convert to data.frame
     #[miniextendr(as = "data.frame")]
-    pub fn as_data_frame(&self) -> Result<List, AsCoerceError> {
+    pub fn as_data_frame(&self) -> Result<List, RCoerceError> {
         unsafe {
             let scope = ProtectScope::new();
             let builder = ListBuilder::new(&scope, 2);
@@ -43,7 +43,7 @@ impl Person {
 
     /// Convert to character representation
     #[miniextendr(as = "character")]
-    pub fn as_character(&self) -> Result<String, AsCoerceError> {
+    pub fn as_character(&self) -> Result<String, RCoerceError> {
         Ok(format!("{} (age {})", self.name, self.age))
     }
 }
@@ -84,29 +84,29 @@ as.character.Person <- function(x, ...) {
 
 ## Error Handling
 
-The `AsCoerceError` enum provides structured error types:
+The `RCoerceError` enum provides structured error types:
 
 ```rust
-use miniextendr_api::as_coerce::AsCoerceError;
+use miniextendr_api::r_coerce::RCoerceError;
 
 // Conversion not supported
-Err(AsCoerceError::NotSupported {
+Err(RCoerceError::NotSupported {
     from: "MyType",
     to: "matrix",
 })
 
 // Invalid data prevents conversion
-Err(AsCoerceError::InvalidData {
+Err(RCoerceError::InvalidData {
     message: "columns have different lengths".into(),
 })
 
 // Precision loss during numeric conversion
-Err(AsCoerceError::PrecisionLoss {
+Err(RCoerceError::PrecisionLoss {
     message: "value exceeds i32 range".into(),
 })
 
 // Custom error message
-Err(AsCoerceError::Custom("something went wrong".into()))
+Err(RCoerceError::Custom("something went wrong".into()))
 ```
 
 Errors are automatically converted to R errors with the message from `Display`.
@@ -118,15 +118,15 @@ Methods can return various types:
 ```rust
 // Return SEXP directly
 #[miniextendr(as = "numeric")]
-pub fn as_numeric(&self) -> Result<SEXP, AsCoerceError> { ... }
+pub fn as_numeric(&self) -> Result<SEXP, RCoerceError> { ... }
 
 // Return List (for data.frame, list)
 #[miniextendr(as = "data.frame")]
-pub fn as_data_frame(&self) -> Result<List, AsCoerceError> { ... }
+pub fn as_data_frame(&self) -> Result<List, RCoerceError> { ... }
 
 // Return String (converted to character vector)
 #[miniextendr(as = "character")]
-pub fn as_character(&self) -> Result<String, AsCoerceError> { ... }
+pub fn as_character(&self) -> Result<String, RCoerceError> { ... }
 ```
 
 ## Creating data.frames
@@ -135,7 +135,7 @@ Use `ListBuilder` for heterogeneous column types:
 
 ```rust
 #[miniextendr(as = "data.frame")]
-pub fn as_data_frame(&self) -> Result<List, AsCoerceError> {
+pub fn as_data_frame(&self) -> Result<List, RCoerceError> {
     unsafe {
         let scope = ProtectScope::new();
         let n_cols = 3;
@@ -169,34 +169,33 @@ The `as = "..."` attribute works with **all class systems** - S3, R6, S7, S4, en
 #[miniextendr(s3)]
 impl MyS3Type {
     #[miniextendr(as = "data.frame")]
-    pub fn as_data_frame(&self) -> Result<List, AsCoerceError> { ... }
+    pub fn as_data_frame(&self) -> Result<List, RCoerceError> { ... }
 }
 
 #[miniextendr(r6)]
 impl MyR6Type {
     #[miniextendr(as = "list")]
-    pub fn as_list(&self) -> Result<List, AsCoerceError> { ... }
+    pub fn as_list(&self) -> Result<List, RCoerceError> { ... }
 }
 
 #[miniextendr(s7)]
 impl MyS7Type {
     #[miniextendr(as = "character")]
-    pub fn as_character(&self) -> Result<String, AsCoerceError> { ... }
+    pub fn as_character(&self) -> Result<String, RCoerceError> { ... }
 }
 
 #[miniextendr(env)]
 impl MyEnvType {
     #[miniextendr(as = "data.frame")]
-    pub fn as_data_frame(&self) -> Result<List, AsCoerceError> { ... }
+    pub fn as_data_frame(&self) -> Result<List, RCoerceError> { ... }
 }
 ```
 
 All of these generate proper S3 method wrappers that R can dispatch to.
-```text
 
 ## Best Practices
 
-1. **Use `Result<T, AsCoerceError>`** - Always return a Result to allow error handling
+1. **Use `Result<T, RCoerceError>`** - Always return a Result to allow error handling
 2. **Validate data** - Check for inconsistencies before conversion
 3. **Document the conversion** - Add doc comments explaining what the conversion produces
 4. **Use appropriate return types** - Use `List` for data.frame/list, `SEXP` for vectors
@@ -204,16 +203,16 @@ All of these generate proper S3 method wrappers that R can dispatch to.
 
 ## Traits (Optional)
 
-The `miniextendr_api::as_coerce` module also provides traits you can implement directly:
+The `miniextendr_api::r_coerce` module also provides traits you can implement directly:
 
 ```rust
-use miniextendr_api::as_coerce::{AsDataFrame, AsCoerceError};
+use miniextendr_api::r_coerce::{RCoerceDataFrame, RCoerceError};
 
-impl AsDataFrame for MyType {
-    fn as_data_frame(&self) -> Result<List, AsCoerceError> {
+impl RCoerceDataFrame for MyType {
+    fn as_data_frame(&self) -> Result<List, RCoerceError> {
         // ...
     }
 }
-```text
+```
 
 However, the `#[miniextendr(as = "...")]` attribute is the recommended approach as it generates the R wrappers automatically.

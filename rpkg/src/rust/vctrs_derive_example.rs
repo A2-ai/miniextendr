@@ -27,7 +27,7 @@
 //! ```
 
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
-use miniextendr_api::{Vctrs, miniextendr};
+use miniextendr_api::{AsVctrs, PreferVctrs, Vctrs, miniextendr};
 
 // region: Simple vctr: Percent backed by doubles
 
@@ -38,7 +38,7 @@ use miniextendr_api::{Vctrs, miniextendr};
 /// - `IntoVctrs` trait for conversion to R vctrs object
 /// - R S3 methods for vctrs compatibility (format, vec_proxy, vec_restore, etc.)
 /// - Coercion methods for double type (vec_ptype2, vec_cast)
-#[derive(Vctrs)]
+#[derive(Vctrs, PreferVctrs)]
 #[vctrs(
     class = "derived_percent",
     base = "double",
@@ -68,6 +68,32 @@ impl DerivedPercent {
 pub fn new_derived_percent(x: Vec<f64>) -> Result<miniextendr_api::SEXP, String> {
     let percent = DerivedPercent::new(x);
     percent.into_vctrs().map_err(|e| e.to_string())
+}
+
+/// Create a derived_percent vector via the `AsVctrs` call-site wrapper.
+///
+/// Demonstrates returning a `#[derive(Vctrs)]` type without the manual
+/// `into_vctrs().map_err(...)` boilerplate — `AsVctrs` bridges `IntoVctrs` to `IntoR`, and a
+/// build failure surfaces in R as an error condition. Produces the same object as
+/// [`new_derived_percent`].
+///
+/// @param x Numeric values (as proportions).
+/// @return A derived_percent vector.
+#[miniextendr]
+pub fn new_derived_percent_as_vctrs(x: Vec<f64>) -> AsVctrs<DerivedPercent> {
+    AsVctrs(DerivedPercent::new(x))
+}
+
+/// Create a derived_percent vector by returning the type directly (via `#[derive(PreferVctrs)]`).
+///
+/// `PreferVctrs` gives `DerivedPercent` an `IntoR` impl that routes through `into_vctrs`, so the
+/// type is returned unwrapped. Produces the same object as [`new_derived_percent`].
+///
+/// @param x Numeric values (as proportions).
+/// @return A derived_percent vector.
+#[miniextendr]
+pub fn new_derived_percent_prefer(x: Vec<f64>) -> DerivedPercent {
+    DerivedPercent::new(x)
 }
 
 /// Verify VctrsClass trait constants.

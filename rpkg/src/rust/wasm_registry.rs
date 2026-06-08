@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      ea0bf02ddb9c918d
+// content-hash:      4711143a17361ee5
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -592,22 +592,22 @@ unsafe extern "C-unwind" {
     pub fn C_r_backed_rndvec_int_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_r_backed_rdvector_int_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_r_backed_rdvector_empty_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceTestData__len(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceTestData__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceErrorTest__new(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceTestData__as_list(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceErrorTest__as_list(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceTestData__as_integer(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceTestData__as_numeric(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceTestData__as_character(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceErrorTest__as_character(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceTestData__as_data_frame(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_RCoerceErrorTest__as_data_frame(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ReceiverCounter__add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_ReceiverCounter__inc(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ReceiverCounter__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ReceiverCounter__value(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_ReceiverCounter__default_counter(_: SEXP) -> SEXP;
-    pub fn C_AsCoerceTestData__len(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceTestData__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceErrorTest__new(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceTestData__as_list(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceErrorTest__as_list(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceTestData__as_integer(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceTestData__as_numeric(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceTestData__as_character(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceErrorTest__as_character(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceTestData__as_data_frame(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_AsCoerceErrorTest__as_data_frame(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_backtrace_install_hook(_: SEXP) -> SEXP;
     pub fn C_box_slice_double(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_box_slice_f64_roundtrip(_: SEXP, _: SEXP) -> SEXP;
@@ -934,6 +934,7 @@ unsafe extern "C-unwind" {
     pub fn C_native_list_as_native(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_attr_prefer_externalptr(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_attr_prefer_list_option(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_pref_rows_as_data_frame(_: SEXP) -> SEXP;
     pub fn C_create_events_df(_: SEXP) -> SEXP;
     pub fn C_create_people_df(_: SEXP) -> SEXP;
     pub fn C_create_points_df(_: SEXP) -> SEXP;
@@ -1378,7 +1379,9 @@ unsafe extern "C-unwind" {
     pub fn C_new_derived_rational(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_new_derived_int_lists(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_derived_percent_class_info(_: SEXP) -> SEXP;
+    pub fn C_new_derived_percent_prefer(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_derived_rational_class_info(_: SEXP) -> SEXP;
+    pub fn C_new_derived_percent_as_vctrs(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_DerivedCurrency__format_amounts(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_make_doubling_altrep(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_call_attr_with(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -4983,6 +4986,61 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_RCoerceTestData__len".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceTestData__len) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceTestData__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_RCoerceTestData__new) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceErrorTest__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceErrorTest__new) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceTestData__as_list".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceTestData__as_list) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceErrorTest__as_list".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceErrorTest__as_list) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceTestData__as_integer".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceTestData__as_integer) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceTestData__as_numeric".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceTestData__as_numeric) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceTestData__as_character".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceTestData__as_character) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceErrorTest__as_character".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceErrorTest__as_character) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceTestData__as_data_frame".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceTestData__as_data_frame) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_RCoerceErrorTest__as_data_frame".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_RCoerceErrorTest__as_data_frame) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_ReceiverCounter__add".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_ReceiverCounter__add) }),
         numArgs: 3,
@@ -5006,61 +5064,6 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_ReceiverCounter__default_counter".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_ReceiverCounter__default_counter) }),
         numArgs: 1,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceTestData__len".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceTestData__len) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceTestData__new".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_AsCoerceTestData__new) }),
-        numArgs: 3,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceErrorTest__new".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceErrorTest__new) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceTestData__as_list".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceTestData__as_list) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceErrorTest__as_list".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceErrorTest__as_list) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceTestData__as_integer".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceTestData__as_integer) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceTestData__as_numeric".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceTestData__as_numeric) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceTestData__as_character".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceTestData__as_character) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceErrorTest__as_character".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceErrorTest__as_character) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceTestData__as_data_frame".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceTestData__as_data_frame) }),
-        numArgs: 2,
-    },
-    R_CallMethodDef {
-        name: c"C_AsCoerceErrorTest__as_data_frame".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_AsCoerceErrorTest__as_data_frame) }),
-        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_backtrace_install_hook".as_ptr(),
@@ -6691,6 +6694,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_attr_prefer_list_option".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_attr_prefer_list_option) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_pref_rows_as_data_frame".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_pref_rows_as_data_frame) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_create_events_df".as_ptr(),
@@ -8913,9 +8921,19 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_new_derived_percent_prefer".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_new_derived_percent_prefer) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_derived_rational_class_info".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_derived_rational_class_info) }),
         numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_new_derived_percent_as_vctrs".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_new_derived_percent_as_vctrs) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_DerivedCurrency__format_amounts".as_ptr(),

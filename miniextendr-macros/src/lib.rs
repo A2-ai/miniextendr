@@ -2144,11 +2144,11 @@ pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::Token
         .into()
 }
 
-/// Derive `PrefersList`: when a type implements both `IntoList` and `ExternalPtr`,
-/// this selects list as the default `IntoR` conversion.
+/// Derive `PreferList`: emits an `IntoR` impl selecting list as the type's default
+/// Rust→R conversion (via `IntoList::into_list`).
 ///
-/// Without a Prefer* derive, types that implement multiple conversion paths
-/// will get a compile error due to conflicting `IntoR` impls.
+/// A type carries exactly one representation default: stacking two `Prefer*` derives
+/// is a compile error (conflicting `IntoR` impls).
 ///
 /// # Example
 ///
@@ -2217,6 +2217,29 @@ pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::
 pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     list_derive::derive_prefer_rnative(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `PreferVctrs`: emits an `IntoR` impl converting the type to its R vctrs object via
+/// `IntoVctrs::into_vctrs`.
+///
+/// Pair with `#[derive(Vctrs)]` (which supplies `IntoVctrs`) so the type can be returned
+/// directly from `#[miniextendr]` functions instead of `value.into_vctrs().map_err(...)`.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(Vctrs, PreferVctrs)]
+/// #[vctrs(class = "percent", base = "double")]
+/// struct Percent { #[vctrs(data)] values: Vec<f64> }
+/// // IntoR builds the `percent` vctrs vector; a build failure becomes an R error.
+/// ```
+#[cfg(feature = "vctrs")]
+#[proc_macro_derive(PreferVctrs)]
+pub fn derive_prefer_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    list_derive::derive_prefer_vctrs(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

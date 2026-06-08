@@ -306,8 +306,8 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(expand)
 }
 
-/// Derive `PreferList`: adds the `PrefersList` marker trait and an `IntoR` impl
-/// that converts to R by first calling `IntoList::into_list`, then `into_sexp`.
+/// Derive `PreferList`: emits an `IntoR` impl that converts to R by first calling
+/// `IntoList::into_list`, then `into_sexp`.
 ///
 /// The type must also derive `IntoList` for this to compile. The generated
 /// `IntoR::Error` is `Infallible` (list conversion is infallible for valid structs).
@@ -316,8 +316,6 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let expand = quote! {
-        impl #impl_generics ::miniextendr_api::markers::PrefersList for #name #ty_generics #where_clause {}
-
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
             type Error = std::convert::Infallible;
 
@@ -346,8 +344,8 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(expand)
 }
 
-/// Derive `PreferExternalPtr`: adds the `PrefersExternalPtr` marker trait and an
-/// `IntoR` impl that wraps the value in `ExternalPtr::new` before converting to SEXP.
+/// Derive `PreferExternalPtr`: emits an `IntoR` impl that wraps the value in
+/// `ExternalPtr::new` before converting to SEXP.
 ///
 /// The type must implement `TypedExternal` (typically via `#[derive(ExternalPtr)]`).
 /// The generated `IntoR::Error` is `Infallible`.
@@ -356,8 +354,6 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let expand = quote! {
-        impl #impl_generics ::miniextendr_api::markers::PrefersExternalPtr for #name #ty_generics #where_clause {}
-
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
             type Error = std::convert::Infallible;
 
@@ -386,18 +382,16 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
     Ok(expand)
 }
 
-/// Derive `PreferDataFrame`: adds the `PrefersDataFrame` marker trait and an
-/// `IntoR` impl that converts to R via `IntoDataFrame::into_data_frame`, then `into_sexp`.
+/// Derive `PreferDataFrame`: emits an `IntoR` impl that converts to R via
+/// `ColumnSource::into_column_list`, then `into_sexp`.
 ///
-/// The type must implement `IntoDataFrame` (typically the companion struct generated
+/// The type must implement `ColumnSource` (typically the companion struct generated
 /// by `#[derive(DataFrameRow)]`). The generated `IntoR::Error` is `Infallible`.
 pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let expand = quote! {
-        impl #impl_generics ::miniextendr_api::markers::PrefersDataFrame for #name #ty_generics #where_clause {}
-
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
             type Error = std::convert::Infallible;
 
@@ -426,8 +420,8 @@ pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> 
     Ok(expand)
 }
 
-/// Derive `PreferRNativeType`: adds the `PrefersRNativeType` marker trait and an
-/// `IntoR` impl that wraps the value in `AsRNative(self)` before calling `IntoR::into_sexp`.
+/// Derive `PreferRNativeType`: emits an `IntoR` impl that wraps the value in
+/// `AsRNative(self)` before calling `IntoR::into_sexp`.
 ///
 /// This routes conversion through native R vector allocation, bypassing list/ExternalPtr
 /// paths. The type must also implement `RNativeType` for the `AsRNative` wrapper to compile.
@@ -437,8 +431,6 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let expand = quote! {
-        impl #impl_generics ::miniextendr_api::markers::PrefersRNativeType for #name #ty_generics #where_clause {}
-
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
             type Error = std::convert::Infallible;
 
@@ -464,6 +456,37 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
                 ::miniextendr_api::into_r::IntoR::into_sexp_unchecked(
                     ::miniextendr_api::convert::AsRNative(self)
                 )
+            }
+        }
+    };
+
+    Ok(expand)
+}
+
+/// Derive `PreferVctrs`: emits an `IntoR` impl that converts the type to its R vctrs object
+/// via `IntoVctrs::into_vctrs`.
+///
+/// Used alongside `#[derive(Vctrs)]` (which supplies the `IntoVctrs` impl) so the type can be
+/// returned directly from `#[miniextendr]` functions instead of writing
+/// `value.into_vctrs().map_err(...)` by hand. The generated `IntoR::Error` is
+/// `VctrsBuildError`; a build failure surfaces in R as an error condition.
+#[cfg(feature = "vctrs")]
+pub fn derive_prefer_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let expand = quote! {
+        impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            type Error = ::miniextendr_api::vctrs::VctrsBuildError;
+
+            #[inline]
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+                ::miniextendr_api::vctrs::IntoVctrs::into_vctrs(self)
+            }
+
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+                self.try_into_sexp()
             }
         }
     };
