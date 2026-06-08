@@ -299,6 +299,38 @@ impl Drop for RPreservedSexp {
 
 // endregion
 
+// region: R-backed buffer detection (gates speculative SEXP recovery)
+
+/// Whether an Arrow value buffer is plausibly backed *directly* by an R vector
+/// created via [`sexp_to_arrow_buffer`], and therefore eligible for zero-copy
+/// SEXP recovery in `IntoR`.
+///
+/// `try_recover_r_sexp` performs a *speculative, provenance-free* read at
+/// `data_ptr - SEXPREC_header` and validates it heuristically (type tag +
+/// ALTREP bit + length). Those heuristics are only sound when `data_ptr` is the
+/// true start of an R vector's data region. Two buffer shapes violate that and
+/// must never reach the probe (#867):
+///
+/// 1. **Sliced buffers** (`ptr_offset() > 0`): DataFusion's contiguous-run
+///    filter optimization returns a *slice* of an R-backed input, so
+///    `values().as_ptr()` points into the *middle* of the R vector. Subtracting
+///    the header offset lands on the vector's own data — never a real SEXPREC —
+///    and can false-positive the heuristics (deterministic on the strict glibc
+///    R 4.5/4.6 runners; layout-dependent elsewhere).
+/// 2. **Freshly allocated Arrow buffers** (`MutableBuffer`-backed): these have
+///    `ptr_offset() == 0` but their capacity is rounded up to the 64-byte Arrow
+///    `ALIGNMENT`, whereas an R-backed `from_custom_allocation` buffer records
+///    its capacity as *exactly* the byte length. Requiring an exact-capacity
+///    match excludes filter/sort/aggregate outputs that DataFusion materializes
+///    into fresh Arrow memory.
+///
+/// Both checks together are necessary and sufficient: only an unsliced buffer
+/// whose recorded capacity equals its byte length can have come straight from
+/// `sexp_to_arrow_buffer`. Anything else takes the always-correct copy path.
+fn is_r_backed_value_buffer(buffer: &arrow_buffer::Buffer, byte_len: usize) -> bool {
+    buffer.ptr_offset() == 0 && buffer.capacity() == byte_len
+}
+
 // SEXP recovery uses crate::r_memory::try_recover_r_sexp (initialized at package init)
 
 // region: Zero-copy buffer helpers
@@ -1101,15 +1133,19 @@ impl IntoR for Float64Array {
 
     fn into_sexp(self) -> SEXP {
         // Try zero-copy: recover the source R SEXP from the buffer pointer.
-        // This succeeds when the array was created from R via sexp_to_arrow_buffer.
-        if let Some(sexp) = unsafe {
-            crate::r_memory::try_recover_r_sexp(
-                self.values().as_ptr().cast(),
-                SEXPTYPE::REALSXP,
-                self.len(),
-            )
-        } {
-            return sexp;
+        // Only attempt this for buffers that came straight from R (unsliced,
+        // exact capacity) — otherwise the speculative probe reads off into
+        // unrelated memory (#867).
+        if is_r_backed_value_buffer(self.values().inner(), self.len() * size_of::<f64>()) {
+            if let Some(sexp) = unsafe {
+                crate::r_memory::try_recover_r_sexp(
+                    self.values().as_ptr().cast(),
+                    SEXPTYPE::REALSXP,
+                    self.len(),
+                )
+            } {
+                return sexp;
+            }
         }
 
         // Fallback: allocate and copy
@@ -1139,14 +1175,17 @@ impl IntoR for Int32Array {
     }
 
     fn into_sexp(self) -> SEXP {
-        if let Some(sexp) = unsafe {
-            crate::r_memory::try_recover_r_sexp(
-                self.values().as_ptr().cast(),
-                SEXPTYPE::INTSXP,
-                self.len(),
-            )
-        } {
-            return sexp;
+        // Recovery only for unsliced, exact-capacity (R-backed) buffers — see #867.
+        if is_r_backed_value_buffer(self.values().inner(), self.len() * size_of::<i32>()) {
+            if let Some(sexp) = unsafe {
+                crate::r_memory::try_recover_r_sexp(
+                    self.values().as_ptr().cast(),
+                    SEXPTYPE::INTSXP,
+                    self.len(),
+                )
+            } {
+                return sexp;
+            }
         }
 
         unsafe {
@@ -1175,14 +1214,17 @@ impl IntoR for UInt8Array {
     }
 
     fn into_sexp(self) -> SEXP {
-        if let Some(sexp) = unsafe {
-            crate::r_memory::try_recover_r_sexp(
-                self.values().as_ptr(),
-                SEXPTYPE::RAWSXP,
-                self.len(),
-            )
-        } {
-            return sexp;
+        // Recovery only for unsliced, exact-capacity (R-backed) buffers — see #867.
+        if is_r_backed_value_buffer(self.values().inner(), self.len()) {
+            if let Some(sexp) = unsafe {
+                crate::r_memory::try_recover_r_sexp(
+                    self.values().as_ptr(),
+                    SEXPTYPE::RAWSXP,
+                    self.len(),
+                )
+            } {
+                return sexp;
+            }
         }
 
         unsafe {
