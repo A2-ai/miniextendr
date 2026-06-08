@@ -1811,6 +1811,7 @@ pub fn r_ffi_checked(
 /// ```ignore
 /// impl RNativeType for UserId {
 ///     const SEXP_TYPE: SEXPTYPE = <i32 as RNativeType>::SEXP_TYPE;
+///     const R_NA: Self = UserId(<i32 as RNativeType>::R_NA);
 ///
 ///     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
 ///         <i32 as RNativeType>::dataptr_mut(sexp).cast()
@@ -1876,6 +1877,11 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
         impl #impl_generics ::miniextendr_api::RNativeType for #name #ty_generics #where_clause {
             const SEXP_TYPE: ::miniextendr_api::SEXPTYPE =
                 <#inner_ty as ::miniextendr_api::RNativeType>::SEXP_TYPE;
+
+            const R_NA: Self = {
+                let val = <#inner_ty as ::miniextendr_api::RNativeType>::R_NA;
+                #elt_ctor
+            };
 
             #[inline]
             unsafe fn dataptr_mut(sexp: ::miniextendr_api::SEXP) -> *mut Self {

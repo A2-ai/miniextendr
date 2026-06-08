@@ -7,6 +7,7 @@
 //! Most user code reaches them via [`crate::prelude`].
 
 use crate::SEXP;
+use crate::altrep_traits::NA_REAL;
 use crate::sys::{
     COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL, REAL_ELT,
     Rf_type2char, Rf_xlength,
@@ -116,6 +117,17 @@ pub trait RNativeType: Sized + Copy + 'static {
     /// The SEXPTYPE for vectors containing this element type.
     const SEXP_TYPE: SEXPTYPE;
 
+    /// The per-type `NA` (missing-value) sentinel used when filling vector slots
+    /// that have no source value (e.g. sparse scatter into a longer column).
+    ///
+    /// - `f64`   → `NA_REAL` (R's canonical NA double bit pattern, *not* a plain `NaN`)
+    /// - `i32`   → `i32::MIN` (`NA_INTEGER`)
+    /// - `RLogical` → `RLogical::NA` (`NA_LOGICAL`)
+    /// - `Rcomplex` → both parts `NA_REAL`
+    /// - `u8` (RAWSXP) → `0` — **R's raw type has no NA**, so absent positions
+    ///   become `0x00` rather than a missing marker.
+    const R_NA: Self;
+
     /// Get mutable pointer to vector data.
     ///
     /// For empty vectors (length 0), returns an aligned dangling pointer rather than
@@ -196,6 +208,7 @@ impl From<bool> for RLogical {
 
 impl RNativeType for i32 {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::INTSXP;
+    const R_NA: Self = i32::MIN; // NA_INTEGER
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
@@ -216,6 +229,7 @@ impl RNativeType for i32 {
 
 impl RNativeType for f64 {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
+    const R_NA: Self = NA_REAL; // R's canonical NA double bit pattern, not f64::NAN
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
@@ -236,6 +250,8 @@ impl RNativeType for f64 {
 
 impl RNativeType for u8 {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::RAWSXP;
+    // R's raw vectors have no NA; absent scatter positions become 0x00.
+    const R_NA: Self = 0;
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
@@ -256,6 +272,7 @@ impl RNativeType for u8 {
 
 impl RNativeType for RLogical {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::LGLSXP;
+    const R_NA: Self = RLogical::NA; // NA_LOGICAL
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
@@ -277,6 +294,10 @@ impl RNativeType for RLogical {
 
 impl RNativeType for Rcomplex {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::CPLXSXP;
+    const R_NA: Self = Rcomplex {
+        r: NA_REAL,
+        i: NA_REAL,
+    };
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {

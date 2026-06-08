@@ -144,9 +144,16 @@ pub use crate::dataframe::ColumnSource;
 /// - REALSXP → REALSXP (NA_real_ fill)
 /// - INTSXP  → INTSXP  (NA_integer_ fill)
 /// - LGLSXP  → LGLSXP  (NA_logical fill)
+/// - RAWSXP  → RAWSXP  (`0x00` fill — R raw has no NA)
+/// - CPLXSXP → CPLXSXP (NA complex fill: both parts NA_real_)
 /// - STRSXP  → STRSXP  (NA_character_ fill)
 /// - VECSXP  → VECSXP  (R_NilValue fill)
 /// - anything else → VECSXP (R_NilValue fill)
+///
+/// Contiguous primitive columns (real/integer/logical/raw/complex) scatter as a
+/// flat slice write via [`scatter_native`] — the NA-filled inverse of
+/// [`gather_native`]. String and list columns stay element-by-element because
+/// they are write-barriered arrays of `SEXP` pointers, not flat buffers.
 ///
 /// # Safety
 ///
@@ -162,77 +169,32 @@ pub unsafe fn scatter_column(
     // SAFETY: caller guarantees R main thread; src is valid; n_rows is correct.
     #[allow(unused_unsafe)]
     unsafe {
-        use crate::{SEXPTYPE, SexpExt as _};
+        use crate::{RLogical, Rcomplex, SEXPTYPE, SexpExt as _};
 
-        let stype = src.type_of();
-        let n_present = present_idx.len();
-
-        // The `Rf_allocVector` tags below are the source of truth (#882): there is
-        // no generic `T` in scope here — `stype` is matched at runtime and the
-        // output type must equal the matched input type, so each literal simply
-        // mirrors its own match arm. (The dense/contiguous sibling `gather_native`
-        // *does* take `T: RNativeType` and uses `T::SEXP_TYPE`.)
-        match stype {
-            SEXPTYPE::REALSXP => {
-                let out = crate::sys::Rf_allocVector(SEXPTYPE::REALSXP, n_rows as isize);
-                // Fill with NA_real_ (R's NA for doubles is a specific NaN bit pattern;
-                // f64::NAN has the correct bit pattern since R uses a quiet NaN sentinel).
-                for i in 0..(n_rows as isize) {
-                    out.set_real_elt(i, f64::NAN);
-                }
-                for (pi, &row_i) in present_idx.iter().enumerate() {
-                    if pi < n_present {
-                        out.set_real_elt(row_i as isize, src.real_elt(pi as isize));
-                    }
-                }
-                out
-            }
-            SEXPTYPE::INTSXP => {
-                let out = crate::sys::Rf_allocVector(SEXPTYPE::INTSXP, n_rows as isize);
-                for i in 0..(n_rows as isize) {
-                    out.set_integer_elt(i, i32::MIN); // NA_integer_
-                }
-                for (pi, &row_i) in present_idx.iter().enumerate() {
-                    if pi < n_present {
-                        out.set_integer_elt(row_i as isize, src.integer_elt(pi as isize));
-                    }
-                }
-                out
-            }
-            SEXPTYPE::LGLSXP => {
-                let out = crate::sys::Rf_allocVector(SEXPTYPE::LGLSXP, n_rows as isize);
-                for i in 0..(n_rows as isize) {
-                    out.set_logical_elt(i, i32::MIN); // NA_logical
-                }
-                for (pi, &row_i) in present_idx.iter().enumerate() {
-                    if pi < n_present {
-                        out.set_logical_elt(row_i as isize, src.logical_elt(pi as isize));
-                    }
-                }
-                out
-            }
+        match src.type_of() {
+            SEXPTYPE::REALSXP => scatter_native::<f64>(src, present_idx, n_rows),
+            SEXPTYPE::INTSXP => scatter_native::<i32>(src, present_idx, n_rows),
+            SEXPTYPE::LGLSXP => scatter_native::<RLogical>(src, present_idx, n_rows),
+            SEXPTYPE::RAWSXP => scatter_native::<u8>(src, present_idx, n_rows),
+            SEXPTYPE::CPLXSXP => scatter_native::<Rcomplex>(src, present_idx, n_rows),
             SEXPTYPE::STRSXP => {
                 let out = crate::sys::Rf_allocVector(SEXPTYPE::STRSXP, n_rows as isize);
-                // Fill with NA_character_
+                // Write-barriered CHARSXP-pointer array — fill NA_character_, then
+                // scatter present cells element-by-element.
                 for i in 0..(n_rows as isize) {
                     out.set_string_elt(i, crate::SEXP::na_string());
                 }
                 for (pi, &row_i) in present_idx.iter().enumerate() {
-                    if pi < n_present {
-                        let charsxp = src.string_elt(pi as isize);
-                        out.set_string_elt(row_i as isize, charsxp);
-                    }
+                    out.set_string_elt(row_i as isize, src.string_elt(pi as isize));
                 }
                 out
             }
             SEXPTYPE::VECSXP => {
                 let out = crate::sys::Rf_allocVector(SEXPTYPE::VECSXP, n_rows as isize);
-                // R_NilValue fill is automatic (Rf_allocVector zero-initialises VECSXP slots).
+                // Write-barriered SEXP-pointer array. R_NilValue fill is automatic
+                // (Rf_allocVector zero-initialises VECSXP slots).
                 for (pi, &row_i) in present_idx.iter().enumerate() {
-                    if pi < n_present {
-                        let elt = src.vector_elt(pi as isize);
-                        out.set_vector_elt(row_i as isize, elt);
-                    }
+                    out.set_vector_elt(row_i as isize, src.vector_elt(pi as isize));
                 }
                 out
             }
@@ -241,14 +203,49 @@ pub unsafe fn scatter_column(
                 // Cells for absent rows remain R_NilValue.
                 let out = crate::sys::Rf_allocVector(SEXPTYPE::VECSXP, n_rows as isize);
                 for (pi, &row_i) in present_idx.iter().enumerate() {
-                    if pi < n_present {
-                        let elt = src.vector_elt(pi as isize);
-                        out.set_vector_elt(row_i as isize, elt);
-                    }
+                    out.set_vector_elt(row_i as isize, src.vector_elt(pi as isize));
                 }
                 out
             }
         }
+    }
+}
+
+/// Scatter a dense typed column into a fresh SEXP of length `n_rows`, placing the
+/// `j`-th source value at row `present_idx[j]` and the per-type NA sentinel
+/// ([`RNativeType::R_NA`]) at every absent row.
+///
+/// The sparse-placing inverse of [`gather_native`]. Generic over the R element
+/// type: `f64`/`i32`/`RLogical`/`u8`/`Rcomplex` each resolve to the correct
+/// storage via their `RNativeType` impl, so the whole copy is a flat slice write
+/// with no per-element FFI call. Raw (`u8`) has no R NA, so absent positions
+/// become `0x00`.
+///
+/// # Safety
+///
+/// R main thread; `src` must be a `T::SEXP_TYPE` vector with at least
+/// `present_idx.len()` elements, and every index in `present_idx` must be
+/// `< n_rows`. The returned SEXP is unprotected (see [`scatter_column`]). No
+/// allocation occurs between allocating `out` and filling it, so `out` cannot be
+/// reaped mid-scatter.
+#[inline]
+unsafe fn scatter_native<T: RNativeType + Copy>(
+    src: crate::SEXP,
+    present_idx: &[usize],
+    n_rows: usize,
+) -> crate::SEXP {
+    unsafe {
+        use crate::SexpExt as _;
+        let src_vals: &[T] = src.as_slice::<T>();
+        let out = crate::sys::Rf_allocVector(T::SEXP_TYPE, n_rows as isize);
+        let out_vals: &mut [T] = out.as_mut_slice::<T>();
+        // NA-fill the whole output, then place present values. No allocation
+        // between alloc and fill — `out` is GC-safe.
+        out_vals.fill(T::R_NA);
+        for (pi, &row_i) in present_idx.iter().enumerate() {
+            out_vals[row_i] = src_vals[pi];
+        }
+        out
     }
 }
 
