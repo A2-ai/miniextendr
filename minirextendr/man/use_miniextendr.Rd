@@ -44,4 +44,11 @@ the standalone R package template or the monorepo template based on context:
 
 This is an all-in-one function that calls all the individual \verb{use_miniextendr_*()}
 functions.
+
+If the target package has no \code{NAMESPACE} (e.g. it was set up via
+\code{usethis::use_description()} in an existing repo rather than
+\code{usethis::create_package()}), a minimal roxygen2-managed \code{NAMESPACE}
+containing \verb{useDynLib(<pkg>, .registration = TRUE)} is seeded so the first
+build does not fail on the configure-time guard. A later
+\code{devtools::document()} populates it from your roxygen comments.
 }

@@ -42,3 +42,11 @@ Creates a new R package with full miniextendr scaffolding, ready for
 Rust development. This combines \code{usethis::create_package()} with
 \code{use_miniextendr()}.
 }
+\details{
+Works non-interactively even when \code{path} is \strong{already a project} (e.g. an
+existing git repo). \code{usethis::create_package()} normally raises an
+interactive "would be nested inside an existing project" challenge in that
+case, which aborts in a non-interactive session. To scaffold cleanly we set
+\code{options(usethis.allow_nested_project = TRUE)} for the duration of the call
+(restored on exit), suppressing that prompt.
+}
