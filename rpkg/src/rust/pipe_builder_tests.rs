@@ -122,3 +122,152 @@ impl PipeCounter {
         self.value
     }
 }
+
+// region: R6 self-ref builder fixture
+//
+// R6 is reference-semantic: a `&mut self -> &mut Self` builder must chain via
+// `invisible(self)` so `obj$step(1)$step(2)$total()` reads through the *same*
+// R6 wrapper environment. The codegen must NOT re-wrap via
+// `R6PipeBuilder$new(.ptr = .val)` — that would mint a new R6 environment
+// around the same pointer and break object identity. See issue #769.
+
+/// A small accumulating builder exposed as an R6 class.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6PipeBuilder {
+    total: i32,
+}
+
+/// R6 builder with a `&mut self -> &mut Self` step and a terminal accessor.
+/// Chains as `b$add(1L)$add(2L)$total()`.
+#[miniextendr(r6)]
+impl R6PipeBuilder {
+    /// Create a new builder starting at zero.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        R6PipeBuilder { total: 0 }
+    }
+
+    /// Add `amount` in place and return the builder for chaining.
+    /// @param amount Amount to add.
+    pub fn add(&mut self, amount: i32) -> &mut Self {
+        self.total += amount;
+        self
+    }
+
+    /// Terminal accessor: read the accumulated total.
+    pub fn total(&self) -> i32 {
+        self.total
+    }
+}
+// endregion
+
+// region: S4 self-ref builder fixture
+//
+// S4 self-ref builders generate free generics whose body returns the receiver
+// `x` for chaining (S4 `ExternalPtr` objects are reference-semantic). Method
+// names are auto-prefixed with `s4_`, so `add` -> `s4_add` (MXL111: never name
+// the Rust method `s4_*`).
+
+/// A small accumulating builder exposed as an S4 class.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S4PipeBuilder {
+    total: i32,
+}
+
+/// S4 builder with a `&mut self -> &mut Self` step and a terminal accessor.
+/// Chains under the native pipe as `b |> s4_add(1L) |> s4_add(2L) |> s4_total()`.
+/// @aliases s4_add,S4PipeBuilder-method s4_total,S4PipeBuilder-method
+/// @param x A `S4PipeBuilder` object.
+#[miniextendr(s4, internal)]
+impl S4PipeBuilder {
+    /// Create a new builder starting at zero.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        S4PipeBuilder { total: 0 }
+    }
+
+    /// Add `amount` in place and return the builder for chaining.
+    /// @param amount Amount to add.
+    pub fn add(&mut self, amount: i32) -> &mut Self {
+        self.total += amount;
+        self
+    }
+
+    /// Terminal accessor: read the accumulated total.
+    pub fn total(&self) -> i32 {
+        self.total
+    }
+}
+// endregion
+
+// region: S7 self-ref builder fixture
+//
+// S7 self-ref builders generate free generics whose body returns the receiver
+// `x` for chaining. S7 method names are NOT auto-prefixed, so we name them
+// `s7_*` explicitly to keep the user-facing generics in a clean namespace.
+
+/// A small accumulating builder exposed as an S7 class.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7PipeBuilder {
+    total: i32,
+}
+
+/// S7 builder with a `&mut self -> &mut Self` step and a terminal accessor.
+/// Chains under the native pipe as `b |> s7_add(1L) |> s7_add(2L) |> s7_total()`.
+#[miniextendr(s7, internal)]
+impl S7PipeBuilder {
+    /// Create a new builder starting at zero.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        S7PipeBuilder { total: 0 }
+    }
+
+    /// Add `amount` in place and return the builder for chaining.
+    /// @param amount Amount to add.
+    pub fn s7_add(&mut self, amount: i32) -> &mut Self {
+        self.total += amount;
+        self
+    }
+
+    /// Terminal accessor: read the accumulated total.
+    pub fn s7_total(&self) -> i32 {
+        self.total
+    }
+}
+// endregion
+
+// region: Env self-ref builder fixture
+//
+// Env classes share `ChainableMutation` semantics with R6: the method body
+// returns `self` (the environment). Chains as `b$add(1L)$add(2L)$total()`
+// through the `$` re-parenting dispatch.
+
+/// A small accumulating builder exposed as an env-style class.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct EnvPipeBuilder {
+    total: i32,
+}
+
+/// Env builder with a `&mut self -> &mut Self` step and a terminal accessor.
+/// Chains as `b$add(1L)$add(2L)$total()`.
+#[miniextendr(env)]
+impl EnvPipeBuilder {
+    /// Create a new builder starting at zero.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        EnvPipeBuilder { total: 0 }
+    }
+
+    /// Add `amount` in place and return the builder for chaining.
+    /// @param amount Amount to add.
+    pub fn add(&mut self, amount: i32) -> &mut Self {
+        self.total += amount;
+        self
+    }
+
+    /// Terminal accessor: read the accumulated total.
+    pub fn total(&self) -> i32 {
+        self.total
+    }
+}
+// endregion
