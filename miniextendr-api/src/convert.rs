@@ -152,6 +152,11 @@ pub unsafe fn scatter_column(
         let stype = src.type_of();
         let n_present = present_idx.len();
 
+        // The `Rf_allocVector` tags below are the source of truth (#882): there is
+        // no generic `T` in scope here — `stype` is matched at runtime and the
+        // output type must equal the matched input type, so each literal simply
+        // mirrors its own match arm. (The dense/contiguous sibling `gather_native`
+        // *does* take `T: RNativeType` and uses `T::SEXP_TYPE`.)
         match stype {
             SEXPTYPE::REALSXP => {
                 let out = crate::sys::Rf_allocVector(SEXPTYPE::REALSXP, n_rows as isize);

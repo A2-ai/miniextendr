@@ -3,6 +3,11 @@
 //! Provides adapter traits for serializing Rust types to JSON and deserializing
 //! from JSON strings in R.
 //!
+//! **`SEXPTYPE` literals here are chosen by the *runtime* JSON value (#882),**
+//! not a compile-time Rust type — a `serde_json::Value` decides at runtime whether
+//! it becomes `LGLSXP`/`INTSXP`/`REALSXP`/`STRSXP`/`VECSXP`. There is no `T` to
+//! derive the tag from, so the literals are load-bearing — leave them.
+//!
 //! | Rust Trait | Adapter Trait | Use Case |
 //! |------------|---------------|----------|
 //! | `serde::Serialize` | `RSerialize` | Convert Rust → JSON string |

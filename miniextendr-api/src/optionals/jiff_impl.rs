@@ -2,6 +2,11 @@
 //!
 //! Provides conversions between R date/time types and `jiff` types.
 //!
+//! **`REALSXP`/`STRSXP` literals are the source of truth (#882).** `jiff` types
+//! map onto R `POSIXct`/`Date`/`difftime` (`REALSXP` + class/`tzone` attributes)
+//! by definition; they are not `RNativeType`, so the literals *are* the mapping,
+//! not a redundant restatement of a `T::SEXP_TYPE` — leave them.
+//!
 //! | R Type | Rust Type | Notes |
 //! |--------|-----------|-------|
 //! | `POSIXct` (UTC) | `jiff::Timestamp` | Seconds since epoch, ns precision |

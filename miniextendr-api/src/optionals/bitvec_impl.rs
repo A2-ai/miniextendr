@@ -2,6 +2,10 @@
 //!
 //! Provides conversions between R logical vectors and `BitVec` types.
 //!
+//! **`LGLSXP` literal is the source of truth (#882).** `BitVec` packs bits, so
+//! there is no `RNativeType` element to derive the tag from; the `LGLSXP` literal
+//! is the mapping to R logicals, not a redundant copy of a `T::SEXP_TYPE`.
+//!
 //! # Features
 //!
 //! Enable this module with the `bitvec` feature:

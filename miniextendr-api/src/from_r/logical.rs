@@ -1,5 +1,11 @@
 //! Logical type conversions (Rboolean, bool, Option variants).
 //!
+//! **`LGLSXP` literals here are the source of truth (#882).** `bool`/`Rboolean`
+//! are deliberately *not* `RNativeType` — R logical vectors are stored as `i32`
+//! (that's `RLogical`), and these impls translate the three-state TRUE/FALSE/NA
+//! `LGLSXP` payload into a two-state Rust `bool`. There is no `T::SEXP_TYPE` to
+//! derive the tag from for `bool`; the literal is the boundary, leave it.
+//!
 //! Handles the three R logical states (TRUE, FALSE, NA) and maps them to Rust:
 //!
 //! | Rust Type | NA Handling |

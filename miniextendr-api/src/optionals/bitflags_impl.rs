@@ -2,6 +2,10 @@
 //!
 //! Provides conversions between R integers and bitflags types.
 //!
+//! **`INTSXP` literal is the source of truth (#882).** A `bitflags` type is a
+//! user newtype over its backing integer, not a `RNativeType`, so `INTSXP` is
+//! the R↔Rust mapping here rather than a redundant copy of a `T::SEXP_TYPE`.
+//!
 //! # Features
 //!
 //! Enable this module with the `bitflags` feature:

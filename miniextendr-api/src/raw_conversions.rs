@@ -399,6 +399,11 @@ fn align_slice<T: Pod>(bytes: &[u8]) -> Result<Vec<T>, RawError> {
 // endregion
 
 // region: IntoR implementations
+//
+// `RAWSXP` literals throughout this region are the source of truth (#882): the
+// generic `T: Pod` is the *value being byte-serialized* (a `u32`, a struct, …),
+// not an R element type, and the destination is always a byte buffer. `T` is not
+// `RNativeType`, so there is no `T::SEXP_TYPE` to fold these into — leave them.
 
 impl<T: Pod> IntoR for Raw<T> {
     type Error = std::convert::Infallible;
