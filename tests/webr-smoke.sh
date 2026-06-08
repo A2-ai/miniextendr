@@ -17,23 +17,51 @@
 #   --no-cache        Pass --no-cache to docker build (implies --rebuild-image).
 #   --keep            Don't clean up /tmp/webr-smoke inside the container on exit.
 #   -h, --help        Show this help text and exit.
+#
+# Environment:
+#   WEBR_ARM64=1      arm64-native dev path (#788, ⚠️ DRAFT — unvalidated on
+#                     arm64 hardware). Selects Dockerfile.webr-arm64 + the
+#                     arm64 image, and orchestrates both R passes through the
+#                     native arm64 R on PATH (the donor's amd64 host-R binaries
+#                     under /opt/webr/host + /opt/R can't execute on arm64; the
+#                     wasm sysroot they sit beside is portable and is what emcc
+#                     actually links against). Unset/default = the amd64 path
+#                     (Rosetta under Docker Desktop), unchanged.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MX_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ── arm64 vs amd64 selection (#788) ──────────────────────────────────────────
+# Guarded so the existing amd64 CI / Rosetta path is byte-for-byte unchanged
+# when WEBR_ARM64 is unset.
+WEBR_ARM64="${WEBR_ARM64:-0}"
+
 # ── Constants ───────────────────────────────────────────────────────────────
 
-IMAGE="miniextendr-webr-dev:latest"
 R_VERSION="4.6.0"
 WEBR_ROOT="/opt/webr"
-R_HOST_EXE="${WEBR_ROOT}/host/R-${R_VERSION}/bin/R"
-R_NATIVE_EXE="/opt/R/current/bin/R"
 WASM_TOOLS="${WEBR_ROOT}/tools"
 R_SOURCE="${WEBR_ROOT}/R/build/R-${R_VERSION}"
 WEBR_VARS_MK="${WEBR_ROOT}/packages/webr-vars.mk"
 SMOKE_TMP="/tmp/webr-smoke"
+
+if [[ "$WEBR_ARM64" == "1" ]]; then
+    IMAGE="miniextendr-webr-dev-arm64:latest"
+    DOCKERFILE="${MX_ROOT}/Dockerfile.webr-arm64"
+    # On arm64 the donor's amd64 host-R binaries (/opt/webr/host/R-4.6.0,
+    # /opt/R/current) cannot execute — use the native rig-installed arm64 R on
+    # PATH for BOTH passes. webr-vars.mk still drives CC=emcc for the wasm pass,
+    # so which R orchestrates the install doesn't change the compiler.
+    R_HOST_EXE="R"
+    R_NATIVE_EXE="R"
+else
+    IMAGE="miniextendr-webr-dev:latest"
+    DOCKERFILE="${MX_ROOT}/Dockerfile.webr"
+    R_HOST_EXE="${WEBR_ROOT}/host/R-${R_VERSION}/bin/R"
+    R_NATIVE_EXE="/opt/R/current/bin/R"
+fi
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -139,14 +167,14 @@ preflight() {
     fi
 
     if [[ $REBUILD_IMAGE -eq 1 ]]; then
-        log "Building docker image ${IMAGE} (--rebuild-image)..."
+        log "Building docker image ${IMAGE} from ${DOCKERFILE##*/} (--rebuild-image)..."
         # shellcheck disable=SC2086
-        docker build $NO_CACHE -f "${MX_ROOT}/Dockerfile.webr" -t "${IMAGE}" "${MX_ROOT}"
+        docker build $NO_CACHE -f "${DOCKERFILE}" -t "${IMAGE}" "${MX_ROOT}"
         ok "Image built."
     else
         if ! docker image inspect "${IMAGE}" &>/dev/null; then
-            log "Image ${IMAGE} not found locally — building..."
-            docker build -f "${MX_ROOT}/Dockerfile.webr" -t "${IMAGE}" "${MX_ROOT}"
+            log "Image ${IMAGE} not found locally — building from ${DOCKERFILE##*/}..."
+            docker build -f "${DOCKERFILE}" -t "${IMAGE}" "${MX_ROOT}"
             ok "Image built."
         else
             ok "Image ${IMAGE} present."
@@ -286,6 +314,11 @@ main() {
     printf "Image:    %s\n" "${IMAGE}"
     printf "Repo:     %s\n" "${MX_ROOT}"
     printf "R:        %s\n" "${R_VERSION}"
+    if [[ "$WEBR_ARM64" == "1" ]]; then
+        printf "Arch:     ${CLR_YELLOW}arm64-native (DRAFT, #788 — unvalidated)${CLR_RESET}\n"
+    else
+        printf "Arch:     amd64 (Rosetta on Apple Silicon)\n"
+    fi
     printf "\n"
 
     preflight

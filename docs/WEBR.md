@@ -18,8 +18,10 @@ base-image mirror (#496), the redundant `-C relocation-model=pic` flag
 dropped (#745), the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
 release (#755), and dependency guidance (#752 — see "Dependencies and webR"
 below). Open follow-ups: #495 (cross-crate trait dispatch), #925 (lint for
-eager `importFrom` of compiled deps), #788 (arm64-native dev image), #747
-(drop mirror creds once the GHCR package is public).
+eager `importFrom` of compiled deps), #788 (arm64-native dev image — first cut
+landed as `Dockerfile.webr-arm64`, pending on-hardware validation; see
+"arm64-native dev image" below), #747 (drop mirror creds once the GHCR package
+is public).
 
 ## Target
 
@@ -71,7 +73,10 @@ native (non-WASM) build remains stable-buildable.
 
 Everything lives inside the `Dockerfile.webr` image (inherits
 `ghcr.io/r-wasm/webr` digest-pinned, layers `just`/`autoconf`/`cargo-limit`).
-amd64-only — Apple Silicon runs it under Rosetta, slow but works.
+amd64-only — Apple Silicon runs it under Rosetta, slow but works. For a
+native-arm64 alternative (no Rosetta), see "arm64-native dev image" below
+(`Dockerfile.webr-arm64`, #788 — currently a draft pending on-hardware
+validation).
 
 ```bash
 just docker-webr-build         # one-time image build (~5–10 min cold)
@@ -109,6 +114,82 @@ the container, then prints a testthat pass/fail/skip summary:
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
 wasm32 build). Subsequent runs reuse the docker image and most cargo
 artefacts.
+
+## arm64-native dev image (DRAFT — #788)
+
+> **Status: composed but NOT YET VALIDATED on arm64 hardware.** The
+> `Dockerfile.webr-arm64` recipe below is written from prebuilt parts and
+> resolves the one critical unknown (emcc ABI, see below), but it has not been
+> *built or run* on an arm64 box. Treat it as a first cut until the validation
+> checklist at the end of this section is green. Until then, the amd64 path
+> above (Rosetta) is the supported route.
+
+The amd64 image runs on Apple Silicon only under Rosetta — slow, and the
+2026-05-27 attempt at the full datafusion+arrow wasm compile under qemu
+exhausted host disk and crashed Docker Desktop. `Dockerfile.webr-arm64` builds
+**natively on arm64** by composing prebuilt parts, so there is no emulated
+execution and no source build of emcc / flang / R→wasm:
+
+| Piece | Source | Why no source build |
+|---|---|---|
+| emcc | `emscripten/emsdk:4.0.8-arm64` (linux/arm64/v8) | emsdk ships *prebuilt* emcc per host arch |
+| Rust nightly + `wasm32-unknown-emscripten` + `rust-src` | `rustup` `--default-host aarch64-unknown-linux-gnu` | prebuilt arm64 toolchain |
+| host R 4.6.0 | `rig add 4.6.0` | prebuilt arm64 R |
+| wasm R sysroot (`/opt/webr/{wasm,R/build,tools,packages,dist,src}`) | `COPY --from=` the amd64 mirror | wasm objects + headers + scripts are arch-portable; FS copy only |
+
+Neither flang (Fortran→wasm) nor the R→wasm build is needed: miniextendr is
+Rust + C with no Fortran, and the wasm R is already prebuilt — those upstream
+parts exist only to build R itself to wasm, which a dev image reuses.
+
+```bash
+just docker-webr-arm64-build         # build natively on arm64
+just docker-webr-arm64-shell         # interactive shell, repo at /work
+just docker-webr-arm64-smoke         # arm64 end-to-end smoke (WEBR_ARM64=1)
+```
+
+### Why emcc `4.0.8-arm64` specifically (the ABI match)
+
+The emcc that links `miniextendr.so` must match the emcc that built the
+prebuilt wasm R, or the side-module won't load. The mirror's wasm R was built
+with Emscripten **4.0.8**. `emscripten/emsdk` publishes *arch-suffixed* tags,
+**not** a multi-arch manifest: the bare `:4.0.8` tag is linux/amd64 only, but
+`:4.0.8-arm64` is a genuine linux/arm64/v8 build of the **same** 4.0.8 release
+(digest `sha256:9d471ceb4bd9e…`, pushed 2025-04-30). Same emcc version on a
+different host arch ⇒ same wasm ABI ⇒ no version-skew risk. This is the
+best-case answer to #788's open question Q1.
+
+> The #788 issue body assumed host R **4.5.1**; the base image was since bumped
+> to webR v0.6.0 / **R 4.6.0** (#755), so the arm64 image pins `rig add 4.6.0`
+> to stay header-compatible with the copied wasm R. This is deliberately *not*
+> the repo's pinned dev R (`rproject.toml`'s 4.6) — it tracks whatever the
+> prebuilt wasm R was built from.
+
+### Validation checklist (needs on-arm64 hardware)
+
+The dev sandbox has no Docker and can't build/run arm64, so the following are
+**unverified** and must be checked on an Apple Silicon box before #788 is
+closed:
+
+- [ ] **Image builds** — `just docker-webr-arm64-build` completes (donor
+      `COPY --from=` resolves, native toolchain installs, sanity-check layer
+      passes).
+- [ ] **Side-module ABI load** — `just docker-webr-arm64-smoke` Phase 2 links
+      `miniextendr.so` with the arm64 emcc and Phase 3's `library(miniextendr)`
+      loads it in a webR Node session (proves the 4.0.8 arm64↔amd64-built-R ABI
+      really matches, not just by version label).
+- [ ] **Sysroot link/load** — the amd64-built wasm sysroot under `/opt/webr`
+      links and loads cleanly under the arm64-host emcc end-to-end (no missing
+      objects, no header mismatch from the copied tree).
+- [ ] **Native-R orchestration on arm64** — Phase 1 (native cdylib wrapper-gen)
+      and Phase 2's `R CMD INSTALL` both run through the rig-installed arm64 R
+      (`R` on PATH), since the donor's amd64 `/opt/webr/host/R-4.6.0` +
+      `/opt/R/current` binaries can't execute on arm64.
+- [ ] **Node bundle rebuild** — `make /opt/webr/src/dist/webr.mjs` succeeds
+      with the copied `/opt/webr/src` tree and the emsdk image's bundled Node
+      22.16.0.
+- [ ] **Compile weight / disk** — datafusion+arrow wasm compile is now native
+      (no qemu tax) but still heavy; confirm it fits a typical Docker Desktop
+      disk budget.
 
 ## How `CC=emcc` cooperates with our build
 
@@ -310,7 +391,8 @@ is what proves it *loads* in a real webR runtime.
 - Issue #470 — umbrella tracking issue for webR/WASM support.
 - Issue #495 — cross-crate trait dispatch; #752 — dependency guidance
   (this section); #925 — follow-up lint for `importFrom` of compiled deps;
-  #788 — arm64-native dev image.
+  #788 — arm64-native dev image (first cut: `Dockerfile.webr-arm64` + the
+  `docker-webr-arm64-*` just recipes + the `WEBR_ARM64=1` smoke path).
 - Issues #491 / #744 — the base-package variant of the host-R-loads-a-wasm-
   object failure, solved via the install-to-temp-lib pattern (the dependency
   guidance above is the consumer-package-imports variant of the same failure).
@@ -318,8 +400,12 @@ is what proves it *loads* in a real webR runtime.
   of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
   `webr.yml` tier-2/3 job step-for-step (Phase 2 → `/tmp/wasm-lib`, Phase 3 →
-  `make` the Node bundle, then run `smoke.mjs`). The base image is amd64-only,
-  so it can't be exercised on an arm64 dev box today — tracked in #788.
+  `make` the Node bundle, then run `smoke.mjs`). The default (amd64) image runs
+  under Rosetta on Apple Silicon; `WEBR_ARM64=1` selects the draft
+  `Dockerfile.webr-arm64` native-arm64 path (#788).
+- `Dockerfile.webr-arm64` — draft native-arm64 dev image (#788): amd64 sysroot
+  donor + `emscripten/emsdk:4.0.8-arm64` + native arm64 Rust/R. See
+  "arm64-native dev image" above for the validation checklist.
 - `.webr/` — vendored clone of the webR repo for offline reference.
 - `.webr/Dockerfile` — upstream Rust toolchain install we inherit.
 - `.webr/packages/webr-vars.mk` — the Makevars override webR uses for

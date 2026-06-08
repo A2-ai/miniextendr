@@ -1329,3 +1329,44 @@ docker-webr-test: docker-webr-build
 # exits 0 as long as the package itself loads. Stacked on feat/webr-step8.
 docker-webr-smoke *args: docker-webr-build
     bash tests/webr-smoke.sh {{args}}
+
+# ── arm64-native webR dev container (#788) ───────────────────────────────────
+#
+# ⚠️ DRAFT — composed but NOT YET VALIDATED on arm64 hardware (no Docker /
+# arm64 build in the dev sandbox). See Dockerfile.webr-arm64's header + the
+# validation checklist in docs/WEBR.md.
+#
+# `Dockerfile.webr-arm64` builds natively on an arm64 host (Apple Silicon) from
+# prebuilt parts — emscripten/emsdk:4.0.8-arm64 (matches the wasm R's emcc ABI)
+# + native arm64 Rust/R, with the portable wasm sysroot COPY'd out of the amd64
+# mirror. No qemu, no source emcc/flang/R→wasm build. Contrast docker-webr-*
+# above, which runs the amd64 image under Rosetta.
+
+docker_webr_arm64_image := "miniextendr-webr-dev-arm64:latest"
+
+# Build the arm64-native webR dev image. Re-run when Dockerfile.webr-arm64
+# changes. Must run on an arm64 host (the emsdk base + native toolchain are
+# arm64); the donor stage is pinned `--platform=linux/amd64` for the FS copy.
+docker-webr-arm64-build:
+    docker build -f Dockerfile.webr-arm64 -t {{docker_webr_arm64_image}} .
+
+# Interactive shell in the arm64 dev container, repo bind-mounted at /work.
+docker-webr-arm64-shell: docker-webr-arm64-build
+    docker run --rm -it \
+        -v "{{justfile_directory()}}:/work" \
+        -w /work \
+        {{docker_webr_arm64_image}} bash
+
+# Non-interactive: run an arbitrary command inside the arm64 container with the
+# repo mounted.
+docker-webr-arm64-run *cmd: docker-webr-arm64-build
+    docker run --rm \
+        -v "{{justfile_directory()}}:/work" \
+        -w /work \
+        {{docker_webr_arm64_image}} bash -c "{{cmd}}"
+
+# arm64-native end-to-end smoke. Same three-phase flow as docker-webr-smoke but
+# against the arm64 image (WEBR_ARM64=1 selects the native-R orchestration +
+# arm64 image inside tests/webr-smoke.sh).
+docker-webr-arm64-smoke *args: docker-webr-arm64-build
+    WEBR_ARM64=1 bash tests/webr-smoke.sh {{args}}
