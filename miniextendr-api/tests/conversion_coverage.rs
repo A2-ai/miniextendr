@@ -1115,6 +1115,60 @@ fn into_r_as_scalar_i64_to_i32_too_large_errors() {
     });
 }
 
+/// Vec<i32> IntoRAs<f64> — NA_integer_ (i32::MIN) sentinel must surface
+/// MissingValue rather than silently widening to the finite -2147483648.0.
+/// Parallels `into_r_as_vec_f64_nan_to_i32_errors` on the NonFinite path.
+#[test]
+fn into_r_as_vec_i32_na_to_f64_missing_value_errors() {
+    use miniextendr_api::into_r_as::StorageCoerceError;
+    r_test_utils::with_r_thread(|| {
+        let v = vec![1i32, NA_INTEGER, 3];
+        let result = IntoRAs::<f64>::into_r_as(v);
+        assert!(
+            matches!(
+                result,
+                Err(StorageCoerceError::MissingValue {
+                    to: "f64",
+                    index: Some(1)
+                })
+            ),
+            "NA_integer_ in Vec<i32> must error as MissingValue at index 1, got {result:?}"
+        );
+    });
+}
+
+/// All-valid Vec<i32> IntoRAs<f64> still widens successfully — guards against
+/// the NA check rejecting ordinary negative values.
+#[test]
+fn into_r_as_vec_i32_to_f64_all_valid() {
+    r_test_utils::with_r_thread(|| {
+        let v = vec![-5i32, 0, 7];
+        let sexp = IntoRAs::<f64>::into_r_as(v).unwrap();
+        assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
+        let data: &[f64] = unsafe { sexp.as_slice() };
+        assert_eq!(data, &[-5.0, 0.0, 7.0]);
+    });
+}
+
+/// Scalar i32 IntoRAs<f64> — i32::MIN (NA_integer_) must surface MissingValue.
+#[test]
+fn into_r_as_scalar_i32_na_to_f64_missing_value_errors() {
+    use miniextendr_api::into_r_as::StorageCoerceError;
+    r_test_utils::with_r_thread(|| {
+        let result = IntoRAs::<f64>::into_r_as(i32::MIN);
+        assert!(
+            matches!(
+                result,
+                Err(StorageCoerceError::MissingValue {
+                    to: "f64",
+                    index: None
+                })
+            ),
+            "scalar i32::MIN must error as MissingValue, got {result:?}"
+        );
+    });
+}
+
 // endregion
 
 // region: NA_real_ bit-exact identity — verified via Vec<Option<f64>> roundtrip
