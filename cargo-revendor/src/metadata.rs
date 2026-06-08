@@ -343,6 +343,20 @@ pub fn discover_from_patch_config(manifest_path: &Path) -> Result<Vec<LocalPacka
 
                 let crate_manifest = crate_path.join("Cargo.toml");
                 if !crate_manifest.exists() {
+                    // The `[patch]` entry points at a path with no Cargo.toml,
+                    // so cargo silently doesn't apply the override and the crate
+                    // is vendored from its git/registry source instead. For a
+                    // monorepo framework crate this silently drops in-PR edits
+                    // (the #865/#876 latch-leak failure mode). Warn loudly so the
+                    // misconfiguration is visible; the caller's local-crate
+                    // assertion is what ultimately fails the build.
+                    eprintln!(
+                        "  warning: [patch] entry for `{crate_name}` in {} points at `{}`, \
+                         which has no Cargo.toml — the override will NOT apply and `{crate_name}` \
+                         will be vendored from its git/registry source instead of this path.",
+                        config_path.display(),
+                        crate_path.display(),
+                    );
                     continue; // path doesn't resolve on this machine — skip
                 }
 
@@ -772,6 +786,82 @@ mod tests {
                 .contains("no workspace `Cargo.toml` found above"),
             "unexpected error message: {err}"
         );
+    }
+
+    // endregion
+
+    // region: discover_from_patch_config tests
+
+    /// Build a monorepo-shaped fixture rooted at a TempDir:
+    ///   <root>/miniextendr-api/Cargo.toml         (framework crate source)
+    ///   <root>/rpkg/src/rust/Cargo.toml           (target manifest)
+    ///   <root>/rpkg/src/rust/.cargo/config.toml    (with the given body)
+    /// Returns (TempDir guard, target manifest path).
+    fn patch_config_fixture(config_body: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Framework crate at the workspace root (the [patch] path target).
+        let api_dir = root.join("miniextendr-api");
+        std::fs::create_dir_all(&api_dir).unwrap();
+        std::fs::write(
+            api_dir.join("Cargo.toml"),
+            "[package]\nname = \"miniextendr-api\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        // Target manifest, nested rpkg-style, with its own .cargo/config.toml.
+        let rust_dir = root.join("rpkg").join("src").join("rust");
+        std::fs::create_dir_all(rust_dir.join(".cargo")).unwrap();
+        let manifest = rust_dir.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"rpkg\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(rust_dir.join(".cargo").join("config.toml"), config_body).unwrap();
+
+        (dir, manifest)
+    }
+
+    #[test]
+    fn patch_config_resolves_existing_path() {
+        // A [patch."git+url"] entry whose path resolves to a real Cargo.toml
+        // is returned as a local override.
+        let body = "[patch.\"https://github.com/A2-ai/miniextendr\"]\n\
+                    miniextendr-api = { path = \"../../../miniextendr-api\" }\n";
+        let (_guard, manifest) = patch_config_fixture(body);
+        let found = discover_from_patch_config(&manifest).unwrap();
+        assert_eq!(found.len(), 1, "the resolvable entry should be discovered");
+        assert_eq!(found[0].name, "miniextendr-api");
+        assert_eq!(found[0].version, "0.1.0");
+    }
+
+    #[test]
+    fn patch_config_skips_missing_path() {
+        // A [patch] entry pointing at a path with NO Cargo.toml is skipped
+        // (and warned about). This is the latch-leak shape (#865/#876): the
+        // override silently doesn't apply, so the framework crate is NOT
+        // reported as a local override and falls back to git vendoring.
+        let body = "[patch.\"https://github.com/A2-ai/miniextendr\"]\n\
+                    miniextendr-api = { path = \"../../../does-not-exist\" }\n";
+        let (_guard, manifest) = patch_config_fixture(body);
+        let found = discover_from_patch_config(&manifest).unwrap();
+        assert!(
+            found.is_empty(),
+            "an unresolvable [patch] path must NOT be reported as a local override, \
+             so the loud-fail assertion can fire; got {found:?}"
+        );
+    }
+
+    #[test]
+    fn patch_config_no_patch_table_is_empty() {
+        // No [patch] table at all — the dev-tree-without-overrides case. No
+        // local crates discovered; the caller's assertion catches the leak.
+        let body = "[build]\nrustflags = []\n";
+        let (_guard, manifest) = patch_config_fixture(body);
+        let found = discover_from_patch_config(&manifest).unwrap();
+        assert!(found.is_empty(), "no [patch] table → no local overrides");
     }
 
     // endregion

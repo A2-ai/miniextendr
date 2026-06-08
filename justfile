@@ -472,15 +472,52 @@ vendor:
     # their edits reflected in vendor/ and inst/vendor.tar.xz, so
     # `vendor-sync-check` passes and the offline tarball ships the PR's code.
     # `--source-root` is no longer needed here (kept as CLI flag for back-compat).
-    cargo revendor \
+    #
+    # `--json` writes a machine-readable summary (incl. `local_crates`) to
+    # STDOUT, which we capture; `-v` progress still streams to STDERR (the
+    # terminal). They coexist. We grep `local_crates` rather than shell out to
+    # `jq` so the assertion has no extra dependency on CI runners.
+    revendor_json="$(cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
       --output rpkg/vendor \
       --compress rpkg/inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
       --force \
-      -v
+      --json \
+      -v)"
+    # Defense-in-depth (#876): every framework crate MUST have been vendored
+    # from the LOCAL workspace, not fetched from git@main. If configure ran in
+    # tarball mode (inst/vendor.tar.xz already present) it wrote a [source]
+    # replacement but NO [patch."git+url"] override, so cargo-revendor finds
+    # "0 local packages" and silently ships git@main — dropping any in-PR edits
+    # to a framework crate (the #865 latch-leak failure mode). Catch it here, at
+    # the point of damage, instead of hours later in CI.
+    leaked=""
+    for crate in miniextendr-api miniextendr-lint miniextendr-macros; do
+      # `local_crates` is a pretty-printed JSON array, one "name" per line.
+      if ! grep -qE "\"$crate\"" <<<"$revendor_json"; then
+        leaked="$leaked $crate"
+      fi
+    done
+    if [[ -n "$leaked" ]]; then
+      echo "" >&2
+      echo "ERROR: framework crate(s)$leaked were vendored from git, not the local workspace." >&2
+      echo "" >&2
+      echo "cargo-revendor reported these crates as NOT local — they came from the" >&2
+      echo "git URL pinned in Cargo.lock (git@main), so any in-PR edits to them were" >&2
+      echo "silently dropped from rpkg/inst/vendor.tar.xz (#865 latch leak)." >&2
+      echo "" >&2
+      echo "Almost always: configure ran in tarball mode (rpkg/inst/vendor.tar.xz" >&2
+      echo "was present) so it wrote a [source] replacement but no [patch] override." >&2
+      echo "" >&2
+      echo "Fix:  just clean-vendor-leak && just configure && just vendor" >&2
+      echo "" >&2
+      echo "See CLAUDE.md \"The latch leak\" and #876." >&2
+      exit 1
+    fi
     echo ""
+    echo "Vendored framework crates from local workspace: miniextendr-{api,lint,macros}"
     echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
     echo "(run 'just clean-vendor-leak' or 'unlink(\"rpkg/inst/vendor.tar.xz\")' in R)"
 
@@ -542,8 +579,13 @@ vendor-verify:
 # bundled instead of a freshly-bootstrapped one. Requires cargo-revendor on PATH
 # and pkgbuild installed in R; skips with a clear message if either is missing.
 # See tests/bootstrap-produces-vendor.sh and #441.
+#
+# Also runs the #876 loud-fail regression: `just vendor` must exit non-zero when
+# a framework crate would be vendored from git instead of the local workspace.
+# See tests/vendor-loud-fail.sh.
 test-bootstrap-vendor:
     bash tests/bootstrap-produces-vendor.sh
+    bash tests/vendor-loud-fail.sh
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
