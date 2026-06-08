@@ -131,9 +131,9 @@ Build sequence: `Makevars` → `cargo rustc --crate-type cdylib` → `dyn.load` 
 `just clippy` ≠ CI. Two CI jobs must both pass `-D warnings`:
 
 - `clippy_default`: `cargo clippy --workspace --all-targets --locked -- -D warnings`
-- `clippy_all`: same + `--features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,default-strict,default-coerce,default-r6,default-worker`
+- `clippy_all`: same + `--features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,strict-default,coerce-default,r6-default,worker-default`
 
-`--all-features` fails (`default-r6` and `default-s7` are mutually exclusive). CI runs a newer toolchain, so lints like `collapsible_match`, `manual_checked_ops` can fire on CI with green local. Reproduce both before pushing.
+`--all-features` fails (`r6-default` and `s7-default` are mutually exclusive). CI runs a newer toolchain, so lints like `collapsible_match`, `manual_checked_ops` can fire on CI with green local. Reproduce both before pushing.
 
 ### sccache + `[profile.dev] incremental`
 

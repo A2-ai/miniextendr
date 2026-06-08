@@ -4,7 +4,7 @@
 
 Tool: `cargo llvm-cov` 0.6.24 with `llvm-tools-preview` (LLVM instrumentation).
 
-Coverage was measured by running the `miniextendr-api` test suite (unit + integration tests) via `cargo llvm-cov --package miniextendr-api --features "default-r6"`.
+Coverage was measured by running the `miniextendr-api` test suite (unit + integration tests) via `cargo llvm-cov --package miniextendr-api --features "r6-default"`.
 
 The integration tests (`tests/from_r.rs`, `tests/into_r.rs`, `tests/roundtrip_properties.rs`, `tests/coerce.rs`, etc.) call `with_r_thread()` which embeds a real R runtime via `miniextendr-engine`. All tests ran and passed. All 74 new tests in `tests/conversion_coverage.rs` passed.
 
@@ -26,7 +26,7 @@ All Rust code paths in `miniextendr-api` that `cargo test` can reach:
 
 ## Baseline Coverage (before `tests/conversion_coverage.rs`)
 
-Measured with all existing tests (`cargo llvm-cov --package miniextendr-api --features "default-r6"`):
+Measured with all existing tests (`cargo llvm-cov --package miniextendr-api --features "r6-default"`):
 
 | Module | Region coverage | Line coverage |
 |--------|----------------|---------------|

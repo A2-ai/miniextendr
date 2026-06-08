@@ -1200,7 +1200,7 @@ pub(crate) enum ReturnPref {
 /// defaults.
 ///
 /// An empty input (plain `#[miniextendr]`) resolves all options to their feature-based
-/// defaults (e.g., `default-worker`, `default-coerce`, `default-strict`).
+/// defaults (e.g., `worker-default`, `coerce-default`, `strict-default`).
 ///
 /// # Errors
 ///
@@ -1566,10 +1566,10 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         }
 
         Ok(Self {
-            force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
+            force_worker: force_worker.unwrap_or(cfg!(feature = "worker-default")),
             force_invisible,
             check_interrupt,
-            coerce_all: coerce_all.unwrap_or(cfg!(feature = "default-coerce")),
+            coerce_all: coerce_all.unwrap_or(cfg!(feature = "coerce-default")),
             rng,
             unwrap_in_r,
             return_pref,
@@ -1578,7 +1578,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             dots_spec,
             dots_span,
             lifecycle,
-            strict: strict.unwrap_or(cfg!(feature = "default-strict")),
+            strict: strict.unwrap_or(cfg!(feature = "strict-default")),
             internal,
             noexport,
             export,

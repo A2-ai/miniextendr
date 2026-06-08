@@ -235,7 +235,7 @@ additions (e.g., `r6(prop = "name")`, `r6(finalize)`, `r6(private)`,
 
 Add `#[miniextendr(strict)]`. This applies checked `TryFrom` conversions for
 `i64`, `u64`, `isize`, `usize` and similar types that would otherwise silently
-truncate. Strict mode is also configurable globally via the `default-strict`
+truncate. Strict mode is also configurable globally via the `strict-default`
 Cargo feature.
 
 ### The generated R code looks wrong — where do I look?

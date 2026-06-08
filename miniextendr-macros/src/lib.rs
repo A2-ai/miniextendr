@@ -204,10 +204,13 @@ mod naming;
 pub(crate) use naming::r_wrapper_const_ident_for;
 
 // Feature default mutual exclusivity guards
-#[cfg(all(feature = "default-r6", feature = "default-s7"))]
-compile_error!("`default-r6` and `default-s7` are mutually exclusive");
+#[cfg(all(feature = "r6-default", feature = "s7-default"))]
+compile_error!(
+    "features \"r6-default\" and \"s7-default\" are mutually exclusive — \
+     enable exactly one, or omit both to fall back to the unspecified default"
+);
 // Note: default-main-thread was removed — main thread is now the hardcoded default.
-// default-worker still opts into worker thread execution.
+// worker-default still opts into worker thread execution.
 
 pub(crate) use type_inspect::{
     SeveralOkContainer, classify_several_ok_container, first_type_argument, is_sexp_type,

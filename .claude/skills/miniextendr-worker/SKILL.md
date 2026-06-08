@@ -160,7 +160,7 @@ The rendezvous channel (capacity 0) means at most one job is in flight. The `res
 
 Off (default): all code runs inline on the main thread. `run_on_worker(f)` returns `Ok(f())`. Suitable for packages where all work is I/O bound or the computation is fast enough not to block R's event loop.
 
-On: a background thread is spawned at package load. Use for CPU-intensive work that would freeze R's UI for more than a second or two. The `default-worker` feature implies `worker-thread`.
+On: a background thread is spawned at package load. Use for CPU-intensive work that would freeze R's UI for more than a second or two. The `worker-default` feature implies `worker-thread`.
 
 ## Key files
 

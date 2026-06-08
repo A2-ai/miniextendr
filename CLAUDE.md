@@ -286,7 +286,7 @@ fixture exercising it?" See #430.
 
 **The feature list is maintained in `.github/workflows/ci.yml` (`clippy_all`
 step) — read it from there.** Hard-coding the list here drifts (it already
-has). `--all-features` does NOT work — `default-r6` and `default-s7` are
+has). `--all-features` does NOT work — `r6-default` and `s7-default` are
 mutually exclusive. CI runs a newer toolchain, so lints like
 `collapsible_match`, `manual_checked_ops` can fire on CI with green local.
 Reproduce both before pushing.

@@ -48,7 +48,7 @@ used to scaffold standalone packages and monorepos.
 Feature families in the runtime crate include:
 
 - Runtime/build: `nonapi`, `rayon`, `connections`, `indicatif`, `vctrs`,
-  `worker-thread`, `default-worker`, `log`
+  `worker-thread`, `worker-default`, `log`
 - Serialization/data: `serde` (native R), `serde_json` (JSON), `borsh`,
   `arrow`, `datafusion`
 - Ecosystem conversions: `either`, `uuid`, `regex`, `url`, `time`,
@@ -56,8 +56,8 @@ Feature families in the runtime crate include:
   `bitflags`, `bitvec`, `ndarray`, `nalgebra`, `tinyvec`, `bytes`,
   `raw_conversions`, `aho-corasick`, `toml`, `tabled`, `rand`, `rand_distr`,
   `num-traits`
-- Proc-macro defaults and diagnostics: `default-strict`, `default-coerce`,
-  `default-r6`, `default-s7`, `doc-lint`, `growth-debug`,
+- Proc-macro defaults and diagnostics: `strict-default`, `coerce-default`,
+  `r6-default`, `s7-default`, `doc-lint`, `growth-debug`,
   `macro-coverage`, `refcount-fast-hash`
 
 See `miniextendr-api/README.md` and `docs/FEATURES.md` for the current feature

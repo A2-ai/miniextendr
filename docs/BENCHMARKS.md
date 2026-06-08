@@ -365,7 +365,7 @@ by `just bench-drift`.
   temp-dir. Run `just bench-compile`; the results are written to the
   temp-dir and summarised on stdout.
 - **Feature combinations that conflict with `--all-features`**:
-  `default-r6` and `default-s7` are mutually exclusive, so
+  `r6-default` and `s7-default` are mutually exclusive, so
   `--all-features` fails. Use the explicit feature list from
   `CLAUDE.md`'s "Reproducing CI clippy before PR" section when you
   need the CI-equivalent set.
