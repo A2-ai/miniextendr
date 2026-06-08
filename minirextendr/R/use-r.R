@@ -20,7 +20,12 @@ use_miniextendr_package_doc <- function(path = ".") {
   invisible(TRUE)
 }
 
-#' Update DESCRIPTION with miniextendr fields
+#' Configure DESCRIPTION for miniextendr
+#'
+#' Ensures a `DESCRIPTION` exists, then applies the miniextendr config fields.
+#' When `DESCRIPTION` is absent, a minimal one is created by delegating to
+#' [usethis::use_description()] (so `use_miniextendr()` works in a fresh
+#' directory); when it already exists, only the miniextendr fields are updated.
 #'
 #' Adds the required Config/* fields to DESCRIPTION for miniextendr:
 #' - Config/build/bootstrap: TRUE
@@ -37,7 +42,17 @@ use_miniextendr_description <- function(path = ".") {
   desc_path <- usethis::proj_path("DESCRIPTION")
 
   if (!fs::file_exists(desc_path)) {
-    cli::cli_abort("DESCRIPTION file not found. Is this an R package?")
+    # No DESCRIPTION yet: a `use_*` helper should create the thing it names.
+    # Delegate to usethis::use_description(), which derives the package name
+    # from the (already active) project directory and writes a minimal,
+    # well-formed DESCRIPTION. Run it deterministically for scripted use:
+    # check_name = FALSE skips the interactive name check, and usethis.quiet
+    # suppresses bullets so nested scaffolding output stays tidy.
+    cli::cli_alert_info("No {.path DESCRIPTION} found; creating a minimal one")
+    old_quiet <- getOption("usethis.quiet", default = NULL)
+    options(usethis.quiet = TRUE)
+    on.exit(options(usethis.quiet = old_quiet), add = TRUE)
+    usethis::use_description(check_name = FALSE, roxygen = FALSE)
   }
 
   # Set Config fields
@@ -47,9 +62,12 @@ use_miniextendr_description <- function(path = ".") {
     "Config/build/extra-sources" = "src/rust/Cargo.lock"
   )
 
-  # Set License if not already set to something meaningful
+  # Set License if not already set to something meaningful. A freshly created
+  # DESCRIPTION (from usethis::use_description()) carries a placeholder License
+  # like "`use_mit_license()`, `use_gpl3_license()` or friends ..."; treat any
+  # such "use_*_license()" placeholder as unset so we fill in MIT + file LICENSE.
   license <- mx_desc_get_field("License", file = desc_path, default = "")
-  if (!nzchar(license) || license == "use_mit_license()") {
+  if (!nzchar(license) || grepl("use_[a-z0-9]+_license\\(\\)", license)) {
     mx_desc_set(desc_path, "License" = "MIT + file LICENSE")
   }
 
