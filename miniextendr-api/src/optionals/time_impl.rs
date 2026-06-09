@@ -70,7 +70,12 @@ impl_realsxp_datetime!(
     OffsetDateTime,
     "POSIXct",
     |secs: f64| {
+        // `whole_secs` saturates on overflow (no UB); `nanos` is bounded to
+        // `[0, 1e9) < i32::MAX` because `secs - secs.floor() ∈ [0, 1)`. Any
+        // out-of-range timestamp is rejected by `checked_add` below.
+        #[allow(clippy::cast_possible_truncation)]
         let whole_secs = secs.floor() as i64;
+        #[allow(clippy::cast_possible_truncation)]
         let nanos = ((secs - secs.floor()) * 1_000_000_000.0) as i32;
         let duration = time::Duration::new(whole_secs, nanos);
         UNIX_EPOCH
@@ -79,7 +84,8 @@ impl_realsxp_datetime!(
     },
     |dt: OffsetDateTime| {
         let duration = dt - UNIX_EPOCH;
-        duration.whole_seconds() as f64 + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0)
+        duration.whole_seconds() as f64
+            + (f64::from(duration.subsec_nanoseconds()) / 1_000_000_000.0)
     },
     |sexp: SEXP| set_posixct_utc(sexp)
 );
@@ -92,6 +98,9 @@ impl_realsxp_datetime!(
     Date,
     "Date",
     |days: f64| {
+        // Saturates on overflow (no UB); out-of-range dates are rejected by
+        // `checked_add` below.
+        #[allow(clippy::cast_possible_truncation)]
         let days_i64 = days.trunc() as i64;
         let duration = time::Duration::days(days_i64);
         UNIX_EPOCH_DATE
@@ -183,7 +192,14 @@ impl RDuration for Duration {
     }
 
     fn as_milliseconds(&self) -> i64 {
-        Duration::whole_milliseconds(*self) as i64
+        // whole_milliseconds() returns i128; clamp to i64 range (saturating,
+        // not truncating) to mirror the jiff `SignedDuration` behaviour.
+        // SAFETY (lint): after clamping into `[i64::MIN, i64::MAX]` the value
+        // is representable as `i64`, so the narrowing cannot truncate.
+        #[allow(clippy::cast_possible_truncation)]
+        let ms = Duration::whole_milliseconds(*self)
+            .clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64;
+        ms
     }
 
     fn whole_days(&self) -> i64 {

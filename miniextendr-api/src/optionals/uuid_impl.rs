@@ -205,7 +205,8 @@ pub trait RUuidOps {
 
 impl RUuidOps for Uuid {
     fn version(&self) -> i32 {
-        self.get_version_num() as i32
+        // The UUID version is a 4-bit field (0..=15), so it always fits in i32.
+        i32::try_from(self.get_version_num()).expect("UUID version fits in i32")
     }
 
     fn variant(&self) -> String {

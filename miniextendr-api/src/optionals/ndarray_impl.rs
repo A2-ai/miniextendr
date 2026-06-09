@@ -1182,7 +1182,10 @@ fn get_array_dims(sexp: SEXP) -> Option<Vec<usize>> {
             if d < 0 {
                 return None;
             }
-            dims.push(d as usize);
+            // SAFETY: `d >= 0` checked above, so the sign cast cannot lose data.
+            #[allow(clippy::cast_sign_loss)]
+            let d = d as usize;
+            dims.push(d);
         }
         Some(dims)
     }
@@ -1919,29 +1922,31 @@ impl RNdArrayOps for Array1<i32> {
     }
 
     fn sum(&self) -> f64 {
-        self.iter().map(|&x| x as f64).sum()
+        self.iter().map(|&x| f64::from(x)).sum()
     }
 
     fn mean(&self) -> f64 {
         if Array1::is_empty(self) {
             f64::NAN
         } else {
-            self.iter().map(|&x| x as f64).sum::<f64>() / Array1::len(self) as f64
+            self.iter().map(|&x| f64::from(x)).sum::<f64>() / Array1::len(self) as f64
         }
     }
 
     fn min(&self) -> f64 {
-        self.iter().map(|&x| x as f64).fold(f64::INFINITY, f64::min)
+        self.iter()
+            .map(|&x| f64::from(x))
+            .fold(f64::INFINITY, f64::min)
     }
 
     fn max(&self) -> f64 {
         self.iter()
-            .map(|&x| x as f64)
+            .map(|&x| f64::from(x))
             .fold(f64::NEG_INFINITY, f64::max)
     }
 
     fn product(&self) -> f64 {
-        self.iter().map(|&x| x as f64).product()
+        self.iter().map(|&x| f64::from(x)).product()
     }
 
     fn var(&self) -> f64 {
@@ -1949,8 +1954,11 @@ impl RNdArrayOps for Array1<i32> {
         if n == 0.0 {
             return f64::NAN;
         }
-        let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
-        self.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n
+        let mean = self.iter().map(|&x| f64::from(x)).sum::<f64>() / n;
+        self.iter()
+            .map(|&x| (f64::from(x) - mean).powi(2))
+            .sum::<f64>()
+            / n
     }
 
     fn std(&self) -> f64 {
@@ -1979,29 +1987,31 @@ impl RNdArrayOps for Array2<i32> {
     }
 
     fn sum(&self) -> f64 {
-        self.iter().map(|&x| x as f64).sum()
+        self.iter().map(|&x| f64::from(x)).sum()
     }
 
     fn mean(&self) -> f64 {
         if Array2::is_empty(self) {
             f64::NAN
         } else {
-            self.iter().map(|&x| x as f64).sum::<f64>() / Array2::len(self) as f64
+            self.iter().map(|&x| f64::from(x)).sum::<f64>() / Array2::len(self) as f64
         }
     }
 
     fn min(&self) -> f64 {
-        self.iter().map(|&x| x as f64).fold(f64::INFINITY, f64::min)
+        self.iter()
+            .map(|&x| f64::from(x))
+            .fold(f64::INFINITY, f64::min)
     }
 
     fn max(&self) -> f64 {
         self.iter()
-            .map(|&x| x as f64)
+            .map(|&x| f64::from(x))
             .fold(f64::NEG_INFINITY, f64::max)
     }
 
     fn product(&self) -> f64 {
-        self.iter().map(|&x| x as f64).product()
+        self.iter().map(|&x| f64::from(x)).product()
     }
 
     fn var(&self) -> f64 {
@@ -2009,8 +2019,11 @@ impl RNdArrayOps for Array2<i32> {
         if n == 0.0 {
             return f64::NAN;
         }
-        let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
-        self.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n
+        let mean = self.iter().map(|&x| f64::from(x)).sum::<f64>() / n;
+        self.iter()
+            .map(|&x| (f64::from(x) - mean).powi(2))
+            .sum::<f64>()
+            / n
     }
 
     fn std(&self) -> f64 {
@@ -2039,29 +2052,31 @@ impl RNdArrayOps for ArrayD<i32> {
     }
 
     fn sum(&self) -> f64 {
-        self.iter().map(|&x| x as f64).sum()
+        self.iter().map(|&x| f64::from(x)).sum()
     }
 
     fn mean(&self) -> f64 {
         if ArrayD::is_empty(self) {
             f64::NAN
         } else {
-            self.iter().map(|&x| x as f64).sum::<f64>() / ArrayD::len(self) as f64
+            self.iter().map(|&x| f64::from(x)).sum::<f64>() / ArrayD::len(self) as f64
         }
     }
 
     fn min(&self) -> f64 {
-        self.iter().map(|&x| x as f64).fold(f64::INFINITY, f64::min)
+        self.iter()
+            .map(|&x| f64::from(x))
+            .fold(f64::INFINITY, f64::min)
     }
 
     fn max(&self) -> f64 {
         self.iter()
-            .map(|&x| x as f64)
+            .map(|&x| f64::from(x))
             .fold(f64::NEG_INFINITY, f64::max)
     }
 
     fn product(&self) -> f64 {
-        self.iter().map(|&x| x as f64).product()
+        self.iter().map(|&x| f64::from(x)).product()
     }
 
     fn var(&self) -> f64 {
@@ -2069,8 +2084,11 @@ impl RNdArrayOps for ArrayD<i32> {
         if n == 0.0 {
             return f64::NAN;
         }
-        let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
-        self.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n
+        let mean = self.iter().map(|&x| f64::from(x)).sum::<f64>() / n;
+        self.iter()
+            .map(|&x| (f64::from(x) - mean).powi(2))
+            .sum::<f64>()
+            / n
     }
 
     fn std(&self) -> f64 {
@@ -2142,6 +2160,10 @@ pub trait RNdSlice {
 impl RNdSlice for Array1<f64> {
     type Elem = f64;
 
+    // SAFETY (lint): R indices arrive as `i32`; `get` guards `< 0` and
+    // `slice_1d` clamps with `.max(0)` before the `as usize` cast, so the
+    // sign cast cannot lose data.
+    #[allow(clippy::cast_sign_loss)]
     fn get(&self, index: i32) -> Option<f64> {
         if index < 0 {
             return None;
@@ -2157,6 +2179,7 @@ impl RNdSlice for Array1<f64> {
         self.view().last().copied()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn slice_1d(&self, start: i32, end: i32) -> Vec<f64> {
         let start = start.max(0) as usize;
         let end = (end.max(0) as usize).min(self.len());
@@ -2170,6 +2193,10 @@ impl RNdSlice for Array1<f64> {
 impl RNdSlice for Array1<i32> {
     type Elem = i32;
 
+    // SAFETY (lint): R indices arrive as `i32`; `get` guards `< 0` and
+    // `slice_1d` clamps with `.max(0)` before the `as usize` cast, so the
+    // sign cast cannot lose data.
+    #[allow(clippy::cast_sign_loss)]
     fn get(&self, index: i32) -> Option<i32> {
         if index < 0 {
             return None;
@@ -2185,6 +2212,7 @@ impl RNdSlice for Array1<i32> {
         self.view().last().copied()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn slice_1d(&self, start: i32, end: i32) -> Vec<i32> {
         let start = start.max(0) as usize;
         let end = (end.max(0) as usize).min(self.len());
@@ -2245,6 +2273,10 @@ pub trait RNdSlice2D {
 impl RNdSlice2D for Array2<f64> {
     type Elem = f64;
 
+    // SAFETY (lint): R indices arrive as `i32`; each method below guards
+    // `< 0` (returning `None`/empty) before the `as usize` cast, so the sign
+    // cast cannot lose data.
+    #[allow(clippy::cast_sign_loss)]
     fn get_2d(&self, row: i32, col: i32) -> Option<f64> {
         if row < 0 || col < 0 {
             return None;
@@ -2252,6 +2284,7 @@ impl RNdSlice2D for Array2<f64> {
         self.get((row as usize, col as usize)).copied()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn row(&self, row: i32) -> Vec<f64> {
         let (nrows, _) = self.dim();
         if row < 0 || row as usize >= nrows {
@@ -2261,6 +2294,7 @@ impl RNdSlice2D for Array2<f64> {
         self.view().row(row as usize).to_vec()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn col(&self, col: i32) -> Vec<f64> {
         let (_, ncols) = self.dim();
         if col < 0 || col as usize >= ncols {
@@ -2287,6 +2321,10 @@ impl RNdSlice2D for Array2<f64> {
 impl RNdSlice2D for Array2<i32> {
     type Elem = i32;
 
+    // SAFETY (lint): R indices arrive as `i32`; each method below guards
+    // `< 0` (returning `None`/empty) before the `as usize` cast, so the sign
+    // cast cannot lose data.
+    #[allow(clippy::cast_sign_loss)]
     fn get_2d(&self, row: i32, col: i32) -> Option<i32> {
         if row < 0 || col < 0 {
             return None;
@@ -2294,6 +2332,7 @@ impl RNdSlice2D for Array2<i32> {
         self.get((row as usize, col as usize)).copied()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn row(&self, row: i32) -> Vec<i32> {
         let (nrows, _) = self.dim();
         if row < 0 || row as usize >= nrows {
@@ -2303,6 +2342,7 @@ impl RNdSlice2D for Array2<i32> {
         self.view().row(row as usize).to_vec()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn col(&self, col: i32) -> Vec<i32> {
         let (_, ncols) = self.dim();
         if col < 0 || col as usize >= ncols {
@@ -2407,6 +2447,10 @@ pub trait RNdIndex {
 impl RNdIndex for ArrayD<f64> {
     type Elem = f64;
 
+    // SAFETY (lint): R indices arrive as `i32`; every method below guards
+    // `< 0` (or clamps via `.max(0)`) before the `as usize` cast, so the sign
+    // cast cannot lose data.
+    #[allow(clippy::cast_sign_loss)]
     fn get_nd(&self, indices: Vec<i32>) -> Option<f64> {
         if indices.len() != self.ndim() {
             return None;
@@ -2419,6 +2463,7 @@ impl RNdIndex for ArrayD<f64> {
         self.get(IxDyn(&idx)).copied()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<f64>> {
         let ndim = self.ndim();
         if start.len() != ndim || end.len() != ndim {
@@ -2497,6 +2542,7 @@ impl RNdIndex for ArrayD<f64> {
         self.iter().copied().collect()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn axis_slice(&self, axis: i32, index: i32) -> Vec<f64> {
         let ndim = self.ndim();
         if axis < 0 || axis as usize >= ndim {
@@ -2541,6 +2587,7 @@ impl RNdIndex for ArrayD<f64> {
         result
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn reshape(&self, new_shape: Vec<i32>) -> Option<Vec<f64>> {
         let new_len: usize = new_shape.iter().map(|&d| d.max(0) as usize).product();
         if new_len != self.len() {
@@ -2554,6 +2601,10 @@ impl RNdIndex for ArrayD<f64> {
 impl RNdIndex for ArrayD<i32> {
     type Elem = i32;
 
+    // SAFETY (lint): R indices arrive as `i32`; every method below guards
+    // `< 0` (or clamps via `.max(0)`) before the `as usize` cast, so the sign
+    // cast cannot lose data.
+    #[allow(clippy::cast_sign_loss)]
     fn get_nd(&self, indices: Vec<i32>) -> Option<i32> {
         if indices.len() != self.ndim() {
             return None;
@@ -2565,6 +2616,7 @@ impl RNdIndex for ArrayD<i32> {
         self.get(IxDyn(&idx)).copied()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<i32>> {
         let ndim = self.ndim();
         if start.len() != ndim || end.len() != ndim {
@@ -2637,6 +2689,7 @@ impl RNdIndex for ArrayD<i32> {
         self.iter().copied().collect()
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn axis_slice(&self, axis: i32, index: i32) -> Vec<i32> {
         let ndim = self.ndim();
         if axis < 0 || axis as usize >= ndim {
@@ -2678,6 +2731,7 @@ impl RNdIndex for ArrayD<i32> {
         result
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn reshape(&self, new_shape: Vec<i32>) -> Option<Vec<i32>> {
         let new_len: usize = new_shape.iter().map(|&d| d.max(0) as usize).product();
         if new_len != self.len() {

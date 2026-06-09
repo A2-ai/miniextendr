@@ -250,13 +250,18 @@ where
     T: RNativeType + Send + Sync,
     F: Fn(&mut [T], usize) + Send + Sync,
 {
-    // Validate length fits in R_xlen_t
+    // Validate length fits in R_xlen_t.
+    // SAFETY (lint): on a 64-bit target `usize == u64`, so `i64::MAX as usize`
+    // is the exact `R_xlen_t` ceiling and cannot truncate.
     #[cfg(target_pointer_width = "64")]
-    assert!(
-        len <= i64::MAX as usize,
-        "with_r_vec: length {} exceeds R_xlen_t maximum",
-        len
-    );
+    {
+        #[allow(clippy::cast_possible_truncation)]
+        let max = i64::MAX as usize;
+        assert!(
+            len <= max,
+            "with_r_vec: length {len} exceeds R_xlen_t maximum"
+        );
+    }
     #[cfg(target_pointer_width = "32")]
     assert!(
         len <= i32::MAX as usize,
@@ -480,13 +485,18 @@ where
         .checked_mul(ncol)
         .expect("with_r_matrix: nrow * ncol overflow");
 
-    // Validate total length fits in R_xlen_t
+    // Validate total length fits in R_xlen_t.
+    // SAFETY (lint): on a 64-bit target `usize == u64`, so `i64::MAX as usize`
+    // is the exact `R_xlen_t` ceiling and cannot truncate.
     #[cfg(target_pointer_width = "64")]
-    assert!(
-        len <= i64::MAX as usize,
-        "with_r_matrix: total length {} exceeds R_xlen_t maximum",
-        len
-    );
+    {
+        #[allow(clippy::cast_possible_truncation)]
+        let max = i64::MAX as usize;
+        assert!(
+            len <= max,
+            "with_r_matrix: total length {len} exceeds R_xlen_t maximum"
+        );
+    }
     #[cfg(target_pointer_width = "32")]
     assert!(
         len <= i32::MAX as usize,
@@ -496,8 +506,12 @@ where
 
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
+    // SAFETY: `nrow`/`ncol <= i32::MAX` asserted above, so these narrowing
+    // casts cannot truncate.
+    #[allow(clippy::cast_possible_truncation)]
+    let (nrow_i32, ncol_i32) = (nrow as i32, ncol as i32);
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::sys::Rf_allocMatrix_unchecked(T::SEXP_TYPE, nrow as i32, ncol as i32);
+        let sexp = crate::sys::Rf_allocMatrix_unchecked(T::SEXP_TYPE, nrow_i32, ncol_i32);
         crate::sys::Rf_protect_unchecked(sexp);
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
@@ -565,13 +579,18 @@ where
         .try_fold(1usize, |acc, &d| acc.checked_mul(d))
         .expect("with_r_array: dimension product overflow");
 
-    // Validate total length fits in R_xlen_t
+    // Validate total length fits in R_xlen_t.
+    // SAFETY (lint): on a 64-bit target `usize == u64`, so `i64::MAX as usize`
+    // is the exact `R_xlen_t` ceiling and cannot truncate.
     #[cfg(target_pointer_width = "64")]
-    assert!(
-        total_len <= i64::MAX as usize,
-        "with_r_array: total length {} exceeds R_xlen_t maximum",
-        total_len
-    );
+    {
+        #[allow(clippy::cast_possible_truncation)]
+        let max = i64::MAX as usize;
+        assert!(
+            total_len <= max,
+            "with_r_array: total length {total_len} exceeds R_xlen_t maximum"
+        );
+    }
     #[cfg(target_pointer_width = "32")]
     assert!(
         total_len <= i32::MAX as usize,
@@ -589,7 +608,11 @@ where
         crate::sys::Rf_protect_unchecked(dim_sexp);
 
         for (slot, &d) in dim_s.iter_mut().zip(dims.iter()) {
-            *slot = d as i32;
+            // SAFETY: every `d <= i32::MAX` asserted above, so the narrowing
+            // cast cannot truncate.
+            #[allow(clippy::cast_possible_truncation)]
+            let d = d as i32;
+            *slot = d;
         }
 
         sexp.set_attr_unchecked(SEXP::dim_symbol(), dim_sexp);
@@ -973,6 +996,13 @@ impl RDataFrameBuilder {
             ncol,
             "RDataFrameBuilder: names/columns length mismatch"
         );
+        // Compact row.names `c(NA, -nrow)` are emitted as INTSXP, so `nrow` must
+        // fit in `i32`. Validate up front (panic → R error) rather than letting
+        // `-(nrow as i32)` below silently wrap for >2^31-row frames.
+        assert!(
+            nrow <= i32::MAX as usize,
+            "RDataFrameBuilder: nrow {nrow} exceeds i32 maximum for compact row.names"
+        );
 
         // Phase 1: allocate every column's backing storage serially. Native
         // columns return a freshly-protected R SEXP and its data pointer;
@@ -1056,7 +1086,11 @@ impl RDataFrameBuilder {
                     }
                 }
             }
-            debug_assert_eq!(native_protected as usize, ncol);
+            // SAFETY: `native_protected` is a non-negative running count, so the
+            // sign cast to `usize` cannot lose data.
+            #[allow(clippy::cast_sign_loss)]
+            let native_protected_usize = native_protected as usize;
+            debug_assert_eq!(native_protected_usize, ncol);
 
             // Allocate the parent list and protect it.
             let df = crate::sys::Rf_allocVector_unchecked(VECSXP, ncol as crate::R_xlen_t);
@@ -1089,7 +1123,11 @@ impl RDataFrameBuilder {
             let row_names = crate::sys::Rf_allocVector_unchecked(INTSXP, 2);
             crate::sys::Rf_protect_unchecked(row_names);
             row_names.set_integer_elt(0, i32::MIN); // NA_integer_
-            row_names.set_integer_elt(1, -(nrow as i32));
+            // SAFETY: `nrow <= i32::MAX` asserted in `build_sexp`, so the
+            // narrowing cast cannot truncate the compact row.names count.
+            #[allow(clippy::cast_possible_truncation)]
+            let neg_nrow = -(nrow as i32);
+            row_names.set_integer_elt(1, neg_nrow);
             df.set_row_names(row_names);
             crate::sys::Rf_unprotect_unchecked(1); // row_names now reachable via df
 
@@ -1336,8 +1374,11 @@ pub trait RParallelIterator {
     }
 
     /// Counts the number of elements in parallel.
+    ///
+    /// The count is returned to R as an `int`; collections larger than
+    /// `i32::MAX` saturate rather than silently wrapping.
     fn par_count(&self) -> i32 {
-        self.par_iter().count() as i32
+        i32::try_from(self.par_iter().count()).unwrap_or(i32::MAX)
     }
 
     /// Computes the parallel product of f64 elements.
@@ -1385,7 +1426,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().filter(|&x| x.into() > threshold).count() as i32
+        i32::try_from(self.par_iter().filter(|&x| x.into() > threshold).count()).unwrap_or(i32::MAX)
     }
 
     /// Counts elements less than threshold.
@@ -1393,7 +1434,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().filter(|&x| x.into() < threshold).count() as i32
+        i32::try_from(self.par_iter().filter(|&x| x.into() < threshold).count()).unwrap_or(i32::MAX)
     }
 
     /// Counts elements equal to value (within epsilon for floats).
@@ -1401,9 +1442,12 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter()
-            .filter(|&x| (x.into() - value).abs() <= epsilon)
-            .count() as i32
+        i32::try_from(
+            self.par_iter()
+                .filter(|&x| (x.into() - value).abs() <= epsilon)
+                .count(),
+        )
+        .unwrap_or(i32::MAX)
     }
 
     /// Computes variance in parallel.

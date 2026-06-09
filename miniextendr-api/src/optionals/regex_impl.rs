@@ -316,7 +316,10 @@ impl RCaptureGroups for CaptureGroups {
         if i < 0 {
             return None;
         }
-        self.groups.get(i as usize).and_then(|s| s.clone())
+        // SAFETY: `i >= 0` checked above, so the sign cast cannot lose data.
+        #[allow(clippy::cast_sign_loss)]
+        let i = i as usize;
+        self.groups.get(i).and_then(|s| s.clone())
     }
 
     fn get_named(&self, name: &str) -> Option<String> {

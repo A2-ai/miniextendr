@@ -138,7 +138,11 @@ impl TryRng for RRng {
         let u = unsafe { crate::sys::unif_rand() };
         // u * 2^32, but we need to be careful with floating point
         // Using the standard conversion: floor(u * (MAX + 1))
-        Ok((u * (u32::MAX as f64 + 1.0)) as u32)
+        // SAFETY (lint): `u ∈ [0, 1)` so the product is in `[0, 2^32)`; the cast
+        // is the intended floor-to-u32 of a non-negative, in-range value.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let scaled = (u * (f64::from(u32::MAX) + 1.0)) as u32;
+        Ok(scaled)
     }
 
     /// Generate a random u64 using R's RNG.
@@ -147,8 +151,8 @@ impl TryRng for RRng {
     #[inline]
     fn try_next_u64(&mut self) -> Result<u64, Infallible> {
         // Combine two u32 values — call try_next_u32 (infallible) directly
-        let high = self.try_next_u32()? as u64;
-        let low = self.try_next_u32()? as u64;
+        let high = u64::from(self.try_next_u32()?);
+        let low = u64::from(self.try_next_u32()?);
         Ok((high << 32) | low)
     }
 
@@ -237,7 +241,12 @@ impl RDistributions for RRng {
 
     #[inline]
     fn uniform_index(&mut self, n: usize) -> usize {
-        unsafe { crate::sys::R_unif_index(n as f64) as usize }
+        // SAFETY (lint): `R_unif_index` returns a non-negative f64 in `[0, n)`;
+        // the `as usize` cast floors it back into range. `n as f64` may lose
+        // precision only for n > 2^53, which exceeds any realistic R length.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let idx = unsafe { crate::sys::R_unif_index(n as f64) as usize };
+        idx
     }
 
     #[inline]

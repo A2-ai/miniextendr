@@ -473,7 +473,11 @@ impl RDecimalOps for Decimal {
     }
 
     fn round(&self, dp: i32) -> Decimal {
-        Decimal::round_dp(self, dp.max(0) as u32)
+        // SAFETY (lint): `.max(0)` makes the value non-negative before the
+        // sign cast, so it cannot lose data.
+        #[allow(clippy::cast_sign_loss)]
+        let dp = dp.max(0) as u32;
+        Decimal::round_dp(self, dp)
     }
 
     fn floor(&self) -> Decimal {
