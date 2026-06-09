@@ -614,7 +614,6 @@ Generates:
 #[miniextendr]                    // Basic usage
 #[miniextendr(invisible)]         // Force invisible return
 #[miniextendr(visible)]           // Force visible return
-#[miniextendr(unsafe(main_thread))] // Force main thread execution
 #[miniextendr(check_interrupt)]   // Check Ctrl+C before running
 ```
 
@@ -624,7 +623,6 @@ Generates:
 |-----------|----------|
 | Returns `SEXP` | Main thread |
 | Takes `Dots` (`...`) | Main thread |
-| `#[miniextendr(unsafe(main_thread))]` | Main thread |
 | `extern "C-unwind"` ABI | Main thread (direct C wrapper) |
 | Everything else | Worker thread |
 

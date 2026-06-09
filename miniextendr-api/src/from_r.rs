@@ -46,7 +46,7 @@
 //!
 //! Use `try_from_sexp_unchecked` when you're certain you're on the main thread:
 //! - Inside ALTREP callbacks
-//! - Inside `#[miniextendr(unsafe(main_thread))]` functions
+//! - Inside standalone `#[miniextendr]` functions (they run on the main thread)
 //! - Inside `extern "C-unwind"` functions called directly by R
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -526,8 +526,8 @@ impl_try_from_sexp_scalar_native!(crate::Rcomplex, CPLXSXP);
 ///
 /// # Safety
 ///
-/// SEXP handles are only valid on R's main thread. Use with
-/// `#[miniextendr(unsafe(main_thread))]` functions.
+/// SEXP handles are only valid on R's main thread. Standalone `#[miniextendr]`
+/// functions taking a `SEXP` parameter run on the main thread automatically.
 impl TryFromSexp for SEXP {
     type Error = SexpError;
 

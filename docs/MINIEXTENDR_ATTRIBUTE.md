@@ -62,15 +62,16 @@ pub fn set_option(key: String, value: i32) { /* ... */ }
 |-----------|--------|
 | `worker` | Run on worker thread (default if `worker-default` feature) |
 | `no_worker` | Run on main R thread |
-| `unsafe(main_thread)` | Main thread, no worker overhead (for SEXP params) |
 
-Functions taking `SEXP` parameters automatically run on main thread.
+Functions taking `SEXP` parameters automatically run on the main thread — they
+are `!Send`, so the generated wrapper can only execute there. No attribute is
+needed.
 
 ```rust
 #[miniextendr(no_worker)]
 pub fn fast_add(x: i32, y: i32) -> i32 { x + y }
 
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn inspect_sexp(x: miniextendr_api::sys::SEXP) -> i32 { /* ... */ }
 ```
 

@@ -110,7 +110,7 @@ All functions in this module require:
 - Being called from the **R main thread** (they use R API calls)
 - `unsafe` blocks (they call into C)
 
-In `#[miniextendr]` functions, use these inside `unsafe(main_thread)` blocks or within ALTREP callbacks (which already run on the main thread).
+Standalone `#[miniextendr]` functions already run on the main thread (they are the default), so these calls are safe there; they are also safe within ALTREP callbacks, which run on the main thread too.
 
 ## Use Cases
 

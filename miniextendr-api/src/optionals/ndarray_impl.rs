@@ -1444,7 +1444,7 @@ use crate::rarray::{RArray, RArray3D, RMatrix, RVector};
 /// use miniextendr_api::rarray::RVector;
 /// use ndarray::ArrayView1;
 ///
-/// #[miniextendr(unsafe(main_thread))]
+/// #[miniextendr]
 /// fn vector_sum(v: RVector<f64>) -> f64 {
 ///     let view: ArrayView1<f64> = (&v).into();
 ///     view.sum()
@@ -1470,7 +1470,7 @@ impl<'a, T: RNativeType> From<&'a RVector<T>> for ArrayView1<'a, T> {
 /// use miniextendr_api::rarray::RMatrix;
 /// use ndarray::ArrayView2;
 ///
-/// #[miniextendr(unsafe(main_thread))]
+/// #[miniextendr]
 /// fn matrix_trace(m: RMatrix<f64>) -> f64 {
 ///     let view: ArrayView2<f64> = (&m).into();
 ///     view.diag().sum()
@@ -1524,7 +1524,7 @@ impl<'a, T: RNativeType, const NDIM: usize> From<&'a RArray<T, NDIM>> for ArrayV
 /// use miniextendr_api::rarray::RVector;
 /// use ndarray::Array1;
 ///
-/// #[miniextendr(unsafe(main_thread))]
+/// #[miniextendr]
 /// fn double_vector(v: RVector<f64>) -> Array1<f64> {
 ///     let arr: Array1<f64> = (&v).into();
 ///     arr * 2.0

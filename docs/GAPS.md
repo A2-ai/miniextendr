@@ -623,7 +623,7 @@ Debug-only SEXP thread assertions:
 fn assert_main_thread() { ... }
 ```
 
-**Implication:** Release builds could have SEXP-access thread safety violations that go undetected. Use `#[miniextendr(unsafe(main_thread))]` for explicit main-thread-only functions.
+**Implication:** Release builds could have SEXP-access thread safety violations that go undetected. Standalone `#[miniextendr]` functions taking `SEXP`/`RArray` parameters run on the main thread by default (they are `!Send`), so they avoid this class of violation without any explicit attribute.
 
 **Runtime thread checks (always active):** The checked FFI wrappers (`Rf_error`, `Rprintf`, etc.) check `is_r_main_thread()` at runtime in all build modes and panic with a clear message like "Rf_error called from non-main thread".
 

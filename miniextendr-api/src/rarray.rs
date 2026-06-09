@@ -29,8 +29,9 @@
 //! from other threads. This is because the underlying R APIs (`DATAPTR_RO`, etc.)
 //! must be called on the R main thread.
 //!
-//! For functions that use `RArray`/`RMatrix` parameters, you must use
-//! `#[miniextendr(unsafe(main_thread))]` to ensure execution on the main thread.
+//! Functions that use `RArray`/`RMatrix` parameters run on the main thread
+//! automatically — these types are `!Send`, so the generated wrapper can only
+//! execute there. No attribute is required.
 //!
 //! For worker-thread usability, use [`to_vec()`][RArray::to_vec] to copy data
 //! on the main thread, then pass the owned `Vec` to worker threads.
@@ -76,8 +77,8 @@
 //! ```ignore
 //! use miniextendr_api::rarray::{RMatrix, RArray};
 //!
-//! // Must run on main thread due to RMatrix parameter
-//! #[miniextendr(unsafe(main_thread))]
+//! // Runs on the main thread due to the RMatrix parameter (RArray is !Send)
+//! #[miniextendr]
 //! fn matrix_sum(m: RMatrix<f64>) -> f64 {
 //!     unsafe { m.as_slice().iter().sum() }
 //! }
@@ -303,7 +304,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// ```ignore
     /// use miniextendr_api::rarray::RMatrix;
     ///
-    /// #[miniextendr(unsafe(main_thread))]
+    /// #[miniextendr]
     /// fn process_matrix(m: RMatrix<f64>) -> f64 {
     ///     // Copy data - Vec<f64> is Send and can be used in worker threads
     ///     let data: Vec<f64> = unsafe { m.to_vec() };
