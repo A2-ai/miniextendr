@@ -402,6 +402,15 @@ impl IntoRAs<f64> for i16 {
 impl IntoRAs<f64> for i32 {
     #[inline]
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
+        // i32::MIN is R's NA_integer_ sentinel. A blind `self as f64` would
+        // turn it into the finite value -2147483648.0, silently destroying the
+        // missing-value semantics. Detect it and surface MissingValue instead.
+        if self == crate::altrep_traits::NA_INTEGER {
+            return Err(StorageCoerceError::MissingValue {
+                to: "f64",
+                index: None,
+            });
+        }
         Ok((self as f64).into_sexp())
     }
 }
@@ -734,10 +743,44 @@ macro_rules! impl_vec_into_r_as_f64_infallible {
 
 impl_vec_into_r_as_f64_infallible!(i8);
 impl_vec_into_r_as_f64_infallible!(i16);
-impl_vec_into_r_as_f64_infallible!(i32);
 impl_vec_into_r_as_f64_infallible!(u8);
 impl_vec_into_r_as_f64_infallible!(u16);
 impl_vec_into_r_as_f64_infallible!(u32);
+
+// i32 -> f64: widening is value-preserving EXCEPT for i32::MIN, which is R's
+// NA_integer_ sentinel. Casting it would yield the finite -2147483648.0 and
+// silently drop the missing-value semantics, so detect it and error instead.
+impl IntoRAs<f64> for Vec<i32> {
+    fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
+        let mut result = Vec::with_capacity(self.len());
+        for (i, val) in self.into_iter().enumerate() {
+            if val == crate::altrep_traits::NA_INTEGER {
+                return Err(StorageCoerceError::MissingValue {
+                    to: "f64",
+                    index: Some(i),
+                });
+            }
+            result.push(val as f64);
+        }
+        Ok(result.into_sexp())
+    }
+}
+
+impl IntoRAs<f64> for &[i32] {
+    fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
+        let mut result = Vec::with_capacity(self.len());
+        for (i, &val) in self.iter().enumerate() {
+            if val == crate::altrep_traits::NA_INTEGER {
+                return Err(StorageCoerceError::MissingValue {
+                    to: "f64",
+                    index: Some(i),
+                });
+            }
+            result.push(val as f64);
+        }
+        Ok(result.into_sexp())
+    }
+}
 
 // Large integers - check precision
 impl_vec_into_r_as!(f64, "f64"; i64, "i64");
