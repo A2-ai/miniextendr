@@ -1931,3 +1931,84 @@ pub fn gc_stress_rcow_roundtrip() {
 }
 
 // endregion
+
+// region: R longjmp inside with_r_thread from a worker job (#733)
+
+/// Drive an **R error raised inside a `with_r_thread` closure from a
+/// `run_on_worker` job** end-to-end, so the `cleanup_handler` /
+/// `R_ContinueUnwind` path in `worker.rs` (the worker-job R-longjmp branch)
+/// is exercised under R's normal top-level error handler.
+///
+/// This is the #733 follow-up to #731's `worker_channel_stress.rs` cargo
+/// suite. That cargo path **cannot** safely cover this case: the cargo-test R
+/// embedding (`r_test_utils.rs`) runs raw FFI jobs in a `for` loop with no R
+/// top-level handler, so `R_ContinueUnwind(token)` would resume an unwind with
+/// nowhere to land — a likely segfault rather than a clean test. Inside an
+/// rpkg testthat run R's normal error handler is in place, so the resumed
+/// unwind lands at the top level and the framework re-raises it as a tagged
+/// condition.
+///
+/// Shape (entirely synthesised internally so it's callable with no args, per
+/// the no-arg gctorture-fixture convention, #430):
+///
+/// 1. The fn returns `SEXP`, so the macro picks the **MainThread** strategy:
+///    the body runs on R's main thread and is the thread that drives
+///    `dispatch_to_worker`'s event loop (no re-entrant `run_on_worker`).
+/// 2. `run_on_worker` moves the closure onto the worker thread.
+/// 3. From the worker, `with_r_thread` routes back to the main thread, which
+///    calls `Rf_error_unchecked` — an R error. R `R_UnwindProtect`'s
+///    `cleanup_handler` fires, sends `Err(msg)` to the worker so it can't
+///    deadlock on `response_rx.recv()`, then `R_ContinueUnwind`s the longjmp.
+///    (`_unchecked` is valid here: we're inside a `with_r_thread` callback —
+///    MXL301-permitted context.)
+/// 4. `R_ContinueUnwind` resumes the *original* R `Rf_error` longjmp on the
+///    main thread, which lands directly at R's top level. So the surfaced
+///    condition is a **bare `simpleError`** carrying the original message — the
+///    macro's tagged-condition transport (`rust_error`) is bypassed entirely,
+///    and the `run_on_worker` call below **never returns** on this path. This
+///    answers the #733 open question on how the condition is layered. The
+///    `match` below is therefore a defensive guard, not the live path.
+///
+/// The companion testthat test (`test-worker-longjmp.R`) asserts that the call
+/// errors and that the condition is a `simpleError` carrying the original
+/// message (and explicitly NOT a `rust_error`). Existing `test-worker.R`
+/// coverage of the same raw-`Rf_error` shape only matched the message text.
+#[miniextendr]
+pub fn gc_stress_with_r_thread_stop() -> SEXP {
+    use miniextendr_api::worker::{run_on_worker, with_r_thread};
+
+    let outcome = run_on_worker(|| {
+        // On the worker: route back to the main thread and raise an R error.
+        // The error longjmps through R_UnwindProtect's cleanup_handler, which
+        // sends an Err to this worker job before R_ContinueUnwind resumes the
+        // unwind. The closure never returns normally.
+        with_r_thread::<_, ()>(|| unsafe {
+            // Deliberately raise a raw R error to exercise the worker-job
+            // R-longjmp path under test (#733). `_unchecked` is valid inside a
+            // `with_r_thread` callback (MXL301-permitted context); the raw
+            // `Rf_error` is the whole point of the fixture (MXL300).
+            // mxl::allow(MXL300, MXL301)
+            miniextendr_api::sys::Rf_error_unchecked(
+                c"%s".as_ptr(),
+                c"R error inside with_r_thread from a worker job".as_ptr(),
+            );
+        });
+        // Unreachable: with_r_thread above diverges via the R longjmp.
+        SEXP::nil()
+    });
+
+    // Defensive guard only: on the path under test, `R_ContinueUnwind` resumes
+    // the original R longjmp straight to top level, so `run_on_worker` above
+    // never returns and neither arm is reached. If the unwind behaviour ever
+    // changes so the worker's Err *does* propagate, surface it loudly rather
+    // than silently returning.
+    match outcome {
+        Err(msg) => panic!("{msg}"),
+        Ok(_) => panic!(
+            "gc_stress_with_r_thread_stop: worker job returned normally; \
+             the R longjmp path was not exercised"
+        ),
+    }
+}
+
+// endregion
