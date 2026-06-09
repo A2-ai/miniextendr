@@ -6,13 +6,21 @@ AC_CONFIG_AUX_DIR([tools])
 
 dnl Verify we're running from the R package directory (not the monorepo root)
 dnl This prevents accidental creation of src/, config.log, etc. in the wrong place
-if test ! -f "DESCRIPTION" || test ! -f "NAMESPACE"; then
+dnl Branch the diagnostic so it names the file that is actually missing.
+if test ! -f "DESCRIPTION"; then
   AC_MSG_ERROR([configure must be run from the rpkg directory (where DESCRIPTION exists).
 
   If you're in the monorepo root, run:
     cd rpkg && ./configure
   Or use:
     just configure])
+fi
+if test ! -f "NAMESPACE"; then
+  AC_MSG_ERROR([NAMESPACE not found (DESCRIPTION is present, so the working directory is correct).
+
+  Generate it before configuring:
+    Rscript -e 'devtools::document()'
+  Or add a stub NAMESPACE if you have no roxygen tags yet.])
 fi
 
 dnl Canonicalize build/host triples for cross-compilation support
