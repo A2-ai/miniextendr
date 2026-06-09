@@ -107,6 +107,26 @@ miniextendr_configure <- function(path = ".") {
 #' the wrappers and `NAMESPACE` are already in their final form, so a repeat
 #' `document()` would be a fixpoint and no further install is needed.
 #'
+#' @section Fresh-package bootstrap:
+#' A brand-new package has no generated `R/<pkg>-wrappers.R` yet. The wrappers
+#' are produced by the cdylib pass during a *source-mode* install
+#' ([`./configure`][miniextendr_configure] with no `inst/vendor.tar.xz`).
+#' A plain `devtools::install(build = TRUE)` cannot bootstrap them: its
+#' `R CMD build` step runs `bootstrap.R`, which auto-vendors into
+#' `inst/vendor.tar.xz`, and that latch flips `./configure` into offline
+#' *tarball* mode — which ships pre-generated wrappers and skips wrapper
+#' generation. With no wrappers to ship, the install either fails loudly
+#' ("tarball is missing pre-generated wrappers") or, worse, leaves the
+#' namespace empty.
+#'
+#' When `miniextendr_build()` detects that the wrappers file is absent, it
+#' first runs an in-place source-mode bootstrap (clear any stale latch ->
+#' configure -> `devtools::install(build = FALSE)` -> `devtools::document()`)
+#' so the wrappers exist before the normal build path runs. The bootstrap
+#' never creates `inst/vendor.tar.xz`, so it does not leak the tarball-mode
+#' latch into subsequent dev iteration. Once wrappers are present, the normal
+#' build path runs unchanged.
+#'
 #' @param path Path to the R package root, or `NULL` to use the active project.
 #' @param install Whether to run the `R CMD INSTALL` steps. If `FALSE`, only
 #'   runs autoconf + configure + roxygen2 (no compile, no reinstall).
@@ -126,10 +146,24 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   miniextendr_configure()
 
   if (install) {
-    cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
     if (!has_devtools) {
+      cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
       cli::cli_warn("devtools not installed, skipping install step")
     } else {
+      # Fresh-package bootstrap (#822). On a brand-new package the generated
+      # R/<pkg>-wrappers.R does not exist yet. The normal devtools::install()
+      # below uses build = TRUE, whose R CMD build step runs bootstrap.R, which
+      # auto-vendors inst/vendor.tar.xz and flips ./configure into tarball mode
+      # — a mode that SKIPS wrapper generation. So the very build that should
+      # have created the wrappers can't, and library() exposes nothing. Detect
+      # this and generate the wrappers first via an in-place source-mode install
+      # (build = FALSE), which never touches inst/vendor.tar.xz.
+      if (!wrappers_file_exists(pkg_path)) {
+        cli::cli_h2("Step 3a: bootstrap wrappers (fresh package, source mode)")
+        bootstrap_fresh_wrappers(pkg_path)
+      }
+
+      cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
       install_pkg(pkg_path)
       cli::cli_alert_success("Installed package")
     }
@@ -205,6 +239,125 @@ namespace_digest <- function(namespace_path) {
     return(NA_character_)
   }
   paste(readLines(namespace_path, warn = FALSE), collapse = "\n")
+}
+
+#' Does the package's generated R wrapper file exist yet?
+#'
+#' The cdylib pass writes `R/<pkg>-wrappers.R`; its presence is the signal
+#' that the package has been bootstrapped at least once. A fresh scaffold
+#' has the Rust sources but no wrappers file.
+#'
+#' @param pkg_path Absolute path to the package root.
+#' @return `TRUE` if any `R/*-wrappers.R` file exists.
+#' @noRd
+wrappers_file_exists <- function(pkg_path) {
+  r_dir <- fs::path(pkg_path, "R")
+  if (!fs::dir_exists(r_dir)) {
+    return(FALSE)
+  }
+  length(fs::dir_ls(r_dir, glob = "*-wrappers.R", fail = FALSE)) > 0
+}
+
+#' Bootstrap a fresh package's R wrappers via a source-mode install
+#'
+#' On a brand-new package there is no generated `R/<pkg>-wrappers.R`. The
+#' wrappers are emitted by the cdylib pass during a *source-mode*
+#' `R CMD INSTALL` (no `inst/vendor.tar.xz` latch). A plain
+#' `devtools::install(build = TRUE)` can't bootstrap them because its
+#' `R CMD build` step runs `bootstrap.R`, which auto-vendors the tarball and
+#' flips `./configure` into wrapper-skipping tarball mode.
+#'
+#' This helper reproduces the proven manual workaround in-process: clear any
+#' stale latch so configure stays in source mode, re-run `./configure`, then
+#' do an in-place `devtools::install(build = FALSE)` to generate the wrappers,
+#' run `devtools::document()` so the NAMESPACE picks up the new exports, and
+#' install once more so the namespace-aware install lands. It never creates
+#' `inst/vendor.tar.xz`, so the tarball-mode latch does not leak into later
+#' dev iteration.
+#'
+#' @param pkg_path Absolute path to the package root.
+#' @return Invisibly `TRUE`.
+#' @noRd
+bootstrap_fresh_wrappers <- function(pkg_path) {
+  cli::cli_alert_info(c(
+    "No generated {.path R/*-wrappers.R} found — bootstrapping wrappers ",
+    "via a source-mode install before the full build."
+  ))
+
+  # Clear any stale tarball-mode latch so ./configure resolves in source mode
+  # (where the cdylib wrapper-gen pass runs). The bootstrap install is always
+  # source-mode; leaving a latch behind would skip wrapper generation again.
+  clear_install_mode_latch(pkg_path)
+
+  # Re-configure in source mode now that the latch is gone, so the
+  # tarball-mode .cargo/config.toml (if any) is replaced.
+  miniextendr_configure(pkg_path)
+
+  # Generate wrappers via an in-place install. build = FALSE skips R CMD build
+  # (and therefore bootstrap.R's auto-vendor), keeping configure in source mode.
+  tryCatch(
+    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE),
+    error = function(e) {
+      cli::cli_abort(c(
+        "Bootstrap install (source mode) failed",
+        "i" = conditionMessage(e)
+      ))
+    }
+  )
+
+  if (!wrappers_file_exists(pkg_path)) {
+    cli::cli_abort(c(
+      "Bootstrap install completed but no {.path R/*-wrappers.R} was generated.",
+      "i" = paste(
+        "Expected the cdylib wrapper-gen pass to write it. Check that",
+        "{.code #[miniextendr]} functions are reachable from {.file src/rust/lib.rs}."
+      )
+    ))
+  }
+
+  # document() so NAMESPACE exports the freshly-generated wrappers, then
+  # install once more so the installed package's namespace matches.
+  devtools::document(pkg_path)
+  tryCatch(
+    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE),
+    error = function(e) {
+      cli::cli_abort(c(
+        "Bootstrap re-install (after document) failed",
+        "i" = conditionMessage(e)
+      ))
+    }
+  )
+
+  cli::cli_alert_success("Bootstrapped R wrappers (source mode)")
+  invisible(TRUE)
+}
+
+#' Remove the install-mode latch and its source-mode-incompatible siblings
+#'
+#' `inst/vendor.tar.xz` is the single signal that flips `./configure` into
+#' offline tarball mode. The unpacked `vendor/` directory and the
+#' tarball-mode `src/rust/.cargo/config.toml` are downstream artifacts of the
+#' same mode. Clearing all three guarantees the next `./configure` resolves in
+#' source mode. Safe and idempotent — no-op if nothing is present.
+#'
+#' @param pkg_path Absolute path to the package root.
+#' @return Invisibly `TRUE`.
+#' @noRd
+clear_install_mode_latch <- function(pkg_path) {
+  latch <- fs::path(pkg_path, "inst", "vendor.tar.xz")
+  if (fs::file_exists(latch)) {
+    fs::file_delete(latch)
+    cli::cli_alert_info("Cleared stale {.path inst/vendor.tar.xz} latch.")
+  }
+  vendor_dir <- fs::path(pkg_path, "vendor")
+  if (fs::dir_exists(vendor_dir)) {
+    fs::dir_delete(vendor_dir)
+  }
+  cargo_dir <- fs::path(pkg_path, "src", "rust", ".cargo")
+  if (fs::dir_exists(cargo_dir)) {
+    fs::dir_delete(cargo_dir)
+  }
+  invisible(TRUE)
 }
 
 #' Prepare vendor tarball for CRAN submission

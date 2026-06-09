@@ -14,12 +14,17 @@ miniextendr_api::miniextendr_init!();
 //    updates NAMESPACE + man/ with roxygen2 — all in one step.
 //
 //    Do NOT install with a bare `devtools::install()` / `R CMD INSTALL .` /
-//    `devtools::document()`: the package's bootstrap step vendors dependencies
-//    into inst/vendor.tar.xz, which flips ./configure into offline "tarball"
-//    mode. Tarball mode ships pre-generated wrappers and SKIPS wrapper
-//    generation, so on a fresh build those paths produce an empty namespace
-//    (library() exposes no functions). miniextendr_build() sets
-//    MINIEXTENDR_FORCE_WRAPPER_GEN so wrappers are regenerated regardless.
+//    `devtools::document()`: the package's bootstrap step (R CMD build's
+//    bootstrap.R) vendors dependencies into inst/vendor.tar.xz, which flips
+//    ./configure into offline "tarball" mode. Tarball mode ships pre-generated
+//    wrappers and SKIPS wrapper generation, so on a fresh build those paths
+//    produce an empty namespace (library() exposes no functions).
+//
+//    miniextendr_build() handles this: on a fresh package (no
+//    R/<pkg>-wrappers.R yet) it first generates the wrappers via an in-place
+//    source-mode install (which never auto-vendors), and on later builds sets
+//    MINIEXTENDR_FORCE_WRAPPER_GEN to force regeneration if a tarball latch is
+//    present.
 
 /// A simple function that adds two numbers
 ///
