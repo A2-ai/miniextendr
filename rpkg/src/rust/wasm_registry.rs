@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      c878eea453d57f6f
+// content-hash:      8722210e47654e89
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1057,8 +1057,20 @@ unsafe extern "C-unwind" {
     pub fn C_PipeCounter__bump(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_PipeCounter__peek(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_PipeCounter__twice(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_R6PipeBuilder__add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_R6PipeBuilder__new(_: SEXP) -> SEXP;
+    pub fn C_S4PipeBuilder__add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_S4PipeBuilder__new(_: SEXP) -> SEXP;
+    pub fn C_S7PipeBuilder__new(_: SEXP) -> SEXP;
+    pub fn C_EnvPipeBuilder__add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_EnvPipeBuilder__new(_: SEXP) -> SEXP;
     pub fn C_GreetingBuilder__new(_: SEXP) -> SEXP;
+    pub fn C_R6PipeBuilder__total(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_S4PipeBuilder__total(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_EnvPipeBuilder__total(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_S7PipeBuilder__s7_add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_GreetingBuilder__build(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_S7PipeBuilder__s7_total(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_GreetingBuilder__set_loud(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_GreetingBuilder__set_name(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_GreetingBuilder__set_punctuation(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -7318,13 +7330,73 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_R6PipeBuilder__add".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6PipeBuilder__add) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_R6PipeBuilder__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_R6PipeBuilder__new) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_S4PipeBuilder__add".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_S4PipeBuilder__add) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_S4PipeBuilder__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_S4PipeBuilder__new) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_S7PipeBuilder__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_S7PipeBuilder__new) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_EnvPipeBuilder__add".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_EnvPipeBuilder__add) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_EnvPipeBuilder__new".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_EnvPipeBuilder__new) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_GreetingBuilder__new".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_GreetingBuilder__new) }),
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_R6PipeBuilder__total".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_R6PipeBuilder__total) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_S4PipeBuilder__total".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_S4PipeBuilder__total) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_EnvPipeBuilder__total".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_EnvPipeBuilder__total) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_S7PipeBuilder__s7_add".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_S7PipeBuilder__s7_add) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
         name: c"C_GreetingBuilder__build".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_GreetingBuilder__build) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_S7PipeBuilder__s7_total".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_S7PipeBuilder__s7_total) }),
         numArgs: 2,
     },
     R_CallMethodDef {

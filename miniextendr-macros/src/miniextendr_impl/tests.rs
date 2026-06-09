@@ -834,6 +834,74 @@ fn returns_unit_method_in_r6() {
     // reset returns unit, should have invisible(self) for chaining
     assert!(wrapper.contains("reset = function()"));
 }
+
+/// Self-ref builders (`&mut self -> &mut Self`) on R6 must chain via
+/// `invisible(self)`, NOT `Class$new(.ptr = .val)`.
+///
+/// R6 is already reference-semantic: the C wrapper returns the same
+/// `private$.ptr` handle, so re-wrapping with `Class$new(.ptr = .val)` would
+/// mint a *new* R6 environment around the same pointer — breaking object
+/// identity (`obj |> set_x(1) |> get_x()` would read through a different
+/// wrapper than `obj`). `ReturnStrategy::for_method` routes self-ref builders
+/// to `ChainableMutation`, whose R6 tail is `invisible(self)`. This test pins
+/// that wiring so a future regression that minted duplicate wrappers is caught.
+#[test]
+fn method_return_builder_r6_self_ref_chains_invisible_self() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn set_width(&mut self, w: i32) -> &mut Self { unimplemented!() }
+            pub fn finish(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+
+    // Sanity: the strategy itself resolves to ChainableMutation, not ReturnSelf.
+    let set_width = parsed
+        .methods
+        .iter()
+        .find(|m| m.ident == "set_width")
+        .unwrap();
+    assert!(set_width.returns_self_ref());
+    assert!(!set_width.returns_self());
+    assert_eq!(
+        crate::ReturnStrategy::for_method(set_width),
+        crate::ReturnStrategy::ChainableMutation
+    );
+
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    // Isolate the body of the `set_width` R6 method.
+    let body = wrapper
+        .split("set_width = function(")
+        .nth(1)
+        .expect("set_width R6 method")
+        .split("\n    }")
+        .next()
+        .expect("set_width method body");
+
+    // The self-ref builder chains the receiver — `invisible(self)`.
+    assert!(
+        body.lines().any(|l| l.trim() == "invisible(self)"),
+        "R6 self-ref builder should chain via `invisible(self)`, got:\n{body}"
+    );
+    // It must NOT mint a new R6 wrapper around the same pointer.
+    assert!(
+        !body.contains("$new(.ptr"),
+        "R6 self-ref builder must not re-wrap via `Builder$new(.ptr = .val)` \
+         (would break object identity), got:\n{body}"
+    );
+
+    // The owned-`Self` constructor still uses the ReturnSelf path (`$new(.ptr`)
+    // somewhere in the wrapper — confirms the two paths are genuinely distinct.
+    let new_method = parsed.methods.iter().find(|m| m.ident == "new").unwrap();
+    assert!(new_method.returns_self());
+    assert_eq!(
+        crate::ReturnStrategy::for_method(new_method),
+        crate::ReturnStrategy::ReturnSelf
+    );
+}
 // endregion
 
 // region: vctrs class system tests
