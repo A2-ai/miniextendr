@@ -628,15 +628,14 @@ impl TryFromSexp for BooleanArray {
             }
             .into());
         }
-        let len = sexp.len();
-        let mut builder = arrow_array::builder::BooleanBuilder::with_capacity(len);
+        let slice: &[crate::RLogical] = unsafe { sexp.as_slice() };
+        let mut builder = arrow_array::builder::BooleanBuilder::with_capacity(slice.len());
 
-        for i in 0..len {
-            let val = sexp.logical_elt(i as R_xlen_t);
-            if val == crate::altrep_traits::NA_LOGICAL {
+        for &val in slice {
+            if val.is_na() {
                 builder.append_null();
             } else {
-                builder.append_value(val != 0);
+                builder.append_value(val.to_i32() != 0);
             }
         }
 

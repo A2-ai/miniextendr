@@ -50,7 +50,6 @@
 pub use bitvec::order::{Lsb0, Msb0};
 pub use bitvec::vec::BitVec;
 
-use crate::altrep_traits::NA_LOGICAL;
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
@@ -76,18 +75,17 @@ impl TryFromSexp for RBitVec {
             .into());
         }
 
-        let len = sexp.len();
-        let mut bits = RBitVec::with_capacity(len);
+        let slice: &[crate::RLogical] = unsafe { sexp.as_slice() };
+        let mut bits = RBitVec::with_capacity(slice.len());
 
-        for i in 0..len {
-            let val = sexp.logical_elt(i as crate::R_xlen_t);
-            if val == NA_LOGICAL {
+        for (i, &val) in slice.iter().enumerate() {
+            if val.is_na() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for RBitVec",
                     i
                 )));
             }
-            bits.push(val != 0);
+            bits.push(val.to_i32() != 0);
         }
 
         Ok(bits)
@@ -154,18 +152,17 @@ impl TryFromSexp for BitVec<u8, Msb0> {
             .into());
         }
 
-        let len = sexp.len();
-        let mut bits = BitVec::<u8, Msb0>::with_capacity(len);
+        let slice: &[crate::RLogical] = unsafe { sexp.as_slice() };
+        let mut bits = BitVec::<u8, Msb0>::with_capacity(slice.len());
 
-        for i in 0..len {
-            let val = sexp.logical_elt(i as crate::R_xlen_t);
-            if val == NA_LOGICAL {
+        for (i, &val) in slice.iter().enumerate() {
+            if val.is_na() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for BitVec",
                     i
                 )));
             }
-            bits.push(val != 0);
+            bits.push(val.to_i32() != 0);
         }
 
         Ok(bits)
