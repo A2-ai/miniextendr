@@ -71,21 +71,17 @@ impl RDeserializer {
 
     fn type_name(&self) -> String {
         let t = self.sexp_type();
-        match t {
-            SEXPTYPE::NILSXP => "NULL".to_string(),
-            SEXPTYPE::LGLSXP => "logical".to_string(),
-            SEXPTYPE::INTSXP => "integer".to_string(),
-            SEXPTYPE::REALSXP => "numeric".to_string(),
-            SEXPTYPE::STRSXP => "character".to_string(),
-            SEXPTYPE::VECSXP => {
-                if self.has_names() {
-                    "named list".to_string()
-                } else {
-                    "list".to_string()
-                }
+        // VECSXP gets special treatment: distinguish named vs unnamed list
+        // for clearer serde error messages. Everything else delegates to the
+        // canonical table in typed_list.
+        if t == SEXPTYPE::VECSXP {
+            if self.has_names() {
+                "named list".to_string()
+            } else {
+                "list".to_string()
             }
-            SEXPTYPE::RAWSXP => "raw".to_string(),
-            _ => format!("SEXPTYPE({})", t as i32),
+        } else {
+            crate::typed_list::sexptype_name(t)
         }
     }
 }
