@@ -10,9 +10,11 @@ on:
       - 'rpkg/**'
       - 'tests/cross-package/**'
       - 'tests/webr-node-smoke/**'
+      - 'tests/webr-smoke.sh'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'Dockerfile.webr'
+      - 'Dockerfile.webr-arm64'
       - '.github/workflows/webr.yml'
   push:
     branches: [main]
@@ -24,9 +26,11 @@ on:
       - 'rpkg/**'
       - 'tests/cross-package/**'
       - 'tests/webr-node-smoke/**'
+      - 'tests/webr-smoke.sh'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'Dockerfile.webr'
+      - 'Dockerfile.webr-arm64'
       - '.github/workflows/webr.yml'
   workflow_dispatch:
 
