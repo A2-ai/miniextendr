@@ -2,6 +2,11 @@ name: CI
 
 on:
   pull_request:
+    # `labeled` lets the on-demand round-trip e2e job (r-roundtrip-e2e) be
+    # triggered by applying the `run-e2e` label to a PR. The default activity
+    # types (opened/synchronize/reopened) cover everything else; adding
+    # labeled/unlabeled is additive — no existing job keys on the label.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
     tags: ["v*"]
@@ -1213,6 +1218,87 @@ jobs:
         run: just test-bootstrap-vendor
 
   # ===========================================================================
+  # Standalone round-trip e2e (on-demand: nightly cron + label + dispatch)
+  # ===========================================================================
+  # Exercises the full standalone (non-monorepo) flow that the per-PR suite
+  # cannot afford: create_miniextendr_package() -> miniextendr_build() (auto-
+  # vendor flips to tarball mode mid-install) -> wrapper-gen -> install ->
+  # library() exposes the functions. This is the #757/#775 regression target:
+  # any change that makes a build entry point bypass MINIEXTENDR_FORCE_WRAPPER_GEN
+  # (or alters the tarball-mode skip) re-introduces the empty-namespace bug.
+  #
+  # The assertions live in the gated testthat round-trip at
+  # minirextendr/tests/testthat/test-templates.R:521 — CI runs the suite, it does
+  # NOT reimplement the checks in shell (per #805). MINIEXTENDR_RUN_E2E=1 lifts
+  # skip_e2e()'s skip_on_ci() so the otherwise-skipped e2e tests actually run.
+  #
+  # On-demand only — NOT in ci-success.needs, so it never gates a PR and adds no
+  # minutes to normal runs. Triggers: weekly cron (Sat 06:00 UTC), the `run-e2e`
+  # PR label, or `gh workflow run ci.yml --ref <branch>`. Heavy: cold-compiles
+  # Rust + autoconf + network-fetches/vendors miniextendr `main`.
+  r-roundtrip-e2e:
+    name: Standalone round-trip e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e')
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: minirextendr
+          extra-packages: any::testthat, any::devtools, any::withr, any::roxygen2
+          needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: roundtrip-e2e
+          cache-on-failure: true
+
+      # cargo-revendor on PATH so the standalone build's auto-vendor (tarball
+      # mode) can seal inst/vendor.tar.xz mid-install.
+      - name: Set up cargo-revendor (install only)
+        uses: ./.github/actions/setup-vendor
+        with:
+          configure-and-vendor: 'false'
+
+      - name: Run standalone round-trip e2e
+        run: just minirextendr-roundtrip
+
+  # ===========================================================================
   # Summary job (for branch protection)
   # ===========================================================================
   ci-success:
@@ -1231,6 +1317,7 @@ jobs:
       - minirextendr
       - cran-check
       - bootstrap-vendor-test
+      # - r-roundtrip-e2e # non-gating: on-demand only (cron / run-e2e label / dispatch), see #775
     runs-on: ubuntu-latest
     if: always()
     steps:

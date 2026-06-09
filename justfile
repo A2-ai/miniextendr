@@ -797,6 +797,25 @@ minirextendr-rcmdcheck:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
+# Standalone round-trip regression (heavy; maintainer/nightly only).
+#
+# Drives the gated testthat e2e tests in minirextendr/tests/testthat/test-templates.R
+# — including the #757/#775 standalone build → wrapper-gen → library() round-trip
+# at :521 — by flipping the MINIEXTENDR_RUN_E2E bypass so skip_e2e() does NOT
+# skip_on_ci(). MINIEXTENDR_LOCAL_PATH points the scaffolder at this checkout.
+#
+# Cold-compiles a Rust crate, runs autoconf, and (for the standalone test)
+# network-fetches + vendors miniextendr `main` via cargo-revendor — minutes per
+# run, network-dependent. NOT part of the per-PR suite; runs in the nightly /
+# label-gated CI job `r-roundtrip-e2e` (see .github/workflows/ci.yml). Requires
+# cargo, autoconf, R, and cargo-revendor on PATH; individual tests self-skip with
+# a clear reason if a tool is missing. See #775 / #805.
+[script("bash")]
+minirextendr-roundtrip:
+    export MINIEXTENDR_LOCAL_PATH="$(pwd)"
+    export MINIEXTENDR_RUN_E2E=1
+    Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", filter = "templates")'
+
 # Full development cycle for minirextendr: document, test, check
 minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check
 
