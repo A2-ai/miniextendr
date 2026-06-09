@@ -19,6 +19,11 @@
 //! - `#[derive(PreferDataFrame)]` -- convert via `ColumnSource::into_column_list`
 //! - `#[derive(PreferRNativeType)]` -- convert via `AsRNative` wrapper
 //!
+//! Stacking two of them is a conflict: each derive emits a fixed-name marker const
+//! (`prefer_conflict_marker`), so a second `Prefer*` produces a guided
+//! "duplicate definitions" error pointing at the call-site `As*` wrappers as the
+//! way to choose a representation per return value (see #870).
+//!
 //! ## Field Attributes
 //!
 //! - `#[into_list(ignore)]` -- skip this field during IntoList/TryFromList conversion.
@@ -327,6 +332,38 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(expand)
 }
 
+/// Emit a fixed-name conflict marker so that stacking two `Prefer*` derives on a
+/// single type produces a *guided* compile error instead of a cryptic `E0119`
+/// conflicting-`IntoR`-implementation error.
+///
+/// Each `Prefer*` derive declares an inherent associated const with the **same**
+/// self-describing name in an `impl #name` block. A type carries exactly one
+/// representation default, so a second `Prefer*` derive makes rustc report a
+/// `duplicate definitions with name ...` error (E0592) — and the duplicated
+/// identifier itself spells out the fix: pick one type-level default, or choose a
+/// representation per return value at the call site via the `As*` wrappers
+/// (`AsList`, `AsExternalPtr`, `AsDataFrame`, ...).
+///
+/// This fires regardless of derive order and without any cross-derive attribute
+/// inspection — each derive only needs to know its own fixed marker name. (The raw
+/// E0119 on `IntoR` may still co-fire; the duplicate-marker error is the actionable
+/// one because its identifier names both the conflict and the remedy.)
+fn prefer_conflict_marker(input: &DeriveInput) -> TokenStream {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    quote! {
+        #[allow(non_upper_case_globals, dead_code)]
+        impl #impl_generics #name #ty_generics #where_clause {
+            /// Stacking two `Prefer*` derives on one type is a conflict: a type has
+            /// exactly one `IntoR` default. Keep a single `Prefer*`, or drop them all
+            /// and choose a representation per return value with a call-site `As*`
+            /// wrapper (`AsList`, `AsExternalPtr`, `AsDataFrame`, ...).
+            const __miniextendr_conflicting_Prefer_derives__keep_ONE_or_use_call_site_As_wrappers: () = ();
+        }
+    }
+}
+
 /// Derive `PreferList`: emits an `IntoR` impl that converts to R by first calling
 /// `IntoList::into_list`, then `into_sexp`.
 ///
@@ -335,6 +372,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
 pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let conflict_marker = prefer_conflict_marker(&input);
 
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
@@ -360,6 +398,8 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
             }
         }
+
+        #conflict_marker
     };
 
     Ok(expand)
@@ -373,6 +413,7 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
 pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let conflict_marker = prefer_conflict_marker(&input);
 
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
@@ -398,6 +439,8 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
                 ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
             }
         }
+
+        #conflict_marker
     };
 
     Ok(expand)
@@ -411,6 +454,7 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
 pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let conflict_marker = prefer_conflict_marker(&input);
 
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
@@ -436,6 +480,8 @@ pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> 
                 ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
             }
         }
+
+        #conflict_marker
     };
 
     Ok(expand)
@@ -450,6 +496,7 @@ pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> 
 pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let conflict_marker = prefer_conflict_marker(&input);
 
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
@@ -479,6 +526,8 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
                 )
             }
         }
+
+        #conflict_marker
     };
 
     Ok(expand)
@@ -495,6 +544,7 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
 pub fn derive_prefer_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let conflict_marker = prefer_conflict_marker(&input);
 
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
@@ -510,6 +560,8 @@ pub fn derive_prefer_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                 self.try_into_sexp()
             }
         }
+
+        #conflict_marker
     };
 
     Ok(expand)
