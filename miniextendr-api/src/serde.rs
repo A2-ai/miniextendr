@@ -239,6 +239,8 @@ mod traits;
 // Re-export the serde crate for convenience
 pub use ::serde::{Deserialize, Serialize};
 
+#[cfg(feature = "rayon")]
+pub use columnar::par_iter_to_dataframe;
 pub use columnar::{
     DataFrameShape, DispatchNames, NamedDataFrameListBuilder, ResultShape, SerdeRowBuilder,
     SplitResults, SplitShape, TypeSpec, dispatch_to_dataframes, hashmap_to_dataframe,

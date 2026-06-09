@@ -317,6 +317,392 @@ where
     builder.finish()
 }
 
+/// Parallel counterpart to [`iter_to_dataframe`]: fan row→column serialisation
+/// out across rayon for CPU-bound row work.
+///
+/// # Strategy: per-thread scratch + merge
+///
+/// 1. **Materialise + discover** (main thread). The iterator is collected into
+///    a `Vec<T>` and the schema is discovered from the **first row** — the same
+///    homogeneous-schema contract as [`iter_to_dataframe`]. The collection is
+///    necessary: rayon needs an indexed source to split into ordered chunks,
+///    and the schema must be shared by every worker.
+/// 2. **Fan out** (worker threads, zero R API). Rows are split into contiguous
+///    chunks; each worker fills a *local* `Vec<ColumnBuffer>` against the shared
+///    schema using pure-Rust serde extraction — no SEXP allocation, no
+///    `ProtectScope`, no R main-thread contact. This mirrors the invariant of
+///    the row-oriented serde paths: the parallel region touches only Rust data.
+/// 3. **Merge in row order** (main thread). Chunk results come back ordered
+///    (rayon's [`IndexedParallelIterator::collect`] preserves index order), so
+///    concatenating each chunk's column buffers reproduces the original row
+///    order exactly. The merged buffers are assembled into a [`DataFrame`].
+///
+/// # Schema scope (homogeneous only)
+///
+/// Like [`iter_to_dataframe`], the schema is fixed from the first row. Two
+/// shapes are **rejected** here because they need the R main thread or a
+/// reconciliation step that defeats the per-thread-merge model:
+///
+/// - **Generic (list) columns** — a column whose values serialise to arbitrary
+///   SEXPs (the `Generic` fallback) must allocate on the R main thread. Such a
+///   schema returns an error pointing back to [`iter_to_dataframe`].
+/// - **Growing / heterogeneous schema** — rows that introduce new fields under
+///   parallelism would produce divergent per-thread schemas needing a union
+///   merge. Out of scope for this homogeneous variant (see the follow-up issue
+///   referenced in the PR); use [`SerdeRowBuilder::grow_schema`] sequentially.
+///
+/// # Equivalence
+///
+/// For any input whose schema is fully atomic (no `Generic` column), the result
+/// is identical column-for-column and row-for-row to
+/// `iter_to_dataframe(rows, nrow_hint)`.
+///
+/// # Errors
+///
+/// - A row fails to serialize.
+/// - A row introduces a field not present in the first row's schema.
+/// - The discovered schema contains a `Generic` (list) column.
+/// - Column assembly fails.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use rayon::prelude::*;
+///
+/// #[derive(serde::Serialize)]
+/// struct Row { id: i32, name: String }
+///
+/// let rows: Vec<Row> = (0..10_000)
+///     .map(|i| Row { id: i, name: format!("item_{i}") })
+///     .collect();
+/// let df = par_iter_to_dataframe(rows, Some(10_000))?;
+/// ```
+#[cfg(feature = "rayon")]
+pub fn par_iter_to_dataframe<T, I>(
+    iter: I,
+    nrow_hint: Option<usize>,
+) -> Result<DataFrame, RSerdeError>
+where
+    // `Sync` (not just `Send`): rows are borrowed across rayon workers via
+    // `par_chunks`, so `&T: Send`, i.e. `T: Sync`.
+    T: Serialize + Send + Sync,
+    I: IntoIterator<Item = T>,
+{
+    // 1. Materialise. rayon needs an indexed source for ordered chunking.
+    let rows: Vec<T> = iter.into_iter().collect();
+    let Some((schema, merged, nrow)) = par_build_columns(&rows, nrow_hint)? else {
+        // Empty input: well-formed 0-row data.frame.
+        // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
+        return Ok(unsafe { DataFrame::from_built_sexp(empty_dataframe()) });
+    };
+
+    // Assembly allocates SEXPs and must run on the R main thread. The merged
+    // buffers are pure Rust at this point; a fresh ProtectScope guards the
+    // assembly's own allocations (no Generic cells are held — rejected by
+    // `par_build_columns`).
+    // SAFETY: caller invokes this on the R main thread; column lengths all
+    // equal `nrow` (each row contributed exactly one element per column).
+    let scope = unsafe { crate::ProtectScope::new() };
+    Ok(unsafe { assemble_with_scope(&schema, &merged, nrow, scope) })
+}
+
+/// Pure-Rust core of [`par_iter_to_dataframe`]: discover the schema, fan the
+/// row→column fill out across rayon, and merge the per-thread chunk buffers
+/// back into one column set in row order.
+///
+/// Returns `Ok(None)` for empty input (the caller emits a 0-row data.frame).
+/// Contains **zero R-API contact** — no SEXP allocation, no `ProtectScope` —
+/// so it is fully exercisable in a unit test without the R main thread, and the
+/// rayon region is sound (all `ColumnBuffer` variants reached here are
+/// `Send`-safe `Vec`s; `Generic` is rejected up front).
+#[cfg(feature = "rayon")]
+#[allow(clippy::type_complexity)]
+fn par_build_columns<T>(
+    rows: &[T],
+    nrow_hint: Option<usize>,
+) -> Result<Option<(Schema, Vec<ColumnBuffer>, usize)>, RSerdeError>
+where
+    T: Serialize + Sync,
+{
+    use rayon::prelude::*;
+
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    // Discover schema from the first row (homogeneous-schema contract). Schema
+    // discovery is pure-Rust; doing it here keeps the Generic check before any
+    // fan-out.
+    let mut acc = SchemaAccumulator::new(SchemaMode::SingleRow);
+    acc.feed(&rows[0])?;
+    let schema = acc.finalize()?;
+
+    // Reject schemas the parallel path can't honour: any `Generic` column needs
+    // the R main thread to allocate per-cell SEXPs.
+    if schema
+        .fields
+        .iter()
+        .any(|f| f.col_type == ColumnType::Generic)
+    {
+        return Err(RSerdeError::Message(
+            "par_iter_to_dataframe: schema contains a generic (list) column, which requires \
+             the R main thread; use the sequential iter_to_dataframe instead"
+                .into(),
+        ));
+    }
+
+    let ncol = schema.fields.len();
+    let nrow = rows.len();
+    let nthreads = rayon::current_num_threads().max(1);
+    // Aim for ~4 chunks per thread for load balancing, but never tiny chunks.
+    let chunk_size = nrow.div_ceil(nthreads * 4).max(1);
+
+    // 2. Fan out. Split into contiguous chunks; each worker fills a local
+    //    Vec<ColumnBuffer> against the shared schema with zero R API contact.
+    //    `par_chunks` + `map` + `collect::<Vec<_>>` preserves chunk order
+    //    (rayon's IndexedParallelIterator::collect is order-preserving).
+    let chunk_results: Vec<Result<Vec<ColumnBuffer>, RSerdeError>> = rows
+        .par_chunks(chunk_size)
+        .map(|chunk| {
+            let mut filler = ParChunkFiller::new(&schema, chunk.len());
+            for row in chunk {
+                filler.push(row)?;
+            }
+            Ok(filler.into_columns())
+        })
+        .collect();
+
+    // 3. Merge in row order. Seed with empty columns of the right variants,
+    //    then append each chunk's columns in iteration (= row) order.
+    let mut merged: Vec<ColumnBuffer> = schema
+        .fields
+        .iter()
+        .map(|f| ColumnBuffer::new(f.col_type, nrow_hint.unwrap_or(nrow)))
+        .collect();
+
+    for chunk in chunk_results {
+        let chunk_cols = chunk?;
+        debug_assert_eq!(chunk_cols.len(), ncol, "chunk column count mismatch");
+        for (dst, src) in merged.iter_mut().zip(chunk_cols) {
+            dst.append(src);
+        }
+    }
+
+    Ok(Some((schema, merged, nrow)))
+}
+
+/// Off-thread, scope-free column filler for [`par_iter_to_dataframe`].
+///
+/// Mirrors [`ColumnFiller`] but operates on an owned `Vec<ColumnBuffer>` with no
+/// [`ProtectScope`] and rejects the `Generic` path — so it carries no R-side
+/// state and is safe to run on a rayon worker. It strictly validates every row
+/// against the shared schema (a row introducing an unknown field errors), just
+/// like the sequential [`SerdeRowBuilder`] first-row contract.
+#[cfg(feature = "rayon")]
+struct ParChunkFiller<'a> {
+    columns: Vec<ColumnBuffer>,
+    field_map: &'a FieldMap,
+    /// Per-row "did this column get a value?" tracking; reset each row by
+    /// `pad_unfilled`.
+    filled: Vec<bool>,
+    ncol: usize,
+}
+
+#[cfg(feature = "rayon")]
+impl<'a> ParChunkFiller<'a> {
+    fn new(schema: &'a Schema, capacity: usize) -> Self {
+        let columns = schema
+            .fields
+            .iter()
+            .map(|f| ColumnBuffer::new(f.col_type, capacity))
+            .collect();
+        let ncol = schema.fields.len();
+        Self {
+            columns,
+            field_map: &schema.field_map,
+            filled: vec![false; ncol],
+            ncol,
+        }
+    }
+
+    fn push<T: ?Sized + Serialize>(&mut self, row: &T) -> Result<(), RSerdeError> {
+        let sub = ParColumnFiller {
+            columns: &mut self.columns,
+            field_map: self.field_map,
+            filled: &mut self.filled,
+            col_start: 0,
+            col_count: self.ncol,
+            is_top_level: true,
+            pending_key: None,
+        };
+        row.serialize(sub)
+    }
+
+    fn into_columns(self) -> Vec<ColumnBuffer> {
+        self.columns
+    }
+}
+
+/// Borrowing serde `Serializer` that drives one row into a [`ParChunkFiller`]'s
+/// column buffers. The scope-free twin of [`ColumnFiller`].
+#[cfg(feature = "rayon")]
+struct ParColumnFiller<'a> {
+    columns: &'a mut [ColumnBuffer],
+    field_map: &'a FieldMap,
+    filled: &'a mut Vec<bool>,
+    col_start: usize,
+    col_count: usize,
+    is_top_level: bool,
+    pending_key: Option<String>,
+}
+
+#[cfg(feature = "rayon")]
+impl ParColumnFiller<'_> {
+    fn fill_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &str,
+        value: &T,
+    ) -> Result<(), RSerdeError> {
+        match self.field_map.map.get(key) {
+            Some(FieldMapping::Scalar { col_idx }) => {
+                self.columns[*col_idx].push_value_pure(value)?;
+                self.filled[*col_idx] = true;
+            }
+            Some(FieldMapping::Compound {
+                sub_fields,
+                col_start,
+                col_count,
+                ..
+            }) => {
+                let sub = ParColumnFiller {
+                    columns: self.columns,
+                    field_map: sub_fields,
+                    filled: self.filled,
+                    col_start: *col_start,
+                    col_count: *col_count,
+                    is_top_level: false,
+                    pending_key: None,
+                };
+                value.serialize(sub)?;
+            }
+            None => {
+                return Err(RSerdeError::Message(format!(
+                    "par_iter_to_dataframe: row introduced field {key:?} not in initial schema"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn pad_unfilled(&mut self) {
+        let start = self.field_map.col_start;
+        let end = start + self.field_map.total_cols;
+        if self.is_top_level {
+            for i in start..end {
+                if !self.filled[i] {
+                    self.columns[i].push_na();
+                }
+                self.filled[i] = false; // reset for next row
+            }
+        } else {
+            for i in start..end {
+                if !self.filled[i] {
+                    self.columns[i].push_na();
+                }
+                self.filled[i] = true;
+            }
+        }
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'a> ser::Serializer for ParColumnFiller<'a> {
+    type Ok = ();
+    type Error = RSerdeError;
+    type SerializeSeq = ser::Impossible<(), RSerdeError>;
+    type SerializeTuple = ser::Impossible<(), RSerdeError>;
+    type SerializeTupleStruct = ser::Impossible<(), RSerdeError>;
+    type SerializeTupleVariant = ser::Impossible<(), RSerdeError>;
+    type SerializeMap = Self;
+    type SerializeStruct = Self;
+    type SerializeStructVariant = ser::Impossible<(), RSerdeError>;
+
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStruct, Self::Error> {
+        Ok(self)
+    }
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
+        Ok(self)
+    }
+
+    fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<(), RSerdeError> {
+        if self.is_top_level {
+            return Err(RSerdeError::Message("expected struct".into()));
+        }
+        value.serialize(self)
+    }
+    fn serialize_none(self) -> Result<(), RSerdeError> {
+        if self.is_top_level {
+            return Err(RSerdeError::Message("expected struct".into()));
+        }
+        for i in self.col_start..self.col_start + self.col_count {
+            self.columns[i].push_na();
+            self.filled[i] = true;
+        }
+        Ok(())
+    }
+
+    reject_non_struct!(@primitives "expected struct");
+}
+
+#[cfg(feature = "rayon")]
+impl ser::SerializeStruct for ParColumnFiller<'_> {
+    type Ok = ();
+    type Error = RSerdeError;
+
+    fn serialize_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), RSerdeError> {
+        self.fill_field(key, value)
+    }
+
+    fn end(mut self) -> Result<(), RSerdeError> {
+        self.pad_unfilled();
+        Ok(())
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl ser::SerializeMap for ParColumnFiller<'_> {
+    type Ok = ();
+    type Error = RSerdeError;
+
+    fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<(), RSerdeError> {
+        let mut extractor = ValueExtractor::default();
+        key.serialize(&mut extractor)?;
+        self.pending_key = match extractor.value {
+            ExtractedValue::Str(s) => Some(s),
+            _ => Some(String::new()),
+        };
+        Ok(())
+    }
+
+    fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
+        let key = self.pending_key.take().unwrap_or_default();
+        self.fill_field(&key, value)
+    }
+
+    fn end(mut self) -> Result<(), RSerdeError> {
+        self.pad_unfilled();
+        Ok(())
+    }
+}
+
 /// User-facing column type descriptor for [`SerdeRowBuilder::with_schema`].
 ///
 /// Maps onto the internal `ColumnType` and unlocks an NA-tolerance hint via
@@ -1447,6 +1833,86 @@ impl ColumnBuffer {
             }
         }
         Ok(())
+    }
+
+    /// Push a value without a [`ProtectScope`]. Used by the parallel fill path
+    /// ([`par_iter_to_dataframe`]), which runs off the R main thread where no
+    /// protection scope exists and the R API must not be touched.
+    ///
+    /// The atomic variants are pure-Rust (they extract primitives via
+    /// [`ValueExtractor`] and push into a `Vec`), so they work off-thread. The
+    /// `Generic` variant calls into the R API (`RSerializer`) and therefore
+    /// returns an error here — the parallel path rejects any schema containing
+    /// a `Generic` column before fanning out, so this arm is unreachable in
+    /// practice and exists only to make the no-scope contract total.
+    #[cfg(feature = "rayon")]
+    fn push_value_pure<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
+        match self {
+            ColumnBuffer::Generic(_) => Err(RSerdeError::Message(
+                "par_iter_to_dataframe: generic (list) columns require the R main thread; \
+                 use the sequential iter_to_dataframe for this schema"
+                    .into(),
+            )),
+            // SAFETY of soundness, not memory: a dummy scope is never read by
+            // the non-Generic arms of `push_value`, so we route through the
+            // same extraction logic without allocating one. We cannot construct
+            // a `ProtectScope` off the main thread, so re-implement the atomic
+            // arms inline here instead.
+            ColumnBuffer::Logical(v) => {
+                let mut probe = ValueExtractor::default();
+                value.serialize(&mut probe)?;
+                v.push(match probe.value {
+                    ExtractedValue::Bool(b) => i32::from(b),
+                    _ => i32::MIN, // NA_LOGICAL
+                });
+                Ok(())
+            }
+            ColumnBuffer::Integer(v) => {
+                let mut probe = ValueExtractor::default();
+                value.serialize(&mut probe)?;
+                v.push(match probe.value {
+                    ExtractedValue::Int(i) => i,
+                    _ => i32::MIN, // NA_INTEGER
+                });
+                Ok(())
+            }
+            ColumnBuffer::Real(v) => {
+                let mut probe = ValueExtractor::default();
+                value.serialize(&mut probe)?;
+                v.push(match probe.value {
+                    ExtractedValue::Real(f) => f,
+                    ExtractedValue::Int(i) => f64::from(i),
+                    _ => NA_REAL,
+                });
+                Ok(())
+            }
+            ColumnBuffer::Character(v) => {
+                let mut probe = ValueExtractor::default();
+                value.serialize(&mut probe)?;
+                v.push(match probe.value {
+                    ExtractedValue::Str(s) => Some(s),
+                    _ => None, // NA_character_
+                });
+                Ok(())
+            }
+        }
+    }
+
+    /// Append all elements of `other` onto `self`, consuming `other`.
+    ///
+    /// Both buffers must be the same variant (guaranteed by the parallel merge,
+    /// which builds every chunk's columns from the same shared schema). Used to
+    /// concat per-thread chunk buffers back into one column in row order.
+    #[cfg(feature = "rayon")]
+    fn append(&mut self, other: ColumnBuffer) {
+        match (self, other) {
+            (ColumnBuffer::Logical(a), ColumnBuffer::Logical(mut b)) => a.append(&mut b),
+            (ColumnBuffer::Integer(a), ColumnBuffer::Integer(mut b)) => a.append(&mut b),
+            (ColumnBuffer::Real(a), ColumnBuffer::Real(mut b)) => a.append(&mut b),
+            (ColumnBuffer::Character(a), ColumnBuffer::Character(mut b)) => a.append(&mut b),
+            (ColumnBuffer::Generic(a), ColumnBuffer::Generic(mut b)) => a.append(&mut b),
+            _ => unreachable!("ColumnBuffer::append: mismatched variants from shared schema"),
+        }
     }
 }
 // endregion
@@ -3690,6 +4156,211 @@ mod tests {
         let post_len = b.schema.as_ref().unwrap().fields.len();
         assert_eq!(pre_len, post_len);
         assert_eq!(b.nrow, 2);
+    }
+
+    // endregion
+
+    // region: par_iter_to_dataframe (#690)
+
+    /// Build the merged column buffers the *sequential* way, for equivalence
+    /// comparison. Mirrors `iter_to_dataframe` minus the final R assembly:
+    /// drives a `SerdeRowBuilder` and hands back its raw `ColumnBuffer`s.
+    #[cfg(feature = "rayon")]
+    fn seq_columns<T: Serialize>(rows: Vec<T>) -> (Vec<String>, Vec<ColumnBuffer>) {
+        let mut b = SerdeRowBuilder::<T>::new(None);
+        for r in rows {
+            b.push(r).expect("sequential push");
+        }
+        let schema = b.schema.expect("schema discovered");
+        let names = schema.fields.iter().map(|f| f.name.clone()).collect();
+        (names, b.columns)
+    }
+
+    /// Two `ColumnBuffer` slices are element-for-element equal. (Generic
+    /// columns never appear on the parallel path, so they're unreachable here.)
+    #[cfg(feature = "rayon")]
+    fn columns_eq(a: &[ColumnBuffer], b: &[ColumnBuffer]) {
+        assert_eq!(a.len(), b.len(), "column count mismatch");
+        for (i, (ca, cb)) in a.iter().zip(b).enumerate() {
+            match (ca, cb) {
+                (ColumnBuffer::Logical(x), ColumnBuffer::Logical(y)) => {
+                    assert_eq!(x, y, "logical column {i}")
+                }
+                (ColumnBuffer::Integer(x), ColumnBuffer::Integer(y)) => {
+                    assert_eq!(x, y, "integer column {i}")
+                }
+                (ColumnBuffer::Real(x), ColumnBuffer::Real(y)) => {
+                    assert_eq!(x, y, "real column {i}")
+                }
+                (ColumnBuffer::Character(x), ColumnBuffer::Character(y)) => {
+                    assert_eq!(x, y, "character column {i}")
+                }
+                _ => panic!("column {i}: variant mismatch or unexpected Generic"),
+            }
+        }
+    }
+
+    /// The parallel build is equivalent to the sequential build, column for
+    /// column and row for row — including row order. Uses a large input so the
+    /// fan-out splits into multiple chunks across the rayon pool.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_build_equivalent_to_sequential() {
+        #[derive(Serialize, Clone)]
+        struct Row {
+            id: i32,
+            ratio: f64,
+            name: String,
+            flag: bool,
+            maybe: Option<i32>,
+        }
+
+        let rows: Vec<Row> = (0..5_000)
+            .map(|i| Row {
+                id: i,
+                ratio: f64::from(i) * 0.5,
+                name: format!("item_{i}"),
+                flag: i % 2 == 0,
+                // Row 0 must be `Some` so first-row schema discovery types this
+                // as an Integer column (an all-None first row would degrade to
+                // a Generic/list column, which the parallel path rejects).
+                // Later `None`s land as NA_INTEGER in the integer buffer.
+                maybe: if i != 0 && i % 3 == 0 {
+                    None
+                } else {
+                    Some(i * 10)
+                },
+            })
+            .collect();
+
+        let (seq_names, seq_cols) = seq_columns(rows.clone());
+        let (schema, par_cols, nrow) = par_build_columns(&rows, None)
+            .expect("par build ok")
+            .expect("non-empty");
+
+        assert_eq!(nrow, 5_000);
+        let par_names: Vec<String> = schema.fields.iter().map(|f| f.name.clone()).collect();
+        assert_eq!(par_names, seq_names, "column names + order must match");
+        columns_eq(&par_cols, &seq_cols);
+
+        // Spot-check row order survived the chunk merge: id column is 0..5000
+        // in order.
+        match &par_cols[0] {
+            ColumnBuffer::Integer(v) => {
+                assert_eq!(v.len(), 5_000);
+                assert!(
+                    v.iter().enumerate().all(|(i, &x)| x == i as i32),
+                    "id column not in row order after merge"
+                );
+            }
+            _ => panic!("expected integer id column"),
+        }
+    }
+
+    /// Row order is preserved even when the chunk boundary falls mid-stream:
+    /// the character column reads back in exact iteration order.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_build_preserves_row_order() {
+        #[derive(Serialize)]
+        struct Row {
+            label: String,
+        }
+        let rows: Vec<Row> = (0..1_000)
+            .map(|i| Row {
+                label: format!("r{i:04}"),
+            })
+            .collect();
+        let (_schema, cols, nrow) = par_build_columns(&rows, Some(1_000))
+            .expect("par build ok")
+            .expect("non-empty");
+        assert_eq!(nrow, 1_000);
+        match &cols[0] {
+            ColumnBuffer::Character(v) => {
+                for (i, cell) in v.iter().enumerate() {
+                    assert_eq!(cell.as_deref(), Some(format!("r{i:04}").as_str()));
+                }
+            }
+            _ => panic!("expected character column"),
+        }
+    }
+
+    /// Empty input yields `Ok(None)` (the public fn turns this into a 0-row
+    /// data.frame without touching R).
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_build_empty_is_none() {
+        #[derive(Serialize)]
+        struct Row {
+            x: i32,
+        }
+        let rows: Vec<Row> = Vec::new();
+        let out = par_build_columns(&rows, None).expect("par build ok");
+        assert!(out.is_none(), "empty input should produce None");
+    }
+
+    /// A schema with a generic (list) column is rejected — the parallel path
+    /// can't allocate per-cell SEXPs off the R main thread.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_build_rejects_generic_column() {
+        // A nested Vec<i32> field has no atomic-column mapping → Generic column.
+        #[derive(Serialize)]
+        struct Row {
+            id: i32,
+            tags: Vec<i32>,
+        }
+        let rows = vec![
+            Row {
+                id: 1,
+                tags: vec![1, 2],
+            },
+            Row {
+                id: 2,
+                tags: vec![3],
+            },
+        ];
+        let err = par_build_columns(&rows, None)
+            .err()
+            .expect("generic column must be rejected");
+        match err {
+            RSerdeError::Message(m) => {
+                assert!(m.contains("generic"), "unexpected error: {m}")
+            }
+            other => panic!("expected Message variant, got {other:?}"),
+        }
+    }
+
+    /// A row introducing a field absent from the first row's schema is rejected
+    /// (strict homogeneous-schema contract, same as sequential).
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_build_rejects_new_field() {
+        #[derive(Serialize)]
+        struct R1 {
+            a: i32,
+        }
+        #[derive(Serialize)]
+        struct R2 {
+            a: i32,
+            b: i32,
+        }
+        #[derive(Serialize)]
+        #[serde(untagged)]
+        enum Either {
+            One(R1),
+            Two(R2),
+        }
+        let rows = vec![Either::One(R1 { a: 1 }), Either::Two(R2 { a: 2, b: 9 })];
+        let err = par_build_columns(&rows, None)
+            .err()
+            .expect("new field must be rejected");
+        match err {
+            RSerdeError::Message(m) => {
+                assert!(m.contains("row introduced field"), "unexpected error: {m}")
+            }
+            other => panic!("expected Message variant, got {other:?}"),
+        }
     }
 
     // endregion
