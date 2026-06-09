@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate the LLM-parseable doc corpus for every miniextendr workspace crate.
 #
-#   .rust-llm-docs/generate-miniextendr-docs.sh
+#   rust-llm-docs/generate-miniextendr-docs.sh
 #
 # Outputs to .rust-llm-docs/generated/:
 #   <crate>.md                     — single-file API digest (rustdoc_megadoc.py)
