@@ -24,7 +24,7 @@ R's `R_ext/Connections.h` states: "we do not expect future connection APIs to be
 
 The `connections` feature in miniextendr is gated for this reason. Before using it in production, verify that `R_CONNECTIONS_VERSION` matches `EXPECTED_CONNECTIONS_VERSION` (both are constants from `connection.rs`). The `check_connections_version()` function asserts this at runtime; call it during `R_init_<pkg>` when the feature is enabled.
 
-The API requires R >= 4.3.0. Use `check_runtime_connections_support()` for a runtime probe.
+The API requires R >= 4.3.0. Use `check_connections_runtime()` for a runtime probe.
 
 ### Connections from `RCustomConnection::build` are returned open
 
@@ -113,7 +113,7 @@ Panics inside `RConnectionImpl` methods are caught by `catch_connection_panic`. 
 
 ## Key files
 
-- `miniextendr-api/src/connection.rs` — `RConnectionImpl` trait, `RCustomConnection` builder, `catch_connection_panic`, `check_connections_version`, `check_runtime_connections_support`, trampolines.
+- `miniextendr-api/src/connection.rs` — `RConnectionImpl` trait, `RCustomConnection` builder, `catch_connection_panic`, `check_connections_version`, `check_connections_runtime`, trampolines.
 - `miniextendr-api/src/ffi_guard.rs` — `guarded_ffi_call_with_fallback` used by `catch_connection_panic`.
 
 ## Common pitfalls

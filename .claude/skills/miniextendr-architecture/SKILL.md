@@ -251,7 +251,7 @@ framework crates.
 - Changing how `#[miniextendr]` parses attributes, generates C wrappers, or
   generates R wrapper fragments? That is `miniextendr-macros`.
 - Changing the ordering or output format of `R/miniextendr-wrappers.R`? That
-  is `miniextendr-api/src/registry.rs` (the `write_wrappers` /
+  is `miniextendr-api/src/registry.rs` (the `miniextendr_write_wrappers` /
   `collect_r_wrappers` entry points) or `miniextendr-macros` (the fragments
   emitted into `MX_R_WRAPPERS`).
 - Adding a build-time source-level lint? That is `miniextendr-lint`.

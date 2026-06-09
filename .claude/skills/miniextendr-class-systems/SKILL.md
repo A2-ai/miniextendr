@@ -142,7 +142,7 @@ R6 generates an `R6::R6Class(...)` definition with:
 
 For void instance methods (`-> ()` return type), the generated R method body ends
 with `invisible(self)` to support method chaining. See `method_return_builder.rs`
-`build_r6_return` around L302.
+`build_r6_body` around L260.
 
 The `DotCallBuilder` uses `.null_call_attribution()` for the R6 finalizer and
 deep_clone methods — `match.call()` in those contexts captures an internal
@@ -345,7 +345,7 @@ later, unpredictably.
 - `miniextendr-macros/src/r_class_formatter.rs` — Shared utilities: `ClassDocBuilder`,
   `MethodDocBuilder`, `MethodContext`, `emit_s3_generic_guard`, `should_export_from_tags`.
 - `miniextendr-macros/src/method_return_builder.rs` — `condition_check_lines`,
-  `condition_check_inline_block`, `ReturnStrategy`; `build_r6_return` (`invisible(self)`).
+  `condition_check_inline_block`, `ReturnStrategy`; `build_r6_body` (`invisible(self)`).
 - `miniextendr-macros/src/r_wrapper_builder.rs` — `DotCallBuilder` at ~L390;
   `.null_call_attribution()` for lambda contexts.
 - `miniextendr-api/src/registry.rs` — `RWrapperPriority` enum (L210), `collect_r_wrappers`,
