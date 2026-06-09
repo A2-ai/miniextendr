@@ -251,6 +251,50 @@ vendor_sync(path = "mypackage")
 miniextendr_available_versions()
 ```
 
+### Wrapping a local Rust crate: use an absolute path
+
+When your R package depends on a Rust crate that lives **outside the package**
+(e.g. an "engine" crate in the same monorepo, or a sibling library on disk),
+the `path = ...` dependency you add to `src/rust/Cargo.toml` **must be
+absolute**, not relative.
+
+`R CMD INSTALL` and `devtools::install()` copy the package into a temporary
+build directory (e.g. `/private/tmp/.../R.INSTALL.../<pkg>/`) *before*
+compiling the Rust staticlib. A relative path resolves against that temporary
+location — which doesn't contain your engine crate — and the build fails:
+
+```toml
+# ❌ breaks: relative path resolves against the temp build dir
+my_engine = { path = "../../../engine" }
+```
+
+```
+error: failed to load manifest for dependency `my_engine`
+  ... No such file or directory
+```
+
+An **absolute** path is read live from its real location, so the temp-copy
+doesn't matter:
+
+```toml
+# ✅ works: absolute path is read from its real location at install time
+my_engine = { path = "/abs/path/to/engine" }
+```
+
+How this interacts with vendoring: `cargo vendor` / the vendor tarball captures
+only the engine crate's **registry** dependencies (its transitive crates.io
+deps). The engine's *own source* is **not** vendored — it is read from the
+`path` at install time. That's why the path has to keep resolving after the
+temp-copy, and why it must be absolute in **source-install mode**.
+
+> **Note:** `use_vendor_lib()` (below) is the supported way to wire a
+> monorepo crate in. It writes a *relative* `dev_path` into
+> `[patch.crates-io]` on purpose — its generated `configure.ac` block rewrites
+> that path to the extracted vendor copy in **tarball/CRAN mode**, so the
+> relative path never reaches the offline build. The absolute-path requirement
+> above applies to a **hand-added** `path = ...` dependency that has no such
+> rewriting machinery. If you hand-roll the dependency, use an absolute path.
+
 ## Diagnostics
 
 ```r

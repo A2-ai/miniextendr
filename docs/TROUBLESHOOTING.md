@@ -139,6 +139,33 @@ just vendor-sync-check  # Check for drift
 just vendor             # Refresh vendored copies (rpkg/vendor/ + inst/vendor.tar.xz)
 ```
 
+### `failed to load manifest for dependency` for a local crate
+
+Symptom: a `path = ...` dependency on a crate outside your package (an "engine"
+crate, a sibling library) builds fine with `cargo build` but fails under
+`R CMD INSTALL` / `devtools::install()`:
+
+```
+error: failed to load manifest for dependency `my_engine`
+  ... No such file or directory
+```
+
+Cause: R copies the package into a temporary build directory before compiling
+the Rust staticlib, so a **relative** path (`../../../engine`) resolves against
+the temp location, which doesn't contain the crate. Fix: use an **absolute**
+path in `src/rust/Cargo.toml`:
+
+```toml
+# ❌ relative — breaks under R's temp-copy
+my_engine = { path = "../../../engine" }
+# ✅ absolute — read live from its real location
+my_engine = { path = "/abs/path/to/engine" }
+```
+
+See [MINIREXTENDR.md](MINIREXTENDR.md#wrapping-a-local-rust-crate-use-an-absolute-path)
+for the full explanation (and how this interacts with `use_vendor_lib()` and
+vendoring).
+
 ### Editing generated files has no effect
 
 Many files in rpkg are generated from `.in` templates. Always edit the template:

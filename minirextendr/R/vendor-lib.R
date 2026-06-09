@@ -212,10 +212,29 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
 #' For CRAN/offline builds, `cargo package` bundles the crate as a tarball
 #' that configure extracts at build time.
 #'
+#' @details
+#' `dev_path` is stored as a **relative** path in `[patch.crates-io]` on
+#' purpose: the generated `configure.ac` block rewrites it to the extracted
+#' vendor copy in tarball/CRAN mode, so the relative path never reaches the
+#' offline build. This is why `use_vendor_lib()` is the supported way to wire
+#' in a monorepo crate.
+#'
+#' If you instead **hand-add** a `path = ...` dependency to
+#' `src/rust/Cargo.toml` (with no such rewriting machinery), it must be an
+#' **absolute** path. `R CMD INSTALL` / `devtools::install()` copy the package
+#' into a temporary build directory before compiling the Rust staticlib, so a
+#' relative path resolves against the temp location and fails with
+#' `failed to load manifest for dependency`. An absolute path is read live from
+#' its real location. (`cargo vendor` captures only the crate's registry deps;
+#' the crate's own source is read from the `path` at install time.)
+#'
 #' @param crate Crate name (e.g., "dvs")
 #' @param version Version spec for Cargo.toml (e.g., "*" or "0.1.0")
 #' @param dev_path Relative path from R package root to the monorepo crate
-#'   (e.g., "../../../dvs")
+#'   (e.g., "../../../dvs"). Stored relative on purpose -- the generated
+#'   `configure.ac` block rewrites it for tarball/CRAN builds. A *hand-added*
+#'   `path = ...` dependency (without that machinery) must be absolute instead;
+#'   see Details.
 #' @param path Path to the R package root
 #' @return Invisibly returns TRUE
 #' @export
