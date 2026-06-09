@@ -124,6 +124,9 @@ fn iter_to_dataframe_empty_yields_empty_dataframe() {
 
 // region: strict-schema rejection + NA-pad for missing fields
 
+// Uses `serde_json::Value` to push heterogeneous shapes, so it requires the
+// `serde_json` feature (the rest of this file only needs `serde`).
+#[cfg(feature = "serde_json")]
 #[test]
 fn dataframe_builder_strict_rejects_new_fields() {
     r_test_utils::with_r_thread(|| {
