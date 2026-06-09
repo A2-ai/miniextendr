@@ -1,5 +1,12 @@
 //! NA-aware vector conversions (`Vec<Option<T>>`, `Box<[Option<T>]>`).
 //!
+//! **The `SEXPTYPE` literals here are the source of truth (#882).** The macro
+//! that generates the native-type impls is passed the tag as `$sexptype` from the
+//! caller (where the concrete element type *is* known); the hand-written logical
+//! impls use `LGLSXP` because `bool`/`Rboolean` are not `RNativeType` (R logicals
+//! are `i32`), and the string/raw impls use `STRSXP`/`RAWSXP` literals because
+//! those element types have no `RNativeType` collapse — leave them.
+//!
 //! Maps R's NA values to `None` and non-NA values to `Some(v)`.
 //! Covers native types (i32, f64, u8), logical (bool, Rboolean, RLogical),
 //! string (`Option<String>`), complex (`Option<Rcomplex>`), and coerced

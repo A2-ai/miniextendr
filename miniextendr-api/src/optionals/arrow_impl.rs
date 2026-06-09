@@ -488,10 +488,13 @@ impl TryFromSexp for Float64Array {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Derive the expected tag from the element type instead of hardwiring it,
+        // so it can't drift from the `sexp_to_arrow_buffer::<f64>` / `f64::elt`
+        // calls below that read the same buffer (#882, follow-up to #881).
         let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
+        if actual != <f64 as RNativeType>::SEXP_TYPE {
             return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
+                expected: <f64 as RNativeType>::SEXP_TYPE,
                 actual,
             }
             .into());
@@ -532,10 +535,11 @@ impl TryFromSexp for Int32Array {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Tag derived from the element type (`i32`) — see Float64Array above (#882).
         let actual = sexp.type_of();
-        if actual != SEXPTYPE::INTSXP {
+        if actual != <i32 as RNativeType>::SEXP_TYPE {
             return Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
+                expected: <i32 as RNativeType>::SEXP_TYPE,
                 actual,
             }
             .into());
@@ -575,10 +579,11 @@ impl TryFromSexp for UInt8Array {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Tag derived from the element type (`u8`) — see Float64Array above (#882).
         let actual = sexp.type_of();
-        if actual != SEXPTYPE::RAWSXP {
+        if actual != <u8 as RNativeType>::SEXP_TYPE {
             return Err(SexpTypeError {
-                expected: SEXPTYPE::RAWSXP,
+                expected: <u8 as RNativeType>::SEXP_TYPE,
                 actual,
             }
             .into());
@@ -612,6 +617,9 @@ impl TryFromSexp for BooleanArray {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Literal is the source of truth here (#882): Arrow's BooleanArray is
+        // bit-packed and built element-by-element via `logical_elt`, so there is
+        // no `RLogical`-typed buffer path alongside this guard to desync from.
         let actual = sexp.type_of();
         if actual != SEXPTYPE::LGLSXP {
             return Err(SexpTypeError {
@@ -1266,6 +1274,9 @@ impl IntoR for StringArray {
     fn into_sexp(self) -> SEXP {
         let n = Array::len(&self);
         unsafe {
+            // STRSXP literal is the source of truth (#882): R strings are
+            // write-barriered CHARSXP-pointer arrays, not a `RNativeType` element
+            // type, so there is no `alloc_r_vector::<T>` collapse here.
             let sexp = sys::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
             let guard = crate::gc_protect::OwnedProtect::new(sexp);
             for i in 0..n {

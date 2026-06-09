@@ -1,5 +1,11 @@
 //! Macro for the REALSXP-backed date/time conversion matrix.
 //!
+//! **`REALSXP` literal is the source of truth (#882).** Datetime newtypes are
+//! *defined* to ride on R's `REALSXP` (`f64` days/seconds + a class attribute);
+//! they are not `RNativeType` themselves, so there is no generic `T::SEXP_TYPE`
+//! to fold this into. The literal is the R↔Rust mapping, not a redundant copy
+//! of one — leave it in place.
+//!
 //! Generates all 8 `TryFromSexp` + `IntoR` impls (scalar / `Option<T>` / `Vec<T>` /
 //! `Vec<Option<T>>`, both directions) for types that:
 //! - are backed by a single REALSXP `f64` value,

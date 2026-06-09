@@ -1,5 +1,11 @@
 //! Coerced scalar conversions (multi-source numeric) and large integer scalars.
 //!
+//! **The `SEXPTYPE` literals here are the source of truth (#882).** They are
+//! *runtime* match arms on `sexp.type_of()`, deliberately accepting several
+//! source types and coercing into one target Rust type — there is no single `T`
+//! whose `T::SEXP_TYPE` they could be folded into (the whole point is the 1:N
+//! input fan-in). Leave them.
+//!
 //! These types accept multiple R source types (INTSXP, REALSXP, RAWSXP, LGLSXP)
 //! and coerce to the target Rust type via [`TryCoerce`].
 //!

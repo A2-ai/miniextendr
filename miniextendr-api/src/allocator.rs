@@ -233,6 +233,9 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     // If this happens inside run_on_worker, R_UnwindProtect will catch it.
     // Outside of that context, Rust destructors may be skipped.
     // Use _unchecked since we're guaranteed to be on R main thread via with_r_thread_or_inline.
+    // RAWSXP literal is the source of truth (#882): this is an opaque R-managed
+    // byte arena used as a `*mut u8` allocation, not a typed vector — there is no
+    // `T: RNativeType` element to derive the tag from.
     let sexp = unsafe { crate::sys::Rf_allocVector_unchecked(SEXPTYPE::RAWSXP, total_isize) };
     if sexp.is_null() {
         return sendable_data_ptr_null();

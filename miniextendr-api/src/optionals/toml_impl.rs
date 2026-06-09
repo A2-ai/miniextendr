@@ -2,6 +2,11 @@
 //!
 //! Provides conversions between TOML values and R types.
 //!
+//! **`SEXPTYPE` literals here are chosen by the *runtime* TOML value (#882),**
+//! not a compile-time Rust type — a `toml::Value` decides at runtime whether it
+//! becomes `INTSXP`/`REALSXP`/`LGLSXP`/`STRSXP`/`VECSXP`. There is no `T` to
+//! derive the tag from, so the literals are load-bearing — leave them.
+//!
 //! # Features
 //!
 //! Enable this module with the `toml` feature:
