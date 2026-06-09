@@ -6,6 +6,13 @@
 #' Rust development. This combines `usethis::create_package()` with
 #' `use_miniextendr()`.
 #'
+#' Works non-interactively even when `path` is **already a project** (e.g. an
+#' existing git repo). `usethis::create_package()` normally raises an
+#' interactive "would be nested inside an existing project" challenge in that
+#' case, which aborts in a non-interactive session. To scaffold cleanly we set
+#' `options(usethis.allow_nested_project = TRUE)` for the duration of the call
+#' (restored on exit), suppressing that prompt.
+#'
 #' @param path Path where to create the package
 #' @inheritParams usethis::create_package
 #' @return Path to the created package (invisibly)
@@ -23,6 +30,14 @@ create_miniextendr_package <- function(path, open = interactive(),
       "i" = "Try: {.val {gsub('[^a-zA-Z0-9.]', '', pkg_name)}}"
     ))
   }
+
+  # Allow scaffolding into an existing project (e.g. a git repo) without the
+  # interactive nested-project challenge that would otherwise abort a
+  # non-interactive session. Saved + restored via base on.exit() (withr is
+  # Suggests-only, matching the rest of minirextendr).
+  old_nested <- getOption("usethis.allow_nested_project")
+  options(usethis.allow_nested_project = TRUE)
+  on.exit(options(usethis.allow_nested_project = old_nested), add = TRUE)
 
   # Create basic package
   usethis::create_package(
@@ -292,6 +307,13 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' This is an all-in-one function that calls all the individual `use_miniextendr_*()`
 #' functions.
 #'
+#' If the target package has no `NAMESPACE` (e.g. it was set up via
+#' `usethis::use_description()` in an existing repo rather than
+#' `usethis::create_package()`), a minimal roxygen2-managed `NAMESPACE`
+#' containing `useDynLib(<pkg>, .registration = TRUE)` is seeded so the first
+#' build does not fail on the configure-time guard. A later
+#' `devtools::document()` populates it from your roxygen comments.
+#'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param template_type Template type: "auto" (detect from directory structure),
 #'   "rpkg" for standalone R package, or "monorepo" for Rust workspace.
@@ -411,6 +433,12 @@ use_miniextendr <- function(path = ".",
   # R package files
   cli::cli_h2("Setting up R package")
   use_miniextendr_package_doc()
+  # Ensure a NAMESPACE exists. usethis::create_package() seeds one, but when
+  # use_miniextendr() is run against a package set up another way (e.g.
+  # usethis::use_description() in an existing repo) there may be none, and the
+  # first build then fails on the configure guard. Seed a roxygen-managed
+  # minimal NAMESPACE so the shared library loads and document() can take over.
+  use_miniextendr_namespace()
   use_miniextendr_rbuildignore()
   use_miniextendr_gitignore()
 
