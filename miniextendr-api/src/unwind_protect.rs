@@ -613,3 +613,114 @@ where
         }
     }
 }
+
+/// Run a closure under `R_UnwindProtect`, raising error/panic failures **directly
+/// from C** via `Rf_eval(stop(structure(...)))` instead of returning a tagged
+/// condition SEXP for the R wrapper to re-raise.
+///
+/// This is the transport selected by `#[miniextendr(error_direct)]`. It exists
+/// to shave the R-side `.miniextendr_raise_condition` → `stop(structure(...))`
+/// re-raise off the error path (issue #665): the class vector and condition
+/// object are built in C and `stop()` is `Rf_eval`'d directly, so an error
+/// `longjmp`s straight out of the `.Call` without re-entering R wrapper code.
+///
+/// # Which kinds are raised directly vs. fall back
+///
+/// Only **error-shaped** failures longjmp directly:
+/// - generic Rust `panic!()` (no `RCondition` payload) → `kind = "panic"`,
+///   class `c("rust_error", "simpleError", "error", "condition")`.
+/// - [`crate::condition::RCondition::Error`] (from `error!()`) → class
+///   `c([custom,] "rust_error", "simpleError", "error", "condition")`.
+///
+/// **Non-error signals fall back to the tagged-SEXP path** (the issue is
+/// explicit that `Rf_error`/`stop` only do errors): `RCondition::Warning`,
+/// `Message`, and `Condition` return a tagged condition value exactly as
+/// [`with_r_unwind_protect`] does, so the generated R wrapper's
+/// `.miniextendr_raise_condition` switch still signals them as non-fatal
+/// `warning()`/`message()`/`signalCondition()`. The R-origin longjmp branch
+/// (`R_ContinueUnwind`) is also unchanged.
+///
+/// # Soundness: the longjmp point is Drop-free
+///
+/// `stop()` longjmps, which unwinds the C stack **without** running Rust
+/// destructors. That is exactly what MXL300 guards against — so the direct
+/// `stop()` MUST be reached with no live Rust `Drop` value on the stack.
+///
+/// This function satisfies that invariant: by the time control reaches the
+/// `Err(payload)` arm, `run_r_unwind_protect`'s inner `catch_unwind` has
+/// **already unwound every Rust frame of the user closure** (files, `OwnedProtect`
+/// guards, `CString`s, `Box`es — all dropped during the panic). The only live
+/// Rust value here is the `payload: Box<dyn Any + Send>` itself. We copy out the
+/// owned message/class `String`s, **`drop(payload)`**, and only *then* call
+/// [`raise_rust_condition_via_stop`], which builds the condition object in
+/// R-protected SEXPs (no Rust `Drop` value held across the `Rf_eval`) and
+/// longjmps. The protect stack is reclaimed by R's longjmp unwind. This is the
+/// same proven pattern already shipping on the ALTREP `RUnwind` guard path via
+/// [`with_r_unwind_protect_or_raise`].
+///
+/// # Arguments
+///
+/// * `f` - The closure to execute.
+/// * `call` - Optional R call SEXP, used as the condition's `call` for both the
+///   direct-raise and fall-back paths.
+pub fn with_r_unwind_protect_error_direct<F>(f: F, call: Option<SEXP>) -> SEXP
+where
+    F: FnOnce() -> SEXP,
+{
+    match run_r_unwind_protect(f) {
+        Ok(result) => result,
+        Err(payload) => {
+            // region: RCondition recognition — must come before the generic panic path
+            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+                use crate::error_value::kind;
+                match cond {
+                    crate::condition::RCondition::Error { message, class } => {
+                        // Error-shaped: raise directly from C. Copy out owned data,
+                        // then drop the payload so NO Rust Drop value is live across
+                        // the stop()-longjmp (see "Soundness" above).
+                        let message = message.clone();
+                        let class = class.clone();
+                        drop(payload);
+                        // User-raised conditions are intentional — no panic telemetry,
+                        // matching the tagged-SEXP path in `with_r_unwind_protect`.
+                        unsafe { raise_rust_condition_via_stop(&message, class.as_deref(), call) }
+                    }
+                    crate::condition::RCondition::Warning { message, class } => {
+                        let (msg, class) = (message.as_str(), class.as_deref());
+                        return crate::error_value::make_rust_condition_value(
+                            msg,
+                            kind::WARNING,
+                            class,
+                            call,
+                        );
+                    }
+                    crate::condition::RCondition::Message { message } => {
+                        return crate::error_value::make_rust_condition_value(
+                            message.as_str(),
+                            kind::MESSAGE,
+                            None,
+                            call,
+                        );
+                    }
+                    crate::condition::RCondition::Condition { message, class } => {
+                        let (msg, class) = (message.as_str(), class.as_deref());
+                        return crate::error_value::make_rust_condition_value(
+                            msg,
+                            kind::CONDITION,
+                            class,
+                            call,
+                        );
+                    }
+                }
+            }
+            // endregion
+
+            // Generic panic path — raise directly from C with `rust_error` layering.
+            // Copy the message out of the payload, drop the payload, then longjmp.
+            let msg = panic_payload_to_string(payload.as_ref()).into_owned();
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
+            drop(payload);
+            unsafe { raise_rust_condition_via_stop(&msg, None, call) }
+        }
+    }
+}

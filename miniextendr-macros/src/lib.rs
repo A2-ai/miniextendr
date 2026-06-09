@@ -503,6 +503,8 @@ fn build_match_arg_helpers(
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
 /// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
 /// - `#[miniextendr(unwrap_in_r)]` — return `Result<T, E>` to R without unwrapping
+/// - `#[miniextendr(error_direct)]` — raise `panic!()`/`error!()` failures directly from C
+///   via `Rf_eval(stop(...))`, skipping the R-side re-raise (warnings/messages fall back; #665)
 /// - `#[miniextendr(dots = typed_list!(...))]` — validate dots, create `dots_typed`
 /// - `#[miniextendr(internal)]` — adds `@keywords internal` to R wrapper
 /// - `#[miniextendr(noexport)]` — suppresses `@export` from R wrapper
@@ -723,6 +725,7 @@ pub fn miniextendr(
         coerce_all,
         rng,
         unwrap_in_r,
+        error_direct,
         return_pref,
         s3_generic,
         s3_class,
@@ -999,6 +1002,9 @@ pub fn miniextendr(
     }
     if rng {
         c_wrapper_builder = c_wrapper_builder.rng();
+    }
+    if error_direct {
+        c_wrapper_builder = c_wrapper_builder.error_direct();
     }
     if strict {
         c_wrapper_builder = c_wrapper_builder.strict();

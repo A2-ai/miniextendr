@@ -1039,7 +1039,7 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// NameValue bool, parenthesized bool) all read from the same list and can't
 /// drift.
 const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
-     rng, unwrap_in_r, strict, no_strict, \
+     rng, unwrap_in_r, error_direct, strict, no_strict, \
      internal, noexport, export";
 
 /// Comma-separated list of fn-level nested options, for error messages.
@@ -1078,6 +1078,11 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     pub(crate) unwrap_in_r: bool,
+    /// Raise error-shaped failures (`panic!()` / `error!()` / `RCondition::Error`)
+    /// **directly from C** via `Rf_eval(stop(structure(...)))`, skipping the R-side
+    /// `.miniextendr_raise_condition` re-raise. Warnings/messages/conditions still
+    /// fall back to the tagged-SEXP path. Set by `#[miniextendr(error_direct)]`. (#665)
+    pub(crate) error_direct: bool,
     /// Preferred return conversion: forces `AsList`/`AsExternalPtr`/`AsRNative` wrapping
     /// of the return value before `IntoR::into_sexp` is called.
     pub(crate) return_pref: ReturnPref,
@@ -1220,6 +1225,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut coerce_all: Option<bool> = None;
         let mut rng = false;
         let mut unwrap_in_r = false;
+        let mut error_direct = false;
         let mut return_pref = ReturnPref::Auto;
         let mut s3_generic = None;
         let mut s3_class = None;
@@ -1265,6 +1271,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             rng = true;
                         } else if ident == "unwrap_in_r" {
                             unwrap_in_r = true;
+                        } else if ident == "error_direct" {
+                            error_direct = true;
                         } else if ident == "worker" {
                             force_worker = Some(true);
                         } else if ident == "no_worker" {
@@ -1316,6 +1324,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 rng = val;
                             } else if ident == "unwrap_in_r" {
                                 unwrap_in_r = val;
+                            } else if ident == "error_direct" {
+                                error_direct = val;
                             } else if ident == "strict" {
                                 strict = Some(val);
                             } else if ident == "no_strict" {
@@ -1572,6 +1582,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             coerce_all: coerce_all.unwrap_or(cfg!(feature = "coerce-default")),
             rng,
             unwrap_in_r,
+            error_direct,
             return_pref,
             s3_generic,
             s3_class,

@@ -150,6 +150,11 @@ pub struct CWrapperContext {
     /// When `true`, wraps the call in `GetRNGstate()`/`PutRNGstate()` for R's
     /// random number generator state management. Set by `#[miniextendr(rng)]`.
     pub rng: bool,
+    /// When `true`, the main-thread wrapper routes errors/panics through
+    /// `with_r_unwind_protect_error_direct`, which raises error-shaped failures
+    /// directly from C via `Rf_eval(stop(...))` instead of returning a tagged
+    /// SEXP for the R wrapper to re-raise. Set by `#[miniextendr(error_direct)]`. (#665)
+    pub error_direct: bool,
     /// `#[cfg(...)]` attributes from the original item, propagated to the C wrapper
     /// and `call_method_def` constant so they are conditionally compiled.
     pub cfg_attrs: Vec<syn::Attribute>,
@@ -212,6 +217,7 @@ impl CWrapperContext {
             coerce_params: Vec::new(),
             check_interrupt: false,
             rng: false,
+            error_direct: false,
             cfg_attrs: Vec::new(),
             type_context: None,
             has_self: false,
@@ -395,7 +401,15 @@ impl CWrapperContext {
         let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
         // Unwind protection returns tagged condition SEXP on panic; the R-side wrapper raises.
-        let unwind_protect_fn = quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect };
+        // With `error_direct` (#665), error-shaped failures are raised directly from C via
+        // `Rf_eval(stop(...))` instead — but only on the non-RNG path: the RNG variant's outer
+        // `catch_unwind` must run `PutRNGstate()` before any longjmp, which a direct `stop()`
+        // would skip, so `rng + error_direct` keeps the tagged-SEXP transport.
+        let unwind_protect_fn = if self.error_direct && !self.rng {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect_error_direct }
+        } else {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
+        };
 
         if self.rng {
             // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
@@ -1150,6 +1164,8 @@ pub struct CWrapperContextBuilder {
     check_interrupt: bool,
     /// Wrap call in `GetRNGstate()`/`PutRNGstate()`.
     rng: bool,
+    /// Route errors/panics through `with_r_unwind_protect_error_direct` (direct C-side raise).
+    error_direct: bool,
     /// `#[cfg(...)]` attributes to propagate to generated items.
     cfg_attrs: Vec<syn::Attribute>,
     /// Type identifier for method context (e.g., `MyStruct`). `None` for standalone functions.
@@ -1247,6 +1263,17 @@ impl CWrapperContextBuilder {
     /// Enable RNG state management (GetRNGstate/PutRNGstate).
     pub fn rng(mut self) -> Self {
         self.rng = true;
+        self
+    }
+
+    /// Raise error-shaped failures directly from C (`#[miniextendr(error_direct)]`).
+    ///
+    /// Switches the main-thread wrapper from `with_r_unwind_protect` (returns a
+    /// tagged condition SEXP) to `with_r_unwind_protect_error_direct`, which
+    /// `Rf_eval`s `stop(structure(...))` for `panic!()` / `error!()` failures,
+    /// skipping the R-side `.miniextendr_raise_condition` re-raise (#665).
+    pub fn error_direct(mut self) -> Self {
+        self.error_direct = true;
         self
     }
 
@@ -1379,6 +1406,7 @@ impl CWrapperContextBuilder {
             coerce_params: self.coerce_params,
             check_interrupt: self.check_interrupt,
             rng: self.rng,
+            error_direct: self.error_direct,
             cfg_attrs: self.cfg_attrs,
             type_context: self.type_context,
             has_self: self.has_self,

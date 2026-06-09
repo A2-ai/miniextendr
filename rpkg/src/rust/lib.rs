@@ -174,6 +174,7 @@ mod dots_tests;
 #[cfg(feature = "either")]
 mod either_adapter_tests;
 mod encoding_tests;
+mod error_direct_fixtures;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_any_tests;
