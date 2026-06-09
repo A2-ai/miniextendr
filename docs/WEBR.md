@@ -15,10 +15,11 @@ Tracking: umbrella #470. Shipped: tier 1/2/3 CI (#480 / #491 / #492),
 cross-package wasm stubs (#493), side-module `RUSTFLAGS`
 (`-Zdefault-visibility=hidden`, #494), `link_to_r()` wasm gating (#482), webR
 base-image mirror (#496), the redundant `-C relocation-model=pic` flag
-dropped (#745), and the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
-release (#755). Open follow-ups: #495 (cross-crate trait dispatch), #752
-(dependency guidance — see "Dependencies and webR" below), #788 (arm64-native
-dev image), #747 (drop mirror creds once the GHCR package is public).
+dropped (#745), the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
+release (#755), and dependency guidance (#752 — see "Dependencies and webR"
+below). Open follow-ups: #495 (cross-crate trait dispatch), #925 (lint for
+eager `importFrom` of compiled deps), #788 (arm64-native dev image), #747
+(drop mirror creds once the GHCR package is public).
 
 ## Target
 
@@ -237,9 +238,23 @@ unable to load shared object '.../somePkg.so': invalid ELF header
 ```
 
 This is the same host-R-loads-a-wasm-object failure that bites webR's own
-base packages (handled by installing to an empty temp library; see tier 2 /
-#491), but here it's triggered by *your package's own declared imports*, so
-the framework can't paper over it for you.
+base packages — handled by installing to an empty temp library, the
+`install-to-temp-lib` pattern; see tier 2 / #491 / #744. The difference is
+the *trigger*: #491/#744 are about webR's own base-package `.so`s, whereas
+this failure is driven by *your package's own declared imports*, so the
+framework can't paper over it for you.
+
+### Why `--no-byte-compile` alone doesn't save you
+
+Both the wasm-install scripts and CI pass `--no-byte-compile` (see
+`tests/webr-smoke.sh` and `.github/workflows/webr.yml`, mirroring rwasm's
+flag set). That suppresses the *byte-compile* half of the cascade, but the
+lazy-load step that materialises the namespace still runs `loadNamespace()`
+for everything in your `Imports`/`Depends` namespace-load graph. Skipping
+byte-compilation does **not** prune your declared imports, so an
+`importFrom` of a compiled package still reaches for its `.so`. The only
+robust fix is to keep the compiled dependency out of the namespace-load graph
+entirely — see the guidance below.
 
 **Guidance:**
 
@@ -252,9 +267,11 @@ the framework can't paper over it for you.
   graph, so the wasm install's lazy-load never reaches for their `.so`.
 
 This mirrors what the astra downstream did (moved its Shiny stack to
-`Suggests` + `::`). Tracked in #752; a future `minirextendr_doctor()` /
-`miniextendr_check_static()` lint may flag eager `importFrom` of
-known-compiled packages.
+`Suggests` + `::`). Documented under #752; a future `minirextendr_doctor()` /
+`miniextendr_check_static()` lint that flags eager `importFrom` of
+known-compiled packages when a webR target is configured is tracked
+separately in #925 (the "is it compiled?" / "is webR the target?" detection
+needs design — see that issue).
 
 ## CI
 
@@ -291,8 +308,12 @@ is what proves it *loads* in a real webR runtime.
 ## See also
 
 - Issue #470 — umbrella tracking issue for webR/WASM support.
-- Issue #495 — cross-crate trait dispatch; #752 — dependency guidance;
+- Issue #495 — cross-crate trait dispatch; #752 — dependency guidance
+  (this section); #925 — follow-up lint for `importFrom` of compiled deps;
   #788 — arm64-native dev image.
+- Issues #491 / #744 — the base-package variant of the host-R-loads-a-wasm-
+  object failure, solved via the install-to-temp-lib pattern (the dependency
+  guidance above is the consumer-package-imports variant of the same failure).
 - `tests/webr-node-smoke/smoke.mjs` — the CI tier-3 Node runner (single source
   of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
