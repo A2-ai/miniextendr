@@ -190,6 +190,118 @@ Ensure the function is `pub` and has `#[miniextendr]`, then run `just rcmdinstal
 
 ---
 
+## Load Issues
+
+### `dlopen` fails: "symbol not found in flat namespace '_<symbol>'"
+
+**Symptom** (macOS):
+
+```
+unable to load shared object '.../mypkg.so':
+  dlopen(.../mypkg.so, 0x000A): symbol not found in flat namespace '_LLVMConstMul'
+```
+
+(Linux shows `undefined symbol` instead of "flat namespace".)
+
+**Why it happens**
+
+miniextendr links the Rust crate as a `staticlib` (`.a`) and R then links that
+archive into `<pkg>.so` with:
+
+```
+clang ... -undefined dynamic_lookup ... libmypkg.a
+```
+
+`-undefined dynamic_lookup` defers every unresolved symbol to load time.
+`dyn.load()` uses `RTLD_NOW`, so *every* unresolved symbol must be present in
+an already-loaded library when the `.so` is first opened -- or the load fails.
+
+A `cargo build`/`cargo test` binary of the same crate may link and run fine.
+That's because `rustc`'s **binary** linker dead-strips unreachable code,
+including dead references to symbols that are never actually called. R's `.so`
+link does not dead-strip those references (and `-Wl,-dead_strip` in `PKG_LIBS`
+doesn't help when `codegen-units = 1` produces a single object that keeps the
+reference statically reachable even though no code path reaches it at runtime).
+
+The result: a symbol that is *referenced but never called* -- e.g. a deprecated
+API a dependency dropped for a newer toolchain version -- satisfies a `rustc`
+binary link but breaks `dyn.load`.
+
+**Diagnose**
+
+Build the staticlib and find symbols that are undefined in the archive but not
+provided by anything you link:
+
+```sh
+cargo build --release --lib
+LIB=target/release/libmypkg.a
+
+# Symbols undefined in the archive
+comm -23 \
+  <(nm -u "$LIB" | awk '{print $NF}' | sort -u) \
+  <(nm -g --defined-only "$LIB" | awk '{print $NF}' | sort -u)
+```
+
+Cross-check the residual against the native libraries listed in your
+`PKG_LIBS`. Any symbol that appears in the residual but is absent from all
+linked libraries will cause `dyn.load` to fail.
+
+**Fix: abort-on-call stubs in `src/stub.c`**
+
+If the residual symbols are genuinely unreachable (the cargo binary runs
+without them), satisfy the linker with abort-on-call stubs. R compiles every
+`src/*.c` file and links the resulting `.o` files into the `.so` via
+`$(OBJECTS)`, so stubs defined in `src/stub.c` resolve the references at link
+time and abort loudly if ever invoked:
+
+```c
+// src/stub.c (add after the existing miniextendr_anchor block)
+
+// ---------------------------------------------------------------------------
+// Abort-on-call stubs for symbols referenced but unreachable via code paths
+// that exist in the staticlib but are never executed through R.
+//
+// Background: R links the Rust staticlib into <pkg>.so with
+//   clang -undefined dynamic_lookup
+// which defers unresolved symbols to dyn.load() time (RTLD_NOW).  rustc's
+// binary linker dead-strips these references; R's .so link does not.
+// If a dep removed a symbol (e.g. LLVM 21 removed LLVMConstMul*) the
+// staticlib still carries the reference but it is never called.  Stubbing
+// here makes the .so load and aborts if the "impossible" path is reached.
+// ---------------------------------------------------------------------------
+#include <stdlib.h>  /* abort() */
+
+void LLVMConstMul(void)    { abort(); }
+void LLVMConstNSWMul(void) { abort(); }
+void LLVMConstNUWMul(void) { abort(); }
+```
+
+Replace the symbol names with whichever symbols appear in your diagnostic
+output. Remove a stub once the upstream dependency no longer references the
+removed symbol (i.e. after the dep updates its minimum LLVM version).
+
+> **Note on `stub.c` purpose:** `stub.c` already exists in every miniextendr
+> scaffold to provide the `miniextendr_anchor` force-link symbol (see
+> [Entrypoint](ENTRYPOINT.md#the-stubc-file)). The abort stubs above are a
+> *separate* use: satisfying linker references to removed/missing native
+> symbols. Both uses live in the same `stub.c`.
+
+**Concrete example**
+
+The dependency chain `diffsol → diffsl → inkwell` (an LLVM Rust binding)
+references `LLVMConstMul`, `LLVMConstNSWMul`, and `LLVMConstNUWMul`.
+LLVM 21 removed those three functions. `cargo test` of the same crate passes
+because the rustc binary link never exercises those code paths. `dyn.load`
+fails because R's `.so` link carries the references and `RTLD_NOW` rejects
+any unresolved symbol. Adding the three abort stubs above made the package
+load successfully.
+
+This is a dependency-vs-toolchain issue, not a miniextendr bug -- but the
+`staticlib → .so` linking model is miniextendr-specific, so the workaround is
+not obvious without knowing how R links Rust code.
+
+---
+
 ## Windows Issues
 
 Windows uses `configure.win` / `configure.ucrt` instead of the autoconf-based `configure` script. If Windows builds fail:
