@@ -299,6 +299,16 @@ GitHub Actions auto-deploys on push to `main` when `site/**`, `docs/**`, or `*/s
 
 **Always check `background/` for R API details before guessing.**
 
+## Skill freshness audit (quarterly)
+
+The Claude Code skills under `.claude/skills/<slug>/SKILL.md` cite file paths,
+symbols, and line numbers that drift as the code evolves. Run
+`bash scripts/skill-freshness-audit.sh` **once a quarter** (and repair drift in
+the same pass — source wins, fix the SKILL.md). It flags, per skill: missing
+cited paths (BLOCKING, exits non-zero so it can gate CI), symbols that grep
+finds nowhere in the repo (WARN), and out-of-range `file.rs:NNN` line cites
+(WARN). The script's header documents its known false-positive modes.
+
 ## Reviews
 
 - **Reviews** (`reviews/*.md`): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.

@@ -166,7 +166,7 @@ On: a background thread is spawned at package load. Use for CPU-intensive work t
 
 - `miniextendr-api/src/worker.rs` — `run_on_worker`, `with_r_thread`, `Sendable<T>`, `miniextendr_runtime_init`, `miniextendr_runtime_shutdown`, `worker_loop`, `dispatch_to_worker`, `route_to_main_thread`, `WorkerMsg`, `WorkerState`.
 - `miniextendr-api/src/unwind_protect.rs` — `with_r_unwind_protect` used inside the main-thread work loop.
-- `miniextendr-api/src/ffi.rs` — `#[r_ffi_checked]` thread assertions; `is_r_main_thread()` helper.
+- `miniextendr-api/src/sys.rs` — `#[r_ffi_checked]` thread assertions; `is_r_main_thread()` helper.
 - `miniextendr-api/src/panic_telemetry.rs` — `PanicSource::Worker` telemetry fired on worker panics.
 
 ## Common pitfalls

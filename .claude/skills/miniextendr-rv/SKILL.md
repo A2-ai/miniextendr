@@ -59,7 +59,8 @@ deps but not the local package itself (we install that via
 
 The pinned `roxygen2_8.0.0.tar.gz` URL is intentional — current code targets
 roxygen2 8.0.0; the CRAN release moved on and would re-render man pages
-differently. See `journal/2026-05-17-pr2-release-workflow-cran-pins.md`.
+differently. The pin is the source of truth in `rproject.toml`, mirrored by
+`Config/roxygen2/version: 8.0.0` in `rpkg/DESCRIPTION`.
 
 ## The R-version contract (the only thing that goes wrong here)
 
@@ -208,6 +209,7 @@ If any of these fail, you're in safe mode — see the fix recipes above.
 
 - Root `CLAUDE.md` § "R version (rv + rig)" — the abbreviated version of this
   doc, intended for first-touch contributors.
-- `journal/2026-05-17-pr2-release-workflow-cran-pins.md` — context for the
+- `rproject.toml` (the `roxygen2` dependency entry) and
+  `rpkg/DESCRIPTION` (`Config/roxygen2/version`) — the source of truth for the
   pinned `roxygen2_8.0.0.tar.gz` URL.
 - `[[miniextendr-build]]` skill — what to do *after* you've sorted R/rv.

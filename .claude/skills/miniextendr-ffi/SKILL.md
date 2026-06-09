@@ -22,7 +22,7 @@ The FFI layer is the boundary where Rust code calls into R's C API. R uses `long
 
 ### `#[r_ffi_checked]` — thread-checked FFI wrappers
 
-`#[r_ffi_checked]` is a proc macro applied to `unsafe extern "C-unwind"` blocks in `miniextendr-api/src/ffi.rs`. For every function declared in the block, it generates two variants:
+`#[r_ffi_checked]` is a proc macro applied to `unsafe extern "C-unwind"` blocks in `miniextendr-api/src/sys.rs`. For every function declared in the block, it generates two variants:
 
 - `fn_name(args)` — the checked variant. Calls `with_r_thread(|| …)` first (a debug assertion that the current thread is R's main thread), then delegates to the underlying C symbol.
 - `fn_name_unchecked(args)` — the raw variant. No thread check. Same as calling the C symbol directly.
@@ -40,7 +40,7 @@ When to use `_unchecked`:
 
 MXL301 enforces this: using `_unchecked` outside these known-safe contexts is a lint error. See `miniextendr-lint`.
 
-The `^nonapi^` annotation in `ffi.rs` marks functions that require `#[cfg(feature = "nonapi")]`. These are R internals not part of the stable public API.
+The `^nonapi^` annotation in `sys.rs` marks functions that require `#[cfg(feature = "nonapi")]`. These are R internals not part of the stable public API.
 
 ### `with_r_unwind_protect` — the default for `#[miniextendr]` functions
 
@@ -89,7 +89,7 @@ Two RAII types from `miniextendr-api/src/gc_protect.rs`:
   // a and b are valid until scope drops
   ```
 
-For long-lived SEXPs that outlive a single `.Call` frame, use `R_PreserveObject` / `R_ReleaseObject` from the `preserve` module.
+For long-lived SEXPs that outlive a single `.Call` frame, use `R_PreserveObject` / `R_ReleaseObject` (wrapped by the `Root` handle in `miniextendr-api/src/gc_protect.rs`).
 
 ### Panic telemetry
 
@@ -147,11 +147,11 @@ Use `_unchecked` variants. The callback is guaranteed on the main thread by R's 
 
 - Single short-lived SEXP, drops at end of current block: `OwnedProtect`.
 - Multiple SEXPs with the same lifetime, all drop together: `ProtectScope`.
-- SEXP outlives the current `.Call` frame (e.g., stored in an R6 object or ExternalPtr): `R_PreserveObject` / `R_ReleaseObject` (see `miniextendr-api/src/preserve.rs`).
+- SEXP outlives the current `.Call` frame (e.g., stored in an R6 object or ExternalPtr): `R_PreserveObject` / `R_ReleaseObject` via the `Root` handle (see `miniextendr-api/src/gc_protect.rs`).
 
 ## Key files
 
-- `miniextendr-api/src/ffi.rs` — all R API declarations under `#[r_ffi_checked]`. Blocks at lines 2092, 2634, 2803, 2973, 3000, 3356, 3419, 3525, 3790.
+- `miniextendr-api/src/sys.rs` — all R API declarations under `#[r_ffi_checked]`. Blocks at lines 248, 787, 956, 1126, 1509, 1572, 1681, 1955.
 - `miniextendr-api/src/unwind_protect.rs` — `with_r_unwind_protect` (default), `with_r_unwind_protect_or_raise` (legacy), `with_r_unwind_protect_shim`, `with_r_unwind_protect_sourced`, `raise_rust_condition_via_stop`, `get_continuation_token`.
 - `miniextendr-api/src/ffi_guard.rs` — `GuardMode`, `guarded_ffi_call`, `guarded_ffi_call_with_fallback`.
 - `miniextendr-api/src/gc_protect.rs` — `OwnedProtect`, `ProtectScope`, `Root`, `ReprotectSlot`, `tls` convenience module.
@@ -170,7 +170,7 @@ Use `_unchecked` variants. The callback is guaranteed on the main thread by R's 
 
 - **`catch_unwind` does not catch R longjmps**: wrapping in `catch_unwind` alone is insufficient if the closure calls R API. Use `with_r_unwind_protect` instead, which installs an `R_UnwindProtect` cleanup handler.
 
-- **`nonapi` feature gate**: some R internal functions (not in the stable public API) are declared with `^nonapi^` in `ffi.rs`. Calling them requires `features = ["nonapi"]` in `Cargo.toml`. Without it, the checked wrapper bodies are absent (`cfg(not(feature = "nonapi"))`).
+- **`nonapi` feature gate**: some R internal functions (not in the stable public API) are declared with `^nonapi^` in `sys.rs`. Calling them requires `features = ["nonapi"]` in `Cargo.toml`. Without it, the checked wrapper bodies are absent (`cfg(not(feature = "nonapi"))`).
 
 ## Related skills
 
