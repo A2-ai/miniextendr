@@ -2,20 +2,27 @@
 
 #' Restore `src/rust/Cargo.lock` to tarball-shape
 #'
-#' The committed `src/rust/Cargo.lock` must be in **tarball-shape** (no
-#' `checksum = "..."` lines, no `path+...` source entries for the
-#' `miniextendr-{api,lint,macros}` framework crates). Day-to-day
+#' The committed `src/rust/Cargo.lock` must be in **tarball-shape**: no
+#' `path+...` source entries for the `miniextendr-{api,lint,macros}` framework
+#' crates (those must carry `source = "git+https://...#<sha>"`). Day-to-day
 #' `devtools::install()`, `cargo build`, or `devtools::document()` silently
-#' rewrites the lock in source-shape: checksums come back for crates.io deps
-#' and framework crates switch to `path+file:///...` entries.
+#' rewrites the lock in source-shape, switching those framework crates to
+#' `path+file:///...` entries (via the dev `[patch."git+url"]` override), which
+#' are fatal at offline install time.
 #'
 #' `miniextendr_repair_lock()` is a sub-second lock-only repair:
 #' 1. Moves `.cargo/config.toml` aside temporarily so `cargo update` runs
 #'    without the `[patch."git+url"]` override that would re-introduce
 #'    `path+` entries.
-#' 2. Runs `cargo update` to resolve the lockfile against the bare git URLs.
-#' 3. Strips any remaining `checksum = "..."` lines.
-#' 4. Restores `.cargo/config.toml` on exit (success or error).
+#' 2. Runs `cargo update` to resolve the lockfile against the bare git URLs,
+#'    restoring `source = "git+https://...#<sha>"` attribution.
+#' 3. Restores `.cargo/config.toml` on exit (success or error).
+#'
+#' `checksum = "..."` lines are **retained** — since #408, `cargo-revendor`
+#' writes valid `.cargo-checksum.json` files (real SHA-256s after CRAN-trim),
+#' so the lock's registry checksums verify successfully against the vendored
+#' sources at offline-install time. Retaining them keeps a repaired lock
+#' identical to a freshly vendored one ([miniextendr_vendor()]).
 #'
 #' This is the lightweight alternative to [miniextendr_vendor()] -- use it
 #' during dev iteration when you only need a clean lock, not a fresh
@@ -51,10 +58,9 @@ miniextendr_repair_lock <- function(path = ".", quiet = FALSE) {
 
   lock_lines <- readLines(lockfile, warn = FALSE)
 
-  has_checksums <- any(grepl("^checksum = ", lock_lines))
   has_path_sources <- any(grepl('^source = "path\\+', lock_lines))
 
-  if (!has_checksums && !has_path_sources) {
+  if (!has_path_sources) {
     if (!quiet) {
       cli::cli_alert_success("{.path src/rust/Cargo.lock} is already in tarball-shape.")
     }
@@ -62,10 +68,9 @@ miniextendr_repair_lock <- function(path = ".", quiet = FALSE) {
   }
 
   if (!quiet) {
-    n_checksums <- sum(grepl("^checksum = ", lock_lines))
     n_path <- sum(grepl('^source = "path\\+', lock_lines))
     cli::cli_alert_info(
-      "Repairing {.path src/rust/Cargo.lock}: {n_path} {.code path+} entr{?y/ies}, {n_checksums} {.code checksum =} line{?s}."
+      "Repairing {.path src/rust/Cargo.lock}: rewriting {n_path} {.code path+} source entr{?y/ies}."
     )
   }
 
@@ -104,27 +109,23 @@ miniextendr_repair_lock <- function(path = ".", quiet = FALSE) {
   )
   check_result(result, "cargo update")
 
-  # Strip checksum lines — vendored crates ship with empty
-  # .cargo-checksum.json; registry checksums in the lock cause offline
-  # install to abort with "the listed checksum of '<crate>' has changed".
+  # Verify no path+ entries remain. With .cargo/config.toml moved aside,
+  # cargo update resolves the framework crates against the bare git URL, so
+  # they should now carry `source = "git+https://...#<sha>"`. Checksum lines
+  # are deliberately left untouched: since #408 they are valid and canonical
+  # (see the @details above), so a repaired lock matches a freshly vendored one.
   updated_lines <- readLines(lockfile, warn = FALSE)
-  stripped_lines <- updated_lines[!grepl("^checksum = ", updated_lines)]
-
-  # Verify no path+ entries remain. If cargo resolved without the patch
-  # override, framework crates should now be back to git+https:// source.
-  remaining_path <- stripped_lines[grepl('^source = "path\\+', stripped_lines)]
+  remaining_path <- updated_lines[grepl('^source = "path\\+', updated_lines)]
   if (length(remaining_path) > 0) {
     cli::cli_abort(c(
       "{.path src/rust/Cargo.lock} still has {.code path+} source entries after repair:",
       stats::setNames(remaining_path, rep("x", length(remaining_path))),
       "i" = paste0(
         "This may mean your {.path src/rust/Cargo.toml} declares path dependencies ",
-        "directly (not via {.code [patch]}). Those cannot be stripped automatically."
+        "directly (not via {.code [patch]}). Those cannot be repaired automatically."
       )
     ))
   }
-
-  writeLines(stripped_lines, lockfile)
 
   if (!quiet) {
     cli::cli_alert_success(
