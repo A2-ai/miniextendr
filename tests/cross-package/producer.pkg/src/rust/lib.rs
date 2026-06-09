@@ -355,6 +355,26 @@ impl Counter for SimpleCounter {
             self.value
         );
     }
+
+    /// Bare error!() — no user class, so the consumer verifies plain rust_error.
+    fn raise_error(&self, msg: String) {
+        miniextendr_api::error!("{}", msg);
+    }
+
+    /// warning!() — consumer verifies rust_warning + e$kind round-trip.
+    fn raise_warning(&self, msg: String) {
+        miniextendr_api::warning!("{}", msg);
+    }
+
+    /// message!() — consumer verifies rust_message + e$kind round-trip.
+    fn raise_message(&self, msg: String) {
+        miniextendr_api::message!("{}", msg);
+    }
+
+    /// condition!() with a custom class — consumer verifies catchability + kind.
+    fn raise_condition_classed(&self, class_name: String, msg: String) {
+        miniextendr_api::condition!(class = class_name, "{}", msg);
+    }
 }
 
 #[miniextendr]
@@ -428,6 +448,22 @@ impl Counter for StatefulCounter {
             "StatefulCounter::error_with_class triggered (value={})",
             self.value
         );
+    }
+
+    fn raise_error(&self, msg: String) {
+        miniextendr_api::error!("{}", msg);
+    }
+
+    fn raise_warning(&self, msg: String) {
+        miniextendr_api::warning!("{}", msg);
+    }
+
+    fn raise_message(&self, msg: String) {
+        miniextendr_api::message!("{}", msg);
+    }
+
+    fn raise_condition_classed(&self, class_name: String, msg: String) {
+        miniextendr_api::condition!(class = class_name, "{}", msg);
     }
 }
 

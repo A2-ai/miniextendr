@@ -36,6 +36,22 @@ pub trait Counter {
 
     /// Panic with a custom class via error!() — used to verify user-class layering.
     fn error_with_class(&self, class_name: String);
+
+    /// Raise a bare `error!()` (no user class) — verifies `rust_error` layering
+    /// and `e$kind == "error"` across the trait-ABI boundary.
+    fn raise_error(&self, msg: String);
+
+    /// Raise a `warning!()` — verifies `rust_warning` layering and
+    /// `e$kind == "warning"` across the trait-ABI boundary.
+    fn raise_warning(&self, msg: String);
+
+    /// Raise a `message!()` — verifies `rust_message` layering and
+    /// `e$kind == "message"` across the trait-ABI boundary.
+    fn raise_message(&self, msg: String);
+
+    /// Raise a classed `condition!()` — verifies the custom class is catchable
+    /// and `e$kind == "condition"` across the trait-ABI boundary.
+    fn raise_condition_classed(&self, class_name: String, msg: String);
 }
 
 /// A trait for types that can be reset to their default state.
