@@ -327,8 +327,16 @@ fn test_derive_altrep_integer_basic() {
     assert!(output_str.contains("AltIntegerData"));
     assert!(output_str.contains("fn elt"));
 
-    // Should call impl_altinteger_from_data!
-    assert!(output_str.contains("impl_altinteger_from_data"));
+    // Path (a) / #711: the integer family emits the underlying trait-impl
+    // macros directly — it no longer delegates to impl_altinteger_from_data!.
+    assert!(
+        !output_str.contains("impl_altinteger_from_data"),
+        "migrated integer family must not delegate to the declarative macro"
+    );
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
+    assert!(output_str.contains("__impl_altinteger_methods"));
+    assert!(output_str.contains("impl_inferbase_integer"));
 
     // Registration: TypedExternal
     assert!(
@@ -857,8 +865,13 @@ fn test_derive_altrep_integer_r_unwind_guard() {
     let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
     let output_str = output.to_string();
 
-    // RUnwind is the default guard — should use the high-level macro
-    assert!(output_str.contains("impl_altinteger_from_data"));
+    // RUnwind is the default guard. Pre-#711 this used the high-level
+    // impl_altinteger_from_data! macro; the integer family now emits the
+    // underlying __impl_* macros directly (with the default RUnwind guard).
+    assert!(!output_str.contains("impl_altinteger_from_data"));
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
+    assert!(output_str.contains("RUnwind"));
 }
 
 #[test]
