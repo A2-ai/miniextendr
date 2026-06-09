@@ -74,6 +74,14 @@ pub use crate::{Sendable, with_r_thread};
 pub use crate::{r_print, r_println, r_warning};
 // endregion
 
+// region: R evaluation
+//
+// `r!` / `r_str!` evaluate R source from Rust; `r_eval_str` is the underlying
+// protect-safe parse + eval function they expand to.
+pub use crate::expression::r_eval_str;
+pub use crate::{r, r_str};
+// endregion
+
 // region: Safe R-value surface
 //
 // `SEXP` is the central newtype; `SexpExt` is the ergonomic extension trait

@@ -502,6 +502,128 @@ macro_rules! report_growth {
     () => {};
 }
 
+/// Parse and evaluate **runtime** R source from Rust.
+///
+/// `r_str!` is sugar around [`expression::r_eval_str`]. It is the right tool
+/// when the R code is genuinely dynamic — built with `format!`, derived from
+/// user input, or otherwise not known at compile time. For code you can write
+/// literally, prefer [`r!`](crate::r), which gives a cheap compile-time
+/// sanity check on the token stream.
+///
+/// The argument is any expression evaluating to something `AsRef<str>`
+/// (`&str`, `String`, `&String`, …). It is parsed with `R_ParseVector` and
+/// evaluated with `Rf_eval`, with every intermediate SEXP protected and the
+/// parse status checked, so a syntax error becomes an `Err`, never a segfault
+/// or silent wrong answer.
+///
+/// # Forms
+///
+/// - `r_str!(code)` — evaluate in `R_GlobalEnv`.
+/// - `r_str!(code, env = e)` — evaluate in the environment SEXP `e`.
+///
+/// Both forms evaluate to `Result<SEXP, String>`; the `SEXP` is **unprotected**
+/// (protect it before further allocations).
+///
+/// # Safety
+///
+/// Expands to an `unsafe` block. Must be reached from (or routed to) the R
+/// main thread — the underlying FFI is `#[r_ffi_checked]`, so calls from a
+/// worker thread are serialized onto the R thread.
+///
+/// # Example
+///
+/// ```ignore
+/// let obj = "mtcars";
+/// let code = format!("summary({obj})");
+/// let summary = r_str!(&code)?;          // in R_GlobalEnv
+/// let three = r_str!("1L + 2L")?;
+/// let in_env = r_str!("x + 1", env = my_env)?;
+/// ```
+#[macro_export]
+macro_rules! r_str {
+    ($code:expr $(,)?) => {
+        unsafe {
+            $crate::expression::r_eval_str(
+                ::core::convert::AsRef::<str>::as_ref(&$code),
+                $crate::sys::R_GlobalEnv,
+            )
+        }
+    };
+    ($code:expr, env = $env:expr $(,)?) => {
+        unsafe {
+            $crate::expression::r_eval_str(::core::convert::AsRef::<str>::as_ref(&$code), $env)
+        }
+    };
+}
+
+/// Evaluate R code written as **Rust tokens**, validated at compile time.
+///
+/// `r!` takes a single R expression as a token stream, `stringify!`s it into a
+/// static R source string at build time, and evaluates it via
+/// [`expression::r_eval_str`] (the same protect-safe parse + eval path as
+/// [`r_str!`](crate::r_str)).
+///
+/// # What you get today
+///
+/// Because the argument is a Rust token tree, the Rust front-end already
+/// rejects **unbalanced delimiters** (`r!(f(1, 2)` won't compile) and
+/// lexically invalid tokens before R ever sees the string — a cheap
+/// compile-time guard over the pure-runtime [`r_str!`](crate::r_str). The
+/// source is lowered to a `&'static str` (`stringify!`), so there is no
+/// `format!` allocation at the call site.
+///
+/// # What is deferred
+///
+/// True build-time R-grammar validation (embedding R's parser / invoking
+/// `R_ParseVector` from `build.rs`) and direct `Rf_lang*` call-tree lowering
+/// (skipping the runtime parser entirely) are tracked as a follow-up — see the
+/// issue referenced in the crate docs. Until then `r!` parses its static
+/// string at first evaluation, exactly like `r_str!`.
+///
+/// # Forms
+///
+/// - `r!(R tokens…)` — evaluate in `R_GlobalEnv`.
+/// - `r!(env: e; R tokens…)` — evaluate in the environment SEXP `e`. The
+///   leading `env: <expr> ;` is consumed as Rust, the rest is R source. (The
+///   `;` separator is used instead of a trailing `, env =` because R source is
+///   a free token stream — a trailing keyword can't be reliably split off it.)
+///
+/// Both evaluate to `Result<SEXP, String>`; the `SEXP` is **unprotected**.
+///
+/// For genuinely dynamic code, use [`r_str!`](crate::r_str) instead.
+///
+/// # Note on `stringify!` spacing
+///
+/// `stringify!` normalises whitespace (`a+b` and `a + b` both stringify to
+/// `a + b`) but preserves token order and literal contents, which is all R's
+/// parser needs. String literals keep their quotes.
+///
+/// # Safety
+///
+/// Expands to an `unsafe` block; see [`r_str!`](crate::r_str).
+///
+/// # Example
+///
+/// ```ignore
+/// let three = r!(1L + 2L)?;
+/// let rows = r!(getFromNamespace(".theoph_rows", "dataframeflows")())?;
+/// let in_env = r!(env: my_env; x + 1)?;
+/// ```
+#[macro_export]
+macro_rules! r {
+    (env: $env:expr; $($code:tt)+) => {
+        unsafe { $crate::expression::r_eval_str(::core::stringify!($($code)+), $env) }
+    };
+    ($($code:tt)+) => {
+        unsafe {
+            $crate::expression::r_eval_str(
+                ::core::stringify!($($code)+),
+                $crate::sys::R_GlobalEnv,
+            )
+        }
+    };
+}
+
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]
 pub mod progress;
@@ -556,7 +678,7 @@ pub mod encoding;
 
 // Expression evaluation helpers (RSymbol, RCall, REnv)
 pub mod expression;
-pub use expression::{RCall, REnv, RSymbol};
+pub use expression::{RCall, REnv, RSymbol, r_eval_str, r_eval_str_global};
 
 // S4 slot access and class checking helpers
 pub mod s4_helpers;

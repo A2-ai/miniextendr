@@ -27,7 +27,10 @@
 
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::sexp_ext::PairListExt;
-use crate::sys::{self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install};
+use crate::sys::{
+    self, ParseStatus, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_ParseVector, R_tryEvalSilent,
+    Rf_install,
+};
 use crate::{SEXP, SexpExt};
 use std::ffi::{CStr, CString};
 
@@ -421,6 +424,117 @@ pub unsafe fn dollar_extract(target: SEXP, name: &str) -> Result<SEXP, String> {
         let name_sexp = OwnedProtect::new(SEXP::scalar_string_from_str(name));
         RCall::new("$").arg(target).arg(name_sexp.get()).eval_base()
     }
+}
+// endregion
+
+// region: r_eval_str (runtime string parse + eval)
+
+/// Parse a string of R source and evaluate it in `env`.
+///
+/// This is the runtime workhorse behind the [`r_str!`](crate::r_str) and
+/// [`r!`](crate::r) macros. It performs the full
+/// `R_ParseVector` → check status → `Rf_eval` ladder with correct GC
+/// protection on every intermediate SEXP, so callers never have to hand-roll
+/// `OwnedProtect` around the parse tree.
+///
+/// Only the **last** top-level expression's value is returned (matching R's
+/// `eval(parse(text = ...))` semantics): each parsed expression is evaluated in
+/// order so that side effects (assignments, `library()`, …) take effect, and
+/// the value of the final one is returned. An empty / whitespace-only string
+/// yields `R_NilValue`.
+///
+/// # Safety
+///
+/// - Must be called from (or routed to) the R main thread. The parse and eval
+///   FFI calls go through the checked `#[r_ffi_checked]` variants, which
+///   serialize onto the R thread via `with_r_thread`, so calling from a
+///   worker thread is sound — but the returned SEXP must not outlive the R
+///   session.
+/// - `env` must be a valid ENVSXP.
+///
+/// # Returns
+///
+/// - `Ok(SEXP)` with the value of the last expression (**unprotected** — the
+///   caller should protect it if further allocations will occur before use).
+/// - `Err(String)` if parsing fails (syntax error / incomplete input) or if
+///   evaluation raises an R error. The error is captured via
+///   `R_tryEvalSilent` + `geterrmessage()`, so it never longjmps through Rust
+///   frames.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::expression::r_eval_str;
+/// use miniextendr_api::sys::R_GlobalEnv;
+///
+/// unsafe {
+///     let three = r_eval_str("1L + 2L", R_GlobalEnv)?;
+///     // three is an INTSXP holding 3
+/// }
+/// ```
+pub unsafe fn r_eval_str(code: &str, env: SEXP) -> Result<SEXP, String> {
+    unsafe {
+        // 1. Wrap the source in a length-1 STRSXP. scalar_string_from_str
+        //    allocates a CHARSXP + STRSXP; protect it across the parse, which
+        //    allocates again.
+        let code_sexp = OwnedProtect::new(SEXP::scalar_string_from_str(code));
+
+        // 2. Parse. R_ParseVector returns an EXPRSXP (a vector of expressions).
+        //    Protect it across the subsequent VECTOR_ELT / Rf_eval allocations.
+        let mut status = ParseStatus::PARSE_NULL;
+        let parsed = R_ParseVector(code_sexp.get(), -1, &mut status, sys::R_NilValue);
+
+        match status {
+            ParseStatus::PARSE_OK => {}
+            ParseStatus::PARSE_INCOMPLETE => {
+                return Err(format!(
+                    "incomplete R expression (unbalanced delimiter?): {code}"
+                ));
+            }
+            ParseStatus::PARSE_ERROR => {
+                return Err(format!("R syntax error while parsing: {code}"));
+            }
+            ParseStatus::PARSE_EOF => {
+                return Err(format!("unexpected end of input while parsing: {code}"));
+            }
+            ParseStatus::PARSE_NULL => {
+                return Err(format!("R_ParseVector returned PARSE_NULL for: {code}"));
+            }
+        }
+
+        let parsed = OwnedProtect::new(parsed);
+
+        // 3. Evaluate each parsed expression in order; return the value of the
+        //    last one. An empty EXPRSXP (blank source) yields R_NilValue.
+        let n = parsed.get().xlength();
+        let mut result = sys::R_NilValue;
+        for i in 0..n {
+            // VECTOR_ELT borrows from `parsed` (still protected). The element
+            // is part of the protected EXPRSXP, so it stays reachable.
+            let expr = parsed.get().vector_elt(i);
+
+            let mut error_occurred: std::os::raw::c_int = 0;
+            result = R_tryEvalSilent(expr, env, &mut error_occurred);
+            if error_occurred != 0 {
+                return Err(get_r_error_message());
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+/// Parse and evaluate a string of R source in `R_GlobalEnv`.
+///
+/// Convenience wrapper over [`r_eval_str`] for the common case. See that
+/// function for safety and return semantics.
+///
+/// # Safety
+///
+/// Same as [`r_eval_str`].
+#[inline]
+pub unsafe fn r_eval_str_global(code: &str) -> Result<SEXP, String> {
+    unsafe { r_eval_str(code, R_GlobalEnv) }
 }
 // endregion
 
