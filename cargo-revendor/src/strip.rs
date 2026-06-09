@@ -389,6 +389,65 @@ fn scan_referenced_top_dirs(crate_dir: &Path) -> Vec<String> {
     top_dirs.into_iter().collect()
 }
 
+/// Collect the absolute, canonicalized paths of every `.md` file under
+/// `crate_dir` that is pulled into Rust source via `include_str!` /
+/// `include_bytes!` / `include!`.
+///
+/// Such files are *source inputs*, not documentation: blanking them turns
+/// `format!(include_str!("tpl.md"), name = …)` into `format!("", name = …)`,
+/// which is a hard compile error (see #828). The caller uses the returned set
+/// to skip those files during `--blank-md`.
+///
+/// Each macro-argument string literal is resolved relative to the referencing
+/// `.rs` file (matching rustc's `include_str!` semantics) and canonicalized;
+/// only paths that resolve to a real file under the crate root with a `.md`
+/// extension are returned. Composed paths (`concat!(...)`) that don't resolve
+/// to a literal file are ignored — they don't name a single `.md` to protect.
+pub(crate) fn referenced_md_files(
+    crate_dir: &Path,
+) -> std::collections::BTreeSet<std::path::PathBuf> {
+    let mut protected: std::collections::BTreeSet<std::path::PathBuf> =
+        std::collections::BTreeSet::new();
+    let crate_root = match crate_dir.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return protected,
+    };
+
+    for entry in walkdir::WalkDir::new(crate_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("rs") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let Some(parent) = path.parent() else {
+            continue;
+        };
+        for literal in extract_include_arg_literals(&content) {
+            if !literal.ends_with(".md") {
+                continue;
+            }
+            // Resolve relative to the referencing .rs file (rustc semantics),
+            // canonicalize, and confirm it stays within the crate root.
+            let resolved = parent.join(&literal);
+            if let Ok(canon) = resolved.canonicalize()
+                && canon.starts_with(&crate_root)
+            {
+                protected.insert(canon);
+            }
+        }
+    }
+    protected
+}
+
 /// Pull every string literal that appears inside the argument list of an
 /// `include_str!`, `include_bytes!`, or `include!` macro invocation. Argument
 /// spans are matched with balanced-paren tracking so nested macro calls
@@ -945,6 +1004,58 @@ default = []
         );
         assert!(paths.iter().any(|p| p == "../benches/"));
         assert!(paths.iter().any(|p| p == ".rs"));
+    }
+
+    #[test]
+    fn referenced_md_files_resolves_relative_to_rs_file() {
+        // derive_builder_core shape: src/x.rs does include_str!("doc_tpl/y.md").
+        // referenced_md_files must return the canonical path of doc_tpl/y.md
+        // (so --blank-md can skip it) but NOT an unrelated docs/README.md (#828).
+        let dir = TempDir::new().unwrap();
+        let crate_dir = dir.path().join("tplcrate");
+        std::fs::create_dir_all(crate_dir.join("src/doc_tpl")).unwrap();
+        std::fs::write(
+            crate_dir.join("src/lib.rs"),
+            r#"const X: &str = include_str!("doc_tpl/builder.md");"#,
+        )
+        .unwrap();
+        let referenced = crate_dir.join("src/doc_tpl/builder.md");
+        std::fs::write(&referenced, "template body").unwrap();
+        // An unreferenced .md that should NOT be protected.
+        std::fs::write(crate_dir.join("README.md"), "# docs").unwrap();
+
+        let protected = referenced_md_files(&crate_dir);
+        let canon_referenced = referenced.canonicalize().unwrap();
+        assert!(
+            protected.contains(&canon_referenced),
+            "include_str! .md must be protected, got: {protected:?}"
+        );
+        let canon_readme = crate_dir.join("README.md").canonicalize().unwrap();
+        assert!(
+            !protected.contains(&canon_readme),
+            "unreferenced README.md must NOT be protected"
+        );
+    }
+
+    #[test]
+    fn referenced_md_files_ignores_non_md_includes() {
+        // include_str! of a .rs or .txt file must not appear in the .md set.
+        let dir = TempDir::new().unwrap();
+        let crate_dir = dir.path().join("c");
+        std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+        std::fs::write(
+            crate_dir.join("src/lib.rs"),
+            r#"const A: &str = include_str!("data.txt"); const B: &str = include_str!("gen.rs");"#,
+        )
+        .unwrap();
+        std::fs::write(crate_dir.join("src/data.txt"), "x").unwrap();
+        std::fs::write(crate_dir.join("src/gen.rs"), "// gen").unwrap();
+
+        let protected = referenced_md_files(&crate_dir);
+        assert!(
+            protected.is_empty(),
+            "no .md referenced, got: {protected:?}"
+        );
     }
 
     #[test]
