@@ -295,6 +295,70 @@ temp-copy, and why it must be absolute in **source-install mode**.
 > above applies to a **hand-added** `path = ...` dependency that has no such
 > rewriting machinery. If you hand-roll the dependency, use an absolute path.
 
+### Depending on a local miniextendr framework checkout (dev-only)
+
+When you are developing against an **unreleased** change to the miniextendr
+framework itself (`miniextendr-api` / `miniextendr-macros` / `miniextendr-lint`),
+you may want a **standalone** package's Rust crate to resolve those three crates
+from a local checkout instead of the published git source. The natural reach is a
+`[patch]` block in `src/rust/Cargo.toml`:
+
+```toml
+# DON'T — breaks under R CMD INSTALL
+[patch."https://github.com/A2-ai/miniextendr"]
+miniextendr-api = { path = "../../.miniextendr/miniextendr-api" }
+```
+
+This is a **development-only** technique with two non-obvious failure modes. If
+you use it, you **must** do both of the following:
+
+1. **Use an absolute path** in the `[patch]`, never a relative one.
+2. **Build in source/dev mode** (no `inst/vendor.tar.xz`), never in tarball mode.
+
+#### Why a relative path breaks (install staging)
+
+`R CMD INSTALL` of a *built tarball* compiles from a **staged copy** of the
+package, not from your working tree. The sibling framework checkout (e.g. a
+`.miniextendr/` directory) is — correctly — `.Rbuildignore`d, so it is **not**
+copied into the staging directory. A relative `path = "../../.miniextendr/…"`
+then resolves against the staging dir and fails:
+
+```text
+failed to read .../R.INSTALL.../<pkg>/.miniextendr/miniextendr-api/Cargo.toml
+No such file or directory (os error 2)
+```
+
+An **absolute** path (`/Users/you/src/miniextendr/miniextendr-api`) keeps
+pointing at the real checkout regardless of where the package is staged. This is
+the same absolute-path principle that applies to `use_vendor_lib()` and a
+package's own local engine crate — see the local-engine notes in
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md) and the `use_vendor_lib()` man page.
+
+#### Why tarball mode breaks (patch vs. vendored-sources)
+
+In **tarball mode** (`inst/vendor.tar.xz` present), configure writes a
+`[source]` block that redirects crates.io and the miniextendr git source to the
+unpacked `vendored-sources` directory (see
+[CRAN_COMPATIBILITY.md](CRAN_COMPATIBILITY.md)). A hand-written `[patch]` on the
+*same* git source coexisting with a `[source] replace-with = "vendored-sources"`
+on that source is fragile — you are asking cargo to both patch and
+source-replace the same source. Keep the package in **source/dev mode** (delete
+`inst/vendor.tar.xz`) while patching against a local checkout, and only vendor
+once you are done.
+
+#### How the monorepo avoids this
+
+Inside the miniextendr monorepo there is no hand-written `[patch]` at all.
+`configure` walks up from the package directory looking for a sibling
+`miniextendr-api/Cargo.toml`; when it finds one **and** the package is in source
+mode, it writes an **absolute-path** `[patch."https://github.com/A2-ai/miniextendr"]`
+block into `.cargo/config.toml` (a configure-managed, regenerated, gitignored
+file — never `Cargo.toml`). Tarball mode always wins over this override. A
+standalone package has no equivalent configure-managed wiring today, which is why
+the constraint above must be applied by hand. A `minirextendr` helper to manage
+this automatically (configure-managed absolute `[patch]`, source-mode only, with
+an undo path) is tracked in issue #908.
+
 ## Diagnostics
 
 ```r
