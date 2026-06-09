@@ -9,16 +9,36 @@ miniextendr_build(path = ".", install = TRUE)
 \arguments{
 \item{path}{Path to the R package root, or \code{NULL} to use the active project.}
 
-\item{install}{Whether to run \verb{R CMD INSTALL} step. If \code{FALSE}, only
-runs autoconf + configure.}
+\item{install}{Whether to run the \verb{R CMD INSTALL} steps. If \code{FALSE}, only
+runs autoconf + configure + roxygen2 (no compile, no reinstall).}
 }
 \value{
 Invisibly returns TRUE on success
 }
 \description{
 Runs the complete R package build pipeline:
-autoconf -> configure -> R CMD INSTALL (compiles Rust + generates
-R wrappers via cdylib) -> roxygen2. This is the high-level workflow
-for building the entire package; for compiling just the Rust crate,
-use \code{\link[=cargo_build]{cargo_build()}} instead.
+autoconf -> configure -> \verb{R CMD INSTALL} (compiles Rust + generates the
+\verb{R/<pkg>-wrappers.R} file via the cdylib pass) -> roxygen2 -> conditional
+reinstall. This is the high-level workflow for building the entire package;
+for compiling just the Rust crate, use \code{\link[=cargo_build]{cargo_build()}} instead.
 }
+\section{Why a conditional reinstall}{
+
+The \verb{R/<pkg>-wrappers.R} file is generated \emph{during} install, and its roxygen
+\verb{@export} tags are what \code{\link[devtools:document]{devtools::document()}} reads to write \code{NAMESPACE}.
+That creates a chicken-and-egg ordering: \code{document()} can only see the
+wrappers after install, but install collates \code{NAMESPACE} (the export set the
+installed image actually exposes) \emph{before} \code{document()} rewrites it. On a
+first build — or any build that adds or renames an exported function — the
+freshly-installed image therefore lags the on-disk \code{NAMESPACE} by one build,
+and \code{library(pkg)} exposes nothing new until the package is built a second
+time.
+
+To collapse that into a single pass, this workflow snapshots \code{NAMESPACE}
+before and after \code{document()}. If \code{document()} changed it (new or renamed
+exports), the package is reinstalled once so the installed image matches the
+freshly-written \code{NAMESPACE}. The reinstall happens at most once: after it,
+the wrappers and \code{NAMESPACE} are already in their final form, so a repeat
+\code{document()} would be a fixpoint and no further install is needed.
+}
+
