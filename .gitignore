@@ -38,3 +38,9 @@ site/content/manual/*.md
 # Agent worktrees
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Local R-source / webR toolchain checkouts (never committed)
+.actions/
+.r-svn/
+.rwasm/
+.webr/

@@ -1040,6 +1040,11 @@ vendor-sync-check:
     vendor_dir="rpkg/vendor"
     drift_found=0
 
+    if [[ ! -d "$vendor_dir" ]]; then
+      echo "WARNING: $vendor_dir not present (run 'just configure' first) — nothing to check."
+      exit 0
+    fi
+
     for crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
       # Accept both flat (vendor/<name>/) and versioned (vendor/<name>-<version>/) layouts
       crate_dir=""

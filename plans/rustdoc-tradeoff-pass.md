@@ -98,7 +98,7 @@ the rustdoc.)
 
 ### PR 1 — Top-level map (lands last, in coordination worktree)
 Files: `miniextendr-api/src/lib.rs` (rustdoc only), `docs/API_CHOICE_MATRIX.md`
-(new), `docs/INDEX.md` (link addition).
+(new).
 Scope: crate-level `//!` rewrite with the "I want to do X" decision table.
 New `docs/API_CHOICE_MATRIX.md` aggregates all existing decision-tree docs.
 Done by me in the coordination worktree after the other five land (or in
