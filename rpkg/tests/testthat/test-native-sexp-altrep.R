@@ -42,6 +42,16 @@ test_that("native-SEXP AltrepExtract preserves NA_integer_", {
   expect_identical(as.integer(v), c(1L, NA_integer_, 3L))
 })
 
-test_that("native_sexp_altrep_new rejects non-integer input", {
-  expect_error(native_sexp_altrep_new(c(1.0, 2.0)), "is.integer(values)", fixed = TRUE)
+test_that("native_sexp_altrep_new requires an integer vector (issue #616)", {
+  # `Vec<i32>` is an INTSXP-only element type: the Rust inbound conversion
+  # rejects REALSXP, so the framework precondition is `is.integer(values)`.
+  # Integer literals: accepted.
+  expect_identical(as.integer(native_sexp_altrep_new(c(1L, 2L))), c(1L, 2L))
+  expect_identical(as.integer(native_sexp_altrep_new(c(1L, NA_integer_, 3L)))[2L], NA_integer_)
+  # Doubles (`c(1, 2)` and `c(1.0, 2.0)` are DOUBLE in R) are rejected at the R
+  # boundary with a clean message — previously they reached Rust and produced a
+  # cryptic "expected INTSXP, got REALSXP", or (pre-fix) silently mismatched.
+  expect_error(native_sexp_altrep_new(c(1, 2)), "must be an integer vector", fixed = TRUE)
+  expect_error(native_sexp_altrep_new(c(1.0, 2.0)), "must be an integer vector", fixed = TRUE)
+  expect_error(native_sexp_altrep_new(c(1.5, 2.5)), "must be an integer vector", fixed = TRUE)
 })

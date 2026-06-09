@@ -154,8 +154,15 @@ test_that("conversions vec and vec-option work", {
   expect_equal(conv_vec_string_ret(), c("a", "b"))
 
   expect_equal(conv_vec_i8_len(1:3), 3L)
-  expect_equal(conv_vec_i8_len(c(1, 2, 3)), 3L)
+  expect_equal(conv_vec_i8_len(c(1, 2, 3)), 3L) # whole doubles → accepted (lossless)
   expect_equal(conv_vec_i8_len(as.raw(c(1, 2, 3))), 3L)
+  # Fractional doubles are rejected at the R boundary (issue #616) — previously
+  # the loose precondition let them through to a Rust precision-loss error.
+  expect_error(
+    conv_vec_i8_len(c(1.5, 2.5)),
+    "must be integer or whole-number numeric",
+    fixed = TRUE
+  )
   expect_equal(conv_vec_i16_len(1:3), 3L)
   expect_equal(conv_vec_i64_len(1:3), 3L)
   expect_equal(conv_vec_isize_len(1:3), 3L)

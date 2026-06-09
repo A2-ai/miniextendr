@@ -71,6 +71,14 @@ test_that("coerce attribute works for Vec<u16>", {
 
   # Negative values should error
   expect_error(test_coerce_attr_vec_u16(c(1L, -1L, 3L)))
+
+  # `#[miniextendr(coerce)]` on a `Vec<u16>` reads via the native `&[i32]` slice
+  # (INTSXP-only) then coerces element-wise, so the framework precondition is
+  # `is.integer(x)` (issue #616). A double vector — whole or fractional — is
+  # rejected at the R boundary with a clean message instead of the cryptic
+  # "expected INTSXP, got REALSXP" it would otherwise produce.
+  expect_error(test_coerce_attr_vec_u16(c(1, 2, 3)), "must be an integer vector", fixed = TRUE)
+  expect_error(test_coerce_attr_vec_u16(c(1.5, 2.5, 3.5)), "must be an integer vector", fixed = TRUE)
 })
 
 test_that("coerce attribute works for f32", {

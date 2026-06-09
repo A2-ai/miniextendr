@@ -987,8 +987,8 @@ pub fn miniextendr(
     if coerce_all {
         c_wrapper_builder = c_wrapper_builder.coerce_all();
     }
-    for param in coerce_params_list {
-        c_wrapper_builder = c_wrapper_builder.with_coerce_param(param);
+    for param in &coerce_params_list {
+        c_wrapper_builder = c_wrapper_builder.with_coerce_param(param.clone());
     }
     for param in match_arg_several_ok_params_list {
         c_wrapper_builder = c_wrapper_builder.match_arg_several_ok(param);
@@ -1297,7 +1297,18 @@ pub fn miniextendr(
     for (param_name, _) in parsed.choices_params() {
         skip_params.insert(r_wrapper_builder::normalize_r_arg_string(param_name));
     }
-    let precondition_output = r_preconditions::build_precondition_checks(inputs, &skip_params);
+    // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
+    // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
+    // holds Rust names; normalize to R names.
+    let precondition_opts = r_preconditions::PreconditionOptions {
+        coerce_all,
+        coerce_params: coerce_params_list
+            .iter()
+            .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
+            .collect(),
+    };
+    let precondition_output =
+        r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);
     let precondition_prelude = if precondition_output.static_checks.is_empty() {
         String::new()
     } else {

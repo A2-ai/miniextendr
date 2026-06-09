@@ -87,8 +87,22 @@ test_that("strict input Vec accepts integer vector", {
   expect_equal(strict_echo_vec_i64(c(1L, 2L, 3L)), c(1L, 2L, 3L))
 })
 
+test_that("strict input Vec accepts whole-number double vector", {
+  # `c(1, 2, 3)` is a DOUBLE vector in R, but whole-number → lossless to integer.
+  # The R-side lossless precondition (issue #616) lets it through to the Rust
+  # strict checker, which accepts in-range whole doubles.
+  expect_equal(strict_echo_vec_i64(c(1, 2, 3)), c(1L, 2L, 3L))
+})
+
 test_that("strict input Vec rejects fractional double vector", {
-  expect_error(strict_echo_vec_i64(c(1.5, 2.5)), "strict conversion failed")
+  # Post-#616 the integer-vector precondition catches fractional doubles at the
+  # R boundary (before the Rust strict checker) with a clearer message — this
+  # is the silent-truncation fix the issue targets.
+  expect_error(
+    strict_echo_vec_i64(c(1.5, 2.5)),
+    "must be integer or whole-number numeric",
+    fixed = TRUE
+  )
 })
 
 test_that("strict R6 constructor rejects logical for i64 param", {
