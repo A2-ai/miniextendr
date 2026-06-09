@@ -2,7 +2,7 @@
 % Please edit documentation in R/use-r.R
 \name{use_miniextendr_description}
 \alias{use_miniextendr_description}
-\title{Update DESCRIPTION with miniextendr fields}
+\title{Configure DESCRIPTION for miniextendr}
 \usage{
 use_miniextendr_description(path = ".")
 }
@@ -13,14 +13,19 @@ use_miniextendr_description(path = ".")
 Invisibly returns TRUE
 }
 \description{
+Ensures a \code{DESCRIPTION} exists, then applies the miniextendr config fields.
+When \code{DESCRIPTION} is absent, a minimal one is created by delegating to
+\code{\link[usethis:use_description]{usethis::use_description()}} (so \code{use_miniextendr()} works in a fresh
+directory); when it already exists, only the miniextendr fields are updated.
+}
+\details{
 Adds the required Config/* fields to DESCRIPTION for miniextendr:
 \itemize{
 \item Config/build/bootstrap: TRUE
 \item Config/build/never-clean: true
 \item Config/build/extra-sources: src/rust/Cargo.lock
 }
-}
-\details{
+
 Also adds SystemRequirements for Rust.
 }
 \keyword{internal}
