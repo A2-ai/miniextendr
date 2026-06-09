@@ -50,3 +50,84 @@ test_that("run_with_logging reports success for a zero-exit command", {
   expect_true(result$success)
   expect_null(result$status)
 })
+
+# An *empty* R script: a metacharacter-free, zero-exit no-op used by the
+# env-restore tests below. We only care that run_with_logging() runs *some*
+# command (so the env-apply/on.exit-restore path executes), not its output.
+# Returns the path; caller is responsible for unlink() via its own on.exit.
+make_empty_rscript <- function() {
+  empty <- file.path(tempdir(), "minirextendr-empty-env-9f3c.R")
+  file.create(empty)
+  empty
+}
+
+test_that("run_with_logging restores a single already-set env var (#804)", {
+  rscript <- find_rscript()
+  skip_if_not(nzchar(rscript), "Rscript not found")
+
+  empty <- make_empty_rscript()
+  on.exit(unlink(empty), add = TRUE)
+
+  # Pre-set a sentinel value and arrange to restore the prior state ourselves
+  # (base Sys.setenv/Sys.unsetenv; withr is only needed for the empty-script
+  # defer above, which is part of the test scaffolding, not the code path).
+  var <- "MINIREXTENDR_TEST_ENV_804"
+  prior <- Sys.getenv(var, unset = NA)
+  Sys.setenv(MINIREXTENDR_TEST_ENV_804 = "sentinel")
+  on.exit(
+    if (is.na(prior)) Sys.unsetenv(var) else do.call(Sys.setenv, stats::setNames(list(prior), var)),
+    add = TRUE
+  )
+
+  # Single-variable env: this is the case that tripped "all arguments must be
+  # named" before names = TRUE was added to the Sys.getenv() capture.
+  expect_no_error(
+    minirextendr:::run_with_logging(
+      rscript, empty,
+      log_prefix = "test-env-single",
+      env = c(MINIREXTENDR_TEST_ENV_804 = "temp")
+    )
+  )
+
+  # The sentinel value must be restored once run_with_logging() returns.
+  expect_identical(Sys.getenv(var, unset = NA), "sentinel")
+})
+
+test_that("run_with_logging restores multiple env vars and unsets previously-unset ones", {
+  rscript <- find_rscript()
+  skip_if_not(nzchar(rscript), "Rscript not found")
+
+  empty <- make_empty_rscript()
+  on.exit(unlink(empty), add = TRUE)
+
+  set_var <- "MINIREXTENDR_TEST_ENV_804_A"   # already set -> restore to sentinel
+  unset_var <- "MINIREXTENDR_TEST_ENV_804_B" # previously unset -> must end unset
+
+  prior_set <- Sys.getenv(set_var, unset = NA)
+  prior_unset <- Sys.getenv(unset_var, unset = NA)
+  Sys.setenv(MINIREXTENDR_TEST_ENV_804_A = "sentinel-a")
+  Sys.unsetenv(unset_var)
+  on.exit(
+    {
+      if (is.na(prior_set)) Sys.unsetenv(set_var) else do.call(Sys.setenv, stats::setNames(list(prior_set), set_var))
+      if (is.na(prior_unset)) Sys.unsetenv(unset_var) else do.call(Sys.setenv, stats::setNames(list(prior_unset), unset_var))
+    },
+    add = TRUE
+  )
+
+  expect_no_error(
+    minirextendr:::run_with_logging(
+      rscript, empty,
+      log_prefix = "test-env-multi",
+      env = c(
+        MINIREXTENDR_TEST_ENV_804_A = "temp-a",
+        MINIREXTENDR_TEST_ENV_804_B = "temp-b"
+      )
+    )
+  )
+
+  # The set var is restored to its sentinel; the previously-unset var is unset
+  # again (Sys.getenv returns "" for an unset name without `names`/`unset`).
+  expect_identical(Sys.getenv(set_var, unset = NA), "sentinel-a")
+  expect_identical(Sys.getenv(unset_var, unset = NA), NA_character_)
+})
