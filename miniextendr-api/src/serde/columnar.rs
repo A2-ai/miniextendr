@@ -14,7 +14,6 @@ use std::collections::HashMap;
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
 use crate::dataframe::DataFrame;
-use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
@@ -1820,20 +1819,19 @@ impl ser::SerializeMap for ColumnFiller<'_> {
 /// Build an empty R data.frame (0 rows, 0 columns).
 fn empty_dataframe() -> SEXP {
     unsafe {
-        let list = Rf_allocVector(SEXPTYPE::VECSXP, 0);
-        Rf_protect(list);
+        let scope = crate::ProtectScope::new();
+        let list = crate::ListBuilder::new(&scope, 0).into_sexp();
 
         // Set class = "data.frame"
         list.set_class(crate::cached_class::data_frame_class_sexp());
 
         // Set compact row.names: c(NA_integer_, 0)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
-        Rf_protect(row_names);
+        scope.protect_raw(row_names);
         rn[0] = i32::MIN; // NA_integer_
         rn[1] = 0;
         list.set_row_names(row_names);
 
-        Rf_unprotect(2);
         list
     }
 }
@@ -1870,41 +1868,40 @@ unsafe fn assemble_with_scope(
 /// Must be called from the R main thread. All column buffers must have
 /// exactly `nrow` elements.
 unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nrow: usize) -> SEXP {
-    let ncol: isize = fields.len().try_into().expect("ncol exceeds isize::MAX");
+    let ncol: usize = fields.len();
 
     unsafe {
-        let list = Rf_allocVector(SEXPTYPE::VECSXP, ncol);
-        Rf_protect(list);
+        let scope = crate::ProtectScope::new();
+        let builder = crate::ListBuilder::new(&scope, ncol);
+        let list = builder.as_sexp();
 
-        // Build each column and set into list
+        // Build each column and set into list. `set_protected` protects the
+        // freshly-built column SEXP across `set_vector_elt`, then drops the
+        // guard once the parent VECSXP owns it — balancing automatically.
         for (i, col) in columns.iter().enumerate() {
             let idx: isize = i.try_into().expect("column index exceeds isize::MAX");
             let col_sexp = column_to_sexp(col, nrow);
-            Rf_protect(col_sexp);
-            list.set_vector_elt(idx, col_sexp);
-            Rf_unprotect(1); // col_sexp is now held by list
+            builder.set_protected(idx, col_sexp);
         }
 
-        // Set names
-        let names_sexp = Rf_allocVector(SEXPTYPE::STRSXP, ncol);
-        Rf_protect(names_sexp);
+        // Set names. `StrVecBuilder` allocates the STRSXP rooted in `scope`.
+        let names_builder = crate::StrVecBuilder::new(&scope, ncol);
         for (i, field) in fields.iter().enumerate() {
             let idx: isize = i.try_into().expect("field index exceeds isize::MAX");
-            names_sexp.set_string_elt(idx, SEXP::charsxp(&field.name));
+            names_builder.set_str(idx, &field.name);
         }
-        list.set_names(names_sexp);
+        list.set_names(names_builder.into_sexp());
 
         // Set class = "data.frame"
         list.set_class(crate::cached_class::data_frame_class_sexp());
 
         // Set compact row.names: c(NA_integer_, -nrow)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
-        Rf_protect(row_names);
+        scope.protect_raw(row_names);
         rn[0] = i32::MIN; // NA_integer_
         rn[1] = -i32::try_from(nrow).expect("data.frame row count exceeds i32::MAX");
         list.set_row_names(row_names);
 
-        Rf_unprotect(3); // list, names, row_names
         list
     }
 }
@@ -1934,15 +1931,20 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
             }
             ColumnBuffer::Character(v) => {
                 let nrow_r: isize = nrow.try_into().expect("nrow exceeds isize::MAX");
-                let sexp = Rf_allocVector(SEXPTYPE::STRSXP, nrow_r);
                 // PROTECT discipline: SEXP::charsxp (Rf_mkCharLenCE) allocates
                 // and can trigger GC under gctorture, which would reclaim our
-                // unprotected STRSXP. Protect here; balance with Rf_unprotect
-                // before returning.
-                Rf_protect(sexp);
+                // unprotected STRSXP. The OwnedProtect guard protects the
+                // freshly-allocated STRSXP and drops (UNPROTECT(1)) on return.
+                let guard = crate::OwnedProtect::new(SEXP::alloc(SEXPTYPE::STRSXP, nrow_r));
+                let sexp = guard.get();
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     match val {
+                        // Preserve the R_BlankString short-circuit: skips the
+                        // CHARSXP hash-lookup on the interned empty string.
+                        Some(s) if s.is_empty() => {
+                            sexp.set_string_elt(idx, SEXP::blank_string());
+                        }
                         Some(s) => {
                             sexp.set_string_elt(idx, SEXP::charsxp(s));
                         }
@@ -1951,7 +1953,6 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                         }
                     }
                 }
-                Rf_unprotect(1);
                 sexp
             }
             ColumnBuffer::Generic(v) => {
@@ -1978,7 +1979,10 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                     dst_i32.fill(NA_LOGICAL);
                     return sexp;
                 }
-                let sexp = Rf_allocVector(SEXPTYPE::VECSXP, nrow_r);
+                // No allocation occurs in the loop below — every element is a
+                // pre-existing SEXP from the buffer or the R_NilValue singleton
+                // — so the freshly-allocated VECSXP needs no protection here.
+                let sexp = SEXP::alloc(SEXPTYPE::VECSXP, nrow_r);
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(elem) = val {
@@ -2454,15 +2458,14 @@ impl<S: ser::Serializer> ser::Serializer for VariantStrippingSerializer<S> {
 
 fn unit_variant_dataframe(nrow: usize) -> SEXP {
     unsafe {
-        let list = Rf_allocVector(SEXPTYPE::VECSXP, 0);
-        Rf_protect(list);
+        let scope = crate::ProtectScope::new();
+        let list = crate::ListBuilder::new(&scope, 0).into_sexp();
         list.set_class(crate::cached_class::data_frame_class_sexp());
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
-        Rf_protect(row_names);
+        scope.protect_raw(row_names);
         rn[0] = i32::MIN;
         rn[1] = -i32::try_from(nrow).expect("nrow overflow");
         list.set_row_names(row_names);
-        Rf_unprotect(2);
         list
     }
 }
@@ -2772,16 +2775,21 @@ pub fn vec_to_dataframe_split<T: Serialize>(
 unsafe fn make_strsxp_repeat(value: &str, n: usize) -> SEXP {
     unsafe {
         let n_r: isize = n.try_into().expect("nrow exceeds isize::MAX");
-        let sexp = Rf_allocVector(SEXPTYPE::STRSXP, n_r);
         // Protect the freshly-allocated STRSXP across `SEXP::charsxp`
-        // (Rf_mkCharLenCE) — which can trigger GC under gctorture.
-        Rf_protect(sexp);
+        // (Rf_mkCharLenCE) — which can trigger GC under gctorture. The
+        // OwnedProtect guard drops (UNPROTECT(1)) on return.
+        let guard = crate::OwnedProtect::new(SEXP::alloc(SEXPTYPE::STRSXP, n_r));
+        let sexp = guard.get();
         // Allocate the CHARSXP exactly once, then reuse it for every slot.
-        let charsxp = SEXP::charsxp(value);
+        // Preserve the R_BlankString short-circuit for the empty string.
+        let charsxp = if value.is_empty() {
+            SEXP::blank_string()
+        } else {
+            SEXP::charsxp(value)
+        };
         for i in 0..n_r {
             sexp.set_string_elt(i, charsxp);
         }
-        Rf_unprotect(1);
         sexp
     }
 }
