@@ -1,0 +1,189 @@
+# syntax=docker/dockerfile:1.7
+#
+# ⚠️ DRAFT — NOT YET VALIDATED ON arm64 HARDWARE. See #788.
+#
+# arm64-native webR dev container, composed from prebuilt parts — no source
+# build of emcc / flang / R→wasm. The blocker that this works around is purely
+# architecture: `Dockerfile.webr`'s base (`ghcr.io/a2-ai/webr-mirror`, a mirror
+# of `ghcr.io/r-wasm/webr`) and its `ghcr.io/r-wasm/flang-wasm` base are
+# **linux/amd64 only**, and `.webr/Dockerfile` hardcodes
+# `--default-host x86_64-unknown-linux-gnu`. Running that under qemu on an
+# arm64 Mac is impractical (the 2026-05-27 attempt exhausted host disk on the
+# datafusion+arrow wasm compile and crashed Docker Desktop).
+#
+# The insight (see #788): building *miniextendr* for wasm needs neither the
+# Fortran→wasm compiler (flang) nor a from-source R→wasm build — those only
+# exist to build R itself to wasm, which a dev image *reuses* rather than
+# rebuilds. miniextendr is Rust + C with no Fortran, and the wasm R is already
+# prebuilt. So:
+#
+#   * the **native arm64 toolchain** (emcc, Rust, host R) comes from
+#     prebuilt arm64 images / installers — no emulated execution, and
+#   * the **portable wasm sysroot** (`/opt/webr/{wasm,R/build,tools,packages,
+#     dist}` — wasm libs + headers + `webr-vars.mk` + the webR JS sources) is
+#     lifted out of the amd64 image with `COPY --from=` — a pure filesystem
+#     copy, no emulated execution of amd64 binaries.
+#
+# ── Q1 (emcc ABI), RESOLVED ──────────────────────────────────────────────────
+# The emcc that links `miniextendr.so` must match the emcc that built the
+# prebuilt wasm R, or the side-module won't load. The wasm R in the mirror was
+# built with Emscripten **4.0.8**. `emscripten/emsdk` publishes per-arch
+# *suffixed* tags (NOT a multi-arch manifest): the bare `:4.0.8` tag is
+# linux/amd64 only, but `:4.0.8-arm64` is a genuine linux/arm64/v8 build of the
+# *same* Emscripten 4.0.8 release (pushed 2025-04-30, digest below). Same emcc
+# version ⇒ same wasm ABI ⇒ no version-skew risk. This is the best-case Q1
+# outcome — no need to drift to a different emcc version.
+#
+# ── Usage (local dev) ────────────────────────────────────────────────────────
+#   just docker-webr-arm64-build         # build natively on an arm64 host
+#   just docker-webr-arm64-shell         # interactive shell, repo at /work
+#   WEBR_ARM64=1 bash tests/webr-smoke.sh   # arm64 end-to-end smoke
+#
+# ── Build args ───────────────────────────────────────────────────────────────
+#   WEBR_AMD64_DONOR — pinned amd64 mirror digest the sysroot is copied from.
+#                      Keep in lockstep with Dockerfile.webr's WEBR_BASE.
+#   EMSDK_ARM64      — arm64 emcc base; pinned to 4.0.8-arm64 by digest.
+#   JUST_VERSION     — `just` release to install. Apt's is too old.
+
+# ── Stage 0: amd64 sysroot donor (filesystem copy only — never executed) ─────
+# Pinned to the SAME digest as Dockerfile.webr's WEBR_BASE so the copied wasm
+# sysroot (incl. the prebuilt wasm R version) stays aligned. Bump both together.
+# `--platform=linux/amd64` forces the amd64 manifest even on an arm64 host; we
+# only `COPY --from=` out of it, so nothing amd64 ever runs under qemu.
+ARG WEBR_AMD64_DONOR=ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
+FROM --platform=linux/amd64 ${WEBR_AMD64_DONOR} AS webr-amd64
+
+# ── Stage 1: arm64-native toolchain ──────────────────────────────────────────
+# emscripten/emsdk:4.0.8-arm64 — linux/arm64/v8, Emscripten 4.0.8 (matches the
+# donor's wasm R ABI; see Q1 note above). Base OS is Ubuntu Noble; emcc is on
+# PATH at /emsdk/upstream/emscripten, EMSDK=/emsdk, and Node 22.16.0 ships
+# bundled at /emsdk/node/22.16.0_64bit/bin — so the tier-3 Node smoke needs no
+# separate node install.
+ARG EMSDK_ARM64=emscripten/emsdk:4.0.8-arm64@sha256:9d471ceb4bd9e19f85e6a0924e851971d26bddd19e0bf6aa956b1be865bda6eb
+FROM ${EMSDK_ARM64}
+
+ARG JUST_VERSION=1.36.0
+
+SHELL ["/bin/bash", "-c"]
+
+# OS deps. `autoconf` regenerates rpkg/configure on fresh checkouts; `file` is
+# used by the smoke to confirm the side-module is wasm not ELF; ripgrep/fd/lldb
+# are dev quality-of-life (mirrors Dockerfile.webr). The emsdk base already
+# carries git, curl, make, python3, and node.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        autoconf \
+        file \
+        ripgrep \
+        fd-find \
+        lldb \
+    && rm -rf /var/lib/apt/lists/*
+
+# `just`. Static-musl tarball, arch-resolved (this image is arm64, but keep the
+# case so a cross-build still works).
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in \
+         amd64) JUST_TRIPLE=x86_64-unknown-linux-musl ;; \
+         arm64) JUST_TRIPLE=aarch64-unknown-linux-musl ;; \
+         *) echo "unsupported arch: $ARCH"; exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-${JUST_TRIPLE}.tar.gz" \
+       | tar -xz -C /usr/local/bin just
+
+# ── Native arm64 Rust nightly + wasm32-unknown-emscripten + rust-src ─────────
+# nightly is mandatory for `-Z build-std=std,panic_abort` (the wasm side-module
+# rebuilds std against the live emcc ABI + panic=abort — see docs/WEBR.md "Why
+# Rust nightly is mandatory"). `--default-host aarch64-unknown-linux-gnu` is the
+# arm64 counterpart of `.webr/Dockerfile`'s hardcoded x86_64 host — THIS is the
+# line that made the upstream image amd64-only.
+ENV PATH="/usr/local/cargo/bin:${PATH}"
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+RUN set -eux; \
+    curl -fsSL https://sh.rustup.rs -o rustup-init.sh; \
+    sh rustup-init.sh -y \
+      --no-modify-path \
+      --profile minimal \
+      --default-toolchain nightly \
+      --default-host aarch64-unknown-linux-gnu \
+      --target wasm32-unknown-emscripten \
+      --component rust-src; \
+    rm rustup-init.sh; \
+    chmod -R a+w "$RUSTUP_HOME" "$CARGO_HOME"; \
+    rustup --version; cargo --version; rustc --version
+
+# `cargo-limit` (the `cargo lcheck/lclippy/ltest/lbuild` fast-iteration aliases).
+RUN cargo install cargo-limit --locked --version "0.0.13"
+
+# ── Native arm64 host R, version-matched to the wasm R ───────────────────────
+# rig installs prebuilt arm64 R. The version MUST match the donor's wasm R
+# (4.6.0 in the current pin — NOT 4.5.1 as the #788 body assumed; the base was
+# bumped to webR v0.6.0 / R 4.6.0 in #755) for header compatibility with the
+# copied wasm R sysroot. This is intentionally NOT the repo's pinned dev R
+# (rproject.toml r_version) — webR pins what its prebuilt wasm R was built from.
+RUN curl -fsSL https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg \
+    && echo "deb http://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list \
+    && apt-get update \
+    && apt-get install -y r-rig \
+    && rm -rf /var/lib/apt/lists/* \
+    && rig add 4.6.0 \
+    && rig default 4.6.0
+
+# miniextendr's hard R `Imports` (rpkg/DESCRIPTION) in the native arm64 R, plus
+# rwasm. Phase 1 of the smoke (native cdylib wrapper-gen pass) resolves these.
+# The emsdk base is Ubuntu Noble, so the posit PM `__linux__/noble` repo serves
+# matching arm64 CRAN binaries — fast layer.
+RUN Rscript -e 'install.packages(c("cli","lifecycle","R6","S7","vctrs","pak"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest")' \
+    && Rscript -e 'pak::pak("r-wasm/rwasm")'
+
+# ── The portable wasm sysroot, copied out of the amd64 donor ─────────────────
+# These five trees are wasm objects + headers + scripts (webr-vars.mk) + the
+# webR JS sources — NO amd64 host binaries, so they're arch-portable. The
+# arm64-native emcc above links against /opt/webr/wasm + /opt/webr/R/build, and
+# the tier-3 Node smoke rebuilds the bundle out of /opt/webr/src (under
+# /opt/webr) and runs it.
+#
+# NOTE: this also copies the donor's amd64 host R under /opt/webr/host and
+# /opt/R — those amd64 binaries CANNOT run on arm64. The smoke's arm64 path
+# uses the native rig-installed R (on PATH) for BOTH the native pass and the
+# wasm `R CMD INSTALL` (webr-vars.mk drives CC=emcc regardless of which R
+# orchestrates it). See tests/webr-smoke.sh's WEBR_ARM64 branch + the
+# validation checklist in docs/WEBR.md.
+COPY --from=webr-amd64 /opt/webr/wasm     /opt/webr/wasm
+COPY --from=webr-amd64 /opt/webr/R/build  /opt/webr/R/build
+COPY --from=webr-amd64 /opt/webr/tools    /opt/webr/tools
+COPY --from=webr-amd64 /opt/webr/packages /opt/webr/packages
+COPY --from=webr-amd64 /opt/webr/dist     /opt/webr/dist
+# The webR JS sources (esbuild config, Makefile, package-lock.json) live at
+# /opt/webr/src; the tier-3 Node bundle is rebuilt from here. Copied separately
+# so the intent is explicit.
+COPY --from=webr-amd64 /opt/webr/src      /opt/webr/src
+
+ENV WEBR_ROOT="/opt/webr"
+
+# ── Sanity checks — fail the build early if a piece is missing ───────────────
+# NOTE (DRAFT): these verify the image *composed*, NOT that the copied wasm
+# sysroot actually links + loads under the arm64 emcc end-to-end. That is the
+# load-bearing unknown and needs on-arm64-hardware validation (see #788 /
+# docs/WEBR.md checklist).
+RUN set -eux \
+    && rustup target list --installed | grep -q wasm32-unknown-emscripten \
+    && rustup component list --installed | grep -q rust-src \
+    && cargo --version \
+    && emcc --version >/dev/null \
+    && [ "$(emcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" = "4.0.8" ] \
+    && R --version >/dev/null \
+    && [ -d /opt/webr/wasm ] && [ -d /opt/webr/R/build ] && [ -d /opt/webr/tools ] \
+    && [ -f /opt/webr/packages/webr-vars.mk ] \
+    && [ -f /opt/webr/src/package-lock.json ] \
+    && Rscript -e 'stopifnot(requireNamespace("rwasm", quietly=TRUE), requireNamespace("S7", quietly=TRUE))' \
+    && just --version >/dev/null \
+    && autoconf --version >/dev/null \
+    && command -v cargo-lcheck >/dev/null \
+    && command -v rg >/dev/null \
+    && command -v fdfind >/dev/null \
+    && command -v file >/dev/null \
+    && command -v node >/dev/null
+
+# `/work` is a plain mount point; bind the repo there at run time. No COPY of
+# source — keeps the image a pure environment artefact.
+WORKDIR /work
