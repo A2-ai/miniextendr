@@ -68,9 +68,13 @@ impl TryCoerce<BigInt> for f64 {
         if self.fract() != 0.0 {
             return Err(CoerceError::PrecisionLoss);
         }
-        // Convert via i64 if in range, otherwise use string for larger values
+        // Convert via i64 if in range, otherwise use string for larger values.
         if self >= i64::MIN as f64 && self <= i64::MAX as f64 {
-            Ok(BigInt::from(self as i64))
+            // SAFETY (lint): the range guard above means `self` is in i64
+            // range, so the cast cannot truncate.
+            #[allow(clippy::cast_possible_truncation)]
+            let n = self as i64;
+            Ok(BigInt::from(n))
         } else {
             // For very large values, convert via string representation
             let s = format!("{:.0}", self);
@@ -99,7 +103,11 @@ impl TryCoerce<BigUint> for f64 {
         }
         // Convert via u64 if in range, otherwise use string for larger values
         if self <= u64::MAX as f64 {
-            Ok(BigUint::from(self as u64))
+            // SAFETY (lint): non-negative (checked above) and `<= u64::MAX`,
+            // so the cast cannot lose the sign or truncate.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let n = self as u64;
+            Ok(BigUint::from(n))
         } else {
             let s = format!("{:.0}", self);
             BigUint::from_str(&s).map_err(|_| CoerceError::Overflow)
@@ -723,7 +731,7 @@ impl RBigIntBitOps for BigInt {
     fn count_ones(&self) -> i64 {
         // Count ones in absolute value
         let (_, digits) = self.to_u32_digits();
-        digits.iter().map(|d| d.count_ones() as i64).sum()
+        digits.iter().map(|d| i64::from(d.count_ones())).sum()
     }
 
     fn trailing_zeros(&self) -> Option<i64> {
@@ -736,7 +744,7 @@ impl RBigIntBitOps for BigInt {
             if *digit == 0 {
                 count += 32;
             } else {
-                count += digit.trailing_zeros() as i64;
+                count += i64::from(digit.trailing_zeros());
                 break;
             }
         }
@@ -825,7 +833,7 @@ impl RBigUintBitOps for BigUint {
     fn count_ones(&self) -> i64 {
         self.to_u32_digits()
             .iter()
-            .map(|d| d.count_ones() as i64)
+            .map(|d| i64::from(d.count_ones()))
             .sum()
     }
 
@@ -840,7 +848,7 @@ impl RBigUintBitOps for BigUint {
             if *digit == 0 {
                 count += 32;
             } else {
-                count += digit.trailing_zeros() as i64;
+                count += i64::from(digit.trailing_zeros());
                 break;
             }
         }

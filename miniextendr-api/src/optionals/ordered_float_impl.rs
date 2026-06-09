@@ -54,12 +54,15 @@ impl TryCoerce<OrderedFloat<f32>> for f64 {
             }));
         }
         // Check for overflow beyond f32 range
-        if self.abs() > f32::MAX as f64 {
+        if self.abs() > f64::from(f32::MAX) {
             return Err(CoerceError::Overflow);
         }
+        // Deliberate narrowing; the round-trip check below rejects any value
+        // that loses precision in the f64 → f32 conversion.
+        #[allow(clippy::cast_possible_truncation)]
         let f32_val = self as f32;
         // Check for precision loss by round-tripping
-        if (f32_val as f64 - self).abs() > f64::EPSILON * self.abs().max(1.0) {
+        if (f64::from(f32_val) - self).abs() > f64::EPSILON * self.abs().max(1.0) {
             return Err(CoerceError::PrecisionLoss);
         }
         Ok(OrderedFloat(f32_val))
@@ -70,7 +73,7 @@ impl TryCoerce<OrderedFloat<f32>> for f64 {
 impl Coerce<OrderedFloat<f64>> for i32 {
     #[inline(always)]
     fn coerce(self) -> OrderedFloat<f64> {
-        OrderedFloat(self as f64)
+        OrderedFloat(f64::from(self))
     }
 }
 
@@ -78,7 +81,11 @@ impl Coerce<OrderedFloat<f64>> for i32 {
 impl TryCoerce<OrderedFloat<f32>> for i32 {
     type Error = CoerceError;
 
+    // Both casts are deliberate round-trip precision probes: `self as f32`
+    // may lose precision for large i32, and `f32_val as i32` reverses it; if
+    // the round trip disagrees we return `PrecisionLoss`.
     #[inline]
+    #[allow(clippy::cast_possible_truncation)]
     fn try_coerce(self) -> Result<OrderedFloat<f32>, CoerceError> {
         let f32_val = self as f32;
         // Check for precision loss by round-tripping
@@ -101,7 +108,7 @@ impl Coerce<f64> for OrderedFloat<f64> {
 impl Coerce<f64> for OrderedFloat<f32> {
     #[inline(always)]
     fn coerce(self) -> f64 {
-        self.0 as f64
+        f64::from(self.0)
     }
 }
 
@@ -112,6 +119,9 @@ fn parse_f64(sexp: SEXP) -> Result<f64, SexpError> {
 
 fn parse_f32(sexp: SEXP) -> Result<f32, SexpError> {
     let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+    // R stores doubles; narrowing to the requested f32 storage is intentional
+    // and lossy by design (use `OrderedFloat<f64>` to preserve full precision).
+    #[allow(clippy::cast_possible_truncation)]
     Ok(value as f32)
 }
 
@@ -145,6 +155,8 @@ impl TryFromSexp for Option<OrderedFloat<f32>> {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let value: Option<f64> = TryFromSexp::try_from_sexp(sexp)?;
+        // Intentional, by-design narrowing into f32 storage (see `parse_f32`).
+        #[allow(clippy::cast_possible_truncation)]
         Ok(value.map(|v| OrderedFloat(v as f32)))
     }
 }
@@ -181,7 +193,10 @@ impl TryFromSexp for Vec<OrderedFloat<f32>> {
         }
 
         let slice: &[f64] = unsafe { sexp.as_slice::<f64>() };
-        Ok(slice.iter().map(|v| OrderedFloat(*v as f32)).collect())
+        // Intentional, by-design narrowing into f32 storage (see `parse_f32`).
+        #[allow(clippy::cast_possible_truncation)]
+        let out = slice.iter().map(|v| OrderedFloat(*v as f32)).collect();
+        Ok(out)
     }
 }
 
@@ -199,20 +214,23 @@ impl TryFromSexp for Vec<Option<OrderedFloat<f32>>> {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let values: Vec<Option<f64>> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(values
+        // Intentional, by-design narrowing into f32 storage (see `parse_f32`).
+        #[allow(clippy::cast_possible_truncation)]
+        let out = values
             .into_iter()
             .map(|v| v.map(|val| OrderedFloat(val as f32)))
-            .collect())
+            .collect();
+        Ok(out)
     }
 }
 
 into_r_infallible!(OrderedFloat<f64>, |this| this.0.into_sexp());
-into_r_infallible!(OrderedFloat<f32>, |this| (this.0 as f64).into_sexp());
+into_r_infallible!(OrderedFloat<f32>, |this| f64::from(this.0).into_sexp());
 into_r_infallible!(Option<OrderedFloat<f64>>, |this| this
     .map(|v| v.0)
     .into_sexp());
 into_r_infallible!(Option<OrderedFloat<f32>>, |this| this
-    .map(|v| v.0 as f64)
+    .map(|v| f64::from(v.0))
     .into_sexp());
 into_r_infallible!(Vec<OrderedFloat<f64>>, |this| this
     .into_iter()
@@ -221,7 +239,7 @@ into_r_infallible!(Vec<OrderedFloat<f64>>, |this| this
     .into_sexp());
 into_r_infallible!(Vec<OrderedFloat<f32>>, |this| this
     .into_iter()
-    .map(|v| v.0 as f64)
+    .map(|v| f64::from(v.0))
     .collect::<Vec<_>>()
     .into_sexp());
 into_r_infallible!(Vec<Option<OrderedFloat<f64>>>, |this| this
@@ -231,7 +249,7 @@ into_r_infallible!(Vec<Option<OrderedFloat<f64>>>, |this| this
     .into_sexp());
 into_r_infallible!(Vec<Option<OrderedFloat<f32>>>, |this| this
     .into_iter()
-    .map(|v| v.map(|val| val.0 as f64))
+    .map(|v| v.map(|val| f64::from(val.0)))
     .collect::<Vec<_>>()
     .into_sexp());
 // endregion

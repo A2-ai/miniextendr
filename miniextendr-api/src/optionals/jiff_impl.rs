@@ -55,6 +55,24 @@ fn unix_epoch_date() -> Date {
     jiff::civil::date(1970, 1, 1)
 }
 
+/// Split a POSIXct `f64` (seconds since epoch) into a jiff `Timestamp`.
+///
+/// Uses a floor-based split so negative timestamps round toward -∞:
+/// `whole = floor(secs)`, `fract = secs - whole ∈ [0, 1)`.
+///
+/// The two `as` casts here are deliberate and bounded:
+/// - `whole = secs.floor() as i64`: a float-to-int cast in Rust saturates at
+///   `i64::MIN`/`i64::MAX` (no UB). Any out-of-range value is then rejected by
+///   `Timestamp::new`, which validates the second/nanosecond range.
+/// - `nanos = (fract * 1e9) as i32`: `fract ∈ [0, 1)` so the product is in
+///   `[0, 1e9) < i32::MAX`; the cast can never truncate.
+#[allow(clippy::cast_possible_truncation)]
+fn posix_secs_to_timestamp(secs: f64) -> Result<Timestamp, jiff::Error> {
+    let whole = secs.floor() as i64;
+    let nanos = ((secs - secs.floor()) * 1_000_000_000.0) as i32;
+    Timestamp::new(whole, nanos)
+}
+
 // region: Timestamp <-> POSIXct (UTC)
 //
 // Floor-based split: whole = floor(secs), fract in [0, 1) — correct for negative
@@ -64,12 +82,10 @@ impl_realsxp_datetime!(
     Timestamp,
     "POSIXct",
     |secs: f64| {
-        let whole = secs.floor() as i64;
-        let nanos = ((secs - secs.floor()) * 1_000_000_000.0) as i32;
-        Timestamp::new(whole, nanos)
+        posix_secs_to_timestamp(secs)
             .map_err(|e| SexpError::InvalidValue(format!("jiff Timestamp out of range: {e}")))
     },
-    |ts: Timestamp| ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0),
+    |ts: Timestamp| ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0),
     |sexp: SEXP| set_posixct_utc(sexp)
 );
 
@@ -83,6 +99,9 @@ impl_realsxp_datetime!(
     Date,
     "Date",
     |days: f64| {
+        // `days.trunc() as i64` saturates on overflow (no UB); out-of-range
+        // values are then rejected by `try_days` below.
+        #[allow(clippy::cast_possible_truncation)]
         let days_i64 = days.trunc() as i64;
         let span = Span::new()
             .try_days(days_i64)
@@ -93,7 +112,7 @@ impl_realsxp_datetime!(
     },
     |d: Date| {
         let span = d.since(unix_epoch_date()).unwrap_or_default();
-        span.get_days() as f64
+        f64::from(span.get_days())
     },
     |sexp: SEXP| sexp.set_class(date_class_sexp())
 );
@@ -152,10 +171,7 @@ impl TryFromSexp for Zoned {
                 .map_err(|e| SexpError::InvalidValue(format!("unknown IANA tz {tz_name:?}: {e}")))?
         };
 
-        let whole = secs.floor() as i64;
-        let fract = secs - secs.floor();
-        let nanos = (fract * 1_000_000_000.0) as i32;
-        let ts = Timestamp::new(whole, nanos)
+        let ts = posix_secs_to_timestamp(secs)
             .map_err(|e| SexpError::InvalidValue(format!("jiff Timestamp out of range: {e}")))?;
         Ok(ts.to_zoned(tz))
     }
@@ -176,7 +192,7 @@ impl IntoR for Zoned {
             let ts = self.timestamp();
             vec.set_real_elt(
                 0,
-                ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0),
+                ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0),
             );
             let iana = self.time_zone().iana_name().unwrap_or("UTC");
             set_posixct_tz(vec, iana);
@@ -288,10 +304,7 @@ impl TryFromSexp for Vec<Zoned> {
                     i
                 )));
             }
-            let whole = secs.floor() as i64;
-            let fract = secs - secs.floor();
-            let nanos = (fract * 1_000_000_000.0) as i32;
-            let ts = Timestamp::new(whole, nanos).map_err(|e| {
+            let ts = posix_secs_to_timestamp(secs).map_err(|e| {
                 SexpError::InvalidValue(format!("jiff Timestamp out of range at index {i}: {e}"))
             })?;
             result.push(ts.to_zoned(tz.clone()));
@@ -342,7 +355,8 @@ impl IntoR for Vec<Zoned> {
             Rf_protect(vec);
             for (slot, z) in dst.iter_mut().zip(self) {
                 let ts = z.timestamp();
-                *slot = ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0);
+                *slot =
+                    ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0);
             }
             set_posixct_tz(vec, &first_iana);
             Rf_unprotect(1);
@@ -393,10 +407,7 @@ impl TryFromSexp for Vec<Option<Zoned>> {
             if secs.is_nan() {
                 result.push(None);
             } else {
-                let whole = secs.floor() as i64;
-                let fract = secs - secs.floor();
-                let nanos = (fract * 1_000_000_000.0) as i32;
-                let ts = Timestamp::new(whole, nanos).map_err(|e| {
+                let ts = posix_secs_to_timestamp(secs).map_err(|e| {
                     SexpError::InvalidValue(format!(
                         "jiff Timestamp out of range at index {i}: {e}"
                     ))
@@ -431,7 +442,8 @@ impl IntoR for Vec<Option<Zoned>> {
                 *slot = match opt {
                     Some(z) => {
                         let ts = z.timestamp();
-                        ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+                        ts.as_second() as f64
+                            + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0)
                     }
                     None => f64::NAN,
                 };
@@ -473,7 +485,12 @@ impl_realsxp_datetime!(
     SignedDuration,
     "difftime",
     |secs: f64| {
+        // `whole` saturates on overflow (no UB); `frac_nanos` is bounded to
+        // `(-1e9, 1e9)` because `secs - secs.trunc() ∈ (-1, 1)`, so neither
+        // cast can lose meaningful data.
+        #[allow(clippy::cast_possible_truncation)]
         let whole = secs.trunc() as i64;
+        #[allow(clippy::cast_possible_truncation)]
         let frac_nanos = ((secs - secs.trunc()) * 1_000_000_000.0) as i32;
         Ok::<SignedDuration, SexpError>(SignedDuration::new(whole, frac_nanos))
     },
@@ -517,7 +534,13 @@ impl RSignedDuration for SignedDuration {
     }
     fn as_milliseconds(&self) -> i64 {
         // as_millis() returns i128; clamp to i64 range (saturating, not truncating).
-        self.as_millis().clamp(i64::MIN as i128, i64::MAX as i128) as i64
+        // SAFETY (lint): after clamping into `[i64::MIN, i64::MAX]` the value is
+        // by construction representable as `i64`, so the narrowing cannot truncate.
+        #[allow(clippy::cast_possible_truncation)]
+        let ms = self
+            .as_millis()
+            .clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64;
+        ms
     }
     fn whole_seconds(&self) -> i64 {
         self.as_secs()
@@ -881,7 +904,7 @@ impl AltrepLen for JiffTimestampVec {
 impl AltRealData for JiffTimestampVec {
     fn elt(&self, i: usize) -> f64 {
         let ts = &self.data[i];
-        ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+        ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0)
     }
 }
 
@@ -944,7 +967,7 @@ impl AltrepLen for JiffZonedVec {
 impl AltRealData for JiffZonedVec {
     fn elt(&self, i: usize) -> f64 {
         let ts = self.data[i].timestamp();
-        ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+        ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0)
     }
 }
 
@@ -1012,10 +1035,7 @@ impl crate::from_r::TryFromSexp for JiffZonedVec {
                     "NA at index {i} not allowed for JiffZonedVec"
                 )));
             }
-            let whole = secs.floor() as i64;
-            let fract = secs - secs.floor();
-            let nanos = (fract * 1_000_000_000.0) as i32;
-            let ts = Timestamp::new(whole, nanos).map_err(|e| {
+            let ts = posix_secs_to_timestamp(secs).map_err(|e| {
                 crate::from_r::SexpError::InvalidValue(format!(
                     "jiff Timestamp out of range at index {i}: {e}"
                 ))
@@ -1064,8 +1084,10 @@ pub mod vctrs_support {
     /// `milliseconds`, `microseconds`, `nanoseconds` — all as integer (`INTSXP`).
     pub fn span_vec_to_rcrd(spans: &[Span]) -> SEXP {
         let n = spans.len();
-        // get_years → i16; get_months/weeks/days/hours → i32
-        // get_minutes/seconds/ms/us/ns → i64 (truncate to i32; in practice always fits)
+        // get_years → i16; get_months/weeks/days/hours → i32 (lossless)
+        // get_minutes/seconds/ms/us/ns → i64; these are emitted to R's INTSXP
+        // columns, so saturate at i32::MAX rather than silently wrapping for an
+        // (in practice never observed) unbalanced span with a >2^31 field.
         //
         // GC-SAFETY: all guards are held alive until after List::from_raw_values
         // returns. from_raw_values calls Rf_allocVector(VECSXP, …) which can
@@ -1075,11 +1097,31 @@ pub mod vctrs_support {
         let g_weeks = unsafe { alloc_int_col(n, |i| spans[i].get_weeks()) };
         let g_days = unsafe { alloc_int_col(n, |i| spans[i].get_days()) };
         let g_hours = unsafe { alloc_int_col(n, |i| spans[i].get_hours()) };
-        let g_minutes = unsafe { alloc_int_col(n, |i| spans[i].get_minutes() as i32) };
-        let g_seconds = unsafe { alloc_int_col(n, |i| spans[i].get_seconds() as i32) };
-        let g_milliseconds = unsafe { alloc_int_col(n, |i| spans[i].get_milliseconds() as i32) };
-        let g_microseconds = unsafe { alloc_int_col(n, |i| spans[i].get_microseconds() as i32) };
-        let g_nanoseconds = unsafe { alloc_int_col(n, |i| spans[i].get_nanoseconds() as i32) };
+        let g_minutes = unsafe {
+            alloc_int_col(n, |i| {
+                i32::try_from(spans[i].get_minutes()).unwrap_or(i32::MAX)
+            })
+        };
+        let g_seconds = unsafe {
+            alloc_int_col(n, |i| {
+                i32::try_from(spans[i].get_seconds()).unwrap_or(i32::MAX)
+            })
+        };
+        let g_milliseconds = unsafe {
+            alloc_int_col(n, |i| {
+                i32::try_from(spans[i].get_milliseconds()).unwrap_or(i32::MAX)
+            })
+        };
+        let g_microseconds = unsafe {
+            alloc_int_col(n, |i| {
+                i32::try_from(spans[i].get_microseconds()).unwrap_or(i32::MAX)
+            })
+        };
+        let g_nanoseconds = unsafe {
+            alloc_int_col(n, |i| {
+                i32::try_from(spans[i].get_nanoseconds()).unwrap_or(i32::MAX)
+            })
+        };
 
         let list = List::from_raw_values(vec![
             g_years.get(),
@@ -1129,7 +1171,8 @@ pub mod vctrs_support {
 
         for (i, z) in zones.iter().enumerate() {
             let ts = z.timestamp();
-            ts_dst[i] = ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0);
+            ts_dst[i] =
+                ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0);
             let iana = z.time_zone().iana_name().unwrap_or("UTC");
             tz_col.set_string_elt(i as crate::R_xlen_t, SEXP::charsxp(iana));
         }

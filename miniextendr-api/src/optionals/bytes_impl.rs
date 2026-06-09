@@ -124,7 +124,10 @@ pub trait RBuf {
     /// Gets a signed byte from the buffer.
     /// Returns `None` if no bytes remain.
     fn get_i8(&self) -> Option<i32> {
-        self.get_u8().map(|v| v as i8 as i32)
+        // `v as i8` deliberately reinterprets the unsigned byte as signed
+        // (e.g. 0xFF → -1); `i32::from` then widens losslessly.
+        #[allow(clippy::cast_possible_truncation)]
+        self.get_u8().map(|v| i32::from(v as i8))
     }
 
     /// Gets a big-endian u16 from the buffer.

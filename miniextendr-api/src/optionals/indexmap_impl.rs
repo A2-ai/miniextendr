@@ -217,7 +217,9 @@ pub trait RIndexMapOps<T> {
 
 impl<T> RIndexMapOps<T> for IndexMap<String, T> {
     fn len(&self) -> i32 {
-        IndexMap::len(self) as i32
+        // R lengths are 32-bit `int`. A map with more than `i32::MAX` entries
+        // can't be represented exactly; saturate rather than silently wrap.
+        i32::try_from(IndexMap::len(self)).unwrap_or(i32::MAX)
     }
 
     fn is_empty(&self) -> bool {
@@ -239,14 +241,20 @@ impl<T> RIndexMapOps<T> for IndexMap<String, T> {
         if index < 0 {
             return None;
         }
-        IndexMap::get_index(self, index as usize).map(|(k, v)| (k.clone(), v.clone()))
+        // SAFETY: `index >= 0` checked above, so the sign cast cannot lose data.
+        #[allow(clippy::cast_sign_loss)]
+        let index = index as usize;
+        IndexMap::get_index(self, index).map(|(k, v)| (k.clone(), v.clone()))
     }
 
     fn get_key_at(&self, index: i32) -> Option<String> {
         if index < 0 {
             return None;
         }
-        IndexMap::get_index(self, index as usize).map(|(k, _)| k.clone())
+        // SAFETY: `index >= 0` checked above, so the sign cast cannot lose data.
+        #[allow(clippy::cast_sign_loss)]
+        let index = index as usize;
+        IndexMap::get_index(self, index).map(|(k, _)| k.clone())
     }
 
     fn first(&self) -> Option<(String, T)>
@@ -265,7 +273,9 @@ impl<T> RIndexMapOps<T> for IndexMap<String, T> {
 
     fn get_index_of(&self, key: &str) -> i32 {
         IndexMap::get_index_of(self, key)
-            .map(|i| i as i32)
+            // R `int` index; saturate at `i32::MAX` for maps too large to index
+            // exactly (rather than silently wrapping into a bogus index).
+            .map(|i| i32::try_from(i).unwrap_or(i32::MAX))
             .unwrap_or(-1)
     }
 }

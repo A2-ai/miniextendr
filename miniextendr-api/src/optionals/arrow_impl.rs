@@ -780,7 +780,12 @@ impl TryFromSexp for Date32Array {
             if is_na_real(v) {
                 builder.append_null();
             } else {
-                builder.append_value(v as i32); // f64 days → i32 days
+                // Arrow Date32 stores i32 days; R Date is an f64 day count.
+                // Truncation is intentional (fractional days are dropped) and
+                // the cast saturates for out-of-range values (no UB).
+                #[allow(clippy::cast_possible_truncation)]
+                let days = v as i32; // f64 days → i32 days
+                builder.append_value(days);
             }
         }
 
@@ -826,7 +831,12 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
         if is_na_real(v) {
             builder.append_null();
         } else {
-            builder.append_value(v as i64); // f64 seconds → i64 seconds
+            // Arrow stores i64 seconds; R POSIXct is f64 seconds. Fractional
+            // seconds are intentionally truncated (documented above); the cast
+            // saturates for out-of-range values (no UB).
+            #[allow(clippy::cast_possible_truncation)]
+            let secs = v as i64; // f64 seconds → i64 seconds
+            builder.append_value(secs);
         }
     }
 
@@ -907,7 +917,8 @@ impl IntoR for Date32Array {
                 *slot = if self.is_null(i) {
                     NA_REAL
                 } else {
-                    self.value(i) as f64
+                    // Date32 value is i32 days; widening to f64 is lossless.
+                    f64::from(self.value(i))
                 };
             }
 
@@ -1410,7 +1421,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
         DataType::Float32 => {
             // Widen f32 → f64 for R
             let arr = array.as_primitive::<arrow_array::types::Float32Type>();
-            let widened: Float64Array = arr.iter().map(|v| v.map(|x| x as f64)).collect();
+            let widened: Float64Array = arr.iter().map(|v| v.map(f64::from)).collect();
             widened.into_sexp()
         }
         DataType::Int32 => array.as_primitive::<Int32Type>().clone().into_sexp(),
@@ -1422,12 +1433,12 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
         }
         DataType::Int16 => {
             let arr = array.as_primitive::<arrow_array::types::Int16Type>();
-            let widened: Int32Array = arr.iter().map(|v| v.map(|x| x as i32)).collect();
+            let widened: Int32Array = arr.iter().map(|v| v.map(i32::from)).collect();
             widened.into_sexp()
         }
         DataType::Int8 => {
             let arr = array.as_primitive::<arrow_array::types::Int8Type>();
-            let widened: Int32Array = arr.iter().map(|v| v.map(|x| x as i32)).collect();
+            let widened: Int32Array = arr.iter().map(|v| v.map(i32::from)).collect();
             widened.into_sexp()
         }
         DataType::UInt8 => array.as_primitive::<UInt8Type>().clone().into_sexp(),
