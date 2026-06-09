@@ -117,6 +117,274 @@ macro_rules! impl_serialize {
 }
 // endregion
 
+// region: Slice-backed family macros
+//
+// The numeric / raw / complex ALTREP families share byte-identical bodies
+// across every container shape that derefs to `[T]` (`Vec<T>`, `Box<[T]>`,
+// `&[T]`, `Cow<'static, [T]>`). The element type is the only axis that varies
+// the *behaviour* (NA sentinel + statistic semantics); the container shape only
+// varies how the slice is spelled. Each macro below collapses one element
+// family across all slice-like containers by writing every method body against
+// the deref'd `&[$elem]` slice.
+//
+// `[T; N]` arrays are intentionally NOT routed through these macros: they need
+// `impl<const N: usize>` (not expressible via `$ty:ty`) and they deliberately
+// omit `sum`/`min`/`max` (falling back to R's defaults). `Range<T>` is lazy and
+// has its own arithmetic-sequence bodies. The string families have per-type
+// `elt`/`no_na` differences and stay hand-written.
+
+/// `AltIntegerData` for any container that derefs to `[i32]`.
+///
+/// `s` binds the underlying `&[i32]` uniformly across `Vec` / `Box<[T]>` /
+/// `&[T]` / `Cow`, sidestepping the `self.len()` ambiguity between
+/// `AltrepLen::len` and the inherent slice/`Vec` `len`.
+macro_rules! impl_altinteger_slice {
+    ($ty:ty) => {
+        impl AltIntegerData for $ty {
+            fn elt(&self, i: usize) -> i32 {
+                self[i]
+            }
+
+            fn as_slice(&self) -> Option<&[i32]> {
+                let s: &[i32] = self;
+                Some(s)
+            }
+
+            fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+                let s: &[i32] = self;
+                let end = (start + len).min(s.len());
+                let actual_len = end.saturating_sub(start);
+                if actual_len > 0 {
+                    buf[..actual_len].copy_from_slice(&s[start..end]);
+                }
+                actual_len
+            }
+
+            fn no_na(&self) -> Option<bool> {
+                let s: &[i32] = self;
+                Some(!s.contains(&i32::MIN))
+            }
+
+            fn sum(&self, na_rm: bool) -> Option<i64> {
+                let s: &[i32] = self;
+                let mut sum: i64 = 0;
+                for &x in s.iter() {
+                    if x == i32::MIN {
+                        if !na_rm {
+                            return None; // NA propagates
+                        }
+                    } else {
+                        sum += x as i64;
+                    }
+                }
+                Some(sum)
+            }
+
+            fn min(&self, na_rm: bool) -> Option<i32> {
+                let s: &[i32] = self;
+                let mut min = i32::MAX;
+                let mut found = false;
+                for &x in s.iter() {
+                    if x == i32::MIN {
+                        if !na_rm {
+                            return None;
+                        }
+                    } else {
+                        found = true;
+                        min = min.min(x);
+                    }
+                }
+                if found { Some(min) } else { None }
+            }
+
+            fn max(&self, na_rm: bool) -> Option<i32> {
+                let s: &[i32] = self;
+                let mut max = i32::MIN + 1; // i32::MIN is the NA sentinel
+                let mut found = false;
+                for &x in s.iter() {
+                    if x == i32::MIN {
+                        if !na_rm {
+                            return None;
+                        }
+                    } else {
+                        found = true;
+                        max = max.max(x);
+                    }
+                }
+                if found { Some(max) } else { None }
+            }
+        }
+    };
+}
+
+/// `AltRealData` for any container that derefs to `[f64]`.
+///
+/// Distinguishes R's `NA_real_` (a specific NaN bit pattern) from a regular
+/// IEEE NaN: `NA_real_` propagates as NA, regular NaN propagates as NaN.
+macro_rules! impl_altreal_slice {
+    ($ty:ty) => {
+        impl AltRealData for $ty {
+            fn elt(&self, i: usize) -> f64 {
+                self[i]
+            }
+
+            fn as_slice(&self) -> Option<&[f64]> {
+                let s: &[f64] = self;
+                Some(s)
+            }
+
+            fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+                let s: &[f64] = self;
+                let end = (start + len).min(s.len());
+                let actual_len = end.saturating_sub(start);
+                if actual_len > 0 {
+                    buf[..actual_len].copy_from_slice(&s[start..end]);
+                }
+                actual_len
+            }
+
+            fn no_na(&self) -> Option<bool> {
+                let s: &[f64] = self;
+                Some(!s.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
+            }
+
+            fn sum(&self, na_rm: bool) -> Option<f64> {
+                let s: &[f64] = self;
+                let mut sum = 0.0;
+                for &x in s.iter() {
+                    if x.to_bits() == NA_REAL.to_bits() {
+                        if !na_rm {
+                            return Some(NA_REAL);
+                        }
+                    } else if x.is_nan() {
+                        if !na_rm {
+                            return Some(f64::NAN);
+                        }
+                    } else {
+                        sum += x;
+                    }
+                }
+                Some(sum)
+            }
+
+            fn min(&self, na_rm: bool) -> Option<f64> {
+                let s: &[f64] = self;
+                let mut min = f64::INFINITY;
+                let mut found = false;
+                for &x in s.iter() {
+                    if x.to_bits() == NA_REAL.to_bits() {
+                        if !na_rm {
+                            return Some(NA_REAL);
+                        }
+                    } else if x.is_nan() {
+                        if !na_rm {
+                            return Some(f64::NAN);
+                        }
+                    } else {
+                        found = true;
+                        min = min.min(x);
+                    }
+                }
+                if found { Some(min) } else { None }
+            }
+
+            fn max(&self, na_rm: bool) -> Option<f64> {
+                let s: &[f64] = self;
+                let mut max = f64::NEG_INFINITY;
+                let mut found = false;
+                for &x in s.iter() {
+                    if x.to_bits() == NA_REAL.to_bits() {
+                        if !na_rm {
+                            return Some(NA_REAL);
+                        }
+                    } else if x.is_nan() {
+                        if !na_rm {
+                            return Some(f64::NAN);
+                        }
+                    } else {
+                        found = true;
+                        max = max.max(x);
+                    }
+                }
+                if found { Some(max) } else { None }
+            }
+        }
+    };
+}
+
+/// `AltRawData` for any container that derefs to `[u8]`. Raw has no NA.
+macro_rules! impl_altraw_slice {
+    ($ty:ty) => {
+        impl AltRawData for $ty {
+            fn elt(&self, i: usize) -> u8 {
+                self[i]
+            }
+
+            fn as_slice(&self) -> Option<&[u8]> {
+                let s: &[u8] = self;
+                Some(s)
+            }
+
+            fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
+                let s: &[u8] = self;
+                let end = (start + len).min(s.len());
+                let actual_len = end.saturating_sub(start);
+                if actual_len > 0 {
+                    buf[..actual_len].copy_from_slice(&s[start..end]);
+                }
+                actual_len
+            }
+        }
+    };
+}
+
+/// `AltComplexData` for any container that derefs to `[Rcomplex]`.
+macro_rules! impl_altcomplex_slice {
+    ($ty:ty) => {
+        impl AltComplexData for $ty {
+            fn elt(&self, i: usize) -> Rcomplex {
+                self[i]
+            }
+
+            fn as_slice(&self) -> Option<&[Rcomplex]> {
+                let s: &[Rcomplex] = self;
+                Some(s)
+            }
+
+            fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
+                let s: &[Rcomplex] = self;
+                let end = (start + len).min(s.len());
+                let actual_len = end.saturating_sub(start);
+                if actual_len > 0 {
+                    buf[..actual_len].copy_from_slice(&s[start..end]);
+                }
+                actual_len
+            }
+        }
+    };
+}
+
+/// `AltLogicalData` for any container that derefs to `[bool]`. `bool` can't be NA.
+macro_rules! impl_altlogical_slice {
+    ($ty:ty) => {
+        impl AltLogicalData for $ty {
+            fn elt(&self, i: usize) -> Logical {
+                self[i].into()
+            }
+
+            fn no_na(&self) -> Option<bool> {
+                Some(true) // bool can't be NA
+            }
+
+            fn sum(&self, _na_rm: bool) -> Option<i64> {
+                let s: &[bool] = self;
+                Some(s.iter().filter(|&&x| x).count() as i64)
+            }
+        }
+    };
+}
+// endregion
+
 // region: AltrepSerialize implementations for Vec<T>
 
 impl_serialize!(Vec<i32>);
@@ -225,187 +493,15 @@ impl AltrepSerialize for Box<[Rcomplex]> {
 // region: Built-in implementations for Vec<T>
 
 impl_len_vec!(i32);
-
-impl AltIntegerData for Vec<i32> {
-    fn elt(&self, i: usize) -> i32 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[i32]> {
-        Some(self.as_slice())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let end = (start + len).min(self.len());
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.contains(&i32::MIN))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<i64> {
-        let mut sum: i64 = 0;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None; // NA propagates
-                }
-            } else {
-                sum += x as i64;
-            }
-        }
-        Some(sum)
-    }
-
-    fn min(&self, na_rm: bool) -> Option<i32> {
-        let mut min = i32::MAX;
-        let mut found = false;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                found = true;
-                min = min.min(x);
-            }
-        }
-        if found { Some(min) } else { None }
-    }
-
-    fn max(&self, na_rm: bool) -> Option<i32> {
-        let mut max = i32::MIN + 1; // Avoid NA sentinel
-        let mut found = false;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                found = true;
-                max = max.max(x);
-            }
-        }
-        if found { Some(max) } else { None }
-    }
-}
-
+impl_altinteger_slice!(Vec<i32>);
 impl_dataptr_vec!(i32);
 
 impl_len_vec!(f64);
-
-impl AltRealData for Vec<f64> {
-    fn elt(&self, i: usize) -> f64 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[f64]> {
-        Some(self.as_slice())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        let end = (start + len).min(self.len());
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        // NA_real_ is a specific NaN bit pattern; regular NaN is not NA in R.
-        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<f64> {
-        let mut sum = 0.0;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                // R's NA_real_: propagates as NA unless removed.
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                // Regular IEEE NaN: propagates as NaN unless removed.
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                sum += x;
-            }
-        }
-        Some(sum)
-    }
-
-    fn min(&self, na_rm: bool) -> Option<f64> {
-        let mut min = f64::INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                min = min.min(x);
-            }
-        }
-        if found { Some(min) } else { None }
-    }
-
-    fn max(&self, na_rm: bool) -> Option<f64> {
-        let mut max = f64::NEG_INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                max = max.max(x);
-            }
-        }
-        if found { Some(max) } else { None }
-    }
-}
-
+impl_altreal_slice!(Vec<f64>);
 impl_dataptr_vec!(f64);
 
 impl_len_vec!(u8);
-
-impl AltRawData for Vec<u8> {
-    fn elt(&self, i: usize) -> u8 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[u8]> {
-        Some(self.as_slice())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        let end = (start + len).min(self.len());
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-}
-
+impl_altraw_slice!(Vec<u8>);
 impl_dataptr_vec!(u8);
 
 impl_len_vec!(String);
@@ -465,24 +561,7 @@ impl AltStringData for Vec<Option<std::borrow::Cow<'static, str>>> {
 }
 
 impl_len_vec!(bool);
-
-impl AltLogicalData for Vec<bool> {
-    fn elt(&self, i: usize) -> Logical {
-        if self[i] {
-            Logical::True
-        } else {
-            Logical::False
-        }
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(true) // bool can't be NA
-    }
-
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
-        Some(self.iter().filter(|&&x| x).count() as i64)
-    }
-}
+impl_altlogical_slice!(Vec<bool>);
 // endregion
 
 // region: Built-in implementations for Box<[T]> (owned slices)
@@ -499,205 +578,19 @@ impl AltLogicalData for Vec<bool> {
 // Or use these trait implementations in custom wrapper structs.
 
 impl_len_boxed!(i32);
-
-impl AltIntegerData for Box<[i32]> {
-    fn elt(&self, i: usize) -> i32 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[i32]> {
-        Some(self)
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let end = (start + len).min(<[i32]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.contains(&i32::MIN))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<i64> {
-        let mut sum: i64 = 0;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                sum += x as i64;
-            }
-        }
-        Some(sum)
-    }
-
-    fn min(&self, na_rm: bool) -> Option<i32> {
-        let mut min = i32::MAX;
-        let mut found = false;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                found = true;
-                min = min.min(x);
-            }
-        }
-        if found { Some(min) } else { None }
-    }
-
-    fn max(&self, na_rm: bool) -> Option<i32> {
-        let mut max = i32::MIN + 1; // i32::MIN is NA
-        let mut found = false;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                found = true;
-                max = max.max(x);
-            }
-        }
-        if found { Some(max) } else { None }
-    }
-}
-
+impl_altinteger_slice!(Box<[i32]>);
 impl_dataptr_boxed!(i32);
 
 impl_len_boxed!(f64);
-
-impl AltRealData for Box<[f64]> {
-    fn elt(&self, i: usize) -> f64 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[f64]> {
-        Some(self)
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        let end = (start + len).min(<[f64]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<f64> {
-        let mut sum = 0.0;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                sum += x;
-            }
-        }
-        Some(sum)
-    }
-
-    fn min(&self, na_rm: bool) -> Option<f64> {
-        let mut min = f64::INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                min = min.min(x);
-            }
-        }
-        if found { Some(min) } else { None }
-    }
-
-    fn max(&self, na_rm: bool) -> Option<f64> {
-        let mut max = f64::NEG_INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                max = max.max(x);
-            }
-        }
-        if found { Some(max) } else { None }
-    }
-}
-
+impl_altreal_slice!(Box<[f64]>);
 impl_dataptr_boxed!(f64);
 
 impl_len_boxed!(u8);
-
-impl AltRawData for Box<[u8]> {
-    fn elt(&self, i: usize) -> u8 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[u8]> {
-        Some(self)
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        let end = (start + len).min(<[u8]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-}
-
+impl_altraw_slice!(Box<[u8]>);
 impl_dataptr_boxed!(u8);
 
 impl_len_boxed!(bool);
-
-impl AltLogicalData for Box<[bool]> {
-    fn elt(&self, i: usize) -> Logical {
-        if self[i] {
-            Logical::True
-        } else {
-            Logical::False
-        }
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(true) // bool can't be NA
-    }
-
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
-        Some(self.iter().filter(|&&x| x).count() as i64)
-    }
-}
+impl_altlogical_slice!(Box<[bool]>);
 
 impl_len_boxed!(String);
 
@@ -1060,176 +953,16 @@ impl AltRealData for Range<f64> {
 // region: Built-in implementations for slices (read-only)
 
 impl_len_slice!(i32);
-
-impl AltIntegerData for &[i32] {
-    fn elt(&self, i: usize) -> i32 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[i32]> {
-        Some(self)
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let end = (start + len).min(<[i32]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        // i32 slices have NA as i32::MIN
-        Some(!self.contains(&i32::MIN))
-    }
-
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
-        // Check for NA (i32::MIN)
-        if self.contains(&i32::MIN) {
-            if _na_rm {
-                Some(
-                    self.iter()
-                        .filter(|&&x| x != i32::MIN)
-                        .map(|&x| x as i64)
-                        .sum(),
-                )
-            } else {
-                None // Return NA
-            }
-        } else {
-            Some(self.iter().map(|&x| x as i64).sum())
-        }
-    }
-
-    fn min(&self, _na_rm: bool) -> Option<i32> {
-        if self.is_empty() {
-            return None;
-        }
-        if _na_rm {
-            self.iter().filter(|&&x| x != i32::MIN).copied().min()
-        } else if self.contains(&i32::MIN) {
-            None // NA present
-        } else {
-            self.iter().copied().min()
-        }
-    }
-
-    fn max(&self, _na_rm: bool) -> Option<i32> {
-        if self.is_empty() {
-            return None;
-        }
-        if _na_rm {
-            self.iter().filter(|&&x| x != i32::MIN).copied().max()
-        } else if self.contains(&i32::MIN) {
-            None // NA present
-        } else {
-            self.iter().copied().max()
-        }
-    }
-}
+impl_altinteger_slice!(&[i32]);
 
 impl_len_slice!(f64);
-
-impl AltRealData for &[f64] {
-    fn elt(&self, i: usize) -> f64 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[f64]> {
-        Some(self)
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<f64> {
-        let mut sum = 0.0;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                sum += x;
-            }
-        }
-        Some(sum)
-    }
-
-    fn min(&self, na_rm: bool) -> Option<f64> {
-        let mut min = f64::INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                min = min.min(x);
-            }
-        }
-        if found { Some(min) } else { None }
-    }
-
-    fn max(&self, na_rm: bool) -> Option<f64> {
-        let mut max = f64::NEG_INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                max = max.max(x);
-            }
-        }
-        if found { Some(max) } else { None }
-    }
-}
+impl_altreal_slice!(&[f64]);
 
 impl_len_slice!(u8);
-
-impl AltRawData for &[u8] {
-    fn elt(&self, i: usize) -> u8 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[u8]> {
-        Some(self)
-    }
-}
+impl_altraw_slice!(&[u8]);
 
 impl_len_slice!(bool);
-
-impl AltLogicalData for &[bool] {
-    fn elt(&self, i: usize) -> Logical {
-        Logical::from_bool(self[i])
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(true) // bool can't be NA
-    }
-
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
-        Some(self.iter().filter(|&&x| x).count() as i64)
-    }
-}
+impl_altlogical_slice!(&[bool]);
 
 impl_len_slice!(String);
 
@@ -1360,52 +1093,14 @@ impl<const N: usize> AltStringData for [String; N] {
 // region: Built-in implementations for Vec<Rcomplex> (complex numbers)
 
 impl_len_vec!(Rcomplex);
-
-impl AltComplexData for Vec<Rcomplex> {
-    fn elt(&self, i: usize) -> Rcomplex {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[Rcomplex]> {
-        Some(self.as_slice())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
-        let end = (start + len).min(self.len());
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-}
-
+impl_altcomplex_slice!(Vec<Rcomplex>);
 impl_dataptr_vec!(Rcomplex);
 // endregion
 
 // region: Built-in implementations for Box<[Rcomplex]>
 
 impl_len_boxed!(Rcomplex);
-
-impl AltComplexData for Box<[Rcomplex]> {
-    fn elt(&self, i: usize) -> Rcomplex {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[Rcomplex]> {
-        Some(self.as_ref())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
-        let end = (start + len).min(self.len());
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-}
-
+impl_altcomplex_slice!(Box<[Rcomplex]>);
 impl_dataptr_boxed!(Rcomplex);
 // endregion
 
@@ -1489,210 +1184,22 @@ macro_rules! impl_serialize_cow {
 }
 
 impl_len_cow!(i32);
-
-impl AltIntegerData for Cow<'static, [i32]> {
-    fn elt(&self, i: usize) -> i32 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[i32]> {
-        Some(self.as_ref())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let end = (start + len).min(<[i32]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.contains(&i32::MIN))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<i64> {
-        let mut sum: i64 = 0;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                sum += x as i64;
-            }
-        }
-        Some(sum)
-    }
-
-    fn min(&self, na_rm: bool) -> Option<i32> {
-        let mut min = i32::MAX;
-        let mut found = false;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                found = true;
-                min = min.min(x);
-            }
-        }
-        if found { Some(min) } else { None }
-    }
-
-    fn max(&self, na_rm: bool) -> Option<i32> {
-        let mut max = i32::MIN + 1;
-        let mut found = false;
-        for &x in self.iter() {
-            if x == i32::MIN {
-                if !na_rm {
-                    return None;
-                }
-            } else {
-                found = true;
-                max = max.max(x);
-            }
-        }
-        if found { Some(max) } else { None }
-    }
-}
-
+impl_altinteger_slice!(Cow<'static, [i32]>);
 impl_dataptr_cow!(i32);
 impl_serialize_cow!(i32);
 
 impl_len_cow!(f64);
-
-impl AltRealData for Cow<'static, [f64]> {
-    fn elt(&self, i: usize) -> f64 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[f64]> {
-        Some(self.as_ref())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        let end = (start + len).min(<[f64]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<f64> {
-        let mut sum = 0.0;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                sum += x;
-            }
-        }
-        Some(sum)
-    }
-
-    fn min(&self, na_rm: bool) -> Option<f64> {
-        let mut min = f64::INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                min = min.min(x);
-            }
-        }
-        if found { Some(min) } else { None }
-    }
-
-    fn max(&self, na_rm: bool) -> Option<f64> {
-        let mut max = f64::NEG_INFINITY;
-        let mut found = false;
-        for &x in self.iter() {
-            if x.to_bits() == NA_REAL.to_bits() {
-                if !na_rm {
-                    return Some(NA_REAL);
-                }
-            } else if x.is_nan() {
-                if !na_rm {
-                    return Some(f64::NAN);
-                }
-            } else {
-                found = true;
-                max = max.max(x);
-            }
-        }
-        if found { Some(max) } else { None }
-    }
-}
-
+impl_altreal_slice!(Cow<'static, [f64]>);
 impl_dataptr_cow!(f64);
 impl_serialize_cow!(f64);
 
 impl_len_cow!(u8);
-
-impl AltRawData for Cow<'static, [u8]> {
-    fn elt(&self, i: usize) -> u8 {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[u8]> {
-        Some(self.as_ref())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        let end = (start + len).min(<[u8]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-}
-
+impl_altraw_slice!(Cow<'static, [u8]>);
 impl_dataptr_cow!(u8);
 impl_serialize_cow!(u8);
 
 impl_len_cow!(Rcomplex);
-
-impl AltComplexData for Cow<'static, [Rcomplex]> {
-    fn elt(&self, i: usize) -> Rcomplex {
-        self[i]
-    }
-
-    fn as_slice(&self) -> Option<&[Rcomplex]> {
-        Some(self.as_ref())
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
-        let end = (start + len).min(<[Rcomplex]>::len(self));
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
-    }
-}
-
+impl_altcomplex_slice!(Cow<'static, [Rcomplex]>);
 impl_dataptr_cow!(Rcomplex);
 impl_serialize_cow!(Rcomplex);
 // endregion
