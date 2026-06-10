@@ -305,7 +305,7 @@ fn test_na_logical_bare_scalar_rejected() {
 // region: Feature-gated tests for macro-based conversions
 
 /// Helper to create a VECSXP (R list) from SEXPs
-#[cfg(any(feature = "serde", feature = "aho-corasick"))]
+#[cfg(any(feature = "serde_json", feature = "aho-corasick"))]
 unsafe fn make_list(elements: &[SEXP], guard: &mut ProtectCount) -> SEXP {
     use miniextendr_api::prelude::SexpExt;
     let len = elements.len() as R_xlen_t;
@@ -393,7 +393,7 @@ fn aho_corasick_vec_option_from_list() {
 
 // region: serde (JSON) feature tests
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 #[test]
 fn json_value_option_from_nil() {
     use miniextendr_api::serde_impl::JsonValue;
@@ -405,7 +405,7 @@ fn json_value_option_from_nil() {
     });
 }
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 #[test]
 fn json_value_option_from_sexp() {
     use miniextendr_api::serde_impl::JsonValue;
@@ -424,7 +424,7 @@ fn json_value_option_from_sexp() {
     });
 }
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 #[test]
 fn json_value_vec_from_list() {
     use miniextendr_api::serde_impl::JsonValue;
@@ -445,7 +445,7 @@ fn json_value_vec_from_list() {
     });
 }
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 #[test]
 fn json_value_vec_option_from_list() {
     use miniextendr_api::serde_impl::JsonValue;
@@ -613,7 +613,7 @@ fn aho_corasick_unchecked_vec() {
     });
 }
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 #[test]
 fn json_value_unchecked_vec_option() {
     use miniextendr_api::serde_impl::JsonValue;
