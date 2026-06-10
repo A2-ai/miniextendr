@@ -207,7 +207,7 @@
 //! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 //! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
-//! | `refcount-fast-hash` | Use ahash for refcount arenas (enabled by default, not DOS-resistant) |
+//! | `refcount-fast-hash` | Use ahash for refcount arenas (opt-in, not DOS-resistant) |
 // Re-export linkme for use by generated code (distributed_slice entries)
 #[doc(hidden)]
 pub use linkme;

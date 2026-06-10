@@ -12,7 +12,7 @@ documentation = "https://docs.rs/miniextendr-api"
 rust-version = "1.85"
 
 [features]
-default = ["doc-lint", "refcount-fast-hash"]
+default = ["doc-lint"]
 ## Enable non-API R functions. These may break with R updates and cause
 ## `R CMD check` warnings. See NONAPI.md for details.
 nonapi = []
