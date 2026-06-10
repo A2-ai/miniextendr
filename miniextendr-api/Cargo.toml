@@ -124,17 +124,53 @@ growth-debug = []
 ## Enable fast hasher for refcount protect arenas. Uses ahash instead of SipHash
 ## for improved throughput on large collections. Not DOS-resistant.
 refcount-fast-hash = ["dep:ahash"]
-## All additive features (excludes mutually exclusive r6-default/s7-default and nonapi/connections).
-## Use for local development checks: `cargo check -p miniextendr-api --features full`
-full = [
+# region: feature aggregates
+#
+# Two composable aggregates so "all features" is defined in ONE place and CI's
+# `clippy_all` step can derive its codegen-selector half instead of re-curating
+# it (see #677). Adding a new feature only requires updating the matching
+# aggregate below; CI follows automatically.
+#
+# MUTEX CONSTRAINT: `r6-default` and `s7-default` are mutually exclusive — a
+# `compile_error!` in miniextendr-macros fires if both are enabled (#676/#710).
+# This is exactly why `--all-features` can't be used. `full-codegen` therefore
+# picks exactly ONE side of that pair (`r6-default`); to lint the `s7-default`
+# side, run a second invocation swapping the two. (`strict-default` and
+# `coerce-default` are NOT a mutex pair — they're orthogonal, see
+# docs/FEATURE_DEFAULTS.md — so both live in `full-codegen` together.)
+
+## Every optional integration crate (the "dep:" features). Heavy deps like
+## arrow/datafusion/log live here; CI's `clippy_all` enables a curated subset.
+full-integrations = [
     "serde", "serde_json", "num-complex", "uuid", "url", "aho-corasick",
-    "bitflags", "bitvec", "arrow", "datafusion", "toml", "time", "ndarray",
-    "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions", "vctrs",
-    "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
-    "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
-    "either", "log", "worker-thread", "macro-coverage",
-    "growth-debug",
+    "bitflags", "bitvec", "arrow", "datafusion", "toml", "time", "jiff",
+    "ndarray", "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions",
+    "vctrs", "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
+    "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr", "either",
+    "log",
 ]
+
+## Every codegen selector / runtime-surface feature that CI wants linted:
+## the `*-default` forwarding selectors (one mutex side — `r6-default`, NOT
+## `s7-default`), plus `nonapi`, `connections`, `worker-thread` (via
+## `worker-default`), `indicatif`, and `refcount-fast-hash` (the ahash-backed
+## refcount-arena hasher knob). This whole set compiles together — it is
+## the unit CI's `clippy_all` derives.
+full-codegen = [
+    "strict-default", "coerce-default", "r6-default", "worker-default",
+    "nonapi", "connections", "indicatif", "refcount-fast-hash",
+]
+
+## Back-compat kitchen sink: integrations + codegen selectors + debug/audit
+## features. Use for local development checks:
+## `cargo check -p miniextendr-api --features full`.
+## NOTE: now includes the codegen selectors (and hence `r6-default`, `nonapi`,
+## `connections`) via `full-codegen` — `s7-default` is excluded by the mutex.
+full = [
+    "full-integrations", "full-codegen",
+    "macro-coverage", "growth-debug",
+]
+# endregion
 
 [dependencies]
 linkme = { workspace = true }

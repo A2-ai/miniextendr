@@ -304,14 +304,19 @@ jobs:
       - name: Clippy (all features)
         id: clippy_all
         continue-on-error: true
-        # NOTE: Can't use `--features full` — the `full` feature in
-        # miniextendr-api omits the forwarding features we want checked
-        # (r6-default/strict-default/coerce-default/worker-default, nonapi, connections) and adds
-        # heavy deps (arrow, datafusion, log) we don't need here. Keep the
-        # explicit list so CI signal matches what rpkg actually enables.
+        # The codegen-selector half is derived from miniextendr-api's
+        # `full-codegen` aggregate (#677) so it can't drift from the Cargo.toml
+        # definition — adding a new `*-default` / nonapi / connections selector
+        # there updates CI automatically. `full-codegen` picks the `r6-default`
+        # side of the r6/s7 mutex; `s7-default` is linted by clippy_default's
+        # rpkg path. We still can't use `--features full` directly: it adds
+        # heavy deps (arrow, datafusion, log) we don't need here. So we pass
+        # `full-codegen` plus a curated integration list (the lighter crates) —
+        # the latter is the only part still hand-maintained, and CI signal
+        # matches what rpkg actually enables.
         run: >-
           cargo clippy --workspace --all-targets --locked
-          --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,indicatif,strict-default,coerce-default,r6-default,worker-default,jiff,refcount-fast-hash
+          --features full-codegen,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,jiff
           -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_all.log"
         shell: bash
 
