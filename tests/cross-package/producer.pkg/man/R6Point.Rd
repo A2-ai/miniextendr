@@ -11,82 +11,89 @@ A 2D point using R6-style class system.
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-R6Point-new}{\code{R6Point$new()}}
-\item \href{#method-R6Point-x}{\code{R6Point$x()}}
-\item \href{#method-R6Point-y}{\code{R6Point$y()}}
-\item \href{#method-R6Point-distance_from_origin}{\code{R6Point$distance_from_origin()}}
-\item \href{#method-R6Point-add}{\code{R6Point$add()}}
-}
+  \itemize{
+    \item \href{#method-R6Point-initialize}{\code{R6Point$new()}}
+    \item \href{#method-R6Point-x}{\code{R6Point$x()}}
+    \item \href{#method-R6Point-y}{\code{R6Point$y()}}
+    \item \href{#method-R6Point-distance_from_origin}{\code{R6Point$distance_from_origin()}}
+    \item \href{#method-R6Point-add}{\code{R6Point$add()}}
+  }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-R6Point-new"></a>}}
-\if{latex}{\out{\hypertarget{method-R6Point-new}{}}}
-\subsection{Method \code{new()}}{
-Create a new point
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6Point$new(x, y, .ptr = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<a id="method-R6Point-initialize"></a>}}
+\if{latex}{\out{\hypertarget{method-R6Point-initialize}{}}}
+\subsection{\code{R6Point$new()}}{
+  Create a new point
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6Point$new(x, y, .ptr = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{x}}{X coordinate.}
+      \item{\code{y}}{Y coordinate.}
+      \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{x}}{X coordinate.}
-
-\item{\code{y}}{Y coordinate.}
-
-\item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6Point-x"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Point-x}{}}}
-\subsection{Method \code{x()}}{
-Get x coordinate
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6Point$x()}\if{html}{\out{</div>}}
+\subsection{\code{R6Point$x()}}{
+  Get x coordinate
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6Point$x()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6Point-y"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Point-y}{}}}
-\subsection{Method \code{y()}}{
-Get y coordinate
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6Point$y()}\if{html}{\out{</div>}}
+\subsection{\code{R6Point$y()}}{
+  Get y coordinate
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6Point$y()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6Point-distance_from_origin"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Point-distance_from_origin}{}}}
-\subsection{Method \code{distance_from_origin()}}{
-Calculate distance from origin
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6Point$distance_from_origin()}\if{html}{\out{</div>}}
+\subsection{\code{R6Point$distance_from_origin()}}{
+  Calculate distance from origin
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6Point$distance_from_origin()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6Point-add"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Point-add}{}}}
-\subsection{Method \code{add()}}{
-Add to coordinates
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6Point$add(dx, dy)}\if{html}{\out{</div>}}
+\subsection{\code{R6Point$add()}}{
+  Add to coordinates
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6Point$add(dx, dy)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{dx}}{Amount to add to x.}
+      \item{\code{dy}}{Amount to add to y.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{dx}}{Amount to add to x.}
-
-\item{\code{dy}}{Amount to add to y.}
-}
-\if{html}{\out{</div>}}
-}
-}
 }

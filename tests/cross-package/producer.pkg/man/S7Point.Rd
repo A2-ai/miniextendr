@@ -37,12 +37,4 @@ S7Point(x, y, .ptr = NULL)
 }
 \description{
 A 2D point using S7-style class system.
-
-Get x coordinate
-
-Get y coordinate
-
-Calculate distance from origin
-
-Add to coordinates
 }

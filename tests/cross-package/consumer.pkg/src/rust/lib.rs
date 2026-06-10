@@ -120,6 +120,22 @@ impl Counter for DoubleCounter {
             self.value
         );
     }
+
+    fn raise_error(&self, msg: String) {
+        miniextendr_api::error!("{}", msg);
+    }
+
+    fn raise_warning(&self, msg: String) {
+        miniextendr_api::warning!("{}", msg);
+    }
+
+    fn raise_message(&self, msg: String) {
+        miniextendr_api::message!("{}", msg);
+    }
+
+    fn raise_condition_classed(&self, class_name: String, msg: String) {
+        miniextendr_api::condition!(class = class_name, "{}", msg);
+    }
 }
 
 /// Create a new DoubleCounter (consumer's own Counter implementation)
@@ -285,6 +301,64 @@ pub fn counter_panic_plain(counter_sexp: SEXP) {
 pub fn counter_error_with_class(counter_sexp: SEXP, class_name: String) {
     let counter = unsafe { CounterView::from_sexp(counter_sexp) };
     counter.error_with_class(class_name);
+}
+
+/// Raise a bare error!() through a Counter trait method via trait dispatch.
+///
+/// Verifies that a producer-side `error!()` round-trips to `rust_error` /
+/// `e$kind == "error"` across the trait-ABI boundary, matching the in-process
+/// matrix's free-fn / R6 error rows.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param msg The error message
+/// @export
+#[miniextendr]
+pub fn counter_raise_error(counter_sexp: SEXP, msg: String) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.raise_error(msg);
+}
+
+/// Raise a warning!() through a Counter trait method via trait dispatch.
+///
+/// Verifies that a producer-side `warning!()` round-trips to `rust_warning` /
+/// `e$kind == "warning"` across the trait-ABI boundary, matching the in-process
+/// matrix's R6/S3/S4/S7 warning rows.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param msg The warning message
+/// @export
+#[miniextendr]
+pub fn counter_raise_warning(counter_sexp: SEXP, msg: String) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.raise_warning(msg);
+}
+
+/// Raise a message!() through a Counter trait method via trait dispatch.
+///
+/// Verifies that a producer-side `message!()` round-trips to `rust_message` /
+/// `e$kind == "message"` across the trait-ABI boundary, matching the in-process
+/// matrix's message rows.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param msg The message body
+/// @export
+#[miniextendr]
+pub fn counter_raise_message(counter_sexp: SEXP, msg: String) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.raise_message(msg);
+}
+
+/// Raise a classed condition!() through a Counter trait method via trait
+/// dispatch.
+///
+/// Verifies that a producer-side `condition!(class = …)` is catchable by the
+/// user class and round-trips to `e$kind == "condition"` across the trait-ABI
+/// boundary, matching the in-process matrix's condition!() rows.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param class_name The class name to use with condition!()
+/// @param msg The condition message
+/// @export
+#[miniextendr]
+pub fn counter_raise_condition_classed(counter_sexp: SEXP, class_name: String, msg: String) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.raise_condition_classed(class_name, msg);
 }
 
 // endregion

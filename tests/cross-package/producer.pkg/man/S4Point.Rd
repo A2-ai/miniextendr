@@ -38,16 +38,6 @@ S4Point(x, y)
 }
 \description{
 A 2D point using S4-style class system.
-
-Create a new point
-
-Get x coordinate
-
-Get y coordinate
-
-Calculate distance from origin
-
-Add to coordinates
 }
 \section{Slots}{
 
