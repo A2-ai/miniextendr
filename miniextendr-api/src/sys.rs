@@ -938,6 +938,44 @@ unsafe extern "C-unwind" {
         error_occurred: *mut ::std::os::raw::c_int,
     ) -> SEXP;
     pub fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
+
+    /// Parse R source text into an EXPRSXP (a list of parsed expressions).
+    ///
+    /// `text` is a STRSXP holding the source, `n` is the number of expressions
+    /// to parse (`-1` for all), `status` receives the [`ParseStatus`] outcome,
+    /// and `srcfile` is a srcref/`R_NilValue`. Allocates; protect the result.
+    ///
+    /// Prefer the safe [`crate::expression::r_eval_str`] wrapper, which does the
+    /// STRSXP construction, status check, and protection bookkeeping for you.
+    #[doc(alias = "ParseVector")]
+    pub fn R_ParseVector(
+        text: SEXP,
+        n: ::std::os::raw::c_int,
+        status: *mut ParseStatus,
+        srcfile: SEXP,
+    ) -> SEXP;
+}
+
+/// Outcome of [`R_ParseVector`] (from `R_ext/Parse.h`).
+///
+/// `PARSE_NULL` is never returned by `R_ParseVector`; the meaningful success
+/// value is [`ParseStatus::PARSE_OK`]. The remaining variants indicate parse
+/// failures (`PARSE_ERROR`), incomplete input (`PARSE_INCOMPLETE`), or
+/// end-of-input (`PARSE_EOF`).
+#[allow(non_camel_case_types)]
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseStatus {
+    /// Never returned by `R_ParseVector`; the default-initialized sentinel.
+    PARSE_NULL,
+    /// Parse succeeded.
+    PARSE_OK,
+    /// Input ended mid-expression (e.g. an unbalanced delimiter).
+    PARSE_INCOMPLETE,
+    /// A syntax error was encountered.
+    PARSE_ERROR,
+    /// End of input reached with no further expressions.
+    PARSE_EOF,
 }
 
 // region: Connections API (R_ext/Connections.h)
