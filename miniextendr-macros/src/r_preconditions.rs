@@ -65,6 +65,37 @@ impl RAssertion {
     }
 }
 
+/// Per-function knobs that influence precondition codegen.
+///
+/// Currently only the `coerce` knob matters: `#[miniextendr(coerce)]` (or a
+/// per-param `#[miniextendr(coerce)]`) changes the inbound conversion for an
+/// integer-element vector to read via the native `&[i32]` slice and then
+/// `TryCoerce` element-wise (see `rust_conversion_builder.rs` `CoercionMapping::Vec`).
+/// That `&[i32]` read is INTSXP-only, so a coerced integer vector that would
+/// otherwise accept whole-number `REALSXP` ([`RTypeCheck::VectorIntegerWide`])
+/// must instead get the strict `is.integer` gate ([`RTypeCheck::VectorIntegerStrict`])
+/// — otherwise a `double` passes the R precondition only to fail the Rust read
+/// with "expected INTSXP, got REALSXP" (issue #616).
+///
+/// `strict` is intentionally not represented: inbound conversion is identical in
+/// strict and default mode (`TryFromSexp`), so the R-side integer gate doesn't
+/// change. The precise strict checking happens on the Rust *outbound* side.
+#[derive(Clone, Default)]
+pub struct PreconditionOptions {
+    /// `coerce` knob is active for all parameters (`coerce_all`).
+    pub coerce_all: bool,
+    /// R-normalized names of parameters with a per-param `coerce` attribute.
+    pub coerce_params: HashSet<String>,
+}
+
+impl PreconditionOptions {
+    /// Returns `true` if the parameter `r_name` is coerced (function-wide or
+    /// per-param).
+    fn is_coerced(&self, r_name: &str) -> bool {
+        self.coerce_all || self.coerce_params.contains(r_name)
+    }
+}
+
 /// Classification of an R-side type check for a function parameter.
 ///
 /// Each variant maps to a specific set of `stopifnot()` assertions. Numeric checks
@@ -82,8 +113,30 @@ enum RTypeCheck {
     /// Non-numeric scalar: `is.<type>(x)` + length-1 check (2 assertions).
     /// The string is the R type predicate name (e.g., `"logical"`, `"character"`).
     Scalar(&'static str),
-    /// Numeric vector: type check only, no length constraint (1 assertion).
+    /// Floating-point numeric vector: loose `is.numeric || is.logical || is.raw`
+    /// (1 assertion). Used for `Vec<f64>` / `Vec<f32>` / `&[f64]` — doubles are
+    /// the natural representation, no truncation risk.
     VectorNumeric,
+    /// **INTSXP-only** integer vector: `is.integer(x)` (1 assertion). Used *only*
+    /// for `Vec<i32>` / `&[i32]` (issue #616). These use the native `RNativeType`
+    /// inbound path (`impl_vec_try_from_sexp_native!(i32)`), which requires
+    /// `INTSXP` and rejects `REALSXP` outright. The loose `is.numeric` predicate
+    /// previously let a `double` like `c(1, 2)` pass the R gate only to fail with
+    /// a cryptic "expected INTSXP, got REALSXP". `is.integer(x)` rejects every
+    /// `double` (whole or fractional) at the boundary with a clean message,
+    /// matching the actual Rust behaviour and closing the silent-truncation gap.
+    VectorIntegerStrict,
+    /// **Wide** integer vector accepting `REALSXP` whole-number values: the
+    /// lossless whole-number predicate (1 assertion). Used for every non-`i32`
+    /// integer element type — `Vec<i8>` / `Vec<i16>` / `Vec<u16>` / `Vec<u32>`
+    /// and the 64-bit family `Vec<i64>` / `Vec<u64>` / `Vec<isize>` / `Vec<usize>`
+    /// (issue #616). These use the coercing inbound path
+    /// (`impl_vec_try_from_sexp_numeric!` → `from_numeric_vec_with`) which accepts
+    /// INTSXP/REALSXP/RAWSXP/LGLSXP and rejects fractional doubles element-wise
+    /// (`f64: TryCoerce<T>` checks `self.fract() != 0`). We accept
+    /// integer/logical/raw **and** whole-number doubles, and reject genuinely
+    /// lossy fractional doubles (`1.5`) at the boundary.
+    VectorIntegerWide,
     /// Non-numeric vector: `is.<type>(x)` only (1 assertion).
     /// The string is the R type predicate name.
     Vector(&'static str),
@@ -103,6 +156,22 @@ enum RTypeCheck {
 fn numeric_type_check(param: &str) -> String {
     format!(
         "is.numeric({p}) || is.logical({p}) || is.raw({p})",
+        p = param
+    )
+}
+
+/// Build the lossless whole-number predicate for a `REALSXP`-accepting integer
+/// vector (the `i64` / `u64` / `isize` / `usize` family).
+///
+/// Accepts integer/logical/raw and whole-number doubles, rejects fractional
+/// doubles. The whole-number test is NA-safe (`is.na(p) | p == trunc(p)`):
+/// `NA_real_` passes (maps to `NA_integer_`), `1.5` fails. `Inf`/`NaN` satisfy
+/// `x == trunc(x)` in R but are caught by the Rust-side range/NaN conversion
+/// check instead.
+fn integer_vector_wide_check(param: &str) -> String {
+    format!(
+        "is.integer({p}) || is.logical({p}) || is.raw({p}) || \
+         (is.numeric({p}) && all(is.na({p}) | {p} == trunc({p})))",
         p = param
     )
 }
@@ -155,6 +224,14 @@ impl RTypeCheck {
                 format!("'{}' must be numeric, logical, or raw", param),
                 numeric_type_check(param),
             )],
+            RTypeCheck::VectorIntegerStrict => vec![RAssertion::new(
+                format!("'{}' must be an integer vector", param),
+                format!("is.integer({})", param),
+            )],
+            RTypeCheck::VectorIntegerWide => vec![RAssertion::new(
+                format!("'{}' must be integer or whole-number numeric", param),
+                integer_vector_wide_check(param),
+            )],
             RTypeCheck::Vector(r_type) => vec![RAssertion::new(
                 format!("'{}' must be {}", param, r_type),
                 format!("is.{}({})", r_type, param),
@@ -168,6 +245,21 @@ impl RTypeCheck {
                 format!("'{}' must be a list", param),
                 format!("is.list({})", param),
             )],
+        }
+    }
+
+    /// Tighten the check for a coerced parameter.
+    ///
+    /// `#[miniextendr(coerce)]` on an integer-element vector reads via the native
+    /// `&[i32]` slice (INTSXP-only), so a [`RTypeCheck::VectorIntegerWide`] that
+    /// would otherwise accept whole-number `REALSXP` must become a strict
+    /// `is.integer` gate (issue #616). Recurses through [`RTypeCheck::Nullable`].
+    /// All other checks are unaffected.
+    fn coerced(self) -> Self {
+        match self {
+            RTypeCheck::VectorIntegerWide => RTypeCheck::VectorIntegerStrict,
+            RTypeCheck::Nullable(inner) => RTypeCheck::Nullable(Box::new(inner.coerced())),
+            other => other,
         }
     }
 }
@@ -272,9 +364,29 @@ fn r_check_for_vec_element(elem_ty: &syn::Type) -> Option<RTypeCheck> {
     let ident = seg.ident.to_string();
 
     match ident.as_str() {
-        // Numeric vectors (accepts numeric, logical, and raw via R coercion)
-        "i32" | "f64" | "f32" | "i8" | "i16" | "u16" | "u32" | "i64" | "u64" | "isize"
-        | "usize" => Some(RTypeCheck::VectorNumeric),
+        // Floating-point vectors: doubles are the natural form, loose predicate.
+        "f64" | "f32" => Some(RTypeCheck::VectorNumeric),
+
+        // `Vec<i32>` / `&[i32]` is the *only* INTSXP-only integer vector (issue
+        // #616): its inbound conversion uses the native `RNativeType` path
+        // (`impl_vec_try_from_sexp_native!(i32)` in `from_r/collections.rs`),
+        // which rejects REALSXP outright. So the R gate is `is.integer` — a
+        // `double` like `c(1, 2)` fails cleanly at the boundary instead of
+        // producing a cryptic "expected INTSXP, got REALSXP". `u8` is handled
+        // below as a raw vector.
+        "i32" => Some(RTypeCheck::VectorIntegerStrict),
+
+        // Every other integer-element vector (`i8`/`i16`/`u16`/`u32` and the
+        // 64-bit family `i64`/`u64`/`isize`/`usize`) uses the coercing inbound
+        // path (`impl_vec_try_from_sexp_numeric!` → `from_numeric_vec_with`),
+        // which accepts INTSXP/REALSXP/RAWSXP/LGLSXP and rejects fractional
+        // doubles element-wise via `f64: TryCoerce<T>` (the `self.fract() != 0`
+        // check in `coerce.rs`). The R gate mirrors that: accept integer/logical/
+        // raw + whole-number doubles, reject fractional. (64-bit ints also arrive
+        // as REALSXP since R has no native 64-bit integer type.)
+        "i8" | "i16" | "u16" | "u32" | "i64" | "u64" | "isize" | "usize" => {
+            Some(RTypeCheck::VectorIntegerWide)
+        }
 
         // Logical vector
         "bool" => Some(RTypeCheck::Vector("logical")),
@@ -389,6 +501,7 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 pub fn build_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     skip_params: &HashSet<String>,
+    opts: &PreconditionOptions,
 ) -> PreconditionOutput {
     let mut args = Vec::new();
     let mut fallback_params = Vec::new();
@@ -412,8 +525,12 @@ pub fn build_precondition_checks(
             continue;
         }
 
-        // Map the Rust type to R assertions (known types)
-        if let Some(check) = r_check_for_type(pt.ty.as_ref()) {
+        // Map the Rust type to R assertions (known types). A coerced integer
+        // vector reads via `&[i32]` (INTSXP-only), so tighten its check (#616).
+        if let Some(mut check) = r_check_for_type(pt.ty.as_ref()) {
+            if opts.is_coerced(&r_name) {
+                check = check.coerced();
+            }
             for assertion in check.assertions(&r_name) {
                 args.push(assertion.to_stopifnot_arg());
             }
@@ -453,7 +570,7 @@ mod tests {
         syn::parse_str(s).unwrap()
     }
 
-    /// Helper to get assertions for a type
+    /// Helper to get assertions for a type.
     fn assertions_for(ty_str: &str, param: &str) -> Vec<RAssertion> {
         let ty = parse_type(ty_str);
         r_check_for_type(&ty).unwrap().assertions(param)
@@ -554,8 +671,9 @@ mod tests {
     }
 
     #[test]
-    fn vector_numeric_produces_one_assertion() {
-        for ty_str in &["Vec<f64>", "Vec<i8>", "Vec<i32>", "Vec<i64>"] {
+    fn vector_float_stays_loose() {
+        // Float vectors keep the loose predicate — doubles are the natural form.
+        for ty_str in &["Vec<f64>", "Vec<f32>"] {
             let asserts = assertions_for(ty_str, "x");
             assert_eq!(asserts.len(), 1, "{} should produce 1 assertion", ty_str);
             assert_eq!(
@@ -563,6 +681,93 @@ mod tests {
                 "is.numeric(x) || is.logical(x) || is.raw(x)"
             );
         }
+    }
+
+    #[test]
+    fn vector_i32_is_intsxp_strict() {
+        // `Vec<i32>` is the only INTSXP-only integer vector: the native inbound
+        // conversion rejects REALSXP, so the R gate is `is.integer(x)` — a clean
+        // boundary rejection for any double (issue #616).
+        let asserts = assertions_for("Vec<i32>", "x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(asserts[0].condition, "is.integer(x)");
+        assert_eq!(asserts[0].message, "'x' must be an integer vector");
+    }
+
+    #[test]
+    fn vector_integer_wide_is_lossless() {
+        // Every non-i32 integer element type uses the coercing inbound path that
+        // accepts whole REALSXP and rejects fractional → lossless whole-number gate.
+        for ty_str in &[
+            "Vec<i8>",
+            "Vec<i16>",
+            "Vec<u16>",
+            "Vec<u32>",
+            "Vec<i64>",
+            "Vec<u64>",
+            "Vec<isize>",
+            "Vec<usize>",
+        ] {
+            let asserts = assertions_for(ty_str, "x");
+            assert_eq!(asserts.len(), 1, "{} should produce 1 assertion", ty_str);
+            assert_eq!(
+                asserts[0].condition,
+                "is.integer(x) || is.logical(x) || is.raw(x) || \
+                 (is.numeric(x) && all(is.na(x) | x == trunc(x)))",
+                "{}",
+                ty_str
+            );
+            assert_eq!(
+                asserts[0].message,
+                "'x' must be integer or whole-number numeric"
+            );
+        }
+    }
+
+    #[test]
+    fn slice_int_is_strict() {
+        let ty: syn::Type = syn::parse_str("& [i32]").unwrap();
+        let asserts = r_check_for_type(&ty).unwrap().assertions("x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(asserts[0].condition, "is.integer(x)");
+    }
+
+    #[test]
+    fn coerced_wide_integer_vec_tightens_to_strict() {
+        // A coerced `Vec<u16>` reads via `&[i32]` (INTSXP-only), so its Wide gate
+        // must tighten to `is.integer` (#616).
+        let check = r_check_for_type(&parse_type("Vec<u16>")).unwrap();
+        let coerced = check.coerced();
+        let asserts = coerced.assertions("x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(asserts[0].condition, "is.integer(x)");
+    }
+
+    #[test]
+    fn coerced_does_not_change_float_or_i32() {
+        // i32 is already strict; floats are unaffected by coerce.
+        let i32_coerced = r_check_for_type(&parse_type("Vec<i32>")).unwrap().coerced();
+        assert_eq!(i32_coerced.assertions("x")[0].condition, "is.integer(x)");
+        let f64_coerced = r_check_for_type(&parse_type("Vec<f64>")).unwrap().coerced();
+        assert_eq!(
+            f64_coerced.assertions("x")[0].condition,
+            "is.numeric(x) || is.logical(x) || is.raw(x)"
+        );
+    }
+
+    #[test]
+    fn build_checks_coerced_param_uses_is_integer() {
+        let sig: syn::Signature = syn::parse_str("fn f(x: Vec<u16>)").unwrap();
+        let mut coerce_params = HashSet::new();
+        coerce_params.insert("x".to_string());
+        let opts = PreconditionOptions {
+            coerce_all: false,
+            coerce_params,
+        };
+        let output = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts);
+        let joined = output.static_checks.join("\n");
+        assert!(joined.contains("is.integer(x)"));
+        assert!(!joined.contains("trunc(x)"));
     }
 
     #[test]
@@ -638,7 +843,11 @@ mod tests {
     fn single_param_produces_multi_line() {
         // i32 produces 2 assertions → always multi-line now
         let sig: syn::Signature = syn::parse_str("fn f(n: i32)").unwrap();
-        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(
+            &sig.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
         let checks = &output.static_checks;
         assert_eq!(checks.len(), 4); // stopifnot( + 2 args + )
         assert_eq!(checks[0], "stopifnot(");
@@ -652,7 +861,11 @@ mod tests {
     fn vector_param_single_line() {
         // Vec<f64> produces 1 assertion → single line
         let sig: syn::Signature = syn::parse_str("fn f(x: Vec<f64>)").unwrap();
-        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(
+            &sig.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
         let checks = &output.static_checks;
         assert_eq!(checks.len(), 1);
         assert!(checks[0].starts_with("stopifnot("));
@@ -662,7 +875,11 @@ mod tests {
     #[test]
     fn two_scalar_params_produces_six_lines() {
         let sig: syn::Signature = syn::parse_str("fn f(a: i32, b: f64)").unwrap();
-        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(
+            &sig.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
         let checks = &output.static_checks;
         // stopifnot( + 4 assertions (2 per param) + )
         assert_eq!(checks.len(), 6);
@@ -679,7 +896,7 @@ mod tests {
         let sig: syn::Signature = syn::parse_str("fn f(n: i32, mode: String)").unwrap();
         let mut skip = HashSet::new();
         skip.insert("mode".to_string());
-        let output = build_precondition_checks(&sig.inputs, &skip);
+        let output = build_precondition_checks(&sig.inputs, &skip, &PreconditionOptions::default());
         // Only n's 2 assertions remain
         let joined = output.static_checks.join("\n");
         assert!(joined.contains("'n'"));
@@ -689,7 +906,11 @@ mod tests {
     #[test]
     fn unknown_type_produces_fallback() {
         let sig: syn::Signature = syn::parse_str("fn f(x: MyCustomType)").unwrap();
-        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(
+            &sig.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
         assert!(output.static_checks.is_empty());
         assert_eq!(output.fallback_params.len(), 1);
         assert_eq!(output.fallback_params[0].r_name, "x");
@@ -698,7 +919,11 @@ mod tests {
     #[test]
     fn mixed_known_and_unknown_types() {
         let sig: syn::Signature = syn::parse_str("fn f(a: i32, b: MyType, c: String)").unwrap();
-        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(
+            &sig.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
         // a (i32) and c (String) are known → static checks
         let joined = output.static_checks.join("\n");
         assert!(joined.contains("'a'"));
@@ -712,7 +937,11 @@ mod tests {
     #[test]
     fn sexp_not_fallback() {
         let sig: syn::Signature = syn::parse_str("fn f(x: SEXP)").unwrap();
-        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(
+            &sig.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
         assert!(output.static_checks.is_empty());
         assert!(output.fallback_params.is_empty());
     }

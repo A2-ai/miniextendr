@@ -366,9 +366,19 @@ impl<'a> MethodContext<'a> {
     /// any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
     /// those already have a stronger runtime guarantee than `stopifnot(is.character(...))`.
     pub fn precondition_checks(&self) -> Vec<String> {
+        // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so
+        // its precondition tightens to `is.integer` (#616). Impl methods carry
+        // coerce at method level (`method_attrs.coerce`, equivalent to
+        // `coerce_all`); there is no per-param coerce on the impl path (see
+        // ParsedMethod::per_param docs).
+        let opts = crate::r_preconditions::PreconditionOptions {
+            coerce_all: self.method.method_attrs.coerce,
+            coerce_params: std::collections::HashSet::new(),
+        };
         crate::r_preconditions::build_precondition_checks(
             &self.method.sig.inputs,
             &self.match_arg_skip_set(),
+            &opts,
         )
         .static_checks
     }
