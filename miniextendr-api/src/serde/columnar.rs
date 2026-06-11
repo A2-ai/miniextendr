@@ -347,8 +347,9 @@ where
 ///   schema returns an error pointing back to [`iter_to_dataframe`].
 /// - **Growing / heterogeneous schema** — rows that introduce new fields under
 ///   parallelism would produce divergent per-thread schemas needing a union
-///   merge. Out of scope for this homogeneous variant (see the follow-up issue
-///   referenced in the PR); use [`SerdeRowBuilder::grow_schema`] sequentially.
+///   merge. Out of scope for this homogeneous variant; use
+///   [`par_iter_to_dataframe_growing`] (union-schema, still parallel) or
+///   [`SerdeRowBuilder::grow_schema`] sequentially.
 ///
 /// # Equivalence
 ///
@@ -405,6 +406,99 @@ where
     Ok(unsafe { assemble_with_scope(&schema, &merged, nrow, scope) })
 }
 
+/// Parallel, growing-schema counterpart to [`par_iter_to_dataframe`]: the
+/// rayon-backed analogue of [`vec_to_dataframe`]'s union-schema path (#936).
+///
+/// Where [`par_iter_to_dataframe`] fixes the schema from the first row and
+/// rejects rows that introduce new fields, this variant computes the **union**
+/// of fields across *all* rows — rows may freely introduce fields the others
+/// lack (heterogeneous structs via untagged enums, maps with divergent keys).
+/// Fields a row doesn't carry are NA-padded, exactly like
+/// [`vec_to_dataframe`].
+///
+/// # How it stays parallel
+///
+/// Divergent per-thread schemas are the hard part of a growing schema under
+/// fan-out: one worker may discover field `x` while another discovers `y`,
+/// and neither sees the other's columns. Instead of reconciling per-thread
+/// column sets after the fact (re-indexing + NA back-fill per chunk), the
+/// build separates discovery from fill:
+///
+/// 1. **Parallel union discovery.** Each worker probes its chunk's rows into a
+///    local [`SchemaAccumulator`] (pure Rust, no R contact).
+/// 2. **Global resolution** (main thread, cheap). The per-chunk accumulators
+///    are merged in chunk (= row) order and resolved through the same
+///    candidate lattice as [`vec_to_dataframe`] — so cross-chunk type clashes
+///    behave identically to the sequential union path: first-seen wins,
+///    a typed probe beats a None-only (`Generic`) probe regardless of which
+///    chunk saw it.
+/// 3. **Parallel fill against the shared union schema.** Identical to the
+///    homogeneous fan-out: every worker fills a local column set with one slot
+///    per union field, NA-padding fields its rows lack. The ordered merge then
+///    needs no reconciliation at all.
+///
+/// # Schema scope
+///
+/// **Generic (list) columns are rejected**, same as [`par_iter_to_dataframe`]:
+/// per-cell SEXP allocation needs the R main thread. This includes the
+/// all-`None` case — a field that is `None` in *every* row resolves to
+/// `Generic` (nothing typed it) and is rejected here, where
+/// [`vec_to_dataframe`] would downgrade it to a logical-NA column at assembly.
+/// Fall back to [`vec_to_dataframe`] for such schemas.
+///
+/// # Equivalence
+///
+/// For any input whose union schema is fully atomic (no `Generic` column), the
+/// result is identical column-for-column and row-for-row to
+/// `vec_to_dataframe(&rows)`. Note this is the *union* semantics — it differs
+/// from sequential [`SerdeRowBuilder::grow_schema`], which types each column
+/// from its first-seen probe only (an early all-`None` window can lock a
+/// column to `Generic` there; the union path resolves it from any later row).
+///
+/// # Errors
+///
+/// - A row fails to serialize during the fill pass.
+/// - No row yields any fields (e.g. every row is a top-level `None`).
+/// - The union schema contains a `Generic` (list) column.
+/// - Column assembly fails.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[derive(serde::Serialize)]
+/// #[serde(untagged)]
+/// enum Row {
+///     Old { id: i32 },
+///     New { id: i32, score: f64 },
+/// }
+///
+/// let rows: Vec<Row> = load_mixed_rows();
+/// // Columns: id, score — `score` is NA on every `Old` row.
+/// let df = par_iter_to_dataframe_growing(rows, None)?;
+/// ```
+#[cfg(feature = "rayon")]
+pub fn par_iter_to_dataframe_growing<T, I>(
+    iter: I,
+    nrow_hint: Option<usize>,
+) -> Result<DataFrame, RSerdeError>
+where
+    // `Sync` (not just `Send`): rows are borrowed across rayon workers via
+    // `par_chunks`, so `&T: Send`, i.e. `T: Sync`.
+    T: Serialize + Send + Sync,
+    I: IntoIterator<Item = T>,
+{
+    let rows: Vec<T> = iter.into_iter().collect();
+    let Some((schema, merged, nrow)) = par_build_columns_growing(&rows, nrow_hint)? else {
+        // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
+        return Ok(unsafe { DataFrame::from_built_sexp(empty_dataframe()) });
+    };
+
+    // SAFETY: caller invokes this on the R main thread; column lengths all
+    // equal `nrow` (fill pads every union column on every row).
+    let scope = unsafe { crate::ProtectScope::new() };
+    Ok(unsafe { assemble_with_scope(&schema, &merged, nrow, scope) })
+}
+
 /// Pure-Rust core of [`par_iter_to_dataframe`]: discover the schema, fan the
 /// row→column fill out across rayon, and merge the per-thread chunk buffers
 /// back into one column set in row order.
@@ -423,8 +517,6 @@ fn par_build_columns<T>(
 where
     T: Serialize + Sync,
 {
-    use rayon::prelude::*;
-
     if rows.is_empty() {
         return Ok(None);
     }
@@ -450,20 +542,126 @@ where
         ));
     }
 
+    let merged = par_fill_merge(rows, &schema, nrow_hint, /* strict */ true)?;
+    Ok(Some((schema, merged, rows.len())))
+}
+
+/// Pure-Rust core of [`par_iter_to_dataframe_growing`]: union-discover the
+/// schema across all rows in parallel, resolve it globally, then fan the fill
+/// out and merge — see the public fn's docstring for the three-phase design.
+///
+/// Returns `Ok(None)` for empty input. Zero R-API contact, like
+/// [`par_build_columns`].
+#[cfg(feature = "rayon")]
+#[allow(clippy::type_complexity)]
+fn par_build_columns_growing<T>(
+    rows: &[T],
+    nrow_hint: Option<usize>,
+) -> Result<Option<(Schema, Vec<ColumnBuffer>, usize)>, RSerdeError>
+where
+    T: Serialize + Sync,
+{
+    use rayon::prelude::*;
+
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    // 1. Parallel union discovery: each worker probes its chunk into a local
+    //    accumulator. Per-row probe failures (e.g. top-level None) are
+    //    swallowed exactly like `vec_to_dataframe`'s Phase 1.
+    let chunk_size = par_chunk_size(rows.len());
+    let chunk_accs: Vec<SchemaAccumulator> = rows
+        .par_chunks(chunk_size)
+        .map(|chunk| {
+            let mut acc = SchemaAccumulator::new(SchemaMode::Union);
+            for row in chunk {
+                let _ = acc.feed(row);
+            }
+            acc
+        })
+        .collect();
+
+    // 2. Global resolution: merge per-chunk candidates in chunk (= row) order,
+    //    then resolve through the same lattice as the sequential union path.
+    //    Merging *unresolved* candidates (rather than per-chunk schemas) makes
+    //    the result identical to feeding every row into one accumulator.
+    let mut acc = SchemaAccumulator::new(SchemaMode::Union);
+    for chunk_acc in chunk_accs {
+        acc.merge(chunk_acc);
+    }
+    let schema = acc.finalize().map_err(|_| {
+        RSerdeError::Message(
+            "par_iter_to_dataframe_growing: no fields discovered from any row".into(),
+        )
+    })?;
+
+    // Reject Generic columns: per-cell SEXP allocation needs the R main
+    // thread. A union-resolved Generic means either a genuinely generic field
+    // (e.g. Vec<i32>) or a field that was None in every row — both belong on
+    // the sequential path.
+    if schema
+        .fields
+        .iter()
+        .any(|f| f.col_type == ColumnType::Generic)
+    {
+        return Err(RSerdeError::Message(
+            "par_iter_to_dataframe_growing: union schema contains a generic (list) column \
+             (a list-typed field, or a field that is None in every row), which requires \
+             the R main thread; use the sequential vec_to_dataframe instead"
+                .into(),
+        ));
+    }
+
+    // 3. Fill against the shared union schema. Non-strict, mirroring
+    //    `vec_to_dataframe`: the union absorbed every row's keys, so an
+    //    unmapped field can only be a discarded Compound shape (the documented
+    //    recursive-union limitation) — skip it rather than error.
+    let merged = par_fill_merge(rows, &schema, nrow_hint, /* strict */ false)?;
+    Ok(Some((schema, merged, rows.len())))
+}
+
+/// Chunk size for the parallel fan-outs: ~4 chunks per rayon thread for load
+/// balancing, but never tiny chunks.
+#[cfg(feature = "rayon")]
+fn par_chunk_size(nrow: usize) -> usize {
+    let nthreads = rayon::current_num_threads().max(1);
+    nrow.div_ceil(nthreads * 4).max(1)
+}
+
+/// Shared fill + merge fan-out for [`par_build_columns`] /
+/// [`par_build_columns_growing`]: split `rows` into contiguous chunks, fill a
+/// local `Vec<ColumnBuffer>` per chunk against the shared `schema`, then
+/// concatenate the chunk columns back in row order.
+///
+/// `strict` mirrors [`ColumnFiller`]'s flag: when true, a row touching a field
+/// absent from `schema` errors (homogeneous first-row contract); when false it
+/// is silently skipped (union schema — misses can only be discarded Compound
+/// shapes).
+#[cfg(feature = "rayon")]
+fn par_fill_merge<T>(
+    rows: &[T],
+    schema: &Schema,
+    nrow_hint: Option<usize>,
+    strict: bool,
+) -> Result<Vec<ColumnBuffer>, RSerdeError>
+where
+    T: Serialize + Sync,
+{
+    use rayon::prelude::*;
+
     let ncol = schema.fields.len();
     let nrow = rows.len();
-    let nthreads = rayon::current_num_threads().max(1);
-    // Aim for ~4 chunks per thread for load balancing, but never tiny chunks.
-    let chunk_size = nrow.div_ceil(nthreads * 4).max(1);
+    let chunk_size = par_chunk_size(nrow);
 
-    // 2. Fan out. Split into contiguous chunks; each worker fills a local
-    //    Vec<ColumnBuffer> against the shared schema with zero R API contact.
-    //    `par_chunks` + `map` + `collect::<Vec<_>>` preserves chunk order
-    //    (rayon's IndexedParallelIterator::collect is order-preserving).
+    // Fan out. Split into contiguous chunks; each worker fills a local
+    // Vec<ColumnBuffer> against the shared schema with zero R API contact.
+    // `par_chunks` + `map` + `collect::<Vec<_>>` preserves chunk order
+    // (rayon's IndexedParallelIterator::collect is order-preserving).
     let chunk_results: Vec<Result<Vec<ColumnBuffer>, RSerdeError>> = rows
         .par_chunks(chunk_size)
         .map(|chunk| {
-            let mut filler = ParChunkFiller::new(&schema, chunk.len());
+            let mut filler = ParChunkFiller::new(schema, chunk.len(), strict);
             for row in chunk {
                 filler.push(row)?;
             }
@@ -471,8 +669,8 @@ where
         })
         .collect();
 
-    // 3. Merge in row order. Seed with empty columns of the right variants,
-    //    then append each chunk's columns in iteration (= row) order.
+    // Merge in row order. Seed with empty columns of the right variants,
+    // then append each chunk's columns in iteration (= row) order.
     let mut merged: Vec<ColumnBuffer> = schema
         .fields
         .iter()
@@ -487,16 +685,19 @@ where
         }
     }
 
-    Ok(Some((schema, merged, nrow)))
+    Ok(merged)
 }
 
-/// Off-thread, scope-free column filler for [`par_iter_to_dataframe`].
+/// Off-thread, scope-free column filler for [`par_iter_to_dataframe`] and
+/// [`par_iter_to_dataframe_growing`].
 ///
 /// Mirrors [`ColumnFiller`] but operates on an owned `Vec<ColumnBuffer>` with no
 /// [`ProtectScope`] and rejects the `Generic` path — so it carries no R-side
-/// state and is safe to run on a rayon worker. It strictly validates every row
-/// against the shared schema (a row introducing an unknown field errors), just
-/// like the sequential [`SerdeRowBuilder`] first-row contract.
+/// state and is safe to run on a rayon worker. `strict` carries
+/// [`ColumnFiller`]'s flag: the homogeneous path validates every row against
+/// the first-row schema (an unknown field errors); the growing path fills
+/// against a union schema where an unmapped field can only be a discarded
+/// Compound shape, skipped like `vec_to_dataframe` does.
 #[cfg(feature = "rayon")]
 struct ParChunkFiller<'a> {
     columns: Vec<ColumnBuffer>,
@@ -505,11 +706,12 @@ struct ParChunkFiller<'a> {
     /// `pad_unfilled`.
     filled: Vec<bool>,
     ncol: usize,
+    strict: bool,
 }
 
 #[cfg(feature = "rayon")]
 impl<'a> ParChunkFiller<'a> {
-    fn new(schema: &'a Schema, capacity: usize) -> Self {
+    fn new(schema: &'a Schema, capacity: usize, strict: bool) -> Self {
         let columns = schema
             .fields
             .iter()
@@ -521,6 +723,7 @@ impl<'a> ParChunkFiller<'a> {
             field_map: &schema.field_map,
             filled: vec![false; ncol],
             ncol,
+            strict,
         }
     }
 
@@ -533,6 +736,7 @@ impl<'a> ParChunkFiller<'a> {
             col_count: self.ncol,
             is_top_level: true,
             pending_key: None,
+            strict: self.strict,
         };
         row.serialize(sub)
     }
@@ -553,6 +757,7 @@ struct ParColumnFiller<'a> {
     col_count: usize,
     is_top_level: bool,
     pending_key: Option<String>,
+    strict: bool,
 }
 
 #[cfg(feature = "rayon")]
@@ -581,13 +786,19 @@ impl ParColumnFiller<'_> {
                     col_count: *col_count,
                     is_top_level: false,
                     pending_key: None,
+                    strict: self.strict,
                 };
                 value.serialize(sub)?;
             }
             None => {
-                return Err(RSerdeError::Message(format!(
-                    "par_iter_to_dataframe: row introduced field {key:?} not in initial schema"
-                )));
+                // See ColumnFiller::fill_field — strict enforces the
+                // homogeneous first-row contract; the union (growing) path
+                // skips, since its schema absorbed every row's keys.
+                if self.strict {
+                    return Err(RSerdeError::Message(format!(
+                        "par_iter_to_dataframe: row introduced field {key:?} not in initial schema"
+                    )));
+                }
             }
         }
         Ok(())
@@ -1325,6 +1536,36 @@ impl SchemaAccumulator {
             self.candidates.get_mut(key).unwrap().push(candidate);
         }
         Ok(())
+    }
+
+    /// Absorb another accumulator's *unresolved* candidates, preserving
+    /// first-seen key order (`self`'s keys first, then `other`'s new keys).
+    ///
+    /// Feeding rows chunk-by-chunk into per-chunk accumulators and merging
+    /// them in chunk order is equivalent to feeding every row into one
+    /// accumulator: per-key candidate lists concatenate in row order, and
+    /// key first-appearance order is preserved. Used by the parallel union
+    /// discovery in [`par_build_columns_growing`].
+    #[cfg(feature = "rayon")]
+    fn merge(&mut self, other: SchemaAccumulator) {
+        // Register other's new keys in first-seen order. Every row behind
+        // `self` precedes every row behind `other`, so appending other's
+        // unseen keys after self's preserves global first-appearance order.
+        for key in &other.key_order {
+            if !self.candidates.contains_key(key) {
+                self.key_order.push(key.clone());
+                self.candidates.insert(key.clone(), Vec::new());
+            }
+        }
+        // Move the candidate lists over. HashMap iteration order is fine
+        // here: per-key lists are independent, and within a key self's
+        // (earlier-row) candidates already precede the appended ones.
+        for (key, mut cands) in other.candidates {
+            self.candidates
+                .get_mut(&key)
+                .expect("key registered above")
+                .append(&mut cands);
+        }
     }
 
     /// Resolve each key's candidate list into the best single candidate and
@@ -4198,7 +4439,13 @@ mod tests {
                     assert_eq!(x, y, "integer column {i}")
                 }
                 (ColumnBuffer::Real(x), ColumnBuffer::Real(y)) => {
-                    assert_eq!(x, y, "real column {i}")
+                    // Bitwise: NA_REAL is a NaN, so `==` would reject equal
+                    // columns containing NA cells.
+                    assert_eq!(x.len(), y.len(), "real column {i} length");
+                    assert!(
+                        x.iter().zip(y).all(|(a, b)| a.to_bits() == b.to_bits()),
+                        "real column {i}"
+                    );
                 }
                 (ColumnBuffer::Character(x), ColumnBuffer::Character(y)) => {
                     assert_eq!(x, y, "character column {i}")
@@ -4369,6 +4616,300 @@ mod tests {
             }
             other => panic!("expected Message variant, got {other:?}"),
         }
+    }
+
+    // endregion
+
+    // region: par_iter_to_dataframe_growing (#936)
+
+    /// Build the merged column buffers the *sequential union* way, for
+    /// equivalence comparison. Mirrors `vec_to_dataframe`'s Phases 1–3 minus
+    /// the final R assembly. Only valid for Generic-free schemas (no SEXP is
+    /// ever pushed, so the ProtectScope stays empty).
+    #[cfg(feature = "rayon")]
+    fn seq_union_columns<T: Serialize>(rows: &[T]) -> (Vec<String>, Vec<ColumnBuffer>) {
+        let mut acc = SchemaAccumulator::new(SchemaMode::Union);
+        for row in rows {
+            let _ = acc.feed(row);
+        }
+        let schema = acc.finalize().expect("union schema");
+        let ncol = schema.fields.len();
+        let mut columns: Vec<ColumnBuffer> = schema
+            .fields
+            .iter()
+            .map(|f| ColumnBuffer::new(f.col_type, rows.len()))
+            .collect();
+        // SAFETY (test): no Generic column → the scope is never written to.
+        let scope = unsafe { crate::ProtectScope::new() };
+        let mut filled = vec![false; ncol];
+        for row in rows {
+            let filler = ColumnFiller {
+                columns: &mut columns,
+                field_map: &schema.field_map,
+                filled: &mut filled,
+                col_start: 0,
+                col_count: ncol,
+                is_top_level: true,
+                pending_key: None,
+                scope: &scope,
+                strict: false,
+            };
+            row.serialize(filler).expect("sequential fill");
+        }
+        let names = schema.fields.iter().map(|f| f.name.clone()).collect();
+        (names, columns)
+    }
+
+    /// Heterogeneous rows for the growing tests: `score` appears only on
+    /// `New` rows, `legacy` only on `Old` rows.
+    #[cfg(feature = "rayon")]
+    #[derive(Serialize)]
+    #[serde(untagged)]
+    enum MixedRow {
+        Old { id: i32, legacy: String },
+        New { id: i32, score: f64 },
+    }
+
+    /// The growing build matches `vec_to_dataframe`'s union semantics column
+    /// for column and row for row, with fields introduced mid-stream (across
+    /// chunk boundaries) NA-padded on the rows that lack them.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_growing_equivalent_to_sequential_union() {
+        // 5_000 rows so the fan-out splits into multiple chunks; the variant
+        // flips at i % 3 so every chunk sees both shapes, and `legacy` /
+        // `score` each first appear early.
+        let rows: Vec<MixedRow> = (0..5_000)
+            .map(|i| {
+                if i % 3 == 0 {
+                    MixedRow::Old {
+                        id: i,
+                        legacy: format!("v{i}"),
+                    }
+                } else {
+                    MixedRow::New {
+                        id: i,
+                        score: f64::from(i) * 0.25,
+                    }
+                }
+            })
+            .collect();
+
+        let (seq_names, seq_cols) = seq_union_columns(&rows);
+        let (schema, par_cols, nrow) = par_build_columns_growing(&rows, None)
+            .expect("growing build ok")
+            .expect("non-empty");
+
+        assert_eq!(nrow, 5_000);
+        let par_names: Vec<String> = schema.fields.iter().map(|f| f.name.clone()).collect();
+        assert_eq!(par_names, seq_names, "column names + order must match");
+        columns_eq(&par_cols, &seq_cols);
+    }
+
+    /// A field that first appears in the *last* chunk back-fills NA across
+    /// every earlier chunk, and key order follows first appearance.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_growing_backfills_field_from_late_chunk() {
+        let rows: Vec<MixedRow> = (0..4_000)
+            .map(|i| {
+                if i < 3_999 {
+                    MixedRow::New {
+                        id: i,
+                        score: f64::from(i),
+                    }
+                } else {
+                    // Only the final row carries `legacy`.
+                    MixedRow::Old {
+                        id: i,
+                        legacy: "tail".into(),
+                    }
+                }
+            })
+            .collect();
+
+        let (schema, cols, nrow) = par_build_columns_growing(&rows, None)
+            .expect("growing build ok")
+            .expect("non-empty");
+
+        assert_eq!(nrow, 4_000);
+        let names: Vec<&str> = schema.fields.iter().map(|f| f.name.as_str()).collect();
+        // `legacy` was discovered last → appended after first-seen fields.
+        assert_eq!(names, ["id", "score", "legacy"]);
+        match &cols[2] {
+            ColumnBuffer::Character(v) => {
+                assert_eq!(v.len(), 4_000);
+                assert!(v[..3_999].iter().all(Option::is_none), "expected NA prefix");
+                assert_eq!(v[3_999].as_deref(), Some("tail"));
+            }
+            _ => panic!("expected character `legacy` column"),
+        }
+        // `score` is NA on the one Old row.
+        match &cols[1] {
+            ColumnBuffer::Real(v) => assert!(v[3_999].is_nan(), "score must be NA on Old row"),
+            _ => panic!("expected real `score` column"),
+        }
+    }
+
+    /// Global candidate resolution: a field that is `None` for every row a
+    /// chunk sees (which a chunk-local schema would type as Generic) still
+    /// resolves to its typed column from another chunk's probe — same as the
+    /// sequential union path, and the case a per-chunk-schema merge would get
+    /// wrong.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_growing_resolves_none_window_against_late_typed_probe() {
+        #[derive(Serialize)]
+        struct Row {
+            id: i32,
+            maybe: Option<i32>,
+        }
+        // `maybe` is None for the first 3_999 rows (many whole chunks) and
+        // typed only by the final row.
+        let rows: Vec<Row> = (0..4_000)
+            .map(|i| Row {
+                id: i,
+                maybe: (i == 3_999).then_some(7),
+            })
+            .collect();
+
+        let (schema, cols, _) = par_build_columns_growing(&rows, None)
+            .expect("growing build ok")
+            .expect("non-empty");
+
+        assert_eq!(schema.fields[1].col_type, ColumnType::Integer);
+        match &cols[1] {
+            ColumnBuffer::Integer(v) => {
+                assert!(
+                    v[..3_999].iter().all(|&x| x == i32::MIN),
+                    "expected NA prefix"
+                );
+                assert_eq!(v[3_999], 7);
+            }
+            _ => panic!("expected integer `maybe` column"),
+        }
+    }
+
+    /// A union schema containing a Generic column (here: a field that is None
+    /// in every row) is rejected with a pointer back to the sequential path.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_growing_rejects_generic_column() {
+        #[derive(Serialize)]
+        struct Row {
+            id: i32,
+            maybe: Option<i32>,
+        }
+        let rows: Vec<Row> = (0..100).map(|i| Row { id: i, maybe: None }).collect();
+        let err = par_build_columns_growing(&rows, None)
+            .err()
+            .expect("all-None column must be rejected");
+        match err {
+            RSerdeError::Message(m) => {
+                assert!(m.contains("generic"), "unexpected error: {m}")
+            }
+            other => panic!("expected Message variant, got {other:?}"),
+        }
+    }
+
+    /// Cross-chunk type clash follows the sequential union behaviour:
+    /// first-seen type wins; mismatched later values land as NA.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_growing_type_clash_first_seen_wins() {
+        #[derive(Serialize)]
+        #[serde(untagged)]
+        enum Row {
+            I { x: i32 },
+            S { x: String },
+        }
+        // Integers fill the first chunks; strings only appear near the end.
+        let rows: Vec<Row> = (0..4_000)
+            .map(|i| {
+                if i < 3_998 {
+                    Row::I { x: i }
+                } else {
+                    Row::S { x: format!("s{i}") }
+                }
+            })
+            .collect();
+
+        let (seq_names, seq_cols) = seq_union_columns(&rows);
+        let (schema, par_cols, _) = par_build_columns_growing(&rows, None)
+            .expect("growing build ok")
+            .expect("non-empty");
+
+        assert_eq!(schema.fields[0].col_type, ColumnType::Integer);
+        let par_names: Vec<String> = schema.fields.iter().map(|f| f.name.clone()).collect();
+        assert_eq!(par_names, seq_names);
+        columns_eq(&par_cols, &seq_cols);
+        match &par_cols[0] {
+            ColumnBuffer::Integer(v) => {
+                assert_eq!(v[0], 0);
+                assert_eq!(v[3_999], i32::MIN, "string cell must coerce to NA");
+            }
+            _ => panic!("expected integer column"),
+        }
+    }
+
+    /// Empty input yields `Ok(None)`, same as the homogeneous core.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_growing_empty_is_none() {
+        #[derive(Serialize)]
+        struct Row {
+            x: i32,
+        }
+        let rows: Vec<Row> = Vec::new();
+        let out = par_build_columns_growing(&rows, None).expect("growing build ok");
+        assert!(out.is_none(), "empty input should produce None");
+    }
+
+    /// Merging per-chunk accumulators is candidate-for-candidate equivalent to
+    /// feeding all rows into one accumulator (key order and resolved types).
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn schema_accumulator_merge_matches_single_feed() {
+        let rows: Vec<MixedRow> = (0..60)
+            .map(|i| {
+                if i % 2 == 0 {
+                    MixedRow::Old {
+                        id: i,
+                        legacy: "x".into(),
+                    }
+                } else {
+                    MixedRow::New { id: i, score: 1.0 }
+                }
+            })
+            .collect();
+
+        let mut single = SchemaAccumulator::new(SchemaMode::Union);
+        for row in &rows {
+            let _ = single.feed(row);
+        }
+        let single_schema = single.finalize().expect("single schema");
+
+        let mut merged = SchemaAccumulator::new(SchemaMode::Union);
+        for chunk in rows.chunks(7) {
+            let mut acc = SchemaAccumulator::new(SchemaMode::Union);
+            for row in chunk {
+                let _ = acc.feed(row);
+            }
+            merged.merge(acc);
+        }
+        let merged_schema = merged.finalize().expect("merged schema");
+
+        let single_fields: Vec<(String, ColumnType)> = single_schema
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.col_type))
+            .collect();
+        let merged_fields: Vec<(String, ColumnType)> = merged_schema
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.col_type))
+            .collect();
+        assert_eq!(merged_fields, single_fields);
     }
 
     // endregion

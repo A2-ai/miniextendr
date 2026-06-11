@@ -13,9 +13,13 @@ miniextendr-api = { workspace = true }
 miniextendr-engine = { workspace = true }
 slotmap = "1"
 indexmap = "2"
+# Direct dep (not just via miniextendr-api): the `#[derive(Serialize)]` in
+# benches expands to `::serde` paths, which must resolve in this crate.
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [features]
 rayon = ["miniextendr-api/rayon"]
+serde = ["dep:serde", "miniextendr-api/serde"]
 connections = ["miniextendr-api/connections"]
 refcount-fast-hash = ["miniextendr-api/refcount-fast-hash"]
 

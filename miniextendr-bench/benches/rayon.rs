@@ -159,3 +159,60 @@ fn dataframe_few_long_column_granular() {
 }
 
 // endregion
+
+// region: serde growing-schema build — sequential union vs parallel (#936)
+//
+// `par_iter_to_dataframe_growing` is the rayon analogue of
+// `vec_to_dataframe`'s union path. Both pay two serialization passes per row
+// (union discovery + fill); the parallel variant fans both passes out across
+// chunks. This pair answers the #936 cost-model question head-to-head on a
+// heterogeneous input (two untagged-enum shapes, divergent fields).
+
+#[cfg(all(feature = "rayon", feature = "serde"))]
+mod serde_growing {
+    use miniextendr_api::serde::{Serialize, par_iter_to_dataframe_growing, vec_to_dataframe};
+    use miniextendr_api::worker::with_r_thread;
+    use std::sync::LazyLock;
+
+    const GROW_ROWS: usize = 500_000;
+
+    #[derive(Serialize)]
+    #[serde(untagged)]
+    enum MixedRow {
+        Old { id: i32, legacy: String },
+        New { id: i32, score: f64 },
+    }
+
+    static ROWS: LazyLock<Vec<MixedRow>> = LazyLock::new(|| {
+        (0..GROW_ROWS as i32)
+            .map(|i| {
+                if i % 3 == 0 {
+                    MixedRow::Old {
+                        id: i,
+                        legacy: format!("v{i}"),
+                    }
+                } else {
+                    MixedRow::New {
+                        id: i,
+                        score: f64::from(i) * 0.25,
+                    }
+                }
+            })
+            .collect()
+    });
+
+    #[divan::bench(sample_count = 10)]
+    fn dataframe_growing_sequential_union() {
+        let df = with_r_thread(|| vec_to_dataframe(ROWS.as_slice()).unwrap());
+        divan::black_box(df);
+    }
+
+    #[divan::bench(sample_count = 10)]
+    fn dataframe_growing_parallel() {
+        let df =
+            with_r_thread(|| par_iter_to_dataframe_growing(ROWS.iter(), Some(GROW_ROWS)).unwrap());
+        divan::black_box(df);
+    }
+}
+
+// endregion
