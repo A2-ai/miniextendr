@@ -223,6 +223,39 @@ test_that("reader gctorture fixture drives the map-column read path", {
   expect_no_error(gc_stress_reader_map_column())
 })
 
+# region: non-String-keyed map readers (#919) -----------------------------------
+
+test_that("BTreeMap<i32, f64> parallel list-columns round-trip (sequential)", {
+  df <- data.frame(id = c(1L, 2L, 3L))
+  # tally_keys: list of integer vectors; tally_values: list of double vectors.
+  # BTreeMap writes keys sorted, so we keep inputs pre-sorted for equality.
+  df$tally_keys   <- I(list(c(1L, 2L), c(10L), integer(0)))
+  df$tally_values <- I(list(c(1.0, 2.0), c(10.0), double(0)))
+  out <- with_int_map_roundtrip(df)
+  expect_s3_class(out, "data.frame")
+  expect_equal(out$id, df$id)
+  expect_equal(unclass(out$tally_keys),   list(c(1L, 2L), c(10L), integer(0)))
+  expect_equal(unclass(out$tally_values), list(c(1.0, 2.0), c(10.0), double(0)))
+})
+
+test_that("BTreeMap<i32, f64> parallel list-columns round-trip (parallel)", {
+  skip_if_missing_feature("rayon")
+  df <- data.frame(id = c(1L, 2L))
+  df$tally_keys   <- I(list(c(3L, 5L), c(7L)))
+  df$tally_values <- I(list(c(0.3, 0.5), c(0.7)))
+  out_seq <- with_int_map_roundtrip(df)
+  out_par <- with_int_map_roundtrip_par(df)
+  expect_equal(out_par$id, out_seq$id)
+  expect_equal(unclass(out_par$tally_keys),   unclass(out_seq$tally_keys))
+  expect_equal(unclass(out_par$tally_values), unclass(out_seq$tally_values))
+})
+
+test_that("non-String-keyed map gctorture fixture exercises empty-map row", {
+  expect_no_error(gc_stress_reader_int_map())
+})
+
+# endregion
+
 test_that("parallel readers match the sequential result", {
   skip_if_missing_feature("rayon")
 

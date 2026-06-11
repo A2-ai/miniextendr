@@ -570,6 +570,9 @@ fn field_reader_capable(rf: &ResolvedField) -> bool {
         ResolvedField::ExpandedVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
         ResolvedField::AutoExpandVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
         ResolvedField::Struct(_) => true,
+        ResolvedField::Map(d) => {
+            is_bare_reader_scalar_ty(&d.key_ty) && is_bare_reader_scalar_ty(&d.val_ty)
+        }
     }
 }
 
@@ -603,6 +606,27 @@ enum ResolvedField {
     /// Companion holds `Vec<Inner>`; `into_data_frame` calls `Inner::to_dataframe`
     /// and flattens columns under the `<base>_` prefix.
     Struct(Box<StructFieldData>),
+    /// Non-String-keyed `HashMap<K,V>` / `BTreeMap<K,V>` field (#919).
+    /// Expands to two parallel list-columns `<base>_keys` / `<base>_values`,
+    /// each a `Vec<Vec<K>>` / `Vec<Vec<V>>` (VECSXP of typed vectors). The
+    /// reader zips `keys[i]` with `values[i]` back into the map type.
+    Map(Box<MapFieldData>),
+}
+
+/// Data for [`ResolvedField::Map`] (struct path, non-String-keyed maps, #919).
+struct MapFieldData {
+    /// Rust field name (for access on the row type).
+    rust_name: syn::Ident,
+    /// Column name base — keys col = `<base>_keys`, values col = `<base>_values`.
+    base_name: String,
+    /// Key type `K`.
+    key_ty: syn::Type,
+    /// Value type `V`.
+    val_ty: syn::Type,
+    /// Full map type `HashMap<K,V>` / `BTreeMap<K,V>` (used in reader zip).
+    map_ty: syn::Type,
+    /// Index in tuple struct (None for named).
+    tuple_index: Option<syn::Index>,
 }
 
 /// Data for [`ResolvedField::Single`].
@@ -881,19 +905,79 @@ fn resolve_struct_field(
                     "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                 ));
             }
-            // Struct-path map fields write as one opaque list-of-named-lists
-            // column (`Vec<map>: IntoR`). The same shape reads back whole via
-            // `Vec<map>: TryFromSexp`, so a map field is reader-capable (#764)
-            // exactly when that impl applies: `String` keys, a reader-scalar
-            // value type, and the default hasher (two type args).
-            let map_reader = match kind {
-                FieldTypeKind::Map { key_ty, val_ty } => {
-                    is_string_ty(key_ty)
-                        && is_reader_scalar_ty(val_ty)
-                        && generic_type_arg_count(ty) == 2
+            // Struct-path map fields:
+            //
+            // - `String`-keyed + reader-scalar value + 2 type args (default hasher):
+            //   write as one opaque list-of-named-lists column (`Vec<map>: IntoR`).
+            //   Reader-capable via `Vec<map>: TryFromSexp` (#764). Falls through
+            //   to `Single` with `map_reader: true` — unchanged.
+            //
+            // - Non-String bare-reader-scalar key + bare-reader-scalar value + 2 type args:
+            //   expand to two parallel list-columns `<base>_keys` / `<base>_values` (#919).
+            //   `Vec<Vec<K>>: IntoR` and `Vec<Vec<V>>: IntoR` work via the `T: RNativeType`
+            //   blanket. Float keys (`f32`/`f64`) are also bare-reader-scalar but lack
+            //   `Eq + Hash` / `Ord`, so reject them with a clear error.
+            //
+            // - Custom hasher (3+ type args): fall through to `Single` with no reader
+            //   (keeps existing behaviour for `HashMap<K, V, S>`).
+            //
+            // - Non-scalar key or value: emit a clear error directing to `as_list`.
+            if let FieldTypeKind::Map { key_ty, val_ty } = kind {
+                let two_args = generic_type_arg_count(ty) == 2;
+                if is_string_ty(key_ty) && is_reader_scalar_ty(val_ty) && two_args {
+                    // String-keyed — existing path (#764).
+                    return Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
+                        rust_name,
+                        col_name,
+                        col_name_str,
+                        ty: ty.clone(),
+                        tuple_index,
+                        needs_into_list: false,
+                        list_elem_ty: None,
+                        map_reader: true,
+                    }))));
                 }
-                _ => false,
-            };
+                // Float key check: f32/f64 classify as bare_reader_scalar but are
+                // neither Eq+Hash nor Ord, so they can't be a map key at all.
+                let is_float_ty = |t: &syn::Type| -> bool {
+                    if let syn::Type::Path(tp) = t
+                        && let Some(seg) = tp.path.segments.last()
+                        && matches!(seg.arguments, syn::PathArguments::None)
+                    {
+                        let n = seg.ident.to_string();
+                        return n == "f32" || n == "f64";
+                    }
+                    false
+                };
+                if is_float_ty(key_ty) {
+                    return Err(syn::Error::new_spanned(
+                        ty,
+                        "HashMap/BTreeMap with float keys is not supported \
+                         (f32/f64 are not Eq+Hash/Ord); use a newtype wrapper \
+                         or `#[dataframe(as_list)]`",
+                    ));
+                }
+                if two_args && is_bare_reader_scalar_ty(key_ty) && is_bare_reader_scalar_ty(val_ty)
+                {
+                    // Non-String bare-scalar keyed — new parallel _keys/_values path (#919).
+                    return Ok(Some(ResolvedField::Map(Box::new(MapFieldData {
+                        rust_name,
+                        base_name: col_name_str,
+                        key_ty: key_ty.clone(),
+                        val_ty: val_ty.clone(),
+                        map_ty: ty.clone(),
+                        tuple_index,
+                    }))));
+                }
+                if two_args
+                    && (!is_bare_reader_scalar_ty(key_ty) || !is_bare_reader_scalar_ty(val_ty))
+                {
+                    // Non-scalar key or value (and not String-keyed) — opaque, no reader.
+                    // Fall through to Single below.
+                }
+                // 3+ type args (custom hasher) or non-scalar — Single with no reader.
+            }
+            let map_reader = false;
             Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
                 rust_name,
                 col_name,
@@ -1151,6 +1235,28 @@ fn derive_struct_dataframe(
             }
             // AutoExpandVec / Struct do not produce FlatCols — handled separately.
             ResolvedField::AutoExpandVec(..) | ResolvedField::Struct(..) => {}
+            // Map (#919): two parallel list-columns `<base>_keys` / `<base>_values`.
+            // Each is a `Vec<Vec<K>>` / `Vec<Vec<V>>` (VECSXP of typed vectors).
+            ResolvedField::Map(data) => {
+                let keys_col_name = format!("{}_keys", data.base_name);
+                let vals_col_name = format!("{}_values", data.base_name);
+                let key_ty = &data.key_ty;
+                let val_ty = &data.val_ty;
+                let keys_vec_ty: syn::Type = syn::parse_quote!(Vec<#key_ty>);
+                let vals_vec_ty: syn::Type = syn::parse_quote!(Vec<#val_ty>);
+                flat_cols.push(FlatCol {
+                    df_field: format_ident!("{}_keys", data.base_name),
+                    col_name_str: keys_col_name,
+                    vec_elem_ty: keys_vec_ty,
+                    needs_into_list: false,
+                });
+                flat_cols.push(FlatCol {
+                    df_field: format_ident!("{}_values", data.base_name),
+                    col_name_str: vals_col_name,
+                    vec_elem_ty: vals_vec_ty,
+                    needs_into_list: false,
+                });
+            }
         }
     }
     // endregion
@@ -1431,6 +1537,23 @@ fn derive_struct_dataframe(
                         }
                     }
                 }
+                // Map (#919): push two list-columns `<base>_keys` / `<base>_values`.
+                ResolvedField::Map(data) => {
+                    let keys_ident = format_ident!("{}_keys", data.base_name);
+                    let vals_ident = format_ident!("{}_values", data.base_name);
+                    let keys_name = format!("{}_keys", data.base_name);
+                    let vals_name = format!("{}_values", data.base_name);
+                    quote! {
+                        __df_pairs.push((
+                            #keys_name.to_string(),
+                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#keys_ident)),
+                        ));
+                        __df_pairs.push((
+                            #vals_name.to_string(),
+                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#vals_ident)),
+                        ));
+                    }
+                }
             })
             .collect();
 
@@ -1588,6 +1711,24 @@ fn derive_struct_dataframe(
                 };
                 let col_name = &data.col_name;
                 quote! { #col_name.push(#access); }
+            }
+            // Map (#919): unzip into parallel keys/values vecs.
+            ResolvedField::Map(data) => {
+                let access = if let Some(idx) = &data.tuple_index {
+                    quote! { row.#idx }
+                } else {
+                    let rust_name = &data.rust_name;
+                    quote! { row.#rust_name }
+                };
+                let keys_col = format_ident!("{}_keys", data.base_name);
+                let vals_col = format_ident!("{}_values", data.base_name);
+                quote! {
+                    let (__mx_keys, __mx_vals) = #access
+                        .into_iter()
+                        .unzip::<_, _, Vec<_>, Vec<_>>();
+                    #keys_col.push(__mx_keys);
+                    #vals_col.push(__mx_vals);
+                }
             }
         })
         .collect();
@@ -1848,6 +1989,24 @@ fn derive_struct_dataframe(
                 // Struct fields (#485) are collected in the sequential pre-pass
                 // above; nothing to write in the parallel loop.
                 ResolvedField::Struct(_) => TokenStream::new(),
+                // Map (#919): unzip into parallel keys/values vecs via scatter-write.
+                ResolvedField::Map(data) => {
+                    let access = if let Some(idx) = &data.tuple_index {
+                        quote! { __row.#idx }
+                    } else {
+                        let rust_name = &data.rust_name;
+                        quote! { __row.#rust_name }
+                    };
+                    let w_keys = format_ident!("__w_{}_keys", data.base_name);
+                    let w_vals = format_ident!("__w_{}_values", data.base_name);
+                    quote! {
+                        let (__mx_keys, __mx_vals) = #access
+                            .into_iter()
+                            .unzip::<_, _, Vec<_>, Vec<_>>();
+                        #w_keys.write(__i, __mx_keys);
+                        #w_vals.write(__i, __mx_vals);
+                    }
+                }
             })
             .collect();
 
@@ -2386,6 +2545,89 @@ fn derive_struct_dataframe(
                     seq_decls.push(quote! { let mut #it_var = #vec_var.into_iter(); });
                     seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
                     par_builds.push(quote! { #rust_name: #vec_var[__i].clone() });
+                }
+                // Non-String-keyed map (#919): read two parallel list-columns
+                // `<base>_keys` / `<base>_values` (VECSXP of typed vectors), then
+                // zip keys[i] with values[i] back into the map type per row.
+                // NULL VECSXP elements → empty Vec (not None — struct path uses owned cols).
+                // All SEXP access happens in `extracts` on the R thread; the
+                // parallel iterator touches only owned Rust `Vec<Vec<K>>` / `Vec<Vec<V>>`.
+                ResolvedField::Map(data) => {
+                    let rust_name = &data.rust_name;
+                    let key_ty = &data.key_ty;
+                    let val_ty = &data.val_ty;
+                    let map_ty = &data.map_ty;
+                    let base = &data.base_name;
+                    let keys_col_name = format!("{}_keys", base);
+                    let vals_col_name = format!("{}_values", base);
+                    let keys_var = format_ident!("__mapcol_{}_keys", base.replace('-', "_"));
+                    let vals_var = format_ident!("__mapcol_{}_values", base.replace('-', "_"));
+                    let keys_it_var = format_ident!("__mapcol_it_{}_keys", base.replace('-', "_"));
+                    let vals_it_var =
+                        format_ident!("__mapcol_it_{}_values", base.replace('-', "_"));
+
+                    // Extract helper: walk a VECSXP list-column; NULL/nil element → empty Vec.
+                    let extract_col = |col_var: &syn::Ident,
+                                       col_name: &str,
+                                       elem_ty: &syn::Type| {
+                        quote! {
+                            let #col_var: Vec<Vec<#elem_ty>> = {
+                                let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
+                                    ::std::format!("column `{}` is missing from the data.frame", #col_name)
+                                })?;
+                                if <::miniextendr_api::SEXP as ::miniextendr_api::SexpExt>::is_list(&__col_sexp) {
+                                    let __list = unsafe {
+                                        ::miniextendr_api::list::List::from_raw(__col_sexp)
+                                    };
+                                    let __len = __list.len();
+                                    let mut __v: Vec<Vec<#elem_ty>> =
+                                        ::std::vec::Vec::with_capacity(__len as usize);
+                                    for __j in 0..__len {
+                                        let __elt = __list.get(__j).unwrap();
+                                        if __elt == ::miniextendr_api::SEXP::nil() {
+                                            __v.push(::std::vec::Vec::new());
+                                        } else {
+                                            let __inner: Vec<#elem_ty> =
+                                                <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
+                                                    .map_err(|e| ::std::format!(
+                                                        "column `{}` element {} could not be converted: {}",
+                                                        #col_name, __j, e
+                                                    ))?;
+                                            __v.push(__inner);
+                                        }
+                                    }
+                                    __v
+                                } else {
+                                    // Non-list column → all rows have empty maps.
+                                    (0..__nrow).map(|_| ::std::vec::Vec::new()).collect()
+                                }
+                            };
+                            if #col_var.len() != __nrow {
+                                return ::core::result::Result::Err(::std::format!(
+                                    "column `{}` has length {} but data.frame has {} rows",
+                                    #col_name, #col_var.len(), __nrow
+                                ));
+                            }
+                        }
+                    };
+                    extracts.push(extract_col(&keys_var, &keys_col_name, key_ty));
+                    extracts.push(extract_col(&vals_var, &vals_col_name, val_ty));
+
+                    seq_decls.push(quote! { let mut #keys_it_var = #keys_var.into_iter(); });
+                    seq_decls.push(quote! { let mut #vals_it_var = #vals_var.into_iter(); });
+                    seq_builds.push(quote! {
+                        #rust_name: {
+                            let __k = #keys_it_var.next().unwrap();
+                            let __v = #vals_it_var.next().unwrap();
+                            __k.into_iter().zip(__v).collect::<#map_ty>()
+                        }
+                    });
+                    par_builds.push(quote! {
+                        #rust_name: #keys_var[__i].clone()
+                            .into_iter()
+                            .zip(#vals_var[__i].clone())
+                            .collect::<#map_ty>()
+                    });
                 }
             }
         }
@@ -3129,10 +3371,11 @@ mod tests {
         assert!(code.contains("fn try_from_dataframe_par"));
     }
 
-    /// Non-`String` map keys have no `TryFromSexp` impl to read back through —
-    /// the struct stays reader-incapable (write-only), same as pre-#764.
+    /// Non-`String` bare-scalar map keys (#919): the struct gets parallel `_keys`/`_values`
+    /// list-columns and both readers. The write side uses `Vec<Vec<K>>/Vec<Vec<V>>: IntoR`
+    /// (VECSXP of typed vectors); the read side zips them back into the map type per row.
     #[test]
-    fn struct_with_non_string_keyed_map_has_no_reader() {
+    fn struct_with_non_string_keyed_map_gets_parallel_reader() {
         let code = expand(syn::parse_quote! {
             #[derive(DataFrameRow)]
             struct Config {
@@ -3140,9 +3383,54 @@ mod tests {
             }
         });
         assert!(
-            !code.contains("fn try_from_dataframe"),
-            "non-String map keys lack `Vec<map>: TryFromSexp`; the reader must stay gated out"
+            code.contains("fn try_from_dataframe"),
+            "non-String bare-scalar map keys should produce a reader via _keys/_values columns"
         );
+        assert!(
+            code.contains("fn try_from_dataframe_par"),
+            "non-String bare-scalar map keys should produce a parallel reader"
+        );
+        assert!(
+            code.contains("opts_keys"),
+            "non-String map field `opts` should expand to `opts_keys` column"
+        );
+        assert!(
+            code.contains("opts_values"),
+            "non-String map field `opts` should expand to `opts_values` column"
+        );
+    }
+
+    /// Same as above but using an unqualified path `std::collections::BTreeMap` (no
+    /// leading `::`) — path form used in actual rpkg fixtures.
+    #[test]
+    fn struct_with_btreemap_int_key_unqualified_path() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Tally {
+                id: i32,
+                tally: std::collections::BTreeMap<i32, f64>,
+            }
+        });
+        assert!(
+            code.contains("tally_keys"),
+            "unqualified std::collections::BTreeMap<i32, f64> must expand to tally_keys"
+        );
+        assert!(
+            code.contains("fn try_from_dataframe"),
+            "unqualified BTreeMap<i32, f64> should produce a reader"
+        );
+    }
+
+    /// Float-keyed maps (`f32`/`f64`) are rejected with a clear error.
+    #[test]
+    #[should_panic]
+    fn struct_with_float_keyed_map_is_rejected() {
+        let _code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Config {
+                opts: ::std::collections::HashMap<f64, i32>,
+            }
+        });
     }
 
     /// Custom-hasher maps (`HashMap<K, V, S>`) are rejected from the reader path:

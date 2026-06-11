@@ -91,6 +91,28 @@ pub struct RHashMapRow {
     pub weights: std::collections::HashMap<String, f64>,
 }
 
+/// Non-String-keyed `BTreeMap<i32, f64>` map field (#919).
+/// Expands to two parallel list-columns `tally_keys` / `tally_values`.
+/// BTreeMap iterates keys sorted, so the written frame is deterministic.
+/// An empty map is included in the fixture to exercise the empty-vec read path.
+#[derive(Clone, Debug, PartialEq, DataFrameRow)]
+pub struct WithIntMap {
+    pub id: i32,
+    pub tally: std::collections::BTreeMap<i32, f64>,
+}
+
+impl ::miniextendr_api::list::IntoList for WithIntMap {
+    fn into_list(self) -> ::miniextendr_api::List {
+        use ::miniextendr_api::IntoR;
+        let (keys, vals): (Vec<i32>, Vec<f64>) = self.tally.into_iter().unzip();
+        ::miniextendr_api::List::from_raw_pairs(vec![
+            ("id", self.id.into_sexp()),
+            ("tally_keys", keys.into_sexp()),
+            ("tally_values", vals.into_sexp()),
+        ])
+    }
+}
+
 // endregion
 
 /// Fixed-array expansion: `coords: [f64; 3]` → columns `coords_1..coords_3`.
@@ -350,7 +372,35 @@ pub fn reader_map_roundtrip_par(df: SEXP) -> SEXP {
     rows.into_dataframe().unwrap().into_sexp()
 }
 
+// region: non-String-keyed map round-trip (#919)
+
+/// `Vec::<WithIntMap>::from_dataframe(&df)` → rebuild. Columns `id`, `tally_keys`,
+/// `tally_values` (VECSXP of integer/double vectors). BTreeMap keys come back sorted.
+/// @param df data.frame with `id` (integer), `tally_keys` (list of integer vectors),
+///   and `tally_values` (list of double vectors).
+/// @export
+#[miniextendr]
+pub fn with_int_map_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// Parallel non-String-keyed map round-trip. Columns `id`, `tally_keys`, `tally_values`.
+/// @param df data.frame with `id` (integer), `tally_keys` (list of integer vectors),
+///   and `tally_values` (list of double vectors).
+/// @export
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn with_int_map_roundtrip_par(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe_par(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
 // endregion
+
+// endregion (map-column round-trips)
 
 // region: gctorture fixtures (no-arg, self-contained)
 //
@@ -430,6 +480,29 @@ pub fn gc_stress_reader_map_column() {
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
     let _back: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe(&df).unwrap();
+    let _ = df;
+}
+
+/// Drives the non-String-keyed map reader (#919) under gctorture. The reader
+/// walks two VECSXP list-columns (`tally_keys` / `tally_values`) per row,
+/// so it must survive `gctorture(TRUE)`. Includes an empty-map row (row 0)
+/// to exercise the empty-Vec defensive path.
+/// @export
+#[miniextendr]
+pub fn gc_stress_reader_int_map() {
+    let rows: Vec<WithIntMap> = (0..16)
+        .map(|i| WithIntMap {
+            id: i,
+            tally: if i == 0 {
+                std::collections::BTreeMap::new()
+            } else {
+                std::collections::BTreeMap::from([(i, i as f64), (i * 2, (i * 3) as f64)])
+            },
+        })
+        .collect();
+    let df = rows.clone().into_dataframe().unwrap();
+    let _back: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe(&df).unwrap();
+    assert_eq!(rows, _back);
     let _ = df;
 }
 
