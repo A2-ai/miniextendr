@@ -85,6 +85,30 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
       cli::cli_alert_danger("{.path src/rust/Cargo.toml} is missing {.code miniextendr-api} dependency")
       results$fail <- c(results$fail, "Cargo.toml missing miniextendr-api")
     }
+
+    # Check for relative path = ... entries in [dependencies] only.
+    # [patch.crates-io] relative paths are written by use_vendor_lib() and are
+    # intentional -- do NOT flag them.
+    rel_path_deps <- parse_relative_path_deps(cargo_contents)
+    if (length(rel_path_deps) > 0L) {
+      for (dep_info in rel_path_deps) {
+        cli::cli_alert_warning(
+          paste0(
+            "{.path src/rust/Cargo.toml} {.code [dependencies]} entry ",
+            "{.val {dep_info$crate}} uses a relative {.code path = {dep_info$path}}. ",
+            "This will break under {.code R CMD INSTALL} (path resolves against the ",
+            "temp build dir, not your package root). Use an absolute path or manage ",
+            "it via {.code use_vendor_lib()}."
+          )
+        )
+        results$warn <- c(
+          results$warn,
+          paste0("relative path dep in [dependencies]: ", dep_info$crate)
+        )
+      }
+    } else {
+      results$pass <- c(results$pass, "no relative path deps in [dependencies]")
+    }
   }
 
   # -- Stale vendor tarball check --
@@ -270,4 +294,106 @@ tarball-mode cleanup in Makevars. Fix: \\
   }
 
   invisible(results)
+}
+
+# Parse src/rust/Cargo.toml lines and return a list of list(crate, path) for
+# each [dependencies] entry that has a relative path = "..." value.
+#
+# Rules:
+#   - Only entries inside a [dependencies] section are checked.
+#   - [patch.crates-io] and all other sections are ignored.
+#   - A path is relative when it does NOT start with "/" (or on Windows "X:/").
+#   - Both bare `crate = { path = "..." }` inline tables and multi-line
+#     dependency blocks preceded by `[dependencies.crate]` are handled.
+#
+# @param lines Character vector: the raw lines of Cargo.toml.
+# @return A list of named lists with elements `crate` and `path`.
+parse_relative_path_deps <- function(lines) {
+  results <- list()
+
+  # Track which TOML section we are in.
+  # section: "deps" for [dependencies] / [dependencies.*], anything else ignored.
+  section <- "other"
+  current_crate <- NULL  # set when we enter [dependencies.crate_name]
+
+  for (line in lines) {
+    stripped <- trimws(line)
+
+    # Skip blank lines and comments.
+    if (nchar(stripped) == 0L || startsWith(stripped, "#")) {
+      # A blank line between a multi-line dep block and the next entry doesn't
+      # reset current_crate; only a new section header does.
+      next
+    }
+
+    # Section header?
+    if (startsWith(stripped, "[")) {
+      # Match e.g. [dependencies], [dependencies.foo], [dev-dependencies], etc.
+      if (grepl("^\\[dependencies\\]", stripped)) {
+        section <- "deps"
+        current_crate <- NULL
+      } else if (grepl("^\\[dependencies\\.", stripped)) {
+        section <- "deps"
+        # Extract crate name from [dependencies.crate_name]
+        current_crate <- sub("^\\[dependencies\\.([^]]+)\\].*", "\\1", stripped)
+      } else {
+        # Any other section (including [patch.crates-io]) — stop watching.
+        section <- "other"
+        current_crate <- NULL
+      }
+      next
+    }
+
+    if (section != "deps") next
+
+    # Inline table: `crate_name = { ..., path = "...", ... }`
+    # e.g. my-crate = { path = "../my-crate" }
+    #      my-crate = { version = "1.0", path = "../my-crate", features = [] }
+    inline_match <- regmatches(
+      stripped,
+      regexpr(
+        '^([A-Za-z0-9_-]+)\\s*=\\s*\\{[^}]*path\\s*=\\s*"([^"]*)"',
+        stripped,
+        perl = TRUE
+      )
+    )
+    if (length(inline_match) > 0L && nchar(inline_match) > 0L) {
+      m <- regmatches(
+        stripped,
+        regexec(
+          '^([A-Za-z0-9_-]+)\\s*=\\s*\\{[^}]*path\\s*=\\s*"([^"]*)"',
+          stripped,
+          perl = TRUE
+        )
+      )[[1L]]
+      crate <- m[[2L]]
+      path  <- m[[3L]]
+      if (!is_absolute_path(path)) {
+        results <- c(results, list(list(crate = crate, path = path)))
+      }
+      next
+    }
+
+    # Multi-line block: we entered via [dependencies.crate_name] and now see
+    # a line like `path = "..."`.
+    if (!is.null(current_crate)) {
+      path_match <- regmatches(
+        stripped,
+        regexec('^path\\s*=\\s*"([^"]*)"', stripped, perl = TRUE)
+      )[[1L]]
+      if (length(path_match) >= 2L) {
+        path <- path_match[[2L]]
+        if (!is_absolute_path(path)) {
+          results <- c(results, list(list(crate = current_crate, path = path)))
+        }
+      }
+    }
+  }
+
+  results
+}
+
+# Returns TRUE when path is absolute (starts with "/" or a Windows drive letter).
+is_absolute_path <- function(path) {
+  grepl("^(/|[A-Za-z]:[/\\\\])", path)
 }
