@@ -56,10 +56,13 @@
 //!   `Done(Err(..))` message, and a `job_tx` refcount. This leak is
 //!   **fixed-per-unwind** (on the order of a few hundred bytes of channel/box
 //!   state), linearly bounded, and **does not compound** across repeated
-//!   unwinds. Measured end-to-end RSS growth settles to roughly ~1.8 KB per
-//!   unwind in steady state (RSS overstates the heap leak: it counts whole
-//!   resident pages and allocator arenas, not leaked bytes), well under the
-//!   8 KB/unwind regression bound asserted by `test-worker-longjmp.R`.
+//!   unwinds. `test-worker-longjmp.R` regresses this by asserting the *shape*
+//!   of growth — successive equal-sized unwind batches must not grow RSS by an
+//!   increasing amount — rather than an absolute KB/unwind threshold, which is
+//!   not portable: RSS overstates the heap leak (it counts whole resident pages
+//!   and allocator arenas, not leaked bytes), so the per-unwind RSS figure
+//!   swings across glibc/allocator/R versions (R 4.6 ~1.8 KB/unwind vs R-devel
+//!   ~19 KB/unwind for the same bounded leak, see #931).
 //!
 //! This is the cost MXL300 is buying off: every direct `Rf_error()` from a
 //! worker context would incur the same skipped-destructor leak with no

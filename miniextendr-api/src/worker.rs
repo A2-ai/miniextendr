@@ -512,9 +512,14 @@ mod worker_channel {
     /// alternative (intercepting the unwind to drop the state) would require
     /// `R_tryCatch` interception before `R_ContinueUnwind` and is not worth the
     /// complexity for a bounded per-error cost. `test-worker-longjmp.R` pins a
-    /// regression bound of <= 8 KB RSS growth per unwind (steady-state RSS
-    /// growth measures ~1.8 KB/unwind, dominated by page/arena granularity
-    /// rather than the much smaller heap leak).
+    /// regression on the *shape* of growth: it drives equal-sized batches of
+    /// unwinds and asserts that successive batches do not grow RSS by an
+    /// increasing amount (a compounding leak would). It deliberately does *not*
+    /// assert an absolute KB/unwind threshold — RSS counts whole resident pages
+    /// and allocator arenas, not leaked bytes, so the per-unwind RSS figure
+    /// swings widely across glibc/allocator/R versions (R 4.6 measured
+    /// ~1.8 KB/unwind; R-devel's allocator showed ~19 KB/unwind for the *same*
+    /// bounded leak, see #931).
     pub(super) fn dispatch_to_worker<F, T>(f: F) -> Result<T, String>
     where
         F: FnOnce() -> T + Send + 'static,
