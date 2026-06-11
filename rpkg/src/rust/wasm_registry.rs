@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      f2c4ce4e50ef080a
+// content-hash:      98a5d78537177c1e
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -957,6 +957,7 @@ unsafe extern "C-unwind" {
     pub fn C_SharedData__get_x(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedData__get_y(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_into_sexp_altrep(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_gc_stress_serde_ser(_: SEXP) -> SEXP;
     pub fn C_SharedData__get_label(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_gc_stress_str_borrow(_: SEXP) -> SEXP;
     pub fn C_gc_stress_toml_array(_: SEXP) -> SEXP;
@@ -6831,6 +6832,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_into_sexp_altrep".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_into_sexp_altrep) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_serde_ser".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_serde_ser) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_SharedData__get_label".as_ptr(),
