@@ -642,6 +642,9 @@ impl_vec_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
 impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
     && x <= i32::MAX as isize);
 impl_vec_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
+// Matches Vec<Option<u32>> (impl_vec_option_coerce_into_r!(u32 => i64)):
+// INTSXP while everything fits, REALSXP otherwise.
+impl_vec_smart_i64_into_r!(u32, |x: u32| x <= i32::MAX as u32);
 // endregion
 
 mod altrep;
@@ -1803,6 +1806,46 @@ impl IntoR for &[bool] {
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         let n = self.len();
         unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| i32::from(v))) }
+    }
+}
+
+/// Convert `Vec<Rboolean>` to R logical vector (no NA: Rboolean is TRUE/FALSE only).
+impl IntoR for Vec<crate::Rboolean> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::SEXP {
+        let n = self.len();
+        logical_iter_to_lglsxp(n, self.into_iter().map(|b| b as i32))
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        let n = self.len();
+        unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(|b| b as i32)) }
+    }
+}
+
+/// Convert `&[Rboolean]` to R logical vector (no NA: Rboolean is TRUE/FALSE only).
+impl IntoR for &[crate::Rboolean] {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::SEXP {
+        let n = self.len();
+        logical_iter_to_lglsxp(n, self.iter().map(|&b| b as i32))
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        let n = self.len();
+        unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&b| b as i32)) }
     }
 }
 
