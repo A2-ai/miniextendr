@@ -851,11 +851,11 @@ struct ColumnReg {
 ///   chunking `nrow` into fixed-size, non-overlapping spans. Each `(offset, len)`
 ///   item therefore owns a unique slice of that column's buffer.
 ///
-/// Each [`RangeFiller`] reconstitutes its slice via
+/// Each `RangeFiller` reconstitutes its slice via
 /// `slice::from_raw_parts_mut(base.add(offset), len)` and writes only that span.
 /// Because the spans are disjoint, no two threads ever form overlapping `&mut`
 /// references — there is no aliasing UB even though the work-list shares the raw
-/// base pointers ([`ColPtr`], `Send + Sync`).
+/// base pointers (`ColPtr`, `Send + Sync`).
 ///
 /// # Protection
 ///
@@ -1483,7 +1483,7 @@ pub trait RParallelIterator {
         self.par_variance().sqrt()
     }
 
-    /// Collects elements greater than threshold into a Vec<f64>.
+    /// Collects elements greater than threshold into a `Vec<f64>`.
     fn par_filter_gt(&self, threshold: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,
@@ -1494,7 +1494,7 @@ pub trait RParallelIterator {
             .collect()
     }
 
-    /// Collects elements less than threshold into a Vec<f64>.
+    /// Collects elements less than threshold into a `Vec<f64>`.
     fn par_filter_lt(&self, threshold: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,

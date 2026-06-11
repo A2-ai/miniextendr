@@ -137,8 +137,8 @@ impl RTerm {
     /// non-terminal) is resolved once here, so per-write dispatch is cheap.
     ///
     /// `conn` accepts anything that converts into a SEXP through [`IntoR`] —
-    /// most commonly [`RStdout`](crate::connection::RStdout) or
-    /// [`RStderr`](crate::connection::RStderr) (which evaluate `base::stdout()`
+    /// most commonly [`RStdout`] or
+    /// [`RStderr`] (which evaluate `base::stdout()`
     /// / `base::stderr()`), or a raw SEXP obtained from an R-side
     /// `textConnection()` / `file()` / custom connection.
     ///

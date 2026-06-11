@@ -108,7 +108,7 @@ pub use rand_distr;
 
 /// Integration with the `either` crate.
 ///
-/// Provides [`TryFromSexp`] and [`IntoR`] for [`Either<L, R>`][either::Either].
+/// Provides [`TryFromSexp`](crate::TryFromSexp) and [`IntoR`](crate::IntoR) for [`Either<L, R>`][either::Either].
 ///
 /// Enable with `features = ["either"]`.
 #[cfg(feature = "either")]

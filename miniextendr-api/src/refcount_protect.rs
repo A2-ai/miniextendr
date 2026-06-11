@@ -44,8 +44,8 @@
 //!
 //! | Type | Map | Storage | Use Case |
 //! |------|-----|---------|----------|
-//! | [`FastHashMapArena`] | ahash HashMap | RefCell | Faster for large collections |
-//! | [`ThreadLocalFastHashArena`] | ahash HashMap | thread_local | Fastest for large + hot loops |
+//! | `FastHashMapArena` | ahash HashMap | RefCell | Faster for large collections |
+//! | `ThreadLocalFastHashArena` | ahash HashMap | thread_local | Fastest for large + hot loops |
 //!
 //! These use ahash instead of SipHash for improved throughput. Not DOS-resistant,
 //! but suitable for local, non-hostile environments.

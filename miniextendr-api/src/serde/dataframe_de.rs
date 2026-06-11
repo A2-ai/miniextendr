@@ -12,7 +12,7 @@
 //! A single `RowDeserializer<'sexp>` + `RowMapAccess<'sexp>` + `CellDeserializer<'sexp, 'n>`
 //! covers all three entry points. Each entry point hands rows back to the
 //! caller in its own way (owned `Vec`, scoped callback, RAII handle), but the
-//! per-row deserialisation pipeline is shared via [`deserialize_rows`].
+//! per-row deserialisation pipeline is shared via `deserialize_rows`.
 //!
 //! Character cells go through `visit_borrowed_str` — visitors that want
 //! `String` (i.e. `DeserializeOwned`) fall back to `visit_str` via serde's
@@ -193,7 +193,7 @@ pub type BorrowedRows<'a, T> = crate::Protected<'a, Vec<T>>;
 /// `T: for<'b> serde::Deserialize<'b>` is equivalent to `DeserializeOwned`
 /// today, so character fields materialise as `String` (no zero-copy yet).
 /// The `'a` lifetime ties the protect entry to the returned handle; future
-/// work threading `'a` through [`DataFrame`](crate::dataframe::DataFrame)
+/// work threading `'a` through [`DataFrame`]
 /// would enable true zero-copy `T = Borrowed<'a> { name: &'a str }` — see
 /// the issue thread on #671 for the design discussion.
 ///
@@ -226,7 +226,7 @@ where
 
 // region: Public IntoDataFrame / FromDataFrame on serde rows
 
-/// Wrapper that converts `Vec<T: Serialize>` into a [`DataFrame`](crate::dataframe::DataFrame)
+/// Wrapper that converts `Vec<T: Serialize>` into a [`DataFrame`]
 /// through the two-phase columnar serializer (schema discovery + column fill), the richer
 /// serde build path than the per-row `IntoList` transposition.
 ///

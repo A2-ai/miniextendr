@@ -44,7 +44,7 @@
 //! # Interior Mutability
 //!
 //! Since the `bytes::Buf` trait requires `&mut self` for reading operations,
-//! but [`ExternalPtr`](crate::ExternalPtr) only provides `&self`, implementations
+//! but [`ExternalPtr`](struct@crate::ExternalPtr) only provides `&self`, implementations
 //! must use interior mutability (e.g., `RefCell` or `Mutex`) to wrap the underlying
 //! buffer. This is why there is no blanket implementation for `RBuf`.
 //!

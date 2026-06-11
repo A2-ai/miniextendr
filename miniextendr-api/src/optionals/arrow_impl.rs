@@ -80,7 +80,7 @@ pub trait RSourced {
 
 /// A primitive Arrow array that may be backed by R memory.
 ///
-/// `RPrimitive<T>` wraps a [`PrimitiveArray<T>`] and optionally carries the
+/// `RPrimitive<T>` wraps a [`PrimitiveArray<T>`](arrow_array::PrimitiveArray) and optionally carries the
 /// source R SEXP. When the array came from R (via `TryFromSexp`), converting
 /// back to R is zero-copy — the original SEXP is returned directly.
 ///
@@ -704,7 +704,7 @@ fn is_posixct(sexp: SEXP) -> bool {
     sexp.type_of() == SEXPTYPE::REALSXP && sexp.inherits_class(c"POSIXct")
 }
 
-/// Convert R factor to Arrow DictionaryArray<Int32Type> with string values.
+/// Convert R factor to Arrow `DictionaryArray<Int32Type>` with string values.
 ///
 /// R factors are INTSXP with 1-based indices into a "levels" character vector.
 /// Arrow DictionaryArray uses 0-based indices, so we subtract 1.
@@ -851,7 +851,7 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
 
 // region: IntoR — Factor, Date, POSIXct
 
-/// Convert Arrow DictionaryArray<Int32Type> to R factor.
+/// Convert Arrow `DictionaryArray<Int32Type>` to R factor.
 impl IntoR for StringDictionaryArray {
     type Error = std::convert::Infallible;
 

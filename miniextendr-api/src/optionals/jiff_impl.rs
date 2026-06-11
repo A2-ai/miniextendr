@@ -31,7 +31,7 @@
 //! Floor-based split into whole seconds + nanoseconds — matches `time_impl.rs`. Correct
 //! for negative timestamps (-1.2s → -2s + 800_000_000ns).
 //!
-//! # Vec<Zoned> timezone policy
+//! # `Vec<Zoned>` timezone policy
 //!
 //! `Vec<Zoned>` → POSIXct uses the first element's timezone for the `tzone` attribute.
 //! Heterogeneous timezones are silently handled by writing the first tz and logging a

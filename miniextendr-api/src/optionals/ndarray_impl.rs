@@ -32,10 +32,10 @@
 //! - **ndarray → R**: Data is copied into column-major R storage.
 //!
 //! For zero-copy access, use `ArrayView` types:
-//! - [`from_r_slice`] - 1D view
-//! - [`from_r_matrix`] - 2D view
-//! - [`from_r_array3`] - 3D view
-//! - [`from_r_array`] - N-D view (dynamic)
+//! - [`from_r_slice`](crate::ndarray_impl::from_r_slice) - 1D view
+//! - [`from_r_matrix`](crate::ndarray_impl::from_r_matrix) - 2D view
+//! - [`from_r_array3`](crate::ndarray_impl::from_r_array3) - 3D view
+//! - [`from_r_array`](crate::ndarray_impl::from_r_array) - N-D view (dynamic)
 //!
 //! # Examples
 //!

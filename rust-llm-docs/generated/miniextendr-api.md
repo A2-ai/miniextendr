@@ -209,7 +209,7 @@ calls from other threads. R is still not thread-safe; serialize all R API use.
 | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 | `growth-debug` | Track and report collection growth events (zero-cost when off) |
-| `refcount-fast-hash` | Use ahash for refcount arenas (enabled by default, not DOS-resistant) |
+| `refcount-fast-hash` | Use ahash for refcount arenas (opt-in, not DOS-resistant) |
 
 ---
 
@@ -654,6 +654,31 @@ Create a new guard that protects the SEXP and unprotects on drop.
 
 Must be called from the R main thread. The SEXP must be valid.
 
+### `AsDataFrame`
+
+Wrap a value and convert it to an R `data.frame` via [`IntoDataFrame`](crate::dataframe::IntoDataFrame) when returned.
+
+Use this at a call site to force a single return value into a data.frame without making
+that the type's default representation (for the always-a-data.frame default, use
+`#[derive(PreferDataFrame)]` / `#[miniextendr(dataframe)]`). The inner `T` is typically a
+`Vec<Row>` where `Row` derives [`DataFrameRow`](crate::markers::DataFrameRow).
+
+A failed conversion ([`DataFrameError`](crate::dataframe::DataFrameError)) surfaces in R as
+an error condition.
+
+# Example
+
+```ignore
+#[derive(DataFrameRow)]
+struct Point { x: f64, y: f64 }
+
+#[miniextendr]
+fn grid() -> AsDataFrame<Vec<Point>> {
+    AsDataFrame(vec![Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 1.0 }])
+}
+// In R: grid() returns a data.frame with columns x, y
+```
+
 ### `AsDisplay`
 
 Wrap a `T: Display` and convert it to an R character scalar.
@@ -996,6 +1021,31 @@ new(value: T) -> Self
 
 Create a new `AsSerialize` wrapper.
 
+### `AsVctrs`
+
+Wrap a value and convert it to a **vctrs** S3 vector via [`IntoVctrs`](crate::vctrs::IntoVctrs)
+when returned.
+
+Use this at a call site to return a `#[derive(Vctrs)]` type as its R vctrs object without the
+manual `value.into_vctrs().map_err(...)` boilerplate. For a type that should *always* convert
+this way, use `#[derive(Vctrs, PreferVctrs)]` instead.
+
+A failed build ([`VctrsBuildError`](crate::vctrs::VctrsBuildError)) surfaces in R as an error
+condition.
+
+# Example
+
+```ignore
+#[derive(Vctrs)]
+#[vctrs(class = "percent", base = "double")]
+struct Percent { #[vctrs(data)] values: Vec<f64> }
+
+#[miniextendr]
+fn percent(x: Vec<f64>) -> AsVctrs<Percent> {
+    AsVctrs(Percent { values: x })
+}
+```
+
 ### `Borsh`
 
 Wrapper for borsh-serializable types.
@@ -1112,6 +1162,13 @@ and the iterator writes directly into it.
 Requires `ExactSizeIterator` because R vectors must know their length
 at allocation time.
 
+# Naming
+
+`Collect` is in the representation-forcing wrapper family but does not take the
+`As*` prefix used by [`AsList`] / [`AsExternalPtr`] / [`AsRNative`]: those wrap a
+finished value `T`, whereas `Collect` wraps an *iterator* and materializes it into
+an R vector. The divergence is intentional — see the module docs and #871.
+
 # Example
 
 ```ignore
@@ -1127,6 +1184,9 @@ Write an `ExactSizeIterator` of `Option<T>` directly into an R vector with NA su
 
 `None` values become `NA` in R. Works for `f64` and `i32`.
 
+Like [`Collect`], this is an iterator adapter and is exempt from the `As*`
+naming convention (see #871).
+
 # Example
 
 ```ignore
@@ -1140,12 +1200,16 @@ fn with_gaps(n: i32) -> CollectNA<impl ExactSizeIterator<Item = Option<f64>>> {
 
 Write an `ExactSizeIterator` of `Option<i32>` directly into an R integer vector with NA.
 
+Like [`Collect`], this is an iterator adapter and is exempt from the `As*`
+naming convention (see #871).
+
 ### `CollectStrings`
 
 Write an `ExactSizeIterator` of `String` directly into an R character vector.
 
 Strings require per-element CHARSXP allocation (no bulk `copy_from_slice`),
-so this is a separate type from [`Collect`].
+so this is a separate type from [`Collect`]. Like [`Collect`], it is an
+iterator adapter and is exempt from the `As*` naming convention (see #871).
 
 # Example
 
@@ -1339,6 +1403,23 @@ select(self: Self, cols: &[&str]) -> Self
 ```
 
 Keep only the named columns, in the order given. Unknown names are skipped.
+
+#### `select_rows`
+
+```rust
+select_rows(self: &Self, idx: &[usize]) -> Self
+```
+
+Keep only the rows at the given 0-based indices, in order.
+
+Subsets every column (each a vector or list-column) to the specified rows
+and rebuilds compact integer `row.names`. Used by the enum reader to
+densify a flattened sub-frame before recursing into the inner type's reader.
+
+# PROTECT discipline
+
+Allocates one new column vector per column — `OwnedProtect`s the output list
+across the loop so previously-built column SEXPs survive subsequent allocations.
 
 #### `strip_prefix`
 
@@ -1650,6 +1731,36 @@ If you need to avoid this overhead, consider using `ExternalPtr<T>::new`
 directly and initializing in place via `as_mut`.
 
 Equivalent to `Box::assume_init`.
+
+#### `collect_into_r_list`
+
+```rust
+collect_into_r_list<I>(items: I) -> SEXP
+```
+
+Collect an iterator of values into a protected R list (`VECSXP`) holding
+one fresh external pointer per item, rooting each via the destination
+list instead of the [`ProtectPool`](crate::protect_pool).
+
+This is the GC-safe, allocation-lean way to hand many Rust values to R at
+once — e.g. converting a `Vec<T>` into an R `list()` of external pointers.
+Each `EXTPTRSXP` is created and **immediately** stored into the
+already-protected result list, so the list roots it the instant it
+exists: there is no unprotected window between element allocations, and
+**no per-element pool traffic**.
+
+Contrast the naive `items.map(ExternalPtr::new).collect::<Vec<_>>()`,
+which roots every handle in the process-wide pool (keeping the `Vec`
+GC-safe while held — #836) only to release every root again when the `Vec`
+drops, then still needs a second pass to copy the handles into a list.
+Here the list *is* the root, so both the pool round-trip and the copy
+pass are skipped. The whole batch also crosses to R's main thread in a
+single [`with_r_thread`](crate::worker::with_r_thread) hop rather than one
+per element.
+
+The returned `VECSXP` is **not** protected: the caller must protect it or
+return it to R immediately, exactly like any other freshly built SEXP
+(e.g. an [`IntoR`](crate::IntoR) result).
 
 #### `downcast_mut`
 
@@ -3180,6 +3291,11 @@ Get element at 0-based index and convert to type `T`.
 
 Returns `None` if index is out of bounds or conversion fails.
 
+The conversion error is discarded, so `T`'s `TryFromSexp::Error` is
+unconstrained — any element type works, not only those whose error is
+`SexpError`. Callers that need the error (e.g. to distinguish "missing"
+from "wrong type") should use [`get`](Self::get) and convert directly.
+
 #### `get_levels`
 
 ```rust
@@ -3197,6 +3313,22 @@ get_named<T>(self: Self, name: &str) -> Option<T>
 Get element by name and convert to type `T`.
 
 Returns `None` if name not found or conversion fails.
+
+The conversion error is discarded, so `T`'s `TryFromSexp::Error` is
+unconstrained. Use [`get_named_sexp`](Self::get_named_sexp) and convert
+directly when you need to inspect the conversion failure.
+
+#### `get_named_sexp`
+
+```rust
+get_named_sexp(self: Self, name: &str) -> Option<SEXP>
+```
+
+Get the raw element `SEXP` associated with `name`, without conversion.
+
+Returns the element exactly as stored so callers can convert it with any
+[`TryFromSexp`] error type — not only those whose error is `SexpError`.
+Returns `None` when the list has no `names` attribute or no name matches.
 
 #### `get_rownames`
 
@@ -3850,7 +3982,7 @@ Entry for replacing match_arg placeholder defaults with actual choices.
 
 - `placeholder`: `&''static str`
   - Placeholder string in the R formal default, e.g. `".__MX_MATCH_ARG_CHOICES_mode__"`.
-- `choices_str`: `{'function_pointer': {'sig': {'inputs': [], 'output': {'resolved_path': {'path': 'String', 'id': 23, 'args': None}}, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': False, 'is_async': False, 'abi': 'Rust'}}}`
+- `choices_str`: `{'function_pointer': {'sig': {'inputs': [], 'output': {'resolved_path': {'path': 'String', 'id': 26, 'args': None}}, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': False, 'is_async': False, 'abi': 'Rust'}}}`
   - Function that returns the choices as a comma-separated quoted string,
 - `preferred_default`: `&''static str`
   - User-supplied `default = "..."` value (unquoted, e.g. `"zstd"`), or `""`
@@ -3866,7 +3998,7 @@ choice descriptions.
   - Placeholder string in the `@param` roxygen tag, e.g.
 - `several_ok`: `bool`
   - `true` for `several_ok` params (emits "One or more of …");
-- `choices_str`: `{'function_pointer': {'sig': {'inputs': [], 'output': {'resolved_path': {'path': 'String', 'id': 23, 'args': None}}, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': False, 'is_async': False, 'abi': 'Rust'}}}`
+- `choices_str`: `{'function_pointer': {'sig': {'inputs': [], 'output': {'resolved_path': {'path': 'String', 'id': 26, 'args': None}}, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': False, 'is_async': False, 'abi': 'Rust'}}}`
   - Function that returns the choices as a comma-separated quoted string,
 
 ### `NamedDataFrameListBuilder`
@@ -4036,7 +4168,9 @@ get<T>(self: &Self, name: &str) -> Option<T>
 
 Get an element by name with O(1) lookup, converting to type `T`.
 
-Returns `None` if the name is not found or conversion fails.
+Returns `None` if the name is not found or conversion fails. The
+conversion error is discarded, so `T`'s `TryFromSexp::Error` is
+unconstrained; use [`get_raw`](Self::get_raw) when you need the error.
 
 #### `get_index`
 
@@ -5598,7 +5732,7 @@ The SEXP must be protected and valid.
 ```ignore
 use miniextendr_api::rarray::RMatrix;
 
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn process_matrix(m: RMatrix<f64>) -> f64 {
     // Copy data - Vec<f64> is Send and can be used in worker threads
     let data: Vec<f64> = unsafe { m.to_vec() };
@@ -5779,6 +5913,33 @@ Allocate a new R array filled with zeros.
 
 Must be called from the R main thread (or via routed FFI).
 The returned RArray holds an unprotected SEXP - caller must protect.
+
+### `RBorrow`
+
+Borrowed arm of [`RCow`]: a whole-vector view that remembers its source SEXP.
+
+Fields are private by design — the only constructor is
+[`RCow::try_from_sexp`], so a borrowed view can never be a sub-slice. That
+invariant is what lets [`IntoR`] return the source SEXP zero-copy without the
+provenance-free pointer probe that `Cow<[T]>` required (#880).
+
+**Methods:**
+
+#### `as_slice`
+
+```rust
+as_slice(self: &Self) -> &[T]
+```
+
+The borrowed view (the whole source vector).
+
+#### `source_sexp`
+
+```rust
+source_sexp(self: &Self) -> SEXP
+```
+
+The source R vector this view borrows from.
 
 ### `RCall`
 
@@ -6113,11 +6274,11 @@ The flat work-list never produces two items that overlap:
   chunking `nrow` into fixed-size, non-overlapping spans. Each `(offset, len)`
   item therefore owns a unique slice of that column's buffer.
 
-Each [`RangeFiller`] reconstitutes its slice via
+Each `RangeFiller` reconstitutes its slice via
 `slice::from_raw_parts_mut(base.add(offset), len)` and writes only that span.
 Because the spans are disjoint, no two threads ever form overlapping `&mut`
 references — there is no aliasing UB even though the work-list shares the raw
-base pointers ([`ColPtr`], `Send + Sync`).
+base pointers (`ColPtr`, `Send + Sync`).
 
 # Protection
 
@@ -6937,7 +7098,7 @@ Returns `Some(Self)` if the object implements this trait,
 
 A primitive Arrow array that may be backed by R memory.
 
-`RPrimitive<T>` wraps a [`PrimitiveArray<T>`] and optionally carries the
+`RPrimitive<T>` wraps a [`PrimitiveArray<T>`](arrow_array::PrimitiveArray) and optionally carries the
 source R SEXP. When the array came from R (via `TryFromSexp`), converting
 back to R is zero-copy — the original SEXP is returned directly.
 
@@ -6993,7 +7154,7 @@ Get the inner Arrow array, discarding provenance.
 
 ### `RRng`
 
-A wrapper around R's random number generator that implements [`rand::Rng`].
+A wrapper around R's random number generator that implements `rand::Rng`.
 
 This allows using R's RNG with any `rand`-compatible code, ensuring
 reproducibility when seeds are set via `set.seed()` in R.
@@ -9259,7 +9420,7 @@ O(nrow × ncols) — the same shape as `vec_to_dataframe` today.
 **Type clashes**: a later row writing a `String` to a column whose
 first-seen value was an `Integer` follows today's union-path
 behaviour — the value is coerced or NA-filled by
-[`ColumnBuffer::push_value`]. No new error is raised. If your data
+`ColumnBuffer::push_value`. No new error is raised. If your data
 is genuinely heterogeneous, declare the column as
 `TypeSpec::Generic` to get a list-column.
 
@@ -9327,7 +9488,7 @@ with_schema<S, I>(schema: I, nrow_hint: Option<usize>) -> Self
 Create a builder with a pre-declared flat schema.
 
 Skips the first-row discovery pass. All later pushes are validated
-against this schema by the strict [`ColumnFiller`]; fields not in
+against this schema by the strict `ColumnFiller`; fields not in
 the schema produce an error (unless [`grow_schema`](Self::grow_schema)
 is chained, in which case new fields are added on the fly).
 
@@ -9360,7 +9521,7 @@ let df = b.finish().unwrap();
 
 ### `SerdeRows`
 
-Wrapper that converts `Vec<T: Serialize>` into a [`DataFrame`](crate::dataframe::DataFrame)
+Wrapper that converts `Vec<T: Serialize>` into a [`DataFrame`]
 through the two-phase columnar serializer (schema discovery + column fill), the richer
 serde build path than the per-row `IntoList` transposition.
 
@@ -10089,17 +10250,6 @@ Thread-local BTreeMap-based arena.
 This provides the lowest overhead for protection operations by
 eliminating RefCell borrow checking.
 
-### `ThreadLocalFastHashArena`
-
-Thread-local fast hash arena using ahash.
-
-Combines ahash's faster hashing with thread-local storage's low overhead.
-Ideal for hot loops protecting many distinct values.
-
-Not DOS-resistant, suitable for local, non-hostile environments.
-
-Requires the `refcount-fast-hash` feature.
-
 ### `ThreadLocalHashArena`
 
 Thread-local HashMap-based arena.
@@ -10565,11 +10715,11 @@ wrapped type.
 
 **Fields:**
 
-- `drop`: `{'function_pointer': {'sig': {'inputs': [['ptr', {'raw_pointer': {'is_mutable': True, 'type': {'resolved_path': {'path': 'mx_erased', 'id': 5139, 'args': None}}}}]], 'output': None, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': True, 'is_async': False, 'abi': {'C': {'unwind': False}}}}}`
+- `drop`: `{'function_pointer': {'sig': {'inputs': [['ptr', {'raw_pointer': {'is_mutable': True, 'type': {'resolved_path': {'path': 'mx_erased', 'id': 5200, 'args': None}}}}]], 'output': None, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': True, 'is_async': False, 'abi': {'C': {'unwind': False}}}}}`
   - Destructor called when the R external pointer is garbage collected.
 - `concrete_tag`: `mx_tag`
   - Tag identifying the concrete type wrapped by this object.
-- `query`: `{'function_pointer': {'sig': {'inputs': [['ptr', {'raw_pointer': {'is_mutable': True, 'type': {'resolved_path': {'path': 'mx_erased', 'id': 5139, 'args': None}}}}], ['trait_tag', {'resolved_path': {'path': 'mx_tag', 'id': 5085, 'args': None}}]], 'output': {'raw_pointer': {'is_mutable': False, 'type': {'resolved_path': {'path': 'std::os::raw::c_void', 'id': 4016, 'args': None}}}}, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': True, 'is_async': False, 'abi': {'C': {'unwind': False}}}}}`
+- `query`: `{'function_pointer': {'sig': {'inputs': [['ptr', {'raw_pointer': {'is_mutable': True, 'type': {'resolved_path': {'path': 'mx_erased', 'id': 5200, 'args': None}}}}], ['trait_tag', {'resolved_path': {'path': 'mx_tag', 'id': 5146, 'args': None}}]], 'output': {'raw_pointer': {'is_mutable': False, 'type': {'resolved_path': {'path': 'std::os::raw::c_void', 'id': 4026, 'args': None}}}}, 'is_c_variadic': False}, 'generic_params': [], 'header': {'is_const': False, 'is_unsafe': True, 'is_async': False, 'abi': {'C': {'unwind': False}}}}}`
   - Query function to retrieve interface vtables.
 - `data_offset`: `usize`
   - Byte offset from the start of the wrapper struct to the `data` field.
@@ -10693,24 +10843,6 @@ monomorphization time — zero runtime overhead for the chosen mode.
   - `catch_unwind` — catches Rust panics, converts to R errors. Default.
 - `RUnwind`
   - `with_r_unwind_protect` — catches both Rust panics and R longjmps.
-
-### `AsCoerceError`
-
-Error type for `as.<class>()` coercion failures.
-
-This error type provides structured information about why a coercion failed,
-allowing for meaningful error messages in R.
-
-**Variants:**
-
-- `NotSupported { ... }`
-  - The conversion is not supported for this type combination.
-- `InvalidData { ... }`
-  - The conversion failed due to invalid or malformed data.
-- `PrecisionLoss { ... }`
-  - The conversion would result in unacceptable precision loss.
-- `Custom(String)`
-  - A custom error message.
 
 ### `CoerceError`
 
@@ -11071,6 +11203,28 @@ Describes where a panic originated before being converted to an R error.
 - `Connection`
   - Panic inside a connection callback trampoline.
 
+### `ParseStatus`
+
+Outcome of [`R_ParseVector`] (from `R_ext/Parse.h`).
+
+`PARSE_NULL` is never returned by `R_ParseVector`; the meaningful success
+value is [`ParseStatus::PARSE_OK`]. The remaining variants indicate parse
+failures (`PARSE_ERROR`), incomplete input (`PARSE_INCOMPLETE`), or
+end-of-input (`PARSE_EOF`).
+
+**Variants:**
+
+- `PARSE_NULL`
+  - Never returned by `R_ParseVector`; the default-initialized sentinel.
+- `PARSE_OK`
+  - Parse succeeded.
+- `PARSE_INCOMPLETE`
+  - Input ended mid-expression (e.g. an unbalanced delimiter).
+- `PARSE_ERROR`
+  - A syntax error was encountered.
+- `PARSE_EOF`
+  - End of input reached with no further expressions.
+
 ### `RBase`
 
 Base type for ALTREP vectors.
@@ -11091,6 +11245,107 @@ Base type for ALTREP vectors.
   - Generic list vectors (`VECSXP`).
 - `Complex`
   - Complex vectors (`CPLXSXP`).
+
+**Methods:**
+
+#### `sexptype`
+
+```rust
+const sexptype(self: Self) -> crate::SEXPTYPE
+```
+
+The [`SEXPTYPE`](crate::SEXPTYPE) an ALTREP vector of this base
+presents to R.
+
+### `RCoerceError`
+
+Error type for `as.<class>()` coercion failures.
+
+This error type provides structured information about why a coercion failed,
+allowing for meaningful error messages in R.
+
+**Variants:**
+
+- `NotSupported { ... }`
+  - The conversion is not supported for this type combination.
+- `InvalidData { ... }`
+  - The conversion failed due to invalid or malformed data.
+- `PrecisionLoss { ... }`
+  - The conversion would result in unacceptable precision loss.
+- `Custom(String)`
+  - A custom error message.
+
+### `RCow`
+
+An R-aware copy-on-write slice — the safe, zero-copy-round-trip alternative
+to [`std::borrow::Cow<[T]>`](std::borrow::Cow).
+
+See the [module docs](self) for why this exists and how it closes the #880
+hazard. In brief: the [`Borrowed`](RCow::Borrowed) arm carries its source
+SEXP, so returning it to R is a direct hand-back rather than a speculative
+pointer recovery.
+
+# Example
+
+```ignore
+// Zero-copy in *and* out: the returned SEXP is the original R vector.
+#[miniextendr]
+pub fn passthrough(x: RCow<'static, f64>) -> RCow<'static, f64> {
+    x
+}
+
+// Mutating forces a copy (copy-on-write), then materializes a fresh vector.
+#[miniextendr]
+pub fn doubled(mut x: RCow<'static, f64>) -> RCow<'static, f64> {
+    for v in x.to_mut() {
+        *v *= 2.0;
+    }
+    x
+}
+```
+
+**Variants:**
+
+- `Borrowed(RBorrow<''a, T>)`
+  - Zero-copy view of a whole R vector, carrying its source SEXP.
+- `Owned(Vec<T>)`
+  - Owned data; materializes a fresh R vector on [`IntoR`].
+
+**Methods:**
+
+#### `into_owned`
+
+```rust
+into_owned(self: Self) -> Vec<T>
+```
+
+Consume into an owned [`Vec<T>`], cloning out of R if borrowed.
+
+#### `is_borrowed`
+
+```rust
+is_borrowed(self: &Self) -> bool
+```
+
+`true` if this is a borrowed (zero-copy) view of an R vector.
+
+#### `is_owned`
+
+```rust
+is_owned(self: &Self) -> bool
+```
+
+`true` if this owns its data.
+
+#### `to_mut`
+
+```rust
+to_mut(self: &mut Self) -> &mut Vec<T>
+```
+
+Acquire a mutable reference to the owned data, cloning out of R first if
+borrowed (copy-on-write). After this the `RCow` is always
+[`Owned`](RCow::Owned).
 
 ### `RNGtype`
 
@@ -11449,32 +11704,6 @@ interned symbol table, which persists for the R session lifetime.
 
 ### `TypeSpec`
 
-User-facing column type descriptor for [`SerdeRowBuilder::with_schema`].
-
-Maps onto the internal `ColumnType` and unlocks an NA-tolerance hint via
-`Optional(_)`. The wrapper does **not** change the underlying column type —
-`Optional(Integer)` produces an integer column where `None` lands as
-`NA_INTEGER`. Without the hint, an all-`None` column discovered from the
-first row would otherwise degrade to a logical-NA column (see
-`vec_to_dataframe` doc).
-
-**Variants:**
-
-- `Logical`
-  - R `logical` column (`bool`).
-- `Integer`
-  - R `integer` column (`i8`/`i16`/`i32`).
-- `Real`
-  - R `numeric` column (`f32`/`f64`/`i64`/`u64`).
-- `Character`
-  - R `character` column (`String`/`&str`).
-- `Generic`
-  - R generic list column (per-element SEXP fallback).
-- `Optional(Box<TypeSpec>)`
-  - NA-tolerance hint wrapping a base type. `Optional(Integer)` is an
-
-### `TypeSpec`
-
 Type specification for a single list element.
 
 The optional `usize` parameter specifies an exact length constraint.
@@ -11524,6 +11753,32 @@ type_name(self: &Self) -> String
 ```
 
 Get a human-readable name for this type specification.
+
+### `TypeSpec`
+
+User-facing column type descriptor for [`SerdeRowBuilder::with_schema`].
+
+Maps onto the internal `ColumnType` and unlocks an NA-tolerance hint via
+`Optional(_)`. The wrapper does **not** change the underlying column type —
+`Optional(Integer)` produces an integer column where `None` lands as
+`NA_INTEGER`. Without the hint, an all-`None` column discovered from the
+first row would otherwise degrade to a logical-NA column (see
+`vec_to_dataframe` doc).
+
+**Variants:**
+
+- `Logical`
+  - R `logical` column (`bool`).
+- `Integer`
+  - R `integer` column (`i8`/`i16`/`i32`).
+- `Real`
+  - R `numeric` column (`f32`/`f64`/`i64`/`u64`).
+- `Character`
+  - R `character` column (`String`/`&str`).
+- `Generic`
+  - R generic list column (per-element SEXP fallback).
+- `Optional(Box<TypeSpec>)`
+  - NA-tolerance hint wrapping a base type. `Optional(Integer)` is an
 
 ### `TypedListError`
 

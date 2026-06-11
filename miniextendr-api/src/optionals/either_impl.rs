@@ -1,6 +1,6 @@
 //! Integration with the `either` crate.
 //!
-//! This module provides [`TryFromSexp`] and [`IntoR`] implementations for
+//! This module provides [`TryFromSexp`](crate::TryFromSexp) and [`IntoR`](crate::IntoR) implementations for
 //! [`Either<L, R>`], allowing sum types to be passed between R and Rust.
 //!
 //! # Features

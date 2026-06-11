@@ -459,7 +459,7 @@ impl<T: RNativeType> IntoR for AsRNative<T> {
 
 // region: DataFrame / Vctrs representation wrappers
 
-/// Wrap a value and convert it to an R `data.frame` via [`IntoDataFrame`] when returned.
+/// Wrap a value and convert it to an R `data.frame` via [`IntoDataFrame`](crate::dataframe::IntoDataFrame) when returned.
 ///
 /// Use this at a call site to force a single return value into a data.frame without making
 /// that the type's default representation (for the always-a-data.frame default, use
