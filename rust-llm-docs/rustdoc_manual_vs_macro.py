@@ -72,7 +72,18 @@ def main():
         recs[term].append((for_s, span, len(imp.get("items", []) or [])))
         spancount[term][span] += 1
 
-    out = ["# Manual-vs-macro conversion impls", "", f"Source: `{args.json}`", ""]
+    out = [
+        "# Manual-vs-macro conversion impls",
+        "",
+        f"Source: `{args.json}`",
+        "",
+        "> **Caveat**: the \"macro already exists for this shape\" flags count",
+        "> feature-gated optionals (jiff, uuid, bitvec, ...) as absorbable",
+        "> hand-rolled impls, but most have bespoke element conversions a",
+        "> shape-macro cannot express. Treat the headline counts as an upper",
+        "> bound on the dedup opportunity, not a work list.",
+        "",
+    ]
     for term in traits:
         rs = recs.get(term, [])
         shape_macro = defaultdict(int)

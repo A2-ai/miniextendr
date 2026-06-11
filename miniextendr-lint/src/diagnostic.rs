@@ -29,7 +29,7 @@ impl fmt::Display for Severity {
 /// A single lint diagnostic with structured metadata.
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
-    /// Stable rule code (e.g. `MXL101`).
+    /// Stable rule code (e.g. `MXL106`).
     pub code: LintCode,
     /// Severity level.
     pub severity: Severity,

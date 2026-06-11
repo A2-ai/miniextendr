@@ -1,3 +1,10 @@
+//! `miniextendr` — maintainer CLI for miniextendr-based R packages.
+//!
+//! Wraps the configure/install/document/vendor development loop in one
+//! binary (`miniextendr <command>`). This is a binary-only crate; the
+//! framework runtime lives in `miniextendr-api` and the scaffolding for
+//! end-user packages in the `minirextendr` R package.
+
 mod bridge;
 mod cli;
 mod commands;
