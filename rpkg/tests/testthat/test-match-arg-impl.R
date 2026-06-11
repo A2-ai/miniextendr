@@ -87,6 +87,19 @@ test_that("S7 constructor rejects non-choice", {
   expect_error(S7MatchArgHolder(mode = "Bogus"), "should be one of")
 })
 
+test_that("S7 fast-path shortcut carries match_arg validation (#949)", {
+  h <- S7MatchArgHolder(mode = "Fast")
+  # Exported shortcut agrees with the generic.
+  expect_equal(S7MatchArgHolder_current(h), current(h))
+  # Shortcut validates and applies match_arg, mutating in place.
+  expect_equal(S7MatchArgHolder_set(h, "Debug"), "Debug")
+  expect_equal(S7MatchArgHolder_current(h), "Debug")
+  # Partial matching still works through the shortcut.
+  expect_equal(S7MatchArgHolder_set(h, "Sa"), "Safe")
+  # Invalid choices are rejected by match.arg in the shortcut.
+  expect_error(S7MatchArgHolder_set(h, "Bogus"), "should be one of")
+})
+
 # endregion
 
 # region: S3 — choices() on constructor + match_arg on instance method
