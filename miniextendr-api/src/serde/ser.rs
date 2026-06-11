@@ -4,9 +4,9 @@
 //! to serialize any serde-compatible Rust type into R data structures.
 
 use super::error::RSerdeError;
-use crate::gc_protect::OwnedProtect;
+use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
-use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+use crate::sys::Rf_allocVector;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
@@ -235,8 +235,9 @@ pub struct SeqSerializer {
     element_type: Option<SEXPTYPE>,
     /// Track whether all elements are scalar.
     all_scalar: bool,
-    /// Number of Rf_protect() calls to balance on end().
-    protect_count: i32,
+    /// Keeps element SEXPs protected until `.end()` assembles the container;
+    /// drop balances the protect stack even on early-`Err` paths.
+    scope: ProtectScope,
 }
 
 impl SeqSerializer {
@@ -245,7 +246,9 @@ impl SeqSerializer {
             elements: Vec::with_capacity(len.unwrap_or(0)),
             element_type: None,
             all_scalar: true,
-            protect_count: 0,
+            // SAFETY: serializers run on the R main thread — every method
+            // allocates through the R API.
+            scope: unsafe { ProtectScope::new() },
         }
     }
 }
@@ -271,18 +274,15 @@ impl ser::SerializeSeq for SeqSerializer {
             _ => {}
         }
 
-        // Protect intermediate SEXP from GC during subsequent serializations.
-        unsafe { Rf_protect(elem) };
-        self.protect_count += 1;
+        // Protect intermediate SEXP from GC during subsequent serializations;
+        // the scope unprotects when `self` drops after `.end()`.
+        let elem = unsafe { self.scope.protect_raw(elem) };
         self.elements.push(elem);
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        let result = crate::list::List::from_scalars_or_list(&self.elements).as_sexp();
-        // Unprotect all intermediate elements now that they're in the container.
-        unsafe { Rf_unprotect(self.protect_count) };
-        Ok(result)
+        Ok(crate::list::List::from_scalars_or_list(&self.elements).as_sexp())
     }
 }
 
@@ -296,9 +296,7 @@ impl ser::SerializeTuple for SeqSerializer {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         // Tuples always become lists (heterogeneous by nature)
-        let result = create_r_list(&self.elements);
-        unsafe { Rf_unprotect(self.protect_count) };
-        Ok(result)
+        Ok(create_r_list(&self.elements))
     }
 }
 
@@ -311,9 +309,7 @@ impl ser::SerializeTupleStruct for SeqSerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        let result = create_r_list(&self.elements);
-        unsafe { Rf_unprotect(self.protect_count) };
-        Ok(result)
+        Ok(create_r_list(&self.elements))
     }
 }
 
@@ -332,8 +328,9 @@ impl ser::SerializeTupleVariant for TupleVariantSerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
+        // `inner_list` arrives unprotected; `make_tagged_list` roots it before
+        // allocating the wrapper list. `self.inner.scope` drops with `self`.
         let inner_list = create_r_list(&self.inner.elements);
-        unsafe { Rf_unprotect(self.inner.protect_count) };
         Ok(make_tagged_list(self.variant, inner_list))
     }
 }
@@ -342,7 +339,8 @@ impl ser::SerializeTupleVariant for TupleVariantSerializer {
 pub struct MapSerializer {
     keys: Vec<String>,
     values: Vec<SEXP>,
-    protect_count: i32,
+    /// Keeps value SEXPs protected until `.end()` assembles the named list.
+    scope: ProtectScope,
 }
 
 impl MapSerializer {
@@ -351,7 +349,9 @@ impl MapSerializer {
         MapSerializer {
             keys: Vec::with_capacity(cap),
             values: Vec::with_capacity(cap),
-            protect_count: 0,
+            // SAFETY: serializers run on the R main thread — every method
+            // allocates through the R API.
+            scope: unsafe { ProtectScope::new() },
         }
     }
 }
@@ -370,30 +370,30 @@ impl ser::SerializeMap for MapSerializer {
 
     fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
         let val = value.serialize(RSerializer)?;
-        unsafe { Rf_protect(val) };
-        self.protect_count += 1;
+        let val = unsafe { self.scope.protect_raw(val) };
         self.values.push(val);
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        let result = create_named_list(&self.keys, &self.values);
-        unsafe { Rf_unprotect(self.protect_count) };
-        Ok(result)
+        Ok(create_named_list(&self.keys, &self.values))
     }
 }
 
 /// Serializer for structs.
 pub struct StructSerializer {
     fields: Vec<(&'static str, SEXP)>,
-    protect_count: i32,
+    /// Keeps field SEXPs protected until `.end()` assembles the named list.
+    scope: ProtectScope,
 }
 
 impl StructSerializer {
     fn new(len: usize) -> Self {
         StructSerializer {
             fields: Vec::with_capacity(len),
-            protect_count: 0,
+            // SAFETY: serializers run on the R main thread — every method
+            // allocates through the R API.
+            scope: unsafe { ProtectScope::new() },
         }
     }
 }
@@ -408,18 +408,15 @@ impl ser::SerializeStruct for StructSerializer {
         value: &T,
     ) -> Result<(), Self::Error> {
         let val = value.serialize(RSerializer)?;
-        unsafe { Rf_protect(val) };
-        self.protect_count += 1;
+        let val = unsafe { self.scope.protect_raw(val) };
         self.fields.push((key, val));
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         let names: Vec<&str> = self.fields.iter().map(|(k, _)| *k).collect();
-        let values: Vec<SEXP> = self.fields.into_iter().map(|(_, v)| v).collect();
-        let result = create_named_list_static(&names, &values);
-        unsafe { Rf_unprotect(self.protect_count) };
-        Ok(result)
+        let values: Vec<SEXP> = self.fields.iter().map(|(_, v)| *v).collect();
+        Ok(create_named_list_static(&names, &values))
     }
 }
 
@@ -442,8 +439,10 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
+        // `inner` arrives unprotected (the struct's scope dropped inside
+        // `SerializeStruct::end`); `make_tagged_list` protects it before
+        // allocating the wrapper list.
         let inner = ser::SerializeStruct::end(self.inner)?;
-        // SerializeStruct::end already called Rf_unprotect for struct fields.
         Ok(make_tagged_list(self.variant, inner))
     }
 }
@@ -509,7 +508,12 @@ fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
 }
 
 /// Create a tagged list: `list(tag = value)`
+///
+/// `value` may arrive unprotected (callers pass freshly assembled containers),
+/// so it is rooted here before the wrapper allocations can trigger GC.
 fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
+    let scope = unsafe { ProtectScope::new() };
+    let value = unsafe { scope.protect_raw(value) };
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, 1)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1)) };
 
