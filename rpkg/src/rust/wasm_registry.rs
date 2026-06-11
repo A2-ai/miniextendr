@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      79220ab396d39450
+// content-hash:      f2c4ce4e50ef080a
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -953,10 +953,12 @@ unsafe extern "C-unwind" {
     pub fn C_create_sensor_readings_df(_: SEXP) -> SEXP;
     pub fn C_create_single_event_split(_: SEXP) -> SEXP;
     pub fn C_SharedData__new(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_str_borrow_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedData__get_x(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedData__get_y(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_into_sexp_altrep(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedData__get_label(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_gc_stress_str_borrow(_: SEXP) -> SEXP;
     pub fn C_gc_stress_toml_array(_: SEXP) -> SEXP;
     pub fn C_gc_stress_borrowed_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
@@ -6811,6 +6813,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 4,
     },
     R_CallMethodDef {
+        name: c"C_str_borrow_len".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_str_borrow_len) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_SharedData__get_x".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_SharedData__get_x) }),
         numArgs: 2,
@@ -6829,6 +6836,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_SharedData__get_label".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_SharedData__get_label) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_str_borrow".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_str_borrow) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_gc_stress_toml_array".as_ptr(),

@@ -143,7 +143,13 @@ impl RustConversionBuilder {
         pat_type: &syn::PatType,
         sexp_ident: &syn::Ident,
     ) -> Vec<TokenStream> {
-        let (owned, borrowed) = self.build_conversion_split(pat_type, sexp_ident);
+        // `build_conversion` is the single-scope (main-thread) path: every statement
+        // runs inside the same `with_r_unwind_protect` closure where the argument
+        // SEXPs are live for the whole call. So `&str` can borrow R's CHARSXP pool
+        // directly — zero-copy — exactly like `&[T]` already does. The owning-`String`
+        // detour only exists to satisfy `Send` when the value must cross the worker
+        // boundary (`build_conversion_split`), which never applies here.
+        let (owned, borrowed) = self.build_conversion_split_inner(pat_type, sexp_ident, true);
         owned.into_iter().chain(borrowed).collect()
     }
 
@@ -166,6 +172,28 @@ impl RustConversionBuilder {
         &self,
         pat_type: &syn::PatType,
         sexp_ident: &syn::Ident,
+    ) -> (Vec<TokenStream>, Vec<TokenStream>) {
+        // Worker path: `&str` MUST be owned-then-borrowed because a borrowed view
+        // over R's CHARSXP pool is `!Send` and cannot move into the worker closure.
+        self.build_conversion_split_inner(pat_type, sexp_ident, false)
+    }
+
+    /// Inner implementation of [`build_conversion_split`].
+    ///
+    /// `zero_copy_str` controls how a `&str` argument is lowered:
+    /// - `true` (main-thread, single-scope): emit a direct zero-copy `&str` borrow
+    ///   over R's CHARSXP pool via `TryFromSexp` — no `String` allocation. Sound
+    ///   because the SEXP outlives the borrow inside the `with_r_unwind_protect`
+    ///   closure, and the `&str`'s lifetime is tied to that scope (storing it beyond
+    ///   the call is a borrow-checker error).
+    /// - `false` (worker): convert to an owned `String` on the main thread, then
+    ///   borrow `&str` inside the worker closure — the `String` is `Send`, the
+    ///   borrowed view is not.
+    fn build_conversion_split_inner(
+        &self,
+        pat_type: &syn::PatType,
+        sexp_ident: &syn::Ident,
+        zero_copy_str: bool,
     ) -> (Vec<TokenStream>, Vec<TokenStream>) {
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
             return (vec![], vec![]);
@@ -272,26 +300,45 @@ impl RustConversionBuilder {
                     let stmt = self.conversion_stmt_untyped(try_expr, &error_msg, ident, span);
                     (vec![stmt], vec![])
                 } else if is_str {
-                    // &str: Convert to String, then borrow using Borrow trait.
-                    // This allows the String to be moved into worker thread closures.
-                    let owned_ident = quote::format_ident!("__owned_{}", ident);
+                    let span = ty.span();
                     let error_msg = format!(
                         "failed to convert parameter '{}' to string: expected character vector",
                         ident
                     );
-                    let span = ty.span();
-                    // Owned conversion: SEXP -> String
-                    let string_ty: syn::Type = syn::parse_quote!(String);
-                    let try_expr = quote_spanned! {span=>
-                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                    };
-                    let owned_stmt =
-                        self.conversion_stmt(try_expr, &error_msg, &owned_ident, &string_ty, span);
-                    // Borrow: String -> &str (using Borrow trait)
-                    let borrow_stmt = quote_spanned! {span=>
-                        let #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
-                    };
-                    (vec![owned_stmt], vec![borrow_stmt])
+                    if zero_copy_str {
+                        // Main-thread path: borrow R's CHARSXP pool directly via the
+                        // `&'static str` TryFromSexp impl — zero allocation. The SEXP
+                        // is a live wrapper argument for the whole call, so the borrow
+                        // is sound; its lifetime is tied to this scope, so storing it
+                        // beyond the call is a borrow-checker error (no-store guarantee).
+                        let try_expr = quote_spanned! {span=>
+                            ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                        };
+                        let stmt = self.conversion_stmt_untyped(try_expr, &error_msg, ident, span);
+                        (vec![stmt], vec![])
+                    } else {
+                        // Worker path: convert to owned String, then borrow using the
+                        // Borrow trait. The String moves into the worker closure (it is
+                        // Send); a borrowed view over R's CHARSXP pool is not.
+                        let owned_ident = quote::format_ident!("__owned_{}", ident);
+                        // Owned conversion: SEXP -> String
+                        let string_ty: syn::Type = syn::parse_quote!(String);
+                        let try_expr = quote_spanned! {span=>
+                            ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                        };
+                        let owned_stmt = self.conversion_stmt(
+                            try_expr,
+                            &error_msg,
+                            &owned_ident,
+                            &string_ty,
+                            span,
+                        );
+                        // Borrow: String -> &str (using Borrow trait)
+                        let borrow_stmt = quote_spanned! {span=>
+                            let #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
+                        };
+                        (vec![owned_stmt], vec![borrow_stmt])
+                    }
                 } else {
                     // &T for other types: use TryFromSexp for the reference type.
                     let error_msg = format!(

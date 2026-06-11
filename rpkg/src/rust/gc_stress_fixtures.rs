@@ -2012,3 +2012,54 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 }
 
 // endregion
+
+// region: zero-copy &str argument borrow (#664)
+
+/// Production helper for the `&str` zero-copy argument-borrow path (#664).
+///
+/// On the main-thread default, `#[miniextendr]` lowers a `&str` argument to a
+/// *direct* zero-copy borrow over R's CHARSXP pool (no owning-`String` copy).
+/// This fn just measures the borrow and echoes it back so the round-trip can be
+/// asserted from the GC driver below.
+#[miniextendr]
+pub fn str_borrow_len(s: &str) -> i32 {
+    // Touch the borrow non-trivially so the zero-copy view is actually read.
+    s.chars().count() as i32
+}
+
+/// Drive the zero-copy `&str` argument borrow under GC pressure (#664).
+///
+/// `#[miniextendr] fn(s: &str)` now borrows R's CHARSXP data directly instead of
+/// copying into a `String` first. The borrow is sound because the argument SEXP
+/// is a live wrapper parameter for the whole `with_r_unwind_protect` call, and
+/// its lifetime is tied to that scope (storing it past the call is a borrow-check
+/// error). This fixture synthesises a STRSXP internally, takes a zero-copy
+/// `&str` view over each element exactly as the generated wrapper does, and
+/// verifies the bytes survive `gctorture(TRUE)` — a corrupted/freed borrow would
+/// surface as wrong contents rather than a clean read.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_str_borrow() {
+    let inputs = ["", "ascii", "héllo-wörld", "a longer string with spaces"];
+
+    // Build a STRSXP and root it for the whole stress loop.
+    let src = inputs.to_vec().into_sexp();
+    let _src_guard = unsafe { miniextendr_api::OwnedProtect::new(src) };
+
+    for _ in 0..64 {
+        for (i, expected) in inputs.iter().enumerate() {
+            // `string_elt_str` is the same zero-copy primitive the generated
+            // `&str` argument path uses: it reads R's CHARSXP pool directly via
+            // `R_CHAR` with no allocation. A freed/corrupted borrow under GC would
+            // surface as wrong bytes rather than a clean read.
+            let borrowed: &str = src.string_elt_str(i as isize).expect("non-NA element");
+            assert_eq!(
+                borrowed, *expected,
+                "zero-copy &str borrow corrupted under GC at index {i}"
+            );
+        }
+    }
+}
+
+// endregion
