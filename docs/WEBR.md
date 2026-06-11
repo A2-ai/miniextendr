@@ -339,20 +339,30 @@ entirely — see the guidance below.
 
 **Guidance:**
 
-- **Pure-R dependencies** (rlang, lifecycle, cli, glue, …) are safe to
-  `importFrom` — they have no `.so` for the host R to choke on.
+- **Pure-R dependencies** (withr, …) are safe to `importFrom` — they have no
+  `.so` for the host R to choke on. But "pure R" must hold for the *whole*
+  `Depends`/`Imports` graph, not just the package itself, and verify before
+  assuming: many common utility packages are compiled despite their pure-R
+  reputation — rlang, cli, glue, fs, and purrr are all
+  `NeedsCompilation: yes` and ship a `libs/` directory, and lifecycle (itself
+  pure R) hard-imports compiled cli + rlang (verified 2026-06). Check the
+  installed package for `libs/` or read `NeedsCompilation` from its
+  `DESCRIPTION`, or just run the lint below — it walks the graph for you.
 - **Compiled or heavy dependencies you only need at runtime** (Shiny, DBI
   backends, data.table, …) belong in `Suggests`, not `Imports`. Call them
-  with `pkg::fn()` behind a `rlang::check_installed()` /
-  `requireNamespace()` guard. That keeps them out of the namespace-load
-  graph, so the wasm install's lazy-load never reaches for their `.so`.
+  with `pkg::fn()` behind a `requireNamespace()` guard. That keeps them out
+  of the namespace-load graph, so the wasm install's lazy-load never reaches
+  for their `.so`. (Pure-R umbrellas count too: shiny itself has no `.so`,
+  but its hard Imports — httpuv, later — do.)
 
 This mirrors what the astra downstream did (moved its Shiny stack to
-`Suggests` + `::`). Documented under #752; a future `minirextendr_doctor()` /
-`miniextendr_check_static()` lint that flags eager `importFrom` of
-known-compiled packages when a webR target is configured is tracked
-separately in #925 (the "is it compiled?" / "is webR the target?" detection
-needs design — see that issue).
+`Suggests` + `::`). Documented under #752; the lint is
+`minirextendr::miniextendr_webr_import_lint()` (also reachable as
+`miniextendr_doctor(webr = TRUE)`, #925). It statically probes each
+namespace-level import — `libs/` dir or `NeedsCompilation` field of the
+installed copy, recursing through pure-R umbrellas' `Depends`/`Imports` —
+and falls back to a curated known-compiled list for dependencies that are
+not installed locally. No `loadNamespace()`, no network.
 
 ## CI
 
@@ -390,7 +400,8 @@ is what proves it *loads* in a real webR runtime.
 
 - Issue #470 — umbrella tracking issue for webR/WASM support.
 - Issue #495 — cross-crate trait dispatch; #752 — dependency guidance
-  (this section); #925 — follow-up lint for `importFrom` of compiled deps;
+  (this section); #925 — lint for `importFrom` of compiled deps
+  (`miniextendr_webr_import_lint()`, shipped);
   #788 — arm64-native dev image (first cut: `Dockerfile.webr-arm64` + the
   `docker-webr-arm64-*` just recipes + the `WEBR_ARM64=1` smoke path).
 - Issues #491 / #744 — the base-package variant of the host-R-loads-a-wasm-
