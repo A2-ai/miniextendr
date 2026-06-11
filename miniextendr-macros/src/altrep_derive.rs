@@ -23,9 +23,10 @@
 //!
 //! 2. **Manual** — `#[altrep(manual)]` suppresses `AltrepLen` /
 //!    `AltIntegerData` generation so you can write the element-access logic
-//!    yourself. Registration (`impl_alt*_from_data!`) is still emitted —
-//!    `#[altrep(no_lowlevel)]` is the additional escape hatch when you also
-//!    want to control `Altrep` / `AltVec` directly.
+//!    yourself. The low-level trait impls (`Altrep`, `AltVec`, family
+//!    methods, `InferBase`) are still emitted — `#[altrep(no_lowlevel)]` is
+//!    the additional escape hatch when you also want to control `Altrep` /
+//!    `AltVec` directly.
 //!
 //! Pick by what your data looks like: a finite buffer that fits in a struct
 //! field → field-based; a computed element (`fibonacci(i)`) → manual.
@@ -44,15 +45,14 @@
 //!
 //! | Option | Allowed on families | Conflicts with |
 //! |---|---|---|
-//! | `subset` | integer, complex | `dataptr`, `list` |
+//! | `subset` | all atomic (integer, real, logical, raw, string, complex) | `dataptr`, `list` |
 //! | `dataptr` | integer, real, logical, raw, string, complex | `subset`, `list` |
-//! | `serialize` | all except `list` | `list` |
+//! | `serialize` | all | (none) |
 //! | `manual` | all | (none — turns off `AltrepLen`/`Alt*Data` generation) |
-//! | `no_lowlevel` | all | (none — also suppresses `impl_alt*_from_data!`) |
+//! | `no_lowlevel` | all | (none — also suppresses the low-level trait impls) |
 //!
-//! The list family rejects `dataptr`, `subset`, and `serialize` — list
-//! elements are arbitrary SEXPs, so there is no contiguous buffer to expose
-//! and no zero-copy serialization story.
+//! The list family rejects `dataptr` and `subset` — list elements are
+//! arbitrary SEXPs, so there is no contiguous buffer to expose.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -65,9 +65,9 @@ use syn::spanned::Spanned;
 /// some families support `dataptr` or `subset`). This struct captures those differences
 /// so [`AltrepAttrs::generate_lowlevel`] can emit the correct code.
 struct AltrepFamilyConfig<'a> {
-    /// Name of the `impl_alt*_from_data!` runtime macro used on the simple (non-expanded) path.
-    /// For example, `"impl_altinteger_from_data"` for the integer family.
-    macro_base: &'a str,
+    /// Human-readable family name used in option-validation error messages
+    /// (e.g., `"AltrepInteger"`).
+    family_name: &'a str,
     /// If this family supports a typed `dataptr` materialization macro, the tuple contains:
     /// - The macro name (e.g., `"__impl_altvec_dataptr"`)
     /// - An optional element type token stream (e.g., `i32` for integer, `f64` for real)
@@ -90,25 +90,9 @@ struct AltrepFamilyConfig<'a> {
     /// String family uses `RUnwind` because elt/dataptr call R APIs (Rf_mkCharLenCE).
     /// All families now default to `RUnwind`.
     default_guard: &'a str,
-    /// Emit the underlying `__impl_*` trait-impl macros directly instead of
-    /// delegating to the family's `impl_alt<family>_from_data!` declarative
-    /// macro (Path (a) from #682 / #711).
-    ///
-    /// When `true`, [`AltrepAttrs::generate_lowlevel`] routes through
-    /// [`AltrepAttrs::generate_lowlevel_direct`], which reproduces the exact
-    /// declarative-macro arm expansions from the proc-macro. The emitted trait
-    /// surface is byte-equivalent to the delegated path; only the indirection
-    /// is removed. Currently set only for the integer family (the migration
-    /// spike); the remaining families still delegate.
-    ///
-    /// `materializing_dataptr_macro` carries the per-family materializing
-    /// dataptr macro name (e.g. `"__impl_altvec_integer_dataptr"`) used on the
-    /// default/serialize arms; only consulted when `emit_direct` is `true`.
-    emit_direct: bool,
     /// Family-specific materializing dataptr macro (e.g.
-    /// `"__impl_altvec_integer_dataptr"`). Only meaningful when `emit_direct`
-    /// is `true`; the default/serialize arms use it to install the trivial
-    /// `AltrepDataptr` + materializing `AltVec`.
+    /// `"__impl_altvec_integer_dataptr"`). The default/serialize arms use it
+    /// to install the trivial `AltrepDataptr` + materializing `AltVec`.
     materializing_dataptr_macro: &'a str,
 }
 
@@ -123,11 +107,11 @@ struct AltrepFamilyConfig<'a> {
 /// |-----|------|-------------|
 /// | `len = "field"` | `String` | Name of the struct field that holds the vector length. Auto-detected if a field is named `len` or `length`. |
 /// | `elt = "field"` | `String` | Name of the struct field to return as the element value (produces a constant-value vector). If omitted, the default `elt()` returns `NA` / `NaN` / `0` / `None` depending on the family. |
-/// | `manual` | Flag | Skip automatic `AltrepLen` and `Alt*Data` trait generation. Use when you want to write those trait impls by hand (e.g., for custom `elt` logic, `no_na`, `sum`, etc.). The `impl_alt*_from_data!` registration is still emitted automatically — you do **not** need to call it yourself. Use `no_lowlevel` as an additional escape hatch if you also want to suppress the registration. |
-/// | `no_lowlevel` | Flag | Suppress automatic `impl_alt*_from_data!` macro invocation. Use this when you want to provide your own `Altrep`, `AltVec`, and family-specific trait implementations. |
+/// | `manual` | Flag | Skip automatic `AltrepLen` and `Alt*Data` trait generation. Use when you want to write those trait impls by hand (e.g., for custom `elt` logic, `no_na`, `sum`, etc.). The low-level trait impls (`Altrep`, `AltVec`, family methods, `InferBase`) are still emitted automatically — you do **not** need to write them yourself. Use `no_lowlevel` as an additional escape hatch if you also want to suppress those. |
+/// | `no_lowlevel` | Flag | Suppress the automatic low-level trait impls. Use this when you want to provide your own `Altrep`, `AltVec`, and family-specific trait implementations. |
 /// | `dataptr` | Flag | Enable `Dataptr` method registration, allowing R to get a direct pointer to the underlying data. Mutually exclusive with `subset`. Not supported for List. |
 /// | `serialize` | Flag | Enable `Serialized_state` and `Unserialize` method registration for ALTREP serialization support. |
-/// | `subset` | Flag | Enable `Extract_subset` method registration. Mutually exclusive with `dataptr`. Only supported for integer and complex families. Not supported for List. |
+/// | `subset` | Flag | Enable `Extract_subset` method registration. Mutually exclusive with `dataptr`. Supported on all atomic families. Not supported for List. |
 /// | `unsafe` | Flag | Set guard mode to `Unsafe` -- no panic protection on ALTREP callbacks. |
 /// | `rust_unwind` | Flag | Set guard mode to `RustUnwind` -- uses `catch_unwind` only (unsafe if callbacks call R APIs). |
 /// | `r_unwind` | Flag | Set guard mode to `RUnwind` (default) -- uses `with_r_unwind_protect` for safe R API calls. |
@@ -144,8 +128,9 @@ struct AltrepAttrs {
     /// `AltIntegerData`/`AltRealData`/etc. implementation. Useful for wrapper types
     /// around `StreamingIntData`, `StreamingRealData`, etc.
     elt_delegate: Option<syn::Ident>,
-    /// Whether to generate the `impl_alt*_from_data!` macro call. Defaults to `true`.
-    /// Set to `false` by `#[altrep(no_lowlevel)]`.
+    /// Whether to generate the low-level trait impls (`Altrep`, `AltVec`,
+    /// family methods, `InferBase`). Defaults to `true`. Set to `false` by
+    /// `#[altrep(no_lowlevel)]`.
     generate_lowlevel: bool,
     /// Collected option flags (`dataptr`, `serialize`, `subset`) passed to the runtime macro.
     lowlevel_options: Vec<syn::Ident>,
@@ -280,12 +265,11 @@ impl AltrepAttrs {
         ))
     }
 
-    /// Returns `true` if a non-default guard mode is set (i.e., `Unsafe` or `RUnwind`).
+    /// Returns `true` if a non-default guard mode is set (i.e., `Unsafe` or `RustUnwind`).
     ///
-    /// The default guard is `RUnwind`, which uses the simple `impl_alt*_from_data!`
-    /// macro path. Non-default guards (e.g., `RustUnwind`, `Unsafe`) require the
-    /// expanded code generation path that emits individual internal macros with an
-    /// explicit guard parameter.
+    /// The default guard is `RUnwind`. Non-default guards (e.g., `RustUnwind`,
+    /// `Unsafe`) suppress the materializing-dataptr `AltVec` impl on the
+    /// no-option arm (behaviour preserved from the pre-#711 expanded path).
     fn has_non_default_guard(&self) -> bool {
         match &self.guard {
             Some(g) => g != "RUnwind",
@@ -339,15 +323,25 @@ impl AltrepAttrs {
 
     /// Generates low-level ALTREP trait implementation code for a given type family.
     ///
-    /// There are two code generation paths:
+    /// Emits the underlying trait-impl macros directly (Path (a) from #682,
+    /// landed via #711/#933), reproducing the `impl_alt<family>_from_data!`
+    /// arm expansions from the proc-macro with no declarative-macro hop. The
+    /// four items every arm produces are:
     ///
-    /// 1. **Simple path** -- When using the default `RUnwind` guard and no `subset` option,
-    ///    delegates to the `impl_alt*_from_data!` runtime macro which bundles `Altrep`,
-    ///    `AltVec`, family-specific methods, and `InferBase` in a single expansion.
+    /// 1. `__impl_altrep_base!(Ty, <guard>[, with_serialize])` — `impl Altrep`.
+    /// 2. an `AltVec` impl, one of:
+    ///    - materializing (`materializing_dataptr_macro`) — default/serialize arms,
+    ///    - direct dataptr (`__impl_altvec_dataptr!(Ty, <elem>)`; string routes
+    ///      through `__impl_altvec_string_dataptr!`) — `dataptr` arm,
+    ///    - subset (`__impl_altvec_extract_subset!`) — `subset` arm,
+    /// 3. `methods_macro!(Ty)` — the family `Alt<Family>` impl,
+    /// 4. `inferbase_macro!(Ty)` — `impl InferBase`.
     ///
-    /// 2. **Expanded path** -- When a non-default guard mode or `subset` is requested,
-    ///    emits individual internal macros (`__impl_altrep_base!`, `__impl_altvec_*!`,
-    ///    `__impl_alt*_methods!`, `impl_inferbase_*!`) with explicit guard parameters.
+    /// The guard is honoured uniformly (the retired declarative-macro
+    /// delegation only handled the default `RUnwind` guard; non-default guards
+    /// used a separate expanded path) and option combinations are validated
+    /// here at the derive call site rather than 7 hops deep in macro
+    /// expansion.
     ///
     /// # Arguments
     ///
@@ -361,33 +355,9 @@ impl AltrepAttrs {
     ///
     /// # Errors
     ///
-    /// Returns `Err` if option validation fails (e.g., `subset` on an unsupported family).
-    /// Path (a) emit: reproduce the `impl_alt<family>_from_data!` arm
-    /// expansions directly from the proc-macro, with no declarative-macro hop.
-    ///
-    /// This is the #682/#711 migration. The emitted trait surface is
-    /// byte-equivalent to delegating to `impl_alt<family>_from_data!` — the four
-    /// items every arm produces are:
-    ///
-    /// 1. `__impl_altrep_base!(Ty, <guard>[, with_serialize])` — `impl Altrep`.
-    /// 2. an `AltVec` impl, one of:
-    ///    - materializing (`materializing_dataptr_macro`) — default/serialize arms,
-    ///    - direct dataptr (`__impl_altvec_dataptr!(Ty, <elem>)`) — `dataptr` arm,
-    ///    - subset (`__impl_altvec_extract_subset!`) — `subset` arm,
-    /// 3. `methods_macro!(Ty)` — the family `Alt<Family>` impl,
-    /// 4. `inferbase_macro!(Ty)` — `impl InferBase`.
-    ///
-    /// Folding the declarative macro's "simple path" and the proc-macro's prior
-    /// "expanded path" into one: the guard is honoured uniformly (the declarative
-    /// macro only handled the default `RUnwind` guard; non-default guards used the
-    /// old expanded path) and option combinations are validated at the derive
-    /// call site rather than 7 hops deep in macro expansion.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if option validation fails (delegated to the caller, which
-    /// has already run `validate_options`).
-    fn generate_lowlevel_direct(
+    /// Returns `Err` if option validation fails (e.g., `subset` on an
+    /// unsupported family, or `dataptr` combined with `subset`).
+    fn generate_lowlevel(
         &self,
         name: &syn::Ident,
         generics: &syn::Generics,
@@ -395,13 +365,21 @@ impl AltrepAttrs {
     ) -> syn::Result<TokenStream> {
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         let AltrepFamilyConfig {
+            family_name,
             ref dataptr_macro,
+            string_dataptr,
+            subset,
             methods_macro,
             inferbase_macro,
             default_guard,
             materializing_dataptr_macro,
-            ..
         } = *family;
+
+        if !self.generate_lowlevel {
+            return Ok(quote! {});
+        }
+
+        self.validate_options(family_name, subset)?;
 
         let has_serialize = self.lowlevel_options.iter().any(|o| o == "serialize");
         let has_dataptr = self.lowlevel_options.iter().any(|o| o == "dataptr");
@@ -425,21 +403,28 @@ impl AltrepAttrs {
         };
 
         // 2. AltVec impl. Mirrors the per-arm choice in `impl_alt<family>_from_data!`:
-        //    - `dataptr` arm -> direct `__impl_altvec_dataptr!($ty, $elem)`,
+        //    - `dataptr` arm -> direct `__impl_altvec_dataptr!($ty, $elem)`; the
+        //      string family has no typed contiguous pointer, so its `dataptr`
+        //      arm routes through `__impl_altvec_string_dataptr!` (whole-vector
+        //      STRSXP materialization — same emission as its default arm),
         //    - `subset` arm  -> `__impl_altvec_extract_subset!`,
         //    - default / serialize arms -> the family materializing dataptr macro
         //      (e.g. `__impl_altvec_integer_dataptr!`), which installs a trivial
         //      `AltrepDataptr` returning `None` then delegates to
         //      `__impl_altvec_dataptr!`.
         let vec_impl = if has_dataptr {
-            let (macro_name, elem_ty) = dataptr_macro
-                .as_ref()
-                .expect("emit_direct family must define a typed dataptr macro");
-            let dp_macro = syn::Ident::new(macro_name, proc_macro2::Span::call_site());
-            let elem = elem_ty
-                .as_ref()
-                .expect("emit_direct dataptr macro must carry an element type");
-            quote! { ::miniextendr_api::#dp_macro!(#name #ty_generics, #elem); }
+            if string_dataptr {
+                quote! { ::miniextendr_api::__impl_altvec_string_dataptr!(#name #ty_generics); }
+            } else {
+                let (macro_name, elem_ty) = dataptr_macro
+                    .as_ref()
+                    .expect("emit_direct family must define a typed dataptr macro");
+                let dp_macro = syn::Ident::new(macro_name, proc_macro2::Span::call_site());
+                let elem = elem_ty
+                    .as_ref()
+                    .expect("emit_direct dataptr macro must carry an element type");
+                quote! { ::miniextendr_api::#dp_macro!(#name #ty_generics, #elem); }
+            }
         } else if has_subset {
             quote! { ::miniextendr_api::__impl_altvec_extract_subset!(#name #ty_generics); }
         } else if self.has_non_default_guard() {
@@ -447,9 +432,9 @@ impl AltrepAttrs {
             // that handled non-default guards) emitted a *bare* `impl AltVec`
             // for the no-dataptr/no-subset case — NOT the materializing macro.
             // Match that exactly so this migration is a pure de-indirection
-            // with no semantic drift. (No production fixture uses a non-default
-            // guard on an integer ALTREP, so this branch is exercised only by
-            // the proc-macro unit tests.)
+            // with no semantic drift. (No production fixture combines a
+            // non-default guard with an ALTREP derive, so this branch is
+            // exercised only by the proc-macro unit tests.)
             quote! { impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {} }
         } else {
             let mat_macro =
@@ -462,118 +447,6 @@ impl AltrepAttrs {
         let methods_impl = quote! { ::miniextendr_api::#methods_ident!(#name #ty_generics); };
 
         // 4. InferBase.
-        let inferbase_ident = syn::Ident::new(inferbase_macro, proc_macro2::Span::call_site());
-        let inferbase_impl = quote! { ::miniextendr_api::#inferbase_ident!(#name #ty_generics); };
-
-        Ok(quote! {
-            #base_impl
-            #vec_impl
-            #methods_impl
-            #inferbase_impl
-        })
-    }
-
-    fn generate_lowlevel(
-        &self,
-        name: &syn::Ident,
-        generics: &syn::Generics,
-        family: &AltrepFamilyConfig,
-    ) -> syn::Result<TokenStream> {
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-        let AltrepFamilyConfig {
-            macro_base,
-            ref dataptr_macro,
-            string_dataptr,
-            subset,
-            methods_macro,
-            inferbase_macro,
-            default_guard,
-            emit_direct,
-            // Consumed only by `generate_lowlevel_direct` (which re-reads it
-            // from `family`); the early-return below means it is unused here.
-            materializing_dataptr_macro: _,
-        } = *family;
-        let altvec_dataptr_macro = dataptr_macro;
-        let altvec_string_dataptr = string_dataptr;
-        let altvec_subset = subset;
-        if !self.generate_lowlevel {
-            return Ok(quote! {});
-        }
-
-        self.validate_options(macro_base, altvec_subset)?;
-
-        // Path (a) from #682 / #711: emit the underlying trait-impl macros
-        // directly, bypassing the `impl_alt<family>_from_data!` declarative
-        // macro entirely. Currently only the integer family is migrated.
-        if emit_direct {
-            return self.generate_lowlevel_direct(name, generics, family);
-        }
-
-        let has_serialize = self.lowlevel_options.iter().any(|o| o == "serialize");
-        let has_dataptr = self.lowlevel_options.iter().any(|o| o == "dataptr");
-        let has_subset = self.lowlevel_options.iter().any(|o| o == "subset");
-
-        // Use the expanded path (individual internal macros) when:
-        // - Non-default guard mode is set, OR
-        // - `subset` is requested (the runtime from_data macros only have subset
-        //   variants for integer and complex; other families expand manually)
-        let needs_expanded_path = self.has_non_default_guard() || has_subset;
-
-        if !needs_expanded_path {
-            // Simple path: delegate to the impl_alt*_from_data! runtime macro.
-            // Note: runtime macros use `$ty:ty` which accepts `Name<T>` syntax.
-            let macro_ident = syn::Ident::new(macro_base, proc_macro2::Span::call_site());
-            if self.lowlevel_options.is_empty() {
-                return Ok(quote! {
-                    ::miniextendr_api::#macro_ident!(#name #ty_generics);
-                });
-            } else {
-                let options = &self.lowlevel_options;
-                return Ok(quote! {
-                    ::miniextendr_api::#macro_ident!(#name #ty_generics, #(#options),*);
-                });
-            }
-        }
-
-        // Expanded path: emit individual internal macros
-        let guard = self
-            .guard
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| syn::Ident::new(default_guard, proc_macro2::Span::call_site()));
-
-        // 1. Altrep base (with or without serialize)
-        let base_impl = if has_serialize {
-            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize); }
-        } else {
-            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard); }
-        };
-
-        // 2. AltVec impl
-        let vec_impl = if has_dataptr {
-            if let Some((macro_name, elem_ty)) = altvec_dataptr_macro {
-                let dp_macro = syn::Ident::new(macro_name, proc_macro2::Span::call_site());
-                if let Some(elem) = elem_ty {
-                    quote! { ::miniextendr_api::#dp_macro!(#name #ty_generics, #elem); }
-                } else {
-                    quote! { ::miniextendr_api::#dp_macro!(#name #ty_generics); }
-                }
-            } else if altvec_string_dataptr {
-                quote! { ::miniextendr_api::__impl_altvec_string_dataptr!(#name #ty_generics); }
-            } else {
-                quote! { impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {} }
-            }
-        } else if has_subset && altvec_subset {
-            quote! { ::miniextendr_api::__impl_altvec_extract_subset!(#name #ty_generics); }
-        } else {
-            quote! { impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {} }
-        };
-
-        // 3. Type-specific methods
-        let methods_ident = syn::Ident::new(methods_macro, proc_macro2::Span::call_site());
-        let methods_impl = quote! { ::miniextendr_api::#methods_ident!(#name #ty_generics); };
-
-        // 4. InferBase
         let inferbase_ident = syn::Ident::new(inferbase_macro, proc_macro2::Span::call_site());
         let inferbase_impl = quote! { ::miniextendr_api::#inferbase_ident!(#name #ty_generics); };
 
@@ -701,18 +574,13 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
             }
         },
         &AltrepFamilyConfig {
-            macro_base: "impl_altinteger_from_data",
+            family_name: "AltrepInteger",
             dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
             string_dataptr: false,
             subset: true,
             methods_macro: "__impl_altinteger_methods",
             inferbase_macro: "impl_inferbase_integer",
             default_guard: "RUnwind",
-            // Migration spike (#711 / Path (a) of #682): the integer family
-            // emits its trait impls directly, bypassing the declarative
-            // `impl_altinteger_from_data!` macro. Remaining families still
-            // delegate (`emit_direct: false`) pending the follow-up issue.
-            emit_direct: true,
             materializing_dataptr_macro: "__impl_altvec_integer_dataptr",
         },
     )
@@ -740,14 +608,13 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             }
         },
         &AltrepFamilyConfig {
-            macro_base: "impl_altreal_from_data",
+            family_name: "AltrepReal",
             dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
             string_dataptr: false,
             subset: true,
             methods_macro: "__impl_altreal_methods",
             inferbase_macro: "impl_inferbase_real",
             default_guard: "RUnwind",
-            emit_direct: false,
             materializing_dataptr_macro: "__impl_altvec_real_dataptr",
         },
     )
@@ -775,14 +642,13 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
             }
         },
         &AltrepFamilyConfig {
-            macro_base: "impl_altlogical_from_data",
+            family_name: "AltrepLogical",
             dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
             string_dataptr: false,
             subset: true,
             methods_macro: "__impl_altlogical_methods",
             inferbase_macro: "impl_inferbase_logical",
             default_guard: "RUnwind",
-            emit_direct: false,
             materializing_dataptr_macro: "__impl_altvec_logical_dataptr",
         },
     )
@@ -810,14 +676,13 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             }
         },
         &AltrepFamilyConfig {
-            macro_base: "impl_altraw_from_data",
+            family_name: "AltrepRaw",
             dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
             string_dataptr: false,
             subset: true,
             methods_macro: "__impl_altraw_methods",
             inferbase_macro: "impl_inferbase_raw",
             default_guard: "RUnwind",
-            emit_direct: false,
             materializing_dataptr_macro: "__impl_altvec_raw_dataptr",
         },
     )
@@ -847,7 +712,7 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
             }
         },
         &AltrepFamilyConfig {
-            macro_base: "impl_altstring_from_data",
+            family_name: "AltrepString",
             dataptr_macro: None,
             string_dataptr: true,
             subset: true,
@@ -856,10 +721,8 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
             // String elt calls Rf_mkCharLenCE; dataptr calls Rf_allocVector + SET_STRING_ELT.
             // These R API calls can longjmp — must use RUnwind.
             default_guard: "RUnwind",
-            emit_direct: false,
             // String has no typed contiguous dataptr; its default/dataptr arms
-            // both route through `__impl_altvec_string_dataptr!`. Inert until
-            // string is migrated (`emit_direct: false`).
+            // both route through `__impl_altvec_string_dataptr!`.
             materializing_dataptr_macro: "__impl_altvec_string_dataptr",
         },
     )
@@ -891,7 +754,7 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
             }
         },
         &AltrepFamilyConfig {
-            macro_base: "impl_altcomplex_from_data",
+            family_name: "AltrepComplex",
             dataptr_macro: Some((
                 "__impl_altvec_dataptr",
                 Some(quote! { ::miniextendr_api::Rcomplex }),
@@ -901,7 +764,6 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
             methods_macro: "__impl_altcomplex_methods",
             inferbase_macro: "impl_inferbase_complex",
             default_guard: "RUnwind",
-            emit_direct: false,
             materializing_dataptr_macro: "__impl_altvec_complex_dataptr",
         },
     )
@@ -915,8 +777,7 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
 /// or `R_NilValue` by default.
 ///
 /// List ALTREP does **not** support `#[altrep(dataptr)]` or `#[altrep(subset)]` -- both
-/// are rejected at compile time. `#[altrep(serialize)]` is supported but requires the
-/// expanded code generation path with individual internal macros.
+/// are rejected at compile time. `#[altrep(serialize)]` is supported.
 pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let generics = &input.generics;
@@ -967,47 +828,49 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 
     let lowlevel_impl = if !attrs.generate_lowlevel {
         quote! {}
-    } else if has_serialize {
-        // Serialize requires expanding individual macros since impl_altlist_from_data!
-        // does not have a serialize variant. Use the `with_serialize` arm of
-        // `__impl_altrep_base!` for the Altrep trait, then manually emit AltVec +
-        // AltList + InferBase.
-        if attrs.has_non_default_guard() {
-            let guard = attrs.guard.as_ref().unwrap();
+    } else {
+        // Direct emit (#933). The non-serialize arm inlines the body of the
+        // retired `impl_altlist_from_data!` delegation: `__impl_altrep_base!`
+        // with an explicit guard is token-identical to that macro's
+        // hand-written `Altrep` impl, and the `elt` body matches its
+        // `altrep_extract_ref` path. The serialize arm keeps its historical
+        // `altrep_data1_as` elt body — switching it to `AltrepExtract` would
+        // change behaviour for types that override extraction.
+        let guard = attrs
+            .guard
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| syn::Ident::new("RUnwind", proc_macro2::Span::call_site()));
+        let base_impl = if has_serialize {
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize); }
+        } else {
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard); }
+        };
+        let elt_impl = if has_serialize {
             quote! {
-                ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize);
-                impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
-                impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
-                    fn elt(x: ::miniextendr_api::SEXP, i: ::miniextendr_api::R_xlen_t) -> ::miniextendr_api::SEXP {
-                        unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
-                            .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                            .unwrap_or(::miniextendr_api::SEXP::nil())
-                    }
+                fn elt(x: ::miniextendr_api::SEXP, i: ::miniextendr_api::R_xlen_t) -> ::miniextendr_api::SEXP {
+                    unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
+                        .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                        .unwrap_or(::miniextendr_api::SEXP::nil())
                 }
-                ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
             }
         } else {
             quote! {
-                ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, with_serialize);
-                impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
-                impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
-                    fn elt(x: ::miniextendr_api::SEXP, i: ::miniextendr_api::R_xlen_t) -> ::miniextendr_api::SEXP {
-                        unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
-                            .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                            .unwrap_or(::miniextendr_api::SEXP::nil())
-                    }
+                fn elt(x: ::miniextendr_api::SEXP, i: ::miniextendr_api::R_xlen_t) -> ::miniextendr_api::SEXP {
+                    let data = unsafe {
+                        <#name #ty_generics as ::miniextendr_api::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+                    };
+                    <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(data, i.max(0) as usize)
                 }
-                ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
             }
-        }
-    } else if attrs.has_non_default_guard() {
-        let guard = attrs.guard.as_ref().unwrap();
+        };
         quote! {
-            ::miniextendr_api::impl_altlist_from_data!(#name #ty_generics, #guard);
-        }
-    } else {
-        quote! {
-            ::miniextendr_api::impl_altlist_from_data!(#name #ty_generics);
+            #base_impl
+            impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
+            impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
+                #elt_impl
+            }
+            ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
         }
     };
 

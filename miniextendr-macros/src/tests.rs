@@ -440,8 +440,16 @@ fn test_derive_altrep_logical_basic() {
     assert!(output_str.contains("AltLogicalData"));
     assert!(output_str.contains("Logical :: Na"));
 
-    // Should call impl_altlogical_from_data!
-    assert!(output_str.contains("impl_altlogical_from_data"));
+    // #933: the logical family emits the underlying trait-impl macros
+    // directly — it no longer delegates to impl_altlogical_from_data!.
+    assert!(
+        !output_str.contains("impl_altlogical_from_data"),
+        "migrated logical family must not delegate to the declarative macro"
+    );
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("__impl_altvec_logical_dataptr"));
+    assert!(output_str.contains("__impl_altlogical_methods"));
+    assert!(output_str.contains("impl_inferbase_logical"));
 
     // Registration checks: every family derive must generate registration code
     assert!(
@@ -525,10 +533,17 @@ fn test_derive_altrep_real_generates_registration() {
     let output = crate::altrep_derive::derive_altrep_real(input).unwrap();
     let output_str = output.to_string();
 
-    // Low-level traits
+    // Low-level traits — #933: direct emit, no declarative-macro delegation
     assert!(output_str.contains("AltrepLen"));
     assert!(output_str.contains("AltRealData"));
-    assert!(output_str.contains("impl_altreal_from_data"));
+    assert!(
+        !output_str.contains("impl_altreal_from_data"),
+        "migrated real family must not delegate to the declarative macro"
+    );
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("__impl_altvec_real_dataptr"));
+    assert!(output_str.contains("__impl_altreal_methods"));
+    assert!(output_str.contains("impl_inferbase_real"));
 
     // Registration: TypedExternal, AltrepClass, RegisterAltrep, IntoR, linkme, Ref/Mut
     assert!(
@@ -577,10 +592,17 @@ fn test_derive_altrep_raw_generates_registration() {
     let output = crate::altrep_derive::derive_altrep_raw(input).unwrap();
     let output_str = output.to_string();
 
-    // Low-level traits
+    // Low-level traits — #933: direct emit, no declarative-macro delegation
     assert!(output_str.contains("AltrepLen"));
     assert!(output_str.contains("AltRawData"));
-    assert!(output_str.contains("impl_altraw_from_data"));
+    assert!(
+        !output_str.contains("impl_altraw_from_data"),
+        "migrated raw family must not delegate to the declarative macro"
+    );
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("__impl_altvec_raw_dataptr"));
+    assert!(output_str.contains("__impl_altraw_methods"));
+    assert!(output_str.contains("impl_inferbase_raw"));
 
     // Registration
     assert!(
@@ -629,10 +651,19 @@ fn test_derive_altrep_string_generates_registration() {
     let output = crate::altrep_derive::derive_altrep_string(input).unwrap();
     let output_str = output.to_string();
 
-    // Low-level traits
+    // Low-level traits — #933: direct emit, no declarative-macro delegation.
+    // String's default arm routes through the whole-vector STRSXP
+    // materialization macro (no typed contiguous dataptr).
     assert!(output_str.contains("AltrepLen"));
     assert!(output_str.contains("AltStringData"));
-    assert!(output_str.contains("impl_altstring_from_data"));
+    assert!(
+        !output_str.contains("impl_altstring_from_data"),
+        "migrated string family must not delegate to the declarative macro"
+    );
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("__impl_altvec_string_dataptr"));
+    assert!(output_str.contains("__impl_altstring_methods"));
+    assert!(output_str.contains("impl_inferbase_string"));
 
     // Registration
     assert!(
@@ -681,10 +712,17 @@ fn test_derive_altrep_complex_generates_registration() {
     let output = crate::altrep_derive::derive_altrep_complex(input).unwrap();
     let output_str = output.to_string();
 
-    // Low-level traits
+    // Low-level traits — #933: direct emit, no declarative-macro delegation
     assert!(output_str.contains("AltrepLen"));
     assert!(output_str.contains("AltComplexData"));
-    assert!(output_str.contains("impl_altcomplex_from_data"));
+    assert!(
+        !output_str.contains("impl_altcomplex_from_data"),
+        "migrated complex family must not delegate to the declarative macro"
+    );
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("__impl_altvec_complex_dataptr"));
+    assert!(output_str.contains("__impl_altcomplex_methods"));
+    assert!(output_str.contains("impl_inferbase_complex"));
 
     // Registration
     assert!(
@@ -770,10 +808,17 @@ fn test_derive_altrep_list_generates_registration() {
         "AltrepList derive must generate Mut accessor type"
     );
 
-    // Low-level list traits
+    // Low-level list traits — #933: direct emit, no declarative-macro delegation
     assert!(output_str.contains("AltrepLen"));
     assert!(output_str.contains("AltListData"));
-    assert!(output_str.contains("impl_altlist_from_data"));
+    assert!(
+        !output_str.contains("impl_altlist_from_data"),
+        "migrated list family must not delegate to the declarative macro"
+    );
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("AltList"));
+    assert!(output_str.contains("altrep_extract_ref"));
+    assert!(output_str.contains("impl_inferbase_list"));
 }
 // endregion
 
@@ -925,8 +970,10 @@ fn test_derive_altrep_list_with_guard() {
     let output = crate::altrep_derive::derive_altrep_list(input).unwrap();
     let output_str = output.to_string();
 
-    // RUnwind is the default — should use the simple high-level macro path
-    assert!(output_str.contains("impl_altlist_from_data"));
+    // #933: direct emit with the resolved (default RUnwind) guard
+    assert!(!output_str.contains("impl_altlist_from_data"));
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("RUnwind"));
 }
 // endregion
 
