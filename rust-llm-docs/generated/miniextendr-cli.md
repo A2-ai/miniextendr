@@ -4,7 +4,7 @@
 
 ## Structs
 
-### `CargoBuildOpts`
+### `cli::CargoBuildOpts`
 
 Shared build options for cargo commands.
 
@@ -23,7 +23,7 @@ Shared build options for cargo commands.
 - `offline`: `bool`
   - Enable offline mode.
 
-### `Cli`
+### `cli::Cli`
 
 **Fields:**
 
@@ -35,7 +35,7 @@ Shared build options for cargo commands.
   - Output in JSON format.
 - `command`: `Command`
 
-### `ProjectContext`
+### `project::ProjectContext`
 
 Discovered project paths.
 
@@ -90,7 +90,7 @@ Returns the configure.ac path, or an error with guidance.
 
 ## Enums
 
-### `CargoCmd`
+### `cli::CargoCmd`
 
 **Variants:**
 
@@ -123,7 +123,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Clean`
   - Clean cargo build artifacts.
 
-### `Command`
+### `cli::Command`
 
 **Variants:**
 
@@ -152,7 +152,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Completions { ... }`
   - Generate shell completions.
 
-### `ConfigCmd`
+### `cli::ConfigCmd`
 
 **Variants:**
 
@@ -161,7 +161,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Defaults`
   - Show default config values.
 
-### `FeatureCmd`
+### `cli::FeatureCmd`
 
 **Variants:**
 
@@ -174,7 +174,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Rule { ... }`
   - Feature detection rules.
 
-### `FeatureDetectCmd`
+### `cli::FeatureDetectCmd`
 
 **Variants:**
 
@@ -183,7 +183,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Update`
   - Update runtime feature detection after adding/removing features.
 
-### `FeatureRuleCmd`
+### `cli::FeatureRuleCmd`
 
 **Variants:**
 
@@ -194,7 +194,7 @@ Returns the configure.ac path, or an error with guidance.
 - `List`
   - List current feature detection rules.
 
-### `InitCmd`
+### `cli::InitCmd`
 
 **Variants:**
 
@@ -205,7 +205,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Use { ... }`
   - Add miniextendr scaffolding to an existing project.
 
-### `RenderCmd`
+### `cli::RenderCmd`
 
 **Variants:**
 
@@ -224,7 +224,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Word`
   - Word document format with miniextendr sync.
 
-### `RustCmd`
+### `cli::RustCmd`
 
 **Variants:**
 
@@ -235,7 +235,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Clean`
   - Clean compiled Rust code.
 
-### `StatusCmd`
+### `cli::StatusCmd`
 
 **Variants:**
 
@@ -246,7 +246,7 @@ Returns the configure.ac path, or an error with guidance.
 - `Validate`
   - Validate miniextendr configuration is ready to build.
 
-### `VendorCmd`
+### `cli::VendorCmd`
 
 **Variants:**
 
@@ -271,7 +271,7 @@ Returns the configure.ac path, or an error with guidance.
 - `UseLib { ... }`
   - Vendor a local path dependency for CRAN submission.
 
-### `WorkflowCmd`
+### `cli::WorkflowCmd`
 
 **Variants:**
 
@@ -299,3 +299,169 @@ Returns the configure.ac path, or an error with guidance.
   - Sync project: autoconf + configure + document.
 - `DevLink`
   - Link package for development (devtools::load_all).
+
+---
+
+## Functions
+
+### `bridge::bash`
+
+```rust
+bash(script: &str, cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
+```
+
+Run a shell command via `bash -c`.
+
+### `bridge::find_rscript`
+
+```rust
+find_rscript() -> anyhow::Result<std::path::PathBuf>
+```
+
+Locate the `Rscript` binary.
+
+Search order:
+1. `$R_HOME/bin/Rscript`
+2. `Rscript` on `$PATH`
+
+### `bridge::has_program`
+
+```rust
+has_program(name: &str) -> bool
+```
+
+Check if a program is available on PATH.
+
+### `bridge::program_version`
+
+```rust
+program_version(name: &str) -> Option<String>
+```
+
+Get version output from a program.
+
+### `bridge::rscript_eval`
+
+```rust
+rscript_eval(expr: &str, cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
+```
+
+Run `Rscript -e '<expr>'` in the given directory.
+
+Forwards stdout/stderr directly for interactive feel.
+Returns an error if the process exits non-zero.
+
+### `bridge::run_command`
+
+```rust
+run_command(program: &str, args: &[impl AsRef<std::ffi::OsStr>], cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
+```
+
+Run an arbitrary command, forwarding stdio.
+
+### `bridge::run_command_capture`
+
+```rust
+run_command_capture(program: &str, args: &[impl AsRef<std::ffi::OsStr>], cwd: &std::path::Path) -> anyhow::Result<String>
+```
+
+Run an arbitrary command and capture stdout.
+
+### `commands::cargo::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::CargoCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+```
+
+### `commands::config::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::ConfigCmd, ctx: &crate::project::ProjectContext, _quiet: bool, json: bool) -> anyhow::Result<()>
+```
+
+### `commands::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::Command, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
+```
+
+### `commands::feature::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::FeatureCmd, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
+```
+
+### `commands::init::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::InitCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+```
+
+### `commands::lint::run`
+
+```rust
+run(ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+```
+
+Run miniextendr-lint via cargo check on the project's Rust crate.
+
+The lint runs as a build script; cargo check triggers it.
+Lint output appears as cargo warnings.
+
+### `commands::render::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::RenderCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+```
+
+### `commands::rust::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::RustCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+```
+
+### `commands::status::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::StatusCmd, ctx: &crate::project::ProjectContext, _quiet: bool, json: bool) -> anyhow::Result<()>
+```
+
+### `commands::vendor::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::VendorCmd, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
+```
+
+### `commands::workflow::dispatch`
+
+```rust
+dispatch(cmd: &crate::cli::WorkflowCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+```
+
+### `output::print_status`
+
+```rust
+print_status(msg: &str, json: bool)
+```
+
+Print a simple status message.
+
+### `project::find_workspace_root`
+
+```rust
+find_workspace_root(start: &std::path::Path) -> Option<std::path::PathBuf>
+```
+
+Find the workspace root containing `start`.
+
+Tries `git rev-parse --show-toplevel` first (fast, accurate when in a git repo),
+then falls back to walking up to 3 parent directories looking for a `Cargo.toml`
+with `[workspace]`.
+
+---
+
+## Constants
+
+### `project::MINIEXTENDR_CRATES: &[&str]`
+
+Miniextendr workspace crate names — the crates that get vendored/synced.

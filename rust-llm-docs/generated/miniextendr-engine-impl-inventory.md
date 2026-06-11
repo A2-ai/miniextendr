@@ -29,90 +29,6 @@ Traits with impls: 20
 | `ToString` | 1 | 0 |
 | `Debug` | 1 | 1 |
 
-## `Borrow` — 3 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineError` | `<T> +1wc` | blanket | 1 | (no span) |
-| `REngine` | `<T> +1wc` | blanket | 1 | (no span) |
-| `REngineBuilder` | `<T> +1wc` | blanket | 1 | (no span) |
-
-### `Borrow` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **(no span)** (3 impls): `REngineError`, `REngine`, `REngineBuilder`
-
-## `TryInto` — 3 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngine` | `<T, U> +1wc` | blanket | 2 | (no span) |
-| `REngineError` | `<T, U> +1wc` | blanket | 2 | (no span) |
-| `REngineBuilder` | `<T, U> +1wc` | blanket | 2 | (no span) |
-
-### `TryInto` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **(no span)** (3 impls): `REngine`, `REngineError`, `REngineBuilder`
-
-## `Any` — 3 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineError` | `<T> +1wc` | blanket | 1 | (no span) |
-| `REngineBuilder` | `<T> +1wc` | blanket | 1 | (no span) |
-| `REngine` | `<T> +1wc` | blanket | 1 | (no span) |
-
-### `Any` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **(no span)** (3 impls): `REngineError`, `REngineBuilder`, `REngine`
-
-## `BorrowMut` — 3 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineBuilder` | `<T> +1wc` | blanket | 1 | (no span) |
-| `REngine` | `<T> +1wc` | blanket | 1 | (no span) |
-| `REngineError` | `<T> +1wc` | blanket | 1 | (no span) |
-
-### `BorrowMut` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **(no span)** (3 impls): `REngineBuilder`, `REngine`, `REngineError`
-
-## `From` — 3 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineBuilder` | `<T>` | blanket | 1 | (no span) |
-| `REngine` | `<T>` | blanket | 1 | (no span) |
-| `REngineError` | `<T>` | blanket | 1 | (no span) |
-
-### `From` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **(no span)** (3 impls): `REngineBuilder`, `REngine`, `REngineError`
-
-## `TryFrom` — 3 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineError` | `<T, U> +1wc` | blanket | 2 | (no span) |
-| `REngineBuilder` | `<T, U> +1wc` | blanket | 2 | (no span) |
-| `REngine` | `<T, U> +1wc` | blanket | 2 | (no span) |
-
-### `TryFrom` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **(no span)** (3 impls): `REngineError`, `REngineBuilder`, `REngine`
-
-## `Into` — 3 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngine` | `<T, U> +1wc` | blanket | 1 | (no span) |
-| `REngineBuilder` | `<T, U> +1wc` | blanket | 1 | (no span) |
-| `REngineError` | `<T, U> +1wc` | blanket | 1 | (no span) |
-
-### `Into` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **(no span)** (3 impls): `REngine`, `REngineBuilder`, `REngineError`
-
 ## `Error` — 1 impls
 
 | for-type | generics | kind | #items | span |
@@ -136,12 +52,6 @@ Traits with impls: 20
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `REngineBuilder` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:132 |
-
-## `ToString` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineError` | `<T> +1wc` | blanket | 1 | (no span) |
 
 ## `Debug` — 1 impls
 

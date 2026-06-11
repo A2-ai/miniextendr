@@ -26,7 +26,20 @@ Each diagnostic carries a stable `MXL###` code. See [`LintCode`] for the full ca
 
 ## Structs
 
-### `AttributedTraitImpl`
+### `LintReport`
+
+Result of running the lint over a crate source tree.
+
+**Fields:**
+
+- `files`: `Vec<std::path::PathBuf>`
+  - Rust source files that were scanned.
+- `diagnostics`: `Vec<Diagnostic>`
+  - Structured diagnostics from all rules.
+- `errors`: `Vec<String>`
+  - Legacy string errors (derived from diagnostics, for backward compatibility).
+
+### `crate_index::AttributedTraitImpl`
 
 **Fields:**
 
@@ -35,7 +48,7 @@ Each diagnostic carries a stable `MXL###` code. See [`LintCode`] for the full ca
 - `class_system`: `Option<String>`
 - `line`: `usize`
 
-### `CrateIndex`
+### `crate_index::CrateIndex`
 
 Shared parsed state for all lint rules.
 
@@ -56,7 +69,80 @@ build(root: &Path) -> Result<Self, String>
 
 Build the index from a crate root directory.
 
-### `Diagnostic`
+### `crate_index::FileData`
+
+**Fields:**
+
+- `miniextendr_items`: `Vec<LintItem>`
+- `types_with_external_ptr`: `std::collections::HashSet<String>`
+- `types_with_typed_external`: `std::collections::HashSet<String>`
+- `inherent_impl_class_systems`: `std::collections::HashMap<String, (String, usize)>`
+- `attributed_trait_impls`: `Vec<AttributedTraitImpl>`
+- `impl_blocks_per_type`: `std::collections::HashMap<String, Vec<(Option<String>, usize)>>`
+- `fn_visibility`: `std::collections::HashMap<String, bool>`
+- `declared_child_mods`: `Vec<String>`
+  - Simple `mod child;` declarations (by ident name).
+- `path_redirected_mods`: `Vec<(String, String)>`
+  - `#[path = "file.rs"] mod name;` declarations: (mod_name, file_path_str).
+- `mod_decl_cfgs`: `std::collections::HashMap<String, Vec<String>>`
+  - cfg attrs on `mod child;` declarations: mod_name -> cfg strings.
+- `export_control`: `std::collections::HashMap<String, (bool, bool, usize)>`
+  - (has_internal, has_noexport, line)
+- `impl_methods`: `std::collections::HashMap<String, Vec<ImplMethodEntry>>`
+  - Methods per inherent impl type: type_name → `Vec<ImplMethodEntry>`.
+- `fn_doc_tags`: `std::collections::HashMap<String, Vec<String>>`
+  - Known roxygen tags: "@noRd", "@export", "@keywords internal"
+- `rf_error_calls`: `Vec<(String, usize)>`
+  - Lines containing direct Rf_error/Rf_errorcall calls: (function_name, line_number).
+- `ffi_unchecked_calls`: `Vec<(String, usize)>`
+  - Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
+- `fn_param_names`: `std::collections::HashMap<String, Vec<(String, usize)>>`
+  - Maps fn/method name → list of (param_name, line) for params that are R reserved words.
+- `lifetime_param_items`: `Vec<(String, usize)>`
+  - `#[miniextendr]` functions or impl blocks that carry explicit lifetime params.
+- `interleaved_doc_attrs`: `Vec<(String, usize)>`
+  - `#[miniextendr]` items where a non-doc attribute interrupts a doc-comment stream.
+
+### `crate_index::ImplMethodEntry`
+
+Per-method data collected during the crate-index pass for impl-method lint rules.
+
+**Fields:**
+
+- `method_name`: `String`
+- `line`: `usize`
+- `class_system`: `String`
+- `return_type_str`: `String`
+  - Stringified return type tokens (empty string = `()` / no explicit return).
+- `receiver_kind`: `MethodReceiverKind`
+  - Receiver kind detected from the method signature.
+- `has_constructor_attr`: `bool`
+  - True when the method carries `#[miniextendr(constructor)]`.
+
+### `crate_index::LintItem`
+
+**Fields:**
+
+- `kind`: `LintKind`
+- `name`: `String`
+- `label`: `Option<String>`
+- `line`: `usize`
+
+**Methods:**
+
+#### `new`
+
+```rust
+new(kind: LintKind, name: String, line: usize) -> Self
+```
+
+#### `with_label`
+
+```rust
+with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self
+```
+
+### `diagnostic::Diagnostic`
 
 A single lint diagnostic with structured metadata.
 
@@ -101,93 +187,7 @@ with_help(self: Self, help: impl Into<String>) -> Self
 
 Attach a help message.
 
-### `FileData`
-
-**Fields:**
-
-- `miniextendr_items`: `Vec<LintItem>`
-- `types_with_external_ptr`: `std::collections::HashSet<String>`
-- `types_with_typed_external`: `std::collections::HashSet<String>`
-- `inherent_impl_class_systems`: `std::collections::HashMap<String, (String, usize)>`
-- `attributed_trait_impls`: `Vec<AttributedTraitImpl>`
-- `impl_blocks_per_type`: `std::collections::HashMap<String, Vec<(Option<String>, usize)>>`
-- `fn_visibility`: `std::collections::HashMap<String, bool>`
-- `declared_child_mods`: `Vec<String>`
-  - Simple `mod child;` declarations (by ident name).
-- `path_redirected_mods`: `Vec<(String, String)>`
-  - `#[path = "file.rs"] mod name;` declarations: (mod_name, file_path_str).
-- `mod_decl_cfgs`: `std::collections::HashMap<String, Vec<String>>`
-  - cfg attrs on `mod child;` declarations: mod_name -> cfg strings.
-- `export_control`: `std::collections::HashMap<String, (bool, bool, usize)>`
-  - (has_internal, has_noexport, line)
-- `impl_methods`: `std::collections::HashMap<String, Vec<ImplMethodEntry>>`
-  - Methods per inherent impl type: type_name → `Vec<ImplMethodEntry>`.
-- `fn_doc_tags`: `std::collections::HashMap<String, Vec<String>>`
-  - Known roxygen tags: "@noRd", "@export", "@keywords internal"
-- `rf_error_calls`: `Vec<(String, usize)>`
-  - Lines containing direct Rf_error/Rf_errorcall calls: (function_name, line_number).
-- `ffi_unchecked_calls`: `Vec<(String, usize)>`
-  - Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
-- `fn_param_names`: `std::collections::HashMap<String, Vec<(String, usize)>>`
-  - Maps fn/method name → list of (param_name, line) for params that are R reserved words.
-- `lifetime_param_items`: `Vec<(String, usize)>`
-  - `#[miniextendr]` functions or impl blocks that carry explicit lifetime params.
-- `interleaved_doc_attrs`: `Vec<(String, usize)>`
-  - `#[miniextendr]` items where a non-doc attribute interrupts a doc-comment stream.
-
-### `ImplMethodEntry`
-
-Per-method data collected during the crate-index pass for impl-method lint rules.
-
-**Fields:**
-
-- `method_name`: `String`
-- `line`: `usize`
-- `class_system`: `String`
-- `return_type_str`: `String`
-  - Stringified return type tokens (empty string = `()` / no explicit return).
-- `receiver_kind`: `MethodReceiverKind`
-  - Receiver kind detected from the method signature.
-- `has_constructor_attr`: `bool`
-  - True when the method carries `#[miniextendr(constructor)]`.
-
-### `LintItem`
-
-**Fields:**
-
-- `kind`: `LintKind`
-- `name`: `String`
-- `label`: `Option<String>`
-- `line`: `usize`
-
-**Methods:**
-
-#### `new`
-
-```rust
-new(kind: LintKind, name: String, line: usize) -> Self
-```
-
-#### `with_label`
-
-```rust
-with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self
-```
-
-### `LintReport`
-
-Result of running the lint over a crate source tree.
-
-**Fields:**
-
-- `files`: `Vec<std::path::PathBuf>`
-  - Rust source files that were scanned.
-- `diagnostics`: `Vec<Diagnostic>`
-  - Structured diagnostics from all rules.
-- `errors`: `Vec<String>`
-  - Legacy string errors (derived from diagnostics, for backward compatibility).
-
-### `MiniextendrImplAttrs`
+### `helpers::MiniextendrImplAttrs`
 
 Parsed miniextendr attribute information for an impl block.
 
@@ -208,50 +208,7 @@ Parsed miniextendr attribute information for an impl block.
 
 ## Enums
 
-### `LintCode`
-
-Stable lint rule identifier.
-
-Display format is `MXL###`, derived directly from the variant name.
-
-**Variants:**
-
-- `MXL008`
-  - Trait impl class system incompatible with inherent impl class system.
-- `MXL009`
-  - Multiple impl blocks for one type without labels.
-- `MXL010`
-  - Duplicate labels on impl blocks for one type.
-- `MXL106`
-  - Registered top-level function is not `pub`.
-- `MXL110`
-  - Parameter name is an R reserved word; codegen will produce invalid R syntax.
-- `MXL111`
-  - `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends `s4_`.
-- `MXL112`
-  - Explicit lifetime parameter on `#[miniextendr]` fn or impl — use owned types instead.
-- `MXL120`
-  - vctrs constructor returns `Self` / named type, or impl has an instance-method receiver.
-- `MXL203`
-  - `internal` + `noexport` redundancy.
-- `MXL300`
-  - Direct `Rf_error`/`Rf_errorcall` call in user code.
-- `MXL301`
-  - `_unchecked` FFI call outside guard context.
-- `MXL302`
-  - Non-doc attribute interrupts a doc-comment stream on a `#[miniextendr]` item.
-
-**Methods:**
-
-#### `default_severity`
-
-```rust
-default_severity(self: Self) -> super::diagnostic::Severity
-```
-
-Default severity for this rule.
-
-### `LintKind`
+### `crate_index::LintKind`
 
 **Variants:**
 
@@ -261,7 +218,7 @@ Default severity for this rule.
 - `TraitImpl`
 - `Vctrs`
 
-### `MethodReceiverKind`
+### `crate_index::MethodReceiverKind`
 
 Receiver kind for an impl method, mirroring `ReceiverKind` in `miniextendr-macros`.
 
@@ -304,12 +261,12 @@ false-positive for a vctrs method with `#[miniextendr(constructor)]` that consum
 #### `spelling`
 
 ```rust
-spelling(self: Self) -> &''static str
+spelling(self: Self) -> &'static str
 ```
 
 Human-readable spelling used in diagnostic messages.
 
-### `Severity`
+### `diagnostic::Severity`
 
 Diagnostic severity level.
 
@@ -321,3 +278,246 @@ Diagnostic severity level.
   - Default for new rules; non-blocking.
 - `Error`
   - CI-blocking in strict mode.
+
+### `lint_code::LintCode`
+
+Stable lint rule identifier.
+
+Display format is `MXL###`, derived directly from the variant name.
+
+**Variants:**
+
+- `MXL008`
+  - Trait impl class system incompatible with inherent impl class system.
+- `MXL009`
+  - Multiple impl blocks for one type without labels.
+- `MXL010`
+  - Duplicate labels on impl blocks for one type.
+- `MXL106`
+  - Registered top-level function is not `pub`.
+- `MXL110`
+  - Parameter name is an R reserved word; codegen will produce invalid R syntax.
+- `MXL111`
+  - `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends `s4_`.
+- `MXL112`
+  - Explicit lifetime parameter on `#[miniextendr]` fn or impl — use owned types instead.
+- `MXL120`
+  - vctrs constructor returns `Self` / named type, or impl has an instance-method receiver.
+- `MXL203`
+  - `internal` + `noexport` redundancy.
+- `MXL300`
+  - Direct `Rf_error`/`Rf_errorcall` call in user code.
+- `MXL301`
+  - `_unchecked` FFI call outside guard context.
+- `MXL302`
+  - Non-doc attribute interrupts a doc-comment stream on a `#[miniextendr]` item.
+
+**Methods:**
+
+#### `default_severity`
+
+```rust
+default_severity(self: Self) -> super::diagnostic::Severity
+```
+
+Default severity for this rule.
+
+---
+
+## Functions
+
+### `build_script`
+
+```rust
+build_script()
+```
+
+Entry point for build.rs. Runs the lint and prints cargo directives.
+
+Controlled by `MINIEXTENDR_LINT` env var (enabled by default).
+Set to `0`, `false`, `no`, or `off` to disable.
+
+### `helpers::extract_cfg_attrs`
+
+```rust
+extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<String>
+```
+
+Extract `#[cfg(...)]` attributes as normalized token strings.
+
+### `helpers::extract_path_attr`
+
+```rust
+extract_path_attr(attrs: &[syn::Attribute]) -> Option<String>
+```
+
+Extract `#[path = "..."]` attribute value from a module declaration.
+
+### `helpers::extract_roxygen_tags`
+
+```rust
+extract_roxygen_tags(attrs: &[syn::Attribute]) -> Vec<String>
+```
+
+Extract roxygen tags from doc-comment attributes.
+
+Looks through `/// ...` comments for patterns like `@export`, `@noRd`,
+`@keywords internal`, etc. Returns the tag names found.
+
+### `helpers::has_altrep_derive`
+
+```rust
+has_altrep_derive(attrs: &[syn::Attribute]) -> bool
+```
+
+Returns true if the attribute list contains `#[derive(Altrep)]`
+or `#[derive(miniextendr_api::Altrep)]`.
+
+### `helpers::has_external_ptr_derive`
+
+```rust
+has_external_ptr_derive(attrs: &[syn::Attribute]) -> bool
+```
+
+Returns true if the attribute list contains `#[derive(ExternalPtr)]`
+or `#[derive(miniextendr_api::ExternalPtr)]`.
+
+### `helpers::has_miniextendr_attr`
+
+```rust
+has_miniextendr_attr(attrs: &[syn::Attribute]) -> bool
+```
+
+Returns true when the attribute list contains `#[miniextendr]`.
+
+### `helpers::has_vctrs_derive`
+
+```rust
+has_vctrs_derive(attrs: &[syn::Attribute]) -> bool
+```
+
+Returns true if the attribute list contains `#[derive(Vctrs)]`
+or `#[derive(miniextendr_api::Vctrs)]`.
+
+### `helpers::impl_type_name`
+
+```rust
+impl_type_name(ty: &syn::Type) -> Option<String>
+```
+
+Extracts a displayable type name from an impl self type.
+
+### `helpers::is_altrep_struct`
+
+```rust
+is_altrep_struct(item: &syn::ItemStruct) -> bool
+```
+
+Check if a struct with `#[miniextendr]` should be treated as ALTREP (needing `struct Name;` in module).
+
+Returns true only for 1-field structs without explicit mode attrs (list, dataframe, externalptr).
+Multi-field structs, structs with explicit mode attrs, and enums don't need module entries.
+
+### `helpers::parse_miniextendr_impl_attrs`
+
+```rust
+parse_miniextendr_impl_attrs(attrs: &[syn::Attribute]) -> MiniextendrImplAttrs
+```
+
+Parse the #[miniextendr(...)] attribute to extract class system, label, and flags.
+
+### `helpers::should_skip_dir`
+
+```rust
+should_skip_dir(path: &std::path::Path) -> bool
+```
+
+Returns whether a directory should be skipped during lint tree traversal.
+
+### `lint_enabled`
+
+```rust
+lint_enabled(env_var: &str) -> Result<bool, String>
+```
+
+Returns whether the lint should run based on the given env var.
+
+Defaults to `true` when the var is unset. Set to 0/false/no/off to disable.
+
+### `rules::doc_attr_interleave::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::export_attrs::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::ffi_unchecked::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::fn_visibility::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::impl_validation::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::lifetime_param::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::r_reserved_params::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::rf_error::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::run_all_rules`
+
+```rust
+run_all_rules(index: &crate::crate_index::CrateIndex) -> Vec<crate::diagnostic::Diagnostic>
+```
+
+Run all lint rules against the crate index, collecting diagnostics.
+
+### `rules::s4_method_prefix::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::vctrs_self_ctor::check`
+
+```rust
+check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `run`
+
+```rust
+run(root: impl AsRef<std::path::Path>) -> Result<LintReport, String>
+```
+
+Run the lint against the crate rooted at `root`.
+
+If `root/src` exists, that directory is scanned. Otherwise `root` is scanned.
