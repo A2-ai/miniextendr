@@ -11,9 +11,12 @@
 #' and [miniextendr_validate()] (configuration correctness).
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param webr Also lint namespace-level imports for webR compatibility (see
+#'   [miniextendr_webr_import_lint()]). Off by default so packages that never
+#'   target webR see no noise.
 #' @return Invisibly returns a list with `pass`, `warn`, and `fail` entries.
 #' @export
-miniextendr_doctor <- function(path = ".") {
+miniextendr_doctor <- function(path = ".", webr = FALSE) {
   with_project(path)
   cli::cli_h1("miniextendr doctor")
 
@@ -240,6 +243,17 @@ tarball-mode cleanup in Makevars. Fix: \\
     cli::cli_alert_warning("Missing miniextendr git hooks: {paste(missing, collapse = ', ')}")
     cli::cli_alert_info("Run {.code minirextendr::use_miniextendr_git_hooks()} to install")
     results$warn <- c(results$warn, "git hooks missing")
+  }
+
+  # -- webR namespace imports (opt-in) --
+  if (isTRUE(webr)) {
+    cli::cli_h2("webR namespace imports")
+    webr_results <- webr_report_findings(
+      webr_import_findings(usethis::proj_get())
+    )
+    results$pass <- c(results$pass, webr_results$pass)
+    results$warn <- c(results$warn, webr_results$warn)
+    results$fail <- c(results$fail, webr_results$fail)
   }
 
   # -- Summary --

@@ -4,10 +4,14 @@
 \alias{miniextendr_doctor}
 \title{Run comprehensive miniextendr project diagnostics}
 \usage{
-miniextendr_doctor(path = ".")
+miniextendr_doctor(path = ".", webr = FALSE)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{webr}{Also lint namespace-level imports for webR compatibility (see
+\code{\link[=miniextendr_webr_import_lint]{miniextendr_webr_import_lint()}}). Off by default so packages that never
+target webR see no noise.}
 }
 \value{
 Invisibly returns a list with \code{pass}, \code{warn}, and \code{fail} entries.
