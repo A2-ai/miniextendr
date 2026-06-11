@@ -353,6 +353,54 @@ fn large_int_vec_u64_any_large_yields_realsxp() {
     });
 }
 
+/// Vec<u32> — all fit → INTSXP, values round-trip (#973).
+#[test]
+fn large_int_vec_u32_all_fit_yields_intsxp() {
+    r_test_utils::with_r_thread(|| {
+        let v = vec![0u32, 1, i32::MAX as u32];
+        let sexp = v.into_sexp();
+        assert_eq!(sexp.type_of(), SEXPTYPE::INTSXP);
+        let back: Vec<u32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+        assert_eq!(back, vec![0u32, 1, i32::MAX as u32]);
+    });
+}
+
+/// Vec<u32> — any value above i32::MAX → REALSXP (#973).
+#[test]
+fn large_int_vec_u32_any_large_yields_realsxp() {
+    r_test_utils::with_r_thread(|| {
+        let v = vec![1u32, u32::MAX];
+        let sexp = v.into_sexp();
+        assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
+        let back: Vec<u32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+        assert_eq!(back, vec![1u32, u32::MAX]);
+    });
+}
+
+/// Vec<Rboolean> → LGLSXP, values round-trip (#973).
+#[test]
+fn vec_rboolean_yields_lglsxp() {
+    r_test_utils::with_r_thread(|| {
+        let v = vec![Rboolean::TRUE, Rboolean::FALSE, Rboolean::TRUE];
+        let sexp = v.into_sexp();
+        assert_eq!(sexp.type_of(), SEXPTYPE::LGLSXP);
+        let back: Vec<Rboolean> = TryFromSexp::try_from_sexp(sexp).unwrap();
+        assert_eq!(back, vec![Rboolean::TRUE, Rboolean::FALSE, Rboolean::TRUE]);
+    });
+}
+
+/// &[Rboolean] → LGLSXP (#973).
+#[test]
+fn slice_rboolean_yields_lglsxp() {
+    r_test_utils::with_r_thread(|| {
+        let v = [Rboolean::FALSE, Rboolean::TRUE];
+        let sexp = v.as_slice().into_sexp();
+        assert_eq!(sexp.type_of(), SEXPTYPE::LGLSXP);
+        let back: Vec<Rboolean> = TryFromSexp::try_from_sexp(sexp).unwrap();
+        assert_eq!(back, vec![Rboolean::FALSE, Rboolean::TRUE]);
+    });
+}
+
 // endregion
 
 // region: from_r/coerced_scalars.rs — multi-source scalar inbound conversions
