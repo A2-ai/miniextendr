@@ -2193,6 +2193,7 @@ dependencies = [
  "indexmap",
  "miniextendr-api",
  "miniextendr-engine",
+ "serde",
  "slotmap",
 ]
 
