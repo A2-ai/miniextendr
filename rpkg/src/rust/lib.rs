@@ -163,6 +163,7 @@ mod dataframe_reader_roundtrip_test;
 mod dataframe_struct_flatten_test;
 #[cfg(feature = "datafusion")]
 mod datafusion_tests;
+mod scatter_complex_raw_test;
 #[cfg(feature = "rust_decimal")]
 mod decimal_adapter_tests;
 mod default_tests;
