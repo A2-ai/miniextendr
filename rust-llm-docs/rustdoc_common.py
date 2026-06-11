@@ -8,6 +8,64 @@ Used by: rustdoc_megadoc.py, rustdoc_split.py, rustdoc_public.py
 from typing import Any
 
 
+def format_const_arg(const: Any) -> str:
+    """Render a const-generic argument from rustdoc JSON.
+
+    rustdoc encodes const args as ``{"expr": "N", "value": ..., "is_literal": ...}``;
+    naive ``str()`` leaks the Python dict repr into rendered types.
+    """
+    if isinstance(const, dict):
+        if const.get("is_literal") and const.get("value") is not None:
+            return str(const["value"])
+        expr = const.get("expr")
+        if expr is not None:
+            return str(expr)
+    return str(const)
+
+
+def demote_headings(docs: str, base_level: int) -> str:
+    """Shift markdown headings inside a doc string below ``base_level``.
+
+    Item docs are injected verbatim into a document whose own structure uses
+    ``#``..``###`` headings; doc comments routinely contain ``# Safety`` /
+    ``## Examples`` sections that would otherwise collide with (and outrank)
+    the section that contains them. Headings inside fenced code blocks are
+    left untouched.
+    """
+    lines = docs.split("\n")
+    in_fence = False
+    min_level = None
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("#"):
+            level = len(line) - len(line.lstrip("#"))
+            if 1 <= level <= 6 and line[level : level + 1] in (" ", ""):
+                min_level = level if min_level is None else min(min_level, level)
+    if min_level is None or min_level > base_level:
+        return docs
+    delta = base_level + 1 - min_level
+    out = []
+    in_fence = False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if not in_fence and line.startswith("#"):
+            level = len(line) - len(line.lstrip("#"))
+            if 1 <= level <= 6 and line[level : level + 1] in (" ", ""):
+                out.append("#" * min(6, level + delta) + line[level:])
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def format_type(ty: Any, index: dict) -> str:
     """
     Recursively format a rustdoc JSON type into a readable string.
@@ -44,9 +102,10 @@ def format_type(ty: Any, index: dict) -> str:
                 if "type" in arg:
                     type_args.append(format_type(arg["type"], index))
                 elif "lifetime" in arg:
-                    type_args.append(f"'{arg['lifetime']}")
+                    # rustdoc JSON lifetimes already carry the leading tick
+                    type_args.append(arg["lifetime"])
                 elif "const" in arg:
-                    type_args.append(str(arg["const"]))
+                    type_args.append(format_const_arg(arg["const"]))
             if type_args:
                 return f"{name}<{', '.join(type_args)}>"
         return name
@@ -60,7 +119,8 @@ def format_type(ty: Any, index: dict) -> str:
 
         parts = ["&"]
         if lifetime:
-            parts.append(f"'{lifetime} ")
+            # rustdoc JSON lifetimes already carry the leading tick
+            parts.append(f"{lifetime} ")
         if is_mutable:
             parts.append("mut ")
         parts.append(inner_type)
@@ -144,7 +204,8 @@ def format_type(ty: Any, index: dict) -> str:
         lifetime = dt.get("lifetime")
         result = f"dyn {' + '.join(bound_strs)}" if bound_strs else "dyn _"
         if lifetime:
-            result += f" + '{lifetime}"
+            # rustdoc JSON lifetimes already carry the leading tick
+            result += f" + {lifetime}"
         return result
 
     # Function pointer (fn(A, B) -> C)

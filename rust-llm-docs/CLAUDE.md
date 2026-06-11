@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **rust-llm-docs** is a Python utility for converting Rust crate documentation from the rustdoc JSON format into human-readable markdown files. It's designed to make Rust API documentation more accessible to LLMs by providing structured markdown output.
 
 The project provides two main conversion strategies:
-- **`rustdoc_megadoc.py`**: Generates a single comprehensive markdown file with all types, structs, enums, and methods in one document
+- **`rustdoc_megadoc.py`**: Generates a single comprehensive markdown file covering every public item kind — structs, enums, traits, module-level functions, macros (incl. proc-macros), constants, statics, type aliases — with module-qualified headings and doc-comment headings demoted below their section level
 - **`rustdoc_split.py`**: Generates split documentation with individual files for each type (better for LLM consumption with separate files for easier chunking)
 
 ## Common Commands

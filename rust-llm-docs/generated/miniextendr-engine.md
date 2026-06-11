@@ -81,7 +81,7 @@ unsafe check_interrupt(self: &Self)
 
 Check for user interrupts (Ctrl+C).
 
-# Safety
+##### Safety
 
 Must be called from the thread that initialized R.
 
@@ -96,7 +96,7 @@ Process pending R events.
 Call this periodically to allow R to handle events, especially
 when running a long computation.
 
-# Safety
+##### Safety
 
 Must be called from the thread that initialized R.
 
@@ -104,7 +104,7 @@ Must be called from the thread that initialized R.
 
 Builder for configuring and initializing the R runtime.
 
-# Example
+#### Example
 
 ```ignore
 let engine = REngine::new()
@@ -124,13 +124,13 @@ unsafe init(self: Self) -> Result<REngine, REngineError>
 
 Initialize the R runtime with the configured settings.
 
-# Safety
+##### Safety
 
 - Must only be called once per process
 - Must be called from the main thread
 - R cannot be safely shutdown and reinitialized
 
-# Errors
+##### Errors
 
 Returns an error if R initialization fails.
 
@@ -164,7 +164,7 @@ By default, R_HOME is auto-detected by running `R RHOME` or reading
 the `R_HOME` environment variable. Use this method to override that
 behavior with an explicit path.
 
-# Example
+##### Example
 
 ```ignore
 let engine = REngine::build()
@@ -209,3 +209,18 @@ Errors that can occur during R engine initialization.
   - R initialization failed.
 - `AlreadyInitialized`
   - R is already initialized. Re-initialization is not supported.
+
+---
+
+## Functions
+
+### `r_initialized_sentinel`
+
+```rust
+r_initialized_sentinel() -> bool
+```
+
+Check whether `Rf_initialize_R` has run by inspecting stack sentinels.
+
+`R_CStackStart`/`R_CStackDir` are set during R initialization on the main
+thread. A zero or `usize::MAX` value indicates "not initialized".

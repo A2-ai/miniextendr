@@ -5,7 +5,7 @@ Source: `target/doc/miniextendr_api.json`
 ## TryFromSexp
 
 - shape `Option<_>`: **52 hand-rolled**, 17 macro-generated  <== macro already exists for this shape
-    - `Option<&''static str>` (3 items) — miniextendr-api/src/from_r/strings.rs:121
+    - `Option<&'static str>` (3 items) — miniextendr-api/src/from_r/strings.rs:121
     - `Option<&[T]>` (3 items) — miniextendr-api/src/from_r.rs:660
     - `Option<&mut [T]>` (3 items) — miniextendr-api/src/from_r.rs:687
     - `Option<AhoCorasick>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:102
@@ -26,7 +26,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Option<RBitVec>` (3 items) — miniextendr-api/src/optionals/bitvec_impl.rs:95
     - `Option<RFlags<T>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:220
     - `Option<Regex>` (2 items) — miniextendr-api/src/optionals/regex_impl.rs:85
-    - `Option<SMatrix<T, {'expr': 'R', 'value': None, 'is_literal': False}, {'expr': 'C', 'value': None, 'is_literal': False}>>` (3 items) — miniextendr-api/src/optionals/nalgebra_impl.rs:312
+    - `Option<SMatrix<T, R, C>>` (3 items) — miniextendr-api/src/optionals/nalgebra_impl.rs:312
     - `Option<String>` (3 items) — miniextendr-api/src/from_r/strings.rs:317
     - `Option<T>` (3 items) — miniextendr-api/src/newtype.rs:145
     - `Option<TinyVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:178
@@ -58,7 +58,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Option<u8>` (3 items) — miniextendr-api/src/from_r/logical.rs:228
     - `Option<usize>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:679
 - shape `Vec<_>`: **39 hand-rolled**, 27 macro-generated  <== macro already exists for this shape
-    - `Vec<&''static str>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:197
+    - `Vec<&'static str>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:197
     - `Vec<AhoCorasick>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:103
     - `Vec<BigInt>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:250
     - `Vec<BigUint>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:267
@@ -89,7 +89,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Vec<i64>` (3 items) — miniextendr-api/src/from_r.rs:1155
     - `Vec<i8>` (3 items) — miniextendr-api/src/from_r.rs:1153
     - `Vec<isize>` (3 items) — miniextendr-api/src/from_r.rs:1156
-    - `Vec<std::borrow::Cow<''static, str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:84
+    - `Vec<std::borrow::Cow<'static, str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:84
     - `Vec<std::collections::BTreeMap<String, V>>` (2 items) — miniextendr-api/src/from_r/collections.rs:148
     - `Vec<std::collections::HashMap<String, V>>` (2 items) — miniextendr-api/src/from_r/collections.rs:144
     - `Vec<u16>` (3 items) — miniextendr-api/src/from_r.rs:1157
@@ -98,7 +98,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Vec<u8>` (2 items) — miniextendr-api/src/from_r/collections.rs:215
     - `Vec<usize>` (3 items) — miniextendr-api/src/from_r.rs:1160
 - shape `Vec<Option<_>>`: **34 hand-rolled**, 27 macro-generated  <== macro already exists for this shape
-    - `Vec<Option<&''static str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:231
+    - `Vec<Option<&'static str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:231
     - `Vec<Option<AhoCorasick>>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:104
     - `Vec<Option<BigInt>>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:284
     - `Vec<Option<BigUint>>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:299
@@ -126,7 +126,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Vec<Option<i64>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:318
     - `Vec<Option<i8>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:314
     - `Vec<Option<isize>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:320
-    - `Vec<Option<std::borrow::Cow<''static, str>>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:116
+    - `Vec<Option<std::borrow::Cow<'static, str>>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:116
     - `Vec<Option<u16>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:316
     - `Vec<Option<u32>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:317
     - `Vec<Option<u64>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:319
@@ -151,7 +151,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Option<OrderedFloat<f64>>` (4 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:229
     - `Option<RBitVec>` (4 items) — miniextendr-api/src/optionals/bitvec_impl.rs:123
     - `Option<RFlags<T>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:375
-    - `Option<SMatrix<T, {'expr': 'R', 'value': None, 'is_literal': False}, {'expr': 'C', 'value': None, 'is_literal': False}>>` (3 items) — miniextendr-api/src/optionals/nalgebra_impl.rs:335
+    - `Option<SMatrix<T, R, C>>` (3 items) — miniextendr-api/src/optionals/nalgebra_impl.rs:335
     - `Option<String>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:645
     - `Option<TinyVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:202
     - `Option<TomlValue>` (4 items) — miniextendr-api/src/optionals/toml_impl.rs:236
@@ -213,7 +213,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Vec<Option<i64>>` (4 items) — miniextendr-api/src/into_r.rs:1710
     - `Vec<Option<i8>>` (4 items) — miniextendr-api/src/into_r.rs:1733
     - `Vec<Option<isize>>` (4 items) — miniextendr-api/src/into_r.rs:1712
-    - `Vec<Option<std::borrow::Cow<''_, str>>>` (5 items) — miniextendr-api/src/into_r.rs:1333
+    - `Vec<Option<std::borrow::Cow<'_, str>>>` (5 items) — miniextendr-api/src/into_r.rs:1333
     - `Vec<Option<std::collections::BTreeMap<String, V>>>` (4 items) — miniextendr-api/src/into_r.rs:2278
     - `Vec<Option<std::collections::BTreeSet<String>>>` (4 items) — miniextendr-api/src/into_r.rs:2259
     - `Vec<Option<std::collections::BTreeSet<T>>>` (4 items) — miniextendr-api/src/into_r.rs:2242
@@ -256,7 +256,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Vec<i32>` (5 items) — miniextendr-api/src/into_r.rs:380
     - `Vec<i64>` (5 items) — miniextendr-api/src/into_r.rs:640
     - `Vec<isize>` (5 items) — miniextendr-api/src/into_r.rs:642
-    - `Vec<std::borrow::Cow<''_, str>>` (5 items) — miniextendr-api/src/into_r.rs:1314
+    - `Vec<std::borrow::Cow<'_, str>>` (5 items) — miniextendr-api/src/into_r.rs:1314
     - `Vec<std::collections::BTreeMap<String, V>>` (4 items) — miniextendr-api/src/into_r.rs:2387
     - `Vec<std::collections::BTreeSet<String>>` (4 items) — miniextendr-api/src/into_r.rs:2360
     - `Vec<std::collections::BTreeSet<T>>` (4 items) — miniextendr-api/src/into_r.rs:2336

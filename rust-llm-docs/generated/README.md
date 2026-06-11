@@ -8,8 +8,8 @@ produced from rustdoc JSON. **Do not hand-edit** — regenerate with
 
 | File | What |
 |---|---|
-| `<crate>.md` | Single-file API digest — modules, structs (field tables), enums, traits, functions, methods with full signatures. |
-| `<crate>-impl-inventory.md` | Every trait `impl` in the crate, grouped by trait, with fully-resolved `for`-type, generics, kind, and source span. Includes a per-trait "for-types sharing a source span" cluster — macro-expanded families collapse to one line, hand-rolled one-offs stand out. |
+| `<crate>.md` | Single-file API digest — structs (fields + methods), enums (variants + methods), traits (required/provided methods), module-level functions, macros (incl. proc-macros), constants, statics, and type aliases, all with full signatures and module-qualified headings. |
+| `<crate>-impl-inventory.md` | Every non-blanket, non-synthetic trait `impl` in the crate, grouped by trait, with fully-resolved `for`-type, generics, kind, and source span (the summary table still counts blanket/synthetic impls). Includes a per-trait "for-types sharing a source span" cluster — macro-expanded families collapse to one line, hand-rolled one-offs stand out. |
 | `conversion-impl-inventory.md` | Same inventory restricted to the R↔Rust conversion traits (`TryFromSexp`, `IntoR`, `IntoRAs`, `Coerce`, `TryCoerce`, serde-native, ALTREP). The dedup-audit lens. |
 | `conversion-manual-vs-macro.md` | Hand-rolled (unique-span) impls grouped by container shape, flagging shapes a macro already generates. The "which manual impls could a macro absorb?" lens. |
 
