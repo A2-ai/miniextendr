@@ -2063,3 +2063,95 @@ pub fn gc_stress_str_borrow() {
 }
 
 // endregion
+
+// region: serde RSerializer state machines (#943)
+
+/// Drive every `ser.rs` serializer state machine under GC pressure.
+///
+/// The serializers hold intermediate element SEXPs in `Vec<SEXP>` fields
+/// across the allocations performed by subsequent `serialize_*` calls — the
+/// canonical "SEXP storage across allocations" shape. This fixture exercises
+/// `SeqSerializer` (homogeneous + heterogeneous), `MapSerializer`,
+/// `StructSerializer`, `TupleVariantSerializer`, `StructVariantSerializer`,
+/// and the `make_tagged_list` newtype-variant path in one nested value.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "serde")]
+#[miniextendr]
+pub fn gc_stress_serde_ser() {
+    use crate::serde::Serialize;
+    use miniextendr_api::serde::to_r;
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    enum StressEnum {
+        Unit,
+        Newtype(Vec<i32>),
+        Tuple(i32, String, f64),
+        Struct { a: Vec<f64>, b: Option<String> },
+    }
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct StressInner {
+        ints: Vec<i32>,
+        mixed: (i32, String, bool),
+        map: BTreeMap<String, Vec<f64>>,
+    }
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct StressOuter {
+        inner: Vec<StressInner>,
+        variants: Vec<StressEnum>,
+        label: Option<String>,
+    }
+
+    for round in 0..8 {
+        let value = StressOuter {
+            inner: (0..4)
+                .map(|i| StressInner {
+                    ints: (0..16).map(|j| i * 100 + j).collect(),
+                    mixed: (i, format!("row-{i}-{round}"), i % 2 == 0),
+                    map: (0..3)
+                        .map(|k| (format!("k{k}"), vec![f64::from(k) * 0.5; 5]))
+                        .collect(),
+                })
+                .collect(),
+            variants: vec![
+                StressEnum::Unit,
+                StressEnum::Newtype((0..8).collect()),
+                StressEnum::Tuple(round, format!("tag-{round}"), 2.5),
+                StressEnum::Struct {
+                    a: vec![1.0, 2.0, 3.0],
+                    b: if round % 2 == 0 {
+                        Some("present".to_string())
+                    } else {
+                        None
+                    },
+                },
+            ],
+            label: Some(format!("outer-{round}")),
+        };
+
+        let sexp = to_r(&value).expect("gc_stress_serde_ser: serialization failed");
+        assert_eq!(
+            sexp.type_of(),
+            SEXPTYPE::VECSXP,
+            "gc_stress_serde_ser: expected outer list"
+        );
+        assert_eq!(
+            sexp.xlength(),
+            3,
+            "gc_stress_serde_ser: outer list must have 3 fields"
+        );
+        let inner = sexp.vector_elt(0);
+        assert_eq!(
+            inner.xlength(),
+            4,
+            "gc_stress_serde_ser: inner list must have 4 rows"
+        );
+    }
+}
+
+// endregion
