@@ -2013,6 +2013,31 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 
 // endregion
 
+// region: worker re-usability after R longjmp (#931)
+
+/// Plain worker round-trip used to assert the worker re-armed after an
+/// R longjmp tore through a previous job (#931).
+///
+/// `#[miniextendr(worker)]` forces the body onto the worker thread (a no-arg
+/// `-> i32` fn otherwise runs inline on R's main thread), so the
+/// `!is_r_main_thread()` assert actually proves the worker's `recv()` loop
+/// picked up a fresh job after the prior longjmp tore through it. The whole
+/// fixture is gated on `worker-thread` because the `worker` attribute requires
+/// that feature (mirrors `rng_tests.rs::rng_worker_uniform`).
+#[cfg(feature = "worker-thread")]
+#[miniextendr(worker)]
+pub fn gc_stress_worker_roundtrip_after_longjmp() -> i32 {
+    #[cfg(not(target_family = "wasm"))]
+    assert!(
+        !miniextendr_api::worker::is_r_main_thread(),
+        "fixture must run on the worker thread to prove the recv() loop re-armed"
+    );
+    let half = miniextendr_api::worker::with_r_thread(|| 21i32);
+    half * 2
+}
+
+// endregion
+
 // region: zero-copy &str argument borrow (#664)
 
 /// Production helper for the `&str` zero-copy argument-borrow path (#664).

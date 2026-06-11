@@ -495,6 +495,26 @@ mod worker_channel {
 
     /// Dispatch a closure to the worker thread.
     /// Returns Ok(T) or Err(panic_message).
+    ///
+    /// # Leak note (R-longjmp-through-worker path)
+    ///
+    /// When the dispatched job raises an R error (e.g. via `with_r_thread`
+    /// routing back to the main thread and calling into the R API), the
+    /// `cleanup_handler` below sends `Done(Err(..))` to unblock the worker and
+    /// then calls `R_ContinueUnwind(token)`. That resumes the original R
+    /// `longjmp` straight to R's top level, so this function's stack frame is
+    /// torn down **without running Rust destructors**. The state skipped on
+    /// that path is fixed per call: the `worker_rx` receiver, the
+    /// `response_tx` sender, the parked `Done(Err(..))` message, and a `job_tx`
+    /// refcount. The resulting leak is therefore **fixed-per-unwind** (order of
+    /// hundreds of bytes), **linearly bounded**, and **does not compound**
+    /// across repeated unwinds. This is **expected and non-fatal** — the
+    /// alternative (intercepting the unwind to drop the state) would require
+    /// `R_tryCatch` interception before `R_ContinueUnwind` and is not worth the
+    /// complexity for a bounded per-error cost. `test-worker-longjmp.R` pins a
+    /// regression bound of <= 8 KB RSS growth per unwind (steady-state RSS
+    /// growth measures ~1.8 KB/unwind, dominated by page/arena granularity
+    /// rather than the much smaller heap leak).
     pub(super) fn dispatch_to_worker<F, T>(f: F) -> Result<T, String>
     where
         F: FnOnce() -> T + Send + 'static,

@@ -48,3 +48,28 @@ test_that("R error inside with_r_thread from a worker job surfaces (as a bare si
     "R error inside with_r_thread from a worker job"
   )
 })
+
+test_that("worker re-arms after an R longjmp tears through a job (#931)", {
+  skip_on_os("windows")
+  expect_error(miniextendr:::gc_stress_with_r_thread_stop())
+  expect_identical(miniextendr:::gc_stress_worker_roundtrip_after_longjmp(), 42L)
+  for (i in 1:5) try(miniextendr:::gc_stress_with_r_thread_stop(), silent = TRUE)
+  expect_identical(miniextendr:::gc_stress_worker_roundtrip_after_longjmp(), 42L)
+})
+
+test_that("R-longjmp-through-worker leak is bounded per unwind (#931)", {
+  skip_on_cran()
+  skip_on_os("windows")
+  rss_kb <- function() as.numeric(system2("ps", c("-o", "rss=", "-p", Sys.getpid()), stdout = TRUE))
+  # Heavy warmup: the first few thousand unwinds reserve allocator arenas /
+  # resident pages (a large *one-time* RSS bump unrelated to the per-unwind
+  # leak). Measuring before that settles would conflate setup cost with the
+  # leak. After ~2000 unwinds RSS growth drops to steady state (~1.8 KB/unwind
+  # measured here, dominated by page granularity, not leaked bytes).
+  n <- 2000
+  for (i in seq_len(n)) try(miniextendr:::gc_stress_with_r_thread_stop(), silent = TRUE)  # warmup
+  gc(); rss0 <- rss_kb()
+  for (i in seq_len(n)) try(miniextendr:::gc_stress_with_r_thread_stop(), silent = TRUE)
+  gc(); rss1 <- rss_kb()
+  expect_lt((rss1 - rss0) * 1024, n * 8192)  # <= 8 KB/unwind bound
+})

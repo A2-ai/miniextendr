@@ -37,12 +37,33 @@
 //!
 //! ## Leaks
 //!
-//! On the R longjmp path (when R unwinds out of the protected body),
-//! `with_r_unwind_protect` leaks ~8 bytes (an `RErrorMarker` + `Box` header)
-//! because the cleanup handler can't reclaim them via
-//! `Box::from_raw`. Regular Rust panics from inside the body don't leak.
-//! This is the cost MXL300 is buying off: every direct `Rf_error()` would
-//! incur the same leak with no observability.
+//! There are two distinct R-longjmp leak profiles, depending on whether the
+//! protected body runs inline or is dispatched to the worker thread:
+//!
+//! - **Plain path** ([`with_r_unwind_protect`] /
+//!   [`with_r_unwind_protect_or_raise`], body run inline): when R unwinds out
+//!   of the protected body the cleanup handler can't reclaim its payload via
+//!   `Box::from_raw`. That payload is an `RErrorMarker`, which is a
+//!   zero-sized type — `Box::new(<ZST>)` does **not** heap-allocate on modern
+//!   `std` (it hands back a dangling, well-aligned pointer), so the plain-path
+//!   leak is effectively **~0 bytes**. Regular Rust panics from inside the
+//!   body don't leak at all.
+//! - **Worker/dispatch path** ([`crate::worker::run_on_worker`] →
+//!   `dispatch_to_worker` in `worker.rs`): when an R error raised from a
+//!   worker job longjmps, `R_ContinueUnwind` resumes the original R unwind
+//!   straight to top level and **skips the Rust destructors** for the
+//!   dispatcher's live channel state — `worker_rx`, `response_tx`, the parked
+//!   `Done(Err(..))` message, and a `job_tx` refcount. This leak is
+//!   **fixed-per-unwind** (on the order of a few hundred bytes of channel/box
+//!   state), linearly bounded, and **does not compound** across repeated
+//!   unwinds. Measured end-to-end RSS growth settles to roughly ~1.8 KB per
+//!   unwind in steady state (RSS overstates the heap leak: it counts whole
+//!   resident pages and allocator arenas, not leaked bytes), well under the
+//!   8 KB/unwind regression bound asserted by `test-worker-longjmp.R`.
+//!
+//! This is the cost MXL300 is buying off: every direct `Rf_error()` from a
+//! worker context would incur the same skipped-destructor leak with no
+//! observability.
 //!
 //! ## Log drain
 //!
