@@ -1005,6 +1005,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_externalptr_collect_list(_: SEXP) -> SEXP;
     pub fn C_gc_stress_result_to_dataframe_auto(_: SEXP) -> SEXP;
     pub fn C_gc_stress_result_to_dataframe_collated(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_worker_roundtrip_after_longjmp(_: SEXP) -> SEXP;
     pub fn C_gc_stress_result_to_dataframe_split_sentinel(_: SEXP) -> SEXP;
     pub fn C_into_r_error_inner(_: SEXP) -> SEXP;
     pub fn C_into_r_error_length_overflow(_: SEXP) -> SEXP;
@@ -7096,6 +7097,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_result_to_dataframe_collated".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_result_to_dataframe_collated) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_worker_roundtrip_after_longjmp".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_worker_roundtrip_after_longjmp) }),
         numArgs: 1,
     },
     R_CallMethodDef {
