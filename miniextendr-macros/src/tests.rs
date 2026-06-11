@@ -1054,4 +1054,24 @@ fn test_derive_altrep_real_subset_accepted_with_guard_too() {
 
     crate::altrep_derive::derive_altrep_real(input).unwrap();
 }
+
+#[test]
+fn test_altrep_try_from_sexp_expected_tag_uses_family_base() {
+    // #890: the not-an-ALTREP diagnostic must report the family's base
+    // SEXPTYPE (via AltrepClass::BASE), not a hardcoded INTSXP.
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct DiagReal {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let expanded = crate::altrep_derive::derive_altrep_real(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("BASE.sexptype()"));
+    assert!(!s.contains("expected:SEXPTYPE::INTSXP"));
+    // The data1-downcast branch legitimately expects an EXTPTRSXP.
+    assert!(s.contains("expected:SEXPTYPE::EXTPTRSXP"));
+}
 // endregion

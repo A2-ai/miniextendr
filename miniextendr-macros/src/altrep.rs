@@ -200,7 +200,7 @@ pub(crate) fn generate_direct_altrep_registration(
 
                 if !::miniextendr_api::SexpExt::is_altrep(&sexp) {
                     return Err(::miniextendr_api::SexpTypeError {
-                        expected: SEXPTYPE::INTSXP,
+                        expected: <#ident #ty_generics as ::miniextendr_api::altrep::AltrepClass>::BASE.sexptype(),
                         actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     });
                 }
@@ -234,7 +234,7 @@ pub(crate) fn generate_direct_altrep_registration(
 
                 if !::miniextendr_api::SexpExt::is_altrep(&sexp) {
                     return Err(::miniextendr_api::SexpTypeError {
-                        expected: SEXPTYPE::INTSXP,
+                        expected: <#ident #ty_generics as ::miniextendr_api::altrep::AltrepClass>::BASE.sexptype(),
                         actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     });
                 }

@@ -66,6 +66,22 @@ pub enum RBase {
     Complex,
 }
 
+impl RBase {
+    /// The [`SEXPTYPE`](crate::SEXPTYPE) an ALTREP vector of this base
+    /// presents to R.
+    pub const fn sexptype(self) -> crate::SEXPTYPE {
+        match self {
+            RBase::Int => crate::SEXPTYPE::INTSXP,
+            RBase::Real => crate::SEXPTYPE::REALSXP,
+            RBase::Logical => crate::SEXPTYPE::LGLSXP,
+            RBase::Raw => crate::SEXPTYPE::RAWSXP,
+            RBase::String => crate::SEXPTYPE::STRSXP,
+            RBase::List => crate::SEXPTYPE::VECSXP,
+            RBase::Complex => crate::SEXPTYPE::CPLXSXP,
+        }
+    }
+}
+
 /// Trait implemented by ALTREP classes via `#[miniextendr]`.
 ///
 /// This trait is automatically implemented when using the proc-macro with
