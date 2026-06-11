@@ -1585,3 +1585,28 @@ pub fn conv_named_list_roundtrip(config: NamedList) -> miniextendr_api::list::Li
     config.into_list()
 }
 // endregion
+
+// region: Tuple arguments (TryFromSexp for tuples, #976)
+
+/// Test 1-tuple argument round-trip: reads a 1-element unnamed list as `(i32,)` and returns it.
+/// @param solo Unnamed list containing a single integer.
+#[miniextendr]
+pub fn conv_tuple1_roundtrip(solo: (i32,)) -> (i32,) {
+    solo
+}
+
+/// Test tuple argument round-trip: reads an unnamed 2-element list as `(i32, String)` and returns it.
+/// @param pair Unnamed list of an integer and a string.
+#[miniextendr]
+pub fn conv_tuple2_roundtrip(pair: (i32, String)) -> (i32, String) {
+    pair
+}
+
+/// Test 3-tuple argument: reads `(f64, bool, Vec<i32>)` and returns the sum of all numeric parts.
+/// @param triple Unnamed list of a double, a logical, and an integer vector.
+#[miniextendr]
+pub fn conv_tuple3_sum(triple: (f64, bool, Vec<i32>)) -> f64 {
+    let (x, flag, v) = triple;
+    x + (flag as i32 as f64) + v.iter().map(|&i| i as f64).sum::<f64>()
+}
+// endregion

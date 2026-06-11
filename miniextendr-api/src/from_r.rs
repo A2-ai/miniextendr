@@ -746,6 +746,8 @@ mod na_vectors;
 
 mod collections;
 
+mod tuples;
+
 // region: Fixed-size array conversions
 
 /// Blanket impl: Convert R vector to `[T; N]` where T: RNativeType.

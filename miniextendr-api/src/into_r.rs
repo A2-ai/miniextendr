@@ -1962,7 +1962,6 @@ impl IntoR for Vec<Option<String>> {
 /// Macro to implement IntoR for tuples of various sizes.
 /// Converts Rust tuples to unnamed R lists (VECSXP).
 macro_rules! impl_tuple_into_r {
-    // Base case: 2-tuple
     (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
         impl<$($T: IntoR),+> IntoR for ($($T,)+) {
             type Error = std::convert::Infallible;
@@ -2013,7 +2012,8 @@ macro_rules! impl_tuple_into_r {
     };
 }
 
-// Implement for tuples of sizes 2-8
+// Implement for tuples of sizes 1-8
+impl_tuple_into_r!((A), (0), 1);
 impl_tuple_into_r!((A, B), (0, 1), 2);
 impl_tuple_into_r!((A, B, C), (0, 1, 2), 3);
 impl_tuple_into_r!((A, B, C, D), (0, 1, 2, 3), 4);

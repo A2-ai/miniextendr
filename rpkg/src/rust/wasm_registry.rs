@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      0a72c44481e416b3
+// content-hash:      d713c55c4fa0c15e
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -73,6 +73,7 @@ unsafe extern "C-unwind" {
     pub fn C_conv_usize_ret(_: SEXP) -> SEXP;
     pub fn C_conv_string_arg(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_string_ret(_: SEXP) -> SEXP;
+    pub fn C_conv_tuple3_sum(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_vec_i8_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_vec_i8_ret(_: SEXP) -> SEXP;
     pub fn C_conv_vec_u8_len(_: SEXP, _: SEXP) -> SEXP;
@@ -170,6 +171,8 @@ unsafe extern "C-unwind" {
     pub fn C_conv_opt_bool_is_some(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_opt_rlog_is_some(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_result_string_ok(_: SEXP) -> SEXP;
+    pub fn C_conv_tuple1_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_conv_tuple2_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_vec_opt_bool_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_vec_opt_bool_ret(_: SEXP) -> SEXP;
     pub fn C_conv_vec_opt_rlog_ret(_: SEXP) -> SEXP;
@@ -2426,6 +2429,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_conv_tuple3_sum".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_conv_tuple3_sum) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_conv_vec_i8_len".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_conv_vec_i8_len) }),
         numArgs: 2,
@@ -2909,6 +2917,16 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_conv_result_string_ok".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_conv_result_string_ok) }),
         numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_conv_tuple1_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_conv_tuple1_roundtrip) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_conv_tuple2_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_conv_tuple2_roundtrip) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_conv_vec_opt_bool_len".as_ptr(),
