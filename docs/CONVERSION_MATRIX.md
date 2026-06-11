@@ -190,7 +190,7 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 
 ### Smart Vector Conversion (Vec of large integers)
 
-`Vec<i64>`, `Vec<u64>`, `Vec<isize>`, `Vec<usize>` check whether **all** elements fit in i32. If yes, the entire vector is INTSXP; otherwise, the entire vector is REALSXP.
+`Vec<i64>`, `Vec<u64>`, `Vec<u32>`, `Vec<isize>`, `Vec<usize>` check whether **all** elements fit in i32. If yes, the entire vector is INTSXP; otherwise, the entire vector is REALSXP.
 
 | Rust Type | All Fit in i32? | R Output Type |
 |-----------|-----------------|--------------|
@@ -198,6 +198,8 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `Vec<i64>` | No (any element outside) | REALSXP |
 | `Vec<u64>` | Yes (all `<= i32::MAX`) | INTSXP |
 | `Vec<u64>` | No | REALSXP |
+| `Vec<u32>` | Yes (all `<= i32::MAX`) | INTSXP |
+| `Vec<u32>` | No | REALSXP |
 
 ### Collection Types
 
@@ -261,6 +263,21 @@ Notes:
 | `Result<T, E: Debug>` (default) | `T::into_sexp()` | **Panic** -> R error |
 | `Result<T, E: Display>` (`unwrap_in_r`) | `T::into_sexp()` | `list(error = msg)` |
 | `Result<T, ()>` | `T::into_sexp()` | NULL (R_NilValue) |
+
+### Intentional Asymmetries (argument-only / return-only)
+
+Some types deliberately support only one direction. These are design decisions,
+not gaps:
+
+| Rust Type | Direction | Why |
+|-----------|-----------|-----|
+| `Option<u8>` / `Vec<Option<u8>>` | `TryFromSexp` only (no `IntoR`) | RAWSXP has no NA sentinel; `None` has no faithful R representation. Inbound, R raw vectors never contain NA so `Option<u8>` is always `Some`. Return `Vec<u8>` instead. |
+| `Regex` (regex feature) | `TryFromSexp` only | Accept a pattern string from R as a compiled regex argument. A compiled regex has no useful R value; return the pattern `String` if needed. |
+| `AhoCorasick` (aho-corasick feature) | `TryFromSexp` only | Same shape: built from an R character vector of patterns; no meaningful outbound form. |
+| `(A, B, ...)` tuples (arity ≤ 8) | `IntoR` only | Returned as an unnamed VECSXP list. Inbound support (R list → tuple arguments) is tracked in #976. |
+
+By contrast, `Url` and `Uuid` round-trip: both directions are implemented
+because the R representation (a string) is faithful in both directions.
 
 ---
 

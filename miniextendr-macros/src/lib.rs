@@ -11,8 +11,9 @@
 //! - Helpers: `typed_list` for typed list builders.
 //!
 //! R wrapper generation is driven by Rust doc comments (roxygen tags are
-//! extracted). The `document` binary collects these wrappers and writes
-//! `R/miniextendr_wrappers.R` during package build.
+//! extracted). During package build, the cdylib link pass loads the crate
+//! into R and calls `miniextendr_write_wrappers`, which walks the linkme
+//! `#[distributed_slice]` tables and writes `R/<pkg>-wrappers.R`.
 //!
 //! ## Quick start
 //!

@@ -116,7 +116,7 @@ pub fn r_initialized_sentinel() -> bool {
 /// # Example
 ///
 /// ```ignore
-/// let engine = REngine::new()
+/// let engine = REngine::build()
 ///     .with_args(&["R", "--quiet", "--no-save"])
 ///     .interactive(false)
 ///     .signal_handlers(false)
