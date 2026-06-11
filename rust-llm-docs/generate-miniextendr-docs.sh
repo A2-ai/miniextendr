@@ -30,11 +30,23 @@ echo ">> cargo doc (macros, engine, lint, cli)"
 RUSTC_BOOTSTRAP=1 RUSTDOCFLAGS="-Z unstable-options --output-format json" \
   cargo doc --no-deps -p miniextendr-macros -p miniextendr-engine -p miniextendr-lint -p miniextendr-cli
 
+echo ">> cargo doc (cargo-revendor — standalone workspace)"
+(cd "$ROOT/cargo-revendor" && RUSTC_BOOTSTRAP=1 RUSTDOCFLAGS="-Z unstable-options --output-format json" \
+  cargo doc --no-deps)
+
 # json basename -> output basename  (cli's lib crate is named `miniextendr`)
 gen() {
   local json="$1" out="$2"
   python3 "$HERE/rustdoc_megadoc.py"        "target/doc/${json}.json" "$GEN/${out}.md" >/dev/null
   python3 "$HERE/rustdoc_impl_inventory.py" "target/doc/${json}.json" --out "$GEN/${out}-impl-inventory.md" >/dev/null
+  echo "   ${out}.md + ${out}-impl-inventory.md"
+}
+
+# like gen() but for the cargo-revendor standalone workspace (separate target/)
+gen_revendor() {
+  local json="$1" out="$2"
+  python3 "$HERE/rustdoc_megadoc.py"        "$ROOT/cargo-revendor/target/doc/${json}.json" "$GEN/${out}.md" >/dev/null
+  python3 "$HERE/rustdoc_impl_inventory.py" "$ROOT/cargo-revendor/target/doc/${json}.json" --out "$GEN/${out}-impl-inventory.md" >/dev/null
   echo "   ${out}.md + ${out}-impl-inventory.md"
 }
 
@@ -44,6 +56,7 @@ gen miniextendr_macros miniextendr-macros
 gen miniextendr_engine miniextendr-engine
 gen miniextendr_lint   miniextendr-lint
 gen miniextendr        miniextendr-cli
+gen_revendor cargo_revendor cargo-revendor
 
 # Conversion-only inventory — the dedup-audit lens.
 python3 "$HERE/rustdoc_impl_inventory.py" target/doc/miniextendr_api.json \
