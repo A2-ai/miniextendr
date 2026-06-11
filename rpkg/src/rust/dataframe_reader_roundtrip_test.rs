@@ -10,6 +10,9 @@
 //!   - opaque list-columns: un-annotated `Vec<scalar>` / `Box<[scalar]>` fields
 //!     stored as VECSXP list-columns; each row's element is deserialized via
 //!     `Vec<elem>: TryFromSexp` and `.into()`-converted to the field container type
+//!   - map columns (#764): `HashMap<String, V>` / `BTreeMap<String, V>` fields
+//!     stored as list-of-named-lists columns; the whole column reads back via
+//!     `Vec<map>: TryFromSexp` (String keys + reader-scalar values only)
 //!
 //! Each `*_roundtrip(df)` reads a `data.frame` into `Vec<Row>` with the reader,
 //! then rebuilds it with the writer — so `roundtrip(make()) == make()` proves the
@@ -65,6 +68,27 @@ impl ::miniextendr_api::list::IntoList for RListBoxRow {
 pub struct RListMultiRow {
     pub ids: Vec<i32>,
     pub names: Vec<String>,
+}
+
+// endregion
+
+// region: map-column row types (#764)
+
+/// `BTreeMap<String, i32>` map column → single list-of-named-lists column
+/// `opts`. BTreeMap iterates keys sorted, so the written frame is
+/// deterministic and the round-trip compares exactly.
+#[derive(Clone, Debug, PartialEq, IntoList, DataFrameRow)]
+pub struct RMapRow {
+    pub id: i32,
+    pub opts: std::collections::BTreeMap<String, i32>,
+}
+
+/// `HashMap<String, f64>` map column. Key order within each row's named list
+/// is non-deterministic, so the R-side assertions compare sorted-by-name.
+#[derive(Clone, Debug, PartialEq, IntoList, DataFrameRow)]
+pub struct RHashMapRow {
+    pub label: String,
+    pub weights: std::collections::HashMap<String, f64>,
 }
 
 // endregion
@@ -290,6 +314,44 @@ pub fn reader_list_vec_roundtrip_par(df: SEXP) -> SEXP {
 
 // endregion
 
+// region: map-column round-trip entrypoints (#764)
+
+/// `Vec::<RMapRow>::from_dataframe(&df)` → rebuild. Columns `id`, `opts`
+/// (list of named lists). BTreeMap keys come back sorted.
+/// @param df data.frame with `id` (integer) and `opts` (list of named lists of integers).
+/// @export
+#[miniextendr]
+pub fn reader_map_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// `Vec::<RHashMapRow>::from_dataframe(&df)` → rebuild. Columns `label`,
+/// `weights` (list of named lists). HashMap key order is non-deterministic —
+/// R-side assertions must sort by name.
+/// @param df data.frame with `label` (character) and `weights` (list of named lists of doubles).
+/// @export
+#[miniextendr]
+pub fn reader_hashmap_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RHashMapRow> = <Vec<RHashMapRow>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// Parallel map-column round-trip (real off-thread index assembly). Columns `id`, `opts`.
+/// @param df data.frame with `id` (integer) and `opts` (list of named lists of integers).
+/// @export
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn reader_map_roundtrip_par(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe_par(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+// endregion
+
 // region: gctorture fixtures (no-arg, self-contained)
 //
 // The struct-flatten reader allocates a fresh sub-frame (`select` + `strip_prefix`)
@@ -348,6 +410,26 @@ pub fn gc_stress_reader_list_column() {
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
     let _back: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe(&df).unwrap();
+    let _ = df;
+}
+
+/// Drives the map-column reader (#764) under gctorture. `Vec<map>: TryFromSexp`
+/// walks the list column per row and each named list per entry (string-key
+/// extraction allocates), so it must survive `gctorture(TRUE)`.
+/// @export
+#[miniextendr]
+pub fn gc_stress_reader_map_column() {
+    let rows: Vec<RMapRow> = (0..16)
+        .map(|i| RMapRow {
+            id: i,
+            opts: std::collections::BTreeMap::from([
+                (format!("k{i}"), i),
+                ("shared".to_string(), i * 2),
+            ]),
+        })
+        .collect();
+    let df = rows.clone().into_dataframe().unwrap();
+    let _back: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe(&df).unwrap();
     let _ = df;
 }
 

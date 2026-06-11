@@ -254,9 +254,16 @@ pub(super) enum FieldTypeKind<'a> {
     /// `&[T]` -- borrowed slice, treated like `Vec<T>` for expansion purposes.
     /// Contains the element type.
     BorrowedSlice(&'a syn::Type),
-    /// `HashMap<K, V>` or `BTreeMap<K, V>` -- expands to two parallel list-columns:
-    /// `<field>_keys` and `<field>_values`. Key order follows the map's own iteration
-    /// order: `BTreeMap` yields sorted keys, `HashMap` yields non-deterministic order.
+    /// `HashMap<K, V>` or `BTreeMap<K, V>`. The two derive paths treat maps
+    /// differently:
+    /// - *enum path*: expands to two parallel list-columns `<field>_keys` /
+    ///   `<field>_values` (see `enum_expansion.rs`).
+    /// - *struct path*: resolves to a `Single` opaque list-of-named-lists
+    ///   column (`Vec<map>: IntoR`); reader-capable for `String` keys +
+    ///   reader-scalar values (#764, see `SingleFieldData::map_reader`).
+    ///
+    /// Key order follows the map's own iteration order: `BTreeMap` yields
+    /// sorted keys, `HashMap` yields non-deterministic order.
     Map {
         key_ty: &'a syn::Type,
         val_ty: &'a syn::Type,
@@ -496,13 +503,47 @@ pub(super) fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
     false
 }
 
+/// True if `ty`'s last path segment is the bare ident `String` (path-identity
+/// check, same convention as `classify_field_type`).
+fn is_string_ty(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last()
+        && matches!(seg.arguments, syn::PathArguments::None)
+    {
+        return seg.ident == "String";
+    }
+    false
+}
+
+/// Number of *type* arguments on `ty`'s last path segment (0 when not
+/// angle-bracketed). Rejects `HashMap<K, V, S>` custom-hasher maps from the
+/// reader path — the `Vec<HashMap<String, V>>: TryFromSexp` impl only covers
+/// the default hasher.
+fn generic_type_arg_count(ty: &syn::Type) -> usize {
+    if let syn::Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last()
+        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+    {
+        return args
+            .args
+            .iter()
+            .filter(|a| matches!(a, syn::GenericArgument::Type(_)))
+            .count();
+    }
+    0
+}
+
 /// True if a resolved struct field can be read back out of an R `data.frame`.
 ///
 /// Determines whether the struct gets a generated `try_from_dataframe` reader.
 /// Each shape's reader is the inverse of its column-expansion write rule:
-/// - `Single` scalar: one column read as `Vec<ty>` (excludes `as_list`, opaque
-///   `Map`/collection columns — those classify as `Single` but lack `Vec<_>:
-///   TryFromSexp`).
+/// - `Single` scalar: one column read as `Vec<ty>` (excludes `as_list` and
+///   opaque set/collection columns — those classify as `Single` but lack
+///   `Vec<_>: TryFromSexp`).
+/// - `Single` map column (`HashMap<String, V>` / `BTreeMap<String, V>`): one
+///   VECSXP list-of-named-lists column read whole via `Vec<map>: TryFromSexp`
+///   — the exact inverse of the `Vec<map>: IntoR` write shape (#764). Gated
+///   to `String` keys + reader-scalar values at resolve time (`map_reader`).
 /// - `Single` owned list-column: `Vec<scalar>` / `Box<[scalar]>` stored as a
 ///   VECSXP list-column; the reader deserialises each row's element via
 ///   `Vec<elem>: TryFromSexp` and `.into()`-converts to the field type (#809).
@@ -520,6 +561,7 @@ fn field_reader_capable(rf: &ResolvedField) -> bool {
         ResolvedField::Single(d) => {
             !d.needs_into_list
                 && (is_reader_scalar_ty(&d.ty)
+                    || d.map_reader
                     || d.list_elem_ty
                         .as_ref()
                         .is_some_and(is_bare_reader_scalar_ty))
@@ -588,6 +630,12 @@ struct SingleFieldData {
     /// `None` for scalar Single, `as_list`, opaque `Map`/set columns, and borrowed
     /// `&[T]` (not readable).
     list_elem_ty: Option<syn::Type>,
+    /// `true` when this Single field is a reader-capable map column (#764):
+    /// `HashMap<String, V>` / `BTreeMap<String, V>` with a reader-scalar `V`
+    /// and no custom hasher. The column is read whole as `Vec<#ty>` via the
+    /// `Vec<map>: TryFromSexp` list-of-named-lists impl — the same `pull_col`
+    /// path scalar Singles use, so it only widens the capability gate.
+    map_reader: bool,
 }
 
 /// Data for [`ResolvedField::ExpandedFixed`].
@@ -734,6 +782,7 @@ fn resolve_struct_field(
             tuple_index,
             needs_into_list,
             list_elem_ty: None,
+            map_reader: false,
         }))));
     }
 
@@ -791,6 +840,7 @@ fn resolve_struct_field(
                     } else {
                         Some((*elem_ty).clone())
                     },
+                    map_reader: false,
                 }))))
             }
         }
@@ -818,7 +868,7 @@ fn resolve_struct_field(
                 tuple_index,
             }))))
         }
-        FieldTypeKind::Scalar | FieldTypeKind::Map { .. } => {
+        kind @ (FieldTypeKind::Scalar | FieldTypeKind::Map { .. }) => {
             if field_attrs.width.is_some() {
                 return Err(syn::Error::new_spanned(
                     ty,
@@ -831,6 +881,19 @@ fn resolve_struct_field(
                     "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                 ));
             }
+            // Struct-path map fields write as one opaque list-of-named-lists
+            // column (`Vec<map>: IntoR`). The same shape reads back whole via
+            // `Vec<map>: TryFromSexp`, so a map field is reader-capable (#764)
+            // exactly when that impl applies: `String` keys, a reader-scalar
+            // value type, and the default hasher (two type args).
+            let map_reader = match kind {
+                FieldTypeKind::Map { key_ty, val_ty } => {
+                    is_string_ty(key_ty)
+                        && is_reader_scalar_ty(val_ty)
+                        && generic_type_arg_count(ty) == 2
+                }
+                _ => false,
+            };
             Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
                 rust_name,
                 col_name,
@@ -839,6 +902,7 @@ fn resolve_struct_field(
                 tuple_index,
                 needs_into_list: false,
                 list_elem_ty: None,
+                map_reader,
             }))))
         }
     }
@@ -2018,13 +2082,14 @@ fn derive_struct_dataframe(
     // (`[T; N]` / `Vec<T>` + `width`/`expand`), and struct-flatten fields (nested
     // `DataFrameRow`). Each shape's reader is the exact inverse of its write rule
     // — regroup the suffixed expansion columns, un-prefix and recurse into the
-    // nested reader. `skip` / `as_list` / opaque-`Map` / tuple / unit shapes are
-    // not reader-capable and fall through to the trait default (a clear runtime
-    // `DataFrameError`). Struct-path `HashMap`/`BTreeMap` (`Map`) columns are the
-    // one remaining shape with no reader — they resolve to an opaque single
-    // list-column rather than the enum path's `_keys`/`_values` split, so they are
-    // gated out here; tracked as a #764 follow-up. Tagged-enum and enum-`Map`
-    // readers already landed (#807/#816) — see `enum_expansion::build_enum_reader`.
+    // nested reader. Struct-path `HashMap<String, V>`/`BTreeMap<String, V>` map
+    // columns read whole via `Vec<map>: TryFromSexp` (#764) — they share the
+    // scalar `pull_col` path, gated by `SingleFieldData::map_reader` (non-String
+    // keys / non-scalar values / custom hashers stay reader-incapable). `skip` /
+    // `as_list` / set columns / tuple / unit shapes are not reader-capable and
+    // fall through to the trait default (a clear runtime `DataFrameError`).
+    // Tagged-enum and enum-`Map` readers already landed (#807/#816) — see
+    // `enum_expansion::build_enum_reader`.
     //
     // The parallel variant (`#[cfg(feature = "rayon")]`) splits cleanly along the
     // R-thread boundary: all SEXP access (column extraction, ALTREP
@@ -2147,7 +2212,9 @@ fn derive_struct_dataframe(
                             seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
                             par_builds.push(quote! { #rust_name: #col_var[__i].clone() });
                         }
-                        // Scalar Single: unchanged (existing path).
+                        // Scalar Single — and reader-capable map Single (#764):
+                        // `pull_col`'s `Vec<#ty>: TryFromSexp` covers both
+                        // (maps via the list-of-named-lists impl).
                         ::core::option::Option::None => {
                             extracts.push(pull_col(&col_var, &data.col_name_str, &data.ty));
                             seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
@@ -3030,23 +3097,68 @@ mod tests {
         assert!(code.contains("into_par_iter"));
     }
 
-    /// Known gap (issue follow-up to #764): a struct with a `HashMap`/`BTreeMap`
-    /// field is resolved as an opaque `Single` list-column (no `_keys`/`_values`
-    /// split like the enum path), is not reader-capable, and so gets NO reader.
-    /// Locks the current behaviour so the follow-up that adds struct-path Map
-    /// support flips this assertion deliberately. See `field_reader_capable`.
+    /// Struct-path `HashMap<String, V>` map column (#764): the list-of-named-lists
+    /// column reads back whole via `Vec<map>: TryFromSexp` on the R thread, so the
+    /// struct gets both readers (it shares the scalar `pull_col` path — zero SEXP
+    /// access inside `into_par_iter`). Flips the pre-#764 lock-in test from #920.
     #[test]
-    fn struct_with_map_field_has_no_reader_yet() {
+    fn struct_with_string_keyed_map_field_gets_parallel_reader() {
         let code = expand(syn::parse_quote! {
             #[derive(DataFrameRow)]
             struct Config {
                 opts: ::std::collections::HashMap<String, i32>,
             }
         });
+        assert!(code.contains("fn try_from_dataframe"));
+        assert!(code.contains("fn try_from_dataframe_par"));
+        assert!(code.contains("into_par_iter"));
+    }
+
+    /// `BTreeMap<String, Option<scalar>>` is also reader-capable: the
+    /// `Vec<map>: TryFromSexp` impl is generic over `V: TryFromSexp`, and
+    /// `Option<scalar>` qualifies (NULL list elements → `None`).
+    #[test]
+    fn struct_with_btreemap_option_value_gets_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Config {
+                opts: ::std::collections::BTreeMap<String, Option<f64>>,
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe"));
+        assert!(code.contains("fn try_from_dataframe_par"));
+    }
+
+    /// Non-`String` map keys have no `TryFromSexp` impl to read back through —
+    /// the struct stays reader-incapable (write-only), same as pre-#764.
+    #[test]
+    fn struct_with_non_string_keyed_map_has_no_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Config {
+                opts: ::std::collections::HashMap<i32, f64>,
+            }
+        });
         assert!(
             !code.contains("fn try_from_dataframe"),
-            "struct-path Map columns are not yet reader-capable (tracked as a #764 follow-up); \
-             if this assertion now fails, the reader was added — update/remove this test"
+            "non-String map keys lack `Vec<map>: TryFromSexp`; the reader must stay gated out"
+        );
+    }
+
+    /// Custom-hasher maps (`HashMap<K, V, S>`) are rejected from the reader path:
+    /// the `Vec<HashMap<String, V>>: TryFromSexp` impl only covers the default
+    /// hasher, so emitting a reader would not compile.
+    #[test]
+    fn struct_with_custom_hasher_map_has_no_reader() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Config {
+                opts: ::std::collections::HashMap<String, i32, MyHasher>,
+            }
+        });
+        assert!(
+            !code.contains("fn try_from_dataframe"),
+            "custom-hasher maps lack `Vec<map>: TryFromSexp`; the reader must stay gated out"
         );
     }
 }
