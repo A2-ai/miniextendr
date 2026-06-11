@@ -244,6 +244,7 @@ mod s3_tests;
 mod s4_helpers_tests;
 mod s4_tests;
 mod s7_tests;
+mod scatter_complex_raw_test;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]
