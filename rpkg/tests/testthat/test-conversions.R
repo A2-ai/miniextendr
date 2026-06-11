@@ -774,6 +774,20 @@ test_that("AsNamedVector from borrowed slice creates named atomic vector", {
   expect_equal(unname(res), c(1.5, 2.5))
 })
 
+test_that("1-tuple argument round-trips a single-element list (#976)", {
+  res <- conv_tuple1_roundtrip(list(7L))
+  expect_true(is.list(res))
+  expect_equal(res[[1]], 7L)
+})
+
+test_that("1-tuple argument rejects wrong length", {
+  expect_error(conv_tuple1_roundtrip(list(1L, 2L)), "length mismatch")
+})
+
+test_that("1-tuple argument rejects non-list input", {
+  expect_error(conv_tuple1_roundtrip(7L), "type mismatch")
+})
+
 test_that("tuple argument round-trips an unnamed list (#976)", {
   res <- conv_tuple2_roundtrip(list(42L, "hello"))
   expect_true(is.list(res))

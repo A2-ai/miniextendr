@@ -1,7 +1,7 @@
 //! Tuple conversions: read an R list (VECSXP) positionally into `(A, B, ...)`.
 //!
 //! Inbound counterpart of the `IntoR` tuple family (`crate::into_r`, tuple to
-//! unnamed list region) — same arities (2 through 8), same VECSXP shape.
+//! unnamed list region) — same arities (1 through 8), same VECSXP shape.
 //!
 //! Semantics:
 //! - The input must be a list (VECSXP) of exactly N elements; names are
@@ -37,7 +37,7 @@ fn batch_tuple_errors(errors: Vec<String>) -> SexpError {
     SexpError::InvalidValue(format!("tuple conversion failed: {}", errors.join("; ")))
 }
 
-/// Implement `TryFromSexp` for tuples of various sizes.
+/// Implement `TryFromSexp` for tuples of various sizes (1-8).
 /// Reads an unnamed R list (VECSXP) positionally; mirrors `impl_tuple_into_r!`.
 macro_rules! impl_tuple_try_from_sexp {
     (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
@@ -107,7 +107,8 @@ macro_rules! impl_tuple_try_from_sexp {
     };
 }
 
-// Implement for tuples of sizes 2-8, mirroring the IntoR tuple family.
+// Implement for tuples of sizes 1-8, mirroring the IntoR tuple family.
+impl_tuple_try_from_sexp!((A), (0), 1);
 impl_tuple_try_from_sexp!((A, B), (0, 1), 2);
 impl_tuple_try_from_sexp!((A, B, C), (0, 1, 2), 3);
 impl_tuple_try_from_sexp!((A, B, C, D), (0, 1, 2, 3), 4);

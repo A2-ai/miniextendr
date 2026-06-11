@@ -1588,6 +1588,13 @@ pub fn conv_named_list_roundtrip(config: NamedList) -> miniextendr_api::list::Li
 
 // region: Tuple arguments (TryFromSexp for tuples, #976)
 
+/// Test 1-tuple argument round-trip: reads a 1-element unnamed list as `(i32,)` and returns it.
+/// @param solo Unnamed list containing a single integer.
+#[miniextendr]
+pub fn conv_tuple1_roundtrip(solo: (i32,)) -> (i32,) {
+    solo
+}
+
 /// Test tuple argument round-trip: reads an unnamed 2-element list as `(i32, String)` and returns it.
 /// @param pair Unnamed list of an integer and a string.
 #[miniextendr]
