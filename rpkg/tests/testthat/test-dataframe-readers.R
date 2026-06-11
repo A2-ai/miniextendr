@@ -171,6 +171,58 @@ test_that("reader gctorture fixtures drive the list-column read path", {
   expect_no_error(gc_stress_reader_list_column())
 })
 
+# region: map-column readers (#764) --------------------------------------------
+
+test_that("BTreeMap<String, i32> map-column reader round-trips", {
+  df <- data.frame(id = c(1L, 2L, 3L))
+  # Each element is a named list — the write shape of a struct-path map column.
+  # BTreeMap writes back sorted by key, so keep inputs pre-sorted for equality.
+  df$opts <- I(list(
+    list(a = 1L, b = 2L),
+    list(z = 9L),
+    structure(list(), names = character(0))
+  ))
+  out <- reader_map_roundtrip(df)
+  expect_s3_class(out, "data.frame")
+  expect_equal(out$id, df$id)
+  expect_equal(unclass(out$opts)[[1]], list(a = 1L, b = 2L))
+  expect_equal(unclass(out$opts)[[2]], list(z = 9L))
+  expect_length(unclass(out$opts)[[3]], 0L)
+})
+
+test_that("HashMap<String, f64> map-column reader round-trips (order-insensitive)", {
+  df <- data.frame(label = c("x", "y"), stringsAsFactors = FALSE)
+  df$weights <- I(list(
+    list(w1 = 0.5, w2 = 1.5),
+    list(solo = 2.5)
+  ))
+  out <- reader_hashmap_roundtrip(df)
+  expect_equal(out$label, df$label)
+  # HashMap iteration order is non-deterministic — compare sorted by name.
+  sort_by_name <- function(x) x[order(names(x))]
+  expect_equal(sort_by_name(unclass(out$weights)[[1]]), list(w1 = 0.5, w2 = 1.5))
+  expect_equal(sort_by_name(unclass(out$weights)[[2]]), list(solo = 2.5))
+})
+
+test_that("map-column reader rejects named atomic vectors", {
+  # Strict shape: each element must be a VECSXP named list; c(a = 1L) is INTSXP.
+  df <- data.frame(id = 1L)
+  df$opts <- I(list(c(a = 1L)))
+  expect_error(reader_map_roundtrip(df), "opts")
+})
+
+test_that("map-column reader handles a zero-row data.frame", {
+  df <- data.frame(id = integer(0))
+  df$opts <- I(list())
+  out <- reader_map_roundtrip(df)
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 0L)
+})
+
+test_that("reader gctorture fixture drives the map-column read path", {
+  expect_no_error(gc_stress_reader_map_column())
+})
+
 test_that("parallel readers match the sequential result", {
   skip_if_missing_feature("rayon")
 
@@ -201,4 +253,12 @@ test_that("parallel readers match the sequential result", {
   out_lv_par <- reader_list_vec_roundtrip_par(lv)
   expect_equal(out_lv_par$id, lv$id)
   expect_equal(unclass(out_lv_par$data), list(c(1.1, 2.2), c(3.3)))
+
+  # map-column _par: same Vec<map> pull, off-thread by-index assembly (#764)
+  mp <- data.frame(id = c(1L, 2L))
+  mp$opts <- I(list(list(a = 1L, b = 2L), list(c = 3L)))
+  out_mp_seq <- reader_map_roundtrip(mp)
+  out_mp_par <- reader_map_roundtrip_par(mp)
+  expect_equal(out_mp_par$id, out_mp_seq$id)
+  expect_equal(unclass(out_mp_par$opts), unclass(out_mp_seq$opts))
 })
