@@ -60,14 +60,9 @@ pub struct RawPayload {
 pub enum ScatterRawEvent {
     /// Contains a `data: RawPayload` struct-flatten field producing a
     /// `data_byte` RAWSXP column.
-    WithPayload {
-        id: i32,
-        data: RawPayload,
-    },
+    WithPayload { id: i32, data: RawPayload },
     /// No raw payload — absent rows produce `as.raw(0)` in `data_byte`.
-    Empty {
-        id: i32,
-    },
+    Empty { id: i32 },
 }
 
 /// Returns a 5-row data.frame with interleaved `WithPayload` and `Empty` rows.
@@ -196,14 +191,9 @@ pub struct ComplexPayload {
 pub enum ScatterComplexEvent {
     /// Contains a `data: ComplexPayload` struct-flatten field producing a
     /// `data_value` CPLXSXP column.
-    WithPayload {
-        id: i32,
-        data: ComplexPayload,
-    },
+    WithPayload { id: i32, data: ComplexPayload },
     /// No complex payload — absent rows produce `NA_complex_` in `data_value`.
-    Empty {
-        id: i32,
-    },
+    Empty { id: i32 },
 }
 
 /// Returns a 5-row data.frame with interleaved `WithPayload` and `Empty` rows.
