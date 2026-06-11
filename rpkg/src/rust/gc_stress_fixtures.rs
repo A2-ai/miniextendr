@@ -2013,6 +2013,51 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 
 // endregion
 
+// region: worker re-usability after R longjmp + leak bound (#931)
+
+/// A normal `run_on_worker` round-trip that also routes through `with_r_thread`,
+/// returning a value the R side can assert on.
+///
+/// This is the *second* job in the #931 worker-re-usability test: the test first
+/// triggers an R longjmp through a worker job via [`gc_stress_with_r_thread_stop`]
+/// (which never returns — it resumes the original `Rf_error` straight to R's top
+/// level, see #733 / PR #930), catches that error at top level, then calls this
+/// fixture. If the worker thread were left poisoned by the unwind (its `recv()`
+/// loop not re-armed, thread-locals not cleared, a wedged channel), this second
+/// dispatch would hang, panic, or return the wrong value.
+///
+/// Shape: the fn returns `SEXP`, so the macro picks the **MainThread** strategy —
+/// the body is the thread that drives `dispatch_to_worker`'s event loop. It
+/// dispatches a closure to the worker, which routes a trivial computation back
+/// to the main thread via `with_r_thread`, then returns the sum. We assert the
+/// arithmetic is correct so a partially-corrupted worker (stale thread-local
+/// channels from the prior aborted job) surfaces as a wrong answer rather than a
+/// silent pass.
+///
+/// No arguments — also picked up by the fast `gctorture(TRUE)` no-arg sweep
+/// (#430): it holds no SEXPs across allocations itself, but exercising the worker
+/// dispatch under GC pressure is cheap insurance.
+#[miniextendr]
+pub fn gc_stress_worker_roundtrip() -> i32 {
+    use miniextendr_api::worker::{run_on_worker, with_r_thread};
+
+    let outcome = run_on_worker(|| {
+        // Route a trivial computation back to the main thread, mirroring the
+        // structure of the longjmp fixture but on the success path. Summing the
+        // per-step results proves the worker→main→worker hand-off is intact.
+        let a = with_r_thread(|| 1_000i32);
+        let b = with_r_thread(move || a + 234);
+        a + b
+    });
+
+    match outcome {
+        Ok(sum) => sum,
+        Err(msg) => panic!("gc_stress_worker_roundtrip: worker dispatch failed: {msg}"),
+    }
+}
+
+// endregion
+
 // region: zero-copy &str argument borrow (#664)
 
 /// Production helper for the `&str` zero-copy argument-borrow path (#664).
