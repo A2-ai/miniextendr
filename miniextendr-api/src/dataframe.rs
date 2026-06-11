@@ -7,8 +7,8 @@
 //! - **read** (R → Rust): [`DataFrame::column`] / [`FromDataFrame::from_dataframe`],
 //! - **edit** (post-assembly): [`DataFrame::rename`] / [`DataFrame::drop`] / [`DataFrame::select`] / …
 //!
-//! The trait family mirrors the crate's existing [`IntoR`](crate::IntoR) /
-//! [`TryFromSexp`](crate::from_r::TryFromSexp) pair, specialised to the data-frame SEXP:
+//! The trait family mirrors the crate's existing [`IntoR`] /
+//! [`TryFromSexp`] pair, specialised to the data-frame SEXP:
 //!
 //! ```ignore
 //! use miniextendr_api::dataframe::{DataFrame, IntoDataFrame, FromDataFrame};
@@ -577,7 +577,7 @@ impl IntoR for DataFrame {
 
 // region: The conversion trait family (mirrors IntoR / TryFromSexp)
 
-/// Rust data → R `data.frame`. The data-frame analogue of [`IntoR`](crate::IntoR).
+/// Rust data → R `data.frame`. The data-frame analogue of [`IntoR`].
 ///
 /// Implemented by `#[derive(DataFrameRow)]` on a row struct/enum (for `Vec<Row>`), by the
 /// blanket impl for any [`ColumnSource`] (`IntoList`-derived rows), and by the serde column
@@ -606,7 +606,7 @@ pub trait IntoDataFrame: Sized {
 }
 
 /// R `data.frame` → Rust data. The data-frame analogue of
-/// [`TryFromSexp`](crate::from_r::TryFromSexp).
+/// [`TryFromSexp`].
 ///
 /// Implemented by `#[derive(DataFrameRow)]` for `Vec<Row>` and by the serde row path.
 ///

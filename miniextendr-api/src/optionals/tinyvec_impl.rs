@@ -1,6 +1,6 @@
 //! Integration with the `tinyvec` crate.
 //!
-//! This module provides [`TryFromSexp`] and [`IntoR`] implementations for
+//! This module provides [`TryFromSexp`](crate::TryFromSexp) and [`IntoR`](crate::IntoR) implementations for
 //! [`TinyVec`] and [`ArrayVec`], allowing small-vector optimized types to be
 //! passed between R and Rust.
 //!

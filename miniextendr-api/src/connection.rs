@@ -6,7 +6,7 @@
 //!
 //! | Module | Contents |
 //! |--------|----------|
-//! | [`io_adapters`] | `std::io::{Read, Write, Seek}` adapters: `IoRead`, `IoWrite`, `IoReadWrite`, etc. |
+//! | `io_adapters` | `std::io::{Read, Write, Seek}` adapters: `IoRead`, `IoWrite`, `IoReadWrite`, etc. |
 //!
 //! # Core Types
 //!

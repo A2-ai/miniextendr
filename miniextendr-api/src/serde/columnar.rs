@@ -67,13 +67,13 @@ macro_rules! reject_non_struct {
 }
 
 /// Convert a slice of serializable structs to an R
-/// [`DataFrame`](crate::dataframe::DataFrame) in columnar layout.
+/// [`DataFrame`] in columnar layout.
 ///
 /// Each field of `T` becomes a column (R atomic vector). Nested structs are
 /// recursively flattened into prefixed columns (`parent_child` naming).
 ///
 /// This is the serde column path's `Rust → R` entry point. It produces the same
-/// [`DataFrame`](crate::dataframe::DataFrame) the rest of the unified interface uses
+/// [`DataFrame`] the rest of the unified interface uses
 /// (the same type returned by [`IntoDataFrame`](crate::dataframe::IntoDataFrame)), so the
 /// result supports post-assembly editing through [`DataFrame`]'s own methods:
 ///
@@ -332,7 +332,7 @@ where
 ///    `ProtectScope`, no R main-thread contact. This mirrors the invariant of
 ///    the row-oriented serde paths: the parallel region touches only Rust data.
 /// 3. **Merge in row order** (main thread). Chunk results come back ordered
-///    (rayon's [`IndexedParallelIterator::collect`] preserves index order), so
+///    (rayon's [`collect`](rayon::iter::ParallelIterator::collect) on an `IndexedParallelIterator` preserves index order), so
 ///    concatenating each chunk's column buffers reproduces the original row
 ///    order exactly. The merged buffers are assembled into a [`DataFrame`].
 ///
@@ -425,7 +425,7 @@ where
 /// build separates discovery from fill:
 ///
 /// 1. **Parallel union discovery.** Each worker probes its chunk's rows into a
-///    local [`SchemaAccumulator`] (pure Rust, no R contact).
+///    local `SchemaAccumulator` (pure Rust, no R contact).
 /// 2. **Global resolution** (main thread, cheap). The per-chunk accumulators
 ///    are merged in chunk (= row) order and resolved through the same
 ///    candidate lattice as [`vec_to_dataframe`] — so cross-chunk type clashes
@@ -1132,7 +1132,7 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     /// Create a builder with a pre-declared flat schema.
     ///
     /// Skips the first-row discovery pass. All later pushes are validated
-    /// against this schema by the strict [`ColumnFiller`]; fields not in
+    /// against this schema by the strict `ColumnFiller`; fields not in
     /// the schema produce an error (unless [`grow_schema`](Self::grow_schema)
     /// is chained, in which case new fields are added on the fly).
     ///
@@ -1221,7 +1221,7 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     /// **Type clashes**: a later row writing a `String` to a column whose
     /// first-seen value was an `Integer` follows today's union-path
     /// behaviour — the value is coerced or NA-filled by
-    /// [`ColumnBuffer::push_value`]. No new error is raised. If your data
+    /// `ColumnBuffer::push_value`. No new error is raised. If your data
     /// is genuinely heterogeneous, declare the column as
     /// `TypeSpec::Generic` to get a list-column.
     ///
@@ -3866,7 +3866,7 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 /// [`vec_to_dataframe`].
 ///
 /// `BTreeMap`'s ordered iteration gives a deterministic row order. For
-/// [`HashMap`](std::collections::HashMap), see [`hashmap_to_dataframe`].
+/// [`HashMap`], see [`hashmap_to_dataframe`].
 ///
 /// # Errors
 ///
@@ -3908,7 +3908,7 @@ where
     vec_to_dataframe(&rows)
 }
 
-/// Serialize a [`HashMap`](std::collections::HashMap) to an R data.frame.
+/// Serialize a [`HashMap`] to an R data.frame.
 ///
 /// Keys are sorted by their `Ord` impl to produce a deterministic row order.
 /// For maps with non-`Ord` keys (or callers happy with insertion-order

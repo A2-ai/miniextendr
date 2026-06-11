@@ -1,7 +1,7 @@
 //! Integration with the `rand` crate for R's RNG.
 //!
 //! This module provides [`RRng`], a wrapper around R's random number generator
-//! that implements the `rand` crate's [`Rng`] trait. This allows using R's
+//! that implements the `rand` crate's `Rng` trait. This allows using R's
 //! RNG with any `rand`-compatible code.
 //!
 //! # Features
@@ -81,7 +81,7 @@ use std::convert::Infallible;
 
 use rand::TryRng;
 
-/// A wrapper around R's random number generator that implements [`rand::Rng`].
+/// A wrapper around R's random number generator that implements `rand::Rng`.
 ///
 /// This allows using R's RNG with any `rand`-compatible code, ensuring
 /// reproducibility when seeds are set via `set.seed()` in R.

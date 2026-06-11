@@ -43,7 +43,7 @@
 //! - You're allocating temporary R objects during computation
 //! - Protection is short-lived (within a single `.Call`)
 //!
-//! **Use [`ProtectPool`](crate::protect_pool::ProtectPool) instead when:**
+//! **Use [`ProtectPool`] instead when:**
 //! - You need R objects (not Rust values) to survive across `.Call`s
 //! - You need arbitrary-order release of protections
 //!

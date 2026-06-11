@@ -58,7 +58,7 @@
 //! # Bit Width
 //!
 //! R integers are 32-bit signed (`i32`). This module requires that flag values
-//! fit within `i32::MAX` (0x7FFFFFFF). Use [`RFlags64<T>`] for 64-bit flags.
+//! fit within `i32::MAX` (0x7FFFFFFF). Use `RFlags64<T>` for 64-bit flags.
 
 pub use bitflags::Flags;
 
