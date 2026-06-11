@@ -107,7 +107,7 @@ Builder for configuring and initializing the R runtime.
 #### Example
 
 ```ignore
-let engine = REngine::new()
+let engine = REngine::build()
     .with_args(&["R", "--quiet", "--no-save"])
     .interactive(false)
     .signal_handlers(false)

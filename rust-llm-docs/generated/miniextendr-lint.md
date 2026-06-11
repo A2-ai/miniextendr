@@ -149,7 +149,7 @@ A single lint diagnostic with structured metadata.
 **Fields:**
 
 - `code`: `crate::lint_code::LintCode`
-  - Stable rule code (e.g. `MXL101`).
+  - Stable rule code (e.g. `MXL106`).
 - `severity`: `Severity`
   - Severity level.
 - `path`: `std::path::PathBuf`
