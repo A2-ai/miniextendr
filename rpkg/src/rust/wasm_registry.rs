@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      92ccebb2dc5edada
+// content-hash:      d713c55c4fa0c15e
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -171,6 +171,7 @@ unsafe extern "C-unwind" {
     pub fn C_conv_opt_bool_is_some(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_opt_rlog_is_some(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_result_string_ok(_: SEXP) -> SEXP;
+    pub fn C_conv_tuple1_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_tuple2_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_vec_opt_bool_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_conv_vec_opt_bool_ret(_: SEXP) -> SEXP;
@@ -1571,6 +1572,14 @@ unsafe extern "C-unwind" {
     pub fn C_float_is_finite(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_signed_is_negative(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_signed_is_positive(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_scatter_raw_mixed(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_scatter_raw(_: SEXP) -> SEXP;
+    pub fn C_scatter_complex_mixed(_: SEXP) -> SEXP;
+    pub fn C_scatter_raw_all_absent(_: SEXP) -> SEXP;
+    pub fn C_scatter_raw_all_present(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_scatter_complex(_: SEXP) -> SEXP;
+    pub fn C_scatter_complex_all_absent(_: SEXP) -> SEXP;
+    pub fn C_scatter_complex_all_present(_: SEXP) -> SEXP;
     pub fn C_json_is_null(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_json_is_array(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_json_array_len(_: SEXP, _: SEXP) -> SEXP;
@@ -2908,6 +2917,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_conv_result_string_ok".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_conv_result_string_ok) }),
         numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_conv_tuple1_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_conv_tuple1_roundtrip) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_conv_tuple2_roundtrip".as_ptr(),
@@ -9908,6 +9922,46 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_signed_is_positive".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_signed_is_positive) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_scatter_raw_mixed".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_scatter_raw_mixed) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_scatter_raw".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_scatter_raw) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_scatter_complex_mixed".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_scatter_complex_mixed) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_scatter_raw_all_absent".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_scatter_raw_all_absent) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_scatter_raw_all_present".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_scatter_raw_all_present) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_scatter_complex".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_scatter_complex) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_scatter_complex_all_absent".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_scatter_complex_all_absent) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_scatter_complex_all_present".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_scatter_complex_all_present) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_json_is_null".as_ptr(),
