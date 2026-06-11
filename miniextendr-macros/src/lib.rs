@@ -1977,16 +1977,17 @@ pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenS
 
 /// Derive macro for ALTREP integer vector data types.
 ///
-/// Auto-implements `AltrepLen`, `AltIntegerData`, and calls `impl_altinteger_from_data!`.
+/// Auto-implements `AltrepLen`, `AltIntegerData`, and the low-level ALTREP
+/// trait impls (`Altrep`, `AltVec`, `AltInteger`, `InferBase`).
 ///
 /// # Attributes
 ///
 /// - `#[altrep(len = "field_name")]` - Specify length field (auto-detects "len" or "length")
 /// - `#[altrep(elt = "field_name")]` - For constant vectors, specify which field provides elements
-/// - `#[altrep(dataptr)]` - Pass `dataptr` option to low-level macro
-/// - `#[altrep(serialize)]` - Pass `serialize` option to low-level macro
-/// - `#[altrep(subset)]` - Pass `subset` option to low-level macro
-/// - `#[altrep(no_lowlevel)]` - Skip automatic `impl_altinteger_from_data!` call
+/// - `#[altrep(dataptr)]` - Enable direct data-pointer access
+/// - `#[altrep(serialize)]` - Enable ALTREP serialization support
+/// - `#[altrep(subset)]` - Enable `Extract_subset` optimization
+/// - `#[altrep(no_lowlevel)]` - Skip the automatic low-level trait impls
 ///
 /// # Example (Constant Vector - Zero Boilerplate!)
 ///
