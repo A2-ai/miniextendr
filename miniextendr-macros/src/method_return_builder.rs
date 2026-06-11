@@ -297,6 +297,10 @@ impl MethodReturnBuilder {
     /// body in its own `{ }` and is intended for callers that emit
     /// `function(...) <expr>` directly (e.g., S7 `convert` definitions).
     pub fn build_s7_body(&self) -> Vec<String> {
+        // The chained-mutation tail returns the receiver. The S7 generic method
+        // names its receiver `x`; the per-class fast-path shortcut (#949) names
+        // it `self`. Honour `chain_var` (default `x`) so both reuse this body.
+        let chain_var = self.chain_var.as_deref().unwrap_or("x").to_owned();
         self.build_with_tails(ReturnTails {
             self_tail: Box::new(|indent, class_name| {
                 assert!(
@@ -305,7 +309,7 @@ impl MethodReturnBuilder {
                 );
                 vec![format!("{}{}(.ptr = .val)", indent, class_name)]
             }),
-            chain_tail: Box::new(|indent| vec![format!("{}x", indent)]),
+            chain_tail: Box::new(move |indent| vec![format!("{}{}", indent, chain_var)]),
             direct_tail: Box::new(|indent| vec![format!("{}.val", indent)]),
         })
     }

@@ -843,6 +843,95 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("}".to_string());
         }
         lines.push(String::new());
+
+        // Per-class fast-path dispatch shortcut (#949).
+        //
+        // Alongside the S7 generic, emit a plain non-generic function
+        // `<ClassName>_<method_name>(self, ...)` whose body is identical to the
+        // generic's method but calls `.Call` directly — bypassing
+        // `S7::S7_dispatch()` (class-walk + method-table lookup). On hot loops
+        // this is several times faster than the generic. The receiver is named
+        // `self` here (the generic names it `x`) and is wired through `self@.ptr`.
+        //
+        // Fallback methods dispatch on `S7::class_any`, so a per-class shortcut
+        // is meaningless — skip them.
+        if !method_attrs.s7.fallback {
+            let method_name = ctx.method.r_method_name();
+            let shortcut_name = format!("{}_{}", class_name, method_name);
+            let shortcut_call = ctx.instance_call("self@.ptr");
+            let shortcut_formals =
+                ctx.instance_formals_with_receiver("self", !method_attrs.s7.no_dots);
+
+            // Document the shortcut as a standalone function merged onto the
+            // class @rdname page (same shape as static methods). Prepend a
+            // fast-path advisory describing the dispatch bypass and the
+            // subclass-override footgun, then reuse MethodDocBuilder for the
+            // @name / @rdname / @source / @param scaffolding so roxygen2 emits a
+            // complete \usage + \arguments block (no "undocumented argument"
+            // warning). `@param self` is documented explicitly because
+            // MethodDocBuilder skips the receiver.
+            if !class_has_no_rd {
+                lines.push(format!(
+                    "#' Fast-path shortcut for the `{}` S7 method on `{}`.",
+                    method_name, class_name
+                ));
+                lines.push("#'".to_string());
+                lines.push(
+                    "#' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`"
+                        .to_string(),
+                );
+                lines.push(
+                    "#' (the class walk + method-table lookup). Use in hot loops where the"
+                        .to_string(),
+                );
+                lines.push(
+                    "#' per-call dispatch overhead matters. **Footgun:** this shortcut does not"
+                        .to_string(),
+                );
+                lines.push(
+                    "#' perform subclass dispatch \u{2014} a method override defined on a child class"
+                        .to_string(),
+                );
+                lines.push(
+                    "#' will *not* be honoured. Use the generic when subclassing is possible."
+                        .to_string(),
+                );
+                lines.push(format!("#' @param self A `{}` object.", class_name));
+                // Pass empty doc_tags: the method's own prose (@title/description)
+                // is already rendered on the shared @rdname page by the generic
+                // block above; re-emitting it here would duplicate it. We only
+                // need the @name / @rdname / @source / @param scaffolding so the
+                // shortcut's \usage is fully documented.
+                let mx_doc = ctx.match_arg_doc_placeholders();
+                let no_tags: [String; 0] = [];
+                let method_doc =
+                    MethodDocBuilder::new(&class_name, &method_name, type_ident, &no_tags)
+                        .with_r_params(&shortcut_formals)
+                        .with_match_arg_doc_placeholders(&mx_doc)
+                        .with_r_name(shortcut_name.clone());
+                lines.extend(method_doc.build());
+            }
+            // Export the shortcut when the class is exported, so users can reach it.
+            if should_export {
+                lines.push(format!("#' @export {}", shortcut_name));
+            }
+
+            let strategy = crate::ReturnStrategy::for_method(ctx.method);
+            let shortcut_body = crate::MethodReturnBuilder::new(shortcut_call)
+                .with_strategy(strategy)
+                .with_class_name(class_name.clone())
+                .with_chain_var("self".to_string())
+                .build_s7_body();
+
+            let what = format!("{}.{}", generic_name, class_name);
+            lines.push(format!(
+                "{shortcut_name} <- function({shortcut_formals}) {{"
+            ));
+            ctx.emit_method_prelude(&mut lines, "  ", &what);
+            lines.extend(shortcut_body);
+            lines.push("}".to_string());
+            lines.push(String::new());
+        }
     }
 
     // Static methods as regular functions

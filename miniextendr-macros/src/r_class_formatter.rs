@@ -314,6 +314,20 @@ impl<'a> MethodContext<'a> {
         }
     }
 
+    /// Build instance formals with a custom receiver name (default is `x`).
+    ///
+    /// Used by the S7 per-class fast-path shortcut (#949), whose receiver is
+    /// named `self` to mirror the property dispatch lambdas, rather than the
+    /// `x` used by the S7 generic.
+    pub fn instance_formals_with_receiver(&self, receiver: &str, include_dots: bool) -> String {
+        let tail = if include_dots { ", ..." } else { "" };
+        if self.params.is_empty() {
+            format!("{receiver}{tail}")
+        } else {
+            format!("{receiver}, {}{tail}", self.params)
+        }
+    }
+
     /// Get the generic name (uses override if present).
     pub fn generic_name(&self) -> String {
         self.method

@@ -49,6 +49,19 @@ test_that("S7Counter lifecycle works", {
   expect_equal(s7_value(S7Counter_default_counter()), 0L)
 })
 
+test_that("S7 fast-path shortcuts agree with generic dispatch (#949)", {
+  c <- S7Counter(3L)
+  # Direct-return method: shortcut result matches generic.
+  expect_equal(S7Counter_s7_value(c), s7_value(c))
+  # &mut self method: shortcut mutates in place and returns the new value,
+  # just like the generic (3 -> 4).
+  expect_equal(S7Counter_s7_inc(c), 4L)
+  expect_equal(s7_value(c), 4L)
+  # Method with an argument routes the argument through (4 + 6 -> 10).
+  expect_equal(S7Counter_s7_add(c, 6L), 10L)
+  expect_equal(s7_value(c), 10L)
+})
+
 test_that("ReceiverCounter env-style methods work", {
   rc <- ReceiverCounter$new(5L)
   expect_equal(rc$value(), 5L)
