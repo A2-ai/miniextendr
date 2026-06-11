@@ -116,8 +116,12 @@ def main():
 
     for term in sorted(by_trait, key=lambda t: -len(by_trait[t])):
         recs = by_trait[term]
-        # drop synthetic auto-trait noise unless restricted
-        real = [r for r in recs if not r["synthetic"]]
+        # Drop synthetic auto-trait noise AND blanket-impl instantiations.
+        # Blanket impls (Tap, Pipe, Pointable, From/Into, ...) get one
+        # rustdoc record per local type — hundreds of rows that carry no
+        # dedup-audit signal. The summary table above still reports their
+        # totals, so coverage stays discoverable.
+        real = [r for r in recs if not r["synthetic"] and not r["blanket"]]
         if not real:
             continue
         lines.append(f"## `{term}` — {len(real)} impls")
