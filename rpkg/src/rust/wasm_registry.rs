@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      d713c55c4fa0c15e
+// content-hash:      4ba272a930af640e
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1850,7 +1850,9 @@ unsafe extern "C-unwind" {
     pub fn C_reader_map_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_auto_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_fixed_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_with_int_map_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_pinned_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_gc_stress_reader_int_map(_: SEXP) -> SEXP;
     pub fn C_reader_flatten_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_hashmap_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_map_roundtrip_par(_: SEXP, _: SEXP) -> SEXP;
@@ -1858,6 +1860,7 @@ unsafe extern "C-unwind" {
     pub fn C_reader_list_box_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_list_vec_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_fixed_roundtrip_par(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_with_int_map_roundtrip_par(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_gc_stress_reader_map_column(_: SEXP) -> SEXP;
     pub fn C_reader_box_pinned_roundtrip(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_reader_list_multi_roundtrip(_: SEXP, _: SEXP) -> SEXP;
@@ -11314,9 +11317,19 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_with_int_map_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_with_int_map_roundtrip) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_reader_pinned_roundtrip".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_reader_pinned_roundtrip) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_reader_int_map".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_reader_int_map) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_reader_flatten_roundtrip".as_ptr(),
@@ -11351,6 +11364,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_reader_fixed_roundtrip_par".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_reader_fixed_roundtrip_par) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_with_int_map_roundtrip_par".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_with_int_map_roundtrip_par) }),
         numArgs: 2,
     },
     R_CallMethodDef {
