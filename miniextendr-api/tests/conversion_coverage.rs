@@ -1253,3 +1253,132 @@ fn na_real_bit_exact_identity_via_vec_roundtrip() {
 }
 
 // endregion
+
+// region: from_r/tuples.rs — TryFromSexp for tuples (R list -> (A, B, ...))
+
+/// 2-tuple round-trip: (i32, String) through IntoR then TryFromSexp.
+#[test]
+fn tuple2_roundtrip_i32_string() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { g.protect((42i32, "hello".to_string()).into_sexp()) };
+        assert_eq!(s.type_of(), SEXPTYPE::VECSXP);
+
+        let (a, b): (i32, String) = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(a, 42);
+        assert_eq!(b, "hello");
+    });
+}
+
+/// 3-tuple round-trip with a vector element: (f64, bool, Vec<i32>).
+#[test]
+fn tuple3_roundtrip_f64_bool_vec() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { g.protect((1.5f64, true, vec![1i32, 2, 3]).into_sexp()) };
+
+        let (a, b, c): (f64, bool, Vec<i32>) = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(a, 1.5);
+        assert!(b);
+        assert_eq!(c, vec![1, 2, 3]);
+    });
+}
+
+/// Arity-8 round-trip exercises the largest generated impl.
+#[test]
+fn tuple8_roundtrip() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let input = (
+            1i32,
+            2.0f64,
+            true,
+            "x".to_string(),
+            5i32,
+            6.0f64,
+            false,
+            "y".to_string(),
+        );
+        let s = unsafe { g.protect(input.into_sexp()) };
+
+        let out: (i32, f64, bool, String, i32, f64, bool, String) =
+            TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(out.0, 1);
+        assert_eq!(out.3, "x");
+        assert_eq!(out.7, "y");
+    });
+}
+
+/// Non-list input is a type error naming VECSXP.
+#[test]
+fn tuple_from_non_list_is_type_error() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(7, &mut g) };
+
+        let r: Result<(i32, i32), SexpError> = TryFromSexp::try_from_sexp(s);
+        match r {
+            Err(SexpError::Type(e)) => assert_eq!(e.expected, SEXPTYPE::VECSXP),
+            other => panic!("expected type error, got {:?}", other.map(|_| ())),
+        }
+    });
+}
+
+/// Length mismatch is a length error naming expected/actual.
+#[test]
+fn tuple_length_mismatch_is_length_error() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { g.protect((1i32, 2i32, 3i32).into_sexp()) };
+
+        let r: Result<(i32, i32), SexpError> = TryFromSexp::try_from_sexp(s);
+        match r {
+            Err(SexpError::Length(e)) => {
+                assert_eq!(e.expected, 2);
+                assert_eq!(e.actual, 3);
+            }
+            other => panic!("expected length error, got {:?}", other.map(|_| ())),
+        }
+    });
+}
+
+/// Two bad elements produce ONE batched diagnostic mentioning both
+/// 1-based positions (repo principle: collect all errors in vectorized ops).
+#[test]
+fn tuple_batches_all_element_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        // list("a", 2L, "c") read as (i32, i32, i32): elements 1 and 3 fail.
+        let s = unsafe { g.protect(("a".to_string(), 2i32, "c".to_string()).into_sexp()) };
+
+        let r: Result<(i32, i32, i32), SexpError> = TryFromSexp::try_from_sexp(s);
+        match r {
+            Err(SexpError::InvalidValue(msg)) => {
+                assert!(msg.contains("element 1:"), "missing position 1 in: {msg}");
+                assert!(msg.contains("element 3:"), "missing position 3 in: {msg}");
+                assert!(!msg.contains("element 2:"), "element 2 is valid: {msg}");
+            }
+            other => panic!("expected batched InvalidValue, got {:?}", other.map(|_| ())),
+        }
+    });
+}
+
+/// Names on the input list are ignored — conversion is positional.
+#[test]
+fn tuple_ignores_list_names() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::sys::{Rf_install, Rf_setAttrib};
+
+        let mut g = Guard(0);
+        let s = unsafe { g.protect((10i32, 20i32).into_sexp()) };
+        unsafe {
+            let names = g.protect(vec!["b".to_string(), "a".to_string()].into_sexp());
+            Rf_setAttrib(s, Rf_install(c"names".as_ptr()), names);
+        }
+
+        let (a, b): (i32, i32) = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!((a, b), (10, 20));
+    });
+}
+
+// endregion

@@ -104,6 +104,7 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<String>>` | STRSXP only | NA_character_ -> None |
 | `Vec<i64>` (strict) | INTSXP or REALSXP | Per-element checked coercion; RAWSXP/LGLSXP rejected |
 | `Vec<u64>` (strict) | INTSXP or REALSXP | Per-element checked coercion; RAWSXP/LGLSXP rejected |
+| `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
 
 ---
 
@@ -212,7 +213,7 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `BinaryHeap<T>` | Vector (arbitrary order) |
 | `Vec<Vec<T>>` | List of vectors (VECSXP) |
 | `Vec<&[T]>` / `Vec<&[String]>` | List of vectors (VECSXP), borrowed slices |
-| `(A, B, ...)` | Unnamed list (VECSXP), up to 8 elements (IntoR only, no TryFromSexp) |
+| `(A, B, ...)` | Unnamed list (VECSXP), arity 2-8; round-trips via `TryFromSexp` (positional, names ignored) |
 
 #### `Vec<Option<C>>` for collection element types
 

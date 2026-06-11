@@ -773,3 +773,38 @@ test_that("AsNamedVector from borrowed slice creates named atomic vector", {
   expect_equal(names(res), c("a", "b"))
   expect_equal(unname(res), c(1.5, 2.5))
 })
+
+test_that("tuple argument round-trips an unnamed list (#976)", {
+  res <- conv_tuple2_roundtrip(list(42L, "hello"))
+  expect_true(is.list(res))
+  expect_equal(res[[1]], 42L)
+  expect_equal(res[[2]], "hello")
+})
+
+test_that("tuple argument ignores list names (positional)", {
+  res <- conv_tuple2_roundtrip(list(b = 42L, a = "hello"))
+  expect_equal(res[[1]], 42L)
+  expect_equal(res[[2]], "hello")
+})
+
+test_that("3-tuple argument converts mixed element types", {
+  expect_equal(conv_tuple3_sum(list(1.5, TRUE, c(1L, 2L, 3L))), 8.5)
+})
+
+test_that("tuple argument rejects wrong length", {
+  expect_error(
+    conv_tuple2_roundtrip(list(1L, "a", "extra")),
+    "length mismatch"
+  )
+})
+
+test_that("tuple argument rejects non-list input", {
+  expect_error(conv_tuple2_roundtrip(42L), "type mismatch")
+})
+
+test_that("tuple argument batches all element errors", {
+  expect_error(
+    conv_tuple2_roundtrip(list("not-int", 99)),
+    "element 1.*element 2"
+  )
+})
