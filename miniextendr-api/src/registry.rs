@@ -931,11 +931,31 @@ pub fn write_r_wrappers_to_file(path: &str) {
         return;
     }
 
-    std::fs::write(path, content.as_bytes())
-        .unwrap_or_else(|e| panic!("failed to write {path}: {e}"));
+    // Write via a sibling temp file then rename for atomicity.
+    //
+    // A plain `std::fs::write` truncates in place; a concurrent reader (e.g. a
+    // second `R CMD INSTALL` process) can observe a torn file. `rename(2)` is
+    // atomic on POSIX — the destination is replaced in a single syscall, so
+    // readers always see either the old or the new content. On Windows, `rename`
+    // fails when the destination exists, so we remove it first; that window is
+    // benign (worst case the reader gets "file not found" and retries, which is
+    // the same outcome as a torn write).
+    let dest = std::path::Path::new(path);
+    let tmp = dest.with_extension("tmp");
+    std::fs::write(&tmp, content.as_bytes())
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", tmp.display()));
+    #[cfg(windows)]
+    let _ = std::fs::remove_file(dest);
+    std::fs::rename(&tmp, dest).unwrap_or_else(|e| {
+        panic!(
+            "failed to rename {} → {}: {e}",
+            tmp.display(),
+            dest.display()
+        )
+    });
 
     if !existing.is_empty() {
-        let filename = std::path::Path::new(path)
+        let filename = dest
             .file_name()
             .and_then(|f| f.to_str())
             .unwrap_or("wrappers.R");

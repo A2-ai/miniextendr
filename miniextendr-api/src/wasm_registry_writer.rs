@@ -314,8 +314,24 @@ pub fn write_wasm_registry_to_file(path: &str) {
         return;
     }
 
-    std::fs::write(path, content.as_bytes())
-        .unwrap_or_else(|e| panic!("failed to write {path}: {e}"));
+    // Write via a sibling temp file then rename for atomicity.
+    //
+    // Matches the strategy in `write_r_wrappers_to_file`: `rename(2)` is atomic
+    // on POSIX, so concurrent readers always see a complete file. On Windows,
+    // `rename` fails when the destination exists, so we remove it first.
+    let dest = std::path::Path::new(path);
+    let tmp = dest.with_extension("tmp");
+    std::fs::write(&tmp, content.as_bytes())
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", tmp.display()));
+    #[cfg(windows)]
+    let _ = std::fs::remove_file(dest);
+    std::fs::rename(&tmp, dest).unwrap_or_else(|e| {
+        panic!(
+            "failed to rename {} → {}: {e}",
+            tmp.display(),
+            dest.display()
+        )
+    });
 }
 
 #[cfg(test)]
