@@ -522,17 +522,20 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 # -----------------------------------------------------------------------------
 
 # Standalone counterpart to the monorepo round-trip above, and the in-suite home
-# for the #757 / #775 / #822 regression (it lived as a standalone bash script +
-# bespoke CI job before; see #805). create_miniextendr_package() +
-# miniextendr_build() scaffold a package that sits outside any .git ancestor, so
-# a build = TRUE install's R CMD build step auto-vendors and would flip into
+# for the #757 / #775 / #822 / #963 regression (it lived as a standalone bash
+# script + bespoke CI job before; see #805). create_miniextendr_package() +
+# miniextendr_build() scaffold a package that sits outside any .git ancestor,
+# so a build = TRUE install's R CMD build step auto-vendors and would flip into
 # *tarball mode* — which skips the cdylib wrapper-gen pass. On a brand-new
 # package (no R/<pkg>-wrappers.R yet) that means the wrappers can never be
 # generated and library() exposes nothing (#822). miniextendr_build() now
-# detects the absent wrappers file and bootstraps them first via an in-place
-# source-mode install (build = FALSE), which never auto-vendors; the
-# MINIEXTENDR_FORCE_WRAPPER_GEN override still guards the wrappers-present case
-# against a leaked tarball latch (#757).
+# detects the absent wrappers file and calls bootstrap_fresh_wrappers(), which
+# clears the latch, re-runs configure, then installs with
+# MINIEXTENDR_FORCE_WRAPPER_GEN=1 (build = FALSE). The FORCE override ensures
+# the cdylib wrapper-gen pass runs even when configure's self-repair branch
+# re-seals inst/vendor.tar.xz in a non-git tree (#963). The same FORCE flag
+# guards the wrappers-present case in install_pkg() against a leaked tarball
+# latch (#757).
 #
 # Unlike the monorepo tests, create_miniextendr_package() takes no local_path, so
 # it scaffolds against miniextendr `main` and this test is network-dependent

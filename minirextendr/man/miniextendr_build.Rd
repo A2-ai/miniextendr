@@ -45,22 +45,23 @@ the wrappers and \code{NAMESPACE} are already in their final form, so a repeat
 \section{Fresh-package bootstrap}{
 
 A brand-new package has no generated \verb{R/<pkg>-wrappers.R} yet. The wrappers
-are produced by the cdylib pass during a \emph{source-mode} install
-(\code{\link[=miniextendr_configure]{./configure}} with no \code{inst/vendor.tar.xz}).
-A plain \code{devtools::install(build = TRUE)} cannot bootstrap them: its
-\verb{R CMD build} step runs \code{bootstrap.R}, which auto-vendors into
-\code{inst/vendor.tar.xz}, and that latch flips \code{./configure} into offline
-\emph{tarball} mode — which ships pre-generated wrappers and skips wrapper
-generation. With no wrappers to ship, the install either fails loudly
-("tarball is missing pre-generated wrappers") or, worse, leaves the
-namespace empty.
+are produced by the cdylib pass during install, but a plain
+\code{devtools::install(build = TRUE)} cannot bootstrap them: its \verb{R CMD build}
+step runs \code{bootstrap.R}, which auto-vendors into \code{inst/vendor.tar.xz}, and
+that latch flips \code{./configure} into offline \emph{tarball} mode — which ships
+pre-generated wrappers and skips wrapper generation. With no wrappers to
+ship, the install either fails loudly ("tarball is missing pre-generated
+wrappers") or, worse, leaves the namespace empty.
 
 When \code{miniextendr_build()} detects that the wrappers file is absent, it
-first runs an in-place source-mode bootstrap (clear any stale latch ->
-configure -> \code{devtools::install(build = FALSE)} -> \code{devtools::document()})
-so the wrappers exist before the normal build path runs. The bootstrap
-never creates \code{inst/vendor.tar.xz}, so it does not leak the tarball-mode
-latch into subsequent dev iteration. Once wrappers are present, the normal
+first runs a bootstrap (clear any stale latch -> configure ->
+\code{devtools::install(build = FALSE, MINIEXTENDR_FORCE_WRAPPER_GEN=1)} ->
+\code{devtools::document()}) so the wrappers exist before the normal build path
+runs. The \code{MINIEXTENDR_FORCE_WRAPPER_GEN} override forces the cdylib
+wrapper-gen pass regardless of which install mode configure resolves to: in
+a non-git tree configure's self-repair branch may legitimately re-seal the
+latch (cargo-revendor on PATH), and that is fine — the FORCE override
+ensures wrapper generation proceeds. Once wrappers are present, the normal
 build path runs unchanged.
 }
 
