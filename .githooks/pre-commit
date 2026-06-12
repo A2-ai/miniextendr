@@ -17,8 +17,12 @@ fi
 # devtools::document() must run to regenerate NAMESPACE and man pages.
 staged_wrappers=$(echo "$STAGED" | grep -E '(^|/)R/[a-z]+-wrappers\.R$' || true)
 staged_namespace=$(echo "$STAGED" | grep -E '(^|/)NAMESPACE$' || true)
+# man/ pages staged → document() was run (NAMESPACE may be unchanged when only
+# Rd pages were added/modified with no new exports — a valid case after the
+# write-time marker pass that synthesises standalone generic Rd pages).
+staged_man=$(echo "$STAGED" | grep -E '(^|/)man/' || true)
 
-if [ -n "$staged_wrappers" ] && [ -z "$staged_namespace" ]; then
+if [ -n "$staged_wrappers" ] && [ -z "$staged_namespace" ] && [ -z "$staged_man" ]; then
     echo "pre-commit: staged *-wrappers.R but NAMESPACE was not updated." >&2
     echo "  Run: just devtools-document" >&2
     echo "  Then stage the updated NAMESPACE and man/ pages." >&2
