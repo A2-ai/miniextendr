@@ -1620,3 +1620,154 @@ test_that("indicatif routes through RNullConnection without panicking", {
   skip_if_missing_feature("indicatif")
   expect_equal(indicatif_to_null_connection(), "ok")
 })
+
+# =============================================================================
+# BLAKE3 feature tests
+# =============================================================================
+
+test_that("blake3_str of empty string matches the official test vector", {
+  skip_if_missing_feature("blake3")
+  expect_identical(
+    blake3_str(""),
+    "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+  )
+})
+
+test_that("blake3_bytes returns a 32-byte raw digest agreeing with blake3_str", {
+  skip_if_missing_feature("blake3")
+  digest <- blake3_bytes(charToRaw("abc"))
+  expect_type(digest, "raw")
+  expect_length(digest, 32L)
+  expect_identical(paste(as.character(digest), collapse = ""), blake3_str("abc"))
+})
+
+test_that("blake3 is deterministic and input-sensitive", {
+  skip_if_missing_feature("blake3")
+  expect_identical(blake3_str("hello"), blake3_str("hello"))
+  expect_false(blake3_str("hello") == blake3_str("world"))
+})
+
+test_that("blake3_hex on raw equals blake3_str on the same content", {
+  skip_if_missing_feature("blake3")
+  expect_identical(blake3_hex(charToRaw("hello")), blake3_str("hello"))
+})
+
+# =============================================================================
+# MD5 feature tests
+# =============================================================================
+
+test_that("md5_str matches RFC 1321 test vectors", {
+  skip_if_missing_feature("md5")
+  expect_identical(md5_str(""), "d41d8cd98f00b204e9800998ecf8427e")
+  expect_identical(md5_str("abc"), "900150983cd24fb0d6963f7d28e17f72")
+})
+
+test_that("md5_bytes returns a 16-byte raw digest agreeing with md5_str", {
+  skip_if_missing_feature("md5")
+  digest <- md5_bytes(charToRaw("abc"))
+  expect_type(digest, "raw")
+  expect_length(digest, 16L)
+  expect_identical(paste(as.character(digest), collapse = ""), md5_str("abc"))
+})
+
+test_that("md5 agrees with R's digest-style hex on raw input", {
+  skip_if_missing_feature("md5")
+  expect_identical(md5_hex(charToRaw("abc")), md5_str("abc"))
+})
+
+# =============================================================================
+# globset feature tests
+# =============================================================================
+
+test_that("globset_is_match is path-aware by default (issue #301 acceptance)", {
+  skip_if_missing_feature("globset")
+  expect_identical(
+    globset_is_match("*.R", c("a.R", "a.Rmd", "sub/a.R")),
+    c(TRUE, FALSE, FALSE)
+  )
+})
+
+test_that("globset matches any of multiple patterns", {
+  skip_if_missing_feature("globset")
+  expect_identical(
+    globset_is_match(c("*.R", "*.Rmd"), c("a.R", "a.Rmd", "a.py")),
+    c(TRUE, TRUE, FALSE)
+  )
+})
+
+test_that("globset_which_match reports 1-based pattern indices", {
+  skip_if_missing_feature("globset")
+  expect_identical(globset_which_match(c("*.R", "*.Rmd"), "a.Rmd"), 2L)
+  expect_identical(globset_which_match(c("*.R", "*.Rmd"), "a.py"), integer(0))
+})
+
+test_that("invalid glob produces an R error, not a crash", {
+  skip_if_missing_feature("globset")
+  expect_error(globset_is_match("a[", "a.R"))
+})
+
+test_that("globset builder options work", {
+  skip_if_missing_feature("globset")
+  # literal_separator = FALSE: * crosses /
+  expect_identical(
+    globset_is_match_opts("*.R", "sub/a.R", FALSE, FALSE, TRUE),
+    TRUE
+  )
+  # case_insensitive = TRUE
+  expect_identical(
+    globset_is_match_opts("*.r", "A.R", TRUE, TRUE, TRUE),
+    TRUE
+  )
+})
+
+test_that("recursive ** glob matches nested paths", {
+  skip_if_missing_feature("globset")
+  expect_identical(
+    globset_is_match("**/*.rs", c("src/lib.rs", "a/b/c.rs", "lib.py")),
+    c(TRUE, TRUE, FALSE)
+  )
+})
+
+# =============================================================================
+# zstd feature tests
+# =============================================================================
+
+test_that("zstd round-trips random raw data", {
+  skip_if_missing_feature("zstd")
+  set.seed(42)
+  data <- as.raw(sample(0:255, 5000, replace = TRUE))
+  compressed <- zstd_compress(data, 3L)
+  expect_type(compressed, "raw")
+  expect_identical(zstd_decompress(compressed), data)
+})
+
+test_that("zstd compresses repetitive data smaller than input", {
+  skip_if_missing_feature("zstd")
+  data <- rep(as.raw(7L), 10000)
+  expect_lt(length(zstd_compress(data, 3L)), length(data))
+})
+
+test_that("zstd level 0 and NA select the default level", {
+  skip_if_missing_feature("zstd")
+  data <- charToRaw("hello hello hello")
+  expect_identical(zstd_decompress(zstd_compress(data, 0L)), data)
+  expect_identical(zstd_decompress(zstd_compress(data, NA_integer_)), data)
+})
+
+test_that("zstd rejects out-of-range levels with an R error", {
+  skip_if_missing_feature("zstd")
+  data <- charToRaw("x")
+  # 23 is above the max level (22); negative levels below -131072 are also out of range
+  expect_error(zstd_compress(data, 23L))
+  expect_error(zstd_compress(data, 100L))
+})
+
+test_that("zstd_decompress on garbage input is an R error", {
+  skip_if_missing_feature("zstd")
+  expect_error(zstd_decompress(as.raw(c(0xDE, 0xAD, 0xBE, 0xEF))))
+})
+
+test_that("zstd round-trips empty raw", {
+  skip_if_missing_feature("zstd")
+  expect_identical(zstd_decompress(zstd_compress(raw(0), 1L)), raw(0))
+})

@@ -252,6 +252,14 @@ mod serde_r_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
 mod shared_trait_test;
+#[cfg(feature = "blake3")]
+mod blake3_adapter_tests;
+#[cfg(feature = "md5")]
+mod md5_adapter_tests;
+#[cfg(feature = "globset")]
+mod globset_adapter_tests;
+#[cfg(feature = "zstd")]
+mod zstd_adapter_tests;
 mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
@@ -2125,6 +2133,18 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     }
     if cfg!(feature = "sha2") {
         features.push("sha2");
+    }
+    if cfg!(feature = "blake3") {
+        features.push("blake3");
+    }
+    if cfg!(feature = "md5") {
+        features.push("md5");
+    }
+    if cfg!(feature = "globset") {
+        features.push("globset");
+    }
+    if cfg!(feature = "zstd") {
+        features.push("zstd");
     }
     if cfg!(feature = "tabled") {
         features.push("tabled");

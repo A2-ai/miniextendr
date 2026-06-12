@@ -37,6 +37,7 @@ Only `default` features are enabled automatically.
 | `regex` | Compiled regex from R patterns (`Regex`) | regex |
 | `url` | Validated URL conversions (`Url`, `Vec<Url>`) | url |
 | `aho-corasick` | Fast multi-pattern string search | aho-corasick |
+| `globset` | Shell-style glob matching (`GlobSet`, path-aware defaults) | globset |
 | **Date / Time** | | |
 | `time` | `OffsetDateTime`, `Date`, `Duration` conversions | time (with formatting/parsing/macros) |
 | `jiff` | `Timestamp`/`Zoned`/`civil::Date`/`SignedDuration` conversions + ALTREP + vctrs | jiff 0.2 (bundled tzdb) |
@@ -56,6 +57,9 @@ Only `default` features are enabled automatically.
 | **Binary Data** | | |
 | `raw_conversions` | POD types via bytemuck (`Raw<T>`, `RawSlice<T>`) | bytemuck (with `derive`) |
 | `sha2` | SHA-256/SHA-512 hashing helpers | sha2 |
+| `blake3` | BLAKE3 hashing helpers (hex + 32-byte digest) | blake3 (default-features off) |
+| `md5` | MD5 hashing helpers (interop only — broken crypto) | md5 |
+| `zstd` | Whole-buffer zstd compress/decompress | zstd (bundled C via zstd-sys) |
 | **Formatting** | | |
 | `tabled` | ASCII/Unicode table formatting | tabled |
 | **Arrow / DataFusion** | | |
@@ -664,6 +668,30 @@ censor_words(c("bad", "ugly"), "the bad and the ugly")
 
 ---
 
+### `globset`
+
+Shell-style glob matching (`*.R`, `**/*.rs`, `{foo,bar}/*`).
+
+**Provides:**
+- `GlobOptions` -- builder options (`literal_separator`, `case_insensitive`, `backslash_escape`)
+- `build_globset(patterns, opts) -> Result<GlobSet, Error>`
+- `globset_is_match(set, paths) -> Vec<bool>` -- TRUE if any pattern matches
+- `globset_matches(set, path) -> Vec<i32>` -- 1-based indices of matching patterns
+- `TryFromSexp for GlobSet` -- character vector of patterns, path-aware defaults
+
+**Default semantics are path-aware** (`literal_separator = TRUE`): `*.R`
+matches `a.R` but not `sub/a.R`. This differs from raw globset. Backslash
+escaping is on for all platforms.
+
+#### Example
+
+```r
+globset_is_match("*.R", c("a.R", "a.Rmd", "sub/a.R"))
+#> [1]  TRUE FALSE FALSE
+```
+
+---
+
 ## Date / Time Features
 
 ### `time`
@@ -823,10 +851,10 @@ POD (Plain Old Data) type conversions via the `bytemuck` crate. Provides zero-co
 Cryptographic hashing helpers.
 
 **Provides:**
-- `sha256_str(data) -> String` -- SHA-256 as hex string
-- `sha256_bytes(data) -> Vec<u8>` -- SHA-256 as bytes
-- `sha512_str(data) -> String` -- SHA-512 as hex string
-- `sha512_bytes(data) -> Vec<u8>` -- SHA-512 as bytes
+- `sha256_str(data) -> String (hex)` -- SHA-256 as 64-char hex string
+- `sha256_bytes(data) -> String (hex)` -- SHA-256 of bytes, as 64-char hex string
+- `sha512_str(data) -> String (hex)` -- SHA-512 as 128-char hex string
+- `sha512_bytes(data) -> String (hex)` -- SHA-512 of bytes, as 128-char hex string
 
 #### Example
 
@@ -852,6 +880,86 @@ hash_string("hello world")
 
 hash_raw(charToRaw("hello world"))
 #> [1] "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+```
+
+---
+
+### `blake3`
+
+Fast cryptographic hashing (SIMD-accelerated, 32-byte digests).
+
+**Provides:**
+- `blake3_str(s) -> String` -- BLAKE3 of a string, as 64-char hex
+- `blake3_hex(data) -> String` -- BLAKE3 of bytes, as 64-char hex
+- `blake3_bytes(data) -> Vec<u8>` -- BLAKE3 of bytes, raw 32-byte digest
+
+#### Example
+
+```rust
+use miniextendr_api::blake3_impl::{blake3_str, blake3_bytes};
+
+#[miniextendr]
+fn hash_string(s: String) -> String {
+    blake3_str(&s)
+}
+
+#[miniextendr]
+fn hash_raw(data: Vec<u8>) -> Vec<u8> {
+    blake3_bytes(&data)
+}
+```
+
+In R:
+
+```r
+hash_string("")
+#> [1] "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+```
+
+---
+
+### `md5`
+
+Legacy MD5 hashing.
+
+> **Security note:** MD5 is cryptographically broken. This feature exists for
+> interoperability only (ETags, cache keys, `digest::digest(algo = "md5")`
+> compatibility). Use `sha2` or `blake3` for anything security-relevant.
+
+**Provides:**
+- `md5_str(s) -> String` -- MD5 of a string, as 32-char hex
+- `md5_hex(data) -> String` -- MD5 of bytes, as 32-char hex
+- `md5_bytes(data) -> Vec<u8>` -- MD5 of bytes, raw 16-byte digest
+
+#### Example
+
+```r
+md5_str("")
+#> [1] "d41d8cd98f00b204e9800998ecf8427e"
+md5_str("abc")
+#> [1] "900150983cd24fb0d6963f7d28e17f72"
+```
+
+---
+
+### `zstd`
+
+Whole-buffer zstd compression — fills the gap left by `memCompress()` (which
+covers gzip/bzip2/xz only).
+
+**Provides:**
+- `zstd_compress(data, level) -> Result<Vec<u8>, String>` -- level `0` = default (3); valid levels `1..=22`
+- `zstd_decompress(data) -> Result<Vec<u8>, String>`
+
+Builds the bundled zstd C library via `zstd-sys` (`cc` crate, pregenerated
+bindings) — no cmake or pkg-config needed.
+
+#### Example
+
+```r
+compressed <- zstd_compress(serialize(mtcars, NULL), 3L)
+identical(unserialize(zstd_decompress(compressed)), mtcars)
+#> [1] TRUE
 ```
 
 ---

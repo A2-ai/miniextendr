@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      80d5a23afb8fcc35
+// content-hash:      93591532c7256fce
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -914,6 +914,9 @@ unsafe extern "C-unwind" {
     pub fn C_mx_record_create(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_mx_season_summer(_: SEXP) -> SEXP;
     pub fn C_mx_verbosity_check(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_md5_hex(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_md5_str(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_md5_bytes(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedSimpleCounter__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_AtomicCounter__new_atomic(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_SharedSimpleCounter__get_value(_: SEXP, _: SEXP) -> SEXP;
@@ -973,7 +976,6 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_borrowed_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
     pub fn C_gc_stress_factor_labels(_: SEXP) -> SEXP;
-    pub fn C_gc_stress_alloc_wrappers(_: SEXP) -> SEXP;
     pub fn C_gc_stress_condition_data(_: SEXP) -> SEXP;
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_rcow_roundtrip(_: SEXP) -> SEXP;
@@ -1132,6 +1134,9 @@ unsafe extern "C-unwind" {
     pub fn C_uuid_roundtrip_vec(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_docid_roundtrip_vec(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_docid_roundtrip_opt_vec(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_zstd_compress(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_zstd_roundtrip(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_zstd_decompress(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrow_u8_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrow_f64_len(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_arrow_f64_sum(_: SEXP, _: SEXP) -> SEXP;
@@ -1353,6 +1358,9 @@ unsafe extern "C-unwind" {
     pub fn C_bitvec_from_vec(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_bitvec_all_zeros(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_bitvec_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_blake3_hex(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_blake3_str(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_blake3_bytes(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_either_zero(_: SEXP) -> SEXP;
     pub fn C_either_nested(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_either_is_left(_: SEXP, _: SEXP) -> SEXP;
@@ -1450,6 +1458,9 @@ unsafe extern "C-unwind" {
     pub fn C_extptr_any_into_inner(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_extptr_any_wrong_type_is(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_extptr_any_erased_downcast(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_globset_is_match(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_globset_which_match(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_globset_is_match_opts(_: SEXP, _: SEXP, _: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_telemetry_get_count(_: SEXP) -> SEXP;
     pub fn C_telemetry_clear_hook(_: SEXP) -> SEXP;
     pub fn C_telemetry_install_counter(_: SEXP) -> SEXP;
@@ -1928,13 +1939,12 @@ unsafe extern "C-unwind" {
     pub fn C_R6Dog__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Dog__breed(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Dog__fetch(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_R6Dog__speak(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Animal__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Animal__name(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__inc(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__new(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_R6Animal__speak(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_R6Animal__speak(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Cloneable__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__value(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Rectangle__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -6647,6 +6657,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_md5_hex".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_md5_hex) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_md5_str".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_md5_str) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_md5_bytes".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_md5_bytes) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_SharedSimpleCounter__new".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_SharedSimpleCounter__new) }),
         numArgs: 2,
@@ -6939,11 +6964,6 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_factor_labels".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_factor_labels) }),
-        numArgs: 1,
-    },
-    R_CallMethodDef {
-        name: c"C_gc_stress_alloc_wrappers".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_alloc_wrappers) }),
         numArgs: 1,
     },
     R_CallMethodDef {
@@ -7734,6 +7754,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_docid_roundtrip_opt_vec".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_docid_roundtrip_opt_vec) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_zstd_compress".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_zstd_compress) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_zstd_roundtrip".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_zstd_roundtrip) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_zstd_decompress".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_zstd_decompress) }),
         numArgs: 2,
     },
     R_CallMethodDef {
@@ -8842,6 +8877,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_blake3_hex".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_blake3_hex) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_str".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_blake3_str) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_bytes".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_blake3_bytes) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_either_zero".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_either_zero) }),
         numArgs: 1,
@@ -9325,6 +9375,21 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_extptr_any_erased_downcast".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_extptr_any_erased_downcast) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_globset_is_match".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_globset_is_match) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_globset_which_match".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_globset_which_match) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
+        name: c"C_globset_is_match_opts".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP, _>(C_globset_is_match_opts) }),
+        numArgs: 6,
     },
     R_CallMethodDef {
         name: c"C_telemetry_get_count".as_ptr(),
@@ -11717,11 +11782,6 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
-        name: c"C_R6Dog__speak".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Dog__speak) }),
-        numArgs: 3,
-    },
-    R_CallMethodDef {
         name: c"C_R6Animal__new".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Animal__new) }),
         numArgs: 3,
@@ -11748,8 +11808,8 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     },
     R_CallMethodDef {
         name: c"C_R6Animal__speak".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Animal__speak) }),
-        numArgs: 3,
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_R6Animal__speak) }),
+        numArgs: 2,
     },
     R_CallMethodDef {
         name: c"C_R6Cloneable__new".as_ptr(),
