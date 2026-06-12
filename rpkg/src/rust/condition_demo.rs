@@ -30,6 +30,7 @@ pub fn demo_error_custom_class(class: &str, msg: &str) {
     std::panic::panic_any(RCondition::Error {
         message: msg.to_string(),
         class: Some(class.to_string()),
+        data: None,
     });
 }
 
@@ -53,6 +54,7 @@ pub fn demo_warning_custom_class(class: &str, msg: &str) {
     std::panic::panic_any(RCondition::Warning {
         message: msg.to_string(),
         class: Some(class.to_string()),
+        data: None,
     });
 }
 
@@ -88,7 +90,90 @@ pub fn demo_condition_custom_class(class: &str, msg: &str) {
     std::panic::panic_any(RCondition::Condition {
         message: msg.to_string(),
         class: Some(class.to_string()),
+        data: None,
     });
+}
+
+// endregion
+
+// region: data = ... payload fixtures (issue #346)
+
+/// Raise a classed error carrying a single structured field (`value`).
+///
+/// Handlers can read `e$value` instead of parsing the message string.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_scalar(value: i32) {
+    miniextendr_api::error!(
+        class = "range_error",
+        data = ("value", value),
+        "value {value} out of range"
+    );
+}
+
+/// Raise a classed error carrying several heterogeneous scalar fields.
+///
+/// Demonstrates the bracketed `data = [(..), (..)]` form with mixed value
+/// types: integer, double, logical, and character.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_multi(value: f64, code: i32, label: &str) {
+    miniextendr_api::error!(
+        class = "validation_error",
+        data = [
+            ("value", value),
+            ("code", code),
+            ("label", label),
+            ("fatal", true)
+        ],
+        "validation failed for {label}"
+    );
+}
+
+/// Raise a classed error whose data field is a vector.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_vector(values: Vec<i32>) {
+    miniextendr_api::error!(
+        class = "batch_error",
+        data = ("offending", values),
+        "batch contained out-of-range values"
+    );
+}
+
+/// Raise a classed warning carrying structured data.
+///
+/// @export
+#[miniextendr]
+pub fn demo_warning_data(count: i32) {
+    miniextendr_api::warning!(
+        class = "truncation_warning",
+        data = ("dropped", count),
+        "dropped {count} rows"
+    );
+}
+
+/// Emit a message carrying structured data.
+///
+/// @export
+#[miniextendr]
+pub fn demo_message_data(step: i32) {
+    miniextendr_api::message!(data = ("step", step), "progress at step {step}");
+}
+
+/// Signal a classed condition carrying structured data.
+///
+/// @export
+#[miniextendr]
+pub fn demo_condition_data(n: i32) {
+    miniextendr_api::condition!(
+        class = "progress",
+        data = ("processed", n),
+        "processed {n} items"
+    );
 }
 
 // endregion

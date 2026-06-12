@@ -70,28 +70,36 @@
 //!
 //! # Condition value structure (`make_rust_condition_value`)
 //!
-//! The tagged SEXP is a 4-element named list:
+//! The tagged SEXP is a 5-element named list:
 //! - `error`: error message (character scalar)
 //! - `kind`: condition kind string — one of the constants in [`kind`]
 //! - `class`: optional user-supplied custom class (character scalar or `NULL`)
 //! - `call`: the R call SEXP (or `NULL` if not available)
+//! - `data`: optional named-list condition-data payload (from the macros'
+//!   `data = ...` form), or `NULL`. The R helper splices these named fields
+//!   into the condition object so handlers can read `e$<name>`.
 //! - class attribute: `"rust_condition_value"`
 //! - `__rust_condition__` attribute: `TRUE`
 //!
 //! # PROTECT discipline (read before editing)
 //!
-//! [`make_rust_condition_value`] allocates four SEXPs that must remain live
+//! [`make_rust_condition_value`] allocates SEXPs that must remain live
 //! across subsequent allocations (`SET_VECTOR_ELT` / `SETATTRIB` both
 //! trigger old-to-new GC barriers): the list itself, the message scalar
-//! STRSXP, the kind scalar STRSXP, the optional class scalar STRSXP, and
-//! the `TRUE` marker LGLSXP. Each is `Rf_protect`ed before the next
-//! allocation; `prot` counts them; `Rf_unprotect(prot)` balances at exit.
+//! STRSXP, the kind scalar STRSXP, the optional class scalar STRSXP, the
+//! `TRUE` marker LGLSXP, and — when a `data` payload is present — the data
+//! VECSXP, its names STRSXP, and each materialised field value. Each is
+//! `Rf_protect`ed before the next allocation; `prot` counts them;
+//! `Rf_unprotect(prot)` balances at exit on every branch. Field values are
+//! materialised one at a time and rooted into the protected data list
+//! immediately (same shape as `List::from_pairs`) so an unrooted value SEXP
+//! never survives across the next allocation.
 //!
 //! R-devel runs a more aggressive GC than R-release/oldrel and *will* fire
 //! inside the window between two allocations. PR #344 commit `af6b4875`
 //! tracked down a `recursive gc invocation` segfault that lit up only on
 //! R-devel because the pre-existing 3-element version was lucky-not-safe;
-//! adding the class slot crossed the threshold. **If you add a fifth fresh
+//! adding the class slot crossed the threshold. **If you add another fresh
 //! allocation, protect it.** A green R-release CI run is *not* proof of
 //! safety here; run `gctorture(TRUE)` on R-devel before merging.
 
@@ -150,6 +158,28 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
     std::ffi::CString::new(s).unwrap_or_else(|_| std::ffi::CString::new(fallback).unwrap())
 }
 
+/// Build a tagged condition value with no structured `data` payload.
+///
+/// Thin wrapper over [`make_rust_condition_value_with_data`] with `data =
+/// None`. This is the entry point used by all proc-macro-generated codegen
+/// (argument-conversion failures, `Option::None`, `Result::Err`), none of
+/// which carries a `data` payload. Only the user-facing `error!()` /
+/// `warning!()` / `message!()` / `condition!()` macros (routed through
+/// [`crate::unwind_protect`]) attach `data`.
+///
+/// # Safety
+///
+/// See [`make_rust_condition_value_with_data`].
+#[inline]
+pub fn make_rust_condition_value(
+    message: &str,
+    kind: &str,
+    class: Option<&str>,
+    call: Option<SEXP>,
+) -> SEXP {
+    make_rust_condition_value_with_data(message, kind, class, call, None)
+}
+
 /// Build a tagged condition-value SEXP for transport across the Rust→R boundary.
 ///
 /// Used for all Rust-origin failures and user-facing conditions. The R-side
@@ -164,11 +194,13 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
 ///
 /// # PROTECT discipline
 ///
-/// Every fresh allocation (msg, kind, optional class, true-marker) is protected
-/// before the next allocation that might trigger a GC barrier. The `prot` counter
-/// is incremented on each `Rf_protect` and balanced by `Rf_unprotect(prot)` at
-/// exit on all branches. This pattern was established by PR #344 commit `af6b4875`
-/// to fix a `recursive gc invocation` segfault on R-devel.
+/// Every fresh allocation (msg, kind, optional class, true-marker, and — when
+/// present — the `data` VECSXP, its names, and each field value) is protected
+/// before the next allocation that might trigger a GC barrier. The `prot`
+/// counter is incremented on each `Rf_protect` and balanced by
+/// `Rf_unprotect(prot)` at exit on all branches. This pattern was established
+/// by PR #344 commit `af6b4875` to fix a `recursive gc invocation` segfault on
+/// R-devel.
 ///
 /// # Arguments
 ///
@@ -176,11 +208,16 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
 /// * `kind` - Condition kind — one of the constants in [`kind`].
 /// * `class` - Optional user-supplied class name to prepend to the layered vector
 /// * `call` - Optional R call SEXP for error context. When `None`, uses `R_NilValue`.
-pub fn make_rust_condition_value(
+/// * `data` - Optional named condition-data payload (from the macros' `data =
+///   ...` form). When `Some`, each `(name, value)` becomes a named element of a
+///   list stored in slot `[4]`; the R helper splices these into the condition
+///   object so handlers can read `e$<name>`. When `None`, slot `[4]` is `NULL`.
+pub fn make_rust_condition_value_with_data(
     message: &str,
     kind: &str,
     class: Option<&str>,
     call: Option<SEXP>,
+    data: Option<crate::condition::ConditionData>,
 ) -> SEXP {
     unsafe {
         // PROTECT discipline: every fresh allocation that's live across another
@@ -188,7 +225,7 @@ pub fn make_rust_condition_value(
         // trigger old-to-new GC barriers; R-devel's GC fires more aggressively
         // here than R-release/oldrel, so unprotected intermediates corrupt the
         // heap on R-devel even when R 4.5/4.4 happen to survive (PR #344 fix).
-        let list = sys::Rf_allocVector(SEXPTYPE::VECSXP, 4);
+        let list = sys::Rf_allocVector(SEXPTYPE::VECSXP, 5);
         sys::Rf_protect(list);
         let mut prot = 1;
 
@@ -224,6 +261,45 @@ pub fn make_rust_condition_value(
 
         // Element 3: caller-owned SEXP — already protected (or R_NilValue)
         list.set_vector_elt(3, call.unwrap_or(SEXP::nil()));
+
+        // Element 4: optional named-list condition data (NULL when absent).
+        //
+        // PROTECT discipline: we build a fresh VECSXP `data_list` plus a STRSXP
+        // `data_names`, and each field's materialised SEXP. Every one of these
+        // is live across subsequent allocations, so each is protected before
+        // the next alloc:
+        //   - data_list protected before any field materialisation,
+        //   - data_names protected before per-field CHARSXP allocations,
+        //   - each field value materialised then immediately stored into the
+        //     protected data_list (so it is rooted by the list before the next
+        //     field allocates — same shape as `List::from_pairs`).
+        let data_sexp = if let Some(fields) = data {
+            let n: isize = fields
+                .len()
+                .try_into()
+                .expect("condition data length exceeds isize::MAX");
+            let data_list = sys::Rf_allocVector(SEXPTYPE::VECSXP, n);
+            sys::Rf_protect(data_list);
+            prot += 1;
+            let data_names = sys::Rf_allocVector(SEXPTYPE::STRSXP, n);
+            sys::Rf_protect(data_names);
+            prot += 1;
+            for (i, (name, value)) in fields.into_iter().enumerate() {
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                // Materialise the value and immediately root it in data_list
+                // (protected) before the name CHARSXP allocation below.
+                let value_sexp = value.into_sexp();
+                data_list.set_vector_elt(idx, value_sexp);
+                let name_cstr = to_cstring_lossy(&name, "<invalid name>");
+                let name_charsxp = sys::Rf_mkCharCE(name_cstr.as_ptr(), CE_UTF8);
+                data_names.set_string_elt(idx, name_charsxp);
+            }
+            data_list.set_names(data_names);
+            data_list
+        } else {
+            SEXP::nil()
+        };
+        list.set_vector_elt(4, data_sexp);
 
         // Names / class symbols are cached. The TRUE marker on set_attr is a
         // fresh LGLSXP — protect across the SETATTRIB call.

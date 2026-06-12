@@ -12,8 +12,8 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 - `mx_abi.rs` — Rust reimpl of `mx_wrap`/`mx_get`/`mx_query`/`mx_abi_register` (replaced the old `mx_abi.c` / `entrypoint.c`).
 - `worker.rs` — worker thread + `Sendable<T>`. Without `worker-thread` feature, `run_on_worker(f) → Ok(f())` inline. On wasm the feature stays *enabled* but every spawn path is gated `not(target_family = "wasm")` so it also runs inline (see wasm gotcha below).
 - `unwind_protect.rs` — `R_UnwindProtect` wrapper; `with_r_unwind_protect` is the user-facing path (returns a tagged-condition SEXP; the R wrapper raises). `with_r_unwind_protect_or_raise` is the legacy panics-as-R-error variant kept for test/bench use.
-- `error_value.rs` — tagged-SEXP transport. `make_rust_condition_value` (4-element list with custom-class slot) is the only producer. PROTECT discipline matters here (see Gotchas).
-- `condition.rs` — `RCondition` enum + `error!`/`warning!`/`message!`/`condition!` macros + `AsRError<E: Error>`.
+- `error_value.rs` — tagged-SEXP transport. `make_rust_condition_value_with_data` (5-element list: message/kind/class/call/data) is the only producer; `make_rust_condition_value` is the no-data thin wrapper used by all proc-macro codegen. PROTECT discipline matters here (see Gotchas).
+- `condition.rs` — `RCondition` enum + `error!`/`warning!`/`message!`/`condition!` macros (optional `class =` and structured `data =` payloads — Send-safe `ConditionDataValue`, materialised on the main thread) + `AsRError<E: Error>`.
 - `from_r.rs` — `TryFromSexp` + `r_slice` / `r_slice_mut` (handle R's 0x1 empty-vector data pointer).
 - `into_r.rs` — `IntoR` impls; `Box<[T]>` blanket + `bool`/`String` overrides.
 - `coerce.rs` / `r_coerce.rs` / `strict.rs` — conversion paths; strict-mode checked variants. `r_coerce.rs` holds the `RCoerce*` S3-coercion trait family (`#[miniextendr(as = "…")]`).

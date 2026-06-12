@@ -739,14 +739,27 @@ pub fn write_r_wrappers_to_file(path: &str) {
   .msg <- .val$error
   .call <- (if (is.null(.val$call)) .call_default else .val$call)
   .class <- .val$class
+  # `.val$data` is an optional named list of structured fields (from the
+  # macros' `data = ...` form). When present, splice its named elements into
+  # the condition object alongside message/call/kind so handlers can read
+  # `e$<name>`. `utils::modifyList` keeps the base fields and appends the
+  # data fields; a malformed (non-list / unnamed) payload is ignored.
+  .data <- .val$data
+  .cond_fields <- function(base) {
+    if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
+      base
+    } else {
+      utils::modifyList(base, .data)
+    }
+  }
   switch(.val$kind,
-    error = stop(structure(list(message = .msg, call = .call, kind = \"error\"),
+    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = \"error\")),
       class = c(.class, \"rust_error\", \"simpleError\", \"error\", \"condition\"))),
-    warning = warning(structure(list(message = .msg, call = .call, kind = \"warning\"),
+    warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = \"warning\")),
       class = c(.class, \"rust_warning\", \"simpleWarning\", \"warning\", \"condition\"))),
-    message = message(structure(list(message = paste0(.msg, \"\\n\"), call = NULL, kind = \"message\"),
+    message = message(structure(.cond_fields(list(message = paste0(.msg, \"\\n\"), call = NULL, kind = \"message\")),
       class = c(.class, \"rust_message\", \"simpleMessage\", \"message\", \"condition\"))),
-    condition = signalCondition(structure(list(message = .msg, call = .call, kind = \"condition\"),
+    condition = signalCondition(structure(.cond_fields(list(message = .msg, call = .call, kind = \"condition\")),
       class = c(.class, \"rust_condition\", \"simpleCondition\", \"condition\"))),
     panic = stop(structure(list(message = .msg, call = .call, kind = \"panic\"),
       class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"))),

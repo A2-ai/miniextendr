@@ -8,11 +8,11 @@ error[E0277]: the trait bound `impl std::fmt::Display: IntoR` is not satisfied
             &OsStr
             &Path
             &[&str]
+            &[Rboolean]
             &[T]
             &[bool]
             &[f32]
             &[i16]
-            &[i8]
           and $N others
   = note: required for `impl std::fmt::Display` to implement `IntoR`
   = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -187,3 +187,76 @@ test_that("condition!() with custom class catches via that class", {
 })
 
 # endregion
+
+# region: data = ... structured payloads (#346)
+
+test_that("error!(data = (..)) exposes the field as e$<name>", {
+  e <- tryCatch(demo_error_data_scalar(150L), range_error = function(e) e)
+  expect_equal(e$value, 150L)
+  expect_equal(class(e)[1], "range_error")
+  expect_true(inherits(e, "rust_error"))
+  expect_equal(conditionMessage(e), "value 150 out of range")
+})
+
+test_that("error!(data = [..]) carries multiple heterogeneous fields", {
+  e <- tryCatch(
+    demo_error_data_multi(2.5, 7L, "lhs"),
+    validation_error = function(e) e
+  )
+  expect_identical(e$value, 2.5)
+  expect_identical(e$code, 7L)
+  expect_identical(e$label, "lhs")
+  expect_identical(e$fatal, TRUE)
+})
+
+test_that("error! data fields support vectors", {
+  e <- tryCatch(
+    demo_error_data_vector(c(101L, 205L)),
+    batch_error = function(e) e
+  )
+  expect_identical(e$offending, c(101L, 205L))
+})
+
+test_that("data fields do not clobber message/call/kind", {
+  e <- tryCatch(demo_error_data_scalar(150L), error = function(e) e)
+  expect_equal(conditionMessage(e), "value 150 out of range")
+  expect_equal(e$kind, "error")
+  expect_false(is.null(conditionCall(e)))
+})
+
+test_that("handlers can route on data values for programmatic recovery", {
+  recover <- function(value) {
+    tryCatch(
+      demo_error_data_scalar(value),
+      range_error = function(e) min(max(e$value, 0L), 100L)
+    )
+  }
+  expect_equal(recover(150L), 100L)
+  expect_equal(recover(-3L), 0L)
+})
+
+test_that("warning!(data = ..) exposes fields on the warning condition", {
+  w <- tryCatch(demo_warning_data(3L), truncation_warning = function(w) w)
+  expect_identical(w$dropped, 3L)
+  expect_true(inherits(w, "rust_warning"))
+})
+
+test_that("message!(data = ..) exposes fields on the message condition", {
+  m <- tryCatch(demo_message_data(2L), message = function(m) m)
+  expect_identical(m$step, 2L)
+  expect_true(inherits(m, "rust_message"))
+})
+
+test_that("condition!(data = ..) exposes fields on the signalled condition", {
+  c_val <- tryCatch(demo_condition_data(10L), progress = function(c) c)
+  expect_identical(c_val$processed, 10L)
+  expect_true(inherits(c_val, "rust_condition"))
+})
+
+test_that("conditions without data still have NULL extra fields", {
+  e <- tryCatch(demo_error("plain"), error = function(e) e)
+  expect_null(e$value)
+  expect_null(e$data)
+})
+
+# endregion

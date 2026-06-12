@@ -2155,3 +2155,92 @@ pub fn gc_stress_serde_ser() {
 }
 
 // endregion
+
+// region: condition data payloads (#346)
+
+/// Exercise `make_rust_condition_value_with_data` under GC pressure.
+///
+/// The condition-data path builds a fresh VECSXP + names STRSXP and
+/// materialises each `ConditionDataValue` field one at a time, rooting every
+/// intermediate into the protected data list before the next allocation —
+/// the canonical "SEXP storage across allocations" shape (#430). This fixture
+/// drives the production code path directly with all eight supported value
+/// types (scalar + vector × i32/f64/bool/String) and reads every field back
+/// to verify integrity.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_condition_data() {
+    use miniextendr_api::condition::{ConditionData, ConditionDataValue};
+    use miniextendr_api::error_value::make_rust_condition_value_with_data;
+
+    for round in 0..4 {
+        let data: ConditionData = vec![
+            ("int".to_string(), ConditionDataValue::from(round)),
+            ("real".to_string(), ConditionDataValue::from(1.5_f64)),
+            ("flag".to_string(), ConditionDataValue::from(true)),
+            (
+                "label".to_string(),
+                ConditionDataValue::from(format!("round {round}")),
+            ),
+            (
+                "ints".to_string(),
+                ConditionDataValue::from(vec![1_i32, 2, 3]),
+            ),
+            (
+                "reals".to_string(),
+                ConditionDataValue::from(vec![0.5_f64, 2.5]),
+            ),
+            (
+                "flags".to_string(),
+                ConditionDataValue::from(vec![true, false]),
+            ),
+            (
+                "labels".to_string(),
+                ConditionDataValue::from(vec!["a".to_string(), "b".to_string()]),
+            ),
+        ];
+
+        let tagged = make_rust_condition_value_with_data(
+            "gc stress condition",
+            miniextendr_api::error_value::kind::ERROR,
+            Some("gc_stress_class"),
+            None,
+            Some(data),
+        );
+        // The returned SEXP is unprotected — root it before the readback
+        // (string_elt_str etc. do not allocate, but the next loop round does).
+        let _guard = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(tagged) };
+
+        assert_eq!(tagged.len(), 5, "tagged condition value must have 5 slots");
+        let data_list = tagged.vector_elt(4);
+        assert_eq!(data_list.len(), 8, "data list must carry all 8 fields");
+
+        // Scalars
+        assert_eq!(data_list.vector_elt(0).integer_elt(0), round);
+        assert_eq!(data_list.vector_elt(1).real_elt(0), 1.5);
+        assert_eq!(data_list.vector_elt(2).logical_elt(0), 1);
+        assert_eq!(
+            data_list.vector_elt(3).string_elt_str(0),
+            Some(format!("round {round}").as_str())
+        );
+        // Vectors
+        let ints = data_list.vector_elt(4);
+        assert_eq!(ints.len(), 3);
+        assert_eq!(ints.integer_elt(2), 3);
+        let reals = data_list.vector_elt(5);
+        assert_eq!(reals.real_elt(1), 2.5);
+        let flags = data_list.vector_elt(6);
+        assert_eq!(flags.logical_elt(0), 1);
+        assert_eq!(flags.logical_elt(1), 0);
+        let labels = data_list.vector_elt(7);
+        assert_eq!(labels.string_elt_str(1), Some("b"));
+
+        // Names round-trip
+        let names = data_list.get_names();
+        assert_eq!(names.string_elt_str(0), Some("int"));
+        assert_eq!(names.string_elt_str(7), Some("labels"));
+    }
+}
+
+// endregion

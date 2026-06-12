@@ -84,6 +84,7 @@ impl AltIntegerData for ClassedErrorAltrepData {
         std::panic::panic_any(miniextendr_api::condition::RCondition::Error {
             message: self.message.clone(),
             class: Some(self.error_class.clone()),
+            data: None,
         });
     }
 }

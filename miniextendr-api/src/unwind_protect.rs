@@ -424,7 +424,7 @@ where
             // region: RCondition recognition for the raising-variant path
             if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
                 match cond {
-                    crate::condition::RCondition::Error { message, class } => {
+                    crate::condition::RCondition::Error { message, class, .. } => {
                         // Approach 3 (issue-345): raise via Rf_eval(stop(structure(...)))
                         // so tryCatch(rust_error = h, ...) and tryCatch(my_class = h, ...)
                         // both match. No R wrapper needed.
@@ -488,23 +488,40 @@ where
         Ok(result) => result,
         Err(payload) => {
             // region: RCondition recognition — same as the tagged-SEXP path
-            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+            if payload.is::<crate::condition::RCondition>() {
                 use crate::error_value::kind;
-                let (kind, msg, class) = match cond {
-                    crate::condition::RCondition::Error { message, class } => {
-                        (kind::ERROR, message.as_str(), class.as_deref())
+                // Take ownership of the payload so the `data` Vec can be moved
+                // into `make_rust_condition_value` (consumed when materialised).
+                let cond = *payload
+                    .downcast::<crate::condition::RCondition>()
+                    .expect("checked is::<RCondition> above");
+                let (kind, message, class, data) = match cond {
+                    crate::condition::RCondition::Error {
+                        message,
+                        class,
+                        data,
+                    } => (kind::ERROR, message, class, data),
+                    crate::condition::RCondition::Warning {
+                        message,
+                        class,
+                        data,
+                    } => (kind::WARNING, message, class, data),
+                    crate::condition::RCondition::Message { message, data } => {
+                        (kind::MESSAGE, message, None, data)
                     }
-                    crate::condition::RCondition::Warning { message, class } => {
-                        (kind::WARNING, message.as_str(), class.as_deref())
-                    }
-                    crate::condition::RCondition::Message { message } => {
-                        (kind::MESSAGE, message.as_str(), None)
-                    }
-                    crate::condition::RCondition::Condition { message, class } => {
-                        (kind::CONDITION, message.as_str(), class.as_deref())
-                    }
+                    crate::condition::RCondition::Condition {
+                        message,
+                        class,
+                        data,
+                    } => (kind::CONDITION, message, class, data),
                 };
-                return crate::error_value::make_rust_condition_value(msg, kind, class, None);
+                return crate::error_value::make_rust_condition_value_with_data(
+                    &message,
+                    kind,
+                    class.as_deref(),
+                    None,
+                    data,
+                );
             }
             // endregion
 
@@ -546,24 +563,41 @@ where
         Ok(result) => result,
         Err(payload) => {
             // region: RCondition recognition — must come before generic panic path
-            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+            if payload.is::<crate::condition::RCondition>() {
                 use crate::error_value::kind;
-                let (kind, msg, class) = match cond {
-                    crate::condition::RCondition::Error { message, class } => {
-                        (kind::ERROR, message.as_str(), class.as_deref())
+                // Take ownership so the `data` payload can be moved into
+                // `make_rust_condition_value` (consumed during materialisation).
+                let cond = *payload
+                    .downcast::<crate::condition::RCondition>()
+                    .expect("checked is::<RCondition> above");
+                let (kind, message, class, data) = match cond {
+                    crate::condition::RCondition::Error {
+                        message,
+                        class,
+                        data,
+                    } => (kind::ERROR, message, class, data),
+                    crate::condition::RCondition::Warning {
+                        message,
+                        class,
+                        data,
+                    } => (kind::WARNING, message, class, data),
+                    crate::condition::RCondition::Message { message, data } => {
+                        (kind::MESSAGE, message, None, data)
                     }
-                    crate::condition::RCondition::Warning { message, class } => {
-                        (kind::WARNING, message.as_str(), class.as_deref())
-                    }
-                    crate::condition::RCondition::Message { message } => {
-                        (kind::MESSAGE, message.as_str(), None)
-                    }
-                    crate::condition::RCondition::Condition { message, class } => {
-                        (kind::CONDITION, message.as_str(), class.as_deref())
-                    }
+                    crate::condition::RCondition::Condition {
+                        message,
+                        class,
+                        data,
+                    } => (kind::CONDITION, message, class, data),
                 };
                 // No panic telemetry for user-raised conditions — they are intentional.
-                return crate::error_value::make_rust_condition_value(msg, kind, class, call);
+                return crate::error_value::make_rust_condition_value_with_data(
+                    &message,
+                    kind,
+                    class.as_deref(),
+                    call,
+                    data,
+                );
             }
             // endregion
 
