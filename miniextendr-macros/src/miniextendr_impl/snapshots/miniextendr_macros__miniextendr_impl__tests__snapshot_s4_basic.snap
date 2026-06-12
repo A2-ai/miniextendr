@@ -26,6 +26,7 @@ Counter <- function(value) {
   methods::new("Counter", ptr = .val)
 }
 
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_get", class="Counter", export=true)
 # Counter::get (1:1)
 #' @name Counter-s4_get
 #' @rdname Counter
@@ -39,6 +40,7 @@ methods::setMethod("s4_get", "Counter", function(x, ...) {
   .val
 })
 
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_increment", class="Counter", export=true)
 # Counter::increment (1:1)
 #' @name Counter-s4_increment
 #' @rdname Counter
