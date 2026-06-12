@@ -331,22 +331,30 @@ use_miniextendr <- function(path = ".",
                             template_type = "auto", rpkg_name = NULL,
                             miniextendr_version = "main", local_path = NULL) {
   with_project(path)
-  # Warn if not at git workspace root
+  # Warn if the package directory being scaffolded is not at a git workspace
+  # root. Resolve everything from the *project* directory, not getwd():
+  # with_project() sets the usethis project without changing the working dir
+  # (setwd = FALSE), so getwd() is the caller's CWD — which, for an explicit
+  # `path` (e.g. create_miniextendr_package("/tmp/pkg")), is unrelated to the
+  # package being created and produced spurious warnings.
   git_available <- nzchar(Sys.which("git"))
   if (git_available) {
-    git_root <- tryCatch(
-      {
-        res <- run_command("git", c("rev-parse", "--show-toplevel"))
-        trimws(res)
-      },
-      warning = function(w) NULL,
-      error = function(e) NULL
-    )
-    if (!is.null(git_root) &&
-        normalizePath(git_root) != normalizePath(getwd())) {
+    proj_dir <- usethis::proj_get()
+    res <- run_command("git", c("rev-parse", "--show-toplevel"), wd = proj_dir)
+    status <- attr(res, "status")
+    # Only a clean exit yields a real toplevel; a non-zero exit (no repo) leaves
+    # the error text in `res` (stdout+stderr are merged), so gate on status.
+    git_root <- if (is.null(status) || identical(as.integer(status), 0L)) {
+      trimws(paste(res, collapse = "\n"))
+    } else {
+      NA_character_
+    }
+    if (!is.na(git_root) && nzchar(git_root) &&
+        normalizePath(git_root, mustWork = FALSE) !=
+          normalizePath(proj_dir, mustWork = FALSE)) {
       warning(
         "use_miniextendr() is not being called from the git workspace root. ",
-        "Current directory: ", getwd(), "\n",
+        "Package directory: ", proj_dir, "\n",
         "Git workspace root: ", git_root,
         call. = FALSE
       )

@@ -581,6 +581,10 @@ test_that("standalone scaffolding builds in tarball mode and exposes functions",
     expect_match(namespace_src, "export(add)", fixed = TRUE)
     expect_match(namespace_src, "export(hello)", fixed = TRUE)
 
+    # Detach/unload any dev (load_all) namespace left by miniextendr_build()'s
+    # document() step so library() below resolves the *installed* copy, not a
+    # source-backed dev namespace (and avoids the #1000 stale-.rdb reload path).
+    if (pkg_name %in% loadedNamespaces()) pkgload::unload(pkg_name, quiet = TRUE)
     # Installed package loads and the functions actually run.
     library(pkg_name, character.only = TRUE)
     expect_equal(add(2, 3), 5)
