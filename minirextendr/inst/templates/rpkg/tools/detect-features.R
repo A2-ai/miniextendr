@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Configure-time Cargo feature detection for miniextendr (rpkg demo package).
+# Configure-time Cargo feature detection for {{package}}.
 #
 # Contract
 # --------
