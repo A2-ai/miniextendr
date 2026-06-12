@@ -754,13 +754,19 @@ test_that("MINIEXTENDR_FORCE_WRAPPER_GEN propagates through install(build = TRUE
   templib <- file.path(tmp, "library")
   dir.create(templib)
 
+  pak_cache_dir <- file.path(tmp, "pak_cache")
+  dir.create(pak_cache_dir, showWarnings = FALSE)
+
   run_build_install <- function() {
     unlink(result_file)
-    withr::with_libpaths(templib, action = "prefix", {
-      suppressMessages(
-        devtools::install(pkg_path, build = TRUE, upgrade = FALSE,
-                          quiet = TRUE, reload = FALSE)
-      )
+    withr::with_envvar(list(R_USER_CACHE_DIR = pak_cache_dir), {
+      withr::with_libpaths(templib, action = "prefix", {
+        suppressMessages(
+          devtools::install(pkg_path, build = TRUE, upgrade = FALSE,
+                            quiet = TRUE, reload = FALSE,
+                            dependencies = FALSE)
+        )
+      })
     })
     skip_if_not(file.exists(result_file),
                 "probe Makevars did not run (no SHLIB build on this platform)")
