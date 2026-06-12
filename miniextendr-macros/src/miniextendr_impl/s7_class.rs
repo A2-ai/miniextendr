@@ -741,7 +741,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .as_deref()
                 .unwrap_or("x")
                 .replace(' ', "");
-            let no_dots_str = if method_attrs.s7.no_dots { "true" } else { "false" };
+            let no_dots_str = if method_attrs.s7.no_dots {
+                "true"
+            } else {
+                "false"
+            };
             lines.push(format!(
                 ".__MX_GENERIC_DOC__(kind=\"S7\", generic=\"{generic_name}\", class=\"{class_name}\", export={should_export}, dispatch=\"{dispatch_str}\", no_dots={no_dots_str})"
             ));
