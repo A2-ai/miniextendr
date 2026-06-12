@@ -14,18 +14,21 @@ uses.
 | `condition!(...)` | `signalCondition()` | `rust_condition` | silent no-op |
 
 All four support an optional `class = "name"` argument to prepend a custom class
-for programmatic catching.
+for programmatic catching, and an optional `data = ...` argument to attach
+structured named fields readable as `e$<name>` in handlers.
 
 ## How it works
 
 Each macro calls `std::panic::panic_any(RCondition::...)`. The panic is caught by
 `with_r_unwind_protect` before Rust destructors have unwound, which recognises
-the `RCondition` payload and converts it to a tagged SEXP (4-element list:
-`error`, `kind`, `class`, `call`). The generated R wrapper reads the SEXP and
-dispatches to the appropriate R signal function.
+the `RCondition` payload and converts it to a tagged SEXP (5-element list:
+`error`, `kind`, `class`, `call`, `data`). The generated R wrapper reads the
+SEXP and dispatches to the appropriate R signal function.
 
 The `class` slot carries the optional user-supplied class. When non-NULL it is
-prepended to the standard layered vector.
+prepended to the standard layered vector. The `data` slot carries the optional
+named-list payload; the R helper splices its fields into the condition object
+alongside `message` / `call` / `kind`.
 
 ## Class layering
 
@@ -73,6 +76,73 @@ tryCatch(
 )
 # [1] "custom: missing field: x"
 ```
+
+### `error!()` with structured `data` payloads
+
+Rust-side, the macros accept `data = ("name", value)` for a single field or
+`data = [("a", v1), ("b", v2)]` for several (rlang `abort(data = list(...))`
+style). Argument order is fixed: `class = ...` (optional), then `data = ...`
+(optional), then the format message:
+
+```rust
+// Single field:
+error!(class = "range_error", data = ("value", value), "value {value} out of range");
+
+// Multiple fields:
+error!(
+    class = "validation_error",
+    data = [("value", value), ("code", code), ("label", label), ("fatal", true)],
+    "validation failed for {label}"
+);
+```
+
+R-side, handlers read the fields directly from the condition object:
+
+```r
+# Raised by: error!(class = "range_error", data = ("value", value), "value {value} out of range")
+
+e <- tryCatch(demo_error_data_scalar(150L), range_error = function(e) e)
+e$value
+# [1] 150
+
+# Programmatic recovery — clamp instead of parsing the message:
+tryCatch(
+  demo_error_data_scalar(150L),
+  range_error = function(e) min(max(e$value, 0L), 100L)
+)
+# [1] 100
+```
+
+#### Supported `data` value types (v1)
+
+| Rust value | R field type |
+|---|---|
+| `i32` | `integer(1)` |
+| `f64` | `double(1)` |
+| `bool` | `logical(1)` |
+| `&str` / `String` | `character(1)` |
+| `Vec<i32>` | `integer(n)` |
+| `Vec<f64>` | `double(n)` |
+| `Vec<bool>` | `logical(n)` |
+| `Vec<String>` / `Vec<&str>` | `character(n)` |
+
+Anything outside this set is not supported in v1 — stringify at the call site
+(`format!("{x:?}")`) or attach the individual scalar fields you need.
+
+#### Worker-thread note
+
+The payload travels through `panic_any`, which requires `Send` — and the macro
+may fire on the worker thread, where a live `SEXP` is illegal to carry. That is
+why `data` values are restricted to a Send-safe owned enum
+(`ConditionDataValue`) built at the call site; the actual R objects are
+materialised on R's main thread at the unwind boundary
+(`make_rust_condition_value_with_data`). Consequence: `data = ...` works
+identically from worker-thread and main-thread code, but arbitrary `IntoR`
+values cannot ride along (they would have to be converted off the main thread).
+
+Reserved names: fields named `message`, `call`, or `kind` would override the
+condition's own slots (the R helper splices via `utils::modifyList`) — avoid
+them.
 
 ### `warning!()`
 

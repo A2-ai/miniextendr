@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      4ba272a930af640e
+// content-hash:      dc186c00589ff8a1
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -561,6 +561,12 @@ unsafe extern "C-unwind" {
     pub fn C_demo_message(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_demo_warning(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_demo_condition(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_demo_message_data(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_demo_warning_data(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_demo_condition_data(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_demo_error_data_multi(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP;
+    pub fn C_demo_error_data_scalar(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_demo_error_data_vector(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_demo_error_custom_class(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_demo_warning_custom_class(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_demo_condition_custom_class(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -967,6 +973,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_borrowed_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
     pub fn C_gc_stress_factor_labels(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_condition_data(_: SEXP) -> SEXP;
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_rcow_roundtrip(_: SEXP) -> SEXP;
     pub fn C_gc_stress_split_collated(_: SEXP) -> SEXP;
@@ -4872,6 +4879,36 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_demo_message_data".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_demo_message_data) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_demo_warning_data".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_demo_warning_data) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_demo_condition_data".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_demo_condition_data) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_demo_error_data_multi".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP, _>(C_demo_error_data_multi) }),
+        numArgs: 4,
+    },
+    R_CallMethodDef {
+        name: c"C_demo_error_data_scalar".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_demo_error_data_scalar) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_demo_error_data_vector".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_demo_error_data_vector) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
         name: c"C_demo_error_custom_class".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_demo_error_custom_class) }),
         numArgs: 3,
@@ -6899,6 +6936,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     R_CallMethodDef {
         name: c"C_gc_stress_factor_labels".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_factor_labels) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_gc_stress_condition_data".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_condition_data) }),
         numArgs: 1,
     },
     R_CallMethodDef {

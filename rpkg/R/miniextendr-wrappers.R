@@ -17,14 +17,27 @@
   .msg <- .val$error
   .call <- (if (is.null(.val$call)) .call_default else .val$call)
   .class <- .val$class
+  # `.val$data` is an optional named list of structured fields (from the
+  # macros' `data = ...` form). When present, splice its named elements into
+  # the condition object alongside message/call/kind so handlers can read
+  # `e$<name>`. `utils::modifyList` keeps the base fields and appends the
+  # data fields; a malformed (non-list / unnamed) payload is ignored.
+  .data <- .val$data
+  .cond_fields <- function(base) {
+    if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
+      base
+    } else {
+      utils::modifyList(base, .data)
+    }
+  }
   switch(.val$kind,
-    error = stop(structure(list(message = .msg, call = .call, kind = "error"),
+    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = "error")),
       class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-    warning = warning(structure(list(message = .msg, call = .call, kind = "warning"),
+    warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = "warning")),
       class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))),
-    message = message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),
+    message = message(structure(.cond_fields(list(message = paste0(.msg, "\n"), call = NULL, kind = "message")),
       class = c(.class, "rust_message", "simpleMessage", "message", "condition"))),
-    condition = signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),
+    condition = signalCondition(structure(.cond_fields(list(message = .msg, call = .call, kind = "condition")),
       class = c(.class, "rust_condition", "simpleCondition", "condition"))),
     panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),
       class = c("rust_error", "simpleError", "error", "condition"))),
@@ -7337,8 +7350,8 @@ OptsTarget$new <- function(v) {
 #' @export
 `[[.OptsTarget` <- `$.OptsTarget`
 
-# Generated from Rust impl `VctrsRaiser` (condition_class_system_tests.rs:324:10)
-# VctrsRaiser::new (328:16)
+# Generated from Rust impl `VctrsRaiser` (condition_class_system_tests.rs:327:10)
+# VctrsRaiser::new (331:16)
 #' @name VctrsRaiser
 #' @rdname VctrsRaiser
 #' @title Vctrs ctors return vector payload (not Self) — vctrs::new_vctr wraps it
@@ -7375,7 +7388,7 @@ vec_ptype2.VctrsRaiser.VctrsRaiser <- function(x, y, ...) vctrs::new_vctr(double
 #' @export
 vec_cast.VctrsRaiser.VctrsRaiser <- function(x, to, ...) x
 
-# VctrsRaiser::vctrs_raise_error (334:16)
+# VctrsRaiser::vctrs_raise_error (337:16)
 #' @param values The vctrs payload (unused; receiver stand-in for the S3 object).
 #' @param msg Error message.
 #' @name vctrsraiser_vctrs_raise_error
@@ -7392,7 +7405,7 @@ vctrsraiser_vctrs_raise_error <- function(values, msg) {
   .val
 }
 
-# VctrsRaiser::vctrs_raise_error_classed (341:16)
+# VctrsRaiser::vctrs_raise_error_classed (344:16)
 #' @param values The vctrs payload (unused).
 #' @param class Custom condition class.
 #' @param msg Error message.
@@ -7412,7 +7425,7 @@ vctrsraiser_vctrs_raise_error_classed <- function(values, class, msg) {
   .val
 }
 
-# VctrsRaiser::vctrs_raise_warning (347:16)
+# VctrsRaiser::vctrs_raise_warning (350:16)
 #' @param values The vctrs payload (unused).
 #' @param msg Warning message.
 #' @name vctrsraiser_vctrs_raise_warning
@@ -7429,7 +7442,7 @@ vctrsraiser_vctrs_raise_warning <- function(values, msg) {
   .val
 }
 
-# VctrsRaiser::vctrs_raise_warning_classed (354:16)
+# VctrsRaiser::vctrs_raise_warning_classed (357:16)
 #' @param values The vctrs payload (unused).
 #' @param class Custom condition class.
 #' @param msg Warning message.
@@ -7449,7 +7462,7 @@ vctrsraiser_vctrs_raise_warning_classed <- function(values, class, msg) {
   .val
 }
 
-# VctrsRaiser::vctrs_raise_message (360:16)
+# VctrsRaiser::vctrs_raise_message (363:16)
 #' @param values The vctrs payload (unused).
 #' @param msg Message text.
 #' @name vctrsraiser_vctrs_raise_message
@@ -7466,7 +7479,7 @@ vctrsraiser_vctrs_raise_message <- function(values, msg) {
   .val
 }
 
-# VctrsRaiser::vctrs_raise_condition (366:16)
+# VctrsRaiser::vctrs_raise_condition (369:16)
 #' @param values The vctrs payload (unused).
 #' @param msg Condition message.
 #' @name vctrsraiser_vctrs_raise_condition
@@ -7483,7 +7496,7 @@ vctrsraiser_vctrs_raise_condition <- function(values, msg) {
   .val
 }
 
-# VctrsRaiser::vctrs_raise_condition_classed (373:16)
+# VctrsRaiser::vctrs_raise_condition_classed (376:16)
 #' @param values The vctrs payload (unused).
 #' @param class Custom condition class.
 #' @param msg Condition message.
@@ -7503,7 +7516,7 @@ vctrsraiser_vctrs_raise_condition_classed <- function(values, class, msg) {
   .val
 }
 
-# VctrsRaiser::format_vctrsraiser (394:16)
+# VctrsRaiser::format_vctrsraiser (397:16)
 #' @title vctrs protocol override — emits `format.VctrsRaiser(x, ...)` for S3 dispatch via `UseMethod("format")`
 #' @description The argument is named `x` (not `values`) so the generated S3 method signature `format.VctrsRaiser(x, ...)` matches the base S3 generic `format(x, ...)` — otherwise `R CMD check` raises an S3 generic/method consistency WARNING.
 #' @param x The vctrs payload (unused; receiver stand-in for the S3 object).
@@ -7520,7 +7533,7 @@ format.VctrsRaiser <- function(x, ...) {
   .val
 }
 
-# Generated from Rust impl `R6Raiser` (condition_class_system_tests.rs:55:6)
+# Generated from Rust impl `R6Raiser` (condition_class_system_tests.rs:58:6)
 #' @title R6Raiser R6 Class
 #' @name R6Raiser
 #' @rdname R6Raiser
@@ -7530,7 +7543,7 @@ format.VctrsRaiser <- function(x, ...) {
 #' @export
 R6Raiser <- R6::R6Class("R6Raiser",
   public = list(
-    # R6Raiser::new (56:12)
+    # R6Raiser::new (59:12)
     #' @description Create a new `R6Raiser`.
     #' @param id (no documentation available)
     initialize = function(id, .ptr = NULL) {
@@ -7548,14 +7561,14 @@ R6Raiser <- R6::R6Class("R6Raiser",
         private$.ptr <- .val
       }
     },
-    # R6Raiser::id (60:12)
+    # R6Raiser::id (63:12)
     #' @description Method `id`.
     id = function() {
       .val <- .Call(C_R6Raiser__id, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # R6Raiser::raise_error (64:12)
+    # R6Raiser::raise_error (67:12)
     #' @description Method `raise_error`.
     #' @param msg (no documentation available)
     raise_error = function(msg) {
@@ -7567,7 +7580,7 @@ R6Raiser <- R6::R6Class("R6Raiser",
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # R6Raiser::raise_error_classed (68:12)
+    # R6Raiser::raise_error_classed (71:12)
     #' @description Method `raise_error_classed`.
     #' @param class (no documentation available)
     #' @param msg (no documentation available)
@@ -7582,7 +7595,7 @@ R6Raiser <- R6::R6Class("R6Raiser",
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # R6Raiser::raise_warning (72:12)
+    # R6Raiser::raise_warning (75:12)
     #' @description Method `raise_warning`.
     #' @param msg (no documentation available)
     raise_warning = function(msg) {
@@ -7594,7 +7607,7 @@ R6Raiser <- R6::R6Class("R6Raiser",
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # R6Raiser::raise_warning_classed (76:12)
+    # R6Raiser::raise_warning_classed (79:12)
     #' @description Method `raise_warning_classed`.
     #' @param class (no documentation available)
     #' @param msg (no documentation available)
@@ -7609,7 +7622,7 @@ R6Raiser <- R6::R6Class("R6Raiser",
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # R6Raiser::raise_message (80:12)
+    # R6Raiser::raise_message (83:12)
     #' @description Method `raise_message`.
     #' @param msg (no documentation available)
     raise_message = function(msg) {
@@ -7621,7 +7634,7 @@ R6Raiser <- R6::R6Class("R6Raiser",
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # R6Raiser::raise_condition (84:12)
+    # R6Raiser::raise_condition (87:12)
     #' @description Method `raise_condition`.
     #' @param msg (no documentation available)
     raise_condition = function(msg) {
@@ -7633,7 +7646,7 @@ R6Raiser <- R6::R6Class("R6Raiser",
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
-    # R6Raiser::raise_condition_classed (88:12)
+    # R6Raiser::raise_condition_classed (91:12)
     #' @description Method `raise_condition_classed`.
     #' @param class (no documentation available)
     #' @param msg (no documentation available)
@@ -7657,8 +7670,8 @@ R6Raiser <- R6::R6Class("R6Raiser",
   cloneable = FALSE
 )
 
-# Generated from Rust impl `S3Raiser` (condition_class_system_tests.rs:103:6)
-# S3Raiser::new (105:12)
+# Generated from Rust impl `S3Raiser` (condition_class_system_tests.rs:106:6)
+# S3Raiser::new (108:12)
 #' @title S3Raiser S3 Class
 #' @name S3Raiser
 #' @rdname S3Raiser
@@ -7675,7 +7688,7 @@ new_s3raiser <- function(id) {
   structure(.val, class = "S3Raiser")
 }
 
-# S3Raiser::s3_id (109:12)
+# S3Raiser::s3_id (112:12)
 #' @title S3 generic for `s3_id`
 #' @description S3 generic for `s3_id`
 #' @name s3_id.S3Raiser
@@ -7700,7 +7713,7 @@ s3_id.S3Raiser <- function(x, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_error (113:12)
+# S3Raiser::s3_raise_error (116:12)
 #' @title S3 generic for `s3_raise_error`
 #' @description S3 generic for `s3_raise_error`
 #' @name s3_raise_error.S3Raiser
@@ -7730,7 +7743,7 @@ s3_raise_error.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_error_classed (117:12)
+# S3Raiser::s3_raise_error_classed (120:12)
 #' @title S3 generic for `s3_raise_error_classed`
 #' @description S3 generic for `s3_raise_error_classed`
 #' @name s3_raise_error_classed.S3Raiser
@@ -7763,7 +7776,7 @@ s3_raise_error_classed.S3Raiser <- function(x, class, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_warning (121:12)
+# S3Raiser::s3_raise_warning (124:12)
 #' @title S3 generic for `s3_raise_warning`
 #' @description S3 generic for `s3_raise_warning`
 #' @name s3_raise_warning.S3Raiser
@@ -7793,7 +7806,7 @@ s3_raise_warning.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_warning_classed (125:12)
+# S3Raiser::s3_raise_warning_classed (128:12)
 #' @title S3 generic for `s3_raise_warning_classed`
 #' @description S3 generic for `s3_raise_warning_classed`
 #' @name s3_raise_warning_classed.S3Raiser
@@ -7826,7 +7839,7 @@ s3_raise_warning_classed.S3Raiser <- function(x, class, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_message (129:12)
+# S3Raiser::s3_raise_message (132:12)
 #' @title S3 generic for `s3_raise_message`
 #' @description S3 generic for `s3_raise_message`
 #' @name s3_raise_message.S3Raiser
@@ -7856,7 +7869,7 @@ s3_raise_message.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_condition (133:12)
+# S3Raiser::s3_raise_condition (136:12)
 #' @title S3 generic for `s3_raise_condition`
 #' @description S3 generic for `s3_raise_condition`
 #' @name s3_raise_condition.S3Raiser
@@ -7886,7 +7899,7 @@ s3_raise_condition.S3Raiser <- function(x, msg, ...) {
   .val
 }
 
-# S3Raiser::s3_raise_condition_classed (137:12)
+# S3Raiser::s3_raise_condition_classed (140:12)
 #' @title S3 generic for `s3_raise_condition_classed`
 #' @description S3 generic for `s3_raise_condition_classed`
 #' @name s3_raise_condition_classed.S3Raiser
@@ -7924,7 +7937,7 @@ S3Raiser <- new.env(parent = emptyenv())
 
 S3Raiser$new <- new_s3raiser
 
-# Generated from Rust impl `S4Raiser` (condition_class_system_tests.rs:157:6)
+# Generated from Rust impl `S4Raiser` (condition_class_system_tests.rs:160:6)
 #' @title S4Raiser S4 Class
 #' @name S4Raiser
 #' @rdname S4Raiser
@@ -7934,7 +7947,7 @@ S3Raiser$new <- new_s3raiser
 #' @slot ptr External pointer to Rust `S4Raiser` struct
 methods::setClass("S4Raiser", slots = c(ptr = "externalptr"))
 
-# S4Raiser::new (158:12)
+# S4Raiser::new (161:12)
 #' @param id (undocumented)
 #' @name S4Raiser
 #' @rdname S4Raiser
@@ -7949,7 +7962,7 @@ S4Raiser <- function(id) {
   methods::new("S4Raiser", ptr = .val)
 }
 
-# S4Raiser::id (162:12)
+# S4Raiser::id (165:12)
 #' @name S4Raiser-s4_id
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_id`
@@ -7961,7 +7974,7 @@ methods::setMethod("s4_id", "S4Raiser", function(x, ...) {
   .val
 })
 
-# S4Raiser::raise_error (166:12)
+# S4Raiser::raise_error (169:12)
 #' @name S4Raiser-s4_raise_error
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_error`
@@ -7977,7 +7990,7 @@ methods::setMethod("s4_raise_error", "S4Raiser", function(x, msg, ...) {
   .val
 })
 
-# S4Raiser::raise_error_classed (170:12)
+# S4Raiser::raise_error_classed (173:12)
 #' @name S4Raiser-s4_raise_error_classed
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_error_classed`
@@ -7995,7 +8008,7 @@ methods::setMethod("s4_raise_error_classed", "S4Raiser", function(x, class, msg,
   .val
 })
 
-# S4Raiser::raise_warning (174:12)
+# S4Raiser::raise_warning (177:12)
 #' @name S4Raiser-s4_raise_warning
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_warning`
@@ -8011,7 +8024,7 @@ methods::setMethod("s4_raise_warning", "S4Raiser", function(x, msg, ...) {
   .val
 })
 
-# S4Raiser::raise_warning_classed (178:12)
+# S4Raiser::raise_warning_classed (181:12)
 #' @name S4Raiser-s4_raise_warning_classed
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_warning_classed`
@@ -8029,7 +8042,7 @@ methods::setMethod("s4_raise_warning_classed", "S4Raiser", function(x, class, ms
   .val
 })
 
-# S4Raiser::raise_message (182:12)
+# S4Raiser::raise_message (185:12)
 #' @name S4Raiser-s4_raise_message
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_message`
@@ -8045,7 +8058,7 @@ methods::setMethod("s4_raise_message", "S4Raiser", function(x, msg, ...) {
   .val
 })
 
-# S4Raiser::raise_condition (186:12)
+# S4Raiser::raise_condition (189:12)
 #' @name S4Raiser-s4_raise_condition
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_condition`
@@ -8061,7 +8074,7 @@ methods::setMethod("s4_raise_condition", "S4Raiser", function(x, msg, ...) {
   .val
 })
 
-# S4Raiser::raise_condition_classed (190:12)
+# S4Raiser::raise_condition_classed (193:12)
 #' @name S4Raiser-s4_raise_condition_classed
 #' @rdname S4Raiser
 #' @source Generated by miniextendr from `S4Raiser::s4_raise_condition_classed`
@@ -8079,7 +8092,7 @@ methods::setMethod("s4_raise_condition_classed", "S4Raiser", function(x, class, 
   .val
 })
 
-# Generated from Rust impl `S7Raiser` (condition_class_system_tests.rs:205:6)
+# Generated from Rust impl `S7Raiser` (condition_class_system_tests.rs:208:6)
 #' @title S7Raiser S7 Class
 #' @name S7Raiser
 #' @rdname S7Raiser
@@ -8109,7 +8122,7 @@ S7Raiser <- S7::new_class("S7Raiser",
   }
 )
 
-# S7Raiser::s7_id (210:12)
+# S7Raiser::s7_id (213:12)
 #' @name S7Raiser-s7_id
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_id`
@@ -8140,7 +8153,7 @@ S7Raiser_s7_id <- function(self, ...) {
   .val
 }
 
-# S7Raiser::s7_raise_error (214:12)
+# S7Raiser::s7_raise_error (217:12)
 #' @name S7Raiser-s7_raise_error
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_error`
@@ -8180,7 +8193,7 @@ S7Raiser_s7_raise_error <- function(self, msg, ...) {
   .val
 }
 
-# S7Raiser::s7_raise_error_classed (218:12)
+# S7Raiser::s7_raise_error_classed (221:12)
 #' @name S7Raiser-s7_raise_error_classed
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_error_classed`
@@ -8225,7 +8238,7 @@ S7Raiser_s7_raise_error_classed <- function(self, class, msg, ...) {
   .val
 }
 
-# S7Raiser::s7_raise_warning (222:12)
+# S7Raiser::s7_raise_warning (225:12)
 #' @name S7Raiser-s7_raise_warning
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_warning`
@@ -8265,7 +8278,7 @@ S7Raiser_s7_raise_warning <- function(self, msg, ...) {
   .val
 }
 
-# S7Raiser::s7_raise_warning_classed (226:12)
+# S7Raiser::s7_raise_warning_classed (229:12)
 #' @name S7Raiser-s7_raise_warning_classed
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_warning_classed`
@@ -8310,7 +8323,7 @@ S7Raiser_s7_raise_warning_classed <- function(self, class, msg, ...) {
   .val
 }
 
-# S7Raiser::s7_raise_message (230:12)
+# S7Raiser::s7_raise_message (233:12)
 #' @name S7Raiser-s7_raise_message
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_message`
@@ -8350,7 +8363,7 @@ S7Raiser_s7_raise_message <- function(self, msg, ...) {
   .val
 }
 
-# S7Raiser::s7_raise_condition (234:12)
+# S7Raiser::s7_raise_condition (237:12)
 #' @name S7Raiser-s7_raise_condition
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_condition`
@@ -8390,7 +8403,7 @@ S7Raiser_s7_raise_condition <- function(self, msg, ...) {
   .val
 }
 
-# S7Raiser::s7_raise_condition_classed (238:12)
+# S7Raiser::s7_raise_condition_classed (241:12)
 #' @name S7Raiser-s7_raise_condition_classed
 #' @rdname S7Raiser
 #' @source Generated by miniextendr from `S7Raiser::s7_raise_condition_classed`
@@ -8435,7 +8448,7 @@ S7Raiser_s7_raise_condition_classed <- function(self, class, msg, ...) {
   .val
 }
 
-# Generated from Rust impl `EnvRaiser` (condition_class_system_tests.rs:253:6)
+# Generated from Rust impl `EnvRaiser` (condition_class_system_tests.rs:256:6)
 #' @title EnvRaiser  Class
 #' @name EnvRaiser
 #' @rdname EnvRaiser
@@ -8443,7 +8456,7 @@ S7Raiser_s7_raise_condition_classed <- function(self, class, msg, ...) {
 #' @export
 EnvRaiser <- new.env(parent = emptyenv())
 
-# EnvRaiser::new (254:12)
+# EnvRaiser::new (257:12)
 #' @name EnvRaiser$new
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::new`
@@ -8459,7 +8472,7 @@ EnvRaiser$new <- function(id) {
   self
 }
 
-# EnvRaiser::env_id (258:12)
+# EnvRaiser::env_id (261:12)
 #' @name EnvRaiser$env_id
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_id`
@@ -8469,7 +8482,7 @@ EnvRaiser$env_id <- function() {
   .val
 }
 
-# EnvRaiser::env_raise_error (262:12)
+# EnvRaiser::env_raise_error (265:12)
 #' @name EnvRaiser$env_raise_error
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_error`
@@ -8483,7 +8496,7 @@ EnvRaiser$env_raise_error <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_error_classed (266:12)
+# EnvRaiser::env_raise_error_classed (269:12)
 #' @name EnvRaiser$env_raise_error_classed
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_error_classed`
@@ -8499,7 +8512,7 @@ EnvRaiser$env_raise_error_classed <- function(class, msg) {
   .val
 }
 
-# EnvRaiser::env_raise_warning (270:12)
+# EnvRaiser::env_raise_warning (273:12)
 #' @name EnvRaiser$env_raise_warning
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_warning`
@@ -8513,7 +8526,7 @@ EnvRaiser$env_raise_warning <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_warning_classed (274:12)
+# EnvRaiser::env_raise_warning_classed (277:12)
 #' @name EnvRaiser$env_raise_warning_classed
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_warning_classed`
@@ -8529,7 +8542,7 @@ EnvRaiser$env_raise_warning_classed <- function(class, msg) {
   .val
 }
 
-# EnvRaiser::env_raise_message (278:12)
+# EnvRaiser::env_raise_message (281:12)
 #' @name EnvRaiser$env_raise_message
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_message`
@@ -8543,7 +8556,7 @@ EnvRaiser$env_raise_message <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_condition (282:12)
+# EnvRaiser::env_raise_condition (285:12)
 #' @name EnvRaiser$env_raise_condition
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_condition`
@@ -8557,7 +8570,7 @@ EnvRaiser$env_raise_condition <- function(msg) {
   .val
 }
 
-# EnvRaiser::env_raise_condition_classed (286:12)
+# EnvRaiser::env_raise_condition_classed (289:12)
 #' @name EnvRaiser$env_raise_condition_classed
 #' @rdname EnvRaiser
 #' @source Generated by miniextendr from `EnvRaiser::env_raise_condition_classed`
@@ -16347,7 +16360,7 @@ demo_error <- function(msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `demo_message` (condition_demo.rs:67:8)
+# Generated from Rust fn `demo_message` (condition_demo.rs:69:8)
 #' @title Emit a rust_message
 #' @rdname condition_demo
 #' @export
@@ -16363,7 +16376,7 @@ demo_message <- function(msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `demo_warning` (condition_demo.rs:44:8)
+# Generated from Rust fn `demo_warning` (condition_demo.rs:45:8)
 #' @title Raise a rust_warning
 #' @rdname condition_demo
 #' @export
@@ -16379,7 +16392,7 @@ demo_warning <- function(msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `demo_condition` (condition_demo.rs:79:8)
+# Generated from Rust fn `demo_condition` (condition_demo.rs:81:8)
 #' @title Signal a generic rust_condition (no-op if unhandled)
 #' @rdname condition_demo
 #' @export
@@ -16391,6 +16404,107 @@ demo_condition <- function(msg) {
     "'msg' must have length 1" = length(msg) == 1L
   )
   .val <- .Call(C_demo_condition, .call = match.call(), msg)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `demo_message_data` (condition_demo.rs:163:8)
+#' @title Emit a message carrying structured data
+#' @rdname condition_demo
+#' @export
+#' @param step (no documentation available)
+#' @source Generated by miniextendr from Rust fn `demo_message_data`
+demo_message_data <- function(step) {
+  stopifnot(
+    "'step' must be numeric, logical, or raw" = is.numeric(step) || is.logical(step) || is.raw(step),
+    "'step' must have length 1" = length(step) == 1L
+  )
+  .val <- .Call(C_demo_message_data, .call = match.call(), step)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `demo_warning_data` (condition_demo.rs:151:8)
+#' @title Raise a classed warning carrying structured data
+#' @rdname condition_demo
+#' @export
+#' @param count (no documentation available)
+#' @source Generated by miniextendr from Rust fn `demo_warning_data`
+demo_warning_data <- function(count) {
+  stopifnot(
+    "'count' must be numeric, logical, or raw" = is.numeric(count) || is.logical(count) || is.raw(count),
+    "'count' must have length 1" = length(count) == 1L
+  )
+  .val <- .Call(C_demo_warning_data, .call = match.call(), count)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `demo_condition_data` (condition_demo.rs:171:8)
+#' @title Signal a classed condition carrying structured data
+#' @rdname condition_demo
+#' @export
+#' @param n (no documentation available)
+#' @source Generated by miniextendr from Rust fn `demo_condition_data`
+demo_condition_data <- function(n) {
+  stopifnot(
+    "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
+    "'n' must have length 1" = length(n) == 1L
+  )
+  .val <- .Call(C_demo_condition_data, .call = match.call(), n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `demo_error_data_multi` (condition_demo.rs:122:8)
+#' @title Raise a classed error carrying several heterogeneous scalar fields
+#' @description Demonstrates the bracketed `data = [(..), (..)]` form with mixed value types: integer, double, logical, and character.
+#' @rdname condition_demo
+#' @export
+#' @param value (no documentation available)
+#' @param code (no documentation available)
+#' @param label (no documentation available)
+#' @source Generated by miniextendr from Rust fn `demo_error_data_multi`
+demo_error_data_multi <- function(value, code, label) {
+  stopifnot(
+    "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+    "'value' must have length 1" = length(value) == 1L,
+    "'code' must be numeric, logical, or raw" = is.numeric(code) || is.logical(code) || is.raw(code),
+    "'code' must have length 1" = length(code) == 1L,
+    "'label' must be character" = is.character(label),
+    "'label' must have length 1" = length(label) == 1L
+  )
+  .val <- .Call(C_demo_error_data_multi, .call = match.call(), value, code, label)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `demo_error_data_scalar` (condition_demo.rs:107:8)
+#' @title Raise a classed error carrying a single structured field (`value`)
+#' @description Handlers can read `e$value` instead of parsing the message string.
+#' @rdname condition_demo
+#' @export
+#' @param value (no documentation available)
+#' @source Generated by miniextendr from Rust fn `demo_error_data_scalar`
+demo_error_data_scalar <- function(value) {
+  stopifnot(
+    "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+    "'value' must have length 1" = length(value) == 1L
+  )
+  .val <- .Call(C_demo_error_data_scalar, .call = match.call(), value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `demo_error_data_vector` (condition_demo.rs:139:8)
+#' @title Raise a classed error whose data field is a vector
+#' @rdname condition_demo
+#' @export
+#' @param values (no documentation available)
+#' @source Generated by miniextendr from Rust fn `demo_error_data_vector`
+demo_error_data_vector <- function(values) {
+  stopifnot("'values' must be an integer vector" = is.integer(values))
+  .val <- .Call(C_demo_error_data_vector, .call = match.call(), values)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   invisible(.val)
 }
@@ -16414,7 +16528,7 @@ demo_error_custom_class <- function(class, msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `demo_warning_custom_class` (condition_demo.rs:52:8)
+# Generated from Rust fn `demo_warning_custom_class` (condition_demo.rs:53:8)
 #' @title Raise a rust_warning with a custom class prepended
 #' @rdname condition_demo
 #' @export
@@ -16433,7 +16547,7 @@ demo_warning_custom_class <- function(class, msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `demo_condition_custom_class` (condition_demo.rs:87:8)
+# Generated from Rust fn `demo_condition_custom_class` (condition_demo.rs:89:8)
 #' @title Signal a rust_condition with a custom class
 #' @rdname condition_demo
 #' @export
@@ -20349,6 +20463,17 @@ gc_stress_factor_labels <- function() {
   .val <- .Call(C_gc_stress_factor_labels, .call = match.call())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
+}
+
+# Generated from Rust fn `gc_stress_condition_data` (gc_stress_fixtures.rs:2173:8)
+#' @title gc stress fixtures
+#' @rdname gc_stress_fixtures
+#' @source Generated by miniextendr from Rust fn `gc_stress_condition_data`
+#' @export
+gc_stress_condition_data <- function() {
+  .val <- .Call(C_gc_stress_condition_data, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
 }
 
 # Generated from Rust fn `gc_stress_jiff_zoned_vec` (gc_stress_fixtures.rs:417:8)
@@ -24671,7 +24796,7 @@ lazy_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `altrep_warn_on_elt` (altrep_condition_tests.rs:199:8)
+# Generated from Rust fn `altrep_warn_on_elt` (altrep_condition_tests.rs:200:8)
 #' @title Create an ALTREP integer that calls `warning!()` on element access
 #' @description In ALTREP RUnwind context the warning cannot suspend — it is degraded to a `rust_error` with a fixed diagnostic message.
 #' @param n Length of the vector.
@@ -24713,7 +24838,7 @@ altrep_panic_on_elt <- function(n, message) {
   .val
 }
 
-# Generated from Rust fn `altrep_message_on_elt` (altrep_condition_tests.rs:235:8)
+# Generated from Rust fn `altrep_message_on_elt` (altrep_condition_tests.rs:236:8)
 #' @title Create an ALTREP integer that calls `message!()` on element access
 #' @description Same degradation as `altrep_warn_on_elt`.
 #' @param n Length of the vector.
@@ -24734,7 +24859,7 @@ altrep_message_on_elt <- function(n, message) {
   .val
 }
 
-# Generated from Rust fn `altrep_panic_at_index` (altrep_condition_tests.rs:152:8)
+# Generated from Rust fn `altrep_panic_at_index` (altrep_condition_tests.rs:153:8)
 #' @title Create an ALTREP integer that panics on element `panic_at` (0-indexed)
 #' @description Used to stress-test ALTREP re-entry safety when `raise_rust_condition_via_stop` fires `Rf_eval(stop(...))` from within an ALTREP callback.
 #' @param n Length of the vector.
@@ -24755,7 +24880,7 @@ altrep_panic_at_index <- function(n, panic_at) {
   .val
 }
 
-# Generated from Rust fn `altrep_condition_on_elt` (altrep_condition_tests.rs:271:8)
+# Generated from Rust fn `altrep_condition_on_elt` (altrep_condition_tests.rs:272:8)
 #' @title Create an ALTREP integer that calls `condition!()` on element access
 #' @description Same degradation as `altrep_warn_on_elt`.
 #' @param n Length of the vector.
@@ -24776,7 +24901,7 @@ altrep_condition_on_elt <- function(n, message) {
   .val
 }
 
-# Generated from Rust fn `altrep_classed_error_on_elt` (altrep_condition_tests.rs:103:8)
+# Generated from Rust fn `altrep_classed_error_on_elt` (altrep_condition_tests.rs:104:8)
 #' @title Create an ALTREP integer that raises `error!(class = ..., ...)` on element access
 #' @description Accessing any element will raise a classed R error — catchable via `tryCatch(x[1L], altrep_specific = function(e) e)` or `tryCatch(x[1L], rust_error = function(e) e)`.
 #' @param n Length of the vector.
@@ -27351,7 +27476,7 @@ vec_complex_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `condition_error_empty` (condition_class_system_tests.rs:428:8)
+# Generated from Rust fn `condition_error_empty` (condition_class_system_tests.rs:431:8)
 #' @title condition class system tests
 #' @rdname condition_class_system_tests
 #' @source Generated by miniextendr from Rust fn `condition_error_empty`
@@ -27362,7 +27487,7 @@ condition_error_empty <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `condition_error_unicode` (condition_class_system_tests.rs:422:8)
+# Generated from Rust fn `condition_error_unicode` (condition_class_system_tests.rs:425:8)
 #' @title condition class system tests
 #' @rdname condition_class_system_tests
 #' @source Generated by miniextendr from Rust fn `condition_error_unicode`
@@ -27373,7 +27498,7 @@ condition_error_unicode <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `condition_error_long_message` (condition_class_system_tests.rs:413:8)
+# Generated from Rust fn `condition_error_long_message` (condition_class_system_tests.rs:416:8)
 #' @title Long message exercises the `CString` + STRSXP encoding path
 #' @param n_chunks (no documentation available)
 #' @rdname condition_class_system_tests
@@ -27389,7 +27514,7 @@ condition_error_long_message <- function(n_chunks) {
   invisible(.val)
 }
 
-# Generated from Rust fn `condition_panic_with_int_payload` (condition_class_system_tests.rs:407:8)
+# Generated from Rust fn `condition_panic_with_int_payload` (condition_class_system_tests.rs:410:8)
 #' @title condition class system tests
 #' @rdname condition_class_system_tests
 #' @source Generated by miniextendr from Rust fn `condition_panic_with_int_payload`

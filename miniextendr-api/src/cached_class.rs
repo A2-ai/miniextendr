@@ -140,11 +140,13 @@ cached_strsxp!(
 );
 
 cached_strsxp!(
-    /// Cached `c("error", "kind", "class", "call")` names STRSXP for condition values.
+    /// Cached `c("error", "kind", "class", "call", "data")` names STRSXP for
+    /// condition values.
     ///
-    /// Used by `make_rust_condition_value` which writes a 4-element list including
-    /// the optional user-supplied custom class.
-    pub(crate) fn condition_names_sexp() = [c"error", c"kind", c"class", c"call"]
+    /// Used by `make_rust_condition_value` which writes a 5-element list: the
+    /// error message, kind, optional user-supplied custom class, optional R
+    /// call, and an optional named-list `data` payload (`NULL` when absent).
+    pub(crate) fn condition_names_sexp() = [c"error", c"kind", c"class", c"call", c"data"]
 );
 
 // endregion
