@@ -1040,6 +1040,7 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// drift.
 const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
      rng, unwrap_in_r, error_direct, strict, no_strict, \
+     no_preconditions, no_call_attribution, fast, no_fast, \
      internal, noexport, export";
 
 /// Comma-separated list of fn-level nested options, for error messages.
@@ -1060,6 +1061,24 @@ const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
 /// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
 /// - `prefer = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
+/// - `no_preconditions`: drop the R-side `stopifnot(...)` block. `TryFromSexp`
+///   still raises on bad input; the message comes from Rust rather than R.
+///   Saves ~300 ns per assertion (~600 ns per scalar arg, ~1230 ns for a 1-arg
+///   numeric scalar fn). Hot-path opt-in. Opt out with `no_fast` when `fast-default`
+///   is enabled.
+/// - `no_call_attribution`: emit `.call = NULL` instead of `.call = match.call()`
+///   in the generated R wrapper. The error fallback `sys.call()` preserves
+///   wrapper-invocation attribution (positional args instead of named). Saves
+///   ~1200 ns per call regardless of arg count. Note: when combined with
+///   `error_direct`, `conditionCall(e)` is NULL (the direct C path skips the
+///   R-side `.miniextendr_raise_condition` sys.call() fallback).
+/// - `fast`: shorthand for `no_preconditions + no_call_attribution`. The
+///   biggest single-knob wrapper speedup.
+/// - `no_fast`: explicit opt-out of both knobs (useful when `fast-default`
+///   feature is enabled crate-wide to restore full error UX for a specific fn).
+///
+/// See `analysis/scaffolding-deep-findings-2026-05-20.md` for the measurement
+/// underlying these options (~13× speedup possible on the wrapper layer).
 ///
 /// # Note
 ///
@@ -1083,6 +1102,31 @@ pub(crate) struct MiniextendrFnAttrs {
     /// `.miniextendr_raise_condition` re-raise. Warnings/messages/conditions still
     /// fall back to the tagged-SEXP path. Set by `#[miniextendr(error_direct)]`. (#665)
     pub(crate) error_direct: bool,
+    /// Skip emission of the R-side `stopifnot(...)` precondition block.
+    ///
+    /// `TryFromSexp` already raises a typed Rust error on mismatched input,
+    /// so the information isn't lost — just routed through the Rust error
+    /// message rather than R's stopifnot text. Useful for hot paths where the
+    /// per-call precondition cost (~300 ns per assertion, ~600 ns per arg for
+    /// numeric scalars) dominates over actual work.
+    ///
+    /// Set by `#[miniextendr(no_preconditions)]` or implied by `fast`.
+    /// Use `no_fast` to opt out when `fast-default` is enabled.
+    pub(crate) no_preconditions: bool,
+    /// Emit `.call = NULL` instead of `.call = match.call()` in the generated
+    /// R wrapper.
+    ///
+    /// `match.call()` costs ~1200 ns per call (fixed, independent of arg
+    /// count) but is only consulted on the error path by
+    /// `.miniextendr_raise_condition`. When `.call = NULL`, the helper falls
+    /// back to `sys.call()` which surfaces the same wrapper invocation
+    /// (positional args instead of named). Note: combined with `error_direct`,
+    /// `conditionCall(e)` is NULL (the C direct-raise path skips the R-side
+    /// `sys.call()` fallback).
+    ///
+    /// Set by `#[miniextendr(no_call_attribution)]` or implied by `fast`.
+    /// Use `no_fast` to opt out when `fast-default` is enabled.
+    pub(crate) no_call_attribution: bool,
     /// Preferred return conversion: forces `AsList`/`AsExternalPtr`/`AsRNative` wrapping
     /// of the return value before `IntoR::into_sexp` is called.
     pub(crate) return_pref: ReturnPref,
@@ -1226,6 +1270,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut rng = false;
         let mut unwrap_in_r = false;
         let mut error_direct = false;
+        let mut no_preconditions: Option<bool> = None;
+        let mut no_call_attribution: Option<bool> = None;
         let mut return_pref = ReturnPref::Auto;
         let mut s3_generic = None;
         let mut s3_class = None;
@@ -1281,6 +1327,20 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             strict = Some(true);
                         } else if ident == "no_strict" {
                             strict = Some(false);
+                        } else if ident == "no_preconditions" {
+                            no_preconditions = Some(true);
+                        } else if ident == "no_call_attribution" {
+                            no_call_attribution = Some(true);
+                        } else if ident == "fast" {
+                            // Bundle alias: drop the two biggest R-side
+                            // overheads in the generated wrapper.
+                            no_preconditions = Some(true);
+                            no_call_attribution = Some(true);
+                        } else if ident == "no_fast" {
+                            // Explicit opt-out: restore full error UX even when
+                            // `fast-default` feature is enabled crate-wide.
+                            no_preconditions = Some(false);
+                            no_call_attribution = Some(false);
                         } else if ident == "internal" {
                             internal = true;
                         } else if ident == "noexport" {
@@ -1330,6 +1390,16 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 strict = Some(val);
                             } else if ident == "no_strict" {
                                 strict = Some(!val);
+                            } else if ident == "no_preconditions" {
+                                no_preconditions = Some(val);
+                            } else if ident == "no_call_attribution" {
+                                no_call_attribution = Some(val);
+                            } else if ident == "fast" {
+                                no_preconditions = Some(val);
+                                no_call_attribution = Some(val);
+                            } else if ident == "no_fast" {
+                                no_preconditions = Some(!val);
+                                no_call_attribution = Some(!val);
                             } else if ident == "internal" {
                                 internal = val;
                             } else if ident == "noexport" {
@@ -1583,6 +1653,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             rng,
             unwrap_in_r,
             error_direct,
+            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
+            no_call_attribution: no_call_attribution.unwrap_or(cfg!(feature = "fast-default")),
             return_pref,
             s3_generic,
             s3_class,

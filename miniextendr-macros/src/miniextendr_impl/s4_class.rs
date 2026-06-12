@@ -144,7 +144,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // `params`/`instance_formals` carry the `c("a", "b")` default for
         // match_arg'd params, and `match_arg_prelude()` emits the
         // `base::match.arg()` validation block injected below.
-        let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
+        let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_fast_flags(
+            parsed_impl.no_preconditions,
+            parsed_impl.no_call_attribution,
+        );
         let call = ctx.instance_call("x@ptr");
         let full_params = ctx.instance_formals(true);
 

@@ -127,6 +127,9 @@ s7-default = ["miniextendr-macros/s7-default"]
 ## Without this feature, worker APIs are lightweight inline stubs.
 worker-thread = []
 worker-default = ["miniextendr-macros/worker-default", "worker-thread"]
+## Enable fast-path knobs by default crate-wide. Forwards to miniextendr-macros/fast-default.
+## Orthogonal to strict-default and coerce-default (not a mutex pair).
+fast-default = ["miniextendr-macros/fast-default"]
 ## Enable debug instrumentation for tracking collection growth events.
 ## Provides track_growth! and report_growth! macros for diagnosing unexpected
 ## Vec/arena reallocations. Zero-cost (no-ops) when disabled.
@@ -145,9 +148,10 @@ refcount-fast-hash = ["dep:ahash"]
 # `compile_error!` in miniextendr-macros fires if both are enabled (#676/#710).
 # This is exactly why `--all-features` can't be used. `full-codegen` therefore
 # picks exactly ONE side of that pair (`r6-default`); to lint the `s7-default`
-# side, run a second invocation swapping the two. (`strict-default` and
-# `coerce-default` are NOT a mutex pair — they're orthogonal, see
-# docs/FEATURE_DEFAULTS.md — so both live in `full-codegen` together.)
+# side, run a second invocation swapping the two. (`strict-default`,
+# `coerce-default`, and `fast-default` are NOT mutex pairs — they are
+# orthogonal, see docs/FEATURE_DEFAULTS.md — so all three live in
+# `full-codegen` together.)
 
 ## Every optional integration crate (the "dep:" features). Heavy deps like
 ## arrow/datafusion/log live here; CI's `clippy_all` enables a curated subset.
@@ -167,7 +171,7 @@ full-integrations = [
 ## refcount-arena hasher knob). This whole set compiles together — it is
 ## the unit CI's `clippy_all` derives.
 full-codegen = [
-    "strict-default", "coerce-default", "r6-default", "worker-default",
+    "strict-default", "coerce-default", "fast-default", "r6-default", "worker-default",
     "nonapi", "connections", "indicatif", "refcount-fast-hash",
 ]
 
