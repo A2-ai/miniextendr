@@ -209,11 +209,6 @@ pub struct FileData {
     /// `#[miniextendr]` functions or impl blocks that carry explicit lifetime params.
     /// Each entry is `(name, line)` where `name` is the function or type name.
     pub lifetime_param_items: Vec<(String, usize)>,
-
-    // Interleaved doc/non-doc attributes lint (MXL302)
-    /// `#[miniextendr]` items where a non-doc attribute interrupts a doc-comment stream.
-    /// Each entry is `(item_name, line_of_interrupting_attr)`.
-    pub interleaved_doc_attrs: Vec<(String, usize)>,
 }
 // endregion
 
@@ -529,11 +524,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 if has_lifetime {
                     data.lifetime_param_items.push((name.clone(), line));
                 }
-
-                // Detect interleaved doc/non-doc attributes for MXL302
-                if let Some(interrupt_line) = find_interleaved_doc_attr(&item_fn.attrs) {
-                    data.interleaved_doc_attrs.push((name, interrupt_line));
-                }
             }
             Item::Struct(item_struct) => {
                 let is_miniextendr_altrep =
@@ -583,27 +573,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                     if impl_has_lifetime && let Some(type_name) = impl_type_name(&item_impl.self_ty)
                     {
                         data.lifetime_param_items.push((type_name, line));
-                    }
-
-                    // Detect interleaved doc/non-doc attributes for MXL302 (impl-level)
-                    if let Some(type_name) = impl_type_name(&item_impl.self_ty) {
-                        if let Some(interrupt_line) = find_interleaved_doc_attr(&item_impl.attrs) {
-                            data.interleaved_doc_attrs
-                                .push((type_name.clone(), interrupt_line));
-                        }
-                        // Also check individual methods within the impl
-                        for impl_item in &item_impl.items {
-                            if let syn::ImplItem::Fn(method) = impl_item
-                                && let Some(interrupt_line) =
-                                    find_interleaved_doc_attr(&method.attrs)
-                            {
-                                let method_name = method.sig.ident.to_string();
-                                data.interleaved_doc_attrs.push((
-                                    format!("{}::{}", type_name, method_name),
-                                    interrupt_line,
-                                ));
-                            }
-                        }
                     }
 
                     match impl_type_name(&item_impl.self_ty) {
@@ -924,37 +893,4 @@ fn scan_rf_error_calls(lines: &[&str], data: &mut FileData) {
         }
     }
 }
-// endregion
-
-// region: MXL302 — interleaved doc/non-doc attribute detection
-
-/// Returns the 1-based line number of the first non-doc attribute that interrupts
-/// a doc-comment stream, or `None` if no such interruption exists.
-///
-/// An interruption is: at least one `#[doc = ...]` attr has been seen, then a
-/// non-doc attribute appears, then at least one more `#[doc = ...]` attr follows.
-fn find_interleaved_doc_attr(attrs: &[syn::Attribute]) -> Option<usize> {
-    use syn::spanned::Spanned;
-
-    let mut saw_doc = false;
-    let mut interrupting_attr: Option<usize> = None;
-
-    for attr in attrs {
-        if attr.path().is_ident("doc") {
-            if interrupting_attr.is_some() {
-                // We saw doc, then non-doc, now doc again — confirmed interruption
-                return interrupting_attr;
-            }
-            saw_doc = true;
-        } else if saw_doc && interrupting_attr.is_none() {
-            // First non-doc attr after doc content — record but don't fire yet
-            // (only fire if another doc attr follows)
-            let line = attr.span().start().line;
-            interrupting_attr = Some(line);
-        }
-    }
-
-    None
-}
-
 // endregion

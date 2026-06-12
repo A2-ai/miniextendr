@@ -44,14 +44,6 @@ pub enum LintCode {
     MXL300,
     /// `_unchecked` FFI call outside guard context.
     MXL301,
-    /// Non-doc attribute interrupts a doc-comment stream on a `#[miniextendr]` item.
-    ///
-    /// When a `#[cfg(...)]`, `#[deprecated]`, or other non-doc attribute splits two
-    /// `///` runs, trailing prose can be incorrectly concatenated into the preceding
-    /// `@examples` / `@details` / `@return` block, producing corrupted Rd output.
-    /// The macro now resets multiline-continuation context at the interruption point,
-    /// but the warning guides users to move all `///` comments above such attributes.
-    MXL302,
     // endregion
 }
 
@@ -83,8 +75,7 @@ impl LintCode {
             | Self::MXL112
             | Self::MXL203
             | Self::MXL300
-            | Self::MXL301
-            | Self::MXL302 => Severity::Warning,
+            | Self::MXL301 => Severity::Warning,
         }
     }
 }
