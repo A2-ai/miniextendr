@@ -138,6 +138,32 @@ test_that("error_direct: message!() still emits a message (fallback path)", {
 
 # endregion
 
+# region: error carrying data = falls back to the tagged-SEXP path
+
+# The direct C-side stop(structure(...)) raise has no slot for condition data, so
+# an error!() that carries `data =` falls back to the tagged-SEXP path (the same
+# one used without error_direct). These tests prove error_direct does NOT silently
+# drop the data payload — a regression that was latent in the original PR.
+
+test_that("error_direct: data-carrying error preserves e$value (fallback path)", {
+  e <- tryCatch(demo_error_direct_with_data(42L), error = function(e) e)
+  expect_true(inherits(e, "range_error"))
+  expect_equal(e$value, 42L)
+  expect_equal(
+    class(e),
+    c("range_error", "rust_error", "simpleError", "error", "condition")
+  )
+})
+
+test_that("error_direct data error matches the indirect data path", {
+  e_direct <- tryCatch(demo_error_direct_with_data(7L), error = function(e) e)
+  e_indirect <- tryCatch(demo_error_data_scalar(7L), error = function(e) e)
+  expect_equal(class(e_direct), class(e_indirect))
+  expect_equal(e_direct$value, e_indirect$value)
+})
+
+# endregion
+
 # region: no-arg fixture (gctorture sweep target)
 
 test_that("error_direct: no-arg fixture raises a rust_error", {

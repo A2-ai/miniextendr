@@ -49,7 +49,29 @@ pub fn demo_error_direct_custom_class(class: &str, msg: &str) {
     std::panic::panic_any(RCondition::Error {
         message: msg.to_string(),
         class: Some(class.to_string()),
+        data: None,
     });
+}
+
+/// Raise a `rust_error` carrying a structured `data =` field under
+/// `error_direct`.
+///
+/// The direct C-side `stop(structure(...))` raise has no slot for condition
+/// data, so a data-bearing error **falls back to the tagged-SEXP path** — the
+/// same one `demo_error_data_scalar` (without `error_direct`) takes. This proves
+/// `error_direct` doesn't silently drop `data`: a handler can still read
+/// `e$value`, and the class layering matches the indirect path. See
+/// `with_r_unwind_protect_error_direct` ("Which kinds are raised directly vs.
+/// fall back").
+///
+/// @export
+#[miniextendr(error_direct)]
+pub fn demo_error_direct_with_data(value: i32) {
+    miniextendr_api::error!(
+        class = "range_error",
+        data = ("value", value),
+        "value {value} out of range"
+    );
 }
 
 /// Raise via a plain `panic!()` (kind = "panic") directly from C.
