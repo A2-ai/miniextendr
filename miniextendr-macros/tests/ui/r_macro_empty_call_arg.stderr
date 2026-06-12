@@ -1,0 +1,5 @@
+error: R syntax error: empty argument in function call — `f(, x)` / `f(x,,y)` are not valid R (use `f(NULL, x)` or named arguments if you want a placeholder). Note: `x[, 1]` (index subscript) is valid; use `[[` or `[` groups.
+ --> tests/ui/r_macro_empty_call_arg.rs:6:17
+  |
+6 |     let _ = r!(f(, 1));
+  |                 ^^^^^

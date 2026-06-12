@@ -576,13 +576,25 @@ macro_rules! r_str {
 /// source is lowered to a `&'static str` (`stringify!`), so there is no
 /// `format!` allocation at the call site.
 ///
+/// This proc-macro additionally validates a conservative subset of known-bad
+/// R syntax constructs (trailing binary operators, empty function call
+/// arguments, bare `if`/`while`/`for` without a body, etc.) and emits a
+/// precise compile error pointing at the offending token.
+///
 /// # What is deferred
 ///
-/// True build-time R-grammar validation (embedding R's parser / invoking
-/// `R_ParseVector` from `build.rs`) and direct `Rf_lang*` call-tree lowering
-/// (skipping the runtime parser entirely) are tracked as a follow-up — see the
-/// issue referenced in the crate docs. Until then `r!` parses its static
-/// string at first evaluation, exactly like `r_str!`.
+/// Direct `Rf_lang*` call-tree lowering (skipping the runtime parser entirely)
+/// is tracked as a follow-up — see issue #938 (item 2). Until then `r!` parses
+/// its static string at first evaluation, exactly like `r_str!`.
+///
+/// # Non-goals
+///
+/// A complete R grammar validator is not achievable over Rust tokens:
+/// - Single-quoted strings (`'hello'`) and backtick-quoted names (`` `foo` ``)
+///   already die at the Rust lexer — nothing to validate.
+/// - `%op%` tokenises as `%`, ident, `%` and is accepted without analysis.
+/// - Anything the validator cannot confidently classify as wrong passes through
+///   unvalidated (conservative reject-only-known-bad design).
 ///
 /// # Forms
 ///
@@ -613,20 +625,8 @@ macro_rules! r_str {
 /// let rows = r!(getFromNamespace(".theoph_rows", "dataframeflows")())?;
 /// let in_env = r!(env: my_env; x + 1)?;
 /// ```
-#[macro_export]
-macro_rules! r {
-    (env: $env:expr; $($code:tt)+) => {
-        unsafe { $crate::expression::r_eval_str(::core::stringify!($($code)+), $env) }
-    };
-    ($($code:tt)+) => {
-        unsafe {
-            $crate::expression::r_eval_str(
-                ::core::stringify!($($code)+),
-                $crate::sys::R_GlobalEnv,
-            )
-        }
-    };
-}
+#[doc(inline)]
+pub use miniextendr_macros::r;
 
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]
