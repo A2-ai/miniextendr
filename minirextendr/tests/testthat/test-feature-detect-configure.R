@@ -75,36 +75,129 @@ test_that("parse_detect_features_script returns empty list for no rules", {
 })
 
 test_that("generated detect script is valid R and outputs features", {
-  tmp <- tempfile(fileext = ".R")
-  on.exit(unlink(tmp), add = TRUE)
+  # The robust skeleton requires src/rust/Cargo.toml, so we build a fixture tree.
+  tmp <- withr::local_tempdir()
+  dir.create(file.path(tmp, "tools"), recursive = TRUE)
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
 
+  # Cargo.toml with exactly the features under test
+  writeLines(c(
+    "[package]",
+    'name = "mypkg"',
+    'version = "0.1.0"',
+    "",
+    "[features]",
+    "rayon = []",
+    "vctrs = []"
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  script_path <- file.path(tmp, "tools", "detect-features.R")
   lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
-  writeLines(lines, tmp)
-  minirextendr:::append_feature_rule(tmp, "rayon", TRUE)
-  minirextendr:::append_feature_rule(tmp, "vctrs", "FALSE")
+  writeLines(lines, script_path)
+  # rayon: always enable; vctrs: rule returns FALSE -> disabled
+  minirextendr:::append_feature_rule(script_path, "rayon", TRUE)
+  minirextendr:::append_feature_rule(script_path, "vctrs", "FALSE")
 
-  # Execute the script
-  output <- system2(
-    file.path(R.home("bin"), "Rscript"), tmp,
-    stdout = TRUE, stderr = FALSE
-  )
+  # Execute from the fixture root so relative Cargo.toml lookup works
+  output <- withr::with_dir(tmp, {
+    system2(
+      file.path(R.home("bin"), "Rscript"), script_path,
+      stdout = TRUE, stderr = FALSE
+    )
+  })
   expect_equal(output, "rayon")
 })
 
 test_that("generated detect script outputs multiple features comma-separated", {
+  tmp <- withr::local_tempdir()
+  dir.create(file.path(tmp, "tools"), recursive = TRUE)
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+
+  writeLines(c(
+    "[package]",
+    'name = "mypkg"',
+    'version = "0.1.0"',
+    "",
+    "[features]",
+    "rayon = []",
+    "serde = []"
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  script_path <- file.path(tmp, "tools", "detect-features.R")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
+  writeLines(lines, script_path)
+  minirextendr:::append_feature_rule(script_path, "rayon", TRUE)
+  minirextendr:::append_feature_rule(script_path, "serde", TRUE)
+
+  output <- withr::with_dir(tmp, {
+    system2(
+      file.path(R.home("bin"), "Rscript"), script_path,
+      stdout = TRUE, stderr = FALSE
+    )
+  })
+  expect_equal(output, "rayon,serde")
+})
+
+test_that("generated detect script auto-enables features with no rule", {
+  # A feature present in Cargo.toml but with NO rule is enabled by default
+  # (auto-discovery). This is the new default-enable paradigm.
+  tmp <- withr::local_tempdir()
+  dir.create(file.path(tmp, "tools"), recursive = TRUE)
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+
+  writeLines(c(
+    "[package]",
+    'name = "mypkg"',
+    'version = "0.1.0"',
+    "",
+    "[features]",
+    "rayon = []",
+    "auto_enabled = []"
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  script_path <- file.path(tmp, "tools", "detect-features.R")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
+  writeLines(lines, script_path)
+  # Only add a rule for rayon; auto_enabled has no rule -> enabled by default
+  minirextendr:::append_feature_rule(script_path, "rayon", TRUE)
+
+  output <- withr::with_dir(tmp, {
+    system2(
+      file.path(R.home("bin"), "Rscript"), script_path,
+      stdout = TRUE, stderr = FALSE
+    )
+  })
+  # Both features should be present (sorted)
+  expect_equal(output, "auto_enabled,rayon")
+})
+
+test_that("rpkg detect-features.R matches generator output (regenerable invariant)", {
+  # The shipped rpkg/tools/detect-features.R must equal what the generator
+  # produces for ("miniextendr", "CARGO_FEATURES") plus the two canonical rules.
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
 
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("miniextendr", "CARGO_FEATURES")
   writeLines(lines, tmp)
-  minirextendr:::append_feature_rule(tmp, "rayon", TRUE)
-  minirextendr:::append_feature_rule(tmp, "serde", TRUE)
+  minirextendr:::append_feature_rule(tmp, "vctrs", 'requireNamespace("vctrs", quietly = TRUE)')
+  minirextendr:::append_feature_rule(tmp, "connections", 'getRversion() >= "4.3.0"')
 
-  output <- system2(
-    file.path(R.home("bin"), "Rscript"), tmp,
-    stdout = TRUE, stderr = FALSE
+  generated <- readLines(tmp, warn = FALSE)
+  # Path to the shipped rpkg file (relative to the test file's package root)
+  rpkg_path <- system.file("../../rpkg/tools/detect-features.R",
+    package = "minirextendr", mustWork = FALSE
   )
-  expect_equal(output, "rayon,serde")
+  if (!nzchar(rpkg_path) || !file.exists(rpkg_path)) {
+    # Fallback: find it relative to this test file
+    rpkg_path <- file.path(
+      dirname(dirname(dirname(testthat::test_path()))),
+      "rpkg", "tools", "detect-features.R"
+    )
+  }
+  skip_if(!file.exists(rpkg_path), "rpkg/tools/detect-features.R not found (running outside repo)")
+
+  shipped <- readLines(rpkg_path, warn = FALSE)
+  expect_equal(generated, shipped)
 })
 
 test_that("patch_configure_ac_for_detection patches old-style block", {
