@@ -83,6 +83,12 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 /// Walks through doc attributes line by line. Lines starting with `@` begin a new tag.
 /// Continuation lines are appended only if the current tag is multiline-capable.
 ///
+/// Before processing, the attribute slice is partitioned into doc and non-doc groups
+/// (stable order within each group). All doc attributes are processed first, so that
+/// interleaved `#[cfg(...)]` or other non-doc attributes never break multiline-tag
+/// continuation. This is a pure parse-side transform — the emitted `TokenStream` is
+/// unaffected; only the roxygen text assembly sees the normalised order.
+///
 /// When `auto_description` is true and no `@tag` lines are found, the first paragraph
 /// of regular doc comments is auto-converted to `@description`.
 ///
@@ -92,23 +98,13 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool) -> Vec<String> {
     let mut tags = Vec::new();
     let mut regular_docs = Vec::new();
-    // Track whether we have seen doc content followed by a non-doc attribute.
-    // When that happens, subsequent bare prose must NOT continue into any open
-    // multiline tag (it would corrupt @examples / @details / @return blocks).
-    // Instead we reset the multiline-continuation context so the trailing prose
-    // is treated as new regular_docs material (if tags is still empty) or is
-    // simply ignored as a continuation.
-    let mut interrupted_by_non_doc = false;
 
-    for attr in attrs {
-        if !attr.path().is_ident("doc") {
-            // Non-doc attribute between doc runs — set interruption flag if we
-            // have already collected some doc content.
-            if !tags.is_empty() || !regular_docs.is_empty() {
-                interrupted_by_non_doc = true;
-            }
-            continue;
-        }
+    // Partition: doc attrs first (stable), non-doc attrs after.
+    // This means interleaved #[cfg(...)] and similar never interrupt doc processing.
+    let doc_attrs: Vec<&syn::Attribute> =
+        attrs.iter().filter(|a| a.path().is_ident("doc")).collect();
+
+    for attr in doc_attrs {
         let syn::Meta::NameValue(nv) = &attr.meta else {
             continue;
         };
@@ -121,19 +117,11 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
         for line in lit.value().lines() {
             let trimmed = line.trim_start();
             if trimmed.starts_with('@') {
-                // New tag starts — interruption no longer relevant for tags
-                interrupted_by_non_doc = false;
                 tags.push(trimmed.to_string());
             } else if !trimmed.is_empty() {
                 if tags.is_empty() {
                     // Before any @tags - collect as regular docs
-                    // (allowed even after an interruption — user prose, not tag continuation)
                     regular_docs.push(trimmed.to_string());
-                } else if interrupted_by_non_doc {
-                    // Bare prose after a non-doc attribute interruption:
-                    // do NOT append to any open multiline tag — that would
-                    // corrupt @examples / @details / @return content.
-                    // The prose is dropped for tag-continuation purposes.
                 } else if let Some(last) = tags.last_mut()
                     && is_multiline_tag(last)
                 {

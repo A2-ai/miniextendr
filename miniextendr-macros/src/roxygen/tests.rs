@@ -206,30 +206,37 @@ mod doc_lint_tests {
 }
 // endregion
 
-// region: #586 — doc-stream interrupted by non-doc attribute
+// region: #613 — doc attrs partitioned before non-doc attrs (Option B from #586)
+//
+// With partition-based normalization, all doc attrs are collected and processed
+// contiguously first (stable order within the doc group). Non-doc attrs like
+// #[cfg(...)] are skipped entirely for roxygen processing.  This means doc
+// content that was separated by a #[cfg(...)] in source order now correctly
+// continues multiline tags.
 
 #[test]
-fn attr_interrupt_resets_multiline_continuation() {
-    // Simulates: /// @examples\n/// ex()\n  #[cfg(feature="x")]\n/// prose
-    // The trailing "prose" must NOT appear inside the @examples block.
+fn attr_interrupt_cfg_between_examples_lines_doc_continues() {
+    // Simulates: /// @examples\n/// ex()\n  #[cfg(feature="x")]\n/// more_ex()
+    // With partition, all doc attrs are processed contiguously, so more_ex()
+    // DOES continue the @examples block (correct behaviour).
     let attrs: Vec<syn::Attribute> = vec![
         syn::parse_quote!(#[doc = "@examples"]),
         syn::parse_quote!(#[doc = "ex()"]),
         syn::parse_quote!(#[cfg(feature = "x")]),
-        syn::parse_quote!(#[doc = "prose after attribute"]),
+        syn::parse_quote!(#[doc = "more_ex()"]),
     ];
     let tags = roxygen_tags_from_attrs(&attrs);
     let examples_tag = tags.iter().find(|t| t.starts_with("@examples")).unwrap();
     assert!(
-        !examples_tag.contains("prose after attribute"),
-        "trailing prose must not land inside @examples: {:?}",
+        examples_tag.contains("more_ex()"),
+        "doc after cfg must continue @examples with partition: {:?}",
         tags
     );
 }
 
 #[test]
 fn attr_interrupt_before_any_doc_does_not_affect_result() {
-    // Non-doc attr BEFORE any doc content is harmless — no interruption
+    // Non-doc attr BEFORE any doc content is harmless
     let attrs: Vec<syn::Attribute> = vec![
         syn::parse_quote!(#[cfg(feature = "x")]),
         syn::parse_quote!(#[doc = "@param x A value"]),
@@ -239,19 +246,38 @@ fn attr_interrupt_before_any_doc_does_not_affect_result() {
 }
 
 #[test]
-fn attr_interrupt_bare_prose_after_cfg_not_in_return_tag() {
+fn attr_interrupt_cfg_between_return_lines_doc_continues() {
     // Split: @return block, then cfg, then bare prose.
-    // The prose must NOT land inside @return.
+    // With partition, prose DOES continue the @return tag (correct behaviour).
     let attrs: Vec<syn::Attribute> = vec![
         syn::parse_quote!(#[doc = "@return The output value."]),
         syn::parse_quote!(#[cfg(feature = "x")]),
-        syn::parse_quote!(#[doc = "Extra paragraph after cfg."]),
+        syn::parse_quote!(#[doc = "Extra continuation line."]),
     ];
     let tags = roxygen_tags_from_attrs(&attrs);
     let return_tag = tags.iter().find(|t| t.starts_with("@return")).unwrap();
     assert!(
-        !return_tag.contains("Extra paragraph"),
-        "@return must not include post-cfg prose: {:?}",
+        return_tag.contains("Extra continuation line."),
+        "@return must include post-cfg doc continuation with partition: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn attr_interrupt_multiple_cfg_between_doc_all_continue() {
+    // Multiple non-doc attrs between doc lines — all doc still processes contiguously
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = "@examples"]),
+        syn::parse_quote!(#[cfg(feature = "a")]),
+        syn::parse_quote!(#[doc = "line_a()"]),
+        syn::parse_quote!(#[cfg(feature = "b")]),
+        syn::parse_quote!(#[doc = "line_b()"]),
+    ];
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let examples_tag = tags.iter().find(|t| t.starts_with("@examples")).unwrap();
+    assert!(
+        examples_tag.contains("line_a()") && examples_tag.contains("line_b()"),
+        "all doc lines must continue @examples across multiple cfg: {:?}",
         tags
     );
 }

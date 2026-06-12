@@ -118,13 +118,6 @@ Mirrors the hard error in `miniextendr-macros`.
 Fix: change the return type to `SEXP` and ensure no instance methods are on the
 vctrs impl.
 
-**MXL302** — Non-doc attribute interrupts a `///` doc-comment stream.
-A `#[cfg(...)]`, `#[deprecated]`, or similar non-doc attribute appears between
-`///` comment lines on a `#[miniextendr]` item. The macro resets multiline
-continuation context at the interruption, so trailing prose after the attribute
-will not continue the preceding `@examples` / `@details` / `@return` block.
-Fix: move all `///` comments above any non-doc attributes.
-
 ### FFI safety rules (most-commonly-tripped)
 
 **MXL300** — Direct `Rf_error` or `Rf_errorcall` call.
