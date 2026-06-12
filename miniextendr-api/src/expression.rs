@@ -390,6 +390,63 @@ impl RCall {
     pub unsafe fn eval_base(&self) -> Result<SEXP, String> {
         unsafe { self.eval(R_BaseEnv) }
     }
+
+    /// Start building a namespaced call: `pkg::fun(args…)`.
+    ///
+    /// Looks up `pkg::fun_name` in the base environment and uses the resolved
+    /// function closure as the call target. This respects R's namespace lookup
+    /// rules (exported + non-exported via `::` / `:::`).
+    ///
+    /// This is the runtime counterpart of the lowered `pkg::fn(args…)` form
+    /// in `r!(pkg::fn(args…))`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pkg` or `fun_name` contain a null byte.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(String)` if the namespace lookup fails (package not loaded
+    /// or function not found).
+    pub unsafe fn namespaced(pkg: &str, fun_name: &str) -> Result<Self, String> {
+        unsafe {
+            // Build (:: pkg fun_name) as a LANGSXP and evaluate it to get the closure.
+            let ns_op = Rf_install(c"::".as_ptr());
+            let pkg_sym = {
+                let c = CString::new(pkg).expect("pkg name must not contain null bytes");
+                Rf_install(c.as_ptr())
+            };
+            let fun_sym = {
+                let c = CString::new(fun_name).expect("fun name must not contain null bytes");
+                Rf_install(c.as_ptr())
+            };
+
+            // Build `(:: pkg fun_name)` pairlist from back to front.
+            let scope = crate::gc_protect::ProtectScope::new();
+            let nil = crate::sys::R_NilValue;
+            let fun_cons = scope.protect_raw(fun_sym.cons(nil));
+            let pkg_cons = scope.protect_raw(pkg_sym.cons(fun_cons));
+            let ns_call = scope.protect_raw(ns_op.lcons(pkg_cons));
+
+            // Evaluate to resolve the function closure.
+            let mut err: std::os::raw::c_int = 0;
+            let fun_sexp = R_tryEvalSilent(ns_call, R_BaseEnv, &mut err);
+            if err != 0 {
+                return Err(get_r_error_message());
+            }
+
+            // fun_sexp is the closure; it is reachable via R_GlobalEnv bindings,
+            // so we don't need explicit protection for the RCall builder lifetime.
+            Ok(RCall {
+                fun: fun_sexp,
+                args: Vec::new(),
+            })
+        }
+    }
 }
 
 /// Build and evaluate `target$name` — the R `$` extraction operator.
