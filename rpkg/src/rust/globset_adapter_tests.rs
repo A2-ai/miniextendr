@@ -26,7 +26,11 @@ pub fn globset_is_match_opts(
     case_insensitive: bool,
     backslash_escape: bool,
 ) -> Result<Vec<bool>, String> {
-    let opts = GlobOptions { literal_separator, case_insensitive, backslash_escape };
+    let opts = GlobOptions {
+        literal_separator,
+        case_insensitive,
+        backslash_escape,
+    };
     let set = build_globset(&patterns, &opts).map_err(|e| e.to_string())?;
     Ok(globset_impl::globset_is_match(&set, &paths))
 }

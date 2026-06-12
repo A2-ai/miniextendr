@@ -131,6 +131,8 @@ mod bigint_adapter_tests;
 mod bitflags_adapter_tests;
 #[cfg(feature = "bitvec")]
 mod bitvec_adapter_tests;
+#[cfg(feature = "blake3")]
+mod blake3_adapter_tests;
 #[cfg(feature = "borsh")]
 mod borsh_adapter_tests;
 mod box_slice_tests;
@@ -183,6 +185,8 @@ mod factor_tests;
 mod ffi_guard_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
+#[cfg(feature = "globset")]
+mod globset_adapter_tests;
 #[cfg(feature = "growth-debug")]
 mod growth_debug_tests;
 mod identical_tests;
@@ -206,6 +210,8 @@ mod log_tests;
 mod macro_equivalence;
 mod match_arg_impl_tests;
 mod match_arg_tests;
+#[cfg(feature = "md5")]
+mod md5_adapter_tests;
 mod misc_tests;
 mod missing_tests;
 mod multi_para_doc_demo;
@@ -252,14 +258,6 @@ mod serde_r_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
 mod shared_trait_test;
-#[cfg(feature = "blake3")]
-mod blake3_adapter_tests;
-#[cfg(feature = "md5")]
-mod md5_adapter_tests;
-#[cfg(feature = "globset")]
-mod globset_adapter_tests;
-#[cfg(feature = "zstd")]
-mod zstd_adapter_tests;
 mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
@@ -284,6 +282,8 @@ mod visibility_tests;
 #[cfg(feature = "worker-thread")]
 mod worker_tests;
 mod zero_copy_tests;
+#[cfg(feature = "zstd")]
+mod zstd_adapter_tests;
 
 // region: proc-macro ALTREP test
 // This tests #[derive(Altrep)] for custom ALTREP classes.
