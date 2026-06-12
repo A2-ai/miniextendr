@@ -284,16 +284,10 @@ fn check_trailing_binary_op(seq: &[TokenTree]) -> Result<(), Error> {
             //   `<<-`: ch=`-`, preceded by two `<`
             //   `->`: ch=`>`, preceded by `-`
             //   `<<=`: well-formed? Not R; skip.
-            if ch == '-'
-                && logical_end > 0
-                && punct_char_at(seq, logical_end - 1) == Some('<')
-            {
+            if ch == '-' && logical_end > 0 && punct_char_at(seq, logical_end - 1) == Some('<') {
                 return Ok(()); // `<-` assignment
             }
-            if ch == '>'
-                && logical_end > 0
-                && punct_char_at(seq, logical_end - 1) == Some('-')
-            {
+            if ch == '>' && logical_end > 0 && punct_char_at(seq, logical_end - 1) == Some('-') {
                 return Ok(()); // `->` assignment
             }
             if is_pure_binary_op(p) {
