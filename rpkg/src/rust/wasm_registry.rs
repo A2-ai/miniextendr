@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      dc186c00589ff8a1
+// content-hash:      1f39f1d3fc785c8b
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
