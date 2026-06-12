@@ -1,0 +1,94 @@
+# Deep scaffolding bench
+
+Generated: 2026-05-20 13:57:26 CEST 
+R: R version 4.6.0 (2026-04-24) 
+miniextendr: 0.1.0 
+Platform: aarch64-apple-darwin23 
+CPU: Apple M3 Max 
+compiler::enableJIT: 3 
+
+
+# M9: bytecompile sensitivity
+Side-by-side: same wrapper, with and without compiler::cmpfun().
+Reference: miniextendr::conv_sexp_arg is the actual package wrapper,
+auto-compiled at install time via R_COMPILE_PKGS / lazy-load JIT.
+
+               variant min_ns median_ns iter_per_sec
+              full_src   2665      2911       325711
+              full_cmp   2583      2870       335846
+      no_stopifnot_src   1435      1558       591679
+      no_stopifnot_cmp   1394      1558       596874
+      no_matchcall_src   1517      1681       564447
+      no_matchcall_cmp   1394      1599       581268
+   no_stop_no_call_src    287       369      2451754
+   no_stop_no_call_cmp    328       410      2304706
+              bare_src    205       246      3615149
+              bare_cmp    205       246      3641869
+ package_conv_sexp_arg   1517      1681       550810
+
+## Bytecompile delta (src - cmp, ns)
+         variant    src_ns    cmp_ns  delta_ns cmp_pct
+            full 2665.0087 2583.0086  82.00004    96.9
+    no_stopifnot 1434.9935 1394.0153  40.97819    97.1
+    no_matchcall 1516.9935 1394.0007 122.99279    91.9
+ no_stop_no_call  287.0074  328.0002 -40.99275   114.3
+            bare  204.9928  204.9928   0.00000   100.0
+
+# M10: run-to-run variance (5 reps)
+
+               variant  min   mean median  max   sd cv_pct
+              full_cmp 2583 2599.4   2583 2624 22.5    0.9
+      no_stopifnot_cmp 1394 1418.6   1394 1476 36.7    2.6
+      no_matchcall_cmp 1435 1443.2   1435 1476 18.3    1.3
+   no_stop_no_call_cmp  287  287.0    287  287  0.0    0.0
+              bare_cmp  164  164.0    164  164  0.0    0.0
+ package_conv_sexp_arg 1599 1648.2   1640 1681 34.3    2.1
+  package_conv_i32_arg 2829 2870.0   2870 2911 29.0    1.0
+
+# M12: multi-arg + precondition-shape sweep
+
+   n_args            shape match_call min_ns median_ns
+1       0             none      FALSE    615       738
+2       0             none       TRUE   1722      1968
+3       1             none      FALSE    697       820
+4       1             none       TRUE   1845      2050
+5       1   numeric_scalar      FALSE   1845      2091
+6       1   numeric_scalar       TRUE   3034      3321
+7       1    string_scalar      FALSE   1886      2050
+8       1    string_scalar       TRUE   3075      3362
+9       1 nullable_numeric      FALSE   1886      2091
+10      1 nullable_numeric       TRUE   3116      3362
+11      1   numeric_vector      FALSE   1517      1722
+12      1   numeric_vector       TRUE   2747      3034
+13      2             none      FALSE    738       902
+14      2             none       TRUE   1968      2173
+15      2   numeric_scalar      FALSE   2501      2747
+16      2   numeric_scalar       TRUE   3813      4100
+17      2    string_scalar      FALSE   2419      2665
+18      2    string_scalar       TRUE   3690      4018
+19      2 nullable_numeric      FALSE   2542      2829
+20      2 nullable_numeric       TRUE   3772      4428
+21      2   numeric_vector      FALSE   1886      2214
+22      2   numeric_vector       TRUE   3157      3444
+23      3             none      FALSE    779       902
+24      3             none       TRUE   1968      2214
+25      3   numeric_scalar      FALSE   3075      3526
+26      3   numeric_scalar       TRUE   4510      4838
+27      3    string_scalar      FALSE   3075      3362
+28      3    string_scalar       TRUE   4387      4756
+29      3 nullable_numeric      FALSE   3239      3526
+30      3 nullable_numeric       TRUE   4551      4879
+31      3   numeric_vector      FALSE   2214      2460
+32      3   numeric_vector       TRUE   3485      3813
+33      5             none      FALSE    820      1025
+34      5             none       TRUE   2214      2501
+35      5   numeric_scalar      FALSE   4551      4879
+36      5   numeric_scalar       TRUE   5822      6150
+37      5    string_scalar      FALSE   4346      4633
+38      5    string_scalar       TRUE   5781      6191
+39      5 nullable_numeric      FALSE   4469      4838
+40      5 nullable_numeric       TRUE   5986      6355
+41      5   numeric_vector      FALSE   2911      3157
+42      5   numeric_vector       TRUE   4305      4797
+
+# Done.
