@@ -212,6 +212,16 @@ miniextendr_build <- function(path = ".", install = TRUE) {
 # against a leaked tarball installs stale wrappers and library() exposes no
 # functions. The prior value is restored on exit so the override doesn't leak
 # into the rest of the R session.
+#
+# reload = FALSE: do NOT reload the freshly-installed package into the building
+# session. The default (reload = TRUE) re-registers the package's namespace from
+# its just-written installed image; the subsequent devtools::document() then runs
+# pkgload::load_all(), whose unregister() step reads that installed namespace's
+# lazy-load DB (R/<pkg>.rdb). On R >= 4.6 (libdeflate-compressed .rdb) that read
+# can fail with "internal error 1 in R_decompress1 with libdeflate" / "lazy-load
+# database is corrupt", aborting the build. The build session never needs the
+# package loaded — document() works from source — so reloading is both pointless
+# and the trigger. Skipping it makes the install -> document hand-off robust.
 install_pkg <- function(pkg_path) {
   old_force <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = NA)
   Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = "1")
@@ -221,7 +231,7 @@ install_pkg <- function(pkg_path) {
     add = TRUE
   )
   tryCatch(
-    devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE),
+    devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE, reload = FALSE),
     error = function(e) {
       cli::cli_abort(c(
         "Package installation failed",
@@ -309,7 +319,8 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
   )
 
   tryCatch(
-    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE),
+    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
+                      reload = FALSE),
     error = function(e) {
       cli::cli_abort(c(
         "Bootstrap install failed",
@@ -333,7 +344,8 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
   # MINIEXTENDR_FORCE_WRAPPER_GEN is still set via on.exit above.
   devtools::document(pkg_path)
   tryCatch(
-    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE),
+    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
+                      reload = FALSE),
     error = function(e) {
       cli::cli_abort(c(
         "Bootstrap re-install (after document) failed",

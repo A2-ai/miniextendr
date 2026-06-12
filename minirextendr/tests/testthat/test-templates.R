@@ -588,3 +588,199 @@ test_that("standalone scaffolding builds in tarball mode and exposes functions",
     detach(paste0("package:", pkg_name), character.only = TRUE, unload = TRUE)
   })
 })
+
+# -----------------------------------------------------------------------------
+# miniextendr_build() single-pass export round-trip (#898, fix for #860)
+# -----------------------------------------------------------------------------
+
+# Regression for #860 / #898: adding a brand-new #[miniextendr] export must be
+# visible via library(pkg) after a SINGLE miniextendr_build() pass. The bug
+# (#860) was an ordering hazard: the wrappers file is generated *during* install,
+# and document() reads its @export tags to (re)write NAMESPACE, but install
+# collated NAMESPACE *before* document() rewrote it — so the freshly-installed
+# image lagged the on-disk NAMESPACE by one build and the new export was missing
+# until a second build. The fix snapshots NAMESPACE before/after document() and
+# reinstalls once iff it changed.
+#
+# This bug only manifests in the installed image's export set, so the assertion
+# is on getNamespaceExports() (a behavioural check) — a source-grep / deparse()
+# structural test is explicitly rejected as theater (see the brittle-deparse
+# memory rule and the dropped #523 structural test). Reproducing it requires a
+# full scaffold + cargo build + R CMD INSTALL round-trip, hence the e2e gate.
+#
+# Uses the local-repo monorepo scaffold (offline; the root `.git` keeps configure
+# in source mode so no auto-vendor / tarball-mode dance is needed), then drives
+# the real miniextendr_build() once — exercising the actual single-pass logic
+# rather than the manual generate_r_wrappers() + install_to_templib() helpers.
+test_that("miniextendr_build() exports a newly added function in a single pass (#898)", {
+  skip_e2e()
+  miniextendr_path <- find_miniextendr_repo()
+
+  tmp <- tempfile("single-pass-export-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  suppressMessages({
+    create_miniextendr_monorepo(tmp, package = "spexport", crate_name = "spexport-rs",
+                                local_path = miniextendr_path, open = FALSE)
+  })
+  rpkg_path <- file.path(tmp, "spexport")
+
+  # The scaffold's root `.git` makes configure stay in source mode, but the
+  # monorepo's crates.io deps still need vendoring for the offline build (mirrors
+  # the monorepo e2e test above). The miniextendr framework crates are already
+  # vendored by the scaffolder.
+  suppressWarnings({
+    withr::with_dir(rpkg_path, {
+      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "vendor"),
+              stdout = FALSE, stderr = FALSE)
+    })
+  })
+
+  # Add a brand-new exported function whose name differs from the scaffold's
+  # add/hello, so document() produces a *new* @export — the exact shape of the
+  # #860 bug. Insert it just after the `use miniextendr_api` line.
+  lib_rs <- file.path(rpkg_path, "src", "rust", "lib.rs")
+  lib_content <- readLines(lib_rs)
+  use_idx <- grep("use miniextendr_api", lib_content)[1]
+  lib_content <- append(lib_content, c(
+    "",
+    "/// A function added after the initial scaffold.",
+    "/// @param x A number",
+    "/// @return x doubled",
+    "#[miniextendr]",
+    "pub fn mx_new_fn(x: f64) -> f64 {",
+    "    x * 2.0",
+    "}"
+  ), after = use_idx)
+  writeLines(lib_content, lib_rs)
+
+  # Install the throwaway package into a temp library so the dev/CI base library
+  # stays clean: miniextendr_build(install = TRUE) lands in .libPaths()[1].
+  templib <- file.path(tmp, "library")
+  dir.create(templib)
+
+  withr::with_libpaths(templib, action = "prefix", {
+    # The single pass under test. If #860 regresses, this build collates the
+    # stale NAMESPACE and mx_new_fn won't be in the installed image.
+    suppressMessages(
+      miniextendr_build(rpkg_path, install = TRUE)
+    )
+
+    # Behavioural assertion: the installed image's export set, not the source.
+    exports <- getNamespaceExports("spexport")
+    expect_true("mx_new_fn" %in% exports,
+                info = paste0(
+                  "mx_new_fn missing from getNamespaceExports() after a single ",
+                  "miniextendr_build() — #860 single-pass export regression. ",
+                  "Exports: ", paste(exports, collapse = ", ")
+                ))
+
+    # And it actually resolves + runs (the wrapper is wired, not just named).
+    expect_true(exists("mx_new_fn", envir = asNamespace("spexport")))
+    expect_equal(spexport::mx_new_fn(21), 42)
+
+    detach("package:spexport", character.only = TRUE, unload = TRUE)
+  })
+})
+
+# -----------------------------------------------------------------------------
+# MINIEXTENDR_FORCE_WRAPPER_GEN propagation into nested R CMD INSTALL (#911)
+# -----------------------------------------------------------------------------
+
+# Regression for #911. install_pkg() forces the cdylib wrapper-gen pass by
+# setting MINIEXTENDR_FORCE_WRAPPER_GEN=1 in the R *session* before calling
+# devtools::install(build = TRUE). #911 flagged as unverified whether that
+# in-session override survives the two subprocess hops (R CMD build -> R CMD
+# INSTALL -> make) down to Makevars.in, which is where the var is actually read
+# ([ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]). If it didn't propagate, a stale /
+# leaked-tarball build could silently ship outdated wrappers.
+#
+# Empirical finding (2026-06-11): it DOES propagate. devtools::install ->
+# pkgbuild -> callr::rcmd_safe inherits the parent R session's full environment
+# and merely *merges* rcmd_safe_env() on top (it does not replace the
+# environment), so a session Sys.setenv() reaches the make recipe two hops down.
+# No propagation fix was needed; this test locks the guarantee so a future callr/
+# pkgbuild change that sanitised the child environment would be caught.
+#
+# The probe is a minimal C package (no Rust) with a Makevars that records the
+# value of $MINIEXTENDR_FORCE_WRAPPER_GEN seen by the make recipe. It is fast
+# (one tiny C compile) but still needs build tools and a real build = TRUE
+# install, so it is skipped on CRAN.
+test_that("MINIEXTENDR_FORCE_WRAPPER_GEN propagates through install(build = TRUE) into make (#911)", {
+  testthat::skip_on_cran()
+  skip_if_not(nzchar(Sys.which("make")), "make not available")
+  skip_if_not(requireNamespace("devtools", quietly = TRUE), "devtools not available")
+  # A working C toolchain is required for R CMD build/INSTALL of the probe pkg.
+  skip_if_not(pkgbuild::has_build_tools(debug = FALSE), "C build tools not available")
+
+  tmp <- tempfile("force-propagate-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+
+  pkg_path <- file.path(tmp, "fwgprobe")
+  dir.create(file.path(pkg_path, "src"), recursive = TRUE)
+  dir.create(file.path(pkg_path, "R"))
+
+  writeLines(c(
+    "Package: fwgprobe",
+    "Title: Force-Wrapper-Gen Propagation Probe",
+    "Version: 0.0.0.9000",
+    "Authors@R: person(\"Test\", \"Author\", email = \"test@example.com\", role = c(\"aut\", \"cre\"))",
+    "Description: Records the MINIEXTENDR_FORCE_WRAPPER_GEN value seen by make.",
+    "License: MIT + file LICENSE",
+    "Encoding: UTF-8"
+  ), file.path(pkg_path, "DESCRIPTION"))
+  writeLines(c("YEAR: 2026", "COPYRIGHT HOLDER: Test Author"),
+             file.path(pkg_path, "LICENSE"))
+  writeLines(character(), file.path(pkg_path, "NAMESPACE"))
+
+  # A trivial C source so R's build system produces a SHLIB (drives make).
+  writeLines("#include <R.h>\nvoid fwgprobe_noop(void) {}",
+             file.path(pkg_path, "src", "dummy.c"))
+
+  # Makevars: before building the SHLIB, record the env var the recipe sees.
+  # `$$` escapes make's expansion so the shell reads the actual environment —
+  # exactly how rpkg's Makevars.in tests it. The result path is passed through
+  # the environment to dodge make/shell quoting of the temp path.
+  result_file <- file.path(tmp, "fwg_seen.txt")
+  Sys.setenv(FWG_RESULT_FILE = result_file)
+  on.exit(Sys.unsetenv("FWG_RESULT_FILE"), add = TRUE)
+  writeLines(c(
+    "$(SHLIB): fwg_probe",
+    "fwg_probe:",
+    "\t@echo \"[$$MINIEXTENDR_FORCE_WRAPPER_GEN]\" > \"$$FWG_RESULT_FILE\""
+  ), file.path(pkg_path, "src", "Makevars"))
+
+  templib <- file.path(tmp, "library")
+  dir.create(templib)
+
+  run_build_install <- function() {
+    unlink(result_file)
+    withr::with_libpaths(templib, action = "prefix", {
+      suppressMessages(
+        devtools::install(pkg_path, build = TRUE, upgrade = FALSE,
+                          quiet = TRUE, reload = FALSE)
+      )
+    })
+    skip_if_not(file.exists(result_file),
+                "probe Makevars did not run (no SHLIB build on this platform)")
+    trimws(readLines(result_file, warn = FALSE)[1])
+  }
+
+  # When set in the session, the make recipe two hops down must see it.
+  old_force <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = NA)
+  on.exit(
+    if (is.na(old_force)) Sys.unsetenv("MINIEXTENDR_FORCE_WRAPPER_GEN")
+    else Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = old_force),
+    add = TRUE
+  )
+
+  Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = "1")
+  expect_equal(run_build_install(), "[1]",
+               info = "session MINIEXTENDR_FORCE_WRAPPER_GEN=1 did not reach the nested make recipe (#911 propagation regression)")
+
+  # And when unset, the recipe must see it empty (so the guard would skip).
+  Sys.unsetenv("MINIEXTENDR_FORCE_WRAPPER_GEN")
+  expect_equal(run_build_install(), "[]",
+               info = "unset MINIEXTENDR_FORCE_WRAPPER_GEN leaked a non-empty value into the nested make recipe")
+})
