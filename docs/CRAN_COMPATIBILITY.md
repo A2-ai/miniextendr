@@ -215,6 +215,32 @@ See CLAUDE.md "Vendor tarball is a latch" for the full context and the
 - `[ -f inst/vendor.tar.xz ]` is the only source-vs-tarball signal. Don't add
   a second one. Maintenance load lives in the number of switches.
 
+## Using a local miniextendr checkout (dev-only)
+
+When you are developing both miniextendr and a consumer package simultaneously,
+use `minirextendr::use_local_miniextendr(path)` to wire the consumer's
+`configure.ac` to resolve framework crates from your local checkout instead of
+the published git URL:
+
+```r
+minirextendr::use_local_miniextendr("/path/to/miniextendr")
+# Then re-run configure to pick up the override:
+minirextendr::miniextendr_configure()
+```
+
+This writes a one-line `.miniextendr-local` marker at the package root.
+`bash ./configure` reads it with plain shell (`head -n 1`) and sets
+`MONOREPO_ROOT` to the recorded path so the existing
+`[patch."https://github.com/A2-ai/miniextendr"]` block in
+`.cargo/config.toml` resolves the three workspace crates from the local tree.
+
+The marker file is added to `.gitignore` and `.Rbuildignore` automatically
+so it can never appear in a distributed tarball. Tarball mode
+(`inst/vendor.tar.xz` present) always takes precedence — the local override
+becomes inert. `miniextendr_doctor()` warns if the marker is present before
+distribution. Call `minirextendr::unuse_local_miniextendr()` to remove the
+marker when you no longer need the override.
+
 ## Toolchain ABI matching
 
 The vendoring story above keeps **Rust dependency sources** in sync between

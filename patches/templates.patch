@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-06-11 23:06:08
-+++ b/monorepo/rpkg/bootstrap.R	2026-06-11 23:06:08
+--- a/monorepo/rpkg/bootstrap.R	2026-06-12 18:16:38
++++ b/monorepo/rpkg/bootstrap.R	2026-06-12 18:16:38
 @@ -1,40 +1,11 @@
 -# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
@@ -83,8 +83,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 -  }
  }
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-06-11 23:09:12
-+++ b/monorepo/rpkg/configure.ac	2026-06-11 23:06:08
+--- a/monorepo/rpkg/configure.ac	2026-06-12 18:18:53
++++ b/monorepo/rpkg/configure.ac	2026-06-12 18:19:25
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -357,20 +357,20 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -589,4 +553,5 @@
+@@ -605,4 +569,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -819,5 +784,5 @@
+@@ -835,5 +800,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -835,13 +800,22 @@
+@@ -851,13 +816,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
@@ -396,8 +396,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/monorepo/rpkg/tools/detect-features.R b/monorepo/rpkg/tools/detect-features.R
---- a/monorepo/rpkg/tools/detect-features.R	2026-06-11 23:08:24
-+++ b/monorepo/rpkg/tools/detect-features.R	2026-06-11 23:31:56
+--- a/monorepo/rpkg/tools/detect-features.R	2026-06-12 18:16:38
++++ b/monorepo/rpkg/tools/detect-features.R	2026-06-12 18:16:38
 @@ -1,4 +1,4 @@
  #!/usr/bin/env Rscript
 -# Configure-time Cargo feature detection for miniextendr (rpkg demo package).
@@ -405,8 +405,8 @@ diff -ruN -U2 a/monorepo/rpkg/tools/detect-features.R b/monorepo/rpkg/tools/dete
  #
  # Contract
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-06-11 23:09:12
-+++ b/rpkg/configure.ac	2026-06-11 23:06:08
+--- a/rpkg/configure.ac	2026-06-12 18:18:53
++++ b/rpkg/configure.ac	2026-06-12 18:19:02
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -625,20 +625,20 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -589,4 +605,5 @@
+@@ -605,4 +621,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -819,5 +836,5 @@
+@@ -835,5 +852,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -835,13 +852,22 @@
+@@ -851,13 +868,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
@@ -664,8 +664,8 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/tools/detect-features.R b/rpkg/tools/detect-features.R
---- a/rpkg/tools/detect-features.R	2026-06-11 23:08:24
-+++ b/rpkg/tools/detect-features.R	2026-06-11 23:31:56
+--- a/rpkg/tools/detect-features.R	2026-06-12 18:16:38
++++ b/rpkg/tools/detect-features.R	2026-06-12 18:16:38
 @@ -1,4 +1,4 @@
  #!/usr/bin/env Rscript
 -# Configure-time Cargo feature detection for miniextendr (rpkg demo package).
