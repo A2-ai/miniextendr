@@ -11,6 +11,12 @@
 use super::ParsedImpl;
 use crate::r_class_formatter::class_ref_or_verbatim;
 
+/// Marker prefix emitted by the proc-macro when a subclass method param might be
+/// inherited from a parent class documented in-package. Resolved at write-time in
+/// `registry.rs` to either nothing (parent is documented → roxygen2 inherits) or
+/// `(no documentation available)` (parent not found or not in-package).
+pub(crate) const MX_INHERITED_PARAM_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
+
 /// Generates the complete R wrapper string for an R6-style class.
 ///
 /// Produces an `R6::R6Class(...)` definition that includes:
@@ -94,6 +100,11 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Public list
     lines.push("  public = list(".to_string());
 
+    // Class-level @param names — params documented at class level (in class_doc_tags)
+    // that roxygen2 8.0.0 inherits into all method docs automatically. Constructor and
+    // method loops skip emitting `(no documentation available)` for covered names.
+    let class_param_names = &parsed_impl.class_param_names;
+
     // Public instance methods (collect first to know if we need trailing comma on initialize)
     let public_method_contexts: Vec<_> = parsed_impl.public_instance_method_contexts().collect();
     let has_public_methods = !public_method_contexts.is_empty();
@@ -126,7 +137,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("    #' {}", line));
             }
         }
-        // Document constructor params that aren't already documented
+        // Document constructor params that aren't already documented.
+        // Class-level @param tags (in class_doc_tags) are inherited by all methods
+        // via roxygen2 8.0.0 — skip emitting a placeholder for params covered there.
         let ctor_mx_doc = ctx.match_arg_doc_placeholders();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
             let param_name = param.split('=').next().unwrap_or(param).trim();
@@ -139,6 +152,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .iter()
                 .any(|t| t.starts_with(&format!("@param {}", param_name)));
             if !already_documented {
+                // Param covered by class-level @param → roxygen2 inherits; emit nothing.
+                if class_param_names.contains(param_name) {
+                    continue;
+                }
                 // match_arg'd constructor params get the write-time placeholder
                 // so the cdylib pass renders `One of "A", "B".` (#210).
                 let body = ctor_mx_doc
@@ -258,8 +275,13 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("    #' {}", line));
             }
         }
-        // Document method params that aren't already documented
+        // Document method params that aren't already documented.
+        // Class-level @param tags are inherited by roxygen2 8.0.0 — skip covered params.
+        // For subclass methods (r6_inherit set) and params not covered at class level,
+        // emit a write-time marker so the registry can detect in-package parent docs
+        // and suppress the placeholder (letting roxygen2 pull from the parent method).
         let method_mx_doc = ctx.match_arg_doc_placeholders();
+        let r_method_name = ctx.method.r_method_name();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
             let param_name = param.split('=').next().unwrap_or(param).trim();
             let already_documented = ctx
@@ -268,11 +290,27 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .iter()
                 .any(|t| t.starts_with(&format!("@param {}", param_name)));
             if !already_documented {
+                // Param covered by class-level @param → roxygen2 inherits; emit nothing.
+                if class_param_names.contains(param_name) {
+                    continue;
+                }
                 let body = method_mx_doc
                     .get(param_name)
                     .map(String::as_str)
                     .unwrap_or("(no documentation available)");
-                lines.push(format!("    #' @param {} {}", param_name, body));
+                // For subclass methods: if there is an in-package parent, emit a
+                // write-time marker. The registry pass will resolve it to nothing
+                // (parent documented → roxygen2 inherits) or to the fallback text.
+                if let Some(ref parent) = parsed_impl.r6_inherit
+                    && body == "(no documentation available)"
+                {
+                    lines.push(format!(
+                        "    #' {}class=\"{}\", parent=\"{}\", method=\"{}\", param=\"{}\")",
+                        MX_INHERITED_PARAM_PREFIX, class_name, parent, r_method_name, param_name,
+                    ));
+                } else {
+                    lines.push(format!("    #' @param {} {}", param_name, body));
+                }
             }
         }
         lines.push(format!("    {} = function({}) {{", r_name, ctx.params));

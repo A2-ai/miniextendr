@@ -36,7 +36,7 @@ A static method that returns a default counter (value = 0)
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{initial}}{(no documentation available)}
+      \item{\code{initial}}{Integer initial counter value.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

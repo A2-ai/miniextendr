@@ -30,8 +30,8 @@ R6 base animal class for inheritance testing
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{name}}{(no documentation available)}
-      \item{\code{sound}}{(no documentation available)}
+      \item{\code{name}}{Character name of the animal.}
+      \item{\code{sound}}{Character sound the animal makes.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}
@@ -54,10 +54,17 @@ R6 base animal class for inheritance testing
 \if{html}{\out{<a id="method-R6Animal-speak"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Animal-speak}{}}}
 \subsection{\code{R6Animal$speak()}}{
-  Method \code{speak}.
+  Speak the given number of times
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{R6Animal$speak()}
+    \preformatted{R6Animal$speak(times)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{times}}{Number of times to speak.}
+    }
     \if{html}{\out{</div>}}
   }
 }

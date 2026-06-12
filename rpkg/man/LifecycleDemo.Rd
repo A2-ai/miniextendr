@@ -33,7 +33,7 @@ R6 class demonstrating lifecycle attributes on methods
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{(no documentation available)}
+      \item{\code{value}}{Integer initial value.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

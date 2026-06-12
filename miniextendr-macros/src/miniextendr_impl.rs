@@ -729,6 +729,14 @@ pub struct ParsedImpl {
     /// Deprecation warnings for `@param` tags found on the impl block.
     /// Appended to the final TokenStream output.
     pub param_warnings: proc_macro2::TokenStream,
+    /// Parameter names declared via `@param` in the impl-block doc comments.
+    ///
+    /// For R6 classes, roxygen2 8.0.0 inherits class-level `@param` tags into
+    /// all methods. These are the names that appeared in impl-block-level `@param`
+    /// tags (extracted before stripping). The R6 generator uses this set to suppress
+    /// `(no documentation available)` placeholders for covered params and to emit
+    /// class-level `@param` lines in the class header.
+    pub class_param_names: std::collections::HashSet<String>,
 }
 
 /// Attributes parsed from `#[miniextendr(...)]` on an impl block.
@@ -2255,11 +2263,24 @@ impl ParsedImpl {
             .cloned()
             .collect();
         let raw_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs);
-        let (doc_tags, param_warnings) = crate::roxygen::strip_method_tags(
-            &raw_doc_tags,
-            &type_ident.to_string(),
-            item_impl.impl_token.span,
-        );
+        // For R6: keep class-level @param tags (roxygen2 8.0.0 inherits them into
+        // all methods); for other class systems use the stricter filter.
+        let (doc_tags, param_warnings) = if attrs.class_system == ClassSystem::R6 {
+            crate::roxygen::strip_method_tags_r6(
+                &raw_doc_tags,
+                &type_ident.to_string(),
+                item_impl.impl_token.span,
+            )
+        } else {
+            crate::roxygen::strip_method_tags(
+                &raw_doc_tags,
+                &type_ident.to_string(),
+                item_impl.impl_token.span,
+            )
+        };
+        // Build the set of parameter names declared at class level so the R6
+        // generator can suppress placeholder lines for covered params.
+        let class_param_names = crate::roxygen::extract_param_names(&doc_tags);
 
         Ok(ParsedImpl {
             type_ident,
@@ -2287,6 +2308,7 @@ impl ParsedImpl {
             internal: attrs.internal,
             noexport: attrs.noexport,
             param_warnings,
+            class_param_names,
         })
     }
 

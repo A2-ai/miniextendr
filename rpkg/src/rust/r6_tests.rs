@@ -218,6 +218,7 @@ pub struct R6Animal {
 /// R6 base animal class for inheritance testing.
 /// @param name Character name of the animal.
 /// @param sound Character sound the animal makes.
+/// @param times Number of times the animal speaks.
 #[miniextendr(r6)]
 impl R6Animal {
     pub fn new(name: String, sound: String) -> Self {
@@ -226,8 +227,13 @@ impl R6Animal {
     pub fn name(&self) -> String {
         self.name.clone()
     }
-    pub fn speak(&self) -> String {
-        format!("{} says {}", self.name, self.sound)
+    /// Speak the given number of times.
+    /// @param times Number of times to speak.
+    pub fn speak(&self, times: i32) -> String {
+        (0..times)
+            .map(|_| format!("{} says {}", self.name, self.sound))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -249,6 +255,13 @@ impl R6Dog {
     }
     pub fn fetch(&self) -> String {
         format!("{} fetches the ball!", self.breed)
+    }
+    /// Override speak — inherits @param times from R6Animal (no documentation here).
+    pub fn speak(&self, times: i32) -> String {
+        (0..times)
+            .map(|_| format!("{} barks!", self.breed))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 

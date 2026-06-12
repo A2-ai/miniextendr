@@ -39,7 +39,7 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{celsius}}{(no documentation available)}
+      \item{\code{celsius}}{Numeric temperature in Celsius.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

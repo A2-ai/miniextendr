@@ -22,9 +22,9 @@ R6 golden retriever class for 3-level inheritance chain testing
 \if{html}{\out{<details open><summary>Inherited methods</summary>
 <ul>
   <li><span class="pkg-link" data-pkg="miniextendr" data-topic="R6Animal" data-id="name"><a href='../../miniextendr/html/R6Animal.html#method-R6Animal-name'><code>R6Animal$name()</code></a></span></li>
-  <li><span class="pkg-link" data-pkg="miniextendr" data-topic="R6Animal" data-id="speak"><a href='../../miniextendr/html/R6Animal.html#method-R6Animal-speak'><code>R6Animal$speak()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="miniextendr" data-topic="R6Dog" data-id="breed"><a href='../../miniextendr/html/R6Dog.html#method-R6Dog-breed'><code>R6Dog$breed()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="miniextendr" data-topic="R6Dog" data-id="fetch"><a href='../../miniextendr/html/R6Dog.html#method-R6Dog-fetch'><code>R6Dog$fetch()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="miniextendr" data-topic="R6Dog" data-id="speak"><a href='../../miniextendr/html/R6Dog.html#method-R6Dog-speak'><code>R6Dog$speak()</code></a></span></li>
 </ul>
 </details>}}
 \if{html}{\out{<hr>}}
@@ -40,7 +40,7 @@ R6 golden retriever class for 3-level inheritance chain testing
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{owner}}{(no documentation available)}
+      \item{\code{owner}}{Character name of the owner.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

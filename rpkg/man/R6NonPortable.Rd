@@ -29,7 +29,7 @@ R6 non-portable class for testing portable = FALSE flag
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{(no documentation available)}
+      \item{\code{value}}{Integer value to store.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

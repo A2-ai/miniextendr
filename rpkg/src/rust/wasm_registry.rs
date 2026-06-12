@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      e5f690b16ac958f7
+// content-hash:      80d5a23afb8fcc35
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1928,12 +1928,13 @@ unsafe extern "C-unwind" {
     pub fn C_R6Dog__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Dog__breed(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Dog__fetch(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_R6Dog__speak(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Animal__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Animal__name(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__inc(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__new(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_R6Animal__speak(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_R6Animal__speak(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Cloneable__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__value(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Rectangle__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -11716,6 +11717,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_R6Dog__speak".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Dog__speak) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
         name: c"C_R6Animal__new".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Animal__new) }),
         numArgs: 3,
@@ -11742,8 +11748,8 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     },
     R_CallMethodDef {
         name: c"C_R6Animal__speak".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_R6Animal__speak) }),
-        numArgs: 2,
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Animal__speak) }),
+        numArgs: 3,
     },
     R_CallMethodDef {
         name: c"C_R6Cloneable__new".as_ptr(),

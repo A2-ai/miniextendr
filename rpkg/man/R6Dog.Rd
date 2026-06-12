@@ -18,12 +18,12 @@ R6 dog class inheriting from R6Animal
     \item \href{#method-R6Dog-initialize}{\code{R6Dog$new()}}
     \item \href{#method-R6Dog-breed}{\code{R6Dog$breed()}}
     \item \href{#method-R6Dog-fetch}{\code{R6Dog$fetch()}}
+    \item \href{#method-R6Dog-speak}{\code{R6Dog$speak()}}
   }
 }
 \if{html}{\out{<details open><summary>Inherited methods</summary>
 <ul>
   <li><span class="pkg-link" data-pkg="miniextendr" data-topic="R6Animal" data-id="name"><a href='../../miniextendr/html/R6Animal.html#method-R6Animal-name'><code>R6Animal$name()</code></a></span></li>
-  <li><span class="pkg-link" data-pkg="miniextendr" data-topic="R6Animal" data-id="speak"><a href='../../miniextendr/html/R6Animal.html#method-R6Animal-speak'><code>R6Animal$speak()</code></a></span></li>
 </ul>
 </details>}}
 \if{html}{\out{<hr>}}
@@ -39,7 +39,7 @@ R6 dog class inheriting from R6Animal
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{breed}}{(no documentation available)}
+      \item{\code{breed}}{Character breed of the dog.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}
@@ -66,6 +66,25 @@ R6 dog class inheriting from R6Animal
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Dog$fetch()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6Dog-speak"></a>}}
+\if{latex}{\out{\hypertarget{method-R6Dog-speak}{}}}
+\subsection{\code{R6Dog$speak()}}{
+  Override speak — inherits @param times from R6Animal (no documentation here)
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6Dog$speak(times)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{times}}{Number of times to speak.}
+    }
     \if{html}{\out{</div>}}
   }
 }

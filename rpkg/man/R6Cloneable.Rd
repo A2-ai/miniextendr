@@ -31,7 +31,7 @@ R6 cloneable class with locked class definition
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{(no documentation available)}
+      \item{\code{value}}{Integer value to store.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}
@@ -63,7 +63,7 @@ R6 cloneable class with locked class definition
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{(no documentation available)}
+      \item{\code{value}}{Integer value to store.}
     }
     \if{html}{\out{</div>}}
   }

@@ -37,8 +37,8 @@ R6 sensor reading with one documented and one undocumented active binding
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{(no documentation available)}
-      \item{\code{raw}}{(no documentation available)}
+      \item{\code{value}}{Numeric sensor value.}
+      \item{\code{raw}}{Integer raw ADC reading.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

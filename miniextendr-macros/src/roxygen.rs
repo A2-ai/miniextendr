@@ -620,13 +620,23 @@ pub(crate) fn doc_conflict_warnings(
 
 /// Roxygen tags that only make sense on individual methods, not on impl blocks.
 ///
-/// - `@param` — impl blocks have no parameters.
+/// - `@param` — impl blocks have no parameters (except for R6 class-level param docs,
+///   which roxygen2 8.0.0 inherits into all methods; those are exempted by
+///   [`strip_method_tags_r6`]).
 /// - `@return` / `@returns` — impl blocks have no return value.
 /// - `@examples` — examples belong on the method that is being demonstrated.
 /// - `@export` — redundant: export for class-level docs is handled by
 ///   `ClassDocBuilder`, which emits `@export` based on the impl block's
 ///   `internal` / `noexport` attrs, not on user-supplied roxygen.
 const METHOD_ONLY_TAGS: &[&str] = &["param", "return", "returns", "examples", "export"];
+
+/// Tags stripped from impl-block docs for R6 classes — same as `METHOD_ONLY_TAGS`
+/// minus `"param"`, since roxygen2 8.0.0 inherits class-level `@param` tags into
+/// all R6 methods and strips them from the rendered method entries automatically.
+/// This means `/// @param breed …` on an R6 impl block is valid and intentional,
+/// not a misplaced method-only tag. Keeping them avoids both the compile warning
+/// and the resulting `(no documentation available)` placeholder on subclass ctors.
+const METHOD_ONLY_TAGS_R6: &[&str] = &["return", "returns", "examples", "export"];
 
 /// Extract the tag name from a roxygen line (everything between `@` and the
 /// first whitespace character). Returns `None` for lines that don't start with
@@ -666,6 +676,79 @@ pub(crate) fn strip_method_tags(
             continue;
         };
         if !METHOD_ONLY_TAGS.contains(&name) {
+            filtered.push(tag.clone());
+            continue;
+        }
+        let msg = format!(
+            "miniextendr: @{} on impl block `{}` has no effect — move it to the method. Tag: {}",
+            name,
+            type_name,
+            tag.trim()
+        );
+        let ident = quote::format_ident!(
+            "_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}_{}",
+            type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
+            warning_id
+        );
+        warning_id += 1;
+        warnings.extend(quote_spanned! { span =>
+            #[deprecated(note = #msg)]
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            const #ident: () = ();
+        });
+    }
+
+    (filtered, warnings)
+}
+
+/// Extract the set of parameter names declared via `@param` in a list of roxygen tags.
+///
+/// For each `@param <name> <desc>` tag in `tags`, extracts `<name>` and inserts it
+/// into the returned `HashSet`. Used by R6 class generators to build the set of
+/// class-level params so method param loops can suppress `(no documentation available)`
+/// for names already covered at class level (roxygen2 8.0.0 inherits class-level
+/// `@param` tags into all methods automatically).
+pub(crate) fn extract_param_names(tags: &[String]) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for tag in tags {
+        let trimmed = tag.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("@param ") {
+            let name = rest.split_whitespace().next().unwrap_or("").to_string();
+            if !name.is_empty() {
+                names.insert(name);
+            }
+        }
+    }
+    names
+}
+
+/// Like [`strip_method_tags`] but for R6 impl blocks.
+///
+/// R6 class-level `@param` tags are **kept** (roxygen2 8.0.0 inherits them into
+/// all methods automatically — rd-R6.Rmd §"Class-level docs"). All other
+/// method-only tags (`@return`, `@returns`, `@examples`, `@export`) are still
+/// stripped with a compile-time warning. No warning is generated for `@param`.
+///
+/// Returns `(filtered_tags, warnings)` — same shape as [`strip_method_tags`].
+pub(crate) fn strip_method_tags_r6(
+    tags: &[String],
+    type_name: &str,
+    span: proc_macro2::Span,
+) -> (Vec<String>, proc_macro2::TokenStream) {
+    use quote::quote_spanned;
+
+    let mut filtered = Vec::new();
+    let mut warnings = proc_macro2::TokenStream::new();
+    let mut warning_id: usize = 0;
+
+    for tag in tags {
+        let Some(name) = roxygen_tag_name(tag) else {
+            filtered.push(tag.clone());
+            continue;
+        };
+        if !METHOD_ONLY_TAGS_R6.contains(&name) {
+            // Keeps @param (and any unrecognised tags) without warning.
             filtered.push(tag.clone());
             continue;
         }
