@@ -159,6 +159,10 @@ struct TraitMethod {
     r_post_checks: Option<String>,
     /// Register `on.exit()` cleanup code in the R wrapper.
     r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
+    /// Opt out of the per-class `<ClassName>_<method>` S7 fast-dispatch shortcut
+    /// (set via `#[miniextendr(s7(no_shortcut))]`). Only meaningful for S7 trait
+    /// impls; ignored by the other class systems.
+    no_shortcut: bool,
 }
 
 impl TraitMethod {
@@ -774,6 +778,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 r_entry: None,
                 r_post_checks: None,
                 r_on_exit: None,
+                no_shortcut: false,
                 r_name: if tm.sig.ident == tm.r_name {
                     None // r_name matches ident → no override
                 } else {

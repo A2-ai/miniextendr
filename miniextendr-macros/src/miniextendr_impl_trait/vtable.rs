@@ -551,6 +551,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 r_entry: attrs.r_entry,
                 r_post_checks: attrs.r_post_checks,
                 r_on_exit: attrs.r_on_exit,
+                no_shortcut: attrs.no_shortcut,
             });
         }
     }
@@ -590,6 +591,8 @@ struct TraitMethodAttrs {
     r_post_checks: Option<String>,
     /// Register `on.exit()` cleanup code in the R wrapper.
     r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
+    /// Opt out of the S7 fast-dispatch shortcut (`#[miniextendr(s7(no_shortcut))]`).
+    no_shortcut: bool,
 }
 
 /// Parse `#[miniextendr(...)]` attributes from a trait method.
@@ -615,6 +618,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut r_entry: Option<String> = None;
     let mut r_post_checks: Option<String> = None;
     let mut r_on_exit: Option<crate::miniextendr_fn::ROnExit> = None;
+    let mut no_shortcut = false;
 
     for attr in attrs {
         if !attr.path().is_ident("miniextendr") {
@@ -640,10 +644,12 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         check_interrupt = true;
                     } else if inner.path.is_ident("unwrap_in_r") {
                         unwrap_in_r = true;
+                    } else if inner.path.is_ident("no_shortcut") {
+                        no_shortcut = true;
                     } else {
                         return Err(inner.error(
                             "unknown nested option; expected `worker`, `main_thread`, `coerce`, \
-                             `check_interrupt`, or `unwrap_in_r`",
+                             `check_interrupt`, `unwrap_in_r`, or `no_shortcut`",
                         ));
                     }
                     Ok(())
@@ -662,6 +668,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 unwrap_in_r = true;
             } else if meta.path.is_ident("skip") {
                 skip = true;
+            } else if meta.path.is_ident("no_shortcut") {
+                no_shortcut = true;
             } else if meta.path.is_ident("r_name") {
                 let value: syn::LitStr = meta.value()?.parse()?;
                 r_name = Some(value.value());
@@ -771,7 +779,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
-                     `check_interrupt`, `rng`, `unwrap_in_r`, `skip`, `r_name`, \
+                     `check_interrupt`, `rng`, `unwrap_in_r`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`",
                 ));
             }
@@ -794,6 +802,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         r_entry,
         r_post_checks,
         r_on_exit,
+        no_shortcut,
     })
 }
 

@@ -70,6 +70,29 @@ fn class_ref_or_any_or_verbatim(name: &str) -> String {
     }
 }
 
+/// Roxygen prose for the fast-path dispatch shortcut advisory block.
+///
+/// Shared between the inherent-impl S7 generator ([`generate_s7_r_wrapper`])
+/// and the trait-impl S7 generator
+/// (`miniextendr_impl_trait::r_wrappers::generate_trait_s7_r_wrapper`) so both
+/// emit identical guidance. Returns `#'`-prefixed lines (no trailing `@param`
+/// / `@name` scaffolding — the caller appends those).
+pub(crate) fn shortcut_advisory_lines(method_name: &str, class_name: &str) -> Vec<String> {
+    vec![
+        format!(
+            "#' Fast-path shortcut for the `{}` S7 method on `{}`.",
+            method_name, class_name
+        ),
+        "#'".to_string(),
+        "#' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`".to_string(),
+        "#' (the class walk + method-table lookup). Use in hot loops where the".to_string(),
+        "#' per-call dispatch overhead matters. **Footgun:** this shortcut does not".to_string(),
+        "#' perform subclass dispatch \u{2014} a method override defined on a child class"
+            .to_string(),
+        "#' will *not* be honoured. Use the generic when subclassing is possible.".to_string(),
+    ]
+}
+
 /// Map a Rust return type to an S7 class name.
 ///
 /// Returns `None` if the type doesn't map to any S7 class — the caller
@@ -854,8 +877,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // `self` here (the generic names it `x`) and is wired through `self@.ptr`.
         //
         // Fallback methods dispatch on `S7::class_any`, so a per-class shortcut
-        // is meaningless — skip them.
-        if !method_attrs.s7.fallback {
+        // is meaningless — skip them. `s7(no_shortcut)` opts a method out
+        // explicitly (e.g. to avoid a name collision with a sidecar accessor).
+        if !method_attrs.s7.fallback && !method_attrs.s7.no_shortcut {
             let method_name = ctx.method.r_method_name();
             let shortcut_name = format!("{}_{}", class_name, method_name);
             let shortcut_call = ctx.instance_call("self@.ptr");
@@ -871,31 +895,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // warning). `@param self` is documented explicitly because
             // MethodDocBuilder skips the receiver.
             if !class_has_no_rd {
-                lines.push(format!(
-                    "#' Fast-path shortcut for the `{}` S7 method on `{}`.",
-                    method_name, class_name
-                ));
-                lines.push("#'".to_string());
-                lines.push(
-                    "#' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`"
-                        .to_string(),
-                );
-                lines.push(
-                    "#' (the class walk + method-table lookup). Use in hot loops where the"
-                        .to_string(),
-                );
-                lines.push(
-                    "#' per-call dispatch overhead matters. **Footgun:** this shortcut does not"
-                        .to_string(),
-                );
-                lines.push(
-                    "#' perform subclass dispatch \u{2014} a method override defined on a child class"
-                        .to_string(),
-                );
-                lines.push(
-                    "#' will *not* be honoured. Use the generic when subclassing is possible."
-                        .to_string(),
-                );
+                lines.extend(shortcut_advisory_lines(&method_name, &class_name));
                 lines.push(format!("#' @param self A `{}` object.", class_name));
                 // Pass empty doc_tags: the method's own prose (@title/description)
                 // is already rendered on the shared @rdname page by the generic

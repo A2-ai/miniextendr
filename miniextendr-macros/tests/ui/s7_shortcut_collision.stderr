@@ -1,0 +1,5 @@
+error: S7 fast-path shortcut `Foo_value` collides with another generated function of the same name on `Foo`. Rename one (e.g. `#[miniextendr(s7(r_name = "..."))]`) or opt this method out of the shortcut with `#[miniextendr(s7(no_shortcut))]`.
+  --> tests/ui/s7_shortcut_collision.rs:13:8
+   |
+13 |     fn value(&self) -> i32 {
+   |        ^^^^^

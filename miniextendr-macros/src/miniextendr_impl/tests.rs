@@ -634,6 +634,95 @@ fn s7_wrapper_generic_override() {
     assert!(wrapper.contains("print <- S7::new_external_generic(\"base\", \"print\")"));
     assert!(wrapper.contains("S7::method(print, Counter) <- function(x, ...)"));
 }
+
+/// `s7(no_shortcut)` suppresses the `<ClassName>_<method>` fast-dispatch
+/// shortcut while keeping the S7 generic + method registration (#986).
+#[test]
+fn s7_no_shortcut_suppresses_shortcut() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn get(&self) -> i32 { unimplemented!() }
+            #[miniextendr(s7(no_shortcut))]
+            pub fn increment(&mut self) { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // `get` still gets its shortcut.
+    assert!(
+        wrapper.contains("Counter_get <- function(self, ...)"),
+        "un-annotated method should keep its shortcut, got:\n{}",
+        wrapper
+    );
+    // `increment` does not.
+    assert!(
+        !wrapper.contains("Counter_increment <- function"),
+        "no_shortcut must suppress the Counter_increment shortcut, got:\n{}",
+        wrapper
+    );
+    // The generic + method registration for `increment` must still exist.
+    assert!(
+        wrapper.contains("S7::method(increment, Counter) <- function(x, ...)"),
+        "no_shortcut must not remove the dispatched method, got:\n{}",
+        wrapper
+    );
+}
+
+/// A static method `r_name`-aliased onto an instance method's shortcut name is
+/// a compile error (#986): both would emit `Counter_value` and the last one
+/// would silently win at R load time.
+#[test]
+fn s7_shortcut_collision_with_static_is_error() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn value(&self) -> i32 { unimplemented!() }
+            #[miniextendr(s7(r_name = "value"))]
+            pub fn make() -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let err = check_s7_shortcut_collisions(&parsed).expect_err("collision must be detected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Counter_value") && msg.contains("no_shortcut"),
+        "error should name the colliding function and suggest no_shortcut, got: {msg}"
+    );
+}
+
+/// `s7(no_shortcut)` resolves a would-be shortcut/static collision.
+#[test]
+fn s7_no_shortcut_resolves_collision() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            #[miniextendr(s7(no_shortcut))]
+            pub fn value(&self) -> i32 { unimplemented!() }
+            #[miniextendr(s7(r_name = "value"))]
+            pub fn make() -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    check_s7_shortcut_collisions(&parsed).expect("no_shortcut should resolve the collision");
+}
+
+/// Non-S7 class systems never collide on shortcut names (no shortcuts emitted).
+#[test]
+fn s7_shortcut_collision_check_ignores_other_class_systems() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn value(&self) -> i32 { unimplemented!() }
+            #[miniextendr(env(r_name = "value"))]
+            pub fn make() -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    check_s7_shortcut_collisions(&parsed).expect("non-S7 systems are exempt");
+}
 // endregion
 
 // region: Label support tests
