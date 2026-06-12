@@ -895,6 +895,7 @@ templates-sources:
     rpkg/Makevars.in	rpkg/src/Makevars.in
     rpkg/Makevars.win	rpkg/src/Makevars.win
     rpkg/stub.c	rpkg/src/stub.c
+    rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
@@ -911,6 +912,7 @@ templates-sources:
     monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
     monorepo/rpkg/Makevars.win	rpkg/src/Makevars.win
     monorepo/rpkg/stub.c	rpkg/src/stub.c
+    monorepo/rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     monorepo/rpkg/win.def.in	rpkg/src/win.def.in
     EOF

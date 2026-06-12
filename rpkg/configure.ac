@@ -144,7 +144,14 @@ if test -z "${CARGO_FEATURES+x}"; then
     fi
   fi
   if test -z "$CARGO_FEATURES"; then
-    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
+    dnl Fallback list (used when tools/detect-features.R is absent or errors).
+    dnl Kept in sync with what detect-features.R enables on a fully-equipped
+    dnl machine: every optional integration feature, plus connections and jiff.
+    dnl Excludes meta/aggregate (default, full), risky (nonapi), dev/diagnostic
+    dnl (macro-coverage, growth-debug), the #[miniextendr] option defaults
+    dnl (strict-default, coerce-default), the class-system selectors
+    dnl (r6-default, s7-default), worker-default, and indicatif.
+    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,jiff,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log,connections"
   fi
 fi
 
