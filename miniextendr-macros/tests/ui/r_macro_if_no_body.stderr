@@ -1,0 +1,5 @@
+error: R syntax error: `if (...)` has no body — expected a consequent expression after the condition
+ --> tests/ui/r_macro_if_no_body.rs:6:19
+  |
+6 |     let _ = r!(if (x));
+  |                   ^^^
