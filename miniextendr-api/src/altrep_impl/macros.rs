@@ -42,53 +42,17 @@
 /// ```
 #[macro_export]
 macro_rules! impl_altinteger_from_data {
-    ($ty:ty) => {
-        // Default: materializing DATAPTR — allocates INTSXP in data2 on first DATAPTR call.
-        // Without this, R's default DATAPTR errors with "cannot access data pointer".
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_integer_dataptr!($ty);
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_alt_from_data!(
+    // Default (no knobs): materializing DATAPTR — allocates INTSXP in data2 on
+    // first DATAPTR call. Without this, R's default DATAPTR errors with
+    // "cannot access data pointer". See `__impl_alt_family!` for the knob matrix.
+    ($ty:ty $(, $knob:ident)*) => {
+        $crate::__impl_alt_family!(
             $ty,
             __impl_altinteger_methods,
             impl_inferbase_integer,
-            dataptr(i32)
-        );
-    };
-    ($ty:ty, serialize) => {
-        // Serialize + materializing DATAPTR (default for computed types)
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_integer_dataptr!($ty);
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altinteger_methods,
-            impl_inferbase_integer,
-            subset
-        );
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altinteger_methods,
-            impl_inferbase_integer,
-            dataptr(i32),
-            serialize
-        );
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altinteger_methods,
-            impl_inferbase_integer,
-            subset,
-            serialize
+            dataptr: dataptr(i32),
+            default: materializing(i32)
+            $(, $knob)*
         );
     };
 }
@@ -345,82 +309,71 @@ macro_rules! __impl_altvec_string_dataptr {
     };
 }
 
-/// Internal macro: impl AltVec with materializing dataptr for logical ALTREP.
+/// Internal macro: impl AltVec with a *materializing* dataptr for a given element type.
 ///
-/// Thin wrapper: provides a trivial `AltrepDataptr` (no direct pointer) and
-/// delegates to `__impl_altvec_dataptr` which materializes via `RNativeType::elt`.
+/// Thin wrapper, parameterised by element type: installs a trivial
+/// `AltrepDataptr<$elem>` (no direct pointer — `dataptr` returns `None`) and
+/// delegates to [`__impl_altvec_dataptr`], which materializes into `data2` via
+/// `RNativeType::elt`. The 5 per-family aliases below pin `$elem` so the derive
+/// and the public `impl_alt*_from_data!` macros can reference them by a stable
+/// per-family name.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altvec_materializing_dataptr {
+    ($ty:ty, $elem:ty) => {
+        impl $crate::altrep_data::AltrepDataptr<$elem> for $ty {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
+                None
+            }
+        }
+        $crate::__impl_altvec_dataptr!($ty, $elem);
+    };
+}
+
+/// Internal macro: materializing dataptr for logical ALTREP.
+///
 /// R logicals are stored as `i32` but accessed through `RLogical` for type safety.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_logical_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_data::AltrepDataptr<$crate::RLogical> for $ty {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut $crate::RLogical> {
-                None
-            }
-        }
-        $crate::__impl_altvec_dataptr!($ty, $crate::RLogical);
+        $crate::__impl_altvec_materializing_dataptr!($ty, $crate::RLogical);
     };
 }
 
-/// Internal macro: impl AltVec with materializing dataptr for integer ALTREP.
-///
-/// Internal macro: impl AltVec with materializing dataptr for integer ALTREP.
-///
-/// Thin wrapper: provides a trivial `AltrepDataptr` (no direct pointer) and
-/// delegates to `__impl_altvec_dataptr` which materializes via `RNativeType::elt`.
+/// Internal macro: materializing dataptr for integer ALTREP.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_integer_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_data::AltrepDataptr<i32> for $ty {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
-                None
-            }
-        }
-        $crate::__impl_altvec_dataptr!($ty, i32);
+        $crate::__impl_altvec_materializing_dataptr!($ty, i32);
     };
 }
 
-/// Internal macro: impl AltVec with materializing dataptr for real ALTREP.
+/// Internal macro: materializing dataptr for real ALTREP.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_real_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_data::AltrepDataptr<f64> for $ty {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
-                None
-            }
-        }
-        $crate::__impl_altvec_dataptr!($ty, f64);
+        $crate::__impl_altvec_materializing_dataptr!($ty, f64);
     };
 }
 
-/// Internal macro: impl AltVec with materializing dataptr for raw ALTREP.
+/// Internal macro: materializing dataptr for raw ALTREP.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_raw_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_data::AltrepDataptr<u8> for $ty {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
-                None
-            }
-        }
-        $crate::__impl_altvec_dataptr!($ty, u8);
+        $crate::__impl_altvec_materializing_dataptr!($ty, u8);
     };
 }
 
-/// Internal macro: impl AltVec with materializing dataptr for complex ALTREP.
+/// Internal macro: materializing dataptr for complex ALTREP.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_complex_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_data::AltrepDataptr<$crate::Rcomplex> for $ty {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut $crate::Rcomplex> {
-                None
-            }
-        }
-        $crate::__impl_altvec_dataptr!($ty, $crate::Rcomplex);
+        $crate::__impl_altvec_materializing_dataptr!($ty, $crate::Rcomplex);
     };
 }
 
@@ -438,9 +391,10 @@ macro_rules! __impl_altvec_extract_subset {
                 _call: $crate::SEXP,
             ) -> $crate::SEXP {
                 // Validate that indx is an integer vector before calling INTEGER().
-                // Return NULL to signal R to use default subsetting if not.
+                // Return C NULL (not R_NilValue) to signal R to use default
+                // subsetting if not — R checks `!= NULL` here.
                 if $crate::SexpExt::type_of(&indx) != $crate::SEXPTYPE::INTSXP {
-                    return core::ptr::null_mut();
+                    return $crate::SEXP::null();
                 }
 
                 // Convert indx SEXP to slice using SexpExt (avoids raw-ptr-deref lint)
@@ -548,99 +502,115 @@ macro_rules! __impl_alt_no_na {
 }
 // endregion
 
-// region: Parametric macro: __impl_alt_from_data!
+// region: Canonical emission macros: __impl_altvec_flavor! / __impl_alt_from_data! / __impl_alt_family!
 //
-// This internal macro generates the standard ALTREP trait implementations
-// (Altrep, AltVec, family-specific methods, InferBase) for a given type.
-// The 7 public `impl_alt*_from_data!` macros delegate to this with
-// family-specific parameters.
+// Three layers, each with a single responsibility:
+//
+// 1. `__impl_altvec_flavor!` — maps an AltVec *flavor* token to the macro
+//    that emits the `impl AltVec` (typed direct pointer, materializing,
+//    STRSXP materialization, or extract_subset).
+// 2. `__impl_alt_from_data!` — the canonical emitter: Altrep base
+//    (with/without serialize) + AltVec flavor + family methods + InferBase.
+//    Exactly two arms — every knob combination reduces to these.
+// 3. `__impl_alt_family!` — the knob matrix: maps the public macros'
+//    user-facing knob spellings (`dataptr` / `serialize` / `subset`, in
+//    canonical order) to a flavor + optional serialize. Parameterised by the
+//    family's `dataptr:` and `default:` flavors so one matrix serves all
+//    six knob-bearing families.
 
+/// Internal macro: emit the `impl AltVec` for a given flavor.
+///
+/// Flavors:
+/// - `dataptr($elem)` — typed direct pointer via `AltrepDataptr<$elem>`,
+///   falling back to data2 materialization.
+/// - `materializing($elem)` — trivial `AltrepDataptr<$elem>` returning `None`
+///   plus the same `__impl_altvec_dataptr!` (pure data2 materialization).
+/// - `string_dataptr` — whole-vector STRSXP materialization (string family).
+/// - `subset` — `Extract_subset` support via `AltrepExtractSubset`.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altvec_flavor {
+    ($ty:ty, dataptr($elem:ty)) => {
+        $crate::__impl_altvec_dataptr!($ty, $elem);
+    };
+    ($ty:ty, materializing($elem:ty)) => {
+        $crate::__impl_altvec_materializing_dataptr!($ty, $elem);
+    };
+    ($ty:ty, string_dataptr) => {
+        $crate::__impl_altvec_string_dataptr!($ty);
+    };
+    ($ty:ty, subset) => {
+        $crate::__impl_altvec_extract_subset!($ty);
+    };
+}
+
+/// Internal macro: canonical ALTREP emission.
+///
+/// Generates the standard ALTREP trait implementations (Altrep base, AltVec
+/// flavor, family-specific methods, InferBase) for a given type. The two arms
+/// differ only in serialization support on the Altrep base impl.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_alt_from_data {
-    // Base: no options
-    ($ty:ty, $methods:ident, $inferbase:ident) => {
+    ($ty:ty, $methods:ident, $inferbase:ident, $flavor:ident $(($elem:ty))?) => {
         $crate::__impl_altrep_base!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altvec_flavor!($ty, $flavor $(($elem))?);
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
     };
-    // Base: explicit guard
-    ($ty:ty, $methods:ident, $inferbase:ident, @guard $guard:ident) => {
-        $crate::__impl_altrep_base!($ty, $guard);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
-    };
-    // Dataptr with element type
-    ($ty:ty, $methods:ident, $inferbase:ident, dataptr($elem:ty)) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_dataptr!($ty, $elem);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
-    };
-    // String dataptr (materialization into STRSXP)
-    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
-    };
-    // String dataptr + explicit guard
-    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr, @guard $guard:ident) => {
-        $crate::__impl_altrep_base!($ty, $guard);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
-    };
-    // Serialize only
-    ($ty:ty, $methods:ident, $inferbase:ident, serialize) => {
+    ($ty:ty, $methods:ident, $inferbase:ident, $flavor:ident $(($elem:ty))?, serialize) => {
         $crate::__impl_altrep_base!($ty, with_serialize);
-        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altvec_flavor!($ty, $flavor $(($elem))?);
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
     };
-    // Serialize + explicit guard
-    ($ty:ty, $methods:ident, $inferbase:ident, serialize, @guard $guard:ident) => {
-        $crate::__impl_altrep_base!($ty, $guard, with_serialize);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
+}
+
+/// Internal macro: the per-family knob matrix.
+///
+/// Maps the user-facing knob list of the public `impl_alt*_from_data!` macros
+/// (`dataptr` / `serialize` / `subset`, canonical order) to a canonical
+/// [`__impl_alt_from_data!`] invocation. The family supplies:
+/// - `dataptr:` — the AltVec flavor for the `dataptr` knob,
+/// - `default:` — the AltVec flavor when no `dataptr`/`subset` knob is given
+///   (the materializing/data2 path).
+///
+/// Valid knob combinations (anything else is a compile error):
+///
+/// ```ignore
+/// ()                    // default flavor
+/// (dataptr)             // direct-pointer flavor
+/// (serialize)           // default flavor + serialize
+/// (subset)              // extract_subset flavor
+/// (dataptr, serialize)
+/// (subset, serialize)
+/// ```
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_alt_family {
+    ($ty:ty, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?) => {
+        $crate::__impl_alt_from_data!($ty, $methods, $inferbase, $dff $(($dfe))?);
     };
-    // Subset only
-    ($ty:ty, $methods:ident, $inferbase:ident, subset) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_extract_subset!($ty);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
+    ($ty:ty, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, dataptr) => {
+        $crate::__impl_alt_from_data!($ty, $methods, $inferbase, $dpf $(($dpe))?);
     };
-    // Dataptr + serialize
-    ($ty:ty, $methods:ident, $inferbase:ident, dataptr($elem:ty), serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_dataptr!($ty, $elem);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
+    ($ty:ty, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, serialize) => {
+        $crate::__impl_alt_from_data!($ty, $methods, $inferbase, $dff $(($dfe))?, serialize);
     };
-    // String dataptr + serialize
-    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr, serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
+    ($ty:ty, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, subset) => {
+        $crate::__impl_alt_from_data!($ty, $methods, $inferbase, subset);
     };
-    // String dataptr + serialize + explicit guard
-    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr, serialize, @guard $guard:ident) => {
-        $crate::__impl_altrep_base!($ty, $guard, with_serialize);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
+    ($ty:ty, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!($ty, $methods, $inferbase, $dpf $(($dpe))?, serialize);
     };
-    // Subset + serialize
-    ($ty:ty, $methods:ident, $inferbase:ident, subset, serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_extract_subset!($ty);
-        $crate::$methods!($ty);
-        $crate::$inferbase!($ty);
+    ($ty:ty, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, subset, serialize) => {
+        $crate::__impl_alt_from_data!($ty, $methods, $inferbase, subset, serialize);
     };
 }
 // endregion
@@ -722,45 +692,14 @@ macro_rules! __impl_altinteger_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altreal_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_real_dataptr!($ty);
-        $crate::__impl_altreal_methods!($ty);
-        $crate::impl_inferbase_real!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_alt_from_data!(
+    ($ty:ty $(, $knob:ident)*) => {
+        $crate::__impl_alt_family!(
             $ty,
             __impl_altreal_methods,
             impl_inferbase_real,
-            dataptr(f64)
-        );
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_real_dataptr!($ty);
-        $crate::__impl_altreal_methods!($ty);
-        $crate::impl_inferbase_real!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altreal_methods,
-            impl_inferbase_real,
-            dataptr(f64),
-            serialize
-        );
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, subset);
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altreal_methods,
-            impl_inferbase_real,
-            subset,
-            serialize
+            dataptr: dataptr(f64),
+            default: materializing(f64)
+            $(, $knob)*
         );
     };
 }
@@ -833,50 +772,16 @@ macro_rules! __impl_altreal_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altlogical_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_logical_dataptr!($ty);
-        $crate::__impl_altlogical_methods!($ty);
-        $crate::impl_inferbase_logical!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_alt_from_data!(
+    // Note the asymmetry: the `dataptr` knob is typed `i32` (R's LGLSXP storage),
+    // while the materializing default goes through `RLogical` for type safety.
+    ($ty:ty $(, $knob:ident)*) => {
+        $crate::__impl_alt_family!(
             $ty,
             __impl_altlogical_methods,
             impl_inferbase_logical,
-            dataptr(i32)
-        );
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_logical_dataptr!($ty);
-        $crate::__impl_altlogical_methods!($ty);
-        $crate::impl_inferbase_logical!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altlogical_methods,
-            impl_inferbase_logical,
-            dataptr(i32),
-            serialize
-        );
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altlogical_methods,
-            impl_inferbase_logical,
-            subset
-        );
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altlogical_methods,
-            impl_inferbase_logical,
-            subset,
-            serialize
+            dataptr: dataptr(i32),
+            default: materializing($crate::RLogical)
+            $(, $knob)*
         );
     };
 }
@@ -945,40 +850,14 @@ macro_rules! __impl_altlogical_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altraw_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_raw_dataptr!($ty);
-        $crate::__impl_altraw_methods!($ty);
-        $crate::impl_inferbase_raw!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, dataptr(u8));
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_raw_dataptr!($ty);
-        $crate::__impl_altraw_methods!($ty);
-        $crate::impl_inferbase_raw!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_alt_from_data!(
+    ($ty:ty $(, $knob:ident)*) => {
+        $crate::__impl_alt_family!(
             $ty,
             __impl_altraw_methods,
             impl_inferbase_raw,
-            dataptr(u8),
-            serialize
-        );
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, subset);
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altraw_methods,
-            impl_inferbase_raw,
-            subset,
-            serialize
+            dataptr: dataptr(u8),
+            default: materializing(u8)
+            $(, $knob)*
         );
     };
 }
@@ -1018,45 +897,16 @@ macro_rules! __impl_altraw_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altstring_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::__impl_altstring_methods!($ty);
-        $crate::impl_inferbase_string!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_alt_from_data!(
+    // String vectors have no contiguous typed pointer; the default and `dataptr`
+    // knobs both route through `string_dataptr` (whole-vector STRSXP materialization).
+    ($ty:ty $(, $knob:ident)*) => {
+        $crate::__impl_alt_family!(
             $ty,
             __impl_altstring_methods,
             impl_inferbase_string,
-            string_dataptr
-        );
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::__impl_altstring_methods!($ty);
-        $crate::impl_inferbase_string!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altstring_methods,
-            impl_inferbase_string,
-            string_dataptr,
-            serialize
-        );
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, subset);
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altstring_methods,
-            impl_inferbase_string,
-            subset,
-            serialize
+            dataptr: string_dataptr,
+            default: string_dataptr
+            $(, $knob)*
         );
     };
 }
@@ -1190,50 +1040,14 @@ macro_rules! __impl_altcomplex_methods {
 /// - `subset`: Enable optimized subsetting (requires `AltrepExtractSubset`)
 #[macro_export]
 macro_rules! impl_altcomplex_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_complex_dataptr!($ty);
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_alt_from_data!(
+    ($ty:ty $(, $knob:ident)*) => {
+        $crate::__impl_alt_family!(
             $ty,
             __impl_altcomplex_methods,
             impl_inferbase_complex,
-            dataptr($crate::Rcomplex)
-        );
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base!($ty, with_serialize);
-        $crate::__impl_altvec_complex_dataptr!($ty);
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altcomplex_methods,
-            impl_inferbase_complex,
-            subset
-        );
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altcomplex_methods,
-            impl_inferbase_complex,
-            dataptr($crate::Rcomplex),
-            serialize
-        );
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_alt_from_data!(
-            $ty,
-            __impl_altcomplex_methods,
-            impl_inferbase_complex,
-            subset,
-            serialize
+            dataptr: dataptr($crate::Rcomplex),
+            default: materializing($crate::Rcomplex)
+            $(, $knob)*
         );
     };
 }
