@@ -508,6 +508,41 @@ distance(p1, p2)   # 5
 print(p1)          # Point(0, 0)
 ```
 
+### Fast-path dispatch shortcuts
+
+Every non-fallback S7 instance method also gets a plain function
+`<ClassName>_<method>(self, ...)` whose body calls the underlying Rust routine
+directly, bypassing `S7::S7_dispatch()` (the class walk + method-table lookup).
+On hot loops this is several times faster than calling the generic. Trait-impl
+S7 methods (`#[miniextendr(s7)] impl Trait for Type`) get the same shortcuts.
+
+```r
+# Generic (full S7 dispatch — honours subclass overrides)
+distance(p1, p2)
+# Shortcut (direct .Call — no dispatch)
+Point_distance(p1, p2)
+```
+
+**Footgun:** the shortcut does not perform subclass dispatch — a method
+override defined on a child class will *not* be honoured. Use the generic when
+subclassing is possible.
+
+Opt a method out with `s7(no_shortcut)` (the generic + method registration are
+unaffected):
+
+```rust
+#[miniextendr(s7(no_shortcut))]
+pub fn get(&self) -> i32 { ... }
+```
+
+Shortcut names share one R namespace with the `<ClassName>_<static_method>`
+functions emitted for static methods. A collision inside one impl block
+(typically via an `r_name` alias) is a compile error suggesting a rename or
+`s7(no_shortcut)`. Collisions with `#[derive(ExternalPtr)]` sidecar accessors
+(`<ClassName>_get_<field>` / `<ClassName>_set_<field>`) are not yet detected —
+avoid naming an instance method `get_<field>`/`set_<field>` for a sidecar
+field, or use `s7(no_shortcut)` (see #991).
+
 ### When to Use
 
 - New packages without legacy constraints

@@ -513,6 +513,10 @@ pub struct S7MethodAttrs {
     pub fallback: bool,
     pub convert_from: Option<String>,
     pub convert_to: Option<String>,
+    /// Opt out of the per-class `<ClassName>_<method>` fast-dispatch shortcut
+    /// (set via `#[miniextendr(s7(no_shortcut))]`). The S7 generic + method are
+    /// still emitted; only the standalone shortcut function is suppressed.
+    pub no_shortcut: bool,
 }
 
 /// Per-method attributes for class system customization.
@@ -1317,6 +1321,8 @@ impl ParsedMethod {
                             method_attrs.s7.dispatch = Some(value.value());
                         } else if inner.path.is_ident("fallback") {
                             method_attrs.s7.fallback = true;
+                        } else if inner.path.is_ident("no_shortcut") {
+                            method_attrs.s7.no_shortcut = true;
                         } else if inner.path.is_ident("convert_from") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1386,7 +1392,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone, r_on_exit"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit"
                             ));
                         }
                         Ok(())
@@ -2868,7 +2874,7 @@ mod s3_class;
 /// S4 class wrapper generator (`setClass` / `setMethod` formal OOP).
 mod s4_class;
 /// S7 class wrapper generator (`new_class` / `new_generic` modern R OOP).
-mod s7_class;
+pub(crate) mod s7_class;
 /// vctrs-compatible class wrapper generator (`new_vctr` / `new_rcrd` / `new_list_of`).
 mod vctrs_class;
 
@@ -3063,6 +3069,70 @@ pub fn generate_as_coercion_trait_impls(parsed_impl: &ParsedImpl) -> TokenStream
     quote! { #(#impls)* }
 }
 
+/// Detect S7 fast-path shortcut name collisions within an inherent impl block.
+///
+/// The S7 generator (`s7_class`) emits a standalone `<ClassName>_<method>`
+/// shortcut function for each non-fallback, non-`no_shortcut` instance method,
+/// and a `<ClassName>_<r_method_name>` function for each static method. These
+/// share one R namespace, so two definitions with the same name silently
+/// clobber each other (last write wins). This typically arises from an
+/// `r_name` override that aliases an instance shortcut onto a static method
+/// (or vice versa).
+///
+/// Returns an error pointing at the offending method, advising the user to
+/// rename (via `r_name`) or opt the instance method out with
+/// `#[miniextendr(s7(no_shortcut))]`. Non-S7 class systems are a no-op.
+///
+/// Note: collisions with `#[derive(ExternalPtr)]` sidecar accessors
+/// (`<ClassName>_get_<field>` / `_set_<field>`) are *not* detected here — the
+/// sidecar field names live in the derive's distributed-slice registry and are
+/// not visible to this macro invocation. See #991 for the write-time check.
+fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::S7 {
+        return Ok(());
+    }
+    let class_name = parsed.class_name();
+
+    // Map emitted standalone-function name -> the method ident span that produced
+    // it, so a second producer of the same name can be reported against itself.
+    let mut seen: std::collections::HashMap<String, proc_macro2::Span> =
+        std::collections::HashMap::new();
+
+    // Static methods always emit `<ClassName>_<r_method_name>`.
+    for m in parsed.static_methods() {
+        let name = format!("{}_{}", class_name, m.r_method_name());
+        seen.entry(name).or_insert_with(|| m.ident.span());
+    }
+
+    // Instance methods (excluding fallback / no_shortcut / property accessors)
+    // emit the `<ClassName>_<r_method_name>` shortcut.
+    for m in parsed.instance_methods() {
+        if m.method_attrs.s7.fallback
+            || m.method_attrs.s7.no_shortcut
+            || m.method_attrs.s7.getter
+            || m.method_attrs.s7.setter
+            || m.method_attrs.s7.validate
+        {
+            continue;
+        }
+        let name = format!("{}_{}", class_name, m.r_method_name());
+        if seen.contains_key(&name) {
+            return Err(syn::Error::new(
+                m.ident.span(),
+                format!(
+                    "S7 fast-path shortcut `{name}` collides with another generated function \
+                     of the same name on `{class_name}`. Rename one (e.g. \
+                     `#[miniextendr(s7(r_name = \"...\"))]`) or opt this method out of the \
+                     shortcut with `#[miniextendr(s7(no_shortcut))]`."
+                ),
+            ));
+        }
+        seen.insert(name, m.ident.span());
+    }
+
+    Ok(())
+}
+
 /// Top-level entry point for expanding `#[miniextendr]` on impl blocks.
 ///
 /// Dispatches between two cases:
@@ -3108,6 +3178,15 @@ pub fn expand_impl(
         Ok(p) => p,
         Err(e) => return e.into_compile_error().into(),
     };
+
+    // Detect S7 fast-path shortcut name collisions (#986). The shortcut
+    // `<ClassName>_<method>` shares a namespace with the standalone functions
+    // emitted for static methods — an `r_name` override (or a static method
+    // literally named like an instance method) can make two definitions clash,
+    // with the last one silently winning. Fail loudly at compile time instead.
+    if let Err(e) = check_s7_shortcut_collisions(&parsed) {
+        return e.into_compile_error().into();
+    }
 
     // Generate constants for module registration (needed for doc links)
     let type_ident = &parsed.type_ident;

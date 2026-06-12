@@ -35,6 +35,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - **When changing helpers from `TokenStream` → `Result<TokenStream>`, update every caller with `?`.** Otherwise you'll see confusing `ToTokens` bound errors on `Result`.
 - **UI test `.stderr` files** must be regenerated when error wording changes (`TRYBUILD=overwrite cargo test -p miniextendr-macros`).
 - **MXL111** — `s4_*` method name on `#[miniextendr(s4)]` impl gets `s4_s4_*`. Drop the prefix.
+- **S7 fast-path shortcuts** — every non-fallback S7 instance method (inherent *and* trait impl) emits a `<ClassName>_<method>(self, ...)` function that bypasses `S7::S7_dispatch()`. Opt out per-method with `#[miniextendr(s7(no_shortcut))]`. Shortcut names share a namespace with static-method functions; same-impl-block collisions are a `compile_error!` (`check_s7_shortcut_collisions` in `miniextendr_impl.rs`). Sidecar-accessor collisions (`<ClassName>_get_<field>`) are NOT detectable at macro time — see #991. The advisory roxygen prose is shared via `s7_class::shortcut_advisory_lines`.
 
 ## When changing codegen
 - Touched proc-macro output? Run `just configure && just rcmdinstall && just force-document` and commit regenerated `rpkg/R/miniextendr-wrappers.R` + `NAMESPACE` + `man/*.Rd` in the same PR. Pre-commit hook (`.githooks/pre-commit`) enforces.

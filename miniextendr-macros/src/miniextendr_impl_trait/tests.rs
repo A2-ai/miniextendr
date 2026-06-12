@@ -95,6 +95,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         r_entry: None,
         r_post_checks: None,
         r_on_exit: None,
+        no_shortcut: false,
     }
 }
 
@@ -291,6 +292,109 @@ fn test_env_no_export_tags_even_without_flags() {
     assert!(
         !result.contains("@export"),
         "Env trait wrappers should not have @export, got:\n{}",
+        result
+    );
+}
+
+/// Trait-impl S7 instance methods get a `<ClassName>_<method>` fast-dispatch
+/// shortcut alongside the `s7_trait_<Trait>_<method>` generic (#987).
+#[test]
+fn test_s7_trait_impl_emits_fast_path_shortcut() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let methods = vec![make_test_method("value", true)];
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &methods,
+        &[],
+        opts(ClassSystem::S7, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("Foo_value <- function(self, ...)"),
+        "S7 trait impl should emit a Foo_value fast-path shortcut, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains(".Call(C_Foo__Bar__value, .call = match.call(), self@.ptr)"),
+        "shortcut should .Call through self@.ptr directly, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("Fast-path shortcut for the `value` S7 method on `Foo`"),
+        "shortcut should carry the fast-path advisory doc, got:\n{}",
+        result
+    );
+    // The generic + S7::method registration must still be present.
+    assert!(
+        result.contains("s7_trait_Bar_value"),
+        "the dispatched generic must still exist, got:\n{}",
+        result
+    );
+}
+
+/// `s7(no_shortcut)` suppresses the trait-impl fast-dispatch shortcut while
+/// keeping the S7 generic + method registration (#986).
+#[test]
+fn test_s7_trait_impl_no_shortcut_suppresses_shortcut() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("value", true);
+    method.no_shortcut = true;
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S7, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        !result.contains("Foo_value <- function"),
+        "no_shortcut must suppress the Foo_value shortcut, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("s7_trait_Bar_value"),
+        "the dispatched generic must still exist with no_shortcut, got:\n{}",
+        result
+    );
+}
+
+/// Void trait-impl shortcut methods chain via `invisible(self)`.
+#[test]
+fn test_s7_trait_impl_void_shortcut_returns_invisible_self() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let ident = format_ident!("bump");
+    let sig: syn::Signature = syn::parse_quote!(fn bump(&mut self));
+    let mut method = make_test_method("bump", true);
+    method.ident = ident;
+    method.sig = sig;
+    method.is_mut = true;
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S7, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("Foo_bump <- function(self, ...)"),
+        "void method should still get a shortcut, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("  invisible(self)"),
+        "void shortcut should return invisible(self), got:\n{}",
         result
     );
 }
