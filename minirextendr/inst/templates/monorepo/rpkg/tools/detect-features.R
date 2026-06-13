@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
-# Configure-time Cargo feature detection for {{package}}.
+# Configure-time Cargo feature detection for miniextendr.
 #
 # Contract
 # --------
-#   Consumed by : ./configure (see configure.ac, the CARGO_FEATURES block).
+#   Consumed by : ./configure (the CARGO_FEATURES block).
 #                 configure runs `Rscript tools/detect-features.R` and captures
 #                 stdout. The `2>/dev/null || echo ""` wrapper means any failure
 #                 here (nonzero exit OR empty stdout) makes configure fall back
@@ -22,6 +22,8 @@
 #   where no package library (not even this package) is available. Do NOT
 #   library()/requireNamespace() anything beyond base/utils, and do NOT call
 #   minirextendr::* (configure.ac must not depend on minirextendr).
+#   (Exception: rule expressions in the ## BEGIN RULES block may use
+#   requireNamespace() to probe for optional packages.)
 #
 # Design
 # ------
@@ -29,11 +31,13 @@
 #   2. Enable every feature by default, then subtract:
 #        - a denylist of meta/aggregate/dev/option-default/risky features that
 #          must never be auto-enabled (see DENY below), and
-#        - conditional features whose detection rule says "no" on this machine
+#        - conditional features whose rule says "no" on this machine
 #          (e.g. vctrs needs the vctrs R package; connections needs R >= 4.3).
 #   3. Print the survivors, comma-separated.
 #
 #   Override entirely by setting CARGO_FEATURES before ./configure.
+#   Add/remove rules with: minirextendr::add_feature_rule() /
+#     minirextendr::remove_feature_rule()
 
 # Robustness wrapper: any uncaught error -> empty stdout + nonzero exit so
 # configure falls back to its hardcoded list.
@@ -58,7 +62,7 @@ main <- function() {
   #   growth-debug         : development / diagnostic only (macro-coverage does
   #                          not even compile without worker-thread).
   #   strict-default,
-  #   coerce-default       : project-wide #[miniextendr] option defaults — these
+  #   coerce-default       : project-wide #[miniextendr] option defaults -- these
   #                          change codegen semantics, so they are opt-in.
   #   r6-default,
   #   s7-default           : mutually exclusive class-system selectors; enabling
@@ -76,18 +80,10 @@ main <- function() {
 
   features <- setdiff(available, deny)
 
-  # Conditional rules. A feature listed here is enabled only if its predicate
-  # is TRUE. Features NOT listed here are enabled unconditionally (default:
-  # enable). Predicates must be conservative: when in doubt, return TRUE.
-  rules <- list(
-    # vctrs: the Rust feature wraps the vctrs R package's C ABI, so it only
-    # makes sense when vctrs is installed and loadable.
-    vctrs = function() requireNamespace("vctrs", quietly = TRUE),
-    # connections: the custom-connections C API (R_new_custom_connection)
-    # requires R >= 4.3.0. getRversion() is base R.
-    connections = function() getRversion() >= "4.3.0"
-  )
-
+  # Conditional rules injected by minirextendr::add_feature_rule().
+  # A feature listed here is enabled only if its predicate returns TRUE.
+  # Features NOT listed here are enabled unconditionally (default: enable).
+  # Predicates must be conservative: when in doubt, return TRUE.
   for (feat in names(rules)) {
     if (feat %in% features) {
       keep <- isTRUE(tryCatch(rules[[feat]](), error = function(e) FALSE))
@@ -109,7 +105,7 @@ main <- function() {
 }
 
 # Parse the [features] table of a Cargo.toml, returning feature names.
-# Base-R line scanner — no TOML library available at configure time.
+# Base-R line scanner -- no TOML library available at configure time.
 parse_cargo_features <- function(path) {
   lines <- readLines(path, warn = FALSE)
   in_features <- FALSE
@@ -152,6 +148,15 @@ find_cargo_toml <- function(args) {
   }
   NULL
 }
+
+# Conditional rules: populated by minirextendr::add_feature_rule() between
+# the markers below. main() reads this global. Features not listed here are
+# enabled unconditionally (auto-discovery).
+rules <- list()
+## BEGIN RULES (do not edit this line)
+rules[["vctrs"]] <- function() requireNamespace("vctrs", quietly = TRUE)
+rules[["connections"]] <- function() getRversion() >= "4.3.0"
+## END RULES (do not edit this line)
 
 ok <- tryCatch({
   main()

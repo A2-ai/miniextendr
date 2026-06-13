@@ -53,7 +53,15 @@ use_configure_feature_detection <- function(path = ".") {
   # 1. Create tools/detect-features.R
   script_path <- usethis::proj_path("tools", "detect-features.R")
   if (fs::file_exists(script_path)) {
-    cli::cli_alert_info("{.path tools/detect-features.R} already exists")
+    existing_text <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
+    if (!grepl("^## BEGIN RULES", existing_text, multiline = TRUE)) {
+      cli::cli_alert_warning(c(
+        "{.path tools/detect-features.R} already exists but has no {.code ## BEGIN RULES} marker.",
+        "i" = "Delete it and re-run {.code use_configure_feature_detection()} to upgrade to the unified design."
+      ))
+    } else {
+      cli::cli_alert_info("{.path tools/detect-features.R} already exists")
+    }
   } else {
     script_content <- generate_empty_detect_script(package_name, features_var)
     ensure_dir(dirname(script_path))
@@ -196,12 +204,18 @@ remove_feature_rule <- function(feature, path = ".") {
   invisible(removed)
 }
 
-#' Sync feature detection rules with Cargo.toml
+#' Pin explicit always-enable rules for Cargo features
 #'
 #' Reads `[features]` from `src/rust/Cargo.toml` via `cargo metadata` and adds
-#' detection rules for any features that don't have one yet. New features are
-#' added with `detect = TRUE` (always-enable) by default. Run this after adding
-#' new features to keep `tools/detect-features.R` up to date.
+#' an explicit `detect = TRUE` rule for any features that don't already have
+#' one. Useful when you want to *pin* a feature as always-enabled rather than
+#' relying on auto-discovery (e.g., to document the intent, or to override a
+#' future conditional rule before it is added).
+#'
+#' Under the unified design, features without a rule are already enabled by
+#' default (auto-discovery from Cargo.toml at configure time). Calling this
+#' function pins those features explicitly, which is semantically equivalent
+#' but makes the intent visible in `tools/detect-features.R`.
 #'
 #' Skips the `"default"` pseudo-feature and any feature that already has a rule.
 #'
@@ -213,7 +227,7 @@ remove_feature_rule <- function(feature, path = ".") {
 #'
 #' @examples
 #' \dontrun{
-#' # After adding new Cargo features:
+#' # Pin all current features as explicit always-enable rules:
 #' sync_feature_rules()
 #' #> v Added feature detection rule for 'new_feature_1'
 #' #> v Added feature detection rule for 'new_feature_2'
@@ -493,7 +507,13 @@ parse_cargo_metadata_json <- function(json) {
   list(features = features, optional_deps = optional_deps)
 }
 
-#' Generate empty detect-features.R script
+#' Generate the full robust detect-features.R skeleton
+#'
+#' Emits the Cargo-driven skeleton (parses [features] from src/rust/Cargo.toml,
+#' applies a denylist, applies conditional rules from the markers block, sorts,
+#' and cats to stdout). The empty `rules <- list()` block between the
+#' `## BEGIN RULES` / `## END RULES` markers is where [append_feature_rule()]
+#' writes per-feature predicates. `main()` consumes the global `rules`.
 #'
 #' @param package_name R package name
 #' @param features_var Features environment variable name (e.g., "CARGO_FEATURES")
@@ -501,23 +521,184 @@ parse_cargo_metadata_json <- function(json) {
 #' @noRd
 generate_empty_detect_script <- function(package_name, features_var) {
   c(
-    sprintf("# Feature detection for %s", package_name),
-    "# Called by ./configure to auto-detect available features.",
-    "# Output: comma-separated list of Cargo features to enable.",
+    "#!/usr/bin/env Rscript",
+    sprintf("# Configure-time Cargo feature detection for %s.", package_name),
     "#",
-    sprintf("# Users can override by setting the %s environment variable.", features_var),
-    "# Add rules with: minirextendr::add_feature_rule()",
+    "# Contract",
+    "# --------",
+    sprintf("#   Consumed by : ./configure (the %s block).", features_var),
+    "#                 configure runs `Rscript tools/detect-features.R` and captures",
+    "#                 stdout. The `2>/dev/null || echo \"\"` wrapper means any failure",
+    "#                 here (nonzero exit OR empty stdout) makes configure fall back",
+    "#                 to its hardcoded feature list. So a wrong-but-nonempty answer",
+    "#                 is worse than no answer: when uncertain, we ENABLE (matching",
+    "#                 the hardcoded fallback's \"all optional features on\" default).",
+    "#   Output      : a single comma-separated feature string on stdout, nothing",
+    "#                 else. Every diagnostic goes to stderr so it never pollutes the",
+    "#                 captured value.",
+    "#   Failure mode: on any internal error the script prints nothing and exits",
+    "#                 nonzero, so configure uses its fallback list.",
+    "#",
+    "# Dependencies",
+    "# ------------",
+    "#   Base R + utils ONLY. This runs at ./configure time on end-user machines",
+    "#   where no package library (not even this package) is available. Do NOT",
+    "#   library()/requireNamespace() anything beyond base/utils, and do NOT call",
+    "#   minirextendr::* (configure.ac must not depend on minirextendr).",
+    "#   (Exception: rule expressions in the ## BEGIN RULES block may use",
+    "#   requireNamespace() to probe for optional packages.)",
+    "#",
+    "# Design",
+    "# ------",
+    "#   1. Parse [features] from src/rust/Cargo.toml to discover what CAN be built.",
+    "#   2. Enable every feature by default, then subtract:",
+    "#        - a denylist of meta/aggregate/dev/option-default/risky features that",
+    "#          must never be auto-enabled (see DENY below), and",
+    "#        - conditional features whose rule says \"no\" on this machine",
+    "#          (e.g. vctrs needs the vctrs R package; connections needs R >= 4.3).",
+    "#   3. Print the survivors, comma-separated.",
+    "#",
+    sprintf("#   Override entirely by setting %s before ./configure.", features_var),
+    "#   Add/remove rules with: minirextendr::add_feature_rule() /",
+    "#     minirextendr::remove_feature_rule()",
     "",
-    "features <- character()",
+    "# Robustness wrapper: any uncaught error -> empty stdout + nonzero exit so",
+    "# configure falls back to its hardcoded list.",
+    "main <- function() {",
+    "  args <- commandArgs(trailingOnly = FALSE)",
+    "  # Locate src/rust/Cargo.toml relative to this script (configure invokes us",
+    "  # from the package root, but resolve from the script path to be safe).",
+    "  cargo_toml <- find_cargo_toml(args)",
+    "  if (is.null(cargo_toml) || !file.exists(cargo_toml)) {",
+    "    stop(\"could not locate src/rust/Cargo.toml\")",
+    "  }",
     "",
+    "  available <- parse_cargo_features(cargo_toml)",
+    "  if (length(available) == 0L) {",
+    "    stop(\"no [features] parsed from Cargo.toml\")",
+    "  }",
+    "",
+    "  # Features that must never be auto-enabled.",
+    "  #   default, full        : meta / aggregate selectors.",
+    "  #   nonapi               : triggers R CMD check non-API WARNINGs.",
+    "  #   macro-coverage,",
+    "  #   growth-debug         : development / diagnostic only (macro-coverage does",
+    "  #                          not even compile without worker-thread).",
+    "  #   strict-default,",
+    "  #   coerce-default       : project-wide #[miniextendr] option defaults -- these",
+    "  #                          change codegen semantics, so they are opt-in.",
+    "  #   r6-default,",
+    "  #   s7-default           : mutually exclusive class-system selectors; enabling",
+    "  #                          either changes the default class system. Opt-in.",
+    "  #   worker-default       : separate opt-in semantic from `worker-thread`.",
+    "  #   indicatif            : progress-bar integration, opt-in (not in the",
+    "  #                          default integration set).",
+    "  deny <- c(",
+    "    \"default\", \"full\", \"nonapi\",",
+    "    \"macro-coverage\", \"growth-debug\",",
+    "    \"strict-default\", \"coerce-default\",",
+    "    \"r6-default\", \"s7-default\", \"worker-default\",",
+    "    \"indicatif\"",
+    "  )",
+    "",
+    "  features <- setdiff(available, deny)",
+    "",
+    "  # Conditional rules injected by minirextendr::add_feature_rule().",
+    "  # A feature listed here is enabled only if its predicate returns TRUE.",
+    "  # Features NOT listed here are enabled unconditionally (default: enable).",
+    "  # Predicates must be conservative: when in doubt, return TRUE.",
+    "  for (feat in names(rules)) {",
+    "    if (feat %in% features) {",
+    "      keep <- isTRUE(tryCatch(rules[[feat]](), error = function(e) FALSE))",
+    "      if (!keep) {",
+    "        features <- setdiff(features, feat)",
+    "        message(sprintf(\"detect-features: disabling '%s' (rule not satisfied)\", feat))",
+    "      }",
+    "    }",
+    "  }",
+    "",
+    "  # Deterministic order for stable configure output / diffs.",
+    "  features <- sort(unique(features))",
+    "",
+    "  if (length(features) == 0L) {",
+    "    stop(\"rule set eliminated every feature\")",
+    "  }",
+    "",
+    "  cat(paste(features, collapse = \",\"))",
+    "}",
+    "",
+    "# Parse the [features] table of a Cargo.toml, returning feature names.",
+    "# Base-R line scanner -- no TOML library available at configure time.",
+    "parse_cargo_features <- function(path) {",
+    "  lines <- readLines(path, warn = FALSE)",
+    "  in_features <- FALSE",
+    "  names_out <- character()",
+    "  for (ln in lines) {",
+    "    trimmed <- trimws(ln)",
+    "    # Section header?",
+    "    if (grepl(\"^\\\\[\", trimmed)) {",
+    "      in_features <- identical(trimmed, \"[features]\")",
+    "      next",
+    "    }",
+    "    if (!in_features) next",
+    "    if (!nzchar(trimmed) || startsWith(trimmed, \"#\")) next",
+    "    # A feature entry looks like `name = [ ... ]`. Names are bare identifiers",
+    "    # (letters, digits, _, -). Strip an inline trailing comment first.",
+    "    code <- sub(\"#.*$\", \"\", trimmed)",
+    "    m <- regmatches(code, regexpr(\"^[A-Za-z0-9_.+-]+(?=\\\\s*=)\", code, perl = TRUE))",
+    "    if (length(m) == 1L && nzchar(m)) {",
+    "      names_out <- c(names_out, m)",
+    "    }",
+    "  }",
+    "  unique(names_out)",
+    "}",
+    "",
+    "# Resolve src/rust/Cargo.toml. Prefer a path relative to this script (so the",
+    "# script works regardless of the working directory configure runs it from),",
+    "# then fall back to the conventional path from the package root.",
+    "find_cargo_toml <- function(args) {",
+    "  file_arg <- grep(\"^--file=\", args, value = TRUE)",
+    "  candidates <- character()",
+    "  if (length(file_arg) == 1L) {",
+    "    script_path <- sub(\"^--file=\", \"\", file_arg)",
+    "    script_dir <- dirname(normalizePath(script_path, mustWork = FALSE))",
+    "    # tools/ -> ../src/rust/Cargo.toml",
+    "    candidates <- c(candidates, file.path(script_dir, \"..\", \"src\", \"rust\", \"Cargo.toml\"))",
+    "  }",
+    "  candidates <- c(candidates, file.path(\"src\", \"rust\", \"Cargo.toml\"))",
+    "  for (cand in candidates) {",
+    "    if (file.exists(cand)) return(normalizePath(cand))",
+    "  }",
+    "  NULL",
+    "}",
+    "",
+    "# Conditional rules: populated by minirextendr::add_feature_rule() between",
+    "# the markers below. main() reads this global. Features not listed here are",
+    "# enabled unconditionally (auto-discovery).",
+    "rules <- list()",
     "## BEGIN RULES (do not edit this line)",
     "## END RULES (do not edit this line)",
     "",
-    'cat(paste(features, collapse = ","))'
+    "ok <- tryCatch({",
+    "  main()",
+    "  TRUE",
+    "}, error = function(e) {",
+    "  message(sprintf(\"detect-features: %s\", conditionMessage(e)))",
+    "  FALSE",
+    "})",
+    "",
+    "if (!isTRUE(ok)) {",
+    "  quit(status = 1L, save = \"no\")",
+    "}"
   )
 }
 
 #' Append a feature rule before the END marker
+#'
+#' Inserts a single-line `rules[["name"]] <- function() EXPR` entry between the
+#' `## BEGIN RULES` / `## END RULES` markers. `main()` iterates `rules` at
+#' configure time: listed features are enabled only when the predicate returns
+#' TRUE; unlisted features are enabled unconditionally (auto-discovery).
 #'
 #' @param script_path Path to detect-features.R
 #' @param feature Feature name
@@ -532,20 +713,10 @@ append_feature_rule <- function(script_path, feature, detect) {
   }
 
   # Format the detect expression
-  if (isTRUE(detect)) {
-    detect_str <- "TRUE"
-    comment <- "always enable"
-  } else {
-    detect_str <- detect
-    comment <- "enable if condition met"
-  }
+  detect_str <- if (isTRUE(detect)) "TRUE" else detect
 
   rule_lines <- c(
-    "",
-    sprintf("# %s: %s", feature, comment),
-    sprintf("if (%s) {", detect_str),
-    sprintf('  features <- c(features, "%s")', feature),
-    "}"
+    sprintf('rules[["%s"]] <- function() %s', feature, detect_str)
   )
 
   lines <- append(lines, rule_lines, after = end_idx[1] - 1)
@@ -553,6 +724,9 @@ append_feature_rule <- function(script_path, feature, detect) {
 }
 
 #' Remove a feature rule from the script
+#'
+#' Removes the single-line `rules[["name"]] <- function() ...` entry for the
+#' given feature from within the `## BEGIN RULES` / `## END RULES` markers.
 #'
 #' @param script_path Path to detect-features.R
 #' @param feature Feature name to remove
@@ -567,37 +741,28 @@ remove_feature_rule_from_script <- function(script_path, feature) {
     return(FALSE)
   }
 
-  # Find the rule block: comment line + if block
-  # Pattern: a comment with the feature name, followed by if/features/}
-  comment_pattern <- sprintf("^# %s:", feature)
-  comment_idx <- grep(comment_pattern, lines)
-  # Only consider comments within the rules section
-  comment_idx <- comment_idx[comment_idx > begin_idx[1] & comment_idx < end_idx[1]]
+  # Match the single-line rule: rules[["name"]] <- function() EXPR
+  rule_pattern <- sprintf('^rules\\[\\["%s"\\]\\] <- function\\(\\)', feature)
+  rule_idx <- grep(rule_pattern, lines)
+  # Only consider lines within the rules section
+  rule_idx <- rule_idx[rule_idx > begin_idx[1] & rule_idx < end_idx[1]]
 
-  if (length(comment_idx) == 0) {
+  if (length(rule_idx) == 0) {
     return(FALSE)
   }
 
-  # Find the closing brace of the if block after the comment
-  block_start <- comment_idx[1]
-  closing_brace <- grep("^}", lines)
-  closing_brace <- closing_brace[closing_brace > block_start]
-  if (length(closing_brace) == 0) {
-    return(FALSE)
-  }
-  block_end <- closing_brace[1]
-
-  # Also remove any blank line before the comment
-  if (block_start > 1 && lines[block_start - 1] == "") {
-    block_start <- block_start - 1
-  }
-
-  lines <- lines[-(block_start:block_end)]
+  lines <- lines[-rule_idx[1]]
   writeLines(lines, script_path)
   TRUE
 }
 
 #' Parse detect-features.R to extract rules
+#'
+#' Reads the `## BEGIN RULES` / `## END RULES` section and extracts each
+#' single-line `rules[["name"]] <- function() EXPR` entry. Returns a named
+#' list mapping feature name to expression string (e.g., `"TRUE"` or a
+#' `requireNamespace(...)` call). Features with no rule are enabled by default
+#' (auto-discovery) and do not appear in this list.
 #'
 #' @param script_path Path to detect-features.R
 #' @return Named list of feature -> detect expression pairs
@@ -613,26 +778,13 @@ parse_detect_features_script <- function(script_path) {
 
   rules_section <- lines[(begin_idx[1] + 1):(end_idx[1] - 1)]
 
-  # Find all if(...) { ... features <- c(features, "name") ... } blocks
-  # Extract: the if-condition and the feature name from the c() call
+  # Match: rules[["name"]] <- function() EXPR
   result <- list()
-
-  if_indices <- grep("^if \\(", rules_section)
-  for (i in if_indices) {
-    # Extract condition from: if (CONDITION) {
-    condition <- sub("^if \\((.+)\\) \\{$", "\\1", rules_section[i])
-
-    # Look for the feature name in the lines following the if
-    for (j in (i + 1):length(rules_section)) {
-      if (grepl("^}", rules_section[j])) break
-      feature_match <- regmatches(
-        rules_section[j],
-        regexpr('features <- c\\(features, "([^"]+)"\\)', rules_section[j])
-      )
-      if (length(feature_match) == 1) {
-        feature_name <- sub('.*"([^"]+)".*', "\\1", feature_match)
-        result[[feature_name]] <- condition
-      }
+  rule_pattern <- '^rules\\[\\["([^"]+)"\\]\\] <- function\\(\\) (.*)$'
+  matches <- regmatches(rules_section, regexec(rule_pattern, rules_section))
+  for (m in matches) {
+    if (length(m) == 3) {
+      result[[m[[2]]]] <- m[[3]]
     }
   }
 
