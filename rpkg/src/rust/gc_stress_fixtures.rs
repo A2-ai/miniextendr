@@ -2289,3 +2289,89 @@ pub fn gc_stress_condition_data() {
 }
 
 // endregion
+
+// region: ProtectScope FFI wrapper alloc helpers (#509/#510)
+
+/// Exercise the new `ProtectScope` FFI wrapper methods under GC pressure.
+///
+/// Chains at least 6 of the new wrappers with intermediate allocations between
+/// each call to ensure GC pressure between steps:
+///   - `alloc_lang` + `alloc_sexp` (pairlist/LISTSXP node)
+///   - `cons` (pairlist cons cell)
+///   - `lengthgets` (resize a vector)
+///   - `alloc_array` (n-dimensional array with protected dims INTSXP)
+///   - `mkchar_len_ce` + `mkchar_ce` (CHARSXP with specified encoding)
+///
+/// Each step forces a fresh allocation, so `gctorture(TRUE)` exercises the
+/// protection of each intermediate result. Returns a trivial integer count
+/// (the number of operations performed) so the testthat assertion is meaningful.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_alloc_wrappers() -> i32 {
+    use miniextendr_api::SEXPTYPE;
+    use miniextendr_api::cetype_t::CE_UTF8;
+    use miniextendr_api::gc_protect::ProtectScope;
+
+    unsafe {
+        let scope = ProtectScope::new();
+        let mut ops = 0i32;
+
+        // 1. alloc_lang — allocate a LANGSXP of length 3
+        let _lang = scope.alloc_lang(3);
+        ops += 1;
+
+        // 2. alloc_sexp — allocate a bare LISTSXP cons-cell node
+        let _cell = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        ops += 1;
+
+        // 3. cons — build a 2-element pairlist from two protected nodes
+        let head = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        // Intermediate allocation between cons args — exercises GC pressure
+        let _gap = scope.alloc_integer(4);
+        let tail = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        let _pair = scope.cons(head.get(), tail.get());
+        ops += 1;
+
+        // 4. lengthgets — resize a real vector (forces a fresh allocation)
+        let base_vec = scope.alloc_real(5);
+        // Intermediate allocation before lengthgets
+        let _gap2 = scope.alloc_integer(2);
+        let _resized = scope.lengthgets(base_vec.get(), 10);
+        ops += 1;
+
+        // 5. alloc_array — 2×3 integer array; dims INTSXP is built and
+        //    protected inside the scope before Rf_allocArray is called
+        let _arr = scope.alloc_array(SEXPTYPE::REALSXP, &[2, 3]);
+        ops += 1;
+
+        // 6. mkchar_len_ce — CHARSXP from a byte slice with explicit encoding
+        let _char1 = scope.mkchar_len_ce(b"hello", CE_UTF8);
+        ops += 1;
+
+        // 7. mkchar_ce — CHARSXP from a &str with explicit encoding
+        let _char2 = scope.mkchar_ce("world", CE_UTF8);
+        ops += 1;
+
+        // 8. alloc_3d_array — 2×3×4 raw array
+        let _arr3d = scope.alloc_3d_array(SEXPTYPE::RAWSXP, 2, 3, 4);
+        ops += 1;
+
+        // 9. lcons — language cons cell
+        let head2 = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        let tail2 = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        let _lc = scope.lcons(head2.get(), tail2.get());
+        ops += 1;
+
+        // 10. xlengthgets — long-vector resize path
+        let long_base = scope.alloc_integer(3);
+        let _long_resized = scope.xlengthgets(long_base.get(), 6);
+        ops += 1;
+
+        ops
+    }
+}
+
+// endregion
+
+// endregion

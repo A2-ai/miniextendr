@@ -123,3 +123,14 @@ test_that("test_reprotect_slot_no_growth does not increase protect stack", {
   expect_equal(test_reprotect_slot_no_growth(10L), 1L)
   expect_equal(test_reprotect_slot_no_growth(100L), 1L)
 })
+
+# =============================================================================
+# ProtectScope FFI wrapper alloc helpers (#509/#510)
+# =============================================================================
+
+test_that("gc_stress_alloc_wrappers exercises new ProtectScope methods without error", {
+  # Returns the count of operations performed (10 in current implementation)
+  result <- gc_stress_alloc_wrappers()
+  expect_true(is.integer(result))
+  expect_true(result >= 6L, label = "at least 6 wrapper operations performed")
+})
