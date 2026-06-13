@@ -21,6 +21,7 @@ Imports:
 Suggests:
     devtools,
     knitr,
+    pkgload,
     rcmdcheck,
     rmarkdown,
     roxygen2,

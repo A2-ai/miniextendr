@@ -231,6 +231,11 @@ install_pkg <- function(pkg_path) {
     add = TRUE
   )
   tryCatch(
+    # reload = FALSE: never reload the .rdb-backed installed namespace into this
+    # session. miniextendr_build() reinstalls over the same library path; a loaded
+    # namespace holding lazy promises into a rewritten .rdb fails with "internal
+    # error 1 in R_decompress1" / "lazy-load database is corrupt" when pkgload
+    # later unregisters it (R 4.6.0's libdeflate backend surfaced this, #1000).
     devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE, reload = FALSE),
     error = function(e) {
       cli::cli_abort(c(
@@ -319,6 +324,8 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
   )
 
   tryCatch(
+    # reload = FALSE: see install_pkg() — avoid loading the .rdb-backed namespace
+    # that the document()+reinstall below would then corrupt for pkgload (#1000).
     devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
                       reload = FALSE),
     error = function(e) {
@@ -344,6 +351,9 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
   # MINIEXTENDR_FORCE_WRAPPER_GEN is still set via on.exit above.
   devtools::document(pkg_path)
   tryCatch(
+    # reload = FALSE: this reinstall rewrites the lazy-load .rdb; reloading it over
+    # the document()-loaded namespace is exactly what triggers the R_decompress1
+    # "lazy-load database is corrupt" failure pkgload reports (#1000).
     devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
                       reload = FALSE),
     error = function(e) {

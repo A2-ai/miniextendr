@@ -25,7 +25,36 @@ namespace and hits the corrupt lazy-load db. Suspects: R 4.6.0's libdeflate-back
 or pkgload unregister racing the freshly-installed lazy-load db. The remaining
 55 templates tests (and 519/520 of the full suite) pass.
 
-**Fix**: none in this PR (out of scope for #502); tracked as a follow-up issue.
-If it bites again: check whether `mxroundtrip.rdb` is truncated (size 0 / short)
-vs genuinely mis-compressed, and whether retrying `document()` in a fresh R
-session passes.
+**Fix (deferred at the time)**: none in #502 (out of scope); tracked as #1000.
+
+---
+
+## Addendum (2026-06-12, #1000): root cause is in our workflow, not upstream
+
+Re-reading `minirextendr/R/workflow.R` made the mechanism concrete — this is the
+textbook *reinstall-over-a-loaded-package* lazy-load corruption, not (primarily)
+an R 4.6.0 libdeflate bug:
+
+1. The bootstrap path installs the package (`install()` at workflow.R:312) with
+   devtools' **default `reload = TRUE`** → pkgload loads the just-installed,
+   `.rdb`-backed namespace into the running session, with lazy promises pointing
+   at byte offsets in `mxroundtrip.rdb`.
+2. `devtools::document()` (workflow.R:334) runs `pkgload::load_all` →
+   `unregister`, which forces those lazy bindings (`env_get_list` in the
+   traceback) — i.e. *reads* the `.rdb`.
+3. The Step-4 reinstall (workflow.R:336, again `reload = TRUE`) **rewrites the
+   same `.rdb`** while the earlier-loaded namespace still holds promises at the
+   old offsets → `R_decompress1` reads new bytes at stale offsets → "corrupt".
+
+R 4.6.0's libdeflate backend changed the *message* ("internal error 1 in
+R_decompress1 with libdeflate") and tightened detection, which is why the
+latent bug surfaced now rather than silently returning garbage.
+
+**Fix shipped**: `reload = FALSE` at all three `devtools::install()` sites
+(workflow.R:224 / :312 / :336) so we never hold a loaded namespace across a
+reinstall; plus a defensive `pkgload::unload()` before the test's `library()`
+(test-templates.R) so it resolves the *installed* copy rather than a leftover
+`load_all` dev namespace. No retry loop — the failure was reproducible, not
+transient, so a retry would be noise. If the repro survives this (it should
+not), the fallback is `skip_if(...)` citing #1000 + an upstream report with a
+minimal `install→reload→reinstall→unregister` repro.
