@@ -176,6 +176,10 @@
 //! | `toml` | `TomlValue`, `toml_from_str` | TOML parsing and serialization |
 //! | `tabled` | `table_to_string` | ASCII/Unicode table formatting |
 //! | `sha2` | `sha256_str`, `sha512_bytes` | Cryptographic hashing |
+//! | `blake3` | `blake3_str`, `blake3_bytes` | BLAKE3 hashing (fast, 32-byte digests) |
+//! | `md5` | `md5_str`, `md5_bytes` | MD5 hashing (interop only — broken crypto) |
+//! | `globset` | `GlobSet`, `build_globset` | Shell-style glob matching (path-aware) |
+//! | `zstd` | `zstd_compress`, `zstd_decompress` | zstd whole-buffer compression |
 //!
 //! ### Random Number Generation
 //!
@@ -1042,6 +1046,29 @@ pub use optionals::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};
 pub use optionals::sha2_impl;
 #[cfg(feature = "sha2")]
 pub use optionals::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
+
+#[cfg(feature = "blake3")]
+pub use optionals::blake3_impl;
+#[cfg(feature = "blake3")]
+pub use optionals::{blake3_bytes, blake3_hex, blake3_str};
+
+#[cfg(feature = "md5")]
+pub use optionals::md5_impl;
+#[cfg(feature = "md5")]
+pub use optionals::{md5_bytes, md5_hex, md5_str};
+
+#[cfg(feature = "globset")]
+pub use optionals::globset_impl;
+#[cfg(feature = "globset")]
+pub use optionals::{
+    Glob, GlobBuilder, GlobOptions, GlobSet, GlobSetBuilder, build_globset, globset_is_match,
+    globset_matches,
+};
+
+#[cfg(feature = "zstd")]
+pub use optionals::zstd_impl;
+#[cfg(feature = "zstd")]
+pub use optionals::{zstd_compress, zstd_decompress};
 
 #[cfg(feature = "borsh")]
 pub use optionals::borsh_impl;

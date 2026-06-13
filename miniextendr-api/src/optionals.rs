@@ -27,6 +27,10 @@
 //! | `num-complex` | `num_complex_impl` | Complex number support |
 //! | `url` | `url_impl` | URL parsing and validation |
 //! | `sha2` | `sha2_impl` | Cryptographic hashing |
+//! | `blake3` | `blake3_impl` | BLAKE3 hashing |
+//! | `md5` | `md5_impl` | MD5 hashing (interop only — broken crypto) |
+//! | `globset` | `globset_impl` | Shell-style glob matching |
+//! | `zstd` | `zstd_impl` | zstd compression |
 //! | `bitflags` | `bitflags_impl` | Bitflag conversions |
 //! | `bitvec` | `bitvec_impl` | Bit vector conversions |
 //! | `aho-corasick` | `aho_corasick_impl` | Multi-pattern string search |
@@ -298,6 +302,19 @@ pub use aho_corasick_impl::{
     AhoCorasick, RAhoCorasickOps, aho_compile, aho_count_matches, aho_find_all, aho_find_all_flat,
     aho_find_first, aho_is_match, aho_replace_all,
 };
+
+/// Integration with the `globset` crate for shell-style glob matching.
+///
+/// Provides multi-pattern glob matching with path-aware defaults.
+///
+/// Enable with `features = ["globset"]`.
+#[cfg(feature = "globset")]
+pub mod globset_impl;
+#[cfg(feature = "globset")]
+pub use globset_impl::{
+    Glob, GlobBuilder, GlobOptions, GlobSet, GlobSetBuilder, build_globset, globset_is_match,
+    globset_matches,
+};
 // endregion
 
 // region: Collections
@@ -401,6 +418,36 @@ pub use bytes_impl::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};
 pub mod sha2_impl;
 #[cfg(feature = "sha2")]
 pub use sha2_impl::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
+
+/// Integration with the `blake3` crate for fast cryptographic hashing.
+///
+/// Provides BLAKE3 hashing helpers (hex + raw 32-byte digest).
+///
+/// Enable with `features = ["blake3"]`.
+#[cfg(feature = "blake3")]
+pub mod blake3_impl;
+#[cfg(feature = "blake3")]
+pub use blake3_impl::{blake3_bytes, blake3_hex, blake3_str};
+
+/// Integration with the `md5` crate for legacy hashing.
+///
+/// MD5 is cryptographically broken — exposed for interop/checksums only.
+///
+/// Enable with `features = ["md5"]`.
+#[cfg(feature = "md5")]
+pub mod md5_impl;
+#[cfg(feature = "md5")]
+pub use md5_impl::{md5_bytes, md5_hex, md5_str};
+
+/// Integration with the `zstd` crate for whole-buffer compression.
+///
+/// Provides `zstd_compress` / `zstd_decompress` (R raw in / raw out).
+///
+/// Enable with `features = ["zstd"]`.
+#[cfg(feature = "zstd")]
+pub mod zstd_impl;
+#[cfg(feature = "zstd")]
+pub use zstd_impl::{zstd_compress, zstd_decompress};
 // endregion
 
 // region: Bit manipulation

@@ -76,6 +76,16 @@ num-complex = ["dep:num-complex"]
 url = ["dep:url"]
 ## Enable sha2 integration. Provides SHA-256/SHA-512 hashing helpers.
 sha2 = ["dep:sha2"]
+## Enable blake3 integration. Provides BLAKE3 hashing helpers (hex + raw digest).
+blake3 = ["dep:blake3"]
+## Enable md5 integration. Provides MD5 hashing helpers (hex + raw digest).
+## MD5 is cryptographically broken — exposed for interop/checksums only.
+md5 = ["dep:md5"]
+## Enable globset integration. Provides shell-style glob matching (GlobSet).
+globset = ["dep:globset"]
+## Enable zstd integration. Provides whole-buffer zstd compress/decompress.
+## Builds the bundled zstd C library via zstd-sys (cc crate; no cmake/pkg-config).
+zstd = ["dep:zstd"]
 ## Enable bitflags integration. Provides RFlags<T> wrapper for bitflags ↔ integer conversions.
 bitflags = ["dep:bitflags"]
 ## Enable bitvec integration. Provides BitVec ↔ logical vector conversions.
@@ -147,7 +157,7 @@ full-integrations = [
     "ndarray", "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions",
     "vctrs", "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
     "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr", "either",
-    "log",
+    "log", "blake3", "md5", "globset", "zstd",
 ]
 
 ## Every codegen selector / runtime-surface feature that CI wants linted:
@@ -218,6 +228,10 @@ arrow-select = { version = "55", optional = true }
 datafusion = { version = "48", optional = true, default-features = false }
 tokio = { version = "1", optional = true, features = ["rt"] }
 log = { version = "0.4", optional = true }
+blake3 = { version = "1.8", optional = true, default-features = false }
+md5 = { version = "0.8", optional = true }
+globset = { version = "0.4", optional = true }
+zstd = { version = "0.13", optional = true }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }

@@ -2101,7 +2101,7 @@ printf '%s\n' "$as_me: Auto-detected features: $CARGO_FEATURES" >&6;}
     fi
   fi
   if test -z "$CARGO_FEATURES"; then
-                                CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,jiff,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log,connections"
+                                CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,jiff,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log,connections,blake3,md5,globset,zstd"
   fi
 fi
 
@@ -2796,6 +2796,19 @@ if test -n "$_r_cflags"; then
 fi
 if test -n "$_r_cxxflags"; then
   CARGO_ENV_ABI_CXXFLAGS=`echo "$_r_cxxflags" | tr ' ' '\n' | grep -E "$_abi_allow_re" | tr '\n' ' ' | $SED 's/ *$//'`
+fi
+
+if test "$is_wasm_install" = true; then
+  if test -n "$CARGO_ENV_ABI_CFLAGS"; then
+    CARGO_ENV_ABI_CFLAGS="$CARGO_ENV_ABI_CFLAGS -fPIC"
+  else
+    CARGO_ENV_ABI_CFLAGS="-fPIC"
+  fi
+  if test -n "$CARGO_ENV_ABI_CXXFLAGS"; then
+    CARGO_ENV_ABI_CXXFLAGS="$CARGO_ENV_ABI_CXXFLAGS -fPIC"
+  else
+    CARGO_ENV_ABI_CXXFLAGS="-fPIC"
+  fi
 fi
 
 if test -n "$CARGO_ENV_ABI_CFLAGS"; then
