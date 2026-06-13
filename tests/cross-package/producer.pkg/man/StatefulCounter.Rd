@@ -15,6 +15,7 @@
 \alias{StatefulCounter$Counter$raise_warning}
 \alias{StatefulCounter$Counter$raise_message}
 \alias{StatefulCounter$Counter$raise_condition_classed}
+\alias{StatefulCounter$Counter$raise_error_with_data}
 \alias{StatefulCounter$Resettable$reset}
 \alias{StatefulCounter$Resettable$is_default}
 \title{StatefulCounter  Class}

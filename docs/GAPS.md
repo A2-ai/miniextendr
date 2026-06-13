@@ -425,9 +425,29 @@ See [FEATURES.md](FEATURES.md#connections) for the `connections` feature flag.
 - C API wrappers: `init_vctrs()`, `obj_is_vector()`, `short_vec_size()`, etc.
 - Construction helpers: `new_vctr()`, `new_rcrd()`, `new_list_of()`
 
+**Cross-package vctrs type export — RESOLVED:**
+
+A consumer package can construct and dispatch on a producer package's vctrs
+type. Unlike trait-ABI ExternalPtr objects (which cross the boundary via
+`R_GetCCallable` + vtable shims), vctrs types are pure-R-attribute objects whose
+behaviour is implemented by S3 methods (`vec_ptype2.<class>`, `vec_cast.<class>`,
+`format.<class>`, ...). Those methods are registered in R's global S3 method
+table via `S3method()` NAMESPACE entries when the producer package loads, so any
+package — including a consumer — dispatches on the type correctly. The contract:
+
+- **Producer** derives the type with `#[derive(Vctrs)]` and exports a
+  `#[miniextendr]` constructor; roxygen emits `S3method()` for each generated
+  vctrs method (vctrs must be attached at roxygenize time so the generics are
+  recognised — otherwise they land as bare `export()` and won't dispatch).
+- **Consumer** imports the constructor (`importFrom(producer.pkg, new_type)` or
+  `producer.pkg::new_type()`); dispatch resolves through the S3 registry once
+  producer.pkg is loaded.
+
+See `tests/cross-package/` (`producer_temp` type + `new_temperature()`
+constructor, and `consumer.pkg/tests/testthat/test-vctrs-cross-package.R`).
+
 **What's still missing:**
-- Cross-package vctrs type export (no mechanism to share class defs across packages)
-- vctrs inheritance (`extends = "parent_type"` pattern)
+- vctrs inheritance (`extends = "parent_type"` pattern) — tracked in #1039.
 
 ---
 

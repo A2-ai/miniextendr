@@ -1034,7 +1034,7 @@ Feature implications (automatically enabled):
 
 - **`connections` is experimental.** R reserves the right to change the connection ABI without backward compatibility. Always check `R_CONNECTIONS_VERSION`. See [GAPS.md](GAPS.md#41-r-connections-api-experimental).
 - **Feature-gated modules** require path-based module switching with `#[cfg]` on `mod` declarations. See [GAPS.md](GAPS.md#13-feature-gated-module-entries).
-- **vctrs cross-package export** and inheritance are not yet implemented. See [GAPS.md](GAPS.md) section 4.2.
+- **vctrs cross-package export** works: a consumer package can construct and dispatch on a producer's vctrs type via R's S3 method registry plus an imported constructor (see [GAPS.md](GAPS.md) section 4.2). **vctrs inheritance** (`extends = "parent_type"`) is not yet implemented (tracked in #1039).
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 

@@ -578,3 +578,53 @@ pub fn get_r_class(x: SEXP) -> SEXP {
     x.get_class()
 }
 // endregion
+
+// region: Cross-package vctrs type export (producer_temp)
+
+// VctrsClass must be in scope for the `#[derive(Vctrs)]`-generated
+// `attrs()` / `CLASS_NAME` references to resolve.
+#[cfg(feature = "vctrs")]
+use miniextendr_api::vctrs::VctrsClass;
+
+// A vctrs vector type the consumer package constructs and dispatches on.
+//
+// vctrs types are pure-R-attribute objects (class vector + data), and their
+// behaviour (format, coercion, proxy) is implemented by S3 methods registered
+// in NAMESPACE via `S3method()`. Once producer.pkg is loaded, those S3 methods
+// live in R's global S3 method table, so ANY package — including consumer.pkg —
+// dispatches on `producer_temp` correctly. No `R_GetCCallable` / vtable shim is
+// involved: unlike trait-ABI ExternalPtr objects, vctrs export rides entirely
+// on R's S3 method registry plus an exported constructor the consumer imports.
+//
+// `coerce = "double"` additionally emits `vec_ptype2.producer_temp.double` /
+// `vec_cast.producer_temp.double` (and the reverse), so the consumer can cast a
+// producer_temp to/from a bare double across the boundary.
+#[cfg(feature = "vctrs")]
+#[derive(miniextendr_api::Vctrs)]
+#[vctrs(
+    class = "producer_temp",
+    base = "double",
+    abbr = "degC",
+    coerce = "double"
+)]
+pub struct ProducerTemp {
+    #[vctrs(data)]
+    values: Vec<f64>,
+}
+
+/// Create a `producer_temp` vctrs vector (Celsius temperatures).
+///
+/// This is the exported constructor consumer.pkg imports via
+/// `importFrom(producer.pkg, new_temperature)` to build a producer-owned vctrs
+/// type. Dispatch (format/coercion/`vec_c`) then resolves through R's S3 method
+/// registry once producer.pkg is loaded.
+///
+/// @param x Numeric temperatures in Celsius.
+/// @return A `producer_temp` vctrs vector.
+/// @export
+#[cfg(feature = "vctrs")]
+#[miniextendr]
+pub fn new_temperature(x: Vec<f64>) -> miniextendr_api::AsVctrs<ProducerTemp> {
+    miniextendr_api::AsVctrs(ProducerTemp { values: x })
+}
+// endregion

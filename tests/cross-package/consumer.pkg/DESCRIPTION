@@ -19,7 +19,8 @@ Imports:
     methods
 Suggests:
     producer.pkg,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    vctrs
 Config/build/never-clean: true
 Config/build/extra-sources: src/rust/Cargo.lock
 Config/roxygen2/markdown: TRUE
