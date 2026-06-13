@@ -12,6 +12,7 @@ pub mod lifetime_param;
 pub mod r_reserved_params;
 pub mod rf_error;
 pub mod s4_method_prefix;
+pub mod trait_tag_collision;
 pub mod vctrs_self_ctor;
 pub mod vec_into_sexp;
 
@@ -51,6 +52,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: vctrs ctor returns Self / instance receiver on vctrs impl (MXL120)
     vctrs_self_ctor::check(index, &mut diagnostics);
+
+    // Crate-wide: trait-impl vtable-symbol collisions via case-folding (MXL303)
+    trait_tag_collision::check(index, &mut diagnostics);
 
     // Sort by path and line for deterministic output
     diagnostics.sort_by(|a, b| {
