@@ -37,8 +37,11 @@ document-producer: configure-producer
     "
     # Install first so roxygen2 can use load_installed (needed for R6 source refs)
     cd producer.pkg && Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
-    # Already in producer.pkg from previous line (bash shebang runs in one shell)
-    Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
+    # Already in producer.pkg from previous line (bash shebang runs in one shell).
+    # Attach vctrs so roxygen2 recognises vec_cast/vec_ptype2/... as S3 generics
+    # and emits S3method() (not bare export()) for the vctrs methods — otherwise
+    # the producer's vctrs type would not dispatch from a consumer package.
+    Rscript -e 'suppressMessages(require(vctrs, quietly = TRUE)); roxygen2::roxygenise(load_code = roxygen2::load_installed)'
 
 # Document consumer.pkg
 document-consumer: document-producer configure-consumer

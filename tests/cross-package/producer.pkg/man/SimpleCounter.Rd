@@ -14,6 +14,7 @@
 \alias{SimpleCounter$Counter$raise_warning}
 \alias{SimpleCounter$Counter$raise_message}
 \alias{SimpleCounter$Counter$raise_condition_classed}
+\alias{SimpleCounter$Counter$raise_error_with_data}
 \alias{SimpleCounter$Resettable$reset}
 \alias{SimpleCounter$Resettable$is_default}
 \title{SimpleCounter  Class}
