@@ -375,6 +375,22 @@ impl Counter for SimpleCounter {
     fn raise_condition_classed(&self, class_name: String, msg: String) {
         miniextendr_api::condition!(class = class_name, "{}", msg);
     }
+
+    /// Raise an error with structured data fields — tests ConditionData
+    /// round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
+    fn raise_error_with_data(&self) {
+        miniextendr_api::error!(
+            class = "data_bearing_error",
+            data = [
+                ("field_a", self.value),
+                ("field_b", "hello from producer"),
+                ("flag", true),
+                ("score", 1.23_f64)
+            ],
+            "error with structured data (value={})",
+            self.value
+        );
+    }
 }
 
 #[miniextendr]
@@ -464,6 +480,20 @@ impl Counter for StatefulCounter {
 
     fn raise_condition_classed(&self, class_name: String, msg: String) {
         miniextendr_api::condition!(class = class_name, "{}", msg);
+    }
+
+    fn raise_error_with_data(&self) {
+        miniextendr_api::error!(
+            class = "data_bearing_error",
+            data = [
+                ("field_a", self.value),
+                ("field_b", "hello from stateful producer"),
+                ("flag", true),
+                ("score", 1.23_f64)
+            ],
+            "stateful error with structured data (value={})",
+            self.value
+        );
     }
 }
 

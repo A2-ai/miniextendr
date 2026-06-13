@@ -229,7 +229,10 @@ to inspect a tagged SEXP. Two different mechanisms cover the two contexts:
   guard (every `#[miniextendr]` fn has one) catches the re-panic and produces
   the tagged SEXP for the consumer's R wrapper. End-to-end behavior is identical
   to a same-package call: `tryCatch(rust_error = h, ...)` matches; user
-  classes from `error!(class = "...", ...)` match before `rust_error`.
+  classes from `error!(class = "...", ...)` match before `rust_error`. Structured
+  `data =` fields (tagged SEXP slot [4]) are also preserved across the re-panic
+  boundary — `e$field_name` is accessible in R handlers even when the error
+  crossed a package boundary (see #996 path-1).
 
 - **ALTREP `r_unwind` callbacks**: the guard raises the R condition by
   evaluating `stop(structure(list(message, call), class = c(...)))` directly

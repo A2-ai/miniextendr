@@ -52,6 +52,11 @@ pub trait Counter {
     /// Raise a classed `condition!()` — verifies the custom class is catchable
     /// and `e$kind == "condition"` across the trait-ABI boundary.
     fn raise_condition_classed(&self, class_name: String, msg: String);
+
+    /// Raise an `error!()` with structured `data =` fields — verifies that
+    /// `ConditionData` survives the trait-ABI vtable re-panic path
+    /// (`from_tagged_sexp` slot [4] round-trip, issue #996 path-1).
+    fn raise_error_with_data(&self);
 }
 
 /// A trait for types that can be reset to their default state.

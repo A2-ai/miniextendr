@@ -17,14 +17,27 @@
   .msg <- .val$error
   .call <- (if (is.null(.val$call)) .call_default else .val$call)
   .class <- .val$class
+  # `.val$data` is an optional named list of structured fields (from the
+  # macros' `data = ...` form). When present, splice its named elements into
+  # the condition object alongside message/call/kind so handlers can read
+  # `e$<name>`. `utils::modifyList` keeps the base fields and appends the
+  # data fields; a malformed (non-list / unnamed) payload is ignored.
+  .data <- .val$data
+  .cond_fields <- function(base) {
+    if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
+      base
+    } else {
+      utils::modifyList(base, .data)
+    }
+  }
   switch(.val$kind,
-    error = stop(structure(list(message = .msg, call = .call, kind = "error"),
+    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = "error")),
       class = c(.class, "rust_error", "simpleError", "error", "condition"))),
-    warning = warning(structure(list(message = .msg, call = .call, kind = "warning"),
+    warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = "warning")),
       class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))),
-    message = message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),
+    message = message(structure(.cond_fields(list(message = paste0(.msg, "\n"), call = NULL, kind = "message")),
       class = c(.class, "rust_message", "simpleMessage", "message", "condition"))),
-    condition = signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),
+    condition = signalCondition(structure(.cond_fields(list(message = .msg, call = .call, kind = "condition")),
       class = c(.class, "rust_condition", "simpleCondition", "condition"))),
     panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),
       class = c("rust_error", "simpleError", "error", "condition"))),
@@ -134,7 +147,7 @@ has_class <- function(x, class_name) {
   .val
 }
 
-# Generated from Rust fn `is_counter` (lib.rs:196:8)
+# Generated from Rust fn `is_counter` (lib.rs:210:8)
 #' @title Check if an object implements the Counter trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Counter trait
@@ -146,7 +159,7 @@ is_counter <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `peek_value` (lib.rs:186:8)
+# Generated from Rust fn `peek_value` (lib.rs:200:8)
 #' @title Get value without modifying (uses immutable reference)
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's current value
@@ -158,7 +171,7 @@ peek_value <- function(counter_sexp) {
   .val
 }
 
-# Generated from Rust fn `add_and_get` (lib.rs:175:8)
+# Generated from Rust fn `add_and_get` (lib.rs:189:8)
 #' @title Add a value to a counter and return the new value
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @param n Value to add
@@ -175,7 +188,7 @@ add_and_get <- function(counter_sexp, n) {
   .val
 }
 
-# Generated from Rust fn `get_reset_get` (lib.rs:261:8)
+# Generated from Rust fn `get_reset_get` (lib.rs:275:8)
 #' @title Get the value of a Counter, reset it, then get the value again Returns the value after reset
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return The counter value after reset
@@ -187,7 +200,7 @@ get_reset_get <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `is_resettable` (lib.rs:230:8)
+# Generated from Rust fn `is_resettable` (lib.rs:244:8)
 #' @title Check if an object implements the Resettable trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Resettable trait
@@ -199,7 +212,7 @@ is_resettable <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `consumer_greet` (lib.rs:373:8)
+# Generated from Rust fn `consumer_greet` (lib.rs:405:8)
 #' @title Greet with a message demonstrating consumer package is working
 #' @param name Name to greet
 #' @return A greeting string
@@ -215,7 +228,7 @@ consumer_greet <- function(name) {
   .val
 }
 
-# Generated from Rust fn `increment_twice` (lib.rs:162:8)
+# Generated from Rust fn `increment_twice` (lib.rs:176:8)
 #' @title Increment a counter twice (generic over Counter trait) This function works with Counter objects from ANY package
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's value after incrementing twice
@@ -251,7 +264,7 @@ passthrough_ptr <- function(ptr) {
   .val
 }
 
-# Generated from Rust fn `reset_and_check` (lib.rs:209:8)
+# Generated from Rust fn `reset_and_check` (lib.rs:223:8)
 #' @title Reset an object and check if it's in default state This function works with Resettable objects from ANY package
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state after reset
@@ -263,7 +276,7 @@ reset_and_check <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `check_is_default` (lib.rs:220:8)
+# Generated from Rust fn `check_is_default` (lib.rs:234:8)
 #' @title Check if an object is in its default state (without resetting)
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state
@@ -287,7 +300,7 @@ consumer_get_class <- function(x) {
   .val
 }
 
-# Generated from Rust fn `new_double_counter` (lib.rs:147:8)
+# Generated from Rust fn `new_double_counter` (lib.rs:161:8)
 #' @title Create a new DoubleCounter (consumer's own Counter implementation) DoubleCounter increments by 2, demonstrating a different implementation
 #' @param initial Initial counter value
 #' @return An external pointer to the wrapped DoubleCounter
@@ -303,7 +316,7 @@ new_double_counter <- function(initial) {
   .val
 }
 
-# Generated from Rust fn `counter_panic_plain` (lib.rs:288:8)
+# Generated from Rust fn `counter_panic_plain` (lib.rs:302:8)
 #' @title Call panic_plain() on any Counter object via trait dispatch
 #' @description Used by spike tests to verify rust_error class layering across the trait-ABI boundary.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -315,7 +328,7 @@ counter_panic_plain <- function(counter_sexp) {
   invisible(.val)
 }
 
-# Generated from Rust fn `counter_raise_error` (lib.rs:315:8)
+# Generated from Rust fn `counter_raise_error` (lib.rs:329:8)
 #' @title Raise a bare error!() through a Counter trait method via trait dispatch
 #' @description Verifies that a producer-side `error!()` round-trips to `rust_error` / `e$kind == "error"` across the trait-ABI boundary, matching the in-process matrix's free-fn / R6 error rows.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -332,7 +345,7 @@ counter_raise_error <- function(counter_sexp, msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `increment_then_reset` (lib.rs:243:8)
+# Generated from Rust fn `increment_then_reset` (lib.rs:257:8)
 #' @title Increment a Counter twice, then reset it via Resettable, return is_default Tests combined trait usage on the same object across packages
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return TRUE if the object is in default state after increment+reset
@@ -344,7 +357,7 @@ increment_then_reset <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `consumer_magic_number` (lib.rs:381:8)
+# Generated from Rust fn `consumer_magic_number` (lib.rs:413:8)
 #' @title Return a constant to verify the package is loaded
 #' @return The number 42
 #' @export
@@ -355,7 +368,7 @@ consumer_magic_number <- function() {
   .val
 }
 
-# Generated from Rust fn `counter_raise_message` (lib.rs:343:8)
+# Generated from Rust fn `counter_raise_message` (lib.rs:357:8)
 #' @title Raise a message!() through a Counter trait method via trait dispatch
 #' @description Verifies that a producer-side `message!()` round-trips to `rust_message` / `e$kind == "message"` across the trait-ABI boundary, matching the in-process matrix's message rows.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -372,7 +385,7 @@ counter_raise_message <- function(counter_sexp, msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `counter_raise_warning` (lib.rs:329:8)
+# Generated from Rust fn `counter_raise_warning` (lib.rs:343:8)
 #' @title Raise a warning!() through a Counter trait method via trait dispatch
 #' @description Verifies that a producer-side `warning!()` round-trips to `rust_warning` / `e$kind == "warning"` across the trait-ABI boundary, matching the in-process matrix's R6/S3/S4/S7 warning rows.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -389,7 +402,7 @@ counter_raise_warning <- function(counter_sexp, msg) {
   invisible(.val)
 }
 
-# Generated from Rust fn `counter_error_with_class` (lib.rs:301:8)
+# Generated from Rust fn `counter_error_with_class` (lib.rs:315:8)
 #' @title Call error_with_class() on any Counter object via trait dispatch
 #' @description Used by spike tests to verify user-class layering across the trait-ABI boundary.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -406,7 +419,7 @@ counter_error_with_class <- function(counter_sexp, class_name) {
   invisible(.val)
 }
 
-# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:388:8)
+# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:420:8)
 #' @title Debug: Get TAG_COUNTER as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_counter`
@@ -416,7 +429,20 @@ debug_consumer_tag_counter <- function() {
   .val
 }
 
-# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:274:8)
+# Generated from Rust fn `counter_raise_error_with_data` (lib.rs:391:8)
+#' @title Raise an error!() with structured `data =` fields through a Counter trait method via trait dispatch
+#' @description Exercises the `from_tagged_sexp` slot [4] round-trip path (issue #996 path-1): producer raises `error!(class = "data_bearing_error", data = [...], "msg")`, the vtable shim returns a tagged SEXP, `repanic_if_rust_error` reconstructs the `RCondition` (including data), and the consumer's `with_r_unwind_protect` guard re-emits a new tagged SEXP with the data intact.
+#' @details R handlers can then access `e$field_a`, `e$field_b`, `e$flag`, `e$score`.
+#' @param counter_sexp An ExternalPtr to any type implementing Counter
+#' @export
+#' @source Generated by miniextendr from Rust fn `counter_raise_error_with_data`
+counter_raise_error_with_data <- function(counter_sexp) {
+  .val <- .Call(C_counter_raise_error_with_data, .call = match.call(), counter_sexp)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(.val)
+}
+
+# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:288:8)
 #' @title Debug: Get TAG_RESETTABLE as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_resettable`
@@ -426,7 +452,7 @@ debug_consumer_tag_resettable <- function() {
   .val
 }
 
-# Generated from Rust fn `counter_raise_condition_classed` (lib.rs:359:8)
+# Generated from Rust fn `counter_raise_condition_classed` (lib.rs:373:8)
 #' @title Raise a classed condition!() through a Counter trait method via trait dispatch
 #' @description Verifies that a producer-side `condition!(class = …)` is catchable by the user class and round-trips to `e$kind == "condition"` across the trait-ABI boundary, matching the in-process matrix's condition!() rows.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -540,6 +566,16 @@ DoubleCounter$Counter$raise_condition_classed <- function(x, class_name, msg) {
   invisible(x)
 }
 attr(DoubleCounter$Counter$raise_condition_classed, ".__mx_instance__") <- TRUE
+
+#' @name DoubleCounter$Counter$raise_error_with_data
+#' @rdname DoubleCounter
+DoubleCounter$Counter$raise_error_with_data <- function(x) {
+  .val <- .Call(C_DoubleCounter__Counter__raise_error_with_data, .call = match.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+  invisible(x)
+}
+attr(DoubleCounter$Counter$raise_error_with_data, ".__mx_instance__") <- TRUE
 
 # nocov end
 # nolint end

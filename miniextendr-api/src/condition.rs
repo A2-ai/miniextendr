@@ -752,14 +752,185 @@ impl RCondition {
         };
 
         use crate::error_value::kind as kind_const;
-        // NOTE: structured `data` is intentionally not reconstructed here. This
-        // path exists for the trait-ABI vtable re-panic (`repanic_if_rust_error`);
-        // carrying the data list back across the boundary as a Send-safe
-        // `ConditionData` would require materialising R objects into the owned
-        // enum, and the consumer's R wrapper rebuilds the condition from the
-        // *consumer's* tagged SEXP anyway. The data fields ride the original
-        // producer's tagged SEXP (element [4]); a future enhancement could
-        // round-trip them. For now data degrades to `None` on re-panic.
+
+        // Slot [4] is the optional named-list condition data, present when `len >= 5`.
+        //
+        // We reverse-map the SEXP types back into `ConditionData` so that structured
+        // fields survive the cross-package trait-ABI re-panic path
+        // (`repanic_if_rust_error`). The consumer's outer `with_r_unwind_protect`
+        // guard rebuilds the tagged SEXP from the reconstructed `RCondition`, which
+        // now carries the data — so `e$field_name` is accessible in R handlers even
+        // when the error crossed a package boundary.
+        //
+        // Type mapping (SEXPTYPE → ConditionDataValue):
+        //   INTSXP  len=1  → Int(v)           (drop if NA_integer_)
+        //   INTSXP  len>1  → IntVec(v)         (drop entire field if any element is NA_integer_)
+        //   REALSXP len=1  → Real(v)           (drop if NA_real_)
+        //   REALSXP len>1  → RealVec(v)        (drop entire field if any element is NA_real_)
+        //   LGLSXP  len=1  → Bool(v)           (drop if NA_logical_)
+        //   LGLSXP  len>1  → BoolVec(v)        (drop entire field if any element is NA_logical_)
+        //   STRSXP  len=1  → Str(v)            (drop if NA_character_)
+        //   STRSXP  len>1  → StrVec(v)         (drop entire field if any element is NA_character_)
+        //   other SEXPTYPE  → drop the field   (lossy but safe — preserves message/class/kind)
+        //
+        // NA handling (v1): fields containing NA values are dropped rather than
+        // emitted as bogus Rust values. Full NA fidelity via `Option`-bearing
+        // `ConditionDataValue` variants is deferred to a follow-up PR.
+        //
+        // All reads here are non-allocating copies into owned Rust values, so
+        // no new SEXPs are created and the existing `_guard` OwnedProtect suffices.
+        let data: Option<ConditionData> = if len >= 5 {
+            let data_sexp = sexp.vector_elt(4);
+            if data_sexp.is_nil() || !data_sexp.is_list() {
+                None
+            } else {
+                let data_len = data_sexp.len();
+                let names_sexp = data_sexp.get_names();
+                let mut fields: ConditionData = Vec::with_capacity(data_len);
+                for i in 0..data_len {
+                    // Read the field name from the names attribute. If missing/empty, skip.
+                    let name: String = if names_sexp.is_nil() {
+                        continue;
+                    } else if names_sexp.is_character() {
+                        match names_sexp.string_elt_str(i as isize) {
+                            Some(s) if !s.is_empty() => s.to_string(),
+                            _ => continue,
+                        }
+                    } else {
+                        continue;
+                    };
+                    let elt = data_sexp.vector_elt(i as isize);
+                    let elt_len = elt.len();
+                    // Map SEXPTYPE → ConditionDataValue (v1 types only; drop unknown types).
+                    // NA-bearing fields are dropped entirely (see NA handling note above).
+                    let value: Option<ConditionDataValue> = if elt.is_integer() {
+                        if elt_len == 1 {
+                            let v = elt.integer_elt(0);
+                            // i32::MIN == NA_integer_ in R — drop rather than emit bogus value.
+                            if v == i32::MIN {
+                                None
+                            } else {
+                                Some(ConditionDataValue::Int(v))
+                            }
+                        } else {
+                            let mut vec: Vec<i32> = Vec::with_capacity(elt_len);
+                            let mut has_na = false;
+                            for j in 0..elt_len {
+                                let v = elt.integer_elt(j as isize);
+                                if v == i32::MIN {
+                                    has_na = true;
+                                    break;
+                                }
+                                vec.push(v);
+                            }
+                            if has_na {
+                                None
+                            } else {
+                                Some(ConditionDataValue::IntVec(vec))
+                            }
+                        }
+                    } else if elt.is_real() {
+                        use crate::altrep_traits::NA_REAL;
+                        if elt_len == 1 {
+                            let v = elt.real_elt(0);
+                            if v.to_bits() == NA_REAL.to_bits() {
+                                None
+                            } else {
+                                Some(ConditionDataValue::Real(v))
+                            }
+                        } else {
+                            let mut vec: Vec<f64> = Vec::with_capacity(elt_len);
+                            let mut has_na = false;
+                            for j in 0..elt_len {
+                                let v = elt.real_elt(j as isize);
+                                if v.to_bits() == NA_REAL.to_bits() {
+                                    has_na = true;
+                                    break;
+                                }
+                                vec.push(v);
+                            }
+                            if has_na {
+                                None
+                            } else {
+                                Some(ConditionDataValue::RealVec(vec))
+                            }
+                        }
+                    } else if elt.is_logical() {
+                        // NA_logical_ == i32::MIN; 0 = FALSE, 1 = TRUE.
+                        if elt_len == 1 {
+                            let v = elt.logical_elt(0);
+                            if v == i32::MIN {
+                                None
+                            } else {
+                                Some(ConditionDataValue::Bool(v != 0))
+                            }
+                        } else {
+                            let mut vec: Vec<bool> = Vec::with_capacity(elt_len);
+                            let mut has_na = false;
+                            for j in 0..elt_len {
+                                let v = elt.logical_elt(j as isize);
+                                if v == i32::MIN {
+                                    has_na = true;
+                                    break;
+                                }
+                                vec.push(v != 0);
+                            }
+                            if has_na {
+                                None
+                            } else {
+                                Some(ConditionDataValue::BoolVec(vec))
+                            }
+                        }
+                    } else if elt.is_character() {
+                        if elt_len == 1 {
+                            let charsxp = elt.string_elt(0);
+                            if charsxp.is_na_string() {
+                                None
+                            } else {
+                                elt.string_elt_str(0)
+                                    .map(|s| ConditionDataValue::Str(s.to_string()))
+                            }
+                        } else {
+                            let mut vec: Vec<String> = Vec::with_capacity(elt_len);
+                            let mut has_na = false;
+                            for j in 0..elt_len {
+                                let charsxp = elt.string_elt(j as isize);
+                                if charsxp.is_na_string() {
+                                    has_na = true;
+                                    break;
+                                }
+                                match elt.string_elt_str(j as isize) {
+                                    Some(s) => vec.push(s.to_string()),
+                                    None => {
+                                        has_na = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if has_na {
+                                None
+                            } else {
+                                Some(ConditionDataValue::StrVec(vec))
+                            }
+                        }
+                    } else {
+                        // Unknown SEXPTYPE — drop the field (safe degradation).
+                        None
+                    };
+                    if let Some(v) = value {
+                        fields.push((name, v));
+                    }
+                }
+                if fields.is_empty() {
+                    None
+                } else {
+                    Some(fields)
+                }
+            }
+        } else {
+            None
+        };
+
         let cond = match kind {
             kind_const::ERROR
             | kind_const::PANIC
@@ -768,28 +939,25 @@ impl RCondition {
             | kind_const::OTHER_RUST_ERROR => RCondition::Error {
                 message: msg,
                 class,
-                data: None,
+                data,
             },
             kind_const::WARNING => RCondition::Warning {
                 message: msg,
                 class,
-                data: None,
+                data,
             },
-            kind_const::MESSAGE => RCondition::Message {
-                message: msg,
-                data: None,
-            },
+            kind_const::MESSAGE => RCondition::Message { message: msg, data },
             kind_const::CONDITION => RCondition::Condition {
                 message: msg,
                 class,
-                data: None,
+                data,
             },
             other => {
                 // Unknown kind — degrade to error
                 RCondition::Error {
                     message: format!("[{other}] {msg}"),
                     class,
-                    data: None,
+                    data,
                 }
             }
         };
