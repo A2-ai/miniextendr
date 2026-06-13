@@ -420,6 +420,7 @@ See [FEATURES.md](FEATURES.md#connections) for the `connections` feature flag.
 - `#[derive(Vctrs)]` macro with `Vctr`, `Rcrd`, `ListOf` kinds
 - `#[miniextendr(vctrs)]` impl block support for methods
 - `coerce = "type"` attribute generates `vec_ptype2`/`vec_cast` methods
+- `extends = "parent"` attribute for vctrs inheritance (class-vector + coercion chain)
 - `vec_proxy`, `vec_restore`, `format` protocol methods
 - Advanced features: `proxy_equal`, `proxy_compare`, `proxy_order`, `arith`, `math`
 - C API wrappers: `init_vctrs()`, `obj_is_vector()`, `short_vec_size()`, etc.
@@ -446,8 +447,30 @@ package — including a consumer — dispatches on the type correctly. The contr
 See `tests/cross-package/` (`producer_temp` type + `new_temperature()`
 constructor, and `consumer.pkg/tests/testthat/test-vctrs-cross-package.R`).
 
-**What's still missing:**
-- vctrs inheritance (`extends = "parent_type"` pattern) — tracked in #1039.
+**vctrs inheritance (`extends = "parent_type"`) — RESOLVED:**
+
+A `#[derive(Vctrs)]` type can declare a parent vctrs type with
+`#[vctrs(extends = "parent")]`. The derive:
+
+- Prepends the parent into the class vector after the child but before
+  `vctrs_vctr` (e.g. `c("fancy_percent", "percent", "vctrs_vctr", "double")`),
+  on **both** the Rust construction path (`into_vctrs` →
+  `VctrsClass::additional_classes()`) and every R-side method that rebuilds the
+  class (`vec_restore`, `vec_ptype2`, coercion stubs) — so subset/coerce results
+  keep the parent and S3 generics the child does not override fall through to the
+  parent's methods via R's class-vector dispatch.
+- Emits bidirectional `vec_ptype2`/`vec_cast` stubs between the child and each
+  parent. Following vctrs' rule that the common type of a subtype and its
+  supertype is the **supertype**, `vec_ptype2` returns the parent prototype, so
+  `vec_c(child, parent)` resolves to the parent type; casts re-wrap the shared
+  base data. `extends` may be repeated for multiple parents.
+- Requires the parent to share the child's `base` vector type (the casts re-wrap
+  the same underlying data). Cross-package: if the parent lives in another
+  package, its S3 methods must be loaded (the same import contract as the
+  cross-package export above).
+
+See `tests/cross-package/` (`producer_oven_temp` extends `producer_temp`, and
+`consumer.pkg/tests/testthat/test-vctrs-extends.R`).
 
 ---
 
