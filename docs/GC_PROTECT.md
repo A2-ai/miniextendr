@@ -54,6 +54,46 @@ let list = scope.alloc_vecsxp(5);
 let strvec = scope.alloc_strsxp(10);
 ```
 
+#### Full Wrapper Reference
+
+| Method | Wraps | Description |
+|--------|-------|-------------|
+| `alloc_vector(ty, n)` | `Rf_allocVector` | Generic vector of type `ty` and length `n` |
+| `alloc_matrix(ty, nrow, ncol)` | `Rf_allocMatrix` | 2-D matrix |
+| `alloc_list(n)` | `Rf_allocList` | Pairlist (LISTSXP) of length `n` |
+| `alloc_vecsxp(n)` | `Rf_allocVector(VECSXP)` | Generic list (VECSXP) |
+| `alloc_strsxp(n)` | `Rf_allocVector(STRSXP)` | Character vector |
+| `alloc_integer(n)` | `Rf_allocVector(INTSXP)` | Integer vector |
+| `alloc_real(n)` | `Rf_allocVector(REALSXP)` | Real vector |
+| `alloc_logical(n)` | `Rf_allocVector(LGLSXP)` | Logical vector |
+| `alloc_raw(n)` | `Rf_allocVector(RAWSXP)` | Raw vector |
+| `alloc_complex(n)` | `Rf_allocVector(CPLXSXP)` | Complex vector |
+| `alloc_character(n)` | `Rf_allocVector(STRSXP)` | Character vector (alias) |
+| `alloc_array(ty, dims)` | `Rf_allocArray` | N-D array; dims INTSXP protected inside scope |
+| `alloc_3d_array(ty, nrow, ncol, nface)` | `Rf_alloc3DArray` | 3-D array |
+| `alloc_lang(n)` | `Rf_allocLang` | Language object (LANGSXP) of length `n` |
+| `alloc_s4_object()` | `Rf_allocS4Object` | S4 object (S4SXP) |
+| `alloc_sexp(ty)` | `Rf_allocSExp` | Bare cons-cell node of the given type |
+| `mkchar(s)` | `Rf_mkCharLenCE(..., CE_UTF8)` | CHARSXP from `&str` (UTF-8) |
+| `mkchar_ce(s, enc)` | `Rf_mkCharLenCE` | CHARSXP from `&str` with specified encoding |
+| `mkchar_len_ce(bytes, enc)` | `Rf_mkCharLenCE` | CHARSXP from `&[u8]` with specified encoding |
+| `cons(car, cdr)` | `Rf_cons` | Pairlist cons cell |
+| `lcons(car, cdr)` | `Rf_lcons` | Language cons cell |
+| `lengthgets(x, n)` | `Rf_lengthgets` | Resize vector, returns new protected copy |
+| `xlengthgets(x, n)` | `Rf_xlengthgets` | Resize vector (long-vector form) |
+| `duplicate(x)` | `Rf_duplicate` | Deep copy |
+| `shallow_duplicate(x)` | `Rf_shallow_duplicate` | Shallow copy |
+| `coerce(x, ty)` | `Rf_coerce` | Type coercion |
+| `new_env(parent, hash, size)` | `R_NewEnv` | New environment |
+| `make_external_ptr(p, tag, prot)` | `R_MakeExternalPtr` | Raw external pointer (escape hatch; prefer `ExternalPtr<T>`) |
+| `scalar_integer(x)` | `Rf_ScalarInteger` | Scalar integer |
+| `scalar_real(x)` | `Rf_ScalarReal` | Scalar real |
+| `scalar_logical(x)` | `Rf_ScalarLogical` | Scalar logical |
+| `scalar_complex(x)` | `Rf_ScalarComplex` | Scalar complex |
+| `scalar_raw(x)` | `Rf_ScalarRaw` | Scalar raw |
+| `scalar_string(s)` | `Rf_ScalarString(Rf_mkCharLenCE(...))` | Scalar character |
+| `collect(iter)` | _(typed fill)_ | Allocate + fill from exact-size iterator |
+
 ### Collecting Iterators (`scope.collect`)
 
 Convert Rust iterators directly to typed R vectors:

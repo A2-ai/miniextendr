@@ -164,9 +164,11 @@
 //!
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
+use crate::sexp_types::cetype_t;
 use crate::sys::{
-    R_NewEnv, R_ProtectWithIndex, R_Reprotect, Rf_allocList, Rf_allocMatrix, Rf_allocVector,
-    Rf_protect, Rf_unprotect,
+    R_MakeExternalPtr, R_NewEnv, R_ProtectWithIndex, R_Reprotect, Rf_alloc3DArray, Rf_allocArray,
+    Rf_allocLang, Rf_allocList, Rf_allocMatrix, Rf_allocS4Object, Rf_allocSExp, Rf_allocVector,
+    Rf_cons, Rf_lcons, Rf_lengthgets, Rf_mkCharLenCE, Rf_protect, Rf_unprotect, Rf_xlengthgets,
 };
 use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::cell::Cell;
@@ -688,6 +690,196 @@ impl ProtectScope {
                 size,
             ))
         }
+    }
+
+    // endregion
+
+    // region: Array, pairlist, S4, and misc allocation helpers
+
+    /// Allocate an n-dimensional array of the given type, and immediately protect it.
+    ///
+    /// The `dims` slice is first allocated as an integer vector inside this scope
+    /// (consuming one protect slot) to satisfy `Rf_allocArray`'s SEXP-dims contract.
+    /// The resulting array SEXP consumes a second protect slot.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `dims` must be non-empty.
+    #[inline]
+    pub unsafe fn alloc_array<'a>(&'a self, ty: SEXPTYPE, dims: &[i32]) -> Root<'a> {
+        // Build the dims INTSXP inside the scope so it is protected across the
+        // Rf_allocArray call (which may trigger GC).
+        let dims_len = R_xlen_t::try_from(dims.len()).expect("dims length exceeds R_xlen_t");
+        let dims_sexp = unsafe { self.alloc_vector(SEXPTYPE::INTSXP, dims_len) };
+        for (i, &d) in dims.iter().enumerate() {
+            dims_sexp.get().set_integer_elt(i as isize, d);
+        }
+        let sexp = unsafe { Rf_allocArray(ty, dims_sexp.get()) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a 3-dimensional array of the given type, and immediately protect it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_3d_array<'a>(
+        &'a self,
+        ty: SEXPTYPE,
+        nrow: i32,
+        ncol: i32,
+        nface: i32,
+    ) -> Root<'a> {
+        let sexp = unsafe { Rf_alloc3DArray(ty, nrow, ncol, nface) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a language object (LANGSXP) of the given length, and immediately protect it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_lang<'a>(&'a self, n: i32) -> Root<'a> {
+        let sexp = unsafe { Rf_allocLang(n) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate an S4 object (S4SXP), and immediately protect it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_s4_object<'a>(&'a self) -> Root<'a> {
+        let sexp = unsafe { Rf_allocS4Object() };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a bare SEXP node of the given type, and immediately protect it.
+    ///
+    /// Unlike [`alloc_vector`][Self::alloc_vector], `Rf_allocSExp` allocates a
+    /// single cons-cell node (not a vector) for types like LISTSXP, ENVSXP, etc.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_sexp<'a>(&'a self, ty: SEXPTYPE) -> Root<'a> {
+        let sexp = unsafe { Rf_allocSExp(ty) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Create a CHARSXP with a specified encoding and byte length, protected.
+    ///
+    /// This is the general form; see [`mkchar`][Self::mkchar] for the plain UTF-8 shorthand.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `s` must be valid for `len` bytes.
+    #[inline]
+    pub unsafe fn mkchar_len_ce<'a>(&'a self, s: &[u8], enc: cetype_t) -> Root<'a> {
+        let len = i32::try_from(s.len()).expect("string length exceeds i32");
+        let sexp = unsafe { Rf_mkCharLenCE(s.as_ptr().cast::<::std::os::raw::c_char>(), len, enc) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Create a CHARSXP from a Rust `&str` with a specified encoding, protected.
+    ///
+    /// This is the length-counted variant (wraps `Rf_mkCharLenCE`); it is safe for
+    /// strings with embedded NUL bytes and does not require a NUL terminator.
+    /// For the raw NUL-terminated `Rf_mkCharCE` form, use
+    /// [`mkchar_len_ce`][Self::mkchar_len_ce] with `s.as_bytes()`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn mkchar_ce<'a>(&'a self, s: &str, enc: cetype_t) -> Root<'a> {
+        let len = i32::try_from(s.len()).expect("string length exceeds i32");
+        let sexp = unsafe { Rf_mkCharLenCE(s.as_ptr().cast::<::std::os::raw::c_char>(), len, enc) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Construct a pairlist cons cell (`LISTSXP`) and immediately protect it.
+    ///
+    /// Allocates a single cons cell with `car` as the head and `cdr` as the tail.
+    /// Both `car` and `cdr` must already be protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `car` and `cdr` must be valid SEXPs.
+    #[inline]
+    pub unsafe fn cons<'a>(&'a self, car: SEXP, cdr: SEXP) -> Root<'a> {
+        let sexp = unsafe { Rf_cons(car, cdr) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Construct a language cons cell (`LANGSXP`) and immediately protect it.
+    ///
+    /// Like [`cons`][Self::cons] but marks the node as `LANGSXP` (function call list).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `car` and `cdr` must be valid SEXPs.
+    #[inline]
+    pub unsafe fn lcons<'a>(&'a self, car: SEXP, cdr: SEXP) -> Root<'a> {
+        let sexp = unsafe { Rf_lcons(car, cdr) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Resize a vector to a new length (short-vector variant), returning a protected copy.
+    ///
+    /// Wraps `Rf_lengthgets`. Both the source vector and the resized copy should be
+    /// protected; the copy is protected by this call.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `x` must be a valid vector SEXP.
+    #[inline]
+    pub unsafe fn lengthgets<'a>(&'a self, x: SEXP, n: R_xlen_t) -> Root<'a> {
+        let sexp = unsafe { Rf_lengthgets(x, n) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Resize a vector to a new length (long-vector variant), returning a protected copy.
+    ///
+    /// Like [`lengthgets`][Self::lengthgets] but uses `Rf_xlengthgets`, which accepts
+    /// `R_xlen_t` lengths beyond `INT_MAX`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `x` must be a valid vector SEXP.
+    #[inline]
+    pub unsafe fn xlengthgets<'a>(&'a self, x: SEXP, n: R_xlen_t) -> Root<'a> {
+        let sexp = unsafe { Rf_xlengthgets(x, n) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Create an external pointer SEXP, and immediately protect it.
+    ///
+    /// This is an escape-hatch tier wrapper around `R_MakeExternalPtr`. In most
+    /// cases you should use [`ExternalPtr<T>`](crate::ExternalPtr) instead — it
+    /// provides typed safety, finalizer registration, and correct rooting (#841).
+    /// Use this wrapper only when you need raw `EXTPTRSXP` construction that
+    /// `ExternalPtr<T>` cannot express.
+    ///
+    /// Both `tag` and `prot` must be valid SEXPs (pass `R_NilValue` if unused).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `p`, `tag`, and `prot` must all be
+    /// valid for the duration of the external pointer's lifetime.
+    #[inline]
+    pub unsafe fn make_external_ptr<'a>(
+        &'a self,
+        p: *mut ::std::os::raw::c_void,
+        tag: SEXP,
+        prot: SEXP,
+    ) -> Root<'a> {
+        let sexp = unsafe { R_MakeExternalPtr(p, tag, prot) };
+        unsafe { self.protect(sexp) }
     }
 
     // endregion
