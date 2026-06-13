@@ -277,3 +277,83 @@ test_that("trait conditions round-trip for consumer DoubleCounter", {
 })
 
 # endregion
+
+# region: structured data round-trip across trait-ABI boundary (issue #996 path-1)
+#
+# `counter_raise_error_with_data(counter)` calls
+#   producer Counter::raise_error_with_data()
+#     → error!(class = "data_bearing_error", data = [("field_a", value), ...], "msg")
+#     → vtable shim returns tagged SEXP (slot [4] = named list)
+#     → repanic_if_rust_error calls from_tagged_sexp, which now reads slot [4]
+#     → RCondition::Error { data: Some([...]) } is re-panicked
+#     → consumer's with_r_unwind_protect produces a new tagged SEXP with data
+#     → R wrapper raises the condition with e$field_a etc. accessible.
+
+test_that("structured data survives trait-ABI re-panic (from_tagged_sexp slot [4])", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  counter <- new_counter(5L)
+
+  e <- tryCatch(
+    counter_raise_error_with_data(counter),
+    data_bearing_error = function(e) e,
+    error = function(e) stop(paste("wrong class caught:", conditionMessage(e)))
+  )
+
+  # Verify class layering is intact
+  expect_true(inherits(e, "data_bearing_error"),
+    info = paste("class was:", paste(class(e), collapse = ", ")))
+  expect_true(inherits(e, "rust_error"),
+    info = "rust_error must also be present")
+
+  # Verify structured data fields survived the cross-package round-trip.
+  # field_a is self.value which is 5L for new_counter(5L).
+  expect_equal(e$field_a, 5L,
+    info = paste("field_a was:", e$field_a))
+  expect_equal(e$field_b, "hello from producer",
+    info = paste("field_b was:", e$field_b))
+  expect_equal(e$flag, TRUE,
+    info = paste("flag was:", e$flag))
+  expect_equal(e$score, 1.23,
+    info = paste("score was:", e$score),
+    tolerance = 1e-10)
+})
+
+test_that("structured data round-trip also works for StatefulCounter", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  sc <- new_stateful_counter(10L)
+
+  e <- tryCatch(
+    counter_raise_error_with_data(sc),
+    data_bearing_error = function(e) e,
+    error = function(e) stop(paste("wrong class:", conditionMessage(e)))
+  )
+
+  expect_true(inherits(e, "data_bearing_error"))
+  # field_a is the counter value: 10L
+  expect_equal(e$field_a, 10L)
+  expect_equal(e$field_b, "hello from stateful producer")
+  expect_equal(e$flag, TRUE)
+  expect_equal(e$score, 1.23, tolerance = 1e-10)
+})
+
+test_that("structured data round-trip works for consumer DoubleCounter (no package boundary)", {
+  double <- new_double_counter(3L)
+
+  e <- tryCatch(
+    counter_raise_error_with_data(double),
+    data_bearing_error = function(e) e,
+    error = function(e) stop(paste("wrong class:", conditionMessage(e)))
+  )
+
+  expect_true(inherits(e, "data_bearing_error"))
+  expect_equal(e$field_a, 3L)
+  expect_equal(e$field_b, "hello from consumer")
+  expect_equal(e$flag, TRUE)
+  expect_equal(e$score, 1.23, tolerance = 1e-10)
+})
+
+# endregion

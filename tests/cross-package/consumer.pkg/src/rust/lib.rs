@@ -136,6 +136,20 @@ impl Counter for DoubleCounter {
     fn raise_condition_classed(&self, class_name: String, msg: String) {
         miniextendr_api::condition!(class = class_name, "{}", msg);
     }
+
+    fn raise_error_with_data(&self) {
+        miniextendr_api::error!(
+            class = "data_bearing_error",
+            data = [
+                ("field_a", self.value),
+                ("field_b", "hello from consumer"),
+                ("flag", true),
+                ("score", 1.23_f64)
+            ],
+            "double counter error with structured data (value={})",
+            self.value
+        );
+    }
 }
 
 /// Create a new DoubleCounter (consumer's own Counter implementation)
@@ -359,6 +373,24 @@ pub fn counter_raise_message(counter_sexp: SEXP, msg: String) {
 pub fn counter_raise_condition_classed(counter_sexp: SEXP, class_name: String, msg: String) {
     let counter = unsafe { CounterView::from_sexp(counter_sexp) };
     counter.raise_condition_classed(class_name, msg);
+}
+
+/// Raise an error!() with structured `data =` fields through a Counter trait
+/// method via trait dispatch.
+///
+/// Exercises the `from_tagged_sexp` slot [4] round-trip path (issue #996 path-1):
+/// producer raises `error!(class = "data_bearing_error", data = [...], "msg")`,
+/// the vtable shim returns a tagged SEXP, `repanic_if_rust_error` reconstructs
+/// the `RCondition` (including data), and the consumer's `with_r_unwind_protect`
+/// guard re-emits a new tagged SEXP with the data intact.
+///
+/// R handlers can then access `e$field_a`, `e$field_b`, `e$flag`, `e$score`.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @export
+#[miniextendr]
+pub fn counter_raise_error_with_data(counter_sexp: SEXP) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.raise_error_with_data();
 }
 
 // endregion
