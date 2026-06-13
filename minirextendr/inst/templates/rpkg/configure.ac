@@ -606,6 +606,33 @@ if test -n "$_r_cxxflags"; then
   CARGO_ENV_ABI_CXXFLAGS=`echo "$_r_cxxflags" | tr ' ' '\n' | grep -E "$_abi_allow_re" | tr '\n' ' ' | $SED 's/ *$//'`
 fi
 
+dnl wasm32/webR: force -fPIC into the cargo C/C++ build-script flags.
+dnl
+dnl cc-rs hard-excludes the wasm32/wasm64 arch from its default `-fPIC` logic
+dnl (cc 1.2 src/lib.rs: the PIC default is `... && target.arch != "wasm32" &&
+dnl target.arch != "wasm64"`), and `-C relocation-model=pic` does NOT change
+dnl this — cc keys off the arch, not CARGO_CFG_RELOCATION_MODEL. Pure-Rust deps
+dnl are fine (the emscripten target emits PIC by default), but any cc-built C
+dnl dependency (e.g. zstd-sys's bundled libzstd) then produces non-PIC objects.
+dnl emscripten SIDE_MODULE links demand position-independent objects, so the
+dnl link fails: `relocation R_WASM_MEMORY_ADDR_SLEB cannot be used against
+dnl symbol .L.str.N; recompile with -fPIC`. cc reads CFLAGS_<target> (form #1,
+dnl literal dashed triple) and appends it verbatim, so this reaches every
+dnl transitive C/C++ build script. Native builds are untouched (gated on
+dnl is_wasm_install). Surfaced by the zstd optional integration (#1005).
+if test "$is_wasm_install" = true; then
+  if test -n "$CARGO_ENV_ABI_CFLAGS"; then
+    CARGO_ENV_ABI_CFLAGS="$CARGO_ENV_ABI_CFLAGS -fPIC"
+  else
+    CARGO_ENV_ABI_CFLAGS="-fPIC"
+  fi
+  if test -n "$CARGO_ENV_ABI_CXXFLAGS"; then
+    CARGO_ENV_ABI_CXXFLAGS="$CARGO_ENV_ABI_CXXFLAGS -fPIC"
+  else
+    CARGO_ENV_ABI_CXXFLAGS="-fPIC"
+  fi
+fi
+
 if test -n "$CARGO_ENV_ABI_CFLAGS"; then
   AC_MSG_NOTICE([cargo CFLAGS_<target>  = $CARGO_ENV_ABI_CFLAGS])
 fi

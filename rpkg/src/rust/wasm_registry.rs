@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      93591532c7256fce
+// content-hash:      9c40d4f86e2b7806
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -976,6 +976,7 @@ unsafe extern "C-unwind" {
     pub fn C_gc_stress_borrowed_rows(_: SEXP) -> SEXP;
     pub fn C_gc_stress_dataframe_map(_: SEXP) -> SEXP;
     pub fn C_gc_stress_factor_labels(_: SEXP) -> SEXP;
+    pub fn C_gc_stress_alloc_wrappers(_: SEXP) -> SEXP;
     pub fn C_gc_stress_condition_data(_: SEXP) -> SEXP;
     pub fn C_gc_stress_jiff_zoned_vec(_: SEXP) -> SEXP;
     pub fn C_gc_stress_rcow_roundtrip(_: SEXP) -> SEXP;
@@ -1939,12 +1940,13 @@ unsafe extern "C-unwind" {
     pub fn C_R6Dog__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Dog__breed(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Dog__fetch(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_R6Dog__speak(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Animal__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Animal__name(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__add(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__inc(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__new(_: SEXP, _: SEXP) -> SEXP;
-    pub fn C_R6Animal__speak(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_R6Animal__speak(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Cloneable__new(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Counter__value(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_R6Rectangle__new(_: SEXP, _: SEXP, _: SEXP) -> SEXP;
@@ -6967,6 +6969,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 1,
     },
     R_CallMethodDef {
+        name: c"C_gc_stress_alloc_wrappers".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_alloc_wrappers) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
         name: c"C_gc_stress_condition_data".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_gc_stress_condition_data) }),
         numArgs: 1,
@@ -11782,6 +11789,11 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         numArgs: 2,
     },
     R_CallMethodDef {
+        name: c"C_R6Dog__speak".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Dog__speak) }),
+        numArgs: 3,
+    },
+    R_CallMethodDef {
         name: c"C_R6Animal__new".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Animal__new) }),
         numArgs: 3,
@@ -11808,8 +11820,8 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
     },
     R_CallMethodDef {
         name: c"C_R6Animal__speak".as_ptr(),
-        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_R6Animal__speak) }),
-        numArgs: 2,
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP, _>(C_R6Animal__speak) }),
+        numArgs: 3,
     },
     R_CallMethodDef {
         name: c"C_R6Cloneable__new".as_ptr(),
