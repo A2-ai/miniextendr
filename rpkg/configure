@@ -2026,8 +2026,14 @@ while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
   _walk_dir=`dirname "$_walk_dir"`
 done
 
+SOURCE_IS_BUILT=false
+if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
+  SOURCE_IS_BUILT=true
+fi
+
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "true" \
+   && test "$SOURCE_IS_BUILT" = "false" \
    && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
   as_fn_error $? "leaked vendor tarball detected in a git-tracked source tree.
 

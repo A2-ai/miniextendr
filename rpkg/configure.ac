@@ -77,6 +77,18 @@ while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
   _walk_dir=`dirname "$_walk_dir"`
 done
 
+dnl Distinguish a checked-out source tree from a package produced by
+dnl `R CMD build` / installed by `R CMD INSTALL`. R stamps a `Packaged:` field
+dnl into the DESCRIPTION it seals (tools:::.build_packages, unconditional) and
+dnl `R CMD INSTALL` adds `Built:`. A git working tree's DESCRIPTION has neither.
+dnl Used by the leaked-tarball guard below to avoid misfiring on a legitimate
+dnl built-tarball install that happens to be extracted into a dir nested under
+dnl the repo .git (e.g. <pkg>.Rcheck/<pkg>/ during `R CMD check`).
+SOURCE_IS_BUILT=false
+if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
+  SOURCE_IS_BUILT=true
+fi
+
 dnl ---- leaked-tarball guard (#1029) ----
 dnl A vendor tarball sitting in a git-tracked source tree is almost always a
 dnl LEAK: a previous `just r-cmd-build` / `r-cmd-check` / `devtools-build`
@@ -89,21 +101,36 @@ dnl such guard. configure would silently flip to tarball mode, build against the
 dnl frozen vendored sources, and ignore every local workspace edit. Fail loud
 dnl instead, pointing at the same remediation the `just` guards use.
 dnl
-dnl Why this does NOT break the legitimate produce-then-consume path:
-dnl   * Recipes that PRODUCE the tarball (r-cmd-build / r-cmd-check) use raw
-dnl     `R CMD build`, which does NOT honour Config/build/bootstrap — so it
-dnl     never re-runs ./configure in the source tree (verified empirically).
-dnl     `R CMD build` stages to a temp dir with no .git, so any configure run
-dnl     there has SOURCE_IS_GIT=false.
-dnl   * Recipes that go through pkgbuild (devtools-build / devtools-check) DO
-dnl     run bootstrap.R, which runs ./configure in the original source dir (with
-dnl     .git present) AFTER `just vendor` has produced the tarball. bootstrap.R
-dnl     exports MINIEXTENDR_BOOTSTRAP=1 around that invocation so this guard
-dnl     stays silent for it — the tarball there is intentional, not a leak.
-dnl   * End-user tarball installs extract to a dir with no .git
-dnl     (SOURCE_IS_GIT=false), so the guard never fires for them either.
+dnl Three conditions must all hold for this to be a genuine leak:
+dnl   1. inst/vendor.tar.xz is present (otherwise nothing flips tarball mode).
+dnl   2. SOURCE_IS_GIT=true — there is a .git ancestor.
+dnl   3. SOURCE_IS_BUILT=false — DESCRIPTION has no `Packaged:`/`Built:` field,
+dnl      i.e. this is a real git working tree, NOT a package produced by
+dnl      `R CMD build`. This is the load-bearing discriminator: `R CMD build`
+dnl      stamps a `Packaged:` line into the sealed DESCRIPTION (R's
+dnl      tools:::.build_packages writes it unconditionally), and `R CMD INSTALL`
+dnl      adds `Built:`. So an extracted/built package always carries one of
+dnl      those fields, while a checked-out source tree never does.
+dnl
+dnl Why this does NOT break the legitimate produce-then-consume paths:
+dnl   * `just r-cmd-check` builds a tarball (DESCRIPTION gains `Packaged:`), then
+dnl     `R CMD check` EXTRACTS it into <pkg>.Rcheck/<pkg>/ — which, because the
+dnl     check dir lives inside the repo working tree, is nested UNDER the repo's
+dnl     .git (SOURCE_IS_GIT=true) AND ships the bundled inst/vendor.tar.xz
+dnl     (intentional tarball mode). Before the SOURCE_IS_BUILT gate this misfired
+dnl     and aborted every CI R CMD check. The `Packaged:` field suppresses it:
+dnl     this is a legitimate built-tarball install, not a source-tree leak. Same
+dnl     for CRAN's `R CMD check` and any end-user tarball install.
+dnl   * Recipes that go through pkgbuild (devtools-build / devtools-check) run
+dnl     bootstrap.R, which runs ./configure in the ORIGINAL source dir (with .git
+dnl     present, DESCRIPTION not yet built so no `Packaged:`) AFTER `just vendor`
+dnl     has produced the tarball. That path is a genuine source tree with a
+dnl     deliberately-present tarball, so SOURCE_IS_BUILT can't suppress it;
+dnl     bootstrap.R exports MINIEXTENDR_BOOTSTRAP=1 around that invocation so this
+dnl     guard stays silent — the tarball there is intentional, not a leak.
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "true" \
+   && test "$SOURCE_IS_BUILT" = "false" \
    && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
   AC_MSG_ERROR([leaked vendor tarball detected in a git-tracked source tree.
 

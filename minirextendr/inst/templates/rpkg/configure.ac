@@ -77,18 +77,36 @@ while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
   _walk_dir=`dirname "$_walk_dir"`
 done
 
+dnl Distinguish a checked-out source tree from a package produced by
+dnl `R CMD build` / installed by `R CMD INSTALL`. R stamps a `Packaged:` field
+dnl into the DESCRIPTION it seals (tools:::.build_packages, unconditional) and
+dnl `R CMD INSTALL` adds `Built:`. A git working tree's DESCRIPTION has neither.
+dnl Used by the leaked-tarball guard below to avoid misfiring on a legitimate
+dnl built-tarball install that happens to be extracted into a dir nested under
+dnl the repo .git (e.g. <pkg>.Rcheck/<pkg>/ during `R CMD check`).
+SOURCE_IS_BUILT=false
+if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
+  SOURCE_IS_BUILT=true
+fi
+
 dnl ---- leaked-tarball guard (#1029) ----
 dnl A vendor tarball sitting in a git-tracked source tree is almost always a
 dnl LEAK: a previous build that produced inst/vendor.tar.xz was interrupted
 dnl before its cleanup ran. configure would silently flip to tarball mode and
 dnl build against the frozen vendored sources, ignoring local source edits.
-dnl Fail loud instead. bootstrap.R exports MINIEXTENDR_BOOTSTRAP=1 when it
-dnl invokes configure (after deliberately producing the tarball for the build),
-dnl so this guard stays silent on that legitimate produce-then-consume path.
-dnl End-user tarball installs extract to a dir with no .git, so the guard never
-dnl fires for them (SOURCE_IS_GIT=false).
+dnl Fail loud instead. The guard fires only for a real source tree: the
+dnl SOURCE_IS_BUILT gate (no `Packaged:`/`Built:` in DESCRIPTION) suppresses it
+dnl on a legitimate built-tarball install — e.g. `R CMD check` extracts the
+dnl built tarball into <pkg>.Rcheck/<pkg>/, which is nested under the repo .git
+dnl (SOURCE_IS_GIT=true) yet ships the bundled tarball on purpose. bootstrap.R
+dnl also exports MINIEXTENDR_BOOTSTRAP=1 when it invokes configure (after
+dnl deliberately producing the tarball for the build, in a not-yet-built source
+dnl tree), so this guard stays silent on that legitimate produce-then-consume
+dnl path too. End-user tarball installs extract to a dir with no .git, so the
+dnl guard never fires for them either (SOURCE_IS_GIT=false).
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "true" \
+   && test "$SOURCE_IS_BUILT" = "false" \
    && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
   AC_MSG_ERROR([leaked vendor tarball detected in a git-tracked source tree.
 
