@@ -22,6 +22,7 @@ Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `
 - **MXL203** — redundant `internal` + `noexport`.
 - **MXL300** — direct `Rf_error`/`Rf_errorcall` → replace with `panic!()` (framework converts to R error via tagged-SEXP transport).
 - **MXL301** — `_unchecked` FFI outside known-safe contexts (ALTREP callbacks, `with_r_unwind_protect`, `with_r_thread`).
+- **MXL302** — `into_sexp()`/`into_sexp_unchecked()` inside a `vec!`/`&[…]` literal (the use-after-free idiom, #307/#1025) → wrap each element in `__scope.protect_raw(…)` via a `ProtectScope`, or prefer the `IntoList`/`DataFrameRow` derives. Raw-text scanner: tracks `vec!`/`&[` bracket depth and flags `into_sexp(` while inside; the safe `vec![…].into_sexp()` whole-vec form is not flagged. Escape hatch: `// mxl::allow(MXL302)`.
 
 ## Adding a rule
 - New file under `rules/`, register in `rules.rs`, add code to `lint_code.rs`.

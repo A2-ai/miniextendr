@@ -199,6 +199,11 @@ pub struct FileData {
     pub rf_error_calls: Vec<(String, usize)>,
     /// Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
     pub ffi_unchecked_calls: Vec<(String, usize)>,
+    /// `into_sexp()` / `into_sexp_unchecked()` calls that appear *inside* a `vec!`/array
+    /// literal: (call_name, line_number). This is the use-after-free idiom — each later
+    /// `into_sexp` allocates and can GC an earlier, still-unprotected element of the same
+    /// literal. (MXL302)
+    pub vec_into_sexp_calls: Vec<(String, usize)>,
 
     // R reserved-word parameter names
     /// Maps fn/method name → list of (param_name, line) for params that are R reserved words.
@@ -452,6 +457,7 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     let lines: Vec<&str> = src.lines().collect();
     scan_rf_error_calls(&lines, &mut data);
     scan_ffi_unchecked_calls(&lines, &mut data);
+    scan_vec_into_sexp_calls(&lines, &mut data);
 
     Ok(data)
 }
@@ -893,4 +899,121 @@ fn scan_rf_error_calls(lines: &[&str], data: &mut FileData) {
         }
     }
 }
+
+// region: MXL302 — `into_sexp()` inside a `vec!`/array literal (use-after-free idiom)
+
+/// `into_sexp` call spellings that build a fresh, unprotected SEXP.
+const INTO_SEXP_CALLS: &[&str] = &["into_sexp(", "into_sexp_unchecked("];
+
+/// Scan raw source text for `into_sexp()` / `into_sexp_unchecked()` calls that appear
+/// *inside* a `vec!` or `&[...]` literal — the use-after-free idiom (#307, #1025).
+///
+/// Each `into_sexp` allocates a new SEXP. When several appear as elements of one literal
+/// (`vec![(k, a.into_sexp()), (k, b.into_sexp())]`), building `b` can trigger a GC that
+/// collects the still-unprotected `a` (and vice versa), because nothing roots the earlier
+/// elements until the whole `Vec` is handed to `List::from_raw_pairs`. The fix is to route
+/// each element through the protected builder path (`__scope.protect_raw(x.into_sexp())`
+/// with a `ProtectScope`), exactly as the `IntoList` / `DataFrameRow` derives now do.
+///
+/// # Heuristic and scope
+///
+/// This is a deliberately narrow raw-text scanner (consistent with MXL300/MXL301):
+/// it tracks bracket depth opened by a `vec![` or `&[` literal and flags an `into_sexp(`
+/// call only while that depth is open. This is what makes it precise:
+///
+/// - **Flags** `vec![ ... into_sexp() ... ]` — the call is an element *inside* the literal.
+/// - **Does NOT flag** `vec![1, 2, 3].into_sexp()` — the `]` closes the literal before the
+///   `.into_sexp()` call, so depth is back to 0 (the whole `Vec` is converted as one SEXP,
+///   which is safe — there are no sibling unprotected SEXPs).
+///
+/// The protected builder path is treated as a true negative: an `into_sexp(` whose element
+/// routes through a `protect_raw(...)` / `protect(...)` / `protect_with_index(...)` call
+/// (`__scope.protect_raw(x.into_sexp())`) is *not* flagged. This is exactly the form the
+/// `IntoList` / `DataFrameRow` derives emit, and the recommended hand-written fix.
+///
+/// Known limits (false negatives, by design — to keep zero false positives):
+/// - Only `vec![` and `&[` literal opens are tracked; bare `[ ... ]` array literals are
+///   not, because a leading `[` is ambiguous with indexing (`arr[i]`). Array-literal sites
+///   are rare in this codebase; promote the scanner if one appears.
+/// - The protect-detection is per-element and line-local in spirit: an element whose
+///   `protect(...)`/`protect_raw(...)` wrapper sits on an earlier line than its `into_sexp(`
+///   is still recognised (the flag persists until the next element-separating `,`), but a
+///   contrived element that opens a protect call yet smuggles an *unprotected* sibling
+///   `into_sexp(` after the same comma-free span would be missed. No such shape exists in
+///   the corpus.
+fn scan_vec_into_sexp_calls(lines: &[&str], data: &mut FileData) {
+    // Bracket depth opened specifically by a `vec![` / `&[` literal. Nested `[` inside the
+    // literal increment it too; `]` decrements. We never let it go negative.
+    let mut literal_depth: i32 = 0;
+    // Whether the *current literal element* already routes its value through a protect call
+    // (`protect_raw(...)` / `protect(...)`). Reset at each element-separating `,` and at
+    // each literal open. This is what makes the protected builder path (the form emitted by
+    // the `IntoList` / `DataFrameRow` derives) a true negative.
+    let mut element_protected = false;
+
+    for (line_idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        // Strip inline `//` comments so commented-out idioms / doc prose don't trip us.
+        let code_part = match line.find("//") {
+            Some(pos) => &line[..pos],
+            None => *line,
+        };
+
+        let bytes = code_part.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            // Detect a `vec![` / `&[` literal open (look-behind).
+            if bytes[i] == b'[' {
+                let opens_literal =
+                    code_part[..i].ends_with("vec!") || (i > 0 && bytes[i - 1] == b'&');
+                if opens_literal || literal_depth > 0 {
+                    // Either a fresh literal open, or a nested `[` while already inside one.
+                    literal_depth += 1;
+                    element_protected = false;
+                }
+                i += 1;
+                continue;
+            }
+            if bytes[i] == b']' {
+                if literal_depth > 0 {
+                    literal_depth -= 1;
+                }
+                i += 1;
+                continue;
+            }
+            if literal_depth > 0 {
+                // An element separator resets the per-element protected flag.
+                if bytes[i] == b',' {
+                    element_protected = false;
+                    i += 1;
+                    continue;
+                }
+                // A `protect_raw(` / `protect(` call before `into_sexp(` in this element
+                // means the value is rooted as it is built — the protected builder path.
+                if code_part[i..].starts_with("protect_raw(")
+                    || code_part[i..].starts_with("protect(")
+                    || code_part[i..].starts_with("protect_with_index(")
+                {
+                    element_protected = true;
+                }
+                // Flag a raw `into_sexp(` element call (not wrapped in a protect call).
+                for pattern in INTO_SEXP_CALLS {
+                    if code_part[i..].starts_with(pattern)
+                        && !element_protected
+                        && !is_suppressed(lines, line_idx, "MXL302")
+                    {
+                        let call_name = &pattern[..pattern.len() - 1];
+                        data.vec_into_sexp_calls
+                            .push((call_name.to_string(), line_idx + 1));
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+}
+// endregion
 // endregion

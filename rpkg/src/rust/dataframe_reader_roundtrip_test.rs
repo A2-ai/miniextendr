@@ -56,10 +56,15 @@ pub struct RListBoxRow {
 impl ::miniextendr_api::list::IntoList for RListBoxRow {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("tag", self.tag.into_sexp()),
-            ("xs", self.xs.into_vec().into_sexp()),
-        ])
+        // SAFETY: IntoList runs on the R main thread. Protect each value as built so it
+        // survives `from_raw_pairs`'s internal allocations — mirrors `#[derive(IntoList)]`.
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![
+                ("tag", __scope.protect_raw(self.tag.into_sexp())),
+                ("xs", __scope.protect_raw(self.xs.into_vec().into_sexp())),
+            ])
+        }
     }
 }
 
@@ -105,11 +110,15 @@ impl ::miniextendr_api::list::IntoList for WithIntMap {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
         let (keys, vals): (Vec<i32>, Vec<f64>) = self.tally.into_iter().unzip();
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("id", self.id.into_sexp()),
-            ("tally_keys", keys.into_sexp()),
-            ("tally_values", vals.into_sexp()),
-        ])
+        // SAFETY: IntoList runs on the R main thread. Protect-as-built (see RListBoxRow).
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![
+                ("id", __scope.protect_raw(self.id.into_sexp())),
+                ("tally_keys", __scope.protect_raw(keys.into_sexp())),
+                ("tally_values", __scope.protect_raw(vals.into_sexp())),
+            ])
+        }
     }
 }
 

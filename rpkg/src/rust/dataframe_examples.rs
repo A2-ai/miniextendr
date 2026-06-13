@@ -30,10 +30,19 @@ pub struct SimplePerson {
 impl ::miniextendr_api::list::IntoList for SimplePerson {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("name", self.name.into_sexp()),
-            ("age", self.age.into_sexp()),
-        ])
+        // Wrap each `into_sexp()` in `__scope.protect_raw` so an earlier field SEXP stays
+        // rooted across the next field's allocation — otherwise the raw
+        // `vec![(name, into_sexp(...)), ...]` form is a use-after-free under GC. This
+        // mirrors what `#[derive(IntoList)]` generates; see MXL302 /
+        // reviews/2026-05-07-gctorture-audit.md.
+        // SAFETY: IntoList runs on the R main thread.
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::list::List::from_raw_pairs(vec![
+                ("name", __scope.protect_raw(self.name.into_sexp())),
+                ("age", __scope.protect_raw(self.age.into_sexp())),
+            ])
+        }
     }
 }
 
