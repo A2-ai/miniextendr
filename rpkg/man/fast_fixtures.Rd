@@ -49,5 +49,5 @@ fast_i32_no_call_attribution(x)
 \item{c}{(no documentation available)}
 }
 \description{
-\code{conditionCall(e)} will be NULL on the error path: \code{fast} emits \code{.call = NULL}, and \code{error_direct} raises straight from C before the R-side \code{sys.call()} fallback can run.
+On the error path: \code{fast} emits \code{.call = NULL} so C receives \code{R_NilValue} for the call SEXP; \code{error_direct} raises straight from C via \code{stop(structure(..., call = NULL, ...))}. R's \code{stop()} fills in the current call when the condition's \code{call} slot is NULL (the \code{call.} argument defaults to \code{TRUE}), so \code{conditionCall(e)} is still non-NULL.
 }
