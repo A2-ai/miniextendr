@@ -866,6 +866,127 @@ fn mxl120_no_false_positive_for_consuming_self_on_vctrs() {
     );
 }
 
+#[test]
+fn mxl303_case_fold_vtable_collision() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // Two distinct traits differing only in case both upper-case to `COUNTER`,
+    // so both emit `__VTABLE_COUNTER_FOR_FOO` → duplicate #[no_mangle] symbol.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        impl Counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+
+        #[miniextendr]
+        impl counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    let hits: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| format!("{}", d.code) == "MXL303")
+        .collect();
+    assert_eq!(
+        hits.len(),
+        2,
+        "expected MXL303 to fire on both colliding impls, got: {:?}",
+        report.diagnostics
+    );
+    assert!(
+        hits.iter()
+            .any(|d| d.message.contains("__VTABLE_COUNTER_FOR_FOO")),
+        "expected the collided vtable symbol in the message, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl303_no_collision_for_distinct_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // Distinct trait names and distinct type names → distinct vtable symbols.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        impl Counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+
+        #[miniextendr]
+        impl Resettable for Foo {
+            fn reset(&mut self) {}
+        }
+
+        #[miniextendr]
+        impl Counter for Bar {
+            fn value(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL303"),
+        "MXL303 must not fire on distinct trait/type names, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl303_suppressed_by_allow_comment() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // Same collision as the positive case, but the second impl carries the
+    // escape-hatch comment, so only the first impl reports.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        impl Counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+
+        // mxl::allow(MXL303)
+        #[miniextendr]
+        impl counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    let hits = report
+        .diagnostics
+        .iter()
+        .filter(|d| format!("{}", d.code) == "MXL303")
+        .count();
+    assert_eq!(
+        hits, 1,
+        "the allow-comment should suppress one of the two colliding impls, got: {:?}",
+        report.diagnostics
+    );
+}
+
 // endregion
 
 // region: MXL302 — into_sexp() inside a vec!/array literal (use-after-free idiom)

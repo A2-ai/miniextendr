@@ -152,6 +152,10 @@ pub struct AttributedTraitImpl {
     pub trait_name: String,
     pub class_system: Option<String>,
     pub line: usize,
+    /// True when the impl carries a `// mxl::allow(MXL303)` escape-hatch comment
+    /// on (or directly above) its line. Computed at parse time because the
+    /// look-behind needs the raw source split, which only `parse_file` holds.
+    pub suppressed_mxl303: bool,
 }
 // endregion
 
@@ -459,6 +463,15 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     scan_ffi_unchecked_calls(&lines, &mut data);
     scan_vec_into_sexp_calls(&lines, &mut data);
 
+    // MXL303 escape hatch: resolve the `// mxl::allow(MXL303)` look-behind for each
+    // attributed trait impl now, while the raw source split is in scope. The impl's
+    // recorded line points at the `self_ty` (e.g. `impl Trait for Type`), so the
+    // allow comment sits above one or more `#[…]` attribute lines — scan upward past
+    // attributes and blank lines to find it.
+    for ati in &mut data.attributed_trait_impls {
+        ati.suppressed_mxl303 = allow_above_attrs(&lines, ati.line, "MXL303");
+    }
+
     Ok(data)
 }
 
@@ -598,6 +611,7 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                         trait_name,
                                         class_system: impl_attrs.class_system.clone(),
                                         line,
+                                        suppressed_mxl303: false,
                                     });
                                 }
                             } else {
@@ -708,6 +722,33 @@ fn is_suppressed(lines: &[&str], line_idx: usize, code: &str) -> bool {
     }
     if line_idx > 0 && line_has_allow(lines[line_idx - 1], code) {
         return true;
+    }
+    false
+}
+
+/// Check for `// mxl::allow(<code>)` on the impl line itself, or on the nearest
+/// non-attribute / non-blank line above it.
+///
+/// `line` is 1-based and points at the impl's `self_ty`. Scans upward across
+/// `#[…]` attribute lines and blank lines (the macro attribute and any doc
+/// comments sit between the allow comment and the recorded line).
+fn allow_above_attrs(lines: &[&str], line: usize, code: &str) -> bool {
+    if line == 0 || line > lines.len() {
+        return false;
+    }
+    // The impl line itself.
+    if line_has_allow(lines[line - 1], code) {
+        return true;
+    }
+    // Walk upward over attribute/blank lines until the first "real" line.
+    let mut idx = line - 1;
+    while idx > 0 {
+        idx -= 1;
+        let trimmed = lines[idx].trim_start();
+        if trimmed.is_empty() || trimmed.starts_with("#[") || trimmed.starts_with("#!") {
+            continue;
+        }
+        return line_has_allow(lines[idx], code);
     }
     false
 }

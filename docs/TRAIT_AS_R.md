@@ -47,7 +47,7 @@ The trait ABI enables:
 | Future Lints | Purpose |
 |--------------|---------|
 | `missing_vtable` | `impl Trait for Type` without `#[miniextendr]` on the impl |
-| `tag_collision` | Duplicate `mx_tag` values across traits |
+| `tag_collision` (MXL303) | Duplicate vtable symbols across trait impls (case-fold collapse) |
 | `unused_trait_impl` | Vtable generated but type not exposed via ExternalPtr |
 
 ### C (example package)
@@ -169,7 +169,7 @@ pub struct mx_erased {
 - [x] Documentation (TRAIT_AS_R.md updated with usage examples)
 - [x] Error diagnostics (improved runtime error messages for type mismatches)
 - [x] miniextendr-lint: missing `impl Trait for Type;` registration detection
-- [ ] miniextendr-lint: tag collision detection (future)
+- [x] miniextendr-lint: tag collision detection (MXL303 — vtable-symbol case-fold collision across trait impls)
 - [x] R tests for trait method `.Call` wrappers (`rpkg/tests/testthat/test-trait-abi.R`)
 
 ## Design Decisions
