@@ -23,6 +23,12 @@
 //! - `#[vctrs(abbr = "pct")]` - Abbreviation for `vec_ptype_abbr`
 //! - `#[vctrs(inherit_base = true | false)]` - Whether to include base type in class vector
 //! - `#[vctrs(coerce = "double" | "integer" | ...)]` - Additional types this class coerces with
+//! - `#[vctrs(extends = "parent")]` - Parent vctrs class to inherit from. Prepends
+//!   the parent into the class vector (after this class, before `vctrs_vctr`) so
+//!   unhandled S3 generics fall through to the parent's methods, and generates
+//!   bidirectional `vec_ptype2`/`vec_cast` stubs (parent wins as the supertype).
+//!   The parent must share this type's `base` vector type. May be repeated for
+//!   multiple parents.
 //!
 //! ### Field-level
 //!
@@ -71,6 +77,14 @@ struct VctrsAttrs {
     /// Additional R types to generate bidirectional coercion methods for
     /// (e.g., `"double"` generates `vec_ptype2` and `vec_cast` between class and double).
     coerce_with: Vec<String>,
+    /// Parent vctrs class(es) this type inherits from (`extends = "parent"`).
+    ///
+    /// Each parent is prepended into the R class vector *after* this class but
+    /// before `vctrs_vctr`, so unhandled S3 generics fall through to the
+    /// parent's methods. Bidirectional `vec_ptype2`/`vec_cast` stubs between the
+    /// child and each parent are generated so coercion resolves (parent wins —
+    /// matching vctrs' rule that the supertype is the common type).
+    extends: Vec<String>,
     /// For `list_of` base type: an R expression for the element prototype (e.g., `"integer()"`).
     ptype: Option<String>,
     /// Generate `vec_proxy_equal` S3 method for equality testing.
@@ -130,6 +144,9 @@ fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
                 } else if meta.path.is_ident("coerce") {
                     let value: syn::LitStr = meta.value()?.parse()?;
                     result.coerce_with.push(value.value());
+                } else if meta.path.is_ident("extends") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    result.extends.push(value.value());
                 } else if meta.path.is_ident("ptype") {
                     let value: syn::LitStr = meta.value()?.parse()?;
                     result.ptype = Some(value.value());
@@ -145,7 +162,7 @@ fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
                     result.math = true;
                 } else {
                     return Err(meta.error(
-                        "unknown vctrs attribute; expected one of: class, base, abbr, inherit_base, coerce, ptype, proxy_equal, proxy_compare, proxy_order, arith, math",
+                        "unknown vctrs attribute; expected one of: class, base, abbr, inherit_base, coerce, extends, ptype, proxy_equal, proxy_compare, proxy_order, arith, math",
                     ));
                 }
                 Ok(())
@@ -253,6 +270,8 @@ struct RWrapperOptions<'a> {
     record_fields: &'a [String],
     /// Additional R types to generate bidirectional coercion methods for.
     coerce_with: &'a [String],
+    /// Parent vctrs class(es) this type inherits from (`extends = "parent"`).
+    extends: &'a [String],
     /// Whether `inherit_base_type = TRUE` is passed to `new_vctr`.
     inherit_base: bool,
     /// For `list_of`: R expression for element prototype (e.g., `"integer()"`).
@@ -298,7 +317,12 @@ fn generate_r_wrappers(opts: &RWrapperOptions) -> String {
     let abbr = opts.abbr;
     let record_fields = opts.record_fields;
     let coerce_with = opts.coerce_with;
+    let extends = opts.extends;
     let inherit_base = opts.inherit_base;
+    // R expression for the class vector passed to new_vctr/new_rcrd/new_list_of.
+    // With `extends`, the parent class(es) are prepended after the child so that
+    // S3 dispatch + vctrs coercion fall through to the parent's methods.
+    let class_vec = r_class_vector(class, extends);
     let ptype = opts.ptype;
     let proxy_equal = opts.proxy_equal;
     let proxy_compare = opts.proxy_compare;
@@ -426,7 +450,7 @@ vec_proxy.{class} <- function(x, ...) {{
 #' @importFrom vctrs vec_restore new_rcrd
 #' @export
 vec_restore.{class} <- function(x, to, ...) {{
-  vctrs::new_rcrd(as.list(x), class = "{class}")
+  vctrs::new_rcrd(as.list(x), class = {class_vec})
 }}
 "#
         ));
@@ -438,7 +462,7 @@ vec_restore.{class} <- function(x, to, ...) {{
 #' @importFrom vctrs vec_restore new_list_of
 #' @export
 vec_restore.{class} <- function(x, to, ...) {{
-  vctrs::new_list_of(x$elt, ptype = {ptype_expr}, class = "{class}")
+  vctrs::new_list_of(x$elt, ptype = {ptype_expr}, class = {class_vec})
 }}
 "#
         ));
@@ -450,7 +474,7 @@ vec_restore.{class} <- function(x, to, ...) {{
 #' @importFrom vctrs vec_restore new_vctr
 #' @export
 vec_restore.{class} <- function(x, to, ...) {{
-  vctrs::new_vctr(x, class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr(x, class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#
         ));
@@ -479,7 +503,7 @@ vec_ptype2.{class}.{class} <- function(x, y, ...) {{
 #' @export
 vec_ptype2.{class}.{class} <- function(x, y, ...) {{
   ptype <- vctrs::vec_ptype_common(attr(x, "ptype"), attr(y, "ptype"))
-  vctrs::new_list_of(list(), ptype = ptype, class = "{class}")
+  vctrs::new_list_of(list(), ptype = ptype, class = {class_vec})
 }}
 "#
         ));
@@ -491,7 +515,7 @@ vec_ptype2.{class}.{class} <- function(x, y, ...) {{
 #' @importFrom vctrs vec_ptype2 new_vctr
 #' @export
 vec_ptype2.{class}.{class} <- function(x, y, ...) {{
-  vctrs::new_vctr({base}(0), class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr({base}(0), class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#,
             base = base_to_r_constructor(base)
@@ -522,7 +546,7 @@ vec_cast.{class}.{class} <- function(x, to, ...) {{
 #' @importFrom vctrs vec_ptype2 new_vctr
 #' @export
 vec_ptype2.{class}.{other_type} <- function(x, y, ...) {{
-  vctrs::new_vctr({base}(0), class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr({base}(0), class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#,
                 base = base_to_r_constructor(base)
@@ -534,7 +558,7 @@ vec_ptype2.{class}.{other_type} <- function(x, y, ...) {{
 #' @importFrom vctrs vec_ptype2 new_vctr
 #' @export
 vec_ptype2.{other_type}.{class} <- function(x, y, ...) {{
-  vctrs::new_vctr({base}(0), class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr({base}(0), class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#,
                 base = base_to_r_constructor(base)
@@ -546,7 +570,7 @@ vec_ptype2.{other_type}.{class} <- function(x, y, ...) {{
 #' @importFrom vctrs vec_cast new_vctr
 #' @export
 vec_cast.{class}.{other_type} <- function(x, to, ...) {{
-  vctrs::new_vctr(as.{base}(x), class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr(as.{base}(x), class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#,
                 base = base_to_r_as_func(base)
@@ -559,6 +583,72 @@ vec_cast.{class}.{other_type} <- function(x, to, ...) {{
 #' @export
 vec_cast.{other_type}.{class} <- function(x, to, ...) {{
   vctrs::vec_data(x)
+}}
+"#
+            ));
+        }
+    }
+    // endregion
+
+    // region: extends - cross-coercion between this class and its parent(s)
+    //
+    // With `extends = "parent"`, the parent class already sits in the class
+    // vector (see `class_vec`), so S3 generics the child does not override
+    // (format, print, vec_ptype_abbr, ...) fall through to the parent's methods
+    // automatically via R's NextMethod / class-vector dispatch.
+    //
+    // Coercion (vec_ptype2 / vec_cast), however, is double-dispatched on the
+    // *exact* class pair, so it does not inherit through the class vector. We
+    // therefore emit explicit child<->parent method pairs. Following vctrs'
+    // rule that the common type of a subtype and its supertype is the supertype,
+    // vec_ptype2 returns the PARENT prototype, and casts re-wrap the shared
+    // base data (child and parent share `base` — an `extends` parent must have
+    // the same base vector type).
+    for parent in extends {
+        if base != "record" && base != "list" {
+            let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
+            let ctor = base_to_r_constructor(base);
+
+            // vec_ptype2.<class>.<parent> - parent (supertype) wins.
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.{class}.{parent} <- function(x, y, ...) {{
+  vctrs::new_vctr({ctor}(0), class = "{parent}", inherit_base_type = {inherit_str})
+}}
+"#
+            ));
+
+            // vec_ptype2.<parent>.<class> - symmetric, parent still wins.
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.{parent}.{class} <- function(x, y, ...) {{
+  vctrs::new_vctr({ctor}(0), class = "{parent}", inherit_base_type = {inherit_str})
+}}
+"#
+            ));
+
+            // vec_cast.<parent>.<class> - upcast child -> parent (re-wrap shared base).
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_cast new_vctr vec_data
+#' @export
+vec_cast.{parent}.{class} <- function(x, to, ...) {{
+  vctrs::new_vctr(vctrs::vec_data(x), class = "{parent}", inherit_base_type = {inherit_str})
+}}
+"#
+            ));
+
+            // vec_cast.<class>.<parent> - downcast parent -> child (re-wrap shared base).
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_cast new_vctr vec_data
+#' @export
+vec_cast.{class}.{parent} <- function(x, to, ...) {{
+  vctrs::new_vctr(vctrs::vec_data(x), class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#
             ));
@@ -727,7 +817,7 @@ vec_arith.{class}.default <- function(op, x, y, ...) {{
 #' @export
 vec_arith.{class}.{class} <- function(op, x, y, ...) {{
   result <- vctrs::vec_arith_base(op, x, y)
-  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr(result, class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#
             ));
@@ -741,7 +831,7 @@ vec_arith.{class}.{class} <- function(op, x, y, ...) {{
 #' @export
 vec_arith.{class}.numeric <- function(op, x, y, ...) {{
   result <- vctrs::vec_arith_base(op, x, y)
-  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr(result, class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#
             ));
@@ -756,7 +846,7 @@ vec_arith.{class}.numeric <- function(op, x, y, ...) {{
 #' @export
 vec_arith.numeric.{class} <- function(op, x, y, ...) {{
   result <- vctrs::vec_arith_base(op, x, y)
-  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr(result, class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#
             ));
@@ -770,7 +860,7 @@ vec_arith.numeric.{class} <- function(op, x, y, ...) {{
 #' @export
 vec_arith.{class}.MISSING <- function(op, x, y, ...) {{
   result <- vctrs::vec_arith_base(op, x, y)
-  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr(result, class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#
             ));
@@ -789,7 +879,7 @@ vec_arith.{class}.MISSING <- function(op, x, y, ...) {{
 #' @export
 vec_math.{class} <- function(.fn, .x, ...) {{
   result <- vctrs::vec_math_base(.fn, .x, ...)
-  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+  vctrs::new_vctr(result, class = {class_vec}, inherit_base_type = {inherit_str})
 }}
 "#
             ));
@@ -797,6 +887,26 @@ vec_math.{class} <- function(.fn, .x, ...) {{
     }
 
     r_code
+}
+
+/// Builds the R class-vector expression for `new_vctr`/`new_rcrd`/`new_list_of`.
+///
+/// Without `extends`, this is a bare string `"class"`. With one or more parents
+/// it becomes `c("class", "parent1", ...)`, so the parent classes sit between
+/// the child and `vctrs_vctr` in the final class vector. That ordering is how
+/// S3 inheritance and vctrs' `vec_ptype2` fall-through resolve to the parent's
+/// methods when the child does not override them.
+fn r_class_vector(class: &str, extends: &[String]) -> String {
+    if extends.is_empty() {
+        format!("\"{class}\"")
+    } else {
+        let parents = extends
+            .iter()
+            .map(|p| format!("\"{p}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("c(\"{class}\", {parents})")
+    }
 }
 
 /// Maps a base type string to the corresponding R constructor function name
@@ -920,6 +1030,21 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         None => quote! { None },
     };
 
+    // `extends = "parent"` parents become the type's additional classes, sitting
+    // between CLASS_NAME and "vctrs_vctr" in the constructed class vector. This is
+    // the Rust-construction side of inheritance; the R-side methods prepend the
+    // same parents (see `r_class_vector`) so subset/coerce results carry them too.
+    let extends = &attrs.extends;
+    let additional_classes_impl = if extends.is_empty() {
+        TokenStream::new()
+    } else {
+        quote! {
+            fn additional_classes() -> &'static [&'static str] {
+                &[#(#extends),*]
+            }
+        }
+    };
+
     // Generate VctrsClass implementation
     let vctrs_class_impl = quote! {
         impl #impl_generics ::miniextendr_api::vctrs::VctrsClass for #name #ty_generics #where_clause {
@@ -928,11 +1053,30 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
             const BASE_TYPE: Option<::miniextendr_api::SEXPTYPE> = Some(#sexptype);
             const INHERIT_BASE_TYPE: bool = #inherit_base;
             const ABBR: Option<&'static str> = #abbr;
+            #additional_classes_impl
         }
     };
 
     // Find data field for IntoVctrs
     let data_field = fields.iter().find(|f| f.attrs.is_data);
+
+    // Class slice passed to new_vctr/new_rcrd/new_list_of. Without `extends` this
+    // is the unchanged `&[Self::CLASS_NAME]`; with `extends` it concatenates the
+    // parent classes (CLASS_NAME first, then each parent) so the constructed
+    // class vector matches the R-side `r_class_vector` ordering.
+    let (class_slice_binding, class_slice_expr) = if extends.is_empty() {
+        (TokenStream::new(), quote! { &[Self::CLASS_NAME] })
+    } else {
+        (
+            quote! {
+                let __class: ::std::vec::Vec<&'static str> =
+                    ::std::iter::once(Self::CLASS_NAME)
+                        .chain(Self::additional_classes().iter().copied())
+                        .collect();
+            },
+            quote! { &__class },
+        )
+    };
 
     // Generate IntoVctrs implementation if data field is marked
     let into_vctrs_impl = if let Some(data_field) = data_field {
@@ -968,9 +1112,10 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                                 ::miniextendr_api::list::List::from_raw_pairs(pairs)
                             };
 
+                            #class_slice_binding
                             ::miniextendr_api::vctrs::new_rcrd(
                                 fields,
-                                &[Self::CLASS_NAME],
+                                #class_slice_expr,
                                 &attrs,
                             )
                         }
@@ -994,11 +1139,12 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             let list = unsafe { List::from_raw(data_sexp) };
                             // For list_of, we pass size = list length, ptype = None (handled in R wrapper)
                             let size = Some(list.len() as i32);
+                            #class_slice_binding
                             ::miniextendr_api::vctrs::new_list_of(
                                 list,
                                 None,  // ptype - handled in R wrapper via attribute
                                 size,
-                                &[Self::CLASS_NAME],
+                                #class_slice_expr,
                                 &attrs,
                             )
                         }
@@ -1015,9 +1161,10 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             // Get attrs before moving data out of self
                             let attrs = self.attrs();
                             let data = self.#data_ident.into_sexp();
+                            #class_slice_binding
                             ::miniextendr_api::vctrs::new_vctr(
                                 data,
-                                &[Self::CLASS_NAME],
+                                #class_slice_expr,
                                 &attrs,
                                 Some(Self::INHERIT_BASE_TYPE),
                             )
@@ -1083,6 +1230,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         abbr: attrs.abbr.as_deref(),
         record_fields: &record_field_names,
         coerce_with: &attrs.coerce_with,
+        extends: &attrs.extends,
         inherit_base,
         ptype: attrs.ptype.as_deref(),
         proxy_equal: attrs.proxy_equal,
@@ -1359,6 +1507,7 @@ mod tests {
             abbr: Some("pct"),
             record_fields: &[],
             coerce_with: &[],
+            extends: &[],
             inherit_base: false,
             ptype: None,
             proxy_equal: false,
@@ -1398,6 +1547,7 @@ mod tests {
             abbr: None,
             record_fields: &["n".to_string(), "d".to_string()],
             coerce_with: &[],
+            extends: &[],
             inherit_base: true, // records default to inherit_base = true
             ptype: None,
             proxy_equal: false,
@@ -1439,6 +1589,7 @@ mod tests {
             abbr: None,
             record_fields: &[],
             coerce_with: &[],
+            extends: &[],
             inherit_base: false,
             ptype: None,
             proxy_equal: false,
@@ -1464,6 +1615,7 @@ mod tests {
             abbr: Some("%"),
             record_fields: &[],
             coerce_with: &["double".to_string()],
+            extends: &[],
             inherit_base: false,
             ptype: None,
             proxy_equal: false,
@@ -1492,6 +1644,7 @@ mod tests {
             abbr: Some("list<int>"),
             record_fields: &[],
             coerce_with: &[],
+            extends: &[],
             inherit_base: true,
             ptype: Some("integer()"),
             proxy_equal: false,
@@ -1531,6 +1684,7 @@ mod tests {
             abbr: None,
             record_fields: &[],
             coerce_with: &[],
+            extends: &[],
             inherit_base: false,
             ptype: None,
             proxy_equal: true,
@@ -1558,6 +1712,7 @@ mod tests {
             abbr: None,
             record_fields: &[],
             coerce_with: &[],
+            extends: &[],
             inherit_base: false,
             ptype: None,
             proxy_equal: false,
@@ -1599,6 +1754,7 @@ mod tests {
             abbr: None,
             record_fields: &[],
             coerce_with: &[],
+            extends: &[],
             inherit_base: false,
             ptype: None,
             proxy_equal: false,
@@ -1611,5 +1767,94 @@ mod tests {
         // Should have vec_math method
         assert!(r_code.contains("vec_math.mynum"));
         assert!(r_code.contains("vec_math_base"));
+    }
+
+    #[test]
+    fn test_r_class_vector_helper() {
+        // No parents -> bare string.
+        assert_eq!(r_class_vector("percent", &[]), "\"percent\"");
+        // One parent -> c("child", "parent").
+        assert_eq!(
+            r_class_vector("fancy_percent", &["percent".to_string()]),
+            "c(\"fancy_percent\", \"percent\")"
+        );
+        // Multiple parents preserve order, child first.
+        assert_eq!(
+            r_class_vector("c", &["b".to_string(), "a".to_string()]),
+            "c(\"c\", \"b\", \"a\")"
+        );
+    }
+
+    #[test]
+    fn test_r_wrappers_with_extends() {
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "fancy_percent",
+            base: "double",
+            abbr: None,
+            record_fields: &[],
+            coerce_with: &[],
+            extends: &["percent".to_string()],
+            inherit_base: false,
+            ptype: None,
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: false,
+            math: false,
+        });
+
+        // The constructed class vector (in vec_restore / vec_ptype2) carries the
+        // parent so S3 + coercion fall through.
+        assert!(r_code.contains("class = c(\"fancy_percent\", \"percent\")"));
+
+        // Cross-coercion stubs between child and parent are emitted.
+        assert!(r_code.contains("vec_ptype2.fancy_percent.percent"));
+        assert!(r_code.contains("vec_ptype2.percent.fancy_percent"));
+        assert!(r_code.contains("vec_cast.percent.fancy_percent"));
+        assert!(r_code.contains("vec_cast.fancy_percent.percent"));
+
+        // ptype2 returns the parent (supertype) prototype.
+        assert!(r_code.contains("class = \"percent\""));
+
+        // The default format method is still present; fall-through to the
+        // parent's format happens at runtime via the class vector.
+        assert!(r_code.contains("format.fancy_percent"));
+    }
+
+    #[test]
+    fn test_extends_emits_additional_classes_impl() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "fancy_percent", base = "double", extends = "percent")]
+            struct FancyPercent {
+                #[vctrs(data)]
+                data: Vec<f64>,
+            }
+        };
+
+        let result = derive_vctrs(input).unwrap();
+        let code = result.to_string();
+
+        // additional_classes() override is generated and lists the parent.
+        assert!(code.contains("additional_classes"));
+        assert!(code.contains("\"percent\""));
+    }
+
+    #[test]
+    fn test_no_extends_keeps_class_name_slice() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "percent", base = "double")]
+            struct Percent {
+                #[vctrs(data)]
+                data: Vec<f64>,
+            }
+        };
+
+        let result = derive_vctrs(input).unwrap();
+        let code = result.to_string();
+
+        // Without extends, no additional_classes override and the slice stays
+        // the unchanged &[Self::CLASS_NAME].
+        assert!(!code.contains("additional_classes"));
+        assert!(code.contains("Self :: CLASS_NAME"));
     }
 }
