@@ -240,6 +240,40 @@ s$area           # 25
 - Active bindings (computed properties)
 - Reference semantics (modify in place)
 
+### Extending a generated R6 class from R
+
+When you need to add R-only methods to a miniextendr-scaffolded R6 class (e.g. convenience
+wrappers, formatting helpers, or methods that delegate to other R packages), roxygen2 8.0.0
+lets you document those additions outside the generated class body.
+
+**Primary form** — place a roxygen block directly above a `$set()` call; roxygen2
+auto-associates it with the class:
+
+```r
+#' @description Return a formatted label for the object.
+#' @return A character string.
+Rectangle$set("public", "label", function() {
+  paste0("Rectangle(", self$get_width(), " x ", private$.height, ")")
+})
+```
+
+**Fallback form** — when the `$set()` call escapes roxygen2's source-tracing (e.g. it lives
+inside a helper function or a conditional block), attach a `@R6method` tag to a bare `NULL`:
+
+```r
+#' @R6method Rectangle$label
+#' @description Return a formatted label for the object.
+#' @return A character string.
+NULL
+
+Rectangle$set("public", "label", function() {
+  paste0("Rectangle(", self$get_width(), " x ", private$.height, ")")
+})
+```
+
+The `@R6method ClassName$method_name` tag tells roxygen2 where to anchor the documentation
+even when it cannot trace the code attachment itself.
+
 ### Field Access via Sidecar
 
 For R6 and Env classes, the sidecar pattern (`#[r_data]` + `RSidecar`) provides
