@@ -37,6 +37,7 @@ bytes = ["miniextendr-api/bytes"]
 num-complex = ["miniextendr-api/num-complex"]
 url = ["miniextendr-api/url"]
 sha2 = ["miniextendr-api/sha2"]
+blake3 = ["miniextendr-api/blake3"]
 bitflags = ["miniextendr-api/bitflags"]
 bitvec = ["miniextendr-api/bitvec"]
 aho-corasick = ["miniextendr-api/aho-corasick"]
@@ -66,7 +67,7 @@ full = [
     "bitflags", "bitvec", "arrow", "datafusion", "toml", "time", "ndarray",
     "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions", "vctrs",
     "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
-    "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
+    "num-traits", "tabled", "rayon", "sha2", "blake3", "rand", "rand_distr",
     "either", "log", "worker-thread", "macro-coverage",
     "growth-debug",
 ]

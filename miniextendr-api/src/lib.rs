@@ -1043,6 +1043,11 @@ pub use optionals::sha2_impl;
 #[cfg(feature = "sha2")]
 pub use optionals::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
 
+#[cfg(feature = "blake3")]
+pub use optionals::blake3_impl;
+#[cfg(feature = "blake3")]
+pub use optionals::{blake3_bytes, blake3_bytes_hex, blake3_str};
+
 #[cfg(feature = "borsh")]
 pub use optionals::borsh_impl;
 #[cfg(feature = "borsh")]

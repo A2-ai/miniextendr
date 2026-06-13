@@ -27,6 +27,7 @@
 //! | `num-complex` | `num_complex_impl` | Complex number support |
 //! | `url` | `url_impl` | URL parsing and validation |
 //! | `sha2` | `sha2_impl` | Cryptographic hashing |
+//! | `blake3` | `blake3_impl` | BLAKE3 cryptographic hashing |
 //! | `bitflags` | `bitflags_impl` | Bitflag conversions |
 //! | `bitvec` | `bitvec_impl` | Bit vector conversions |
 //! | `aho-corasick` | `aho_corasick_impl` | Multi-pattern string search |
@@ -401,6 +402,16 @@ pub use bytes_impl::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};
 pub mod sha2_impl;
 #[cfg(feature = "sha2")]
 pub use sha2_impl::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
+
+/// Integration with the `blake3` crate for cryptographic hashing.
+///
+/// Provides BLAKE3 hashing helpers.
+///
+/// Enable with `features = ["blake3"]`.
+#[cfg(feature = "blake3")]
+pub mod blake3_impl;
+#[cfg(feature = "blake3")]
+pub use blake3_impl::{blake3_bytes, blake3_bytes_hex, blake3_str};
 // endregion
 
 // region: Bit manipulation

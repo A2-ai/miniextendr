@@ -131,6 +131,8 @@ mod bigint_adapter_tests;
 mod bitflags_adapter_tests;
 #[cfg(feature = "bitvec")]
 mod bitvec_adapter_tests;
+#[cfg(feature = "blake3")]
+mod blake3_adapter_tests;
 #[cfg(feature = "borsh")]
 mod borsh_adapter_tests;
 mod box_slice_tests;
@@ -2125,6 +2127,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     }
     if cfg!(feature = "sha2") {
         features.push("sha2");
+    }
+    if cfg!(feature = "blake3") {
+        features.push("blake3");
     }
     if cfg!(feature = "tabled") {
         features.push("tabled");

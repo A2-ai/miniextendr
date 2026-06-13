@@ -4,7 +4,7 @@
 // wasm32-* targets in place of the linkme distributed_slices.
 //
 // generator-version: 1
-// content-hash:      80d5a23afb8fcc35
+// content-hash:      5a2bdbe4c570d225
 
 use ::miniextendr_api::abi::mx_tag;
 use ::miniextendr_api::SEXP;
@@ -1353,6 +1353,14 @@ unsafe extern "C-unwind" {
     pub fn C_bitvec_from_vec(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_bitvec_all_zeros(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_bitvec_roundtrip(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_blake3_len(_: SEXP) -> SEXP;
+    pub fn C_blake3_hash(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_blake3_hello(_: SEXP) -> SEXP;
+    pub fn C_blake3_large(_: SEXP) -> SEXP;
+    pub fn C_blake3_bytes_len(_: SEXP) -> SEXP;
+    pub fn C_blake3_hash_bytes(_: SEXP, _: SEXP) -> SEXP;
+    pub fn C_blake3_binary_content(_: SEXP) -> SEXP;
+    pub fn C_blake3_different_inputs_differ(_: SEXP) -> SEXP;
     pub fn C_either_zero(_: SEXP) -> SEXP;
     pub fn C_either_nested(_: SEXP, _: SEXP) -> SEXP;
     pub fn C_either_is_left(_: SEXP, _: SEXP) -> SEXP;
@@ -8840,6 +8848,46 @@ pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[
         name: c"C_bitvec_roundtrip".as_ptr(),
         fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_bitvec_roundtrip) }),
         numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_len".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_blake3_len) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_hash".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_blake3_hash) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_hello".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_blake3_hello) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_large".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_blake3_large) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_bytes_len".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_blake3_bytes_len) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_hash_bytes".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP, _>(C_blake3_hash_bytes) }),
+        numArgs: 2,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_binary_content".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_blake3_binary_content) }),
+        numArgs: 1,
+    },
+    R_CallMethodDef {
+        name: c"C_blake3_different_inputs_differ".as_ptr(),
+        fun: Some(unsafe { ::core::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, _>(C_blake3_different_inputs_differ) }),
+        numArgs: 1,
     },
     R_CallMethodDef {
         name: c"C_either_zero".as_ptr(),

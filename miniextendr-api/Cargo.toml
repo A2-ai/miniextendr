@@ -76,6 +76,8 @@ num-complex = ["dep:num-complex"]
 url = ["dep:url"]
 ## Enable sha2 integration. Provides SHA-256/SHA-512 hashing helpers.
 sha2 = ["dep:sha2"]
+## Enable blake3 integration. Provides BLAKE3 hashing helpers.
+blake3 = ["dep:blake3"]
 ## Enable bitflags integration. Provides RFlags<T> wrapper for bitflags ↔ integer conversions.
 bitflags = ["dep:bitflags"]
 ## Enable bitvec integration. Provides BitVec ↔ logical vector conversions.
@@ -146,7 +148,7 @@ full-integrations = [
     "bitflags", "bitvec", "arrow", "datafusion", "toml", "time", "jiff",
     "ndarray", "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions",
     "vctrs", "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
-    "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr", "either",
+    "num-traits", "tabled", "rayon", "sha2", "blake3", "rand", "rand_distr", "either",
     "log",
 ]
 
@@ -202,6 +204,7 @@ bytes = { version = "1.11.0", optional = true }
 num-complex = { version = "0.4.6", optional = true }
 url = { version = "2.5.7", optional = true }
 sha2 = { version = "0.10.9", optional = true }
+blake3 = { version = "1.8", optional = true, default-features = false }
 bitflags = { version = "2.10.0", optional = true }
 bitvec = { version = "1.0.1", optional = true }
 aho-corasick = { version = "1.1.4", optional = true }

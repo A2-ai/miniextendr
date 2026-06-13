@@ -770,6 +770,71 @@ test_that("sha2_different_inputs_differ returns TRUE", {
 })
 
 # =============================================================================
+# BLAKE3 feature tests
+# =============================================================================
+
+test_that("blake3_hash produces correct hash", {
+  skip_if_missing_feature("blake3")
+  # Known BLAKE3 of empty string
+  expect_equal(
+    blake3_hash(""),
+    "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+  )
+})
+
+test_that("blake3_hash_bytes round-trips and matches hex", {
+  skip_if_missing_feature("blake3")
+  # Raw 32-byte digest of "hello world", hex-encoded, must match the hex helper.
+  digest <- blake3_hash_bytes(charToRaw("hello world"))
+  expect_equal(length(digest), 32L)
+  expect_equal(
+    paste(format(as.hexmode(as.integer(digest)), width = 2), collapse = ""),
+    "d74981efa70a0c880b8d8c1985d075dbcbf679b99a5f9914e5aaf96b831a9e24"
+  )
+})
+
+test_that("blake3_len returns 64", {
+  skip_if_missing_feature("blake3")
+  expect_equal(blake3_len(), 64L)
+})
+
+test_that("blake3_bytes_len returns 32", {
+  skip_if_missing_feature("blake3")
+  expect_equal(blake3_bytes_len(), 32L)
+})
+
+test_that("blake3_hash is deterministic", {
+  skip_if_missing_feature("blake3")
+  expect_equal(blake3_hash("hello"), blake3_hash("hello"))
+  expect_false(blake3_hash("hello") == blake3_hash("world"))
+})
+
+test_that("blake3_hello returns known hash", {
+  skip_if_missing_feature("blake3")
+  expect_equal(
+    blake3_hello(),
+    "d74981efa70a0c880b8d8c1985d075dbcbf679b99a5f9914e5aaf96b831a9e24"
+  )
+})
+
+test_that("blake3_large handles large input", {
+  skip_if_missing_feature("blake3")
+  result <- blake3_large()
+  expect_equal(nchar(result), 64L)
+})
+
+test_that("blake3_binary_content handles special chars", {
+  skip_if_missing_feature("blake3")
+  result <- blake3_binary_content()
+  expect_equal(nchar(result), 64L)
+})
+
+test_that("blake3_different_inputs_differ returns TRUE", {
+  skip_if_missing_feature("blake3")
+  expect_true(blake3_different_inputs_differ())
+})
+
+# =============================================================================
 # URL feature tests
 # =============================================================================
 

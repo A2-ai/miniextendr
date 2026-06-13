@@ -56,6 +56,7 @@ Only `default` features are enabled automatically.
 | **Binary Data** | | |
 | `raw_conversions` | POD types via bytemuck (`Raw<T>`, `RawSlice<T>`) | bytemuck (with `derive`) |
 | `sha2` | SHA-256/SHA-512 hashing helpers | sha2 |
+| `blake3` | BLAKE3 hashing helpers | blake3 |
 | **Formatting** | | |
 | `tabled` | ASCII/Unicode table formatting | tabled |
 | **Arrow / DataFusion** | | |
@@ -852,6 +853,41 @@ hash_string("hello world")
 
 hash_raw(charToRaw("hello world"))
 #> [1] "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+```
+
+### `blake3`
+
+BLAKE3 cryptographic hashing helpers.
+
+**Provides:**
+- `blake3_str(data) -> String` -- BLAKE3 as hex string
+- `blake3_bytes(data) -> Vec<u8>` -- BLAKE3 as the raw 32-byte digest
+- `blake3_bytes_hex(data) -> String` -- BLAKE3 of bytes as hex string
+
+#### Example
+
+```rust
+use miniextendr_api::blake3_impl::{blake3_str, blake3_bytes};
+
+#[miniextendr]
+fn fingerprint(s: String) -> String {
+    blake3_str(&s)
+}
+
+#[miniextendr]
+fn fingerprint_raw(data: Vec<u8>) -> Vec<u8> {
+    blake3_bytes(&data)
+}
+```
+
+In R:
+
+```r
+fingerprint("hello world")
+#> [1] "d74981efa70a0c880b8d8c1985d075dbcbf679b99a5f9914e5aaf96b831a9e24"
+
+fingerprint("")
+#> [1] "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
 ```
 
 ---
