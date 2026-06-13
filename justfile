@@ -589,6 +589,31 @@ test-bootstrap-vendor:
     bash tests/vendor-loud-fail.sh
     bash tests/vendor-cross-surface-rename.sh
 
+# Full-suite gctorture2 sweep over rpkg's testthat suite (slow — nightly CI).
+#
+# Catches the long-tail use-after-free class the fast per-function
+# gctorture(TRUE) sweep misses: any SEXP reachable through Rust state but not
+# rooted in R's protect mechanism. The strict-glibc R-release runner aborts on
+# these; other runtimes silently corrupt and "pass". See docs/GCTORTURE_TESTING.md.
+#
+# Installs rpkg into a throwaway library (the harness does `library(miniextendr)`
+# — devtools::load_all is unsafe under gctorture per the doc's pitfall #1), then
+# runs scripts/gctorture-full-sweep.R at step=100. Expect 30-90 minutes locally,
+# longer in CI; wire it as a scheduled job, not a PR gate
+# (.github/workflows/gctorture-nightly.yml).
+#
+# Override step with the STEP arg (step=10 for a faster bisect, step=1 = full
+# gctorture(TRUE)). Exits non-zero and lists the offending test files on failure.
+#
+# Full-suite gctorture2 sweep over rpkg tests (slow; nightly CI)
+[script("bash")]
+gctorture-full STEP="100": _assert-no-vendor-leak configure
+    set -euo pipefail
+    libdir="$(mktemp -d)"
+    trap 'rm -rf "$libdir"' EXIT
+    R CMD INSTALL --library="$libdir" rpkg
+    R_LIBS_USER="$libdir" Rscript scripts/gctorture-full-sweep.R rpkg/tests/testthat {{STEP}}
+
 # Load and test rpkg with devtools
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     if [ -z "{{FILTER}}" ]; then \

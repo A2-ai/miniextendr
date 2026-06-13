@@ -1,0 +1,151 @@
+name: gctorture nightly
+
+# Full-suite gctorture2 sweep over rpkg's testthat suite. Surfaces the long-tail
+# use-after-free class that the fast per-function gctorture(TRUE) sweep (run
+# inline elsewhere) misses: any SEXP reachable through Rust state but not rooted
+# in R's protect mechanism gets collected on the next allocation. The strict-
+# glibc R-release runner aborts on these (`malloc(): unsorted double linked list
+# corrupted`); other runtimes silently corrupt and "pass" — so a scheduled
+# full-suite torture pass on the R-release Linux runner is the only thing that
+# reliably catches this class before a release. See docs/GCTORTURE_TESTING.md.
+#
+# Deliberately NOT on the pull_request / push matrix: the run takes 30-90 minutes
+# (~100x slowdown at step=100), far too expensive for a PR gate. Scheduled nightly
+# plus a manual workflow_dispatch trigger for on-demand verification.
+
+on:
+  # 04:00 UTC daily — a low-traffic hour, and offset from the weekly CI cron
+  # (Sat 06:00 UTC in ci.yml) so the two never contend for runner capacity.
+  schedule:
+    - cron: '0 4 * * *'
+  # Manual trigger so the sweep can be exercised on demand (e.g. to validate
+  # this workflow, or after landing SEXP-storage changes) without waiting for
+  # the nightly cron.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gctorture-full:
+    name: gctorture2 full-suite sweep / Linux R-release
+    runs-on: ubuntu-latest
+    # ~2x the r-check-linux job's 60-minute timeout: the step=100 sweep is
+    # ~100x slower than a baseline test run, and the full suite already takes
+    # the better part of an hour without torture on cold caches. 120 minutes
+    # leaves headroom for the cdylib->staticlib double-link build plus the sweep.
+    timeout-minutes: 120
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::testthat
+          needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: gctorture-nightly-r-release
+          cache-on-failure: true
+
+      - name: Configure Linux
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> "$GITHUB_ENV"
+
+      # Install cargo-revendor so `just configure` (a dep of gctorture-full)
+      # can sync the workspace siblings into rpkg/vendor/ in dev-monorepo mode.
+      # We deliberately do NOT run `just vendor` / seal a tarball here: this job
+      # does a plain `R CMD INSTALL rpkg` in SOURCE mode (framework crates
+      # resolve from the workspace via [patch."git+url"]), not an offline
+      # tarball install. A leaked inst/vendor.tar.xz would flip configure into
+      # tarball mode and trip gctorture-full's _assert-no-vendor-leak guard.
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
+      # The sweep is driven directly via Rscript (not `R CMD check`), so the only
+      # thing that can abort it from underneath us is the job timeout-minutes
+      # (set to 2x the r-check-linux budget above) — the harness also calls
+      # setTimeLimit(Inf)/options(timeout=Inf) defensively.
+      - name: Run gctorture2 full-suite sweep
+        id: sweep
+        run: |
+          set -o pipefail
+          # `just gctorture-full` installs rpkg into a throwaway library, then
+          # runs scripts/gctorture-full-sweep.R at step=100: it loads the package
+          # FIRST, pre-attaches lazy helpers, enables
+          # gctorture2(step=100, wait=0, inhibit_release=FALSE), then test_dir()s
+          # the whole rpkg suite (docs/GCTORTURE_TESTING.md harness ordering).
+          just gctorture-full 2>&1 | tee "$RUNNER_TEMP/gctorture.log"
+
+      # Surface the offending test file/context in the job summary on failure.
+      # The harness prints an "Offending test files:" block and exits non-zero;
+      # a strict-allocator abort (no R-level traceback) instead leaves the last
+      # printed ProgressReporter context as the culprit, so we surface both.
+      - name: Surface failures in job summary
+        if: failure()
+        run: |
+          {
+            echo "## gctorture2 full-suite sweep FAILED"
+            echo ""
+            echo "The nightly step=100 torture sweep surfaced a likely SEXP-protection bug."
+            echo "See docs/GCTORTURE_TESTING.md for how to reproduce and interpret."
+            echo ""
+            if [ -f "$RUNNER_TEMP/gctorture.log" ]; then
+              if grep -q "Offending test files:" "$RUNNER_TEMP/gctorture.log"; then
+                echo "### Offending test files"
+                echo '```'
+                sed -n '/Offending test files:/,$p' "$RUNNER_TEMP/gctorture.log"
+                echo '```'
+              else
+                echo "### Probable strict-allocator abort (no R-level traceback)"
+                echo "The script likely SIGSEGV'd / aborted mid-sweep — the last"
+                echo "ProgressReporter context below is the most likely culprit."
+                echo '```'
+                tail -n 60 "$RUNNER_TEMP/gctorture.log"
+                echo '```'
+              fi
+            else
+              echo "No sweep log captured — the job likely failed before the sweep ran."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sweep log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gctorture-nightly-log
+          path: ${{ runner.temp }}/gctorture.log
+          retention-days: 14
+          if-no-files-found: ignore
