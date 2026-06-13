@@ -373,7 +373,22 @@ dnl When found, configure writes a [patch."<git-url>"] block into
 dnl .cargo/config.toml so cargo resolves the three workspace crates against
 dnl local sources instead of fetching the git URL. Edits to
 dnl miniextendr-{api,lint,macros} propagate immediately on the next build.
+
+dnl ---- explicit local framework checkout (minirextendr::use_local_miniextendr) ----
+dnl A one-line .miniextendr-local file at the package root records an absolute
+dnl path to a local miniextendr checkout. Dev-only: the file is gitignored and
+dnl Rbuildignored, and tarball mode (inst/vendor.tar.xz) always wins below.
 MONOREPO_ROOT=""
+if test -f "$abs_top_srcdir/.miniextendr-local"; then
+  _local_mx=$(head -n 1 "$abs_top_srcdir/.miniextendr-local")
+  if test -n "$_local_mx" && test -f "$_local_mx/miniextendr-api/Cargo.toml"; then
+    MONOREPO_ROOT="$_local_mx"
+    AC_MSG_NOTICE([local miniextendr    = $_local_mx (.miniextendr-local)])
+  else
+    AC_MSG_WARN([.miniextendr-local ignored: miniextendr-api/Cargo.toml not found under '$_local_mx'])
+  fi
+fi
+if test -z "$MONOREPO_ROOT"; then
 _probe="$abs_top_srcdir"
 for _i in 1 2 3 4 5; do
   _probe="$(dirname "$_probe")"
@@ -383,6 +398,7 @@ for _i in 1 2 3 4 5; do
     break
   fi
 done
+fi
 
 dnl Cargo path version (Windows-native if MSYS2)
 MONOREPO_ROOT_CARGO="$MONOREPO_ROOT"

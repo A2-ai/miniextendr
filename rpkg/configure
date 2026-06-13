@@ -2616,7 +2616,20 @@ VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 
 
+
 MONOREPO_ROOT=""
+if test -f "$abs_top_srcdir/.miniextendr-local"; then
+  _local_mx=$(head -n 1 "$abs_top_srcdir/.miniextendr-local")
+  if test -n "$_local_mx" && test -f "$_local_mx/miniextendr-api/Cargo.toml"; then
+    MONOREPO_ROOT="$_local_mx"
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: local miniextendr    = $_local_mx (.miniextendr-local)" >&5
+printf '%s\n' "$as_me: local miniextendr    = $_local_mx (.miniextendr-local)" >&6;}
+  else
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: WARNING: .miniextendr-local ignored: miniextendr-api/Cargo.toml not found under '$_local_mx'" >&5
+printf '%s\n' "$as_me: WARNING: .miniextendr-local ignored: miniextendr-api/Cargo.toml not found under '$_local_mx'" >&2;}
+  fi
+fi
+if test -z "$MONOREPO_ROOT"; then
 _probe="$abs_top_srcdir"
 for _i in 1 2 3 4 5; do
   _probe="$(dirname "$_probe")"
@@ -2626,6 +2639,7 @@ for _i in 1 2 3 4 5; do
     break
   fi
 done
+fi
 
 MONOREPO_ROOT_CARGO="$MONOREPO_ROOT"
 case "$host_os" in

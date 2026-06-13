@@ -144,6 +144,58 @@ the next {.code just rcmdinstall}."
     results$pass <- c(results$pass, "no stale vendor.tar.xz")
   }
 
+  # -- Local miniextendr override marker (#908) --
+  # .miniextendr-local is a dev-only marker written by use_local_miniextendr().
+  # It is gitignored and Rbuildignored; warn loudly if still present so the
+  # developer doesn't accidentally ship a package that requires a local path.
+  local_marker_path <- tryCatch(
+    usethis::proj_path(".miniextendr-local"),
+    error = function(e) NULL
+  )
+  if (!is.null(local_marker_path) && file.exists(local_marker_path)) {
+    local_mx_path <- tryCatch(
+      trimws(readLines(local_marker_path, n = 1L, warn = FALSE)),
+      error = function(e) ""
+    )
+    tarball_present <- !is.null(vendor_tarball_path) && file.exists(vendor_tarball_path)
+    if (tarball_present) {
+      # Marker is inert (tarball mode wins), but still stale — inform rather than warn.
+      cli::cli_alert_info(
+        "{.path .miniextendr-local} is present but inert: tarball mode wins over the \\
+local override. Remove the marker before distributing: \\
+{.code unuse_local_miniextendr()}."
+      )
+      results$warn <- c(results$warn, ".miniextendr-local present (inert: tarball mode wins)")
+    } else {
+      cli::cli_alert_warning(
+        "Local miniextendr override is active ({.path .miniextendr-local} = \\
+{.path {local_mx_path}}). Run {.code unuse_local_miniextendr()} before \\
+vendoring or distributing this package."
+      )
+      results$warn <- c(results$warn, ".miniextendr-local override active — run unuse_local_miniextendr() before distributing")
+    }
+  } else if (!is.null(local_marker_path)) {
+    results$pass <- c(results$pass, "no .miniextendr-local override")
+  }
+
+  # -- Hand-rolled [patch."https://github.com/A2-ai/miniextendr"] in Cargo.toml (#823 workaround) --
+  # Warn if the user manually added this block to src/rust/Cargo.toml; the
+  # supported path is use_local_miniextendr() which writes .miniextendr-local
+  # and lets configure.ac manage the patch block in .cargo/config.toml.
+  if (!is.null(cargo_toml_path) && file.exists(cargo_toml_path)) {
+    cargo_lines_for_patch <- readLines(cargo_toml_path, warn = FALSE)
+    if (any(grepl('patch.*github.com.*A2-ai.*miniextendr', cargo_lines_for_patch))) {
+      cli::cli_alert_warning(
+        "{.path src/rust/Cargo.toml} contains a hand-rolled \\
+{.code [patch.\"https://github.com/A2-ai/miniextendr\"]} block. \\
+This is the manual workaround from #823; use \\
+{.code use_local_miniextendr()} instead so configure.ac manages the \\
+patch block in {.path src/rust/.cargo/config.toml}."
+      )
+      results$warn <- c(results$warn, "hand-rolled [patch] block in src/rust/Cargo.toml — use use_local_miniextendr()")
+    }
+  }
+
   cargo_config_path <- tryCatch(
     usethis::proj_path("src", "rust", ".cargo", "config.toml"),
     error = function(e) NULL
