@@ -905,6 +905,210 @@ fn resolve_generic_doc_markers(content: String) -> String {
 
 // endregion
 
+// region: Inherited param marker resolution
+
+/// Parse a `.__MX_INHERITED_PARAM__(...)` marker line.
+///
+/// The marker format is:
+/// ```text
+/// .__MX_INHERITED_PARAM__(class="R6Dog", parent="R6Animal", method="speak", param="times")
+/// ```
+/// Returns `(class, parent, method, param)` on success.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_inherited_param_marker(marker: &str) -> Option<(String, String, String, String)> {
+    let inner = marker
+        .strip_prefix(".__MX_INHERITED_PARAM__(")?
+        .strip_suffix(')')?;
+
+    let mut class = String::new();
+    let mut parent = String::new();
+    let mut method = String::new();
+    let mut param = String::new();
+
+    for part in inner.split(", ") {
+        let part = part.trim();
+        if let Some(val) = part.strip_prefix("class=") {
+            class = val.trim_matches('"').to_string();
+        } else if let Some(val) = part.strip_prefix("parent=") {
+            parent = val.trim_matches('"').to_string();
+        } else if let Some(val) = part.strip_prefix("method=") {
+            method = val.trim_matches('"').to_string();
+        } else if let Some(val) = part.strip_prefix("param=") {
+            param = val.trim_matches('"').to_string();
+        }
+    }
+
+    if class.is_empty() || parent.is_empty() || method.is_empty() || param.is_empty() {
+        return None;
+    }
+
+    Some((class, parent, method, param))
+}
+
+/// Resolve `.__MX_INHERITED_PARAM__(...)` markers.
+///
+/// For each marker, checks whether the parent class is in-package and has
+/// `@param <param>` documented for either:
+/// - The same method name (in any of its method doc blocks), or
+/// - The class-level `@param` (emitted in the class header).
+///
+/// If the parent is documented → delete the marker line (roxygen2 8.0.0 inherits
+/// the parent method's `@param` into the subclass method).
+///
+/// If the parent is cross-package or the param is not documented there → replace
+/// with `#' @param {param} (no documentation available)` to preserve the zero-warning
+/// guarantee on rendered Rd.
+///
+/// Cross-package parents: markers are always replaced with the fallback text because
+/// we cannot inspect foreign packages' wrapper content at write time.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_inherited_param_markers(content: String) -> String {
+    use std::collections::{HashMap, HashSet};
+
+    const MARKER_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
+
+    // Check if the marker is present at all (fast path).
+    if !content.contains(MARKER_PREFIX) {
+        return content;
+    }
+
+    // Build an index of in-package class param documentation:
+    //   class_name → Set<param_name>
+    // We scan the content for:
+    //   1. Class-level @param tags: lines like `#' @param <name> ...` appearing
+    //      between `#' @name <ClassName>` and the R6Class(...) definition.
+    //   2. Method-level @param tags for a specific method: lines like
+    //      `    #' @param <name> ...` inside the method's doc block.
+    //
+    // Strategy: build a map of (class_name, method_name_or_class) → Set<param_name>
+    // where method_name_or_class = "" means class-level.
+    let mut class_method_params: HashMap<(String, String), HashSet<String>> = HashMap::new();
+
+    // We need to scan the wrapper content to find documented params.
+    // Simple heuristic: find `#' @name ClassName` then collect `#' @param` lines
+    // until the next non-doc line (the R6Class definition).
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
+        // Class-level: `#' @name ClassName` followed by class-level @param lines
+        if let Some(rest) = line.strip_prefix("#' @name ") {
+            let class_name = rest.trim().to_string();
+            // Scan forward for @param lines in the class header (until non-doc)
+            let mut j = i + 1;
+            while j < lines.len() {
+                let next = lines[j].trim();
+                if next.starts_with("#'") {
+                    if let Some(param_rest) = next.strip_prefix("#' @param ") {
+                        if let Some(param_name) = param_rest.split_whitespace().next() {
+                            class_method_params
+                                .entry((class_name.clone(), String::new()))
+                                .or_default()
+                                .insert(param_name.to_string());
+                        }
+                    }
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        // Method-level: `    #' @description Method \`method_name\`.` or source comment
+        // Simpler: look for `    #' @param` lines at method indent — attribute to the
+        // nearest preceding `#' @rdname ClassName` (method blocks carry this).
+        // Actually, method-level @param inside an R6 class block are indented with 4 spaces.
+        // We track the current class context from the most recent R6Class definition.
+        i += 1;
+    }
+
+    // Walk the content to track current R6 class + method context, and also
+    // build method-level param maps. We do a second pass specifically for method params.
+    let mut current_class: Option<String> = None;
+    let mut current_method: Option<String> = None;
+    i = 0;
+    while i < lines.len() {
+        let raw = lines[i];
+        let trimmed = raw.trim();
+        // Detect R6Class definition: `ClassName <- R6::R6Class("ClassName",`
+        if trimmed.contains("R6::R6Class(\"") {
+            if let Some(start) = trimmed.find("R6::R6Class(\"") {
+                let rest = &trimmed[start + "R6::R6Class(\"".len()..];
+                if let Some(end) = rest.find('"') {
+                    current_class = Some(rest[..end].to_string());
+                    current_method = None;
+                }
+            }
+        }
+        // Detect method source comment: `    # ClassName::method_name (file:line)`
+        if let Some(ref cls) = current_class.clone() {
+            let prefix = format!("# {}::", cls);
+            if trimmed.starts_with(&prefix) {
+                let rest = &trimmed[prefix.len()..];
+                let method_name = rest.split_whitespace().next().unwrap_or("").to_string();
+                if !method_name.is_empty() {
+                    current_method = Some(method_name);
+                }
+            }
+            // Detect indented method @param: `    #' @param name ...`
+            if let Some(ref method) = current_method.clone() {
+                if let Some(rest) = raw.strip_prefix("    #' @param ") {
+                    if let Some(param_name) = rest.split_whitespace().next() {
+                        class_method_params
+                            .entry((cls.clone(), method.clone()))
+                            .or_default()
+                            .insert(param_name.to_string());
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+
+    // Second pass: resolve markers.
+    let mut result = String::with_capacity(content.len());
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // Marker format: `    #' .__MX_INHERITED_PARAM__(class="...", parent="...", method="...", param="...")`
+        let inner = trimmed.strip_prefix("#' ").unwrap_or(trimmed);
+        if inner.starts_with(MARKER_PREFIX) {
+            if let Some((_class, parent, method, param)) = parse_inherited_param_marker(inner) {
+                // Check if parent is in-package and has the param documented:
+                // Either at method level (parent, method) or class level (parent, "").
+                let parent_method_key = (parent.clone(), method.clone());
+                let parent_class_key = (parent.clone(), String::new());
+                let documented_in_method = class_method_params
+                    .get(&parent_method_key)
+                    .map(|s| s.contains(&param))
+                    .unwrap_or(false);
+                let documented_at_class = class_method_params
+                    .get(&parent_class_key)
+                    .map(|s| s.contains(&param))
+                    .unwrap_or(false);
+
+                if documented_in_method || documented_at_class {
+                    // Parent is documented in-package → drop this line entirely.
+                    // roxygen2 8.0.0 inherits the parent method's @param.
+                    continue;
+                } else {
+                    // Parent not found or param not documented → keep fallback.
+                    // Reconstruct indentation from the original line.
+                    let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+                    result.push_str(&indent);
+                    result.push_str(&format!("#' @param {} (no documentation available)", param));
+                    result.push('\n');
+                    continue;
+                }
+            }
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    result
+}
+
+// endregion
+
 /// Write all R wrapper entries to a file.
 ///
 /// Called from [`miniextendr_write_wrappers`] (via cdylib `dyn.load`/`.Call`).
@@ -1140,6 +1344,20 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // Method blocks keep their qualified @name Class-generic so the PR #83
     // duplicate-alias fix is not re-introduced.
     content = resolve_generic_doc_markers(content);
+
+    // Resolve .__MX_INHERITED_PARAM__(...) markers.
+    //
+    // Each R6 subclass method param that might be inherited from a parent class
+    // emits one marker line per undocumented param. The write-time pass:
+    //   1. Scans the assembled content for method and class-level @param docs.
+    //   2. For each marker: if the parent class is in-package and has the param
+    //      documented (at method or class level) → delete the marker line
+    //      (roxygen2 8.0.0 inherits the parent's @param into the subclass method).
+    //   3. Otherwise → replace the marker with the fallback placeholder text.
+    //
+    // This guarantees zero markers remain in the final wrappers.R and zero
+    // roxygen2 warnings about undocumented parameters.
+    content = resolve_inherited_param_markers(content);
 
     // Only write if content changed (avoids unnecessary NAMESPACE/man regeneration).
     //

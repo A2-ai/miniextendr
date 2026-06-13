@@ -369,7 +369,7 @@ test_that("S7Animal legs property works via getter", {
 test_that("R6Animal base class works independently", {
   cat <- R6Animal$new("Whiskers", "meow")
   expect_equal(cat$name(), "Whiskers")
-  expect_equal(cat$speak(), "Whiskers says meow")
+  expect_equal(cat$speak(1L), "Whiskers says meow")
 })
 
 test_that("R6 single inheritance works", {

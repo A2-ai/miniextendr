@@ -31,9 +31,9 @@ SharedData R6 Class
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{x}}{(no documentation available)}
-      \item{\code{y}}{(no documentation available)}
-      \item{\code{label}}{(no documentation available)}
+      \item{\code{x}}{Numeric x-coordinate.}
+      \item{\code{y}}{Numeric y-coordinate.}
+      \item{\code{label}}{Character label.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

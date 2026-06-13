@@ -30,7 +30,7 @@ StrictCounter R6 Class
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{(no documentation available)}
+      \item{\code{value}}{Integer or numeric scalar for the initial counter value.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}
