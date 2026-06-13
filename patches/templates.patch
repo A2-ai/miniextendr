@@ -1,7 +1,7 @@
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-06-08 20:42:00
-+++ b/monorepo/rpkg/bootstrap.R	2026-04-28 10:42:41
-@@ -1,40 +1,11 @@
+--- a/monorepo/rpkg/bootstrap.R	2026-06-13 17:01:38
++++ b/monorepo/rpkg/bootstrap.R	2026-06-13 17:02:03
+@@ -1,48 +1,16 @@
 -# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
 -# the source directory before R CMD build seals the tarball. Two jobs:
@@ -49,10 +49,21 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# `R CMD build`), configure builds in tarball/offline mode. Otherwise,
 +# source/network mode is used.
  
+ # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
+-# this ./configure was invoked by bootstrap, not directly. The `just vendor`
+-# step that precedes devtools::build()/check() leaves inst/vendor.tar.xz in the
+-# (git-tracked) source dir on purpose; without this signal configure would
+-# (correctly, for a *direct* invocation) treat that tarball-in-a-git-tree as a
+-# leak and abort. We pass it inline to the configure call only, so it never
+-# leaks into the cargo-revendor step or the surrounding R session.
++# this ./configure was invoked by bootstrap, not directly, so a deliberate
++# tarball-in-a-git-tree (produced by the vendor step that precedes
++# devtools::build()/check()) is not mistaken for a leak.
  if (.Platform$OS.type == "windows") {
-@@ -46,31 +17,3 @@
+   if (file.exists("configure.ucrt")) {
+@@ -53,31 +21,3 @@
  } else {
-   system2("bash", "./configure")
+   system2("bash", "./configure", env = "MINIEXTENDR_BOOTSTRAP=1")
 -}
 -
 -if (!file.exists("inst/vendor.tar.xz")) {
@@ -83,14 +94,14 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 -  }
  }
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-06-13 05:35:07
-+++ b/monorepo/rpkg/configure.ac	2026-06-13 05:35:07
+--- a/monorepo/rpkg/configure.ac	2026-06-13 17:05:37
++++ b/monorepo/rpkg/configure.ac	2026-06-13 16:58:06
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
-@@ -45,65 +45,13 @@
+@@ -45,110 +45,13 @@
  RUST_SRC_DIR="$abs_rpkg_src/rust"
  
 -dnl ---- install-mode self-repair ----
@@ -125,6 +136,51 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -  fi
 -  _walk_dir=`dirname "$_walk_dir"`
 -done
+-
+-dnl ---- leaked-tarball guard (#1029) ----
+-dnl A vendor tarball sitting in a git-tracked source tree is almost always a
+-dnl LEAK: a previous `just r-cmd-build` / `r-cmd-check` / `devtools-build`
+-dnl produced inst/vendor.tar.xz and the trap-clean was bypassed (SIGKILL, a
+-dnl crashed shell, a manual `cargo revendor` left behind, etc.). The `just`
+-dnl consume-recipes (rcmdinstall, devtools-test/-load/-install) catch this via
+-dnl `_assert-no-vendor-leak`, and minirextendr_doctor() reports it — but a bare
+-dnl `R CMD INSTALL rpkg/` (or `bash ./configure`) straight from the shell has no
+-dnl such guard. configure would silently flip to tarball mode, build against the
+-dnl frozen vendored sources, and ignore every local workspace edit. Fail loud
+-dnl instead, pointing at the same remediation the `just` guards use.
+-dnl
+-dnl Why this does NOT break the legitimate produce-then-consume path:
+-dnl   * Recipes that PRODUCE the tarball (r-cmd-build / r-cmd-check) use raw
+-dnl     `R CMD build`, which does NOT honour Config/build/bootstrap — so it
+-dnl     never re-runs ./configure in the source tree (verified empirically).
+-dnl     `R CMD build` stages to a temp dir with no .git, so any configure run
+-dnl     there has SOURCE_IS_GIT=false.
+-dnl   * Recipes that go through pkgbuild (devtools-build / devtools-check) DO
+-dnl     run bootstrap.R, which runs ./configure in the original source dir (with
+-dnl     .git present) AFTER `just vendor` has produced the tarball. bootstrap.R
+-dnl     exports MINIEXTENDR_BOOTSTRAP=1 around that invocation so this guard
+-dnl     stays silent for it — the tarball there is intentional, not a leak.
+-dnl   * End-user tarball installs extract to a dir with no .git
+-dnl     (SOURCE_IS_GIT=false), so the guard never fires for them either.
+-if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
+-   && test "$SOURCE_IS_GIT" = "true" \
+-   && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
+-  AC_MSG_ERROR([leaked vendor tarball detected in a git-tracked source tree.
+-
+-  inst/vendor.tar.xz is present AND this is a git working tree, so configure
+-  would silently enter tarball mode and build against frozen vendored sources,
+-  ignoring any local workspace edits. This is almost always a leftover from an
+-  interrupted 'just r-cmd-build', 'just r-cmd-check', or 'just devtools-build'.
+-
+-  Remove it before building from source:
+-    just clean-vendor-leak
+-  or:
+-    rm -f inst/vendor.tar.xz
+-
+-  In a scaffolded package, run miniextendr_clean_vendor_leak, or
+-  minirextendr::miniextendr_doctor to diagnose. See CLAUDE.md section
+-  'The latch leak' and issue 1029.])
+-fi
 -
 -if test ! -f "$abs_top_srcdir/inst/vendor.tar.xz" \
 -   && test "$SOURCE_IS_GIT" = "false" \
@@ -164,7 +220,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl     deps over the network (or via monorepo path overrides — see below).
  dnl
  dnl See docs/CRAN_COMPATIBILITY.md for the full decision table.
-@@ -129,7 +77,6 @@
+@@ -174,7 +77,6 @@
  dnl Set cargo features flag
  dnl
 -dnl rpkg is a demo package that demonstrates ALL miniextendr features.
@@ -174,7 +230,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl By default, no extra features are enabled.
  dnl
  dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
-@@ -137,5 +84,8 @@
+@@ -182,5 +84,8 @@
  AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
  
 +dnl Default: no extra features enabled
@@ -183,7 +239,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  dnl CARGO_FEATURES not set - auto-detect via R script if available
    if test -f "${srcdir}/tools/detect-features.R"; then
      CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-@@ -143,15 +93,9 @@
+@@ -188,15 +93,9 @@
        AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
      fi
 +  else
@@ -203,13 +259,13 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -  fi
  fi
  
-@@ -191,4 +135,5 @@
+@@ -236,4 +135,5 @@
  
  dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
 +dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
  RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
  RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
-@@ -239,11 +184,16 @@
+@@ -284,11 +184,16 @@
  dnl CARGO_BUILD_TARGET is AC_SUBST'd later in the Cargo target/profile section.
  
 +dnl Convenience: cargo command that includes optional toolchain selector
@@ -226,13 +282,13 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl These are used in .cargo/config.toml which Cargo reads directly
  CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
  AC_SUBST([CARGO_TARGET_DIR_CARGO])
-@@ -251,4 +201,5 @@
+@@ -296,4 +201,5 @@
  AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
  : ${CARGO_PROFILE="release"}
 +dnl Map legacy 'debug' → 'dev' (cargo rejects --profile debug)
  if test "$CARGO_PROFILE" = "debug"; then
    AC_MSG_WARN([CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead])
-@@ -257,4 +208,7 @@
+@@ -302,4 +208,7 @@
  AC_SUBST([CARGO_PROFILE])
  
 +dnl Cargo output directory differs from profile name:
@@ -240,7 +296,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl   --profile release → target/release/
  if test "$CARGO_PROFILE" = "dev"; then
    CARGO_PROFILE_DIR="debug"
-@@ -263,25 +217,21 @@
+@@ -308,25 +217,21 @@
  fi
  
 +dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
@@ -278,7 +334,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl position-independent by default, so it was a no-op. See miniextendr #745.)
  if test "$is_wasm_install" = true; then
    ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
-@@ -309,4 +259,8 @@
+@@ -354,4 +259,8 @@
  AC_SUBST([CARGO_BUILD_TARGET])
  
 +dnl Compute Cargo libdir path:
@@ -287,7 +343,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
  if test -n "$CARGO_BUILD_TARGET"; then
    CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
-@@ -316,21 +270,29 @@
+@@ -361,21 +270,29 @@
  AC_SUBST([CARGO_LIBDIR])
  
 -AC_MSG_NOTICE([R_HOME               = $R_HOME])
@@ -327,7 +383,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -349,18 +311,20 @@
+@@ -394,18 +311,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -357,20 +413,20 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -605,4 +569,5 @@
+@@ -650,4 +569,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -835,5 +800,5 @@
+@@ -880,5 +800,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -851,13 +816,22 @@
+@@ -896,13 +816,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
@@ -395,9 +451,21 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl caused warnings on Linux. See #157, #158.
  
  AC_OUTPUT
+diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
+--- a/rpkg/bootstrap.R	2026-06-13 17:01:38
++++ b/rpkg/bootstrap.R	2026-06-13 17:01:47
+@@ -39,6 +39,6 @@
+ 
+ # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
+-# this ./configure was invoked by bootstrap, not directly. The `just vendor`
+-# step that precedes devtools::build()/check() leaves inst/vendor.tar.xz in the
++# this ./configure was invoked by bootstrap, not directly. The vendor step that
++# precedes devtools::build()/check() leaves inst/vendor.tar.xz in the
+ # (git-tracked) source dir on purpose; without this signal configure would
+ # (correctly, for a *direct* invocation) treat that tarball-in-a-git-tree as a
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-06-13 05:35:07
-+++ b/rpkg/configure.ac	2026-06-13 05:35:07
+--- a/rpkg/configure.ac	2026-06-13 17:05:37
++++ b/rpkg/configure.ac	2026-06-13 17:04:54
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -416,14 +484,70 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl whichever path overrides the .cargo/config.toml provides.
  dnl
  dnl Failure mode: if cargo-revendor itself fails, fall through to source mode
-@@ -98,5 +98,5 @@
+@@ -80,27 +80,12 @@
+ dnl ---- leaked-tarball guard (#1029) ----
+ dnl A vendor tarball sitting in a git-tracked source tree is almost always a
+-dnl LEAK: a previous `just r-cmd-build` / `r-cmd-check` / `devtools-build`
+-dnl produced inst/vendor.tar.xz and the trap-clean was bypassed (SIGKILL, a
+-dnl crashed shell, a manual `cargo revendor` left behind, etc.). The `just`
+-dnl consume-recipes (rcmdinstall, devtools-test/-load/-install) catch this via
+-dnl `_assert-no-vendor-leak`, and minirextendr_doctor() reports it — but a bare
+-dnl `R CMD INSTALL rpkg/` (or `bash ./configure`) straight from the shell has no
+-dnl such guard. configure would silently flip to tarball mode, build against the
+-dnl frozen vendored sources, and ignore every local workspace edit. Fail loud
+-dnl instead, pointing at the same remediation the `just` guards use.
+-dnl
+-dnl Why this does NOT break the legitimate produce-then-consume path:
+-dnl   * Recipes that PRODUCE the tarball (r-cmd-build / r-cmd-check) use raw
+-dnl     `R CMD build`, which does NOT honour Config/build/bootstrap — so it
+-dnl     never re-runs ./configure in the source tree (verified empirically).
+-dnl     `R CMD build` stages to a temp dir with no .git, so any configure run
+-dnl     there has SOURCE_IS_GIT=false.
+-dnl   * Recipes that go through pkgbuild (devtools-build / devtools-check) DO
+-dnl     run bootstrap.R, which runs ./configure in the original source dir (with
+-dnl     .git present) AFTER `just vendor` has produced the tarball. bootstrap.R
+-dnl     exports MINIEXTENDR_BOOTSTRAP=1 around that invocation so this guard
+-dnl     stays silent for it — the tarball there is intentional, not a leak.
+-dnl   * End-user tarball installs extract to a dir with no .git
+-dnl     (SOURCE_IS_GIT=false), so the guard never fires for them either.
++dnl LEAK: a previous build that produced inst/vendor.tar.xz was interrupted
++dnl before its cleanup ran. configure would silently flip to tarball mode and
++dnl build against the frozen vendored sources, ignoring local source edits.
++dnl Fail loud instead. bootstrap.R exports MINIEXTENDR_BOOTSTRAP=1 when it
++dnl invokes configure (after deliberately producing the tarball for the build),
++dnl so this guard stays silent on that legitimate produce-then-consume path.
++dnl End-user tarball installs extract to a dir with no .git, so the guard never
++dnl fires for them (SOURCE_IS_GIT=false).
+ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
+    && test "$SOURCE_IS_GIT" = "true" \
+@@ -110,15 +95,12 @@
+   inst/vendor.tar.xz is present AND this is a git working tree, so configure
+   would silently enter tarball mode and build against frozen vendored sources,
+-  ignoring any local workspace edits. This is almost always a leftover from an
+-  interrupted 'just r-cmd-build', 'just r-cmd-check', or 'just devtools-build'.
++  ignoring any local source edits. This is almost always a leftover from an
++  interrupted build.
+ 
+   Remove it before building from source:
+-    just clean-vendor-leak
+-  or:
+     rm -f inst/vendor.tar.xz
+ 
+-  In a scaffolded package, run miniextendr_clean_vendor_leak, or
+-  minirextendr::miniextendr_doctor to diagnose. See CLAUDE.md section
+-  'The latch leak' and issue 1029.])
++  Or run miniextendr_clean_vendor_leak, or minirextendr::miniextendr_doctor
++  to diagnose.])
+ fi
+ 
+@@ -143,5 +125,5 @@
  dnl Single signal: presence of inst/vendor.tar.xz (possibly produced by the
  dnl self-repair block above, by bootstrap.R at build time, or by an explicit
 -dnl `just vendor` / `miniextendr_vendor()` call).
 +dnl `miniextendr_vendor()` call).
  dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is in the
  dnl     artifact. configure unpacks it, writes a vendored cargo source
-@@ -129,7 +129,6 @@
+@@ -174,7 +156,6 @@
  dnl Set cargo features flag
  dnl
 -dnl rpkg is a demo package that demonstrates ALL miniextendr features.
@@ -433,7 +557,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl By default, no extra features are enabled.
  dnl
  dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
-@@ -137,5 +136,8 @@
+@@ -182,5 +163,8 @@
  AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
  
 +dnl Default: no extra features enabled
@@ -442,7 +566,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  dnl CARGO_FEATURES not set - auto-detect via R script if available
    if test -f "${srcdir}/tools/detect-features.R"; then
      CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-@@ -143,15 +145,9 @@
+@@ -188,15 +172,9 @@
        AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
      fi
 +  else
@@ -462,13 +586,13 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -  fi
  fi
  
-@@ -191,4 +187,5 @@
+@@ -236,4 +214,5 @@
  
  dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
 +dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
  RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
  RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
-@@ -239,11 +236,16 @@
+@@ -284,11 +263,16 @@
  dnl CARGO_BUILD_TARGET is AC_SUBST'd later in the Cargo target/profile section.
  
 +dnl Convenience: cargo command that includes optional toolchain selector
@@ -485,13 +609,13 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl These are used in .cargo/config.toml which Cargo reads directly
  CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
  AC_SUBST([CARGO_TARGET_DIR_CARGO])
-@@ -251,4 +253,5 @@
+@@ -296,4 +280,5 @@
  AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
  : ${CARGO_PROFILE="release"}
 +dnl Map legacy 'debug' → 'dev' (cargo rejects --profile debug)
  if test "$CARGO_PROFILE" = "debug"; then
    AC_MSG_WARN([CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead])
-@@ -257,4 +260,7 @@
+@@ -302,4 +287,7 @@
  AC_SUBST([CARGO_PROFILE])
  
 +dnl Cargo output directory differs from profile name:
@@ -499,7 +623,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl   --profile release → target/release/
  if test "$CARGO_PROFILE" = "dev"; then
    CARGO_PROFILE_DIR="debug"
-@@ -263,25 +269,21 @@
+@@ -308,25 +296,21 @@
  fi
  
 +dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
@@ -537,7 +661,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl position-independent by default, so it was a no-op. See miniextendr #745.)
  if test "$is_wasm_install" = true; then
    ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
-@@ -309,4 +311,8 @@
+@@ -354,4 +338,8 @@
  AC_SUBST([CARGO_BUILD_TARGET])
  
 +dnl Compute Cargo libdir path:
@@ -546,7 +670,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
  if test -n "$CARGO_BUILD_TARGET"; then
    CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
-@@ -316,21 +322,29 @@
+@@ -361,21 +349,29 @@
  AC_SUBST([CARGO_LIBDIR])
  
 -AC_MSG_NOTICE([R_HOME               = $R_HOME])
@@ -586,7 +710,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -349,18 +363,20 @@
+@@ -394,18 +390,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -616,20 +740,20 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  VENDOR_OUT="$abs_top_srcdir/vendor"
  VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-@@ -605,4 +621,5 @@
+@@ -650,4 +648,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -835,5 +852,5 @@
+@@ -880,5 +879,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -851,13 +868,22 @@
+@@ -896,13 +895,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)

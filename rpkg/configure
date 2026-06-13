@@ -2026,6 +2026,26 @@ while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
   _walk_dir=`dirname "$_walk_dir"`
 done
 
+if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
+   && test "$SOURCE_IS_GIT" = "true" \
+   && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
+  as_fn_error $? "leaked vendor tarball detected in a git-tracked source tree.
+
+  inst/vendor.tar.xz is present AND this is a git working tree, so configure
+  would silently enter tarball mode and build against frozen vendored sources,
+  ignoring any local workspace edits. This is almost always a leftover from an
+  interrupted 'just r-cmd-build', 'just r-cmd-check', or 'just devtools-build'.
+
+  Remove it before building from source:
+    just clean-vendor-leak
+  or:
+    rm -f inst/vendor.tar.xz
+
+  In a scaffolded package, run miniextendr_clean_vendor_leak, or
+  minirextendr::miniextendr_doctor to diagnose. See CLAUDE.md section
+  'The latch leak' and issue 1029." "$LINENO" 5
+fi
+
 if test ! -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "false" \
    && command -v cargo-revendor >/dev/null 2>&1; then

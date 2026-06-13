@@ -77,6 +77,51 @@ while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
   _walk_dir=`dirname "$_walk_dir"`
 done
 
+dnl ---- leaked-tarball guard (#1029) ----
+dnl A vendor tarball sitting in a git-tracked source tree is almost always a
+dnl LEAK: a previous `just r-cmd-build` / `r-cmd-check` / `devtools-build`
+dnl produced inst/vendor.tar.xz and the trap-clean was bypassed (SIGKILL, a
+dnl crashed shell, a manual `cargo revendor` left behind, etc.). The `just`
+dnl consume-recipes (rcmdinstall, devtools-test/-load/-install) catch this via
+dnl `_assert-no-vendor-leak`, and minirextendr_doctor() reports it — but a bare
+dnl `R CMD INSTALL rpkg/` (or `bash ./configure`) straight from the shell has no
+dnl such guard. configure would silently flip to tarball mode, build against the
+dnl frozen vendored sources, and ignore every local workspace edit. Fail loud
+dnl instead, pointing at the same remediation the `just` guards use.
+dnl
+dnl Why this does NOT break the legitimate produce-then-consume path:
+dnl   * Recipes that PRODUCE the tarball (r-cmd-build / r-cmd-check) use raw
+dnl     `R CMD build`, which does NOT honour Config/build/bootstrap — so it
+dnl     never re-runs ./configure in the source tree (verified empirically).
+dnl     `R CMD build` stages to a temp dir with no .git, so any configure run
+dnl     there has SOURCE_IS_GIT=false.
+dnl   * Recipes that go through pkgbuild (devtools-build / devtools-check) DO
+dnl     run bootstrap.R, which runs ./configure in the original source dir (with
+dnl     .git present) AFTER `just vendor` has produced the tarball. bootstrap.R
+dnl     exports MINIEXTENDR_BOOTSTRAP=1 around that invocation so this guard
+dnl     stays silent for it — the tarball there is intentional, not a leak.
+dnl   * End-user tarball installs extract to a dir with no .git
+dnl     (SOURCE_IS_GIT=false), so the guard never fires for them either.
+if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
+   && test "$SOURCE_IS_GIT" = "true" \
+   && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
+  AC_MSG_ERROR([leaked vendor tarball detected in a git-tracked source tree.
+
+  inst/vendor.tar.xz is present AND this is a git working tree, so configure
+  would silently enter tarball mode and build against frozen vendored sources,
+  ignoring any local workspace edits. This is almost always a leftover from an
+  interrupted 'just r-cmd-build', 'just r-cmd-check', or 'just devtools-build'.
+
+  Remove it before building from source:
+    just clean-vendor-leak
+  or:
+    rm -f inst/vendor.tar.xz
+
+  In a scaffolded package, run miniextendr_clean_vendor_leak, or
+  minirextendr::miniextendr_doctor to diagnose. See CLAUDE.md section
+  'The latch leak' and issue 1029.])
+fi
+
 if test ! -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "false" \
    && command -v cargo-revendor >/dev/null 2>&1; then

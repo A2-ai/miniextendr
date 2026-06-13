@@ -77,6 +77,33 @@ while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
   _walk_dir=`dirname "$_walk_dir"`
 done
 
+dnl ---- leaked-tarball guard (#1029) ----
+dnl A vendor tarball sitting in a git-tracked source tree is almost always a
+dnl LEAK: a previous build that produced inst/vendor.tar.xz was interrupted
+dnl before its cleanup ran. configure would silently flip to tarball mode and
+dnl build against the frozen vendored sources, ignoring local source edits.
+dnl Fail loud instead. bootstrap.R exports MINIEXTENDR_BOOTSTRAP=1 when it
+dnl invokes configure (after deliberately producing the tarball for the build),
+dnl so this guard stays silent on that legitimate produce-then-consume path.
+dnl End-user tarball installs extract to a dir with no .git, so the guard never
+dnl fires for them (SOURCE_IS_GIT=false).
+if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
+   && test "$SOURCE_IS_GIT" = "true" \
+   && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
+  AC_MSG_ERROR([leaked vendor tarball detected in a git-tracked source tree.
+
+  inst/vendor.tar.xz is present AND this is a git working tree, so configure
+  would silently enter tarball mode and build against frozen vendored sources,
+  ignoring any local source edits. This is almost always a leftover from an
+  interrupted build.
+
+  Remove it before building from source:
+    rm -f inst/vendor.tar.xz
+
+  Or run miniextendr_clean_vendor_leak, or minirextendr::miniextendr_doctor
+  to diagnose.])
+fi
+
 if test ! -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "false" \
    && command -v cargo-revendor >/dev/null 2>&1; then

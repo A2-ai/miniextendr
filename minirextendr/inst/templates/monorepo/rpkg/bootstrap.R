@@ -8,12 +8,16 @@
 # `R CMD build`), configure builds in tarball/offline mode. Otherwise,
 # source/network mode is used.
 
+# MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
+# this ./configure was invoked by bootstrap, not directly, so a deliberate
+# tarball-in-a-git-tree (produced by the vendor step that precedes
+# devtools::build()/check()) is not mistaken for a leak.
 if (.Platform$OS.type == "windows") {
   if (file.exists("configure.ucrt")) {
-    system("sh configure.ucrt")
+    system2("sh", "configure.ucrt", env = "MINIEXTENDR_BOOTSTRAP=1")
   } else if (file.exists("configure.win")) {
-    system("sh configure.win")
+    system2("sh", "configure.win", env = "MINIEXTENDR_BOOTSTRAP=1")
   }
 } else {
-  system2("bash", "./configure")
+  system2("bash", "./configure", env = "MINIEXTENDR_BOOTSTRAP=1")
 }
