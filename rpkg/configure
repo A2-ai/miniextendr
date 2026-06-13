@@ -2772,6 +2772,19 @@ if test -n "$_r_cxxflags"; then
   CARGO_ENV_ABI_CXXFLAGS=`echo "$_r_cxxflags" | tr ' ' '\n' | grep -E "$_abi_allow_re" | tr '\n' ' ' | $SED 's/ *$//'`
 fi
 
+if test "$is_wasm_install" = true; then
+  if test -n "$CARGO_ENV_ABI_CFLAGS"; then
+    CARGO_ENV_ABI_CFLAGS="$CARGO_ENV_ABI_CFLAGS -fPIC"
+  else
+    CARGO_ENV_ABI_CFLAGS="-fPIC"
+  fi
+  if test -n "$CARGO_ENV_ABI_CXXFLAGS"; then
+    CARGO_ENV_ABI_CXXFLAGS="$CARGO_ENV_ABI_CXXFLAGS -fPIC"
+  else
+    CARGO_ENV_ABI_CXXFLAGS="-fPIC"
+  fi
+fi
+
 if test -n "$CARGO_ENV_ABI_CFLAGS"; then
   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: cargo CFLAGS_<target>  = $CARGO_ENV_ABI_CFLAGS" >&5
 printf '%s\n' "$as_me: cargo CFLAGS_<target>  = $CARGO_ENV_ABI_CFLAGS" >&6;}
