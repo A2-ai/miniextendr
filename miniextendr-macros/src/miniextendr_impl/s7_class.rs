@@ -721,11 +721,37 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if property_method_idents.contains(&method_ident) {
             continue;
         }
-        lines.push(ctx.source_comment(type_ident));
 
         let generic_name = ctx.generic_name();
         let full_params = ctx.instance_formals(true); // adds x, ..., params
         let method_attrs = &ctx.method.method_attrs;
+
+        // Emit the generic-doc marker BEFORE the source comment so that the
+        // write-time pass can place the standalone Rd page before the method block.
+        // This ensures the synthesised doc block (ending with NULL) is always
+        // separated from the method's roxygen comment by the source `# comment` line
+        // — preventing roxygen2 from merging the two blocks into one.
+        //
+        // Only package-owned (non-external, non-override) generics get a marker;
+        // fallback methods dispatch on S7::class_any and don't define a new generic.
+        if !ctx.has_generic_override() && !method_attrs.s7.fallback && !class_has_no_rd {
+            let dispatch_str = method_attrs
+                .s7
+                .dispatch
+                .as_deref()
+                .unwrap_or("x")
+                .replace(' ', "");
+            let no_dots_str = if method_attrs.s7.no_dots {
+                "true"
+            } else {
+                "false"
+            };
+            lines.push(format!(
+                ".__MX_GENERIC_DOC__(kind=\"S7\", generic=\"{generic_name}\", class=\"{class_name}\", export={should_export}, dispatch=\"{dispatch_str}\", no_dots={no_dots_str})"
+            ));
+        }
+
+        lines.push(ctx.source_comment(type_ident));
 
         // For fallback methods (class_any), check class before using @ to extract
         // the pointer. Non-S7 objects can't have @.ptr — error in R rather than

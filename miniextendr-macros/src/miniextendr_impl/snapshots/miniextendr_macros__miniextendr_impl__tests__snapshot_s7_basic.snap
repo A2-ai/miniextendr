@@ -31,6 +31,7 @@ Counter <- S7::new_class("Counter",
   }
 )
 
+.__MX_GENERIC_DOC__(kind="S7", generic="get", class="Counter", export=true, dispatch="x", no_dots=false)
 # Counter::get (1:1)
 #' @name Counter-get
 #' @rdname Counter
@@ -64,6 +65,7 @@ Counter_get <- function(self, ...) {
   .val
 }
 
+.__MX_GENERIC_DOC__(kind="S7", generic="increment", class="Counter", export=true, dispatch="x", no_dots=false)
 # Counter::increment (1:1)
 #' @name Counter-increment
 #' @rdname Counter

@@ -116,6 +116,22 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {
         let start = method.ident.span().start();
+        let method_name = if let Some(ref generic) = method.method_attrs.generic {
+            generic.clone()
+        } else {
+            format!("s4_{}", method.ident)
+        };
+
+        // Emit the generic-doc marker BEFORE the source comment so the write-time
+        // pass can place the standalone Rd page before the method block.  This
+        // ensures the synthesised doc block (ending with NULL) is separated from
+        // the method's own roxygen comment by the `# source` line.
+        if !class_has_no_rd {
+            lines.push(format!(
+                ".__MX_GENERIC_DOC__(kind=\"S4\", generic=\"{method_name}\", class=\"{class_name}\", export={should_export})"
+            ));
+        }
+
         lines.push(format!(
             "# {}::{} ({}:{})",
             type_ident,
@@ -123,11 +139,6 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             start.line,
             start.column + 1,
         ));
-        let method_name = if let Some(ref generic) = method.method_attrs.generic {
-            generic.clone()
-        } else {
-            format!("s4_{}", method.ident)
-        };
         // Build a MethodContext so S4 methods participate in the shared
         // match_arg prelude + formal-default machinery (#209). The ctx's
         // `params`/`instance_formals` carry the `c("a", "b")` default for
