@@ -183,6 +183,9 @@ for defining custom vctrs-compatible classes.
 - `#[derive(Vctrs)]` with `Vctr`, `Rcrd`, `ListOf` kinds
 - `#[miniextendr(vctrs)]` impl blocks for methods
 - `coerce = "type"` attribute for `vec_ptype2`/`vec_cast` generation
+- `extends = "parent"` attribute for inheritance: prepends the parent into the
+  class vector and generates child↔parent `vec_ptype2`/`vec_cast` stubs (the
+  parent, as the supertype, wins coercion)
 
 Requires the `vctrs` R package to be installed. See [VCTRS.md](VCTRS.md) for the full guide.
 
@@ -1142,7 +1145,7 @@ Feature implications (automatically enabled):
 
 - **`connections` is experimental.** R reserves the right to change the connection ABI without backward compatibility. Always check `R_CONNECTIONS_VERSION`. See [GAPS.md](GAPS.md#41-r-connections-api-experimental).
 - **Feature-gated modules** require path-based module switching with `#[cfg]` on `mod` declarations. See [GAPS.md](GAPS.md#13-feature-gated-module-entries).
-- **vctrs cross-package export** and inheritance are not yet implemented. See [GAPS.md](GAPS.md) section 4.2.
+- **vctrs cross-package export** works: a consumer package can construct and dispatch on a producer's vctrs type via R's S3 method registry plus an imported constructor (see [GAPS.md](GAPS.md) section 4.2). **vctrs inheritance** (`extends = "parent_type"`) is also implemented: a child type declares a parent, inherits its class vector + S3 fall-through, and coercion between child and parent resolves to the parent (the supertype).
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 

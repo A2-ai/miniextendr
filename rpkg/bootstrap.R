@@ -37,14 +37,21 @@
 # pkgbuild-only). The bundled inst/vendor.tar.xz from step 2 is what
 # configure detects to build offline.
 
+# MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
+# this ./configure was invoked by bootstrap, not directly. The `just vendor`
+# step that precedes devtools::build()/check() leaves inst/vendor.tar.xz in the
+# (git-tracked) source dir on purpose; without this signal configure would
+# (correctly, for a *direct* invocation) treat that tarball-in-a-git-tree as a
+# leak and abort. We pass it inline to the configure call only, so it never
+# leaks into the cargo-revendor step or the surrounding R session.
 if (.Platform$OS.type == "windows") {
   if (file.exists("configure.ucrt")) {
-    system("sh configure.ucrt")
+    system2("sh", "configure.ucrt", env = "MINIEXTENDR_BOOTSTRAP=1")
   } else if (file.exists("configure.win")) {
-    system("sh configure.win")
+    system2("sh", "configure.win", env = "MINIEXTENDR_BOOTSTRAP=1")
   }
 } else {
-  system2("bash", "./configure")
+  system2("bash", "./configure", env = "MINIEXTENDR_BOOTSTRAP=1")
 }
 
 if (!file.exists("inst/vendor.tar.xz")) {

@@ -134,7 +134,15 @@ pub struct FlatSkip {
 impl ::miniextendr_api::list::IntoList for FlatSkip {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![("id", self.id.into_sexp())])
+        // SAFETY: IntoList runs on the R main thread. Protect the value as built so it
+        // survives `from_raw_pairs`'s internal allocations — mirrors `#[derive(IntoList)]`.
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![(
+                "id",
+                __scope.protect_raw(self.id.into_sexp()),
+            )])
+        }
     }
 }
 

@@ -133,6 +133,18 @@ For a tighter feedback loop while bisecting:
 
 ## Adding to CI
 
-A nightly `gctorture-nightly` job invoking the full-suite recipe at `step = 100` would
-catch this class of bug before it reaches a release. **Not yet wired up** — the Linux
-release runner needs ~2× current timeout. Tracked at TODO (file an issue when adding).
+A nightly `gctorture nightly` job invokes the full-suite recipe at `step = 100` on the
+Linux R-release runner, catching this class of bug before it reaches a release. It is
+**wired up** at `.github/workflows/gctorture-nightly.yml` (#1024):
+
+- Scheduled at 04:00 UTC daily, plus `workflow_dispatch` for on-demand runs. It is
+  deliberately **not** on the `pull_request` / `push` matrix — the sweep takes 30–90
+  minutes, too expensive for a PR gate.
+- `timeout-minutes: 120` — ~2× the `r-check-linux` job's 60-minute budget, since the
+  step=100 sweep is ~100× slower than a baseline test run. The harness also calls
+  `setTimeLimit(Inf)` / `options(timeout = Inf)` so R's own wall-clock limits never
+  abort the (deliberately slow) run.
+- The torture logic lives in `just gctorture-full` (→ `scripts/gctorture-full-sweep.R`),
+  so it is testable locally: `just gctorture-full` runs the same sweep, and
+  `just gctorture-full step=10` is the faster bisect mode. On failure the workflow
+  surfaces the offending test file(s) in the GitHub job summary.

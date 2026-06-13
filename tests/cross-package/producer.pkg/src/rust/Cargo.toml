@@ -12,9 +12,12 @@ path = "lib.rs"
 crate-type = ["staticlib"]
 
 [features]
-default = []
+# vctrs is on by default so the cross-package vctrs type (`producer_temp`)
+# is always built — its S3 methods are what consumer.pkg dispatches on.
+default = ["vctrs"]
 nonapi = ["miniextendr-api/nonapi"]
 connections = ["miniextendr-api/connections"]
+vctrs = ["miniextendr-api/vctrs"]
 
 [dependencies]
 miniextendr-api = { path = "../../../../../miniextendr-api" }

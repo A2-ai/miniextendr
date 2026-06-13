@@ -866,4 +866,368 @@ fn mxl120_no_false_positive_for_consuming_self_on_vctrs() {
     );
 }
 
+#[test]
+fn mxl303_case_fold_vtable_collision() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // Two distinct traits differing only in case both upper-case to `COUNTER`,
+    // so both emit `__VTABLE_COUNTER_FOR_FOO` → duplicate #[no_mangle] symbol.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        impl Counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+
+        #[miniextendr]
+        impl counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    let hits: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| format!("{}", d.code) == "MXL303")
+        .collect();
+    assert_eq!(
+        hits.len(),
+        2,
+        "expected MXL303 to fire on both colliding impls, got: {:?}",
+        report.diagnostics
+    );
+    assert!(
+        hits.iter()
+            .any(|d| d.message.contains("__VTABLE_COUNTER_FOR_FOO")),
+        "expected the collided vtable symbol in the message, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl303_no_collision_for_distinct_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // Distinct trait names and distinct type names → distinct vtable symbols.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        impl Counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+
+        #[miniextendr]
+        impl Resettable for Foo {
+            fn reset(&mut self) {}
+        }
+
+        #[miniextendr]
+        impl Counter for Bar {
+            fn value(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL303"),
+        "MXL303 must not fire on distinct trait/type names, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl303_suppressed_by_allow_comment() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // Same collision as the positive case, but the second impl carries the
+    // escape-hatch comment, so only the first impl reports.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        impl Counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+
+        // mxl::allow(MXL303)
+        #[miniextendr]
+        impl counter for Foo {
+            fn value(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    let hits = report
+        .diagnostics
+        .iter()
+        .filter(|d| format!("{}", d.code) == "MXL303")
+        .count();
+    assert_eq!(
+        hits, 1,
+        "the allow-comment should suppress one of the two colliding impls, got: {:?}",
+        report.diagnostics
+    );
+}
+
+// endregion
+
+// region: MXL302 — into_sexp() inside a vec!/array literal (use-after-free idiom)
+
+#[test]
+fn mxl302_into_sexp_inside_vec_literal_fires() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            let _ = List::from_raw_pairs(vec![
+                ("a", a.into_sexp()),
+                ("b", b.into_sexp()),
+            ]);
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL302"),
+        "expected MXL302 for into_sexp() inside vec! literal, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl302_single_line_pair_literal_fires() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // The minimal positive shape from the issue: `vec![ (k, into_sexp(v)) ]`.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            let _ = List::from_raw_pairs(vec![("a", self.a.into_sexp()), ("b", self.b.into_sexp())]);
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL302"),
+        "expected MXL302 for single-line pair literal with into_sexp, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl302_unchecked_variant_fires() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            let _ = vec![unsafe { a.into_sexp_unchecked() }, unsafe { b.into_sexp_unchecked() }];
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL302"),
+        "expected MXL302 for into_sexp_unchecked inside vec! literal, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl302_whole_vec_into_sexp_does_not_fire() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // SAFE: into_sexp() is called on the *whole* vec, after the literal closes — the entire
+    // Vec is converted as a single SEXP, with no sibling unprotected SEXPs.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            let _sexp = vec![self.start, self.end].into_sexp();
+            let _other = vec![1i32, 2, 3].into_sexp();
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL302"),
+        "MXL302 must NOT fire on the safe `vec![..].into_sexp()` whole-vec form, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl302_no_literal_does_not_fire() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // SAFE: plain `into_sexp()` outside any literal.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            let s = self.value.into_sexp();
+            let _ = s;
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL302"),
+        "MXL302 must NOT fire on a bare into_sexp() outside any literal, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl302_protected_builder_does_not_fire() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // SAFE-by-construction: this is the exact form the `IntoList` / `DataFrameRow` derives
+    // emit — every element's `into_sexp()` is wrapped in `__scope.protect_raw(...)`, so the
+    // value is rooted as it is built. MXL302 must treat this as a true negative.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            unsafe {
+                let __scope = ProtectScope::new();
+                let _ = List::from_raw_pairs(vec![
+                    ("a", __scope.protect_raw(self.a.into_sexp())),
+                    ("b", __scope.protect_raw(self.b.into_sexp())),
+                ]);
+            }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL302"),
+        "MXL302 must NOT fire on the protected builder form (protect_raw-wrapped into_sexp), got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl302_hoisted_protected_vars_does_not_fire() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // SAFE: into_sexp() is hoisted out of the literal entirely into protected variables.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            let scope = ProtectScope::new();
+            let a = scope.protect_raw(self.a.into_sexp());
+            let b = scope.protect_raw(self.b.into_sexp());
+            let _ = List::from_raw_pairs(vec![("a", a), ("b", b)]);
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL302"),
+        "MXL302 must NOT fire when into_sexp() is hoisted out of the literal into protected vars, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl302_suppressed_by_allow_comment() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            // mxl::allow(MXL302)
+            let _ = List::from_raw_pairs(vec![("a", a.into_sexp()), ("b", b.into_sexp())]);
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL302"),
+        "MXL302 must be suppressed by `// mxl::allow(MXL302)`, got: {:?}",
+        report.diagnostics
+    );
+}
+
 // endregion

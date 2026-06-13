@@ -17,7 +17,8 @@ Encoding: UTF-8
 SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
 Imports:
     methods,
-    R6
+    R6,
+    vctrs
 Suggests:
     S7,
     testthat (>= 3.0.0)

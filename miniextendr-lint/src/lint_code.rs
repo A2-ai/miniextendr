@@ -44,6 +44,11 @@ pub enum LintCode {
     MXL300,
     /// `_unchecked` FFI call outside guard context.
     MXL301,
+    /// `into_sexp()` call inside a `vec!`/array literal — unprotected SEXP across allocations (UAF).
+    MXL302,
+    /// Two `#[miniextendr]` trait impls collapse to the same vtable symbol
+    /// (`__VTABLE_{TRAIT}_FOR_{TYPE}`) after the macro's case-folding.
+    MXL303,
     // endregion
 }
 
@@ -69,13 +74,18 @@ impl LintCode {
             // which vctrs::new_vctr() rejects; instance-method receivers panic at runtime.
             Self::MXL120 => Severity::Error,
 
+            // Build-breaking: colliding trait impls emit duplicate `#[no_mangle]`
+            // vtable statics → cryptic linker error divorced from the source.
+            Self::MXL303 => Severity::Error,
+
             // Everything else is a warning.
             Self::MXL106
             | Self::MXL111
             | Self::MXL112
             | Self::MXL203
             | Self::MXL300
-            | Self::MXL301 => Severity::Warning,
+            | Self::MXL301
+            | Self::MXL302 => Severity::Warning,
         }
     }
 }
