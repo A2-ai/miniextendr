@@ -1359,6 +1359,27 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // roxygen2 warnings about undocumented parameters.
     content = resolve_inherited_param_markers(content);
 
+    // Detect collisions between separately-expanded wrapper definitions (#991).
+    //
+    // Two top-level `name <- function` definitions of the same name silently
+    // clobber each other at load time (last write wins), dispatching calls to
+    // the wrong implementation. The compile-time `check_s7_shortcut_collisions`
+    // only sees a single impl block; collisions that span macro expansions --
+    // an S7 shortcut vs a `#[derive(ExternalPtr)]` sidecar accessor, or two S7
+    // impl blocks on the same type -- are only visible here, where every name
+    // set is assembled. We resolve the sidecar-accessor prefix through
+    // MX_CLASS_NAMES so a `class = "Override"` is honoured, then scan the final
+    // content. This runs after all placeholder resolution so names are final.
+    {
+        use std::collections::HashMap;
+        let class_index: HashMap<&str, &ClassNameEntry> =
+            MX_CLASS_NAMES.iter().map(|e| (e.rust_type, e)).collect();
+        let accessor_producers = sidecar_accessor_names(&MX_S7_SIDECAR_PROPS, &class_index);
+        if let Err(msg) = detect_duplicate_wrapper_defs(&content, &accessor_producers) {
+            panic!("{msg}");
+        }
+    }
+
     // Only write if content changed (avoids unnecessary NAMESPACE/man regeneration).
     //
     // "Semantic equality" means equal after stripping source-position suffixes from
@@ -1552,6 +1573,159 @@ fn scan_digits(haystack: &[u8], from: usize) -> Option<usize> {
     let start = haystack.get(from..)?;
     let count = start.iter().take_while(|&&b| b.is_ascii_digit()).count();
     if count == 0 { None } else { Some(from + count) }
+}
+// endregion
+
+// region: Duplicate wrapper-definition detection (#991)
+
+/// Compute the sidecar accessor function names a `#[derive(ExternalPtr)]` emits
+/// for each `#[r_data]` field, resolving the R-visible prefix through the
+/// class-name registry.
+///
+/// The derive emits two top-level functions per field —
+/// `<prefix>_get_<field>` and `<prefix>_set_<field>` — where `<prefix>` is the
+/// R-visible class name. That equals the Rust type name unless the impl block
+/// set `class = "Override"`, in which case `MX_CLASS_NAMES` carries the
+/// override. We resolve through `class_index` so the names we attribute match
+/// what actually lands in the wrapper file.
+///
+/// Returns a map from accessor function name -> the human-readable producer
+/// description used in the collision message.
+#[cfg(not(target_arch = "wasm32"))]
+fn sidecar_accessor_names(
+    sidecar_props: &[SidecarPropEntry],
+    class_index: &std::collections::HashMap<&str, &ClassNameEntry>,
+) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    for entry in sidecar_props {
+        // Resolve the R-visible prefix (honours `class = "Override"`).
+        let prefix = class_index
+            .get(entry.rust_type)
+            .map(|c| c.r_class_name)
+            .unwrap_or(entry.rust_type);
+        let producer = format!(
+            "#[derive(ExternalPtr)] sidecar field `{}` on `{}`",
+            entry.field_name, entry.rust_type
+        );
+        out.insert(
+            format!("{prefix}_get_{}", entry.field_name),
+            producer.clone(),
+        );
+        out.insert(format!("{prefix}_set_{}", entry.field_name), producer);
+    }
+    out
+}
+
+/// Detect a second top-level `name <- function` definition of any wrapper
+/// function in the assembled R wrapper text.
+///
+/// This is the write-time counterpart to the compile-time
+/// `check_s7_shortcut_collisions` (in `miniextendr-macros`): it catches name
+/// collisions that span *separate* macro expansions and are therefore invisible
+/// to any single proc-macro invocation. The two motivating cases (#991):
+///
+/// 1. An S7 fast-path shortcut `<Class>_<method>` colliding with a
+///    `#[derive(ExternalPtr)]` sidecar accessor `<Class>_get_<field>` /
+///    `<Class>_set_<field>` -- the sidecar field names live in the
+///    `MX_S7_SIDECAR_PROPS` slice, which the impl-block macro can't see.
+/// 2. Two `#[miniextendr(s7)]` impl blocks on the same type each emitting a
+///    `<Class>_<method>` shortcut -- cross-impl-block, also invisible to a
+///    single expansion.
+///
+/// Without this check the second definition silently clobbers the first
+/// (last-write-wins in R), so a call dispatches to the wrong implementation.
+///
+/// `accessor_producers` maps a known sidecar-accessor name to a description of
+/// its producing derive; when a duplicate matches one we name the derive in the
+/// message, otherwise we report the generic "defined more than once" form.
+///
+/// Returns `Err(message)` naming the offending function on the first collision
+/// found; `Ok(())` when every top-level definition name is unique.
+#[cfg(not(target_arch = "wasm32"))]
+fn detect_duplicate_wrapper_defs(
+    content: &str,
+    accessor_producers: &std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<&str> = HashSet::new();
+
+    for line in content.lines() {
+        // Only top-level definitions matter -- class-method assignments like
+        // `S7::method(generic, Class) <- function(...)` and indented closures
+        // (R6 methods, S7 getters) are not bare `name <- function` forms and
+        // must not trip the scan.
+        let Some(name) = parse_top_level_fn_def_name(line) else {
+            continue;
+        };
+
+        if !seen.insert(name) {
+            // Second definition of this name -> collision.
+            if let Some(producer) = accessor_producers.get(name) {
+                return Err(format!(
+                    "miniextendr: wrapper function `{name}` is defined more than once. \
+                     One definition comes from {producer}; the other from an S7 fast-path \
+                     shortcut or `#[miniextendr]` function of the same name. The second \
+                     definition silently overwrites the first at load time. Rename the \
+                     colliding S7 method (`#[miniextendr(s7(r_name = \"...\"))]`), opt it \
+                     out of the shortcut (`#[miniextendr(s7(no_shortcut))]`), or rename the \
+                     sidecar field."
+                ));
+            }
+            return Err(format!(
+                "miniextendr: wrapper function `{name}` is defined more than once in the \
+                 generated R wrappers. This usually means two `#[miniextendr(s7)]` impl \
+                 blocks (or an S7 shortcut and another generated function) emit the same \
+                 `<Class>_<method>` name. The second definition silently overwrites the \
+                 first at load time. Rename one (`#[miniextendr(s7(r_name = \"...\"))]`) or \
+                 opt the method out of the shortcut (`#[miniextendr(s7(no_shortcut))]`)."
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse the function name from a top-level `name <- function(...)` definition
+/// line, or return `None` when the line is not such a definition.
+///
+/// Recognises only **top-level** definitions: the line must start at column 0
+/// (no leading whitespace -- indented forms are R6/S7 closures, not standalone
+/// wrappers) and the left-hand side must be a single bare R identifier. Lines
+/// where the LHS is a call (e.g. `S7::method(...) <- function`) or contains `$`
+/// / `[[` / `::` are not bare definitions and are skipped.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_top_level_fn_def_name(line: &str) -> Option<&str> {
+    // Top-level only: reject any leading whitespace.
+    if line.starts_with([' ', '\t']) {
+        return None;
+    }
+    let (lhs, rhs) = line.split_once("<-")?;
+    // RHS must be (after trimming) the start of a `function` definition.
+    if !rhs.trim_start().starts_with("function") {
+        return None;
+    }
+    let name = lhs.trim();
+    if name.is_empty() {
+        return None;
+    }
+    // Bare identifier only: R names may contain letters, digits, `.` and `_`,
+    // and must not start with a digit. Anything else (a call on the LHS, a `$`
+    // assignment, a `::`-qualified target, backtick-quoted names with spaces)
+    // is not a standalone wrapper definition we own.
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    if !(first.is_ascii_alphabetic() || first == '.') {
+        return None;
+    }
+    if name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+    {
+        Some(name)
+    } else {
+        None
+    }
 }
 // endregion
 
@@ -2031,6 +2205,161 @@ mod tests {
         assert!(output.contains("#' @exportMethod s4_compute"));
         // setGeneric guard must survive
         assert!(output.contains("if (!methods::isGeneric(\"s4_compute\")"));
+    }
+
+    // endregion
+
+    // region: duplicate wrapper-definition detection (#991)
+
+    /// Build an accessor-producer map the way `write_r_wrappers_to_file` does,
+    /// from synthetic sidecar + class registries, for unit testing.
+    fn accessor_map(
+        sidecar: &[SidecarPropEntry],
+        classes: &[ClassNameEntry],
+    ) -> std::collections::HashMap<String, String> {
+        let class_index: std::collections::HashMap<&str, &ClassNameEntry> =
+            classes.iter().map(|e| (e.rust_type, e)).collect();
+        sidecar_accessor_names(sidecar, &class_index)
+    }
+
+    #[test]
+    fn parse_top_level_fn_def_name_accepts_bare_def() {
+        assert_eq!(
+            parse_top_level_fn_def_name("Foo_get_value <- function(x) .Call(C, x)"),
+            Some("Foo_get_value")
+        );
+        // Dotted/internal helper names are valid R identifiers.
+        assert_eq!(
+            parse_top_level_fn_def_name(".miniextendr_raise_condition <- function(.val) {"),
+            Some(".miniextendr_raise_condition")
+        );
+    }
+
+    #[test]
+    fn parse_top_level_fn_def_name_rejects_non_defs() {
+        // Indented closures (R6 methods, S7 getters) are not top-level wrappers.
+        assert_eq!(
+            parse_top_level_fn_def_name("    get_value = function(self) self$x"),
+            None
+        );
+        // S7::method(...) <- function : LHS is a call, not a bare ident.
+        assert_eq!(
+            parse_top_level_fn_def_name("S7::method(get_value, Shape) <- function(x) .Call(C, x)"),
+            None
+        );
+        // `$`-assignment target is not a bare ident.
+        assert_eq!(
+            parse_top_level_fn_def_name("obj$method <- function() {}"),
+            None
+        );
+        // Not a function definition at all.
+        assert_eq!(parse_top_level_fn_def_name("x <- 1L"), None);
+        // Comment / arbitrary line.
+        assert_eq!(parse_top_level_fn_def_name("# a comment"), None);
+    }
+
+    #[test]
+    fn detect_duplicate_clean_content_passes() {
+        // A sidecar accessor and an unrelated S7 shortcut: distinct names, no clash.
+        let content = concat!(
+            "Shape_get_area <- function(x) .Call(C_get, x)\n",
+            "Shape_set_area <- function(x, value) { .Call(C_set, x, value); invisible(x) }\n",
+            "Shape_describe <- function(x, ...) .Call(C_describe, x)\n",
+        );
+        let map = accessor_map(
+            &[SidecarPropEntry {
+                rust_type: "Shape",
+                field_name: "area",
+                prop_doc: "",
+            }],
+            &[ClassNameEntry {
+                rust_type: "Shape",
+                r_class_name: "Shape",
+                class_system: "s7",
+            }],
+        );
+        assert!(detect_duplicate_wrapper_defs(content, &map).is_ok());
+    }
+
+    #[test]
+    fn detect_duplicate_shortcut_vs_sidecar_accessor_fails() {
+        // S7 method `get_area` emits `Shape_get_area`, colliding with the sidecar
+        // accessor for field `area`. This is the core #991 case.
+        let content = concat!(
+            "Shape_get_area <- function(x) .Call(C_get, x)\n",
+            "Shape_set_area <- function(x, value) { .Call(C_set, x, value); invisible(x) }\n",
+            "Shape_get_area <- function(x, ...) .Call(C_method, x)\n",
+        );
+        let map = accessor_map(
+            &[SidecarPropEntry {
+                rust_type: "Shape",
+                field_name: "area",
+                prop_doc: "",
+            }],
+            &[ClassNameEntry {
+                rust_type: "Shape",
+                r_class_name: "Shape",
+                class_system: "s7",
+            }],
+        );
+        let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
+        assert!(err.contains("Shape_get_area"), "msg: {err}");
+        // Message must name the sidecar producer and the field.
+        assert!(err.contains("sidecar field `area`"), "msg: {err}");
+        assert!(err.contains("Shape"), "msg: {err}");
+    }
+
+    #[test]
+    fn detect_duplicate_honours_class_override_prefix() {
+        // The impl block set `class = "Shape"` on Rust type `S7Shape`, so the
+        // sidecar accessor is `Shape_get_area`, not `S7Shape_get_area`. The
+        // collision must be attributed via the override prefix.
+        let content = concat!(
+            "Shape_get_area <- function(x) .Call(C_get, x)\n",
+            "Shape_get_area <- function(x, ...) .Call(C_method, x)\n",
+        );
+        let map = accessor_map(
+            &[SidecarPropEntry {
+                rust_type: "S7Shape",
+                field_name: "area",
+                prop_doc: "",
+            }],
+            &[ClassNameEntry {
+                rust_type: "S7Shape",
+                r_class_name: "Shape",
+                class_system: "s7",
+            }],
+        );
+        let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
+        assert!(err.contains("Shape_get_area"), "msg: {err}");
+        assert!(err.contains("sidecar field `area`"), "msg: {err}");
+    }
+
+    #[test]
+    fn detect_duplicate_cross_impl_block_generic_message() {
+        // Two S7 impl blocks both emit `Counter_inc` -- no sidecar involved, so
+        // the generic "more than once" message is used.
+        let content = concat!(
+            "Counter_inc <- function(x, ...) .Call(C_inc_a, x)\n",
+            "Counter_inc <- function(x, ...) .Call(C_inc_b, x)\n",
+        );
+        let map = std::collections::HashMap::new();
+        let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
+        assert!(err.contains("Counter_inc"), "msg: {err}");
+        assert!(err.contains("defined more than once"), "msg: {err}");
+    }
+
+    #[test]
+    fn detect_duplicate_ignores_repeated_s7_method_assignments() {
+        // `S7::method(...) <- function` lines are NOT top-level bare defs; a class
+        // may legitimately have many method assignments. These must never trip.
+        let content = concat!(
+            "S7::method(describe, Shape) <- function(x) .Call(C1, x)\n",
+            "S7::method(area, Shape) <- function(x) .Call(C2, x)\n",
+            "S7::method(describe, Circle) <- function(x) .Call(C3, x)\n",
+        );
+        let map = std::collections::HashMap::new();
+        assert!(detect_duplicate_wrapper_defs(content, &map).is_ok());
     }
 
     // endregion
