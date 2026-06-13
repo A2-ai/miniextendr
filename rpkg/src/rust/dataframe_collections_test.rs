@@ -21,7 +21,16 @@ pub struct WithBoxedSlice {
 impl ::miniextendr_api::list::IntoList for WithBoxedSlice {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![("data", self.data.into_vec().into_sexp())])
+        // Protect each value as it is built so it survives `from_raw_pairs`'s internal
+        // allocations (VECSXP + names STRSXP via `charsxp`) — mirrors `#[derive(IntoList)]`.
+        // SAFETY: IntoList runs on the R main thread.
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![(
+                "data",
+                __scope.protect_raw(self.data.into_vec().into_sexp()),
+            )])
+        }
     }
 }
 
@@ -41,7 +50,14 @@ pub struct WithArrayAsList {
 impl ::miniextendr_api::list::IntoList for WithArrayAsList {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![("coords", self.coords.to_vec().into_sexp())])
+        // SAFETY: IntoList runs on the R main thread. Protect-as-built (see WithBoxedSlice).
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![(
+                "coords",
+                __scope.protect_raw(self.coords.to_vec().into_sexp()),
+            )])
+        }
     }
 }
 
@@ -55,7 +71,14 @@ impl ::miniextendr_api::list::IntoList for WithHashSet {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
         let tags_vec: Vec<String> = self.tags.into_iter().collect();
-        ::miniextendr_api::List::from_raw_pairs(vec![("tags", tags_vec.into_sexp())])
+        // SAFETY: IntoList runs on the R main thread. Protect-as-built (see WithBoxedSlice).
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![(
+                "tags",
+                __scope.protect_raw(tags_vec.into_sexp()),
+            )])
+        }
     }
 }
 
@@ -69,7 +92,14 @@ impl ::miniextendr_api::list::IntoList for WithBTreeSet {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
         let cats_vec: Vec<i32> = self.categories.into_iter().collect();
-        ::miniextendr_api::List::from_raw_pairs(vec![("categories", cats_vec.into_sexp())])
+        // SAFETY: IntoList runs on the R main thread. Protect-as-built (see WithBoxedSlice).
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![(
+                "categories",
+                __scope.protect_raw(cats_vec.into_sexp()),
+            )])
+        }
     }
 }
 
@@ -84,11 +114,21 @@ pub struct MixedCollections {
 impl ::miniextendr_api::list::IntoList for MixedCollections {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("vec_field", self.vec_field.into_sexp()),
-            ("array_field", self.array_field.to_vec().into_sexp()),
-            ("boxed_field", self.boxed_field.into_vec().into_sexp()),
-        ])
+        // SAFETY: IntoList runs on the R main thread. Protect-as-built (see WithBoxedSlice).
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![
+                ("vec_field", __scope.protect_raw(self.vec_field.into_sexp())),
+                (
+                    "array_field",
+                    __scope.protect_raw(self.array_field.to_vec().into_sexp()),
+                ),
+                (
+                    "boxed_field",
+                    __scope.protect_raw(self.boxed_field.into_vec().into_sexp()),
+                ),
+            ])
+        }
     }
 }
 
@@ -104,10 +144,14 @@ pub struct WithSkip {
 impl ::miniextendr_api::list::IntoList for WithSkip {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("name", self.name.into_sexp()),
-            ("value", self.value.into_sexp()),
-        ])
+        // SAFETY: IntoList runs on the R main thread. Protect-as-built (see WithBoxedSlice).
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![
+                ("name", __scope.protect_raw(self.name.into_sexp())),
+                ("value", __scope.protect_raw(self.value.into_sexp())),
+            ])
+        }
     }
 }
 
@@ -122,10 +166,14 @@ pub struct WithRename {
 impl ::miniextendr_api::list::IntoList for WithRename {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("label", self.name.into_sexp()),
-            ("value", self.value.into_sexp()),
-        ])
+        // SAFETY: IntoList runs on the R main thread. Protect-as-built (see WithBoxedSlice).
+        unsafe {
+            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+            ::miniextendr_api::List::from_raw_pairs(vec![
+                ("label", __scope.protect_raw(self.name.into_sexp())),
+                ("value", __scope.protect_raw(self.value.into_sexp())),
+            ])
+        }
     }
 }
 
@@ -283,14 +331,20 @@ pub struct WithOptMapAsList {
 impl IntoList for WithOptMapAsList {
     fn into_list(self) -> miniextendr_api::List {
         use miniextendr_api::{IntoR, SEXP};
-        let counts_sexp = match self.counts {
-            Some(m) => m.into_list().into_sexp(),
-            None => SEXP::nil(),
-        };
-        miniextendr_api::List::from_raw_pairs(vec![
-            ("id", self.id.into_sexp()),
-            ("counts", counts_sexp),
-        ])
+        // SAFETY: IntoList runs on the R main thread. Protect both values as built — the
+        // pre-built `counts_sexp` must survive `self.id.into_sexp()` and `from_raw_pairs`'s
+        // internal allocations. Mirrors `#[derive(IntoList)]`.
+        unsafe {
+            let __scope = miniextendr_api::gc_protect::ProtectScope::new();
+            let counts_sexp = __scope.protect_raw(match self.counts {
+                Some(m) => m.into_list().into_sexp(),
+                None => SEXP::nil(),
+            });
+            miniextendr_api::List::from_raw_pairs(vec![
+                ("id", __scope.protect_raw(self.id.into_sexp())),
+                ("counts", counts_sexp),
+            ])
+        }
     }
 }
 

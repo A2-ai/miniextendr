@@ -13,6 +13,7 @@ pub mod r_reserved_params;
 pub mod rf_error;
 pub mod s4_method_prefix;
 pub mod vctrs_self_ctor;
+pub mod vec_into_sexp;
 
 use crate::crate_index::CrateIndex;
 use crate::diagnostic::Diagnostic;
@@ -38,6 +39,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: sys::*_unchecked() usage (MXL301)
     ffi_unchecked::check(index, &mut diagnostics);
+
+    // Per-file: into_sexp() inside a vec!/array literal (MXL302)
+    vec_into_sexp::check(index, &mut diagnostics);
 
     // Per-file: s4_* method name on #[miniextendr(s4)] impl (MXL111)
     s4_method_prefix::check(index, &mut diagnostics);

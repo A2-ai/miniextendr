@@ -44,6 +44,8 @@ pub enum LintCode {
     MXL300,
     /// `_unchecked` FFI call outside guard context.
     MXL301,
+    /// `into_sexp()` call inside a `vec!`/array literal — unprotected SEXP across allocations (UAF).
+    MXL302,
     // endregion
 }
 
@@ -75,7 +77,8 @@ impl LintCode {
             | Self::MXL112
             | Self::MXL203
             | Self::MXL300
-            | Self::MXL301 => Severity::Warning,
+            | Self::MXL301
+            | Self::MXL302 => Severity::Warning,
         }
     }
 }
