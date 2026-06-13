@@ -149,3 +149,11 @@ harness = false
 [[bench]]
 name = "gc_protection_compare"
 harness = false
+
+[[bench]]
+name = "c_side_attribution"
+harness = false
+
+[[bench]]
+name = "error_path_attribution"
+harness = false

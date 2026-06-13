@@ -1,0 +1,69 @@
+# M13: Rprof over test-conversions.R
+
+R: R version 4.6.0 (2026-04-24) 
+miniextendr: 0.1.0 
+
+## Top by self.time
+
+                          self.time self.pct total.time total.pct
+"tempfile"                    0.187    42.31      0.187     42.31
+"getwd"                       0.064    14.48      0.064     14.48
+"dir.create"                  0.036     8.14      0.036      8.14
+"unlink"                      0.026     5.88      0.026      5.88
+".Call"                       0.018     4.07      0.018      4.07
+"lazyLoadDBfetch"             0.017     3.85      0.017      3.85
+"f"                           0.011     2.49      0.016      3.62
+"proc.time"                   0.011     2.49      0.011      2.49
+"FUN"                         0.006     1.36      0.417     94.34
+"lapply"                      0.006     1.36      0.417     94.34
+"vapply"                      0.006     1.36      0.041      9.28
+"file.exists"                 0.005     1.13      0.005      1.13
+"compact"                     0.004     0.90      0.040      9.05
+"isTRUE"                      0.004     0.90      0.012      2.71
+"list_combine"                0.003     0.68      0.004      0.90
+"parse"                       0.003     0.68      0.003      0.68
+"unlist"                      0.002     0.45      0.040      9.05
+"as.list.default"             0.002     0.45      0.002      0.45
+"tryCatch"                    0.001     0.23      0.435     98.42
+"find_expectation_srcref"     0.001     0.23      0.069     15.61
+"stopifnot"                   0.001     0.23      0.065     14.71
+"cmpCall"                     0.001     0.23      0.009      2.04
+"withr::local_options"        0.001     0.23      0.004      0.90
+"%in%"                        0.001     0.23      0.003      0.68
+"close"                       0.001     0.23      0.002      0.45
+
+## Top by total.time
+
+                      total.time total.pct self.time self.pct
+"...elt"                   0.442    100.00     0.000     0.00
+"capture.output"           0.442    100.00     0.000     0.00
+"test_files_serial"        0.442    100.00     0.000     0.00
+"test_files"               0.442    100.00     0.000     0.00
+"testthat::test_file"      0.442    100.00     0.000     0.00
+"withVisible"              0.442    100.00     0.000     0.00
+"tryCatch"                 0.435     98.42     0.001     0.23
+"doTryCatch"               0.435     98.42     0.000     0.00
+"tryCatchList"             0.435     98.42     0.000     0.00
+"tryCatchOne"              0.435     98.42     0.000     0.00
+"FUN"                      0.417     94.34     0.006     1.36
+"lapply"                   0.417     94.34     0.006     1.36
+"eval"                     0.416     94.12     0.000     0.00
+"with_reporter"            0.377     85.29     0.000     0.00
+"source_file"              0.376     85.07     0.000     0.00
+"doWithOneRestart"         0.373     84.39     0.000     0.00
+"test_code"                0.373     84.39     0.000     0.00
+"test_that"                0.373     84.39     0.000     0.00
+"withCallingHandlers"      0.373     84.39     0.000     0.00
+"withOneRestart"           0.373     84.39     0.000     0.00
+
+## Wrapper-layer hot spots
+
+            self.time self.pct total.time total.pct
+"isTRUE"        0.004     0.90      0.012      2.71
+"stopifnot"     0.001     0.23      0.065     14.71
+
+## Total sample time vs wrapper-layer time
+  total elapsed:           0.442 s
+  wrapper layer total:     0.005 s (1.1%)
+
+## Done.

@@ -1,0 +1,27 @@
+# M11: installed-wrapper hand-strip
+Variants all live in `miniextendr` namespace, share lazy-load path,
+byte-compiled at JIT level 3.
+
+             variant  min   mean median  max   sd cv_pct
+        conv_i32_arg 2829 2853.6   2870 2870 22.5    0.8
+            i32_full 2870 2878.2   2870 2911 18.3    0.6
+    i32_no_stopifnot 1640 1640.0   1640 1640  0.0    0.0
+    i32_no_matchcall 1640 1648.2   1640 1681 18.3    1.1
+ i32_no_stop_no_call  410  442.8    451  451 18.3    4.1
+            i32_bare  287  328.0    328  369 29.0    8.8
+
+## Cross-check: package wrapper vs hand-written i32_full
+  package conv_i32_arg min:    2829 ns
+  hand-written i32_full min:   2870 ns
+  delta:                       -41 ns
+  → within noise; hand-written matches macro output.
+
+## Per-line cost (in-namespace, min_ns)
+                           piece cost_ns
+                     stopifnot()    1230
+     match.call() (success path)    1230
+        inherits/attr post-check     123
+ all three (i32_full - i32_bare)    2583
+                  i32_bare floor     287
+
+# Done.

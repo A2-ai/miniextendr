@@ -1,0 +1,105 @@
+# miniextendr scaffolding benchmark
+
+Generated: 2026-05-20 13:24:46 CEST 
+R: R version 4.6.0 (2026-04-24) 
+miniextendr: 0.1.0 
+Platform: aarch64-apple-darwin23 
+CPU: Apple M3 Max 
+
+
+# 1. Baseline (SEXP passthrough) ------------------------------------
+
+## Baseline — SEXP passthrough (scaffolding only) 
+                                expression min_ns median_ns   itr/sec n_itr
+                      r_identity(x_scalar)     41        82 8840639.8 10000
+                        identity(x_scalar)     41        82 8294659.1 10000
+ .Call(ns$C_conv_sexp_arg, NULL, x_scalar)    123       205 4292639.0 10000
+      miniextendr::conv_sexp_arg(x_scalar)   1517      1722  516629.9 10000
+                       r_identity(x_vec64)     41        82 9486024.4 10000
+  .Call(ns$C_conv_sexp_arg, NULL, x_vec64)    123       205 4452788.3 10000
+       miniextendr::conv_sexp_arg(x_vec64)   1517      1722  540290.0 10000
+ n_gc
+    0
+    0
+    0
+    1
+    0
+    0
+    1
+
+# 2. TryFromSexp arg decode -----------------------------------------
+
+## TryFromSexp scalar arg decode 
+                            expression min_ns median_ns  itr/sec n_itr n_gc
+       miniextendr::conv_sexp_arg(42L)   1476      1640 593647.8 10000    0
+        miniextendr::conv_i32_arg(42L)   2788      3034 308138.2 10000    2
+         miniextendr::conv_f64_arg(42)   2747      2993 318553.6 10000    1
+     miniextendr::conv_rbool_arg(TRUE)   2706      2952 319625.7 10000    2
+  miniextendr::conv_u8_arg(as.raw(7L))   2788      2993 314071.8 10000    2
+ miniextendr::conv_string_arg("hello")   2788      2993 324048.8 10000    1
+
+# 3. Vec<T> arg decode (size sweep) ----------------------------------
+
+## Vec<T> arg decode by size 
+                        expression  size min_ns median_ns  itr/sec n_itr n_gc
+ miniextendr::conv_vec_i32_len(xi)     1   2501      2747 320206.0 10000    2
+ miniextendr::conv_vec_f64_len(xd)     1   2501      2747 340349.8 10000    1
+ miniextendr::conv_vec_i32_len(xi)    16   2542      2788 332763.8 10000    2
+ miniextendr::conv_vec_f64_len(xd)    16   2501      2706 353014.8 10000    1
+ miniextendr::conv_vec_i32_len(xi)   256   2542      2747 348541.7 10000    1
+ miniextendr::conv_vec_f64_len(xd)   256   2542      2747 339435.7 10000    2
+ miniextendr::conv_vec_i32_len(xi)  4096   2829      3075 312847.4 10000    1
+ miniextendr::conv_vec_f64_len(xd)  4096   3034      3280 287348.8 10000    2
+ miniextendr::conv_vec_i32_len(xi) 65536   5822      6150 159315.5 10000    1
+ miniextendr::conv_vec_f64_len(xd) 65536   8692      9020 108324.2 10000    2
+
+# 4. IntoR return encode ---------------------------------------------
+
+## IntoR scalar return encode 
+                     expression min_ns median_ns  itr/sec n_itr n_gc
+    miniextendr::conv_i32_ret()   1476      1640 557779.5 10000    1
+    miniextendr::conv_f64_ret()   1435      1681 576824.1 10000    0
+  miniextendr::conv_rbool_ret()   1476      1640 555618.1 10000    1
+     miniextendr::conv_u8_ret()   1394      1599 574315.4 10000    1
+ miniextendr::conv_string_ret()   1435      1599 581213.1 10000    1
+   miniextendr::conv_sexp_ret()   1476      1599 581506.5 10000    1
+
+# 5. Vec<T> return encode (size sweep) -------------------------------
+
+## Vec<T> return encode (built-in sizes) 
+                         expression min_ns median_ns  itr/sec n_itr n_gc
+    miniextendr::conv_vec_i32_ret()   1435      1599 571683.7 10000    1
+    miniextendr::conv_vec_f64_ret()   1476      1640 593152.6 10000    0
+ miniextendr::conv_vec_string_ret()   1517      1681 492724.5 10000    1
+
+# 6. Error path -------------------------------------------------------
+
+## Error transport — Rust → tagged SEXP → R condition 
+  expression min_ns median_ns   itr/sec n_itr n_gc
+     err_r()   7052      7380 128561.68 10000    4
+ err_macro()  20828     21525  44831.08 10000    6
+  err_warn()  26240     27101  35485.01 10000    9
+
+# 7. Class-system dispatch -------------------------------------------
+
+## Class-system method dispatch (`&self -> i32`) 
+                  expression min_ns median_ns   itr/sec n_itr n_gc
+     env_counter$get_value()   2788      2993 307476.22 10000    2
+          r6_counter$value()   2132      2296 415427.61 10000    1
+     ns$s4_value(s4_counter)   2337      2542 367608.19 10000    2
+     ns$s7_value(s7_counter)   9061      9553  98269.79 10000    7
+ miniextendr::conv_i32_ret()   1435      1599 589575.29 10000    1
+
+# 8. Per-arg overhead scan -------------------------------------------
+
+## Per-arg overhead approximation 
+                                                                                                expression
+                                                                            miniextendr::conv_i32_arg(42L)
+                                 {     miniextendr::conv_i32_arg(42L)     miniextendr::conv_i32_arg(43L) }
+ {     miniextendr::conv_i32_arg(1L)     miniextendr::conv_i32_arg(2L)     miniextendr::conv_i32_arg(3L) }
+ min_ns median_ns  itr/sec n_itr n_gc
+   2747      2952 330249.6 10000    1
+   5494      5740 164773.5 10000    4
+   8200      8651 107045.5 10000    5
+
+# Done.

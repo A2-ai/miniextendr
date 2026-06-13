@@ -1,0 +1,43 @@
+# Fast-path knob bench
+
+Generated: 2026-05-20 18:24:43 CEST 
+R: R version 4.6.0 (2026-04-24) 
+miniextendr: 0.1.0 
+Platform: aarch64-apple-darwin23 
+CPU: Apple M3 Max 
+
+## 1-arg identity (i32)
+
+             variant  min   mean median  max savings_vs_default_ns speedup_x
+             default 2870 2902.8   2911 2952                     0      1.00
+    no_preconditions 1599 1623.6   1640 1640                  1271      1.79
+ no_call_attribution 1640 1648.2   1640 1681                  1230      1.75
+                fast  369  385.4    369  410                  2501      7.78
+
+## 3-arg sum (a+b+c)
+
+ variant  min   mean median  max savings_vs_default_ns speedup_x
+ default 4551 4575.6   4551 4633                     0      1.00
+    fast  533  574.0    574  615                  4018      8.54
+
+## Error UX comparison
+
+default (stopifnot + match.call):
+  message: 'x' must be numeric, logical, or raw 
+  call:    miniextendr:::fast_i32_default("not an int") 
+  classes: simpleError, error, condition 
+
+fast (no stopifnot, no match.call):
+  message: failed to convert parameter 'x' to i32: wrong type, length, or contains NA: type mismatch: expected INTSXP, got STRSXP 
+  call:    miniextendr:::fast_i32_fast("not an int") 
+  classes: rust_error, simpleError, error, condition 
+
+## R6 class-method dispatch
+
+       variant  min   mean median  max savings_ns speedup_x
+ default_value 2337 2345.2   2337 2378          0        NA
+    fast_value 1066 1074.2   1066 1107       1271      2.19
+   default_add 3854 3870.4   3854 3895          0        NA
+      fast_add 1148 1172.6   1189 1189       2706      3.36
+
+# Done.

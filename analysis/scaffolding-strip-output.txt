@@ -1,0 +1,38 @@
+# M6: hand-stripped R wrapper variants
+R: R version 4.6.0 (2026-04-24) / miniextendr: 0.1.0 
+Tool: bench::mark, min_iterations = 50000, time_unit = ns
+
+           variant min_ns median_ns iter_per_sec
+            A_full   2706      2993       313314
+    B_no_stopifnot   1476      1681       537875
+    C_no_matchcall   1558      1763       516872
+    D_no_postcheck   2583      2829       335390
+ E_no_stop_no_call    328       410      2400384
+  F_only_matchcall   1353      1517       603579
+            G_bare    205       246      3608838
+     H_inline_call    123       205      4388093
+          i32_full   2706      2993       309960
+          i32_bare    205       287      3313587
+
+# M1: per-line attribution (min_ns)
+                                 piece delta_vs_full
+                           stopifnot()          1230
+           match.call() (success path)          1148
+          inherits()/attr() post-check           123
+          stopifnot + match.call (sum)          2378
+          stopifnot + post-check (sum)          1353
+         match.call + post-check (sum)          1148
+           all three (A_full - G_bare)          2501
+ G_bare floor (.Call only, no wrapper)           205
+
+# Sanity: error condition with .call = NULL
+---- match.call() path ----
+  message: oops via match.call 
+  call   : demo_with_match_call(msg = "oops via match.call") 
+  classes: rust_error, simpleError, error, condition 
+---- .call = NULL path (sys.call fallback) ----
+  message: oops via sys.call fallback 
+  call   : demo_with_null_call("oops via sys.call fallback") 
+  classes: rust_error, simpleError, error, condition 
+
+# Done.
