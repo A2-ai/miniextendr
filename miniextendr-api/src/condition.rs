@@ -1109,7 +1109,9 @@ impl RCondition {
                 if vec.iter().any(Option::is_none) {
                     Some(ConditionDataValue::OptIntVec(vec))
                 } else {
-                    Some(ConditionDataValue::IntVec(vec.into_iter().flatten().collect()))
+                    Some(ConditionDataValue::IntVec(
+                        vec.into_iter().flatten().collect(),
+                    ))
                 }
             }
         } else if elt.is_real() {
@@ -1170,9 +1172,7 @@ impl RCondition {
                 Some(if charsxp.is_na_string() {
                     ConditionDataValue::OptStr(None)
                 } else {
-                    ConditionDataValue::Str(
-                        elt.string_elt_str(0).unwrap_or_default().to_string(),
-                    )
+                    ConditionDataValue::Str(elt.string_elt_str(0).unwrap_or_default().to_string())
                 })
             } else {
                 let vec: Vec<Option<String>> = (0..elt_len)
@@ -1598,7 +1598,10 @@ mod condition_macro_tests {
                 data = [
                     ("opt_present", Some(9_i32)),
                     ("opt_missing", None::<i32>),
-                    ("nested", vec![("x".to_string(), ConditionDataValue::Bool(true))])
+                    (
+                        "nested",
+                        vec![("x".to_string(), ConditionDataValue::Bool(true))]
+                    )
                 ],
                 "rich"
             )
