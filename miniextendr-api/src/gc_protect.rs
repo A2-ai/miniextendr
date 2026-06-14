@@ -497,9 +497,9 @@ impl ProtectScope {
         unsafe { self.alloc_vector(SEXPTYPE::VECSXP, len) }
     }
 
-    /// Allocate a VECSXP via the **unchecked** FFI path and immediately protect it.
+    /// Allocate a vector via the **unchecked** FFI path and immediately protect it.
     ///
-    /// `_unchecked` twin of [`alloc_vecsxp`](Self::alloc_vecsxp): allocates with
+    /// `_unchecked` twin of [`alloc_vector`](Self::alloc_vector): allocates with
     /// `Rf_allocVector_unchecked` (bypassing the main-thread assertion / worker
     /// round-trip) for use inside ALTREP callbacks, `with_r_unwind_protect`, or
     /// `with_r_thread` bodies. Protection still goes through the (checked)
@@ -512,11 +512,40 @@ impl ProtectScope {
     /// checked-FFI assertion is intentionally bypassed (see CLAUDE.md "FFI thread
     /// checking").
     #[inline]
+    pub unsafe fn alloc_vector_unchecked<'a>(&'a self, ty: SEXPTYPE, n: R_xlen_t) -> Root<'a> {
+        // SAFETY: caller guarantees R main thread in a checked-bypass context.
+        let sexp = unsafe { Rf_allocVector_unchecked(ty, n) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a VECSXP via the **unchecked** FFI path, protected.
+    ///
+    /// `_unchecked` twin of [`alloc_vecsxp`](Self::alloc_vecsxp). See
+    /// [`alloc_vector_unchecked`](Self::alloc_vector_unchecked) for the safety
+    /// contract.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector_unchecked`](Self::alloc_vector_unchecked).
+    #[inline]
     pub unsafe fn alloc_vecsxp_unchecked<'a>(&'a self, n: usize) -> Root<'a> {
         let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
-        // SAFETY: caller guarantees R main thread in a checked-bypass context.
-        let sexp = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, len) };
-        unsafe { self.protect(sexp) }
+        unsafe { self.alloc_vector_unchecked(SEXPTYPE::VECSXP, len) }
+    }
+
+    /// Allocate a STRSXP via the **unchecked** FFI path, protected.
+    ///
+    /// `_unchecked` twin of [`alloc_character`](Self::alloc_character). See
+    /// [`alloc_vector_unchecked`](Self::alloc_vector_unchecked) for the safety
+    /// contract.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector_unchecked`](Self::alloc_vector_unchecked).
+    #[inline]
+    pub unsafe fn alloc_character_unchecked<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector_unchecked(SEXPTYPE::STRSXP, len) }
     }
 
     // region: Typed vector allocation shortcuts
