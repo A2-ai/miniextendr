@@ -127,25 +127,31 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 #             expects pre-generated files from the host devtools::document() pass.
 #   tarball : R/<pkg>-wrappers.R is already committed and ships in the tarball;
 #             the cdylib regeneration would be a no-op (write-if-changed), so
-#             skip the 10-30 s cdylib build entirely. Existence guard catches
-#             a tarball that was manually stripped of its wrappers file.
-#             Set MINIEXTENDR_FORCE_WRAPPER_GEN to override (debugging only).
+#             skip the 10-30 s cdylib build entirely (#1022). The pre-commit hook
+#             guarantees the shipped wrappers match the Rust code in the tarball,
+#             so the committed file is exactly what regeneration would produce.
+#             LOAD-BEARING GUARD: skip only when R/<pkg>-wrappers.R exists AND is
+#             non-empty ([ -s ]). If it is absent or empty (a tarball stripped of
+#             its wrappers, a truncated download, etc.), FALL BACK to the full
+#             cdylib wrapper-gen path rather than installing a wrapper-less,
+#             silently-broken package. The same condition gates $(CARGO_CDYLIB)
+#             below, so the cdylib is built exactly when this recipe needs to load
+#             it. Set MINIEXTENDR_FORCE_WRAPPER_GEN to force regeneration even when
+#             the shipped wrappers are valid (debugging only).
 #   dev     : full cdylib build + wrapper generation (normal dev/CI flow).
 $(WRAPPERS_R): $(CARGO_CDYLIB)
 	@set -e; \
 	if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
 	  echo "wasm32 install: skipping wrapper-gen (pre-generated R/$(PACKAGE_NAME)-wrappers.R + src/rust/wasm_registry.rs expected)"; \
 	  touch '$(WRAPPERS_R)'; \
-	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; then \
-	  echo "tarball install: using pre-shipped R/$(PACKAGE_NAME)-wrappers.R"; \
-	  if [ ! -f '$(WRAPPERS_R)' ]; then \
-	    echo "ERROR: tarball is missing pre-generated $(WRAPPERS_R)" >&2; \
-	    exit 1; \
-	  fi; \
+	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && [ -s '$(WRAPPERS_R)' ]; then \
+	  echo "tarball install: using pre-shipped R/$(PACKAGE_NAME)-wrappers.R (skipping cdylib wrapper-gen, #1022)"; \
 	  touch '$(WRAPPERS_R)'; \
 	else \
-	  if [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
+	  if [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -n "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; then \
 	    echo "MINIEXTENDR_FORCE_WRAPPER_GEN set: regenerating wrappers from cdylib (tarball mode override)..."; \
+	  elif [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
+	    echo "tarball install: pre-shipped R/$(PACKAGE_NAME)-wrappers.R absent or empty — falling back to full cdylib wrapper-gen (#1022 guard)..." >&2; \
 	  else \
 	    echo "Generating R wrappers + wasm_registry.rs..."; \
 	  fi; \
@@ -164,11 +170,15 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 
 # Build cdylib for wrapper generation.
 # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
-# No-op in wasm32 / tarball-without-FORCE installs (the guard exits early): those
-# modes reuse the committed wrappers and never need a cdylib.
+# No-op in wasm32 / tarball installs that reuse the committed wrappers (the guard
+# exits early): those modes never need a cdylib. The tarball-skip condition here
+# MUST match the $(WRAPPERS_R) recipe above — skip only when tarball mode, no
+# MINIEXTENDR_FORCE_WRAPPER_GEN, AND R/<pkg>-wrappers.R is present and non-empty
+# ([ -s ]). If the shipped wrappers are missing/empty, this recipe builds the
+# cdylib so the wrapper-gen fallback (#1022 guard) has something to load.
 $(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) $(CARGO_AR)
 	@set -e; \
-	if [ "$(IS_WASM_INSTALL)" = "true" ] || { [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; }; then exit 0; fi; \
+	if [ "$(IS_WASM_INSTALL)" = "true" ] || { [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && [ -s '$(WRAPPERS_R)' ]; }; then exit 0; fi; \
 	TARGET_OPT=""; \
 	CDYLIB_LINK_ARGS=""; \
 	for obj in $(OBJECTS); do CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
