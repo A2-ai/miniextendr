@@ -46,7 +46,8 @@ use std::hash::Hash;
 
 use crate::SexpExt;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::gc_protect::OwnedProtect;
+use crate::gc_protect::{OwnedProtect, ProtectScope};
+use crate::list::ListBuilder;
 
 /// Trait for converting Rust types to R SEXP values.
 ///
@@ -1462,14 +1463,20 @@ impl IntoR for Vec<&str> {
 /// This is the shared core for the "protect a VECSXP, fill it via
 /// `SET_VECTOR_ELT`, unprotect" idiom that recurs across the `IntoR` impls for
 /// nested collections (`Vec<Vec<T>>`, `Vec<&[T]>`, tuples, `Vec<Box<[T]>>`,
-/// `Vec<[T; N]>`, `Vec<HashMap<..>>`, …). The list is protected by an
-/// [`OwnedProtect`] guard for the duration of `fill`, so any child allocations
-/// performed inside `fill` cannot collect the list; the guard's `Drop` issues
-/// the matching `UNPROTECT(1)` — the protect/unprotect count is balanced by
-/// construction (RAII), so a miscount is unrepresentable.
+/// `Vec<[T; N]>`, `Vec<HashMap<..>>`, …). It routes through [`ListBuilder`]
+/// over a local [`ProtectScope`]: the list is allocated and protected by the
+/// scope for the duration of `fill`, so any child allocations performed inside
+/// `fill` cannot collect the list; the scope's `Drop` issues the matching
+/// `UNPROTECT(1)` — the protect/unprotect count is balanced by construction
+/// (RAII), so a miscount is unrepresentable. The returned SEXP is **unprotected**
+/// (the scope has dropped); the caller must protect it before any further
+/// allocation.
 ///
 /// `fill` receives the protected list SEXP and is responsible for populating it
-/// (via the checked [`set_vector_elt`](crate::SexpExt::set_vector_elt)).
+/// (via the checked [`set_vector_elt`](crate::SexpExt::set_vector_elt)). For the
+/// homogeneous "list of converted children" case prefer [`vecsxp_from_iter`];
+/// `fill` is for heterogeneous fills (e.g. tuples, where each slot has a
+/// distinct element type).
 ///
 /// # Safety
 ///
@@ -1477,19 +1484,17 @@ impl IntoR for Vec<&str> {
 #[inline]
 unsafe fn build_vecsxp(n: usize, fill: impl FnOnce(crate::SEXP)) -> crate::SEXP {
     unsafe {
-        let list = OwnedProtect::new(crate::sys::Rf_allocVector(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
-        fill(list.get());
-        *list
+        let scope = ProtectScope::new();
+        let builder = ListBuilder::new(&scope, n);
+        fill(builder.as_sexp());
+        builder.into_sexp()
     }
 }
 
 /// `_unchecked` twin of [`build_vecsxp`] for contexts where the checked FFI
 /// thread assertion must be bypassed (ALTREP callbacks, `with_r_unwind_protect`,
-/// `with_r_thread`). Allocates via `Rf_allocVector_unchecked`; `fill` must use
-/// the `_unchecked` setters.
+/// `with_r_thread`). Allocates via [`ListBuilder::new_unchecked`]; `fill` must
+/// use the `_unchecked` setters.
 ///
 /// # Safety
 ///
@@ -1499,22 +1504,20 @@ unsafe fn build_vecsxp(n: usize, fill: impl FnOnce(crate::SEXP)) -> crate::SEXP 
 #[inline]
 unsafe fn build_vecsxp_unchecked(n: usize, fill: impl FnOnce(crate::SEXP)) -> crate::SEXP {
     unsafe {
-        let list = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
-        fill(list.get());
-        *list
+        let scope = ProtectScope::new();
+        let builder = ListBuilder::new_unchecked(&scope, n);
+        fill(builder.as_sexp());
+        builder.into_sexp()
     }
 }
 
 /// Build a VECSXP from an exact-size iterator of child `SEXP`s (checked).
 ///
-/// The list is protected before iteration begins; the iterator is consumed
+/// Routes through [`ListBuilder`]: the list is allocated and protected by a
+/// local [`ProtectScope`] before iteration begins, then the iterator is consumed
 /// inside the protected window so each child produced lazily (typically via a
-/// `.map(|c| c.into_sexp())` adaptor at the callsite) is inserted immediately,
-/// closing the GC gap. Collapses the dominant protect-container-fill-unprotect
-/// idiom onto [`build_vecsxp`].
+/// `.map(|c| c.into_sexp())` adaptor at the callsite) is inserted immediately
+/// via [`ListBuilder::set`], closing the GC gap.
 ///
 /// The element type is `SEXP` (not a generic `IntoR`) deliberately: the caller
 /// performs the conversion lazily in the iterator adaptor, which keeps the
@@ -1529,16 +1532,16 @@ where
     I: ExactSizeIterator<Item = crate::SEXP>,
 {
     unsafe {
-        let n = iter.len();
-        build_vecsxp(n, |list| {
-            for (i, child) in iter.enumerate() {
-                list.set_vector_elt(i as crate::R_xlen_t, child);
-            }
-        })
+        let scope = ProtectScope::new();
+        let builder = ListBuilder::new(&scope, iter.len());
+        for (i, child) in iter.enumerate() {
+            builder.set(i as isize, child);
+        }
+        builder.into_sexp()
     }
 }
 
-/// `_unchecked` twin of [`vecsxp_from_iter`] — uses the `_unchecked` setter.
+/// `_unchecked` twin of [`vecsxp_from_iter`] — uses [`ListBuilder::set_unchecked`].
 /// For ALTREP / `with_r_thread` / unwind contexts. The caller's adaptor must
 /// produce children via `into_sexp_unchecked()`.
 ///
@@ -1552,12 +1555,12 @@ where
     I: ExactSizeIterator<Item = crate::SEXP>,
 {
     unsafe {
-        let n = iter.len();
-        build_vecsxp_unchecked(n, |list| {
-            for (i, child) in iter.enumerate() {
-                list.set_vector_elt_unchecked(i as crate::R_xlen_t, child);
-            }
-        })
+        let scope = ProtectScope::new();
+        let builder = ListBuilder::new_unchecked(&scope, iter.len());
+        for (i, child) in iter.enumerate() {
+            builder.set_unchecked(i as isize, child);
+        }
+        builder.into_sexp()
     }
 }
 
