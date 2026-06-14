@@ -1111,16 +1111,18 @@ impl IntoR for Vec<List> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+            use crate::gc_protect::OwnedProtect;
+            use crate::sys::Rf_allocVector;
             use crate::{SEXPTYPE, SexpExt as _};
             let n = self.len() as crate::R_xlen_t;
-            let out = Rf_allocVector(SEXPTYPE::VECSXP, n);
-            Rf_protect(out);
+            // OwnedProtect guards `out` across the per-element fill; its Drop
+            // issues the matching UNPROTECT(1) (RAII — count balanced by
+            // construction).
+            let out = OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n));
             for (i, list) in self.into_iter().enumerate() {
-                out.set_vector_elt(i as crate::R_xlen_t, list.0);
+                out.get().set_vector_elt(i as crate::R_xlen_t, list.0);
             }
-            Rf_unprotect(1);
-            out
+            *out
         }
     }
 }
@@ -1140,20 +1142,20 @@ impl IntoR for Vec<Option<List>> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+            use crate::gc_protect::OwnedProtect;
+            use crate::sys::Rf_allocVector;
             use crate::{SEXPTYPE, SexpExt as _};
             let n = self.len() as crate::R_xlen_t;
             // VECSXP slots are zero-initialised to R_NilValue by Rf_allocVector,
-            // so None elements require no explicit fill.
-            let out = Rf_allocVector(SEXPTYPE::VECSXP, n);
-            Rf_protect(out);
+            // so None elements require no explicit fill. OwnedProtect guards
+            // `out` across the fill and issues the matching UNPROTECT(1) on Drop.
+            let out = OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n));
             for (i, opt) in self.into_iter().enumerate() {
                 if let Some(list) = opt {
-                    out.set_vector_elt(i as crate::R_xlen_t, list.0);
+                    out.get().set_vector_elt(i as crate::R_xlen_t, list.0);
                 }
             }
-            Rf_unprotect(1);
-            out
+            *out
         }
     }
 }

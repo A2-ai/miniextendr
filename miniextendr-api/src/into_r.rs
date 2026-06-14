@@ -1455,6 +1455,114 @@ impl IntoR for Vec<&str> {
 }
 // endregion
 
+// region: VECSXP-from-iterator helpers
+
+/// Build a VECSXP of length `n`, protecting it across the fill, and return it.
+///
+/// This is the shared core for the "protect a VECSXP, fill it via
+/// `SET_VECTOR_ELT`, unprotect" idiom that recurs across the `IntoR` impls for
+/// nested collections (`Vec<Vec<T>>`, `Vec<&[T]>`, tuples, `Vec<Box<[T]>>`,
+/// `Vec<[T; N]>`, `Vec<HashMap<..>>`, …). The list is protected by an
+/// [`OwnedProtect`] guard for the duration of `fill`, so any child allocations
+/// performed inside `fill` cannot collect the list; the guard's `Drop` issues
+/// the matching `UNPROTECT(1)` — the protect/unprotect count is balanced by
+/// construction (RAII), so a miscount is unrepresentable.
+///
+/// `fill` receives the protected list SEXP and is responsible for populating it
+/// (via the checked [`set_vector_elt`](crate::SexpExt::set_vector_elt)).
+///
+/// # Safety
+///
+/// Must be called from the R main thread.
+#[inline]
+unsafe fn build_vecsxp(n: usize, fill: impl FnOnce(crate::SEXP)) -> crate::SEXP {
+    unsafe {
+        let list = OwnedProtect::new(crate::sys::Rf_allocVector(
+            crate::SEXPTYPE::VECSXP,
+            n as crate::R_xlen_t,
+        ));
+        fill(list.get());
+        *list
+    }
+}
+
+/// `_unchecked` twin of [`build_vecsxp`] for contexts where the checked FFI
+/// thread assertion must be bypassed (ALTREP callbacks, `with_r_unwind_protect`,
+/// `with_r_thread`). Allocates via `Rf_allocVector_unchecked`; `fill` must use
+/// the `_unchecked` setters.
+///
+/// # Safety
+///
+/// Must be called from the R main thread, and only from a context where the
+/// checked-FFI assertion is intentionally bypassed (see CLAUDE.md "FFI thread
+/// checking").
+#[inline]
+unsafe fn build_vecsxp_unchecked(n: usize, fill: impl FnOnce(crate::SEXP)) -> crate::SEXP {
+    unsafe {
+        let list = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
+            crate::SEXPTYPE::VECSXP,
+            n as crate::R_xlen_t,
+        ));
+        fill(list.get());
+        *list
+    }
+}
+
+/// Build a VECSXP from an exact-size iterator of child `SEXP`s (checked).
+///
+/// The list is protected before iteration begins; the iterator is consumed
+/// inside the protected window so each child produced lazily (typically via a
+/// `.map(|c| c.into_sexp())` adaptor at the callsite) is inserted immediately,
+/// closing the GC gap. Collapses the dominant protect-container-fill-unprotect
+/// idiom onto [`build_vecsxp`].
+///
+/// The element type is `SEXP` (not a generic `IntoR`) deliberately: the caller
+/// performs the conversion lazily in the iterator adaptor, which keeps the
+/// trait solver from chasing the recursive `Vec<Option<Vec<T>>>` impl.
+///
+/// # Safety
+///
+/// Must be called from the R main thread.
+#[inline]
+unsafe fn vecsxp_from_iter<I>(iter: I) -> crate::SEXP
+where
+    I: ExactSizeIterator<Item = crate::SEXP>,
+{
+    unsafe {
+        let n = iter.len();
+        build_vecsxp(n, |list| {
+            for (i, child) in iter.enumerate() {
+                list.set_vector_elt(i as crate::R_xlen_t, child);
+            }
+        })
+    }
+}
+
+/// `_unchecked` twin of [`vecsxp_from_iter`] — uses the `_unchecked` setter.
+/// For ALTREP / `with_r_thread` / unwind contexts. The caller's adaptor must
+/// produce children via `into_sexp_unchecked()`.
+///
+/// # Safety
+///
+/// Must be called from the R main thread, in a context where the checked-FFI
+/// assertion is intentionally bypassed.
+#[inline]
+unsafe fn vecsxp_from_iter_unchecked<I>(iter: I) -> crate::SEXP
+where
+    I: ExactSizeIterator<Item = crate::SEXP>,
+{
+    unsafe {
+        let n = iter.len();
+        build_vecsxp_unchecked(n, |list| {
+            for (i, child) in iter.enumerate() {
+                list.set_vector_elt_unchecked(i as crate::R_xlen_t, child);
+            }
+        })
+    }
+}
+
+// endregion
+
 // region: Nested vector conversions (list of vectors)
 
 /// Convert `Vec<Vec<T>>` to R list of vectors (VECSXP of typed vectors).
@@ -1470,36 +1578,11 @@ where
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-            }
-
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter(self.into_iter().map(|c| c.into_sexp())) }
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
-            }
-
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter_unchecked(self.into_iter().map(|c| c.into_sexp_unchecked())) }
     }
 }
 
@@ -1515,31 +1598,10 @@ impl<T: crate::RNativeType> IntoR for Vec<&[T]> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-            }
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter(self.into_iter().map(|c| c.into_sexp())) }
     }
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
-            }
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter_unchecked(self.into_iter().map(|c| c.into_sexp_unchecked())) }
     }
 }
 
@@ -1555,31 +1617,10 @@ impl IntoR for Vec<&[String]> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-            }
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter(self.into_iter().map(|c| c.into_sexp())) }
     }
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
-            }
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter_unchecked(self.into_iter().map(|c| c.into_sexp_unchecked())) }
     }
 }
 
@@ -1593,36 +1634,11 @@ impl IntoR for Vec<Vec<String>> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp();
-                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-            }
-
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter(self.into_iter().map(|c| c.into_sexp())) }
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list =
-                crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-
-            for (i, inner) in self.into_iter().enumerate() {
-                let inner_sexp = inner.into_sexp_unchecked();
-                list.set_vector_elt_unchecked(i as crate::R_xlen_t, inner_sexp);
-            }
-
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter_unchecked(self.into_iter().map(|c| c.into_sexp_unchecked())) }
     }
 }
 // endregion
@@ -1973,39 +1989,21 @@ macro_rules! impl_tuple_into_r {
             }
             fn into_sexp(self) -> crate::SEXP {
                 unsafe {
-                    let list = crate::sys::Rf_allocVector(
-                        crate::SEXPTYPE::VECSXP,
-                        $n as crate::R_xlen_t
-                    );
-                    crate::sys::Rf_protect(list);
-
-                    $(
-
-                            list.set_vector_elt($idx as crate::R_xlen_t, self.$idx.into_sexp()
-                        );
-                    )+
-
-                    crate::sys::Rf_unprotect(1);
-                    list
+                    build_vecsxp($n, |list| {
+                        $(
+                            list.set_vector_elt($idx as crate::R_xlen_t, self.$idx.into_sexp());
+                        )+
+                    })
                 }
             }
 
             unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
-                    let list = crate::sys::Rf_allocVector_unchecked(
-                        crate::SEXPTYPE::VECSXP,
-                        $n as crate::R_xlen_t
-                    );
-                    crate::sys::Rf_protect(list);
-
-                    $(
-
-                            list.set_vector_elt_unchecked($idx as crate::R_xlen_t, self.$idx.into_sexp_unchecked()
-                        );
-                    )+
-
-                    crate::sys::Rf_unprotect(1);
-                    list
+                    build_vecsxp_unchecked($n, |list| {
+                        $(
+                            list.set_vector_elt_unchecked($idx as crate::R_xlen_t, self.$idx.into_sexp_unchecked());
+                        )+
+                    })
                 }
             }
         }
@@ -2135,37 +2133,13 @@ where
         self.try_into_sexp()
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n = self.len();
-            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-
-            for (i, boxed_slice) in self.into_iter().enumerate() {
-                let vec: Vec<T> = boxed_slice.into_vec();
-                let inner_sexp = vec.into_sexp();
-                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-            }
-
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter(self.into_iter().map(|b| b.into_vec().into_sexp())) }
     }
 }
 
 // Convert `Vec<Box<[String]>>` to R list of character vectors.
 into_r_infallible!(Vec<Box<[String]>>, |this| unsafe {
-    let n = this.len();
-    let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-    crate::sys::Rf_protect(list);
-
-    for (i, boxed_slice) in this.into_iter().enumerate() {
-        let vec: Vec<String> = boxed_slice.into_vec();
-        let inner_sexp = vec.into_sexp();
-        list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-    }
-
-    crate::sys::Rf_unprotect(1);
-    list
+    vecsxp_from_iter(this.into_iter().map(|b| b.into_vec().into_sexp()))
 });
 
 /// Convert `Vec<[T; N]>` to R list of vectors.
@@ -2182,20 +2156,7 @@ where
         self.try_into_sexp()
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let len = self.len();
-            let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, len as crate::R_xlen_t);
-            crate::sys::Rf_protect(list);
-
-            for (i, array) in self.into_iter().enumerate() {
-                let vec: Vec<T> = array.into();
-                let inner_sexp = vec.into_sexp();
-                list.set_vector_elt(i as crate::R_xlen_t, inner_sexp);
-            }
-
-            crate::sys::Rf_unprotect(1);
-            list
-        }
+        unsafe { vecsxp_from_iter(self.into_iter().map(|a| Vec::from(a).into_sexp())) }
     }
 }
 
@@ -2434,18 +2395,7 @@ impl_vec_map_into_r!(
 
 /// Helper to convert a Vec of map-like types to an R list of named lists.
 fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::SEXP {
-    unsafe {
-        let n = vec.len();
-        let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);
-        crate::sys::Rf_protect(list);
-
-        for (i, map) in vec.into_iter().enumerate() {
-            list.set_vector_elt(i as crate::R_xlen_t, map.into_sexp());
-        }
-
-        crate::sys::Rf_unprotect(1);
-        list
-    }
+    unsafe { vecsxp_from_iter(vec.into_iter().map(|c| c.into_sexp())) }
 }
 // endregion
 
@@ -2462,18 +2412,18 @@ mod connections_into_r {
     // # Safety
     // Must be called from the R main thread.
     unsafe fn eval_base_noarg(name: &std::ffi::CStr) -> SEXP {
-        use crate::sys::{R_BaseEnv, Rf_install, Rf_lang1, Rf_protect, Rf_unprotect};
+        use crate::gc_protect::OwnedProtect;
+        use crate::sys::{R_BaseEnv, Rf_install, Rf_lang1};
         unsafe {
-            let call = Rf_lang1(Rf_install(name.as_ptr()));
-            Rf_protect(call);
+            let call = OwnedProtect::new(Rf_lang1(Rf_install(name.as_ptr())));
             let mut err: std::os::raw::c_int = 0;
-            let result = crate::sys::R_tryEvalSilent(call, R_BaseEnv, &mut err);
-            Rf_unprotect(1);
+            let result = crate::sys::R_tryEvalSilent(call.get(), R_BaseEnv, &mut err);
             if err != 0 {
                 panic!("failed to evaluate {}()", name.to_string_lossy());
             }
             result
         }
+        // `call` (OwnedProtect) drops here, issuing the matching UNPROTECT(1).
     }
 
     impl IntoR for RStdin {
