@@ -2375,3 +2375,75 @@ pub fn gc_stress_alloc_wrappers() -> i32 {
 // endregion
 
 // endregion
+
+// region: AsNamedList deferred-value GC stress (issue #1030)
+
+/// Exercise the `AsNamedList<Vec<(String, V)>>` deferred-conversion path under
+/// GC pressure.
+///
+/// `AsNamedList::into_sexp` builds each value's `SEXP` and hands the lot to
+/// `List::from_raw_pairs`. Before #1030 the values were collected unprotected
+/// (`.map(|(k, v)| (k, v.into_sexp())).collect()`), so an earlier value sat
+/// unrooted while a later value's `into_sexp()` allocated — a use-after-free
+/// under `gctorture(TRUE)`. The fix wraps each `v.into_sexp()` in
+/// `ProtectScope::protect_raw` so every sibling stays rooted across the next
+/// allocation.
+///
+/// This fixture drives a *typed* heterogeneous list (the GC-safe replacement
+/// for the old raw-`SEXP`-value fixture): a mix of character, integer and
+/// double scalar values (each scalar allocation can fire GC), repeated enough
+/// times that `from_raw_pairs`'s own `charsxp`/`SET_VECTOR_ELT` allocations
+/// interleave with the value builds. Honest readback: every element is read
+/// back through `VECTOR_ELT` and compared, so a collected value would surface
+/// as a wrong/garbage element rather than silently passing.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_as_named_list_deferred() {
+    use crate::conversions::AsNamedListAny;
+    use miniextendr_api::AsNamedList;
+    use miniextendr_api::prelude::SexpExt as _;
+
+    let n = 24usize;
+
+    // Build a typed heterogeneous list: each value is plain Rust data until
+    // `AsNamedList::into_sexp` converts + protects it. Three scalar shapes so
+    // STRSXP, INTSXP and REALSXP allocations all interleave.
+    let pairs: Vec<(String, AsNamedListAny)> = (0..n)
+        .map(|i| {
+            let value = match i % 3 {
+                0 => AsNamedListAny::Text(format!("v-{i}")),
+                1 => AsNamedListAny::Int(i as i32),
+                _ => AsNamedListAny::Real(f64::from(i as i32) * 1.5),
+            };
+            (format!("k-{i}"), value)
+        })
+        .collect();
+
+    // Drive the production conversion path (defers to `from_raw_pairs`).
+    let sexp = AsNamedList(pairs).into_sexp();
+
+    // Allocation-free honest readback: a collected value SEXP would be garbage.
+    assert_eq!(sexp.len(), n, "AsNamedList produced wrong length");
+    for i in 0..n {
+        let elt = sexp.vector_elt(i as isize);
+        match i % 3 {
+            0 => {
+                let s = elt.string_elt_str(0).expect("string value collected (NA)");
+                assert_eq!(s, format!("v-{i}"), "string value collected/garbled");
+            }
+            1 => {
+                assert_eq!(elt.integer_elt(0), i as i32, "int value collected/garbled");
+            }
+            _ => {
+                assert_eq!(
+                    elt.real_elt(0),
+                    f64::from(i as i32) * 1.5,
+                    "real value collected/garbled"
+                );
+            }
+        }
+    }
+}
+
+// endregion

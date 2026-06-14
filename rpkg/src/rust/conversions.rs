@@ -1427,6 +1427,43 @@ pub fn conv_option_u32_some() -> Option<u32> {
 
 use miniextendr_api::{AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt};
 
+/// A typed, heterogeneous value usable inside `AsNamedList<Vec<(String, T)>>`.
+///
+/// This is the GC-safe replacement for raw `SEXP` values (#1030): instead of
+/// pre-building each `SEXP` in the caller (which leaves siblings unprotected
+/// across allocations), the value stays plain Rust data until `into_sexp()`
+/// runs *inside* `AsNamedList::into_sexp`, where each conversion is immediately
+/// `protect_raw`-rooted before the next allocates.
+#[derive(Debug, Clone)]
+pub enum AsNamedListAny {
+    /// Becomes an R character scalar (`STRSXP` length 1).
+    Text(String),
+    /// Becomes an R integer scalar (`INTSXP` length 1).
+    Int(i32),
+    /// Becomes an R double scalar (`REALSXP` length 1).
+    Real(f64),
+}
+
+impl IntoR for AsNamedListAny {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
+    fn into_sexp(self) -> SEXP {
+        match self {
+            AsNamedListAny::Text(s) => s.into_sexp(),
+            AsNamedListAny::Int(i) => i.into_sexp(),
+            AsNamedListAny::Real(r) => r.into_sexp(),
+        }
+    }
+}
+
 /// Return test: `AsNamedList<Vec<(String, i32)>>` -> R named list.
 #[miniextendr]
 pub fn conv_as_named_list_vec() -> AsNamedList<Vec<(String, i32)>> {
@@ -1446,21 +1483,23 @@ pub fn conv_as_named_list_array() -> AsNamedList<[(String, f64); 2]> {
     ])
 }
 
-/// Return test: `AsNamedList` with heterogeneous SEXP values -> R named list.
+/// Return test: `AsNamedList` with heterogeneous typed values -> R named list.
+///
+/// Previously this fixture used raw `SEXP` values (`Vec<(String, SEXP)>`) and
+/// suppressed MXL302, because the deferred `AsNamedList::into_sexp` ran in a
+/// later frame than the value construction — a structural GC hazard with no
+/// fixable call site (#1030). It is migrated to typed values via the
+/// [`AsNamedListAny`] heterogeneous-element enum: each variant's `into_sexp()`
+/// runs *inside* `AsNamedList::into_sexp`, immediately before being protected
+/// and placed into the list, so no sibling is ever unprotected across an
+/// allocation. The MXL302 suppression is gone because there is no longer an
+/// `into_sexp()` call inside the `vec!` literal.
 #[miniextendr]
-pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::SEXP)>> {
-    use miniextendr_api::IntoR;
-    // NOTE: This `AsNamedList<Vec<(String, SEXP)>>` fixture is inherently GC-fragile and
-    // cannot be fully fixed at this call site — the raw SEXP values are converted to a
-    // list by `AsNamedList::into_sexp` in a *later* frame (the generated wrapper), so any
-    // protect scope opened here would unprotect before that conversion runs. Tracked in
-    // #1030 (deferred-SEXP-value `AsNamedList` GC-safety). The values are built and
-    // immediately consumed on the main thread with no intervening user GC, so the existing
-    // tests pass; MXL302 is suppressed deliberately rather than masking a fixable site.
+pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, AsNamedListAny)>> {
     AsNamedList(vec![
-        ("name".into(), "Alice".to_string().into_sexp()), // mxl::allow(MXL302)
-        ("age".into(), 30i32.into_sexp()),                // mxl::allow(MXL302)
-        ("score".into(), 95.5f64.into_sexp()),            // mxl::allow(MXL302)
+        ("name".into(), AsNamedListAny::Text("Alice".to_string())),
+        ("age".into(), AsNamedListAny::Int(30)),
+        ("score".into(), AsNamedListAny::Real(95.5)),
     ])
 }
 

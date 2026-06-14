@@ -567,6 +567,27 @@ impl<T: crate::vctrs::IntoVctrs> IntoR for AsVctrs<T> {
 /// | `[(K, V); N]` | `K: AsRef<str>`, `V: IntoR` |
 /// | `&[(K, V)]` | `K: AsRef<str>`, `V: Clone + IntoR` |
 ///
+/// # GC safety — use *typed* values, never raw `SEXP` (#1030)
+///
+/// Prefer typed value types (`i32`, `String`, `Vec<T>`, …) over raw
+/// [`crate::SEXP`]. With a typed `V`, each value's `into_sexp()` runs *inside*
+/// [`AsNamedList::into_sexp`][IntoR::into_sexp], immediately before the value is
+/// protected and placed into the list — no allocation ever fires while a sibling
+/// value sits unprotected.
+///
+/// A raw `SEXP` value (`V = SEXP`) is **GC-fragile and must not be used**. The
+/// caller has to build the `SEXP` values *in an earlier frame* (each `into_sexp()`
+/// allocates) and then hand them to `AsNamedList`; the deferred `from_raw_pairs`
+/// runs later, in the generated wrapper, so there is **no call site at which a
+/// `ProtectScope` can span both value construction and the deferred list build**.
+/// The internal protection added in `into_sexp` (below) closes the *receipt →
+/// `from_raw_pairs`* window but cannot retroactively protect values that were
+/// already built and unrooted in the caller — that *construction* window is the
+/// latent use-after-free. Stable Rust cannot exclude one concrete type from a
+/// `V: IntoR` blanket, so this is enforced by convention (and the MXL302 lint on
+/// the `into_sexp()`-in-`vec!` idiom) rather than the type system; passing typed
+/// values sidesteps the hazard entirely.
+///
 /// # Example
 ///
 /// ```ignore
@@ -600,12 +621,20 @@ impl<K: AsRef<str>, V: IntoR> IntoR for AsNamedList<Vec<(K, V)>> {
     }
 
     fn into_sexp(self) -> crate::SEXP {
-        let pairs: Vec<(K, crate::SEXP)> = self
-            .0
-            .into_iter()
-            .map(|(k, v)| (k, v.into_sexp()))
-            .collect();
-        List::from_raw_pairs(pairs).into_sexp()
+        // SAFETY: `into_sexp` for `#[miniextendr]` return values runs on the R
+        // main thread. Each value's `into_sexp()` is built and immediately
+        // `protect_raw`-rooted before the next value's allocation, mirroring the
+        // `#[derive(IntoList)]` codegen — no sibling sits unprotected across an
+        // allocation. The scope drops after `from_raw_pairs` returns. (#1030)
+        unsafe {
+            let scope = crate::gc_protect::ProtectScope::new();
+            let pairs: Vec<(K, crate::SEXP)> = self
+                .0
+                .into_iter()
+                .map(|(k, v)| (k, scope.protect_raw(v.into_sexp())))
+                .collect();
+            List::from_raw_pairs(pairs).into_sexp()
+        }
     }
 }
 
@@ -621,12 +650,17 @@ impl<K: AsRef<str>, V: IntoR, const N: usize> IntoR for AsNamedList<[(K, V); N]>
     }
 
     fn into_sexp(self) -> crate::SEXP {
-        let pairs: Vec<(K, crate::SEXP)> = self
-            .0
-            .into_iter()
-            .map(|(k, v)| (k, v.into_sexp()))
-            .collect();
-        List::from_raw_pairs(pairs).into_sexp()
+        // SAFETY: see the `Vec<(K, V)>` impl above — main thread, each value
+        // rooted before the next allocates. (#1030)
+        unsafe {
+            let scope = crate::gc_protect::ProtectScope::new();
+            let pairs: Vec<(K, crate::SEXP)> = self
+                .0
+                .into_iter()
+                .map(|(k, v)| (k, scope.protect_raw(v.into_sexp())))
+                .collect();
+            List::from_raw_pairs(pairs).into_sexp()
+        }
     }
 }
 
@@ -642,12 +676,17 @@ impl<K: AsRef<str>, V: Clone + IntoR> IntoR for AsNamedList<&[(K, V)]> {
     }
 
     fn into_sexp(self) -> crate::SEXP {
-        let pairs: Vec<(&K, crate::SEXP)> = self
-            .0
-            .iter()
-            .map(|(k, v)| (k, v.clone().into_sexp()))
-            .collect();
-        List::from_raw_pairs(pairs).into_sexp()
+        // SAFETY: see the `Vec<(K, V)>` impl above — main thread, each value
+        // rooted before the next allocates. (#1030)
+        unsafe {
+            let scope = crate::gc_protect::ProtectScope::new();
+            let pairs: Vec<(&K, crate::SEXP)> = self
+                .0
+                .iter()
+                .map(|(k, v)| (k, scope.protect_raw(v.clone().into_sexp())))
+                .collect();
+            List::from_raw_pairs(pairs).into_sexp()
+        }
     }
 }
 
