@@ -340,6 +340,25 @@ impl<'a> StrVecBuilder<'a> {
         Self { vec, _scope: scope }
     }
 
+    /// Create a new string vector builder via the **unchecked** FFI allocation path.
+    ///
+    /// `_unchecked` twin of [`new`](Self::new): the STRSXP is allocated with
+    /// `Rf_allocVector_unchecked` (see [`ProtectScope::alloc_character_unchecked`]),
+    /// bypassing the main-thread assertion. Use inside ALTREP callbacks,
+    /// `with_r_unwind_protect`, or `with_r_thread` bodies, and pair element
+    /// insertion with the `_unchecked` string-element setters.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread, in a context where the checked-FFI
+    /// assertion is intentionally bypassed (see CLAUDE.md "FFI thread checking").
+    #[inline]
+    pub unsafe fn new_unchecked(scope: &'a ProtectScope, len: usize) -> Self {
+        // SAFETY: caller guarantees R main thread in a checked-bypass context.
+        let vec = unsafe { scope.alloc_character_unchecked(len).into_raw() };
+        Self { vec, _scope: scope }
+    }
+
     /// Set an element from a Rust string.
     ///
     /// # Safety

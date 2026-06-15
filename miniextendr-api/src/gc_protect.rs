@@ -168,7 +168,8 @@ use crate::sexp_types::cetype_t;
 use crate::sys::{
     R_MakeExternalPtr, R_NewEnv, R_ProtectWithIndex, R_Reprotect, Rf_alloc3DArray, Rf_allocArray,
     Rf_allocLang, Rf_allocList, Rf_allocMatrix, Rf_allocS4Object, Rf_allocSExp, Rf_allocVector,
-    Rf_cons, Rf_lcons, Rf_lengthgets, Rf_mkCharLenCE, Rf_protect, Rf_unprotect, Rf_xlengthgets,
+    Rf_allocVector_unchecked, Rf_cons, Rf_lcons, Rf_lengthgets, Rf_mkCharLenCE, Rf_protect,
+    Rf_unprotect, Rf_xlengthgets,
 };
 use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::cell::Cell;
@@ -494,6 +495,57 @@ impl ProtectScope {
     pub unsafe fn alloc_vecsxp<'a>(&'a self, n: usize) -> Root<'a> {
         let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
         unsafe { self.alloc_vector(SEXPTYPE::VECSXP, len) }
+    }
+
+    /// Allocate a vector via the **unchecked** FFI path and immediately protect it.
+    ///
+    /// `_unchecked` twin of [`alloc_vector`](Self::alloc_vector): allocates with
+    /// `Rf_allocVector_unchecked` (bypassing the main-thread assertion / worker
+    /// round-trip) for use inside ALTREP callbacks, `with_r_unwind_protect`, or
+    /// `with_r_thread` bodies. Protection still goes through the (checked)
+    /// `Rf_protect` — matching the established `OwnedProtect`-in-unchecked-context
+    /// idiom — and is released with the rest of the scope on drop.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread, and only from a context where the
+    /// checked-FFI assertion is intentionally bypassed (see CLAUDE.md "FFI thread
+    /// checking").
+    #[inline]
+    pub unsafe fn alloc_vector_unchecked<'a>(&'a self, ty: SEXPTYPE, n: R_xlen_t) -> Root<'a> {
+        // SAFETY: caller guarantees R main thread in a checked-bypass context.
+        let sexp = unsafe { Rf_allocVector_unchecked(ty, n) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a VECSXP via the **unchecked** FFI path, protected.
+    ///
+    /// `_unchecked` twin of [`alloc_vecsxp`](Self::alloc_vecsxp). See
+    /// [`alloc_vector_unchecked`](Self::alloc_vector_unchecked) for the safety
+    /// contract.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector_unchecked`](Self::alloc_vector_unchecked).
+    #[inline]
+    pub unsafe fn alloc_vecsxp_unchecked<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector_unchecked(SEXPTYPE::VECSXP, len) }
+    }
+
+    /// Allocate a STRSXP via the **unchecked** FFI path, protected.
+    ///
+    /// `_unchecked` twin of [`alloc_character`](Self::alloc_character). See
+    /// [`alloc_vector_unchecked`](Self::alloc_vector_unchecked) for the safety
+    /// contract.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector_unchecked`](Self::alloc_vector_unchecked).
+    #[inline]
+    pub unsafe fn alloc_character_unchecked<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector_unchecked(SEXPTYPE::STRSXP, len) }
     }
 
     // region: Typed vector allocation shortcuts

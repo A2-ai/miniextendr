@@ -566,6 +566,28 @@ impl<'a> ListBuilder<'a> {
         }
     }
 
+    /// Create a new list builder via the **unchecked** FFI allocation path.
+    ///
+    /// `_unchecked` twin of [`new`](Self::new): the VECSXP is allocated with
+    /// `Rf_allocVector_unchecked` (see [`ProtectScope::alloc_vecsxp_unchecked`]),
+    /// bypassing the main-thread assertion. Use inside ALTREP callbacks,
+    /// `with_r_unwind_protect`, or `with_r_thread` bodies, and pair element
+    /// insertion with [`set_unchecked`](Self::set_unchecked).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread, in a context where the checked-FFI
+    /// assertion is intentionally bypassed (see CLAUDE.md "FFI thread checking").
+    #[inline]
+    pub unsafe fn new_unchecked(scope: &'a ProtectScope, len: usize) -> Self {
+        // SAFETY: caller guarantees R main thread in a checked-bypass context.
+        let list = unsafe { scope.alloc_vecsxp_unchecked(len).into_raw() };
+        Self {
+            list,
+            _scope: scope,
+        }
+    }
+
     /// Create a builder wrapping an existing protected list.
     ///
     /// # Safety
@@ -594,6 +616,26 @@ impl<'a> ListBuilder<'a> {
         // SAFETY: caller guarantees valid and protected child
         debug_assert!(idx >= 0 && idx < self.list.xlength());
         self.list.set_vector_elt(idx, child);
+    }
+
+    /// Set an element via the **unchecked** FFI path.
+    ///
+    /// `_unchecked` twin of [`set`](Self::set): inserts with
+    /// `set_vector_elt_unchecked`, bypassing the main-thread assertion. Pair with
+    /// [`new_unchecked`](Self::new_unchecked) inside ALTREP callbacks,
+    /// `with_r_unwind_protect`, or `with_r_thread` bodies.
+    ///
+    /// # Safety
+    ///
+    /// - `child` must be a valid SEXP, already protected (typically by the same
+    ///   scope, or by being inserted into this protected parent immediately after
+    ///   allocation with no intervening allocation)
+    /// - Must be called from the R main thread, in a checked-bypass context
+    #[inline]
+    pub unsafe fn set_unchecked(&self, idx: isize, child: SEXP) {
+        // SAFETY: caller guarantees valid, protected child in a checked-bypass context.
+        debug_assert!(idx >= 0 && idx < self.list.xlength());
+        unsafe { self.list.set_vector_elt_unchecked(idx, child) };
     }
 
     /// Set an element, protecting the child within the builder's scope.

@@ -46,7 +46,9 @@ use std::hash::Hash;
 
 use crate::SexpExt;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::gc_protect::OwnedProtect;
+use crate::gc_protect::ProtectScope;
+use crate::list::ListBuilder;
+use crate::strvec::StrVecBuilder;
 
 /// Trait for converting Rust types to R SEXP values.
 ///
@@ -1221,19 +1223,19 @@ impl_option_collection_into_r!(
 );
 
 /// Helper: allocate STRSXP and fill from a string iterator (checked).
+///
+/// Routes the alloc + protect through [`StrVecBuilder`] over a local
+/// [`ProtectScope`]; the CHARSXP policy (empty-string → `R_BlankString`) stays
+/// here via [`str_to_charsxp`].
 pub(crate) fn str_iter_to_strsxp<'a>(iter: impl ExactSizeIterator<Item = &'a str>) -> crate::SEXP {
     unsafe {
-        let n: crate::R_xlen_t = iter
-            .len()
-            .try_into()
-            .expect("string vec length exceeds isize::MAX");
-        let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
+        let scope = ProtectScope::new();
+        let builder = StrVecBuilder::new(&scope, iter.len());
+        let vec = builder.as_sexp();
         for (i, s) in iter.enumerate() {
-            let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-            let charsxp = str_to_charsxp(s);
-            sexp.set_string_elt(idx, charsxp);
+            vec.set_string_elt(i as isize, str_to_charsxp(s));
         }
-        *sexp
+        builder.into_sexp()
     }
 }
 
@@ -1242,20 +1244,53 @@ pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::SEXP {
     unsafe {
-        let n: crate::R_xlen_t = iter
-            .len()
-            .try_into()
-            .expect("string vec length exceeds isize::MAX");
-        let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-            crate::SEXPTYPE::STRSXP,
-            n,
-        ));
+        let scope = ProtectScope::new();
+        let builder = StrVecBuilder::new_unchecked(&scope, iter.len());
+        let vec = builder.as_sexp();
         for (i, s) in iter.enumerate() {
-            let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-            let charsxp = str_to_charsxp_unchecked(s);
-            sexp.set_string_elt_unchecked(idx, charsxp);
+            vec.set_string_elt_unchecked(i as isize, str_to_charsxp_unchecked(s));
         }
-        *sexp
+        builder.into_sexp()
+    }
+}
+
+/// Helper: allocate STRSXP and fill from an optional-string iterator (checked).
+///
+/// `None` becomes `NA_character_`. Shared by the `Vec<Option<…str>>` impls.
+pub(crate) fn opt_str_iter_to_strsxp<'a>(
+    iter: impl ExactSizeIterator<Item = Option<&'a str>>,
+) -> crate::SEXP {
+    unsafe {
+        let scope = ProtectScope::new();
+        let builder = StrVecBuilder::new(&scope, iter.len());
+        let vec = builder.as_sexp();
+        for (i, opt_s) in iter.enumerate() {
+            let charsxp = match opt_s {
+                Some(s) => str_to_charsxp(s),
+                None => crate::SEXP::na_string(),
+            };
+            vec.set_string_elt(i as isize, charsxp);
+        }
+        builder.into_sexp()
+    }
+}
+
+/// Helper: allocate STRSXP and fill from an optional-string iterator (unchecked).
+pub(crate) unsafe fn opt_str_iter_to_strsxp_unchecked<'a>(
+    iter: impl ExactSizeIterator<Item = Option<&'a str>>,
+) -> crate::SEXP {
+    unsafe {
+        let scope = ProtectScope::new();
+        let builder = StrVecBuilder::new_unchecked(&scope, iter.len());
+        let vec = builder.as_sexp();
+        for (i, opt_s) in iter.enumerate() {
+            let charsxp = match opt_s {
+                Some(s) => str_to_charsxp_unchecked(s),
+                None => crate::SEXP::na_string(),
+            };
+            vec.set_string_elt_unchecked(i as isize, charsxp);
+        }
+        builder.into_sexp()
     }
 }
 
@@ -1342,42 +1377,11 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n: crate::R_xlen_t = self
-                .len()
-                .try_into()
-                .expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
-            for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-                let charsxp = match opt_s {
-                    Some(s) => str_to_charsxp(s.as_ref()),
-                    None => crate::SEXP::na_string(),
-                };
-                sexp.set_string_elt(idx, charsxp);
-            }
-            *sexp
-        }
+        opt_str_iter_to_strsxp(self.iter().map(|o| o.as_ref().map(|c| c.as_ref())))
     }
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe {
-            let n: crate::R_xlen_t = self
-                .len()
-                .try_into()
-                .expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-                crate::SEXPTYPE::STRSXP,
-                n,
-            ));
-            for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-                let charsxp = match opt_s {
-                    Some(s) => str_to_charsxp_unchecked(s.as_ref()),
-                    None => crate::SEXP::na_string(),
-                };
-                sexp.set_string_elt_unchecked(idx, charsxp);
-            }
-            *sexp
+            opt_str_iter_to_strsxp_unchecked(self.iter().map(|o| o.as_ref().map(|c| c.as_ref())))
         }
     }
 }
@@ -1395,43 +1399,10 @@ impl IntoR for Vec<Option<&str>> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n: crate::R_xlen_t = self
-                .len()
-                .try_into()
-                .expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
-            for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-                let charsxp = match opt_s {
-                    Some(s) => str_to_charsxp(s),
-                    None => crate::SEXP::na_string(),
-                };
-                sexp.set_string_elt(idx, charsxp);
-            }
-            *sexp
-        }
+        opt_str_iter_to_strsxp(self.iter().copied())
     }
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe {
-            let n: crate::R_xlen_t = self
-                .len()
-                .try_into()
-                .expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-                crate::SEXPTYPE::STRSXP,
-                n,
-            ));
-            for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-                let charsxp = match opt_s {
-                    Some(s) => str_to_charsxp_unchecked(s),
-                    None => crate::SEXP::na_string(),
-                };
-                sexp.set_string_elt_unchecked(idx, charsxp);
-            }
-            *sexp
-        }
+        unsafe { opt_str_iter_to_strsxp_unchecked(self.iter().copied()) }
     }
 }
 // endregion
@@ -1457,64 +1428,13 @@ impl IntoR for Vec<&str> {
 
 // region: VECSXP-from-iterator helpers
 
-/// Build a VECSXP of length `n`, protecting it across the fill, and return it.
-///
-/// This is the shared core for the "protect a VECSXP, fill it via
-/// `SET_VECTOR_ELT`, unprotect" idiom that recurs across the `IntoR` impls for
-/// nested collections (`Vec<Vec<T>>`, `Vec<&[T]>`, tuples, `Vec<Box<[T]>>`,
-/// `Vec<[T; N]>`, `Vec<HashMap<..>>`, …). The list is protected by an
-/// [`OwnedProtect`] guard for the duration of `fill`, so any child allocations
-/// performed inside `fill` cannot collect the list; the guard's `Drop` issues
-/// the matching `UNPROTECT(1)` — the protect/unprotect count is balanced by
-/// construction (RAII), so a miscount is unrepresentable.
-///
-/// `fill` receives the protected list SEXP and is responsible for populating it
-/// (via the checked [`set_vector_elt`](crate::SexpExt::set_vector_elt)).
-///
-/// # Safety
-///
-/// Must be called from the R main thread.
-#[inline]
-unsafe fn build_vecsxp(n: usize, fill: impl FnOnce(crate::SEXP)) -> crate::SEXP {
-    unsafe {
-        let list = OwnedProtect::new(crate::sys::Rf_allocVector(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
-        fill(list.get());
-        *list
-    }
-}
-
-/// `_unchecked` twin of [`build_vecsxp`] for contexts where the checked FFI
-/// thread assertion must be bypassed (ALTREP callbacks, `with_r_unwind_protect`,
-/// `with_r_thread`). Allocates via `Rf_allocVector_unchecked`; `fill` must use
-/// the `_unchecked` setters.
-///
-/// # Safety
-///
-/// Must be called from the R main thread, and only from a context where the
-/// checked-FFI assertion is intentionally bypassed (see CLAUDE.md "FFI thread
-/// checking").
-#[inline]
-unsafe fn build_vecsxp_unchecked(n: usize, fill: impl FnOnce(crate::SEXP)) -> crate::SEXP {
-    unsafe {
-        let list = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
-        fill(list.get());
-        *list
-    }
-}
-
 /// Build a VECSXP from an exact-size iterator of child `SEXP`s (checked).
 ///
-/// The list is protected before iteration begins; the iterator is consumed
+/// Routes through [`ListBuilder`]: the list is allocated and protected by a
+/// local [`ProtectScope`] before iteration begins, then the iterator is consumed
 /// inside the protected window so each child produced lazily (typically via a
-/// `.map(|c| c.into_sexp())` adaptor at the callsite) is inserted immediately,
-/// closing the GC gap. Collapses the dominant protect-container-fill-unprotect
-/// idiom onto [`build_vecsxp`].
+/// `.map(|c| c.into_sexp())` adaptor at the callsite) is inserted immediately
+/// via [`ListBuilder::set`], closing the GC gap.
 ///
 /// The element type is `SEXP` (not a generic `IntoR`) deliberately: the caller
 /// performs the conversion lazily in the iterator adaptor, which keeps the
@@ -1529,16 +1449,16 @@ where
     I: ExactSizeIterator<Item = crate::SEXP>,
 {
     unsafe {
-        let n = iter.len();
-        build_vecsxp(n, |list| {
-            for (i, child) in iter.enumerate() {
-                list.set_vector_elt(i as crate::R_xlen_t, child);
-            }
-        })
+        let scope = ProtectScope::new();
+        let builder = ListBuilder::new(&scope, iter.len());
+        for (i, child) in iter.enumerate() {
+            builder.set(i as isize, child);
+        }
+        builder.into_sexp()
     }
 }
 
-/// `_unchecked` twin of [`vecsxp_from_iter`] — uses the `_unchecked` setter.
+/// `_unchecked` twin of [`vecsxp_from_iter`] — uses [`ListBuilder::set_unchecked`].
 /// For ALTREP / `with_r_thread` / unwind contexts. The caller's adaptor must
 /// produce children via `into_sexp_unchecked()`.
 ///
@@ -1552,12 +1472,12 @@ where
     I: ExactSizeIterator<Item = crate::SEXP>,
 {
     unsafe {
-        let n = iter.len();
-        build_vecsxp_unchecked(n, |list| {
-            for (i, child) in iter.enumerate() {
-                list.set_vector_elt_unchecked(i as crate::R_xlen_t, child);
-            }
-        })
+        let scope = ProtectScope::new();
+        let builder = ListBuilder::new_unchecked(&scope, iter.len());
+        for (i, child) in iter.enumerate() {
+            builder.set_unchecked(i as isize, child);
+        }
+        builder.into_sexp()
     }
 }
 
@@ -1927,48 +1847,11 @@ impl IntoR for Vec<Option<String>> {
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::SEXP {
-        unsafe {
-            let n: crate::R_xlen_t = self
-                .len()
-                .try_into()
-                .expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
-
-            for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-                let charsxp = match opt_s {
-                    Some(s) => str_to_charsxp(s),
-                    None => crate::SEXP::na_string(),
-                };
-                sexp.set_string_elt(idx, charsxp);
-            }
-
-            *sexp
-        }
+        opt_str_iter_to_strsxp(self.iter().map(|o| o.as_deref()))
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-        unsafe {
-            let n: crate::R_xlen_t = self
-                .len()
-                .try_into()
-                .expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-                crate::SEXPTYPE::STRSXP,
-                n,
-            ));
-
-            for (i, opt_s) in self.iter().enumerate() {
-                let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-                let charsxp = match opt_s {
-                    Some(s) => str_to_charsxp_unchecked(s),
-                    None => crate::SEXP::na_string(),
-                };
-                sexp.set_string_elt_unchecked(idx, charsxp);
-            }
-
-            *sexp
-        }
+        unsafe { opt_str_iter_to_strsxp_unchecked(self.iter().map(|o| o.as_deref())) }
     }
 }
 // endregion
@@ -1989,21 +1872,23 @@ macro_rules! impl_tuple_into_r {
             }
             fn into_sexp(self) -> crate::SEXP {
                 unsafe {
-                    build_vecsxp($n, |list| {
-                        $(
-                            list.set_vector_elt($idx as crate::R_xlen_t, self.$idx.into_sexp());
-                        )+
-                    })
+                    let scope = ProtectScope::new();
+                    let builder = ListBuilder::new(&scope, $n);
+                    $(
+                        builder.set($idx as isize, self.$idx.into_sexp());
+                    )+
+                    builder.into_sexp()
                 }
             }
 
             unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
                 unsafe {
-                    build_vecsxp_unchecked($n, |list| {
-                        $(
-                            list.set_vector_elt_unchecked($idx as crate::R_xlen_t, self.$idx.into_sexp_unchecked());
-                        )+
-                    })
+                    let scope = ProtectScope::new();
+                    let builder = ListBuilder::new_unchecked(&scope, $n);
+                    $(
+                        builder.set_unchecked($idx as isize, self.$idx.into_sexp_unchecked());
+                    )+
+                    builder.into_sexp()
                 }
             }
         }
@@ -2162,18 +2047,7 @@ where
 
 /// Helper: convert a Vec of IntoR items to an R list (VECSXP).
 fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::SEXP {
-    unsafe {
-        let n = items.len();
-        let list = OwnedProtect::new(crate::sys::Rf_allocVector(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
-        for (i, item) in items.into_iter().enumerate() {
-            list.get()
-                .set_vector_elt(i as crate::R_xlen_t, item.into_sexp());
-        }
-        *list
-    }
+    unsafe { vecsxp_from_iter(items.into_iter().map(|item| item.into_sexp())) }
 }
 
 // region: Vec<Option<Collection>> conversions
@@ -2182,19 +2056,10 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::SEXP {
 /// `R_NilValue` (NULL) and `Some(v)` mapping to whatever `v.into_sexp()` produces.
 fn vec_option_of_into_r_to_list<T: IntoR>(items: Vec<Option<T>>) -> crate::SEXP {
     unsafe {
-        let n = items.len();
-        let list = OwnedProtect::new(crate::sys::Rf_allocVector(
-            crate::SEXPTYPE::VECSXP,
-            n as crate::R_xlen_t,
-        ));
-        for (i, item) in items.into_iter().enumerate() {
-            let elt = match item {
-                Some(v) => v.into_sexp(),
-                None => crate::SEXP::nil(),
-            };
-            list.get().set_vector_elt(i as crate::R_xlen_t, elt);
-        }
-        *list
+        vecsxp_from_iter(items.into_iter().map(|item| match item {
+            Some(v) => v.into_sexp(),
+            None => crate::SEXP::nil(),
+        }))
     }
 }
 
