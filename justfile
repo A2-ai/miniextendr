@@ -712,10 +712,19 @@ r-cmd-install *args: _assert-no-vendor-leak configure
     R CMD INSTALL {{args}} rpkg
 
 # Build R package tarball
-# Depends on `vendor` so the tarball ships inst/vendor.tar.xz, which is what
-# triggers tarball-mode install (offline, vendored sources). Without this dep
-# a maintainer can silently produce a tarball that source-mode-installs over
-# the network — defeating the point of `R CMD build` for CRAN submission.
+# Depends on `r-cmd-install` so the host cdylib pass regenerates the UNTRACKED
+# generated files (R/miniextendr-wrappers.R + src/rust/wasm_registry.rs) on disk
+# before `R CMD build` packs them into the tarball. These are gitignored, so the
+# only way they reach the tarball is from disk — and a stale/absent wasm_registry.rs
+# silently breaks wasm-from-tarball installs (the wasm cdylib is a SIDE_MODULE host
+# R cannot dyn.load, so there is NO wasm-side regeneration fallback). r-cmd-install
+# runs in source mode (its _assert-no-vendor-leak dep refuses if a tarball exists),
+# so it must complete before `vendor` seals inst/vendor.tar.xz.
+#
+# Also depends (transitively, via r-cmd-install) on `vendor` so the tarball ships
+# inst/vendor.tar.xz, which is what triggers tarball-mode install (offline, vendored
+# sources). Without this a maintainer can silently produce a tarball that
+# source-mode-installs over the network — defeating the point for CRAN submission.
 #
 # Cleanup: rpkg/inst/vendor.tar.xz must be removed after R CMD build copies
 # it into the built tarball. Otherwise the leftover in the source tree makes
@@ -724,20 +733,22 @@ r-cmd-install *args: _assert-no-vendor-leak configure
 # which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
 alias rcmdbuild := r-cmd-build
 [script("bash")]
-r-cmd-build *args: configure vendor
+r-cmd-build *args: r-cmd-install vendor
     set -euo pipefail
     trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
-# Depends on vendor to ensure inst/vendor.tar.xz exists in the tarball.
+# Depends on `r-cmd-install` (regenerates the untracked generated files into the
+# source tree before the tarball is built — see r-cmd-build for the full rationale)
+# and `vendor` (ensures inst/vendor.tar.xz ships so the tarball installs offline).
 # R CMD check copies the tarball to a temp dir where monorepo [patch] paths
 # are unavailable — configure detects this and uses vendored sources instead.
 #
 # Cleanup: same reason as r-cmd-build — see comment there.
 alias rcmdcheck := r-cmd-check
 [script("bash")]
-r-cmd-check *args: vendor
+r-cmd-check *args: r-cmd-install vendor
     set -euo pipefail
     trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     ERROR_ON="warning"
@@ -1128,29 +1139,42 @@ vendor-sync-check:
 lint-sync-check:
     cargo check --manifest-path=miniextendr-lint/Cargo.toml
 
-# Verify committed R wrappers / NAMESPACE / man are in sync with #[miniextendr]
-# Rust source. Catches the failure mode where a Rust-side edit ships without
-# the corresponding regenerated `R/miniextendr-wrappers.R` / NAMESPACE / man/
-# (the pre-commit hook only fires when wrappers.R is itself staged, missing
-# the inverse case — see #602).
+# Verify the committed NAMESPACE / man are in sync with #[miniextendr] Rust source,
+# and that the host cdylib pass produces non-stub generated files.
+#
+# `R/miniextendr-wrappers.R` and `src/rust/wasm_registry.rs` are NOT tracked
+# (gitignored, regenerated every install) so there is no committed copy to drift
+# — we instead assert the install produced them non-empty / non-stub. NAMESPACE
+# and man/ are still committed (and derive from the freshly-regenerated wrappers.R),
+# so those are git-diffed. Catches the failure mode where a Rust-side edit ships
+# without the corresponding regenerated NAMESPACE / man/ (see #602).
 [script("bash")]
 wrappers-sync-check: _assert-no-vendor-leak configure
     set -euo pipefail
 
+    # Install regenerates R/miniextendr-wrappers.R + src/rust/wasm_registry.rs on disk.
     R CMD INSTALL rpkg >/dev/null
+
+    # The generated (untracked) files must exist and be real, not stubs.
+    if [ ! -s rpkg/R/miniextendr-wrappers.R ]; then
+      echo "ERROR: R CMD INSTALL did not produce rpkg/R/miniextendr-wrappers.R." >&2
+      exit 1
+    fi
+    wasm_hash=$(grep 'content-hash:' rpkg/src/rust/wasm_registry.rs | awk '{print $NF}')
+    if [ ! -s rpkg/src/rust/wasm_registry.rs ] || [ "$wasm_hash" = "0000000000000000" ]; then
+      echo "ERROR: rpkg/src/rust/wasm_registry.rs is missing or a stub (content-hash=$wasm_hash)." >&2
+      echo "The cdylib pass must produce a real wasm32 snapshot." >&2
+      exit 1
+    fi
+
+    # NAMESPACE / man derive from the freshly-regenerated wrappers.R — regenerate
+    # and verify the committed copies match.
     Rscript -e 'devtools::document("rpkg")' >/dev/null
 
-    paths=(
-      "rpkg/R/miniextendr-wrappers.R"
-      "rpkg/NAMESPACE"
-      "rpkg/man"
-      "rpkg/src/rust/wasm_registry.rs"
-    )
-
-    if ! git diff --exit-code -- "${paths[@]}"; then
+    if ! git diff --exit-code -- rpkg/NAMESPACE rpkg/man; then
       echo ""
-      echo "Generated R wrappers / NAMESPACE / man drift from #[miniextendr] Rust source."
-      echo "Run 'just rcmdinstall && just force-document' and commit the regenerated files."
+      echo "Committed NAMESPACE / man drift from #[miniextendr] Rust source."
+      echo "Run 'just rcmdinstall && just force-document' and commit the regenerated NAMESPACE + man/."
       exit 1
     fi
 

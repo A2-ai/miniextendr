@@ -10,7 +10,11 @@
 //!
 //! The writer is intentionally pure-text-formatting — no `syn`, no
 //! `proc-macro2`, no template engine. Output is small, append-only, and
-//! deterministic so `git diff --exit-code` works as the regen check.
+//! byte-deterministic from the live distributed slices: the same source
+//! always regenerates the same file. The generated `wasm_registry.rs` is
+//! **gitignored** (regenerated on every host `R CMD INSTALL`); determinism is
+//! what lets `just r-cmd-build` reproduce it into the tarball and lets CI
+//! assert a non-stub snapshot rather than git-diffing a committed copy.
 
 use crate::abi::mx_tag;
 use crate::registry::{
