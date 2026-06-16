@@ -20,7 +20,7 @@
 
 use crate::SEXP;
 use crate::SexpExt;
-use crate::from_r::{SexpError, TryFromSexp};
+use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::sexp_types::{Rcomplex, SEXPTYPE};
 
@@ -233,3 +233,226 @@ impl From<Vec<&str>> for RValue {
 }
 
 // endregion
+
+// region: inspection accessors + owned extraction (#1050 decision 4, on demand)
+
+impl RValue {
+    /// The `SEXPTYPE` this value materialises to via [`IntoR`].
+    pub fn sexptype(&self) -> SEXPTYPE {
+        match self {
+            RValue::Null => SEXPTYPE::NILSXP,
+            RValue::Logical(_) => SEXPTYPE::LGLSXP,
+            RValue::Integer(_) => SEXPTYPE::INTSXP,
+            RValue::Double(_) => SEXPTYPE::REALSXP,
+            RValue::Complex(_) => SEXPTYPE::CPLXSXP,
+            RValue::Character(_) => SEXPTYPE::STRSXP,
+            RValue::Raw(_) => SEXPTYPE::RAWSXP,
+            RValue::List(_) => SEXPTYPE::VECSXP,
+        }
+    }
+
+    /// `true` if this is [`RValue::Null`].
+    pub fn is_null(&self) -> bool {
+        matches!(self, RValue::Null)
+    }
+
+    /// The single non-NA `i32` of a length-1 `Integer`, else `None`.
+    ///
+    /// Returns `None` for the wrong variant, a length other than 1, or NA —
+    /// the borrow-friendly counterpart to `i32::try_from` when you don't need
+    /// to know *why* it failed.
+    pub fn as_i32(&self) -> Option<i32> {
+        match self {
+            RValue::Integer(v) if v.len() == 1 => v[0],
+            _ => None,
+        }
+    }
+
+    /// The single non-NA `f64` of a length-1 `Double`, else `None`.
+    ///
+    /// R's NA (the `NA_REAL` bit pattern) yields `None`, matching [`as_i32`](Self::as_i32).
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            RValue::Double(v) if v.len() == 1 => {
+                let x = v[0];
+                (x.to_bits() != crate::altrep_traits::NA_REAL.to_bits()).then_some(x)
+            }
+            _ => None,
+        }
+    }
+
+    /// The single non-NA `bool` of a length-1 `Logical`, else `None`.
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            RValue::Logical(v) if v.len() == 1 => v[0],
+            _ => None,
+        }
+    }
+
+    /// The single non-NA string of a length-1 `Character`, else `None`.
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            RValue::Character(v) if v.len() == 1 => v[0].as_deref(),
+            _ => None,
+        }
+    }
+}
+
+/// `Type` error for a variant mismatch: the value's `SEXPTYPE` vs the expected one.
+fn wrong_type(expected: SEXPTYPE, actual: &RValue) -> SexpError {
+    SexpError::Type(SexpTypeError {
+        expected,
+        actual: actual.sexptype(),
+    })
+}
+
+/// `TryFrom<RValue>` for a scalar pulled from a length-1 Option-backed variant.
+///
+/// Fails with `Length` for a non-scalar, `Na` for NA, `Type` for the wrong
+/// variant — the failure modes a numeric `CoerceError` can't express, which is
+/// why this is `TryFrom`/`SexpError` rather than a `coerce.rs` impl.
+macro_rules! try_from_scalar_opt {
+    ($t:ty, $variant:ident, $ty:expr) => {
+        impl TryFrom<RValue> for $t {
+            type Error = SexpError;
+            fn try_from(value: RValue) -> Result<Self, SexpError> {
+                match value {
+                    RValue::$variant(xs) => {
+                        if xs.len() != 1 {
+                            return Err(SexpError::Length(SexpLengthError {
+                                expected: 1,
+                                actual: xs.len(),
+                            }));
+                        }
+                        xs.into_iter()
+                            .next()
+                            .unwrap()
+                            .ok_or(SexpError::Na(SexpNaError { sexp_type: $ty }))
+                    }
+                    other => Err(wrong_type($ty, &other)),
+                }
+            }
+        }
+    };
+}
+try_from_scalar_opt!(i32, Integer, SEXPTYPE::INTSXP);
+try_from_scalar_opt!(bool, Logical, SEXPTYPE::LGLSXP);
+try_from_scalar_opt!(String, Character, SEXPTYPE::STRSXP);
+
+// `Double` carries NA in the bit pattern, so it can't reuse the Option macro.
+impl TryFrom<RValue> for f64 {
+    type Error = SexpError;
+    fn try_from(value: RValue) -> Result<Self, SexpError> {
+        match value {
+            RValue::Double(xs) => {
+                if xs.len() != 1 {
+                    return Err(SexpError::Length(SexpLengthError {
+                        expected: 1,
+                        actual: xs.len(),
+                    }));
+                }
+                let x = xs[0];
+                if x.to_bits() == crate::altrep_traits::NA_REAL.to_bits() {
+                    Err(SexpError::Na(SexpNaError {
+                        sexp_type: SEXPTYPE::REALSXP,
+                    }))
+                } else {
+                    Ok(x)
+                }
+            }
+            other => Err(wrong_type(SEXPTYPE::REALSXP, &other)),
+        }
+    }
+}
+
+/// `TryFrom<RValue>` for the whole vector of a single variant (NA preserved).
+macro_rules! try_from_vec {
+    ($t:ty, $variant:ident, $ty:expr) => {
+        impl TryFrom<RValue> for $t {
+            type Error = SexpError;
+            fn try_from(value: RValue) -> Result<Self, SexpError> {
+                match value {
+                    RValue::$variant(xs) => Ok(xs),
+                    other => Err(wrong_type($ty, &other)),
+                }
+            }
+        }
+    };
+}
+try_from_vec!(Vec<Option<bool>>, Logical, SEXPTYPE::LGLSXP);
+try_from_vec!(Vec<Option<i32>>, Integer, SEXPTYPE::INTSXP);
+try_from_vec!(Vec<f64>, Double, SEXPTYPE::REALSXP);
+try_from_vec!(Vec<Rcomplex>, Complex, SEXPTYPE::CPLXSXP);
+try_from_vec!(Vec<Option<String>>, Character, SEXPTYPE::STRSXP);
+try_from_vec!(Vec<u8>, Raw, SEXPTYPE::RAWSXP);
+try_from_vec!(Vec<(Option<String>, RValue)>, List, SEXPTYPE::VECSXP);
+
+// endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Accessors and TryFrom operate on owned `RValue` — no SEXP, no R runtime.
+
+    #[test]
+    fn as_scalar_accessors() {
+        assert_eq!(RValue::from(7i32).as_i32(), Some(7));
+        assert_eq!(RValue::from(1.5).as_f64(), Some(1.5));
+        assert_eq!(RValue::from(true).as_bool(), Some(true));
+        assert_eq!(RValue::from("hi").as_str(), Some("hi"));
+
+        // wrong variant
+        assert_eq!(RValue::from("hi").as_i32(), None);
+        // wrong length
+        assert_eq!(RValue::Integer(vec![Some(1), Some(2)]).as_i32(), None);
+        // NA
+        assert_eq!(RValue::Integer(vec![None]).as_i32(), None);
+        assert_eq!(
+            RValue::Double(vec![crate::altrep_traits::NA_REAL]).as_f64(),
+            None
+        );
+        assert!(RValue::Null.is_null());
+    }
+
+    #[test]
+    fn try_from_scalar_ok_and_errors() {
+        assert_eq!(i32::try_from(RValue::from(7i32)).unwrap(), 7);
+        assert_eq!(f64::try_from(RValue::from(2.5)).unwrap(), 2.5);
+        assert!(!bool::try_from(RValue::from(false)).unwrap());
+        assert_eq!(String::try_from(RValue::from("x")).unwrap(), "x");
+
+        // wrong variant → Type
+        assert!(matches!(
+            i32::try_from(RValue::from("x")),
+            Err(SexpError::Type(_))
+        ));
+        // wrong length → Length
+        assert!(matches!(
+            i32::try_from(RValue::Integer(vec![Some(1), Some(2)])),
+            Err(SexpError::Length(_))
+        ));
+        // NA → Na
+        assert!(matches!(
+            i32::try_from(RValue::Integer(vec![None])),
+            Err(SexpError::Na(_))
+        ));
+        assert!(matches!(
+            f64::try_from(RValue::Double(vec![crate::altrep_traits::NA_REAL])),
+            Err(SexpError::Na(_))
+        ));
+    }
+
+    #[test]
+    fn try_from_whole_vector() {
+        let v: Vec<Option<i32>> = RValue::Integer(vec![Some(1), None]).try_into().unwrap();
+        assert_eq!(v, vec![Some(1), None]);
+
+        let raw: Vec<u8> = RValue::Raw(vec![1, 2, 3]).try_into().unwrap();
+        assert_eq!(raw, vec![1, 2, 3]);
+
+        // wrong variant → Type
+        let bad: Result<Vec<u8>, _> = RValue::from(1i32).try_into();
+        assert!(matches!(bad, Err(SexpError::Type(_))));
+    }
+}
