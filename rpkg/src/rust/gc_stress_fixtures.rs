@@ -2322,43 +2322,32 @@ pub fn gc_stress_serde_ser() {
 /// Exercise `make_rust_condition_value_with_data` under GC pressure.
 ///
 /// The condition-data path builds a fresh VECSXP + names STRSXP and
-/// materialises each `ConditionDataValue` field one at a time, rooting every
-/// intermediate into the protected data list before the next allocation —
-/// the canonical "SEXP storage across allocations" shape (#430). This fixture
-/// drives the production code path directly with all eight supported value
-/// types (scalar + vector × i32/f64/bool/String) and reads every field back
-/// to verify integrity.
+/// materialises each [`RValue`](miniextendr_api::RValue) field one at a time,
+/// rooting every intermediate into the protected data list before the next
+/// allocation — the canonical "SEXP storage across allocations" shape (#430).
+/// This fixture drives the production code path directly with all eight
+/// supported value types (scalar + vector × i32/f64/bool/String) and reads every
+/// field back to verify integrity.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr]
 pub fn gc_stress_condition_data() {
-    use miniextendr_api::condition::{ConditionData, ConditionDataValue};
+    use miniextendr_api::RValue;
+    use miniextendr_api::condition::ConditionData;
     use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
     for round in 0..4 {
         let data: ConditionData = vec![
-            ("int".to_string(), ConditionDataValue::from(round)),
-            ("real".to_string(), ConditionDataValue::from(1.5_f64)),
-            ("flag".to_string(), ConditionDataValue::from(true)),
-            (
-                "label".to_string(),
-                ConditionDataValue::from(format!("round {round}")),
-            ),
-            (
-                "ints".to_string(),
-                ConditionDataValue::from(vec![1_i32, 2, 3]),
-            ),
-            (
-                "reals".to_string(),
-                ConditionDataValue::from(vec![0.5_f64, 2.5]),
-            ),
-            (
-                "flags".to_string(),
-                ConditionDataValue::from(vec![true, false]),
-            ),
+            ("int".to_string(), RValue::from(round)),
+            ("real".to_string(), RValue::from(1.5_f64)),
+            ("flag".to_string(), RValue::from(true)),
+            ("label".to_string(), RValue::from(format!("round {round}"))),
+            ("ints".to_string(), RValue::from(vec![1_i32, 2, 3])),
+            ("reals".to_string(), RValue::from(vec![0.5_f64, 2.5])),
+            ("flags".to_string(), RValue::from(vec![true, false])),
             (
                 "labels".to_string(),
-                ConditionDataValue::from(vec!["a".to_string(), "b".to_string()]),
+                RValue::from(vec!["a".to_string(), "b".to_string()]),
             ),
         ];
 
@@ -2516,21 +2505,20 @@ pub fn gc_stress_alloc_wrappers() -> i32 {
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr]
 pub fn gc_stress_as_named_list_deferred() {
-    use crate::conversions::AsNamedListAny;
-    use miniextendr_api::AsNamedList;
     use miniextendr_api::prelude::SexpExt as _;
+    use miniextendr_api::{AsNamedList, RValue};
 
     let n = 24usize;
 
     // Build a typed heterogeneous list: each value is plain Rust data until
     // `AsNamedList::into_sexp` converts + protects it. Three scalar shapes so
     // STRSXP, INTSXP and REALSXP allocations all interleave.
-    let pairs: Vec<(String, AsNamedListAny)> = (0..n)
+    let pairs: Vec<(String, RValue)> = (0..n)
         .map(|i| {
             let value = match i % 3 {
-                0 => AsNamedListAny::Text(format!("v-{i}")),
-                1 => AsNamedListAny::Int(i as i32),
-                _ => AsNamedListAny::Real(f64::from(i as i32) * 1.5),
+                0 => RValue::from(format!("v-{i}")),
+                1 => RValue::from(i as i32),
+                _ => RValue::from(f64::from(i as i32) * 1.5),
             };
             (format!("k-{i}"), value)
         })
@@ -2559,6 +2547,72 @@ pub fn gc_stress_as_named_list_deferred() {
                 );
             }
         }
+    }
+}
+
+// endregion
+
+// region: RValue (#1050)
+
+/// Stress `RValue`'s recursive `List` build + full SEXP→`RValue` round-trip
+/// under GC pressure.
+///
+/// `RValue::List::into_sexp` builds a `VECSXP` and roots each recursively-built
+/// child before the next allocates — the canonical "SEXP storage across
+/// allocations" shape (#430). This fixture builds a nested, mixed, NA-bearing
+/// tree (named + unnamed slots, every atomic variant, empty vectors, a nested
+/// list), converts it to a `SEXP`, then decodes it back with
+/// `RValue::try_from_sexp` and asserts the structure survived. The interleaved
+/// `charsxp` / `SET_VECTOR_ELT` allocations of the list build exercise the
+/// protect discipline; a collected child would surface as a wrong/garbage slot.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_rvalue_roundtrip() {
+    use miniextendr_api::from_r::TryFromSexp as _;
+    use miniextendr_api::{IntoR, RValue};
+
+    for _round in 0..4 {
+        let tree = RValue::List(vec![
+            (Some("lgl".into()), RValue::Logical(vec![Some(true), None])),
+            (Some("int".into()), RValue::Integer(vec![Some(7), None])),
+            (Some("dbl".into()), RValue::Double(vec![1.5, 2.5])),
+            (
+                Some("chr".into()),
+                RValue::Character(vec![Some("hi".into()), None]),
+            ),
+            (Some("raw".into()), RValue::Raw(vec![1, 2, 3])),
+            (Some("nul".into()), RValue::Null),
+            (Some("empty".into()), RValue::Integer(vec![])),
+            (
+                Some("nested".into()),
+                RValue::List(vec![
+                    (None, RValue::Integer(vec![Some(1)])),
+                    (Some("inner".into()), RValue::Character(vec![Some("x".into())])),
+                ]),
+            ),
+        ]);
+
+        let sexp = tree.into_sexp();
+        let _guard = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(sexp) };
+
+        let decoded = RValue::try_from_sexp(sexp).expect("RValue must round-trip");
+        let RValue::List(pairs) = decoded else {
+            panic!("expected List, got {decoded:?}");
+        };
+        assert_eq!(pairs.len(), 8, "top-level list lost slots");
+        assert!(matches!(&pairs[0].1, RValue::Logical(v) if v == &[Some(true), None]));
+        assert!(matches!(&pairs[1].1, RValue::Integer(v) if v == &[Some(7), None]));
+        assert!(matches!(&pairs[3].1, RValue::Character(v) if v == &[Some("hi".into()), None]));
+        assert!(matches!(&pairs[4].1, RValue::Raw(v) if v == &[1, 2, 3]));
+        assert!(matches!(&pairs[5].1, RValue::Null));
+        assert!(matches!(&pairs[6].1, RValue::Integer(v) if v.is_empty()));
+        // Nested list: unnamed first slot (None), named second slot.
+        let RValue::List(inner) = &pairs[7].1 else {
+            panic!("expected nested List, got {:?}", pairs[7].1);
+        };
+        assert_eq!(inner[0].0, None, "unnamed nested slot lost its None name");
+        assert_eq!(inner[1].0.as_deref(), Some("inner"));
     }
 }
 

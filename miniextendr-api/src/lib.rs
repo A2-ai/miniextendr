@@ -745,6 +745,8 @@ pub mod list;
 pub mod missing;
 pub mod named_vector;
 pub mod rcow;
+pub mod rvalue;
+pub use rvalue::RValue;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
