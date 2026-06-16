@@ -2472,7 +2472,10 @@ pub fn gc_stress_rvalue_roundtrip() {
                 Some("nested".into()),
                 RValue::List(vec![
                     (None, RValue::Integer(vec![Some(1)])),
-                    (Some("inner".into()), RValue::Character(vec![Some("x".into())])),
+                    (
+                        Some("inner".into()),
+                        RValue::Character(vec![Some("x".into())]),
+                    ),
                 ]),
             ),
         ]);
