@@ -136,6 +136,12 @@ rig default 4.6           # or `rig default 4.6-arm64` on macOS arm64
 R --version | head -1     # verify 4.6.x
 ```
 
+**`rig default` may not stick across shells.** A fresh shell (every Bash-tool
+invocation is one) can resolve `R` back to the system default — the framework
+`Current` symlink flips — silently reverting mid-session and breaking installs
+with the `__rv_R_mismatch` safe-mode error above. Re-run `rig default 4.6` and
+re-check `R --version` at the **start of each batch** of R recipes, not just once.
+
 If you legitimately need to bump R, edit `rproject.toml` *and* mirror
 the change in this section. Don't try to work around a mismatch by
 installing into the temporary `__rv_R_mismatch` library — packages
@@ -243,6 +249,15 @@ contributions to `R/miniextendr-wrappers.R` live outside roxygen's view until
 changes** — it skips the full roxygenize pass when `needs_roxygenize()` returns
 `FALSE`. Use this in tight iteration loops when you're only editing `///` doc
 comments or `rpkg/R/*.R` sources.
+
+**A new export needs a *second* install to be runtime-callable.** `just
+rcmdinstall` regenerates `wrappers.R` but installs against the *existing*
+`NAMESPACE`; `just force-document` then writes the new export into `NAMESPACE`
+on disk but does **not** reinstall. So a freshly added `#[miniextendr]` fn is
+absent from the *installed* package until you install again. To gctorture /
+testthat a new export, run the loop twice:
+`rcmdinstall && force-document && rcmdinstall`. (Committing the regenerated
+`NAMESPACE` / `man` only needs the single pass.)
 
 Generated files (`rpkg/R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must
 be committed in sync with the Rust changes that produced them.
