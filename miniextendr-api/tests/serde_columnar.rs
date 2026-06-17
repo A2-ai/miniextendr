@@ -12,7 +12,7 @@ use miniextendr_api::prelude::SexpExt as _;
 use miniextendr_api::serde::{
     DataFrameShape, NamedDataFrameListBuilder, ResultShape, SplitResults, SplitShape,
     hashmap_to_dataframe, map_to_dataframe, result_to_dataframe, vec_to_dataframe,
-    vec_to_dataframe_split,
+    vec_to_dataframe_flatten_enums, vec_to_dataframe_split,
 };
 use serde::Serialize;
 
@@ -420,6 +420,294 @@ fn split_collated_empty_input_errors() {
         let rows: Vec<E> = Vec::new();
         let res = vec_to_dataframe_split(&rows, SplitShape::Collated { column: "k".into() });
         assert!(res.is_err(), "collated empty input must error");
+    });
+}
+
+// endregion
+
+// region: vec_to_dataframe_flatten_enums (#1056)
+
+/// The ordered column names of a data.frame SEXP.
+fn col_names(sexp: &miniextendr_api::SEXP) -> Vec<String> {
+    let names = sexp.get_names();
+    (0..names.xlength())
+        .map(|i| names.string_elt_str(i).unwrap_or("<NA>").to_string())
+        .collect()
+}
+
+/// The column SEXP for `name`, or panic.
+fn col(sexp: &miniextendr_api::SEXP, name: &str) -> miniextendr_api::SEXP {
+    let names = sexp.get_names();
+    for i in 0..names.xlength() {
+        if names.string_elt_str(i) == Some(name) {
+            return sexp.vector_elt(i);
+        }
+    }
+    panic!("column {name:?} not found in {:?}", col_names(sexp));
+}
+
+/// Externally-tagged enum field, two struct variants across rows: the enum
+/// field flattens into a `action_variant` tag plus the union of the variants'
+/// payload columns, NA-filled where a variant lacks a field.
+#[test]
+fn flatten_enum_field_externally_tagged_two_variants() {
+    #[derive(Serialize)]
+    enum Action {
+        Add { file: f64, weight: f64 },
+        Init { path: String },
+    }
+    #[derive(Serialize)]
+    struct AuditRow {
+        id: i32,
+        action: Action,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            AuditRow {
+                id: 1,
+                action: Action::Add {
+                    file: 10.0,
+                    weight: 2.5,
+                },
+            },
+            AuditRow {
+                id: 2,
+                action: Action::Init {
+                    path: "/tmp".into(),
+                },
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let sexp = df.into_sexp();
+        let names = col_names(&sexp);
+        // id, action_variant, then the union of Add (file, weight) + Init (path).
+        assert_eq!(names[0], "id", "scalar field stays first");
+        assert!(
+            names.contains(&"action_variant".to_string()),
+            "tag column present, got {names:?}"
+        );
+        assert!(names.contains(&"action_file".to_string()), "{names:?}");
+        assert!(names.contains(&"action_weight".to_string()), "{names:?}");
+        assert!(names.contains(&"action_path".to_string()), "{names:?}");
+
+        // Tag values.
+        let variant = col(&sexp, "action_variant");
+        assert_eq!(variant.string_elt_str(0), Some("Add"));
+        assert_eq!(variant.string_elt_str(1), Some("Init"));
+
+        // Row 0 (Add) has file=10, weight=2.5, path=NA.
+        let file = col(&sexp, "action_file");
+        assert_eq!(file.real_elt(0), 10.0);
+        assert!(file.real_elt(1).is_nan(), "Init row file should be NA");
+        let path = col(&sexp, "action_path");
+        assert_eq!(path.string_elt_str(0), None, "Add row path should be NA");
+        assert_eq!(path.string_elt_str(1), Some("/tmp"));
+    });
+}
+
+/// A unit variant mixed with a data variant: unit rows get the tag plus NA for
+/// the data variant's payload columns.
+#[test]
+fn flatten_enum_field_unit_variant_mixed() {
+    #[derive(Serialize)]
+    enum Action {
+        Reset,
+        Set { value: f64 },
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        action: Action,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                action: Action::Set { value: 7.0 },
+            },
+            Row {
+                id: 2,
+                action: Action::Reset,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let sexp = df.into_sexp();
+        let variant = col(&sexp, "action_variant");
+        assert_eq!(variant.string_elt_str(0), Some("Set"));
+        assert_eq!(variant.string_elt_str(1), Some("Reset"));
+        let value = col(&sexp, "action_value");
+        assert_eq!(value.real_elt(0), 7.0);
+        assert!(
+            value.real_elt(1).is_nan(),
+            "unit-variant row payload should be NA"
+        );
+    });
+}
+
+/// `Option<Enum>` with a `None` row: the tag and payload columns are NA for
+/// that row.
+#[test]
+fn flatten_enum_field_option_none() {
+    #[derive(Serialize)]
+    enum Action {
+        Go { steps: f64 },
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        action: Option<Action>,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                action: Some(Action::Go { steps: 3.0 }),
+            },
+            Row {
+                id: 2,
+                action: None,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let sexp = df.into_sexp();
+        let variant = col(&sexp, "action_variant");
+        assert_eq!(variant.string_elt_str(0), Some("Go"));
+        assert_eq!(variant.string_elt_str(1), None, "None row tag should be NA");
+        let steps = col(&sexp, "action_steps");
+        assert_eq!(steps.real_elt(0), 3.0);
+        assert!(steps.real_elt(1).is_nan(), "None row payload should be NA");
+    });
+}
+
+/// Newtype variant wrapping a struct: its fields flatten under the prefix.
+#[test]
+fn flatten_enum_field_newtype_wrapping_struct() {
+    #[derive(Serialize)]
+    struct Coords {
+        x: f64,
+        y: f64,
+    }
+    #[derive(Serialize)]
+    enum Shape {
+        Point(Coords),
+        Empty,
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        shape: Shape,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                shape: Shape::Point(Coords { x: 1.0, y: 2.0 }),
+            },
+            Row {
+                id: 2,
+                shape: Shape::Empty,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["shape"]).unwrap();
+        let sexp = df.into_sexp();
+        let names = col_names(&sexp);
+        assert!(names.contains(&"shape_variant".to_string()), "{names:?}");
+        assert!(names.contains(&"shape_x".to_string()), "{names:?}");
+        assert!(names.contains(&"shape_y".to_string()), "{names:?}");
+        let x = col(&sexp, "shape_x");
+        assert_eq!(x.real_elt(0), 1.0);
+        assert!(x.real_elt(1).is_nan(), "Empty row x should be NA");
+    });
+}
+
+/// A nested enum field NOT named in `flatten_enum_fields` retains the default
+/// behaviour — it becomes a single list-column, not flattened.
+#[test]
+fn flatten_enum_field_untargeted_enum_stays_list_column() {
+    #[derive(Serialize)]
+    enum Action {
+        Add { file: f64 },
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        action: Action,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![Row {
+            id: 1,
+            action: Action::Add { file: 1.0 },
+        }];
+        // Empty target set: nothing flattened.
+        let df = vec_to_dataframe_flatten_enums(&rows, &[]).unwrap();
+        let sexp = df.into_sexp();
+        let names = col_names(&sexp);
+        assert_eq!(names, vec!["id".to_string(), "action".to_string()]);
+        // The untargeted enum is a Generic (list) column.
+        let action = col(&sexp, "action");
+        assert_eq!(
+            action.type_of(),
+            miniextendr_api::SEXPTYPE::VECSXP,
+            "untargeted enum field must remain a list-column"
+        );
+    });
+}
+
+/// A non-enum nested struct field is unaffected by the new fn: it still
+/// flattens to `parent_child` columns exactly as plain `vec_to_dataframe`.
+#[test]
+fn flatten_enum_field_nested_struct_unaffected() {
+    #[derive(Serialize)]
+    struct Meta {
+        size: f64,
+        ok: bool,
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        meta: Meta,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                meta: Meta {
+                    size: 4.0,
+                    ok: true,
+                },
+            },
+            Row {
+                id: 2,
+                meta: Meta {
+                    size: 9.0,
+                    ok: false,
+                },
+            },
+        ];
+        // "meta" is targeted but it's NOT an enum — it must error (only enum /
+        // Option<enum> fields are flattenable).
+        assert!(
+            vec_to_dataframe_flatten_enums(&rows, &["meta"]).is_err(),
+            "targeting a non-enum struct field must error"
+        );
+        // Untargeted: behaves exactly like vec_to_dataframe — meta_size/meta_ok.
+        let df = vec_to_dataframe_flatten_enums(&rows, &[]).unwrap();
+        let sexp = df.into_sexp();
+        let names = col_names(&sexp);
+        assert_eq!(
+            names,
+            vec![
+                "id".to_string(),
+                "meta_size".to_string(),
+                "meta_ok".to_string()
+            ]
+        );
     });
 }
 

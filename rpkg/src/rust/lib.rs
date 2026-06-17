@@ -143,6 +143,8 @@ mod class_system_matrix;
 mod coerce_tests;
 mod collect_tests;
 #[cfg(feature = "serde")]
+mod columnar_flatten_enum_tests;
+#[cfg(feature = "serde")]
 mod columnar_flatten_tests;
 #[cfg(feature = "serde")]
 mod columnar_option_none_tests;

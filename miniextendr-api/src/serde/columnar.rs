@@ -2713,7 +2713,7 @@ struct VariantInfo {
     tag_field: Option<String>,
 }
 
-fn extract_variant_info<T: Serialize>(row: &T) -> Option<VariantInfo> {
+fn extract_variant_info<T: ?Sized + Serialize>(row: &T) -> Option<VariantInfo> {
     let mut ext = VariantNameExtractor::default();
     let _ = row.serialize(&mut ext);
     ext.name.map(|name| VariantInfo {
@@ -3564,6 +3564,7 @@ impl<T: Serialize> RoutedInner<'_, T> {
         let forwarder = MapForwarder {
             map,
             suppress: self.suppress_field,
+            prefix: None,
         };
         self.inner
             .serialize(VariantStrippingMapForwarder { forwarder })
@@ -3572,9 +3573,15 @@ impl<T: Serialize> RoutedInner<'_, T> {
 
 /// Forwarder serializer that re-emits a struct's fields as map entries on
 /// a *parent* map serializer, skipping `suppress` if set.
+///
+/// When `prefix` is `Some(p)`, every emitted key is rewritten to `<p>_<key>`.
+/// This is how [`FlattenEnumFieldsRow`] namespaces a nested enum field's
+/// payload columns under the parent field name (`action_file`, `action_path`,
+/// …) without touching the inner enum's serde representation.
 struct MapForwarder<'m, M: ser::SerializeMap> {
     map: &'m mut M,
     suppress: Option<&'m str>,
+    prefix: Option<&'m str>,
 }
 
 impl<M: ser::SerializeMap> MapForwarder<'_, M> {
@@ -3582,7 +3589,10 @@ impl<M: ser::SerializeMap> MapForwarder<'_, M> {
         if Some(key) == self.suppress {
             return Ok(());
         }
-        self.map.serialize_entry(key, value)
+        match self.prefix {
+            Some(p) => self.map.serialize_entry(&format!("{p}_{key}"), value),
+            None => self.map.serialize_entry(key, value),
+        }
     }
 }
 
@@ -3850,6 +3860,547 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 
     fn end(self) -> Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+// endregion
+
+// region: vec_to_dataframe_flatten_enums (#1056)
+
+/// Like [`vec_to_dataframe`], but each field named in `flatten_enum_fields`
+/// whose value is an enum is flattened *into columns* instead of landing as a
+/// per-row list-column.
+///
+/// The default [`vec_to_dataframe`] recursively flattens nested *structs* into
+/// `parent_child` columns, but a nested *enum* field cannot be flattened the
+/// same way (different rows carry different variant shapes), so it falls back
+/// to a `ColumnType::Generic` list-column. This helper is the nested-field
+/// analogue of [`SplitShape::Collated`](crate::serde::SplitShape): for each
+/// targeted field it emits
+///
+/// - a leading `<field>_variant` **tag** column holding the variant name, and
+/// - the union of the variants' payload fields, each prefixed `<field>_`
+///   (`<field>_<subfield>`), NA-filled on rows whose variant lacks that field.
+///
+/// This matches the `#[derive(DataFrameRow)]` nested-enum naming convention
+/// (`<outer_field>_variant` tag + prefixed payload). Fields *not* in the set
+/// keep their default behaviour (nested structs flatten to `parent_child`;
+/// nested enums stay list-columns).
+///
+/// # Serde-inheritance only
+///
+/// This is a pure `Serialize` adapter over the existing row type — it requires
+/// **no** flattened "view" struct and does **not** change the enum's serde
+/// representation (an externally-tagged enum stays externally tagged on the
+/// wire). You opt in per-call by naming the fields to flatten.
+///
+/// # Variant shapes
+///
+/// - **Struct variant** `V { a, b }` → `<field>_a`, `<field>_b`.
+/// - **Newtype variant wrapping a struct** `V(Inner { a, b })` → the inner
+///   struct's fields flatten under the prefix (`<field>_a`, `<field>_b`).
+/// - **Tuple variant** `V(x, y)` → `<field>__0`, `<field>__1` (the `_N`
+///   tuple-index convention, prefixed).
+/// - **Unit variant** `V` → only the `<field>_variant` tag (no payload).
+/// - **`Option<Enum>` = `None`** → the row contributes nothing for this field;
+///   Union discovery + NA-fill leave the tag and all payload columns NA.
+///
+/// # Casing
+///
+/// Variant names are whatever serde emits (PascalCase by default; override
+/// with `#[serde(rename_all = "snake_case")]` on the enum).
+///
+/// # Limitations
+///
+/// - **Serialize-only.** Like the top-level collated path, there is no
+///   `R → Rust` reader for the flattened layout (see #1056 follow-up).
+/// - **Externally-tagged / untagged data enums** are the intended target. If a
+///   targeted field holds an *internally-tagged* enum (`#[serde(tag = "kind")]`),
+///   its implicit tag arrives as an ordinary field and becomes a normal
+///   `<field>_kind` column (no dedicated `<field>_variant` is synthesised);
+///   this is accepted, not special-cased.
+/// - **Compound-vs-compound payload divergence.** Payload subfields are emitted
+///   *flat* into the parent map, so each leaf key goes through scalar Union
+///   resolution independently — variants whose payloads differ in shape merge
+///   per-leaf-key, sidestepping the first-seen-Compound limitation of nested
+///   struct discovery.
+///
+/// # Errors
+///
+/// - A targeted field's value is neither an enum nor `Option<Enum>` `None`
+///   (e.g. a plain struct or scalar) — the value cannot be variant-flattened.
+/// - The row does not serialize as a struct or map.
+/// - Underlying column-buffer assembly fails.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(Serialize)]
+/// enum Action { Add { file: f64 }, Init { path: String } }
+/// #[derive(Serialize)]
+/// struct AuditRow { id: i32, action: Action }
+///
+/// let df = vec_to_dataframe_flatten_enums(&rows, &["action"])?;
+/// // Columns: id, action_variant, action_file, action_path
+/// ```
+pub fn vec_to_dataframe_flatten_enums<T: Serialize>(
+    rows: &[T],
+    flatten_enum_fields: &[&str],
+) -> Result<DataFrame, RSerdeError> {
+    let wrapped: Vec<FlattenEnumFieldsRow<'_, T>> = rows
+        .iter()
+        .map(|row| FlattenEnumFieldsRow {
+            inner: row,
+            fields: flatten_enum_fields,
+        })
+        .collect();
+    vec_to_dataframe(&wrapped)
+}
+
+/// Adapter that re-serializes a row as a serde map, flattening each enum field
+/// named in `fields` into a `<field>_variant` tag plus prefixed payload columns.
+struct FlattenEnumFieldsRow<'a, T> {
+    inner: &'a T,
+    fields: &'a [&'a str],
+}
+
+impl<T: Serialize> Serialize for FlattenEnumFieldsRow<'_, T> {
+    fn serialize<S: ser::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use ser::SerializeMap as _;
+        // A map gives us freedom over the emitted field count + names; the
+        // columnar discoverer treats serialize_map like a struct.
+        let mut map = serializer.serialize_map(None)?;
+        self.inner.serialize(FieldSelectingForwarder {
+            map: &mut map,
+            fields: self.fields,
+        })?;
+        map.end()
+    }
+}
+
+/// Drives the inner row's `serialize_struct`/`serialize_map` and re-emits each
+/// `(key, value)` onto a parent map, routing keys in `fields` through the
+/// enum-flattener and passing the rest through unchanged.
+struct FieldSelectingForwarder<'m, M: ser::SerializeMap> {
+    map: &'m mut M,
+    fields: &'m [&'m str],
+}
+
+impl<'m, M: ser::SerializeMap> ser::Serializer for FieldSelectingForwarder<'m, M> {
+    type Ok = ();
+    type Error = M::Error;
+    type SerializeSeq = ser::Impossible<(), M::Error>;
+    type SerializeTuple = ser::Impossible<(), M::Error>;
+    type SerializeTupleStruct = ser::Impossible<(), M::Error>;
+    type SerializeTupleVariant = ser::Impossible<(), M::Error>;
+    type SerializeMap = SelectingMapEmitter<'m, M>;
+    type SerializeStruct = SelectingMapEmitter<'m, M>;
+    type SerializeStructVariant = ser::Impossible<(), M::Error>;
+
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStruct, Self::Error> {
+        Ok(SelectingMapEmitter {
+            map: self.map,
+            fields: self.fields,
+            pending_key: None,
+        })
+    }
+
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        Ok(SelectingMapEmitter {
+            map: self.map,
+            fields: self.fields,
+            pending_key: None,
+        })
+    }
+
+    fn serialize_some<V: ?Sized + Serialize>(self, v: &V) -> Result<(), Self::Error> {
+        v.serialize(self)
+    }
+    fn serialize_newtype_struct<V: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        v: &V,
+    ) -> Result<(), Self::Error> {
+        v.serialize(self)
+    }
+
+    // A flatten-target row must be a struct/map at the top level — everything
+    // else is an error (mirrors VariantStrippingMapForwarder's posture).
+    fn serialize_none(self) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_bool(self, _: bool) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_i8(self, _: i8) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_i16(self, _: i16) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_i32(self, _: i32) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_i64(self, _: i64) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_u8(self, _: u8) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_u16(self, _: u16) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_u32(self, _: u32) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_u64(self, _: u64) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_f32(self, _: f32) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_f64(self, _: f64) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_char(self, _: char) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_str(self, _: &str) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_bytes(self, _: &[u8]) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_unit(self) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_unit_struct(self, _: &'static str) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+    ) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_newtype_variant<V: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: &V,
+    ) -> Result<(), Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_tuple_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_tuple_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
+        Err(top_level_struct_error())
+    }
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStructVariant, Self::Error> {
+        Err(top_level_struct_error())
+    }
+}
+
+fn top_level_struct_error<E: ser::Error>() -> E {
+    ser::Error::custom("vec_to_dataframe_flatten_enums: expected struct or map at top level")
+}
+
+/// Sink that re-emits the inner row's `(key, value)` pairs onto the parent map,
+/// routing keys named in `fields` through [`flatten_enum_field`].
+struct SelectingMapEmitter<'m, M: ser::SerializeMap> {
+    map: &'m mut M,
+    fields: &'m [&'m str],
+    /// For the map path: the most recent key awaiting its value.
+    pending_key: Option<String>,
+}
+
+impl<M: ser::SerializeMap> SelectingMapEmitter<'_, M> {
+    fn route<V: ?Sized + Serialize>(&mut self, key: &str, value: &V) -> Result<(), M::Error> {
+        if self.fields.contains(&key) {
+            flatten_enum_field(self.map, key, value)
+        } else {
+            self.map.serialize_entry(key, value)
+        }
+    }
+}
+
+impl<M: ser::SerializeMap> ser::SerializeStruct for SelectingMapEmitter<'_, M> {
+    type Ok = ();
+    type Error = M::Error;
+
+    fn serialize_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), Self::Error> {
+        self.route(key, value)
+    }
+
+    fn end(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl<M: ser::SerializeMap> ser::SerializeMap for SelectingMapEmitter<'_, M> {
+    type Ok = ();
+    type Error = M::Error;
+
+    fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<(), Self::Error> {
+        let mut ve = ValueExtractor::default();
+        let _ = key.serialize(&mut ve);
+        self.pending_key = match ve.value {
+            ExtractedValue::Str(s) => Some(s),
+            _ => None,
+        };
+        Ok(())
+    }
+
+    fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+        match self.pending_key.take() {
+            Some(key) => self.route(&key, value),
+            None => Err(ser::Error::custom(
+                "vec_to_dataframe_flatten_enums: map key was not a string",
+            )),
+        }
+    }
+
+    fn serialize_entry<K: ?Sized + Serialize, V: ?Sized + Serialize>(
+        &mut self,
+        key: &K,
+        value: &V,
+    ) -> Result<(), Self::Error> {
+        let mut ve = ValueExtractor::default();
+        let _ = key.serialize(&mut ve);
+        match ve.value {
+            ExtractedValue::Str(s) => self.route(&s, value),
+            _ => Err(ser::Error::custom(
+                "vec_to_dataframe_flatten_enums: map key was not a string",
+            )),
+        }
+    }
+
+    fn end(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// Route a single targeted field `value` (expected to be an enum or
+/// `Option<Enum>`) into the parent `map`: emit the `<field>_variant` tag, then
+/// the variant payload prefixed with `<field>_`.
+///
+/// `None` (a `None` `Option<Enum>`) emits nothing — Union discovery + NA-fill
+/// leaves the tag + payload columns NA for that row.
+fn flatten_enum_field<M: ser::SerializeMap, V: ?Sized + Serialize>(
+    map: &mut M,
+    field: &str,
+    value: &V,
+) -> Result<(), M::Error> {
+    // First, classify the value: is it `None`, or an enum with a variant name?
+    let info = match extract_variant_info(value) {
+        Some(info) => info,
+        None => {
+            // No variant name. Distinguish `Option<Enum>::None` (emit nothing —
+            // Union discovery + NA-fill handles the row) from a genuine
+            // non-enum value (a plain struct / scalar — that's a usage error).
+            let mut probe = IsNoneProbe { is_none: false };
+            let _ = value.serialize(&mut probe);
+            return if probe.is_none {
+                Ok(())
+            } else {
+                Err(ser::Error::custom(format!(
+                    "vec_to_dataframe_flatten_enums: field '{field}' is not an enum \
+                     (only enum / Option<enum> fields can be flattened)"
+                )))
+            };
+        }
+    };
+
+    // Tag column: `<field>_variant`.
+    map.serialize_entry(&format!("{field}_variant"), &info.name)?;
+
+    if info.is_unit {
+        // Unit variant: tag only, no payload.
+        return Ok(());
+    }
+
+    // Payload: drive the value through the variant-stripping forwarder with a
+    // key-prefixing MapForwarder so each subfield lands as `<field>_<sub>`.
+    let forwarder = MapForwarder {
+        map,
+        suppress: None,
+        prefix: Some(field),
+    };
+    value.serialize(VariantStrippingMapForwarder { forwarder })
+}
+
+/// Minimal probe that records whether a value serialized via `serialize_none`
+/// (i.e. it was an `Option::None`). Every other entry leaves `is_none` false.
+/// Compound entry points return `Impossible`, but they're never reached for the
+/// values this probes (it's only used on the no-variant fallback path).
+struct IsNoneProbe {
+    is_none: bool,
+}
+
+impl ser::Serializer for &mut IsNoneProbe {
+    type Ok = ();
+    type Error = RSerdeError;
+    type SerializeSeq = ser::Impossible<(), RSerdeError>;
+    type SerializeTuple = ser::Impossible<(), RSerdeError>;
+    type SerializeTupleStruct = ser::Impossible<(), RSerdeError>;
+    type SerializeTupleVariant = ser::Impossible<(), RSerdeError>;
+    type SerializeMap = ser::Impossible<(), RSerdeError>;
+    type SerializeStruct = ser::Impossible<(), RSerdeError>;
+    type SerializeStructVariant = ser::Impossible<(), RSerdeError>;
+
+    fn serialize_none(self) -> Result<(), RSerdeError> {
+        self.is_none = true;
+        Ok(())
+    }
+    fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<(), RSerdeError> {
+        v.serialize(self)
+    }
+    fn serialize_unit(self) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_char(self, _: char) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_str(self, _: &str) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+    ) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        v: &T,
+    ) -> Result<(), RSerdeError> {
+        v.serialize(self)
+    }
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: &T,
+    ) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, RSerdeError> {
+        Err(RSerdeError::Message("seq in IsNoneProbe".into()))
+    }
+    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, RSerdeError> {
+        Err(RSerdeError::Message("tuple in IsNoneProbe".into()))
+    }
+    fn serialize_tuple_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleStruct, RSerdeError> {
+        Err(RSerdeError::Message("tuple_struct in IsNoneProbe".into()))
+    }
+    fn serialize_tuple_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleVariant, RSerdeError> {
+        Err(RSerdeError::Message("tuple_variant in IsNoneProbe".into()))
+    }
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
+        Err(RSerdeError::Message("map in IsNoneProbe".into()))
+    }
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStruct, RSerdeError> {
+        Err(RSerdeError::Message("struct in IsNoneProbe".into()))
+    }
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStructVariant, RSerdeError> {
+        Err(RSerdeError::Message("struct_variant in IsNoneProbe".into()))
     }
 }
 
