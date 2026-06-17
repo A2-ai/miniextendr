@@ -501,6 +501,93 @@ fn auto_details_order_is_title_description_details_param() {
 
 // endregion
 
+// region: #1054 — bare prose doc on a tagless fn must emit an implicit @title
+//
+// Before #1054, `roxygen_tags_from_attrs` only auto-inserted @title/@description/
+// @details when the block had a @name/@rdname tag OR any other @tag. A bare
+// `/// prose` doc with no args (so no auto-@param) produced an empty tag list, the
+// title-less block was skipped by roxygen2, and the function got no .Rd at all.
+
+#[test]
+fn bare_prose_doc_emits_implicit_title() {
+    // dvs_version repro: a single prose line, no tags, no name.
+    let attrs = make_doc_attrs_plain(&["Version of the bundled DVS Rust core crate."]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let title = tags.iter().find(|t| t.starts_with("@title"));
+    assert!(
+        title.is_some(),
+        "bare prose doc must emit an implicit @title: {:?}",
+        tags
+    );
+    assert!(
+        title
+            .unwrap()
+            .contains("Version of the bundled DVS Rust core crate"),
+        "wrong @title content: {:?}",
+        tags
+    );
+    // Single paragraph → no @description.
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@description")),
+        "single-para bare doc must not emit @description: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn bare_prose_two_paragraphs_emit_title_and_description() {
+    let attrs = make_doc_attrs_plain(&["A short title.", "", "A longer description paragraph."]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let title = tags.iter().find(|t| t.starts_with("@title"));
+    let desc = tags.iter().find(|t| t.starts_with("@description"));
+    assert!(title.is_some(), "expected @title: {:?}", tags);
+    assert!(desc.is_some(), "expected @description: {:?}", tags);
+    assert!(
+        title.unwrap().contains("A short title"),
+        "wrong title: {:?}",
+        tags
+    );
+    assert!(
+        desc.unwrap().contains("A longer description paragraph"),
+        "wrong description: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn tag_led_block_with_no_leading_prose_gets_no_title() {
+    // Regression guard: an @inherit-led block (no leading prose) must NOT gain a
+    // spurious @title — implicit_title_from_attrs returns None for tag-led docs.
+    let attrs = make_doc_attrs_plain(&["@inherit foo"]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert!(
+        !tags.iter().any(|t| t.starts_with("@title")),
+        "tag-led block must not gain an implicit @title: {:?}",
+        tags
+    );
+    assert!(
+        tags.iter().any(|t| t.starts_with("@inherit")),
+        "the @inherit tag must be preserved: {:?}",
+        tags
+    );
+}
+
+#[test]
+fn explicit_title_on_bare_doc_is_not_double_inserted() {
+    // Regression guard: an explicit @title must be kept verbatim and never doubled.
+    let attrs = make_doc_attrs_plain(&["@title Custom"]);
+    let tags = roxygen_tags_from_attrs(&attrs);
+    let count = tags.iter().filter(|t| t.starts_with("@title")).count();
+    assert_eq!(count, 1, "expected exactly one @title tag: {:?}", tags);
+    assert!(
+        tags.iter().any(|t| t == "@title Custom"),
+        "explicit @title must be preserved verbatim: {:?}",
+        tags
+    );
+}
+
+// endregion
+
 // region: Tag extraction tests
 
 #[test]

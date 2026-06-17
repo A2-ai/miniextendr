@@ -61,13 +61,13 @@ Test extracting the year from a Date
 
 Test extracting the month from a Date
 
-time adapter tests
+Test creating and roundtripping the Unix epoch date (1970-01-01)
 
 Test formatting a Date as a YYYY-MM-DD string
 
-time adapter tests
+Test creating a date in the distant past (1900-01-01)
 
-time adapter tests
+Test creating and roundtripping the epoch datetime (1970-01-01 00:00:00 UTC)
 
 Test Date roundtrip through R Date
 

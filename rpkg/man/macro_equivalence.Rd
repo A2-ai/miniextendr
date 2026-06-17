@@ -80,17 +80,17 @@ Test summing fields of an MxPoint ExternalPtr
 
 Construct an \code{MxFit} and return it as an R list (exercises \code{IntoList})
 
-macro equivalence
+Test creating an MxObs dataframe with two sample rows
 
 Test converting an MxSeason factor back to its debug string
 
-macro equivalence
+Test creating an ALTREP integer vector via derive(Altrep)
 
 Round-trip an \code{MxFit} through \code{IntoList} and the (fixed) \code{TryFromList} derive, returning the reconstructed \code{estimate} vector
 
 Test creating an MxRecord and returning as list via PreferList
 
-macro equivalence
+Test returning the Summer variant of MxSeason as an R factor
 
 Test converting an MxVerbosity match_arg enum to its debug string
 }

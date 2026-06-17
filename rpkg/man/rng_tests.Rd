@@ -71,7 +71,7 @@ rng_worker_uniform(n)
 \description{
 Test generating n random integers in [0, max) using R's RNG
 
-rng tests
+Generate a random boolean using R's RNG
 
 Generate a random double in [min, max) using R's RNG
 

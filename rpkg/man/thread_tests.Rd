@@ -18,7 +18,7 @@ unsafe_C_test_r_thread_builder_spawn_join()
 \description{
 Test RThreadBuilder spawn with explicit stack size and thread name
 
-thread tests
+Test RThreadBuilder spawn_join convenience method
 }
 \examples{
 \dontrun{

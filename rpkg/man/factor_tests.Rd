@@ -68,21 +68,21 @@ factor_describe_priority(priority)
 \description{
 Test constructing a Color factor from a string name
 
-factor tests
+Test retrieving the Color factor level names via CHOICES
 
 Test counting occurrences of each Color in a FactorVec
 
-factor tests
+Test retrieving the Status factor level names via CHOICES
 
 Test handling NA values in a FactorOptionVec of Colors
 
 Test describing a Color factor variant as a human-readable string
 
-factor tests
+Test returning all Color variants as a FactorVec
 
 Test describing a Status factor with snake_case rename_all
 
-factor tests
+Test retrieving the Priority factor level names via CHOICES
 
 Test describing a Priority factor with individually renamed variants
 }

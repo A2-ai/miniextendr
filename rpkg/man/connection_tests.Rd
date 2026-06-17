@@ -137,6 +137,8 @@ Useful for capturing stderr output from Rust code via \code{capture.output()}.
 
 The no-arg signature makes this eligible for the gctorture GC sweep. The returned connection is open; R will close it when it is GC'd or when the caller calls \code{close()} on it.
 
+Creates a bar, advances it once, then lets it close on drop. Called from the gctorture sweep to exercise precious-list GC discipline.
+
 Lets tests verify the \code{file} builder option works and that output appears on the message channel (where \code{sink(type="message")} can capture it).
 
 Returns \code{TRUE} if \code{close()} succeeded. After \code{close()} consumes \code{self}, the \code{Drop} impl is skipped via \code{mem::forget}, so no double-close occurs.

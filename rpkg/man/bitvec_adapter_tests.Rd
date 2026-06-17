@@ -66,7 +66,7 @@ Test getting the length of a bit vector
 
 Test counting the number of set bits (ones) in a bit vector
 
-bitvec adapter tests
+Test creating and roundtripping an empty bit vector
 
 Test counting the number of unset bits (zeros) in a bit vector
 

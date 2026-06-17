@@ -63,19 +63,19 @@ bytes_mut_roundtrip(data)
 \description{
 Test getting the length of a Bytes buffer
 
-bytes adapter tests
+Test creating and roundtripping an empty Bytes buffer
 
-bytes adapter tests
+Test roundtripping a large buffer (1000 bytes)
 
 Test slicing a Bytes buffer by start and end indices
 
 Test concatenating two Bytes buffers
 
-bytes adapter tests
+Test that an empty Bytes buffer has length zero
 
 Test Bytes roundtrip through R raw vector
 
-bytes adapter tests
+Test roundtripping all 256 byte values (0x00 through 0xFF)
 
 Test BytesMut roundtrip through R raw vector
 }
