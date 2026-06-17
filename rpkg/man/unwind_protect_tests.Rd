@@ -23,9 +23,9 @@ unsafe_C_unwind_protect_lowlevel_test()
 \description{
 Test with_r_unwind_protect_or_raise normal execution with RAII resource cleanup
 
-unwind protect tests
+Test with_r_unwind_protect_or_raise cleanup when an R error is triggered
 
-unwind protect tests
+Test low-level with_r_unwind_protect_or_raise that triggers an R error directly
 }
 \examples{
 \dontrun{

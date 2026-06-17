@@ -72,25 +72,13 @@ new_percent(x, ...)
 A percent vector.
 }
 \description{
-Create a new percent vector
+Formats values as percentages (e.g., 0.5 -> "50\%").
 
-Print method for percent vectors
+For percent vectors, the proxy is just the underlying numeric data without the class attribute.
 
-Get the proxy for subsetting operations
+Reconstructs a percent vector from the proxy data.
 
-Restore from proxy after subsetting
+Returns "\%" to display in tibble headers and other compact contexts.
 
-Print abbreviation for percent vectors
-
-Cast from percent to double
-
-Cast from double to percent
-
-Self-cast (percent -> percent is identity)
-
-Coercion: double + percent = percent (symmetric)
-
-Coercion: double + percent = percent
-
-Self-coercion prototype (percent + percent = percent)
+Returns an empty percent prototype when combining two percent vectors.
 }

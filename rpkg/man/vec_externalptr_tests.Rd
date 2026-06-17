@@ -48,5 +48,7 @@ Argument side with \code{NULL} holes: \verb{Vec<Option<ExternalPtr<Bag>>>}.
 
 Round-trips both conversions in one call.
 
+Builds the input list the natural way (\verb{.map(ExternalPtr::new).collect()} — GC-safe now that owned handles self-root, #836/#841), then drives the \code{IntoR} list-assembly and the \code{TryFromSexp} readback — the code this fixture exists to stress. The list is held under \code{OwnedProtect} across the readback (which allocates). No arguments — suitable for the fast gctorture no-arg sweep (issues #827, #430).
+
 Return side with \code{NULL} holes: \verb{Vec<Option<ExternalPtr<Bag>>>}.
 }

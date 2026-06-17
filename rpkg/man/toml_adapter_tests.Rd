@@ -84,7 +84,7 @@ Test extracting top-level keys from a TOML table
 
 Test counting entries in a TOML array of tables
 
-toml adapter tests
+Test parsing TOML with mixed types (boolean, integer, string)
 
 Test extracting keys from nested TOML tables
 
@@ -92,5 +92,5 @@ Decode a TOML string and extract specific fields as a character vector
 
 Test that invalid TOML input returns an error message
 
-toml adapter tests
+Test parsing and re-serializing TOML array of tables
 }

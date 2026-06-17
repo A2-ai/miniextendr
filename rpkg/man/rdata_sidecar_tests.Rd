@@ -92,5 +92,5 @@ Test creating a SidecarRaw with a u8 scalar sidecar field
 
 Test creating a SidecarVctrs with vctrs-compatible sidecar fields
 
-rdata sidecar tests
+Test creating a SidecarRawSexp with all SEXP slots initialized to NULL
 }

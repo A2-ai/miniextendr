@@ -64,11 +64,11 @@ Test getting the number of entries in an IndexMap
 
 Test extracting keys from an IndexMap in insertion order
 
-indexmap adapter tests
+Test roundtripping an empty IndexMap
 
-indexmap adapter tests
+Test roundtripping a single-entry IndexMap
 
-indexmap adapter tests
+Test that duplicate key insertion keeps the last value
 
 Drive an \code{IndexMap} through the \code{RIndexMapOps} adapter trait (audit A7 — the conversions above call inherent \code{IndexMap} methods; the trait was unexercised)
 
@@ -78,5 +78,5 @@ Test IndexMap<String, i32> roundtrip through R named list
 
 Test IndexMap<String, String> roundtrip through R named list
 
-indexmap adapter tests
+Test that insertion order is preserved in IndexMap keys
 }

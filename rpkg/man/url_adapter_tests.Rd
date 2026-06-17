@@ -78,7 +78,7 @@ Test URL roundtrip through R
 
 Test Vec\if{html}{\out{<Url>}} roundtrip through R character vector
 
-url adapter tests
+Test extracting all URL components (scheme, host, path, query, fragment)
 
 Test extracting the port or known default port from a URL
 }

@@ -185,7 +185,7 @@ Test serializing a scalar f64 to an R value via serde_r
 
 Test serializing a scalar i32 to an R value via serde_r
 
-serde r tests
+Test serializing a complex nested struct with points, rectangles, maps, and flags
 
 Test serializing a bool to an R logical via serde_r
 
@@ -195,13 +195,13 @@ Test deserializing an R integer to i32 via serde_r
 
 Test serialize-then-deserialize roundtrip of a SerdeRPoint struct
 
-serde r tests
+Test serializing a Rust tuple (i32, f64, String) to an R list
 
 \code{AsSerialize} over a Vec — a list of lists in R
 
 Test serializing a String to an R character via serde_r
 
-serde r tests
+Test serializing a HashMap<String, i32> to an R named list via serde_r
 
 Test roundtrip of Vec\if{html}{\out{<f64>}} through serde_r (deserialize then serialize)
 
@@ -219,7 +219,7 @@ Test deserializing an R numeric vector to Vec\if{html}{\out{<f64>}} then re-seri
 
 Test deserializing an R integer vector to Vec\if{html}{\out{<i32>}} then re-serializing
 
-serde r tests
+Test serialize-then-deserialize roundtrip of a deeply nested struct
 
 Test serialize-then-deserialize roundtrip of a Rectangle struct
 
@@ -227,15 +227,15 @@ Test serializing an Option\if{html}{\out{<i32>}} to an R integer (NA for None)
 
 Test roundtrip of Vec\if{html}{\out{<String>}} through serde_r (deserialize then serialize)
 
-serde r tests
+Test serialize-then-deserialize roundtrip of a struct with multiple collection types
 
 Test that deserializing with a type mismatch returns an error
 
-serde r tests
+Test serializing a Rust tuple struct (Pair) to an R list
 
-serde r tests
+Test roundtrip of a struct where all optional fields are None (NA)
 
 Test that deserializing a struct with a missing required field returns an error
 
-serde r tests
+Test roundtrip of a struct where all optional fields are present (Some)
 }

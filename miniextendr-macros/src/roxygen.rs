@@ -143,9 +143,13 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
 
     // Auto-generate @title from implicit title if:
     // - We have @name but no @title, OR
-    // - We have any tags (like @param/@return) but no @title (user is writing roxygen docs)
-    // Use implicit_title_from_attrs which respects paragraph breaks
-    if (has_name || has_any_tags)
+    // - We have any tags (like @param/@return) but no @title (user is writing roxygen docs), OR
+    // - We have plain prose doc comments (no tags, no name) — a bare `///` block (#1054).
+    //   Without an emitted @title, roxygen2 treats the block as title-less and skips the
+    //   .Rd entirely, so the function ends up undocumented.
+    // `implicit_title_from_attrs` returns None for tag-led blocks (no leading prose), so
+    // @inherit/@rdname-only docs never gain a spurious title.
+    if (has_name || has_any_tags || !regular_docs.is_empty())
         && !has_title
         && let Some(title) = implicit_title_from_attrs(attrs)
     {
@@ -153,9 +157,9 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
     }
 
     // Auto-generate @description from implicit description (second paragraph) if:
-    // - We have @name or any tags (like @param/@return) but no @description
+    // - We have @name, any tags (like @param/@return), or plain prose docs, but no @description
     // Mirrors the @title auto-generation condition above
-    if (has_name || has_any_tags)
+    if (has_name || has_any_tags || !regular_docs.is_empty())
         && !has_description
         && let Some(desc) = implicit_description_from_attrs(attrs)
     {
@@ -169,10 +173,10 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
     }
 
     // Auto-generate @details from implicit details (paragraphs 3+) if:
-    // - We have @name or any tags but no explicit @details
+    // - We have @name, any tags, or plain prose docs, but no explicit @details
     // - There are 3+ free-form paragraphs before the first @tag
     let has_details = tag_names(&tags).contains("details");
-    if (has_name || has_any_tags)
+    if (has_name || has_any_tags || !regular_docs.is_empty())
         && !has_details
         && let Some(details) = implicit_details_from_attrs(attrs)
     {

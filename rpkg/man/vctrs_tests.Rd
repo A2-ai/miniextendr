@@ -52,15 +52,5 @@ test_vctrs_build_error_message(error_type)
 \item{error_type}{(no documentation available)}
 }
 \description{
-Test new_rcrd with the given field list and class name(s)
-
-Test new_vctr with default inherit_base_type
-
-Test new_list_of with a size
-
-Test new_vctr with explicit inherit_base_type
-
-Test new_list_of with a ptype
-
-Get the VctrsBuildError message for a specific error type
+Creates a vctr with the given class name(s) from data. Uses default inherit_base_type (true for lists, false otherwise).
 }

@@ -55,13 +55,13 @@ arrayvec_roundtrip_int(v)
 \description{
 Test getting the length of a TinyVec
 
-tinyvec adapter tests
+Test creating and roundtripping an empty TinyVec
 
-tinyvec adapter tests
+Test creating and roundtripping an empty ArrayVec
 
-tinyvec adapter tests
+Test TinyVec at inline capacity (8 elements fits inline)
 
-tinyvec adapter tests
+Test TinyVec exceeding inline capacity (spills to heap)
 
 Test \verb{TinyVec<[f64; 8]>} roundtrip through R
 

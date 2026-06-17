@@ -88,7 +88,7 @@ Get the y-coordinate from a Point ExternalPtr
 
 Increment the Counter value in-place via ErasedExternalPtr::downcast_mut
 
-externalptr tests
+Test creating and reading an ExternalPtr entirely on the main thread
 
 Test that interpreting a Point ExternalPtr as a Counter returns None (type mismatch)
 }

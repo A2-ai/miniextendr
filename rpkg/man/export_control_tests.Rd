@@ -22,8 +22,8 @@ export_control_noexport()
 \description{
 A normal exported function for comparison
 
-export control tests
+An internal function -- callable but not exported, with @keywords internal
 
-export control tests
+A noexport function -- callable but not exported, no @keywords internal
 }
 \keyword{internal}
