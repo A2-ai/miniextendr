@@ -54,7 +54,7 @@ use_configure_feature_detection <- function(path = ".") {
   script_path <- usethis::proj_path("tools", "detect-features.R")
   if (fs::file_exists(script_path)) {
     existing_text <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
-    if (!grepl("^## BEGIN RULES", existing_text, multiline = TRUE)) {
+    if (!grepl("(?m)^## BEGIN RULES", existing_text, perl = TRUE)) {
       cli::cli_alert_warning(c(
         "{.path tools/detect-features.R} already exists but has no {.code ## BEGIN RULES} marker.",
         "i" = "Delete it and re-run {.code use_configure_feature_detection()} to upgrade to the unified design."
