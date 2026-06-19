@@ -11,6 +11,40 @@ test_that("generate_empty_detect_script produces valid structure", {
   expect_true(any(grepl('cat\\(paste\\(features', lines)))
 })
 
+test_that("use_configure_feature_detection accepts an existing marked script", {
+  # Regression: the marker check pasted the whole script into one string and
+  # ran grepl("^## BEGIN RULES", text, multiline = TRUE). `multiline` is not a
+  # grepl() argument (byte-compile note), and `^` against the pasted text only
+  # matched line 1 -- so a valid script (marker ~line 150) was mis-reported as
+  # unmarked, firing a spurious "...has no marker, delete and re-run" warning.
+  # The word "marker" appears only in that warning, never in the happy path.
+  proj <- withr::local_tempdir()
+  dir.create(file.path(proj, "tools"), recursive = TRUE)
+  writeLines(
+    minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES"),
+    file.path(proj, "tools", "detect-features.R")
+  )
+  writeLines(c(
+    "AC_INIT([mypkg], [1.0])",
+    'if test -z "${CARGO_FEATURES+x}"; then',
+    "  dnl CARGO_FEATURES not set - use empty (no extra features)",
+    '  CARGO_FEATURES=""',
+    "fi"
+  ), file.path(proj, "configure.ac"))
+
+  local_mocked_bindings(
+    with_project = function(...) invisible(NULL),
+    template_data = function(...) list(package = "mypkg", features_var = "CARGO_FEATURES"),
+    miniextendr_autoconf = function(...) invisible(TRUE),
+    .package = "minirextendr"
+  )
+  usethis::local_project(proj, force = TRUE, setwd = FALSE)
+
+  msgs <- testthat::capture_messages(use_configure_feature_detection())
+  expect_false(any(grepl("marker", msgs)))
+  expect_true(any(grepl("already exists", msgs)))
+})
+
 test_that("append and parse feature rules round-trip", {
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
