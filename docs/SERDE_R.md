@@ -310,15 +310,15 @@ pub fn convert_from_r(sexp: SEXP) -> Vec<i32> {
 
 ## Columnar `data.frame` Assembly
 
-For `&[T: Serialize]`, `ColumnarDataFrame::from_rows` (alias
-`vec_to_dataframe`) produces a column-oriented R `data.frame` where each
-field of `T` becomes one atomic column. Nested structs are recursively
-flattened into prefixed columns (`point_x`, `point_y`); `#[serde(flatten)]`
-fields appear without a prefix; `#[serde(skip_serializing_if)]` fills NA.
-`Option<Struct>` fills NA across all sub-columns when `None`.
+For `&[T: Serialize]`, `vec_to_dataframe` produces a column-oriented R
+`data.frame` where each field of `T` becomes one atomic column. Nested structs
+are recursively flattened into prefixed columns (`point_x`, `point_y`);
+`#[serde(flatten)]` fields appear without a prefix; `#[serde(skip_serializing_if)]`
+fills NA. `Option<Struct>` fills NA across all sub-columns when `None`.
 
 ```rust
-use miniextendr_api::serde_r::{ColumnarDataFrame, vec_to_dataframe};
+use miniextendr_api::serde_r::vec_to_dataframe;
+use miniextendr_api::dataframe::DataFrame;
 
 #[derive(Serialize)]
 struct Row {
@@ -329,17 +329,18 @@ struct Row {
 }
 
 #[miniextendr]
-pub fn rows_as_df(rows: Vec<Row>) -> ColumnarDataFrame {
-    ColumnarDataFrame::from_rows(&rows).unwrap()
+pub fn rows_as_df(rows: Vec<Row>) -> DataFrame {
+    vec_to_dataframe(&rows).unwrap()
         .rename("point_x", "x")
         .rename("point_y", "y")
         .drop("note")
 }
 ```
 
-`ColumnarDataFrame` implements `IntoR`, so return it directly from a
-`#[miniextendr]` function. No explicit `.build()` or `into_sexp()` call is needed. Builder methods (`rename`, `strip_prefix`, `drop`, `select`) are
-chainable and run before the SEXP reaches R.
+`DataFrame` implements `IntoR`, so return it directly from a `#[miniextendr]`
+function. No explicit `.build()` or `into_sexp()` call is needed. Builder
+methods (`rename`, `strip_prefix`, `drop`, `select`) are chainable and run
+before the SEXP reaches R.
 
 ## Error Handling
 
@@ -433,3 +434,122 @@ miniextendr also provides `#[derive(IntoList)]` for simpler struct-to-list conve
 | Nested structs | Yes | Yes |
 
 Use `IntoList` for simple one-way struct-to-list conversion. Use `serde_r` when you need full bidirectional serialization, enum support, or smart vector handling.
+
+## Satellite crates: R interop for a serde-only crate
+
+A crate that already derives `serde::{Serialize, Deserialize}` gets R interop
+**without ever depending on miniextendr**. Keep your data crate (the
+"satellite") miniextendr-free and do all the bridging in the R-package crate
+that already links miniextendr.
+
+```
+  satellite/                    rpkg/src/rust/  (the R package crate)
+  ┌────────────────────┐        ┌──────────────────────────────────┐
+  │ serde only          │        │ depends on miniextendr-api        │
+  │ #[derive(Serialize, │  path  │ + satellite (path dep)            │
+  │   Deserialize)]     │◄───────│                                   │
+  │ struct Reading {…}  │  dep   │ #[miniextendr]                    │
+  │                     │        │ fn readings_df() -> DataFrame {   │
+  │ NO miniextendr,     │        │   vec_to_dataframe(&readings())   │
+  │ NO FFI, NO R        │        │ }   // the ONLY bridge code        │
+  └────────────────────┘        └──────────────────────────────────┘
+```
+
+### Why split it this way
+
+- The satellite crate stays portable: no FFI, no R, nothing from miniextendr in
+  its dependency tree. It compiles and tests on its own and is reusable outside
+  R entirely.
+- All R-specific glue lives in one place — the package crate — and every helper
+  is generic over `T: Serialize` / `T: Deserialize`, so a new type costs a few
+  lines, not a conversion impl.
+
+### Layout
+
+The satellite is a normal path dependency, sealed as its own workspace so it
+is excluded from the package's workspace:
+
+```toml
+# satellite/Cargo.toml — serde and nothing else
+[package]
+name = "satellite"
+edition = "2024"
+[workspace]                      # sealed: not a member of any outer workspace
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+```
+
+```toml
+# package crate Cargo.toml
+[workspace]
+exclude = ["satellite"]          # don't treat the path dep as a nested member
+[dependencies]
+satellite = { path = "satellite" }
+```
+
+`serde` unifies across the two crates (one `^1` resolution), so
+`satellite::Reading` implements the *same* `serde::Serialize` that
+miniextendr's bridge functions require — no shared-trait wiring needed.
+
+### The bridge (the only miniextendr-aware code)
+
+```rust
+use miniextendr_api::{miniextendr, SEXP};
+use miniextendr_api::dataframe::DataFrame;
+use miniextendr_api::serde::{AsSerialize, from_r, vec_to_dataframe};
+
+// Vec<struct> → columnar data.frame (nested structs flatten, Option → NA).
+#[miniextendr]
+fn readings_df() -> Result<DataFrame, String> {
+    vec_to_dataframe(&satellite::sample_readings()).map_err(|e| e.to_string())
+}
+
+// struct → R list (row-oriented).
+#[miniextendr]
+fn readings_list() -> AsSerialize<Vec<satellite::Reading>> {
+    AsSerialize(satellite::sample_readings())
+}
+
+// R → Rust → R: deserialize an R list into the satellite type, round-trip back.
+#[miniextendr]
+fn echo_reading(x: SEXP) -> Result<AsSerialize<satellite::Reading>, String> {
+    Ok(AsSerialize(from_r::<satellite::Reading>(x).map_err(|e| e.to_string())?))
+}
+```
+
+### What you get for free (data interchange)
+
+| Capability | Bridge entry point |
+|---|---|
+| `struct` ↔ named R `list` | `AsSerialize` / `from_r` |
+| `Vec<struct>` → columnar `data.frame` | `vec_to_dataframe` |
+| nested struct → flattened columns | `vec_to_dataframe` (`site_lat`, `site_lon`) |
+| `Option<T>` → `NA` (round-trips) | any serde path |
+| `enum` → tagged list / per-variant `data.frame` | `vec_to_dataframe_split`, `result_to_dataframe` |
+| `HashMap`/`BTreeMap` → named list / `data.frame` | `map_to_dataframe`, `hashmap_to_dataframe` |
+| `data.frame` → `Vec<struct>` | `dataframe_to_vec` / `SerdeRows` |
+
+### What serde alone cannot give you
+
+The serde bridge moves **values**. Anything about R-object **identity or
+behaviour** needs miniextendr-native code in the package crate (a
+`#[derive(...)]` or `#[miniextendr] impl` on a type the package crate owns) —
+it cannot come from a serde-only satellite:
+
+- **Live mutable handles** (`ExternalPtr`): returning a Rust object R holds and
+  mutates in place, rather than a copy of its data.
+- **R class systems** (R6 / S3 / S4 / S7) and **methods** callable on the type.
+- **ALTREP** vectors, **custom connections**, Rust errors surfaced as **R
+  conditions**, and **`...` (dots)** handling.
+
+The dividing line is data vs. behaviour: a satellite crate ships data; objects,
+methods, and classes live in the package crate.
+
+### The irreducible per-type cost
+
+You still write one `#[miniextendr]` free function per exported conversion —
+`extern "C"` exports can't be generic, so each must name the concrete satellite
+type. That function *is* the entire glue: name the type, call `vec_to_dataframe`
+/ `AsSerialize` / `from_r`. (A `TryFrom<&[T]> for DataFrame` sugar would let you
+write `rows.try_into()` inside the body, but you'd still need the named export,
+so it saves nothing for this pattern.)
