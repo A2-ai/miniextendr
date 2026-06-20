@@ -566,7 +566,7 @@ The redundant public types below were **removed** (#781) — there is no backwar
 | `RDataFrameBuilder::new(n)` | `DataFrame::builder(n)` |
 | four conversion error types | one `DataFrameError` |
 
-The companion type that `#[derive(DataFrameRow)]` generates (`{Name}DataFrame`, with `to_dataframe` / `from_rows` / `from_rows_par` / `from_dataframe` and `IntoIterator`) still exists as the engine the façade verbs delegate to. The serde columnar assembler (`serde::ColumnarDataFrame`) is still present as a serde-internal representation; converging its naming with the façade is tracked in #783.
+The companion type that `#[derive(DataFrameRow)]` generates (`{Name}DataFrame`, with `to_dataframe` / `from_rows` / `from_rows_par` / `from_dataframe` and `IntoIterator`) still exists as the engine the façade verbs delegate to. The serde columnar path (`serde::vec_to_dataframe` and friends) produces the same unified `DataFrame` — there is no separate `ColumnarDataFrame` type; the naming convergence was completed in #783.
 
 ## Feature flags
 
