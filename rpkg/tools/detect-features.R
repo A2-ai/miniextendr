@@ -73,12 +73,16 @@ main <- function() {
   #   refcount-fast-hash   : swaps the refcount hasher to ahash; perf knob,
   #                          opt-in (exercised by the scheduled feature-legs
   #                          CI job).
+  #   satellite            : serde "satellite-crate" experiment harness; ships
+  #                          dev-only `satellite_*` exports. Enable explicitly
+  #                          (`cargo check --features satellite`), never in the
+  #                          installed/CRAN package.
   deny <- c(
     "default", "full", "nonapi",
     "macro-coverage", "growth-debug",
     "strict-default", "coerce-default",
     "r6-default", "s7-default", "worker-default",
-    "indicatif", "refcount-fast-hash"
+    "indicatif", "refcount-fast-hash", "satellite"
   )
 
   features <- setdiff(available, deny)
