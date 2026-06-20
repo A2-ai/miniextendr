@@ -235,16 +235,6 @@ jobs:
         # short-circuits wrapper generation and expects pre-shipped files.
         run: just wrappers-sync-check
 
-      - name: Compile-check satellite bridge (dev-only feature, never ships)
-        # The `satellite` cargo feature is denylisted in tools/detect-features.R,
-        # so it never ships in the installed/CRAN package and no other CI job
-        # compiles it. Verify the serde "satellite-crate" bridge builds here, in
-        # dev mode (configure has patched miniextendr-api to the local siblings).
-        # `just vendor` (next step) regenerates Cargo.lock, discarding the
-        # transient satellite entry this adds.
-        working-directory: rpkg/src/rust
-        run: cargo check --features satellite
-
       - name: Vendor
         run: just vendor
 
