@@ -37,9 +37,11 @@ a `#[miniextendr]` free function there — never the reverse. See
 
 ## Build / experiment loop
 
-This crate is a path dependency of `rpkg/src/rust` behind the **dev-only**
-`satellite` cargo feature (denylisted in `tools/detect-features.R`, so it never
-ships in the installed/CRAN package). The fast loop needs no R install:
+This crate is a path dependency of `rpkg/src/rust` behind the optional
+`satellite` cargo feature. Like the other integration features, it is
+auto-enabled by `tools/detect-features.R`, so rpkg's normal build (and CI's
+`R CMD INSTALL` + `wrappers-sync-check`) compiles it and generates R wrappers
+for the `satellite_*` bridge exports. The fast Rust-only loop needs no R install:
 
 ```bash
 cd rpkg/src/rust && cargo check --features satellite
