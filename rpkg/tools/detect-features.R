@@ -70,12 +70,16 @@ main <- function() {
   #   worker-default       : separate opt-in semantic from `worker-thread`.
   #   indicatif            : progress-bar integration, opt-in (not in the
   #                          default integration set).
+  #   satellite            : serde "satellite-crate" experiment harness; ships
+  #                          dev-only `satellite_*` exports. Enable explicitly
+  #                          (`cargo check --features satellite`), never in the
+  #                          installed/CRAN package.
   deny <- c(
     "default", "full", "nonapi",
     "macro-coverage", "growth-debug",
     "strict-default", "coerce-default",
     "r6-default", "s7-default", "worker-default",
-    "indicatif"
+    "indicatif", "satellite"
   )
 
   features <- setdiff(available, deny)

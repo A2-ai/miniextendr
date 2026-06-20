@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-# Make this a standalone workspace (prevents inheriting from parent)
+# Make this a standalone workspace (prevents inheriting from parent).
+# `satellite/` is a path dependency with its own sealed workspace — exclude it
+# so cargo doesn't treat it as a nested member.
 [workspace]
+exclude = ["satellite"]
 
 [lib]
 path = "lib.rs"
@@ -24,6 +27,8 @@ ndarray = ["miniextendr-api/ndarray"]
 nalgebra = ["miniextendr-api/nalgebra"]
 serde = ["miniextendr-api/serde"]
 serde_json = ["miniextendr-api/serde_json"]
+# Satellite-architecture experiment: a serde-only crate bridged to R. See satellite_bridge.rs.
+satellite = ["serde", "dep:satellite"]
 num-bigint = ["miniextendr-api/num-bigint"]
 rust_decimal = ["miniextendr-api/rust_decimal"]
 ordered-float = ["miniextendr-api/ordered-float"]
@@ -78,6 +83,8 @@ full = [
 [dependencies]
 miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }
 log = { version = "0.4", optional = true }
+# miniextendr-free satellite crate (serde-only). Bridged to R via src/rust/satellite_bridge.rs.
+satellite = { path = "satellite", optional = true }
 
 [build-dependencies]
 miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }
