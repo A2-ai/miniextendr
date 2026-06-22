@@ -765,9 +765,14 @@ fn run_full(
     // `source = "git+<url>#<sha>"` so cargo's `[source."git+<url>"]` replacement
     // can redirect them to vendored-sources. Reconstruct that attribution here,
     // BEFORE copying the lock into vendor/, rather than re-resolving against the
-    // bare git URL (the step that fails on a rename). Skipped under --freeze,
-    // which rewrites the manifest to vendor path deps instead.
-    if !cli.freeze {
+    // bare git URL (the step that fails on a rename).
+    //
+    // Runs under --freeze too: freeze_manifest leaves `git =` deps as git
+    // (only manifest-declared `path =` deps are rewritten to vendor/), so the
+    // framework git crates still need the stamped source to resolve offline.
+    // Stamping only touches crates in the `[patch]` url-map (the git framework
+    // crates), never the genuine path-dep siblings that freeze rewrites.
+    {
         let patch_url_map = metadata::discover_patch_url_map(manifest_path)
             .context("failed to read [patch] URLs from .cargo/config.toml")?;
         if !patch_url_map.is_empty() {
