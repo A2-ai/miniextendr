@@ -923,6 +923,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             if !class_has_no_rd {
                 lines.extend(shortcut_advisory_lines(&method_name, &class_name));
                 lines.push(format!("#' @param self A `{}` object.", class_name));
+                // `...` appears in the shortcut signature for parity with the S7
+                // generic but MethodDocBuilder doesn't document it, so emit it
+                // here to avoid an "Undocumented arguments" R CMD check warning.
+                if !method_attrs.s7.no_dots {
+                    lines.push(
+                        "#' @param ... Additional arguments; ignored by the fast-path shortcut."
+                            .to_string(),
+                    );
+                }
                 // Pass empty doc_tags: the method's own prose (@title/description)
                 // is already rendered on the shared @rdname page by the generic
                 // block above; re-emitting it here would duplicate it. We only

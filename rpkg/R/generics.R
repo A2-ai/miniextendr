@@ -99,3 +99,49 @@ NULL
 #' @param ... Additional arguments.
 #' @name s4_mode_set
 NULL
+
+# Pipe-builder fixture generics (GreetingBuilder, PipeCounter). These S3
+# generics are exported by the auto-generated wrappers under @rdname of their
+# class, so they need a bare-name alias here for R CMD check.
+
+#' Set the name to greet
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name set_name
+NULL
+
+#' Set the trailing punctuation
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name set_punctuation
+NULL
+
+#' Toggle whether the greeting is shouted
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name set_loud
+NULL
+
+#' Render the configured value
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name build
+NULL
+
+#' Add to a counter in place
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name bump
+NULL
+
+#' Double a counter in place
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name twice
+NULL
+
+#' Read the current value
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name peek
+NULL

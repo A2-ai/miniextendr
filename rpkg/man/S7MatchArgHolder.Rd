@@ -33,6 +33,8 @@ S7MatchArgHolder_set(self, mode = c("Fast", "Safe", "Debug"), ...)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{self}{A \code{S7MatchArgHolder} object.}
+
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
