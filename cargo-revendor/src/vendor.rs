@@ -961,14 +961,18 @@ pub fn generate_cargo_config(
     Ok(config)
 }
 
-/// Freeze: rewrite Cargo.toml so all sources resolve from vendor/.
+/// Freeze: rewrite Cargo.toml so sources resolve from vendor/.
 ///
-/// 1. Rewrites git deps to vendor/ path deps
+/// 1. Rewrites manifest-declared `path =` deps to vendor/ path deps. Deps
+///    declared `git =` are left untouched (external by declaration, even if a
+///    `[patch]` resolves them to a local crate during vendoring) and resolve
+///    offline via source replacement.
 /// 2. Strips all `[patch.*]` sections (they reference sources outside vendor/)
-/// 3. Adds `[patch.crates-io]` with vendor paths for transitive local deps
+/// 3. Adds `[patch.crates-io]` with vendor paths for the frozen path deps
 ///
-/// After freezing, the manifest is self-contained: `cargo build --offline`
-/// works with only the vendor directory, no network or workspace context.
+/// After freezing, the manifest resolves from vendor/ for its path deps;
+/// remaining git deps resolve via vendor/.cargo-config.toml source replacement.
+/// `cargo build --offline` then works with only the vendor directory.
 pub fn freeze_manifest(
     manifest_path: &Path,
     vendor_dir: &Path,
@@ -987,7 +991,19 @@ pub fn freeze_manifest(
         manifest_path.parent().context("manifest has no parent")?,
     );
 
-    // Step 1: Rewrite git/version deps to vendor/ path deps.
+    // Step 1: Rewrite manifest-declared path deps to vendor/ path deps.
+    //
+    // Only deps the manifest itself declares as a path dependency
+    // (`foo = { path = "..." }`) are rewritten. A dep declared `git = "..."`
+    // is an EXTERNAL git dep by declaration and must remain `git =` in the
+    // frozen manifest — even when a `[patch."git+<url>"]` in a discovered
+    // `.cargo/config.toml` resolves it to a local crate during vendoring (the
+    // monorepo dev override). Such crates land in `local_pkgs`, but freezing
+    // them to a vendor/ path would change a working, tested shape: framework
+    // git deps are meant to resolve offline via source replacement
+    // (vendor/.cargo-config.toml's `[source."git+<url>"]`), and downstream
+    // lock-shape checks expect `git+<url>#<sha>` for them, not a path source.
+    // They are reported by the remaining-git warning below, as intended.
     //
     // Local workspace crates always land at flat `vendor/<name>/` — single-
     // version by construction, so the #214 flat-slot non-determinism that
@@ -995,11 +1011,15 @@ pub fn freeze_manifest(
     // `--flat-dirs` escape hatch is handled implicitly: when `versioned_dirs`
     // is false, transitive deps are also flat, so the probe helper just
     // returns the flat name too.
+    let mut frozen_path_deps: std::collections::HashSet<String> = std::collections::HashSet::new();
     for section in &["dependencies", "build-dependencies"] {
         if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
             for pkg in local_pkgs.iter() {
-                if let Some(dep) = table.get_mut(&pkg.name) {
+                if let Some(dep) = table.get_mut(&pkg.name)
+                    && dep_declares_path(dep)
+                {
                     rewrite_dep_to_vendor(dep, &pkg.name, &vendor_rel);
+                    frozen_path_deps.insert(pkg.name.clone());
                 }
             }
         }
@@ -1080,8 +1100,14 @@ pub fn freeze_manifest(
     let local_names: std::collections::HashSet<&str> =
         local_pkgs.iter().map(|p| p.name.as_str()).collect();
     let mut patch_table = toml_edit::Table::new();
+    // Only the path deps actually frozen in step 1 get a `[patch.crates-io]`
+    // entry. Git deps left as `git =` (external by declaration) resolve via
+    // source replacement, not crates-io patching, so adding a patch entry for
+    // them would be wrong.
     for pkg in local_pkgs {
-        patched_names.insert(pkg.name.clone());
+        if frozen_path_deps.contains(&pkg.name) {
+            patched_names.insert(pkg.name.clone());
+        }
     }
     for name in &patched_names {
         let dir_name = if local_names.contains(name.as_str()) {
@@ -1116,6 +1142,23 @@ pub fn freeze_manifest(
     }
 
     Ok(())
+}
+
+/// Whether a manifest dependency entry is declared as a path dependency.
+///
+/// True only for `foo = { path = "..." }` (inline or full table). A `git = `
+/// dep is false even if a `[patch]` resolves it to a local crate during
+/// vendoring: it stays an external git dep in the frozen manifest. A bare
+/// version string (`foo = "1"`, crates.io) is false — it resolves via source
+/// replacement, not a vendor/ path rewrite.
+fn dep_declares_path(dep: &toml_edit::Item) -> bool {
+    match dep {
+        toml_edit::Item::Value(toml_edit::Value::InlineTable(t)) => {
+            t.contains_key("path") && !t.contains_key("git")
+        }
+        toml_edit::Item::Table(t) => t.contains_key("path") && !t.contains_key("git"),
+        _ => false,
+    }
 }
 
 /// Rewrite a dependency entry to point at vendor/
@@ -1871,6 +1914,83 @@ miniextendr-macros-core = { path = "/tmp/mc" }
             "patch.crates-io entries not alphabetical: {}",
             result
         );
+    }
+
+    #[test]
+    fn freeze_manifest_leaves_git_patched_local_deps_as_git() {
+        // A git dep resolved to a local crate via a `.cargo/config.toml`
+        // [patch] (the monorepo dev override) lands in local_pkgs, but is
+        // declared `git =` in the manifest. Freeze must NOT rewrite it to a
+        // vendor/ path — it stays an external git dep, resolved offline via
+        // source replacement. Only the genuinely path-declared sibling is
+        // frozen. Regression guard for the path-dep-sibling support: a blunt
+        // rewrite-all-local-pkgs freeze would corrupt framework git deps.
+        let dir = tempfile::tempdir().unwrap();
+        let vendor = dir.path().join("vendor");
+        std::fs::create_dir_all(vendor.join("framework-crate")).unwrap();
+        std::fs::create_dir_all(vendor.join("core-sibling")).unwrap();
+        let manifest = dir.path().join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            r#"[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+framework-crate = { git = "https://github.com/example/framework" }
+core-sibling = { path = "../../../core-sibling" }
+"#,
+        )
+        .unwrap();
+
+        // Both crates are discovered as local: framework-crate via a patch
+        // entry, core-sibling via the path dep. freeze sees both in local_pkgs.
+        let local_pkgs = vec![
+            LocalPackage {
+                name: "framework-crate".into(),
+                version: "0.1.0".into(),
+                path: dir.path().join("framework-crate"),
+                manifest_path: dir.path().join("framework-crate/Cargo.toml"),
+            },
+            LocalPackage {
+                name: "core-sibling".into(),
+                version: "0.1.0".into(),
+                path: dir.path().join("core-sibling"),
+                manifest_path: dir.path().join("core-sibling/Cargo.toml"),
+            },
+        ];
+
+        freeze_manifest(&manifest, &vendor, &local_pkgs, false, false, Verbosity(0)).unwrap();
+        let result = std::fs::read_to_string(&manifest).unwrap();
+
+        // git dep stays git, NOT rewritten to a vendor/ path.
+        assert!(
+            result.contains(r#"git = "https://github.com/example/framework""#),
+            "git-declared dep lost its git source:\n{result}"
+        );
+        assert!(
+            !result.contains("vendor/framework-crate"),
+            "git-declared dep was wrongly frozen to a vendor/ path:\n{result}"
+        );
+        // path dep IS frozen to vendor/.
+        assert!(
+            result.contains("path = \"vendor/core-sibling\""),
+            "path-declared sibling was not frozen:\n{result}"
+        );
+
+        // [patch.crates-io] covers the frozen path dep only, never the git dep.
+        if let Some(idx) = result.find("[patch.crates-io]") {
+            let patch_section = &result[idx..];
+            assert!(
+                !patch_section.contains("framework-crate"),
+                "git dep leaked into [patch.crates-io]:\n{result}"
+            );
+            assert!(
+                patch_section.contains("core-sibling"),
+                "frozen path dep missing from [patch.crates-io]:\n{result}"
+            );
+        }
     }
 
     #[test]
