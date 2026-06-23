@@ -164,12 +164,15 @@ vendor:
 # so `rbuild` seals the frozen (vendor/-resolving) manifest into the tarball, but
 # the working tree must return to its source-shape (path = "../../../my-core") form
 # for the next source-mode build. Restore runs AFTER rbuild so the seal is unaffected.
+# The two Cargo.{toml,lock} restores are SEPARATE git checkouts on purpose:
+# `git checkout -- a b` is atomic, so an untracked Cargo.lock (common on a fresh
+# package) would abort the whole command and leave the FROZEN Cargo.toml in the tree.
 #
 # Shared with monorepo/justfile — see scripts/templates-recipes-check.sh
 [script("bash")]
 cran-prep: vendor
     set -euo pipefail
-    trap 'rm -f inst/vendor.tar.xz; git checkout -- src/rust/Cargo.toml src/rust/Cargo.lock 2>/dev/null || true' EXIT
+    trap 'rm -f inst/vendor.tar.xz; git checkout -- src/rust/Cargo.toml 2>/dev/null || true; git checkout -- src/rust/Cargo.lock 2>/dev/null || true' EXIT
     just rbuild
     just rcheck
 

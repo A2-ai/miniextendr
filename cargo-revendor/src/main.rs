@@ -164,11 +164,14 @@ struct Cli {
     #[arg(long)]
     blank_md: bool,
 
-    /// Freeze: rewrite Cargo.toml so all sources resolve from vendor/.
-    /// Rewrites git deps to vendor/ path deps, strips [patch.*] sections,
-    /// adds [patch.crates-io] for transitive local deps, and regenerates
-    /// Cargo.lock offline. Makes the manifest self-contained for hermetic
-    /// offline builds with no network, git, or workspace context.
+    /// Freeze: rewrite Cargo.toml so sources resolve from vendor/.
+    /// Rewrites manifest-declared `path =` deps (local siblings) to vendor/
+    /// path deps and adds a matching [patch.crates-io] entry; strips [patch.*]
+    /// sections; regenerates Cargo.lock offline. Deps declared `git =` are
+    /// left as git (external by declaration) and resolve offline via the
+    /// vendor/.cargo-config.toml source replacement — pass --strict-freeze to
+    /// reject any that remain. Makes path-dep siblings travel inside the
+    /// shipped tarball (they are not source-replaceable).
     #[arg(long)]
     freeze: bool,
 

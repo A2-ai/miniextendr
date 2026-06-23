@@ -18,6 +18,9 @@ connections = ["miniextendr-api/connections"]
 
 [dependencies]
 miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }
+# Core Rust library (workspace sibling). `cargo revendor --freeze` rewrites this
+# path to vendor/ at build time so the shipped tarball is self-contained.
+{{crate_name}} = { path = "../../../{{crate_name}}" }
 
 [build-dependencies]
 miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }

@@ -140,6 +140,28 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   pkg_path <- usethis::proj_get()
   has_devtools <- requireNamespace("devtools", quietly = TRUE)
 
+  # A build = TRUE install (Step 3/5 below) runs the package's bootstrap.R in the
+  # source tree, which auto-vendors when no inst/vendor.tar.xz is present: that
+  # FREEZES src/rust/Cargo.toml (rewriting a `path = "../../../my-core"` sibling
+  # to `vendor/my-core`) and leaves inst/vendor.tar.xz behind — flipping the tree
+  # into tarball mode and stranding the next source-mode build. The dev loop must
+  # leave a clean source tree, so snapshot the manifest/lock + tarball presence
+  # now and restore on exit (mirrors the `just cran-prep` trap, git-independent).
+  rust_manifest <- fs::path(pkg_path, "src", "rust", "Cargo.toml")
+  rust_lock <- fs::path(pkg_path, "src", "rust", "Cargo.lock")
+  vendor_tarball <- fs::path(pkg_path, "inst", "vendor.tar.xz")
+  snap_manifest <- if (fs::file_exists(rust_manifest)) readLines(rust_manifest, warn = FALSE) else NULL
+  snap_lock <- if (fs::file_exists(rust_lock)) readLines(rust_lock, warn = FALSE) else NULL
+  tarball_preexisting <- fs::file_exists(vendor_tarball)
+  on.exit(
+    {
+      if (!is.null(snap_manifest)) writeLines(snap_manifest, rust_manifest)
+      if (!is.null(snap_lock)) writeLines(snap_lock, rust_lock)
+      if (!tarball_preexisting && fs::file_exists(vendor_tarball)) fs::file_delete(vendor_tarball)
+    },
+    add = TRUE
+  )
+
   cli::cli_h2("Step 1: autoconf")
   miniextendr_autoconf()
 

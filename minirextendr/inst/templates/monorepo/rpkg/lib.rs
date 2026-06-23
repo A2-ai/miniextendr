@@ -21,3 +21,14 @@ pub fn hello(name: &str) -> String {
     format!("Hello, {}!", name)
 }
 
+/// Greeting from the core Rust library (the `{{crate_name}}` workspace sibling)
+///
+/// Demonstrates calling into the path-dependency sibling crate. Edit
+/// `{{crate_name}}/src/lib.rs` to grow your core logic, then expose it here.
+///
+/// @return Greeting string produced by the core crate
+#[miniextendr]
+pub fn core_greeting() -> String {
+    {{crate_name_rs}}::hello().to_string()
+}
+
