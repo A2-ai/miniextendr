@@ -33,6 +33,8 @@ S7PipeBuilder_s7_total(self, ...)
 \item{self}{A \code{S7PipeBuilder} object.}
 
 \item{amount}{(undocumented)}
+
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}

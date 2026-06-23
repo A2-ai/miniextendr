@@ -167,7 +167,7 @@
 use crate::sexp_types::cetype_t;
 use crate::sys::{
     R_MakeExternalPtr, R_NewEnv, R_ProtectWithIndex, R_Reprotect, Rf_alloc3DArray, Rf_allocArray,
-    Rf_allocLang, Rf_allocList, Rf_allocMatrix, Rf_allocS4Object, Rf_allocSExp, Rf_allocVector,
+    Rf_allocLang, Rf_allocList, Rf_allocMatrix, Rf_allocS4Object, Rf_allocVector,
     Rf_allocVector_unchecked, Rf_cons, Rf_lcons, Rf_lengthgets, Rf_mkCharLenCE, Rf_protect,
     Rf_unprotect, Rf_xlengthgets,
 };
@@ -806,20 +806,6 @@ impl ProtectScope {
     #[inline]
     pub unsafe fn alloc_s4_object<'a>(&'a self) -> Root<'a> {
         let sexp = unsafe { Rf_allocS4Object() };
-        unsafe { self.protect(sexp) }
-    }
-
-    /// Allocate a bare SEXP node of the given type, and immediately protect it.
-    ///
-    /// Unlike [`alloc_vector`][Self::alloc_vector], `Rf_allocSExp` allocates a
-    /// single cons-cell node (not a vector) for types like LISTSXP, ENVSXP, etc.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn alloc_sexp<'a>(&'a self, ty: SEXPTYPE) -> Root<'a> {
-        let sexp = unsafe { Rf_allocSExp(ty) };
         unsafe { self.protect(sexp) }
     }
 

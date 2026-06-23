@@ -28,6 +28,8 @@ S7Config_get_version(self, ...)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{self}{A \code{S7Config} object.}
+
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}

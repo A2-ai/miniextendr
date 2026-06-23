@@ -24,6 +24,8 @@ S7Celsius_value(self, ...)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{self}{A \code{S7Celsius} object.}
+
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}

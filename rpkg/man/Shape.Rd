@@ -24,6 +24,8 @@ Shape_shape_kind(self, ...)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{self}{A \code{Shape} object.}
+
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}

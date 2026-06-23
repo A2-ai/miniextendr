@@ -48,6 +48,8 @@ S7Counter_default_counter()
 
 \item{self}{A \code{S7Counter} object.}
 
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
 \item{amount}{(undocumented)}
 }
 \description{
