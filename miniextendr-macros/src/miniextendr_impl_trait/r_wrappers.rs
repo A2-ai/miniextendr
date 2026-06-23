@@ -802,17 +802,27 @@ fn generate_trait_s7_r_wrapper(
             for tag in &method.param_tags {
                 lines.push(format!("#' {}", tag));
             }
-            // Auto-document any formal lacking an explicit @param tag.
+            // Auto-document any formal lacking an explicit @param tag. `...` is
+            // included so roxygen2 covers it (otherwise R CMD check warns about
+            // an undocumented argument).
             for formal in shortcut_formals.split(", ") {
                 let pname = formal.split('=').next().unwrap_or(formal).trim();
-                if pname == "self" || pname == "..." {
+                if pname == "self" {
                     continue;
                 }
                 let documented = method
                     .param_tags
                     .iter()
                     .any(|t| t.starts_with(&format!("@param {}", pname)));
-                if !documented {
+                if documented {
+                    continue;
+                }
+                if pname == "..." {
+                    lines.push(
+                        "#' @param ... Additional arguments; ignored by the fast-path shortcut."
+                            .to_string(),
+                    );
+                } else {
                     lines.push(format!("#' @param {} (undocumented)", pname));
                 }
             }

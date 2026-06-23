@@ -57,6 +57,8 @@ S7TraitCounter_checked_add(self, n, ...)
 
 \item{self}{A \code{S7TraitCounter} object.}
 
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
 \item{initial}{(undocumented)}
 
 \item{n}{Amount to add.}

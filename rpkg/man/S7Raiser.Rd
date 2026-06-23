@@ -88,6 +88,8 @@ S7Raiser_s7_raise_condition_classed(self, class, msg, ...)
 
 \item{self}{A \code{S7Raiser} object.}
 
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
 \item{msg}{(undocumented)}
 
 \item{class}{(undocumented)}

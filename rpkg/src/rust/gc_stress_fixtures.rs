@@ -2296,8 +2296,8 @@ pub fn gc_stress_condition_data() {
 ///
 /// Chains at least 6 of the new wrappers with intermediate allocations between
 /// each call to ensure GC pressure between steps:
-///   - `alloc_lang` + `alloc_sexp` (pairlist/LISTSXP node)
-///   - `cons` (pairlist cons cell)
+///   - `alloc_lang` (LANGSXP node)
+///   - `cons` / `lcons` (pairlist / language cons cells)
 ///   - `lengthgets` (resize a vector)
 ///   - `alloc_array` (n-dimensional array with protected dims INTSXP)
 ///   - `mkchar_len_ce` + `mkchar_ce` (CHARSXP with specified encoding)
@@ -2321,15 +2321,15 @@ pub fn gc_stress_alloc_wrappers() -> i32 {
         let _lang = scope.alloc_lang(3);
         ops += 1;
 
-        // 2. alloc_sexp — allocate a bare LISTSXP cons-cell node
-        let _cell = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        // 2. cons — allocate a bare LISTSXP cons-cell node
+        let _cell = scope.cons(SEXP::nil(), SEXP::nil());
         ops += 1;
 
         // 3. cons — build a 2-element pairlist from two protected nodes
-        let head = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        let head = scope.cons(SEXP::nil(), SEXP::nil());
         // Intermediate allocation between cons args — exercises GC pressure
         let _gap = scope.alloc_integer(4);
-        let tail = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        let tail = scope.cons(SEXP::nil(), SEXP::nil());
         let _pair = scope.cons(head.get(), tail.get());
         ops += 1;
 
@@ -2358,8 +2358,8 @@ pub fn gc_stress_alloc_wrappers() -> i32 {
         ops += 1;
 
         // 9. lcons — language cons cell
-        let head2 = scope.alloc_sexp(SEXPTYPE::LISTSXP);
-        let tail2 = scope.alloc_sexp(SEXPTYPE::LISTSXP);
+        let head2 = scope.cons(SEXP::nil(), SEXP::nil());
+        let tail2 = scope.cons(SEXP::nil(), SEXP::nil());
         let _lc = scope.lcons(head2.get(), tail2.get());
         ops += 1;
 

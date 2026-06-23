@@ -44,6 +44,8 @@ CounterTraitS7_custom_add(self, n, ...)
 
 \item{self}{A \code{CounterTraitS7} object.}
 
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
 \item{n}{(undocumented)}
 }
 \description{

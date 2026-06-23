@@ -500,8 +500,6 @@ unsafe extern "C-unwind" {
     pub fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocS4Object")]
     pub fn Rf_allocS4Object() -> SEXP;
-    #[doc(alias = "allocSExp")]
-    pub fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
 
     // Pairlist construction — encapsulated by PairListExt trait
     pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
