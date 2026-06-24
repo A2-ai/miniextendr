@@ -54,7 +54,9 @@ use_configure_feature_detection <- function(path = ".") {
   script_path <- usethis::proj_path("tools", "detect-features.R")
   if (fs::file_exists(script_path)) {
     existing_text <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
-    if (!grepl("^## BEGIN RULES", existing_text, multiline = TRUE)) {
+    # grepl() has no `multiline` arg; (?m) + perl makes ^ anchor per-line so
+    # the marker (~line 150 of the script) is found, not just a line-1 match.
+    if (!grepl("(?m)^## BEGIN RULES", existing_text, perl = TRUE)) {
       cli::cli_alert_warning(c(
         "{.path tools/detect-features.R} already exists but has no {.code ## BEGIN RULES} marker.",
         "i" = "Delete it and re-run {.code use_configure_feature_detection()} to upgrade to the unified design."
@@ -202,77 +204,6 @@ remove_feature_rule <- function(feature, path = ".") {
   }
 
   invisible(removed)
-}
-
-#' Pin explicit always-enable rules for Cargo features
-#'
-#' Reads `[features]` from `src/rust/Cargo.toml` via `cargo metadata` and adds
-#' an explicit `detect = TRUE` rule for any features that don't already have
-#' one. Useful when you want to *pin* a feature as always-enabled rather than
-#' relying on auto-discovery (e.g., to document the intent, or to override a
-#' future conditional rule before it is added).
-#'
-#' Under the unified design, features without a rule are already enabled by
-#' default (auto-discovery from Cargo.toml at configure time). Calling this
-#' function pins those features explicitly, which is semantically equivalent
-#' but makes the intent visible in `tools/detect-features.R`.
-#'
-#' Skips the `"default"` pseudo-feature and any feature that already has a rule.
-#'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @return Invisibly returns a character vector of newly added feature names
-#'   (empty if everything was already in sync).
-#' @keywords internal
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Pin all current features as explicit always-enable rules:
-#' sync_feature_rules()
-#' #> v Added feature detection rule for 'new_feature_1'
-#' #> v Added feature detection rule for 'new_feature_2'
-#' #> i 2 features added, 15 already had rules
-#' }
-sync_feature_rules <- function(path = ".") {
-  with_project(path)
-
-  script_path <- usethis::proj_path("tools", "detect-features.R")
-  if (!fs::file_exists(script_path)) {
-    cli::cli_abort(c(
-      "{.path tools/detect-features.R} not found",
-      "i" = "Run {.code use_configure_feature_detection()} first"
-    ))
-  }
-
-  # Get features from Cargo.toml
-  cargo_info <- list_cargo_features(path = path)
-  cargo_features <- setdiff(names(cargo_info$features), "default")
-
-  # Get existing rules
-  existing_rules <- parse_detect_features_script(script_path)
-  existing_names <- names(existing_rules)
-
-  # Find features without rules
-  missing <- setdiff(cargo_features, existing_names)
-
-  if (length(missing) == 0) {
-    cli::cli_alert_info(
-      "All {length(cargo_features)} features already have detection rules"
-    )
-    return(invisible(character()))
-  }
-
-  # Add a rule for each missing feature (default: always enable)
-  for (feat in sort(missing)) {
-    append_feature_rule(script_path, feat, detect = TRUE)
-    cli::cli_alert_success("Added feature detection rule for {.val {feat}}")
-  }
-
-  cli::cli_alert_info(
-    "{length(missing)} feature{?s} added, {length(existing_names)} already had rules"
-  )
-
-  invisible(missing)
 }
 
 #' List feature detection rules
