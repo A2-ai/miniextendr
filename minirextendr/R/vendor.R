@@ -63,7 +63,16 @@ vendor_crates_io <- function(path = ".") {
       # prunes dangling [features] refs (see #330, #322), but leaves
       # tests/, benches/, examples/ on disk so crates that
       # include_str!() into those dirs (e.g. zerocopy) keep building.
-      "--strip-toml-sections"
+      "--strip-toml-sections",
+      # --freeze rewrites any local path-dependency sibling (a core crate at
+      # `path = "../../../my-core"`) to point at vendor/, so the sealed tarball
+      # is self-contained — a path dep is NOT source-replaceable, so without
+      # this the shipped Cargo.toml would reference a sibling that does not
+      # travel in the tarball. It mutates src/rust/Cargo.{toml,lock} in place;
+      # the manifest stays frozen so the subsequent `R CMD build` seals it (see
+      # miniextendr_vendor()'s closing guidance for restoring source shape).
+      # Inert for a git-only package with no path sibling to rewrite.
+      "--freeze"
     ),
     log_prefix = "cargo-revendor",
     wd = usethis::proj_get()

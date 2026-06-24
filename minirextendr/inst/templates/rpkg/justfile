@@ -133,11 +133,19 @@ reinstall: install
 # Vendor all dependencies for CRAN submission
 # Creates inst/vendor.tar.xz — include in CRAN tarball (R CMD build bundles it automatically).
 # Requires cargo-revendor: cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor
+#
+# --freeze rewrites local path-dependency siblings (a core crate at
+# `path = "../../../my-core"`) to point at vendor/, making the tarball self-contained.
+# A path dep is not source-replaceable, so without --freeze the shipped Cargo.toml
+# would reference a sibling that does not travel in the tarball. Inert for git-only
+# deps. It rewrites src/rust/Cargo.toml in place; `cran-prep` restores it after the
+# build. Run `just vendor` alone and you must `git checkout` it yourself.
 vendor:
     cargo revendor \
       --manifest-path src/rust/Cargo.toml \
       --output vendor \
       --strip-toml-sections \
+      --freeze \
       --compress inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
@@ -152,11 +160,19 @@ vendor:
 # (configure's only signal is `[ -f inst/vendor.tar.xz ]`), which freezes out
 # any cargo-resolved dependency edits.
 #
+# The trap also restores src/rust/Cargo.{toml,lock}: `vendor` froze them in place
+# so `rbuild` seals the frozen (vendor/-resolving) manifest into the tarball, but
+# the working tree must return to its source-shape (path = "../../../my-core") form
+# for the next source-mode build. Restore runs AFTER rbuild so the seal is unaffected.
+# The two Cargo.{toml,lock} restores are SEPARATE git checkouts on purpose:
+# `git checkout -- a b` is atomic, so an untracked Cargo.lock (common on a fresh
+# package) would abort the whole command and leave the FROZEN Cargo.toml in the tree.
+#
 # Shared with monorepo/justfile — see scripts/templates-recipes-check.sh
 [script("bash")]
 cran-prep: vendor
     set -euo pipefail
-    trap 'rm -f inst/vendor.tar.xz' EXIT
+    trap 'rm -f inst/vendor.tar.xz; git checkout -- src/rust/Cargo.toml 2>/dev/null || true; git checkout -- src/rust/Cargo.lock 2>/dev/null || true' EXIT
     just rbuild
     just rcheck
 
