@@ -114,6 +114,8 @@ Use `just force-document` (not `just devtools-document`) after **anything** that
 
 `just devtools-document` (short-circuiting variant) is safe for **pure R/roxygen changes** — skips roxygenize when `needs_roxygenize()` returns `FALSE`.
 
+**A new export needs a *second* install to be runtime-callable.** `just rcmdinstall` regenerates `wrappers.R` but installs against the *existing* `NAMESPACE`; `just force-document` then writes the new export into `NAMESPACE` on disk but does **not** reinstall — so a freshly added `#[miniextendr]` fn is absent from the *installed* package until you install again. To gctorture / testthat a new export, run the loop twice: `rcmdinstall && force-document && rcmdinstall`. (Committing the regenerated `NAMESPACE` / `man` only needs the single pass.)
+
 Generated files (`rpkg/R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must be committed in sync with the Rust changes that produced them.
 
 The pre-commit hook (`.githooks/pre-commit`) blocks commits where `*-wrappers.R` is staged without matching `NAMESPACE`. Enable once per clone: `git config core.hooksPath .githooks`.
