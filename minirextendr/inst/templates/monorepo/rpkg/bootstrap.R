@@ -8,9 +8,8 @@
 #      so the sealed tarball ships self-contained for offline install.
 #
 # Install-mode detection is automatic: if inst/vendor.tar.xz exists (created by
-# `just vendor` from the workspace root, by `miniextendr_vendor()`, or by the
-# auto-vendor block below), configure builds in tarball/offline mode. Otherwise
-# source/network mode is used.
+# minirextendr::miniextendr_vendor() or by the auto-vendor block below),
+# configure builds in tarball/offline mode. Otherwise source/network mode is used.
 
 # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
 # this ./configure was invoked by bootstrap, not directly, so a deliberate
@@ -26,10 +25,10 @@ if (.Platform$OS.type == "windows") {
   system2("bash", "./configure", env = "MINIEXTENDR_BOOTSTRAP=1")
 }
 
-# Auto-vendor fallback. `just vendor` (workspace root) normally seals
+# Auto-vendor fallback. minirextendr::miniextendr_vendor() normally seals
 # inst/vendor.tar.xz before the build and this block short-circuits via the
 # file.exists guard. But git-based / staged installs (remotes::install_git,
-# devtools::install, pak, CRAN) never run `just vendor` and copy the package
+# devtools::install, pak, CRAN) never run it and copy the package
 # out of the workspace before building — which strands any local
 # path-dependency sibling (a core crate at `path = "../../../my-core"`), since
 # a path dep is NOT source-replaceable. We vendor here instead, while the

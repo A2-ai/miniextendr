@@ -1,7 +1,7 @@
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-06-22 20:06:03
-+++ b/monorepo/rpkg/bootstrap.R	2026-06-23 20:55:07
-@@ -1,48 +1,20 @@
+--- a/monorepo/rpkg/bootstrap.R	2026-06-24 15:04:37
++++ b/monorepo/rpkg/bootstrap.R	2026-06-24 15:05:56
+@@ -1,48 +1,19 @@
  # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
 -# the source directory before R CMD build seals the tarball. Two jobs:
@@ -47,9 +47,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 -# pkgbuild-only). The bundled inst/vendor.tar.xz from step 2 is what
 -# configure detects to build offline.
 +# Install-mode detection is automatic: if inst/vendor.tar.xz exists (created by
-+# `just vendor` from the workspace root, by `miniextendr_vendor()`, or by the
-+# auto-vendor block below), configure builds in tarball/offline mode. Otherwise
-+# source/network mode is used.
++# minirextendr::miniextendr_vendor() or by the auto-vendor block below),
++# configure builds in tarball/offline mode. Otherwise source/network mode is used.
  
  # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
 -# this ./configure was invoked by bootstrap, not directly. The `just vendor`
@@ -63,13 +62,13 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# devtools::build()/check()) is not mistaken for a leak.
  if (.Platform$OS.type == "windows") {
    if (file.exists("configure.ucrt")) {
-@@ -55,4 +27,15 @@
+@@ -55,4 +26,15 @@
  }
  
-+# Auto-vendor fallback. `just vendor` (workspace root) normally seals
++# Auto-vendor fallback. minirextendr::miniextendr_vendor() normally seals
 +# inst/vendor.tar.xz before the build and this block short-circuits via the
 +# file.exists guard. But git-based / staged installs (remotes::install_git,
-+# devtools::install, pak, CRAN) never run `just vendor` and copy the package
++# devtools::install, pak, CRAN) never run it and copy the package
 +# out of the workspace before building — which strands any local
 +# path-dependency sibling (a core crate at `path = "../../../my-core"`), since
 +# a path dep is NOT source-replaceable. We vendor here instead, while the
@@ -79,7 +78,7 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# git-only package with no path sibling to rewrite.
  if (!file.exists("inst/vendor.tar.xz")) {
    cargo_revendor <- Sys.which("cargo-revendor")
-@@ -68,12 +51,4 @@
+@@ -68,12 +50,4 @@
    message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
    dir.create("inst", showWarnings = FALSE)
 -  # --freeze rewrites local path-dependency siblings (e.g. a core crate at
@@ -126,7 +125,7 @@ diff -ruN -U2 a/monorepo/rpkg/build.rs b/monorepo/rpkg/build.rs
      }
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 --- a/monorepo/rpkg/configure.ac	2026-06-16 19:09:56
-+++ b/monorepo/rpkg/configure.ac	2026-06-16 19:09:56
++++ b/monorepo/rpkg/configure.ac	2026-06-24 15:04:37
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -510,8 +509,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
---- a/rpkg/bootstrap.R	2026-06-22 20:06:03
-+++ b/rpkg/bootstrap.R	2026-06-22 20:05:49
+--- a/rpkg/bootstrap.R	2026-06-24 15:04:37
++++ b/rpkg/bootstrap.R	2026-06-24 15:04:37
 @@ -39,6 +39,6 @@
  
  # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
@@ -555,7 +554,7 @@ diff -ruN -U2 a/rpkg/build.rs b/rpkg/build.rs
      }
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 --- a/rpkg/configure.ac	2026-06-16 19:09:56
-+++ b/rpkg/configure.ac	2026-06-16 19:09:56
++++ b/rpkg/configure.ac	2026-06-24 15:04:37
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])

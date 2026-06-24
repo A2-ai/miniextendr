@@ -532,7 +532,9 @@ miniextendr_vendor <- function(path = ".") {
   ))
   cli::cli_bullets(c(
     "i" = "Run {.code R CMD build .} to produce the release tarball, then delete {.path inst/vendor.tar.xz} to resume source-mode dev:",
-    " " = "{.code unlink(\"inst/vendor.tar.xz\")}"
+    " " = "{.code unlink(\"inst/vendor.tar.xz\")}",
+    "i" = "If your package has a local path-dependency sibling, vendoring also froze {.path src/rust/Cargo.toml} (and {.path Cargo.lock}) to resolve against {.path vendor/}. After the build, restore source shape:",
+    " " = "{.code git checkout src/rust/Cargo.toml src/rust/Cargo.lock}"
   ))
 
   invisible(tarball)
