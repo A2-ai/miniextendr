@@ -163,7 +163,9 @@ local({
 
     # Root files
     expect_true(file.exists(file.path(tmp, "Cargo.toml")))
-    expect_true(file.exists(file.path(tmp, "justfile")))
+    # Scaffolded packages must NOT ship a justfile — `just` is a miniextendr
+    # dev helper, not a scaffolding/build dependency (end users may not have it).
+    expect_false(file.exists(file.path(tmp, "justfile")))
     expect_true(file.exists(file.path(tmp, ".gitignore")))
     expect_true(dir.exists(file.path(tmp, ".git")))
 

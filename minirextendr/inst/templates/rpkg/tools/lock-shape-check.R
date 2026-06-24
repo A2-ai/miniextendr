@@ -16,8 +16,8 @@
 # `[[patch.unused]]` blocks are NOT checked here. They are a benign artifact
 # of cargo source-replacement intercepting `[patch."git+url"]` entries during
 # `cargo vendor`, so they show up in tarball-shape locks even when the source-
-# mode patch is correctly used. The over-broad-patch rule lives in
-# `just lock-shape-check` and the pre-commit hooks, which see source-shape
+# mode patch is correctly used. The over-broad-patch rule lives in the
+# maintainer's lint checks and the pre-commit hooks, which see source-shape
 # locks where the marker actually means something.
 #
 # Usage: Rscript tools/lock-shape-check.R <mode> <lockfile>
@@ -51,7 +51,7 @@ if (length(path_violations) > 0) {
   message("for miniextendr-{api,lint,macros} so cargo's source replacement matches")
   message("the vendored layout.")
   message("")
-  message("Recovery: run `just vendor` (monorepo) or rebuild the package tarball.")
+  message("Recovery: run minirextendr::miniextendr_vendor() or rebuild the package tarball.")
   quit("no", status = 1)
 }
 

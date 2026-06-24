@@ -27,7 +27,6 @@ test_that("template_path returns valid paths for monorepo template type", {
 
   # Root templates
   expect_true(file.exists(minirextendr:::template_path("Cargo.toml.tmpl")))
-  expect_true(file.exists(minirextendr:::template_path("justfile")))
 
   # Nested rpkg templates
   expect_true(file.exists(minirextendr:::template_path("lib.rs", subdir = "rpkg")))

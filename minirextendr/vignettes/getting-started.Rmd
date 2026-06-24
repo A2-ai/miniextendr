@@ -89,7 +89,6 @@ This creates a Rust workspace with an embedded R package in `rpkg/`:
 ```
 myproject/
 ├── Cargo.toml          # Rust workspace
-├── justfile            # Build recipes
 ├── myproject/          # Main Rust crate
 │   └── src/lib.rs
 └── rpkg/               # R package
