@@ -53,7 +53,6 @@ repository.
 ```text
 my-project/
 ├── Cargo.toml
-├── justfile
 ├── my-crate/
 │   ├── Cargo.toml
 │   └── src/
@@ -108,9 +107,11 @@ Additionally, `.in` files use autoconf `@PLACEHOLDER@` markers expanded during
 
 - `@CARGO_STATICLIB_NAME@`
 
-## Template snapshot testing
+## Template snapshot testing (minirextendr maintainers)
 
-Use the root `justfile` to verify that templates have not drifted from `rpkg/`:
+The miniextendr repo's root `justfile` verifies that these templates have not
+drifted from the `rpkg/` master (an internal maintenance task — scaffolded
+packages never need this):
 
 ```bash
 just templates-check
@@ -123,8 +124,7 @@ just templates-approve
 ## Vendor tarball for CRAN
 
 For offline/CRAN builds, vendored crates are compressed into
-`inst/vendor.tar.xz`. In this repo the normal way to produce that tarball is
-`just vendor`; in generated packages the equivalent helper is
+`inst/vendor.tar.xz`. Produce that tarball with
 `minirextendr::miniextendr_vendor()`.
 
 During install, `configure` / `Makevars` use the tarball when `vendor/` is not

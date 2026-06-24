@@ -122,12 +122,10 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   # Root workspace files
   cli::cli_h2("Creating workspace root")
   use_template("Cargo.toml.tmpl", save_as = "Cargo.toml", data = data)
-  # justfile uses {{variable}} syntax (just's interpolation) which collides
-  # with mustache. Use copy_template for literal {{{key}}} substitution only.
-  copy_template("justfile", data = data)
   use_template("gitignore", save_as = ".gitignore", data = data)
 
-  # Version management tool (referenced by justfile version-* recipes)
+  # Standalone version-sync helper: `Rscript tools/bump-version.R --sync`
+  # keeps DESCRIPTION / Cargo.toml / configure.ac versions in lockstep.
   ensure_dir(usethis::proj_path("tools"))
   copy_template("bump-version.R", save_as = file.path("tools", "bump-version.R"),
                 subdir = "tools", data = data)
@@ -175,7 +173,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   cli::cli_bullets(c(
     " " = "1. Edit {.path {crate_name}/src/lib.rs} for your main Rust library",
     " " = "2. Edit {.path {rpkg_name}/src/rust/lib.rs} for R-exposed functions",
-    " " = "3. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} (or {.code just rcmdinstall} from the workspace root) to compile, generate R wrappers + NAMESPACE, and install"
+    " " = "3. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} to compile, generate R wrappers + NAMESPACE, and install"
   ))
 
   if (open) {
@@ -413,7 +411,7 @@ use_miniextendr <- function(path = ".",
     cli::cli_alert_info("Next steps:")
     cli::cli_bullets(c(
       " " = "1. Edit {.path {rpkg_name}/src/rust/lib.rs} to add R-exposed functions",
-      " " = "2. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} (or {.code just rcmdinstall} if you've added a justfile) to compile, generate R wrappers + NAMESPACE, and install"
+      " " = "2. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} to compile, generate R wrappers + NAMESPACE, and install"
     ))
 
     return(invisible(TRUE))

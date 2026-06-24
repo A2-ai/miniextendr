@@ -11,9 +11,7 @@ if test ! -f "DESCRIPTION"; then
   AC_MSG_ERROR([configure must be run from the rpkg directory (where DESCRIPTION exists).
 
   If you're in the monorepo root, run:
-    cd rpkg && ./configure
-  Or use:
-    just configure])
+    cd rpkg && bash ./configure])
 fi
 if test ! -f "NAMESPACE"; then
   AC_MSG_ERROR([NAMESPACE not found (DESCRIPTION is present, so the working directory is correct).
@@ -47,7 +45,7 @@ RUST_SRC_DIR="$abs_rpkg_src/rust"
 dnl ---- install-mode detection ----
 dnl Single signal: presence of inst/vendor.tar.xz.
 dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is shipped inside
-dnl     the build artifact by `just vendor` (called from `just r-cmd-build`).
+dnl     the build artifact by minirextendr::miniextendr_vendor().
 dnl     configure unpacks it, writes a vendored cargo source replacement, and
 dnl     builds offline.
 dnl   Source install (R CMD INSTALL ., devtools::install, install_github, etc.):
@@ -175,8 +173,9 @@ esac
 if test "$is_wasm_install" = true; then
   if test ! -f "$srcdir/src/rust/wasm_registry.rs"; then
     AC_MSG_ERROR([wasm32 install requires src/rust/wasm_registry.rs.
-Run 'R CMD INSTALL' (or 'just rcmdinstall') on the host first to regenerate
-it from the cdylib slice contents, then ship the source tree to the wasm builder.])
+Run 'R CMD INSTALL' (or minirextendr::miniextendr_build()) on the host first to
+regenerate it from the cdylib slice contents, then ship the source tree to the
+wasm builder.])
   fi
 fi
 AC_SUBST([IS_WASM_INSTALL], [$is_wasm_install])
@@ -659,7 +658,7 @@ dnl   [build]                                 target-dir = "<rust-target>"
 dnl   (cargo follows the git URL declared in Cargo.toml)
 dnl
 dnl WARNING: stale inst/vendor.tar.xz hazard.
-dnl   `just r-cmd-build` and `just r-cmd-check` create inst/vendor.tar.xz
+dnl   miniextendr_vendor() / a CRAN-prep build create inst/vendor.tar.xz
 dnl   transiently and remove it via a `trap ... EXIT` handler; if the process is killed
 dnl   before the trap fires, the file is left behind.  Configure then detects
 dnl   it and sets IS_TARBALL_INSTALL=true, which (a) writes a tarball-mode
@@ -856,7 +855,7 @@ AC_CONFIG_COMMANDS([post-config],
 [ABS_RPKG_SRC="$abs_rpkg_src" CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
 
 dnl NOTE: vendor.tar.xz is NOT created by configure. It is the canonical
-dnl offline artifact produced by `just vendor` (cargo revendor --compress).
+dnl offline artifact produced by miniextendr_vendor() (cargo revendor --compress).
 dnl A previous repack step here silently created stale tarballs that could
 dnl disagree with Cargo.lock, and also embedded macOS xattr metadata that
 dnl caused warnings on Linux. See #157, #158.
