@@ -67,11 +67,14 @@ crates (`miniextendr-api`, `-lint`, `-macros`) travel along as sibling
 directories — and builds via `pkgbuild`. Because DESCRIPTION sets
 `Config/build/bootstrap: TRUE`, `pkgbuild` runs `rpkg/bootstrap.R` first.
 
-**`bootstrap.R` requires `cargo-revendor` on PATH** for the default
-`build = TRUE` path: if it's absent and there's no `inst/vendor.tar.xz`,
-bootstrap `stop()`s with install instructions. So a stock
-`remotes::install_github` fails out of the box unless the user first runs
-`cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor`.
+On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`. It vendors
+via `cargo-revendor` **only when the manifest declares a path-dependency
+sibling** (`path = "../…"`, which a staged/git install would strand). A
+git-only package — the exemplar and the typical scaffold — falls through to a
+plain source build (configure's `[patch]` for in-tree siblings, or cargo
+fetching the git URL), so `cargo-revendor` is **not** required. (Before the
+`declares_path_dep()` gate, bootstrap hard-aborted without cargo-revendor even
+for git-only packages — `install_github` failed out of the box.)
 
 How the framework crates resolve (read from `configure.ac`):
 

@@ -36,31 +36,60 @@ if (.Platform$OS.type == "windows") {
 # sibling to vendor/ so the sealed tarball is self-contained; deps declared
 # `git =` stay git and resolve offline via source replacement. Inert for a
 # git-only package with no path sibling to rewrite.
+# Only path-dependency siblings (declared `path = ...` in Cargo.toml) genuinely
+# require vendoring here: they are NOT source-replaceable and a git/staged
+# install (remotes, pak) strands them when it copies the package out of its
+# workspace. A git-only package builds straight from source, so vendoring — and
+# cargo-revendor — is optional for it. Heuristic: a `path =` entry in a
+# dependency table ([lib]/[patch]/[workspace] are not dependency tables).
+declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
+  if (!file.exists(manifest)) return(FALSE)
+  in_deps <- FALSE
+  for (ln in readLines(manifest, warn = FALSE)) {
+    s <- trimws(ln)
+    if (startsWith(s, "[")) {
+      in_deps <- grepl("dependencies\\]$", s) &&
+        !startsWith(s, "[patch") && !startsWith(s, "[workspace")
+      next
+    }
+    if (in_deps && grepl("(^|[][{, \t])path[ \t]*=", s)) return(TRUE)
+  }
+  FALSE
+}
+
 if (!file.exists("inst/vendor.tar.xz")) {
   cargo_revendor <- Sys.which("cargo-revendor")
   if (!nzchar(cargo_revendor)) {
-    stop(
-      "bootstrap.R: cargo-revendor not on PATH. Install with:\n",
-      "  cargo install --git https://github.com/A2-AI/miniextendr ",
-      "cargo-revendor --locked",
-      call. = FALSE
+    if (declares_path_dep()) {
+      stop(
+        "bootstrap.R: cargo-revendor not on PATH, but this package declares a\n",
+        "path-dependency sibling that must be vendored before the package is\n",
+        "copied out of its workspace. Install it with:\n",
+        "  cargo install --git https://github.com/A2-ai/miniextendr ",
+        "cargo-revendor --locked",
+        call. = FALSE
+      )
+    }
+    message(
+      "bootstrap.R: cargo-revendor not on PATH and no path-dependency sibling ",
+      "to vendor; building from source (cargo fetches dependencies over the network)."
     )
-  }
-
-  message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
-  dir.create("inst", showWarnings = FALSE)
-  status <- system2("cargo", c(
-    "revendor",
-    "--manifest-path", "src/rust/Cargo.toml",
-    "--output", "vendor",
-    "--freeze",
-    "--compress", "inst/vendor.tar.xz",
-    "--blank-md",
-    "--source-marker",
-    "--force",
-    "-v"
-  ))
-  if (status != 0) {
-    stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
+  } else {
+    message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
+    dir.create("inst", showWarnings = FALSE)
+    status <- system2("cargo", c(
+      "revendor",
+      "--manifest-path", "src/rust/Cargo.toml",
+      "--output", "vendor",
+      "--freeze",
+      "--compress", "inst/vendor.tar.xz",
+      "--blank-md",
+      "--source-marker",
+      "--force",
+      "-v"
+    ))
+    if (status != 0) {
+      stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
+    }
   }
 }
