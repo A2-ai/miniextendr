@@ -2288,6 +2288,44 @@ pub fn gc_stress_condition_data() {
     }
 }
 
+/// Drive the lowered `r!()` call-tree path under GC pressure.
+///
+/// The lowered path for a call like `r!(c(1L, 2L, 3L))` builds several
+/// `SEXP` scalars and a nested `LANGSXP`, protecting each via
+/// `ProtectScope::protect_raw` before passing them to `RCall`. This fixture
+/// exercises that SEXP-storage sequence under `gctorture(TRUE)` to catch
+/// any missing protect.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_r_macro_lowering() {
+    // Each r!() call here goes through the lowered RCall path (call-shaped
+    // top-level expression). We verify the result to confirm correct
+    // evaluation, not just survival.
+    let result = miniextendr_api::r!(c(1L, 2L, 3L)).expect("r!(c(1L, 2L, 3L)) should evaluate");
+    let len = result.xlength();
+    assert_eq!(len, 3, "c(1L, 2L, 3L) should have length 3");
+
+    // Nested call: c(1L, c(2L, 3L)) — exercises nested LANGSXP protection.
+    let result2 =
+        miniextendr_api::r!(c(1L, c(2L, 3L))).expect("r!(c(1L, c(2L, 3L))) should evaluate");
+    assert_eq!(result2.xlength(), 3, "nested c() should have length 3");
+    assert_eq!(result2.integer_elt(0), 1);
+    assert_eq!(result2.integer_elt(1), 2);
+    assert_eq!(result2.integer_elt(2), 3);
+
+    // String args — tests scalar_string_from_str protect.
+    let pasted =
+        miniextendr_api::r!(paste("gc", "stress")).expect("r!(paste(...)) should evaluate");
+    // paste() returns a character(1); check it's non-nil.
+    assert!(!pasted.is_nil(), "paste() result must not be nil");
+
+    // Named arg — tests named_arg path.
+    let seqed =
+        miniextendr_api::r!(seq(1L, 6L, by = 2L)).expect("r!(seq(1L, 6L, by = 2L)) should work");
+    assert_eq!(seqed.xlength(), 3, "seq(1,6,by=2) should have length 3");
+}
+
 // endregion
 
 // region: ProtectScope FFI wrapper alloc helpers (#509/#510)
