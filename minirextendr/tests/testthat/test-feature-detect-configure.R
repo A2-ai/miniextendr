@@ -9,6 +9,8 @@ test_that("generate_empty_detect_script produces valid structure", {
   expect_true(any(grepl("CARGO_FEATURES", lines)))
   expect_true(any(grepl("mypkg", lines)))
   expect_true(any(grepl('cat\\(paste\\(features', lines)))
+  # toolchain-gate helper available to rules
+  expect_true(any(grepl("rustc_at_least <- function", lines)))
 })
 
 test_that("use_configure_feature_detection accepts an existing marked script", {
@@ -205,6 +207,47 @@ test_that("generated detect script auto-enables features with no rule", {
   expect_equal(output, "auto_enabled,rayon")
 })
 
+test_that("rustc_at_least gate enables/disables a feature by toolchain version", {
+  skip_on_os("windows") # fake rustc shim is a POSIX shell script
+
+  tmp <- withr::local_tempdir()
+  dir.create(file.path(tmp, "tools"), recursive = TRUE)
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    "[package]", 'name = "mypkg"', 'version = "0.1.0"', "",
+    "[features]", "datafusion = []", "serde = []"
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  script_path <- file.path(tmp, "tools", "detect-features.R")
+  writeLines(
+    minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES"),
+    script_path
+  )
+  minirextendr:::append_feature_rule(script_path, "datafusion", 'rustc_at_least("1.82.0")')
+
+  fake_bin <- file.path(tmp, "fakebin")
+  dir.create(fake_bin)
+  run_with_rustc <- function(version) {
+    writeLines(
+      c("#!/bin/sh", sprintf('echo "rustc %s (abc123 2026-01-01)"', version)),
+      file.path(fake_bin, "rustc")
+    )
+    Sys.chmod(file.path(fake_bin, "rustc"), "0755")
+    withr::with_path(fake_bin, action = "prefix", {
+      withr::with_dir(tmp, {
+        system2(
+          file.path(R.home("bin"), "Rscript"), script_path,
+          stdout = TRUE, stderr = FALSE
+        )
+      })
+    })
+  }
+
+  # datafusion MSRV is 1.82: old toolchain drops it, new toolchain keeps it.
+  expect_equal(run_with_rustc("1.70.0"), "serde")
+  expect_equal(run_with_rustc("1.85.0"), "datafusion,serde")
+})
+
 test_that("rpkg detect-features.R matches generator output (regenerable invariant)", {
   # The shipped rpkg/tools/detect-features.R must equal what the generator
   # produces for ("miniextendr", "CARGO_FEATURES") plus the two canonical rules.
@@ -215,6 +258,8 @@ test_that("rpkg detect-features.R matches generator output (regenerable invarian
   writeLines(lines, tmp)
   minirextendr:::append_feature_rule(tmp, "vctrs", 'requireNamespace("vctrs", quietly = TRUE)')
   minirextendr:::append_feature_rule(tmp, "connections", 'getRversion() >= "4.3.0"')
+  minirextendr:::append_feature_rule(tmp, "arrow", 'rustc_at_least("1.81.0")')
+  minirextendr:::append_feature_rule(tmp, "datafusion", 'rustc_at_least("1.82.0")')
 
   generated <- readLines(tmp, warn = FALSE)
   # Path to the shipped rpkg file (relative to the test file's package root)
