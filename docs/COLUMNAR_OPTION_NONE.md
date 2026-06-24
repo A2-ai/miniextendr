@@ -1,8 +1,8 @@
-# ColumnarDataFrame: all-None Option columns
+# Columnar data.frame: all-None Option columns
 
 ## The old failure
 
-`ColumnarDataFrame::from_rows` discovers column types by probing runtime values.
+`vec_to_dataframe` discovers column types by probing runtime values.
 When every row has `None` for an `Option<T>` field the probe never sees a `Some`,
 the column stays `ColumnBuffer::Generic`, and R received `list(NULL, NULL, …)`
 instead of an atomic vector with `NA`. Tibble and dplyr treat `list(NULL, …)` as
