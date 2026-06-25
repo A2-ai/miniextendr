@@ -390,7 +390,9 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // those pointers become dangling. When R later loads the installed package and
     // re-registers, it may still have the stale entries, leading to heap corruption
     // (e.g., "malloc(): unsorted double linked list corrupted" on Linux).
-    let wrapper_gen = std::env::var_os("MINIEXTENDR_WRAPPER_GEN").is_some();
+    // Shares the single read-site with package_init (see init::WRAPPER_GEN_ENV) so
+    // the env-var name cannot drift between the two consumers.
+    let wrapper_gen = crate::init::wrapper_gen_mode();
     if !wrapper_gen {
         // All ALTREP classes — both user-defined (#[miniextendr] structs) and
         // builtins (Vec, Box, Range, Cow, Arrow) — register via linkme

@@ -19,6 +19,31 @@ use crate::Rboolean;
 use crate::sys::{DllInfo, R_forceSymbols, R_useDynamicSymbols};
 use std::ffi::CStr;
 
+/// Env var the Makevars wrapper-gen recipe sets before `dyn.load`ing the
+/// freshly-built shared object to generate `R/*-wrappers.R`.
+///
+/// Loading the installed `.so`/`.dll` runs `R_init_<pkg>` on every platform, but
+/// during wrapper-gen that image is `dyn.unload`ed immediately afterwards. So when
+/// this var is present, init takes a minimal path: [`package_init`] skips the
+/// panic hook / locale / ALTREP+mx_abi setup, and [`miniextendr_register_routines`]
+/// skips ALTREP *class* registration — none of which must plant a pointer into an
+/// about-to-be-unloaded image (doing so risks the "malloc unsorted double linked
+/// list" heap corruption that macOS hides but Linux R aborts on).
+///
+/// SINGLE SOURCE OF TRUTH: both read-sites go through [`wrapper_gen_mode`] so the
+/// name can't drift between them. Presence-based — any value (even empty) enables
+/// it — so it MUST NOT leak into a real package-load environment, or the package
+/// loads silently degraded (no panic hook, no ALTREP classes, no mx_abi).
+///
+/// [`miniextendr_register_routines`]: crate::registry::miniextendr_register_routines
+pub(crate) const WRAPPER_GEN_ENV: &str = "MINIEXTENDR_WRAPPER_GEN";
+
+/// `true` when the package was loaded purely for wrapper generation — see
+/// [`WRAPPER_GEN_ENV`].
+pub(crate) fn wrapper_gen_mode() -> bool {
+    std::env::var_os(WRAPPER_GEN_ENV).is_some()
+}
+
 /// Initialize a miniextendr R package.
 ///
 /// This performs all initialization steps in the correct order:
@@ -42,8 +67,8 @@ pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
         // When loaded purely for wrapper generation (Makevars dyn.load()s the
         // installed .so/.dll, which runs this init), skip full init. Only routine
         // registration is needed so .Call(miniextendr_write_wrappers) works.
-        // The env var is set by Makevars before dyn.load().
-        let wrapper_gen = std::env::var_os("MINIEXTENDR_WRAPPER_GEN").is_some();
+        // See WRAPPER_GEN_ENV. The env var is set by Makevars before dyn.load().
+        let wrapper_gen = wrapper_gen_mode();
 
         // 1. Record main thread ID (and optionally spawn worker thread)
         // Always needed: checked FFI variants (R_useDynamicSymbols, etc.)

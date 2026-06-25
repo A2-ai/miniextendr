@@ -204,15 +204,6 @@ case "$host_os" in
 esac
 AC_SUBST([TAR_FORCE_LOCAL])
 
-dnl ---- cdylib platform extension (for R wrapper generation) ----
-case "$host_os" in
-  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
-  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
-esac
-AC_SUBST([CDYLIB_PREFIX])
-AC_SUBST([CDYLIB_EXT])
-
 dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 dnl Populated by minirextendr::use_native_package(). Each native package
 dnl adds -I<path> for its inst/include/ headers so the C compiler can
