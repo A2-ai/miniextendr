@@ -25,8 +25,6 @@ pub enum LintCode {
     MXL110,
     /// `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends `s4_`.
     MXL111,
-    /// Explicit lifetime parameter on `#[miniextendr]` fn or impl — use owned types instead.
-    MXL112,
     /// vctrs constructor returns `Self` / named type, or impl has an instance-method receiver.
     ///
     /// Mirror: `miniextendr-macros/src/miniextendr_impl.rs` (proc-macro hard error).
@@ -81,7 +79,6 @@ impl LintCode {
             // Everything else is a warning.
             Self::MXL106
             | Self::MXL111
-            | Self::MXL112
             | Self::MXL203
             | Self::MXL300
             | Self::MXL301

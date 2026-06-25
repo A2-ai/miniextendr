@@ -135,14 +135,32 @@ fn method_rejects_async() {
 }
 
 #[test]
-fn method_rejects_generic_parameters() {
+fn method_rejects_type_generic_parameters() {
     let result = validate_trait_str(quote::quote! {
         pub trait Generic {
             fn convert<T>(&self, value: T) -> T;
         }
     });
     let err = result.unwrap_err();
-    assert!(err.to_string().contains("cannot have generic parameters"));
+    assert!(
+        err.to_string()
+            .contains("cannot have generic type or const parameters")
+    );
+}
+
+#[test]
+fn method_accepts_lifetime_parameters() {
+    // Lifetime params are erased at codegen — they are FFI-safe on #[no_mangle] fns.
+    let result = validate_trait_str(quote::quote! {
+        pub trait Borrower {
+            fn borrow<'a>(&self, s: &'a str) -> &'a str;
+        }
+    });
+    assert!(
+        result.is_ok(),
+        "lifetime params should be accepted: {:?}",
+        result.err()
+    );
 }
 
 #[test]

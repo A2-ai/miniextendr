@@ -30,7 +30,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 ## Gotchas specific to this crate
 - **Two C-wrapper codegen paths with different signatures.** `c_wrapper_builder.rs` prepends `__miniextendr_call: SEXP` for all `#[miniextendr]` fns/methods; `externalptr_derive.rs` does NOT for sidecar accessors. Don't unify R-side emission without unifying C-side first (#348).
 - **`#[miniextendr]` on 1-field structs is removed.** Use ALTREP derives instead.
-- **Lifetime params rejected on `#[miniextendr]`** (MXL112). `extern "C-unwind" #[no_mangle]` can't carry generic params. `Vec<T>` / `String` only; or `'static` literals inside the body. Borrowed fields on `#[derive(DataFrameRow)]` structs DO work (`Vec<Option<&str>>` / `Vec<Option<&[T]>>` companion columns since PR #465).
+- **Lifetime params ARE allowed on `#[miniextendr]`.** Lifetimes are erased at codegen — `#[no_mangle] extern "C-unwind" fn f<'a>(...)` produces a single monomorphic symbol and is FFI-safe. Only type/const generic params are rejected (they require monomorphization → multiple symbols → incompatible with `#[no_mangle]`). Borrowed fields on `#[derive(DataFrameRow)]` structs also work (`Vec<Option<&str>>` / `Vec<Option<&[T]>>` companion columns since PR #465).
 - **`impl Trait` argument position fails** (E0283 — `TryFromSexp + Trait` across `let` bindings). Return position works.
 - **When changing helpers from `TokenStream` → `Result<TokenStream>`, update every caller with `?`.** Otherwise you'll see confusing `ToTokens` bound errors on `Result`.
 - **UI test `.stderr` files** must be regenerated when error wording changes (`TRYBUILD=overwrite cargo test -p miniextendr-macros`).

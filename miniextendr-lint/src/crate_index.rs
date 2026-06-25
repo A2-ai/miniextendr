@@ -213,11 +213,6 @@ pub struct FileData {
     /// Maps fn/method name → list of (param_name, line) for params that are R reserved words.
     /// Key for free functions is the function name; for impl methods it is `"TypeName::method_name"`.
     pub fn_param_names: HashMap<String, Vec<(String, usize)>>,
-
-    // Lifetime parameter lint (MXL112)
-    /// `#[miniextendr]` functions or impl blocks that carry explicit lifetime params.
-    /// Each entry is `(name, line)` where `name` is the function or type name.
-    pub lifetime_param_items: Vec<(String, usize)>,
 }
 // endregion
 
@@ -532,17 +527,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 if !params.is_empty() {
                     data.fn_param_names.insert(name.clone(), params);
                 }
-
-                // Track explicit lifetime params for MXL112
-                let has_lifetime = item_fn
-                    .sig
-                    .generics
-                    .params
-                    .iter()
-                    .any(|p| matches!(p, syn::GenericParam::Lifetime(_)));
-                if has_lifetime {
-                    data.lifetime_param_items.push((name.clone(), line));
-                }
             }
             Item::Struct(item_struct) => {
                 let is_miniextendr_altrep =
@@ -582,17 +566,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 if has_miniextendr_attr(&item_impl.attrs) {
                     let line = item_impl.self_ty.span().start().line;
                     let impl_attrs = parse_miniextendr_impl_attrs(&item_impl.attrs);
-
-                    // Track explicit lifetime params on impl blocks for MXL112
-                    let impl_has_lifetime = item_impl
-                        .generics
-                        .params
-                        .iter()
-                        .any(|p| matches!(p, syn::GenericParam::Lifetime(_)));
-                    if impl_has_lifetime && let Some(type_name) = impl_type_name(&item_impl.self_ty)
-                    {
-                        data.lifetime_param_items.push((type_name, line));
-                    }
 
                     match impl_type_name(&item_impl.self_ty) {
                         Some(type_name) => {

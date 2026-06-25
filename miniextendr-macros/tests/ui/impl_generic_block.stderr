@@ -1,4 +1,4 @@
-error: generic impl blocks are not supported by #[miniextendr]. R's .Call interface requires monomorphic C symbols, so generic type parameters cannot be used. Remove the generic parameters and use a concrete type instead.
+error: generic impl blocks are not supported by #[miniextendr]. R's .Call interface requires monomorphic C symbols, so generic type parameters cannot be used. Remove the generic parameters and use a concrete type instead. Explicit lifetime parameters are allowed (lifetimes are erased at codegen).
  --> tests/ui/impl_generic_block.rs:8:5
   |
 8 | impl<T: Clone> Wrapper<T> {
