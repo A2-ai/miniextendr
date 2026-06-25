@@ -39,10 +39,11 @@ use std::ffi::CStr;
 /// duration of the R session (typically a string literal).
 pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
     unsafe {
-        // When loaded as a cdylib for wrapper generation, skip full init.
-        // Only routine registration is needed so .Call(miniextendr_write_wrappers) works.
+        // When loaded purely for wrapper generation (Makevars dyn.load()s the
+        // installed .so/.dll, which runs this init), skip full init. Only routine
+        // registration is needed so .Call(miniextendr_write_wrappers) works.
         // The env var is set by Makevars before dyn.load().
-        let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
+        let wrapper_gen = std::env::var_os("MINIEXTENDR_WRAPPER_GEN").is_some();
 
         // 1. Record main thread ID (and optionally spawn worker thread)
         // Always needed: checked FFI variants (R_useDynamicSymbols, etc.)

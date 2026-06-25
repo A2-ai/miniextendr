@@ -21,7 +21,7 @@ use std::os::raw::c_void;
 // `wasm_registry.rs` snapshot at `R_init_*` time (see
 // `install_wasm_runtime_slices` below). The five host-only slices
 // (MX_R_WRAPPERS, MX_MATCH_ARG_*, MX_CLASS_NAMES, MX_S7_SIDECAR_PROPS) are
-// only consumed by the cdylib wrapper-gen pass — that pass is itself
+// only consumed by the wrapper-gen pass — that pass is itself
 // native-only, so the slices, their consumers, and the `wasm_registry_writer`
 // module are all `cfg(not(target_arch = "wasm32"))`-gated.
 
@@ -382,15 +382,15 @@ pub unsafe extern "C" fn universal_query(ptr: *mut mx_erased, trait_tag: mx_tag)
 /// `dll` must be a valid pointer provided by R.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
-    // 1. Register ALTREP classes (skip during cdylib wrapper generation)
+    // 1. Register ALTREP classes (skip during wrapper generation)
     //
-    // During wrapper-gen, the cdylib is loaded temporarily via dyn.load() then
-    // unloaded via dyn.unload(). ALTREP class registration creates R-global entries
-    // with method pointers into the cdylib code. After dyn.unload(), those pointers
-    // become dangling. When the staticlib later re-registers, R may still have the
-    // stale entries, leading to heap corruption (e.g., "malloc(): unsorted double
-    // linked list corrupted" on Linux).
-    let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
+    // During wrapper-gen, the installed shared object is loaded temporarily via
+    // dyn.load() then unloaded via dyn.unload(). ALTREP class registration creates
+    // R-global entries with method pointers into the loaded code. After dyn.unload(),
+    // those pointers become dangling. When R later loads the installed package and
+    // re-registers, it may still have the stale entries, leading to heap corruption
+    // (e.g., "malloc(): unsorted double linked list corrupted" on Linux).
+    let wrapper_gen = std::env::var_os("MINIEXTENDR_WRAPPER_GEN").is_some();
     if !wrapper_gen {
         // All ALTREP classes — both user-defined (#[miniextendr] structs) and
         // builtins (Vec, Box, Range, Cow, Arrow) — register via linkme
@@ -409,7 +409,7 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
 
     // 2. Build call method defs with null sentinel
     let mut call_defs: Vec<R_CallMethodDef> = self::call_defs().to_vec();
-    // Always register the cdylib wrapper-gen entry points so they're visible
+    // Always register the wrapper-gen entry points so they're visible
     // via getNativeSymbolInfo even when R_forceSymbols(TRUE) is set. wasm32
     // doesn't run wrapper-gen (it's host-only), so these are gated off there.
     // SAFETY: DL_FUNC is Option<extern "C-unwind" fn() -> *mut c_void> — R's
@@ -683,7 +683,7 @@ fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
 ///
 /// `choices_str` has the shape `"\"a\", \"b\", \"c\""` (already quoted +
 /// joined). `preferred` is the unquoted user-supplied default (e.g. `"b"`).
-/// On miss, panics with the placeholder name — the cdylib write step is the
+/// On miss, panics with the placeholder name — the wrapper-gen write step is the
 /// only caller, so a panic surfaces as a load-time error in the host R session
 /// rather than silently producing a broken wrapper.
 fn rotate_choices_for_default(choices_str: &str, preferred: &str, placeholder: &str) -> String {
@@ -1111,9 +1111,9 @@ fn resolve_inherited_param_markers(content: String) -> String {
 
 /// Write all R wrapper entries to a file.
 ///
-/// Called from [`miniextendr_write_wrappers`] (via cdylib `dyn.load`/`.Call`).
-/// All distributed_slice entries from `#[miniextendr]` items are available
-/// because the cdylib includes all symbols by design.
+/// Called from [`miniextendr_write_wrappers`] (via `dyn.load`/`.Call` of the
+/// installed shared object). All distributed_slice entries from `#[miniextendr]`
+/// items are available because stub.c force-loads the whole user crate.
 ///
 /// Host-only — wasm32 doesn't run wrapper-gen.
 #[cfg(not(target_arch = "wasm32"))]
@@ -1448,7 +1448,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
 /// are left untouched.
 ///
 /// Host-only: the sole caller is [`write_r_wrappers_to_file`], gated off on
-/// wasm32 (the cdylib wrapper-gen pass doesn't run there).
+/// wasm32 (the wrapper-gen pass doesn't run there).
 #[cfg(not(target_arch = "wasm32"))]
 fn wrappers_semantically_equal(a: &str, b: &str) -> bool {
     normalize_source_locs(a) == normalize_source_locs(b)
@@ -1729,17 +1729,17 @@ fn parse_top_level_fn_def_name(line: &str) -> Option<&str> {
 }
 // endregion
 
-// region: C-Callable Entry Points (cdylib)
+// region: C-Callable Entry Points (wrapper generation)
 //
-// All cdylib wrapper-gen entry points are host-only — wasm32 builds skip
-// them (the cdylib pass itself doesn't run on wasm32; wrappers and
+// All wrapper-gen entry points are host-only — wasm32 builds skip
+// them (the wrapper-gen pass itself doesn't run on wasm32; wrappers and
 // `wasm_registry.rs` are pre-generated on native and shipped into the
 // wasm32 install).
 
-/// C-callable entry point for R wrapper generation via cdylib.
+/// C-callable entry point for R wrapper generation.
 ///
-/// Called from Makevars via Rscript: loads the cdylib with `dyn.load()`,
-/// then `.Call("miniextendr_write_wrappers", path)` to write
+/// Called from Makevars via Rscript: loads the installed shared object with
+/// `dyn.load()`, then `.Call("miniextendr_write_wrappers", path)` to write
 /// `R/miniextendr-wrappers.R`. NAMESPACE generation is left to roxygen2
 /// (`devtools::document()`).
 ///
@@ -1764,9 +1764,9 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> c
     }
 }
 
-/// C-callable entry point for `wasm_registry.rs` generation via cdylib.
+/// C-callable entry point for `wasm_registry.rs` generation.
 ///
-/// Pairs with [`miniextendr_write_wrappers`]: same cdylib, separate `.Call`,
+/// Pairs with [`miniextendr_write_wrappers`]: same loaded object, separate `.Call`,
 /// independent output path. Host-only; the generated file itself is then
 /// consumed at compile time by the user crate's wasm32 build via
 /// `install_wasm_runtime_slices`.

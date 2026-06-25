@@ -126,11 +126,5 @@ use_miniextendr_makevars <- function(path = ".") {
   use_template("Makevars.in", save_as = "src/Makevars.in")
   use_template("win.def.in", save_as = "src/win.def.in")
 
-  # cdylib-exports.def: Windows DLL symbol export for wrapper generation
-  cdylib_src <- template_path("cdylib-exports.def")
-  cdylib_dest <- usethis::proj_path("src", "cdylib-exports.def")
-  fs::file_copy(cdylib_src, cdylib_dest, overwrite = TRUE)
-  bullet_created("src/cdylib-exports.def")
-
   invisible(TRUE)
 }

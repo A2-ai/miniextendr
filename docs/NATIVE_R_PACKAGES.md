@@ -24,8 +24,7 @@ The integration has three layers:
    alongside `stub.c` and any other C sources in `src/`
 
 3. **Makevars**: passes all compiled `.o` files to cargo as link arguments so
-   both the cdylib (for wrapper generation) and the staticlib (for the final
-   `.so`) can resolve the shim symbols
+   the staticlib (which becomes the final `.so`) can resolve the shim symbols
 
 ## Quick Start: `minirextendr::use_native_package()`
 
@@ -239,7 +238,7 @@ the C shim files (`cli_static_wrappers.c`, `cli_wrapper.h`) in `src/`, they
 compile automatically.
 
 The key change: **pass all `$(OBJECTS)` to cargo as link arguments**. This
-makes the shim symbols available to both the cdylib and staticlib Rust builds.
+makes the shim symbols available to the staticlib Rust build.
 
 ```makefile
 # Add include paths for native package headers
@@ -263,19 +262,6 @@ $(CARGO_AR): FORCE_CARGO $(WRAPPERS_R) $(OBJECTS)
       --manifest-path $(CARGO_TOML) \
       --target-dir $(CARGO_TARGET_DIR); \
     test -f "$(CARGO_AR)"
-
-# Same pattern for the cdylib (wrapper generation)
-$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS)
-    @set -e; \
-    TARGET_OPT=""; \
-    CDYLIB_LINK_ARGS=""; \
-    for obj in $(OBJECTS); do \
-      CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; \
-    done; \
-    # ... rest of cdylib build ...
-    RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-    $(CARGO) $(RUST_TOOLCHAIN) rustc ... \
-      -- $$CDYLIB_LINK_ARGS
 ```
 
 **How the OBJECTS pattern works:**
@@ -287,16 +273,11 @@ $(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS)
    `-C link-arg=/absolute/path/to/obj.o` RUSTFLAG
 4. Cargo passes these to the linker, making the `*__extern` symbols
    available when linking the Rust crate
-5. Both the cdylib (temporary, for wrapper generation) and the staticlib
-   (permanent, for the final `.so`) get the symbols
+5. The staticlib (which becomes the final `.so`) gets the symbols
 
-**Why this works for both cdylib and staticlib:**
-
-- The **cdylib** is a shared library that cargo builds for R wrapper
-  generation. It needs the shim symbols to link successfully.
-- The **staticlib** is the archive that becomes part of the final R package
-  `.so`. The `*__extern` symbols are resolved when R links `$(OBJECTS)` +
-  `$(CARGO_AR)` into `miniextendr.so`.
+The `*__extern` symbols are resolved when R links `$(OBJECTS)` + `$(CARGO_AR)`
+into `miniextendr.so`. R wrapper generation then loads that same `.so` back
+into R (no separate cdylib build) — see the wrapper-generation section.
 
 ### 9. File layout
 

@@ -85,7 +85,7 @@ miniextendr_configure <- function(path = ".") {
 #'
 #' Runs the complete R package build pipeline:
 #' autoconf -> configure -> `R CMD INSTALL` (compiles Rust + generates the
-#' `R/<pkg>-wrappers.R` file via the cdylib pass) -> roxygen2 -> conditional
+#' `R/<pkg>-wrappers.R` file via the wrapper-gen pass) -> roxygen2 -> conditional
 #' reinstall. This is the high-level workflow for building the entire package;
 #' for compiling just the Rust crate, use [cargo_build()] instead.
 #'
@@ -109,7 +109,7 @@ miniextendr_configure <- function(path = ".") {
 #'
 #' @section Fresh-package bootstrap:
 #' A brand-new package has no generated `R/<pkg>-wrappers.R` yet. The wrappers
-#' are produced by the cdylib pass during install, but a plain
+#' are produced by the wrapper-gen pass during install, but a plain
 #' `devtools::install(build = TRUE)` cannot bootstrap them: its `R CMD build`
 #' step runs `bootstrap.R`, which auto-vendors into `inst/vendor.tar.xz`, and
 #' that latch flips `./configure` into offline *tarball* mode — which ships
@@ -121,7 +121,7 @@ miniextendr_configure <- function(path = ".") {
 #' first runs a bootstrap (clear any stale latch -> configure ->
 #' `devtools::install(build = FALSE, MINIEXTENDR_FORCE_WRAPPER_GEN=1)` ->
 #' `devtools::document()`) so the wrappers exist before the normal build path
-#' runs. The `MINIEXTENDR_FORCE_WRAPPER_GEN` override forces the cdylib
+#' runs. The `MINIEXTENDR_FORCE_WRAPPER_GEN` override forces the
 #' wrapper-gen pass regardless of which install mode configure resolves to: in
 #' a non-git tree configure's self-repair branch may legitimately re-seal the
 #' latch (cargo-revendor on PATH), and that is fine — the FORCE override
@@ -226,7 +226,7 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   invisible(TRUE)
 }
 
-# Install the package via devtools, forcing the cdylib wrapper-gen pass.
+# Install the package via devtools, forcing the wrapper-gen pass.
 #
 # MINIEXTENDR_FORCE_WRAPPER_GEN forces regeneration of R/<pkg>-wrappers.R +
 # wasm_registry.rs even if an inst/vendor.tar.xz latch has flipped configure
@@ -281,7 +281,7 @@ namespace_digest <- function(namespace_path) {
 
 #' Does the package's generated R wrapper file exist yet?
 #'
-#' The cdylib pass writes `R/<pkg>-wrappers.R`; its presence is the signal
+#' The wrapper-gen pass writes `R/<pkg>-wrappers.R`; its presence is the signal
 #' that the package has been bootstrapped at least once. A fresh scaffold
 #' has the Rust sources but no wrappers file.
 #'
@@ -299,14 +299,14 @@ wrappers_file_exists <- function(pkg_path) {
 #' Bootstrap a fresh package's R wrappers via a forced wrapper-gen install
 #'
 #' On a brand-new package there is no generated `R/<pkg>-wrappers.R`. The
-#' wrappers are emitted by the cdylib pass during install. A plain
+#' wrappers are emitted by the wrapper-gen pass during install. A plain
 #' `devtools::install(build = TRUE)` can't bootstrap them because its
 #' `R CMD build` step runs `bootstrap.R`, which auto-vendors the tarball and
 #' flips `./configure` into wrapper-skipping tarball mode.
 #'
 #' This helper clears any stale latch, re-runs `./configure`, then does an
 #' in-place `devtools::install(build = FALSE)` with
-#' `MINIEXTENDR_FORCE_WRAPPER_GEN=1` to force the cdylib wrapper-gen pass
+#' `MINIEXTENDR_FORCE_WRAPPER_GEN=1` to force the wrapper-gen pass
 #' regardless of which mode configure resolved to. In a non-git tree,
 #' configure's self-repair branch may legitimately re-seal `inst/vendor.tar.xz`
 #' (cargo-revendor on PATH + no `.git` ancestor); the FORCE override ensures
@@ -326,7 +326,7 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
   # Clear any stale tarball-mode latch so configure gets a clean start.
   # In a non-git tree configure's self-repair may re-seal inst/vendor.tar.xz
   # (cargo-revendor on PATH); that is fine — MINIEXTENDR_FORCE_WRAPPER_GEN
-  # below ensures the cdylib wrapper-gen pass runs regardless of install mode.
+  # below ensures the wrapper-gen pass runs regardless of install mode.
   clear_install_mode_latch(pkg_path)
 
   # Re-configure now that the latch is gone, so the tarball-mode
@@ -335,7 +335,7 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
 
   # Generate wrappers via an in-place install. build = FALSE skips R CMD build
   # (and therefore bootstrap.R's auto-vendor). MINIEXTENDR_FORCE_WRAPPER_GEN=1
-  # forces the cdylib wrapper-gen pass even if configure resolved to tarball
+  # forces the wrapper-gen pass even if configure resolved to tarball
   # mode (e.g. because self-repair re-sealed the latch in a non-git tree).
   old_force <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = NA)
   Sys.setenv(MINIEXTENDR_FORCE_WRAPPER_GEN = "1")
@@ -362,7 +362,7 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
     cli::cli_abort(c(
       "Bootstrap install completed but no {.path R/*-wrappers.R} was generated.",
       "i" = paste(
-        "Expected the cdylib wrapper-gen pass to write it. Check that",
+        "Expected the wrapper-gen pass to write it. Check that",
         "{.code #[miniextendr]} functions are reachable from {.file src/rust/lib.rs}."
       )
     ))

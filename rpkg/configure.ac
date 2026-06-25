@@ -303,7 +303,7 @@ if test "$is_wasm_install" = true; then
   if test ! -f "$srcdir/src/rust/wasm_registry.rs"; then
     AC_MSG_ERROR([wasm32 install requires src/rust/wasm_registry.rs.
 Run 'R CMD INSTALL' (or 'just rcmdinstall') on the host first to regenerate
-it from the cdylib slice contents, then ship the source tree to the wasm builder.])
+it from the linkme slice contents, then ship the source tree to the wasm builder.])
   fi
 fi
 AC_SUBST([IS_WASM_INSTALL], [$is_wasm_install])
@@ -409,15 +409,6 @@ case "$host_os" in
   *)                       TAR_FORCE_LOCAL="" ;;
 esac
 AC_SUBST([TAR_FORCE_LOCAL])
-
-dnl ---- cdylib platform extension (for R wrapper generation) ----
-case "$host_os" in
-  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
-  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
-esac
-AC_SUBST([CDYLIB_PREFIX])
-AC_SUBST([CDYLIB_EXT])
 
 dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 NATIVE_PKG_CPPFLAGS=""

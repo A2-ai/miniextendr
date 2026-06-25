@@ -50,7 +50,7 @@ Proc macros that generate the glue code:
 
 ### miniextendr-engine
 
-Code generation engine. Provides the `miniextendr_write_wrappers` function that reads linkme distributed slices and generates `miniextendr-wrappers.R` (the R-side wrapper functions). Called via a temporary cdylib loaded into R.
+Code generation engine. Provides the `miniextendr_write_wrappers` function that reads linkme distributed slices and generates `miniextendr-wrappers.R` (the R-side wrapper functions). Called by `dyn.load()`ing the freshly-built shared object into R during the package build.
 
 ### miniextendr-lint
 

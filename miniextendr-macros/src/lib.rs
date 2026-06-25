@@ -11,9 +11,9 @@
 //! - Helpers: `typed_list` for typed list builders.
 //!
 //! R wrapper generation is driven by Rust doc comments (roxygen tags are
-//! extracted). During package build, the cdylib link pass loads the crate
-//! into R and calls `miniextendr_write_wrappers`, which walks the linkme
-//! `#[distributed_slice]` tables and writes `R/<pkg>-wrappers.R`.
+//! extracted). During package build, the wrapper-gen pass loads the installed
+//! shared object into R and calls `miniextendr_write_wrappers`, which walks the
+//! linkme `#[distributed_slice]` tables and writes `R/<pkg>-wrappers.R`.
 //!
 //! ## Quick start
 //!

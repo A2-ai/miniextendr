@@ -528,13 +528,13 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 # script + bespoke CI job before; see #805). create_miniextendr_package() +
 # miniextendr_build() scaffold a package that sits outside any .git ancestor,
 # so a build = TRUE install's R CMD build step auto-vendors and would flip into
-# *tarball mode* — which skips the cdylib wrapper-gen pass. On a brand-new
+# *tarball mode* — which skips the wrapper-gen pass. On a brand-new
 # package (no R/<pkg>-wrappers.R yet) that means the wrappers can never be
 # generated and library() exposes nothing (#822). miniextendr_build() now
 # detects the absent wrappers file and calls bootstrap_fresh_wrappers(), which
 # clears the latch, re-runs configure, then installs with
 # MINIEXTENDR_FORCE_WRAPPER_GEN=1 (build = FALSE). The FORCE override ensures
-# the cdylib wrapper-gen pass runs even when configure's self-repair branch
+# the wrapper-gen pass runs even when configure's self-repair branch
 # re-seals inst/vendor.tar.xz in a non-git tree (#963). The same FORCE flag
 # guards the wrappers-present case in install_pkg() against a leaked tarball
 # latch (#757).
@@ -693,7 +693,7 @@ test_that("miniextendr_build() exports a newly added function in a single pass (
 # MINIEXTENDR_FORCE_WRAPPER_GEN propagation into nested R CMD INSTALL (#911)
 # -----------------------------------------------------------------------------
 
-# Regression for #911. install_pkg() forces the cdylib wrapper-gen pass by
+# Regression for #911. install_pkg() forces the wrapper-gen pass by
 # setting MINIEXTENDR_FORCE_WRAPPER_GEN=1 in the R *session* before calling
 # devtools::install(build = TRUE). #911 flagged as unverified whether that
 # in-session override survives the two subprocess hops (R CMD build -> R CMD

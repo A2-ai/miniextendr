@@ -102,7 +102,7 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 	  _wrappers=$$(cygpath -m "$$_wrappers"); \
 	fi; \
-	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib') }))"
+	MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib') }))"
 	@echo "Removing cdylib to prevent linker collision with staticlib..."
 	@rm -f '$(CARGO_CDYLIB)'
 
