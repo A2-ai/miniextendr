@@ -132,9 +132,6 @@ loading the freshly-built shared object back into R:
 3. The function reads the linkme slices and writes R wrapper code to a file
 4. `roxygen2::roxygenise()` generates NAMESPACE exports from the wrappers
 
-No separate cdylib is built — the installed shared object is already a loadable
-object with the same registered entry points.
-
 This runs during [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) or equivalent.
 
 ## When APIs Can Be Called
