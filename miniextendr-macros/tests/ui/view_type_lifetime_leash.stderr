@@ -1,0 +1,16 @@
+error: lifetime may not live long enough
+  --> tests/ui/view_type_lifetime_leash.rs:22:12
+   |
+20 | fn keep_extracted_str(v: StrVec<'_>) -> StrKeeper {
+   |                       - has type `StrVec<'1>`
+21 |     StrKeeper {
+22 |         s: v.get_str(0).unwrap(),
+   |            ^^^^^^^^^^^^^^^^^^^^^ this usage requires that `'1` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> tests/ui/view_type_lifetime_leash.rs:33:17
+   |
+32 | fn keep_rcow(c: RCow<'_, i32>) -> CowKeeper {
+   |              - has type `RCow<'1, i32>`
+33 |     CowKeeper { c }
+   |                 ^ this usage requires that `'1` must outlive `'static`
