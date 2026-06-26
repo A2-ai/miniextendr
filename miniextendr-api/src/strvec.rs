@@ -3,6 +3,7 @@
 //! Provides safe construction and element insertion for string vectors.
 
 use std::borrow::Cow;
+use std::marker::PhantomData;
 
 use crate::SEXPTYPE::STRSXP;
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
@@ -10,23 +11,30 @@ use crate::gc_protect::{OwnedProtect, ProtectScope, Protected};
 use crate::into_r::IntoR;
 use crate::{SEXP, SexpExt};
 
-/// Owned handle to an R character vector (`STRSXP`).
+/// Borrowed view over an R character vector (`STRSXP`).
 ///
-/// This wrapper provides safe methods for building character vectors
-/// element-by-element with proper GC protection.
+/// The `'a` lifetime leashes every `&str` this view hands out to the window in
+/// which the underlying `STRSXP` stays GC-reachable. At a `#[miniextendr]`
+/// boundary, write `StrVec<'_>`: R protects `.Call` arguments for the call's
+/// duration, so the elided lifetime is bounded by the call and the borrows
+/// cannot escape into an `ExternalPtr`, a global, or another thread — doing so
+/// is a compile error (the `&str` would have to outlive `'a`). Callers that own
+/// the rooting obligation reach for the `unsafe` `*_static` family instead.
+///
+/// `Copy` and cheap (a single `SEXP`); covariant in `'a`.
 #[derive(Clone, Copy, Debug)]
-pub struct StrVec(SEXP);
+pub struct StrVec<'a>(SEXP, PhantomData<&'a str>);
 
-impl StrVec {
+impl<'a> StrVec<'a> {
     /// Wrap an existing `STRSXP` without additional checks.
     ///
     /// # Safety
     ///
     /// Caller must ensure `sexp` is a valid character vector (`STRSXP`)
-    /// whose lifetime remains managed by R.
+    /// that stays GC-reachable for the inferred lifetime `'a`.
     #[inline]
     pub const unsafe fn from_raw(sexp: SEXP) -> Self {
-        StrVec(sexp)
+        StrVec(sexp, PhantomData)
     }
 
     /// Get the underlying `SEXP`.
@@ -58,28 +66,29 @@ impl StrVec {
         Some(self.0.string_elt(idx))
     }
 
-    /// Get the string at the given index (zero-copy).
+    /// Get the string at the given index (zero-copy), leashed to `'a`.
     ///
     /// Returns `None` if out of bounds or if the element is `NA_character_`.
     /// Panics if the CHARSXP is not valid UTF-8 (should not happen in a UTF-8 locale).
     #[inline]
-    pub fn get_str(self, idx: isize) -> Option<&'static str> {
+    pub fn get_str(self, idx: isize) -> Option<&'a str> {
         let charsxp = self.get_charsxp(idx)?;
         unsafe {
             if charsxp == SEXP::na_string() {
                 return None;
             }
+            // charsxp_to_str fabricates &'static; covariance narrows it to &'a.
             Some(charsxp_to_str(charsxp))
         }
     }
 
-    /// Get the string at the given index as `Cow<str>` (encoding-safe).
+    /// Get the string at the given index as `Cow<str>` (encoding-safe), leashed to `'a`.
     ///
     /// Returns `Cow::Borrowed` for UTF-8 strings (zero-copy), `Cow::Owned` for
     /// non-UTF-8 strings (translated via `Rf_translateCharUTF8`).
     /// Returns `None` if out of bounds or `NA_character_`.
     #[inline]
-    pub fn get_cow(self, idx: isize) -> Option<Cow<'static, str>> {
+    pub fn get_cow(self, idx: isize) -> Option<Cow<'a, str>> {
         let charsxp = self.get_charsxp(idx)?;
         unsafe {
             if charsxp == SEXP::na_string() {
@@ -89,12 +98,55 @@ impl StrVec {
         }
     }
 
-    /// Iterate over elements as `Option<&str>`.
+    /// Get the string at the given index as `&'static str` — the courageous escape.
+    ///
+    /// Unlike [`get_str`](Self::get_str), the returned reference is **not** leashed
+    /// to `'a`, so it can be stored in an `ExternalPtr`, a global, or sent across
+    /// threads. The string data lives in R's CHARSXP; it is only valid while that
+    /// `STRSXP` stays GC-reachable.
+    ///
+    /// # Safety
+    ///
+    /// The caller takes on the rooting obligation: the underlying `STRSXP` must be
+    /// kept reachable by R (e.g. via the `prot` slot of the `ExternalPtr` it is
+    /// stored in, or `R_PreserveObject`) for as long as the returned `&'static str`
+    /// is used. Letting R GC the source is use-after-free.
+    #[inline]
+    pub unsafe fn get_str_static(self, idx: isize) -> Option<&'static str> {
+        let charsxp = self.get_charsxp(idx)?;
+        unsafe {
+            if charsxp == SEXP::na_string() {
+                return None;
+            }
+            Some(charsxp_to_str(charsxp))
+        }
+    }
+
+    /// Get the string at the given index as `Cow<'static, str>` — the courageous escape.
+    ///
+    /// `Cow` analogue of [`get_str_static`](Self::get_str_static); same rooting
+    /// obligation for the borrowed (`Cow::Borrowed`) case.
+    ///
+    /// # Safety
+    ///
+    /// See [`get_str_static`](Self::get_str_static).
+    #[inline]
+    pub unsafe fn get_cow_static(self, idx: isize) -> Option<Cow<'static, str>> {
+        let charsxp = self.get_charsxp(idx)?;
+        unsafe {
+            if charsxp == SEXP::na_string() {
+                return None;
+            }
+            Some(charsxp_to_cow(charsxp))
+        }
+    }
+
+    /// Iterate over elements as `Option<&str>` (leashed to `'a`).
     ///
     /// `NA_character_` elements yield `None`, valid strings yield `Some(&str)`.
     /// Zero-copy — each `&str` borrows directly from R's CHARSXP.
     #[inline]
-    pub fn iter(self) -> StrVecIter {
+    pub fn iter(self) -> StrVecIter<'a> {
         StrVecIter {
             vec: self,
             idx: 0,
@@ -102,11 +154,11 @@ impl StrVec {
         }
     }
 
-    /// Iterate over elements as `Option<Cow<str>>` (encoding-safe).
+    /// Iterate over elements as `Option<Cow<str>>` (encoding-safe, leashed to `'a`).
     ///
     /// Like [`iter`](Self::iter) but handles non-UTF-8 CHARSXPs gracefully.
     #[inline]
-    pub fn iter_cow(self) -> StrVecCowIter {
+    pub fn iter_cow(self) -> StrVecCowIter<'a> {
         StrVecCowIter {
             vec: self,
             idx: 0,
@@ -221,18 +273,18 @@ impl StrVec {
 
 // region: StrVec iterators
 
-/// Iterator over `StrVec` elements as `Option<&str>`.
+/// Iterator over `StrVec` elements as `Option<&str>` (leashed to `'a`).
 ///
 /// Yields `None` for `NA_character_`, `Some(&str)` for valid strings.
 /// Zero-copy — each `&str` borrows directly from R's CHARSXP.
-pub struct StrVecIter {
-    vec: StrVec,
+pub struct StrVecIter<'a> {
+    vec: StrVec<'a>,
     idx: isize,
     len: isize,
 }
 
-impl Iterator for StrVecIter {
-    type Item = Option<&'static str>;
+impl<'a> Iterator for StrVecIter<'a> {
+    type Item = Option<&'a str>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -255,19 +307,19 @@ impl Iterator for StrVecIter {
     }
 }
 
-impl ExactSizeIterator for StrVecIter {}
+impl ExactSizeIterator for StrVecIter<'_> {}
 
-/// Iterator over `StrVec` elements as `Option<Cow<'static, str>>`.
+/// Iterator over `StrVec` elements as `Option<Cow<'a, str>>`.
 ///
 /// Like [`StrVecIter`] but handles non-UTF-8 CHARSXPs via `Rf_translateCharUTF8`.
-pub struct StrVecCowIter {
-    vec: StrVec,
+pub struct StrVecCowIter<'a> {
+    vec: StrVec<'a>,
     idx: isize,
     len: isize,
 }
 
-impl Iterator for StrVecCowIter {
-    type Item = Option<Cow<'static, str>>;
+impl<'a> Iterator for StrVecCowIter<'a> {
+    type Item = Option<Cow<'a, str>>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -290,11 +342,11 @@ impl Iterator for StrVecCowIter {
     }
 }
 
-impl ExactSizeIterator for StrVecCowIter {}
+impl ExactSizeIterator for StrVecCowIter<'_> {}
 
-impl IntoIterator for StrVec {
-    type Item = Option<&'static str>;
-    type IntoIter = StrVecIter;
+impl<'a> IntoIterator for StrVec<'a> {
+    type Item = Option<&'a str>;
+    type IntoIter = StrVecIter<'a>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -402,10 +454,10 @@ impl<'a> StrVecBuilder<'a> {
         self.vec
     }
 
-    /// Convert to a `StrVec` wrapper.
+    /// Convert to a `StrVec` view, leashed to the builder's protect scope `'a`.
     #[inline]
-    pub fn into_strvec(self) -> StrVec {
-        StrVec(self.vec)
+    pub fn into_strvec(self) -> StrVec<'a> {
+        StrVec(self.vec, PhantomData)
     }
 
     /// Convert to the underlying SEXP.
@@ -430,7 +482,7 @@ impl<'a> StrVecBuilder<'a> {
 
 // region: Trait implementations
 
-impl IntoR for StrVec {
+impl IntoR for StrVec<'_> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(self.into_sexp())
@@ -444,7 +496,7 @@ impl IntoR for StrVec {
     }
 }
 
-impl TryFromSexp for StrVec {
+impl<'a> TryFromSexp for StrVec<'a> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -456,7 +508,7 @@ impl TryFromSexp for StrVec {
             }
             .into());
         }
-        Ok(StrVec(sexp))
+        Ok(StrVec(sexp, PhantomData))
     }
 }
 // endregion
@@ -466,9 +518,11 @@ impl TryFromSexp for StrVec {
 /// GC-protected view over an R character vector (`STRSXP`).
 ///
 /// Unlike [`StrVec`] (which is `Copy` and trusts the caller for GC protection),
-/// `ProtectedStrVec` wraps a [`Protected<'static, StrVec>`](crate::gc_protect::Protected) that keeps the
-/// STRSXP alive. All borrowed data (`&str`, iterators) has its lifetime tied to `&self`,
-/// not `'static` — preventing use-after-GC bugs at compile time.
+/// `ProtectedStrVec` wraps a [`Protected<'static, StrVec<'static>>`](crate::gc_protect::Protected)
+/// that keeps the STRSXP alive — the `'static` on the inner view is sound here
+/// because the protect guard *is* the rooting obligation. All borrowed data
+/// (`&str`, iterators) it hands out has its lifetime tied to `&self`, not
+/// `'static` — preventing use-after-GC bugs at compile time.
 ///
 /// # When to use
 ///
@@ -489,7 +543,7 @@ impl TryFromSexp for StrVec {
 /// }
 /// ```
 pub struct ProtectedStrVec {
-    protected: Protected<'static, StrVec>,
+    protected: Protected<'static, StrVec<'static>>,
     len: isize,
 }
 
@@ -593,9 +647,9 @@ impl ProtectedStrVec {
         self.protected.get().as_sexp()
     }
 
-    /// Get the inner `StrVec` (unprotected copy — caller assumes protection responsibility).
+    /// Get the inner `StrVec` view, leashed to `&self` (the protect guard).
     #[inline]
-    pub fn as_strvec(&self) -> StrVec {
+    pub fn as_strvec(&self) -> StrVec<'_> {
         *self.protected.get()
     }
 }

@@ -33,8 +33,10 @@
 //! # Lifetime contract
 //!
 //! As with `Cow<[T]>`, a borrowed `RCow` is valid only for the duration of the
-//! enclosing `.Call` (R protects the argument SEXP while Rust runs). Do not send
-//! it to another thread or store it past the call return.
+//! enclosing `.Call` (R protects the argument SEXP while Rust runs). Write
+//! `RCow<'_, T>` at a `#[miniextendr]` boundary: the `'a` leashes the borrow to
+//! the call, so sending it to another thread or storing it past the call return
+//! is a *compile error*, not an honor-system pitfall.
 
 use std::ops::Deref;
 
@@ -82,13 +84,13 @@ impl<T> RBorrow<'_, T> {
 /// ```ignore
 /// // Zero-copy in *and* out: the returned SEXP is the original R vector.
 /// #[miniextendr]
-/// pub fn passthrough(x: RCow<'static, f64>) -> RCow<'static, f64> {
+/// pub fn passthrough(x: RCow<'_, f64>) -> RCow<'_, f64> {
 ///     x
 /// }
 ///
 /// // Mutating forces a copy (copy-on-write), then materializes a fresh vector.
 /// #[miniextendr]
-/// pub fn doubled(mut x: RCow<'static, f64>) -> RCow<'static, f64> {
+/// pub fn doubled(mut x: RCow<'_, f64>) -> RCow<'_, f64> {
 ///     for v in x.to_mut() {
 ///         *v *= 2.0;
 ///     }
@@ -164,11 +166,17 @@ impl<T> From<Vec<T>> for RCow<'_, T> {
 /// Reads an R vector zero-copy, remembering the source SEXP so it can be handed
 /// straight back by [`IntoR`]. Rejects a mismatched [`SEXPTYPE`](crate::SEXPTYPE)
 /// just like the `&[T]` impl it delegates to.
-impl<T: RNativeType> TryFromSexp for RCow<'static, T> {
+///
+/// The impl is generic over `'a` so a borrowed `RCow<'_, T>` argument is leashed
+/// to the enclosing `.Call` (R protects the argument SEXP for the call's
+/// duration). Storing it past the call return — in an `ExternalPtr`, a global,
+/// or another thread — is a compile error, not an honor-system hazard.
+impl<'a, T: RNativeType> TryFromSexp for RCow<'a, T> {
     type Error = SexpTypeError;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // The `&[T]` impl fabricates &'static; covariance narrows it to &'a.
         let data: &'static [T] = TryFromSexp::try_from_sexp(sexp)?;
         Ok(RCow::Borrowed(RBorrow { sexp, data }))
     }
