@@ -52,8 +52,7 @@ miniextendr_status <- function(path = ".") {
     ),
     "Source Files" = c(
       "src/Makevars.in",
-      "src/stub.c",
-      "src/cdylib-exports.def"
+      "src/stub.c"
     ),
     "Generated Files" = c(
       "src/Makevars",

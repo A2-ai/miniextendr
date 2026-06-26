@@ -712,7 +712,7 @@ r-cmd-install *args: _assert-no-vendor-leak configure
     R CMD INSTALL {{args}} rpkg
 
 # Build R package tarball
-# Depends on `r-cmd-install` so the host cdylib pass regenerates the UNTRACKED
+# Depends on `r-cmd-install` so the host wrapper-gen pass regenerates the UNTRACKED
 # generated files (R/miniextendr-wrappers.R + src/rust/wasm_registry.rs) on disk
 # before `R CMD build` packs them into the tarball. These are gitignored, so the
 # only way they reach the tarball is from disk — and a stale/absent wasm_registry.rs
@@ -921,7 +921,6 @@ templates-sources:
     # === R Package Template (rpkg/) ===
     rpkg/bootstrap.R	rpkg/bootstrap.R
     rpkg/build.rs	rpkg/src/rust/build.rs
-    rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     rpkg/cleanup	rpkg/cleanup
     rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
     rpkg/cleanup.win	rpkg/cleanup.win
@@ -938,7 +937,6 @@ templates-sources:
     # The embedded R package uses same sources as rpkg/ template
     monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
-    monorepo/rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     monorepo/rpkg/cleanup	rpkg/cleanup
     monorepo/rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
     monorepo/rpkg/cleanup.win	rpkg/cleanup.win
@@ -1135,7 +1133,7 @@ lint-sync-check:
     cargo check --manifest-path=miniextendr-lint/Cargo.toml
 
 # Verify the committed NAMESPACE / man are in sync with #[miniextendr] Rust source,
-# and that the host cdylib pass produces non-stub generated files.
+# and that the host wrapper-gen pass produces non-stub generated files.
 #
 # `R/miniextendr-wrappers.R` and `src/rust/wasm_registry.rs` are NOT tracked
 # (gitignored, regenerated every install) so there is no committed copy to drift
@@ -1158,7 +1156,7 @@ wrappers-sync-check: _assert-no-vendor-leak configure
     wasm_hash=$(grep 'content-hash:' rpkg/src/rust/wasm_registry.rs | awk '{print $NF}')
     if [ ! -s rpkg/src/rust/wasm_registry.rs ] || [ "$wasm_hash" = "0000000000000000" ]; then
       echo "ERROR: rpkg/src/rust/wasm_registry.rs is missing or a stub (content-hash=$wasm_hash)." >&2
-      echo "The cdylib pass must produce a real wasm32 snapshot." >&2
+      echo "The wrapper-gen pass must produce a real wasm32 snapshot." >&2
       exit 1
     fi
 

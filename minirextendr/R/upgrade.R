@@ -182,7 +182,6 @@ check_scaffolding_clean <- function() {
   scaffolding_files <- c(
     "src/stub.c",
     "src/r_shim.h",
-    "src/cdylib-exports.def",
     "src/rust/build.rs",
     "src/Makevars.in",
     "src/win.def.in",

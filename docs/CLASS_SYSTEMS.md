@@ -750,7 +750,7 @@ Both blocks generate methods for the same type.
 
 Several attributes let one `#[miniextendr]` type reference another by name -
 `s7(parent = ...)`, `r6(inherit = ...)`, `s7(convert_from = ...)`, and
-`s7(convert_to = ...)`. miniextendr resolves these at cdylib-write time using
+`s7(convert_to = ...)`. miniextendr resolves these at wrapper-gen time using
 the Rust type name, not the R class name, so you can stay consistent with your
 Rust source and still get the correct R-visible name in generated wrappers.
 

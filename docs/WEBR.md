@@ -90,7 +90,7 @@ just docker-webr-smoke         # full smoke: build wasm side-module + load in
 the container, then prints a testthat pass/fail/skip summary:
 
 1. **Native `R CMD INSTALL` of `rpkg`** against `/opt/R/current/bin/R` to run
-   the cdylib pass and regenerate `rpkg/src/rust/wasm_registry.rs`. rpkg's
+   the wrapper-gen pass and regenerate `rpkg/src/rust/wasm_registry.rs`. rpkg's
    committed snapshot is a *real* one (it's committed in lockstep with the
    wrapper / macro surface — see "Generated artifacts" in the root
    `CLAUDE.md`), but this step guarantees it's fresh against the working
@@ -180,7 +180,7 @@ closed:
 - [ ] **Sysroot link/load** — the amd64-built wasm sysroot under `/opt/webr`
       links and loads cleanly under the arm64-host emcc end-to-end (no missing
       objects, no header mismatch from the copied tree).
-- [ ] **Native-R orchestration on arm64** — Phase 1 (native cdylib wrapper-gen)
+- [ ] **Native-R orchestration on arm64** — Phase 1 (native wrapper-gen)
       and Phase 2's `R CMD INSTALL` both run through the rig-installed arm64 R
       (`R` on PATH), since the donor's amd64 `/opt/webr/host/R-4.6.0` +
       `/opt/R/current` binaries can't execute on arm64.
@@ -204,17 +204,18 @@ overrides `CC=emcc`, `CXX=em++`, `LDFLAGS=-s SIDE_MODULE=1 -s WASM_BIGINT
 - `CARGO_BUILD_STD_FLAG=-Z build-std=std,panic_abort`
 
 …and refuses to proceed if `src/rust/wasm_registry.rs` is absent (the wasm
-install path can't run the host cdylib pass that would otherwise regenerate
+install path can't run the host wrapper-gen pass that would otherwise regenerate
 it). `rpkg/src/rust/build.rs` enforces a related invariant: when building
 for wasm32 it parses the `// generator-version: N` header out of
 `wasm_registry.rs` and panics if it doesn't match the constant mirrored
 from `miniextendr-api/src/wasm_registry_writer.rs::GENERATOR_VERSION`.
 Bump both together when the generated-file shape changes.
 
-`Makevars.in` splits the `$(WRAPPERS_R)` rule across `IS_WASM_INSTALL` so
-the cdylib prerequisite is only declared on the native branch — wasm32
-installs neither build nor `dyn.load` the cdylib (host R can't load a wasm
-side module).
+`Makevars.in` branches the `$(WRAPPERS_R)` recipe on `IS_WASM_INSTALL`: the
+native branch `dyn.load`s the freshly-built shared object and calls back into it
+to emit the wrappers, while the wasm32 branch is a no-op that reuses the
+pre-generated files (host R can't `dyn.load` a wasm SIDE_MODULE, so wrappers and
+`wasm_registry.rs` must be produced by a prior native build and shipped in).
 
 ## Two R installations inside the container
 
@@ -223,7 +224,7 @@ right one:
 
 | Path | Use |
 |---|---|
-| `/opt/R/current/bin/R` | Native (rig-managed 4.6.0). Phase 1 of the smoke script — host cdylib + wrapper-gen. |
+| `/opt/R/current/bin/R` | Native (rig-managed 4.6.0). Phase 1 of the smoke script — host wrapper-gen. |
 | `/opt/webr/host/R-4.6.0/bin/R` | webR's own host R, configured for wasm cross-compilation. Phase 2 — wasm `R CMD INSTALL` with `webr-vars.mk`. |
 | `/opt/webr/wasm/R-4.6.0/lib/R/library/` | wasm R library tree where the side-module ends up. NODEFS-mounted into the webR Node session. |
 

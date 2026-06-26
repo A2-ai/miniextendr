@@ -595,8 +595,6 @@ LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
 NATIVE_PKG_CPPFLAGS
-CDYLIB_EXT
-CDYLIB_PREFIX
 TAR_FORCE_LOCAL
 CARGO_STATICLIB_NAME
 CARGO_LIBDIR
@@ -2495,7 +2493,7 @@ if test "$is_wasm_install" = true; then
   if test ! -f "$srcdir/src/rust/wasm_registry.rs"; then
     as_fn_error $? "wasm32 install requires src/rust/wasm_registry.rs.
 Run 'R CMD INSTALL' (or 'just rcmdinstall') on the host first to regenerate
-it from the cdylib slice contents, then ship the source tree to the wasm builder." "$LINENO" 5
+it from the linkme slice contents, then ship the source tree to the wasm builder." "$LINENO" 5
   fi
 fi
 IS_WASM_INSTALL=$is_wasm_install
@@ -2612,14 +2610,6 @@ case "$host_os" in
   *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
   *)                       TAR_FORCE_LOCAL="" ;;
 esac
-
-
-case "$host_os" in
-  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
-  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
-esac
-
 
 
 NATIVE_PKG_CPPFLAGS=""
