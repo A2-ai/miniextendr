@@ -399,19 +399,14 @@ fi
 dnl Uppercase + s/-/_/g, e.g. aarch64-apple-darwin -> AARCH64_APPLE_DARWIN.
 CARGO_ENV_RUST_TARGET_UPPER=`echo "$CARGO_ENV_RUST_TARGET" | tr 'a-z-' 'A-Z_'`
 
-dnl --- CARGO_NET_GIT_FETCH_WITH_CLI: default "true", honor caller's env ----
-dnl We force git-fetch-with-cli to work around in-tree rustls/CA failures, but a
-dnl value set outside configure (e.g. CARGO_NET_GIT_FETCH_WITH_CLI=false
-dnl ./configure) must win — every other configure-consumed env var already
-dnl adapts, and cargo's [env] is emitted without force=true (live env wins at
-dnl build time), so baking a hardcoded "true" only made the generated config
-dnl misrepresent what was configured. Test with +x so an explicit empty value is
-dnl still honored, matching the CARGO_FEATURES convention above.
-if test -n "${CARGO_NET_GIT_FETCH_WITH_CLI+x}"; then
-  CARGO_ENV_GIT_FETCH_CLI="$CARGO_NET_GIT_FETCH_WITH_CLI"
-else
-  CARGO_ENV_GIT_FETCH_CLI="true"
-fi
+dnl Default CARGO_NET_GIT_FETCH_WITH_CLI to "true" (works around in-tree
+dnl rustls/CA failures) but let a value set outside configure win, via the same
+dnl AC_ARG_VAR + `: ${VAR=default}` idiom used for CARGO_PROFILE / CARGO_HOME
+dnl above. `=` (not `:=`) defaults only when unset, so an externally-set value —
+dnl including an explicit empty one — is preserved.
+AC_ARG_VAR([CARGO_NET_GIT_FETCH_WITH_CLI],
+  [Fetch cargo git deps via the system git CLI; "true" works around in-tree rustls/CA issues (default true)])
+: ${CARGO_NET_GIT_FETCH_WITH_CLI="true"}
 
 dnl --- macOS: derive MACOSX_DEPLOYMENT_TARGET ----
 dnl Derivation order (first match wins, logged via AC_MSG_NOTICE):
@@ -698,7 +693,7 @@ AC_CONFIG_COMMANDS([cargo-config],
           ;;
       esac
     fi
-    echo "CARGO_NET_GIT_FETCH_WITH_CLI = \"$CARGO_ENV_GIT_FETCH_CLI\""
+    echo "CARGO_NET_GIT_FETCH_WITH_CLI = \"$CARGO_NET_GIT_FETCH_WITH_CLI\""
     if test -n "$CARGO_ENV_R_AR" && test "$CARGO_ENV_R_AR" != "ar"; then
       echo "AR_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_AR\""
     fi
@@ -782,7 +777,7 @@ AC_CONFIG_COMMANDS([cargo-config],
  VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
  CARGO_ENV_MACOS_DEPLOY_TARGET="$CARGO_ENV_MACOS_DEPLOY_TARGET"
- CARGO_ENV_GIT_FETCH_CLI="$CARGO_ENV_GIT_FETCH_CLI"
+ CARGO_NET_GIT_FETCH_WITH_CLI="$CARGO_NET_GIT_FETCH_WITH_CLI"
  CARGO_ENV_WIN_LINKER="$CARGO_ENV_WIN_LINKER"
  CARGO_ENV_RUST_TARGET="$CARGO_ENV_RUST_TARGET"
  CARGO_ENV_RUST_TARGET_UPPER="$CARGO_ENV_RUST_TARGET_UPPER"
