@@ -2119,36 +2119,26 @@ impl ParsedImpl {
                 }
             };
 
-        // Reject all generics until codegen fully supports them.
-        // The wrapper generation uses `type_ident` without generic args, which would
-        // fail to compile or mis-resolve types for generic impls.
-        // Lifetimes and type/const params are rejected for different reasons and get distinct messages.
+        // Reject type/const generics — the generated #[no_mangle] C wrappers are
+        // incompatible with type/const params (they require monomorphization → multiple
+        // symbols). Lifetime params ARE allowed: lifetimes are erased at codegen and the
+        // wrapper generation uses `type_ident` (the bare struct ident) without generic
+        // args, which is correct because lifetime arguments are never needed in generated
+        // code (they are inferred or elided).
         {
             let params = &item_impl.generics.params;
-            let has_lifetime = params
-                .iter()
-                .any(|p| matches!(p, syn::GenericParam::Lifetime(_)));
             let has_type_or_const = params
                 .iter()
                 .any(|p| matches!(p, syn::GenericParam::Type(_) | syn::GenericParam::Const(_)));
 
-            if has_lifetime {
-                return Err(syn::Error::new_spanned(
-                    &item_impl.generics,
-                    "#[miniextendr] impl blocks cannot have explicit lifetime parameters. \
-                     The generated `extern \"C-unwind\" #[no_mangle]` C wrappers are \
-                     incompatible with any generic parameter, including lifetimes. \
-                     Use owned types (`Vec<T>` instead of `&[T]`, `String` instead of `&str`) \
-                     or remove the explicit lifetime annotation.",
-                ));
-            }
             if has_type_or_const {
                 return Err(syn::Error::new_spanned(
                     &item_impl.generics,
                     "generic impl blocks are not supported by #[miniextendr]. \
                      R's .Call interface requires monomorphic C symbols, so generic type \
                      parameters cannot be used. Remove the generic parameters and use a \
-                     concrete type instead.",
+                     concrete type instead. \
+                     Explicit lifetime parameters are allowed (lifetimes are erased at codegen).",
                 ));
             }
         }

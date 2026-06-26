@@ -754,35 +754,23 @@ pub fn miniextendr(
         .into();
     }
 
-    // Validate: reject generic functions (extern "C-unwind" + #[no_mangle] incompatible with generics).
-    // Lifetimes and type/const params are rejected for different reasons and get distinct messages.
+    // Validate: reject type/const generic functions.
+    // Lifetime params ARE allowed — they are erased at codegen and produce a single monomorphic
+    // symbol, so `#[no_mangle] extern "C-unwind" fn f<'a>(...)` is valid.
+    // Type and const params require monomorphization → multiple symbols → cannot be #[no_mangle].
     {
         let params = &parsed.item().sig.generics.params;
-        let has_lifetime = params
-            .iter()
-            .any(|p| matches!(p, syn::GenericParam::Lifetime(_)));
         let has_type_or_const = params
             .iter()
             .any(|p| matches!(p, syn::GenericParam::Type(_) | syn::GenericParam::Const(_)));
 
-        if has_lifetime {
-            let err = syn::Error::new_spanned(
-                &parsed.item().sig.generics,
-                "#[miniextendr] functions cannot have explicit lifetime parameters. \
-                 The generated `extern \"C-unwind\" #[no_mangle]` wrapper is incompatible \
-                 with any generic parameter, including lifetimes. \
-                 Use owned types (`Vec<T>` instead of `&[T]`, `String` instead of `&str`) \
-                 or remove the explicit lifetime annotation — `&[T]` and `&str` arguments \
-                 work without explicit lifetime params.",
-            );
-            return err.into_compile_error().into();
-        }
         if has_type_or_const {
             let err = syn::Error::new_spanned(
                 &parsed.item().sig.generics,
                 "#[miniextendr] functions cannot have generic type or const parameters. \
                  Generic functions are incompatible with `extern \"C-unwind\"` and `#[no_mangle]` \
-                 required for R FFI. Consider using trait objects or monomorphization instead.",
+                 required for R FFI. Consider using trait objects or monomorphization instead. \
+                 Explicit lifetime parameters are allowed (lifetimes are erased at codegen).",
             );
             return err.into_compile_error().into();
         }

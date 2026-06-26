@@ -197,15 +197,25 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
         ));
     }
 
-    // Check for generics on method
-    if !method.sig.generics.params.is_empty() {
-        return Err(syn::Error::new_spanned(
-            &method.sig.generics,
-            format!(
-                "#[miniextendr] trait method `{}::{}` cannot have generic parameters",
-                trait_name, method_name
-            ),
-        ));
+    // Check for type/const generics on method.
+    // Lifetime params are allowed (erased at codegen); type/const params would require
+    // monomorphization and are incompatible with the vtable-shim codegen path.
+    {
+        let has_type_or_const = method
+            .sig
+            .generics
+            .params
+            .iter()
+            .any(|p| matches!(p, syn::GenericParam::Type(_) | syn::GenericParam::Const(_)));
+        if has_type_or_const {
+            return Err(syn::Error::new_spanned(
+                &method.sig.generics,
+                format!(
+                    "#[miniextendr] trait method `{}::{}` cannot have generic type or const parameters",
+                    trait_name, method_name
+                ),
+            ));
+        }
     }
 
     // Check receiver - must be &self, &mut self, self: &Self, self: &mut Self, or no receiver

@@ -17,7 +17,7 @@ Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `
 - **MXL106** — non-`pub` fn would get `@export` → make `pub` or add `#[miniextendr(noexport)]`.
 - **MXL110** — parameter name is an R reserved word.
 - **MXL111** — `s4_*` method on `#[miniextendr(s4)]` impl (codegen auto-prefixes — yields `s4_s4_*`).
-- **MXL112** — explicit lifetime param on `#[miniextendr]` fn/impl.
+- ~~**MXL112**~~ — *removed*: lifetime params are now allowed on `#[miniextendr]` fns/impls. Lifetimes are erased at codegen and produce a single monomorphic symbol, making them FFI-safe with `#[no_mangle]`. Only type/const generic params are rejected by the macro (they require monomorphization).
 - **MXL120** — vctrs constructor returns `Self`/named type, or impl has an instance-method receiver (`&self`, `self: &ExternalPtr<Self>`, etc.). Mirrors the proc-macro hard error in `miniextendr-macros`.
 - **MXL203** — redundant `internal` + `noexport`.
 - **MXL300** — direct `Rf_error`/`Rf_errorcall` → replace with `panic!()` (framework converts to R error via tagged-SEXP transport).
