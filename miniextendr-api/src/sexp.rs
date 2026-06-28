@@ -180,6 +180,10 @@ impl SEXP {
     }
 
     /// Create a length-1 logical vector.
+    ///
+    /// Produces only `TRUE` or `FALSE`; a `bool` cannot represent R's `NA`.
+    /// For an NA logical, use [`scalar_logical_raw`](Self::scalar_logical_raw)
+    /// with `NA_LOGICAL` (`i32::MIN`).
     #[inline]
     pub fn scalar_logical(x: bool) -> SEXP {
         unsafe { Rf_ScalarLogical(if x { 1 } else { 0 }) }
