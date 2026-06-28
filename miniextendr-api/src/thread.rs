@@ -195,6 +195,12 @@ pub fn disable_stack_checking_permanently() {
     unsafe {
         set_r_cstack_limit(usize::MAX);
     }
+    // Pin the saved limit to `usize::MAX` so a later `StackCheckGuard` drop can't
+    // silently re-enable checking. If a guard is already active, `ORIGINAL_STACK_LIMIT`
+    // holds the real pre-disable limit, and the last guard's drop would restore it —
+    // undoing the "permanent" disable. Overwriting it with `usize::MAX` makes that
+    // restore a no-op, so the disable stays durable regardless of guard ordering.
+    ORIGINAL_STACK_LIMIT.store(usize::MAX, Ordering::SeqCst);
 }
 
 /// Execute a closure with stack checking disabled.
@@ -238,6 +244,23 @@ pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
 ///
 /// Use this if your code involves very deep recursion or complex R operations.
 /// Windows R uses 64 MiB for its main thread since R 4.2.
+///
+/// # Why larger than [`DEFAULT_R_STACK_SIZE`]
+///
+/// This is 8x the [`DEFAULT_R_STACK_SIZE`] used on other platforms. Two factors
+/// motivate the larger reservation on Windows:
+///
+/// - Newly spawned Windows threads get a comparatively small *committed* stack by
+///   default, and the OS does not grow a thread stack the way `ulimit -s` allows
+///   on typical Unix configurations — so the size we ask for up front is closer to
+///   the size we actually get.
+/// - R's own choice of 64 MiB for its Windows main thread (since R 4.2) reflects
+///   that deep R evaluation consumes more C stack on this platform than the
+///   ~8 MiB Unix default comfortably covers.
+///
+/// Matching R's main-thread reservation here keeps deep R evaluation on a spawned
+/// thread from overflowing the stack. This is a conservative reservation, not a
+/// precise measurement of any single call's stack frame.
 #[cfg(windows)]
 pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 
@@ -428,9 +451,15 @@ where
 #[cfg(feature = "nonapi")]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // These tests mutate process-global state (`R_CStackLimit`, `STACK_GUARD_COUNT`,
+    // `ORIGINAL_STACK_LIMIT`), so they must not run concurrently. Serialize them.
+    static STACK_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_guard_saves_and_restores() {
+        let _serial = STACK_TEST_LOCK.lock().unwrap();
         let original = get_r_cstack_limit();
 
         {
@@ -442,6 +471,40 @@ mod tests {
 
         // After guard drops, should be restored
         assert_eq!(get_r_cstack_limit(), original);
+    }
+
+    /// Regression test for the "permanent disable silently undone by a guard drop" bug.
+    ///
+    /// Ordering (a): a `StackCheckGuard` is active (so `ORIGINAL_STACK_LIMIT` holds the
+    /// real pre-disable limit) when `disable_stack_checking_permanently()` is called.
+    /// Before the fix, the guard's `Drop` restored that saved limit, re-enabling stack
+    /// checking and undoing the "permanent" disable. After the fix,
+    /// `disable_stack_checking_permanently()` also pins `ORIGINAL_STACK_LIMIT` to
+    /// `usize::MAX`, so the drop's restore is a no-op and the limit stays at `usize::MAX`.
+    #[test]
+    fn test_permanent_disable_survives_guard_drop() {
+        let _serial = STACK_TEST_LOCK.lock().unwrap();
+        let original = get_r_cstack_limit();
+
+        {
+            // Guard active: ORIGINAL_STACK_LIMIT now holds the real pre-disable limit.
+            let _guard = StackCheckGuard::disable();
+            assert_eq!(ORIGINAL_STACK_LIMIT.load(Ordering::SeqCst), original);
+
+            // Permanent disable while the guard is still alive.
+            disable_stack_checking_permanently();
+            // The saved limit is pinned to MAX so a later restore can't re-enable checking.
+            assert_eq!(ORIGINAL_STACK_LIMIT.load(Ordering::SeqCst), usize::MAX);
+        }
+        // Guard dropped: limit must remain disabled, not bounce back to `original`.
+        assert!(is_stack_checking_disabled());
+        assert_eq!(get_r_cstack_limit(), usize::MAX);
+
+        // Restore the real limit so we don't leak the permanent disable into other tests.
+        unsafe {
+            set_r_cstack_limit(original);
+        }
+        ORIGINAL_STACK_LIMIT.store(0, Ordering::SeqCst);
     }
 }
 // endregion
