@@ -37,9 +37,11 @@ pub trait SexpExt {
     /// # Safety
     ///
     /// The SEXP must be valid (not null and not freed).
+    #[must_use]
     fn type_of(&self) -> SEXPTYPE;
 
     /// Check if this SEXP is null or R_NilValue.
+    #[must_use]
     fn is_null_or_nil(&self) -> bool;
 
     /// Get the length of this SEXP as `usize`.
@@ -47,6 +49,7 @@ pub trait SexpExt {
     /// # Safety
     ///
     /// The SEXP must be valid.
+    #[must_use]
     fn len(&self) -> usize;
 
     /// Get the length as `R_xlen_t`.
@@ -54,6 +57,7 @@ pub trait SexpExt {
     /// # Safety
     ///
     /// The SEXP must be valid.
+    #[must_use]
     fn xlength(&self) -> R_xlen_t;
 
     /// Get the length as `R_xlen_t` without thread checks.
@@ -61,6 +65,7 @@ pub trait SexpExt {
     /// # Safety
     ///
     /// Must be called from R's main thread. No debug assertions.
+    #[must_use]
     unsafe fn xlength_unchecked(&self) -> R_xlen_t;
 
     /// Get the length without thread checks.
@@ -68,6 +73,7 @@ pub trait SexpExt {
     /// # Safety
     ///
     /// Must be called from R's main thread. No debug assertions.
+    #[must_use]
     unsafe fn len_unchecked(&self) -> usize;
 
     /// Get a slice view of this SEXP's data.
@@ -108,106 +114,133 @@ pub trait SexpExt {
     // Type checking methods (equivalent to R's type check macros)
 
     /// Check if this SEXP is an integer vector (INTSXP).
+    #[must_use]
     fn is_integer(&self) -> bool;
 
     /// Check if this SEXP is a real/numeric vector (REALSXP).
+    #[must_use]
     fn is_real(&self) -> bool;
 
     /// Check if this SEXP is a logical vector (LGLSXP).
+    #[must_use]
     fn is_logical(&self) -> bool;
 
     /// Check if this SEXP is a character/string vector (STRSXP).
+    #[must_use]
     fn is_character(&self) -> bool;
 
     /// Check if this SEXP is a raw vector (RAWSXP).
+    #[must_use]
     fn is_raw(&self) -> bool;
 
     /// Check if this SEXP is a complex vector (CPLXSXP).
+    #[must_use]
     fn is_complex(&self) -> bool;
 
     /// Check if this SEXP is a list/generic vector (VECSXP).
+    #[must_use]
     fn is_list(&self) -> bool;
 
     /// Check if this SEXP is an external pointer (EXTPTRSXP).
+    #[must_use]
     fn is_external_ptr(&self) -> bool;
 
     /// Check if this SEXP is an environment (ENVSXP).
+    #[must_use]
     fn is_environment(&self) -> bool;
 
     /// Check if this SEXP is a symbol (SYMSXP).
+    #[must_use]
     fn is_symbol(&self) -> bool;
 
     /// Check if this SEXP is a language object (LANGSXP).
+    #[must_use]
     fn is_language(&self) -> bool;
 
     /// Check if this SEXP is an ALTREP object.
     ///
     /// Equivalent to R's `ALTREP(x)` macro.
+    #[must_use]
     fn is_altrep(&self) -> bool;
 
     /// Check if this `SEXP` contains any elements.
+    #[must_use]
     fn is_empty(&self) -> bool;
 
     /// Check if this SEXP is R's `NULL` (NILSXP).
+    #[must_use]
     fn is_nil(&self) -> bool;
 
     /// Check if this SEXP is a factor.
     ///
     /// Equivalent to R's `Rf_isFactor(x)`.
+    #[must_use]
     fn is_factor(&self) -> bool;
 
     /// Check if this SEXP is a pairlist (LISTSXP or NILSXP).
     ///
     /// Equivalent to R's `Rf_isList(x)`.
+    #[must_use]
     fn is_pair_list(&self) -> bool;
 
     /// Check if this SEXP is a matrix.
     ///
     /// Equivalent to R's `Rf_isMatrix(x)`.
+    #[must_use]
     fn is_matrix(&self) -> bool;
 
     /// Check if this SEXP is an array.
     ///
     /// Equivalent to R's `Rf_isArray(x)`.
+    #[must_use]
     fn is_array(&self) -> bool;
 
     /// Check if this SEXP is a function (closure, builtin, or special).
     ///
     /// Equivalent to R's `Rf_isFunction(x)`.
+    #[must_use]
     fn is_function(&self) -> bool;
 
     /// Check if this SEXP is an S4 object.
     ///
     /// Equivalent to R's `Rf_isS4(x)`.
+    #[must_use]
     fn is_s4(&self) -> bool;
 
     /// Check if this SEXP is a data.frame.
     ///
     /// Equivalent to R's `Rf_isDataFrame(x)`.
+    #[must_use]
     fn is_data_frame(&self) -> bool;
 
     /// Check if this SEXP is a numeric type (integer, logical, or real, excluding factors).
     ///
     /// Equivalent to R's `Rf_isNumeric(x)`.
+    #[must_use]
     fn is_numeric(&self) -> bool;
 
     /// Check if this SEXP is a number type (numeric or complex).
     ///
     /// Equivalent to R's `Rf_isNumber(x)`.
+    #[must_use]
     fn is_number(&self) -> bool;
 
     /// Check if this SEXP is an atomic vector.
     ///
     /// Returns true for logical, integer, real, complex, character, and raw vectors.
+    #[must_use]
     fn is_vector_atomic(&self) -> bool;
 
     /// Check if this SEXP is a vector list (VECSXP or EXPRSXP).
+    #[must_use]
     fn is_vector_list(&self) -> bool;
 
     /// Check if this SEXP is a vector (atomic vector or list).
+    #[must_use]
     fn is_vector(&self) -> bool;
 
     /// Check if this SEXP is an R "object" (has a class attribute).
+    #[must_use]
     fn is_object(&self) -> bool;
 
     // region: Coercion and scalar extraction
@@ -216,30 +249,35 @@ pub trait SexpExt {
     ///
     /// The result is guaranteed to have the requested SEXPTYPE.
     /// Equivalent to R's `Rf_coerceVector(x, target)`.
+    #[must_use]
     fn coerce(&self, target: SEXPTYPE) -> SEXP;
 
     /// Extract a scalar logical value.
     ///
     /// Returns `None` for `NA`. Coerces non-logical inputs.
     /// Equivalent to R's `Rf_asLogical(x)`.
+    #[must_use]
     fn as_logical(&self) -> Option<bool>;
 
     /// Extract a scalar integer value.
     ///
     /// Returns `None` for `NA_integer_`. Coerces non-integer inputs.
     /// Equivalent to R's `Rf_asInteger(x)`.
+    #[must_use]
     fn as_integer(&self) -> Option<i32>;
 
     /// Extract a scalar real value.
     ///
     /// Returns `None` for `NA_real_` (NaN). Coerces non-real inputs.
     /// Equivalent to R's `Rf_asReal(x)`.
+    #[must_use]
     fn as_real(&self) -> Option<f64>;
 
     /// Extract a scalar CHARSXP from this SEXP.
     ///
     /// The result is guaranteed to be a CHARSXP.
     /// Equivalent to R's `Rf_asChar(x)`.
+    #[must_use]
     fn as_char(&self) -> SEXP;
 
     // endregion
@@ -247,9 +285,11 @@ pub trait SexpExt {
     // region: Attribute access
 
     /// Get an attribute by symbol.
+    #[must_use]
     fn get_attr(&self, name: SEXP) -> SEXP;
 
     /// Get an attribute by symbol, returning `None` for `R_NilValue`.
+    #[must_use]
     fn get_attr_opt(&self, name: SEXP) -> Option<SEXP> {
         let attr = self.get_attr(name);
         if attr.is_nil() { None } else { Some(attr) }
@@ -259,36 +299,42 @@ pub trait SexpExt {
     fn set_attr(&self, name: SEXP, val: SEXP);
 
     /// Get the `names` attribute.
+    #[must_use]
     fn get_names(&self) -> SEXP;
 
     /// Set the `names` attribute.
     fn set_names(&self, names: SEXP);
 
     /// Get the `class` attribute.
+    #[must_use]
     fn get_class(&self) -> SEXP;
 
     /// Set the `class` attribute.
     fn set_class(&self, class: SEXP);
 
     /// Get the `dim` attribute.
+    #[must_use]
     fn get_dim(&self) -> SEXP;
 
     /// Set the `dim` attribute.
     fn set_dim(&self, dim: SEXP);
 
     /// Get the `dimnames` attribute.
+    #[must_use]
     fn get_dimnames(&self) -> SEXP;
 
     /// Set the `dimnames` attribute.
     fn set_dimnames(&self, dimnames: SEXP);
 
     /// Get the `levels` attribute (factors).
+    #[must_use]
     fn get_levels(&self) -> SEXP;
 
     /// Set the `levels` attribute (factors).
     fn set_levels(&self, levels: SEXP);
 
     /// Get the `row.names` attribute.
+    #[must_use]
     fn get_row_names(&self) -> SEXP;
 
     /// Set the `row.names` attribute.
@@ -297,6 +343,7 @@ pub trait SexpExt {
     /// Check if this SEXP inherits from a class.
     ///
     /// Equivalent to R's `inherits(x, "class_name")`.
+    #[must_use]
     fn inherits_class(&self, class: &std::ffi::CStr) -> bool;
 
     // endregion
@@ -306,6 +353,7 @@ pub trait SexpExt {
     /// Get the i-th CHARSXP element from a STRSXP.
     ///
     /// Equivalent to R's `STRING_ELT(x, i)`.
+    #[must_use]
     fn string_elt(&self, i: isize) -> SEXP;
 
     /// Get the i-th string element as `Option<&str>`.
@@ -316,6 +364,7 @@ pub trait SexpExt {
     /// the borrow checker, but the true validity depends on GC protection —
     /// do not hold the `&str` across allocation boundaries without ensuring
     /// the SEXP remains protected.
+    #[must_use]
     fn string_elt_str(&self, i: isize) -> Option<&str>;
 
     /// Set the i-th CHARSXP element of a STRSXP.
@@ -324,6 +373,7 @@ pub trait SexpExt {
     fn set_string_elt(&self, i: isize, charsxp: SEXP);
 
     /// Check if this CHARSXP is `NA_character_`.
+    #[must_use]
     fn is_na_string(&self) -> bool;
 
     // endregion
@@ -333,6 +383,7 @@ pub trait SexpExt {
     /// Get the i-th element of a VECSXP (generic vector / list).
     ///
     /// Equivalent to R's `VECTOR_ELT(x, i)`.
+    #[must_use]
     fn vector_elt(&self, i: isize) -> SEXP;
 
     /// Set the i-th element of a VECSXP.
@@ -345,14 +396,19 @@ pub trait SexpExt {
     // region: Typed single-element access
 
     /// Get the i-th integer element.
+    #[must_use]
     fn integer_elt(&self, i: isize) -> i32;
     /// Get the i-th real element.
+    #[must_use]
     fn real_elt(&self, i: isize) -> f64;
     /// Get the i-th logical element (raw i32: 0/1/NA_LOGICAL).
+    #[must_use]
     fn logical_elt(&self, i: isize) -> i32;
     /// Get the i-th complex element.
+    #[must_use]
     fn complex_elt(&self, i: isize) -> Rcomplex;
     /// Get the i-th raw element.
+    #[must_use]
     fn raw_elt(&self, i: isize) -> u8;
 
     /// Set the i-th integer element.
@@ -375,6 +431,7 @@ pub trait SexpExt {
     /// # Safety
     ///
     /// The SEXP must be a valid SYMSXP.
+    #[must_use]
     fn printname(&self) -> SEXP;
 
     /// Get the C string pointer from a CHARSXP.
@@ -384,9 +441,11 @@ pub trait SexpExt {
     /// # Safety
     ///
     /// The SEXP must be a valid CHARSXP.
+    #[must_use]
     fn r_char(&self) -> *const ::std::os::raw::c_char;
 
     /// Get a `&str` from a CHARSXP. Returns `None` for `NA_character_`.
+    #[must_use]
     fn r_char_str(&self) -> Option<&str>;
 
     // endregion
@@ -398,6 +457,7 @@ pub trait SexpExt {
     /// If the new length is shorter, elements are truncated.
     /// If longer, new elements are filled with NA/NULL.
     /// Equivalent to R's `Rf_xlengthgets(x, newlen)`.
+    #[must_use]
     fn resize(&self, newlen: R_xlen_t) -> SEXP;
 
     // endregion
@@ -405,9 +465,11 @@ pub trait SexpExt {
     // region: Duplication
 
     /// Deep-copy this SEXP. Equivalent to R's `Rf_duplicate(x)`.
+    #[must_use]
     fn duplicate(&self) -> SEXP;
 
     /// Shallow-copy this SEXP. Equivalent to R's `Rf_shallow_duplicate(x)`.
+    #[must_use]
     fn shallow_duplicate(&self) -> SEXP;
 
     // endregion
@@ -418,6 +480,7 @@ pub trait SexpExt {
     ///
     /// # Safety
     /// Must be called from R's main thread.
+    #[must_use]
     unsafe fn string_elt_unchecked(&self, i: isize) -> SEXP;
     /// Set the i-th CHARSXP of a STRSXP. No thread check.
     ///
@@ -428,6 +491,7 @@ pub trait SexpExt {
     ///
     /// # Safety
     /// Must be called from R's main thread.
+    #[must_use]
     unsafe fn vector_elt_unchecked(&self, i: isize) -> SEXP;
     /// Set the i-th element of a VECSXP. No thread check.
     ///
@@ -438,6 +502,7 @@ pub trait SexpExt {
     ///
     /// # Safety
     /// Must be called from R's main thread.
+    #[must_use]
     unsafe fn get_attr_unchecked(&self, name: SEXP) -> SEXP;
     /// Set an attribute by symbol. No thread check.
     ///
@@ -449,6 +514,7 @@ pub trait SexpExt {
     ///
     /// # Safety
     /// Must be called from R's main thread. The SEXP must be a valid CHARSXP.
+    #[must_use]
     unsafe fn r_char_unchecked(&self) -> *const ::std::os::raw::c_char;
 
     // endregion
