@@ -1016,19 +1016,6 @@ impl Drop for ProtectScope {
     }
 }
 
-impl Default for ProtectScope {
-    /// Create a new scope. Equivalent to `unsafe { ProtectScope::new() }`.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure this is called from the R main thread.
-    #[inline]
-    fn default() -> Self {
-        // SAFETY: This is a foot-gun but matches the pattern of other R interop code.
-        // Users should prefer `unsafe { ProtectScope::new() }` for clarity.
-        unsafe { Self::new() }
-    }
-}
 // endregion
 
 // region: Root
@@ -1648,7 +1635,7 @@ mod tests {
 
     #[test]
     fn protect_scope_default_count_is_zero() {
-        let scope = ProtectScope::default();
+        let scope = unsafe { ProtectScope::new() };
         assert_eq!(scope.count(), 0);
     }
 
@@ -1742,7 +1729,7 @@ mod tests {
 
     #[test]
     fn disarm_prevents_unprotect() {
-        let scope = ProtectScope::default();
+        let scope = unsafe { ProtectScope::new() };
         assert!(scope.armed.get());
 
         unsafe { scope.disarm() };
@@ -1753,7 +1740,7 @@ mod tests {
 
     #[test]
     fn rearm_restores_unprotect() {
-        let scope = ProtectScope::default();
+        let scope = unsafe { ProtectScope::new() };
 
         unsafe {
             scope.disarm();
@@ -1769,7 +1756,7 @@ mod tests {
 
     #[test]
     fn scope_counter_starts_at_zero() {
-        let scope = ProtectScope::default();
+        let scope = unsafe { ProtectScope::new() };
         assert_eq!(scope.count(), 0);
     }
 

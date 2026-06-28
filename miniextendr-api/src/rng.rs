@@ -108,6 +108,11 @@
 //! - Scoped RNG access within a larger function
 
 use crate::sys::{GetRNGstate, PutRNGstate};
+use std::marker::PhantomData;
+use std::rc::Rc;
+
+/// Enforces `!Send + !Sync` (R's RNG state is only valid on the R main thread).
+type NoSendSync = PhantomData<Rc<()>>;
 
 /// RAII guard for R's RNG state.
 ///
@@ -139,7 +144,8 @@ use crate::sys::{GetRNGstate, PutRNGstate};
 /// Must be used on R's main thread. The guard assumes it has exclusive
 /// access to R's RNG state while alive.
 pub struct RngGuard {
-    _private: (), // Prevent construction outside this module
+    // `!Send + !Sync` marker that also prevents construction outside this module.
+    _nosend: NoSendSync,
 }
 
 impl RngGuard {
@@ -153,7 +159,9 @@ impl RngGuard {
     #[inline]
     pub fn new() -> Self {
         unsafe { GetRNGstate() };
-        Self { _private: () }
+        Self {
+            _nosend: PhantomData,
+        }
     }
 }
 
