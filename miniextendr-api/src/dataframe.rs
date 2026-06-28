@@ -272,6 +272,9 @@ impl DataFrame {
     /// Rename a column. No-op if `from` doesn't match any column name.
     pub fn rename(self, from: &str, to: &str) -> Self {
         unsafe {
+            // Root `self.sexp` so its `names` attribute survives the
+            // `SEXP::charsxp` (Rf_mkCharLenCE) allocation below, which can GC.
+            let _guard = crate::OwnedProtect::new(self.sexp);
             let names_sexp = self.sexp.get_names();
             if names_sexp == SEXP::nil() {
                 return self;
@@ -290,6 +293,9 @@ impl DataFrame {
     /// Strip a prefix from all column names that start with it.
     pub fn strip_prefix(self, prefix: &str) -> Self {
         unsafe {
+            // Root `self.sexp` so its `names` attribute survives the
+            // `SEXP::charsxp` (Rf_mkCharLenCE) allocation below, which can GC.
+            let _guard = crate::OwnedProtect::new(self.sexp);
             let names_sexp = self.sexp.get_names();
             if names_sexp == SEXP::nil() {
                 return self;
