@@ -249,6 +249,7 @@ Some agent sandboxes block compilation. For any compiling command (`just force-d
 ## Agent Worktrees
 
 - Run agents in worktrees (`isolation: "worktree"`) to avoid collisions.
+- **Worktrees start with no R library**: `rv/library/` is gitignored, so a fresh worktree can't `R CMD INSTALL` (`ERROR: dependencies '…' are not available`, compile never starts). Symlink it to the main repo's populated one once: `ln -s /Users/elea/Documents/GitHub/miniextendr/rv/library rv/library`. Installs then land in the shared dev library, and the symlink vanishes when the worktree is removed (`rv/` is gitignored).
 - **Merge**: rebase worktree onto current main, *then* merge. Rebase must happen immediately before the merge, not when the agent finishes.
 - **Sequential merging** of multiple worktrees: rebase → merge → rebase next → merge. Each rebase must see prior merge commits on main, otherwise changes get silently overwritten.
 - **Never copy whole files** worktree → main — rebase/merge is the only correct flow.
