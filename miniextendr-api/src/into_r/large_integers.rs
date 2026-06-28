@@ -555,6 +555,28 @@ impl IntoR for String {
     }
 }
 
+impl IntoR for Box<str> {
+    type Error = crate::into_r_error::IntoRError;
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        // `String::from(Box<str>)` is O(1) (reuses the allocation); the produced
+        // SEXP is identical to the `String` impl's — a `character(1)` STRSXP.
+        String::from(self).try_into_sexp()
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    #[inline]
+    fn into_sexp(self) -> crate::SEXP {
+        String::from(self).into_sexp()
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        unsafe { String::from(self).into_sexp_unchecked() }
+    }
+}
+
 impl IntoR for char {
     type Error = std::convert::Infallible;
     #[inline]
