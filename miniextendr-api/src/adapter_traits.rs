@@ -119,6 +119,14 @@ impl<T: Display> RDisplay for T {
 /// Hash values are deterministic within a single R session but may vary
 /// between sessions due to Rust's hasher implementation.
 ///
+/// Returned hashes may be **negative**. `DefaultHasher::finish()` yields a
+/// `u64`, which this trait returns as `i64` (R has no unsigned 64-bit type).
+/// The cast reinterprets the bit pattern, so any hash in `[2^63, 2^64)`
+/// surfaces in R as a negative integer. This is expected, not an error —
+/// the full 64-bit value is preserved; only the sign is a side effect of the
+/// reinterpretation. The sign bit is deliberately not masked off, as that
+/// would discard a bit of entropy.
+///
 /// # Example
 ///
 /// ```rust,ignore
@@ -131,6 +139,10 @@ impl<T: Display> RDisplay for T {
 #[miniextendr]
 pub trait RHash {
     /// Compute a hash of this value.
+    ///
+    /// The returned `i64` is the `u64` output of [`DefaultHasher`]
+    /// reinterpreted bit-for-bit, so hashes in `[2^63, 2^64)` come back
+    /// negative in R. See the trait-level docs for the full rationale.
     fn hash(&self) -> i64;
 }
 
@@ -138,6 +150,9 @@ impl<T: Hash> RHash for T {
     fn hash(&self) -> i64 {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
+        // `finish()` is a `u64`; the `as i64` reinterprets the bit pattern
+        // (R has no unsigned 64-bit type). Hashes >= 2^63 therefore become
+        // negative i64. Intentional: masking the sign bit would lose entropy.
         hasher.finish() as i64
     }
 }
