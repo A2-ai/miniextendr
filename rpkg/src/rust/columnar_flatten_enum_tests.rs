@@ -117,7 +117,10 @@ pub fn flatten_enum_option_none_fixture() -> DataFrame {
                 weight: 1.0,
             }),
         },
-        MaybeRow { id: 2, action: None },
+        MaybeRow {
+            id: 2,
+            action: None,
+        },
     ];
     vec_to_dataframe_flatten_enums(&rows, &["action"]).expect("flatten option none")
 }

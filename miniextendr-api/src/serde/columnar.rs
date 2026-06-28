@@ -2713,7 +2713,7 @@ struct VariantInfo {
     tag_field: Option<String>,
 }
 
-fn extract_variant_info<T: ?Sized + Serialize>(row: &T) -> Option<VariantInfo> {
+fn extract_variant_info<T: Serialize>(row: &T) -> Option<VariantInfo> {
     let mut ext = VariantNameExtractor::default();
     let _ = row.serialize(&mut ext);
     ext.name.map(|name| VariantInfo {
@@ -2730,6 +2730,10 @@ struct VariantNameExtractor {
     name: Option<String>,
     is_unit: bool,
     tag_field: Option<String>,
+    /// Set when the value serialized via `serialize_none` (an `Option::None`).
+    /// Lets a single extraction pass distinguish `None` (no variant, NA-fill)
+    /// from a genuine non-enum value without a second probe serializer.
+    is_none: bool,
 }
 
 struct NoopStructVariant;
@@ -2889,6 +2893,7 @@ impl<'a> ser::Serializer for &'a mut VariantNameExtractor {
         Ok(())
     }
     fn serialize_none(self) -> Result<(), RSerdeError> {
+        self.is_none = true;
         Ok(())
     }
     fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<(), RSerdeError> {
@@ -3919,6 +3924,12 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 ///   its implicit tag arrives as an ordinary field and becomes a normal
 ///   `<field>_kind` column (no dedicated `<field>_variant` is synthesised);
 ///   this is accepted, not special-cased.
+/// - **Reject-non-enum is best-effort.** A scalar or sequence value errors, but
+///   a *struct*-shaped value cannot be told apart from an internally-tagged enum
+///   under serde, so a plain struct targeted here is flattened in place (its
+///   fields land as `<field>_<sub>`, no `<field>_variant`) rather than rejected.
+///   Name only true enum fields; a struct field is already flattened to
+///   `<field>_<sub>` by plain [`vec_to_dataframe`] anyway.
 /// - **Compound-vs-compound payload divergence.** Payload subfields are emitted
 ///   *flat* into the parent map, so each leaf key goes through scalar Union
 ///   resolution independently — variants whose payloads differ in shape merge
@@ -3927,8 +3938,9 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 ///
 /// # Errors
 ///
-/// - A targeted field's value is neither an enum nor `Option<Enum>` `None`
-///   (e.g. a plain struct or scalar) — the value cannot be variant-flattened.
+/// - A targeted field's value serializes as a scalar or sequence (and is not
+///   `Option::None`) — there is no struct/enum shape to flatten. (A struct-shaped
+///   value is flattened, not rejected — see Limitations.)
 /// - The row does not serialize as a struct or map.
 /// - Underlying column-buffer assembly fails.
 ///
@@ -4225,16 +4237,21 @@ fn flatten_enum_field<M: ser::SerializeMap, V: ?Sized + Serialize>(
     field: &str,
     value: &V,
 ) -> Result<(), M::Error> {
-    // First, classify the value: is it `None`, or an enum with a variant name?
-    let info = match extract_variant_info(value) {
-        Some(info) => info,
+    // Classify the value in a single pass. An externally-tagged / untagged enum
+    // yields a variant `name` (and no `tag_field`); an internally-tagged enum —
+    // or, indistinguishably under serde, a plain struct with a leading string
+    // field — yields `name` *and* `tag_field`; `Option::None` yields neither but
+    // sets `is_none`; a scalar / sequence yields nothing at all.
+    let mut ext = VariantNameExtractor::default();
+    let _ = value.serialize(&mut ext);
+
+    let name = match ext.name {
+        Some(name) => name,
         None => {
-            // No variant name. Distinguish `Option<Enum>::None` (emit nothing —
-            // Union discovery + NA-fill handles the row) from a genuine
-            // non-enum value (a plain struct / scalar — that's a usage error).
-            let mut probe = IsNoneProbe { is_none: false };
-            let _ = value.serialize(&mut probe);
-            return if probe.is_none {
+            // No variant: `Option::None` emits nothing (Union discovery +
+            // NA-fill leaves the row's tag + payload columns NA); any other
+            // non-struct value (scalar / sequence) is a usage error.
+            return if ext.is_none {
                 Ok(())
             } else {
                 Err(ser::Error::custom(format!(
@@ -4245,10 +4262,15 @@ fn flatten_enum_field<M: ser::SerializeMap, V: ?Sized + Serialize>(
         }
     };
 
-    // Tag column: `<field>_variant`.
-    map.serialize_entry(&format!("{field}_variant"), &info.name)?;
+    // Synthesize the `<field>_variant` tag only for externally-tagged / untagged
+    // enums. For an internally-tagged enum (`tag_field` is `Some`) the tag
+    // already rides along inside the payload and lands as `<field>_<tagfield>`,
+    // so a synthetic `<field>_variant` would just duplicate it.
+    if ext.tag_field.is_none() {
+        map.serialize_entry(&format!("{field}_variant"), &name)?;
+    }
 
-    if info.is_unit {
+    if ext.is_unit {
         // Unit variant: tag only, no payload.
         return Ok(());
     }
@@ -4261,147 +4283,6 @@ fn flatten_enum_field<M: ser::SerializeMap, V: ?Sized + Serialize>(
         prefix: Some(field),
     };
     value.serialize(VariantStrippingMapForwarder { forwarder })
-}
-
-/// Minimal probe that records whether a value serialized via `serialize_none`
-/// (i.e. it was an `Option::None`). Every other entry leaves `is_none` false.
-/// Compound entry points return `Impossible`, but they're never reached for the
-/// values this probes (it's only used on the no-variant fallback path).
-struct IsNoneProbe {
-    is_none: bool,
-}
-
-impl ser::Serializer for &mut IsNoneProbe {
-    type Ok = ();
-    type Error = RSerdeError;
-    type SerializeSeq = ser::Impossible<(), RSerdeError>;
-    type SerializeTuple = ser::Impossible<(), RSerdeError>;
-    type SerializeTupleStruct = ser::Impossible<(), RSerdeError>;
-    type SerializeTupleVariant = ser::Impossible<(), RSerdeError>;
-    type SerializeMap = ser::Impossible<(), RSerdeError>;
-    type SerializeStruct = ser::Impossible<(), RSerdeError>;
-    type SerializeStructVariant = ser::Impossible<(), RSerdeError>;
-
-    fn serialize_none(self) -> Result<(), RSerdeError> {
-        self.is_none = true;
-        Ok(())
-    }
-    fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<(), RSerdeError> {
-        v.serialize(self)
-    }
-    fn serialize_unit(self) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_char(self, _: char) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_str(self, _: &str) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_unit_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-    ) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(
-        self,
-        _: &'static str,
-        v: &T,
-    ) -> Result<(), RSerdeError> {
-        v.serialize(self)
-    }
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: &T,
-    ) -> Result<(), RSerdeError> {
-        Ok(())
-    }
-    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, RSerdeError> {
-        Err(RSerdeError::Message("seq in IsNoneProbe".into()))
-    }
-    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, RSerdeError> {
-        Err(RSerdeError::Message("tuple in IsNoneProbe".into()))
-    }
-    fn serialize_tuple_struct(
-        self,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeTupleStruct, RSerdeError> {
-        Err(RSerdeError::Message("tuple_struct in IsNoneProbe".into()))
-    }
-    fn serialize_tuple_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeTupleVariant, RSerdeError> {
-        Err(RSerdeError::Message("tuple_variant in IsNoneProbe".into()))
-    }
-    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
-        Err(RSerdeError::Message("map in IsNoneProbe".into()))
-    }
-    fn serialize_struct(
-        self,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeStruct, RSerdeError> {
-        Err(RSerdeError::Message("struct in IsNoneProbe".into()))
-    }
-    fn serialize_struct_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeStructVariant, RSerdeError> {
-        Err(RSerdeError::Message("struct_variant in IsNoneProbe".into()))
-    }
 }
 
 // endregion

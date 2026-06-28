@@ -711,4 +711,50 @@ fn flatten_enum_field_nested_struct_unaffected() {
     });
 }
 
+/// An internally-tagged enum field (`#[serde(tag = ...)]`) is flattened in
+/// place: the embedded tag rides along as a normal `<field>_<tag>` column and
+/// NO duplicate synthetic `<field>_variant` is emitted.
+#[test]
+fn flatten_enum_field_internally_tagged_no_synthetic_variant() {
+    #[derive(Serialize)]
+    #[serde(tag = "kind")]
+    enum Action {
+        Add { file: f64 },
+        Reset,
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        action: Action,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                action: Action::Add { file: 2.0 },
+            },
+            Row {
+                id: 2,
+                action: Action::Reset,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let sexp = df.into_sexp();
+        let names = col_names(&sexp);
+        // The embedded tag becomes action_kind; no synthetic action_variant.
+        assert!(names.contains(&"action_kind".to_string()), "{names:?}");
+        assert!(
+            !names.contains(&"action_variant".to_string()),
+            "internally-tagged field must not synthesize a duplicate variant tag, got {names:?}"
+        );
+        let kind = col(&sexp, "action_kind");
+        assert_eq!(kind.string_elt_str(0), Some("Add"));
+        assert_eq!(kind.string_elt_str(1), Some("Reset"));
+        let file = col(&sexp, "action_file");
+        assert_eq!(file.real_elt(0), 2.0);
+        assert!(file.real_elt(1).is_nan(), "Reset row file should be NA");
+    });
+}
+
 // endregion
