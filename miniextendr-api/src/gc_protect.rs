@@ -754,6 +754,15 @@ impl ProtectScope {
     /// (consuming one protect slot) to satisfy `Rf_allocArray`'s SEXP-dims contract.
     /// The resulting array SEXP consumes a second protect slot.
     ///
+    /// # Protect-stack budget
+    ///
+    /// This helper consumes **two** protect slots — one for the dims vector and
+    /// one for the array — yet returns a single [`Root`] (for the array). The
+    /// dims INTSXP has no accessible handle: it stays protected until the scope
+    /// drops. Consequently [`count()`](Self::count) increases by 2 even though
+    /// the caller sees only one `Root`. Callers budgeting protect-stack depth
+    /// must account for both slots, not just the returned handle.
+    ///
     /// # Safety
     ///
     /// Must be called from the R main thread. `dims` must be non-empty.
