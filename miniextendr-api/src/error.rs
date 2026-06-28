@@ -47,6 +47,22 @@
 //! }
 //! ```
 
+/// Build a NUL-safe [`CString`](std::ffi::CString) from a message.
+///
+/// R-bound messages are frequently user-derived (e.g. `panic!("…{user_input}…")`),
+/// so they can contain interior NUL bytes. `CString::new` rejects those, and the
+/// callers here run on error/warning/print paths where a panic would be
+/// catastrophic (`r_stop` is already converting a panic to an R error — a second
+/// panic there aborts the process). Replacing interior NUL bytes with U+FFFD
+/// guarantees construction can never fail. NUL-free messages are passed through
+/// unchanged, so normal output is byte-identical.
+fn cstring_lossy(msg: &str) -> std::ffi::CString {
+    match std::ffi::CString::new(msg) {
+        Ok(c) => c,
+        Err(_) => std::ffi::CString::new(msg.replace('\0', "\u{fffd}")).unwrap_or_default(),
+    }
+}
+
 /// Raise an R error via `Rf_error` (longjmp). **Crate-internal only.**
 ///
 /// Survives at two guard sites where there is no SEXP slot to return through:
@@ -57,13 +73,9 @@
 /// User code should use `panic!()` (caught by the framework and converted to a
 /// `rust_error` R condition) or the structured condition macros `error!()` /
 /// `warning!()` / `message!()` / `condition!()`.
-///
-/// # Panics
-///
-/// Panics if the message contains null bytes.
 #[inline]
 pub(crate) fn r_stop(msg: &str) -> ! {
-    let c_msg = std::ffi::CString::new(msg).expect("r_stop: message contains null bytes");
+    let c_msg = cstring_lossy(msg);
 
     if crate::worker::is_r_main_thread() {
         unsafe {
@@ -83,7 +95,7 @@ pub(crate) fn r_stop(msg: &str) -> ! {
 /// Automatically routes to R's main thread if called from a worker thread.
 #[inline]
 pub fn r_warning(msg: &str) {
-    let c_msg = std::ffi::CString::new(msg).expect("r_warning: message contains null bytes");
+    let c_msg = cstring_lossy(msg);
 
     if crate::worker::is_r_main_thread() {
         unsafe {
@@ -101,7 +113,7 @@ pub fn r_warning(msg: &str) {
 #[doc(hidden)]
 #[inline]
 pub fn _r_print_str(msg: &str) {
-    let c_msg = std::ffi::CString::new(msg).expect("r_print!: message contains null bytes");
+    let c_msg = cstring_lossy(msg);
 
     if crate::worker::is_r_main_thread() {
         unsafe {
@@ -168,4 +180,21 @@ macro_rules! r_println {
         $crate::error::_r_print_str(&format!($($arg)*));
         $crate::error::_r_print_newline();
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cstring_lossy;
+
+    #[test]
+    fn cstring_lossy_passes_through_nul_free() {
+        assert_eq!(cstring_lossy("plain message").to_bytes(), b"plain message");
+    }
+
+    #[test]
+    fn cstring_lossy_sanitizes_interior_nul() {
+        // Must not panic, and the result must have no interior NUL byte.
+        let c = cstring_lossy("a\0b");
+        assert!(!c.to_bytes().contains(&0));
+    }
 }
