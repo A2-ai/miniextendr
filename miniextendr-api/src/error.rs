@@ -57,13 +57,11 @@
 /// User code should use `panic!()` (caught by the framework and converted to a
 /// `rust_error` R condition) or the structured condition macros `error!()` /
 /// `warning!()` / `message!()` / `condition!()`.
-///
-/// # Panics
-///
-/// Panics if the message contains null bytes.
 #[inline]
 pub(crate) fn r_stop(msg: &str) -> ! {
-    let c_msg = std::ffi::CString::new(msg).expect("r_stop: message contains null bytes");
+    // Replace interior NUL bytes (user-derived messages can contain them); `CString::new`
+    // would otherwise reject them, and a panic here would abort the process.
+    let c_msg = std::ffi::CString::new(msg.replace('\0', "\u{fffd}")).unwrap_or_default();
 
     if crate::worker::is_r_main_thread() {
         unsafe {
@@ -83,7 +81,8 @@ pub(crate) fn r_stop(msg: &str) -> ! {
 /// Automatically routes to R's main thread if called from a worker thread.
 #[inline]
 pub fn r_warning(msg: &str) {
-    let c_msg = std::ffi::CString::new(msg).expect("r_warning: message contains null bytes");
+    // NUL-safe (see r_stop)
+    let c_msg = std::ffi::CString::new(msg.replace('\0', "\u{fffd}")).unwrap_or_default();
 
     if crate::worker::is_r_main_thread() {
         unsafe {
@@ -101,7 +100,8 @@ pub fn r_warning(msg: &str) {
 #[doc(hidden)]
 #[inline]
 pub fn _r_print_str(msg: &str) {
-    let c_msg = std::ffi::CString::new(msg).expect("r_print!: message contains null bytes");
+    // NUL-safe (see r_stop)
+    let c_msg = std::ffi::CString::new(msg.replace('\0', "\u{fffd}")).unwrap_or_default();
 
     if crate::worker::is_r_main_thread() {
         unsafe {
