@@ -33,7 +33,7 @@ test_that("Point - RHash works", {
   h2 <- p2$hash()
   h3 <- p3$hash()
 
-  expect_true(is.numeric(h1))
+  expect_true(is.character(h1))
   expect_equal(h1, h2)
   # Different values should (very likely) produce different hash
   # Note: collision is theoretically possible but extremely unlikely

@@ -112,20 +112,19 @@ impl<T: Display> RDisplay for T {
 ///
 /// # Methods
 ///
-/// - `hash()` - Returns a 64-bit hash as i64
+/// - `hash()` - Returns the 64-bit hash as a 16-character hex string
 ///
 /// # Note
 ///
 /// Hash values are deterministic within a single R session but may vary
 /// between sessions due to Rust's hasher implementation.
 ///
-/// Returned hashes may be **negative**. `DefaultHasher::finish()` yields a
-/// `u64`, which this trait returns as `i64` (R has no unsigned 64-bit type).
-/// The cast reinterprets the bit pattern, so any hash in `[2^63, 2^64)`
-/// surfaces in R as a negative integer. This is expected, not an error —
-/// the full 64-bit value is preserved; only the sign is a side effect of the
-/// reinterpretation. The sign bit is deliberately not masked off, as that
-/// would discard a bit of entropy.
+/// The hash is returned as a hex `String` (e.g. `"a1b2c3d4e5f60718"`), not a
+/// number. R has no faithful 64-bit integer type, so returning the `u64` as a
+/// numeric would round away its low bits above `2^53` — distinct Rust values
+/// would collide in R — and surface half the range as negative. A hex string
+/// preserves all 64 bits, is directly usable as an R environment key, and
+/// works with `duplicated()` / `match()` for deduplication.
 ///
 /// # Example
 ///
@@ -140,20 +139,19 @@ impl<T: Display> RDisplay for T {
 pub trait RHash {
     /// Compute a hash of this value.
     ///
-    /// The returned `i64` is the `u64` output of [`DefaultHasher`]
-    /// reinterpreted bit-for-bit, so hashes in `[2^63, 2^64)` come back
-    /// negative in R. See the trait-level docs for the full rationale.
-    fn hash(&self) -> i64;
+    /// Returns the [`DefaultHasher`] `u64` output as a 16-character lowercase
+    /// hex string. See the trait-level docs for why a string rather than a
+    /// number.
+    fn hash(&self) -> String;
 }
 
 impl<T: Hash> RHash for T {
-    fn hash(&self) -> i64 {
+    fn hash(&self) -> String {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
-        // `finish()` is a `u64`; the `as i64` reinterprets the bit pattern
-        // (R has no unsigned 64-bit type). Hashes >= 2^63 therefore become
-        // negative i64. Intentional: masking the sign bit would lose entropy.
-        hasher.finish() as i64
+        // R has no faithful 64-bit integer; hex-encode the full u64 so every
+        // bit survives the trip to R (a numeric would round above 2^53).
+        format!("{:016x}", hasher.finish())
     }
 }
 
