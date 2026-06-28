@@ -60,16 +60,16 @@ if (.Platform$OS.type == "windows") {
 # MUST be vendored here while still reachable. A git-only package has no such
 # sibling and builds straight from source — configure's [patch] override for
 # in-tree siblings, or cargo fetching the git URL — so vendoring, and thus
-# cargo-revendor, is optional. Heuristic: a `path =` entry in a dependency table
-# of Cargo.toml ([lib]/[patch]/[workspace] are not dependency tables).
+# cargo-revendor, is optional. Heuristic: a `path =` entry in any dependency
+# table — incl. [workspace.dependencies] and subtables; [patch.*]/[lib] excluded.
 declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
   if (!file.exists(manifest)) return(FALSE)
   in_deps <- FALSE
   for (ln in readLines(manifest, warn = FALSE)) {
     s <- trimws(ln)
     if (startsWith(s, "[")) {
-      in_deps <- grepl("dependencies\\]$", s) &&
-        !startsWith(s, "[patch") && !startsWith(s, "[workspace")
+      in_deps <- grepl("dependencies(\\.[^]]+)?\\]$", s) &&
+        !startsWith(s, "[patch")
       next
     }
     if (in_deps && grepl("(^|[][{, \t])path[ \t]*=", s)) return(TRUE)

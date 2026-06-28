@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-06-27 13:09:04
-+++ b/monorepo/rpkg/bootstrap.R	2026-06-27 13:09:04
+--- a/monorepo/rpkg/bootstrap.R	2026-06-28 09:44:23
++++ b/monorepo/rpkg/bootstrap.R	2026-06-28 09:44:34
 @@ -1,48 +1,19 @@
  # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
@@ -71,8 +71,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 -# MUST be vendored here while still reachable. A git-only package has no such
 -# sibling and builds straight from source — configure's [patch] override for
 -# in-tree siblings, or cargo fetching the git URL — so vendoring, and thus
--# cargo-revendor, is optional. Heuristic: a `path =` entry in a dependency table
--# of Cargo.toml ([lib]/[patch]/[workspace] are not dependency tables).
+-# cargo-revendor, is optional. Heuristic: a `path =` entry in any dependency
+-# table — incl. [workspace.dependencies] and subtables; [patch.*]/[lib] excluded.
 +# Auto-vendor fallback. minirextendr::miniextendr_vendor() normally seals
 +# inst/vendor.tar.xz before the build and this block short-circuits via the
 +# file.exists guard. But git-based / staged installs (remotes::install_git,
@@ -88,8 +88,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# require vendoring here: they are NOT source-replaceable and a git/staged
 +# install (remotes, pak) strands them when it copies the package out of its
 +# workspace. A git-only package builds straight from source, so vendoring — and
-+# cargo-revendor — is optional for it. Heuristic: a `path =` entry in a
-+# dependency table ([lib]/[patch]/[workspace] are not dependency tables).
++# cargo-revendor — is optional for it. Heuristic: a `path =` entry in any
++# dependency table — incl. [workspace.dependencies]; [patch.*]/[lib] excluded.
  declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
    if (!file.exists(manifest)) return(FALSE)
 @@ -98,12 +78,4 @@
@@ -578,8 +578,8 @@ diff -ruN -U2 a/monorepo/rpkg/tools/lock-shape-check.R b/monorepo/rpkg/tools/loc
    quit("no", status = 1)
  }
 diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
---- a/rpkg/bootstrap.R	2026-06-27 13:09:04
-+++ b/rpkg/bootstrap.R	2026-06-27 13:09:04
+--- a/rpkg/bootstrap.R	2026-06-28 09:44:23
++++ b/rpkg/bootstrap.R	2026-06-28 09:44:29
 @@ -39,6 +39,6 @@
  
  # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
