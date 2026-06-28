@@ -469,3 +469,136 @@ fn protected_from_trusted_no_stack_change() {
     });
 }
 // endregion
+
+// region: ReprotectSlot mutation tests (set_with / take / replace / clear / is_nil)
+//
+// These exercise the slot-mutation API beyond plain set()/get(). Note: every
+// mutation below (set_with, take, replace, clear) leaves the *previous* slot
+// value unprotected and eligible for GC — pointer-identity asserts here only
+// confirm the bookkeeping, so gctorture (see file header) is the real stress.
+
+#[test]
+fn reprotect_slot_set_with_allocates_and_reprotects() {
+    // set_with: returns the closure's freshly allocated value, the slot tracks
+    // it afterward, the protect depth stays at 1, and it differs from the prior
+    // value the slot held.
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+
+        let initial = Rf_allocVector(SEXPTYPE::REALSXP, 10);
+        let slot = scope.protect_with_index(initial);
+        assert_eq!(scope.count(), 1);
+
+        let mut produced = SEXP::nil();
+        let returned = slot.set_with(|| {
+            produced = Rf_allocVector(SEXPTYPE::INTSXP, 5);
+            produced
+        });
+
+        // Returned value is exactly what the closure produced.
+        assert!(std::ptr::eq(returned.0, produced.0));
+        // The slot now tracks that value.
+        assert!(std::ptr::eq(slot.get().0, produced.0));
+        // It differs from the prior value.
+        assert!(!std::ptr::eq(slot.get().0, initial.0));
+        // The temporary protection was balanced; depth stays at 1.
+        assert_eq!(scope.count(), 1);
+    });
+}
+
+#[test]
+fn reprotect_slot_take_returns_old_and_clears() {
+    // take: returns the OLD value; afterward the slot holds R_NilValue and the
+    // protect depth is unchanged (the slot is still allocated, holding nil).
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+
+        let initial = Rf_allocVector(SEXPTYPE::INTSXP, 7);
+        let slot = scope.protect_with_index(initial);
+        assert_eq!(scope.count(), 1);
+
+        let old = slot.take();
+
+        // Returned value is the old one.
+        assert!(std::ptr::eq(old.0, initial.0));
+        // Slot now holds nil.
+        assert!(slot.is_nil());
+        assert!(std::ptr::eq(slot.get().0, SEXP::nil().0));
+        // Slot is still allocated; depth unchanged.
+        assert_eq!(scope.count(), 1);
+    });
+}
+
+#[test]
+fn reprotect_slot_replace_returns_old_protects_new() {
+    // replace: returns the OLD value; the slot tracks the NEW value afterward;
+    // the protect depth is unchanged.
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+
+        let initial = Rf_allocVector(SEXPTYPE::REALSXP, 3);
+        let slot = scope.protect_with_index(initial);
+        assert_eq!(scope.count(), 1);
+
+        let replacement = Rf_allocVector(SEXPTYPE::INTSXP, 4);
+        let old = slot.replace(replacement);
+
+        // Returned value is the old one.
+        assert!(std::ptr::eq(old.0, initial.0));
+        // Slot now tracks the new value.
+        assert!(std::ptr::eq(slot.get().0, replacement.0));
+        assert!(!std::ptr::eq(slot.get().0, initial.0));
+        // Depth unchanged.
+        assert_eq!(scope.count(), 1);
+    });
+}
+
+#[test]
+fn reprotect_slot_clear_sets_nil() {
+    // clear: afterward the slot holds R_NilValue; the protect depth is unchanged.
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+
+        let initial = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let slot = scope.protect_with_index(initial);
+        assert_eq!(scope.count(), 1);
+
+        slot.clear();
+
+        assert!(slot.is_nil());
+        assert!(std::ptr::eq(slot.get().0, SEXP::nil().0));
+        // Slot is still allocated; depth unchanged.
+        assert_eq!(scope.count(), 1);
+    });
+}
+
+#[test]
+fn reprotect_slot_is_nil_tracks_state() {
+    // is_nil: false while the slot holds a real value, true after clear() and
+    // after take().
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+
+        let initial = Rf_allocVector(SEXPTYPE::REALSXP, 6);
+        let slot = scope.protect_with_index(initial);
+
+        // Holding a real value: not nil.
+        assert!(!slot.is_nil());
+
+        // After clear(): nil.
+        slot.clear();
+        assert!(slot.is_nil());
+
+        // Put a real value back, then take() should also leave it nil.
+        let again = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        slot.set(again);
+        assert!(!slot.is_nil());
+
+        let _old = slot.take();
+        assert!(slot.is_nil());
+
+        // Depth unchanged throughout (single slot).
+        assert_eq!(scope.count(), 1);
+    });
+}
+// endregion
