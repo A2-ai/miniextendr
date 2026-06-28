@@ -3,7 +3,7 @@
 //! [`DataFrame`] is **the** data-frame type: a single owned wrapper around a built
 //! `data.frame` SEXP that serves every direction —
 //!
-//! - **build** (Rust → R): [`IntoDataFrame::into_dataframe`] / [`into_dataframe_par`](IntoDataFrame::into_dataframe_par),
+//! - **build** (Rust → R): [`IntoDataFrame::into_dataframe`] / `into_dataframe_par` (`feature = "rayon"`),
 //! - **read** (R → Rust): [`DataFrame::column`] / [`FromDataFrame::from_dataframe`],
 //! - **edit** (post-assembly): [`DataFrame::rename`] / [`DataFrame::drop`] / [`DataFrame::select`] / …
 //!
@@ -123,7 +123,7 @@ impl From<crate::serde::RSerdeError> for DataFrameError {
 /// let df: DataFrame = rows.into_dataframe()?;
 /// ```
 ///
-/// or the closure-fill [`DataFrame::builder`] for heterogeneous parallel column fill
+/// or the closure-fill `DataFrame::builder` for heterogeneous parallel column fill
 /// (`feature = "rayon"`).
 ///
 /// # Reading
@@ -585,7 +585,7 @@ impl IntoR for DataFrame {
 ///
 /// # Parallel fast path
 ///
-/// [`into_dataframe_par`](IntoDataFrame::into_dataframe_par) (present only with
+/// `into_dataframe_par` (present only with
 /// `feature = "rayon"`) produces the **same** [`DataFrame`] as
 /// [`into_dataframe`](IntoDataFrame::into_dataframe). It defaults to the sequential path, so
 /// every implementor gets a correct `_par` for free; `#[derive(DataFrameRow)]` row types
@@ -612,7 +612,7 @@ pub trait IntoDataFrame: Sized {
 ///
 /// # Parallel fast path
 ///
-/// [`from_dataframe_par`](FromDataFrame::from_dataframe_par) (`feature = "rayon"`) reads the
+/// `from_dataframe_par` (`feature = "rayon"`) reads the
 /// same rows as [`from_dataframe`](FromDataFrame::from_dataframe), defaulting to the
 /// sequential reader; the derive overrides it with the #765 off-main-thread row assembly.
 pub trait FromDataFrame: Sized {

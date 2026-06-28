@@ -898,7 +898,7 @@ impl ProtectScope {
     /// Create an external pointer SEXP, and immediately protect it.
     ///
     /// This is an escape-hatch tier wrapper around `R_MakeExternalPtr`. In most
-    /// cases you should use [`ExternalPtr<T>`](crate::ExternalPtr) instead — it
+    /// cases you should use [`ExternalPtr<T>`](struct@crate::ExternalPtr) instead — it
     /// provides typed safety, finalizer registration, and correct rooting (#841).
     /// Use this wrapper only when you need raw `EXTPTRSXP` construction that
     /// `ExternalPtr<T>` cannot express.
