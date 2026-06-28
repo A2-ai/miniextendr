@@ -464,7 +464,9 @@ Claude Code sandbox blocks compilation. For any compiling command
 - If agent didn't commit, commit in the worktree first.
 - Don't delete a worktree until its branch is pushed or merged.
 - **Clean up after push**: `git worktree remove -f -f .claude/worktrees/<name>` + `git worktree prune`. Each worktree holds a full `target/` (2–3 GB/agent).
-- **Rebase conflicts**: plain `git rebase origin/main`. NEVER `-X theirs` blanket — drops main's changes to shared files (justfile, lockfiles, etc.). Only use `git checkout --theirs rpkg/inst/vendor.tar.xz && git add` for the binary tarball. Resolve everything else by hand. Regenerate tarball with `just vendor` and amend into the vendor-refresh commit.
+- **Rebase conflicts**: plain `git rebase origin/main`. NEVER `-X theirs` blanket — drops main's changes to shared files (justfile, lockfiles, etc.). Resolve everything by hand **except regenerated artifacts** — never hand-merge their hunks; take either side (`git checkout --theirs` / `git add`) then regenerate:
+  - `rpkg/inst/vendor.tar.xz` (binary tarball) → `just vendor`, amended into the vendor-refresh commit.
+  - `patches/templates.patch` (rpkg→templates delta, a generated diff) → `just templates-approve`, then verify with `just templates-check`.
 
 ### Using Codex for reviews
 
