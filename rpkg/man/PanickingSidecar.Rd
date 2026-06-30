@@ -27,6 +27,8 @@ The PanickingSidecar pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{PanickingSidecar}.
+
+R6 class registration with \code{r_data_accessors} so \code{obj$doom} is reachable.
 }
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
@@ -46,7 +48,7 @@ Getter and setter functions for \verb{#[r_data]} fields on \code{PanickingSideca
 \if{html}{\out{<a id="method-PanickingSidecar-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-PanickingSidecar-initialize}{}}}
 \subsection{\code{PanickingSidecar$new()}}{
-  Construct a sidecar-bearing R6 that will panic on \verb{$boom()}
+  Construct a sidecar-bearing R6 that will panic on \verb{$boom()}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{PanickingSidecar$new(doom, .ptr = NULL)}
@@ -66,7 +68,7 @@ Getter and setter functions for \verb{#[r_data]} fields on \code{PanickingSideca
 \if{html}{\out{<a id="method-PanickingSidecar-boom"></a>}}
 \if{latex}{\out{\hypertarget{method-PanickingSidecar-boom}{}}}
 \subsection{\code{PanickingSidecar$boom()}}{
-  Always panics with the stored \code{doom} message
+  Always panics with the stored \code{doom} message. Exercises the \verb{#miniextendr} method path on a sidecar-bearing class.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{PanickingSidecar$boom()}

@@ -64,18 +64,16 @@ fn is_multiline_tag(tag: &str) -> bool {
 /// For R6 methods, if no explicit tags are found, the first doc comment paragraph
 /// is auto-converted to `@description`.
 pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
-    roxygen_tags_from_attrs_impl(attrs, false)
+    roxygen_tags_from_attrs_impl(attrs)
 }
 
-/// Extract roxygen tags with optional auto-description for impl methods.
+/// Extract roxygen tags for an impl-block method.
 ///
-/// If `auto_description = true` and no explicit `@tag` is found, the first
-/// paragraph of regular doc comments is converted to `@description`.
-///
-/// Used for all class systems (R6, S3, S4, S7, Env) to automatically
-/// convert Rust doc comments into roxygen `@description` tags.
+/// Identical to [`roxygen_tags_from_attrs`] — leading prose is promoted to
+/// `@description` in every context. Kept as a named alias so the class-system
+/// generators read clearly at the call site.
 pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) -> Vec<String> {
-    roxygen_tags_from_attrs_impl(attrs, true)
+    roxygen_tags_from_attrs_impl(attrs)
 }
 
 /// Core implementation of roxygen tag extraction from `#[doc = "..."]` attributes.
@@ -89,15 +87,11 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 /// continuation. This is a pure parse-side transform — the emitted `TokenStream` is
 /// unaffected; only the roxygen text assembly sees the normalised order.
 ///
-/// When `auto_description` is true and no `@tag` lines are found, the first paragraph
-/// of regular doc comments is auto-converted to `@description`.
-///
-/// Also auto-generates `@title` from the implicit title (first sentence) when tags
-/// are present but `@title` is missing, and `@description` when `@name` is present
-/// but `@description` is missing.
-fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool) -> Vec<String> {
+/// Leading prose (paragraphs before the first `@tag`) is promoted to a
+/// `@description` tag — never `@title`. The `@title` is left to the caller
+/// (structural name); see [`leading_prose_from_attrs`] for why.
+fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
     let mut tags = Vec::new();
-    let mut regular_docs = Vec::new();
 
     // Partition: doc attrs first (stable), non-doc attrs after.
     // This means interleaved #[cfg(...)] and similar never interrupt doc processing.
@@ -118,91 +112,39 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
             let trimmed = line.trim_start();
             if trimmed.starts_with('@') {
                 tags.push(trimmed.to_string());
-            } else if !trimmed.is_empty() {
-                if tags.is_empty() {
-                    // Before any @tags - collect as regular docs
-                    regular_docs.push(trimmed.to_string());
-                } else if let Some(last) = tags.last_mut()
-                    && is_multiline_tag(last)
-                {
-                    // Continuation line for multi-line tags only
-                    last.push('\n');
-                    last.push_str(trimmed);
-                }
-                // Single-line tags: ignore continuation lines
+            } else if !trimmed.is_empty()
+                && let Some(last) = tags.last_mut()
+                && is_multiline_tag(last)
+            {
+                // Continuation line for the current multi-line tag.
+                last.push('\n');
+                last.push_str(trimmed);
             }
+            // Leading prose (before any @tag) is captured separately by
+            // `leading_prose_from_attrs` and promoted to @description below.
         }
     }
 
     // Check which tags are present
     let tag_names_set = tag_names(&tags);
-    let has_name = tag_names_set.contains("name") || tag_names_set.contains("rdname");
-    let has_title = tag_names_set.contains("title");
     let has_description = tag_names_set.contains("description");
-    let has_any_tags = !tags.is_empty();
 
-    // Auto-generate @title from implicit title if:
-    // - We have @name but no @title, OR
-    // - We have any tags (like @param/@return) but no @title (user is writing roxygen docs), OR
-    // - We have plain prose doc comments (no tags, no name) — a bare `///` block (#1054).
-    //   Without an emitted @title, roxygen2 treats the block as title-less and skips the
-    //   .Rd entirely, so the function ends up undocumented.
-    // `implicit_title_from_attrs` returns None for tag-led blocks (no leading prose), so
-    // @inherit/@rdname-only docs never gain a spurious title.
-    if (has_name || has_any_tags || !regular_docs.is_empty())
-        && !has_title
-        && let Some(title) = implicit_title_from_attrs(attrs)
-    {
-        tags.insert(0, format!("@title {}", title));
-    }
-
-    // Auto-generate @description from implicit description (second paragraph) if:
-    // - We have @name, any tags (like @param/@return), or plain prose docs, but no @description
-    // Mirrors the @title auto-generation condition above
-    if (has_name || has_any_tags || !regular_docs.is_empty())
-        && !has_description
-        && let Some(desc) = implicit_description_from_attrs(attrs)
-    {
-        // Insert after @title if present, otherwise at start
-        let insert_pos = if tags.first().is_some_and(|t| t.starts_with("@title")) {
-            1
-        } else {
-            0
-        };
-        tags.insert(insert_pos, format!("@description {}", desc));
-    }
-
-    // Auto-generate @details from implicit details (paragraphs 3+) if:
-    // - We have @name, any tags, or plain prose docs, but no explicit @details
-    // - There are 3+ free-form paragraphs before the first @tag
-    let has_details = tag_names(&tags).contains("details");
-    if (has_name || has_any_tags || !regular_docs.is_empty())
-        && !has_details
-        && let Some(details) = implicit_details_from_attrs(attrs)
-    {
-        // Insert after @title + @description if present
-        let insert_pos = tags
-            .iter()
-            .take_while(|t| t.starts_with("@title") || t.starts_with("@description"))
-            .count();
-        tags.insert(insert_pos, format!("@details {}", details));
-    }
-
-    // Auto-description for impl methods that have no explicit @tags.
-    // Follows roxygen2 convention: paragraph 1 → @title, paragraph 2 → @description,
-    // paragraphs 3+ → @details.  The three implicit_*_from_attrs helpers parse the
-    // raw attrs so they correctly handle paragraph boundaries even when there is no
-    // blank-line separator encoded in the pre-collected `regular_docs`.
-    if auto_description && tags.is_empty() && !regular_docs.is_empty() {
-        if let Some(title) = implicit_title_from_attrs(attrs) {
-            tags.push(format!("@title {}", title));
-        }
-        if let Some(desc) = implicit_description_from_attrs(attrs) {
-            tags.push(format!("@description {}", desc));
-        }
-        if let Some(details) = implicit_details_from_attrs(attrs) {
-            tags.push(format!("@details {}", details));
-        }
+    // Promote leading prose doc comments to `@description` (all paragraphs before
+    // the first `@tag`), unless the author already wrote an explicit `@description`.
+    //
+    // The page `@title` is NOT synthesized from prose. Rustdoc summaries are markdown
+    // written for `cargo doc` — intra-doc links (`[`Foo`]`, `[x][crate::y]`) and code
+    // spans — which roxygen2's markdown parser tries to resolve as R `\link{}` topics
+    // and fails ("could not resolve link to topic" / "refers to un-installed package").
+    // Titles come from the structural name instead: the wrapper name for standalone
+    // functions (see `lib.rs`) and `@title {Name} Class` for class blocks (see
+    // `ClassDocBuilder`). Demoting prose to `@description` keeps it visible while the
+    // title stays link-free.
+    //
+    // `leading_prose_from_attrs` returns `None` for tag-led blocks (no leading prose),
+    // so `@inherit`/`@rdname`-only docs never gain a spurious description.
+    if !has_description && let Some(desc) = leading_prose_from_attrs(attrs) {
+        tags.insert(0, format!("@description {}", desc));
     }
 
     tags
@@ -474,22 +416,18 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
     }
 }
 
-/// Extract the implicit details from doc attributes (paragraphs 3+).
+/// Collect the leading prose of a doc comment (all paragraphs before the first
+/// `@tag`) as roxygen `@description` text, with rustdoc intra-doc links neutralized.
 ///
-/// In roxygen2, paragraph 1 is the title, paragraph 2 is the description,
-/// and paragraphs 3+ become `\details{}`. This function skips paragraphs 1 and 2
-/// and returns the remaining free-form paragraphs (before the first `@tag`)
-/// joined with `\n\n`.
+/// Each `///` line is one doc attribute; a blank line is an empty attribute and marks
+/// a paragraph boundary. Paragraphs are joined with `"\n\n"` so `push_roxygen_tags`
+/// renders blank `#'` lines between them — roxygen2 multi-paragraph description text.
 ///
-/// Returns `None` if there are fewer than 3 paragraphs, no doc comments, or if
-/// docs start with a `@tag`.
-#[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
-pub(crate) fn implicit_details_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
-    // paragraph_index: 0=title, 1=description, 2+=details
-    let mut paragraph_index: usize = 0;
-    let mut in_gap = false;
-    let mut detail_paragraphs: Vec<Vec<String>> = Vec::new();
-    let mut current_paragraph: Vec<String> = Vec::new();
+/// Returns `None` when the block has no leading prose (empty, or starts with a `@tag`),
+/// so tag-led blocks never gain a spurious `@description`.
+fn leading_prose_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut paragraphs: Vec<Vec<String>> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
 
     for attr in attrs {
         if !attr.path().is_ident("doc") {
@@ -508,45 +446,81 @@ pub(crate) fn implicit_details_from_attrs(attrs: &[syn::Attribute]) -> Option<St
         let content = lit.value();
         let trimmed = content.trim();
 
-        // Stop at the first @tag
         if trimmed.starts_with('@') {
+            // First tag ends the prose block.
             break;
         }
-
         if trimmed.is_empty() {
-            // Blank line — paragraph boundary
-            if !in_gap {
-                // End of the current paragraph
-                if paragraph_index >= 2 && !current_paragraph.is_empty() {
-                    detail_paragraphs.push(std::mem::take(&mut current_paragraph));
-                } else {
-                    current_paragraph.clear();
-                }
-                paragraph_index += 1;
-                in_gap = true;
+            // Blank line — paragraph boundary.
+            if !current.is_empty() {
+                paragraphs.push(std::mem::take(&mut current));
             }
-            // Multiple blank lines in a row: stay in gap
         } else {
-            // Non-empty line
-            in_gap = false;
-            if paragraph_index >= 2 {
-                current_paragraph.push(trimmed.to_string());
-            }
-            // paragraphs 0 (title) and 1 (description) are skipped
+            current.push(sanitize_roxygen_links(trimmed));
         }
     }
-
-    // Handle a details paragraph that isn't terminated by a blank line / @tag
-    if paragraph_index >= 2 && !current_paragraph.is_empty() {
-        detail_paragraphs.push(current_paragraph);
+    if !current.is_empty() {
+        paragraphs.push(current);
     }
 
-    if detail_paragraphs.is_empty() {
+    if paragraphs.is_empty() {
         None
     } else {
-        let joined: Vec<String> = detail_paragraphs.into_iter().map(|p| p.join(" ")).collect();
+        let joined: Vec<String> = paragraphs.into_iter().map(|p| p.join(" ")).collect();
         Some(joined.join("\n\n"))
     }
+}
+
+/// Neutralize rustdoc intra-doc link syntax so prose is valid roxygen2 markdown.
+///
+/// rustdoc `[`Foo`]` / `[Foo]` / `[text][target]` are intra-doc links resolved
+/// against *Rust* items by `cargo doc`. roxygen2 (markdown on) reads the same
+/// `[...]` as an R `\link{}` to a *help topic*, which can't resolve. We strip the
+/// link brackets down to the visible text (keeping any `` `code` `` span), while
+/// leaving genuine markdown links `[text](url)` — recognized by the `]( ` that
+/// follows — untouched.
+fn sanitize_roxygen_links(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < s.len() {
+        if bytes[i] == b'[' {
+            // `[` is ASCII, so `i + 1` is a char boundary.
+            if let Some(close_rel) = s[i + 1..].find(']') {
+                let close = i + 1 + close_rel;
+                let inner = &s[i + 1..close];
+                match bytes.get(close + 1) {
+                    // `[text](url)` — real markdown link. Emit `[` literally and let
+                    // the inner text + `](url)` flow through unchanged.
+                    Some(b'(') => {
+                        out.push('[');
+                        i += 1;
+                        continue;
+                    }
+                    // `[text][target]` — reference link. Keep `text`, drop `[target]`.
+                    Some(b'[') => {
+                        out.push_str(inner);
+                        if let Some(t_rel) = s[close + 2..].find(']') {
+                            i = close + 2 + t_rel + 1;
+                        } else {
+                            i = close + 1;
+                        }
+                        continue;
+                    }
+                    // `[text]` — shortcut link. Keep `text`, drop the brackets.
+                    _ => {
+                        out.push_str(inner);
+                        i = close + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
 }
 
 /// Check for conflicts between explicit `@title`/`@description` tags and implicit values.

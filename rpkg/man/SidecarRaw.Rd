@@ -39,4 +39,6 @@ The SidecarRaw pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarRaw}.
+
+Env class registration for SidecarRaw (u8 scalar sidecar testing).
 }
