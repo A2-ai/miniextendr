@@ -496,6 +496,15 @@ fi
 dnl Uppercase + s/-/_/g, e.g. aarch64-apple-darwin -> AARCH64_APPLE_DARWIN.
 CARGO_ENV_RUST_TARGET_UPPER=`echo "$CARGO_ENV_RUST_TARGET" | tr 'a-z-' 'A-Z_'`
 
+dnl Default CARGO_NET_GIT_FETCH_WITH_CLI to "true" (works around in-tree
+dnl rustls/CA failures) but let a value set outside configure win, via the same
+dnl AC_ARG_VAR + `: ${VAR=default}` idiom used for CARGO_PROFILE / CARGO_HOME
+dnl above. `=` (not `:=`) defaults only when unset, so an externally-set value —
+dnl including an explicit empty one — is preserved.
+AC_ARG_VAR([CARGO_NET_GIT_FETCH_WITH_CLI],
+  [Fetch cargo git deps via the system git CLI; "true" works around in-tree rustls/CA issues (default true)])
+: ${CARGO_NET_GIT_FETCH_WITH_CLI="true"}
+
 dnl --- macOS: derive MACOSX_DEPLOYMENT_TARGET ----
 dnl Derivation order (first match wins, logged via AC_MSG_NOTICE):
 dnl   1. Shell env MACOSX_DEPLOYMENT_TARGET (caller's value)
@@ -781,7 +790,7 @@ AC_CONFIG_COMMANDS([cargo-config],
           ;;
       esac
     fi
-    echo 'CARGO_NET_GIT_FETCH_WITH_CLI = "true"'
+    echo "CARGO_NET_GIT_FETCH_WITH_CLI = \"$CARGO_NET_GIT_FETCH_WITH_CLI\""
     if test -n "$CARGO_ENV_R_AR" && test "$CARGO_ENV_R_AR" != "ar"; then
       echo "AR_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_AR\""
     fi
@@ -865,6 +874,7 @@ AC_CONFIG_COMMANDS([cargo-config],
  VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
  CARGO_ENV_MACOS_DEPLOY_TARGET="$CARGO_ENV_MACOS_DEPLOY_TARGET"
+ CARGO_NET_GIT_FETCH_WITH_CLI="$CARGO_NET_GIT_FETCH_WITH_CLI"
  CARGO_ENV_WIN_LINKER="$CARGO_ENV_WIN_LINKER"
  CARGO_ENV_RUST_TARGET="$CARGO_ENV_RUST_TARGET"
  CARGO_ENV_RUST_TARGET_UPPER="$CARGO_ENV_RUST_TARGET_UPPER"

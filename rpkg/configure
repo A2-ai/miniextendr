@@ -592,6 +592,7 @@ PACKAGE_URL=''
 ac_unique_file="src/rust/lib.rs"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+CARGO_NET_GIT_FETCH_WITH_CLI
 VENDOR_OUT_CARGO
 VENDOR_OUT
 NATIVE_PKG_CPPFLAGS
@@ -678,7 +679,8 @@ CARGO_TARGET_DIR
 CARGO_PROFILE
 ENV_RUSTFLAGS
 CARGO_HOME
-CARGO_BUILD_TARGET'
+CARGO_BUILD_TARGET
+CARGO_NET_GIT_FETCH_WITH_CLI'
 
 
 # Initialize some variables set by options.
@@ -1312,6 +1314,9 @@ Some influential environment variables:
               restricted environments where HOME is read-only)
   CARGO_BUILD_TARGET
               Cargo build target triple (e.g. aarch64-apple-darwin)
+  CARGO_NET_GIT_FETCH_WITH_CLI
+              Fetch cargo git deps via the system git CLI; "true" works around
+              in-tree rustls/CA issues (default true)
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -2684,6 +2689,9 @@ fi
 
 CARGO_ENV_RUST_TARGET_UPPER=`echo "$CARGO_ENV_RUST_TARGET" | tr 'a-z-' 'A-Z_'`
 
+
+: ${CARGO_NET_GIT_FETCH_WITH_CLI="true"}
+
 CARGO_ENV_MACOS_DEPLOY_TARGET=""
 CARGO_ENV_MACOS_DEPLOY_SOURCE=""
 case "$host_os" in
@@ -3495,6 +3503,7 @@ IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
  VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
  CARGO_ENV_MACOS_DEPLOY_TARGET="$CARGO_ENV_MACOS_DEPLOY_TARGET"
+ CARGO_NET_GIT_FETCH_WITH_CLI="$CARGO_NET_GIT_FETCH_WITH_CLI"
  CARGO_ENV_WIN_LINKER="$CARGO_ENV_WIN_LINKER"
  CARGO_ENV_RUST_TARGET="$CARGO_ENV_RUST_TARGET"
  CARGO_ENV_RUST_TARGET_UPPER="$CARGO_ENV_RUST_TARGET_UPPER"
@@ -3976,7 +3985,7 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
           ;;
       esac
     fi
-    echo 'CARGO_NET_GIT_FETCH_WITH_CLI = "true"'
+    echo "CARGO_NET_GIT_FETCH_WITH_CLI = \"$CARGO_NET_GIT_FETCH_WITH_CLI\""
     if test -n "$CARGO_ENV_R_AR" && test "$CARGO_ENV_R_AR" != "ar"; then
       echo "AR_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_AR\""
     fi
