@@ -1633,6 +1633,83 @@ fn build_and_check_rayon_df_tall(nrow: usize) {
 
 // endregion
 
+// region: DataFrame::builder serial (non-rayon) GC-stress fixture (#1055)
+
+/// Exercise `DataFrame::builder` on the **non-rayon** (serial) fill path under GC
+/// pressure.
+///
+/// rpkg compiles with `rayon` **off** by default, so this fixture drives the
+/// serial fill branch of `RDataFrameBuilder::build` (#1055) — proving the builder
+/// surface is reachable and correct without the `rayon` feature. It uses the
+/// public `DataFrame::builder(nrow)` entry point (no `rayon_bridge` import), then
+/// materializes every column under a single protect scope so any stale/freed
+/// column surfaces. The builder allocates each column SEXP serially and holds it
+/// protected across the subsequent column / names / row.names / class allocations
+/// — the SEXP-across-allocation path that needs a gctorture pass. No arguments —
+/// suitable for the fast gctorture sweep.
+#[miniextendr]
+pub fn gc_stress_dataframe_builder_serial() {
+    use miniextendr_api::dataframe::DataFrame;
+    use miniextendr_api::gc_protect::ProtectScope;
+
+    let nrow = 256usize;
+    let df = DataFrame::builder(nrow)
+        .column::<f64>("x", |chunk: &mut [f64], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = (offset + i) as f64;
+            }
+        })
+        .column::<i32>("y", |chunk: &mut [i32], offset: usize| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = (offset + i) as i32 * 2;
+            }
+        })
+        .column_str("label", |i: usize| {
+            if i % 5 == 4 {
+                None
+            } else {
+                Some(format!("row_{i}"))
+            }
+        })
+        .build();
+
+    // The builder leaves `df` unprotected; protect before reading.
+    let scope = unsafe { ProtectScope::new() };
+    let df = unsafe { scope.protect_raw(df.as_sexp()) };
+    assert!(df.is_data_frame());
+    assert_eq!(df.xlength(), 3);
+
+    let x = df.vector_elt(0);
+    let y = df.vector_elt(1);
+    let label = df.vector_elt(2);
+    assert_eq!(x.xlength() as usize, nrow);
+    assert_eq!(y.xlength() as usize, nrow);
+    assert_eq!(label.xlength() as usize, nrow);
+
+    // Serial fill writes the full range once: every slot must match its formula.
+    let x_slice: &[f64] = unsafe { x.as_slice() };
+    let y_slice: &[i32] = unsafe { y.as_slice() };
+    for (i, &val) in x_slice.iter().enumerate() {
+        assert_eq!(val, i as f64);
+    }
+    for (i, &val) in y_slice.iter().enumerate() {
+        assert_eq!(val, i as i32 * 2);
+    }
+
+    // Touch every CHARSXP, including the NA slots.
+    let mut na_count = 0usize;
+    for i in 0..nrow as isize {
+        if label.string_elt_str(i).is_none() {
+            na_count += 1;
+        }
+    }
+    assert!(na_count > 0);
+
+    drop(scope);
+}
+
+// endregion
+
 // region: enum reader GC-stress fixtures (#807)
 //
 // The enum reader allocates sub-frames (via `select` + `strip_prefix` + `select_rows`)

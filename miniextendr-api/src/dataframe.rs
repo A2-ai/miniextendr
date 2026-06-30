@@ -512,10 +512,12 @@ impl DataFrame {
 
     // region: builder (ex-RDataFrameBuilder, #768)
 
-    /// Start a closure-per-column parallel-fill builder yielding a [`DataFrame`].
+    /// Start a closure-per-column builder yielding a [`DataFrame`].
     ///
     /// The heterogeneous-column analogue of `with_r_matrix`: each column buffer is R memory
-    /// filled in parallel. Only available with `feature = "rayon"`.
+    /// filled by a per-column closure. Available regardless of the `rayon` feature (#1055);
+    /// the columns are filled **in parallel** when `rayon` is enabled and **serially**
+    /// otherwise — the resulting `data.frame` is identical either way.
     ///
     /// ```ignore
     /// let df = DataFrame::builder(1000)
@@ -523,10 +525,9 @@ impl DataFrame {
     ///     .column_str("label", |i| Some(format!("row{i}")))
     ///     .build();
     /// ```
-    #[cfg(feature = "rayon")]
     #[inline]
-    pub fn builder(nrow: usize) -> crate::rayon_bridge::RDataFrameBuilder {
-        crate::rayon_bridge::RDataFrameBuilder::new(nrow)
+    pub fn builder(nrow: usize) -> crate::dataframe_builder::RDataFrameBuilder {
+        crate::dataframe_builder::RDataFrameBuilder::new(nrow)
     }
     // endregion
 }

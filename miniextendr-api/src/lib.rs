@@ -654,6 +654,11 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 pub mod dataframe;
 pub use dataframe::{DataFrame, DataFrameError, FromDataFrame, IntoDataFrame};
 
+// Closure-per-column DataFrame builder (parallel fill with `rayon`, serial
+// otherwise). Available regardless of the `rayon` feature (#1055).
+pub mod dataframe_builder;
+pub use dataframe_builder::RDataFrameBuilder;
+
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
 
