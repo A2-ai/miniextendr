@@ -79,4 +79,6 @@ The SidecarEnv pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarEnv}.
+
+Env class registration for SidecarEnv (enables R sidecar accessors).
 }

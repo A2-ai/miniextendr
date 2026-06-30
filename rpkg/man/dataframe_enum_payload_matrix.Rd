@@ -490,197 +490,103 @@ struct_flatten_split_nv1r()
 struct_flatten_split_nvnr()
 }
 \description{
-dataframe enum payload matrix
+1v1r align: one variant (Tally), one row.
 
-dataframe enum payload matrix
+1vNr align: one variant (Tally), multiple rows.
 
-dataframe enum payload matrix
+Nv1r align: both variants, one row each.
 
-dataframe enum payload matrix
+NvNr align: both variants, multiple rows each.
 
-dataframe enum payload matrix
+1v1r: one variant (Tally), one row.
 
-1v1r align: one variant (Tally), one row
+1vNr: one variant (Tally), multiple rows.
 
-1vNr align: one variant (Tally), multiple rows
+Nv1r: both variants, one row each.
 
-Nv1r align: both variants, one row each
+NvNr split: both variants, multiple rows each.
 
-NvNr align: both variants, multiple rows each
+1v1r align: one variant (Tally), one row.
 
-1v1r: one variant (Tally), one row
+1vNr align: one variant (Tally), multiple rows.
 
-1vNr: one variant (Tally), multiple rows
+Nv1r align: both variants, one row each.
 
-Nv1r: both variants, one row each
+NvNr align: both variants, multiple rows each.
 
-NvNr split: both variants, multiple rows each
+1v1r: one variant (Tally), one row.
 
-dataframe enum payload matrix
+1vNr: one variant (Tally), multiple rows.
 
-dataframe enum payload matrix
+Nv1r: both variants, one row each.
 
-dataframe enum payload matrix
+NvNr split: both variants, multiple rows each.
 
-dataframe enum payload matrix
+1v1r align (as_list): single Move row.
 
-dataframe enum payload matrix
+1vNr align (as_list): multiple Move rows.
 
-1v1r align: one variant (Tally), one row
+Nv1r align (as_list): one Move and one Stop — NULL for Stop's dir.
 
-1vNr align: one variant (Tally), multiple rows
+NvNr align (as_list): aligned data frame with NULL-fill for dir in Stop rows.
 
-Nv1r align: both variants, one row each
+1v1r split (as_list): single Move row, dir as list column.
 
-NvNr align: both variants, multiple rows each
+1vNr split (as_list): multiple Move rows.
 
-1v1r: one variant (Tally), one row
+Nv1r split (as_list): one Move and one Stop row.
 
-1vNr: one variant (Tally), multiple rows
+NvNr split (as_list): multiple rows across both variants.
 
-Nv1r: both variants, one row each
+NvNr align (as_list): aligned data frame, origin as list-column.
 
-NvNr split: both variants, multiple rows each
+1v1r split (as_list): single Located row, origin as list-column.
 
-dataframe enum payload matrix
+1vNr split (as_list): multiple Located rows.
 
-dataframe enum payload matrix
+Nv1r split (as_list): one Located and one Other row.
 
-dataframe enum payload matrix
+NvNr split (as_list): multiple rows across both variants.
 
-dataframe enum payload matrix
+1v1r align (as_factor): single Move row.
 
-dataframe enum payload matrix
+1vNr align (as_factor): multiple Move rows.
 
-dataframe enum payload matrix
+Nv1r align (as_factor): one Move and one Stop — NA for Stop's dir.
 
-dataframe enum payload matrix
+NvNr align (as_factor): aligned data frame with NA-fill for dir in Stop rows.
 
-dataframe enum payload matrix
+1v1r split (as_factor): single Move row, dir as factor column.
 
-dataframe enum payload matrix
+1vNr split (as_factor): multiple Move rows.
 
-dataframe enum payload matrix
+Nv1r split (as_factor): one Move and one Stop row.
 
-dataframe enum payload matrix
+NvNr split (as_factor): multiple rows across both variants.
 
-dataframe enum payload matrix
+1v1r align (flatten): single Tracked row, aligned data frame.
 
-dataframe enum payload matrix
+1vNr align (flatten): multiple Tracked rows, aligned data frame.
 
-dataframe enum payload matrix
+Nv1r align (flatten): one Tracked, one Other — NA-fill for Other rows.
 
-dataframe enum payload matrix
+NvNr align (flatten): multiple rows across both variants — NA-fill for Other rows.
 
-dataframe enum payload matrix
+1v1r split (flatten): single Tracked/Ok row.
 
-dataframe enum payload matrix
+1vNr split (flatten): multiple Tracked rows (mix of Ok and Err).
 
-dataframe enum payload matrix
+Nv1r split (flatten): one Tracked and one Other row.
 
-dataframe enum payload matrix
+NvNr split (flatten): multiple rows across both variants.
 
-dataframe enum payload matrix
+NvNr align: aligned data frame with NA-fill for absent variant.
 
-dataframe enum payload matrix
+1v1r split: single Located row.
 
-dataframe enum payload matrix
+1vNr split: multiple Located rows, all same variant.
 
-dataframe enum payload matrix
+Nv1r split: one Located and one Other row.
 
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-1v1r align (as_list): single Move row
-
-1vNr align (as_list): multiple Move rows
-
-Nv1r align (as_list): one Move and one Stop — NULL for Stop's dir
-
-NvNr align (as_list): aligned data frame with NULL-fill for dir in Stop rows
-
-1v1r split (as_list): single Move row, dir as list column
-
-1vNr split (as_list): multiple Move rows
-
-Nv1r split (as_list): one Move and one Stop row
-
-NvNr split (as_list): multiple rows across both variants
-
-NvNr align (as_list): aligned data frame, origin as list-column
-
-1v1r split (as_list): single Located row, origin as list-column
-
-1vNr split (as_list): multiple Located rows
-
-Nv1r split (as_list): one Located and one Other row
-
-NvNr split (as_list): multiple rows across both variants
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-1v1r align (as_factor): single Move row
-
-1vNr align (as_factor): multiple Move rows
-
-Nv1r align (as_factor): one Move and one Stop — NA for Stop's dir
-
-NvNr align (as_factor): aligned data frame with NA-fill for dir in Stop rows
-
-1v1r split (as_factor): single Move row, dir as factor column
-
-1vNr split (as_factor): multiple Move rows
-
-Nv1r split (as_factor): one Move and one Stop row
-
-NvNr split (as_factor): multiple rows across both variants
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-dataframe enum payload matrix
-
-1v1r align (flatten): single Tracked row, aligned data frame
-
-1vNr align (flatten): multiple Tracked rows, aligned data frame
-
-Nv1r align (flatten): one Tracked, one Other — NA-fill for Other rows
-
-NvNr align (flatten): multiple rows across both variants — NA-fill for Other rows
-
-1v1r split (flatten): single Tracked/Ok row
-
-1vNr split (flatten): multiple Tracked rows (mix of Ok and Err)
-
-Nv1r split (flatten): one Tracked and one Other row
-
-NvNr split (flatten): multiple rows across both variants
-
-NvNr align: aligned data frame with NA-fill for absent variant
-
-1v1r split: single Located row
-
-1vNr split: multiple Located rows, all same variant
-
-Nv1r split: one Located and one Other row
-
-NvNr split: multiple rows across both variants
+NvNr split: multiple rows across both variants.
 }

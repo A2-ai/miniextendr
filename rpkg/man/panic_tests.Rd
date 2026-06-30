@@ -129,7 +129,47 @@ A scalar integer result.
 \description{
 Arithmetic and return-value tests
 
+Test addition with a unit-typed dummy parameter.
+
+Test checked addition returning Result, with a unit-typed dummy parameter.
+
+Test checked division returning Result with a string error on divide-by-zero.
+
 Panic and error handling tests (unsafe)
+
+Test a direct Rf_error call via raw FFI.
+
+Test that Rf_error triggers an R error with a stack-allocated MsgOnDrop.
+
+Test macro handling of a mutable left parameter.
+
+Test a bare panic without any catch_unwind wrapper.
+
+Test that a panic in a deeply nested call chain is caught and propagated.
+
+Test macro handling of a mutable right parameter.
+
+Test that MsgOnDrop runs its destructor when a panic occurs.
+
+Test that a panic drops a heap-allocated (Box) MsgOnDrop.
+
+Test that Rf_error triggers an R error with a heap-allocated (Box) MsgOnDrop.
+
+Test that catch_unwind captures a panic and returns an Err.
+
+Test macro handling when both parameters are mutable.
+
+Test that Rf_error inside catch_unwind is NOT caught (R longjmp bypasses it).
+
+Test that checked Rf_error on a non-R thread panics with a clear thread-check message.
+
+Test that checked Rprintf on a non-R thread panics with a clear thread-check message.
+
+Test that MsgOnDrop prints its message on normal function return.
+
+Test that MsgOnDrop runs its destructor when an Rf_error (R longjmp) occurs.
+
+Test that a function returning unit () works correctly (invisible NULL in R).
 }
 \examples{
 add(1L, 2L)
