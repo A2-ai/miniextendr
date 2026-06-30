@@ -8,3 +8,7 @@ configure.ac eol=lf
 cleanup      eol=lf
 cleanup.ucrt eol=lf
 *.sh         eol=lf
+
+# Generated diff — never 3-way merge (produces diff-of-a-diff garbage on rebase).
+# On conflict, pick a side and regenerate with `just templates-approve`. See CLAUDE.md.
+patches/templates.patch -merge
