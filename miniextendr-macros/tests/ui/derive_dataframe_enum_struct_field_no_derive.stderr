@@ -21,9 +21,6 @@ error[E0277]: `Point` doesn't implement `Debug`
    = note: add `#[derive(Debug)]` to `Point` or manually `impl Debug for Point`
 help: the trait `Debug` is implemented for `Vec<T, A>`
   --> $RUST/alloc/src/vec/mod.rs
-   |
-   | impl<T: fmt::Debug, A: Allocator> fmt::Debug for Vec<T, A> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 help: consider annotating `Point` with `#[derive(Debug)]`
    |
  6 + #[derive(Debug)]
@@ -45,14 +42,14 @@ help: consider annotating `Point` with `#[derive(Clone)]`
  7 | struct Point {
    |
 
-error[E0599]: no function or associated item named `to_dataframe` found for struct `Point` in the current scope
+error[E0599]: no associated function or constant named `to_dataframe` found for struct `Point` in the current scope
   --> tests/ui/derive_dataframe_enum_struct_field_no_derive.rs:11:10
    |
  6 | struct Point {
-   | ------------ function or associated item `to_dataframe` not found for this struct
+   | ------------ associated function or constant `to_dataframe` not found for this struct
 ...
 11 | #[derive(DataFrameRow)]
-   |          ^^^^^^^^^^^^ function or associated item not found in `Point`
+   |          ^^^^^^^^^^^^ associated function or constant not found in `Point`
    |
    = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -82,11 +79,6 @@ error[E0599]: the method `clone` exists for enum `Option<Point>`, but its trait 
 ...
 11 | #[derive(DataFrameRow)]
    |          ^^^^^^^^^^^^ method cannot be called on `Option<Point>` due to unsatisfied trait bounds
-   |
-  ::: $RUST/core/src/option.rs
-   |
-   | pub enum Option<T> {
-   | ------------------ doesn't satisfy `Option<Point>: Clone`
    |
    = note: the following trait bounds were not satisfied:
            `Point: Clone`
