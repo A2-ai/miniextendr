@@ -1,4 +1,4 @@
-# CI cargo tests: two five-month-old latent bugs (empty LD_LIBRARY_PATH, R stack check off-main-thread)
+# CI cargo tests: three five-month-old latent bugs (empty LD_LIBRARY_PATH, R stack check off-main-thread, ETXTBSY)
 
 ## What was attempted
 
@@ -8,7 +8,7 @@ cargo-revendor's standalone workspace. `cargo test` had been disabled in CI
 since commit `952f78b5` (2026-01-15) with the note "stack overflow issues on
 Linux CI" — never diagnosed, so the entire Rust test suite (including the
 trybuild UI snapshots and PR #1095's `ReprotectSlot` tests) ran only on dev
-machines for ~5.5 months. Two distinct latent bugs surfaced, one per CI run.
+machines for ~5.5 months. Three distinct latent bugs surfaced, one per CI run.
 
 ## Bug 1: silently-empty LD_LIBRARY_PATH
 
@@ -89,6 +89,26 @@ there is in-policy.
 None of the plan's anticipated levers (`RUST_MIN_STACK`, `--test-threads`,
 proptest case counts) were needed — the failure was never a Rust stack
 overflow at all.
+
+## Bug 3: ETXTBSY in miniextendr-engine's fake-R test
+
+With R booting cleanly, the next run failed in `miniextendr-engine`'s own
+unit tests: `ensure_r_home_env_sets_env_with_fake_r` got
+`RHomeNotFound { stderr: None }` (spawn failure), and
+`ensure_r_home_env_uses_explicit_path` failed with a `PoisonError` — pure
+cascade from the first panic poisoning the shared `ENV_LOCK`.
+
+**Root cause.** The test writes a fake `R` shell script and execs it via
+PATH — while the `File` write handle is **still in scope**. Linux refuses to
+execute a file open for writing (`ETXTBSY`), and glibc's `posix_spawnp`
+aborts its whole PATH search on that errno (it only continues past
+ENOENT/EACCES-class errors). macOS doesn't enforce `ETXTBSY`, so the test
+passed on every dev machine while being deterministically broken on Linux.
+
+**Fix.** `drop(script)` before spawning. The CI job also gained
+`--no-fail-fast` (matching `just test`) so one failing binary can't hide the
+failure surface behind it — this bug was only visible after bug 2's fix
+because the earlier run died at the first R-booting binary.
 
 ## Lessons
 

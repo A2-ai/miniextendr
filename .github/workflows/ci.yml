@@ -427,13 +427,16 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R RHOME)/lib" >> "$GITHUB_ENV"
 
+      # --no-fail-fast matches `just test`: one failing binary shouldn't hide
+      # failures in the suites behind it (each red run should show the full
+      # failure surface, not the first casualty).
       - name: Tests (root workspace)
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast
 
       # cargo-revendor is a standalone workspace excluded from the root
       # workspace, so the `--workspace` step above never reaches it (#778).
       - name: Tests (cargo-revendor)
-        run: cargo test --manifest-path cargo-revendor/Cargo.toml --locked
+        run: cargo test --manifest-path cargo-revendor/Cargo.toml --locked --no-fail-fast
 
   # ===========================================================================
   # R Package: R CMD check on Linux
