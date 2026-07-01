@@ -70,12 +70,15 @@ main <- function() {
   #   worker-default       : separate opt-in semantic from `worker-thread`.
   #   indicatif            : progress-bar integration, opt-in (not in the
   #                          default integration set).
+  #   refcount-fast-hash   : swaps the refcount hasher to ahash; perf knob,
+  #                          opt-in (exercised by the scheduled feature-legs
+  #                          CI job).
   deny <- c(
     "default", "full", "nonapi",
     "macro-coverage", "growth-debug",
     "strict-default", "coerce-default",
     "r6-default", "s7-default", "worker-default",
-    "indicatif"
+    "indicatif", "refcount-fast-hash"
   )
 
   features <- setdiff(available, deny)

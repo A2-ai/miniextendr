@@ -57,6 +57,7 @@ indicatif = ["miniextendr-api/indicatif"]
 # Diagnostic / development features (shallow pass-through)
 macro-coverage = ["miniextendr-api/macro-coverage"]
 growth-debug = ["miniextendr-api/growth-debug"]
+refcount-fast-hash = ["miniextendr-api/refcount-fast-hash"]
 # Project-wide defaults for #[miniextendr] options
 strict-default = ["miniextendr-api/strict-default"]
 coerce-default = ["miniextendr-api/coerce-default"]
