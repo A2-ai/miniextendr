@@ -1181,6 +1181,16 @@ unsafe extern "C-unwind" {
 /// Non-API encoding / locale helpers from R's `Defn.h`.
 ///
 /// These are not part of the stable R API and may break across R versions.
+///
+/// Only symbols R's shared library actually **exports** may be declared here.
+/// `Defn.h` marks most locale globals `extern0` (= `attribute_hidden`) —
+/// referencing one of those (e.g. `known_to_be_utf8`, `latin1locale`,
+/// `R_nativeEncoding`) compiles fine but aborts `dyn.load` of any binary that
+/// carries the reference: data relocations resolve eagerly at load, whether or
+/// not the code path ever runs. That made every `nonapi` build un-loadable
+/// (caught by the feature-legs CI, audit A5). `utf8locale`, `mbcslocale`, and
+/// `known_to_be_latin1` are plain `extern` and exported (verified against
+/// R 4.6's libR).
 #[cfg(feature = "nonapi")]
 pub mod nonapi_encoding {
     use super::r_ffi_checked;
@@ -1189,14 +1199,10 @@ pub mod nonapi_encoding {
     #[r_ffi_checked]
     #[allow(clashing_extern_declarations)]
     unsafe extern "C-unwind" {
-        pub(crate) fn R_nativeEncoding() -> *const ::std::os::raw::c_char;
-
-        // Locale flags
+        // Locale flags (exported, non-hidden)
         pub(crate) static utf8locale: super::Rboolean;
-        pub(crate) static latin1locale: super::Rboolean;
-
-        // Set when R "knows" it is running in UTF-8.
-        pub(crate) static known_to_be_utf8: super::Rboolean;
+        pub(crate) static mbcslocale: super::Rboolean;
+        pub(crate) static known_to_be_latin1: super::Rboolean;
     }
 }
 
