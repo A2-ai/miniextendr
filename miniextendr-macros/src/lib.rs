@@ -196,6 +196,9 @@ mod newtype_derive;
 // Struct/enum dispatch for #[miniextendr] on structs and enums
 mod struct_enum_dispatch;
 
+// r! proc-macro implementation
+mod r_macro;
+
 // vctrs support
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
@@ -2691,6 +2694,67 @@ pub fn typed_dataframe(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as list_macro::ListInput);
     list_macro::expand_list(parsed).into()
+}
+
+/// Evaluate R code written as **Rust tokens**, validated at compile time.
+///
+/// `r!` takes a single R expression as a token stream, `stringify!`s it into a
+/// static R source string at build time, and evaluates it via
+/// [`miniextendr_api::expression::r_eval_str`] (the same protect-safe parse + eval
+/// path as `r_str!`).
+///
+/// # What you get today
+///
+/// Because the argument is a Rust token tree, the Rust front-end already
+/// rejects **unbalanced delimiters** (`r!(f(1, 2)` won't compile) and
+/// lexically invalid tokens before R ever sees the string — a cheap
+/// compile-time guard over the pure-runtime `r_str!`. The source is lowered to
+/// a `&'static str` (`stringify!`), so there is no `format!` allocation at the
+/// call site.
+///
+/// This proc-macro additionally validates a conservative subset of known-bad
+/// R syntax constructs (trailing binary operators, empty function call
+/// arguments, bare `if`/`while`/`for` without a body, etc.) and emits a
+/// precise compile error pointing at the offending token.
+///
+/// # What is deferred
+///
+/// Direct `Rf_lang*` call-tree lowering (skipping the runtime parser entirely)
+/// is tracked as a follow-up in issue #938 (item 2). Until then `r!` parses
+/// its static string at first evaluation, exactly like `r_str!`.
+///
+/// # Non-goals
+///
+/// A complete R grammar validator is not achievable over Rust tokens:
+/// - Single-quoted strings (`'hello'`) and backtick-quoted names (`` `foo` ``)
+///   already die at the Rust lexer — nothing to validate.
+/// - `%op%` tokenises as `%`, ident, `%` and is accepted without analysis.
+/// - Anything the validator cannot confidently classify as wrong passes through
+///   unvalidated (conservative reject-only-known-bad design).
+///
+/// # Forms
+///
+/// - `r!(R tokens…)` — evaluate in `R_GlobalEnv`.
+/// - `r!(env: e; R tokens…)` — evaluate in the environment SEXP `e`. The
+///   leading `env: <expr> ;` is consumed as Rust, the rest is R source.
+///
+/// Both evaluate to `Result<SEXP, String>`; the `SEXP` is **unprotected**.
+///
+/// # Safety
+///
+/// Expands to an `unsafe` block; the underlying FFI is `#[r_ffi_checked]`, so
+/// calls from a worker thread are serialized onto the R thread.
+///
+/// # Example
+///
+/// ```ignore
+/// let three = r!(1L + 2L)?;
+/// let rows = r!(getFromNamespace(".theoph_rows", "dataframeflows")())?;
+/// let in_env = r!(env: my_env; x + 1)?;
+/// ```
+#[proc_macro]
+pub fn r(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    r_macro::expand(input)
 }
 
 /// Internal proc macro used by TPIE (Trait-Provided Impl Expansion).

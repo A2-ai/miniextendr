@@ -1,0 +1,5 @@
+error: R syntax error: expression ends with a binary operator — expected a right-hand operand after the operator
+ --> tests/ui/r_macro_trailing_operator.rs:6:18
+  |
+6 |     let _ = r!(x *);
+  |                  ^
