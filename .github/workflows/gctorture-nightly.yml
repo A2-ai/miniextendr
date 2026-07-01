@@ -43,7 +43,7 @@ jobs:
       RUSTC_WRAPPER: "sccache"
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -71,7 +71,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -82,7 +82,7 @@ jobs:
 
       - name: Configure Linux
         run: |
-          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(R RHOME)/lib" >> "$GITHUB_ENV"
 
       # Install cargo-revendor so `just configure` (a dep of gctorture-full)
       # can sync the workspace siblings into rpkg/vendor/ in dev-monorepo mode.

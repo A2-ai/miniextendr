@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -146,7 +146,7 @@ jobs:
       # the setup step. Both Rs honour R_LIBS_USER ahead of their site lib.
       R_LIBS_USER: /tmp/r-shared-lib
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install miniextendr's hard R Imports + autoconf
         run: |
@@ -166,7 +166,7 @@ jobs:
             'pkgs <- c("cli","lifecycle","rlang","R6","S7","vctrs"); miss <- setdiff(pkgs, rownames(installed.packages(lib.loc=Sys.getenv("R_LIBS_USER")))); if (length(miss)) stop("Missing: ", paste(miss, collapse=", "))'
 
       - name: Cache cargo registry + git
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             /usr/local/cargo/registry
