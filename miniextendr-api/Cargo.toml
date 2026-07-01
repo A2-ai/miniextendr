@@ -144,10 +144,12 @@ refcount-fast-hash = ["dep:ahash"]
 # MUTEX CONSTRAINT: `r6-default` and `s7-default` are mutually exclusive — a
 # `compile_error!` in miniextendr-macros fires if both are enabled (#676/#710).
 # This is exactly why `--all-features` can't be used. `full-codegen` therefore
-# picks exactly ONE side of that pair (`r6-default`); to lint the `s7-default`
-# side, run a second invocation swapping the two. (`strict-default` and
-# `coerce-default` are NOT a mutex pair — they're orthogonal, see
-# docs/FEATURE_DEFAULTS.md — so both live in `full-codegen` together.)
+# picks exactly ONE side of that pair (`r6-default`); `full-codegen-s7` is the
+# identical set with the mutex flipped to `s7-default`, so CI can lint both
+# sides. Keep the two lists in lock-step — they must differ ONLY in the mutex
+# member. (`strict-default` and `coerce-default` are NOT a mutex pair —
+# they're orthogonal, see docs/FEATURE_DEFAULTS.md — so both live in
+# `full-codegen` together.)
 
 ## Every optional integration crate (the "dep:" features). Heavy deps like
 ## arrow/datafusion/log live here; CI's `clippy_all` enables a curated subset.
@@ -168,6 +170,16 @@ full-integrations = [
 ## the unit CI's `clippy_all` derives.
 full-codegen = [
     "strict-default", "coerce-default", "r6-default", "worker-default",
+    "nonapi", "connections", "indicatif", "refcount-fast-hash",
+]
+
+## `full-codegen` with the r6/s7 mutex flipped: `s7-default` instead of
+## `r6-default`. CI's `clippy_all_s7` step derives from this — it is the only
+## compile gate anywhere for the s7 side of the mutex (rpkg's
+## tools/detect-features.R denylists `s7-default`, and the root-workspace
+## clippy steps never reach rpkg/src/rust).
+full-codegen-s7 = [
+    "strict-default", "coerce-default", "s7-default", "worker-default",
     "nonapi", "connections", "indicatif", "refcount-fast-hash",
 ]
 

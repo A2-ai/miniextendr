@@ -75,10 +75,6 @@ export PATH := if os() == "windows" {
     env("PATH", "")
 }
 
-# All optional features for testing (excluding nonapi which causes CRAN warnings).
-# This mirrors the default CARGO_FEATURES list in rpkg/configure.ac.
-all_features := "worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,log"
-
 # Directory for devtools::check output (preserved for investigation)
 check_output_dir := justfile_directory() / "rpkg-check-output"
 
@@ -137,17 +133,27 @@ check-features:
         # defaults combos
         "strict-default,coerce-default,r6-default"
         "strict-default,s7-default,worker-default"
-        # diagnostic features
-        "growth-debug,materialization-tracking"
-        # all features together
-        "rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi"
+        # diagnostic features (macro-coverage does NOT compile alone — it
+        # needs worker-thread; this combo is its only compile gate)
+        "growth-debug,worker-thread,macro-coverage"
+        # newer integrations (no standalone datafusion combo — heavy; it
+        # rides in once via full-integrations in the final combo)
+        "jiff"
+        "blake3,md5,sha2"
+        "globset,zstd"
+        "arrow"
+        # all features together — derived from the Cargo.toml aggregate so
+        # the list can't drift again (includes arrow/datafusion/log)
+        "full-integrations,connections,nonapi"
     )
     total=${#combos[@]}
     passed=0
     for combo in "${combos[@]}"; do
         echo "--- Checking: $combo ---"
         if cargo check --manifest-path="$manifest" --features "$combo" 2>&1; then
-            ((passed++))
+            # NOT ((passed++)): under set -e that aborts the recipe when
+            # passed is 0 — post-increment returns the old value's status.
+            passed=$((passed + 1))
         else
             echo "FAILED: $combo"
             exit 1
