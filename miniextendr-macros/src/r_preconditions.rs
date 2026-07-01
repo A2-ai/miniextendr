@@ -254,13 +254,60 @@ impl RTypeCheck {
     /// `&[i32]` slice (INTSXP-only), so a [`RTypeCheck::VectorIntegerWide`] that
     /// would otherwise accept whole-number `REALSXP` must become a strict
     /// `is.integer` gate (issue #616). Recurses through [`RTypeCheck::Nullable`].
-    /// All other checks are unaffected.
+    /// All other checks are unaffected. Type-sensitive tightening (e.g. `bool`,
+    /// whose logical gate must become an integer gate) lives in
+    /// [`coerce_tightened`], which needs the declared Rust type.
     fn coerced(self) -> Self {
         match self {
             RTypeCheck::VectorIntegerWide => RTypeCheck::VectorIntegerStrict,
             RTypeCheck::Nullable(inner) => RTypeCheck::Nullable(Box::new(inner.coerced())),
             other => other,
         }
+    }
+}
+
+/// Tighten the check for a coerced parameter, given the declared Rust type.
+///
+/// Under `coerce` (per-param, function-wide, or `coerce-default`), `bool`
+/// converts from R's native integer type (`CoercionMapping::from_type`:
+/// `bool` ← `i32`, INTSXP-only), so its R gate must be `is.integer` — keeping
+/// the `is.logical` gate makes the parameter unusable: R rejects the integers
+/// Rust accepts, and passes the logicals Rust rejects (same boundary-mismatch
+/// class as #616; surfaced by the feature-legs coerce-default run).
+/// `Rbool`/`Rboolean` have no coercion mapping and keep the logical gate.
+/// Everything else defers to [`RTypeCheck::coerced`].
+fn coerce_tightened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
+    let syn::Type::Path(tp) = ty else {
+        return check.coerced();
+    };
+    let Some(seg) = tp.path.segments.last() else {
+        return check.coerced();
+    };
+    match seg.ident.to_string().as_str() {
+        "bool" => match check {
+            RTypeCheck::Scalar(_) => RTypeCheck::Scalar("integer"),
+            other => other.coerced(),
+        },
+        // Vec<bool> reads via &[i32] under coerce — INTSXP-only.
+        "Vec" => match extract_single_generic_arg(seg) {
+            Some(syn::Type::Path(inner))
+                if inner
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|s| s.ident == "bool") =>
+            {
+                RTypeCheck::VectorIntegerStrict
+            }
+            _ => check.coerced(),
+        },
+        "Option" => match (check, extract_single_generic_arg(seg)) {
+            (RTypeCheck::Nullable(inner_check), Some(inner_ty)) => {
+                RTypeCheck::Nullable(Box::new(coerce_tightened(*inner_check, inner_ty)))
+            }
+            (other, _) => other.coerced(),
+        },
+        _ => check.coerced(),
     }
 }
 
@@ -525,11 +572,12 @@ pub fn build_precondition_checks(
             continue;
         }
 
-        // Map the Rust type to R assertions (known types). A coerced integer
-        // vector reads via `&[i32]` (INTSXP-only), so tighten its check (#616).
+        // Map the Rust type to R assertions (known types). A coerced parameter
+        // reads via its R-native type (`&[i32]`/`i32`/`f64`), so tighten its
+        // check to match (#616; bool → integer gate).
         if let Some(mut check) = r_check_for_type(pt.ty.as_ref()) {
             if opts.is_coerced(&r_name) {
-                check = check.coerced();
+                check = coerce_tightened(check, pt.ty.as_ref());
             }
             for assertion in check.assertions(&r_name) {
                 args.push(assertion.to_stopifnot_arg());
