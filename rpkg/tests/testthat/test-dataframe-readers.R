@@ -295,3 +295,47 @@ test_that("parallel readers match the sequential result", {
   expect_equal(out_mp_par$id, out_mp_seq$id)
   expect_equal(unclass(out_mp_par$opts), unclass(out_mp_seq$opts))
 })
+
+# region: #1026 backfill — reader gctorture fixtures under gctorture(TRUE) -------
+#
+# The arg-taking `reader_*_roundtrip(df)` entrypoints above are skipped by the
+# fast no-arg gctorture sweep, so #1026 added no-arg `gc_stress_reader_*`
+# fixtures for the column-expansion / mixed-flatten / Box+multi list-column /
+# HashMap reader shapes (and the rayon `_par` variants) that previously had no
+# no-arg torture coverage. Each roots the writer-produced frame SEXP for the
+# whole read (a Rust `DataFrame` is `Copy` and does NOT protect its SEXP), then
+# reads it back. Drive them under gctorture(TRUE) so a regressed PROTECT
+# discipline surfaces here, not only on the nightly full-suite sweep.
+
+test_that("#1026 sequential reader gctorture fixtures survive gctorture(TRUE)", {
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  fixtures <- list(
+    gc_stress_reader_fixed,
+    gc_stress_reader_pinned,
+    gc_stress_reader_box_pinned,
+    gc_stress_reader_auto,
+    gc_stress_reader_auto_box,
+    gc_stress_reader_flatten_mixed,
+    gc_stress_reader_list_box,
+    gc_stress_reader_list_multi,
+    gc_stress_reader_hashmap
+  )
+  for (fx in fixtures) expect_no_error(fx())
+})
+
+test_that("#1026 parallel reader gctorture fixtures survive gctorture(TRUE)", {
+  skip_if_missing_feature("rayon")
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  fixtures <- list(
+    gc_stress_reader_fixed_par,
+    gc_stress_reader_flatten_par,
+    gc_stress_reader_list_vec_par,
+    gc_stress_reader_map_par,
+    gc_stress_reader_int_map_par
+  )
+  for (fx in fixtures) expect_no_error(fx())
+})
+
+# endregion
