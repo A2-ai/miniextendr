@@ -37,6 +37,35 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
+/// Returns `true` if `ty` is an input type bound to the R main thread.
+///
+/// Used only for thread-strategy selection: parameters of these types cannot
+/// move into the worker closure (`run_on_worker` requires `Send`), so the
+/// function stays on the main thread even under `worker-default`. Covers the
+/// raw `SEXP` and framework wrapper types that hold R memory and are `!Send`
+/// by design: `AltrepSexp` and the zero-copy R-backed views (`RDVector`,
+/// `RDMatrix`, `RndVec`, `RndMat`). Arbitrary user `!Send` types can't be
+/// detected syntactically — those need an explicit `no_worker`.
+/// Return-type analysis keeps the narrower [`is_sexp_type`].
+#[inline]
+pub(crate) fn is_main_thread_bound_input(ty: &syn::Type) -> bool {
+    const MAIN_THREAD_BOUND: &[&str] = &[
+        "SEXP",
+        "AltrepSexp",
+        "RDVector",
+        "RDMatrix",
+        "RndVec",
+        "RndMat",
+        "ProtectedStrVec",
+    ];
+    matches!(ty, syn::Type::Path(p) if p
+        .path
+        .segments
+        .last()
+        .map(|s| MAIN_THREAD_BOUND.contains(&s.ident.to_string().as_str()))
+        .unwrap_or(false))
+}
+
 /// Container family for a `several_ok` parameter, returned by
 /// [`classify_several_ok_container`].
 #[derive(Debug, Clone)]

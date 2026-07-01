@@ -603,7 +603,7 @@ impl CWrapperContext {
             }
             ReturnHandling::IntoR => {
                 let result_ident = format_ident!("__result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 quote! {
                     let #result_ident = #call_expr;
                     #conversion
@@ -636,8 +636,10 @@ impl CWrapperContext {
             ReturnHandling::OptionIntoR => {
                 // For Option<T> where Option<T>: IntoR (e.g. Option<&T>, Option<Vec<T>>).
                 // Call into_sexp on the whole Option — IntoR impl handles None → NULL/NA.
+                // result_ident holds the full Option<T>, so the strict lookup must
+                // see the full type (checked_option_* helpers).
                 let result_ident = format_ident!("__result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, false);
                 quote! {
                     let #result_ident = #call_expr;
                     #conversion
@@ -648,7 +650,7 @@ impl CWrapperContext {
                 // Unwraps first (raises error on None), then converts T via IntoR.
                 let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
                 let result_ident = format_ident!("__result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 quote! {
                     let __result = #call_expr;
                     let #result_ident = match __result {
@@ -684,7 +686,7 @@ impl CWrapperContext {
             }
             ReturnHandling::ResultIntoR => {
                 let result_ident = format_ident!("__result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 quote! {
                     let __result = #call_expr;
                     let #result_ident = match __result {
@@ -699,7 +701,7 @@ impl CWrapperContext {
             // Result<T, ()>: unit error is a deliberate sentinel — always return NULL on Err.
             ReturnHandling::ResultNullOnErr => {
                 let result_ident = format_ident!("__result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 quote! {
                     let __result = #call_expr;
                     match __result {
@@ -792,7 +794,7 @@ impl CWrapperContext {
                     #call_expr
                 };
                 let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
                     #unwind_fn(
@@ -834,9 +836,11 @@ impl CWrapperContext {
                 // For Option<T> where Option<T>: IntoR, call into_sexp on the whole Option.
                 // The worker returns the raw Option<T>; the main thread converts via IntoR.
                 // None maps to whatever IntoR for Option<T> returns (NULL/NA) — not an error.
+                // result_ident holds the full Option<T>, so the strict lookup must
+                // see the full type (checked_option_* helpers).
                 let worker = quote! { #call_expr };
                 let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, false);
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
                     {
@@ -853,7 +857,7 @@ impl CWrapperContext {
                 // Return the Option from worker, check on main thread.
                 let worker = quote! { #call_expr };
                 let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
                     match __miniextendr_result {
@@ -892,7 +896,7 @@ impl CWrapperContext {
             ReturnHandling::ResultIntoR => {
                 let worker = quote! { #call_expr };
                 let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
                     match __miniextendr_result {
@@ -913,7 +917,7 @@ impl CWrapperContext {
                 let result_ident = format_ident!("__miniextendr_result");
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let worker = quote! { #call_expr };
-                let conversion = self.sexp_conversion_expr(&result_ident);
+                let conversion = self.sexp_conversion_expr(&result_ident, true);
                 let convert = quote! {
                     match __miniextendr_result {
                         Ok(#result_ident) => #unwind_fn(|| #conversion, None),
@@ -982,14 +986,28 @@ impl CWrapperContext {
     /// Returns the SEXP conversion expression for `result_ident`, using strict
     /// checked conversion if strict mode is on and the inner return type is lossy,
     /// otherwise falling back to `IntoR::into_sexp()`.
-    fn sexp_conversion_expr(&self, result_ident: &syn::Ident) -> TokenStream {
+    ///
+    /// `result_holds_unwrapped` says what `result_ident` is bound to at runtime:
+    /// `true` when the arm already unwrapped the declared `Option<T>` /
+    /// `Result<T, E>` wrapper (so the strict lookup must see the inner `T`),
+    /// `false` when `result_ident` holds the full declared return type (so
+    /// `Option<lossy>` must resolve to the `checked_option_*` helpers — passing
+    /// the stripped inner type there emits a scalar helper call on an `Option`
+    /// value, which does not compile; caught by the strict-default CI leg).
+    fn sexp_conversion_expr(
+        &self,
+        result_ident: &syn::Ident,
+        result_holds_unwrapped: bool,
+    ) -> TokenStream {
         if self.strict {
-            // Extract effective inner type from output
+            // Extract the type `result_ident` actually holds from the output type
             let inner_ty = match &self.output {
                 syn::ReturnType::Type(_, ty) => {
                     let ty = ty.as_ref();
-                    // Check for Option<T> or Result<T, E> wrappers
-                    if let syn::Type::Path(p) = ty
+                    // Strip an Option<T> / Result<T, E> wrapper only when the
+                    // calling arm bound the unwrapped value.
+                    if result_holds_unwrapped
+                        && let syn::Type::Path(p) = ty
                         && let Some(seg) = p.path.segments.last()
                     {
                         let name = seg.ident.to_string();

@@ -7,15 +7,15 @@
 //!
 //! # Availability
 //!
-//! The global signals are **non-API** (from `Defn.h`) and require the `nonapi` feature.
-//! Additionally, these symbols are **not exported from R's shared library**, so
-//! `miniextendr_encoding_init()` only works when:
-//! - Embedding R via `miniextendr-engine` (which links directly to R internals)
-//! - Running on platforms where these symbols happen to be exported
+//! The global signals are **non-API** (from `Defn.h`) and require the `nonapi`
+//! feature. Only the locale flags R's shared library exports are read
+//! (`utf8locale`, `mbcslocale`, `known_to_be_latin1`); the hidden ones
+//! (`known_to_be_utf8`, `latin1locale`, `R_nativeEncoding`) must not even be
+//! *referenced* — an eager data relocation against a hidden symbol aborts
+//! `dyn.load` of the whole package (see `sys::nonapi_encoding`).
 //!
-//! For R packages (loaded via `.Call`), these symbols are typically unavailable,
-//! so `miniextendr_encoding_init()` is **disabled by default** in the entrypoint.
-//! The module is still useful for standalone Rust applications embedding R.
+//! `miniextendr_encoding_init()` is not called by `package_init`; it exists
+//! for debugging and for standalone Rust applications embedding R.
 
 use std::sync::OnceLock;
 
@@ -23,17 +23,15 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone)]
 pub struct REncodingInfo {
     #[cfg(feature = "nonapi")]
-    /// R's reported native encoding (non-API).
-    pub native_encoding: Option<String>,
-    #[cfg(feature = "nonapi")]
-    /// Whether R thinks the current locale is UTF-8 (non-API).
+    /// Whether R thinks the current locale is UTF-8 (non-API `utf8locale`).
     pub utf8_locale: Option<bool>,
     #[cfg(feature = "nonapi")]
-    /// Whether R thinks the current locale is Latin-1 (non-API).
-    pub latin1_locale: Option<bool>,
+    /// Whether the current locale is multi-byte (non-API `mbcslocale`).
+    pub mbcs_locale: Option<bool>,
     #[cfg(feature = "nonapi")]
-    /// Whether R has determined it's "known to be UTF-8" (non-API).
-    pub known_to_be_utf8: Option<bool>,
+    /// Whether R treats unknown-encoding strings as Latin-1 (non-API
+    /// `known_to_be_latin1`).
+    pub known_to_be_latin1: Option<bool>,
 }
 
 static ENCODING_INFO: OnceLock<REncodingInfo> = OnceLock::new();
@@ -104,24 +102,14 @@ pub extern "C-unwind" fn miniextendr_encoding_init() {
             use crate::Rboolean;
             use crate::sys::nonapi_encoding;
 
-            let native_encoding = {
-                let ptr = nonapi_encoding::R_nativeEncoding();
-                if ptr.is_null() {
-                    None
-                } else {
-                    Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
-                }
-            };
-
             let utf8_locale = Some(nonapi_encoding::utf8locale != Rboolean::FALSE);
-            let latin1_locale = Some(nonapi_encoding::latin1locale != Rboolean::FALSE);
-            let known_to_be_utf8 = Some(nonapi_encoding::known_to_be_utf8 != Rboolean::FALSE);
+            let mbcs_locale = Some(nonapi_encoding::mbcslocale != Rboolean::FALSE);
+            let known_to_be_latin1 = Some(nonapi_encoding::known_to_be_latin1 != Rboolean::FALSE);
 
             let info = REncodingInfo {
-                native_encoding,
                 utf8_locale,
-                latin1_locale,
-                known_to_be_utf8,
+                mbcs_locale,
+                known_to_be_latin1,
             };
 
             if std::env::var_os("MINIEXTENDR_ENCODING_DEBUG").is_some() {

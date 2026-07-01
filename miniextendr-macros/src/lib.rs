@@ -214,8 +214,8 @@ compile_error!(
 // worker-default still opts into worker thread execution.
 
 pub(crate) use type_inspect::{
-    SeveralOkContainer, classify_several_ok_container, first_type_argument, is_sexp_type,
-    second_type_argument,
+    SeveralOkContainer, classify_several_ok_container, first_type_argument,
+    is_main_thread_bound_input, is_sexp_type, second_type_argument,
 };
 pub(crate) use util::{extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc};
 
@@ -857,10 +857,12 @@ pub fn miniextendr(
     // Apply explicit visibility override from #[miniextendr(invisible)] or #[miniextendr(visible)]
     let is_invisible_return_type = force_invisible.unwrap_or(is_invisible_return_type);
 
-    // Check if any input parameter is SEXP (not Send, must stay on main thread)
+    // Check if any input parameter is main-thread-bound (SEXP or a !Send
+    // framework wrapper like AltrepSexp — neither can move into the worker
+    // closure, so the function must stay on the main thread)
     let has_sexp_inputs = inputs.iter().any(|arg| {
         if let syn::FnArg::Typed(pat_type) = arg {
-            is_sexp_type(pat_type.ty.as_ref())
+            is_main_thread_bound_input(pat_type.ty.as_ref())
         } else {
             false
         }

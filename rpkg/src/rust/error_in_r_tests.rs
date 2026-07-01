@@ -94,7 +94,9 @@ pub struct ErrorInRCounter {
     value: i32,
 }
 
-#[miniextendr]
+// env pinned: method names collide with base R non-generics (var/get/row/col/
+// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
+#[miniextendr(env)]
 impl ErrorInRCounter {
     /// Create a new counter.
     fn new() -> Self {

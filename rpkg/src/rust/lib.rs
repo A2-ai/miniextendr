@@ -184,6 +184,7 @@ mod externalptr_self_tests;
 mod externalptr_tests;
 mod externalslice_tests;
 mod factor_tests;
+mod feature_default_fixtures;
 mod ffi_guard_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
@@ -2070,6 +2071,36 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     // Core features
     if cfg!(feature = "nonapi") {
         features.push("nonapi");
+    }
+
+    // Codegen selectors + diagnostics (denylisted in tools/detect-features.R;
+    // only the scheduled feature-legs CI job builds with these on)
+    if cfg!(feature = "worker-thread") {
+        features.push("worker-thread");
+    }
+    if cfg!(feature = "worker-default") {
+        features.push("worker-default");
+    }
+    if cfg!(feature = "strict-default") {
+        features.push("strict-default");
+    }
+    if cfg!(feature = "coerce-default") {
+        features.push("coerce-default");
+    }
+    if cfg!(feature = "r6-default") {
+        features.push("r6-default");
+    }
+    if cfg!(feature = "s7-default") {
+        features.push("s7-default");
+    }
+    if cfg!(feature = "growth-debug") {
+        features.push("growth-debug");
+    }
+    if cfg!(feature = "macro-coverage") {
+        features.push("macro-coverage");
+    }
+    if cfg!(feature = "refcount-fast-hash") {
+        features.push("refcount-fast-hash");
     }
 
     // Optional crate features
