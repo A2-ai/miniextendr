@@ -386,6 +386,56 @@ jobs:
           fi
 
   # ===========================================================================
+  # Rust tests (cargo test) — runs independently of R CMD check
+  # ===========================================================================
+  rust-tests:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+
+      # Unlike rust-lint's dummy R_HOME, tests need a real R: miniextendr-api's
+      # integration tests link against libR and boot an embedded R at runtime
+      # (miniextendr-engine resolves R_HOME via `R RHOME` on PATH).
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-tests
+          cache-on-failure: true
+
+      - name: Put libR on LD_LIBRARY_PATH
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> "$GITHUB_ENV"
+
+      - name: Tests (root workspace)
+        run: cargo test --workspace --locked
+
+      # cargo-revendor is a standalone workspace excluded from the root
+      # workspace, so the `--workspace` step above never reaches it (#778).
+      - name: Tests (cargo-revendor)
+        run: cargo test --manifest-path cargo-revendor/Cargo.toml --locked
+
+  # ===========================================================================
   # R Package: R CMD check on Linux
   # ===========================================================================
   r-check-linux:
@@ -459,15 +509,6 @@ jobs:
       # and re-fetch the framework from git@main (latch leak, #441 / #865).
       - name: Set up cargo-revendor and vendor
         uses: ./.github/actions/setup-vendor
-
-      # NOTE: Cargo tests are disabled due to stack overflow issues on Linux CI.
-      # The R package functionality is already tested via R CMD check below.
-      # To re-enable, uncomment and fix the stack overflow issue.
-      # - name: Tests (default features)
-      #   id: cargo_tests
-      #   if: matrix.r == 'release'
-      #   continue-on-error: true
-      #   run: cargo test --workspace --locked --lib
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -1316,6 +1357,7 @@ jobs:
       - version-check
       - sync-checks
       - rust-lint
+      - rust-tests
       - changes
       - r-check-linux
       # - r-check-macos   # non-gating: runs only on workflow_dispatch + weekly cron, see #95
@@ -1336,6 +1378,7 @@ jobs:
             "${{ needs.version-check.result }}"
             "${{ needs.sync-checks.result }}"
             "${{ needs.rust-lint.result }}"
+            "${{ needs.rust-tests.result }}"
             "${{ needs.changes.result }}"
             "${{ needs.r-check-linux.result }}"
             # "${{ needs.r-check-macos.result }}"   # non-gating, see #95
