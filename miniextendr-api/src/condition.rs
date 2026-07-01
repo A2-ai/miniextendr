@@ -120,10 +120,11 @@
 //! # [1] 150   0 100
 //! ```
 //!
-//! Supported `data` value types (v1): scalars and `Vec`s of `i32`, `f64`,
-//! `bool`, `String` (see [`ConditionDataValue`]). The payload is built as a
-//! Send-safe owned value at the call site and materialised as R objects on
-//! the main thread — so `data =` works from worker-thread code too.
+//! Supported `data` value types: scalars and `Vec`s of `i32`, `f64`, `bool`,
+//! `String` (anything with `RValue: From<_>`); for arbitrary R values build an
+//! [`RValue`](crate::RValue) directly. The payload is built as a Send-safe owned
+//! value at the call site and materialised as R objects on the main thread — so
+//! `data =` works from worker-thread code too.
 //!
 //! # `AsRError`
 //!
@@ -137,135 +138,23 @@
 //! }
 //! ```
 
-// region: ConditionDataValue — Send-safe owned condition-data payload
-
-/// A single condition-data field value.
-///
-/// This is the Send-safe owned representation of a value attached to a
-/// condition via the macros' `data = ...` form. It exists because the
-/// condition payload travels through `std::panic::panic_any` (which requires
-/// `Send`) and the macro may fire on the worker thread, where a live `SEXP`
-/// would be illegal to carry. The actual R object is materialised lazily in
-/// [`crate::error_value::make_rust_condition_value`], which always runs on R's
-/// main thread.
-///
-/// # Supported value types (v1)
-///
-/// Scalars and homogeneous vectors of `i32`, `f64`, `bool`, and `String`:
-///
-/// | Rust value passed to `data = (..)` | R element type |
-/// |---|---|
-/// | `i32` | `integer(1)` |
-/// | `f64` | `double(1)` |
-/// | `bool` | `logical(1)` |
-/// | `&str` / `String` | `character(1)` |
-/// | `Vec<i32>` | `integer(n)` |
-/// | `Vec<f64>` | `double(n)` |
-/// | `Vec<bool>` | `logical(n)` |
-/// | `Vec<String>` | `character(n)` |
-///
-/// Anything outside this set is not supported in v1 — stringify it at the
-/// call site (e.g. `format!("{x:?}")`) or attach the scalar fields you need
-/// individually. Richer / arbitrary `IntoR` payloads across the thread
-/// boundary are tracked as a follow-up; see the macro docs.
-///
-/// Users normally do not name this type — the `From` impls let the macros
-/// accept the bare Rust value (`data = ("count", 7i32)`). It is `#[doc(hidden)]`
-/// on the enum variants for that reason but the type itself is public so the
-/// macro expansion can reference it.
-#[doc(hidden)]
-#[derive(Debug, Clone)]
-pub enum ConditionDataValue {
-    Int(i32),
-    Real(f64),
-    Bool(bool),
-    Str(String),
-    IntVec(Vec<i32>),
-    RealVec(Vec<f64>),
-    BoolVec(Vec<bool>),
-    StrVec(Vec<String>),
-}
-
-impl ConditionDataValue {
-    /// Materialise this value as an R SEXP.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from R's main thread (delegates to `IntoR`). The
-    /// returned SEXP is unprotected — the caller must protect it before the
-    /// next allocation.
-    pub fn into_sexp(self) -> crate::SEXP {
-        use crate::IntoR;
-        match self {
-            ConditionDataValue::Int(v) => v.into_sexp(),
-            ConditionDataValue::Real(v) => v.into_sexp(),
-            ConditionDataValue::Bool(v) => v.into_sexp(),
-            ConditionDataValue::Str(v) => v.into_sexp(),
-            ConditionDataValue::IntVec(v) => v.into_sexp(),
-            ConditionDataValue::RealVec(v) => v.into_sexp(),
-            ConditionDataValue::BoolVec(v) => v.into_sexp(),
-            ConditionDataValue::StrVec(v) => v.into_sexp(),
-        }
-    }
-}
-
-impl From<i32> for ConditionDataValue {
-    fn from(v: i32) -> Self {
-        ConditionDataValue::Int(v)
-    }
-}
-impl From<f64> for ConditionDataValue {
-    fn from(v: f64) -> Self {
-        ConditionDataValue::Real(v)
-    }
-}
-impl From<bool> for ConditionDataValue {
-    fn from(v: bool) -> Self {
-        ConditionDataValue::Bool(v)
-    }
-}
-impl From<String> for ConditionDataValue {
-    fn from(v: String) -> Self {
-        ConditionDataValue::Str(v)
-    }
-}
-impl From<&str> for ConditionDataValue {
-    fn from(v: &str) -> Self {
-        ConditionDataValue::Str(v.to_string())
-    }
-}
-impl From<Vec<i32>> for ConditionDataValue {
-    fn from(v: Vec<i32>) -> Self {
-        ConditionDataValue::IntVec(v)
-    }
-}
-impl From<Vec<f64>> for ConditionDataValue {
-    fn from(v: Vec<f64>) -> Self {
-        ConditionDataValue::RealVec(v)
-    }
-}
-impl From<Vec<bool>> for ConditionDataValue {
-    fn from(v: Vec<bool>) -> Self {
-        ConditionDataValue::BoolVec(v)
-    }
-}
-impl From<Vec<String>> for ConditionDataValue {
-    fn from(v: Vec<String>) -> Self {
-        ConditionDataValue::StrVec(v)
-    }
-}
-impl From<Vec<&str>> for ConditionDataValue {
-    fn from(v: Vec<&str>) -> Self {
-        ConditionDataValue::StrVec(v.into_iter().map(|s| s.to_string()).collect())
-    }
-}
+// region: ConditionData — Send-safe owned condition-data payload
 
 /// Named condition-data payload: an ordered list of `(name, value)` pairs.
 ///
 /// Produced by the macros' `data = ...` form and consumed by
-/// [`crate::error_value::make_rust_condition_value`]. Send-safe by
-/// construction (every field is a [`ConditionDataValue`]).
-pub type ConditionData = Vec<(String, ConditionDataValue)>;
+/// [`crate::error_value::make_rust_condition_value`]. Each value is an
+/// [`RValue`](crate::RValue) — an owned, `Send`, R-native value tree. Send-safe
+/// by construction (no live `SEXP`), so the payload can travel through
+/// `panic_any` and cross the worker→main thread boundary; the R objects are
+/// materialised on the main thread at the unwind boundary.
+///
+/// The macros accept any value with `RValue: From<_>` (scalars and `Vec`s of
+/// `i32` / `f64` / `bool` / `String` / `&str`); a scalar `7i32` becomes
+/// `integer(1)` and a `Vec<i32>` becomes `integer(n)`. For arbitrary R values
+/// (nested lists, complex, raw, NA-bearing) build an [`RValue`](crate::RValue)
+/// directly.
+pub type ConditionData = Vec<(String, crate::RValue)>;
 
 // endregion
 
@@ -319,15 +208,15 @@ pub enum RCondition {
 /// - a single pair: `("name", value)`
 /// - a bracketed list of pairs: `[("a", v1), ("b", v2)]`
 ///
-/// Each `value` is converted via `ConditionDataValue::from`, so any type with
-/// a `From` impl (the v1 scalar/vector set) works without ceremony.
+/// Each `value` is converted via `RValue::from`, so any type with an `RValue`
+/// `From` impl (the scalar/vector set) works without ceremony.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_condition_data {
     (($name:expr, $value:expr) $(,)?) => {
         ::std::option::Option::Some(::std::vec![(
             ($name).to_string(),
-            $crate::condition::ConditionDataValue::from($value),
+            $crate::RValue::from($value),
         )])
     };
     ([ $(($name:expr, $value:expr)),* $(,)? ]) => {
@@ -335,7 +224,7 @@ macro_rules! __mx_condition_data {
             $(
                 (
                     ($name).to_string(),
-                    $crate::condition::ConditionDataValue::from($value),
+                    $crate::RValue::from($value),
                 ),
             )*
         ])
@@ -376,14 +265,12 @@ macro_rules! __mx_condition_data {
 /// Argument order is fixed: `class = ...` (optional), then `data = ...`
 /// (optional), then the format message.
 ///
-/// **Supported value types (v1)**: scalars and `Vec`s of `i32`, `f64`, `bool`,
-/// and `String` (plus `&str` / `Vec<&str>`, converted to owned). The payload
-/// must be `Send` — it travels through `panic_any` and may cross the
-/// worker→main thread boundary, so live `SEXP`s cannot ride along; the R
-/// objects are materialised on the main thread at the unwind boundary.
-/// Anything richer: stringify at the call site (`format!("{x:?}")`) or attach
-/// the individual scalar fields you need. See
-/// [`crate::condition::ConditionDataValue`] for the full conversion table.
+/// **Supported value types**: scalars and `Vec`s of `i32`, `f64`, `bool`, and
+/// `String` (plus `&str` / `Vec<&str>`, converted to owned). The payload must be
+/// `Send` — it travels through `panic_any` and may cross the worker→main thread
+/// boundary, so live `SEXP`s cannot ride along; the R objects are materialised on
+/// the main thread at the unwind boundary. For arbitrary R values (nested lists,
+/// complex, raw, NA-bearing) build an [`RValue`](crate::RValue) directly.
 ///
 /// # See also
 ///
@@ -691,6 +578,7 @@ impl RCondition {
     /// Must be called from R's main thread.
     pub unsafe fn from_tagged_sexp(sexp: crate::SEXP) -> Option<Self> {
         use crate::SexpExt;
+        use crate::from_r::TryFromSexp;
 
         // Use SexpExt::inherits_class — wraps Rf_inherits, already main-thread.
         if !sexp.inherits_class(c"rust_condition_value") {
@@ -755,30 +643,21 @@ impl RCondition {
 
         // Slot [4] is the optional named-list condition data, present when `len >= 5`.
         //
-        // We reverse-map the SEXP types back into `ConditionData` so that structured
-        // fields survive the cross-package trait-ABI re-panic path
-        // (`repanic_if_rust_error`). The consumer's outer `with_r_unwind_protect`
-        // guard rebuilds the tagged SEXP from the reconstructed `RCondition`, which
-        // now carries the data — so `e$field_name` is accessible in R handlers even
-        // when the error crossed a package boundary.
+        // Each field value is decoded through the single SEXP→owned-tree walker,
+        // [`RValue::try_from_sexp`], so structured fields survive the cross-package
+        // trait-ABI re-panic path (`repanic_if_rust_error`): the consumer's outer
+        // `with_r_unwind_protect` guard rebuilds the tagged SEXP from the
+        // reconstructed `RCondition`, which now carries the data — so `e$field_name`
+        // is accessible in R handlers even when the error crossed a package boundary.
         //
-        // Type mapping (SEXPTYPE → ConditionDataValue):
-        //   INTSXP  len=1  → Int(v)           (drop if NA_integer_)
-        //   INTSXP  len>1  → IntVec(v)         (drop entire field if any element is NA_integer_)
-        //   REALSXP len=1  → Real(v)           (drop if NA_real_)
-        //   REALSXP len>1  → RealVec(v)        (drop entire field if any element is NA_real_)
-        //   LGLSXP  len=1  → Bool(v)           (drop if NA_logical_)
-        //   LGLSXP  len>1  → BoolVec(v)        (drop entire field if any element is NA_logical_)
-        //   STRSXP  len=1  → Str(v)            (drop if NA_character_)
-        //   STRSXP  len>1  → StrVec(v)         (drop entire field if any element is NA_character_)
-        //   other SEXPTYPE  → drop the field   (lossy but safe — preserves message/class/kind)
+        // `RValue` is NA-aware (logical/integer/character carry `None`; double
+        // carries the `NA_REAL` bit), so NA-bearing fields now round-trip faithfully
+        // rather than being dropped. Fields whose name is missing/empty, or whose
+        // value is not R data (closures, environments, …, which `try_from_sexp`
+        // rejects) are dropped — safe degradation that preserves message/class/kind.
         //
-        // NA handling (v1): fields containing NA values are dropped rather than
-        // emitted as bogus Rust values. Full NA fidelity via `Option`-bearing
-        // `ConditionDataValue` variants is deferred to a follow-up PR.
-        //
-        // All reads here are non-allocating copies into owned Rust values, so
-        // no new SEXPs are created and the existing `_guard` OwnedProtect suffices.
+        // All reads here are non-allocating copies into owned Rust values, so no new
+        // SEXPs are created and the existing `_guard` OwnedProtect suffices.
         let data: Option<ConditionData> = if len >= 5 {
             let data_sexp = sexp.vector_elt(4);
             if data_sexp.is_nil() || !data_sexp.is_list() {
@@ -787,138 +666,18 @@ impl RCondition {
                 let data_len = data_sexp.len();
                 let names_sexp = data_sexp.get_names();
                 let mut fields: ConditionData = Vec::with_capacity(data_len);
-                for i in 0..data_len {
+                for i in 0..data_len as isize {
                     // Read the field name from the names attribute. If missing/empty, skip.
-                    let name: String = if names_sexp.is_nil() {
+                    let name: String = if names_sexp.is_nil() || !names_sexp.is_character() {
                         continue;
-                    } else if names_sexp.is_character() {
-                        match names_sexp.string_elt_str(i as isize) {
+                    } else {
+                        match names_sexp.string_elt_str(i) {
                             Some(s) if !s.is_empty() => s.to_string(),
                             _ => continue,
                         }
-                    } else {
-                        continue;
                     };
-                    let elt = data_sexp.vector_elt(i as isize);
-                    let elt_len = elt.len();
-                    // Map SEXPTYPE → ConditionDataValue (v1 types only; drop unknown types).
-                    // NA-bearing fields are dropped entirely (see NA handling note above).
-                    let value: Option<ConditionDataValue> = if elt.is_integer() {
-                        if elt_len == 1 {
-                            let v = elt.integer_elt(0);
-                            // i32::MIN == NA_integer_ in R — drop rather than emit bogus value.
-                            if v == i32::MIN {
-                                None
-                            } else {
-                                Some(ConditionDataValue::Int(v))
-                            }
-                        } else {
-                            let mut vec: Vec<i32> = Vec::with_capacity(elt_len);
-                            let mut has_na = false;
-                            for j in 0..elt_len {
-                                let v = elt.integer_elt(j as isize);
-                                if v == i32::MIN {
-                                    has_na = true;
-                                    break;
-                                }
-                                vec.push(v);
-                            }
-                            if has_na {
-                                None
-                            } else {
-                                Some(ConditionDataValue::IntVec(vec))
-                            }
-                        }
-                    } else if elt.is_real() {
-                        use crate::altrep_traits::NA_REAL;
-                        if elt_len == 1 {
-                            let v = elt.real_elt(0);
-                            if v.to_bits() == NA_REAL.to_bits() {
-                                None
-                            } else {
-                                Some(ConditionDataValue::Real(v))
-                            }
-                        } else {
-                            let mut vec: Vec<f64> = Vec::with_capacity(elt_len);
-                            let mut has_na = false;
-                            for j in 0..elt_len {
-                                let v = elt.real_elt(j as isize);
-                                if v.to_bits() == NA_REAL.to_bits() {
-                                    has_na = true;
-                                    break;
-                                }
-                                vec.push(v);
-                            }
-                            if has_na {
-                                None
-                            } else {
-                                Some(ConditionDataValue::RealVec(vec))
-                            }
-                        }
-                    } else if elt.is_logical() {
-                        // NA_logical_ == i32::MIN; 0 = FALSE, 1 = TRUE.
-                        if elt_len == 1 {
-                            let v = elt.logical_elt(0);
-                            if v == i32::MIN {
-                                None
-                            } else {
-                                Some(ConditionDataValue::Bool(v != 0))
-                            }
-                        } else {
-                            let mut vec: Vec<bool> = Vec::with_capacity(elt_len);
-                            let mut has_na = false;
-                            for j in 0..elt_len {
-                                let v = elt.logical_elt(j as isize);
-                                if v == i32::MIN {
-                                    has_na = true;
-                                    break;
-                                }
-                                vec.push(v != 0);
-                            }
-                            if has_na {
-                                None
-                            } else {
-                                Some(ConditionDataValue::BoolVec(vec))
-                            }
-                        }
-                    } else if elt.is_character() {
-                        if elt_len == 1 {
-                            let charsxp = elt.string_elt(0);
-                            if charsxp.is_na_string() {
-                                None
-                            } else {
-                                elt.string_elt_str(0)
-                                    .map(|s| ConditionDataValue::Str(s.to_string()))
-                            }
-                        } else {
-                            let mut vec: Vec<String> = Vec::with_capacity(elt_len);
-                            let mut has_na = false;
-                            for j in 0..elt_len {
-                                let charsxp = elt.string_elt(j as isize);
-                                if charsxp.is_na_string() {
-                                    has_na = true;
-                                    break;
-                                }
-                                match elt.string_elt_str(j as isize) {
-                                    Some(s) => vec.push(s.to_string()),
-                                    None => {
-                                        has_na = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if has_na {
-                                None
-                            } else {
-                                Some(ConditionDataValue::StrVec(vec))
-                            }
-                        }
-                    } else {
-                        // Unknown SEXPTYPE — drop the field (safe degradation).
-                        None
-                    };
-                    if let Some(v) = value {
-                        fields.push((name, v));
+                    if let Ok(value) = crate::RValue::try_from_sexp(data_sexp.vector_elt(i)) {
+                        fields.push((name, value));
                     }
                 }
                 if fields.is_empty() {
@@ -1082,7 +841,8 @@ impl<E: std::error::Error> AsRError<E> {
 
 #[cfg(test)]
 mod condition_macro_tests {
-    use super::{ConditionData, ConditionDataValue, RCondition};
+    use super::{ConditionData, RCondition};
+    use crate::RValue;
 
     /// Catch the `panic_any(RCondition)` raised by a macro invocation and
     /// return the payload. No R runtime needed — the macros panic before any
@@ -1094,12 +854,12 @@ mod condition_macro_tests {
             .expect("payload must be RCondition")
     }
 
-    fn assert_data(data: &Option<ConditionData>, expected: &[(&str, ConditionDataValue)]) {
+    fn assert_data(data: &Option<ConditionData>, expected: &[(&str, RValue)]) {
         let data = data.as_ref().expect("data must be Some");
         assert_eq!(data.len(), expected.len());
         for ((name, value), (exp_name, exp_value)) in data.iter().zip(expected) {
             assert_eq!(name, exp_name);
-            // ConditionDataValue has no PartialEq (f64); compare via Debug.
+            // RValue has no PartialEq (f64); compare via Debug.
             assert_eq!(format!("{value:?}"), format!("{exp_value:?}"));
         }
     }
@@ -1150,7 +910,7 @@ mod condition_macro_tests {
             } => {
                 assert_eq!(message, "v = 41");
                 assert!(class.is_none());
-                assert_data(&data, &[("value", ConditionDataValue::Int(41))]);
+                assert_data(&data, &[("value", RValue::Integer(vec![Some(41)]))]);
             }
             other => panic!("wrong variant: {other:?}"),
         }
@@ -1185,14 +945,14 @@ mod condition_macro_tests {
                 assert_data(
                     &data,
                     &[
-                        ("value", ConditionDataValue::Real(1.5)),
-                        ("code", ConditionDataValue::Int(7)),
-                        ("label", ConditionDataValue::Str("lhs".into())),
-                        ("fatal", ConditionDataValue::Bool(false)),
-                        ("ints", ConditionDataValue::IntVec(vec![1, 2])),
-                        ("reals", ConditionDataValue::RealVec(vec![0.5])),
-                        ("flags", ConditionDataValue::BoolVec(vec![true])),
-                        ("labels", ConditionDataValue::StrVec(vec!["a".into()])),
+                        ("value", RValue::Double(vec![1.5])),
+                        ("code", RValue::Integer(vec![Some(7)])),
+                        ("label", RValue::Character(vec![Some("lhs".into())])),
+                        ("fatal", RValue::Logical(vec![Some(false)])),
+                        ("ints", RValue::Integer(vec![Some(1), Some(2)])),
+                        ("reals", RValue::Double(vec![0.5])),
+                        ("flags", RValue::Logical(vec![Some(true)])),
+                        ("labels", RValue::Character(vec![Some("a".into())])),
                     ],
                 );
             }
@@ -1211,7 +971,7 @@ mod condition_macro_tests {
             } => {
                 assert_eq!(message, "dropped");
                 assert_eq!(class.as_deref(), Some("trunc"));
-                assert_data(&data, &[("dropped", ConditionDataValue::Int(3))]);
+                assert_data(&data, &[("dropped", RValue::Integer(vec![Some(3)]))]);
             }
             other => panic!("wrong variant: {other:?}"),
         }
@@ -1223,7 +983,7 @@ mod condition_macro_tests {
         match cond {
             RCondition::Message { message, data } => {
                 assert_eq!(message, "step 2");
-                assert_data(&data, &[("step", ConditionDataValue::Int(2))]);
+                assert_data(&data, &[("step", RValue::Integer(vec![Some(2)]))]);
             }
             other => panic!("wrong variant: {other:?}"),
         }
@@ -1241,7 +1001,7 @@ mod condition_macro_tests {
             } => {
                 assert_eq!(message, "processed 10");
                 assert_eq!(class.as_deref(), Some("progress"));
-                assert_data(&data, &[("n", ConditionDataValue::Int(10))]);
+                assert_data(&data, &[("n", RValue::Integer(vec![Some(10)]))]);
             }
             other => panic!("wrong variant: {other:?}"),
         }
@@ -1255,8 +1015,8 @@ mod condition_macro_tests {
                 assert_data(
                     &data,
                     &[
-                        ("a", ConditionDataValue::Int(1)),
-                        ("b", ConditionDataValue::Int(2)),
+                        ("a", RValue::Integer(vec![Some(1)])),
+                        ("b", RValue::Integer(vec![Some(2)])),
                     ],
                 );
             }

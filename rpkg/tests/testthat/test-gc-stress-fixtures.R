@@ -78,3 +78,31 @@ test_that("gc_stress_str_borrow keeps zero-copy &str views intact under gctortur
 })
 
 # endregion
+
+# region: RValue recursive List round-trip (#1050) ----------------------------
+
+test_that("gc_stress_rvalue_roundtrip survives gctorture", {
+  # RValue::List::into_sexp builds a VECSXP rooting each recursively-built child
+  # before the next allocates, then RValue::try_from_sexp decodes it back. A
+  # collected child would surface as a wrong/garbage slot (asserted Rust-side).
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  ok <- 0L
+  fail <- character(0L)
+  for (i in seq_len(20L)) {
+    res <- tryCatch(
+      { gc_stress_rvalue_roundtrip(); "ok" },
+      error = function(e) conditionMessage(e)
+    )
+    if (identical(res, "ok")) {
+      ok <- ok + 1L
+    } else {
+      fail <- c(fail, sprintf("iteration %d: %s", i, res))
+    }
+  }
+
+  expect_equal(ok, 20L, info = paste("failures:", paste(fail, collapse = "; ")))
+})
+
+# endregion
