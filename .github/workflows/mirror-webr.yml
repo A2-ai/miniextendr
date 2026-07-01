@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read pinned digest from Dockerfile.webr
         id: pin
@@ -85,7 +85,7 @@ jobs:
           echo "Short tag:        $short12"
 
       - name: Install crane
-        uses: imjasonh/setup-crane@v0.4
+        uses: imjasonh/setup-crane@v0.7
 
       - name: Log in to GHCR
         run: |

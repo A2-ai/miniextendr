@@ -74,6 +74,7 @@ unsafe extern "C" {
     static R_SignalHandlers: std::cell::UnsafeCell<c_int>;
     static R_CStackStart: usize;
     static R_CStackDir: c_int;
+    static mut R_CStackLimit: usize;
 }
 
 /// Write to R's global `R_Interactive` flag.
@@ -241,6 +242,21 @@ impl REngineBuilder {
             // `Rf_initEmbeddedR()` order (but respecting our builder flags).
             set_r_interactive(if self.interactive { 1 } else { 0 });
             set_r_signal_handlers(if self.signal_handlers { 1 } else { 0 });
+
+            // Disable R's C-stack overflow check before `setup_Rmainloop()`
+            // evaluates any R code. `Rf_initialize_R` calibrates
+            // `R_CStackStart` for the *process* main thread (glibc uses
+            // `__libc_stack_end`), so when R is initialized on any other
+            // thread — as the test harness's dedicated `r-test-main` thread
+            // does — the computed usage is garbage and R dies with
+            // "C stack usage <huge> is too close to the limit" during
+            // startup evaluation. macOS calibrates per-thread
+            // (`pthread_get_stackaddr_np`), which is why this only bites on
+            // Linux. Disabling the check (limit = -1, per Writing R
+            // Extensions §8) is standard embedded-R-on-a-thread practice;
+            // the OS guard page still catches real overflows.
+            R_CStackLimit = usize::MAX;
+
             setup_Rmainloop();
 
             // Note: We do NOT register an atexit handler for Rf_endEmbeddedR.

@@ -38,6 +38,11 @@ fn ensure_r_home_env_sets_env_with_fake_r() {
         perms.set_mode(0o755);
         fs::set_permissions(&fake_r_path, perms).unwrap();
     }
+    // Close the write handle before exec: Linux refuses to execute a file
+    // that is open for writing (ETXTBSY), and glibc's posix_spawnp aborts
+    // the whole PATH search on that errno. macOS doesn't enforce ETXTBSY,
+    // which is why this only ever failed on Linux.
+    drop(script);
 
     // Prepend the temp dir to PATH so Command::new("R") finds our stub.
     let new_path = format!("{}:{}", tmp.path().display(), original_path);

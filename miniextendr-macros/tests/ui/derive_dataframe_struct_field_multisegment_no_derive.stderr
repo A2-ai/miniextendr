@@ -12,14 +12,14 @@ warning: unexpected `cfg` condition value: `rayon`
    = note: `#[warn(unexpected_cfgs)]` on by default
    = note: this warning originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0599]: no function or associated item named `to_dataframe` found for struct `NotADataFrameRow` in the current scope
+error[E0599]: no associated function or constant named `to_dataframe` found for struct `NotADataFrameRow` in the current scope
   --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:20:10
    |
 17 |     pub struct NotADataFrameRow;
-   |     --------------------------- function or associated item `to_dataframe` not found for this struct
+   |     --------------------------- associated function or constant `to_dataframe` not found for this struct
 ...
 20 | #[derive(DataFrameRow)]
-   |          ^^^^^^^^^^^^ function or associated item not found in `NotADataFrameRow`
+   |          ^^^^^^^^^^^^ associated function or constant not found in `NotADataFrameRow`
    |
    = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
 
