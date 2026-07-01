@@ -311,16 +311,32 @@ jobs:
         # `full-codegen` aggregate (#677) so it can't drift from the Cargo.toml
         # definition — adding a new `*-default` / nonapi / connections selector
         # there updates CI automatically. `full-codegen` picks the `r6-default`
-        # side of the r6/s7 mutex; `s7-default` is linted by clippy_default's
-        # rpkg path. We still can't use `--features full` directly: it adds
-        # heavy deps (arrow, datafusion, log) we don't need here. So we pass
-        # `full-codegen` plus a curated integration list (the lighter crates) —
-        # the latter is the only part still hand-maintained, and CI signal
-        # matches what rpkg actually enables.
+        # side of the r6/s7 mutex; the `s7-default` side gets its own step
+        # below (nothing else compiles it — the `--workspace` steps never
+        # reach rpkg/src/rust, a standalone workspace, and rpkg's
+        # tools/detect-features.R denylists `s7-default` anyway). We still
+        # can't use `--features full` directly: it adds heavy deps (arrow,
+        # datafusion, log) we don't need here. So we pass `full-codegen` plus
+        # a curated integration list (the lighter crates) — the latter is the
+        # only part still hand-maintained, and CI signal matches what rpkg
+        # actually enables.
         run: >-
           cargo clippy --workspace --all-targets --locked
           --features full-codegen,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,jiff,blake3,md5,globset,zstd
           -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_all.log"
+        shell: bash
+
+      - name: Clippy (all features, s7-default)
+        id: clippy_all_s7
+        continue-on-error: true
+        # Same integration list as clippy_all with the r6/s7 mutex flipped via
+        # the `full-codegen-s7` aggregate — the only compile gate anywhere for
+        # the s7 side of the mutex. Keep the integration list identical to the
+        # step above; only the aggregate differs.
+        run: >-
+          cargo clippy --workspace --all-targets --locked
+          --features full-codegen-s7,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,jiff,blake3,md5,globset,zstd
+          -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_all_s7.log"
         shell: bash
 
       # cargo-revendor is a standalone workspace excluded from the root
@@ -350,12 +366,14 @@ jobs:
           rustfmt="${{ steps.rustfmt.outcome }}"
           clippy_default="${{ steps.clippy_default.outcome }}"
           clippy_all="${{ steps.clippy_all.outcome }}"
+          clippy_all_s7="${{ steps.clippy_all_s7.outcome }}"
           clippy_revendor="${{ steps.clippy_revendor.outcome }}"
           doc_revendor="${{ steps.doc_revendor.outcome }}"
 
           echo "rustfmt:          $rustfmt"
           echo "clippy_default:   $clippy_default"
           echo "clippy_all:       $clippy_all"
+          echo "clippy_all_s7:    $clippy_all_s7"
           echo "clippy_revendor:  $clippy_revendor"
           echo "doc_revendor:     $doc_revendor"
           echo
@@ -377,6 +395,7 @@ jobs:
           dump_failed rustfmt          "$rustfmt"
           dump_failed clippy_default   "$clippy_default"
           dump_failed clippy_all       "$clippy_all"
+          dump_failed clippy_all_s7    "$clippy_all_s7"
           dump_failed clippy_revendor  "$clippy_revendor"
           dump_failed doc_revendor     "$doc_revendor"
 
@@ -437,6 +456,47 @@ jobs:
       # workspace, so the `--workspace` step above never reaches it (#778).
       - name: Tests (cargo-revendor)
         run: cargo test --manifest-path cargo-revendor/Cargo.toml --locked --no-fail-fast
+
+  # ===========================================================================
+  # Feature-combination compile check (scheduled only)
+  # ===========================================================================
+  # Runs `just check-features` so the recipe can't silently rot when a feature
+  # is added/removed (it once carried a deleted feature for months — audit A3).
+  # Weekly-only: the final combo pulls full-integrations (arrow + datafusion),
+  # which is too heavy for a per-PR gate.
+  check-features:
+    name: Feature combos
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event_name == 'schedule'
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same trick as rust-lint: cargo check never links libR, so a dummy
+      # R_HOME satisfies build.rs without installing R.
+      - name: Set dummy R_HOME
+        run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: check-features
+          cache-on-failure: true
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Check feature combinations
+        run: just check-features
 
   # ===========================================================================
   # R Package: R CMD check on Linux
