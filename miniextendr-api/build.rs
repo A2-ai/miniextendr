@@ -109,9 +109,10 @@ fn link_to_r() {
     println!("cargo:rustc-link-search=native={}", r_libdir);
     println!("cargo:rustc-link-lib=R");
 
-    // Mirror `R CMD LINK` behavior: add runtime search path for libR.
-    // Only emit rpath for non-library targets (bins/tests/benches/examples).
-    if target_os != "windows" && should_emit_rpath() {
+    // Mirror `R CMD LINK` behavior: add a runtime search path for libR so this
+    // crate's own test/bin/example binaries find it. No-op for the R-package
+    // staticlib build (staticlibs don't link) and skipped on Windows (no rpath).
+    if target_os != "windows" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", r_libdir);
     }
 }
@@ -138,22 +139,4 @@ fn r_libdir(r_home: &str, target_os: &str) -> String {
     } else {
         format!("{}/lib{}", r_home, r_arch)
     }
-}
-
-fn should_emit_rpath() -> bool {
-    // These env vars are set for specific target types.
-    if env::var_os("CARGO_BIN_NAME").is_some()
-        || env::var_os("CARGO_TEST_NAME").is_some()
-        || env::var_os("CARGO_BENCH_NAME").is_some()
-        || env::var_os("CARGO_EXAMPLE_NAME").is_some()
-    {
-        return true;
-    }
-
-    // Fallback to crate-type check if available.
-    if let Ok(crate_types) = env::var("CARGO_CRATE_TYPE") {
-        return crate_types.split(',').any(|t| t.trim() == "bin");
-    }
-
-    false
 }
