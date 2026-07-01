@@ -1023,6 +1023,133 @@ jobs:
           fi
 
   # ===========================================================================
+  # Feature runtime legs (scheduled only)
+  # ===========================================================================
+  # rpkg's tools/detect-features.R denylists the codegen selectors
+  # (worker-default, strict-default, coerce-default, r6-default, s7-default),
+  # nonapi, indicatif, growth-debug, and refcount-fast-hash, so no PR-gating
+  # job ever builds — let alone runs — the R wrappers those features generate
+  # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
+  # features on top of the auto-detected base set and runs testthat against it.
+  #
+  # The extras and worker-default legs run the full suite (their features are
+  # additive/transparent). The r6-default and s7-default legs flip codegen
+  # semantics for every bare #[miniextendr] impl block and coerced parameter
+  # in the package, so the pre-existing suite fails by design under them —
+  # they run only the feature-default fixture tests
+  # (tests/testthat/test-feature-defaults.R). #1113 tracks broadening them.
+  #
+  # Weekly-only + workflow_dispatch: four extra full rpkg builds are too heavy
+  # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
+  # via the job summary (same pattern as gctorture-nightly.yml).
+  feature-legs:
+    name: Feature runtime leg / ${{ matrix.leg }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: extras
+            features: nonapi,indicatif,growth-debug,refcount-fast-hash
+            filter: ""
+          - leg: worker-default
+            features: worker-default
+            filter: ""
+          # strict-default rides with r6, coerce-default with s7: under
+          # coerce-default, lossy-int params convert via R's integer native
+          # type, which masks the strict/no_strict divergence the fixtures
+          # assert (#1112) — the two must stay on separate rows.
+          - leg: r6-default
+            features: r6-default,strict-default
+            filter: feature-defaults
+          - leg: s7-default
+            features: s7-default,coerce-default
+            filter: feature-defaults
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::testthat
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: feature-leg-${{ matrix.leg }}
+          cache-on-failure: true
+
+      # configure.ac skips feature auto-detection when CARGO_FEATURES is set,
+      # so the base set is composed here: what detect-features.R would have
+      # picked on this runner, plus the leg's denylisted features. Rust must
+      # already be on PATH (the arrow/datafusion rules probe rustc --version).
+      - name: Compose CARGO_FEATURES (detected base + leg features)
+        run: |
+          base="$(Rscript rpkg/tools/detect-features.R)"
+          if [ -z "$base" ]; then
+            echo "detect-features.R returned an empty base feature set" >&2
+            exit 1
+          fi
+          echo "CARGO_FEATURES=${base},${{ matrix.features }}" >> "$GITHUB_ENV"
+          echo "CARGO_FEATURES = ${base},${{ matrix.features }}"
+
+      - name: Install package (source mode)
+        # Same source-mode install as r-tests: no vendor tarball, configure
+        # picks up CARGO_FEATURES from the environment.
+        run: R CMD INSTALL rpkg
+
+      - name: Run tests
+        working-directory: rpkg
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.filter }}" ]; then
+            Rscript -e 'testthat::test_local(filter = "${{ matrix.filter }}")'
+          else
+            Rscript -e 'testthat::test_local()'
+          fi
+
+      - name: Surface failure in job summary
+        if: failure()
+        run: |
+          {
+            echo "## Feature runtime leg '${{ matrix.leg }}' FAILED"
+            echo ""
+            echo "CARGO_FEATURES: \`$CARGO_FEATURES\`"
+            echo ""
+            echo "This scheduled leg is the only runtime coverage for its"
+            echo "denylisted features. Reproduce locally with:"
+            echo ""
+            echo '```'
+            echo "CARGO_FEATURES=\"$CARGO_FEATURES\" R CMD INSTALL rpkg"
+            echo "cd rpkg && Rscript -e 'testthat::test_local(filter = \"${{ matrix.filter }}\")'  # empty filter = full suite"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
   # Cross-package trait ABI tests
   # ===========================================================================
   cross-package-tests:
