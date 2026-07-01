@@ -260,3 +260,65 @@ test_that("conditions without data still have NULL extra fields", {
 })
 
 # endregion
+
+# region: data = ... richer value types + keyed builder (#995)
+
+test_that("Option fields round-trip: present is the value, missing is NA", {
+  e_present <- tryCatch(
+    demo_error_data_option(7L, TRUE),
+    option_error = function(e) e
+  )
+  expect_identical(e_present$present, 7L)
+  # has_value = TRUE so `missing` carries the value, not NA
+  expect_identical(e_present$missing, 7L)
+
+  e_missing <- tryCatch(
+    demo_error_data_option(7L, FALSE),
+    option_error = function(e) e
+  )
+  expect_identical(e_missing$present, 7L)
+  # The field is *present* on the condition but its value is NA_integer_.
+  expect_true("missing" %in% names(e_missing))
+  expect_identical(e_missing$missing, NA_integer_)
+})
+
+test_that("Vec<Option<i32>> field carries embedded NA elements", {
+  e <- tryCatch(demo_error_data_na_vector(), na_vector_error = function(e) e)
+  expect_identical(e$codes, c(1L, NA_integer_, 3L))
+})
+
+test_that("i64 field within i32 range materialises as integer", {
+  e <- tryCatch(demo_error_data_long(42), long_error = function(e) e)
+  expect_identical(e$big, 42L)
+})
+
+test_that("i64 field beyond i32 range materialises as double", {
+  e <- tryCatch(demo_error_data_long(5e9), long_error = function(e) e)
+  expect_identical(e$big, 5e9)
+  expect_type(e$big, "double")
+})
+
+test_that("nested named-list field is an R list readable as e$details$min", {
+  e <- tryCatch(demo_error_data_nested(0L, 100L), nested_error = function(e) e)
+  expect_true(is.list(e$details))
+  expect_identical(e$details$min, 0L)
+  expect_identical(e$details$max, 100L)
+})
+
+test_that("Debug-stringify fallback rides along as a character scalar", {
+  e <- tryCatch(demo_error_data_debug(0L, 100L), debug_error = function(e) e)
+  expect_identical(e$range, "0..=100")
+})
+
+test_that("keyed builder sugar produces the same fields as a pair list", {
+  e <- tryCatch(demo_error_data_keyed(42L, 7L), keyed_error = function(e) e)
+  expect_identical(e$value, 42L)
+  expect_identical(e$code, 7L)
+  expect_equal(class(e)[1], "keyed_error")
+})
+
+test_that("gc_stress_condition_data drives the richer payload path without error", {
+  expect_null(gc_stress_condition_data())
+})
+
+# endregion
