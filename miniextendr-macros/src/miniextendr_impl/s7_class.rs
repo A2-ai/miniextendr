@@ -15,13 +15,11 @@ use crate::r_class_formatter::{class_ref_or_verbatim, is_bare_identifier};
 /// Extract the full property documentation from a getter's `doc_tags` for use in
 /// `@prop <name> <doc>` emission.
 ///
-/// After #578, the auto-description path emits:
-/// - `@title <para 1>`
-/// - `@description <para 2>` (if present)
-/// - `@details <para 3+>` (if present)
-///
-/// This helper collects title, description, and details and joins them with
-/// `\n\n` for multi-line `@prop` continuation (supported by roxygen2 8.0.0+).
+/// A getter's leading prose is promoted to `@description` (see
+/// `roxygen::leading_prose_from_attrs`); a getter's `@title` would only ever be a
+/// hand-written explicit tag. This helper collects any `@title`, `@description`, and
+/// `@details` present and joins them with `\n\n` for multi-line `@prop` continuation
+/// (supported by roxygen2 8.0.0+).
 fn extract_prop_doc_from_tags(doc_tags: &[String]) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
 

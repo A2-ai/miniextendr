@@ -28,6 +28,10 @@ S7PropInner_label(self, ...)
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
+Inner S7 class referenced by a property on \code{S7PropOuter}.
+
+Returns the inner class label.
+
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
