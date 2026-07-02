@@ -172,8 +172,7 @@ impl SeededNormal {
     /// @param sd Standard deviation (must be finite).
     /// @param seed Integer seed (absolute value is used).
     fn new(mean: f64, sd: f64, seed: i32) -> Self {
-        let dist = miniextendr_api::rand_distr::Normal::new(mean, sd)
-            .expect("sd must be finite");
+        let dist = miniextendr_api::rand_distr::Normal::new(mean, sd).expect("sd must be finite");
         SeededNormal {
             dist,
             rng: RefCell::new(StdRng::seed_from_u64(u64::from(seed.unsigned_abs()))),
