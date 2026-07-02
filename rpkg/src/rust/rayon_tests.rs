@@ -239,3 +239,111 @@ pub fn rayon_num_threads() -> i32 {
 pub fn rayon_in_thread() -> bool {
     miniextendr_api::rayon_bridge::perf::in_rayon_thread()
 }
+
+// region: RParallelIterator / RParallelExtend adapter traits (audit A7)
+
+/// Materialized source for the `RParallelIterator` bridge. The contract the
+/// fixture pins: data is copied out of the SEXP (here by `Vec<f64>` argument
+/// conversion) *before* any parallel iteration — SEXP is not Send, so the
+/// bridge never touches R memory from rayon workers.
+#[cfg(feature = "rayon")]
+struct ParVec {
+    values: Vec<f64>,
+}
+
+#[cfg(feature = "rayon")]
+impl miniextendr_api::rayon_bridge::RParallelIterator for ParVec {
+    type Item = f64;
+
+    fn par_iter(
+        &self,
+    ) -> impl miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator<Item = f64> + '_ {
+        self.values.par_iter().copied()
+    }
+
+    fn par_len(&self) -> i32 {
+        self.values.len() as i32
+    }
+}
+
+/// Aggregations through the `RParallelIterator` trait: returns
+/// `c(par_len, par_sum, par_mean, par_min_f64, par_max_f64)`.
+/// @param x Numeric vector (materialized into Rust before par-iteration).
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_trait_par_stats(x: Vec<f64>) -> Vec<f64> {
+    use miniextendr_api::rayon_bridge::RParallelIterator;
+
+    let pv = ParVec { values: x };
+    vec![
+        f64::from(RParallelIterator::par_len(&pv)),
+        RParallelIterator::par_sum(&pv),
+        RParallelIterator::par_mean(&pv),
+        RParallelIterator::par_min_f64(&pv),
+        RParallelIterator::par_max_f64(&pv),
+    ]
+}
+
+/// Mutex-guarded sink for the `RParallelExtend` bridge (interior mutability —
+/// ExternalPtr-style receivers only get `&self`).
+#[cfg(feature = "rayon")]
+struct ParBuf {
+    data: std::sync::Mutex<Vec<f64>>,
+}
+
+#[cfg(feature = "rayon")]
+impl miniextendr_api::rayon_bridge::RParallelExtend<f64> for ParBuf {
+    fn par_extend(&self, items: Vec<f64>) {
+        let mut guard = self.data.lock().expect("ParBuf mutex poisoned");
+        guard.par_extend(items);
+    }
+
+    fn par_len(&self) -> i32 {
+        self.data.lock().expect("ParBuf mutex poisoned").len() as i32
+    }
+
+    fn par_clear(&self) {
+        self.data.lock().expect("ParBuf mutex poisoned").clear();
+    }
+}
+
+/// Extend a collection through the `RParallelExtend` trait (`par_extend`,
+/// `par_extend_from_slice`, `par_len`, `par_is_empty`, `par_clear`); returns
+/// the sorted combined contents.
+/// @param a Numeric vector fed through par_extend.
+/// @param b Numeric vector fed through par_extend_from_slice.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_trait_par_extend(a: Vec<f64>, b: Vec<f64>) -> Vec<f64> {
+    use miniextendr_api::rayon_bridge::RParallelExtend;
+
+    let buf = ParBuf {
+        data: std::sync::Mutex::new(Vec::new()),
+    };
+    RParallelExtend::par_extend(&buf, a);
+    RParallelExtend::par_extend_from_slice(&buf, &b);
+    let mut out = buf.data.into_inner().expect("ParBuf mutex poisoned");
+    out.sort_by(f64::total_cmp);
+    out
+}
+
+/// `par_clear` / `par_is_empty` through the trait: fill, clear, report
+/// `c(len_before, len_after, is_empty_after)`.
+/// @param a Numeric vector to fill with before clearing.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_trait_par_clear(a: Vec<f64>) -> Vec<i32> {
+    use miniextendr_api::rayon_bridge::RParallelExtend;
+
+    let buf = ParBuf {
+        data: std::sync::Mutex::new(Vec::new()),
+    };
+    RParallelExtend::par_extend(&buf, a);
+    let before = RParallelExtend::par_len(&buf);
+    RParallelExtend::par_clear(&buf);
+    let after = RParallelExtend::par_len(&buf);
+    let empty = i32::from(RParallelExtend::par_is_empty(&buf));
+    vec![before, after, empty]
+}
+
+// endregion

@@ -169,3 +169,58 @@ pub fn tabled_concat_horizontal(left_keys: Vec<String>, right_vals: Vec<String>)
 }
 
 // endregion
+
+// region: table_to_string over a Tabled type (audit A7)
+
+/// Row type with a hand-written `Tabled` impl (avoids depending on the derive
+/// macro's crate-path resolution inside rpkg).
+struct LangRow {
+    name: &'static str,
+    year: i32,
+}
+
+impl miniextendr_api::tabled_impl::Tabled for LangRow {
+    const LENGTH: usize = 2;
+
+    fn fields(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![
+            std::borrow::Cow::Borrowed(self.name),
+            std::borrow::Cow::Owned(self.year.to_string()),
+        ]
+    }
+
+    fn headers() -> Vec<std::borrow::Cow<'static, str>> {
+        vec![
+            std::borrow::Cow::Borrowed("name"),
+            std::borrow::Cow::Borrowed("year"),
+        ]
+    }
+}
+
+/// Render a slice of `Tabled` rows via `table_to_string` (the generic
+/// entry point; the fixtures above only cover `table_from_vecs`/`Builder`).
+#[miniextendr]
+pub fn tabled_to_string_rows() -> String {
+    use miniextendr_api::tabled_impl::table_to_string;
+
+    table_to_string(&[
+        LangRow {
+            name: "rust",
+            year: 2015,
+        },
+        LangRow {
+            name: "r",
+            year: 1993,
+        },
+    ])
+}
+
+/// `table_to_string` over an empty slice (headers only).
+#[miniextendr]
+pub fn tabled_to_string_empty() -> String {
+    use miniextendr_api::tabled_impl::table_to_string;
+
+    table_to_string::<LangRow>(&[])
+}
+
+// endregion

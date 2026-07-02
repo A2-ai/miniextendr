@@ -308,3 +308,39 @@ pub fn gc_stress_scatter_complex() {
 }
 
 // endregion
+
+// region: RawSlice<T> (raw_conversions) — headerless POD bytes in a RAWSXP
+
+/// Produce a `RawSlice<f64>`: the three doubles land as 24 headerless
+/// native-layout bytes in an R raw vector, tagged with the `mx_raw_type`
+/// attribute (audit A7 — `RawSlice` had no exemplar coverage).
+#[cfg(feature = "raw_conversions")]
+#[miniextendr]
+pub fn rawslice_produce() -> miniextendr_api::raw_conversions::RawSlice<f64> {
+    miniextendr_api::raw_conversions::RawSlice(vec![1.0, 2.5, -3.75])
+}
+
+/// Consume a `RawSlice<f64>` from R (validating the type tag) and sum the
+/// elements, exercising `inner`, `len`, and `is_empty`.
+/// @param data Raw vector produced by `rawslice_produce()`.
+#[cfg(feature = "raw_conversions")]
+#[miniextendr]
+pub fn rawslice_sum(data: miniextendr_api::raw_conversions::RawSlice<f64>) -> f64 {
+    if data.is_empty() {
+        return 0.0;
+    }
+    debug_assert_eq!(data.len(), data.inner().len());
+    data.inner().iter().sum()
+}
+
+/// Round-trip a `RawSlice<i32>` through R unchanged.
+/// @param data Raw vector holding native-layout i32 elements.
+#[cfg(feature = "raw_conversions")]
+#[miniextendr]
+pub fn rawslice_roundtrip_i32(
+    data: miniextendr_api::raw_conversions::RawSlice<i32>,
+) -> miniextendr_api::raw_conversions::RawSlice<i32> {
+    data
+}
+
+// endregion

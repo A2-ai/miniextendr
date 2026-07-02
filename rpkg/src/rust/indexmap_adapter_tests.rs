@@ -70,3 +70,29 @@ pub fn indexmap_single() -> IndexMap<String, String> {
     map.insert("only".to_string(), "value".to_string());
     map
 }
+
+// region: RIndexMapOps adapter trait
+
+/// Drive an `IndexMap` through the `RIndexMapOps` adapter trait (audit A7 —
+/// the conversions above call inherent `IndexMap` methods; the trait was
+/// unexercised). Calls are trait-qualified.
+/// @param map Named integer list from R.
+/// @param key Key to probe with `contains_key` / `get_index_of`.
+#[miniextendr]
+pub fn indexmap_ops_via_trait(map: IndexMap<String, i32>, key: &str) -> Vec<String> {
+    use miniextendr_api::indexmap_impl::RIndexMapOps;
+
+    vec![
+        RIndexMapOps::len(&map).to_string(),
+        RIndexMapOps::is_empty(&map).to_string(),
+        RIndexMapOps::keys(&map).join(","),
+        RIndexMapOps::contains_key(&map, key).to_string(),
+        RIndexMapOps::get_index_of(&map, key).to_string(),
+        RIndexMapOps::first(&map).map_or_else(String::new, |(k, v)| format!("{k}={v}")),
+        RIndexMapOps::last(&map).map_or_else(String::new, |(k, v)| format!("{k}={v}")),
+        RIndexMapOps::get_index(&map, 0).map_or_else(String::new, |(k, v)| format!("{k}={v}")),
+        RIndexMapOps::get_key_at(&map, 1).unwrap_or_default(),
+    ]
+}
+
+// endregion

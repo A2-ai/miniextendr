@@ -646,3 +646,63 @@ pub fn serde_r_deserialize_complex(sexp: SEXP) -> String {
 
 // region: Module registration
 // endregion
+
+// region: RSerializeNative / RDeserializeNative traits + AsSerialize (audit A7)
+
+// The fixtures above go through the `to_r` / `from_r` convenience *functions*;
+// these name the blanket traits and the `AsSerialize` IntoR wrapper directly.
+
+/// Serialize through the `RSerializeNative` trait (blanket impl over
+/// `serde::Serialize`).
+#[miniextendr]
+pub fn serde_r_trait_to_r() -> Result<SEXP, String> {
+    use miniextendr_api::serde::RSerializeNative;
+
+    let p = SerdeRPoint { x: 1.5, y: -2.5 };
+    RSerializeNative::to_r(&p)
+}
+
+/// Deserialize through the `RDeserializeNative` trait (blanket impl over
+/// `serde::Deserialize`); returns `x + y` of the decoded point.
+/// @param sexp Named list with numeric `x` and `y` fields.
+#[miniextendr]
+pub fn serde_r_trait_from_r(sexp: SEXP) -> Result<f64, String> {
+    use miniextendr_api::serde::RDeserializeNative;
+
+    let p: SerdeRPoint = RDeserializeNative::from_r(sexp)?;
+    Ok(p.x + p.y)
+}
+
+/// Return a `Serialize` type via the `AsSerialize` IntoR wrapper — the value
+/// arrives in R as `list(x =, y =)` without a hand-written conversion.
+/// @param x X coordinate.
+/// @param y Y coordinate.
+#[miniextendr]
+pub fn serde_r_as_serialize_point(
+    x: f64,
+    y: f64,
+) -> miniextendr_api::serde::AsSerialize<SerdeRPoint> {
+    miniextendr_api::serde::AsSerialize(SerdeRPoint { x, y })
+}
+
+/// `AsSerialize` over a Vec — a list of lists in R. Also exercises
+/// `AsSerialize::new` / `into_inner` / `as_ref`.
+/// @param n Number of points to generate.
+#[miniextendr]
+pub fn serde_r_as_serialize_vec(n: i32) -> miniextendr_api::serde::AsSerialize<Vec<SerdeRPoint>> {
+    use miniextendr_api::serde::AsSerialize;
+
+    let points: Vec<SerdeRPoint> = (0..n.max(0))
+        .map(|i| SerdeRPoint {
+            x: f64::from(i),
+            y: f64::from(i) * 0.5,
+        })
+        .collect();
+    let wrapped = AsSerialize::new(points);
+    let count = wrapped.as_ref().len();
+    let inner = wrapped.into_inner();
+    debug_assert_eq!(count, inner.len());
+    AsSerialize(inner)
+}
+
+// endregion

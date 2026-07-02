@@ -134,3 +134,14 @@ test_that("gc_stress_alloc_wrappers exercises new ProtectScope methods without e
   expect_true(is.integer(result))
   expect_true(result >= 6L, label = "at least 6 wrapper operations performed")
 })
+
+test_that("Protected<'a, T> bundle protects across CHARSXP allocations", {
+  expect_identical(
+    test_protected_strvec_bundle(),
+    c("alpha", NA, "gamma")
+  )
+})
+
+test_that("Protected::from_trusted + into_inner works on pre-protected SEXPs", {
+  expect_identical(test_protected_from_trusted(), c("trusted", NA))
+})

@@ -252,3 +252,30 @@ test_that("rayon handles large parallel workload", {
   sqrt_result <- rayon_parallel_sqrt(x)
   expect_equal(sqrt_result, sqrt(x), tolerance = 1e-14)
 })
+
+# region: RParallelIterator / RParallelExtend adapter traits (audit A7)
+
+test_that("RParallelIterator aggregations work on a materialized source", {
+  res <- rayon_trait_par_stats(c(1, 2, 3, 4))
+  expect_equal(res, c(4, 10, 2.5, 1, 4))
+})
+
+test_that("RParallelIterator handles the empty source", {
+  res <- rayon_trait_par_stats(numeric(0))
+  expect_equal(res[1], 0) # par_len
+  expect_equal(res[2], 0) # par_sum
+  expect_true(is.nan(res[3])) # par_mean of nothing
+  expect_equal(res[4], Inf) # par_min_f64 identity
+  expect_equal(res[5], -Inf) # par_max_f64 identity
+})
+
+test_that("RParallelExtend combines par_extend and par_extend_from_slice", {
+  expect_equal(rayon_trait_par_extend(c(3, 1), c(2)), c(1, 2, 3))
+  expect_equal(rayon_trait_par_extend(numeric(0), numeric(0)), numeric(0))
+})
+
+test_that("RParallelExtend par_clear/par_is_empty reset the collection", {
+  expect_identical(rayon_trait_par_clear(c(1, 2, 3)), c(3L, 0L, 1L))
+})
+
+# endregion

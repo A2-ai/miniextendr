@@ -105,3 +105,76 @@ pub fn json_from_key_values(keys: Vec<String>, values: Vec<i32>) -> String {
 }
 
 // endregion
+
+// region: RDeserialize trait + JsonOptions (audit A7)
+
+/// Parse JSON through the `RDeserialize` adapter trait's `from_json`
+/// (`None` → `NULL`-ish sentinel here) — the fixtures above only exercise the
+/// `RSerialize` side.
+/// @param json JSON string encoding a Point.
+#[miniextendr]
+pub fn json_rdeserialize_from_json(json: &str) -> f64 {
+    use miniextendr_api::serde_impl::RDeserialize;
+
+    match <Point as RDeserialize>::from_json(json) {
+        Some(p) => p.x + p.y,
+        None => f64::NAN,
+    }
+}
+
+/// Parse JSON through `RDeserialize::from_json_result`, surfacing the parse
+/// error text on failure.
+/// @param json JSON string encoding a Point.
+#[miniextendr]
+pub fn json_rdeserialize_from_json_result(json: &str) -> String {
+    use miniextendr_api::serde_impl::RDeserialize;
+
+    match <Point as RDeserialize>::from_json_result(json) {
+        Ok(p) => format!("ok:{}", p.x + p.y),
+        Err(e) => format!("err:{e}"),
+    }
+}
+
+/// Serialize an R object to JSON under `JsonOptions::permissive()` —
+/// NA / NaN / Inf all become `null` instead of erroring.
+/// @param value R object to serialize.
+#[miniextendr]
+pub fn json_options_permissive(value: miniextendr_api::prelude::SEXP) -> Result<String, String> {
+    use miniextendr_api::serde_impl::{JsonOptions, json_from_sexp_with};
+
+    json_from_sexp_with(value, &JsonOptions::permissive())
+        .map(|v| v.to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Serialize an R object to JSON under `JsonOptions::strict()` — special
+/// values produce an `Err` (surfaced to R as a condition when unwrapped).
+/// @param value R object to serialize.
+#[miniextendr]
+pub fn json_options_strict(value: miniextendr_api::prelude::SEXP) -> Result<String, String> {
+    use miniextendr_api::serde_impl::{JsonOptions, json_from_sexp_with};
+
+    json_from_sexp_with(value, &JsonOptions::strict())
+        .map(|v| v.to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Exercise the `JsonOptions` builder methods (`new` + `na`/`nan`/`inf`):
+/// NA serializes as the string `"NA"`, NaN/Inf as `null`.
+/// @param value R object to serialize.
+#[miniextendr]
+pub fn json_options_builder(value: miniextendr_api::prelude::SEXP) -> Result<String, String> {
+    use miniextendr_api::serde_impl::{
+        JsonOptions, NaHandling, SpecialFloatHandling, json_from_sexp_with,
+    };
+
+    let opts = JsonOptions::new()
+        .na(NaHandling::String("NA".into()))
+        .nan(SpecialFloatHandling::Null)
+        .inf(SpecialFloatHandling::Null);
+    json_from_sexp_with(value, &opts)
+        .map(|v| v.to_string())
+        .map_err(|e| e.to_string())
+}
+
+// endregion

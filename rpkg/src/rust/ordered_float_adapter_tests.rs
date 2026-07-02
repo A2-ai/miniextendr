@@ -65,3 +65,47 @@ pub fn ordered_float_sort_special(x: Vec<f64>) -> Vec<f64> {
     ordered.sort();
     ordered.into_iter().map(|of| of.0).collect()
 }
+
+// region: ROrderedFloatOps adapter trait
+
+/// Drive `OrderedFloat<f64>` through the `ROrderedFloatOps` adapter trait
+/// (audit A7 — the fixtures above hit inherent/`FloatCore` methods via Deref;
+/// the trait was unexercised). Calls are trait-qualified.
+/// @param x Numeric scalar.
+#[miniextendr]
+pub fn ordered_float_ops_via_trait(x: f64) -> Vec<f64> {
+    use miniextendr_api::ordered_float_impl::ROrderedFloatOps;
+
+    let v = OrderedFloat(x);
+    vec![
+        ROrderedFloatOps::inner(&v),
+        ROrderedFloatOps::floor(&v),
+        ROrderedFloatOps::ceil(&v),
+        ROrderedFloatOps::round(&v),
+        ROrderedFloatOps::trunc(&v),
+        ROrderedFloatOps::fract(&v),
+        ROrderedFloatOps::abs(&v),
+        ROrderedFloatOps::signum(&v),
+        ROrderedFloatOps::min_with(&v, 0.0),
+        ROrderedFloatOps::max_with(&v, 0.0),
+        ROrderedFloatOps::clamp_to(&v, -1.0, 1.0),
+    ]
+}
+
+/// Predicate methods of `ROrderedFloatOps`, via the trait.
+/// @param x Numeric scalar.
+#[miniextendr]
+pub fn ordered_float_ops_predicates(x: f64) -> Vec<bool> {
+    use miniextendr_api::ordered_float_impl::ROrderedFloatOps;
+
+    let v = OrderedFloat(x);
+    vec![
+        ROrderedFloatOps::is_nan(&v),
+        ROrderedFloatOps::is_infinite(&v),
+        ROrderedFloatOps::is_finite(&v),
+        ROrderedFloatOps::is_positive(&v),
+        ROrderedFloatOps::is_negative(&v),
+    ]
+}
+
+// endregion
