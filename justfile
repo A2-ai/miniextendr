@@ -1006,6 +1006,22 @@ _templates-upstream-populate dest:
       add "$rel" "$src"
     done <<<"$manifest"
 
+# Audit the end-user Claude skill set (minirextendr/inst/claude/skills/)
+# against a freshly scaffolded package: cited paths must exist in the scaffold
+# layout; cited symbols must exist in this repo's sources. Installs
+# minirextendr into a temp library (pure R, no compile), scaffolds a throwaway
+# package, then runs scripts/skill-freshness-audit.sh --user-layout on it.
+# Requires minirextendr's Imports (cli, fs, usethis) plus cargo on PATH.
+[script("bash")]
+user-skills-check:
+    set -euo pipefail
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp/lib"
+    R CMD INSTALL --no-multiarch --library="$tmp/lib" minirextendr >/dev/null 2>&1
+    R_LIBS="$tmp/lib" Rscript -e "minirextendr::create_miniextendr_package(file.path('$tmp', 'skillcheck.pkg'), open = FALSE)"
+    bash scripts/skill-freshness-audit.sh --user-layout "$tmp/skillcheck.pkg"
+
 # Accept the current delta as approved by regenerating patches/templates.patch
 # (Builds an upstream snapshot from templates-sources before diffing.)
 [script("bash")]
