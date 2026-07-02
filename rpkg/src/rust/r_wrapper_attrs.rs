@@ -126,3 +126,51 @@ impl WrapperDemo {
     }
 }
 // endregion
+
+// region: Standalone function: c_symbol (audit A10)
+
+/// Custom C symbol name via `c_symbol = "..."`. The symbol itself is an
+/// implementation detail — the test is that codegen + R dispatch still work.
+///
+/// @param x Input value.
+/// @export
+#[miniextendr(c_symbol = "mx_custom_c_symbol_fixture")]
+pub fn c_symbol_demo(x: i32) -> i32 {
+    x + 41
+}
+// endregion
+
+// region: track_caller (audit A10, docs/TRACK_CALLER.md)
+
+/// Pin the automatic `#[track_caller]` added by `#[miniextendr]`
+/// (docs/TRACK_CALLER.md): with the attribute in effect,
+/// `Location::caller()` inside this function resolves to the *caller's*
+/// call site (in the generated wrapper), not to the line below. Returns
+/// TRUE when the attribute is active.
+///
+/// @export
+#[miniextendr]
+pub fn track_caller_is_active() -> bool {
+    let here = line!();
+    let loc = std::panic::Location::caller();
+    // Without the auto-added attribute, caller() would report exactly the
+    // line above (here + 1) in this file.
+    loc.line() != here + 1
+}
+
+/// Report the location `Location::caller()` resolves to through a
+/// `#[track_caller]` helper chain (mirrors the "propagation through call
+/// chains" section of docs/TRACK_CALLER.md). Returned as "file:line" for
+/// R-side inspection.
+///
+/// @export
+#[miniextendr]
+pub fn track_caller_chain_location() -> String {
+    #[track_caller]
+    fn where_from() -> String {
+        let loc = std::panic::Location::caller();
+        format!("{}:{}", loc.file(), loc.line())
+    }
+    where_from()
+}
+// endregion

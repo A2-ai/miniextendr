@@ -233,5 +233,59 @@ pub fn test_list_from_pairs_strings_gctorture() -> List {
 
 // endregion
 
+// region: Protected<'a, T> bundle
+
+/// Exercise `Protected<'a, T>`: allocate a STRSXP, bundle it with a `StrVec`
+/// view under `Protected::new`, then fill it — each `set_str` allocates a
+/// CHARSXP while the bundle's guard is the only protection on the STRSXP
+/// (gctorture-sensitive; no-arg so the fast gc_stress sweep picks it up, #430).
+/// Reads back through `Deref` and `get()` before the guard drops.
+#[miniextendr]
+pub fn test_protected_strvec_bundle() -> Vec<Option<String>> {
+    use miniextendr_api::gc_protect::Protected;
+
+    unsafe {
+        let sexp = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let bundle = Protected::new(sexp, StrVec::from_raw(sexp));
+
+        // Allocating writes: the STRSXP must survive each Rf_mkChar.
+        bundle.set_str(0, "alpha");
+        bundle.set_na(1);
+        bundle.set_str(2, "gamma");
+
+        let view = bundle.get();
+        let mut out = Vec::with_capacity(3);
+        for i in 0..3 {
+            out.push(view.get_str(i).map(|s| s.to_string()));
+        }
+        out
+        // bundle drops here → UNPROTECT(1)
+    }
+}
+
+/// Exercise `Protected::from_trusted` + `into_inner`: bundle an
+/// already-protected SEXP without double-protecting, then unwrap the view.
+#[miniextendr]
+pub fn test_protected_from_trusted() -> Vec<Option<String>> {
+    use miniextendr_api::gc_protect::Protected;
+
+    unsafe {
+        let scope = ProtectScope::new();
+        let sexp = scope.protect_raw(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        let bundle = Protected::from_trusted(sexp, StrVec::from_raw(sexp));
+
+        bundle.set_str(0, "trusted");
+        bundle.set_na(1);
+
+        let view = bundle.into_inner();
+        let mut out = Vec::with_capacity(2);
+        for i in 0..2 {
+            out.push(view.get_str(i).map(|s| s.to_string()));
+        }
+        out
+    }
+}
+// endregion
+
 // region: Module registration
 // endregion

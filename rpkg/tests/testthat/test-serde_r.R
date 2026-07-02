@@ -667,3 +667,31 @@ test_that("WithOptionals deserializes with NULL fields", {
   # Verify roundtrip works at Rust level
   expect_true(serde_r_roundtrip_optionals_none())
 })
+
+# region: RSerializeNative / RDeserializeNative traits + AsSerialize (audit A7)
+
+test_that("RSerializeNative trait serializes via the blanket impl", {
+  result <- serde_r_trait_to_r()
+  expect_identical(result, list(x = 1.5, y = -2.5))
+})
+
+test_that("RDeserializeNative trait deserializes via the blanket impl", {
+  expect_equal(serde_r_trait_from_r(list(x = 1, y = 2)), 3)
+  expect_error(serde_r_trait_from_r(list(bogus = "nope")))
+})
+
+test_that("AsSerialize wrapper converts a Serialize return value to a list", {
+  expect_identical(
+    serde_r_as_serialize_point(1, 2),
+    list(x = 1, y = 2)
+  )
+})
+
+test_that("AsSerialize over Vec produces a list of lists", {
+  out <- serde_r_as_serialize_vec(3L)
+  expect_length(out, 3)
+  expect_identical(out[[2]], list(x = 1, y = 0.5))
+  expect_identical(serde_r_as_serialize_vec(0L), list())
+})
+
+# endregion

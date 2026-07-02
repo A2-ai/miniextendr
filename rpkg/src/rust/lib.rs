@@ -154,6 +154,7 @@ mod condition_sidecar_tests;
 mod condition_tests;
 #[cfg(feature = "connections")]
 mod connection_tests;
+mod console_output_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;

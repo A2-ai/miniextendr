@@ -63,3 +63,30 @@ pub fn time_format_date(date: Date) -> String {
     let fmt = time::format_description::parse("[year]-[month]-[day]").expect("valid format");
     date.format(&fmt).unwrap_or_else(|e| e.to_string())
 }
+
+// region: RDuration adapter trait
+
+/// Drive `time::Duration` through the `RDuration` adapter trait (audit A7 —
+/// the Date/OffsetDateTime conversions above never touch it). Calls are
+/// trait-qualified so they cannot resolve to inherent `Duration` methods.
+/// @param seconds Duration in (possibly fractional, possibly negative) seconds.
+#[miniextendr]
+pub fn time_duration_ops_via_trait(seconds: f64) -> Vec<f64> {
+    use miniextendr_api::time_impl::{Duration, RDuration};
+
+    let d = Duration::seconds_f64(seconds);
+    vec![
+        RDuration::as_seconds_f64(&d),
+        RDuration::as_milliseconds(&d) as f64,
+        RDuration::whole_days(&d) as f64,
+        RDuration::whole_hours(&d) as f64,
+        RDuration::whole_minutes(&d) as f64,
+        RDuration::whole_seconds(&d) as f64,
+        f64::from(RDuration::subsec_nanoseconds(&d)),
+        f64::from(u8::from(RDuration::is_negative(&d))),
+        f64::from(u8::from(RDuration::is_zero(&d))),
+        RDuration::as_seconds_f64(&RDuration::abs(&d)),
+    ]
+}
+
+// endregion

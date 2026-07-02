@@ -1771,3 +1771,256 @@ test_that("zstd round-trips empty raw", {
   skip_if_missing_feature("zstd")
   expect_identical(zstd_decompress(zstd_compress(raw(0), 1L)), raw(0))
 })
+
+# =============================================================================
+# Adapter Ops-trait fixtures (audit A7 — methods called *through* the traits)
+# =============================================================================
+
+test_that("uuid_ops_via_trait drives RUuidOps methods", {
+  skip_if_missing_feature("uuid")
+  u <- "550e8400-e29b-41d4-a716-446655440000"
+  res <- uuid_ops_via_trait(u)
+  expect_identical(res[1], "4") # version
+  expect_identical(res[2], "RFC4122") # variant
+  expect_identical(res[3], "false") # is_nil
+  expect_identical(res[4], "false") # is_max
+  expect_identical(res[5], u) # to_hyphenated
+  expect_identical(res[6], gsub("-", "", u)) # to_simple
+  expect_identical(res[7], paste0("urn:uuid:", u)) # to_urn
+  expect_identical(res[8], "16") # as_bytes length
+})
+
+test_that("regex_ops_via_trait drives RRegexOps methods", {
+  skip_if_missing_feature("regex")
+  res <- regex_ops_via_trait("[0-9]+", "abc123def456", "X")
+  expect_identical(res[1], "true") # is_match
+  expect_identical(res[2], "123") # find
+  expect_identical(res[3], "abcXdef456") # replace_first
+  expect_identical(res[4], "abcXdefX") # replace_all
+  expect_identical(res[5], "123,456") # find_all
+  expect_identical(res[6], "abc|def|") # split (trailing empty segment)
+  expect_identical(res[7], "1") # captures_len (whole match only)
+})
+
+test_that("regex_ops_via_trait flags an invalid pattern", {
+  skip_if_missing_feature("regex")
+  expect_identical(regex_ops_via_trait("(", "x", "y"), "INVALID_PATTERN")
+})
+
+test_that("CaptureGroups returns all groups including non-participating as NA", {
+  skip_if_missing_feature("regex")
+  res <- regex_capture_groups_all(
+    "([0-9]{4})-([0-9]{2})-([0-9]{2})", "Date: 2024-01-15"
+  )
+  expect_identical(res, c("2024-01-15", "2024", "01", "15"))
+
+  alt <- regex_capture_groups_all("(a)|(b)", "a")
+  expect_identical(alt, c("a", "a", NA))
+
+  expect_length(regex_capture_groups_all("[0-9]+", "no digits here!"), 0)
+})
+
+test_that("CaptureGroups named lookup works via RCaptureGroups", {
+  skip_if_missing_feature("regex")
+  res <- regex_capture_group_named("(?P<year>[0-9]{4})", "in 2024", "year")
+  expect_identical(res, c("2024", "2024", "2"))
+})
+
+test_that("time_duration_ops_via_trait drives RDuration methods", {
+  skip_if_missing_feature("time")
+  res <- time_duration_ops_via_trait(3661.5)
+  expect_equal(res, c(3661.5, 3661500, 0, 1, 61, 3661, 5e8, 0, 0, 3661.5))
+})
+
+test_that("RDuration handles negative durations", {
+  skip_if_missing_feature("time")
+  res <- time_duration_ops_via_trait(-90)
+  expect_equal(res[1], -90) # as_seconds_f64
+  expect_equal(res[2], -90000) # as_milliseconds
+  expect_equal(res[5], -1) # whole_minutes
+  expect_equal(res[8], 1) # is_negative
+  expect_equal(res[10], 90) # abs
+})
+
+test_that("ordered_float_ops_via_trait drives ROrderedFloatOps numerics", {
+  skip_if_missing_feature("ordered-float")
+  res <- ordered_float_ops_via_trait(2.7)
+  expect_equal(
+    res,
+    c(2.7, 2, 3, 3, 2, 0.7, 2.7, 1, 0, 2.7, 1)
+  )
+})
+
+test_that("ordered_float_ops_predicates classifies specials via the trait", {
+  skip_if_missing_feature("ordered-float")
+  expect_identical(
+    ordered_float_ops_predicates(NaN),
+    c(TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+  expect_identical(
+    ordered_float_ops_predicates(Inf),
+    c(FALSE, TRUE, FALSE, TRUE, FALSE)
+  )
+  expect_identical(
+    ordered_float_ops_predicates(-3),
+    c(FALSE, FALSE, TRUE, FALSE, TRUE)
+  )
+})
+
+test_that("bigint_ops_via_trait drives RBigIntOps methods", {
+  skip_if_missing_feature("num-bigint")
+  res <- bigint_ops_via_trait("-12", "5")
+  expect_identical(
+    res,
+    c("-12", "-1", "4", "12", "12", "-7", "-60", "144")
+  )
+})
+
+test_that("bigint_ops_bytes returns byte-length of both endiannesses", {
+  skip_if_missing_feature("num-bigint")
+  expect_identical(bigint_ops_bytes("65536"), c(3L, 3L))
+})
+
+test_that("biguint_ops_via_trait drives RBigUintOps methods", {
+  skip_if_missing_feature("num-bigint")
+  res <- biguint_ops_via_trait("12", "5")
+  expect_identical(res, c("12", "false", "false", "4", "17", "7", "1"))
+})
+
+test_that("RBigUintOps sub_str refuses to go negative", {
+  skip_if_missing_feature("num-bigint")
+  res <- biguint_ops_via_trait("3", "5")
+  expect_match(res[6], "negative")
+})
+
+test_that("decimal_ops_via_trait drives RDecimalOps methods", {
+  skip_if_missing_feature("rust_decimal")
+  res <- decimal_ops_via_trait("123.456", "0.001", 2L)
+  expect_identical(res[1], "123.456") # as_string
+  expect_identical(res[2], "1") # sign
+  expect_identical(res[3], "3") # scale
+  expect_identical(res[4], "false") # is_integer
+  expect_identical(res[5], "123.46") # round(2)
+  expect_identical(res[6], "123") # floor
+  expect_identical(res[7], "124") # ceil
+  expect_identical(res[8], "123") # trunc
+  expect_identical(res[9], "0.456") # fract
+  expect_identical(res[10], "123.456") # normalize
+  expect_identical(res[11], "123.457") # add_str
+  expect_match(res[12], "^123456") # div_str
+})
+
+test_that("decimal_ops_numeric_views exposes as_f64/as_i64 and predicates", {
+  skip_if_missing_feature("rust_decimal")
+  expect_equal(decimal_ops_numeric_views("42"), c(42, 42, 0, 1, 0))
+  res <- decimal_ops_numeric_views("-1.5")
+  expect_equal(res[1], -1.5) # as_f64
+  expect_true(is.nan(res[2])) # as_i64: non-integer -> None -> NaN
+  expect_equal(res[3:5], c(0, 0, 1))
+})
+
+test_that("indexmap_ops_via_trait drives RIndexMapOps methods", {
+  skip_if_missing_feature("indexmap")
+  res <- indexmap_ops_via_trait(list(a = 1L, b = 2L, c = 3L), "b")
+  expect_identical(
+    res,
+    c("3", "false", "a,b,c", "true", "1", "a=1", "c=3", "a=1", "b")
+  )
+})
+
+test_that("RIndexMapOps reports missing keys", {
+  skip_if_missing_feature("indexmap")
+  res <- indexmap_ops_via_trait(list(a = 1L), "zz")
+  expect_identical(res[4], "false") # contains_key
+  expect_identical(res[5], "-1") # get_index_of
+})
+
+test_that("rbuf_trait_read reads a raw vector through RBuf", {
+  skip_if_missing_feature("bytes")
+  # bytes: 0x01, 0xFF, 0x03 -> remaining 3, has_remaining, get_u8 = 1,
+  # get_i8 reinterprets 0xFF as -1, one byte left to drain
+  res <- rbuf_trait_read(as.raw(c(0x01, 0xFF, 0x03)))
+  expect_identical(res, c(3L, 1L, 1L, -1L, 1L))
+
+  empty <- rbuf_trait_read(raw(0))
+  expect_identical(empty, c(0L, 0L, -1L, -999L, 0L))
+})
+
+test_that("rbufmut_trait_build writes through RBufMut", {
+  skip_if_missing_feature("bytes")
+  out <- rbufmut_trait_build(c(65L, 66L), as.raw(0x43))
+  expect_identical(out, as.raw(c(0x41, 0x42, 0x43, 0x2A, 0x2A)))
+})
+
+test_that("rbufmut_trait_clear exercises len/is_empty/clear via RBufMut", {
+  skip_if_missing_feature("bytes")
+  expect_identical(rbufmut_trait_clear(), c(1L, 3L, 0L))
+})
+
+test_that("sha256_bytes/sha512_bytes match the *_str variants", {
+  skip_if_missing_feature("sha2")
+  s <- "hello world"
+  expect_identical(sha2_sha256_bytes_input(charToRaw(s)), sha2_sha256(s))
+  expect_identical(sha2_sha512_bytes_input(charToRaw(s)), sha2_sha512(s))
+  # SHA-256 of empty input is a well-known constant
+  expect_identical(
+    sha2_sha256_bytes_input(raw(0)),
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  )
+})
+
+test_that("table_to_string renders Tabled rows", {
+  skip_if_missing_feature("tabled")
+  out <- tabled_to_string_rows()
+  expect_match(out, "name")
+  expect_match(out, "rust")
+  expect_match(out, "2015")
+  expect_match(tabled_to_string_empty(), "name")
+})
+
+# =============================================================================
+# serde_json: RDeserialize trait + JsonOptions (audit A7)
+# =============================================================================
+
+test_that("RDeserialize::from_json parses valid JSON and NaNs on failure", {
+  skip_if_missing_feature("serde_json")
+  expect_equal(json_rdeserialize_from_json('{"x":1.5,"y":2.5}'), 4)
+  expect_true(is.nan(json_rdeserialize_from_json("not json")))
+})
+
+test_that("RDeserialize::from_json_result surfaces the parse error", {
+  skip_if_missing_feature("serde_json")
+  expect_identical(
+    json_rdeserialize_from_json_result('{"x":1.5,"y":2.5}'),
+    "ok:4"
+  )
+  expect_match(json_rdeserialize_from_json_result("{"), "^err:")
+})
+
+test_that("JsonOptions::permissive turns NA/NaN/Inf into null", {
+  skip_if_missing_feature("serde_json")
+  expect_identical(
+    json_options_permissive(c(1.5, NA, NaN, Inf)),
+    "[1.5,null,null,null]"
+  )
+})
+
+test_that("JsonOptions::strict errors on special values", {
+  skip_if_missing_feature("serde_json")
+  expect_identical(json_options_strict(c(1L, 2L)), "[1,2]")
+  expect_error(json_options_strict(NA_real_))
+})
+
+test_that("JsonOptions builder customizes NA/NaN/Inf handling", {
+  skip_if_missing_feature("serde_json")
+  expect_identical(
+    json_options_builder(c(1.5, NA, NaN, Inf)),
+    '[1.5,"NA",null,null]'
+  )
+})
+
+test_that("rbuf_trait_chunks drives chunk/advance/copy_to_vec/to_vec", {
+  skip_if_missing_feature("bytes")
+  res <- rbuf_trait_chunks(as.raw(c(10, 20, 30, 40)))
+  expect_identical(res, c(4L, 2L, 20L, 30L, 1L))
+})

@@ -122,3 +122,28 @@ test_that("gc_stress_scatter_complex runs without error", {
 })
 
 # endregion
+
+# region: RawSlice<T> (raw_conversions prelude item, audit A7)
+
+test_that("RawSlice<f64> produces tagged headerless bytes and reads back", {
+  skip_if_missing_feature("raw_conversions")
+  r <- rawslice_produce()
+  expect_true(is.raw(r))
+  expect_length(r, 24) # 3 doubles x 8 bytes, headerless
+  expect_equal(rawslice_sum(r), 1.0 + 2.5 - 3.75)
+})
+
+test_that("RawSlice<f64> handles the empty slice", {
+  skip_if_missing_feature("raw_conversions")
+  expect_equal(rawslice_sum(raw(0)), 0)
+})
+
+test_that("RawSlice<i32> round-trips native-layout bytes", {
+  skip_if_missing_feature("raw_conversions")
+  rr <- writeBin(c(1L, 2L), raw())
+  out <- rawslice_roundtrip_i32(rr)
+  attributes(out) <- NULL # drop the mx_raw_type tag for comparison
+  expect_identical(out, rr)
+})
+
+# endregion

@@ -54,3 +54,23 @@ pub fn sha2_sha256_binary_content() -> String {
 pub fn sha2_different_inputs_differ() -> bool {
     sha256_str("input1") != sha256_str("input2")
 }
+
+// region: Byte-input variants (audit A7 — only the *_str variants were covered)
+
+/// SHA-256 over raw bytes via `sha256_bytes`.
+/// @param data Raw vector to hash.
+#[miniextendr]
+pub fn sha2_sha256_bytes_input(data: Vec<u8>) -> String {
+    use miniextendr_api::sha2_impl::sha256_bytes;
+    sha256_bytes(&data)
+}
+
+/// SHA-512 over raw bytes via `sha512_bytes`.
+/// @param data Raw vector to hash.
+#[miniextendr]
+pub fn sha2_sha512_bytes_input(data: Vec<u8>) -> String {
+    use miniextendr_api::sha2_impl::sha512_bytes;
+    sha512_bytes(&data)
+}
+
+// endregion

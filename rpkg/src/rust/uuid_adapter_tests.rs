@@ -92,3 +92,27 @@ pub fn uuid_version(uuid: Uuid) -> i32 {
 pub fn uuid_is_nil(uuid: Uuid) -> bool {
     uuid.is_nil()
 }
+
+// region: RUuidOps adapter trait
+
+/// Drive a `Uuid` through the `RUuidOps` adapter trait (audit A7 — the
+/// conversions above call inherent `Uuid` methods; the trait was
+/// unexercised). Calls are trait-qualified.
+/// @param uuid UUID parsed from R string.
+#[miniextendr]
+pub fn uuid_ops_via_trait(uuid: Uuid) -> Vec<String> {
+    use miniextendr_api::uuid_impl::RUuidOps;
+
+    vec![
+        RUuidOps::version(&uuid).to_string(),
+        RUuidOps::variant(&uuid),
+        RUuidOps::is_nil(&uuid).to_string(),
+        RUuidOps::is_max(&uuid).to_string(),
+        RUuidOps::to_hyphenated(&uuid),
+        RUuidOps::to_simple(&uuid),
+        RUuidOps::to_urn(&uuid),
+        RUuidOps::as_bytes(&uuid).len().to_string(),
+    ]
+}
+
+// endregion
