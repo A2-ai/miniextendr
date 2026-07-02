@@ -180,6 +180,7 @@ mod either_adapter_tests;
 mod encoding_tests;
 mod error_in_r_tests;
 mod export_control_tests;
+mod expression_tests;
 mod externalptr_any_tests;
 mod externalptr_identity_tests;
 mod externalptr_self_tests;
@@ -242,6 +243,8 @@ mod r6_tests;
 mod r_backed_tests;
 mod r_coerce_tests;
 mod r_wrapper_attrs;
+#[cfg(feature = "rand")]
+mod rand_adapter_tests;
 mod rarray_tests;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
