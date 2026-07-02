@@ -100,6 +100,13 @@ pub mod rand_impl;
 #[cfg(feature = "rand")]
 pub use rand_impl::{RDistributionOps, RDistributions, RRng, RRngOps};
 
+/// Re-export of `rand` so downstream crates can name its traits
+/// (`RngExt`, `SeedableRng`, …) at the exact version [`RRng`] implements —
+/// a mismatched direct `rand` dependency would fail trait coherence.
+/// Enable with `features = ["rand"]`.
+#[cfg(feature = "rand")]
+pub use rand;
+
 /// Re-export of `rand_distr` for probability distributions.
 ///
 /// Provides distributions like `Normal`, `Exp`, `Uniform`, etc. that work
