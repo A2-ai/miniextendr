@@ -680,9 +680,11 @@ pub use rng::{RngGuard, with_rng};
 pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 
 // Encoding / locale probing (mainly for debugging). The module is always
-// compiled; the symbols that reference non-exported state from R's `Defn.h`
-// (`known_to_be_utf8`, `utf8locale`, ...) are gated inside the module behind
-// `#[cfg(feature = "nonapi")]` so a default build never links them.
+// compiled; the symbols that reference non-API locale state from R's `Defn.h`
+// (`utf8locale`, `mbcslocale`, `known_to_be_latin1`) are gated inside the
+// module behind `#[cfg(feature = "nonapi")]` so a default build never links
+// them. Only R-exported symbols may be declared there — hidden ones abort
+// dyn.load (see sys::nonapi_encoding).
 pub mod encoding;
 
 // Expression evaluation helpers (RSymbol, RCall, REnv)

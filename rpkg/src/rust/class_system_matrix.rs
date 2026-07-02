@@ -33,7 +33,9 @@ pub struct CounterTraitEnv {
     value: i32,
 }
 
-#[miniextendr]
+// env pinned: the env-style trait impl below attaches via `Type$Trait <- ...`,
+// which needs an environment-creating inherent impl (breaks under s7-default).
+#[miniextendr(env)]
 impl CounterTraitEnv {
     pub fn new(v: i32) -> Self {
         Self { value: v }
@@ -43,7 +45,9 @@ impl CounterTraitEnv {
     }
 }
 
-#[miniextendr]
+// env pinned: two env trait impls of one trait collide on the unqualified
+// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
+#[miniextendr(env)]
 impl MatrixCounter for CounterTraitEnv {
     fn custom_get(&self) -> i32 {
         self.value
@@ -204,7 +208,9 @@ pub trait StaticXParam {
     fn from_value(x: i32) -> i32;
 }
 
-#[miniextendr]
+// env pinned: two env trait impls of one trait collide on the unqualified
+// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
+#[miniextendr(env)]
 impl StaticXParam for CounterTraitEnv {
     fn from_value(x: i32) -> i32 {
         x * 2

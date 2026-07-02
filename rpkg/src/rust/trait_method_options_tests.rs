@@ -35,7 +35,10 @@ pub struct OptsTarget {
     v: i32,
 }
 
-#[miniextendr]
+// env pinned: the OptionsDemo trait impl below is env-style, which attaches
+// methods via `OptsTarget$OptionsDemo <- ...` — that requires an environment-
+// creating inherent impl, so this must not flip under r6-default/s7-default.
+#[miniextendr(env)]
 impl OptsTarget {
     pub fn new(v: i32) -> Self {
         Self { v }

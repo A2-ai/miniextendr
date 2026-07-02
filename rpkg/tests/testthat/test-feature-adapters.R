@@ -1542,7 +1542,14 @@ strip_ansi <- function(x) {
 
 test_that("indicatif_rterm_debug snapshot", {
   skip_if_missing_feature("indicatif")
-  expect_snapshot(indicatif_rterm_debug(), cnd_class = TRUE)
+  # width and terminal kind depend on the execution environment (tty vs pipe,
+  # COLUMNS) — normalize both so the snapshot is stable across local/CI runs.
+  normalize_rterm <- function(lines) {
+    lines <- gsub("width: [0-9]+", "width: <width>", lines)
+    gsub("kind: .*$", "kind: <kind>", lines)
+  }
+  expect_snapshot(indicatif_rterm_debug(), cnd_class = TRUE,
+                  transform = normalize_rterm)
 })
 
 test_that("indicatif_factories_compile snapshot", {
@@ -1585,18 +1592,21 @@ test_that("indicatif_elapsed_demo finishes", {
 # Connection-routed indicatif (issue #178)
 # -----------------------------------------------------------------------------
 
-test_that("indicatif routes bytes through a textConnection", {
+test_that("indicatif routes bytes through a rawConnection", {
   skip_if_missing_feature("indicatif")
-  out <- character()
-  conn <- textConnection("out", open = "w", local = TRUE)
+  # NOT textConnection: text connections implement only the text-mode write
+  # method, while the Rust side writes bytes via R_WriteConnection (the binary
+  # method) — a textConnection fails with "'write' not enabled for this
+  # connection". rawConnection is binary and still captures in memory.
+  conn <- rawConnection(raw(0), open = "wb")
   on.exit(try(close(conn), silent = TRUE), add = TRUE)
   result <- indicatif_drive_connection(conn, 3L)
   # Driver always returns "ok" on success.
   expect_equal(result, "ok")
-  # The textConnection variable receives the bytes. Indicatif emits clear-line
+  # The rawConnection buffer receives the bytes. Indicatif emits clear-line
   # / cursor-position ANSI sequences plus the rendered bar — assert we saw at
   # least one bar tick by matching the literal pos/len fragment we templated.
-  rendered <- paste(out, collapse = "\n")
+  rendered <- rawToChar(rawConnectionValue(conn))
   expect_match(rendered, "3/3", fixed = TRUE,
                info = paste("captured:", rendered))
 })

@@ -42,7 +42,10 @@ impl SimpleCounter {
 }
 
 /// Counter trait implementation for SimpleCounter (default dispatch).
-#[miniextendr]
+// env pinned: r6 trait-impl wrapper names are not class-qualified
+// (r6_trait_Counter_*), so letting this flip under r6-default collides with
+// R6TraitCounter's explicit r6 trait impl (#1115).
+#[miniextendr(env)]
 impl Counter for SimpleCounter {
     const MAX_VALUE: i32 = i32::MAX;
 
@@ -100,7 +103,10 @@ impl PanickyCounter {
     }
 }
 
-#[miniextendr]
+// env pinned: r6 trait-impl wrapper names are not class-qualified
+// (r6_trait_Counter_*), so letting this flip under r6-default collides with
+// R6TraitCounter's explicit r6 trait impl (#1115).
+#[miniextendr(env)]
 impl Counter for PanickyCounter {
     const MAX_VALUE: i32 = 1000; // PanickyCounter has a lower max
 

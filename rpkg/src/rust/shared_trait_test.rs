@@ -64,7 +64,9 @@ pub struct SharedSimpleCounter {
     value: i32,
 }
 
-#[miniextendr]
+// env pinned: the env-style trait impl below attaches via `Type$Trait <- ...`,
+// which needs an environment-creating inherent impl (breaks under s7-default).
+#[miniextendr(env)]
 impl SharedSimpleCounter {
     fn new(initial: i32) -> Self {
         Self { value: initial }
@@ -75,7 +77,9 @@ impl SharedSimpleCounter {
     }
 }
 
-#[miniextendr]
+// env pinned: two env trait impls of one trait collide on the unqualified
+// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
+#[miniextendr(env)]
 impl SharedCounter for SharedSimpleCounter {
     fn value(&self) -> i32 {
         self.value
@@ -102,7 +106,9 @@ pub struct AtomicCounter {
     value: AtomicI32,
 }
 
-#[miniextendr]
+// env pinned: the env-style trait impl below attaches via `Type$Trait <- ...`,
+// which needs an environment-creating inherent impl (breaks under s7-default).
+#[miniextendr(env)]
 impl AtomicCounter {
     fn new_atomic(initial: i32) -> Self {
         Self {
@@ -111,7 +117,9 @@ impl AtomicCounter {
     }
 }
 
-#[miniextendr]
+// env pinned: two env trait impls of one trait collide on the unqualified
+// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
+#[miniextendr(env)]
 impl SharedCounter for AtomicCounter {
     fn value(&self) -> i32 {
         self.value.load(Ordering::SeqCst)

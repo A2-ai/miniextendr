@@ -17,7 +17,9 @@ pub struct NdVec(Array1<f64>);
 
 /// NdVec methods: 1D numeric array operations, slicing, and conversion.
 /// @param data Numeric vector of array elements.
-#[miniextendr]
+// env pinned: method names collide with base R non-generics (var/get/row/col/
+// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
+#[miniextendr(env)]
 impl NdVec {
     fn new(data: Vec<f64>) -> Self {
         NdVec(Array1::from_vec(data))
@@ -126,7 +128,9 @@ pub struct NdMatrix(Array2<f64>);
 /// @param nrow Integer number of rows.
 /// @param ncol Integer number of columns.
 /// @param data Numeric vector of matrix elements (in row-major order).
-#[miniextendr]
+// env pinned: method names collide with base R non-generics (var/get/row/col/
+// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
+#[miniextendr(env)]
 impl NdMatrix {
     fn new(data: Array2<f64>) -> Self {
         NdMatrix(data)
@@ -238,7 +242,9 @@ pub struct NdArrayDyn(ArrayD<f64>);
 /// NdArrayDyn methods: N-dimensional array operations, indexing, and reshaping.
 /// @param shape Integer vector specifying array dimensions.
 /// @param data Numeric vector of array elements.
-#[miniextendr]
+// env pinned: method names collide with base R non-generics (var/get/row/col/
+// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
+#[miniextendr(env)]
 impl NdArrayDyn {
     fn new(shape: Vec<i32>, data: Vec<f64>) -> Self {
         let shape_usize: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
@@ -350,7 +356,9 @@ pub struct NdIntVec(Array1<i32>);
 
 /// NdIntVec methods: 1D integer array operations, slicing, and conversion.
 /// @param data Integer vector of array elements.
-#[miniextendr]
+// env pinned: method names collide with base R non-generics (var/get/row/col/
+// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
+#[miniextendr(env)]
 impl NdIntVec {
     fn new(data: Vec<i32>) -> Self {
         NdIntVec(Array1::from_vec(data))
