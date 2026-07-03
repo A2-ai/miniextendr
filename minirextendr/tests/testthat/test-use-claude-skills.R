@@ -107,8 +107,12 @@ test_that("scaffolded package excludes .claude from the built tarball", {
 
   # R CMD build only stages files; the bootstrap/vendor machinery is
   # pkgbuild-driven and does not run here, so this stays fast and offline.
+  # Use R.home("bin") rather than bare "R": under `R CMD check` the bare name
+  # resolves to a wrapper on PATH that exits non-zero with "'R' should not be
+  # used without a path -- see par. 1.6 of the manual" (see test-system.R).
   result <- withr::with_dir(tmp, {
-    system2("R", c("CMD", "build", "--no-build-vignettes", "tarpkg"),
+    system2(file.path(R.home("bin"), "R"),
+            c("CMD", "build", "--no-build-vignettes", "tarpkg"),
             stdout = TRUE, stderr = TRUE)
   })
   status <- attr(result, "status")
