@@ -240,6 +240,34 @@ pub fn rayon_in_thread() -> bool {
     miniextendr_api::rayon_bridge::perf::in_rayon_thread()
 }
 
+/// Report the effective rayon thread count. Follows the precedence in
+/// `docs/RAYON.md` ("Controlling parallelism from R"):
+/// `MINIEXTENDR_NUM_THREADS` env > `RAYON_NUM_THREADS` env > CRAN
+/// `_R_CHECK_LIMIT_CORES_` cap (2) > `available_parallelism()`. Builds the
+/// pool on first call, same as any other rayon entry point.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn miniextendr_num_threads() -> i32 {
+    miniextendr_api::optionals::parallel::ensure_pool();
+    miniextendr_api::rayon_bridge::perf::num_threads() as i32
+}
+
+/// Request `n` threads for the rayon pool via `MINIEXTENDR_NUM_THREADS`.
+/// Must be called before the first parallel operation — rayon's global pool
+/// cannot be resized once built, so this errors if it already has been.
+/// @param n Number of threads to request (positive integer).
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn miniextendr_set_threads(n: i32) {
+    let n = usize::try_from(n)
+        .ok()
+        .filter(|&n| n > 0)
+        .unwrap_or_else(|| panic!("miniextendr_set_threads: n must be a positive integer, got {n}"));
+    if let Err(msg) = miniextendr_api::optionals::parallel::set_threads(n) {
+        panic!("{msg}");
+    }
+}
+
 // region: RParallelIterator / RParallelExtend adapter traits (audit A7)
 
 /// Materialized source for the `RParallelIterator` bridge. The contract the

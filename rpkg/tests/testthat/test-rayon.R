@@ -142,6 +142,88 @@ test_that("rayon_in_thread returns FALSE when called from R", {
   expect_false(result)
 })
 
+# ---------------------------------------------------------------------------
+# Thread pool control (docs/RAYON.md "Controlling Parallelism from R"):
+# MINIEXTENDR_NUM_THREADS > RAYON_NUM_THREADS > _R_CHECK_LIMIT_CORES_ cap >
+# available_parallelism(). The global rayon pool builds once per process, so
+# each scenario needs its own fresh subprocess.
+# ---------------------------------------------------------------------------
+
+skip_if_not_installed("callr")
+
+run_with_env <- function(expr, env_vars = character()) {
+  callr::r(
+    function(expr_to_eval) {
+      library(miniextendr)
+      eval(expr_to_eval)
+    },
+    args = list(expr_to_eval = substitute(expr)),
+    env = c(callr::rcmd_safe_env(), env_vars),
+    timeout = 30
+  )
+}
+
+test_that("miniextendr_num_threads honors MINIEXTENDR_NUM_THREADS", {
+  result <- run_with_env(
+    miniextendr_num_threads(),
+    c(MINIEXTENDR_NUM_THREADS = "3")
+  )
+  expect_equal(result, 3L)
+})
+
+test_that("miniextendr_num_threads caps at 2 under _R_CHECK_LIMIT_CORES_", {
+  result <- run_with_env(
+    miniextendr_num_threads(),
+    c(`_R_CHECK_LIMIT_CORES_` = "TRUE")
+  )
+  expect_true(result <= 2L)
+})
+
+test_that("miniextendr_num_threads ignores _R_CHECK_LIMIT_CORES_ = FALSE/empty", {
+  uncapped <- run_with_env(miniextendr_num_threads())
+  for (v in c("FALSE", "false", "")) {
+    result <- run_with_env(
+      miniextendr_num_threads(),
+      c(`_R_CHECK_LIMIT_CORES_` = v)
+    )
+    expect_equal(result, uncapped)
+  }
+})
+
+test_that("miniextendr_num_threads defaults to available parallelism", {
+  result <- run_with_env(miniextendr_num_threads())
+  expect_true(result >= 1L)
+})
+
+test_that("miniextendr_set_threads changes the reported count before first use", {
+  result <- run_with_env({
+    miniextendr_set_threads(2L)
+    miniextendr_num_threads()
+  })
+  expect_equal(result, 2L)
+})
+
+test_that("miniextendr_set_threads errors once the pool is already built", {
+  msg <- run_with_env({
+    miniextendr_num_threads() # builds the pool
+    tryCatch(
+      miniextendr_set_threads(4L),
+      error = function(e) conditionMessage(e)
+    )
+  })
+  expect_match(msg, "already built", fixed = TRUE)
+})
+
+test_that("miniextendr_set_threads rejects non-positive input", {
+  msg <- run_with_env({
+    tryCatch(
+      miniextendr_set_threads(0L),
+      error = function(e) conditionMessage(e)
+    )
+  })
+  expect_match(msg, "positive integer")
+})
+
 test_that("rayon_with_r_dataframe builds a correct heterogeneous data.frame", {
   n <- 50L
   df <- rayon_with_r_dataframe(n)

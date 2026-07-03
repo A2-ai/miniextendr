@@ -388,6 +388,8 @@ where
     T: Serialize + Send + Sync,
     I: IntoIterator<Item = T>,
 {
+    crate::optionals::parallel::ensure_pool();
+
     // 1. Materialise. rayon needs an indexed source for ordered chunking.
     let rows: Vec<T> = iter.into_iter().collect();
     let Some((schema, merged, nrow)) = par_build_columns(&rows, nrow_hint)? else {
@@ -487,6 +489,8 @@ where
     T: Serialize + Send + Sync,
     I: IntoIterator<Item = T>,
 {
+    crate::optionals::parallel::ensure_pool();
+
     let rows: Vec<T> = iter.into_iter().collect();
     let Some((schema, merged, nrow)) = par_build_columns_growing(&rows, nrow_hint)? else {
         // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.

@@ -10,6 +10,7 @@ Miniextendr provides seamless integration with [Rayon](https://docs.rs/rayon) fo
 - [Patterns](#patterns)
 - [RNG Reproducibility](#rng-reproducibility)
 - [Performance](#performance)
+- [Controlling Parallelism from R](#controlling-parallelism-from-r)
 - [Safety](#safety)
 - [Examples](#examples)
 
@@ -527,6 +528,11 @@ rayon::ThreadPoolBuilder::new()
     .unwrap();
 ```
 
+(Or set `MINIEXTENDR_NUM_THREADS=4` before the first parallel call — see
+[Controlling Parallelism from R](#controlling-parallelism-from-r). Whichever
+runs first wins; miniextendr's resolver defers to a pool you've already
+built.)
+
 ### Do NOT Use R's RNG in Parallel
 
 R's RNG (`RRng`, `Rf_runif`, etc.) calls R APIs, which **panic** on Rayon threads.
@@ -575,6 +581,97 @@ with_r_vec(len, |chunk, offset| {
 4. **Use `par_collect_sexp`** only for non-indexed iterators (`.filter()`, `.flat_map()`)
 5. **Profile First**: Measure before assuming parallelism helps
 6. **Consider R Alternatives**: Vectorized R operations are fast
+
+## Controlling Parallelism from R
+
+Every `rayon_bridge` entry point (`with_r_vec`, `par_map*`, `.collect_r()`,
+`RParallelIterator`'s default methods, `RDataFrameBuilder::build()`, and the
+`serde` columnar par path) calls `miniextendr_api::parallel::ensure_pool()`
+before doing any parallel work. This builds rayon's global thread pool
+**once**, sized by the first matching rule:
+
+| Precedence | Source | Effect |
+|---|---|---|
+| 1 | `MINIEXTENDR_NUM_THREADS` env var | Explicit override — wins over everything |
+| 2 | `RAYON_NUM_THREADS` env var | Rayon's own convention, respected as-is |
+| 3 | `_R_CHECK_LIMIT_CORES_` env var (truthy) | Caps at `min(2, available_parallelism())` — CRAN's `--as-cran` policy sets this to `"TRUE"` |
+| 4 | (none of the above) | `std::thread::available_parallelism()` |
+
+`_R_CHECK_LIMIT_CORES_` truthiness follows R's own convention: unset, empty,
+or `"false"`/`"FALSE"` count as not-limited; anything else (including R's
+`"TRUE"`) caps at 2. Because rayon's global pool cannot be resized once
+built, this resolution happens exactly once per process — the first
+parallel call locks it in.
+
+If your own code calls `rayon::ThreadPoolBuilder::build_global()` before any
+miniextendr rayon call, that wins outright: `ensure_pool()` sees the pool
+already exists and does nothing. Explicit user configuration always beats
+the resolver.
+
+### R-level knobs
+
+```r
+miniextendr_num_threads()      # report the effective count (builds the pool if not built yet)
+miniextendr_set_threads(4L)    # request 4 threads via MINIEXTENDR_NUM_THREADS
+```
+
+`miniextendr_set_threads()` must be called before the first parallel
+operation in the R session — once the pool is built, it errors instead of
+silently no-opping, since rayon cannot resize a live pool. Restart R (or set
+`MINIEXTENDR_NUM_THREADS` before `library()`) to change the count later.
+
+These are dogfooded in `rpkg/src/rust/rayon_tests.rs`; a scaffolded package
+gets the same behavior for free (`miniextendr_api::parallel` ships with the
+`rayon` feature) — write your own thin `#[miniextendr]` wrappers the same
+way if you want R-callable versions.
+
+### Containers and cgroups
+
+`std::thread::available_parallelism()` (Rust ≥1.61) honors Linux cgroup v1/v2
+CPU **quotas** — a container capped at `--cpus=2` reports `2`, not the host's
+full core count, so the default path already avoids over-parallelizing in
+Docker/Kubernetes. Two gaps to know about:
+
+- **cpu shares/weight are ignored.** Only hard quotas are visible; a
+  container throttled via relative shares (no quota set) still sees the
+  host's full core count. Guessing scheduler intent from shares/weight is a
+  deliberately unbuilt heuristic — the quota-aware default covers the common
+  case.
+- **Explicit overrides bypass the quota check.** `MINIEXTENDR_NUM_THREADS`,
+  `RAYON_NUM_THREADS`, or a user's own `ThreadPoolBuilder` call all take the
+  number given, even if it exceeds the container's quota. This is
+  intentional (explicit config always wins) but worth remembering when
+  sizing a fixed thread count for containerized deployment.
+
+### Decision guide: which parallelism to reach for
+
+| | Best for | Cost |
+|---|---|---|
+| **Rayon** (this doc) | Data-parallel, pure-Rust compute inside one `#[miniextendr]` call — CPU-bound transforms, reductions, DataFrame fills | Cheap; work-stealing within one process |
+| **R-level (future/mirai)** | Independent, coarse-grained jobs that each need their own R + Rust runtime (e.g. fan out a whole analysis per input file) | Each worker pays full R+package startup; heavier but fully isolated |
+| **Worker-thread + channel task queue** | Long-running background jobs kicked off from R that shouldn't block the R console — the job runs on its own thread, results come back over a channel | You own the queue/lifecycle; see `worker.rs`'s `run_on_worker` for the R-routing primitive it would build on |
+
+A sketch of the task-queue shape (not a ready-made API — build this in your
+package if you need it):
+
+```rust
+use std::sync::mpsc;
+use std::thread;
+
+// Spawn once; hold `tx` in a `OnceLock` or ExternalPtr-backed struct.
+let (tx, rx) = mpsc::channel::<Job>();
+thread::spawn(move || {
+    for job in rx {
+        let result = run_job(job); // pure Rust — no R API calls here
+        // send `result` back however your package tracks job state
+    }
+});
+```
+
+Note `#989`: errors raised from a worker-thread job currently surface to R
+as a bare `simpleError`, not the framework's usual `rust_error`-classed
+condition — if your queue needs `tryCatch(..., rust_error = ...)` dispatch
+on job failures, track that issue.
 
 ## Safety
 

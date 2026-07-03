@@ -193,6 +193,13 @@ use_s4 <- function(path = ".") {
 #' This is an optional feature that adds compile-time cost but enables
 #' easy parallelization of Rust code.
 #'
+#' Thread count is CRAN- and cgroup-aware by default: call
+#' `miniextendr_api::optionals::parallel::ensure_pool()` at the top of your
+#' rayon-backed functions (the bundled `rayon_bridge` helpers already do this)
+#' to honor `MINIEXTENDR_NUM_THREADS` / `RAYON_NUM_THREADS` / CRAN's
+#' `_R_CHECK_LIMIT_CORES_`. See `docs/RAYON.md` ("Controlling parallelism
+#' from R") for the precedence table.
+#'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
@@ -206,6 +213,10 @@ use_rayon <- function(path = ".") {
   add_cargo_feature("rayon", "miniextendr-api/rayon")
 
   cli::cli_alert_info("Use {.code rayon::prelude::*} for parallel iterators")
+  cli::cli_alert_info(paste(
+    "Thread count is configurable and CRAN-aware:",
+    "{.code miniextendr_api::optionals::parallel::ensure_pool()}"
+  ))
 
   invisible(TRUE)
 }

@@ -305,19 +305,19 @@ fixture exercising it?" See #430.
 
 ### Reproducing CI clippy before PR
 
-`just clippy` ≠ CI. Three CI clippy steps must all pass `-D warnings`:
+`just clippy` ≠ CI. Two CI clippy steps must both pass `-D warnings`:
 
 - `clippy_default`: `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - `clippy_all`: same + `full-codegen` and a long curated integration feature list
-- `clippy_all_s7`: same list with `full-codegen-s7` (the `s7-default` side of
-  the r6/s7 mutex) instead of `full-codegen`
+  (`full-codegen` picks the `r6-default` side of the r6/s7 mutex; the
+  `s7-default` side is linted by `clippy_default`'s rpkg path)
 
 **The feature list is maintained in `.github/workflows/ci.yml` (`clippy_all`
 step) — read it from there.** Hard-coding the list here drifts (it already
 has). `--all-features` does NOT work — `r6-default` and `s7-default` are
 mutually exclusive. CI runs a newer toolchain, so lints like
 `collapsible_match`, `manual_checked_ops` can fire on CI with green local.
-Reproduce all three before pushing.
+Reproduce both before pushing.
 
 ### UI test snapshots
 

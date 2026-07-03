@@ -18,7 +18,7 @@ Invisibly returns TRUE on success
 \description{
 Runs the complete R package build pipeline:
 autoconf -> configure -> \verb{R CMD INSTALL} (compiles Rust + generates the
-\verb{R/<pkg>-wrappers.R} file via the cdylib pass) -> roxygen2 -> conditional
+\verb{R/<pkg>-wrappers.R} file via the wrapper-gen pass) -> roxygen2 -> conditional
 reinstall. This is the high-level workflow for building the entire package;
 for compiling just the Rust crate, use \code{\link[=cargo_build]{cargo_build()}} instead.
 }
@@ -45,7 +45,7 @@ the wrappers and \code{NAMESPACE} are already in their final form, so a repeat
 \section{Fresh-package bootstrap}{
 
 A brand-new package has no generated \verb{R/<pkg>-wrappers.R} yet. The wrappers
-are produced by the cdylib pass during install, but a plain
+are produced by the wrapper-gen pass during install, but a plain
 \code{devtools::install(build = TRUE)} cannot bootstrap them: its \verb{R CMD build}
 step runs \code{bootstrap.R}, which auto-vendors into \code{inst/vendor.tar.xz}, and
 that latch flips \code{./configure} into offline \emph{tarball} mode — which ships
@@ -57,7 +57,7 @@ When \code{miniextendr_build()} detects that the wrappers file is absent, it
 first runs a bootstrap (clear any stale latch -> configure ->
 \code{devtools::install(build = FALSE, MINIEXTENDR_FORCE_WRAPPER_GEN=1)} ->
 \code{devtools::document()}) so the wrappers exist before the normal build path
-runs. The \code{MINIEXTENDR_FORCE_WRAPPER_GEN} override forces the cdylib
+runs. The \code{MINIEXTENDR_FORCE_WRAPPER_GEN} override forces the
 wrapper-gen pass regardless of which install mode configure resolves to: in
 a non-git tree configure's self-repair branch may legitimately re-seal the
 latch (cargo-revendor on PATH), and that is fine — the FORCE override

@@ -85,6 +85,17 @@ pub mod rayon_bridge;
 pub use rayon_bridge::{RParallelExtend, RParallelIterator};
 // endregion
 
+// region: Parallel - thread pool control
+
+/// Thread pool sizing, CRAN compliance (`_R_CHECK_LIMIT_CORES_`), and
+/// cgroup-aware defaults for the rayon bridge. See `docs/RAYON.md`
+/// ("Controlling parallelism from R").
+///
+/// Enable with `features = ["rayon"]`.
+#[cfg(feature = "rayon")]
+pub mod parallel;
+// endregion
+
 // region: Rand - Random number generation
 
 /// Integration with the `rand` crate for R's RNG.
