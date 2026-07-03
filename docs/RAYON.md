@@ -584,11 +584,14 @@ with_r_vec(len, |chunk, offset| {
 
 ## Controlling Parallelism from R
 
-Every `rayon_bridge` entry point (`with_r_vec`, `par_map*`, `.collect_r()`,
-`RParallelIterator`'s default methods, `RDataFrameBuilder::build()`, and the
-`serde` columnar par path) calls `miniextendr_api::parallel::ensure_pool()`
-before doing any parallel work. This builds rayon's global thread pool
-**once**, sized by the first matching rule:
+Every framework parallel entry point — the `rayon_bridge` functions
+(`with_r_vec`, `par_map*`, `.collect_r()`, `RParallelIterator`'s default
+methods), `RDataFrameBuilder::build()`, the `serde` columnar par path, and
+the `#[derive(DataFrameRow)]`-generated `from_rows_par` /
+`try_from_dataframe_par` bodies — calls
+`miniextendr_api::parallel::ensure_pool()` before doing any parallel work.
+This builds rayon's global thread pool **once**, sized by the first matching
+rule:
 
 | Precedence | Source | Effect |
 |---|---|---|
@@ -612,15 +615,17 @@ the resolver.
 
 ```r
 miniextendr_num_threads()      # report the effective count (builds the pool if not built yet)
-miniextendr_set_threads(4L)    # request 4 threads via MINIEXTENDR_NUM_THREADS
+miniextendr_set_threads(4L)    # build the pool with exactly 4 threads, immediately
 ```
 
 `miniextendr_set_threads()` must be called before the first parallel
-operation in the R session — once the pool is built, it errors instead of
-silently no-opping, since rayon cannot resize a live pool. Restart R (or set
+operation in the R session: it builds the pool right then (eager building is
+the only exact way rayon lets us detect an existing pool), and it errors —
+instead of silently no-opping — if any pool already exists, whether built by
+miniextendr or by your own Rust code. Restart R (or set
 `MINIEXTENDR_NUM_THREADS` before `library()`) to change the count later.
 
-These are dogfooded in `rpkg/src/rust/rayon_tests.rs`; a scaffolded package
+These are dogfooded in `rpkg/src/rust/thread_control.rs`; a scaffolded package
 gets the same behavior for free (`miniextendr_api::parallel` ships with the
 `rayon` feature) — write your own thin `#[miniextendr]` wrappers the same
 way if you want R-callable versions.

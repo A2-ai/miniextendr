@@ -20,10 +20,8 @@
 //! (future/mirai) and worker-thread task queues.
 
 use std::sync::Once;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 static POOL_READY: Once = Once::new();
-static POOL_BUILT: AtomicBool = AtomicBool::new(false);
 
 /// Resolve the thread count [`ensure_pool`] will use, per the precedence
 /// table above.
@@ -93,37 +91,54 @@ pub fn ensure_pool() {
         let _ = rayon::ThreadPoolBuilder::new()
             .num_threads(effective_threads())
             .build_global();
-        POOL_BUILT.store(true, Ordering::Relaxed);
     });
 }
 
-/// Whether [`ensure_pool`] has already run in this process. The global pool
-/// is fixed at that point — rayon cannot resize it.
+/// Whether the pool size has been locked in — by [`ensure_pool`] or a
+/// successful [`set_threads`]. The global pool is fixed at that point —
+/// rayon cannot resize it.
 pub fn pool_is_built() -> bool {
-    POOL_BUILT.load(Ordering::Relaxed)
+    POOL_READY.is_completed()
 }
 
-/// Set the thread count for the *next* pool build via
-/// `MINIEXTENDR_NUM_THREADS`.
+/// Build the global rayon pool with exactly `n` threads, immediately.
 ///
-/// Errors if the pool has already been built: rayon's global pool cannot be
-/// resized once created, so a post-hoc call would otherwise silently no-op.
+/// Errors if a pool already exists: rayon's global pool cannot be resized
+/// once created, so a post-hoc call would otherwise silently no-op. Building
+/// eagerly is the only exact probe rayon exposes, and it detects pools built
+/// outside miniextendr too (a user `ThreadPoolBuilder::build_global()`, or a
+/// raw rayon call that lazily created the default pool) — a stashed-count
+/// design can't, and would return `Ok` for a setting that never takes effect.
 pub fn set_threads(n: usize) -> Result<(), String> {
-    if pool_is_built() {
-        return Err(format!(
+    if n == 0 {
+        return Err("miniextendr: thread count must be positive".to_string());
+    }
+    let mut outcome = None;
+    POOL_READY.call_once(|| {
+        outcome = Some(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(n)
+                .build_global(),
+        );
+    });
+    match outcome {
+        // Once had already completed: ensure_pool or a prior set_threads won.
+        None => Err(format!(
             "miniextendr: the rayon thread pool is already built with {} threads and \
              cannot be resized. Set MINIEXTENDR_NUM_THREADS (or call this) before the \
              first parallel operation, or restart R.",
             rayon::current_num_threads()
-        ));
+        )),
+        Some(Ok(())) => Ok(()),
+        // Our build ran but rayon reports a global pool already existed —
+        // one built outside miniextendr entirely.
+        Some(Err(_)) => Err(format!(
+            "miniextendr: a global rayon pool is already built with {} threads \
+             (created outside miniextendr) and cannot be resized. Restart R and set \
+             the thread count before the first parallel operation.",
+            rayon::current_num_threads()
+        )),
     }
-    // SAFETY: miniextendr's worker-thread model means Rust code runs on a
-    // single dedicated thread (or inline on the main thread without
-    // `worker-thread`) — this never races another env mutation.
-    unsafe {
-        std::env::set_var("MINIEXTENDR_NUM_THREADS", n.to_string());
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -176,5 +191,12 @@ mod tests {
         ensure_pool();
         let err = set_threads(4).unwrap_err();
         assert!(err.contains("already built"));
+    }
+
+    #[test]
+    fn set_threads_rejects_zero_without_touching_the_pool() {
+        // Guard fires before the Once — must not lock in a pool size.
+        let err = set_threads(0).unwrap_err();
+        assert!(err.contains("positive"));
     }
 }

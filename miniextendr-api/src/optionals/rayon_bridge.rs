@@ -911,7 +911,7 @@ pub trait RParallelIterator {
         Self::Item: Into<f64>,
     {
         let (sum, count) = self
-            .par_iter()
+            .par_iter_ready()
             .map(|x| (x.into(), 1usize))
             .reduce(|| (0.0, 0), |(s1, c1), (s2, c2)| (s1 + s2, c1 + c2));
 
@@ -1056,7 +1056,7 @@ pub trait RParallelIterator {
         }
 
         let (sum_sq_diff, count) = self
-            .par_iter()
+            .par_iter_ready()
             .map(|x| {
                 let diff = x.into() - mean;
                 (diff * diff, 1usize)

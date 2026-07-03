@@ -2063,6 +2063,7 @@ fn derive_struct_dataframe(
         let par_loop = if has_par_cols {
             quote! {
                 {
+                    ::miniextendr_api::optionals::parallel::ensure_pool();
                     #(#writer_decls)*
                     rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
                         #tag_write
@@ -2648,6 +2649,7 @@ fn derive_struct_dataframe(
         } else {
             quote! {
                 use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                ::miniextendr_api::optionals::parallel::ensure_pool();
                 let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| e.to_string())?;
                 let __nrow = __view.nrow();

@@ -18,6 +18,7 @@ use miniextendr_api::rayon_bridge::{
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn rayon_parallel_sum(x: &[f64]) -> f64 {
+    miniextendr_api::optionals::parallel::ensure_pool();
     x.par_iter().sum()
 }
 
@@ -26,6 +27,7 @@ pub fn rayon_parallel_sum(x: &[f64]) -> f64 {
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn rayon_parallel_sqrt(x: &[f64]) -> Vec<f64> {
+    miniextendr_api::optionals::parallel::ensure_pool();
     x.par_iter().map(|v| v.sqrt()).collect()
 }
 
@@ -34,6 +36,7 @@ pub fn rayon_parallel_sqrt(x: &[f64]) -> Vec<f64> {
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn rayon_parallel_filter_positive(x: &[f64]) -> Vec<f64> {
+    miniextendr_api::optionals::parallel::ensure_pool();
     x.par_iter().filter(|&&v| v > 0.0).copied().collect()
 }
 
@@ -42,6 +45,7 @@ pub fn rayon_parallel_filter_positive(x: &[f64]) -> Vec<f64> {
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn rayon_vec_collect(n: i32) -> Vec<f64> {
+    miniextendr_api::optionals::parallel::ensure_pool();
     (0..n).into_par_iter().map(|i| (i as f64).sqrt()).collect()
 }
 
@@ -201,6 +205,7 @@ pub fn rayon_dataframe_skewed(nrow: i32) -> DataFrame {
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn rayon_parallel_stats(x: &[f64]) -> Vec<f64> {
+    miniextendr_api::optionals::parallel::ensure_pool();
     let sum: f64 = x.par_iter().sum();
     let min: f64 = x
         .par_iter()
@@ -223,6 +228,7 @@ pub fn rayon_parallel_stats(x: &[f64]) -> Vec<f64> {
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn rayon_parallel_sum_int(x: &[i32]) -> i32 {
+    miniextendr_api::optionals::parallel::ensure_pool();
     x.par_iter().sum()
 }
 
@@ -230,7 +236,10 @@ pub fn rayon_parallel_sum_int(x: &[i32]) -> i32 {
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn rayon_num_threads() -> i32 {
-    miniextendr_api::rayon_bridge::perf::num_threads() as i32
+    // current_num_threads() lazily builds the default global pool on its own —
+    // route through the resolver first so the count it reports is the capped one.
+    miniextendr_api::optionals::parallel::ensure_pool();
+    i32::try_from(miniextendr_api::rayon_bridge::perf::num_threads()).unwrap_or(i32::MAX)
 }
 
 /// Check if the current thread is a rayon worker (should be FALSE when called from R).
@@ -238,34 +247,6 @@ pub fn rayon_num_threads() -> i32 {
 #[miniextendr]
 pub fn rayon_in_thread() -> bool {
     miniextendr_api::rayon_bridge::perf::in_rayon_thread()
-}
-
-/// Report the effective rayon thread count. Follows the precedence in
-/// `docs/RAYON.md` ("Controlling parallelism from R"):
-/// `MINIEXTENDR_NUM_THREADS` env > `RAYON_NUM_THREADS` env > CRAN
-/// `_R_CHECK_LIMIT_CORES_` cap (2) > `available_parallelism()`. Builds the
-/// pool on first call, same as any other rayon entry point.
-#[cfg(feature = "rayon")]
-#[miniextendr]
-pub fn miniextendr_num_threads() -> i32 {
-    miniextendr_api::optionals::parallel::ensure_pool();
-    miniextendr_api::rayon_bridge::perf::num_threads() as i32
-}
-
-/// Request `n` threads for the rayon pool via `MINIEXTENDR_NUM_THREADS`.
-/// Must be called before the first parallel operation — rayon's global pool
-/// cannot be resized once built, so this errors if it already has been.
-/// @param n Number of threads to request (positive integer).
-#[cfg(feature = "rayon")]
-#[miniextendr]
-pub fn miniextendr_set_threads(n: i32) {
-    let n = usize::try_from(n)
-        .ok()
-        .filter(|&n| n > 0)
-        .unwrap_or_else(|| panic!("miniextendr_set_threads: n must be a positive integer, got {n}"));
-    if let Err(msg) = miniextendr_api::optionals::parallel::set_threads(n) {
-        panic!("{msg}");
-    }
 }
 
 // region: RParallelIterator / RParallelExtend adapter traits (audit A7)
@@ -322,6 +303,7 @@ struct ParBuf {
 #[cfg(feature = "rayon")]
 impl miniextendr_api::rayon_bridge::RParallelExtend<f64> for ParBuf {
     fn par_extend(&self, items: Vec<f64>) {
+        miniextendr_api::optionals::parallel::ensure_pool();
         let mut guard = self.data.lock().expect("ParBuf mutex poisoned");
         guard.par_extend(items);
     }

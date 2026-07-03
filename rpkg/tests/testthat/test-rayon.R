@@ -146,19 +146,28 @@ test_that("rayon_in_thread returns FALSE when called from R", {
 # Thread pool control (docs/RAYON.md "Controlling Parallelism from R"):
 # MINIEXTENDR_NUM_THREADS > RAYON_NUM_THREADS > _R_CHECK_LIMIT_CORES_ cap >
 # available_parallelism(). The global rayon pool builds once per process, so
-# each scenario needs its own fresh subprocess.
+# each scenario needs its own fresh subprocess. callr merges `env` over the
+# inherited environment, so every scenario pins all three resolver vars
+# (blank = unset to the resolver) — otherwise values inherited from the
+# calling process skew baselines: R CMD check --as-cran exports
+# _R_CHECK_LIMIT_CORES_=TRUE into this very test run.
 # ---------------------------------------------------------------------------
 
-skip_if_not_installed("callr")
-
 run_with_env <- function(expr, env_vars = character()) {
+  skip_if_not_installed("callr")
+  vars <- c(
+    MINIEXTENDR_NUM_THREADS = "",
+    RAYON_NUM_THREADS = "",
+    `_R_CHECK_LIMIT_CORES_` = ""
+  )
+  vars[names(env_vars)] <- env_vars
   callr::r(
     function(expr_to_eval) {
       library(miniextendr)
       eval(expr_to_eval)
     },
     args = list(expr_to_eval = substitute(expr)),
-    env = c(callr::rcmd_safe_env(), env_vars),
+    env = c(callr::rcmd_safe_env(), vars),
     timeout = 30
   )
 }
@@ -215,13 +224,9 @@ test_that("miniextendr_set_threads errors once the pool is already built", {
 })
 
 test_that("miniextendr_set_threads rejects non-positive input", {
-  msg <- run_with_env({
-    tryCatch(
-      miniextendr_set_threads(0L),
-      error = function(e) conditionMessage(e)
-    )
-  })
-  expect_match(msg, "positive integer")
+  # Validation panics in the wrapper before any pool interaction, so this is
+  # safe to run in-process — no subprocess needed.
+  expect_error(miniextendr_set_threads(0L), "positive integer")
 })
 
 test_that("rayon_with_r_dataframe builds a correct heterogeneous data.frame", {
