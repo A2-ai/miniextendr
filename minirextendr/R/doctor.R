@@ -111,38 +111,18 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
     }
   }
 
-  # -- Stale vendor tarball check --
+  # -- Install-mode signal --
   # inst/vendor.tar.xz is gitignored and only belongs in the source tree
-  # transiently (during `miniextendr_vendor()` + `R CMD build`). If it is
-  # left behind after an interrupted build, configure switches to tarball mode
-  # and the post-build cleanup in Makevars.in deletes src/rust/.cargo/ from the
-  # source tree -- silently breaking the monorepo [patch] override on the next
-  # `miniextendr_build()`.
+  # transiently (during `miniextendr_vendor()` + `R CMD build`). Its presence
+  # is resolved once here; the actual pass/warn/fail report happens in the
+  # single "Vendor tarball" check below (#BUG6 -- this used to be reported
+  # twice, with contradictory severity).
   cli::cli_h2("Install-mode signal")
 
   vendor_tarball_path <- tryCatch(
     usethis::proj_path("inst", "vendor.tar.xz"),
     error = function(e) NULL
   )
-  if (!is.null(vendor_tarball_path) && file.exists(vendor_tarball_path)) {
-    cli::cli_alert_danger(
-      "{.path inst/vendor.tar.xz} is present in the source tree"
-    )
-    cli::cli_alert_info(
-      "This file is gitignored and should only exist transiently during \\
-{.code miniextendr_vendor()} + {.code R CMD build}. \\
-Its presence flips configure to tarball mode, which makes the post-build \\
-Makevars cleanup delete {.path src/rust/.cargo/} from the source tree on \\
-the next {.code miniextendr_build()}."
-    )
-    cli::cli_alert_info(
-      "Fix: {.code rm inst/vendor.tar.xz && bash ./configure}"
-    )
-    results$fail <- c(results$fail, "stale inst/vendor.tar.xz in source tree")
-  } else {
-    cli::cli_alert_success("No stale {.path inst/vendor.tar.xz} in source tree")
-    results$pass <- c(results$pass, "no stale vendor.tar.xz")
-  }
 
   # -- Local miniextendr override marker (#908) --
   # .miniextendr-local is a dev-only marker written by use_local_miniextendr().
@@ -263,20 +243,49 @@ tarball-mode cleanup in Makevars. Fix: \\
   }
 
   # -- Vendor tarball leak --
+  # inst/vendor.tar.xz is gitignored and only belongs in the source tree
+  # transiently (during `miniextendr_vendor()` + `R CMD build`). This is the
+  # single check for it (#BUG6 -- previously duplicated as both a hard fail
+  # and a separate warning, with contradictory guidance). Severity is gated
+  # on whether we are in a developer source tree (a `.git` ancestor present):
+  #   - dev source tree: this is the latch leak (CLAUDE.md "The latch leak
+  #     (#441)") -- a previous build's trap-clean was bypassed, and if left
+  #     behind it makes the post-build Makevars cleanup delete
+  #     src/rust/.cargo/ from the source tree on the next
+  #     `miniextendr_build()`. Fail loudly.
+  #   - no `.git` ancestor: most likely intentional CRAN-prep staging
+  #     (bootstrap.R runs ./configure in a build-staging dir with no .git) or
+  #     a legitimate offline install. Warn instead of failing.
   cli::cli_h2("Vendor tarball")
 
-  tarball_path <- tryCatch(usethis::proj_path("inst", "vendor.tar.xz"), error = function(e) NULL)
-  if (!is.null(tarball_path) && fs::file_exists(tarball_path)) {
-    cli::cli_alert_warning("{.path inst/vendor.tar.xz} is present.")
-    cli::cli_bullets(c(
-      "i" = paste0(
-        "If you are in dev iteration this flips {.code ./configure} into offline ",
-        "tarball mode and hides workspace edits."
-      ),
-      "i" = "Run {.code miniextendr_clean_vendor_leak()} to remove it.",
-      "i" = "If you are mid CRAN-prep and have not run {.code R CMD build} yet, this is intentional -- ignore."
-    ))
-    results$warn <- c(results$warn, "inst/vendor.tar.xz present (may flip tarball mode)")
+  is_dev_source_tree <- !is.null(find_root_with_file(".git", usethis::proj_get()))
+
+  if (!is.null(vendor_tarball_path) && fs::file_exists(vendor_tarball_path)) {
+    if (is_dev_source_tree) {
+      cli::cli_alert_danger("{.path inst/vendor.tar.xz} is present in the source tree.")
+      cli::cli_bullets(c(
+        "i" = paste0(
+          "This flips {.code ./configure} into offline tarball mode and hides ",
+          "workspace edits. If left behind after an interrupted build, the ",
+          "post-build Makevars cleanup also deletes {.path src/rust/.cargo/}, ",
+          "breaking the monorepo [patch] override on the next ",
+          "{.code miniextendr_build()}."
+        ),
+        "i" = "Run {.code miniextendr_clean_vendor_leak()} to remove it."
+      ))
+      results$fail <- c(results$fail, "stale inst/vendor.tar.xz in source tree")
+    } else {
+      cli::cli_alert_warning("{.path inst/vendor.tar.xz} is present.")
+      cli::cli_bullets(c(
+        "i" = paste0(
+          "No {.code .git} ancestor found, so this is likely intentional ",
+          "CRAN-prep staging or an offline install -- ignore if you have not ",
+          "yet run {.code R CMD build}."
+        ),
+        "i" = "Run {.code miniextendr_clean_vendor_leak()} to remove it if unintended."
+      ))
+      results$warn <- c(results$warn, "inst/vendor.tar.xz present (may flip tarball mode)")
+    }
   } else {
     cli::cli_alert_success("No {.path inst/vendor.tar.xz} leak detected")
     results$pass <- c(results$pass, "No vendor tarball leak")
