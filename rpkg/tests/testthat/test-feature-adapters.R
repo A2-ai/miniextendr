@@ -1757,6 +1757,12 @@ test_that("zstd compresses repetitive data smaller than input", {
   expect_lt(length(zstd_compress(data, 3L)), length(data))
 })
 
+test_that("zstd_roundtrip returns the input unchanged", {
+  skip_if_missing_feature("zstd")
+  data <- charToRaw("round trip me")
+  expect_identical(zstd_roundtrip(data, 3L), data)
+})
+
 test_that("zstd level 0 and NA select the default level", {
   skip_if_missing_feature("zstd")
   data <- charToRaw("hello hello hello")

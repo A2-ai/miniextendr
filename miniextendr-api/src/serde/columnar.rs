@@ -1022,7 +1022,17 @@ where
     }
 
     let ok_df = ok_builder.finish()?;
+    // Root the finished frame across `err_builder.finish()` below: `DataFrame`
+    // is an unrooted SEXP wrapper and the second finish allocates, so under
+    // `gctorture(TRUE)` the collector reclaims `ok_df` mid-assembly otherwise
+    // (caught by gc_stress_dispatch_to_dataframes; same bug class as
+    // reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md).
+    // SAFETY: R main thread (SerdeRowBuilder invariant); `ok_df` is a valid SEXP.
+    let _ok_guard = unsafe { crate::OwnedProtect::new(ok_df.as_sexp()) };
     let err_df = err_builder.finish()?;
+    // SAFETY: as above. Guards drop LIFO after the list below is assembled;
+    // both frames are additionally rooted by the builder's scope once pushed.
+    let _err_guard = unsafe { crate::OwnedProtect::new(err_df.as_sexp()) };
 
     Ok(NamedDataFrameListBuilder::with_capacity(2)
         .push(names.ok, ok_df)

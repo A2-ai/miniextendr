@@ -54,6 +54,12 @@ test_that("CounterTraitS3 direct trait helpers exist", {
   expect_equal(custom_get.CounterTraitS3(counter), 7L)
 })
 
+test_that("new_countertraits3 snake_case constructor alias works", {
+  counter <- new_countertraits3(5L)
+  expect_true(inherits(counter, "CounterTraitS3"))
+  expect_equal(get_value(counter), 5L)
+})
+
 # =============================================================================
 # S4 trait impl (CounterTraitS4)
 # =============================================================================

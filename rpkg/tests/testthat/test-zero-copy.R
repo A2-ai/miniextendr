@@ -102,6 +102,16 @@ test_that("Int32Array with NAs round-trip returns same object", {
   expect_true(zero_copy_arrow_i32_identity(x))
 })
 
+test_that("Float64Array round-trip returns the values unchanged", {
+  x <- c(1.5, NA, 3.5)
+  expect_equal(zero_copy_arrow_f64_roundtrip(x), x)
+})
+
+test_that("Int32Array round-trip returns the values unchanged", {
+  x <- c(1L, NA, 3L)
+  expect_equal(zero_copy_arrow_i32_roundtrip(x), x)
+})
+
 test_that("ALTREP compact integer (1:n) correctly falls through to copy", {
   # 1:5 creates an ALTREP compact sequence — data isn't at fixed offset
   # from SEXP header. Arrow recovery must fail gracefully, returning a copy.

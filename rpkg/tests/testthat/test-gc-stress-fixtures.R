@@ -78,3 +78,75 @@ test_that("gc_stress_str_borrow keeps zero-copy &str views intact under gctortur
 })
 
 # endregion
+
+# region: legacy-prefix gctorture fixtures (gc_protect_tests.rs, #307) --------
+
+# These two predate the gc_stress_ naming convention (#430), so the dynamic
+# sweep below does not enumerate them — exercise them explicitly, with the
+# structure assertions the sweep can't make.
+test_that("List::from_values / from_pairs string fixtures survive gctorture", {
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  for (i in seq_len(5L)) {
+    v <- test_list_from_values_strings_gctorture()
+    expect_length(v, 16L)
+    expect_equal(v[[1]], "element-0")
+
+    p <- test_list_from_pairs_strings_gctorture()
+    expect_length(p, 16L)
+    expect_equal(names(p)[[1]], "k0")
+    expect_equal(p[[1]], "v0")
+  }
+})
+
+# endregion
+
+# region: dynamic sweep — every no-arg gc_stress_* fixture --------------------
+
+# Self-registering harness (#1026): enumerate every exported no-arg
+# gc_stress_* fixture so future fixtures are exercised without editing this
+# file. The explicit tests above assert result *structure*; this sweep only
+# asserts survival under gctorture. Feature-gated fixtures self-solve: if not
+# compiled, they are not in the namespace. Iterations stay low (5) because
+# this runs in PR CI — nightly's gctorture2 sweep amplifies it.
+test_that("every no-arg gc_stress_* fixture survives gctorture", {
+  ns <- getNamespace("miniextendr")
+  fixtures <- ls(ns, pattern = "^gc_stress_")
+  fixtures <- Filter(function(f) length(formals(get(f, ns))) == 0L, fixtures)
+  # gc_stress_with_r_thread_stop raises by design (its point is the raw
+  # Rf_error longjmp path; test-worker-longjmp.R expect_error()s it). Every
+  # other fixture's contract is an error-free return.
+  fixtures <- setdiff(fixtures, "gc_stress_with_r_thread_stop")
+  expect_gt(length(fixtures), 0L)
+
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  ok <- 0L
+  fail <- character(0L)
+  for (f in fixtures) {
+    res <- "ok"
+    for (i in seq_len(5L)) {
+      res <- tryCatch(
+        { get(f, ns)(); "ok" },
+        error = function(e) conditionMessage(e)
+      )
+      if (!identical(res, "ok")) {
+        fail <- c(fail, sprintf("%s iteration %d: %s", f, i, res))
+        break
+      }
+    }
+    if (identical(res, "ok")) ok <- ok + 1L
+  }
+
+  expect_equal(
+    ok, length(fixtures),
+    info = sprintf(
+      "%d of %d fixtures survived; failures: %s",
+      ok, length(fixtures), paste(fail, collapse = "; ")
+    )
+  )
+})
+
+# endregion

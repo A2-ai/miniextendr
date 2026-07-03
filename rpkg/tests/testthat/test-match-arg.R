@@ -255,3 +255,21 @@ test_that("foreign-type MatchArg: log::LevelFilter choices are baked into wrappe
   expect_equal(match_arg_log_level("err"), "error")
   expect_error(match_arg_log_level("loud"), "should be one of")  # match.arg's own error
 })
+
+# ============================================================================
+# Auto-doc fixtures — @param auto-injected from enum choices
+# ============================================================================
+
+test_that("match_arg_auto_doc_mode behaves like a plain match_arg param", {
+  expect_equal(match_arg_auto_doc_mode(), "Fast") # NULL default → first choice
+  expect_equal(match_arg_auto_doc_mode("Sa"), "Safe") # partial match
+  expect_error(match_arg_auto_doc_mode("nope"), "should be one of")
+})
+
+test_that("match_arg_auto_doc_modes several_ok accepts subsets", {
+  expect_equal(match_arg_auto_doc_modes("Fast"), "Fast")
+  expect_equal(match_arg_auto_doc_modes(c("Safe", "Debug")), "Safe, Debug")
+  # several.ok = TRUE + missing arg: match.arg returns the FULL choices vector
+  expect_equal(match_arg_auto_doc_modes(), "Fast, Safe, Debug")
+  expect_error(match_arg_auto_doc_modes("nope"), "should be one of")
+})

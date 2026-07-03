@@ -226,6 +226,21 @@ impl<'a> RArgumentBuilder<'a> {
                 _ => continue,
             };
 
+            // `Missing<T>`: forward true missingness as the `R_MissingArg`
+            // sentinel, produced *at the argument position*. A binding holding
+            // the sentinel errors on symbol lookup ("argument is missing, with
+            // no default"), so the former `if (missing(x)) x <- quote(expr=)`
+            // prelude broke every truly-missing call. (`Missing<T>` + user
+            // default is rejected at macro parse time, so no default-shadowing
+            // concern here.)
+            if is_missing_type(pat_type.ty.as_ref()) {
+                call_args.push(format!(
+                    "if (missing({p})) quote(expr=) else {p}",
+                    p = arg_ident
+                ));
+                continue;
+            }
+
             call_args.push(arg_ident.to_string());
         }
 
@@ -237,7 +252,8 @@ impl<'a> RArgumentBuilder<'a> {
 ///
 /// Automatically skips `self`/`&self` receivers. `Missing<T>` parameters without
 /// user-provided defaults appear as bare formals (no default value); the
-/// `if (missing())` prelude is generated separately via [`build_missing_prelude`].
+/// `R_MissingArg` sentinel forwarding is emitted inline in the `.Call()` args
+/// (see [`RArgumentBuilder::build_call_args_vec`]).
 ///
 /// Returns a comma-separated string of R formals, e.g., `"x, y = NULL, ..."`.
 pub(crate) fn build_r_formals_from_sig(
@@ -317,54 +333,6 @@ pub(crate) fn is_missing_type(ty: &syn::Type) -> bool {
     }
 }
 
-/// Collect parameter names that have `Missing<T>` types.
-///
-/// These parameters need an automatic R default of `quote(expr=)` which
-/// evaluates to `R_MissingArg` (the "missing argument" sentinel).
-/// Names are normalized via [`normalize_r_arg_ident`].
-///
-/// Returns normalized parameter names in declaration order.
-pub fn collect_missing_params(
-    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-) -> Vec<String> {
-    let mut missing_params = Vec::new();
-
-    for arg in inputs.iter() {
-        let syn::FnArg::Typed(pt) = arg else {
-            continue;
-        };
-        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
-            continue;
-        };
-
-        if is_missing_type(pt.ty.as_ref()) {
-            missing_params.push(normalize_r_arg_ident(&pat_ident.ident).to_string());
-        }
-    }
-
-    missing_params
-}
-
-/// Build `if (missing(param)) param <- quote(expr=)` prelude lines for `Missing<T>` parameters.
-///
-/// These lines go in the R function body BEFORE the `.Call()`, keeping the R function
-/// signature clean (no `quote(expr=)` in formals) while still passing the
-/// `R_MissingArg` sentinel through to Rust when the caller omits the argument.
-///
-/// Note: `Missing<T>` + `default` is a compile error (checked in `miniextendr_fn.rs`
-/// and `miniextendr_impl.rs`), so the `user_defaults` filter is a safety net only.
-///
-/// Returns a vector of R code lines, one per `Missing<T>` parameter.
-pub fn build_missing_prelude(
-    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-    user_defaults: &std::collections::HashMap<String, String>,
-) -> Vec<String> {
-    collect_missing_params(inputs)
-        .into_iter()
-        .filter(|param| !user_defaults.contains_key(param))
-        .map(|param| format!("if (missing({p})) {p} <- quote(expr=)", p = param))
-        .collect()
-}
 // endregion
 
 // region: DotCallBuilder - .Call() invocation formatting

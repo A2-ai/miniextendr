@@ -95,6 +95,11 @@ test_that("jiff: jiff_zoned_year extracts year", {
   expect_equal(yr, 2024L)
 })
 
+test_that("jiff: jiff_zoned_month extracts month (1-12)", {
+  ts <- as.POSIXct("2024-06-15 10:00:00", tz = "UTC")
+  expect_equal(jiff_zoned_month(ts), 6L)
+})
+
 test_that("jiff: Vec<Zoned> roundtrips as POSIXct vector", {
   ts1 <- as.POSIXct("2024-01-01 00:00:00", tz = "UTC")
   ts2 <- as.POSIXct("2024-06-15 12:00:00", tz = "UTC")

@@ -173,7 +173,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let ctor_preconditions = ctx.precondition_checks();
 
         // Missing param prelude for constructor
-        let ctor_missing = ctx.missing_prelude();
 
         let ctor_match_arg = ctx.match_arg_prelude();
 
@@ -184,15 +183,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("    initialize = function({}) {{", full_params));
-            // Missing defaults + preconditions + match.arg only when not using .ptr shortcut
-            if !ctor_missing.is_empty()
-                || !ctor_preconditions.is_empty()
-                || !ctor_match_arg.is_empty()
-            {
+            // Preconditions + match.arg only when not using .ptr shortcut
+            if !ctor_preconditions.is_empty() || !ctor_match_arg.is_empty() {
                 lines.push("      if (is.null(.ptr)) {".to_string());
-                for line in &ctor_missing {
-                    lines.push(format!("        {}", line));
-                }
                 for check in &ctor_preconditions {
                     lines.push(format!("        {}", check));
                 }
@@ -214,9 +207,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push(format!("    }}{}", comma));
         } else {
             lines.push(format!("    initialize = function({}) {{", ctx.params));
-            for line in &ctor_missing {
-                lines.push(format!("      {}", line));
-            }
             for check in &ctor_preconditions {
                 lines.push(format!("      {}", check));
             }
@@ -354,9 +344,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push(format!("      {}", on_exit.to_r_code()));
         }
         // Inject missing param defaults
-        for line in ctx.missing_prelude() {
-            lines.push(format!("      {}", line));
-        }
         // Inject match.arg validation for match_arg/choices params
         for line in ctx.match_arg_prelude() {
             lines.push(format!("      {}", line));
