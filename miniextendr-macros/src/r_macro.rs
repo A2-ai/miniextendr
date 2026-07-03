@@ -97,9 +97,12 @@ fn parse_r_macro_input(input: TokenStream) -> Result<(Option<TokenStream>, Token
     let tokens: Vec<proc_macro2::TokenTree> = input.clone().into_iter().collect();
 
     // Detect `env:` prefix: first token is `env` ident, second is `:` punct.
+    // The `:` must be Alone-spaced — a Joint `:` is the first half of `::`,
+    // i.e. R code like `env::foo` (namespace access), not the env head.
     let has_env_prefix = tokens.len() >= 2
         && matches!(&tokens[0], proc_macro2::TokenTree::Ident(id) if id == "env")
-        && matches!(&tokens[1], proc_macro2::TokenTree::Punct(p) if p.as_char() == ':');
+        && matches!(&tokens[1], proc_macro2::TokenTree::Punct(p)
+            if p.as_char() == ':' && p.spacing() == proc_macro2::Spacing::Alone);
 
     if !has_env_prefix {
         // No env head — entire input is the R tail.
@@ -155,6 +158,41 @@ fn parse_r_macro_input(input: TokenStream) -> Result<(Option<TokenStream>, Token
     })?;
 
     Ok((Some(quote! { #env_expr }), tail_tokens))
+}
+
+// endregion
+
+// region: Unit tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(src: &str) -> (Option<TokenStream>, TokenStream) {
+        parse_r_macro_input(src.parse().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn env_head_is_split_off() {
+        let (env, tail) = parse("env: e; x + 1");
+        assert_eq!(env.unwrap().to_string(), "e");
+        assert_eq!(tail.to_string(), "x + 1");
+    }
+
+    #[test]
+    fn double_colon_is_r_code_not_env_head() {
+        // `env::foo()` is R namespace access on a package named `env`,
+        // not the `env: <expr> ;` head.
+        let (env, tail) = parse("env::foo()");
+        assert!(env.is_none());
+        assert_eq!(tail.to_string(), "env :: foo ()");
+    }
+
+    #[test]
+    fn env_head_without_semicolon_errors() {
+        let err = parse_r_macro_input("env: e".parse().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("missing `;`"));
+    }
 }
 
 // endregion

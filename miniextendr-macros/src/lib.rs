@@ -2715,9 +2715,10 @@ pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// call site.
 ///
 /// This proc-macro additionally validates a conservative subset of known-bad
-/// R syntax constructs (trailing binary operators, empty function call
-/// arguments, bare `if`/`while`/`for` without a body, etc.) and emits a
-/// precise compile error pointing at the offending token.
+/// R syntax constructs (trailing binary operators, consecutive non-unary
+/// binary operators, bare `if`/`while`/`for` without a body, etc.) and emits
+/// a precise compile error pointing at the offending token. Empty (missing)
+/// call arguments — `f(, x)`, `matrix(, 2, 2)` — are valid R and pass.
 ///
 /// # What is deferred
 ///

@@ -22,7 +22,10 @@
 //! - `<<-` assignment (tokenises as `<` + `<` + `-`)
 //! - `->` assignment (tokenises as `-` + `>` joint punct)
 //! - `%in%`, `%*%`, and all other `%op%` operators
-//! - Empty groups in `[`-index position (`x[,1]`, `x[1,]`)
+//! - Empty (missing) arguments anywhere: `x[,1]`, `f(, x)`, `matrix(, 2, 2)` —
+//!   R's `sublist` grammar allows empty slots in every call form, `(` and `[`
+//!   alike (they become the missing-arg sentinel at evaluation)
+//! - `2 ** 3` — R's parser accepts `**` as an undocumented synonym for `^`
 //! - `~` formulas
 //! - `\(x) x+1` lambda syntax (R 4.1+; `\` alone doesn't survive Rust
 //!   lexing unless inside a string literal, so no R-side validation needed)
@@ -34,22 +37,12 @@ use syn::Error;
 /// or an `Err` spanned to the first problematic token pair/group.
 pub(crate) fn validate(tokens: &TokenStream) -> Result<(), Error> {
     let flat: Vec<TokenTree> = flatten_top_level(tokens);
-    validate_sequence(&flat, SequenceContext::TopLevel)
+    validate_sequence(&flat)
 }
 
 // region: Sequence-level checks
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SequenceContext {
-    /// Top-level or `;`-delimited statement — empty call argument check
-    /// applies to `(` groups here.
-    TopLevel,
-    /// Inside a `[` or `[[` group — trailing-comma empties are valid R
-    /// (`x[,1]`) so suppress the empty-call-arg diagnostic.
-    IndexGroup,
-}
-
-fn validate_sequence(seq: &[TokenTree], ctx: SequenceContext) -> Result<(), Error> {
+fn validate_sequence(seq: &[TokenTree]) -> Result<(), Error> {
     if seq.is_empty() {
         return Ok(());
     }
@@ -65,7 +58,7 @@ fn validate_sequence(seq: &[TokenTree], ctx: SequenceContext) -> Result<(), Erro
     while i < seq.len() {
         let tt = &seq[i];
         if let TokenTree::Group(g) = tt {
-            validate_group(g, ctx, seq, i)?;
+            validate_group(g, seq, i)?;
         }
         i += 1;
     }
@@ -77,12 +70,7 @@ fn validate_sequence(seq: &[TokenTree], ctx: SequenceContext) -> Result<(), Erro
 
 // region: Group-level checks
 
-fn validate_group(
-    g: &Group,
-    _outer_ctx: SequenceContext,
-    outer_seq: &[TokenTree],
-    pos: usize,
-) -> Result<(), Error> {
+fn validate_group(g: &Group, outer_seq: &[TokenTree], pos: usize) -> Result<(), Error> {
     let inner: Vec<TokenTree> = flatten_top_level(&g.stream());
 
     match g.delimiter() {
@@ -90,6 +78,11 @@ fn validate_group(
             // Check whether this parenthesized group is a function call.
             // It is a call if the preceding token is an ident or a closing
             // group (i.e. `f(...)`, `f(...)()`, `obj$field(...)`).
+            //
+            // Empty (missing) call arguments — `f(, x)`, `f(x,,y)` — are NOT
+            // checked: R's `sublist` grammar allows empty slots in every call
+            // form (`matrix(, 2, 2)` is idiomatic R), same production as
+            // `x[,1]`.
             let is_call = pos > 0 && {
                 match &outer_seq[pos - 1] {
                     TokenTree::Ident(_) => true,
@@ -101,11 +94,7 @@ fn validate_group(
                 }
             };
 
-            if is_call {
-                // Validate call arguments: no empty non-trailing position
-                // (e.g. `f(, x)` or `f(x,,y)` but `f()` and `f(x,)` are ok).
-                check_empty_call_arg(&inner, g.span())?;
-            } else {
+            if !is_call {
                 // Standalone parenthesised expression — must not be empty after
                 // a binary operator (`x + ()` is an error).
                 if inner.is_empty()
@@ -121,9 +110,8 @@ fn validate_group(
             }
 
             // Recurse into call arguments split by top-level commas.
-            let sub_ctx = SequenceContext::TopLevel;
             for arg in split_by_comma(&inner) {
-                validate_sequence(arg, sub_ctx)?;
+                validate_sequence(arg)?;
             }
 
             // Also validate control-flow keywords before this group.
@@ -131,28 +119,22 @@ fn validate_group(
         }
 
         Delimiter::Bracket => {
-            // `[` groups: empty comma slots are valid R (matrix/dataframe
-            // indexing) — don't fire empty-arg diagnostic.
-            let sub_ctx = SequenceContext::IndexGroup;
             for arg in split_by_comma(&inner) {
-                validate_sequence(arg, sub_ctx)?;
+                validate_sequence(arg)?;
             }
         }
 
         Delimiter::Brace => {
-            // `{` blocks: validate each `;`-separated or newline-separated
-            // statement.  We treat commas and semicolons both as separators
-            // here for simplicity (R allows both in limited contexts).
-            let sub_ctx = SequenceContext::TopLevel;
+            // `{` blocks: validate each `;`-separated statement.
             for stmt in split_by_semicolon(&inner) {
                 if !stmt.is_empty() {
-                    validate_sequence(stmt, sub_ctx)?;
+                    validate_sequence(stmt)?;
                 }
             }
         }
 
         Delimiter::None => {
-            validate_sequence(&inner, _outer_ctx)?;
+            validate_sequence(&inner)?;
         }
     }
 
@@ -310,23 +292,14 @@ fn check_trailing_binary_op(seq: &[TokenTree]) -> Result<(), Error> {
 
 // region: Consecutive binary operators check
 
-/// Returns an error if two consecutive pure-binary operators appear where
-/// neither can be unary (R disallows things like `x * + y`... actually
-/// `+` and `-` ARE unary so we must be careful).
+/// Returns an error if two consecutive non-unary binary operators appear
+/// with nothing between them (`x * * y`, `x / / y`).
 ///
-/// Rule: report an error only when BOTH operators are in the non-unary set
-/// (`*`, `/`, `^`, `==`, `!=`, `<=`, `>=`, `&&`, `||`, `%`, `@`, `$`,
-/// `~`, `?` are only flagged when clearly doubled like `* *` — actually
-/// we keep this very conservative: flag only `*`, `/` doubled, since
-/// those are the clearest cases, and accept `+ +`, `- -`, etc. which
-/// can be chained unary in R.
-///
-/// To stay conservative we only flag the case of two identical non-unary ops
-/// that can't be chained. For now we keep this simple and flag `* *` and
-/// `/ /` explicitly (the easiest false-negative-free cases).
-///
-/// Actually the plan says: "two consecutive binary operators where neither is
-/// unary-capable (`+ - ! ~ ?` are unary)". Let's implement that conservatively.
+/// Unary-capable operators (`+`, `-`, `!`, `~`, `?`) are never flagged —
+/// they chain legally (`x - - y`). Joint-spaced pairs are never flagged
+/// either: that skips every multi-char operator (`<-`, `->`, `<=`, `%%`,
+/// `%in%`'s delimiters) *and* `**`, which R's parser accepts as an
+/// undocumented synonym for `^`.
 fn check_consecutive_binary_ops(seq: &[TokenTree]) -> Result<(), Error> {
     // Build a simplified view: only keep non-whitespace punct tokens and check
     // for pairs of non-unary binary operators.
@@ -373,7 +346,8 @@ fn check_consecutive_binary_ops(seq: &[TokenTree]) -> Result<(), Error> {
         let non_unary_binary = |c: char| matches!(c, '*' | '/' | '^' | '%' | '@' | '$');
 
         if non_unary_binary(c0) && non_unary_binary(c1) {
-            // Double `*` (e.g. `x ** y`) or `/ /` etc. — clearly invalid R.
+            // `x * * y`, `x / / y`, etc. — invalid R (both Alone-spaced,
+            // so this is never `**`/`%%`, which arrive Joint-spaced).
             let _ = span1; // used in error below
             return Err(Error::new(
                 span0,
@@ -381,44 +355,6 @@ fn check_consecutive_binary_ops(seq: &[TokenTree]) -> Result<(), Error> {
                     "R syntax error: consecutive binary operators `{c0}` and `{c1}` — \
                      expected an operand between them"
                 ),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-// endregion
-
-// region: Empty call-argument check
-
-/// Checks that a `f(...)` call argument list has no empty non-trailing slots.
-///
-/// - `f()` — ok (single empty group).
-/// - `f(, x)` — error (leading empty slot).
-/// - `f(x,,y)` — error (middle empty slot).
-/// - `f(x,)` — ok (trailing empty is fine in R: named calls sometimes end `,`).
-fn check_empty_call_arg(args: &[TokenTree], call_span: Span) -> Result<(), Error> {
-    let segments: Vec<&[TokenTree]> = split_by_comma(args);
-
-    // A single empty segment is `f()` — valid.
-    if segments.len() == 1 {
-        return Ok(());
-    }
-
-    // Check every segment except the last one (trailing comma is ok).
-    for (i, seg) in segments.iter().enumerate() {
-        let is_last = i == segments.len() - 1;
-        if is_last {
-            break; // trailing empty ok
-        }
-        if seg.is_empty() {
-            return Err(Error::new(
-                call_span,
-                "R syntax error: empty argument in function call — \
-                 `f(, x)` / `f(x,,y)` are not valid R (use `f(NULL, x)` or \
-                 named arguments if you want a placeholder). \
-                 Note: `x[, 1]` (index subscript) is valid; use `[[` or `[` groups.",
             ));
         }
     }
@@ -588,6 +524,21 @@ mod tests {
     }
 
     #[test]
+    fn empty_call_args_are_valid_missing_args() {
+        // R's sublist grammar allows empty slots in every call form — they
+        // become the missing-arg sentinel. `matrix(, 2, 2)` is idiomatic.
+        ok("f(, x)");
+        ok("f(x,,y)");
+        ok("matrix(, 2, 2)");
+    }
+
+    #[test]
+    fn double_star_is_r_power_synonym() {
+        // R's parser accepts `**` as an undocumented synonym for `^`.
+        ok("2 ** 3");
+    }
+
+    #[test]
     fn empty_function_call() {
         // f() is valid
         ok("f()");
@@ -661,21 +612,8 @@ mod tests {
         err("x / / y");
     }
 
-    // region: Empty call args
-
-    #[test]
-    fn leading_empty_call_arg() {
-        err("f(, x)");
-    }
-
-    #[test]
-    fn middle_empty_call_arg() {
-        err("f(x,,y)");
-    }
-
     #[test]
     fn trailing_empty_call_arg_ok() {
-        // R allows `f(x,)` in some contexts (though uncommon)
         ok("f(x,)");
     }
 

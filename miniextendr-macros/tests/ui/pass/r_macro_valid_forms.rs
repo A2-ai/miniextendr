@@ -43,6 +43,18 @@ fn _check_r_macro_forms() {
 
     // Logical operators (not trailing)
     let _: Result<miniextendr_api::SEXP, String> = r!(x && y);
+
+    // %in% operator (tokenises as `%`, ident, `%`)
+    let _: Result<miniextendr_api::SEXP, String> = r!(x %in% y);
+
+    // Bracket index with empty first slot
+    let _: Result<miniextendr_api::SEXP, String> = r!(m[, 1]);
+
+    // Empty (missing) call arguments — valid R sublist grammar
+    let _: Result<miniextendr_api::SEXP, String> = r!(matrix(, 2, 2));
+
+    // `env` followed by `::` is R namespace access, not the env head
+    let _: Result<miniextendr_api::SEXP, String> = r!(env::foo());
 }
 
 fn main() {}
