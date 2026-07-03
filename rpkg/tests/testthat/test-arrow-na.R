@@ -52,6 +52,17 @@ test_that("f64 null positions reported correctly", {
   expect_equal(positions, c(FALSE, TRUE, FALSE, TRUE, FALSE))
 })
 
+test_that("f64 inspect_arrow reports null_count and per-element null flags", {
+  v <- c(1.0, NA, 3.0)
+  # layout: [null_count, value_0, is_null_0, value_1, is_null_1, value_2, is_null_2]
+  res <- arrow_na_f64_inspect_arrow(v)
+  expect_length(res, 7L)
+  expect_equal(res[1], 1) # null_count
+  expect_equal(res[c(2, 6)], c(1.0, 3.0)) # non-null values
+  expect_equal(res[c(3, 5, 7)], c(0, 1, 0)) # is_null flags
+  expect_true(is.nan(res[4])) # null represented as NaN by the fixture
+})
+
 test_that("f64 compact (remove NAs) works", {
   v <- c(1.0, NA, 3.0, NA, 5.0)
   result <- arrow_na_f64_compact(v)

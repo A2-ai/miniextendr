@@ -119,6 +119,12 @@ test_that("S3 instance method with match_arg validates", {
   expect_equal(relabel(p, "Safe"), "alpha-Safe")
 })
 
+test_that("S3MatchArgPoint class object constructs via $new", {
+  p <- S3MatchArgPoint$new("gamma")
+  expect_true(inherits(p, "S3MatchArgPoint"))
+  expect_equal(label(p), "gamma")
+})
+
 # endregion
 
 # region: S4 — scalar match_arg on constructor + instance method (#209)

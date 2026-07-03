@@ -1306,17 +1306,10 @@ pub fn miniextendr(
         precondition_output.static_checks.join("\n  ")
     };
 
-    // Generate Missing<T> prelude: `if (missing(param)) param <- quote(expr=)`
-    let missing_prelude = {
-        let lines = r_wrapper_builder::build_missing_prelude(inputs, &parsed.param_defaults());
-        if lines.is_empty() {
-            String::new()
-        } else {
-            lines.join("\n  ")
-        }
-    };
-
-    // Combine all preludes: r_entry, on.exit, missing defaults, lifecycle, static preconditions, match.arg, choices, r_post_checks
+    // Combine all preludes: r_entry, on.exit, lifecycle, static preconditions, match.arg, choices, r_post_checks
+    // (Missing<T> forwarding lives inline in the `.Call()` args — see
+    // `build_call_args_vec` — because a prelude binding of the missing
+    // sentinel errors on lookup.)
     let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
     let combined_prelude = {
         let mut parts = Vec::new();
@@ -1325,9 +1318,6 @@ pub fn miniextendr(
         }
         if let Some(ref s) = on_exit_str {
             parts.push(s.as_str());
-        }
-        if !missing_prelude.is_empty() {
-            parts.push(missing_prelude.as_str());
         }
         if let Some(ref lc) = lifecycle_prelude {
             parts.push(lc.as_str());

@@ -232,38 +232,25 @@ fn test_is_not_missing_type() {
 }
 
 #[test]
-fn test_collect_missing_params() {
+fn test_missing_type_call_args_inline_sentinel() {
+    // The R_MissingArg sentinel must be produced at the argument position —
+    // a prelude binding of the sentinel errors on symbol lookup.
     let inputs = parse_inputs("x: i32, y: Missing<f64>, z: String");
-    let missing = collect_missing_params(&inputs);
-    assert_eq!(missing, vec!["y"]);
+    let builder = RArgumentBuilder::new(&inputs);
+    assert_eq!(
+        builder.build_call_args(),
+        "x, if (missing(y)) quote(expr=) else y, z"
+    );
 }
 
 #[test]
-fn test_collect_multiple_missing_params() {
+fn test_multiple_missing_type_call_args() {
     let inputs = parse_inputs("a: Missing<i32>, b: f64, c: Missing<String>");
-    let missing = collect_missing_params(&inputs);
-    assert_eq!(missing, vec!["a", "c"]);
-}
-
-#[test]
-fn test_build_missing_prelude() {
-    let inputs = parse_inputs("x: i32, y: Missing<f64>, z: String");
-    let user_defaults = std::collections::HashMap::new();
-    let prelude = build_missing_prelude(&inputs, &user_defaults);
-
-    assert_eq!(prelude, vec!["if (missing(y)) y <- quote(expr=)"]);
-}
-
-#[test]
-fn test_build_missing_prelude_skips_user_defaults() {
-    let inputs = parse_inputs("x: i32, y: Missing<f64>, z: Missing<String>");
-    let mut user_defaults = std::collections::HashMap::new();
-    user_defaults.insert("y".to_string(), "0.0".to_string());
-
-    let prelude = build_missing_prelude(&inputs, &user_defaults);
-
-    // y has a user default, so only z gets the prelude
-    assert_eq!(prelude, vec!["if (missing(z)) z <- quote(expr=)"]);
+    let builder = RArgumentBuilder::new(&inputs);
+    assert_eq!(
+        builder.build_call_args(),
+        "if (missing(a)) quote(expr=) else a, b, if (missing(c)) quote(expr=) else c"
+    );
 }
 
 #[test]
@@ -397,14 +384,13 @@ fn snapshot_formals_and_call_args() {
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
 
-    // Missing<T> - clean formals (no quote(expr=) in signature)
+    // Missing<T> - clean formals (no quote(expr=) in signature); the sentinel
+    // forwarding is inline in call_args
     output.push_str("\n# Missing<T> clean formals\n");
     let inputs = parse_inputs("x: i32, y: Missing<f64>, z: Missing<String>");
     let builder = RArgumentBuilder::new(&inputs);
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
-    let prelude = build_missing_prelude(&inputs, &std::collections::HashMap::new());
-    output.push_str(&format!("missing_prelude: {}\n", prelude.join("; ")));
 
     insta::assert_snapshot!(output);
 }

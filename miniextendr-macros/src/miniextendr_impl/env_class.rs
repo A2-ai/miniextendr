@@ -73,9 +73,6 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
         lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
-        for line in ctx.missing_prelude() {
-            lines.push(format!("  {}", line));
-        }
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
         }

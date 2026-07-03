@@ -73,9 +73,6 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Generate constructor body based on vctrs kind
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
-        for line in ctx.missing_prelude() {
-            lines.push(format!("  {}", line));
-        }
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
         }

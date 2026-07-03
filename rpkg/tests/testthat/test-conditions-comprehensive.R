@@ -469,6 +469,23 @@ test_that("standalone fn consuming sidecar panics with rust_error", {
   expect_true(grepl("sidecar_consumer_panic", deparse(cl)[[1]]))
 })
 
+test_that("raw sidecar accessors read and write the doom field", {
+  # PanickingSidecar_get_doom / _set_doom are the hand-rolled sidecar C
+  # wrappers (no __miniextendr_call slot — see the region comment above).
+  # Drive them directly with the bare ExternalPtr; the R6 active binding
+  # routes through these same entry points.
+  ptr <- panicking_sidecar_new("original")
+  expect_equal(PanickingSidecar_get_doom(ptr), "original")
+  PanickingSidecar_set_doom(ptr, "rewritten")
+  expect_equal(PanickingSidecar_get_doom(ptr), "rewritten")
+})
+
+test_that("raw sidecar accessor on a non-externalptr errors, not crashes", {
+  # The panic inside the accessor (failed downcast) must surface as an R
+  # error through the call-slot-less wrapper path.
+  expect_error(PanickingSidecar_get_doom(42L))
+})
+
 # endregion
 
 # region: edge cases — withRestarts / e$class slot / message conditionCall

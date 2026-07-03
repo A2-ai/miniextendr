@@ -764,11 +764,22 @@ impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T> {
 
 impl<T: DataFrameRowConvert> FromDataFrame for Vec<T> {
     fn from_dataframe(df: &DataFrame) -> Result<Self, DataFrameError> {
+        // Root the input across the read. A `.Call` caller gets this from R's
+        // argument frame, but a Rust caller may hand in a freshly-built,
+        // unprotected frame (`into_dataframe` returns an unrooted SEXP wrapper);
+        // reader-internal allocations would reclaim it mid-read under
+        // `gctorture(TRUE)` (caught by gc_stress_reader_nested_flatten).
+        // Mirrors the guard in serde's `dataframe_to_vec` — see
+        // reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md.
+        // SAFETY: reader entry runs on the R main thread; `df` wraps a valid SEXP.
+        let _input = unsafe { crate::OwnedProtect::new(df.as_sexp()) };
         T::rows_from_dataframe(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 
     #[cfg(feature = "rayon")]
     fn from_dataframe_par(df: &DataFrame) -> Result<Self, DataFrameError> {
+        // SAFETY: as in `from_dataframe` above.
+        let _input = unsafe { crate::OwnedProtect::new(df.as_sexp()) };
         T::rows_from_dataframe_par(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 }

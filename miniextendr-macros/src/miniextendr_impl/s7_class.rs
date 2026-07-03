@@ -657,7 +657,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     if let Some(ctx) = parsed_impl.constructor_context() {
         let ctor_preconditions = ctx.precondition_checks();
-        let ctor_missing = ctx.missing_prelude();
         let ctor_match_arg = ctx.match_arg_prelude();
         if has_self_returning_methods {
             let params_with_ptr = if ctx.params.is_empty() {
@@ -666,15 +665,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("  constructor = function({}) {{", params_with_ptr));
-            // Missing defaults + preconditions + match.arg only when not using .ptr shortcut
-            if !ctor_missing.is_empty()
-                || !ctor_preconditions.is_empty()
-                || !ctor_match_arg.is_empty()
-            {
+            // Preconditions + match.arg only when not using .ptr shortcut
+            if !ctor_preconditions.is_empty() || !ctor_match_arg.is_empty() {
                 lines.push("    if (is.null(.ptr)) {".to_string());
-                for line in &ctor_missing {
-                    lines.push(format!("      {}", line));
-                }
                 for check in &ctor_preconditions {
                     lines.push(format!("      {}", check));
                 }
@@ -695,9 +688,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("  }".to_string());
         } else {
             lines.push(format!("  constructor = function({}) {{", ctx.params));
-            for line in &ctor_missing {
-                lines.push(format!("    {}", line));
-            }
             for check in &ctor_preconditions {
                 lines.push(format!("    {}", check));
             }
