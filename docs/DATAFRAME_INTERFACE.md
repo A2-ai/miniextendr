@@ -130,6 +130,8 @@ backwards-compat shim. The legacy companion methods (`to_dataframe`, `from_rows`
 The serde columnar assembler has been aligned with the façade (#783): the internal
 columnar newtype is now folded into `DataFrame` (all serde column helpers return
 `DataFrame` directly), and the streaming serde-row builder is now `SerdeRowBuilder`
-(paired with `SerdeRows`). Two serde-side builders remain distinct from
-`DataFrame::builder`: `SerdeRowBuilder<T>` for incremental serde rows assembled into
-one `DataFrame`, and `NamedDataFrameListBuilder` for a named list of frames.
+(paired with `SerdeRows`). Two builders remain distinct from
+`DataFrame::builder`: `SerdeRowBuilder<T>` (serde feature) for incremental serde rows
+assembled into one `DataFrame`, and `NamedDataFrameListBuilder` (core, in
+`dataframe` — no serde needed; also the output shape for `group_by(...).frames()`)
+for a named list of frames.

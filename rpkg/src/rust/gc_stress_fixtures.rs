@@ -500,7 +500,8 @@ pub fn gc_stress_toml_array() {
 #[miniextendr]
 pub fn gc_stress_named_df_list_builder() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
-    use miniextendr_api::serde::{NamedDataFrameListBuilder, vec_to_dataframe};
+    use miniextendr_api::NamedDataFrameListBuilder;
+    use miniextendr_api::serde::vec_to_dataframe;
 
     #[derive(crate::serde::Serialize)]
     #[serde(crate = "crate::serde")]
@@ -534,6 +535,44 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
         .push("error", vec_to_dataframe(&errs).unwrap())
         .build()
         .into_sexp()
+}
+
+/// Exercise `DataFrame::group_by` + `GroupedDataFrame::frames` SEXP handling
+/// under GC pressure.
+///
+/// `GroupedDataFrame` holds the source frame's SEXP across the per-group
+/// `select_rows` allocations, and each yielded sub-frame is unprotected until
+/// the `NamedDataFrameListBuilder` push roots it — the two SEXP-across-
+/// allocations paths this fixture drives. Synthesizes a 60-row frame with a
+/// character key (incl. NAs) internally.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr]
+pub fn gc_stress_group_by() -> SEXP {
+    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
+
+    let df = DataFrame::builder(60)
+        .column::<i32>("v", |chunk, offset| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = i32::try_from(offset + i).expect("row index exceeds i32");
+            }
+        })
+        .column_str("g", |i| match i % 4 {
+            0 => Some("a".to_string()),
+            1 => Some("b".to_string()),
+            2 => Some("c".to_string()),
+            _ => None,
+        })
+        .build();
+
+    let grouped = df
+        .group_by("g")
+        .expect("gc_stress_group_by: group_by failed");
+    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    for (key, sub) in grouped.frames() {
+        out = out.push(key.label(), sub);
+    }
+    out.build().into_sexp()
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
