@@ -5,9 +5,7 @@
 //! Parity target: R `split()` + `lapply()` — with the documented deviation
 //! that NA keys form one trailing group instead of being dropped.
 
-use miniextendr_api::dataframe::{
-    DataFrame, IntoDataFrame, NamedDataFrameListBuilder,
-};
+use miniextendr_api::dataframe::{DataFrame, IntoDataFrame, NamedDataFrameListBuilder};
 use miniextendr_api::{DataFrameRow, IntoList, IntoR, SEXP, group_rows, miniextendr};
 
 // region: row types

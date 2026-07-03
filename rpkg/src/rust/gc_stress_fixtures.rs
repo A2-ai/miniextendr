@@ -499,8 +499,8 @@ pub fn gc_stress_toml_array() {
 #[cfg(feature = "serde")]
 #[miniextendr]
 pub fn gc_stress_named_df_list_builder() -> SEXP {
-    use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::NamedDataFrameListBuilder;
+    use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::vec_to_dataframe;
 
     #[derive(crate::serde::Serialize)]
