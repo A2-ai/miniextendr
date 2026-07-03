@@ -161,6 +161,7 @@ mod convert_pref_tests;
 mod dataframe_derive_alignment_tests;
 mod dataframe_enum_payload_matrix;
 mod dataframe_examples;
+mod dataframe_group_tests;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
 mod dataframe_reader_enum_roundtrip_test;

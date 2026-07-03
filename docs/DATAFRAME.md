@@ -441,6 +441,65 @@ for m in &rows {
 
 The reader is emitted for **simple scalar-field structs**. Calling it on a shape without a reader (expansion / struct-flatten / nested-enum / map columns) returns a `DataFrameError::Conversion` at runtime rather than failing to compile — so generic code can attempt the read and handle the error.
 
+## Group-level iteration
+
+Two rungs, cheapest first.
+
+### Typed rows: `group_rows`
+
+Once rows are extracted, grouping is plain Rust. `group_rows` makes the idiom
+discoverable and gives NA-able keys a defined home (key on `Option<T>` —
+`None` sorts first — or a custom enum):
+
+```rust
+let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df)?;
+let by_site: BTreeMap<String, Vec<Measurement>> =
+    group_rows(rows, |m| m.site.clone());
+```
+
+The result is plain Rust data — no SEXP contact — so stepping over groups with
+rayon is safe:
+
+```rust
+let summaries: Vec<(String, f64)> = by_site
+    .into_iter()
+    .par_bridge()                       // rayon: rows are Send, no SEXPs held
+    .map(|(site, ms)| (site, ms.iter().map(|m| m.value).sum()))
+    .collect();
+```
+
+### Untyped frames: `DataFrame::group_by`
+
+For heterogeneous frames where extracting typed rows is wasteful,
+`group_by(col)` computes group indices in one pass (main thread, no row
+copies) and returns a `GroupedDataFrame`:
+
+```rust
+let grouped = df.group_by("site")?;
+
+// (key, row-indices) — zero-copy
+for (key, rows) in grouped.iter() { /* key: &GroupKey, rows: &[usize] */ }
+
+// per-group sub-frames — root each one as you go (push protects it)
+let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+for (key, sub) in grouped.frames() {
+    out = out.push(key.label(), sub);
+}
+let named_list_of_frames = out.build();
+
+// or: one typed extraction, then an index move-partition (rayon-safe after)
+let by_group: Vec<(GroupKey, Vec<Measurement>)> = grouped.extract()?;
+```
+
+Supported key columns: **factor** (fast path — levels are the keys, level
+order kept, empty levels included, like `split()`), **character** (byte-order
+sort), **integer** (numeric sort), **logical** (`FALSE`, `TRUE`). **Double
+columns error** — grouping on floating point is a footgun; `cut()` or
+`factor()` the column in R first.
+
+**NA keys form one group, ordered last.** This deliberately deviates from R's
+`split()`, which silently drops NA-keyed rows.
+
 ## Parallel fast paths (`feature = "rayon"`)
 
 Explicit `_par` variants produce the **same** `DataFrame` / `Vec<Row>` as the sequential verbs — parallelism is an opt-in method, not a hidden threshold:

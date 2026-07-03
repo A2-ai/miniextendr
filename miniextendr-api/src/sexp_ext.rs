@@ -559,12 +559,7 @@ impl SexpExt for SEXP {
             T::SEXP_TYPE,
             self.type_of()
         );
-        let len = self.len();
-        if len == 0 {
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(DATAPTR_RO(*self).cast(), len) }
-        }
+        unsafe { crate::from_r::r_slice(DATAPTR_RO(*self).cast(), self.len()) }
     }
 
     #[inline]
@@ -575,12 +570,7 @@ impl SexpExt for SEXP {
             T::SEXP_TYPE,
             self.type_of()
         );
-        let len = self.len();
-        if len == 0 {
-            &mut []
-        } else {
-            unsafe { std::slice::from_raw_parts_mut(T::dataptr_mut(*self), len) }
-        }
+        unsafe { crate::from_r::r_slice_mut(T::dataptr_mut(*self), self.len()) }
     }
 
     #[inline]
@@ -591,12 +581,7 @@ impl SexpExt for SEXP {
             T::SEXP_TYPE,
             self.type_of()
         );
-        let len = unsafe { self.len_unchecked() };
-        if len == 0 {
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(DATAPTR_RO_unchecked(*self).cast(), len) }
-        }
+        unsafe { crate::from_r::r_slice(DATAPTR_RO_unchecked(*self).cast(), self.len_unchecked()) }
     }
 
     // Type checking methods

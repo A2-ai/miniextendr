@@ -240,10 +240,9 @@ mod traits;
 pub use ::serde::{Deserialize, Serialize};
 
 pub use columnar::{
-    DataFrameShape, DispatchNames, NamedDataFrameListBuilder, ResultShape, SerdeRowBuilder,
-    SplitResults, SplitShape, TypeSpec, dispatch_to_dataframes, hashmap_to_dataframe,
-    iter_to_dataframe, map_to_dataframe, result_to_dataframe, vec_to_dataframe,
-    vec_to_dataframe_flatten_enums, vec_to_dataframe_split,
+    DataFrameShape, DispatchNames, ResultShape, SerdeRowBuilder, SplitResults, SplitShape,
+    TypeSpec, dispatch_to_dataframes, hashmap_to_dataframe, iter_to_dataframe, map_to_dataframe,
+    result_to_dataframe, vec_to_dataframe, vec_to_dataframe_flatten_enums, vec_to_dataframe_split,
 };
 #[cfg(feature = "rayon")]
 pub use columnar::{par_iter_to_dataframe, par_iter_to_dataframe_growing};
