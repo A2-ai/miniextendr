@@ -148,11 +148,17 @@ Test parallel reduce computing sum, min, max, and mean of a numeric vector.
 
 Test with_r_vec_map for element-wise parallel fill of an R numeric vector.
 
+\code{par_clear} / \code{par_is_empty} through the trait: fill, clear, report \code{c(len_before, len_after, is_empty_after)}.
+
+Aggregations through the \code{RParallelIterator} trait: returns \code{c(par_len, par_sum, par_mean, par_min_f64, par_max_f64)}.
+
 Test RDataFrameBuilder with a \strong{skewed} shape (one long numeric column plus several tiny character columns).
 
 The numeric column \code{big} has \code{nrow} rows (\code{bigi = i}); two character columns \code{t0}, \code{t1} also have \code{nrow} rows but compute a trivial value with an \code{NA} on every third row. Under the flattened scheduler the long column's chunks should be stolen by threads that finish the small columns first.
 
 Test parallel sum of an integer vector using rayon.
+
+Extend a collection through the \code{RParallelExtend} trait (\code{par_extend}, \code{par_extend_from_slice}, \code{par_len}, \code{par_is_empty}, \code{par_clear}); returns the sorted combined contents.
 
 Test RDataFrameBuilder: parallel column-fill into a heterogeneous data.frame.
 
