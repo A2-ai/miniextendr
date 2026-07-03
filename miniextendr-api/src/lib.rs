@@ -932,6 +932,8 @@ pub mod optionals;
 
 // Re-export optional types at crate root for backwards compatibility
 #[cfg(feature = "rayon")]
+pub use optionals::parallel;
+#[cfg(feature = "rayon")]
 pub use optionals::rayon_bridge;
 #[cfg(feature = "rayon")]
 pub use optionals::{RParallelExtend, RParallelIterator};

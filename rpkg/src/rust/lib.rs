@@ -266,6 +266,8 @@ mod shared_trait_test;
 mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
+#[cfg(feature = "rayon")]
+mod thread_control;
 mod thread_tests;
 #[cfg(feature = "time")]
 mod time_adapter_tests;

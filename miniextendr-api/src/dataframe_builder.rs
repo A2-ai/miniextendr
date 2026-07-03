@@ -350,6 +350,7 @@ impl RDataFrameBuilder {
             #[cfg(feature = "rayon")]
             {
                 use rayon::prelude::*;
+                crate::optionals::parallel::ensure_pool();
                 // Flatten to ONE (column, row-range) work-list and run a single
                 // parallel pass. Each item is `(column_index, offset, len)`; the
                 // column's type-erased range filler writes exactly that disjoint
