@@ -320,11 +320,16 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' @param local_path Optional path to local miniextendr repository. If provided,
 #'   vendors from local path instead of downloading from GitHub. Useful for
 #'   development and testing before the package is published.
+#' @param claude_skills Whether to install the bundled Claude Code skill set
+#'   via [use_claude_skills()] (default `TRUE`). The skills are agent-facing
+#'   documentation only — they are `.Rbuildignore`d and never affect the built
+#'   package.
 #' @return Invisibly returns TRUE
 #' @export
 use_miniextendr <- function(path = ".",
                             template_type = "auto", rpkg_name = NULL,
-                            miniextendr_version = "main", local_path = NULL) {
+                            miniextendr_version = "main", local_path = NULL,
+                            claude_skills = TRUE) {
   with_project(path)
   # Warn if the package directory being scaffolded is not at a git workspace
   # root. Resolve everything from the *project* directory, not getwd():
@@ -403,6 +408,11 @@ use_miniextendr <- function(path = ".",
     cli::cli_h2("Creating configuration")
     use_miniextendr_config()
 
+    if (claude_skills) {
+      cli::cli_h2("Installing Claude Code skills")
+      use_claude_skills()
+    }
+
     cli::cli_h1("Setup complete!")
     cli::cli_alert_info("Next steps:")
     cli::cli_bullets(c(
@@ -463,6 +473,11 @@ use_miniextendr <- function(path = ".",
   # Configuration file
   cli::cli_h2("Creating configuration")
   use_miniextendr_config()
+
+  if (claude_skills) {
+    cli::cli_h2("Installing Claude Code skills")
+    use_claude_skills()
+  }
 
   # Git hooks
   cli::cli_h2("Installing git hooks")

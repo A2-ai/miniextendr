@@ -440,10 +440,10 @@ parse_cargo_metadata_json <- function(json) {
 
 #' Generate the full robust detect-features.R skeleton
 #'
-#' Emits the Cargo-driven skeleton (parses [features] from src/rust/Cargo.toml,
+#' Emits the Cargo-driven skeleton (parses `[features]` from src/rust/Cargo.toml,
 #' applies a denylist, applies conditional rules from the markers block, sorts,
 #' and cats to stdout). The empty `rules <- list()` block between the
-#' `## BEGIN RULES` / `## END RULES` markers is where [append_feature_rule()]
+#' `## BEGIN RULES` / `## END RULES` markers is where `append_feature_rule()`
 #' writes per-feature predicates. `main()` consumes the global `rules`.
 #'
 #' @param package_name R package name

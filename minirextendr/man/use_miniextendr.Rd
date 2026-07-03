@@ -9,7 +9,8 @@ use_miniextendr(
   template_type = "auto",
   rpkg_name = NULL,
   miniextendr_version = "main",
-  local_path = NULL
+  local_path = NULL,
+  claude_skills = TRUE
 )
 }
 \arguments{
@@ -28,6 +29,11 @@ For monorepo projects, vendoring is only needed for CRAN submission.}
 \item{local_path}{Optional path to local miniextendr repository. If provided,
 vendors from local path instead of downloading from GitHub. Useful for
 development and testing before the package is published.}
+
+\item{claude_skills}{Whether to install the bundled Claude Code skill set
+via \code{\link[=use_claude_skills]{use_claude_skills()}} (default \code{TRUE}). The skills are agent-facing
+documentation only — they are \code{.Rbuildignore}d and never affect the built
+package.}
 }
 \value{
 Invisibly returns TRUE

@@ -61,6 +61,12 @@
 # USAGE
 #   bash scripts/skill-freshness-audit.sh            # human report
 #   bash scripts/skill-freshness-audit.sh --quiet    # only misses + summary
+#   bash scripts/skill-freshness-audit.sh --user-layout <scaffold-root>
+#       Audits the END-USER skill set (minirextendr/inst/claude/skills/) with
+#       paths resolved against <scaffold-root> — a freshly scaffolded package
+#       tree (minirextendr::create_miniextendr_package()). There, paths like
+#       `src/rust/lib.rs` are real files, not this repo's layout. Symbol
+#       existence is still checked against THIS repo (the framework source).
 #
 # CADENCE: run quarterly (see CLAUDE.md "Skill freshness audit"). Repair drift
 # in the same pass; source wins.
@@ -71,7 +77,24 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 QUIET=0
-[ "${1:-}" = "--quiet" ] && QUIET=1
+USER_LAYOUT=0
+SCAFFOLD_ROOT=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --quiet) QUIET=1 ;;
+        --user-layout)
+            USER_LAYOUT=1
+            SCAFFOLD_ROOT="${2:-}"
+            if [ -z "$SCAFFOLD_ROOT" ] || [ ! -d "$SCAFFOLD_ROOT" ]; then
+                echo "usage: $0 --user-layout <scaffold-root>  (scaffold-root must be an existing directory)" >&2
+                exit 2
+            fi
+            shift
+            ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
 
 SKILLS_GLOB=".claude/skills/*/SKILL.md"
 
@@ -114,6 +137,24 @@ SCAFFOLD_PATH_PREFIXES=(
 # rpkg-relative paths freely).
 RESOLVE_ROOTS=( '.' 'rpkg' )
 
+# Files a scaffolded package only gains after an opt-in helper or a build has
+# run (use_configure_feature_detection(), ./configure). Cited by the user
+# skills as "where X lives when enabled" — absence in a bare scaffold is
+# expected. User-layout mode only.
+OPTIONAL_SCAFFOLD_PATHS=(
+    'tools/detect-features.R'
+    'src/Makevars'
+)
+
+if [ "$USER_LAYOUT" -eq 1 ]; then
+    SKILLS_GLOB="minirextendr/inst/claude/skills/*/SKILL.md"
+    RESOLVE_ROOTS=( "$SCAFFOLD_ROOT" )
+    # No background/-style external trees in a scaffold; scaffold-layout paths
+    # ARE the real layout there, so that prefix class doesn't apply either.
+    EXTERNAL_PATH_PREFIXES=()
+    SCAFFOLD_PATH_PREFIXES=()
+fi
+
 # Pathspecs for the symbol search: the whole tracked tree minus vendored
 # crates, the rv R library, and the skills themselves (we don't want a symbol
 # to "exist" only because the skill names it).
@@ -121,6 +162,7 @@ SYMBOL_PATHSPECS=(
     ':!**/vendor/**'
     ':!rv/**'
     ':!.claude/skills/**'
+    ':!minirextendr/inst/claude/skills/**'
     ':!target/**'
 )
 
@@ -223,15 +265,19 @@ for skill in $SKILLS_GLOB; do
             if in_list "$tok" "${ILLUSTRATIVE_TOKENS[@]}"; then
                 continue
             fi
-            if has_prefix "$tok" "${EXTERNAL_PATH_PREFIXES[@]}"; then
+            if [ "${#EXTERNAL_PATH_PREFIXES[@]}" -gt 0 ] && has_prefix "$tok" "${EXTERNAL_PATH_PREFIXES[@]}"; then
                 warn_lines+=("external ref (not in repo): $tok")
                 continue
             fi
-            if has_prefix "$tok" "${SCAFFOLD_PATH_PREFIXES[@]}"; then
+            if [ "${#SCAFFOLD_PATH_PREFIXES[@]}" -gt 0 ] && has_prefix "$tok" "${SCAFFOLD_PATH_PREFIXES[@]}"; then
                 warn_lines+=("scaffolded-package layout (not a repo path): $tok")
                 continue
             fi
             if path_exists "$tok"; then
+                continue
+            fi
+            if [ "$USER_LAYOUT" -eq 1 ] && in_list "$tok" "${OPTIONAL_SCAFFOLD_PATHS[@]}"; then
+                warn_lines+=("optional scaffold file (created by an opt-in helper or ./configure): $tok")
                 continue
             fi
             if has_suffix "$tok" "${GENERATED_PATH_SUFFIXES[@]}"; then

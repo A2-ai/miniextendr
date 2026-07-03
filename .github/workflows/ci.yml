@@ -244,6 +244,9 @@ jobs:
       - name: Check templates sync
         run: just templates-check
 
+      - name: Check end-user Claude skills vs scaffold layout
+        run: just user-skills-check
+
       - name: Check lint parser sync
         run: just lint-sync-check
 
