@@ -118,20 +118,21 @@ fn condition_data_roundtrip_no_data() {
 }
 
 #[test]
-fn condition_data_roundtrip_na_field_is_dropped() {
-    // v1 behavior: fields whose sole element is NA are dropped rather than
-    // emitted as bogus Rust values. Full NA fidelity is deferred to the
-    // Option-variant PR. This test pins the documented drop behavior.
+fn condition_data_roundtrip_na_field_survives_as_option_none() {
+    // NA fidelity (#995): fields whose sole element is NA round-trip as
+    // OptInt(None) instead of being dropped (the pre-#995 v1 behavior) —
+    // `e$field` survives a trait-ABI boundary as NA.
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::condition::{ConditionData, ConditionDataValue, RCondition};
         use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
         // Build a ConditionData with one NA-bearing field (NA_integer_ = i32::MIN)
-        // alongside a valid field. The NA field must be dropped on round-trip.
+        // alongside a valid field. Both must survive the round-trip.
         let fields: ConditionData = vec![
             ("good_field".to_string(), ConditionDataValue::Int(7)),
             // NA_integer_ is i32::MIN — materialised as integer(1) containing NA.
-            // from_tagged_sexp must drop this field, not emit Int(i32::MIN).
+            // from_tagged_sexp must reconstruct this as OptInt(None), not drop
+            // it and not emit Int(i32::MIN).
             ("na_field".to_string(), ConditionDataValue::Int(i32::MIN)),
         ];
 
@@ -146,16 +147,16 @@ fn condition_data_roundtrip_na_field_is_dropped() {
         let cond = RCondition::from_tagged_sexp(sexp).expect("must parse");
         match cond {
             RCondition::Error { data, .. } => {
-                let data = data.expect("data must be Some (good_field survives)");
+                let data = data.expect("data must be Some");
                 assert_eq!(
                     data.len(),
-                    1,
-                    "only good_field should survive; na_field must be dropped (v1 NA-drop behavior). \
-                     Full NA fidelity is deferred to the Option-variant PR. got: {:?}",
-                    data
+                    2,
+                    "both fields must survive; na_field reconstructs as OptInt(None). got: {data:?}"
                 );
                 assert_eq!(data[0].0, "good_field");
                 assert!(matches!(data[0].1, ConditionDataValue::Int(7)));
+                assert_eq!(data[1].0, "na_field");
+                assert!(matches!(data[1].1, ConditionDataValue::OptInt(None)));
             }
             other => panic!("wrong variant: {other:?}"),
         }
