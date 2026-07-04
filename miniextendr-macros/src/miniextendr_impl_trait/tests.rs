@@ -543,8 +543,16 @@ fn test_bug2_precondition_checks_emitted_for_trait_method() {
 
 /// BUG2 regression: trait methods had no `match_arg`/`choices` attribute
 /// support at all before this refactor (`TraitMethod` carried no per-param
-/// map). `#[miniextendr(match_arg(mode))]` on a trait method now produces the
-/// same `base::match.arg()` validation prelude an inherent method would.
+/// map). This exercises the shared `TraitMethodContext::match_arg_prelude` /
+/// `build_match_arg_prelude` primitive directly via `per_param` (bypassing
+/// attribute parsing) — `#[miniextendr(match_arg(...))]` itself is not yet
+/// exposed as a trait-method attribute because, unlike `choices(...)`, it
+/// needs an enum's derived `MatchArg::CHOICES` resolved through a C-wrapper
+/// helper the inherent-impl path has
+/// (`generate_method_match_arg_helpers` in `miniextendr_impl.rs`) and the
+/// trait path doesn't yet; see the tracked follow-up issue. `choices(...)`
+/// (no derivation needed) *is* exposed and covered by
+/// `test_bug2_choices_prelude_emitted_for_trait_method` below.
 #[test]
 fn test_bug2_match_arg_prelude_emitted_for_trait_method() {
     let type_ident = format_ident!("Foo");
@@ -569,6 +577,46 @@ fn test_bug2_match_arg_prelude_emitted_for_trait_method() {
     assert!(
         result.contains("mode <- base::match.arg(mode)"),
         "match_arg param should get a base::match.arg() prelude line, got:\n{}",
+        result
+    );
+}
+
+/// BUG2 regression, exercised via the actual macro-exposed surface:
+/// `#[miniextendr(choices(mode = "fast, slow"))]` on a trait method now
+/// produces both the `c("fast", "slow")` formal default (via the shared
+/// `effective_r_defaults`, also required for `match.arg()` to find its
+/// choice list — see its docs) and the `match.arg()` prelude line. Verified
+/// end-to-end (not just codegen strings) by
+/// `rpkg/tests/testthat/test-trait-method-emitter.R`.
+#[test]
+fn test_bug2_choices_prelude_emitted_for_trait_method() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("set_mode", true);
+    method.sig = syn::parse_quote!(fn set_mode(&mut self, mode: String));
+    method
+        .per_param
+        .entry("mode".to_string())
+        .or_default()
+        .choices = Some(vec!["fast".to_string(), "slow".to_string()]);
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("mode = c(\"fast\", \"slow\")"),
+        "choices param should get a formal default match.arg() can read, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("mode <- match.arg(mode)"),
+        "choices param should get a match.arg() prelude line, got:\n{}",
         result
     );
 }

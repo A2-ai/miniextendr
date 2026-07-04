@@ -781,35 +781,22 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     })?;
                     r_on_exit = Some(crate::miniextendr_fn::ROnExit { expr, add, after });
                 }
-            } else if meta.path.is_ident("match_arg") {
-                // `match_arg(param1, param2, ...)` — scalar match_arg params.
-                // Mirrors the inherent-impl parser (`miniextendr_impl.rs`); see
-                // `TraitMethodContext::match_arg_prelude`.
-                meta.parse_nested_meta(|inner| {
-                    let name = inner
-                        .path
-                        .get_ident()
-                        .ok_or_else(|| inner.error("expected parameter name"))?
-                        .to_string();
-                    per_param.entry(name).or_default().match_arg = true;
-                    Ok(())
-                })?;
-            } else if meta.path.is_ident("match_arg_several_ok") {
-                // `match_arg_several_ok(param1, param2, ...)` — match_arg + several_ok,
-                // for Vec/slice/array/Box<[_]>-typed parameters.
-                meta.parse_nested_meta(|inner| {
-                    let name = inner
-                        .path
-                        .get_ident()
-                        .ok_or_else(|| inner.error("expected parameter name"))?
-                        .to_string();
-                    let entry = per_param.entry(name).or_default();
-                    entry.match_arg = true;
-                    entry.several_ok = true;
-                    Ok(())
-                })?;
             } else if meta.path.is_ident("choices") {
                 // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
+                //
+                // NOTE: `match_arg`/`match_arg_several_ok` (choices derived from a
+                // `#[derive(MatchArg)]` enum's `CHOICES` const) are intentionally NOT
+                // supported here yet. The inherent-impl path additionally emits a
+                // `__match_arg_choices__<param>` C helper + `MX_MATCH_ARG_CHOICES`
+                // registration (`generate_method_match_arg_helpers` in
+                // `miniextendr_impl.rs`) that resolves the write-time placeholder
+                // formal default into the enum's literal choice list — trait methods
+                // have no equivalent C-wrapper generation yet, so accepting `match_arg`
+                // here would silently ship a formal default that never resolves
+                // (`object '.__MX_MATCH_ARG_CHOICES_...__' not found` at call time).
+                // `choices(...)` needs no such resolution (the literal list is baked in
+                // at macro-expansion time), so it's safe to support today. Tracked in
+                // the trait-method-emitter follow-up issue for full match_arg parity.
                 meta.parse_nested_meta(|inner| {
                     let name = inner
                         .path
@@ -844,7 +831,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
-                     `match_arg`, `match_arg_several_ok`, `choices`, `choices_several_ok`",
+                     `choices`, `choices_several_ok`",
                 ));
             }
             Ok(())

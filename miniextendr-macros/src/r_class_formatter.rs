@@ -210,14 +210,23 @@ pub(crate) fn build_method_precondition_checks(
 /// 2. `#[miniextendr(choices("a", "b", ...))]` → `c("a", "b", ...)` formal default.
 /// 3. User-provided `#[miniextendr(defaults(param = "..."))]` for non-match_arg
 ///    params.
-fn effective_r_defaults(
-    method: &ParsedMethod,
+///
+/// This formal default is load-bearing for `match.arg()`, not just cosmetic:
+/// `base::match.arg(arg)` (no explicit `choices=`) reads the choice list from
+/// the *formal default* of the calling function's `arg` parameter — a
+/// `match_arg`/`choices` param with no formal default makes `match.arg()`
+/// fail with "argument is missing, with no default" even when the caller
+/// passed a value. Shared by `MethodContext::new` (inherent impls) and
+/// `TraitMethodContext::new` (trait impls, `miniextendr_impl_trait/method_context.rs`).
+pub(crate) fn effective_r_defaults(
+    param_defaults: &std::collections::HashMap<String, String>,
+    per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     c_ident: &str,
 ) -> std::collections::HashMap<String, String> {
-    let mut defaults = method.param_defaults.clone();
+    let mut defaults = param_defaults.clone();
     // match_arg → unconditionally splice the placeholder (overriding any user
     // default, which is captured separately for write-time rotation).
-    for (rust_name, attrs) in &method.method_attrs.per_param {
+    for (rust_name, attrs) in per_param {
         if !attrs.match_arg {
             continue;
         }
@@ -226,7 +235,7 @@ fn effective_r_defaults(
     }
     // choices(...) → c("a", "b", ...) formal. Lower priority than user
     // defaults (kept for back-compat on non-match_arg params).
-    for (rust_name, attrs) in &method.method_attrs.per_param {
+    for (rust_name, attrs) in per_param {
         if let Some(choices) = attrs.choices.as_ref() {
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
             defaults.entry(r_name).or_insert_with(|| {
@@ -265,7 +274,11 @@ impl<'a> MethodContext<'a> {
     /// call arguments from the method's signature and default values.
     pub fn new(method: &'a ParsedMethod, type_ident: &syn::Ident, label: Option<&str>) -> Self {
         let c_ident = method.c_wrapper_ident(type_ident, label).to_string();
-        let effective_defaults = effective_r_defaults(method, &c_ident);
+        let effective_defaults = effective_r_defaults(
+            &method.param_defaults,
+            &method.method_attrs.per_param,
+            &c_ident,
+        );
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &effective_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);

@@ -40,8 +40,15 @@ impl<'a> TraitMethodContext<'a> {
         trait_name: &syn::Ident,
     ) -> Self {
         let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
+        // match_arg/choices formal defaults are load-bearing for match.arg()
+        // (see `effective_r_defaults` docs) — not just cosmetic.
+        let effective_defaults = crate::r_class_formatter::effective_r_defaults(
+            &method.param_defaults,
+            &method.per_param,
+            &c_ident,
+        );
         let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &effective_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         Self {
             method,
