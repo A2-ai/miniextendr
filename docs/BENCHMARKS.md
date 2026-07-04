@@ -57,7 +57,7 @@ just bench --bench trait_abi
 # strings, externalptr, worker, unwind_protect)
 just bench-core
 
-# Feature-gated (connections, rayon, refcount-fast-hash)
+# Feature-gated (connections, rayon)
 just bench-features
 
 # Full matrix: core + feature targets

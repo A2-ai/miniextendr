@@ -113,6 +113,37 @@ pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, 
     std::borrow::Cow::Borrowed(unsafe { charsxp_to_str(charsxp) })
 }
 
+/// Convert CHARSXP to an owned, lossy `String`.
+///
+/// NA/null-defensive: returns `None` for `NA_character_`, `R_NilValue`, or a
+/// null SEXP. Non-UTF-8 bytes are replaced (`CStr::to_string_lossy`) rather
+/// than rejected. Unlike [`charsxp_to_str`] (the UTF-8-asserted hot path for
+/// package-internal CHARSXPs), this is for defensive reads of *arbitrary* R
+/// objects — S4 class attributes, `geterrmessage()` output, vctrs field
+/// names, `tzone` attributes — where the CHARSXP's origin and encoding
+/// aren't guaranteed.
+///
+/// # Safety
+///
+/// `charsxp` must be a valid SEXP. It may be `R_NilValue` or a null SEXP
+/// (both map to `None`); if it is neither of those and not `NA_character_`,
+/// it must actually be a CHARSXP.
+#[inline]
+pub(crate) unsafe fn charsxp_to_string_lossy(charsxp: SEXP) -> Option<String> {
+    if charsxp.is_null_or_nil() || charsxp.is_na_string() {
+        return None;
+    }
+    let ptr = charsxp.r_char();
+    if ptr.is_null() {
+        return None;
+    }
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
 /// Create a slice from an R data pointer, handling the zero-length case.
 ///
 /// R returns a sentinel pointer (`0x1`) instead of null for empty vectors

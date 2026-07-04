@@ -211,7 +211,6 @@
 //! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 //! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
-//! | `refcount-fast-hash` | Use ahash for refcount arenas (opt-in, not DOS-resistant) |
 // Re-export linkme for use by generated code (distributed_slice entries)
 #[doc(hidden)]
 pub use linkme;
@@ -811,10 +810,7 @@ pub use protect_pool::{ProtectKey, ProtectPool};
 
 // Reference-counted GC protection (BTreeMap + VECSXP backing)
 pub mod refcount_protect;
-pub use refcount_protect::{
-    Arena, ArenaGuard, HashMapArena, MapStorage, RefCountedArena, RefCountedGuard,
-    ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
-};
+pub use refcount_protect::{ArenaGuard, RefCountedArena, ThreadLocalArena};
 
 pub mod allocator;
 pub use allocator::RAllocator;

@@ -222,8 +222,7 @@ if test -z "${CARGO_FEATURES+x}"; then
     dnl Excludes meta/aggregate (default, full), risky (nonapi), dev/diagnostic
     dnl (macro-coverage, growth-debug), the #[miniextendr] option defaults
     dnl (strict-default, coerce-default), the class-system selectors
-    dnl (r6-default, s7-default), worker-default, indicatif, and
-    dnl refcount-fast-hash.
+    dnl (r6-default, s7-default), worker-default, and indicatif.
     CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,jiff,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log,connections,blake3,md5,globset,zstd"
   fi
 fi

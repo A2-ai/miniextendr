@@ -3,9 +3,17 @@ mod r_test_utils;
 #[cfg(feature = "indexmap")]
 use miniextendr_api::IndexMap;
 #[cfg(feature = "indexmap")]
+use miniextendr_api::SEXPTYPE;
+#[cfg(feature = "indexmap")]
 use miniextendr_api::from_r::TryFromSexp;
 #[cfg(feature = "indexmap")]
 use miniextendr_api::into_r::IntoR;
+#[cfg(feature = "indexmap")]
+use miniextendr_api::prelude::{SEXP, SexpExt};
+#[cfg(feature = "indexmap")]
+use miniextendr_api::sexp_types::cetype_t;
+#[cfg(feature = "indexmap")]
+use miniextendr_api::sys::{Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_unprotect};
 
 #[cfg(feature = "indexmap")]
 #[test]
@@ -99,3 +107,60 @@ fn indexmap_nested() {
         assert_eq!(back1.get("y"), Some(&2.0));
     });
 }
+
+// region: degenerate name coverage (exercises from_r::charsxp_to_string_lossy
+// via the owned CHARSXP->String extraction in the IndexMap TryFromSexp path)
+
+/// Builds `list(a = 1L, <NA> = 2L, `` = 3L, <invalid-utf8> = 4L)` by hand —
+/// `names<-` in R rejects `NA_character_`/`""` names on `data.frame`s but a
+/// plain list tolerates them, and a raw `Rf_mkCharLenCE(..., CE_BYTES)` name
+/// can carry non-UTF-8 bytes no R-level assignment could produce cleanly.
+#[cfg(feature = "indexmap")]
+#[test]
+fn indexmap_degenerate_names_use_charsxp_to_string_lossy_fallbacks() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let list = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
+        list.set_vector_elt(0, SEXP::scalar_integer(1));
+        list.set_vector_elt(1, SEXP::scalar_integer(2));
+        list.set_vector_elt(2, SEXP::scalar_integer(3));
+        list.set_vector_elt(3, SEXP::scalar_integer(4));
+
+        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 4));
+        names.set_string_elt(0, SEXP::charsxp("a"));
+        names.set_string_elt(1, SEXP::na_string());
+        names.set_string_elt(2, SEXP::charsxp(""));
+        let invalid_utf8: &[u8] = &[0x62, 0xFF, 0xFE]; // "b" + invalid bytes
+        names.set_string_elt(
+            3,
+            Rf_mkCharLenCE(
+                invalid_utf8.as_ptr().cast(),
+                invalid_utf8.len() as i32,
+                cetype_t::CE_BYTES,
+            ),
+        );
+        list.set_names(names);
+
+        let map: IndexMap<String, i32> = TryFromSexp::try_from_sexp(list).unwrap();
+        Rf_unprotect(2);
+
+        let keys: Vec<_> = map.keys().cloned().collect();
+
+        // Named element keeps its name; NA and empty names fall back to the
+        // auto-generated "V<position>" scheme (1-indexed).
+        assert_eq!(keys[0], "a");
+        assert_eq!(keys[1], "V2");
+        assert_eq!(keys[2], "V3");
+
+        // Invalid UTF-8 is lossily decoded (replacement char), not discarded
+        // to an auto-name — the valid "b" prefix survives.
+        assert!(keys[3].starts_with('b'));
+        assert!(keys[3].contains('\u{FFFD}'));
+        assert_ne!(keys[3], "V4");
+
+        assert_eq!(map.get("a"), Some(&1));
+        assert_eq!(map.get("V2"), Some(&2));
+        assert_eq!(map.get("V3"), Some(&3));
+        assert_eq!(map.get(keys[3].as_str()), Some(&4));
+    });
+}
+// endregion

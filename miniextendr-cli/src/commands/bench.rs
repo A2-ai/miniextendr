@@ -90,7 +90,7 @@ fn bench_features(ctx: &ProjectContext, args: &[String], quiet: bool) -> Result<
         "--manifest-path".into(),
         manifest.to_string_lossy().into(),
         "--features".into(),
-        "connections,rayon,refcount-fast-hash".into(),
+        "connections,rayon".into(),
     ];
     cmd_args.extend(args.iter().cloned());
     let str_args: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
@@ -106,7 +106,7 @@ fn bench_full(ctx: &ProjectContext, args: &[String], quiet: bool) -> Result<()> 
         "--manifest-path".into(),
         manifest.to_string_lossy().into(),
         "--features".into(),
-        "connections,rayon,refcount-fast-hash".into(),
+        "connections,rayon".into(),
         "--bench".into(),
         "connections".into(),
         "--bench".into(),
