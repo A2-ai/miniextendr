@@ -466,3 +466,26 @@ demoting them, that footgun becomes a segfault (`R_CheckStack` false overflow pe
 `THREADS.md`). The mitigation is trivial — keep `is_r_main_thread()` and demote
 the guards to `debug_assert!` — but it must be a conscious decision, not an
 incidental casualty of deleting the worker.
+
+---
+
+## Addendum 2026-07-04 — what changed since this was written
+
+Two merges landed after this analysis that bear on the decision; the body
+above is left as written (it was accurate on 2026-06-14).
+
+1. **"Zero CI jobs enable `worker-thread`" is no longer true.** #1116
+   (merged 2026-07-02, audit A5/A10) added scheduled feature-runtime legs to
+   `ci.yml`, including a `worker-default` leg that rebuilds rpkg with the
+   worker feature and runs the full R suite. Coverage is scheduled-only (not
+   per-PR), so the "effectively untested" argument is weakened but not gone —
+   the leg exists precisely because the feature sat in the untested denylist.
+   If removal proceeds, that leg gets deleted with the feature (one more line
+   in the R6 step of the plan).
+2. **#1131 (merged 2026-07-04) added rayon thread-pool control** —
+   parallelism configuration from R, `ensure_pool`, cgroup-aware defaults.
+   This is adjacent to decision point (2) ("call R from a user-spawned
+   rayon/std thread"): the rayon integration's design keeps R contact on the
+   main thread (pools do pure-Rust work), which is consistent with the
+   recommendation here — removal does not conflict with #1131, it removes the
+   one mechanism that pretended off-main R calls were routine.
