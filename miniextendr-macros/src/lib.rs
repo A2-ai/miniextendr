@@ -724,6 +724,7 @@ pub fn miniextendr(
         rng,
         unwrap_in_r,
         return_pref,
+        return_pref_span,
         s3_generic,
         s3_class,
         dots_spec,
@@ -931,21 +932,37 @@ pub fn miniextendr(
 
     // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
+    let return_pref_is_set = !matches!(return_pref, crate::miniextendr_fn::ReturnPref::Auto);
     let fn_return_handling = if unwrap_in_r && crate::return_type_analysis::output_is_result(output)
     {
-        // Note: prefer= is intentionally ignored when unwrap_in_r overrides the return
-        // handling. In unwrap_in_r mode the IntoR here operates on the whole Result<T,E>
-        // (the framework's IntoR for Result encodes it as a tagged list for R to decode),
-        // NOT on the inner T. Applying prefer= would require Result<T,E>: IntoList /
-        // IntoExternalPtr / RNativeType — almost certainly absent. The prefer= attribute
-        // is effectively a no-op when unwrap_in_r is active.
+        // In unwrap_in_r mode the IntoR here operates on the whole Result<T,E> (the
+        // framework's IntoR for Result encodes it as a tagged list for R to decode), NOT on
+        // the inner T. prefer= always targets that inner T, so there is nothing for it to
+        // wrap here — reject rather than silently drop it (see apply_return_pref docstring
+        // and the BUG4 audit finding).
+        if return_pref_is_set {
+            let span = return_pref_span.unwrap_or_else(proc_macro2::Span::call_site);
+            return syn::Error::new(
+                span,
+                "`prefer = ...` cannot be combined with `unwrap_in_r` on a function returning \
+                 `Result<T, E>`: `unwrap_in_r` converts the whole `Result<T, E>` via a single \
+                 `IntoR` impl (a tagged list for R to decode), not the inner `T` alone, so \
+                 there is no plain `T` for `prefer=` to wrap. Remove `prefer=`.",
+            )
+            .into_compile_error()
+            .into();
+        }
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
         let auto = c_wrapper_builder::detect_return_handling_standalone_fn(output);
         // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
         // Only applies to the plain IntoR variant — Option*/Result*/Unit/RawSexp/ExternalPtr
-        // variants pass through unchanged (see apply_return_pref docstring).
-        apply_return_pref(auto, return_pref)
+        // variants have no bare T to wrap and now hard-error instead of silently ignoring
+        // prefer= (see apply_return_pref docstring).
+        match apply_return_pref(auto, return_pref, return_pref_span) {
+            Ok(handling) => handling,
+            Err(err) => return err.into_compile_error().into(),
+        }
     };
 
     let thread_strategy = if use_main_thread {
@@ -1537,37 +1554,89 @@ pub fn miniextendr(
 
 /// Maps a `ReturnPref` attribute value onto an auto-detected `ReturnHandling`.
 ///
-/// Only substitutes the plain `IntoR` variant with its pref-specific counterpart.
-/// All other variants (`Unit`, `RawSexp`, `ExternalPtr`, `Result*`, `OptionIntoR`,
-/// `OptionIntoRUnwrap`) are left unchanged — wrapping would be semantically wrong
-/// or there is no plain value to wrap.
-///
-/// # Notes
-///
-/// When `prefer=` is combined with `Option<T>` or `Result<T,E>` returns, only the
-/// plain-T fast path is affected — `Option`/`Result` wrappers behave as if `prefer=`
-/// were absent. A future PR can add explicit `Option*` handling if a user needs it.
+/// Only the plain `IntoR` variant has a bare `T` for `prefer=` to wrap, so it is the
+/// only variant substituted with its pref-specific counterpart
+/// (`AsListOf`/`AsExternalPtrOf`/`AsNativeOf`). Every other variant (`Unit`, `RawSexp`,
+/// `ExternalPtr`, `Option*`, `Result*`) has its own fixed SEXP-shape rule that
+/// `prefer=` cannot compose with — returning a compile error for those is better than
+/// silently dropping the attribute (see the BUG4 audit finding: `prefer = "list"` on an
+/// `Option<T>` return used to be accepted and silently ignored).
 fn apply_return_pref(
     auto: c_wrapper_builder::ReturnHandling,
     pref: crate::miniextendr_fn::ReturnPref,
-) -> c_wrapper_builder::ReturnHandling {
+    pref_span: Option<proc_macro2::Span>,
+) -> syn::Result<c_wrapper_builder::ReturnHandling> {
     use crate::miniextendr_fn::ReturnPref;
     use c_wrapper_builder::ReturnHandling;
 
-    match pref {
-        ReturnPref::Auto => auto,
+    let wrapped = match pref {
+        ReturnPref::Auto => return Ok(auto),
         ReturnPref::List => match auto {
-            ReturnHandling::IntoR => ReturnHandling::AsListOf,
-            other => other, // Unit, RawSexp, ExternalPtr, Result*, Option* — ignore prefer on incompatible types
+            ReturnHandling::IntoR => Some(ReturnHandling::AsListOf),
+            _ => None,
         },
         ReturnPref::ExternalPtr => match auto {
-            ReturnHandling::IntoR => ReturnHandling::AsExternalPtrOf,
-            other => other,
+            ReturnHandling::IntoR => Some(ReturnHandling::AsExternalPtrOf),
+            _ => None,
         },
         ReturnPref::Native => match auto {
-            ReturnHandling::IntoR => ReturnHandling::AsNativeOf,
-            other => other,
+            ReturnHandling::IntoR => Some(ReturnHandling::AsNativeOf),
+            _ => None,
         },
+    };
+
+    wrapped.ok_or_else(|| {
+        let (pref_name, wrapper_name) = return_pref_names(pref);
+        let span = pref_span.unwrap_or_else(proc_macro2::Span::call_site);
+        syn::Error::new(
+            span,
+            format!(
+                "`prefer = \"{pref_name}\"` cannot be honored on this return type. \
+                 `prefer=` only applies to a function returning a plain `T: IntoR` value, \
+                 which it wraps in `{wrapper_name}` before conversion. This function's return \
+                 type falls into a different codegen category ({}) with its own fixed \
+                 SEXP-shape rule, so there is no plain `T` for `prefer=` to wrap. Remove \
+                 `prefer=`, or change the return type to a plain `T`.",
+                return_handling_category_description(&auto),
+            ),
+        )
+    })
+}
+
+/// Human-readable `(attribute value, wrapper type)` pair for a [`ReturnPref`](crate::miniextendr_fn::ReturnPref),
+/// used to phrase the `apply_return_pref` compile error.
+fn return_pref_names(pref: crate::miniextendr_fn::ReturnPref) -> (&'static str, &'static str) {
+    use crate::miniextendr_fn::ReturnPref;
+    match pref {
+        ReturnPref::Auto => ("auto", ""),
+        ReturnPref::List => ("list", "AsList"),
+        ReturnPref::ExternalPtr => ("externalptr", "AsExternalPtr"),
+        ReturnPref::Native => ("native", "AsRNative"),
+    }
+}
+
+/// Human-readable description of a [`ReturnHandling`](c_wrapper_builder::ReturnHandling)
+/// category, for the `apply_return_pref` compile error. Only describes the categories
+/// [`c_wrapper_builder::detect_return_handling_standalone_fn`] can actually produce;
+/// the wildcard arm covers variants that never reach `apply_return_pref` as `auto`
+/// (`IntoR` itself, method-only `SelfHandle`, and the `As*Of` variants `apply_return_pref`
+/// produces as *output*, never takes as input).
+fn return_handling_category_description(rh: &c_wrapper_builder::ReturnHandling) -> &'static str {
+    use c_wrapper_builder::ReturnHandling;
+    match rh {
+        ReturnHandling::Unit => "the unit return type `()`",
+        ReturnHandling::RawSexp => "a raw `SEXP` return type",
+        ReturnHandling::ExternalPtr => {
+            "a `Self`-returning constructor, already converted via `ExternalPtr::new`"
+        }
+        ReturnHandling::OptionUnit => "`Option<()>`",
+        ReturnHandling::OptionSexp => "`Option<SEXP>`",
+        ReturnHandling::OptionIntoR | ReturnHandling::OptionIntoRUnwrap => "`Option<T>`",
+        ReturnHandling::ResultUnit => "`Result<(), E>`",
+        ReturnHandling::ResultSexp => "`Result<SEXP, E>`",
+        ReturnHandling::ResultIntoR => "`Result<T, E>`",
+        ReturnHandling::ResultNullOnErr => "`Result<T, ()>`",
+        _ => "this return type",
     }
 }
 
