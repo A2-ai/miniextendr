@@ -96,6 +96,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         r_post_checks: None,
         r_on_exit: None,
         no_shortcut: false,
+        per_param: Default::default(),
     }
 }
 
@@ -398,6 +399,209 @@ fn test_s7_trait_impl_void_shortcut_returns_invisible_self() {
         result
     );
 }
+
+// region: refactor/trait-method-emitter regression tests
+//
+// BUG1 + BUG2 from audit/2026-07-03-dogfooding-macros-codegen.md finding #1:
+// the trait-impl R wrapper generators used to hand-roll receiver-ptr
+// extraction via `call.replace(", x", ", .ptr")` (S4/S7/R6) and skipped the
+// `precondition_checks` / `match_arg_prelude` steps that inherent methods
+// get. `TraitMethodContext` (miniextendr_impl_trait/method_context.rs) fixes
+// both by routing all 5 generators through the same `.Call()`/prelude
+// builders the inherent-impl `MethodContext` uses.
+
+/// BUG1 regression (S4 leg): `str::replace(", x", ", .ptr")` rewrites *every*
+/// match of the substring `", x"`, so a parameter whose R name starts with
+/// `x` (e.g. `x_factor`) used to be corrupted into `.ptr_factor` — a runtime
+/// "object '.ptr_factor' not found" error. `TraitMethodContext::instance_call`
+/// passes the receiver expression directly to `DotCallBuilder::with_self`
+/// instead, so no other argument can ever be touched.
+#[test]
+fn test_bug1_x_prefixed_param_not_corrupted_s4() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("scale", true);
+    method.sig = syn::parse_quote!(fn scale(&mut self, x_factor: f64));
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S4, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"),
+        "x_factor must reach the .Call() intact, got:\n{}",
+        result
+    );
+    assert!(
+        !result.contains(".ptr_factor"),
+        "x_factor must NOT be corrupted into .ptr_factor, got:\n{}",
+        result
+    );
+}
+
+/// BUG1 regression (S7 leg) — covers both the dispatched-generic body and the
+/// fast-path shortcut, which extract the receiver via `x@.ptr` / `self@.ptr`
+/// respectively.
+#[test]
+fn test_bug1_x_prefixed_param_not_corrupted_s7() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("scale", true);
+    method.sig = syn::parse_quote!(fn scale(&mut self, x_factor: f64));
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S7, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"),
+        "generic body: x_factor must reach the .Call() intact, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), self@.ptr, x_factor)"),
+        "shortcut: x_factor must reach the .Call() intact, got:\n{}",
+        result
+    );
+    assert!(
+        !result.contains(".ptr_factor"),
+        "x_factor must NOT be corrupted into .ptr_factor, got:\n{}",
+        result
+    );
+}
+
+/// BUG1 regression (R6 leg).
+#[test]
+fn test_bug1_x_prefixed_param_not_corrupted_r6() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("scale", true);
+    method.sig = syn::parse_quote!(fn scale(&mut self, x_factor: f64));
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::R6, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"),
+        "x_factor must reach the .Call() intact, got:\n{}",
+        result
+    );
+    assert!(
+        !result.contains(".ptr_factor"),
+        "x_factor must NOT be corrupted into .ptr_factor, got:\n{}",
+        result
+    );
+}
+
+/// BUG2 regression: `trait_method_preamble_lines` (the pre-refactor prelude)
+/// emitted only r_entry/on.exit/lifecycle/r_post_checks — it silently skipped
+/// `precondition_checks`, so a trait method's typed params got no
+/// `stopifnot()` validation an identical inherent method would have.
+#[test]
+fn test_bug2_precondition_checks_emitted_for_trait_method() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("bump", true);
+    method.sig = syn::parse_quote!(fn bump(&mut self, amount: i32));
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("stopifnot("),
+        "trait method with a typed param should emit stopifnot() preconditions, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("'amount' must be numeric"),
+        "precondition message should mention the param, got:\n{}",
+        result
+    );
+}
+
+/// BUG2 regression: trait methods had no `match_arg`/`choices` attribute
+/// support at all before this refactor (`TraitMethod` carried no per-param
+/// map). `#[miniextendr(match_arg(mode))]` on a trait method now produces the
+/// same `base::match.arg()` validation prelude an inherent method would.
+#[test]
+fn test_bug2_match_arg_prelude_emitted_for_trait_method() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("set_mode", true);
+    method.sig = syn::parse_quote!(fn set_mode(&mut self, mode: String));
+    method
+        .per_param
+        .entry("mode".to_string())
+        .or_default()
+        .match_arg = true;
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("mode <- base::match.arg(mode)"),
+        "match_arg param should get a base::match.arg() prelude line, got:\n{}",
+        result
+    );
+}
+
+/// Related fix bundled into the same prelude parity: trait methods used to
+/// build `.Call()` args via `collect_param_idents`, which had no `Missing<T>`
+/// handling. A truly-missing R argument forwarded as a bare binding errors on
+/// lookup (see PR #1129) — `TraitMethodContext` now builds args via
+/// `build_r_call_args_from_sig`, which forwards `Missing<T>` as
+/// `if (missing(p)) quote(expr=) else p` inline in the call.
+#[test]
+fn test_missing_type_forwarded_inline_in_trait_method_call() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("configure", true);
+    method.sig = syn::parse_quote!(fn configure(&mut self, opt: Missing<i32>));
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::Env, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("if (missing(opt)) quote(expr=) else opt"),
+        "Missing<T> param should forward the R_MissingArg sentinel inline, got:\n{}",
+        result
+    );
+}
+// endregion
 
 #[test]
 fn test_internal_adds_keywords_internal_env() {

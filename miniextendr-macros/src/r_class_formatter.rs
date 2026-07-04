@@ -89,12 +89,16 @@ pub(crate) use crate::match_arg_keys::{
 /// Build the R-param-name → @param placeholder map for a method's match_arg and
 /// choices params. Pass to `MethodDocBuilder::with_match_arg_doc_placeholders`
 /// in each class generator.
+///
+/// Takes the per-param attribute map directly (rather than `&ParsedMethod`) so
+/// it's shared by both the inherent-impl (`MethodContext`) and trait-impl
+/// (`TraitMethodContext`, `miniextendr_impl_trait/method_context.rs`) paths.
 pub(crate) fn match_arg_doc_placeholder_map(
     c_ident: &str,
-    method: &ParsedMethod,
+    per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 ) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
-    for (rust_name, attrs) in &method.method_attrs.per_param {
+    for (rust_name, attrs) in per_param {
         if !attrs.match_arg {
             continue;
         }
@@ -105,6 +109,95 @@ pub(crate) fn match_arg_doc_placeholder_map(
         );
     }
     out
+}
+
+/// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`
+/// parameters via `base::match.arg()` before the `.Call()`.
+///
+/// Returns an empty vector when the method declares none. Both `match_arg`
+/// and `choices(...)` carry their choice list as the formal default
+/// (`c("a", "b", ...)`), so `base::match.arg(arg)` finds the list by
+/// itself — no second arg, no C helper lookup. `match_arg` adds a
+/// factor → character coercion in front of `match.arg`.
+///
+/// Shared by `MethodContext::match_arg_prelude` (inherent impls) and
+/// `TraitMethodContext::match_arg_prelude` (trait impls) — see
+/// `audit/2026-07-03-dogfooding-macros-codegen.md` finding #1 (trait methods
+/// previously had no match_arg support at all).
+pub(crate) fn build_match_arg_prelude(
+    per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    for (rust_name, attrs) in per_param {
+        if !attrs.match_arg {
+            continue;
+        }
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        lines.push(format!(
+            "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
+        ));
+        if attrs.several_ok {
+            lines.push(format!(
+                "{r_name} <- base::match.arg({r_name}, several.ok = TRUE)"
+            ));
+        } else {
+            lines.push(format!("{r_name} <- base::match.arg({r_name})"));
+        }
+    }
+
+    for (rust_name, attrs) in per_param {
+        if attrs.choices.is_none() {
+            continue;
+        }
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        if attrs.several_ok {
+            lines.push(format!(
+                "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
+            ));
+        } else {
+            lines.push(format!("{r_name} <- match.arg({r_name})"));
+        }
+    }
+
+    lines
+}
+
+/// Rust-side parameter names that are validated by R's `match.arg()` and
+/// therefore don't need `stopifnot()` preconditions generated for them.
+/// Shared by `MethodContext` and `TraitMethodContext`.
+pub(crate) fn match_arg_skip_set(
+    per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+) -> std::collections::HashSet<String> {
+    let mut s = std::collections::HashSet::new();
+    for (rust_name, attrs) in per_param {
+        if attrs.match_arg || attrs.choices.is_some() {
+            s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
+        }
+    }
+    s
+}
+
+/// Build R-side precondition `stopifnot()` lines for a parameter list, given
+/// its match_arg/choices per-param map and whether `coerce` is active for the
+/// whole method.
+///
+/// Neither impl methods nor trait methods carry a per-param `coerce` flag
+/// (only function-wide `coerce`, see `ParsedMethod::per_param` docs), so
+/// `coerce_params` is always empty here. Shared by
+/// `MethodContext::precondition_checks` and
+/// `TraitMethodContext::precondition_checks`.
+pub(crate) fn build_method_precondition_checks(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+    coerce_all: bool,
+) -> Vec<String> {
+    let opts = crate::r_preconditions::PreconditionOptions {
+        coerce_all,
+        coerce_params: std::collections::HashSet::new(),
+    };
+    crate::r_preconditions::build_precondition_checks(inputs, &match_arg_skip_set(per_param), &opts)
+        .static_checks
 }
 
 /// Effective R-formal defaults for a method.
@@ -189,7 +282,7 @@ impl<'a> MethodContext<'a> {
     /// so the cdylib write pass rewrites the placeholders into rendered choice
     /// descriptions (#210).
     pub fn match_arg_doc_placeholders(&self) -> std::collections::HashMap<String, String> {
-        match_arg_doc_placeholder_map(&self.c_ident, self.method)
+        match_arg_doc_placeholder_map(&self.c_ident, &self.method.method_attrs.per_param)
     }
 
     /// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`
@@ -204,52 +297,7 @@ impl<'a> MethodContext<'a> {
     /// Callers should include these lines in the R wrapper body after parameter
     /// defaulting but before the `.Call()`.
     pub fn match_arg_prelude(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-
-        for (rust_name, attrs) in &self.method.method_attrs.per_param {
-            if !attrs.match_arg {
-                continue;
-            }
-            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-            lines.push(format!(
-                "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
-            ));
-            if attrs.several_ok {
-                lines.push(format!(
-                    "{r_name} <- base::match.arg({r_name}, several.ok = TRUE)"
-                ));
-            } else {
-                lines.push(format!("{r_name} <- base::match.arg({r_name})"));
-            }
-        }
-
-        for (rust_name, attrs) in &self.method.method_attrs.per_param {
-            if attrs.choices.is_none() {
-                continue;
-            }
-            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-            if attrs.several_ok {
-                lines.push(format!(
-                    "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
-                ));
-            } else {
-                lines.push(format!("{r_name} <- match.arg({r_name})"));
-            }
-        }
-
-        lines
-    }
-
-    /// Rust-side parameter names that are validated by R's `match.arg()` and therefore
-    /// don't need `stopifnot()` preconditions generated for them.
-    fn match_arg_skip_set(&self) -> std::collections::HashSet<String> {
-        let mut s = std::collections::HashSet::new();
-        for (rust_name, attrs) in &self.method.method_attrs.per_param {
-            if attrs.match_arg || attrs.choices.is_some() {
-                s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
-            }
-        }
-        s
+        build_match_arg_prelude(&self.method.method_attrs.per_param)
     }
 
     /// Build the `.Call()` expression for a static/constructor call.
@@ -385,16 +433,11 @@ impl<'a> MethodContext<'a> {
         // coerce at method level (`method_attrs.coerce`, equivalent to
         // `coerce_all`); there is no per-param coerce on the impl path (see
         // ParsedMethod::per_param docs).
-        let opts = crate::r_preconditions::PreconditionOptions {
-            coerce_all: self.method.method_attrs.coerce,
-            coerce_params: std::collections::HashSet::new(),
-        };
-        crate::r_preconditions::build_precondition_checks(
+        build_method_precondition_checks(
             &self.method.sig.inputs,
-            &self.match_arg_skip_set(),
-            &opts,
+            &self.method.method_attrs.per_param,
+            self.method.method_attrs.coerce,
         )
-        .static_checks
     }
 
     /// Emit the 6-step method prelude into `lines`, each line prefixed with `indent`.
