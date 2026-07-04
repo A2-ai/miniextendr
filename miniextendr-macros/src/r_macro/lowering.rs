@@ -25,8 +25,9 @@
 //!
 //! ## Arg atoms
 //! - String literal (`"hello"`)
-//! - Integer literal (`42L` — bare integer token followed by `L` ident, or a
-//!   plain integer token with no suffix that Rust parsed as `u64`/`i64`)
+//! - Integer literal (`42L` — one proc_macro2 token with the `L` suffix).
+//!   An unsuffixed `42` lowers as a **double**, matching R's parser (R only
+//!   produces INTSXP for `L`-suffixed literals; `typeof(42)` is `"double"`)
 //! - Float literal (`1.5`, `1e3`)
 //! - Symbolic constants: `TRUE`, `FALSE`, `NULL`, `NA`, `NA_integer_`,
 //!   `NA_real_`, `NA_character_`, `NA_complex_`, `Inf`, `NaN`
@@ -86,15 +87,16 @@ struct LowerArg {
 enum LowerAtom {
     /// `"hello"` — `SEXP::scalar_string_from_str(…)`
     StringLit(String),
-    /// `42L` or `42` (integer in R context) — `SEXP::scalar_integer(…)`
+    /// `42L` — `SEXP::scalar_integer(…)`
     IntLit(i32),
-    /// `1.5` — `SEXP::scalar_real(…)`
+    /// `1.5`, `1e3`, or unsuffixed `42` (R parses unsuffixed numeric
+    /// literals as double) — `SEXP::scalar_real(…)`
     RealLit(f64),
     /// `TRUE` / `FALSE` — `SEXP::scalar_logical(…)`
     Bool(bool),
     /// `NULL` — `SEXP::nil()`
     Null,
-    /// `NA` → NA_integer_ (R defaults NA to integer NA)
+    /// Bare `NA` — **logical** NA (`typeof(NA)` is `"logical"` in R)
     Na,
     /// `NA_integer_` — `SEXP::scalar_integer(i32::MIN)`
     NaInteger,
@@ -146,7 +148,9 @@ fn classify_call(tokens: &[TokenTree]) -> Option<LowerCall> {
     }
 
     // Case 2: `pkg::fn(args…)` — five tokens total (4 in head)
-    // Tokenises as: Ident("pkg") Punct(':') Punct(':') Ident("fn") Group(…)
+    // Tokenises as: Ident("pkg") Punct(':', Joint) Punct(':') Ident("fn") Group(…)
+    // The first `:` must be Joint-spaced: `pkg : : fn(x)` (spaced) is an R
+    // parse error and must fall back so the string path rejects it at runtime.
     if let [
         TokenTree::Ident(pkg),
         TokenTree::Punct(c1),
@@ -154,6 +158,7 @@ fn classify_call(tokens: &[TokenTree]) -> Option<LowerCall> {
         TokenTree::Ident(fun),
     ] = head
         && c1.as_char() == ':'
+        && c1.spacing() == proc_macro2::Spacing::Joint
         && c2.as_char() == ':'
     {
         let fun = LowerFun::Namespaced {
@@ -302,13 +307,16 @@ fn classify_atom(tokens: &[TokenTree]) -> Option<LowerAtom> {
                 let v: f64 = s.parse().ok()?;
                 return Some(LowerAtom::RealLit(v));
             }
-            // Plain integer literal (no suffix) — treat as integer in R context.
-            // Only if it fits in i32 and is not NA (i32::MIN).
-            if let Ok(v) = s.parse::<i64>()
-                && v > i32::MIN as i64
-                && v <= i32::MAX as i64
-            {
-                return Some(LowerAtom::IntLit(v as i32));
+            // Plain integer literal (no suffix) — R parses unsuffixed numeric
+            // literals as DOUBLE (`typeof(42)` is "double"; only `42L` is
+            // integer), so lower to a real to match the string path.
+            if let Ok(v) = s.parse::<i64>() {
+                // i64 → f64 is exact up to 2^53; anything a user writes as a
+                // plain literal in R code is far below that, but guard anyway.
+                let real = v as f64;
+                if real as i64 == v {
+                    return Some(LowerAtom::RealLit(real));
+                }
             }
             // Out of range or unrecognised form → not lowerable.
             None
@@ -471,16 +479,21 @@ fn emit_atom(atom: &LowerAtom, scope_lets: &mut Vec<TokenStream>) -> TokenStream
             quote! { ::miniextendr_api::SEXP::nil() }
         }
         LowerAtom::Na => {
-            // R's bare NA is NA_integer_.
-            quote! { ::miniextendr_api::SEXP::scalar_integer(i32::MIN) }
+            // R's bare NA is LOGICAL NA (`typeof(NA)` is "logical").
+            quote! {
+                ::miniextendr_api::SEXP::scalar_logical_raw(
+                    ::miniextendr_api::altrep_traits::NA_LOGICAL
+                )
+            }
         }
         LowerAtom::NaInteger => {
             quote! { ::miniextendr_api::SEXP::scalar_integer(i32::MIN) }
         }
         LowerAtom::NaReal => {
-            let bits = miniextendr_api_na_real_bits();
             quote! {
-                ::miniextendr_api::SEXP::scalar_real(f64::from_bits(#bits))
+                ::miniextendr_api::SEXP::scalar_real(
+                    ::miniextendr_api::altrep_traits::NA_REAL
+                )
             }
         }
         LowerAtom::NaCharacter => {
@@ -572,11 +585,6 @@ fn emit_nested_call(call: &LowerCall, scope_lets: &mut Vec<TokenStream>) -> Toke
     });
 
     quote! { #call_var }
-}
-
-/// R's NA_REAL bit pattern (identical to `NA_REAL` in altrep_traits.rs).
-const fn miniextendr_api_na_real_bits() -> u64 {
-    0x7FF0_0000_0000_07A2
 }
 
 // endregion
@@ -673,6 +681,23 @@ mod tests {
         assert!(is_lowerable("base::sum(1L, 2L)"));
     }
 
+    #[test]
+    fn plain_integer_lowers_as_double() {
+        // R parses unsuffixed numeric literals as double: typeof(42) is
+        // "double". Only `42L` is INTSXP.
+        let call = classify_call(&parse("identity(42)")).unwrap();
+        assert!(matches!(call.args[0].value, LowerAtom::RealLit(v) if v == 42.0));
+        let call = classify_call(&parse("identity(42L)")).unwrap();
+        assert!(matches!(call.args[0].value, LowerAtom::IntLit(42)));
+    }
+
+    #[test]
+    fn bare_na_is_logical_na() {
+        // typeof(NA) is "logical", not integer.
+        let call = classify_call(&parse("identity(NA)")).unwrap();
+        assert!(matches!(call.args[0].value, LowerAtom::Na));
+    }
+
     // --- Negative cases: all should fall back ---
 
     #[test]
@@ -716,6 +741,22 @@ mod tests {
     #[test]
     fn if_not_lowerable() {
         assert!(!is_lowerable("if (TRUE) 1L else 2L"));
+    }
+
+    #[test]
+    fn empty_arg_slot_not_lowerable() {
+        // `matrix(, 2, 2)` is valid R (missing arg) and passes the grammar
+        // validator — it must fall back to the string path, never lower with
+        // the empty slot silently dropped.
+        assert!(!is_lowerable("matrix(, 2, 2)"));
+        assert!(!is_lowerable("f(x,,y)"));
+    }
+
+    #[test]
+    fn spaced_colons_not_namespaced() {
+        // `pkg : : fn(x)` is an R parse error — must not lower to a working
+        // namespaced call; fallback lets the string path reject it.
+        assert!(!is_lowerable("pkg : : fn(1L)"));
     }
 }
 

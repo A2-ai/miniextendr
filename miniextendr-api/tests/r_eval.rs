@@ -40,6 +40,8 @@ fn r_lowering_suite() {
         test_lowering_namespaced();
         test_lowering_identity_true();
         test_lowering_is_null_null();
+        test_lowering_bare_na_is_logical();
+        test_lowering_plain_numeric_is_double();
         test_lowering_fallback_arithmetic();
         test_lowering_fallback_assignment_sequence();
     });
@@ -213,6 +215,25 @@ fn test_lowering_is_null_null() {
     let string = r_str!("is.null(NULL)").expect("string is.null(NULL)");
     assert_r_identical(lowered, string);
     assert_eq!(lowered.as_logical(), Some(true));
+}
+
+/// `r!(identity(NA))` — bare NA must lower as LOGICAL NA (`typeof(NA)` is
+/// "logical"), identical to what R's parser produces on the string path.
+fn test_lowering_bare_na_is_logical() {
+    // identical() distinguishes logical NA from NA_integer_, so this fails
+    // if the lowering emits the wrong NA type.
+    let lowered = r!(identity(NA)).expect("lowered identity(NA)");
+    let string = r_str!("identity(NA)").expect("string identity(NA)");
+    assert_r_identical(lowered, string);
+}
+
+/// `r!(identity(42))` — unsuffixed numeric literals are DOUBLE in R
+/// (`typeof(42)` is "double"; only `42L` is integer).
+fn test_lowering_plain_numeric_is_double() {
+    let lowered = r!(identity(42)).expect("lowered identity(42)");
+    let string = r_str!("identity(42)").expect("string identity(42)");
+    assert_r_identical(lowered, string);
+    assert_eq!(lowered.as_real(), Some(42.0));
 }
 
 /// `r!(1L + 2L)` — arithmetic falls back to string path, still evaluates correctly.
