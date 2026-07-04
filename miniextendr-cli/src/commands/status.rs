@@ -1,10 +1,9 @@
-use std::path::Path;
-
 use anyhow::Result;
 use serde::Serialize;
 
 use crate::bridge::{has_program, program_version};
 use crate::cli::StatusCmd;
+use crate::output::print_json;
 use crate::project::{MINIEXTENDR_CRATES, ProjectContext};
 
 #[derive(Serialize)]
@@ -49,7 +48,7 @@ fn status_has(ctx: &ProjectContext, json: bool) -> Result<()> {
     };
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        print_json(&result)?;
     } else {
         println!("{result}");
     }
@@ -65,7 +64,9 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
     let root = &ctx.root;
 
     // Derive wrapper filename from DESCRIPTION
-    let pkg_name = read_description_field(root, "Package").unwrap_or_else(|| "miniextendr".into());
+    let pkg_name = ctx
+        .description_field("Package")
+        .unwrap_or_else(|| "miniextendr".into());
     let wrapper_file = format!("R/{pkg_name}-wrappers.R");
 
     let categories: &[(&str, &[&str])] = &[
@@ -213,7 +214,7 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
             missing: all_missing,
             stale,
         };
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        print_json(&report)?;
     }
 
     Ok(())
@@ -249,7 +250,9 @@ fn status_validate(ctx: &ProjectContext, json: bool) -> Result<()> {
             println!("  [FAIL] DESCRIPTION not found");
         }
     } else {
-        let bootstrap = read_description_field(root, "Config/build/bootstrap").unwrap_or_default();
+        let bootstrap = ctx
+            .description_field("Config/build/bootstrap")
+            .unwrap_or_default();
         if bootstrap == "TRUE" {
             pass.push("Config/build/bootstrap = TRUE".into());
             if !json {
@@ -262,7 +265,9 @@ fn status_validate(ctx: &ProjectContext, json: bool) -> Result<()> {
             }
         }
 
-        let sys_req = read_description_field(root, "SystemRequirements").unwrap_or_default();
+        let sys_req = ctx
+            .description_field("SystemRequirements")
+            .unwrap_or_default();
         if sys_req.to_lowercase().contains("rust") {
             pass.push("SystemRequirements mentions Rust".into());
             if !json {
@@ -357,22 +362,8 @@ fn status_validate(ctx: &ProjectContext, json: bool) -> Result<()> {
         }
     } else {
         let report = ValidateReport { pass, warn, fail };
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        print_json(&report)?;
     }
 
     Ok(())
-}
-
-/// Read a field from DESCRIPTION (simple DCF parser).
-fn read_description_field(root: &Path, field: &str) -> Option<String> {
-    let desc_path = root.join("DESCRIPTION");
-    let content = std::fs::read_to_string(desc_path).ok()?;
-    let prefix = format!("{field}:");
-
-    for line in content.lines() {
-        if line.starts_with(&prefix) {
-            return Some(line[prefix.len()..].trim().to_string());
-        }
-    }
-    None
 }
