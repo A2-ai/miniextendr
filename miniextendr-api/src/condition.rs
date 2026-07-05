@@ -120,11 +120,20 @@
 //! # [1] 150   0 100
 //! ```
 //!
-//! Supported `data` value types: scalars and `Vec`s of `i32`, `f64`, `bool`,
-//! `String` (anything with `RValue: From<_>`); for arbitrary R values build an
+//! Supported `data` value types (anything with `RValue: From<_>`): scalars and
+//! `Vec`s of `i32`, `f64`, `bool`, `String` / `&str`; their NA-aware `Option` /
+//! `Vec<Option<_>>` forms (`None` → R `NA`); the wide-integer ladder (`i64` /
+//! `u32`, narrowed to `integer(1)` when it fits, `double(1)` otherwise); and the
+//! [`RValue::debug`](crate::RValue::debug) escape hatch, which stringifies any
+//! `T: Debug`. For nested lists or complex/raw/NA-bearing values build an
 //! [`RValue`](crate::RValue) directly. The payload is built as a Send-safe owned
 //! value at the call site and materialised as R objects on the main thread — so
 //! `data =` works from worker-thread code too.
+//!
+//! Three `data =` grammars are accepted (see [`crate::error!`]):
+//! - single pair: `data = ("name", value)`
+//! - bracketed list: `data = [("a", v1), ("b", v2)]`
+//! - keyed builder sugar: `data = { value = 42, code = 7 }` (bare-ident keys)
 //!
 //! # `AsRError`
 //!
@@ -150,9 +159,11 @@
 /// materialised on the main thread at the unwind boundary.
 ///
 /// The macros accept any value with `RValue: From<_>` (scalars and `Vec`s of
-/// `i32` / `f64` / `bool` / `String` / `&str`); a scalar `7i32` becomes
-/// `integer(1)` and a `Vec<i32>` becomes `integer(n)`. For arbitrary R values
-/// (nested lists, complex, raw, NA-bearing) build an [`RValue`](crate::RValue)
+/// `i32` / `f64` / `bool` / `String` / `&str`; their NA-aware `Option` /
+/// `Vec<Option<_>>` forms; the `i64` / `u32` wide-integer ladder); a scalar
+/// `7i32` becomes `integer(1)` and a `Vec<i32>` becomes `integer(n)`. Any
+/// `T: Debug` rides along via [`RValue::debug`](crate::RValue::debug). For
+/// nested lists or complex/raw values build an [`RValue`](crate::RValue)
 /// directly.
 pub type ConditionData = Vec<(String, crate::RValue)>;
 
@@ -204,12 +215,16 @@ pub enum RCondition {
 /// Internal: normalise a macro `data = ...` argument into
 /// `Option<ConditionData>`. Not part of the public API.
 ///
-/// Two forms are accepted:
+/// Three forms are accepted:
 /// - a single pair: `("name", value)`
 /// - a bracketed list of pairs: `[("a", v1), ("b", v2)]`
+/// - keyed builder sugar: `{ name = value, other = value }` — the field name is
+///   a bare identifier (stringified by the macro), so `{ value = 42, code = 7 }`
+///   is shorthand for `[("value", 42), ("code", 7)]`.
 ///
 /// Each `value` is converted via `RValue::from`, so any type with an `RValue`
-/// `From` impl (the scalar/vector set) works without ceremony.
+/// `From` impl (the scalar/vector/`Option`/wide-integer set) works without
+/// ceremony.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_condition_data {
@@ -224,6 +239,16 @@ macro_rules! __mx_condition_data {
             $(
                 (
                     ($name).to_string(),
+                    $crate::RValue::from($value),
+                ),
+            )*
+        ])
+    };
+    ({ $($name:ident = $value:expr),* $(,)? }) => {
+        ::std::option::Option::Some(::std::vec![
+            $(
+                (
+                    ::std::stringify!($name).to_string(),
                     $crate::RValue::from($value),
                 ),
             )*
@@ -255,6 +280,13 @@ macro_rules! __mx_condition_data {
 ///     data = [("value", value), ("min", 0), ("max", 100)],
 ///     "value {value} out of range"
 /// );
+///
+/// // Keyed builder sugar (bare-ident keys, stringified by the macro):
+/// mx::error!(
+///     class = "validation_error",
+///     data = { value = value, min = 0, max = 100 },
+///     "value {value} out of range"
+/// );
 /// ```
 ///
 /// ```r
@@ -266,11 +298,14 @@ macro_rules! __mx_condition_data {
 /// (optional), then the format message.
 ///
 /// **Supported value types**: scalars and `Vec`s of `i32`, `f64`, `bool`, and
-/// `String` (plus `&str` / `Vec<&str>`, converted to owned). The payload must be
-/// `Send` — it travels through `panic_any` and may cross the worker→main thread
-/// boundary, so live `SEXP`s cannot ride along; the R objects are materialised on
-/// the main thread at the unwind boundary. For arbitrary R values (nested lists,
-/// complex, raw, NA-bearing) build an [`RValue`](crate::RValue) directly.
+/// `String` (plus `&str` / `Vec<&str>`, converted to owned); their NA-aware
+/// `Option` / `Vec<Option<_>>` forms (→ R `NA`); the wide-integer ladder (`i64`
+/// / `u32`); and the [`RValue::debug`](crate::RValue::debug) escape hatch for
+/// any `T: Debug`. The payload must be `Send` — it travels through `panic_any`
+/// and may cross the worker→main thread boundary, so live `SEXP`s cannot ride
+/// along; the R objects are materialised on the main thread at the unwind
+/// boundary. For nested lists or complex/raw values build an
+/// [`RValue`](crate::RValue) directly.
 ///
 /// # See also
 ///
@@ -1023,6 +1058,130 @@ mod condition_macro_tests {
             other => panic!("wrong variant: {other:?}"),
         }
     }
+
+    // region: keyed builder sugar (ported from #1044/#995)
+
+    #[test]
+    fn keyed_builder_arm_stringifies_idents() {
+        let cond = catch(|| crate::error!(data = { value = 42, code = 7 }, "boom"));
+        match cond {
+            RCondition::Error { data, .. } => {
+                assert_data(
+                    &data,
+                    &[
+                        ("value", RValue::Integer(vec![Some(42)])),
+                        ("code", RValue::Integer(vec![Some(7)])),
+                    ],
+                );
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn keyed_builder_arm_trailing_comma_and_mixed_types() {
+        let cond = catch(|| {
+            crate::warning!(
+                class = "trunc",
+                data = { dropped = 3, ratio = 0.5_f64, tag = "rows", },
+                "dropped some"
+            )
+        });
+        match cond {
+            RCondition::Warning { data, class, .. } => {
+                assert_eq!(class.as_deref(), Some("trunc"));
+                assert_data(
+                    &data,
+                    &[
+                        ("dropped", RValue::Integer(vec![Some(3)])),
+                        ("ratio", RValue::Double(vec![0.5])),
+                        ("tag", RValue::Character(vec![Some("rows".into())])),
+                    ],
+                );
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    // endregion
+
+    // region: NA-aware + wide-int + debug value types via the macro (#995)
+
+    #[test]
+    fn option_scalar_fields_carry_na() {
+        let cond = catch(|| {
+            crate::error!(
+                data = [("present", Some(9_i32)), ("missing", None::<i32>)],
+                "opts"
+            )
+        });
+        match cond {
+            RCondition::Error { data, .. } => {
+                assert_data(
+                    &data,
+                    &[
+                        ("present", RValue::Integer(vec![Some(9)])),
+                        ("missing", RValue::Integer(vec![None])),
+                    ],
+                );
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn vec_option_field_carries_embedded_na() {
+        let cond =
+            catch(|| crate::error!(data = ("codes", vec![Some(1_i32), None, Some(3)]), "vec"));
+        match cond {
+            RCondition::Error { data, .. } => {
+                assert_data(
+                    &data,
+                    &[("codes", RValue::Integer(vec![Some(1), None, Some(3)]))],
+                );
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wide_integer_ladder_via_macro() {
+        // Fits in i32 → integer; beyond → double.
+        let cond = catch(|| {
+            crate::error!(
+                data = [("small", 42_i64), ("big", 5_000_000_000_i64)],
+                "wide"
+            )
+        });
+        match cond {
+            RCondition::Error { data, .. } => {
+                assert_data(
+                    &data,
+                    &[
+                        ("small", RValue::Integer(vec![Some(42)])),
+                        ("big", RValue::Double(vec![5_000_000_000.0])),
+                    ],
+                );
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn debug_fallback_via_macro() {
+        let cond = catch(|| crate::error!(data = ("range", RValue::debug(0..=100)), "dbg"));
+        match cond {
+            RCondition::Error { data, .. } => {
+                assert_data(
+                    &data,
+                    &[("range", RValue::Character(vec![Some("0..=100".into())]))],
+                );
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    // endregion
 }
 
 // endregion

@@ -2325,9 +2325,11 @@ pub fn gc_stress_serde_ser() {
 /// materialises each [`RValue`](miniextendr_api::RValue) field one at a time,
 /// rooting every intermediate into the protected data list before the next
 /// allocation — the canonical "SEXP storage across allocations" shape (#430).
-/// This fixture drives the production code path directly with all eight
-/// supported value types (scalar + vector × i32/f64/bool/String) and reads every
-/// field back to verify integrity.
+/// This fixture drives the production code path directly with thirteen fields:
+/// the eight base types (scalar + vector × i32/f64/bool/String) plus the #995
+/// richer forms (NA-aware `Option`/`Vec<Option>`, the wide-integer ladder, a
+/// `Debug`-stringified value, and a nested named list). It reads every field
+/// back to verify integrity.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr]
@@ -2349,6 +2351,27 @@ pub fn gc_stress_condition_data() {
                 "labels".to_string(),
                 RValue::from(vec!["a".to_string(), "b".to_string()]),
             ),
+            // #995 richer value types, expressed as RValue (#1050): NA-aware
+            // scalars/vectors, wide integer (→ double, out of i32 range),
+            // Debug-stringify, and a nested named list (which itself allocates a
+            // fresh VECSXP + names under GC pressure).
+            ("opt_int".to_string(), RValue::from(None::<i32>)),
+            (
+                "opt_int_vec".to_string(),
+                RValue::from(vec![Some(1_i32), None, Some(3)]),
+            ),
+            ("long".to_string(), RValue::from(5_000_000_000_i64)),
+            ("dbg".to_string(), RValue::debug(round..=round + 2)),
+            (
+                "nested".to_string(),
+                RValue::List(vec![
+                    (Some("x".to_string()), RValue::from(round)),
+                    (
+                        Some("y".to_string()),
+                        RValue::from(vec![Some(7_i32), None]),
+                    ),
+                ]),
+            ),
         ];
 
         let tagged = make_rust_condition_value_with_data(
@@ -2364,7 +2387,7 @@ pub fn gc_stress_condition_data() {
 
         assert_eq!(tagged.len(), 5, "tagged condition value must have 5 slots");
         let data_list = tagged.vector_elt(4);
-        assert_eq!(data_list.len(), 8, "data list must carry all 8 fields");
+        assert_eq!(data_list.len(), 13, "data list must carry all 13 fields");
 
         // Scalars
         assert_eq!(data_list.vector_elt(0).integer_elt(0), round);
@@ -2386,10 +2409,39 @@ pub fn gc_stress_condition_data() {
         let labels = data_list.vector_elt(7);
         assert_eq!(labels.string_elt_str(1), Some("b"));
 
+        // #995 richer value types
+        // opt_int (None) → scalar NA_integer_ (== i32::MIN)
+        assert_eq!(data_list.vector_elt(8).integer_elt(0), i32::MIN);
+        // opt_int_vec → integer(3) with NA in the middle
+        let opt_vec = data_list.vector_elt(9);
+        assert_eq!(opt_vec.len(), 3);
+        assert_eq!(opt_vec.integer_elt(0), 1);
+        assert_eq!(opt_vec.integer_elt(1), i32::MIN);
+        assert_eq!(opt_vec.integer_elt(2), 3);
+        // long (5e9) → REALSXP (out of i32 range)
+        assert_eq!(data_list.vector_elt(10).real_elt(0), 5_000_000_000.0);
+        // dbg → character(1) of the Debug rendering
+        assert_eq!(
+            data_list.vector_elt(11).string_elt_str(0),
+            Some(format!("{}..={}", round, round + 2).as_str())
+        );
+        // nested → VECSXP with named children x, y
+        let nested = data_list.vector_elt(12);
+        assert_eq!(nested.len(), 2);
+        assert_eq!(nested.vector_elt(0).integer_elt(0), round);
+        let nested_y = nested.vector_elt(1);
+        assert_eq!(nested_y.len(), 2);
+        assert_eq!(nested_y.integer_elt(0), 7);
+        assert_eq!(nested_y.integer_elt(1), i32::MIN);
+        let nested_names = nested.get_names();
+        assert_eq!(nested_names.string_elt_str(0), Some("x"));
+        assert_eq!(nested_names.string_elt_str(1), Some("y"));
+
         // Names round-trip
         let names = data_list.get_names();
         assert_eq!(names.string_elt_str(0), Some("int"));
         assert_eq!(names.string_elt_str(7), Some("labels"));
+        assert_eq!(names.string_elt_str(12), Some("nested"));
     }
 }
 

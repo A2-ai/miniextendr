@@ -177,3 +177,103 @@ pub fn demo_condition_data(n: i32) {
 }
 
 // endregion
+
+// region: data = ... richer value types + keyed builder (issue #995)
+
+/// Raise an error carrying NA-aware `Option` fields.
+///
+/// `present` rides through as a value; `missing = NULL` lands as R `NA`. The
+/// field is *present* on the condition object but its value is `NA` — distinct
+/// from a wholly absent field.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_option(present: i32, has_value: bool) {
+    // Bare `Option<i32>` values ride through via `RValue: From<Option<i32>>`:
+    // `None` materialises as `NA_integer_`.
+    let opt: Option<i32> = if has_value { Some(present) } else { None };
+    miniextendr_api::error!(
+        class = "option_error",
+        data = [("present", Some(present)), ("missing", opt)],
+        "option payload"
+    );
+}
+
+/// Raise an error whose vector field carries embedded `NA` elements.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_na_vector() {
+    miniextendr_api::error!(
+        class = "na_vector_error",
+        data = ("codes", vec![Some(1_i32), None, Some(3)]),
+        "vector with NA"
+    );
+}
+
+/// Raise an error carrying a wide integer (`i64`) field.
+///
+/// Values within `i32` range materialise as `integer(1)`; larger values become
+/// `double(1)` via the smart wide-integer ladder.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_long(value: f64) {
+    // f64 argument lets R pass values beyond i32 range; the `RValue: From<i64>`
+    // wide-integer ladder narrows to integer(1) when it fits, double(1) otherwise.
+    let as_long = value as i64;
+    miniextendr_api::error!(
+        class = "long_error",
+        data = ("big", as_long),
+        "wide integer payload"
+    );
+}
+
+/// Raise an error carrying a nested named list under `details`.
+///
+/// Handlers read `e$details$min` / `e$details$max`.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_nested(min: i32, max: i32) {
+    use miniextendr_api::RValue;
+    let nested: Vec<(Option<String>, RValue)> = vec![
+        (Some("min".to_string()), RValue::from(min)),
+        (Some("max".to_string()), RValue::from(max)),
+    ];
+    miniextendr_api::error!(
+        class = "nested_error",
+        data = ("details", RValue::List(nested)),
+        "nested payload"
+    );
+}
+
+/// Raise an error using the `Debug`-stringify fallback variant.
+///
+/// The Rust `RangeInclusive` has no R-native mapping, so it rides along as a
+/// `character(1)` of its `{:?}` rendering.
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_debug(lo: i32, hi: i32) {
+    use miniextendr_api::RValue;
+    miniextendr_api::error!(
+        class = "debug_error",
+        data = ("range", RValue::debug(lo..=hi)),
+        "debug payload"
+    );
+}
+
+/// Raise an error using the keyed builder sugar (`data = { k = v, ... }`).
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_keyed(value: i32, code: i32) {
+    miniextendr_api::error!(
+        class = "keyed_error",
+        data = { value = value, code = code },
+        "keyed payload"
+    );
+}
+
+// endregion
