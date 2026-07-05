@@ -2110,9 +2110,6 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "macro-coverage") {
         features.push("macro-coverage");
     }
-    if cfg!(feature = "refcount-fast-hash") {
-        features.push("refcount-fast-hash");
-    }
 
     // Optional crate features
     if cfg!(feature = "uuid") {

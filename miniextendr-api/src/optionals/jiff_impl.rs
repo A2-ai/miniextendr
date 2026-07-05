@@ -45,7 +45,7 @@ pub use jiff::{SignedDuration, Span, Timestamp, Zoned};
 
 use super::datetime_realsxp::impl_realsxp_datetime;
 use crate::cached_class::{date_class_sexp, set_posixct_tz, set_posixct_utc};
-use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_string_lossy};
 use crate::into_r::IntoR;
 use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 use crate::{SEXP, SEXPTYPE, SexpExt};
@@ -156,9 +156,7 @@ impl TryFromSexp for Zoned {
             let tzone_sym = crate::cached_class::tzone_symbol();
             let tzone_attr = sexp.get_attr(tzone_sym);
             if tzone_attr.type_of() == SEXPTYPE::STRSXP && tzone_attr.len() >= 1 {
-                let charsxp = tzone_attr.string_elt(0);
-                let cstr = std::ffi::CStr::from_ptr(charsxp.r_char());
-                cstr.to_string_lossy().into_owned()
+                charsxp_to_string_lossy(tzone_attr.string_elt(0)).unwrap_or_default()
             } else {
                 String::new()
             }
@@ -280,9 +278,7 @@ impl TryFromSexp for Vec<Zoned> {
             let tzone_sym = crate::cached_class::tzone_symbol();
             let tzone_attr = sexp.get_attr(tzone_sym);
             if tzone_attr.type_of() == SEXPTYPE::STRSXP && tzone_attr.len() >= 1 {
-                let charsxp = tzone_attr.string_elt(0);
-                let cstr = std::ffi::CStr::from_ptr(charsxp.r_char());
-                cstr.to_string_lossy().into_owned()
+                charsxp_to_string_lossy(tzone_attr.string_elt(0)).unwrap_or_default()
             } else {
                 String::new()
             }
@@ -386,9 +382,7 @@ impl TryFromSexp for Vec<Option<Zoned>> {
             let tzone_sym = crate::cached_class::tzone_symbol();
             let tzone_attr = sexp.get_attr(tzone_sym);
             if tzone_attr.type_of() == SEXPTYPE::STRSXP && tzone_attr.len() >= 1 {
-                let charsxp = tzone_attr.string_elt(0);
-                let cstr = std::ffi::CStr::from_ptr(charsxp.r_char());
-                cstr.to_string_lossy().into_owned()
+                charsxp_to_string_lossy(tzone_attr.string_elt(0)).unwrap_or_default()
             } else {
                 String::new()
             }
@@ -1010,9 +1004,7 @@ impl crate::from_r::TryFromSexp for JiffZonedVec {
             let tzone_sym = crate::cached_class::tzone_symbol();
             let tzone_attr = sexp.get_attr(tzone_sym);
             if tzone_attr.type_of() == crate::SEXPTYPE::STRSXP && tzone_attr.len() >= 1 {
-                let charsxp = tzone_attr.string_elt(0);
-                let cstr = std::ffi::CStr::from_ptr(charsxp.r_char());
-                cstr.to_string_lossy().into_owned()
+                charsxp_to_string_lossy(tzone_attr.string_elt(0)).unwrap_or_default()
             } else {
                 String::new()
             }
