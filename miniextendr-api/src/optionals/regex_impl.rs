@@ -60,79 +60,15 @@
 
 pub use regex::Regex;
 
-use crate::SEXP;
-use crate::from_r::{SexpError, TryFromSexp};
+use crate::try_from_sexp_via_str_parse;
 
-// region: Scalar conversions
+// region: TryFromSexp conversions
 
-impl TryFromSexp for Regex {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let pattern: String = TryFromSexp::try_from_sexp(sexp)?;
-        Regex::new(&pattern)
-            .map_err(|e| SexpError::InvalidValue(format!("invalid regex pattern: {}", e)))
-    }
-}
+try_from_sexp_via_str_parse!(Regex, "regex pattern", |s| Regex::new(s));
 
 // Note: IntoR is intentionally not implemented for Regex.
 // A compiled regex cannot be meaningfully converted back to R.
 // If you need the pattern, keep the original String.
-// endregion
-
-// region: Option conversions (NA support)
-
-impl TryFromSexp for Option<Regex> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let opt: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        match opt {
-            None => Ok(None),
-            Some(pattern) => Regex::new(&pattern)
-                .map(Some)
-                .map_err(|e| SexpError::InvalidValue(format!("invalid regex pattern: {}", e))),
-        }
-    }
-}
-// endregion
-
-// region: Vec conversions
-
-impl TryFromSexp for Vec<Regex> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let patterns: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
-        patterns
-            .into_iter()
-            .enumerate()
-            .map(|(i, pattern)| {
-                Regex::new(&pattern).map_err(|e| {
-                    SexpError::InvalidValue(format!("invalid regex pattern at index {}: {}", i, e))
-                })
-            })
-            .collect()
-    }
-}
-
-impl TryFromSexp for Vec<Option<Regex>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let patterns: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        patterns
-            .into_iter()
-            .enumerate()
-            .map(|(i, opt)| match opt {
-                None => Ok(None),
-                Some(pattern) => Regex::new(&pattern).map(Some).map_err(|e| {
-                    SexpError::InvalidValue(format!("invalid regex pattern at index {}: {}", i, e))
-                }),
-            })
-            .collect()
-    }
-}
 // endregion
 
 // region: Helper functions
