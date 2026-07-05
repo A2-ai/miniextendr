@@ -111,20 +111,18 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
     }
   }
 
-  # -- Install-mode signal --
   # inst/vendor.tar.xz is gitignored and only belongs in the source tree
   # transiently (during `miniextendr_vendor()` + `R CMD build`). Its presence
-  # is resolved once here; the actual pass/warn/fail report happens in the
-  # single "Vendor tarball" check below (#BUG6 -- this used to be reported
-  # twice, with contradictory severity).
-  cli::cli_h2("Install-mode signal")
-
+  # is resolved once here (the #908 marker check below needs it); the actual
+  # pass/warn/fail report happens in the single "Vendor tarball" check below
+  # (#BUG6 -- this used to be reported twice, with contradictory severity).
   vendor_tarball_path <- tryCatch(
     usethis::proj_path("inst", "vendor.tar.xz"),
     error = function(e) NULL
   )
 
   # -- Local miniextendr override marker (#908) --
+  cli::cli_h2("Local override marker")
   # .miniextendr-local is a dev-only marker written by use_local_miniextendr().
   # It is gitignored and Rbuildignored; warn loudly if still present so the
   # developer doesn't accidentally ship a package that requires a local path.
@@ -155,6 +153,7 @@ vendoring or distributing this package."
       results$warn <- c(results$warn, ".miniextendr-local override active — run unuse_local_miniextendr() before distributing")
     }
   } else if (!is.null(local_marker_path)) {
+    cli::cli_alert_success("No {.path .miniextendr-local} override marker")
     results$pass <- c(results$pass, "no .miniextendr-local override")
   }
 
