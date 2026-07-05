@@ -1232,7 +1232,7 @@ Return test: \code{None} as \verb{Option<i32>} -> R NA_integer_.
 
 Return test: \code{Some(10)} as \verb{Option<i32>} -> R integer.
 
-Test \verb{&u8} slice argument: returns the length of the slice.
+Test \verb{&[u8]} slice argument: returns the length of the slice.
 
 Test \verb{Vec<bool>} argument: returns the length of the vector.
 
@@ -1250,9 +1250,9 @@ Return test: \code{Ok(9.5)} as \verb{Result<f64, ()>} -> R double.
 
 Return test: \code{Ok(9)} as \verb{Result<i32, ()>} -> R integer.
 
-Test \verb{&f64} slice argument: returns the length of the slice.
+Test \verb{&[f64]} slice argument: returns the length of the slice.
 
-Test \verb{&i32} slice argument: returns the length of the slice.
+Test \verb{&[i32]} slice argument: returns the length of the slice.
 
 Test \verb{Vec<isize>} argument: returns the length of the vector.
 
@@ -1278,7 +1278,7 @@ Test \verb{Result<i32, ()>} argument: returns 1 if Ok, 0 if Err (NULL).
 
 Return test: \verb{Err(())} as \verb{Result<i32, ()>} -> R NULL.
 
-Test \verb{&RLogical} slice argument: returns the length of the slice.
+Test \verb{&[RLogical]} slice argument: returns the length of the slice.
 
 Test \verb{Vec<Option<i8>>} argument: returns the length of the vector.
 
@@ -1406,7 +1406,7 @@ Test \verb{Option<usize>} argument: returns 1 if Some, 0 if None (NA).
 
 Return test: \verb{Err(())} as \verb{Result<String, ()>} -> R NULL.
 
-Return test: \verb{Ok(vec!1, 2)} as \verb{Result<Vec<i32>, ()>} -> R integer vector.
+Return test: \verb{Ok(vec![1, 2])} as \verb{Result<Vec<i32>, ()>} -> R integer vector.
 
 Return test: Rust \verb{Vec<Option<i8>>} -> R integer vector with NA.
 
@@ -1444,7 +1444,7 @@ Return test: Rust \verb{Vec<Option<String>>} -> R character vector with NA.
 
 Return test: Rust \verb{Vec<Vec<String>>} -> R list of character vectors.
 
-Return test: \verb{AsNamedList<(String, f64); 2>} -> R named list from fixed-size array.
+Return test: \verb{AsNamedList<[(String, f64); 2]>} -> R named list from fixed-size array.
 
 Return test: empty \code{AsNamedList} -> R empty named list.
 
@@ -1488,9 +1488,9 @@ Return test: \verb{Some(&42)} as \verb{Option<&i32>} -> R integer.
 
 Return test: \code{None} as \verb{Option<Vec<i32>>} -> R NULL.
 
-Return test: \verb{Some(vec!1, 2, 3)} as \verb{Option<Vec<i32>>} -> R integer vector.
+Return test: \verb{Some(vec![1, 2, 3])} as \verb{Option<Vec<i32>>} -> R integer vector.
 
-Test \verb{&mut u8} mutable slice: wrapping-adds one to each element.
+Test \verb{&mut [u8]} mutable slice: wrapping-adds one to each element.
 
 Test \verb{Vec<BTreeMap<String, i32>>} argument: returns the sum across all maps.
 
@@ -1504,7 +1504,7 @@ Return test: \code{AsNamedVector} from a borrowed slice -> R named double vector
 
 Return test: \code{Some(42)} as \verb{Option<i64>} -> R integer (fits in i32).
 
-Test \verb{&mut i32} mutable slice: increments each element and returns length.
+Test \verb{&mut [i32]} mutable slice: increments each element and returns length.
 
 Return test: \verb{AsNamedList<Vec<(&str, i32)>>} -> R named list with \verb{&str} keys.
 
@@ -1518,9 +1518,9 @@ Return test: \code{AsNamedListExt} trait method -> R named list.
 
 Return test: \code{None} as \verb{Option<Vec<String>>} -> R NULL.
 
-Return test: \verb{Some(vec!"a", "b")} as \verb{Option<Vec<String>>} -> R character vector.
+Return test: \verb{Some(vec!["a", "b"])} as \verb{Option<Vec<String>>} -> R character vector.
 
-Test \verb{Vec<&i32>} argument: returns the total length across all slices.
+Test \verb{Vec<&[i32]>} argument: returns the total length across all slices.
 
 Return test: \code{None} as \verb{Option<HashMap<String, i32>>} -> R NULL.
 
@@ -1542,9 +1542,9 @@ Return test: \code{None} as \verb{Option<BTreeMap<String, i32>>} -> R NULL.
 
 Return test: \code{Some(BTreeMap)} as \verb{Option<BTreeMap<String, i32>>} -> R named list.
 
-Test \verb{Option<&mut i32>} argument: returns 1 if Some, 0 if None.
+Test \verb{Option<&mut [i32]>} argument: returns 1 if Some, 0 if None.
 
-Test \verb{Vec<&mut i32>} argument: increments all elements and returns total length.
+Test \verb{Vec<&mut [i32]>} argument: increments all elements and returns total length.
 
 Return test: \verb{AsNamedVector<Vec<(&str, Option<i32>)>>} -> R named integer vector with NA.
 

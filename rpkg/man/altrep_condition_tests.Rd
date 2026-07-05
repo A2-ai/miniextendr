@@ -63,7 +63,7 @@ In ALTREP RUnwind context the warning cannot suspend — it is degraded to a \co
 
 Create an ALTREP integer that panics on element access (plain panic).
 
-Accessing any element will raise \code{rust_error} in R — catchable via \code{tryCatch(x1L, rust_error = function(e) e)}.
+Accessing any element will raise \code{rust_error} in R — catchable via \code{tryCatch(x[1L], rust_error = function(e) e)}.
 
 Create an ALTREP integer that calls \verb{message!()} on element access.
 
@@ -79,5 +79,5 @@ Same degradation as \code{altrep_warn_on_elt}.
 
 Create an ALTREP integer that raises \verb{error!(class = ..., ...)} on element access.
 
-Accessing any element will raise a classed R error — catchable via \code{tryCatch(x1L, altrep_specific = function(e) e)} or \code{tryCatch(x1L, rust_error = function(e) e)}.
+Accessing any element will raise a classed R error — catchable via \code{tryCatch(x[1L], altrep_specific = function(e) e)} or \code{tryCatch(x[1L], rust_error = function(e) e)}.
 }

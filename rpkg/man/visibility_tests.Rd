@@ -67,7 +67,7 @@ Test \code{unwrap_in_r}: the \code{Result} is converted to \code{list(error = ..
 
 Test that #miniextendr(invisible) forces an i32 return to be invisible in R.
 
-Test that \verb{#miniextendr(check_interrupt)} checks for user interrupts before execution.
+Test that \verb{#[miniextendr(check_interrupt)]} checks for user interrupts before execution.
 
 Test that a function with explicit -> () return is invisible in R.
 

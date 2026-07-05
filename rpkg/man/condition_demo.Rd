@@ -105,7 +105,7 @@ Signal a classed condition carrying structured data.
 
 Raise a classed error carrying several heterogeneous scalar fields.
 
-Demonstrates the bracketed \verb{data = (..), (..)} form with mixed value types: integer, double, logical, and character.
+Demonstrates the bracketed \verb{data = [(..), (..)]} form with mixed value types: integer, double, logical, and character.
 
 Raise a classed error carrying a single structured field (\code{value}).
 

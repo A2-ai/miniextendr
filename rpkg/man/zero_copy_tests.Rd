@@ -112,9 +112,9 @@ zero_copy_arrow_f64_computed_is_different(x)
 \item{n}{(no documentation available)}
 }
 \description{
-Round-trip \verb{Cow<f64>} and return the result.
+Round-trip \verb{Cow<[f64]>} and return the result.
 
-Round-trip \verb{Cow<i32>} through TryFromSexp → IntoR and return the result. As of #880 this always copies into a fresh R vector.
+Round-trip \verb{Cow<[i32]>} through TryFromSexp → IntoR and return the result. As of #880 this always copies into a fresh R vector.
 
 Returns TRUE if \verb{RCow<f64>} round-trip returns the same R object (zero-copy).
 

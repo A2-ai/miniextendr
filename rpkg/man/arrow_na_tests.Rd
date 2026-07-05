@@ -206,7 +206,7 @@ Uppercase non-null strings, preserving nulls.
 
 Convert R vector to Arrow, return the Arrow null_count. The Arrow array holds a zero-copy reference to R's buffer. If R mutates the buffer after conversion, the Arrow null bitmap becomes stale.
 
-This fixture takes the SEXP, converts to Float64Array (scanning for NAs), then reads element values and null status from the Arrow side. Returns: \verb{null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...}
+This fixture takes the SEXP, converts to Float64Array (scanning for NAs), then reads element values and null status from the Arrow side. Returns: \verb{[null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...]}
 
 Return null count for StringArray.
 

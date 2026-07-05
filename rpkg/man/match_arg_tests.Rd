@@ -158,7 +158,7 @@ Set mode using match_arg.
 
 Select multiple colors.
 
-Smoke test: a \verb{#miniextendr} fn taking a \code{log::LevelFilter} via match_arg. The generated R wrapper should bake in the same lowercase choices that \verb{<log::LevelFilter as MatchArg>::CHOICES} advertises.
+Smoke test: a \verb{#[miniextendr]} fn taking a \code{log::LevelFilter} via match_arg. The generated R wrapper should bake in the same lowercase choices that \verb{<log::LevelFilter as MatchArg>::CHOICES} advertises.
 
 Select multiple modes (enum-based several_ok).
 
@@ -172,7 +172,7 @@ Return the choices for Mode (for testing from R).
 
 Return a Vec of Mode values as an R character vector.
 
-Exercises \verb{IntoR for Vec<Mode>} emitted by \verb{#derive(MatchArg)}.
+Exercises \verb{IntoR for Vec<Mode>} emitted by \verb{#[derive(MatchArg)]}.
 
 Set priority using match_arg.
 

@@ -88,7 +88,7 @@ Create a new derived_int_lists vector (list_of\if{html}{\out{<integer>}}).
 
 Verify VctrsClass trait constants.
 
-Create a derived_percent vector by returning the type directly (via \verb{#derive(PreferVctrs)}).
+Create a derived_percent vector by returning the type directly (via \verb{#[derive(PreferVctrs)]}).
 
 \code{PreferVctrs} gives \code{DerivedPercent} an \code{IntoR} impl that routes through \code{into_vctrs}, so the type is returned unwrapped. Produces the same object as \code{new_derived_percent}.
 
@@ -96,5 +96,5 @@ Verify VctrsClass trait constants for rational.
 
 Create a derived_percent vector via the \code{AsVctrs} call-site wrapper.
 
-Demonstrates returning a \verb{#derive(Vctrs)} type without the manual \verb{into_vctrs().map_err(...)} boilerplate — \code{AsVctrs} bridges \code{IntoVctrs} to \code{IntoR}, and a build failure surfaces in R as an error condition. Produces the same object as \code{new_derived_percent}.
+Demonstrates returning a \verb{#[derive(Vctrs)]} type without the manual \verb{into_vctrs().map_err(...)} boilerplate — \code{AsVctrs} bridges \code{IntoVctrs} to \code{IntoR}, and a build failure surfaces in R as an error condition. Produces the same object as \code{new_derived_percent}.
 }

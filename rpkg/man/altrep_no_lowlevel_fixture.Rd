@@ -18,5 +18,5 @@ An ALTREP-backed integer vector.
 \description{
 Create a +100 ALTREP integer vector of given length.
 
-Element at R index \code{k} (1-based) returns \code{(k - 1) + 100}. Uses \verb{#altrep(no_lowlevel, manual)} — the user must call \verb{impl_altinteger_from_data!} manually (see this file).
+Element at R index \code{k} (1-based) returns \code{(k - 1) + 100}. Uses \verb{#[altrep(no_lowlevel, manual)]} — the user must call \verb{impl_altinteger_from_data!} manually (see this file).
 }

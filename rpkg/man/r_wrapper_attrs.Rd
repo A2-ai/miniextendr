@@ -76,7 +76,7 @@ Test on.exit cleanup with add = false (overwrite previous).
 
 Log a message after checks pass.
 
-Pin the automatic \verb{#track_caller} added by \verb{#miniextendr} (docs/TRACK_CALLER.md): with the attribute in effect, \code{Location::caller()} inside this function resolves to the \emph{caller's} call site (in the generated wrapper), not to the line below. Returns TRUE when the attribute is active.
+Pin the automatic \verb{#[track_caller]} added by \verb{#[miniextendr]} (docs/TRACK_CALLER.md): with the attribute in effect, \code{Location::caller()} inside this function resolves to the \emph{caller's} call site (in the generated wrapper), not to the line below. Returns TRUE when the attribute is active.
 
-Report the location \code{Location::caller()} resolves to through a \verb{#track_caller} helper chain (mirrors the "propagation through call chains" section of docs/TRACK_CALLER.md). Returned as "file:line" for R-side inspection.
+Report the location \code{Location::caller()} resolves to through a \verb{#[track_caller]} helper chain (mirrors the "propagation through call chains" section of docs/TRACK_CALLER.md). Returned as "file:line" for R-side inspection.
 }

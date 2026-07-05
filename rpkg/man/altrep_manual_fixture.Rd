@@ -18,5 +18,5 @@ An ALTREP-backed integer vector.
 \description{
 Create a doubling ALTREP integer vector of given length.
 
-Element at R index \code{k} (1-based) returns \code{(k - 1) * 2}. Uses \verb{#altrep(manual)} — the \verb{impl_altinteger_from_data!} bridge is emitted automatically by the derive.
+Element at R index \code{k} (1-based) returns \code{(k - 1) * 2}. Uses \verb{#[altrep(manual)]} — the \verb{impl_altinteger_from_data!} bridge is emitted automatically by the derive.
 }

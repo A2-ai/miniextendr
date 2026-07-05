@@ -405,6 +405,19 @@ fn sanitize_keeps_real_markdown_links() {
 }
 
 #[test]
+fn sanitize_leaves_brackets_inside_code_spans() {
+    // Markdown (and roxygen2) never parse `[...]` inside backticks as a
+    // link — stripping there would corrupt code like `x[i]`.
+    let s = "index with `x[i]` or `m[, 1]` as usual";
+    assert_eq!(sanitize_roxygen_links(s), s);
+    // A rustdoc link *around* a code span is still stripped.
+    assert_eq!(
+        sanitize_roxygen_links("see [`Vec<T>`] and `v[0]`"),
+        "see `Vec<T>` and `v[0]`"
+    );
+}
+
+#[test]
 fn sanitize_is_utf8_safe() {
     // Multi-byte chars around a link must not panic or corrupt.
     assert_eq!(

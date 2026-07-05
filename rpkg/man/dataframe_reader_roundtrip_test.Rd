@@ -146,9 +146,9 @@ Struct-flatten round-trip. Columns \code{id}, \code{origin_x}, \code{origin_y}.
 
 Parallel map-column round-trip (real off-thread index assembly). Columns \code{id}, \code{opts}.
 
-Auto-expand \verb{Box<i32>} round-trip. Columns \code{tag}, \code{xs_1..xs_k}.
+Auto-expand \verb{Box<[i32]>} round-trip. Columns \code{tag}, \code{xs_1..xs_k}.
 
-\verb{Vec::<RListBoxRow>::from_dataframe(&df)} → rebuild. Columns \code{tag}, \code{xs} (list-column). Exercises \code{.into()} from \verb{Vec<i32>} to \verb{Box<i32>} per row.
+\verb{Vec::<RListBoxRow>::from_dataframe(&df)} → rebuild. Columns \code{tag}, \code{xs} (list-column). Exercises \code{.into()} from \verb{Vec<i32>} to \verb{Box<[i32]>} per row.
 
 \verb{Vec::<RListVecRow>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{data} (list-column).
 
@@ -158,7 +158,7 @@ Parallel non-String-keyed map round-trip. Columns \code{id}, \code{tally_keys}, 
 
 Drives the map-column reader (#764) under gctorture. \verb{Vec<map>: TryFromSexp} walks the list column per row and each named list per entry (string-key extraction allocates), so it must survive \code{gctorture(TRUE)}.
 
-Pinned-width \verb{Box<f64>} round-trip. Columns \code{k}, \code{vals_1}, \code{vals_2}.
+Pinned-width \verb{Box<[f64]>} round-trip. Columns \code{k}, \code{vals_1}, \code{vals_2}.
 
 \verb{Vec::<RListMultiRow>::from_dataframe(&df)} → rebuild. Columns \code{ids}, \code{names} (both list-columns).
 

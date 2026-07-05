@@ -483,8 +483,18 @@ fn sanitize_roxygen_links(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
+    let mut in_code = false;
     while i < s.len() {
-        if bytes[i] == b'[' {
+        if bytes[i] == b'`' {
+            // Inline code span: markdown (and roxygen2) never parse `[...]`
+            // inside backticks as a link, so neither do we — stripping there
+            // would corrupt code like `x[i]`.
+            in_code = !in_code;
+            out.push('`');
+            i += 1;
+            continue;
+        }
+        if !in_code && bytes[i] == b'[' {
             // `[` is ASCII, so `i + 1` is a char boundary.
             if let Some(close_rel) = s[i + 1..].find(']') {
                 let close = i + 1 + close_rel;

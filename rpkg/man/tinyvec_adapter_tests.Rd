@@ -63,11 +63,11 @@ Test TinyVec at inline capacity (8 elements fits inline).
 
 Test TinyVec exceeding inline capacity (spills to heap).
 
-Test \verb{TinyVec<f64; 8>} roundtrip through R.
+Test \verb{TinyVec<[f64; 8]>} roundtrip through R.
 
-Test \verb{TinyVec<i32; 8>} roundtrip through R.
+Test \verb{TinyVec<[i32; 8]>} roundtrip through R.
 
-Test \verb{ArrayVec<f64; 4>} roundtrip through R.
+Test \verb{ArrayVec<[f64; 4]>} roundtrip through R.
 
-Test \verb{ArrayVec<i32; 8>} roundtrip through R.
+Test \verb{ArrayVec<[i32; 8]>} roundtrip through R.
 }

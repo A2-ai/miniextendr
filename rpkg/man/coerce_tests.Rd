@@ -97,11 +97,11 @@ test_coerce_attr_with_invisible(x)
 \description{
 Test widening coercion from i32 to f64 via Coerce trait.
 
-Test \verb{#miniextendr(coerce)} attribute narrowing f64 to f32.
+Test \verb{#[miniextendr(coerce)]} attribute narrowing f64 to f32.
 
-Test \verb{#miniextendr(coerce)} attribute converting i32 to i16.
+Test \verb{#[miniextendr(coerce)]} attribute converting i32 to i16.
 
-Test \verb{#miniextendr(coerce)} attribute converting i32 to u16 (errors on negative).
+Test \verb{#[miniextendr(coerce)]} attribute converting i32 to u16 (errors on negative).
 
 Coercion and RNativeType tests
 
@@ -113,7 +113,7 @@ Test coercion from Rboolean to i32 via Coerce trait.
 
 Test per-argument coercion on a Vec parameter (\verb{Vec<i32>} coerced to \verb{Vec<u16>}).
 
-Test \verb{#miniextendr(coerce)} attribute converting \verb{Vec<i32>} to \verb{Vec<u16>} then summing.
+Test \verb{#[miniextendr(coerce)]} attribute converting \verb{Vec<i32>} to \verb{Vec<u16>} then summing.
 
 Test per-argument coercion on both parameters simultaneously.
 
@@ -125,7 +125,7 @@ Test per-argument coercion on the second parameter only.
 
 Test TryCoerce narrowing from f64 to i32 (returns NA on overflow, precision loss, or NaN).
 
-Test \verb{#miniextendr(coerce, invisible)} combining coercion with invisible return.
+Test \verb{#[miniextendr(coerce, invisible)]} combining coercion with invisible return.
 }
 \examples{
 test_coerce_identity(1L)

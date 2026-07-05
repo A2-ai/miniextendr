@@ -53,21 +53,21 @@ box_slice_option_string_roundtrip(x)
 \item{x}{(no documentation available)}
 }
 \description{
-Transform: double each element using \verb{Box<f64>}
+Transform: double each element using \verb{Box<[f64]>}
 
-\verb{Box<f64>} roundtrip: R numeric → Rust → R numeric
+\verb{Box<[f64]>} roundtrip: R numeric → Rust → R numeric
 
-\verb{Box<i32>} roundtrip: R integer → Rust → R integer
+\verb{Box<[i32]>} roundtrip: R integer → Rust → R integer
 
-\verb{Box<u8>} roundtrip: R raw → Rust → R raw
+\verb{Box<[u8]>} roundtrip: R raw → Rust → R raw
 
-\verb{Box<bool>} roundtrip: R logical → Rust → R logical
+\verb{Box<[bool]>} roundtrip: R logical → Rust → R logical
 
-\verb{Box<String>} roundtrip: R character → Rust → R character
+\verb{Box<[String]>} roundtrip: R character → Rust → R character
 
-\verb{Box<Option<f64>>} with NA support
+\verb{Box<[Option<f64>]>} with NA support
 
-\verb{Box<Option<i32>>} with NA support
+\verb{Box<[Option<i32>]>} with NA support
 
-\verb{Box<Option<String>>} with NA support
+\verb{Box<[Option<String>]>} with NA support
 }

@@ -44,11 +44,11 @@ An ALTREP complex vector.
 An ALTREP string vector with 4 static entries.
 }
 \description{
-Create an ALTREP integer vector backed by a boxed slice (\verb{Box<i32>}).
+Create an ALTREP integer vector backed by a boxed slice (\verb{Box<[i32]>}).
 
 Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime).
 
-Create an ALTREP integer vector backed by a static slice (\verb{&'static i32}).
+Create an ALTREP integer vector backed by a static slice (\verb{&'static [i32]}).
 
 Create a complex ALTREP of n points on the unit circle (e^(i\emph{2}pi*k/n)).
 

@@ -68,7 +68,7 @@ R6 class registration with \code{r_data_accessors} so \code{obj$doom} is reachab
 \if{html}{\out{<a id="method-PanickingSidecar-boom"></a>}}
 \if{latex}{\out{\hypertarget{method-PanickingSidecar-boom}{}}}
 \subsection{\code{PanickingSidecar$boom()}}{
-  Always panics with the stored \code{doom} message. Exercises the \verb{#miniextendr} method path on a sidecar-bearing class.
+  Always panics with the stored \code{doom} message. Exercises the \verb{#[miniextendr]} method path on a sidecar-bearing class.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{PanickingSidecar$boom()}

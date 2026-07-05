@@ -80,7 +80,7 @@ R6 class demonstrating lifecycle attributes on methods.
 \if{html}{\out{<a id="method-LifecycleDemo-legacy_value"></a>}}
 \if{latex}{\out{\hypertarget{method-LifecycleDemo-legacy_value}{}}}
 \subsection{\code{LifecycleDemo$legacy_value()}}{
-  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A method marked with Rust's \verb{#deprecated} attribute.
+  \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A method marked with Rust's \verb{#[deprecated]} attribute.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LifecycleDemo$legacy_value()}

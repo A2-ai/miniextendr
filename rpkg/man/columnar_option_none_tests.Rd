@@ -99,7 +99,7 @@ Enum: all variant-A rows have \code{x = None} → logical NA column.
 
 Mixed \verb{Option<u64>}: some rows have values, no downgrade.
 
-\verb{#serde(flatten)} with all-None inner field: the flattened optional field becomes a logical NA column.
+\verb{#[serde(flatten)]} with all-None inner field: the flattened optional field becomes a logical NA column.
 
 Mixed \verb{Option<String>}: some rows have values.
 

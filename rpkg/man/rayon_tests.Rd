@@ -154,7 +154,7 @@ Aggregations through the \code{RParallelIterator} trait: returns \code{c(par_len
 
 Test RDataFrameBuilder with a \strong{skewed} shape (one long numeric column plus several tiny character columns).
 
-The numeric column \code{big} has \code{nrow} rows (\code{bigi = i}); two character columns \code{t0}, \code{t1} also have \code{nrow} rows but compute a trivial value with an \code{NA} on every third row. Under the flattened scheduler the long column's chunks should be stolen by threads that finish the small columns first.
+The numeric column \code{big} has \code{nrow} rows (\code{big[i] = i}); two character columns \code{t0}, \code{t1} also have \code{nrow} rows but compute a trivial value with an \code{NA} on every third row. Under the flattened scheduler the long column's chunks should be stolen by threads that finish the small columns first.
 
 Test parallel sum of an integer vector using rayon.
 
