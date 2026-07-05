@@ -51,7 +51,7 @@
 
 pub use indexmap::IndexMap;
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_string_lossy};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use crate::sys::Rf_allocVector;
@@ -87,21 +87,11 @@ where
             // Get name for this element
             let name = if has_names {
                 let name_charsxp = names_sexp.string_elt(i as R_xlen_t);
-                if name_charsxp == SEXP::na_string() || name_charsxp == SEXP::nil() {
-                    // NA or missing name -> generate auto name
-                    format!("V{}", i + 1)
-                } else {
-                    let c_str = name_charsxp.r_char();
-                    if c_str.is_null() {
-                        format!("V{}", i + 1)
-                    } else {
-                        let name_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-                        match name_str.to_str() {
-                            Ok("") => format!("V{}", i + 1),
-                            Ok(s) => s.to_owned(),
-                            Err(_) => format!("V{}", i + 1),
-                        }
-                    }
+                // NA, missing, or empty name -> generate auto name. Non-UTF-8
+                // bytes are lossily decoded rather than falling back.
+                match unsafe { charsxp_to_string_lossy(name_charsxp) } {
+                    Some(s) if !s.is_empty() => s,
+                    _ => format!("V{}", i + 1),
                 }
             } else {
                 // No names attribute -> generate auto name

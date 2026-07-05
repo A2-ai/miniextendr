@@ -295,3 +295,4 @@ test_that("parallel readers match the sequential result", {
   expect_equal(out_mp_par$id, out_mp_seq$id)
   expect_equal(unclass(out_mp_par$opts), unclass(out_mp_seq$opts))
 })
+

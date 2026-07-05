@@ -4,10 +4,15 @@
 \alias{use_miniextendr_mx_abi}
 \title{Add mx_abi.h header template}
 \usage{
-use_miniextendr_mx_abi(path = ".")
+use_miniextendr_mx_abi(path = ".", subdir = NULL)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{subdir}{Optional template subdirectory prefix — set to \code{"rpkg"}
+when scaffolding the R package subdirectory of a monorepo, where
+\code{inst_include/mx_abi.h} lives one level deeper under the active
+"monorepo" template type.}
 }
 \value{
 Invisibly returns TRUE if file was created

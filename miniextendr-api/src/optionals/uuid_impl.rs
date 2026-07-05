@@ -35,113 +35,20 @@
 
 pub use uuid::Uuid;
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::into_r_infallible;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::try_from_sexp_via_str_parse;
 
-// region: Scalar conversions
+// region: TryFromSexp / IntoR conversions
 
-impl TryFromSexp for Uuid {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = TryFromSexp::try_from_sexp(sexp)?;
-        Uuid::parse_str(&s).map_err(|e| SexpError::InvalidValue(format!("invalid UUID: {}", e)))
-    }
-}
+try_from_sexp_via_str_parse!(Uuid, "UUID", |s| Uuid::parse_str(s));
 
 into_r_infallible!(Uuid, |this| this.to_string().into_sexp());
-// endregion
-
-// region: Option conversions (NA support)
-
-impl TryFromSexp for Option<Uuid> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let opt: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        match opt {
-            None => Ok(None),
-            Some(s) => Uuid::parse_str(&s)
-                .map(Some)
-                .map_err(|e| SexpError::InvalidValue(format!("invalid UUID: {}", e))),
-        }
-    }
-}
-
 into_r_infallible!(Option<Uuid>, |this| this.map(|u| u.to_string()).into_sexp());
-// endregion
-
-// region: Vector conversions
-
-impl TryFromSexp for Vec<Uuid> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::from_r::charsxp_to_str;
-
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
-
-            // Check for NA
-            if charsxp == SEXP::na_string() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for Vec<Uuid>",
-                    i
-                )));
-            }
-
-            let s = unsafe { charsxp_to_str(charsxp) };
-
-            let uuid = Uuid::parse_str(s).map_err(|e| {
-                SexpError::InvalidValue(format!("invalid UUID at index {}: {}", i, e))
-            })?;
-            result.push(uuid);
-        }
-
-        Ok(result)
-    }
-}
-
 into_r_infallible!(Vec<Uuid>, |this| this
     .into_iter()
     .map(|u| u.to_string())
     .collect::<Vec<_>>()
     .into_sexp());
-// endregion
-
-// region: Vec<Option<Uuid>> conversions (NA-aware vectors)
-
-impl TryFromSexp for Vec<Option<Uuid>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let strings: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        strings
-            .into_iter()
-            .enumerate()
-            .map(|(i, opt)| match opt {
-                None => Ok(None),
-                Some(s) => Uuid::parse_str(&s).map(Some).map_err(|e| {
-                    SexpError::InvalidValue(format!("invalid UUID at index {}: {}", i, e))
-                }),
-            })
-            .collect()
-    }
-}
-
 into_r_infallible!(Vec<Option<Uuid>>, |this| this
     .into_iter()
     .map(|opt| opt.map(|u| u.to_string()))

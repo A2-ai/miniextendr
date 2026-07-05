@@ -60,6 +60,16 @@ unsafe fn make_str_vec(values: &[&str], guard: &mut ProtectCount) -> SEXP {
     sexp
 }
 
+/// Build a VECSXP (R list) from already-protected element SEXPs.
+unsafe fn make_list(elements: &[SEXP], guard: &mut ProtectCount) -> SEXP {
+    let len = elements.len() as R_xlen_t;
+    let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::VECSXP, len)) };
+    for (i, &elem) in elements.iter().enumerate() {
+        sexp.set_vector_elt(i as isize, elem);
+    }
+    sexp
+}
+
 // region: references.rs — &T / &mut T single-element borrowed scalars
 
 #[test]
@@ -282,6 +292,109 @@ fn str_and_slice_unchecked() {
         let int_vec = make_int_vec(&[4, 5, 6], &mut guard);
         let slice: &[i32] = TryFromSexp::try_from_sexp_unchecked(int_vec).unwrap();
         assert_eq!(slice, &[4, 5, 6]);
+    }
+}
+// endregion
+
+// region: references.rs — Vec<&T> / Vec<Option<&T>> / Vec<&mut T> / Vec<&[T]>
+// list-based conversions (audit D6: these route through the shared
+// `map_vecsxp_with` VECSXP walk as of the STRSXP/VECSXP walk-dedup; had no
+// direct unit coverage before).
+
+#[test]
+fn references_vec_list_suite() {
+    r_test_utils::with_r_thread(|| {
+        vec_ref_list_ok();
+        vec_ref_list_type_mismatch();
+        vec_ref_list_empty();
+        vec_option_ref_list_null_elements();
+        vec_ref_mut_list_duplicate_detection();
+        vec_ref_slice_list_ok();
+    });
+}
+
+/// `Vec<&'static i32>` from a VECSXP of int scalars — the happy path through
+/// `impl_ref_conversions_for!`'s `Vec<&'static $t>` branch (now `map_vecsxp_with`).
+fn vec_ref_list_ok() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let a = guard.protect(SEXP::scalar_integer(1));
+        let b = guard.protect(SEXP::scalar_integer(2));
+        let c = guard.protect(SEXP::scalar_integer(3));
+        let list = make_list(&[a, b, c], &mut guard);
+
+        let refs: Vec<&'static i32> = TryFromSexp::try_from_sexp(list).unwrap();
+        assert_eq!(refs.into_iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
+    }
+}
+
+/// Non-VECSXP input → `SexpError::Type` naming `VECSXP` (the type-check
+/// `map_vecsxp_with` centralizes).
+fn vec_ref_list_type_mismatch() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let int_sexp = guard.protect(SEXP::scalar_integer(1));
+        let err = <Vec<&'static i32> as TryFromSexp>::try_from_sexp(int_sexp).unwrap_err();
+        match err {
+            SexpError::Type(e) => assert_eq!(e.expected, SEXPTYPE::VECSXP),
+            other => panic!("expected SexpError::Type, got {other:?}"),
+        }
+    }
+}
+
+/// Empty VECSXP (`list()`) → empty `Vec`.
+fn vec_ref_list_empty() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let empty_list = guard.protect(Rf_allocVector(SEXPTYPE::VECSXP, 0));
+        let refs: Vec<&'static i32> = TryFromSexp::try_from_sexp(empty_list).unwrap();
+        assert!(refs.is_empty());
+    }
+}
+
+/// `Vec<Option<&'static i32>>`: `NULL` elements map to `None`, others to `Some`.
+fn vec_option_ref_list_null_elements() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let a = guard.protect(SEXP::scalar_integer(1));
+        let c = guard.protect(SEXP::scalar_integer(3));
+        let list = make_list(&[a, SEXP::nil(), c], &mut guard);
+
+        let opts: Vec<Option<&'static i32>> = TryFromSexp::try_from_sexp(list).unwrap();
+        assert_eq!(opts.len(), 3);
+        assert_eq!(opts[0].copied(), Some(1));
+        assert_eq!(opts[1], None);
+        assert_eq!(opts[2].copied(), Some(3));
+    }
+}
+
+/// `Vec<&'static mut i32>` rejects a list that aliases the same SEXP twice —
+/// the duplicate-pointer check the `map_vecsxp_with`-routed closure carries
+/// across iterations via a captured `ptrs` accumulator.
+fn vec_ref_mut_list_duplicate_detection() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let shared = guard.protect(SEXP::scalar_integer(1));
+        let list = make_list(&[shared, shared], &mut guard);
+
+        let err = <Vec<&'static mut i32> as TryFromSexp>::try_from_sexp(list).unwrap_err();
+        assert!(
+            matches!(err, SexpError::InvalidValue(_)),
+            "expected duplicate-element InvalidValue, got {err:?}"
+        );
+    }
+}
+
+/// `Vec<&'static [i32]>` from a list of int vectors.
+fn vec_ref_slice_list_ok() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let v1 = make_int_vec(&[1, 2], &mut guard);
+        let v2 = make_int_vec(&[3, 4, 5], &mut guard);
+        let list = make_list(&[v1, v2], &mut guard);
+
+        let slices: Vec<&'static [i32]> = TryFromSexp::try_from_sexp(list).unwrap();
+        assert_eq!(slices, vec![&[1, 2][..], &[3, 4, 5][..]]);
     }
 }
 // endregion

@@ -150,3 +150,32 @@ test_that("every no-arg gc_stress_* fixture survives gctorture", {
 })
 
 # endregion
+
+# region: expression RCall builder (#430) -------------------------------------
+
+test_that("gc_stress_expression_call survives gctorture and returns the right value", {
+  # Load the package first, then enable gctorture — see docs/GCTORTURE_TESTING.md.
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  ok <- 0L
+  fail <- character(0L)
+  for (i in seq_len(20L)) {
+    res <- tryCatch(
+      {
+        stopifnot(identical(gc_stress_expression_call(), "alpha-beta"))
+        "ok"
+      },
+      error = function(e) conditionMessage(e)
+    )
+    if (identical(res, "ok")) {
+      ok <- ok + 1L
+    } else {
+      fail <- c(fail, sprintf("iteration %d: %s", i, res))
+    }
+  }
+
+  expect_equal(ok, 20L, info = paste("failures:", paste(fail, collapse = "; ")))
+})
+
+# endregion

@@ -4,10 +4,15 @@
 \alias{use_miniextendr_config_scripts}
 \title{Copy config.guess and config.sub scripts}
 \usage{
-use_miniextendr_config_scripts(path = ".")
+use_miniextendr_config_scripts(path = ".", subdir = NULL)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{subdir}{Optional template subdirectory (passed through to
+\code{template_path()}) — set to \code{"rpkg"} when scaffolding the R package
+subdirectory of a monorepo, where \code{tools/lock-shape-check.R} lives one
+level deeper under the active "monorepo" template type.}
 }
 \value{
 Invisibly returns TRUE if files were copied

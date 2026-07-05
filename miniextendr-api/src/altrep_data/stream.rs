@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use super::{AltIntegerData, AltRealData, AltrepLen, InferBase};
+use super::{AltIntegerData, AltRealData, AltrepLen};
 
 // region: StreamingRealData
 
@@ -112,61 +112,9 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::externalptr::TypedExter
     const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::StreamingRealData\0";
 }
 
-impl<F: Fn(usize, &mut [f64]) -> usize + 'static> InferBase for StreamingRealData<F> {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::Real;
-
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        unsafe {
-            crate::sys::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
-        }
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_real::<Self>(cls) };
-    }
-}
-
-impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::Altrep
-    for StreamingRealData<F>
-{
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::R_xlen_t
-    }
-}
-
-impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltVec
-    for StreamingRealData<F>
-{
-}
-
-impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltReal
-    for StreamingRealData<F>
-{
-    const HAS_ELT: bool = true;
-
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> f64 {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRealData::elt(data, i as usize)
-    }
-
-    const HAS_GET_REGION: bool = true;
-
-    fn get_region(
-        x: crate::SEXP,
-        start: crate::R_xlen_t,
-        len: crate::R_xlen_t,
-        buf: &mut [f64],
-    ) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
-    }
-}
+crate::impl_altreal_from_data_generic!(
+    {F} StreamingRealData<F> {F: Fn(usize, &mut [f64]) -> usize + 'static}
+);
 // endregion
 
 // region: StreamingIntData
@@ -272,59 +220,7 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::externalptr::TypedExter
     const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::StreamingIntData\0";
 }
 
-impl<F: Fn(usize, &mut [i32]) -> usize + 'static> InferBase for StreamingIntData<F> {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::Int;
-
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        unsafe {
-            crate::sys::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
-        }
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_int::<Self>(cls) };
-    }
-}
-
-impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::Altrep
-    for StreamingIntData<F>
-{
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::R_xlen_t
-    }
-}
-
-impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltVec
-    for StreamingIntData<F>
-{
-}
-
-impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltInteger
-    for StreamingIntData<F>
-{
-    const HAS_ELT: bool = true;
-
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltIntegerData::elt(data, i as usize)
-    }
-
-    const HAS_GET_REGION: bool = true;
-
-    fn get_region(
-        x: crate::SEXP,
-        start: crate::R_xlen_t,
-        len: crate::R_xlen_t,
-        buf: &mut [i32],
-    ) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
-    }
-}
+crate::impl_altinteger_from_data_generic!(
+    {F} StreamingIntData<F> {F: Fn(usize, &mut [i32]) -> usize + 'static}
+);
 // endregion

@@ -7,7 +7,7 @@ description = "Cargo features, derive macros, and optional subsystems"
 ## Optional Cargo Features
 
 miniextendr-api gates optional functionality behind Cargo feature flags. Only
-`default` features (`doc-lint`, `refcount-fast-hash`) are enabled automatically.
+the `default` feature (`doc-lint`) is enabled automatically.
 
 Add features to the `miniextendr-api` dependency in your package's `Cargo.toml`:
 
