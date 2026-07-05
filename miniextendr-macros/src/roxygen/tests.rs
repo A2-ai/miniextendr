@@ -427,6 +427,21 @@ fn sanitize_is_utf8_safe() {
 }
 
 #[test]
+fn sanitize_preserves_escaped_brackets() {
+    // `\[u8\]` is idiomatic rustdoc for a literal bracket (suppresses
+    // intra-doc link resolution). Eating the brackets but not the
+    // backslashes produced invalid Rd macros like `Box<\u8\>` in
+    // altrep_vec.Rd. Pass the escape through; roxygen2 markdown unescapes.
+    let s = r"Create a Box<\[u8\]> ALTREP raw vector.";
+    assert_eq!(sanitize_roxygen_links(s), s);
+    // An unescaped shortcut link in the same string is still stripped.
+    assert_eq!(
+        sanitize_roxygen_links(r"see [Foo] and Box<\[u8\]>"),
+        r"see Foo and Box<\[u8\]>"
+    );
+}
+
+#[test]
 fn leading_prose_promotes_and_sanitizes() {
     let attrs = make_doc_attrs_plain(&[
         "`HashMap` field — same column shape as [`REMapB`].",

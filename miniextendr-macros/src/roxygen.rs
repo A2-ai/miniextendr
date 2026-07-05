@@ -495,6 +495,14 @@ fn sanitize_roxygen_links(s: &str) -> String {
             continue;
         }
         if !in_code && bytes[i] == b'[' {
+            // `\[` is a backslash-escaped literal bracket (idiomatic rustdoc
+            // for suppressing intra-doc links, e.g. `Box<\[u8\]>`). Not a link
+            // opener — pass it through; roxygen2's markdown unescapes it.
+            if i > 0 && bytes[i - 1] == b'\\' {
+                out.push('[');
+                i += 1;
+                continue;
+            }
             // `[` is ASCII, so `i + 1` is a char boundary.
             if let Some(close_rel) = s[i + 1..].find(']') {
                 let close = i + 1 + close_rel;

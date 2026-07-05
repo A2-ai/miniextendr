@@ -90,15 +90,15 @@ An ALTREP real vector backed by a Rust f64 range.
 An ALTREP complex vector (k + -k*i for k in 0..n).
 }
 \description{
-Create a Box<\u8\> ALTREP raw vector.
+Create a Box<[u8]> ALTREP raw vector.
 
-Create a Box<\f64\> ALTREP real vector.
+Create a Box<[f64]> ALTREP real vector.
 
-Create a Box<\Rcomplex\> ALTREP complex vector.
+Create a Box<[Rcomplex]> ALTREP complex vector.
 
-Create a Box<\String\> ALTREP string vector.
+Create a Box<[String]> ALTREP string vector.
 
-Create a Box<\bool\> ALTREP logical vector.
+Create a Box<[bool]> ALTREP logical vector.
 
 Create a \verb{Vec<i32>} ALTREP integer vector.
 

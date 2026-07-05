@@ -186,7 +186,7 @@ Select multiple priorities with a regular param.
 
 Return the choices for BuildStatus.
 
-Select exactly two modes via a fixed-size array (several_ok, \Mode; 2\).
+Select exactly two modes via a fixed-size array (several_ok, [Mode; 2]).
 
 Select multiple modes via boxed slice (several_ok, Box of Mode).
 
