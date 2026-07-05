@@ -379,13 +379,11 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   ac_content <- gsub("\\{\\{package\\}\\}", pkg_name, ac_content)
   writeLines(ac_content, fs::path(pkg_dir, "configure.ac"))
 
-  # tools/config.guess and tools/config.sub
-  config_guess <- script_path("config.guess")
-  config_sub <- script_path("config.sub")
-  fs::file_copy(config_guess, fs::path(pkg_dir, "tools", "config.guess"))
-  fs::file_copy(config_sub, fs::path(pkg_dir, "tools", "config.sub"))
-  fs::file_chmod(fs::path(pkg_dir, "tools", "config.guess"), "755")
-  fs::file_chmod(fs::path(pkg_dir, "tools", "config.sub"), "755")
+  # tools/config.guess and tools/config.sub — shared with the standalone
+  # (use_miniextendr_config_scripts()) and monorepo (create_rpkg_subdirectory())
+  # scaffold paths via copy_config_scripts(). Quiet: no bullets for this
+  # ephemeral, cache-backed package.
+  copy_config_scripts(fs::path(pkg_dir, "tools"), display_prefix = NULL)
 
   invisible(pkg_dir)
 }
