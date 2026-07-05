@@ -663,6 +663,427 @@ fn coerced_scalar_i64_from_na_integer_errors() {
 
 // endregion
 
+// region: from_r/coerced_scalars.rs — f32/usize/isize delegation onto
+// try_from_sexp_numeric_scalar/_option (audit D5, #1145-ish)
+//
+// f32/usize/isize (+ their Options) used to hand-roll the same 4-arm
+// INTSXP/REALSXP/RAWSXP/LGLSXP match that i64/u64 already delegate to
+// try_from_sexp_numeric_scalar / try_from_sexp_numeric_option. These tests
+// pin behavior parity (including the out-of-range/NA error shapes) across
+// the collapse to delegating one-liners, plus real _unchecked coverage for
+// usize/isize (previously `try_from_sexp_unchecked` just called the checked
+// path).
+
+/// f32 from INTSXP: widens cleanly.
+#[test]
+fn coerced_scalar_f32_from_intsxp_widens() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(7, &mut g) };
+        let v: f32 = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 7.0f32);
+    });
+}
+
+/// f32 from REALSXP: widens cleanly.
+#[test]
+fn coerced_scalar_f32_from_realsxp() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(1.5, &mut g) };
+        let v: f32 = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 1.5f32);
+    });
+}
+
+/// f32 from LGLSXP: TRUE → 1.0.
+#[test]
+fn coerced_scalar_f32_from_lglsxp_true() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { g.protect(SEXP::scalar_logical(true)) };
+        let v: f32 = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 1.0f32);
+    });
+}
+
+/// f32 from LGLSXP NA: rejected (mirrors the bare i32 NA guard).
+#[test]
+fn coerced_scalar_f32_from_lglsxp_na_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_logical_raw(NA_LOGICAL, &mut g) };
+        let result: Result<f32, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// f32 from STRSXP: rejected.
+#[test]
+fn coerced_scalar_f32_from_strsxp_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { g.protect(SEXP::scalar_string_from_str("nope")) };
+        let result: Result<f32, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// Option<f32> from NA_integer_ → None.
+#[test]
+fn coerced_option_f32_from_na_integer_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(NA_INTEGER, &mut g) };
+        let v: Option<f32> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<f32> from NA_real_ → None.
+#[test]
+fn coerced_option_f32_from_na_real_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(NA_REAL, &mut g) };
+        let v: Option<f32> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<f32> from NA_logical_ → None.
+#[test]
+fn coerced_option_f32_from_na_logical_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_logical_raw(NA_LOGICAL, &mut g) };
+        let v: Option<f32> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<f32> from NULL → None.
+#[test]
+fn coerced_option_f32_from_null_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let s = SEXP::nil();
+        let v: Option<f32> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<f32> from RAWSXP: raw has no NA, widens directly.
+#[test]
+fn coerced_option_f32_from_rawsxp() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_raw(9, &mut g) };
+        let v: Option<f32> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, Some(9.0f32));
+    });
+}
+
+/// usize from INTSXP: widens cleanly.
+#[test]
+fn coerced_scalar_usize_from_intsxp() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(42, &mut g) };
+        let v: usize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 42usize);
+    });
+}
+
+/// usize from INTSXP: negative value is rejected.
+#[test]
+fn coerced_scalar_usize_from_intsxp_negative_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(-1, &mut g) };
+        let result: Result<usize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// usize from REALSXP: in-range whole number succeeds.
+#[test]
+fn coerced_scalar_usize_from_realsxp_in_range() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(100.0, &mut g) };
+        let v: usize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 100usize);
+    });
+}
+
+/// usize from REALSXP: negative value is rejected (out-of-range low).
+#[test]
+fn coerced_scalar_usize_from_realsxp_negative_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(-1.0, &mut g) };
+        let result: Result<usize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// usize from REALSXP: fractional value is rejected.
+#[test]
+fn coerced_scalar_usize_from_realsxp_fractional_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(2.5, &mut g) };
+        let result: Result<usize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// usize from REALSXP: NA_real_ is rejected (not None — only Option<usize> maps NA → None).
+#[test]
+fn coerced_scalar_usize_from_realsxp_na_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(NA_REAL, &mut g) };
+        let result: Result<usize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// usize from RAWSXP: widens directly.
+#[test]
+fn coerced_scalar_usize_from_rawsxp() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_raw(255, &mut g) };
+        let v: usize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 255usize);
+    });
+}
+
+/// usize from LGLSXP: TRUE → 1.
+#[test]
+fn coerced_scalar_usize_from_lglsxp_true() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_logical_raw(1, &mut g) };
+        let v: usize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 1usize);
+    });
+}
+
+/// usize from LGLSXP NA: rejected.
+#[test]
+fn coerced_scalar_usize_from_lglsxp_na_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_logical_raw(NA_LOGICAL, &mut g) };
+        let result: Result<usize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// usize `_unchecked` path now real-delegates (not checked-fallback) and stays
+/// behavior-identical to the checked path for the happy path.
+#[test]
+fn coerced_scalar_usize_unchecked_matches_checked() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(17, &mut g) };
+        let v: usize = unsafe { TryFromSexp::try_from_sexp_unchecked(s).unwrap() };
+        assert_eq!(v, 17usize);
+    });
+}
+
+/// Option<usize> from NA_integer_ → None.
+#[test]
+fn coerced_option_usize_from_na_integer_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(NA_INTEGER, &mut g) };
+        let v: Option<usize> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<usize> from NA_real_ → None.
+#[test]
+fn coerced_option_usize_from_na_real_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(NA_REAL, &mut g) };
+        let v: Option<usize> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<usize> from NULL → None.
+#[test]
+fn coerced_option_usize_from_null_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let s = SEXP::nil();
+        let v: Option<usize> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<usize> from REALSXP: out-of-range (negative) errors, doesn't silently
+/// become None or wrap.
+#[test]
+fn coerced_option_usize_from_realsxp_negative_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(-5.0, &mut g) };
+        let result: Result<Option<usize>, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// Option<usize> `_unchecked` path now real-delegates to the numeric-option
+/// unchecked helper.
+#[test]
+fn coerced_option_usize_unchecked_matches_checked() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(NA_INTEGER, &mut g) };
+        let v: Option<usize> = unsafe { TryFromSexp::try_from_sexp_unchecked(s).unwrap() };
+        assert!(v.is_none());
+    });
+}
+
+/// isize from INTSXP: negative values are allowed (unlike usize).
+#[test]
+fn coerced_scalar_isize_from_intsxp_negative() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(-42, &mut g) };
+        let v: isize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, -42isize);
+    });
+}
+
+/// isize from REALSXP: in-range whole number succeeds.
+#[test]
+fn coerced_scalar_isize_from_realsxp_in_range() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(-100.0, &mut g) };
+        let v: isize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, -100isize);
+    });
+}
+
+/// isize from REALSXP: fractional value is rejected.
+#[test]
+fn coerced_scalar_isize_from_realsxp_fractional_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(-2.5, &mut g) };
+        let result: Result<isize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// isize from REALSXP: NA_real_ is rejected (not None — only Option<isize> maps NA → None).
+#[test]
+fn coerced_scalar_isize_from_realsxp_na_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(NA_REAL, &mut g) };
+        let result: Result<isize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// isize from RAWSXP: widens directly.
+#[test]
+fn coerced_scalar_isize_from_rawsxp() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_raw(200, &mut g) };
+        let v: isize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 200isize);
+    });
+}
+
+/// isize from LGLSXP: FALSE → 0.
+#[test]
+fn coerced_scalar_isize_from_lglsxp_false() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_logical_raw(0, &mut g) };
+        let v: isize = TryFromSexp::try_from_sexp(s).unwrap();
+        assert_eq!(v, 0isize);
+    });
+}
+
+/// isize from LGLSXP NA: rejected.
+#[test]
+fn coerced_scalar_isize_from_lglsxp_na_errors() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_logical_raw(NA_LOGICAL, &mut g) };
+        let result: Result<isize, _> = TryFromSexp::try_from_sexp(s);
+        assert!(result.is_err());
+    });
+}
+
+/// isize `_unchecked` path now real-delegates (not checked-fallback).
+#[test]
+fn coerced_scalar_isize_unchecked_matches_checked() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(-17, &mut g) };
+        let v: isize = unsafe { TryFromSexp::try_from_sexp_unchecked(s).unwrap() };
+        assert_eq!(v, -17isize);
+    });
+}
+
+/// Option<isize> from NA_integer_ → None.
+#[test]
+fn coerced_option_isize_from_na_integer_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_int(NA_INTEGER, &mut g) };
+        let v: Option<isize> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<isize> from NA_real_ → None.
+#[test]
+fn coerced_option_isize_from_na_real_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(NA_REAL, &mut g) };
+        let v: Option<isize> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<isize> from NULL → None.
+#[test]
+fn coerced_option_isize_from_null_gives_none() {
+    r_test_utils::with_r_thread(|| {
+        let s = SEXP::nil();
+        let v: Option<isize> = TryFromSexp::try_from_sexp(s).unwrap();
+        assert!(v.is_none());
+    });
+}
+
+/// Option<isize> `_unchecked` path now real-delegates to the numeric-option
+/// unchecked helper.
+#[test]
+fn coerced_option_isize_unchecked_matches_checked() {
+    r_test_utils::with_r_thread(|| {
+        let mut g = Guard(0);
+        let s = unsafe { scalar_real(-9.0, &mut g) };
+        let v: Option<isize> = unsafe { TryFromSexp::try_from_sexp_unchecked(s).unwrap() };
+        assert_eq!(v, Some(-9isize));
+    });
+}
+
+// endregion
+
 // region: from_r/logical.rs — Rboolean and bool conversions
 
 /// Rboolean from LGLSXP TRUE.

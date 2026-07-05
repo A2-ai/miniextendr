@@ -14,9 +14,8 @@
 pub use num_bigint::{BigInt, BigUint};
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
-use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::into_r_infallible;
-use crate::{SEXP, SEXPTYPE};
+use crate::try_from_sexp_via_str_parse;
 use std::str::FromStr;
 
 // region: Coerce/TryCoerce impls for BigInt and BigUint
@@ -191,125 +190,8 @@ impl TryCoerce<f64> for BigInt {
     }
 }
 
-fn parse_bigint(s: &str) -> Result<BigInt, SexpError> {
-    BigInt::from_str(s).map_err(|e| SexpError::InvalidValue(e.to_string()))
-}
-
-fn parse_biguint(s: &str) -> Result<BigUint, SexpError> {
-    BigUint::from_str(s).map_err(|e| SexpError::InvalidValue(e.to_string()))
-}
-
-impl TryFromSexp for BigInt {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or(SexpError::Na(SexpNaError {
-            sexp_type: SEXPTYPE::STRSXP,
-        }))?;
-        parse_bigint(&s)
-    }
-}
-
-impl TryFromSexp for BigUint {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or(SexpError::Na(SexpNaError {
-            sexp_type: SEXPTYPE::STRSXP,
-        }))?;
-        parse_biguint(&s)
-    }
-}
-
-impl TryFromSexp for Option<BigInt> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        match s {
-            Some(s) => parse_bigint(&s).map(Some),
-            None => Ok(None),
-        }
-    }
-}
-
-impl TryFromSexp for Option<BigUint> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        match s {
-            Some(s) => parse_biguint(&s).map(Some),
-            None => Ok(None),
-        }
-    }
-}
-
-impl TryFromSexp for Vec<BigInt> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let values: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        values
-            .into_iter()
-            .map(|opt| {
-                let s = opt.ok_or(SexpError::Na(SexpNaError {
-                    sexp_type: SEXPTYPE::STRSXP,
-                }))?;
-                parse_bigint(&s)
-            })
-            .collect()
-    }
-}
-
-impl TryFromSexp for Vec<BigUint> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let values: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        values
-            .into_iter()
-            .map(|opt| {
-                let s = opt.ok_or(SexpError::Na(SexpNaError {
-                    sexp_type: SEXPTYPE::STRSXP,
-                }))?;
-                parse_biguint(&s)
-            })
-            .collect()
-    }
-}
-
-impl TryFromSexp for Vec<Option<BigInt>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let values: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        values
-            .into_iter()
-            .map(|opt| match opt {
-                Some(s) => parse_bigint(&s).map(Some),
-                None => Ok(None),
-            })
-            .collect()
-    }
-}
-
-impl TryFromSexp for Vec<Option<BigUint>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let values: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        values
-            .into_iter()
-            .map(|opt| match opt {
-                Some(s) => parse_biguint(&s).map(Some),
-                None => Ok(None),
-            })
-            .collect()
-    }
-}
+try_from_sexp_via_str_parse!(BigInt, "BigInt", |s| BigInt::from_str(s));
+try_from_sexp_via_str_parse!(BigUint, "BigUint", |s| BigUint::from_str(s));
 
 into_r_infallible!(BigInt, |this| this.to_string().into_sexp());
 into_r_infallible!(BigUint, |this| this.to_string().into_sexp());

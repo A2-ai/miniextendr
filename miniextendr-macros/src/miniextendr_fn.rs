@@ -1081,6 +1081,10 @@ pub(crate) struct MiniextendrFnAttrs {
     /// Preferred return conversion: forces `AsList`/`AsExternalPtr`/`AsRNative` wrapping
     /// of the return value before `IntoR::into_sexp` is called.
     pub(crate) return_pref: ReturnPref,
+    /// Span of the `prefer = ...` attribute, for error reporting when the return type
+    /// falls into a codegen category (`Option<T>`, `Result<T, E>`, `()`, `Self`, raw
+    /// `SEXP`, ...) that can't honor it.
+    pub(crate) return_pref_span: Option<proc_macro2::Span>,
     /// S3 generic name (if this function is an S3 method).
     ///
     /// Use `#[miniextendr(s3(generic = "vec_proxy", class = "my_vctr"))]` to mark a function
@@ -1221,6 +1225,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut rng = false;
         let mut unwrap_in_r = false;
         let mut return_pref = ReturnPref::Auto;
+        let mut return_pref_span: Option<proc_macro2::Span> = None;
         let mut s3_generic = None;
         let mut s3_class = None;
         let mut dots_spec = None;
@@ -1341,6 +1346,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
                     if nv.path.is_ident("prefer") {
                         let v = parse_lit_str(&nv, "prefer")?;
+                        return_pref_span = Some(nv.span());
                         return_pref = match v.as_str() {
                             "list" => ReturnPref::List,
                             "externalptr" => ReturnPref::ExternalPtr,
@@ -1573,6 +1579,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             rng,
             unwrap_in_r,
             return_pref,
+            return_pref_span,
             s3_generic,
             s3_class,
             dots_spec,

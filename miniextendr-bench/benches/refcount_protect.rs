@@ -13,9 +13,7 @@
 
 use miniextendr_api::SEXPTYPE;
 use miniextendr_api::gc_protect::ProtectScope;
-use miniextendr_api::refcount_protect::{
-    HashMapArena, RefCountedArena, ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
-};
+use miniextendr_api::refcount_protect::{RefCountedArena, ThreadLocalArena};
 use miniextendr_api::sys::{self, Rf_allocVector};
 use miniextendr_bench::raw_ffi;
 
@@ -372,141 +370,6 @@ fn protect_scope_realistic() {
 }
 // endregion
 
-// region: BTreeMap vs HashMap comparison
-
-/// BTreeMap (RefCountedArena): single protect
-#[divan::bench]
-fn btreemap_single() {
-    unsafe {
-        let arena = RefCountedArena::new();
-        let x = arena.protect(raw_ffi::Rf_ScalarInteger(42));
-        divan::black_box(x);
-    }
-}
-
-/// HashMap (HashMapArena): single protect
-#[divan::bench]
-fn hashmap_single() {
-    unsafe {
-        let arena = HashMapArena::new();
-        let x = arena.protect(raw_ffi::Rf_ScalarInteger(42));
-        divan::black_box(x);
-    }
-}
-
-/// BTreeMap: protect N distinct values
-#[divan::bench(args = [10, 100, 1000])]
-fn btreemap_multiple(n: usize) {
-    unsafe {
-        let arena = RefCountedArena::new();
-        for i in 0..n {
-            arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
-        }
-        divan::black_box(arena.len());
-    }
-}
-
-/// HashMap: protect N distinct values
-#[divan::bench(args = [10, 100, 1000])]
-fn hashmap_multiple(n: usize) {
-    unsafe {
-        let arena = HashMapArena::new();
-        for i in 0..n {
-            arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
-        }
-        divan::black_box(arena.len());
-    }
-}
-
-/// BTreeMap: protect same value N times (ref count)
-#[divan::bench(args = [10, 100, 1000])]
-fn btreemap_same_value(n: usize) {
-    unsafe {
-        let arena = RefCountedArena::new();
-        let x = raw_ffi::Rf_ScalarInteger(42);
-        for _ in 0..n {
-            arena.protect(x);
-        }
-        divan::black_box(arena.ref_count(x));
-    }
-}
-
-/// HashMap: protect same value N times (ref count)
-#[divan::bench(args = [10, 100, 1000])]
-fn hashmap_same_value(n: usize) {
-    unsafe {
-        let arena = HashMapArena::new();
-        let x = raw_ffi::Rf_ScalarInteger(42);
-        for _ in 0..n {
-            arena.protect(x);
-        }
-        divan::black_box(arena.ref_count(x));
-    }
-}
-
-/// BTreeMap: protect then unprotect N values
-#[divan::bench(args = [10, 100, 1000])]
-fn btreemap_protect_unprotect(n: usize) {
-    unsafe {
-        let arena = RefCountedArena::new();
-        let mut values = Vec::with_capacity(n);
-
-        for i in 0..n {
-            values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
-        }
-
-        for x in values.into_iter().rev() {
-            arena.unprotect(x);
-        }
-
-        divan::black_box(arena.is_empty());
-    }
-}
-
-/// HashMap: protect then unprotect N values
-#[divan::bench(args = [10, 100, 1000])]
-fn hashmap_protect_unprotect(n: usize) {
-    unsafe {
-        let arena = HashMapArena::new();
-        let mut values = Vec::with_capacity(n);
-
-        for i in 0..n {
-            values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
-        }
-
-        for x in values.into_iter().rev() {
-            arena.unprotect(x);
-        }
-
-        divan::black_box(arena.is_empty());
-    }
-}
-
-/// BTreeMap: many values stress test
-#[divan::bench(args = [1000, 5000, 10000])]
-fn btreemap_many(n: usize) {
-    unsafe {
-        let arena = RefCountedArena::new();
-        for i in 0..n {
-            arena.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
-        }
-        divan::black_box(arena.len());
-    }
-}
-
-/// HashMap: many values stress test
-#[divan::bench(args = [1000, 5000, 10000])]
-fn hashmap_many(n: usize) {
-    unsafe {
-        let arena = HashMapArena::new();
-        for i in 0..n {
-            arena.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
-        }
-        divan::black_box(arena.len());
-    }
-}
-// endregion
-
 // region: ThreadLocalArena benchmarks
 
 /// ThreadLocalArena: single protect
@@ -577,76 +440,6 @@ fn thread_local_many(n: usize) {
 }
 // endregion
 
-// region: ThreadLocalHashArena benchmarks
-
-/// ThreadLocalHashArena: single protect
-#[divan::bench]
-fn thread_local_hash_single() {
-    unsafe {
-        let x = ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger(42));
-        divan::black_box(x);
-        ThreadLocalHashArena::unprotect(x);
-    }
-}
-
-/// ThreadLocalHashArena: protect N distinct values
-#[divan::bench(args = [10, 100, 1000])]
-fn thread_local_hash_multiple(n: usize) {
-    unsafe {
-        for i in 0..n {
-            ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger(i as i32));
-        }
-        divan::black_box(ThreadLocalHashArena::len());
-        ThreadLocalHashArena::clear();
-    }
-}
-
-/// ThreadLocalHashArena: protect same value N times (ref count)
-#[divan::bench(args = [10, 100, 1000])]
-fn thread_local_hash_same_value(n: usize) {
-    unsafe {
-        let x = raw_ffi::Rf_ScalarInteger(42);
-        for _ in 0..n {
-            ThreadLocalHashArena::protect(x);
-        }
-        divan::black_box(ThreadLocalHashArena::ref_count(x));
-        ThreadLocalHashArena::clear();
-    }
-}
-
-/// ThreadLocalHashArena: protect then unprotect N values
-#[divan::bench(args = [10, 100, 1000])]
-fn thread_local_hash_protect_unprotect(n: usize) {
-    unsafe {
-        let mut values = Vec::with_capacity(n);
-
-        for i in 0..n {
-            values.push(ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger(
-                i as i32,
-            )));
-        }
-
-        for x in values.into_iter().rev() {
-            ThreadLocalHashArena::unprotect(x);
-        }
-
-        divan::black_box(ThreadLocalHashArena::is_empty());
-    }
-}
-
-/// ThreadLocalHashArena: many values stress test
-#[divan::bench(args = [1000, 5000, 10000])]
-fn thread_local_hash_many(n: usize) {
-    unsafe {
-        for i in 0..n {
-            ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
-        }
-        divan::black_box(ThreadLocalHashArena::len());
-        ThreadLocalHashArena::clear();
-    }
-}
-// endregion
-
 // region: R ppsize range benchmarks (min=10000, default=50000, max=500000)
 // These test the arena implementations at R's --max-ppsize boundaries.
 // ProtectScope is limited by ppsize, arenas are not.
@@ -685,18 +478,6 @@ fn ppsize_refcount_arena(n: usize) {
     }
 }
 
-/// HashMapArena: fine-grained ppsize testing (HashMap + RefCell)
-#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
-fn ppsize_hashmap_arena(n: usize) {
-    unsafe {
-        let arena = HashMapArena::new();
-        for i in 0..n {
-            arena.protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
-        }
-        divan::black_box(arena.len());
-    }
-}
-
 /// ThreadLocalArena: fine-grained ppsize testing (BTreeMap + thread_local)
 #[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
 fn ppsize_thread_local(n: usize) {
@@ -709,17 +490,6 @@ fn ppsize_thread_local(n: usize) {
     }
 }
 
-/// ThreadLocalHashArena: fine-grained ppsize testing (HashMap + thread_local)
-#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
-fn ppsize_thread_local_hash(n: usize) {
-    unsafe {
-        for i in 0..n {
-            ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
-        }
-        divan::black_box(ThreadLocalHashArena::len());
-        ThreadLocalHashArena::clear();
-    }
-}
 // endregion
 
 // region: Fast API benchmarks (skip init check)
@@ -734,19 +504,6 @@ fn thread_local_protect_fast(n: usize) {
         }
         divan::black_box(ThreadLocalArena::len());
         ThreadLocalArena::clear();
-    }
-}
-
-/// ThreadLocalHashArena: protect_fast (no init check) vs protect
-#[divan::bench(args = [10, 100, 1000])]
-fn thread_local_hash_protect_fast(n: usize) {
-    unsafe {
-        ThreadLocalHashArena::init();
-        for i in 0..n {
-            ThreadLocalHashArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
-        }
-        divan::black_box(ThreadLocalHashArena::len());
-        ThreadLocalHashArena::clear();
     }
 }
 
@@ -771,26 +528,6 @@ fn thread_local_fast_cycle(n: usize) {
     }
 }
 
-/// ThreadLocalHashArena: protect_fast + unprotect_fast cycle
-#[divan::bench(args = [10, 100, 1000])]
-fn thread_local_hash_fast_cycle(n: usize) {
-    unsafe {
-        ThreadLocalHashArena::init();
-        let mut values = Vec::with_capacity(n);
-
-        for i in 0..n {
-            values.push(ThreadLocalHashArena::protect_fast(
-                raw_ffi::Rf_ScalarInteger(i as i32),
-            ));
-        }
-
-        for x in values.into_iter().rev() {
-            ThreadLocalHashArena::unprotect_fast(x);
-        }
-
-        divan::black_box(ThreadLocalHashArena::is_empty());
-    }
-}
 // endregion
 
 // region: init_with_capacity benchmarks
@@ -799,160 +536,24 @@ fn thread_local_hash_fast_cycle(n: usize) {
 #[divan::bench(args = [100, 1000, 10000])]
 fn thread_local_init_with_capacity(n: usize) {
     unsafe {
-        ThreadLocalHashArena::init_with_capacity(n);
+        ThreadLocalArena::init_with_capacity(n);
         for i in 0..n {
-            ThreadLocalHashArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
+            ThreadLocalArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
         }
-        divan::black_box(ThreadLocalHashArena::len());
-        ThreadLocalHashArena::clear();
+        divan::black_box(ThreadLocalArena::len());
+        ThreadLocalArena::clear();
     }
 }
 
-/// HashMapArena: with_capacity vs default
+/// RefCountedArena: with_capacity vs default
 #[divan::bench(args = [100, 1000, 10000])]
-fn hashmap_with_capacity(n: usize) {
+fn refcount_arena_with_capacity(n: usize) {
     unsafe {
-        let arena = HashMapArena::with_capacity(n);
+        let arena = RefCountedArena::with_capacity(n);
         for i in 0..n {
             arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(arena.len());
-    }
-}
-// endregion
-
-// region: Fast hash arena benchmarks (feature-gated)
-
-#[cfg(feature = "refcount-fast-hash")]
-mod fast_hash_benches {
-    use super::*;
-    use miniextendr_api::refcount_protect::{
-        FastHashMapArena, ThreadLocalArenaOps, ThreadLocalFastHashArena,
-    };
-
-    /// FastHashMapArena: single protect
-    #[divan::bench]
-    fn fast_hash_single() {
-        unsafe {
-            let arena = FastHashMapArena::new();
-            let x = arena.protect(raw_ffi::Rf_ScalarInteger(42));
-            divan::black_box(x);
-        }
-    }
-
-    /// FastHashMapArena: protect N distinct values
-    #[divan::bench(args = [10, 100, 1000])]
-    fn fast_hash_multiple(n: usize) {
-        unsafe {
-            let arena = FastHashMapArena::new();
-            for i in 0..n {
-                arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
-            }
-            divan::black_box(arena.len());
-        }
-    }
-
-    /// FastHashMapArena: protect same value N times (ref count)
-    #[divan::bench(args = [10, 100, 1000])]
-    fn fast_hash_same_value(n: usize) {
-        unsafe {
-            let arena = FastHashMapArena::new();
-            let x = raw_ffi::Rf_ScalarInteger(42);
-            for _ in 0..n {
-                arena.protect(x);
-            }
-            divan::black_box(arena.ref_count(x));
-        }
-    }
-
-    /// FastHashMapArena: protect then unprotect N values
-    #[divan::bench(args = [10, 100, 1000])]
-    fn fast_hash_protect_unprotect(n: usize) {
-        unsafe {
-            let arena = FastHashMapArena::new();
-            let mut values = Vec::with_capacity(n);
-
-            for i in 0..n {
-                values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
-            }
-
-            for x in values.into_iter().rev() {
-                arena.unprotect(x);
-            }
-
-            divan::black_box(arena.is_empty());
-        }
-    }
-
-    /// FastHashMapArena: many values stress test
-    #[divan::bench(args = [1000, 5000, 10000])]
-    fn fast_hash_many(n: usize) {
-        unsafe {
-            let arena = FastHashMapArena::new();
-            for i in 0..n {
-                arena.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
-            }
-            divan::black_box(arena.len());
-        }
-    }
-
-    /// FastHashMapArena: fine-grained ppsize testing
-    #[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
-    fn ppsize_fast_hash(n: usize) {
-        unsafe {
-            let arena = FastHashMapArena::new();
-            for i in 0..n {
-                arena.protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
-            }
-            divan::black_box(arena.len());
-        }
-    }
-
-    /// ThreadLocalFastHashArena: single protect
-    #[divan::bench]
-    fn thread_local_fast_hash_single() {
-        unsafe {
-            let x = ThreadLocalFastHashArena::protect(raw_ffi::Rf_ScalarInteger(42));
-            divan::black_box(x);
-            ThreadLocalFastHashArena::unprotect(x);
-        }
-    }
-
-    /// ThreadLocalFastHashArena: protect N distinct values
-    #[divan::bench(args = [10, 100, 1000])]
-    fn thread_local_fast_hash_multiple(n: usize) {
-        unsafe {
-            for i in 0..n {
-                ThreadLocalFastHashArena::protect(raw_ffi::Rf_ScalarInteger(i as i32));
-            }
-            divan::black_box(ThreadLocalFastHashArena::len());
-            ThreadLocalFastHashArena::clear();
-        }
-    }
-
-    /// ThreadLocalFastHashArena: protect_fast (no init check)
-    #[divan::bench(args = [10, 100, 1000])]
-    fn thread_local_fast_hash_protect_fast(n: usize) {
-        unsafe {
-            ThreadLocalFastHashArena::init();
-            for i in 0..n {
-                ThreadLocalFastHashArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
-            }
-            divan::black_box(ThreadLocalFastHashArena::len());
-            ThreadLocalFastHashArena::clear();
-        }
-    }
-
-    /// ThreadLocalFastHashArena: fine-grained ppsize testing
-    #[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
-    fn ppsize_thread_local_fast_hash(n: usize) {
-        unsafe {
-            for i in 0..n {
-                ThreadLocalFastHashArena::protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
-            }
-            divan::black_box(ThreadLocalFastHashArena::len());
-            ThreadLocalFastHashArena::clear();
-        }
     }
 }
 // endregion

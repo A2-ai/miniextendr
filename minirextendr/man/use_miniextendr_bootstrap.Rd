@@ -4,10 +4,14 @@
 \alias{use_miniextendr_bootstrap}
 \title{Add bootstrap.R to package}
 \usage{
-use_miniextendr_bootstrap(path = ".")
+use_miniextendr_bootstrap(path = ".", subdir = NULL)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{subdir}{Optional template subdirectory (passed through to
+\code{use_template()}) — set to \code{"rpkg"} when scaffolding the R package
+subdirectory of a monorepo.}
 }
 \value{
 Invisibly returns TRUE if file was created

@@ -159,18 +159,30 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `Vec<i64>` | All elements fit | INTSXP vector |
 | `Vec<i64>` | Any element outside range | **Panic** (R error) |
 
-### Option Types (NA Mapping)
+### The Absence Contract: What `None` Becomes in R
 
-| Rust Type | `Some(val)` | `None` |
-|-----------|-------------|--------|
-| `Option<i32>` | INTSXP scalar | NA_integer_ |
-| `Option<f64>` | REALSXP scalar | NA_real_ |
-| `Option<bool>` | LGLSXP scalar | NA_logical |
-| `Option<Rboolean>` | LGLSXP scalar | NA_logical |
-| `Option<String>` | STRSXP scalar | NA_character_ |
-| `Option<&str>` | STRSXP scalar | NA_character_ |
-| `Option<Vec<T>>` | R vector | NULL (R_NilValue) |
-| `Option<HashMap<...>>` | Named list | NULL (R_NilValue) |
+`None` does not map to one universal R value — it depends on the *shape* of
+the return type, and the divergence is easy to trip over: changing a Rust
+return type from `Option<i32>` to `Option<&i32>`, or from `Option<i32>` to
+`Option<Vec<i32>>`, silently flips the R-visible absence value from
+`NA_integer_` to `NULL`. There is no compiler warning and no macro
+diagnostic. R code written as `is.na(x)` against the old contract will error
+("argument is of length zero") the moment it sees `NULL` instead.
+
+| Rust Return Type | `None` becomes | Test with | Why |
+|-------------------|-----------------|-----------|-----|
+| `Option<i32>` / `Option<f64>` / `Option<bool>` / `Option<Rboolean>` / `Option<RLogical>` / `Option<Rcomplex>` / `Option<String>` / coerced scalars (`i8`, `i16`, `u16`, `u32`, `f32`, `i64`, `u64`, `isize`, `usize`) | `NA_<type>_` | `is.na(x)` | Owned scalar — R has a native NA sentinel for each of these types |
+| `Option<PathBuf>` / `Option<OsString>` | `NA_character_` | `is.na(x)` | Lossy-string family; follows the same convention as owned scalars |
+| `Option<&str>` | `NA_character_` | `is.na(x)` | **Exception** to the `Option<&T>` row below: `str` is unsized, so it cannot use the generic `Copy`-bounded blanket impl. It has a hand-written impl instead that deliberately mirrors `Option<String>`. |
+| `Option<&T>` where `T: Copy` (e.g. `Option<&i32>`, `Option<&f64>`, `Option<&bool>`) | `NULL` | `is.null(x)` | A borrowed reference has nothing to copy on `None` — there is no NA representation for "no reference" |
+| `Option<Vec<T>>` / `Option<Vec<String>>` / `Option<HashMap<String, V>>` / `Option<BTreeMap<String, V>>` / `Option<HashSet<T>>` / `Option<BTreeSet<T>>` | `NULL` | `is.null(x)` | No container type has a native R NA sentinel |
+| `Option<SEXP>` | `NULL` (`R_NilValue`) | `is.null(x)` | Handled directly by the `#[miniextendr]` macro (`return_type_analysis.rs`), not by an `IntoR` impl |
+| `Option<()>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases `Option<()>` as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
+
+See also [COLUMNAR_OPTION_NONE.md](COLUMNAR_OPTION_NONE.md) for how an
+all-`None` `Option<T>` **column** in a `DataFrameRow`/columnar context (as
+opposed to a bare scalar return covered above) is downgraded to a typed NA
+vector rather than a `list(NULL, NULL, ...)`.
 
 ### Vector Types
 
@@ -259,11 +271,33 @@ Notes:
 
 ### Result and Error Types
 
+This is the `Result` half of the absence contract — `Err` follows a
+completely different rule depending on the error type and the
+`unwrap_in_r` attribute:
+
 | Rust Type | `Ok(val)` | `Err(e)` |
 |-----------|-----------|----------|
-| `Result<T, E: Debug>` (default) | `T::into_sexp()` | **Panic** -> R error |
-| `Result<T, E: Display>` (`unwrap_in_r`) | `T::into_sexp()` | `list(error = msg)` |
-| `Result<T, ()>` | `T::into_sexp()` | NULL (R_NilValue) |
+| `Result<T, E>` (default, `E != ()`) | `T::into_sexp()` | **Not a value** — raises a tagged `rust_*` R condition (`E: Debug`-formatted message); catch with `tryCatch` |
+| `Result<(), E>` (default, `E != ()`) | `NULL`, invisibly | Same as above — raises |
+| `Result<SEXP, E>` (default, `E != ()`) | The `SEXP` directly | Same as above — raises |
+| `Result<T, E: Display>` (`#[miniextendr(unwrap_in_r)]`, `E != ()`) | `T::into_sexp()` | `list(error = e.to_string())` — **not** `NULL`, **not** `NA`; test with `!is.null(x$error)` |
+| `Result<T, ()>` (any `T`, with or without `unwrap_in_r`) | `T::into_sexp()` | `NULL` (`R_NilValue`); test with `is.null(x)` |
+| `Result<(), ()>` | `NULL`, invisibly | `NULL`, invisibly (indistinguishable from `Ok`) |
+
+`Result<T, ()>` is the *only* `Result` shape whose `Err` reaches R as a
+plain value — the macro rewrites `Err(())` to `Err(NullOnErr)`
+(`miniextendr_api::into_r::NullOnErr`) specifically because a unit error
+carries no message worth reporting. Every other `E` follows the default
+error-boundary path (tagged-condition transport is the framework's only
+error path, see `miniextendr-api/CLAUDE.md`) *unless* `unwrap_in_r` is set,
+in which case `Err` becomes data (`list(error = ...)`) instead of a raised
+condition.
+
+Audit note: `rpkg/tests/testthat/test-conversions.R:290`
+(`expect_true(is.null(conv_result_i32_err()))`) exercises the
+`Result<i32, ()>` shape specifically. It is easy to over-generalize this
+into "`Result::Err` becomes `NULL`" — that only holds for the `()` error
+type. Any other error type raises instead of returning a value.
 
 ### Intentional Asymmetries (argument-only / return-only)
 

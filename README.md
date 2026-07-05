@@ -58,7 +58,7 @@ Feature families in the runtime crate include:
   `num-traits`
 - Proc-macro defaults and diagnostics: `strict-default`, `coerce-default`,
   `r6-default`, `s7-default`, `doc-lint`, `growth-debug`,
-  `macro-coverage`, `refcount-fast-hash`
+  `macro-coverage`
 
 See `miniextendr-api/README.md` and `docs/FEATURES.md` for the current feature
 matrix.

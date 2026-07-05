@@ -373,8 +373,7 @@ pub fn new_rcrd(
             return Err(VctrsBuildError::UnnamedFields);
         }
 
-        let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_charsxp.r_char()) };
-        let name = name_cstr.to_str().unwrap_or("");
+        let name = name_charsxp.r_char_str().unwrap_or("");
         if name.is_empty() {
             return Err(VctrsBuildError::UnnamedFields);
         }

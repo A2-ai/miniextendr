@@ -11,6 +11,14 @@
 //! path — `__impl_altvec_<family>_dataptr!` provides a trivial
 //! `AltrepDataptr<T>` returning `None`, falling through to data2
 //! materialisation.
+//!
+//! Each family also has an `impl_alt<family>_from_data_generic!` sibling
+//! accepting a brace-delimited generic parameter list and where-clause
+//! (`{$gen} $ty {$where}[, $knob]*`) for adaptor types like
+//! `IterIntCoerceData<I, T>` — see `altrep_data::iter` / `altrep_data::stream`
+//! for the ~19 call sites this replaced (audit D1). The plain macros forward
+//! to their `_generic!` sibling with empty `{}` brackets, so each family has
+//! exactly one emission body regardless of which form is called.
 
 // region: Macros for generating trait implementations
 
@@ -46,8 +54,21 @@ macro_rules! impl_altinteger_from_data {
     // first DATAPTR call. Without this, R's default DATAPTR errors with
     // "cannot access data pointer". See `__impl_alt_family!` for the knob matrix.
     ($ty:ty $(, $knob:ident)*) => {
+        $crate::impl_altinteger_from_data_generic!({} $ty {} $(, $knob)*);
+    };
+}
+
+/// Generic form of [`impl_altinteger_from_data!`]: accepts an optional
+/// generic parameter list and where-clause (`{T, U} Foo<T, U> {T: Bound, ..}`)
+/// so it can target `struct Foo<T> { .. }` adaptors — e.g. iterator-backed
+/// ALTREP types — not just concrete/monomorphic types. The non-generic macro
+/// above forwards here with empty `{}` brackets so there is exactly one
+/// emission body for both call shapes.
+#[macro_export]
+macro_rules! impl_altinteger_from_data_generic {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*} $(, $knob:ident)*) => {
         $crate::__impl_alt_family!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             __impl_altinteger_methods,
             impl_inferbase_integer,
             dataptr: dataptr(i32),
@@ -87,8 +108,16 @@ macro_rules! __impl_altrep_base {
     ($ty:ty, with_serialize) => {
         $crate::__impl_altrep_base!($ty, RUnwind, with_serialize);
     };
-    ($ty:ty, $guard:ident) => {
-        impl $crate::altrep_traits::Altrep for $ty {
+    // Generic form: `{$gen} $ty {$where}, $guard[, with_serialize]`. Brace
+    // (not bracket/paren) delimiters are deliberate: `{` can never start a
+    // `$ty:ty` fragment, so a bare-`$ty:ty` arm asked to match a brace-led
+    // invocation fails cleanly instead of committing to (and hard-erroring
+    // on) a bogus type parse — `[]`/`()` are themselves valid (empty
+    // slice-like / unit) type starts and would NOT fail cleanly here. The
+    // non-generic arms above forward to this one with empty `{}` brackets so
+    // there is exactly one emission body per (guard, serialize) combination.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $guard:ident) => {
+        impl<$($gen)*> $crate::altrep_traits::Altrep for $ty where $($whr)* {
             const GUARD: $crate::altrep_traits::AltrepGuard =
                 $crate::altrep_traits::AltrepGuard::$guard;
 
@@ -99,8 +128,8 @@ macro_rules! __impl_altrep_base {
             }
         }
     };
-    ($ty:ty, $guard:ident, with_serialize) => {
-        impl $crate::altrep_traits::Altrep for $ty {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $guard:ident, with_serialize) => {
+        impl<$($gen)*> $crate::altrep_traits::Altrep for $ty where $($whr)* {
             const GUARD: $crate::altrep_traits::AltrepGuard =
                 $crate::altrep_traits::AltrepGuard::$guard;
 
@@ -148,6 +177,18 @@ macro_rules! __impl_altrep_base {
             }
         }
     };
+    // Bare-`$ty:ty` forwarders (concrete/monomorphic types) — listed AFTER
+    // the brace-generic arms above so a genuinely bare call (e.g. from the
+    // `#[derive(Altrep*)]` proc-macro, which always targets concrete types)
+    // still resolves here rather than being intercepted by the brace arms
+    // (which require a literal leading `{...}` group and so never match a
+    // bare invocation).
+    ($ty:ty, $guard:ident) => {
+        $crate::__impl_altrep_base!({} $ty {}, $guard);
+    };
+    ($ty:ty, $guard:ident, with_serialize) => {
+        $crate::__impl_altrep_base!({} $ty {}, $guard, with_serialize);
+    };
 }
 
 /// Internal macro: impl AltVec with dataptr support
@@ -161,7 +202,12 @@ macro_rules! __impl_altrep_base {
 #[doc(hidden)]
 macro_rules! __impl_altvec_dataptr {
     ($ty:ty, $elem:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
+        $crate::__impl_altvec_dataptr!({} $ty {}, $elem);
+    };
+    // Generic form: `[$gen] $ty [$where], $elem`. See `__impl_altrep_base!`
+    // for the empty-brackets delegation pattern.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $elem:ty) => {
+        impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::SEXP, writable: bool) -> *mut core::ffi::c_void {
@@ -248,7 +294,11 @@ macro_rules! __impl_altvec_dataptr {
 #[doc(hidden)]
 macro_rules! __impl_altvec_string_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
+        $crate::__impl_altvec_string_dataptr!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::SEXP, _writable: bool) -> *mut core::ffi::c_void {
@@ -321,12 +371,16 @@ macro_rules! __impl_altvec_string_dataptr {
 #[doc(hidden)]
 macro_rules! __impl_altvec_materializing_dataptr {
     ($ty:ty, $elem:ty) => {
-        impl $crate::altrep_data::AltrepDataptr<$elem> for $ty {
+        $crate::__impl_altvec_materializing_dataptr!({} $ty {}, $elem);
+    };
+    // Generic form: `[$gen] $ty [$where], $elem`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $elem:ty) => {
+        impl<$($gen)*> $crate::altrep_data::AltrepDataptr<$elem> for $ty where $($whr)* {
             fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
                 None
             }
         }
-        $crate::__impl_altvec_dataptr!($ty, $elem);
+        $crate::__impl_altvec_dataptr!({$($gen)*} $ty {$($whr)*}, $elem);
     };
 }
 
@@ -382,7 +436,11 @@ macro_rules! __impl_altvec_complex_dataptr {
 #[doc(hidden)]
 macro_rules! __impl_altvec_extract_subset {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
+        $crate::__impl_altvec_extract_subset!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {
             const HAS_EXTRACT_SUBSET: bool = true;
 
             fn extract_subset(
@@ -542,6 +600,19 @@ macro_rules! __impl_altvec_flavor {
     ($ty:ty, subset) => {
         $crate::__impl_altvec_extract_subset!($ty);
     };
+    // Generic form: `[$gen] $ty [$where], $flavor`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, dataptr($elem:ty)) => {
+        $crate::__impl_altvec_dataptr!({$($gen)*} $ty {$($whr)*}, $elem);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, materializing($elem:ty)) => {
+        $crate::__impl_altvec_materializing_dataptr!({$($gen)*} $ty {$($whr)*}, $elem);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, string_dataptr) => {
+        $crate::__impl_altvec_string_dataptr!({$($gen)*} $ty {$($whr)*});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, subset) => {
+        $crate::__impl_altvec_extract_subset!({$($gen)*} $ty {$($whr)*});
+    };
 }
 
 /// Internal macro: canonical ALTREP emission.
@@ -563,6 +634,19 @@ macro_rules! __impl_alt_from_data {
         $crate::__impl_altvec_flavor!($ty, $flavor $(($elem))?);
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
+    };
+    // Generic form: `[$gen] $ty [$where], $methods, $inferbase, $flavor`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident, $flavor:ident $(($elem:ty))?) => {
+        $crate::__impl_altrep_base!({$($gen)*} $ty {$($whr)*}, RUnwind);
+        $crate::__impl_altvec_flavor!({$($gen)*} $ty {$($whr)*}, $flavor $(($elem))?);
+        $crate::$methods!({$($gen)*} $ty {$($whr)*});
+        $crate::$inferbase!({$($gen)*} $ty {$($whr)*});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident, $flavor:ident $(($elem:ty))?, serialize) => {
+        $crate::__impl_altrep_base!({$($gen)*} $ty {$($whr)*}, RUnwind, with_serialize);
+        $crate::__impl_altvec_flavor!({$($gen)*} $ty {$($whr)*}, $flavor $(($elem))?);
+        $crate::$methods!({$($gen)*} $ty {$($whr)*});
+        $crate::$inferbase!({$($gen)*} $ty {$($whr)*});
     };
 }
 
@@ -612,6 +696,31 @@ macro_rules! __impl_alt_family {
      dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, subset, serialize) => {
         $crate::__impl_alt_from_data!($ty, $methods, $inferbase, subset, serialize);
     };
+    // Generic form: `[$gen] $ty [$where], $methods, $inferbase, dataptr: .., default: ..[, knobs]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?) => {
+        $crate::__impl_alt_from_data!({$($gen)*} $ty {$($whr)*}, $methods, $inferbase, $dff $(($dfe))?);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, dataptr) => {
+        $crate::__impl_alt_from_data!({$($gen)*} $ty {$($whr)*}, $methods, $inferbase, $dpf $(($dpe))?);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, serialize) => {
+        $crate::__impl_alt_from_data!({$($gen)*} $ty {$($whr)*}, $methods, $inferbase, $dff $(($dfe))?, serialize);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, subset) => {
+        $crate::__impl_alt_from_data!({$($gen)*} $ty {$($whr)*}, $methods, $inferbase, subset);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!({$($gen)*} $ty {$($whr)*}, $methods, $inferbase, $dpf $(($dpe))?, serialize);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $methods:ident, $inferbase:ident,
+     dataptr: $dpf:ident $(($dpe:ty))?, default: $dff:ident $(($dfe:ty))?, subset, serialize) => {
+        $crate::__impl_alt_from_data!({$($gen)*} $ty {$($whr)*}, $methods, $inferbase, subset, serialize);
+    };
 }
 // endregion
 
@@ -622,7 +731,11 @@ macro_rules! __impl_alt_family {
 #[doc(hidden)]
 macro_rules! __impl_altinteger_methods {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltInteger for $ty {
+        $crate::__impl_altinteger_methods!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltInteger for $ty where $($whr)* {
             $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltIntegerData, i32, i32::MIN);
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltIntegerData, i32);
             $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltIntegerData);
@@ -693,8 +806,17 @@ macro_rules! __impl_altinteger_methods {
 #[macro_export]
 macro_rules! impl_altreal_from_data {
     ($ty:ty $(, $knob:ident)*) => {
+        $crate::impl_altreal_from_data_generic!({} $ty {} $(, $knob)*);
+    };
+}
+
+/// Generic form of [`impl_altreal_from_data!`] — see
+/// [`impl_altinteger_from_data_generic!`] for the calling convention.
+#[macro_export]
+macro_rules! impl_altreal_from_data_generic {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*} $(, $knob:ident)*) => {
         $crate::__impl_alt_family!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             __impl_altreal_methods,
             impl_inferbase_real,
             dataptr: dataptr(f64),
@@ -709,7 +831,11 @@ macro_rules! impl_altreal_from_data {
 #[doc(hidden)]
 macro_rules! __impl_altreal_methods {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltReal for $ty {
+        $crate::__impl_altreal_methods!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltReal for $ty where $($whr)* {
             $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRealData, f64, f64::NAN);
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltRealData, f64);
             $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltRealData);
@@ -775,8 +901,17 @@ macro_rules! impl_altlogical_from_data {
     // Note the asymmetry: the `dataptr` knob is typed `i32` (R's LGLSXP storage),
     // while the materializing default goes through `RLogical` for type safety.
     ($ty:ty $(, $knob:ident)*) => {
+        $crate::impl_altlogical_from_data_generic!({} $ty {} $(, $knob)*);
+    };
+}
+
+/// Generic form of [`impl_altlogical_from_data!`] — see
+/// [`impl_altinteger_from_data_generic!`] for the calling convention.
+#[macro_export]
+macro_rules! impl_altlogical_from_data_generic {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*} $(, $knob:ident)*) => {
         $crate::__impl_alt_family!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             __impl_altlogical_methods,
             impl_inferbase_logical,
             dataptr: dataptr(i32),
@@ -791,7 +926,11 @@ macro_rules! impl_altlogical_from_data {
 #[doc(hidden)]
 macro_rules! __impl_altlogical_methods {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltLogical for $ty {
+        $crate::__impl_altlogical_methods!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltLogical for $ty where $($whr)* {
             // Logical elt is special: returns Logical → .to_r_int()
             const HAS_ELT: bool = true;
 
@@ -851,8 +990,17 @@ macro_rules! __impl_altlogical_methods {
 #[macro_export]
 macro_rules! impl_altraw_from_data {
     ($ty:ty $(, $knob:ident)*) => {
+        $crate::impl_altraw_from_data_generic!({} $ty {} $(, $knob)*);
+    };
+}
+
+/// Generic form of [`impl_altraw_from_data!`] — see
+/// [`impl_altinteger_from_data_generic!`] for the calling convention.
+#[macro_export]
+macro_rules! impl_altraw_from_data_generic {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*} $(, $knob:ident)*) => {
         $crate::__impl_alt_family!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             __impl_altraw_methods,
             impl_inferbase_raw,
             dataptr: dataptr(u8),
@@ -867,7 +1015,11 @@ macro_rules! impl_altraw_from_data {
 #[doc(hidden)]
 macro_rules! __impl_altraw_methods {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltRaw for $ty {
+        $crate::__impl_altraw_methods!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltRaw for $ty where $($whr)* {
             $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRawData, u8, 0);
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltRawData, u8);
         }
@@ -900,8 +1052,17 @@ macro_rules! impl_altstring_from_data {
     // String vectors have no contiguous typed pointer; the default and `dataptr`
     // knobs both route through `string_dataptr` (whole-vector STRSXP materialization).
     ($ty:ty $(, $knob:ident)*) => {
+        $crate::impl_altstring_from_data_generic!({} $ty {} $(, $knob)*);
+    };
+}
+
+/// Generic form of [`impl_altstring_from_data!`] — see
+/// [`impl_altinteger_from_data_generic!`] for the calling convention.
+#[macro_export]
+macro_rules! impl_altstring_from_data_generic {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*} $(, $knob:ident)*) => {
         $crate::__impl_alt_family!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             __impl_altstring_methods,
             impl_inferbase_string,
             dataptr: string_dataptr,
@@ -916,7 +1077,11 @@ macro_rules! impl_altstring_from_data {
 #[doc(hidden)]
 macro_rules! __impl_altstring_methods {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltString for $ty {
+        $crate::__impl_altstring_methods!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltString for $ty where $($whr)* {
             // String elt with lazy per-element caching in data2 STRSXP.
             //
             // On first access, allocates a STRSXP in data2 (initialized to R_NaString).
@@ -983,7 +1148,21 @@ macro_rules! impl_altlist_from_data {
         $crate::impl_altlist_from_data!($ty, RUnwind);
     };
     ($ty:ty, $guard:ident) => {
-        impl $crate::altrep_traits::Altrep for $ty {
+        $crate::impl_altlist_from_data_generic!({} $ty {}, $guard);
+    };
+}
+
+/// Generic form of [`impl_altlist_from_data!`]: accepts an optional generic
+/// parameter list and where-clause so it can target `struct Foo<T> { .. }`
+/// adaptors, not just concrete types. The non-generic macro above forwards
+/// here with empty `{}` brackets so there is exactly one emission body.
+#[macro_export]
+macro_rules! impl_altlist_from_data_generic {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        $crate::impl_altlist_from_data_generic!({$($gen)*} $ty {$($whr)*}, RUnwind);
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $guard:ident) => {
+        impl<$($gen)*> $crate::altrep_traits::Altrep for $ty where $($whr)* {
             const GUARD: $crate::altrep_traits::AltrepGuard =
                 $crate::altrep_traits::AltrepGuard::$guard;
 
@@ -994,9 +1173,9 @@ macro_rules! impl_altlist_from_data {
             }
         }
 
-        impl $crate::altrep_traits::AltVec for $ty {}
+        impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {}
 
-        impl $crate::altrep_traits::AltList for $ty {
+        impl<$($gen)*> $crate::altrep_traits::AltList for $ty where $($whr)* {
             fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> $crate::SEXP {
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
@@ -1004,7 +1183,7 @@ macro_rules! impl_altlist_from_data {
             }
         }
 
-        $crate::impl_inferbase_list!($ty);
+        $crate::impl_inferbase_list!({$($gen)*} $ty {$($whr)*});
     };
 }
 
@@ -1013,7 +1192,11 @@ macro_rules! impl_altlist_from_data {
 #[doc(hidden)]
 macro_rules! __impl_altcomplex_methods {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltComplex for $ty {
+        $crate::__impl_altcomplex_methods!({} $ty {});
+    };
+    // Generic form: `[$gen] $ty [$where]`.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
+        impl<$($gen)*> $crate::altrep_traits::AltComplex for $ty where $($whr)* {
             $crate::__impl_alt_elt!(
                 $ty,
                 $crate::altrep_data::AltComplexData,
@@ -1041,8 +1224,17 @@ macro_rules! __impl_altcomplex_methods {
 #[macro_export]
 macro_rules! impl_altcomplex_from_data {
     ($ty:ty $(, $knob:ident)*) => {
+        $crate::impl_altcomplex_from_data_generic!({} $ty {} $(, $knob)*);
+    };
+}
+
+/// Generic form of [`impl_altcomplex_from_data!`] — see
+/// [`impl_altinteger_from_data_generic!`] for the calling convention.
+#[macro_export]
+macro_rules! impl_altcomplex_from_data_generic {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*} $(, $knob:ident)*) => {
         $crate::__impl_alt_family!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             __impl_altcomplex_methods,
             impl_inferbase_complex,
             dataptr: dataptr($crate::Rcomplex),

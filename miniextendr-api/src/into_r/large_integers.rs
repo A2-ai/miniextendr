@@ -627,6 +627,15 @@ impl IntoR for &str {
     }
 }
 
+/// Convert `Option<&str>` to R: `Some(s)` → character, `None` → `NA_character_`.
+///
+/// This is a deliberate **exception** to the generic `Option<&T> where T:
+/// Copy` blanket impl below (which returns `NULL` for `None`, not NA).
+/// `str` is unsized, so it can't satisfy that impl's `Copy` bound —
+/// `&str` gets its own hand-written impl here instead, and it's written to
+/// mirror `Option<String>`'s NA semantics rather than the reference-type
+/// NULL semantics. See the module-level "absence contract" doc on
+/// [`crate::into_r`] for the full return-category table.
 impl IntoR for Option<&str> {
     type Error = crate::into_r_error::IntoRError;
     #[inline]
@@ -691,6 +700,10 @@ impl IntoR for Option<String> {
 ///
 /// Note: This returns NULL for None, not NA, since there's no reference to return.
 /// Use `Option<T>` directly if you want NA semantics for scalar types.
+///
+/// `T: Copy` excludes `str` (unsized), so `Option<&str>` does **not** go
+/// through this impl — see the dedicated `Option<&str>` impl above, which
+/// returns `NA_character_` instead of `NULL`.
 impl<T> IntoR for Option<&T>
 where
     T: Copy + IntoR,

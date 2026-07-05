@@ -12,7 +12,7 @@
 \alias{as.data.frame.RCoerceTestData}
 \alias{as.list.RCoerceTestData}
 \alias{as.character.RCoerceTestData}
-\alias{as.numeric.RCoerceTestData}
+\alias{as.double.RCoerceTestData}
 \alias{as.integer.RCoerceTestData}
 \title{as.\if{html}{\out{<class>}}() Coercion Test Type}
 \source{
@@ -75,7 +75,7 @@ RCoerceTestData
 
 \method{as.character}{RCoerceTestData}(x, ...)
 
-\method{as.numeric}{RCoerceTestData}(x, ...)
+\method{as.double}{RCoerceTestData}(x, ...)
 
 \method{as.integer}{RCoerceTestData}(x, ...)
 }
