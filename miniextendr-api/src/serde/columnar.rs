@@ -3326,6 +3326,16 @@ pub fn vec_to_dataframe_split<T: Serialize>(
             // Single-variant short-circuit needs to inspect the count below.
             let mut partitions: Vec<(String, DataFrame)> = Vec::with_capacity(groups.len());
 
+            // Root every partition data.frame for the remainder of the loop.
+            // `DataFrame` is an unrooted Copy SEXP wrapper (#1128), and each
+            // later iteration allocates (vec_to_dataframe, make_strsxp_repeat,
+            // prepend_column) — without a root, gctorture reaps earlier
+            // partitions (observed as "row names must be 'character' or
+            // 'integer', not 'char'" in gc_stress_split_with_tag). The scope
+            // unprotects when this arm returns.
+            // SAFETY: R main thread (this function allocates SEXPs throughout).
+            let scope = unsafe { crate::ProtectScope::new() };
+
             for (name, indices) in &groups {
                 let is_unit = infos[indices[0]].is_unit;
 
@@ -3347,6 +3357,11 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     vec_to_dataframe(&wrapped)?
                 };
 
+                // SAFETY: R main thread; `df` is a freshly-built, unrooted
+                // data.frame. Root it before the tag-column allocations below
+                // and across the remaining loop iterations.
+                unsafe { scope.protect_raw(df.as_sexp()) };
+
                 let df = if let Some(col_name) = tag_column.as_deref() {
                     // SAFETY: R main thread. `make_strsxp_repeat` returns an
                     // unprotected STRSXP; protect across `prepend_column`'s
@@ -3356,6 +3371,11 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     };
                     let out = df.prepend_column(col_name, *tag_protect);
                     drop(tag_protect);
+                    // SAFETY: R main thread; `prepend_column` rebuilt the
+                    // data.frame — root the new SEXP for the remaining
+                    // iterations (the pre-tag root above now covers a
+                    // superseded object; one wasted slot per partition).
+                    unsafe { scope.protect_raw(out.as_sexp()) };
                     out
                 } else {
                     df
