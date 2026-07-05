@@ -4,10 +4,14 @@
 \alias{use_miniextendr_stub}
 \title{Add stub.c file}
 \usage{
-use_miniextendr_stub(path = ".")
+use_miniextendr_stub(path = ".", subdir = NULL)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{subdir}{Optional template subdirectory (passed through to
+\code{template_path()}) — set to \code{"rpkg"} when scaffolding the R package
+subdirectory of a monorepo.}
 }
 \value{
 Invisibly returns TRUE if file was created

@@ -4,10 +4,15 @@
 \alias{use_miniextendr_package_doc}
 \title{Add package documentation file}
 \usage{
-use_miniextendr_package_doc(path = ".")
+use_miniextendr_package_doc(path = ".", subdir = NULL)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{subdir}{Optional template subdirectory (passed through to
+\code{use_template()}) — set to \code{"rpkg"} when scaffolding the R package
+subdirectory of a monorepo, where \code{package.R} lives one level deeper
+under the active "monorepo" template type.}
 }
 \value{
 Invisibly returns TRUE if file was created
