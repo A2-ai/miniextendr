@@ -562,12 +562,8 @@ unsafe fn get_r_error_message() -> String {
         // geterrmessage() returns character(1)
         if msg_sexp.xlength() > 0 {
             let charsxp = msg_sexp.string_elt(0);
-            if !charsxp.is_null() {
-                let ptr = charsxp.r_char();
-                if !ptr.is_null() {
-                    let msg = CStr::from_ptr(ptr).to_string_lossy().into_owned();
-                    return msg.trim_end().to_string();
-                }
+            if let Some(msg) = crate::from_r::charsxp_to_string_lossy(charsxp) {
+                return msg.trim_end().to_string();
             }
         }
         "R error occurred".to_string()

@@ -20,7 +20,7 @@
 //! Outbound: borrowed slices have no `IntoR` impl (R owns return-value
 //! storage); see [`crate::into_r`] for the owned equivalents.
 
-use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_with};
 use crate::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_ref_conversions_for {
@@ -179,25 +179,7 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
-                    let value: &'static $t = TryFromSexp::try_from_sexp(elem)?;
-                    out.push(value);
-                }
-
-                Ok(out)
+                map_vecsxp_with(sexp, |_i, elem| TryFromSexp::try_from_sexp(elem))
             }
         }
 
@@ -205,29 +187,14 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
+                map_vecsxp_with(sexp, |_i, elem| {
                     if elem.type_of() == SEXPTYPE::NILSXP {
-                        out.push(None);
+                        Ok(None)
                     } else {
                         let value: &'static $t = TryFromSexp::try_from_sexp(elem)?;
-                        out.push(Some(value));
+                        Ok(Some(value))
                     }
-                }
-
-                Ok(out)
+                })
             }
         }
 
@@ -235,21 +202,8 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
                 let mut ptrs: Vec<*mut $t> = Vec::new();
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
+                map_vecsxp_with(sexp, |_i, elem| {
                     let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
                     let ptr = std::ptr::from_mut(value);
                     if ptrs.iter().any(|&p| p == ptr) {
@@ -259,10 +213,8 @@ macro_rules! impl_ref_conversions_for {
                         ));
                     }
                     ptrs.push(ptr);
-                    out.push(value);
-                }
-
-                Ok(out)
+                    Ok(value)
+                })
             }
         }
 
@@ -270,24 +222,10 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
                 let mut ptrs: Vec<*mut $t> = Vec::new();
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
+                map_vecsxp_with(sexp, |_i, elem| {
                     if elem.type_of() == SEXPTYPE::NILSXP {
-                        out.push(None);
-                        continue;
+                        return Ok(None);
                     }
                     let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
                     let ptr = std::ptr::from_mut(value);
@@ -298,10 +236,8 @@ macro_rules! impl_ref_conversions_for {
                         ));
                     }
                     ptrs.push(ptr);
-                    out.push(Some(value));
-                }
-
-                Ok(out)
+                    Ok(Some(value))
+                })
             }
         }
 
@@ -309,26 +245,9 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
-                    let slice: &'static [$t] =
-                        TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
-                    out.push(slice);
-                }
-
-                Ok(out)
+                map_vecsxp_with(sexp, |_i, elem| {
+                    TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)
+                })
             }
         }
 
@@ -336,30 +255,15 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
+                map_vecsxp_with(sexp, |_i, elem| {
                     if elem.type_of() == SEXPTYPE::NILSXP {
-                        out.push(None);
+                        Ok(None)
                     } else {
                         let slice: &'static [$t] =
                             TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
-                        out.push(Some(slice));
+                        Ok(Some(slice))
                     }
-                }
-
-                Ok(out)
+                })
             }
         }
 
@@ -367,21 +271,8 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
                 let mut ptrs: Vec<*mut $t> = Vec::new();
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
+                map_vecsxp_with(sexp, |_i, elem| {
                     let slice: &'static mut [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                     if !slice.is_empty() {
@@ -394,10 +285,8 @@ macro_rules! impl_ref_conversions_for {
                         }
                         ptrs.push(ptr);
                     }
-                    out.push(slice);
-                }
-
-                Ok(out)
+                    Ok(slice)
+                })
             }
         }
 
@@ -405,24 +294,10 @@ macro_rules! impl_ref_conversions_for {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::VECSXP {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::VECSXP,
-                        actual,
-                    }
-                    .into());
-                }
-
-                let len = sexp.len();
-                let mut out = Vec::with_capacity(len);
                 let mut ptrs: Vec<*mut $t> = Vec::new();
-
-                for i in 0..len {
-                    let elem = sexp.vector_elt(i as crate::R_xlen_t);
+                map_vecsxp_with(sexp, |_i, elem| {
                     if elem.type_of() == SEXPTYPE::NILSXP {
-                        out.push(None);
-                        continue;
+                        return Ok(None);
                     }
                     let slice: &'static mut [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
@@ -436,10 +311,8 @@ macro_rules! impl_ref_conversions_for {
                         }
                         ptrs.push(ptr);
                     }
-                    out.push(Some(slice));
-                }
-
-                Ok(out)
+                    Ok(Some(slice))
+                })
             }
         }
     };

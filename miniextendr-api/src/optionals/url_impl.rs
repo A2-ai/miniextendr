@@ -40,186 +40,24 @@
 
 pub use url::Url;
 
-use crate::from_r::{
-    SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str,
-};
 use crate::into_r::into_r_infallible;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::try_from_sexp_via_str_parse;
 
-// region: Scalar conversions
+// region: TryFromSexp / IntoR conversions
 
-impl TryFromSexp for Url {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpError::Length(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }));
-        }
-
-        let charsxp = sexp.string_elt(0);
-        if charsxp == SEXP::na_string() {
-            return Err(SexpError::Na(SexpNaError {
-                sexp_type: SEXPTYPE::STRSXP,
-            }));
-        }
-
-        let s = unsafe { charsxp_to_str(charsxp) };
-        Url::parse(s).map_err(|e| SexpError::InvalidValue(format!("invalid URL: {}", e)))
-    }
-}
+try_from_sexp_via_str_parse!(Url, "URL", |s| Url::parse(s));
 
 into_r_infallible!(Url, |this| this.as_str().into_sexp());
-// endregion
-
-// region: Option conversions (NA support)
-
-impl TryFromSexp for Option<Url> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        // NULL -> None
-        if actual == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpError::Length(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }));
-        }
-
-        let charsxp = sexp.string_elt(0);
-        if charsxp == SEXP::na_string() {
-            return Ok(None);
-        }
-
-        let s = unsafe { charsxp_to_str(charsxp) };
-        match Url::parse(s) {
-            Ok(url) => Ok(Some(url)),
-            Err(e) => Err(SexpError::InvalidValue(format!("invalid URL: {}", e))),
-        }
-    }
-}
-
 // Leverage Option<String>'s IntoR which handles NA correctly.
 into_r_infallible!(Option<Url>, |this| this
     .map(|u| u.as_str().to_string())
     .into_sexp());
-// endregion
-
-// region: Vector conversions
-
-impl TryFromSexp for Vec<Url> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
-            if charsxp == SEXP::na_string() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for Vec<Url>",
-                    i
-                )));
-            }
-            let s = unsafe { charsxp_to_str(charsxp) };
-            match Url::parse(s) {
-                Ok(url) => result.push(url),
-                Err(e) => {
-                    return Err(SexpError::InvalidValue(format!(
-                        "invalid URL at index {}: {}",
-                        i, e
-                    )));
-                }
-            }
-        }
-
-        Ok(result)
-    }
-}
-
 // Convert to Vec<String> and use its IntoR.
 into_r_infallible!(Vec<Url>, |this| this
     .into_iter()
     .map(|u| u.as_str().to_string())
     .collect::<Vec<String>>()
     .into_sexp());
-// endregion
-
-// region: Vec<Option<Url>> conversions (NA-aware vectors)
-
-impl TryFromSexp for Vec<Option<Url>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
-            if charsxp == SEXP::na_string() {
-                result.push(None);
-            } else {
-                let s = unsafe { charsxp_to_str(charsxp) };
-                match Url::parse(s) {
-                    Ok(url) => result.push(Some(url)),
-                    Err(e) => {
-                        return Err(SexpError::InvalidValue(format!(
-                            "invalid URL at index {}: {}",
-                            i, e
-                        )));
-                    }
-                }
-            }
-        }
-
-        Ok(result)
-    }
-}
-
 // Convert to Vec<Option<String>> and use its IntoR.
 into_r_infallible!(Vec<Option<Url>>, |this| this
     .into_iter()

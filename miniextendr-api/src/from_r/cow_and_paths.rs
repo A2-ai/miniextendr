@@ -19,8 +19,10 @@ use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::SEXP;
+use crate::from_r::{
+    SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str, map_strsxp_with,
+};
 
 /// Blanket impl: Convert R vector to `Cow<'static, [T]>` where T: RNativeType.
 ///
@@ -85,28 +87,13 @@ impl TryFromSexp for Vec<Cow<'static, str>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
+        map_strsxp_with(sexp, |charsxp, _i| {
             if charsxp == SEXP::na_string() || charsxp == SEXP::blank_string() {
-                result.push(Cow::Borrowed(""));
+                Ok(Cow::Borrowed(""))
             } else {
-                result.push(unsafe { charsxp_to_cow(charsxp) });
+                Ok(unsafe { charsxp_to_cow(charsxp) })
             }
-        }
-
-        Ok(result)
+        })
     }
 }
 
@@ -117,29 +104,14 @@ impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
+        map_strsxp_with(sexp, |charsxp, _i| {
             if charsxp == SEXP::na_string() {
-                result.push(None);
+                Ok(None)
             } else {
                 // charsxp_to_cow returns Cow::Borrowed("") for R_BlankString-equivalent
-                result.push(Some(unsafe { charsxp_to_cow(charsxp) }));
+                Ok(Some(unsafe { charsxp_to_cow(charsxp) }))
             }
-        }
-
-        Ok(result)
+        })
     }
 }
 
@@ -165,29 +137,14 @@ impl TryFromSexp for Vec<String> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
+        map_strsxp_with(sexp, |charsxp, _i| {
             let s = if charsxp == SEXP::na_string() {
                 String::new()
             } else {
                 unsafe { charsxp_to_str(charsxp) }.to_owned()
             };
-            result.push(s);
-        }
-
-        Ok(result)
+            Ok(s)
+        })
     }
 }
 
@@ -198,32 +155,12 @@ impl TryFromSexp for Vec<&'static str> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
+        map_strsxp_with(sexp, |charsxp, _i| {
+            if charsxp == SEXP::na_string() || charsxp == SEXP::blank_string() {
+                return Ok("");
             }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
-            if charsxp == SEXP::na_string() {
-                result.push("");
-                continue;
-            }
-            if charsxp == SEXP::blank_string() {
-                result.push("");
-                continue;
-            }
-            result.push(unsafe { charsxp_to_str(charsxp) });
-        }
-
-        Ok(result)
+            Ok(unsafe { charsxp_to_str(charsxp) })
+        })
     }
 }
 
@@ -232,32 +169,15 @@ impl TryFromSexp for Vec<Option<&'static str>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
+        map_strsxp_with(sexp, |charsxp, _i| {
             if charsxp == SEXP::na_string() {
-                result.push(None);
-                continue;
+                return Ok(None);
             }
             if charsxp == SEXP::blank_string() {
-                result.push(Some(""));
-                continue;
+                return Ok(Some(""));
             }
-            result.push(Some(unsafe { charsxp_to_str(charsxp) }));
-        }
-
-        Ok(result)
+            Ok(Some(unsafe { charsxp_to_str(charsxp) }))
+        })
     }
 }
 

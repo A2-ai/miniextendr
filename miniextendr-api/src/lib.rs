@@ -211,7 +211,6 @@
 //! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 //! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
-//! | `refcount-fast-hash` | Use ahash for refcount arenas (opt-in, not DOS-resistant) |
 // Re-export linkme for use by generated code (distributed_slice entries)
 #[doc(hidden)]
 pub use linkme;
@@ -576,13 +575,26 @@ macro_rules! r_str {
 /// source is lowered to a `&'static str` (`stringify!`), so there is no
 /// `format!` allocation at the call site.
 ///
+/// This proc-macro additionally validates a conservative subset of known-bad
+/// R syntax constructs (trailing binary operators, consecutive non-unary
+/// binary operators, bare `if`/`while`/`for` without a body, etc.) and emits
+/// a precise compile error pointing at the offending token. Empty (missing)
+/// call arguments — `f(, x)`, `matrix(, 2, 2)` — are valid R and pass.
+///
 /// # What is deferred
 ///
-/// True build-time R-grammar validation (embedding R's parser / invoking
-/// `R_ParseVector` from `build.rs`) and direct `Rf_lang*` call-tree lowering
-/// (skipping the runtime parser entirely) are tracked as a follow-up — see the
-/// issue referenced in the crate docs. Until then `r!` parses its static
-/// string at first evaluation, exactly like `r_str!`.
+/// Direct `Rf_lang*` call-tree lowering (skipping the runtime parser entirely)
+/// is tracked as a follow-up — see issue #938 (item 2). Until then `r!` parses
+/// its static string at first evaluation, exactly like `r_str!`.
+///
+/// # Non-goals
+///
+/// A complete R grammar validator is not achievable over Rust tokens:
+/// - Single-quoted strings (`'hello'`) and backtick-quoted names (`` `foo` ``)
+///   already die at the Rust lexer — nothing to validate.
+/// - `%op%` tokenises as `%`, ident, `%` and is accepted without analysis.
+/// - Anything the validator cannot confidently classify as wrong passes through
+///   unvalidated (conservative reject-only-known-bad design).
 ///
 /// # Forms
 ///
@@ -613,20 +625,8 @@ macro_rules! r_str {
 /// let rows = r!(getFromNamespace(".theoph_rows", "dataframeflows")())?;
 /// let in_env = r!(env: my_env; x + 1)?;
 /// ```
-#[macro_export]
-macro_rules! r {
-    (env: $env:expr; $($code:tt)+) => {
-        unsafe { $crate::expression::r_eval_str(::core::stringify!($($code)+), $env) }
-    };
-    ($($code:tt)+) => {
-        unsafe {
-            $crate::expression::r_eval_str(
-                ::core::stringify!($($code)+),
-                $crate::sys::R_GlobalEnv,
-            )
-        }
-    };
-}
+#[doc(inline)]
+pub use miniextendr_macros::r;
 
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]
@@ -813,10 +813,7 @@ pub use protect_pool::{ProtectKey, ProtectPool};
 
 // Reference-counted GC protection (BTreeMap + VECSXP backing)
 pub mod refcount_protect;
-pub use refcount_protect::{
-    Arena, ArenaGuard, HashMapArena, MapStorage, RefCountedArena, RefCountedGuard,
-    ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
-};
+pub use refcount_protect::{ArenaGuard, RefCountedArena, ThreadLocalArena};
 
 pub mod allocator;
 pub use allocator::RAllocator;
@@ -940,6 +937,8 @@ pub use optionals::rayon_bridge;
 #[cfg(feature = "rayon")]
 pub use optionals::{RParallelExtend, RParallelIterator};
 
+#[cfg(feature = "rand")]
+pub use optionals::rand;
 #[cfg(feature = "rand_distr")]
 pub use optionals::rand_distr;
 #[cfg(feature = "rand")]

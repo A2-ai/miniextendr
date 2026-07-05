@@ -2938,12 +2938,15 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         // Build method context for .Call generation
         let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
 
-        // Normalize coercion target for R generic name
-        // R has both as.numeric and as.double - they're equivalent, but we use the specified one
+        // Normalize coercion target for R generic name.
+        // `as.numeric()` is a thin base-R wrapper that dispatches via the internal
+        // generic `as.double` (not `as.numeric` itself) — an `as.numeric.<Class>`
+        // S3 method is never consulted. Register under `as.double` for both
+        // "numeric" and "double" targets so `as.double(x)` AND `as.numeric(x)`
+        // both dispatch to it.
         // Some targets use non-standard S3 generic names (e.g., tibble uses as_tibble, not as.tibble)
         let r_generic = match coercion_target.as_str() {
-            "numeric" => "as.numeric".to_string(),
-            "double" => "as.double".to_string(),
+            "numeric" | "double" => "as.double".to_string(),
             "tibble" => "as_tibble".to_string(),
             "ts" => "as.ts".to_string(),
             other => format!("as.{}", other),
