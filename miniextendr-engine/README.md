@@ -5,7 +5,7 @@ Standalone R embedding engine for Rust binaries and tests.
 This crate centralizes:
 - Linking to `libR` (via `build.rs`).
 - R initialization (`Rf_initialize_R`) and mainloop setup.
-- A minimal runtime handle for processing events and interrupts.
+- A minimal runtime handle marking R as initialized for the process.
 
 > Note: This crate uses **non-API** R internals (`Rembedded.h`,
 > `Rinterface.h`). It is **not** intended for use inside R packages.

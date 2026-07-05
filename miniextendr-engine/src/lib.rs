@@ -1,8 +1,8 @@
 //! miniextendr-engine: standalone R embedding for Rust binaries and tests.
 //!
 //! This crate centralizes `libR` linking (via `build.rs`), R initialization, and
-//! a minimal runtime handle for processing events and interrupts. It is intended
-//! for Rust-only executables and integration tests that embed R.
+//! a minimal runtime handle. It is intended for Rust-only executables and
+//! integration tests that embed R.
 //!
 //! **Not for R packages:** this crate uses non-API R internals
 //! (`Rembedded.h`, `Rinterface.h`). For R packages, depend on `miniextendr-api`
@@ -50,7 +50,6 @@
 
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
-use std::path::PathBuf;
 use std::process::Command;
 
 // Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
@@ -60,10 +59,6 @@ unsafe extern "C" {
     fn Rf_initialize_R(argc: c_int, argv: *mut *mut c_char) -> c_int;
     #[allow(dead_code)]
     fn Rf_endEmbeddedR(fatal: c_int);
-
-    // R event loop
-    fn R_ProcessEvents();
-    fn R_CheckUserInterrupt();
 
     // Setup functions
     fn setup_Rmainloop();
@@ -127,7 +122,6 @@ pub struct REngineBuilder {
     args: Vec<String>,
     interactive: bool,
     signal_handlers: bool,
-    r_home: Option<PathBuf>,
 }
 
 impl Default for REngineBuilder {
@@ -149,7 +143,6 @@ impl REngineBuilder {
             ],
             interactive: false,
             signal_handlers: false,
-            r_home: None,
         }
     }
 
@@ -177,25 +170,6 @@ impl REngineBuilder {
         self
     }
 
-    /// Set the R_HOME directory explicitly.
-    ///
-    /// By default, R_HOME is auto-detected by running `R RHOME` or reading
-    /// the `R_HOME` environment variable. Use this method to override that
-    /// behavior with an explicit path.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let engine = REngine::build()
-    ///     .r_home("/opt/R/4.4.0/lib/R")
-    ///     .init()
-    ///     .expect("Failed to initialize R");
-    /// ```
-    pub fn r_home(mut self, path: impl Into<PathBuf>) -> Self {
-        self.r_home = Some(path.into());
-        self
-    }
-
     /// Initialize the R runtime with the configured settings.
     ///
     /// # Safety
@@ -213,7 +187,7 @@ impl REngineBuilder {
             return Err(REngineError::AlreadyInitialized);
         }
 
-        ensure_r_home_env(self.r_home.as_ref())?;
+        ensure_r_home_env()?;
 
         // Convert args to C strings
         let c_args: Vec<CString> = self
@@ -288,31 +262,6 @@ impl REngine {
     /// Create a new builder for configuring R initialization.
     pub fn build() -> REngineBuilder {
         REngineBuilder::new()
-    }
-
-    /// Process pending R events.
-    ///
-    /// Call this periodically to allow R to handle events, especially
-    /// when running a long computation.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the thread that initialized R.
-    pub unsafe fn process_events(&self) {
-        unsafe {
-            R_ProcessEvents();
-        }
-    }
-
-    /// Check for user interrupts (Ctrl+C).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the thread that initialized R.
-    pub unsafe fn check_interrupt(&self) {
-        unsafe {
-            R_CheckUserInterrupt();
-        }
     }
 }
 
@@ -398,17 +347,7 @@ impl std::fmt::Display for REngineError {
 
 impl std::error::Error for REngineError {}
 
-fn ensure_r_home_env(explicit_path: Option<&PathBuf>) -> Result<(), REngineError> {
-    // If an explicit path was provided, use it
-    if let Some(path) = explicit_path {
-        // SAFETY: We call this during single-threaded startup (before initializing
-        // R and before spawning any worker threads).
-        unsafe {
-            std::env::set_var("R_HOME", path);
-        }
-        return Ok(());
-    }
-
+fn ensure_r_home_env() -> Result<(), REngineError> {
     // If R_HOME is already set, use it
     if std::env::var_os("R_HOME").is_some() {
         return Ok(());
