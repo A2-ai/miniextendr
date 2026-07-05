@@ -1815,4 +1815,127 @@ macro_rules! impl_vec_option_try_from_sexp_list {
         }
     };
 }
+
+/// Implement the four string-parse `TryFromSexp` impls (`T`, `Option<T>`,
+/// `Vec<T>`, `Vec<Option<T>>`) for a type parsed from an R character vector.
+///
+/// Sibling of [`into_r_infallible!`](crate::into_r) for the reverse direction:
+/// every "parse a scalar type out of an R string" integration (uuid, url,
+/// regex, num-bigint) used to hand-write these four impls — some reinventing
+/// the STRSXP validation `String`'s own `TryFromSexp` already performs.
+/// This macro delegates to `Option<String>` / `Vec<Option<String>>`, so type,
+/// length, and NA checks live in exactly one place.
+///
+/// Semantics:
+/// - `T`: `NA_character_` / `NULL` → `SexpError::Na`; parse failure →
+///   `InvalidValue("invalid <label>: <err>")`.
+/// - `Option<T>`: `NA_character_` / `NULL` → `None`.
+/// - `Vec<T>`: any NA element →
+///   `InvalidValue("NA at index <i> not allowed for Vec<T>")`; parse failure →
+///   `InvalidValue("invalid <label> at index <i>: <err>")`.
+/// - `Vec<Option<T>>`: NA elements → `None`; parse failures error with index.
+///
+/// The parse body is a closure-style `|s| expr` where `s: &str`, returning
+/// `Result<T, E>` with `E: Display`.
+///
+/// ```ignore
+/// try_from_sexp_via_str_parse!(Uuid, "UUID", |s| Uuid::parse_str(s));
+/// ```
+#[macro_export]
+macro_rules! try_from_sexp_via_str_parse {
+    ($ty:ty, $label:literal, |$s:ident| $parse:expr) => {
+        impl $crate::from_r::TryFromSexp for $ty {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                let s = opt.ok_or($crate::from_r::SexpError::Na($crate::from_r::SexpNaError {
+                    sexp_type: $crate::SEXPTYPE::STRSXP,
+                }))?;
+                let $s: &str = &s;
+                ($parse).map_err(|e| {
+                    $crate::from_r::SexpError::InvalidValue(format!(
+                        concat!("invalid ", $label, ": {}"),
+                        e
+                    ))
+                })
+            }
+        }
+
+        impl $crate::from_r::TryFromSexp for Option<$ty> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                match opt {
+                    None => Ok(None),
+                    Some(s) => {
+                        let $s: &str = &s;
+                        ($parse).map(Some).map_err(|e| {
+                            $crate::from_r::SexpError::InvalidValue(format!(
+                                concat!("invalid ", $label, ": {}"),
+                                e
+                            ))
+                        })
+                    }
+                }
+            }
+        }
+
+        impl $crate::from_r::TryFromSexp for Vec<$ty> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, opt)| {
+                        let s = opt.ok_or_else(|| {
+                            $crate::from_r::SexpError::InvalidValue(format!(
+                                concat!(
+                                    "NA at index {} not allowed for Vec<",
+                                    stringify!($ty),
+                                    ">"
+                                ),
+                                i
+                            ))
+                        })?;
+                        let $s: &str = &s;
+                        ($parse).map_err(|e| {
+                            $crate::from_r::SexpError::InvalidValue(format!(
+                                concat!("invalid ", $label, " at index {}: {}"),
+                                i, e
+                            ))
+                        })
+                    })
+                    .collect()
+            }
+        }
+
+        impl $crate::from_r::TryFromSexp for Vec<Option<$ty>> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, opt)| match opt {
+                        None => Ok(None),
+                        Some(s) => {
+                            let $s: &str = &s;
+                            ($parse).map(Some).map_err(|e| {
+                                $crate::from_r::SexpError::InvalidValue(format!(
+                                    concat!("invalid ", $label, " at index {}: {}"),
+                                    i, e
+                                ))
+                            })
+                        }
+                    })
+                    .collect()
+            }
+        }
+    };
+}
 // endregion
