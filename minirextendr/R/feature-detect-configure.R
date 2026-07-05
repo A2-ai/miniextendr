@@ -271,20 +271,12 @@ list_cargo_features <- function(path = ".") {
   manifest_path <- cargo_toml_path()
 
   # Run cargo metadata (--no-deps: only our package, no transitive deps)
-  result <- run_command("cargo", c(
-    "metadata", "--format-version=1", "--no-deps",
+  result <- run_cargo("metadata", c(
+    "--format-version=1", "--no-deps",
     "--manifest-path", manifest_path
-  ))
+  ), quiet = TRUE)
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo metadata failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  json <- paste(result, collapse = "\n")
+  json <- paste(result$output, collapse = "\n")
   parsed <- parse_cargo_metadata_json(json)
 
   # Check which features lack detection rules

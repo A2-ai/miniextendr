@@ -1,5 +1,94 @@
 # Cargo command wrappers
 
+#' Run a cargo subcommand with logging and status checking
+#'
+#' Internal helper wrapping `run_with_logging()` + `check_result()` (see
+#' `system.R`) -- the run/status-check/verbatim-tail behavior every cargo.R
+#' wrapper needs. Aborts via `check_result()` if the subcommand exits
+#' non-zero; otherwise echoes the captured output verbatim unless `quiet`
+#' is `TRUE`.
+#'
+#' @param subcommand Cargo subcommand, e.g. `"build"`, `"check"`, `"add"`.
+#' @param args Character vector of arguments (not including the subcommand).
+#' @param quiet Logical. If `TRUE`, suppress the verbatim output echo.
+#' @param wd Working directory (`NULL` for current).
+#' @return Invisibly, the list returned by `run_with_logging()` (`$status`,
+#'   `$output`, `$log_file`, `$success`).
+#' @noRd
+run_cargo <- function(subcommand, args = character(), quiet = FALSE, wd = NULL) {
+  result <- run_with_logging(
+    "cargo", c(subcommand, args),
+    log_prefix = paste0("cargo-", subcommand),
+    wd = wd
+  )
+
+  check_result(result, paste("cargo", subcommand))
+
+  if (!quiet && length(result$output) > 0) {
+    cli::cli_verbatim(result$output)
+  }
+
+  invisible(result)
+}
+
+#' Build the common cargo feature/target flags shared by build-like commands
+#'
+#' Internal helper for the `--release`/`--no-default-features`/
+#' `--all-features`/`--features`/`--target`/`--offline`/`--quiet` flag shape
+#' repeated across `cargo_build()`, `cargo_check()`, `cargo_test()`,
+#' `cargo_clippy()`, and `cargo_doc()`. Commands that don't accept a given
+#' flag (e.g. `cargo_doc()` has no `--release`) simply leave the
+#' corresponding argument at its default `FALSE`/`NULL`, which is a no-op.
+#'
+#' @param release Logical. If TRUE, add `--release`.
+#' @param no_default_features Logical. If TRUE, add `--no-default-features`.
+#' @param all_features Logical. If TRUE, add `--all-features`.
+#' @param features Character vector of features to activate.
+#' @param target Character. Target platform triple.
+#' @param offline Logical. If TRUE, add `--offline`.
+#' @param quiet Logical. If TRUE, add `--quiet`.
+#' @return Character vector of flag arguments.
+#' @noRd
+cargo_common_flags <- function(release = FALSE,
+                                no_default_features = FALSE,
+                                all_features = FALSE,
+                                features = NULL,
+                                target = NULL,
+                                offline = FALSE,
+                                quiet = FALSE) {
+  args <- character()
+
+  if (release) {
+    args <- c(args, "--release")
+  }
+
+  if (no_default_features) {
+    args <- c(args, "--no-default-features")
+  }
+
+  if (all_features) {
+    args <- c(args, "--all-features")
+  }
+
+  if (!is.null(features) && length(features) > 0) {
+    args <- c(args, "--features", paste(features, collapse = ","))
+  }
+
+  if (!is.null(target)) {
+    args <- c(args, "--target", target)
+  }
+
+  if (offline) {
+    args <- c(args, "--offline")
+  }
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  args
+}
+
 #' Get the Cargo.toml path for current R package
 #'
 #' @return Path to src/rust/Cargo.toml
@@ -91,7 +180,7 @@ cargo_init <- function(path = ".", name = NULL, edition = "2024", quiet = FALSE)
   }
   edition <- trimws(edition)
 
-  args <- c("init", "--lib", "--vcs", "none", "--edition", edition, "--name", name)
+  args <- c("--lib", "--vcs", "none", "--edition", edition, "--name", name)
   if (quiet) {
     args <- c(args, "--quiet")
   }
@@ -99,19 +188,7 @@ cargo_init <- function(path = ".", name = NULL, edition = "2024", quiet = FALSE)
 
   cli::cli_alert("Running cargo init in {.path {rust_dir}}...")
 
-  result <- run_command("cargo", args)
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo init failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("init", args, quiet = quiet)
 
   cli::cli_alert_success("Initialized Rust crate")
   invisible(TRUE)
@@ -294,19 +371,7 @@ cargo_add <- function(path = ".",
   }
 
   # Run cargo add
-  result <- run_command("cargo", c("add", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo add failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("add", args, quiet = quiet)
 
   if (!dry_run) {
     cli::cli_alert_success("Added {.val {dep_str}}")
@@ -379,19 +444,7 @@ cargo_rm <- function(path = ".",
   dep_str <- paste(dep, collapse = ", ")
   cli::cli_alert("Removing: {.val {dep_str}}")
 
-  result <- run_command("cargo", c("remove", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo remove failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("remove", args, quiet = quiet)
 
   if (!dry_run) {
     cli::cli_alert_success("Removed {.val {dep_str}}")
@@ -459,19 +512,7 @@ cargo_update <- function(path = ".",
     cli::cli_alert("Updating: {.val {paste(dep, collapse = ', ')}}")
   }
 
-  result <- run_command("cargo", c("update", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo update failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("update", args, quiet = quiet)
 
   cli::cli_alert_success("Dependencies updated")
   invisible(TRUE)
@@ -516,54 +557,23 @@ cargo_build <- function(path = ".",
   manifest_path <- cargo_toml_path()
 
   args <- c("--manifest-path", manifest_path)
-
-  if (release) {
-    args <- c(args, "--release")
-  }
-
-  if (no_default_features) {
-    args <- c(args, "--no-default-features")
-  }
-
-  if (all_features) {
-    args <- c(args, "--all-features")
-  }
-
-  if (!is.null(features) && length(features) > 0) {
-    args <- c(args, "--features", paste(features, collapse = ","))
-  }
-
-  if (!is.null(target)) {
-    args <- c(args, "--target", target)
-  }
+  args <- c(args, cargo_common_flags(
+    release = release,
+    no_default_features = no_default_features,
+    all_features = all_features,
+    features = features,
+    target = target,
+    offline = offline,
+    quiet = quiet
+  ))
 
   if (!is.null(jobs)) {
     args <- c(args, "--jobs", as.character(jobs))
   }
 
-  if (offline) {
-    args <- c(args, "--offline")
-  }
-
-  if (quiet) {
-    args <- c(args, "--quiet")
-  }
-
   cli::cli_alert("Running cargo build...")
 
-  result <- run_command("cargo", c("build", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo build failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("build", args, quiet = quiet)
 
   cli::cli_alert_success("Build complete")
   invisible(TRUE)
@@ -602,50 +612,19 @@ cargo_check <- function(path = ".",
   manifest_path <- cargo_toml_path()
 
   args <- c("--manifest-path", manifest_path)
-
-  if (release) {
-    args <- c(args, "--release")
-  }
-
-  if (no_default_features) {
-    args <- c(args, "--no-default-features")
-  }
-
-  if (all_features) {
-    args <- c(args, "--all-features")
-  }
-
-  if (!is.null(features) && length(features) > 0) {
-    args <- c(args, "--features", paste(features, collapse = ","))
-  }
-
-  if (!is.null(target)) {
-    args <- c(args, "--target", target)
-  }
-
-  if (offline) {
-    args <- c(args, "--offline")
-  }
-
-  if (quiet) {
-    args <- c(args, "--quiet")
-  }
+  args <- c(args, cargo_common_flags(
+    release = release,
+    no_default_features = no_default_features,
+    all_features = all_features,
+    features = features,
+    target = target,
+    offline = offline,
+    quiet = quiet
+  ))
 
   cli::cli_alert("Running cargo check...")
 
-  result <- run_command("cargo", c("check", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo check failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("check", args, quiet = quiet)
 
   cli::cli_alert_success("Check complete")
   invisible(TRUE)
@@ -686,54 +665,23 @@ cargo_test <- function(path = ".",
   manifest_path <- cargo_toml_path()
 
   args <- c("--manifest-path", manifest_path)
-
-  if (release) {
-    args <- c(args, "--release")
-  }
-
-  if (no_default_features) {
-    args <- c(args, "--no-default-features")
-  }
-
-  if (all_features) {
-    args <- c(args, "--all-features")
-  }
-
-  if (!is.null(features) && length(features) > 0) {
-    args <- c(args, "--features", paste(features, collapse = ","))
-  }
-
-  if (!is.null(target)) {
-    args <- c(args, "--target", target)
-  }
+  args <- c(args, cargo_common_flags(
+    release = release,
+    no_default_features = no_default_features,
+    all_features = all_features,
+    features = features,
+    target = target,
+    offline = offline,
+    quiet = quiet
+  ))
 
   if (no_run) {
     args <- c(args, "--no-run")
   }
 
-  if (offline) {
-    args <- c(args, "--offline")
-  }
-
-  if (quiet) {
-    args <- c(args, "--quiet")
-  }
-
   cli::cli_alert("Running cargo test...")
 
-  result <- run_command("cargo", c("test", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo test failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("test", args, quiet = quiet)
 
   cli::cli_alert_success("Tests complete")
   invisible(TRUE)
@@ -774,54 +722,23 @@ cargo_clippy <- function(path = ".",
   manifest_path <- cargo_toml_path()
 
   args <- c("--manifest-path", manifest_path)
-
-  if (release) {
-    args <- c(args, "--release")
-  }
-
-  if (no_default_features) {
-    args <- c(args, "--no-default-features")
-  }
-
-  if (all_features) {
-    args <- c(args, "--all-features")
-  }
-
-  if (!is.null(features) && length(features) > 0) {
-    args <- c(args, "--features", paste(features, collapse = ","))
-  }
-
-  if (!is.null(target)) {
-    args <- c(args, "--target", target)
-  }
+  args <- c(args, cargo_common_flags(
+    release = release,
+    no_default_features = no_default_features,
+    all_features = all_features,
+    features = features,
+    target = target,
+    offline = offline,
+    quiet = quiet
+  ))
 
   if (all_targets) {
     args <- c(args, "--all-targets")
   }
 
-  if (offline) {
-    args <- c(args, "--offline")
-  }
-
-  if (quiet) {
-    args <- c(args, "--quiet")
-  }
-
   cli::cli_alert("Running cargo clippy...")
 
-  result <- run_command("cargo", c("clippy", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo clippy failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("clippy", args, quiet = quiet)
 
   cli::cli_alert_success("Clippy complete")
   invisible(TRUE)
@@ -871,19 +788,7 @@ cargo_fmt <- function(path = ".",
     cli::cli_alert("Formatting Rust sources...")
   }
 
-  result <- run_command("cargo", c("fmt", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo fmt failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("fmt", args, quiet = quiet)
 
   cli::cli_alert_success("Formatting complete")
   invisible(TRUE)
@@ -933,45 +838,18 @@ cargo_doc <- function(path = ".",
     args <- c(args, "--no-deps")
   }
 
-  if (no_default_features) {
-    args <- c(args, "--no-default-features")
-  }
-
-  if (all_features) {
-    args <- c(args, "--all-features")
-  }
-
-  if (!is.null(features) && length(features) > 0) {
-    args <- c(args, "--features", paste(features, collapse = ","))
-  }
-
-  if (!is.null(target)) {
-    args <- c(args, "--target", target)
-  }
-
-  if (offline) {
-    args <- c(args, "--offline")
-  }
-
-  if (quiet) {
-    args <- c(args, "--quiet")
-  }
+  args <- c(args, cargo_common_flags(
+    no_default_features = no_default_features,
+    all_features = all_features,
+    features = features,
+    target = target,
+    offline = offline,
+    quiet = quiet
+  ))
 
   cli::cli_alert("Building cargo docs...")
 
-  result <- run_command("cargo", c("doc", args))
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo doc failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("doc", args, quiet = quiet)
 
   cli::cli_alert_success("Docs complete")
   invisible(TRUE)
@@ -1007,23 +885,15 @@ cargo_search <- function(query, limit = 10, registry = NULL) {
 
   cli::cli_alert("Searching crates.io for: {.val {query}}")
 
-  result <- run_command("cargo", c("search", args))
+  result <- run_cargo("search", args, quiet = TRUE)
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo search failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (length(result) > 0) {
-    cli::cli_verbatim(result)
+  if (length(result$output) > 0) {
+    cli::cli_verbatim(result$output)
   } else {
     cli::cli_alert_info("No results found")
   }
 
-  invisible(result)
+  invisible(result$output)
 }
 
 #' Show dependency tree
@@ -1067,18 +937,10 @@ cargo_deps <- function(path = ".", depth = 1, duplicates = FALSE, invert = NULL)
     args <- c(args, "--invert", invert)
   }
 
-  result <- run_command("cargo", c("tree", args))
+  result <- run_cargo("tree", args, quiet = TRUE)
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo tree failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  cli::cli_verbatim(result)
-  invisible(result)
+  cli::cli_verbatim(result$output)
+  invisible(result$output)
 }
 
 #' Create a new Rust crate in a workspace
@@ -1172,7 +1034,7 @@ cargo_new <- function(path = ".",
   }
 
   # Build cargo new arguments
-  args <- c("new", name)
+  args <- c(name)
 
   if (lib) {
     args <- c(args, "--lib")
@@ -1190,19 +1052,7 @@ cargo_new <- function(path = ".",
   # Run cargo new from the appropriate directory
   cli::cli_alert("Running {.code cargo new {name}} in {.path {run_dir}}...")
 
-  result <- run_command("cargo", args, wd = run_dir)
-
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo new failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  if (!quiet && length(result) > 0) {
-    cli::cli_verbatim(result)
-  }
+  run_cargo("new", args, quiet = quiet, wd = run_dir)
 
   # Add to workspace if requested and in a workspace
   if (add_to_workspace && !is.null(workspace_root)) {
