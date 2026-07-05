@@ -5,7 +5,7 @@
 
 # Helper to skip if vctrs feature is not enabled
 skip_if_vctrs_disabled <- function() {
-  skip_if_not("vctrs" %in% miniextendr::rpkg_enabled_features(), "vctrs feature not enabled")
+  skip_if_not("vctrs" %in% miniextendr::miniextendr_enabled_features(), "vctrs feature not enabled")
   skip_if_not_installed("vctrs")
 }
 

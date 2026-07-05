@@ -143,13 +143,13 @@ test_that("SidecarS4 setters update values correctly", {
 # =============================================================================
 
 test_that("SidecarS7 constructor works", {
-  skip_if_not("s7" %in% rpkg_enabled_features(), "S7 feature not enabled")
+  skip_if_not("s7" %in% miniextendr_enabled_features(), "S7 feature not enabled")
   obj <- rdata_sidecar_s7_new(prop_int = 5L, prop_flag = TRUE, prop_name = "s7obj")
   expect_true(inherits(obj, "externalptr"))
 })
 
 test_that("SidecarS7 getters return correct initial values", {
-  skip_if_not("s7" %in% rpkg_enabled_features(), "S7 feature not enabled")
+  skip_if_not("s7" %in% miniextendr_enabled_features(), "S7 feature not enabled")
   obj <- rdata_sidecar_s7_new(prop_int = 99L, prop_flag = FALSE, prop_name = "test")
 
   expect_equal(SidecarS7_get_prop_int(obj), 99L)
@@ -158,7 +158,7 @@ test_that("SidecarS7 getters return correct initial values", {
 })
 
 test_that("SidecarS7 setters update values correctly", {
-  skip_if_not("s7" %in% rpkg_enabled_features(), "S7 feature not enabled")
+  skip_if_not("s7" %in% miniextendr_enabled_features(), "S7 feature not enabled")
   obj <- rdata_sidecar_s7_new(prop_int = 0L, prop_flag = FALSE, prop_name = "")
 
   SidecarS7_set_prop_int(obj, 77L)
@@ -176,7 +176,7 @@ test_that("SidecarS7 setters update values correctly", {
 # =============================================================================
 
 test_that("SidecarS7 properties work via S7 class", {
-  skip_if_not("s7" %in% rpkg_enabled_features(), "S7 feature not enabled")
+  skip_if_not("s7" %in% miniextendr_enabled_features(), "S7 feature not enabled")
 
   # Create via S7 class constructor
   obj <- SidecarS7(prop_int = 42L, prop_flag = TRUE, prop_name = "s7test")
@@ -202,13 +202,13 @@ test_that("SidecarS7 properties work via S7 class", {
 # =============================================================================
 
 test_that("SidecarVctrs constructor works", {
-  skip_if_not("vctrs" %in% rpkg_enabled_features(), "vctrs feature not enabled")
+  skip_if_not("vctrs" %in% miniextendr_enabled_features(), "vctrs feature not enabled")
   obj <- rdata_sidecar_vctrs_new(vec_data = c(1.0, 2.0), vec_label = "data")
   expect_true(inherits(obj, "externalptr"))
 })
 
 test_that("SidecarVctrs getters return correct initial values", {
-  skip_if_not("vctrs" %in% rpkg_enabled_features(), "vctrs feature not enabled")
+  skip_if_not("vctrs" %in% miniextendr_enabled_features(), "vctrs feature not enabled")
   obj <- rdata_sidecar_vctrs_new(vec_data = c(1.5, 2.5, 3.5), vec_label = "test_vec")
 
   expect_equal(SidecarVctrs_get_vec_data(obj), c(1.5, 2.5, 3.5))
@@ -216,7 +216,7 @@ test_that("SidecarVctrs getters return correct initial values", {
 })
 
 test_that("SidecarVctrs setters update values correctly", {
-  skip_if_not("vctrs" %in% rpkg_enabled_features(), "vctrs feature not enabled")
+  skip_if_not("vctrs" %in% miniextendr_enabled_features(), "vctrs feature not enabled")
   obj <- rdata_sidecar_vctrs_new(vec_data = c(0.0), vec_label = "old")
 
   SidecarVctrs_set_vec_data(obj, c(10.0, 20.0, 30.0))
@@ -385,7 +385,7 @@ test_that("SidecarEnv raw_slot preserves SEXP identity", {
 # =============================================================================
 
 test_that("vec_ptype2.SidecarVctrs.SidecarVctrs returns correct ptype", {
-  skip_if_not("vctrs" %in% rpkg_enabled_features(), "vctrs feature not enabled")
+  skip_if_not("vctrs" %in% miniextendr_enabled_features(), "vctrs feature not enabled")
 
   obj1 <- rdata_sidecar_vctrs_new(vec_data = c(1.0, 2.0), vec_label = "a")
   obj2 <- rdata_sidecar_vctrs_new(vec_data = c(3.0), vec_label = "b")
@@ -397,7 +397,7 @@ test_that("vec_ptype2.SidecarVctrs.SidecarVctrs returns correct ptype", {
 })
 
 test_that("vec_cast.SidecarVctrs.SidecarVctrs returns identity", {
-  skip_if_not("vctrs" %in% rpkg_enabled_features(), "vctrs feature not enabled")
+  skip_if_not("vctrs" %in% miniextendr_enabled_features(), "vctrs feature not enabled")
 
   obj <- rdata_sidecar_vctrs_new(vec_data = c(1.5, 2.5), vec_label = "test")
   ptype <- rdata_sidecar_vctrs_new(vec_data = numeric(0), vec_label = "")

@@ -2063,13 +2063,13 @@ mod vctrs_tests;
 ///
 /// This function is useful for R tests to skip tests when features are not enabled.
 ///
-/// @name rpkg_enabled_features
+/// @name miniextendr_enabled_features
 /// @return A character vector of enabled feature names.
 /// @examples
-/// rpkg_enabled_features()
+/// miniextendr_enabled_features()
 /// @export
 #[miniextendr]
-pub fn rpkg_enabled_features() -> Vec<&'static str> {
+pub fn miniextendr_enabled_features() -> Vec<&'static str> {
     let mut features = Vec::new();
 
     // Core features
