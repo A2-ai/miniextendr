@@ -132,6 +132,56 @@ fixture_serialize!(IntSubsetSerialize);
 miniextendr_api::impl_altinteger_from_data!(IntSubsetSerialize, subset, serialize);
 // endregion
 
+// region: Generic form — `impl_alt*_from_data_generic!` (audit D1)
+//
+// Coverage for the generic sibling that the ~19 hand-rolled iterator/stream
+// ALTREP adaptors (`altrep_data::iter::*`, `altrep_data::stream::*`) route
+// through: a type with a generic parameter and a `where` clause, mirroring
+// the shape those adaptors need (e.g. `IterIntCoerceData<I, T>`).
+
+/// Generic fixture: wraps any `T: Copy + Into<i32> + 'static` in a `Vec`.
+struct GenericIntFixture<T>(Vec<T>)
+where
+    T: Copy + Into<i32> + 'static;
+
+impl<T> AltrepLen for GenericIntFixture<T>
+where
+    T: Copy + Into<i32> + 'static,
+{
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<T> AltIntegerData for GenericIntFixture<T>
+where
+    T: Copy + Into<i32> + 'static,
+{
+    fn elt(&self, i: usize) -> i32 {
+        self.0[i].into()
+    }
+}
+
+// Manual (non-TypedExternal) `AltrepExtract`, generic over `T` — the
+// `fixture_extract!` helper above only takes a bare ident, not a generic type.
+impl<T> AltrepExtract for GenericIntFixture<T>
+where
+    T: Copy + Into<i32> + 'static,
+{
+    unsafe fn altrep_extract_ref(_x: SEXP) -> &'static Self {
+        unreachable!("compile-time fixture — never dispatched")
+    }
+
+    unsafe fn altrep_extract_mut(_x: SEXP) -> &'static mut Self {
+        unreachable!("compile-time fixture — never dispatched")
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data_generic!(
+    {T} GenericIntFixture<T> {T: Copy + Into<i32> + 'static}
+);
+// endregion
+
 // region: Logical family — asymmetric element types (dataptr: i32, materializing: RLogical)
 
 struct LglBasic(Vec<bool>);
@@ -186,5 +236,10 @@ fn knob_matrix_compiles() {
         assert!(<IntSubset as AltVec>::HAS_EXTRACT_SUBSET);
         assert!(<IntSubsetSerialize as AltVec>::HAS_EXTRACT_SUBSET);
         assert!(<IntBasic as AltInteger>::HAS_ELT);
+
+        // Generic form (audit D1): same bridge stack, instantiated for a
+        // type with a generic parameter + where clause.
+        assert!(<GenericIntFixture<u8> as AltVec>::HAS_DATAPTR);
+        assert!(<GenericIntFixture<u8> as AltInteger>::HAS_ELT);
     }
 }
