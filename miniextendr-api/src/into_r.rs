@@ -40,6 +40,31 @@
 //! - Inside ALTREP callbacks
 //! - Inside standalone `#[miniextendr]` functions (they run on the main thread)
 //! - Inside `extern "C-unwind"` functions called directly by R
+//!
+//! # The absence contract: what `None` becomes in R
+//!
+//! `None` does **not** map to one universal R value — it depends on the
+//! shape of `T` in `Option<T>`:
+//!
+//! - Owned scalars (`Option<i32>`, `Option<f64>`, `Option<bool>`,
+//!   `Option<String>`, and friends in [`large_integers`]) → the matching
+//!   `NA_<type>_`. R has a native NA sentinel for each of these.
+//! - `Option<&T>` where `T: Copy` (e.g. `Option<&i32>`) → `NULL`. A
+//!   reference has nothing to copy on `None`, so there is no NA to
+//!   produce. See the impl doc on `Option<&T>` in [`large_integers`].
+//! - `Option<&str>` is the one exception to the previous rule: it returns
+//!   `NA_character_`, matching `Option<String>`, because `str` is unsized
+//!   and can't use the generic `Copy`-bounded blanket impl — it has its
+//!   own hand-written impl instead.
+//! - Containers (`Option<Vec<T>>`, `Option<HashMap<..>>`, `Option<HashSet<..>>`,
+//!   `Option<BTreeMap<..>>`, `Option<BTreeSet<..>>`) → `NULL`. No container
+//!   type has a native R NA sentinel either.
+//!
+//! Changing a return type from `Option<i32>` to `Option<&i32>` or
+//! `Option<Vec<i32>>` therefore silently flips the R-visible absence value
+//! from `NA_integer_` to `NULL`, with no compiler warning. See
+//! [`result`] for the analogous (and differently-shaped) contract on
+//! `Result::Err`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;

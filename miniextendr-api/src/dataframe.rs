@@ -947,7 +947,7 @@ impl List {
 /// rather than folding into the `DataFrame::builder` vocabulary. Its inputs
 /// are [`DataFrame`]s (from any producer: [`IntoDataFrame`], the serde
 /// `vec_to_dataframe`, or [`GroupedDataFrame::frames`]); its output is a
-/// [`List`](crate::list::List).
+/// [`List`].
 ///
 /// Each [`push`](NamedDataFrameListBuilder::push) protects the input
 /// data.frame's SEXP via an internal [`ProtectScope`](crate::ProtectScope);
@@ -1041,7 +1041,7 @@ impl NamedDataFrameListBuilder {
         self.pairs.is_empty()
     }
 
-    /// Consume the builder and return the assembled named [`List`](crate::list::List).
+    /// Consume the builder and return the assembled named [`List`].
     ///
     /// The returned `List`'s SEXP is *not* separately protected on return — the
     /// caller takes responsibility for protection (typically by immediately
