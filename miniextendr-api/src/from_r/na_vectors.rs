@@ -26,7 +26,7 @@
 use crate::coerce::TryCoerce;
 use crate::from_r::{
     SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value,
-    from_numeric_vec_with, is_na_real, r_slice,
+    from_numeric_vec_with, is_na_real, map_strsxp_with, r_slice,
 };
 use crate::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -211,29 +211,13 @@ impl TryFromSexp for Vec<Option<String>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let charsxp = sexp.string_elt(i as crate::R_xlen_t);
-
+        map_strsxp_with(sexp, |charsxp, _i| {
             if charsxp == SEXP::na_string() {
-                result.push(None);
+                Ok(None)
             } else {
-                result.push(Some(unsafe { charsxp_to_str(charsxp) }.to_owned()));
+                Ok(Some(unsafe { charsxp_to_str(charsxp) }.to_owned()))
             }
-        }
-
-        Ok(result)
+        })
     }
 }
 

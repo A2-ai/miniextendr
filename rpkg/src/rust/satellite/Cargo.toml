@@ -1,0 +1,21 @@
+# A miniextendr-FREE satellite crate. Its only dependency is serde.
+#
+# Purpose: prove (and continuously experiment with) the "satellite" architecture
+# — a third-party crate that derives serde traits gets full R interop through
+# rpkg's miniextendr serde bridge, without ever depending on miniextendr itself.
+#
+# Sealed `[workspace]` so it is excluded from both the miniextendr root workspace
+# and rpkg's standalone workspace; rpkg pulls it in by `path` (see ../Cargo.toml).
+[package]
+name = "satellite"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

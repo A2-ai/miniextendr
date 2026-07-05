@@ -71,3 +71,7 @@ test_that("doc_attr_basic doubles its input", {
 test_that("doc_attr_no_params returns expected string", {
   expect_equal(doc_attr_no_params(), "hello from doc_attr")
 })
+
+test_that("docs_demo_three_paras multi-paragraph roxygen fixture is callable", {
+  expect_identical(docs_demo_three_paras(), 0L)
+})

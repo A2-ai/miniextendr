@@ -189,7 +189,6 @@ unstable in R itself; use it only when you control the runtime environment.
 Default features:
 
 - `doc-lint` - Lints exported docs/roxygen during macro expansion.
-- `refcount-fast-hash` - Uses `ahash` for refcount-protect arenas.
 
 ### Runtime and build behavior
 

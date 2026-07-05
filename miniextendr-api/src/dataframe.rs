@@ -38,6 +38,9 @@ use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list}
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use std::ffi::CStr;
 
+pub mod group;
+pub use group::{GroupKey, GroupedDataFrame, group_rows};
+
 // region: Error type
 
 /// Error returned by any [`DataFrame`] construction, read, or conversion path.
@@ -66,6 +69,16 @@ pub enum DataFrameError {
     /// A row could not be turned into named columns (e.g. unnamed list elements
     /// in a `IntoList`-derived row). Replaces the old `panic!` on this path.
     UnnamedColumns,
+    /// [`DataFrame::group_by`] referenced a column name that does not exist.
+    NoSuchColumn(String),
+    /// [`DataFrame::group_by`] on a column type with no sane grouping
+    /// semantics (doubles, list-columns, …).
+    UnsupportedGroupColumn {
+        /// The offending column name.
+        column: String,
+        /// Its SEXPTYPE, rendered for the message.
+        type_of: String,
+    },
     /// A serde-driven schema/serialize/deserialize failure (the bridged
     /// `RSerdeError` text) or another conversion failure carried as a message.
     Conversion(String),
@@ -92,6 +105,15 @@ impl std::fmt::Display for DataFrameError {
             DataFrameError::UnnamedColumns => {
                 write!(f, "cannot create data frame from unnamed list elements")
             }
+            DataFrameError::NoSuchColumn(name) => {
+                write!(f, "no such column: {:?}", name)
+            }
+            DataFrameError::UnsupportedGroupColumn { column, type_of } => write!(
+                f,
+                "cannot group by column {:?} ({}): supported key types are factor, \
+                 character, integer, and logical — cut() or factor() the column first",
+                column, type_of
+            ),
             DataFrameError::Conversion(msg) => write!(f, "{}", msg),
         }
     }
@@ -764,11 +786,22 @@ impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T> {
 
 impl<T: DataFrameRowConvert> FromDataFrame for Vec<T> {
     fn from_dataframe(df: &DataFrame) -> Result<Self, DataFrameError> {
+        // Root the input across the read. A `.Call` caller gets this from R's
+        // argument frame, but a Rust caller may hand in a freshly-built,
+        // unprotected frame (`into_dataframe` returns an unrooted SEXP wrapper);
+        // reader-internal allocations would reclaim it mid-read under
+        // `gctorture(TRUE)` (caught by gc_stress_reader_nested_flatten).
+        // Mirrors the guard in serde's `dataframe_to_vec` — see
+        // reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md.
+        // SAFETY: reader entry runs on the R main thread; `df` wraps a valid SEXP.
+        let _input = unsafe { crate::OwnedProtect::new(df.as_sexp()) };
         T::rows_from_dataframe(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 
     #[cfg(feature = "rayon")]
     fn from_dataframe_par(df: &DataFrame) -> Result<Self, DataFrameError> {
+        // SAFETY: as in `from_dataframe` above.
+        let _input = unsafe { crate::OwnedProtect::new(df.as_sexp()) };
         T::rows_from_dataframe_par(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 }
@@ -900,6 +933,136 @@ impl List {
 }
 // endregion
 
+// region: NamedDataFrameListBuilder (moved from serde::columnar — no serde dependency)
+
+/// Assemble a named list whose elements are [`DataFrame`]s,
+/// without per-result `OwnedProtect` bookkeeping.
+///
+/// # Why this is distinct from [`DataFrame::builder`]
+///
+/// [`DataFrame::builder`](crate::dataframe::DataFrame::builder) and the serde
+/// `SerdeRowBuilder` both produce a *single* [`DataFrame`]. This builder
+/// produces a different shape — a named *list of* data.frames, e.g.
+/// `list(results = df, error = df)` — so it deliberately keeps its own name
+/// rather than folding into the `DataFrame::builder` vocabulary. Its inputs
+/// are [`DataFrame`]s (from any producer: [`IntoDataFrame`], the serde
+/// `vec_to_dataframe`, or [`GroupedDataFrame::frames`]); its output is a
+/// [`List`].
+///
+/// Each [`push`](NamedDataFrameListBuilder::push) protects the input
+/// data.frame's SEXP via an internal [`ProtectScope`](crate::ProtectScope);
+/// [`build`](NamedDataFrameListBuilder::build) consumes the builder and emits
+/// a named list via [`List::from_raw_pairs`](crate::list::List::from_raw_pairs).
+/// The scope drops at the end of `build`, releasing the per-input protects —
+/// by which point the children are reachable from the assembled list.
+///
+/// # Example
+///
+/// ```ignore
+/// let result = NamedDataFrameListBuilder::new()
+///     .push("results", oks.into_dataframe()?)
+///     .push("error",   errs.into_dataframe()?)
+///     .build();
+/// ```
+pub struct NamedDataFrameListBuilder {
+    scope: crate::ProtectScope,
+    pairs: Vec<(String, SEXP)>,
+}
+
+impl NamedDataFrameListBuilder {
+    /// Create an empty builder.
+    ///
+    /// # Safety (caller)
+    ///
+    /// Must be called from the R main thread. The internal
+    /// [`ProtectScope`](crate::ProtectScope) carries `!Send + !Sync`
+    /// so the builder cannot be moved to another thread.
+    pub fn new() -> Self {
+        Self {
+            // SAFETY: ProtectScope requires the R main thread. The builder is
+            // constructible only on the R main thread; ProtectScope carries
+            // NoSendSync so it cannot be moved off-thread.
+            scope: unsafe { crate::ProtectScope::new() },
+            pairs: Vec::new(),
+        }
+    }
+
+    /// Create a builder pre-allocated for `n` entries.
+    ///
+    /// Equivalent to [`new`](Self::new) but avoids repeated re-allocations
+    /// when the number of partitions is known up front.
+    pub fn with_capacity(n: usize) -> Self {
+        Self {
+            scope: unsafe { crate::ProtectScope::new() },
+            pairs: Vec::with_capacity(n),
+        }
+    }
+
+    /// Append a named data.frame. The input's SEXP is protected
+    /// internally for the lifetime of the builder.
+    #[must_use]
+    pub fn push<S: Into<String>>(mut self, name: S, df: DataFrame) -> Self {
+        use crate::IntoR as _;
+        let sexp = df.into_sexp();
+        // SAFETY: R main thread (constructor invariant); sexp is a valid
+        // VECSXP just produced by DataFrame::into_sexp.
+        unsafe {
+            self.scope.protect_raw(sexp);
+        }
+        self.pairs.push((name.into(), sexp));
+        self
+    }
+
+    /// Append an arbitrary SEXP under a name, protected like
+    /// [`push`](Self::push). Used by the serde split-shape writer to carry
+    /// the caller-supplied empty-`Ok` sentinel, which is deliberately not a
+    /// `DataFrame`.
+    ///
+    /// # Safety
+    ///
+    /// `sexp` must be a valid R object; R main thread (constructor invariant).
+    #[cfg(feature = "serde")]
+    #[must_use]
+    pub(crate) unsafe fn push_raw<S: Into<String>>(mut self, name: S, sexp: SEXP) -> Self {
+        unsafe {
+            self.scope.protect_raw(sexp);
+        }
+        self.pairs.push((name.into(), sexp));
+        self
+    }
+
+    /// Number of entries pushed so far.
+    pub fn len(&self) -> usize {
+        self.pairs.len()
+    }
+
+    /// Whether no entries have been pushed yet.
+    pub fn is_empty(&self) -> bool {
+        self.pairs.is_empty()
+    }
+
+    /// Consume the builder and return the assembled named [`List`].
+    ///
+    /// The returned `List`'s SEXP is *not* separately protected on return — the
+    /// caller takes responsibility for protection (typically by immediately
+    /// handing it back to R via the `.Call` return path). This matches the
+    /// contract of [`List::from_raw_pairs`](crate::list::List::from_raw_pairs).
+    pub fn build(self) -> crate::list::List {
+        // pairs[i].1 is protected by self.scope; from_raw_pairs protects the
+        // assembled VECSXP and STRSXP during construction. When self drops at
+        // this function's exit, the input SEXPs are unprotected — but they are
+        // now children of the returned list, so they remain reachable.
+        crate::list::List::from_raw_pairs(self.pairs)
+    }
+}
+
+impl Default for NamedDataFrameListBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+// endregion
+
 // region: Debug impl
 
 impl std::fmt::Debug for DataFrame {
@@ -935,6 +1098,35 @@ mod tests {
             err.to_string(),
             "cannot create data frame from unnamed list elements"
         );
+
+        let err = DataFrameError::NoSuchColumn("g".to_string());
+        assert_eq!(err.to_string(), "no such column: \"g\"");
     }
+
+    // region: NamedDataFrameListBuilder structural invariants
+
+    /// A new builder has zero length and reports is_empty().
+    #[test]
+    fn builder_new_is_empty() {
+        let b = NamedDataFrameListBuilder::default();
+        assert_eq!(b.len(), 0);
+        assert!(b.is_empty());
+    }
+
+    /// with_capacity reserves space but the builder is still empty.
+    #[test]
+    fn builder_with_capacity_starts_empty() {
+        let b = NamedDataFrameListBuilder::with_capacity(8);
+        assert_eq!(b.len(), 0);
+        assert!(b.is_empty());
+    }
+
+    /// The builder's scope count starts at zero (no protections yet).
+    #[test]
+    fn builder_scope_count_zero_before_push() {
+        let b = NamedDataFrameListBuilder::new();
+        assert_eq!(b.scope.count(), 0);
+    }
+    // endregion
 }
 // endregion

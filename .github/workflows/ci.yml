@@ -244,6 +244,9 @@ jobs:
       - name: Check templates sync
         run: just templates-check
 
+      - name: Check end-user Claude skills vs scaffold layout
+        run: just user-skills-check
+
       - name: Check lint parser sync
         run: just lint-sync-check
 
@@ -1027,8 +1030,8 @@ jobs:
   # ===========================================================================
   # rpkg's tools/detect-features.R denylists the codegen selectors
   # (worker-default, strict-default, coerce-default, r6-default, s7-default),
-  # nonapi, indicatif, growth-debug, and refcount-fast-hash, so no PR-gating
-  # job ever builds — let alone runs — the R wrappers those features generate
+  # nonapi, indicatif, and growth-debug, so no PR-gating job ever builds — let
+  # alone runs — the R wrappers those features generate
   # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
   # features on top of the auto-detected base set and runs testthat against it.
   #
@@ -1052,7 +1055,7 @@ jobs:
       matrix:
         include:
           - leg: extras
-            features: nonapi,indicatif,growth-debug,refcount-fast-hash
+            features: nonapi,indicatif,growth-debug
             filter: ""
           - leg: worker-default
             features: worker-default

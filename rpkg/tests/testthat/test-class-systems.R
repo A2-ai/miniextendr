@@ -101,6 +101,15 @@ test_that("r6_standalone_add sums", {
   expect_equal(r6_standalone_add(2L, 3L), 5L)
 })
 
+test_that("R6Rectangle methods and active bindings work", {
+  r <- R6Rectangle$new(3, 4)
+  expect_equal(r$get_width(), 3)
+  expect_equal(r$get_height(), 4)
+  # active bindings — computed property access, no parentheses
+  expect_equal(r$area, 12)
+  expect_equal(r$perimeter, 14)
+})
+
 test_that("R6Temperature active binding getters work", {
   t <- R6Temperature$new(100)  # Boiling point in Celsius
   expect_equal(t$celsius, 100)

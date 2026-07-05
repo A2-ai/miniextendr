@@ -269,6 +269,8 @@ where
         len
     );
 
+    super::parallel::ensure_pool();
+
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
@@ -504,6 +506,8 @@ where
         len
     );
 
+    super::parallel::ensure_pool();
+
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     // SAFETY: `nrow`/`ncol <= i32::MAX` asserted above, so these narrowing
@@ -597,6 +601,8 @@ where
         "with_r_array: total length {} exceeds R_xlen_t maximum",
         total_len
     );
+
+    super::parallel::ensure_pool();
 
     // Allocate, set dims, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
@@ -720,18 +726,21 @@ pub mod reduce {
 
     /// Parallel sum → R scalar (f64).
     pub fn sum(slice: &[f64]) -> SEXP {
+        super::super::parallel::ensure_pool();
         let total: f64 = slice.par_iter().sum();
         with_r_thread(move || total.into_sexp())
     }
 
     /// Parallel sum → R scalar (i32).
     pub fn sum_int(slice: &[i32]) -> SEXP {
+        super::super::parallel::ensure_pool();
         let total: i32 = slice.par_iter().sum();
         with_r_thread(move || total.into_sexp())
     }
 
     /// Parallel minimum.
     pub fn min(slice: &[f64]) -> SEXP {
+        super::super::parallel::ensure_pool();
         let min_val = slice
             .par_iter()
             .copied()
@@ -741,6 +750,7 @@ pub mod reduce {
 
     /// Parallel maximum.
     pub fn max(slice: &[f64]) -> SEXP {
+        super::super::parallel::ensure_pool();
         let max_val = slice
             .par_iter()
             .copied()
@@ -750,6 +760,7 @@ pub mod reduce {
 
     /// Parallel mean.
     pub fn mean(slice: &[f64]) -> SEXP {
+        super::super::parallel::ensure_pool();
         if slice.is_empty() {
             return with_r_thread(|| f64::NAN.into_sexp());
         }
@@ -852,6 +863,15 @@ pub trait RParallelIterator {
     /// Implementations should return an iterator that yields `Self::Item` values.
     fn par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_;
 
+    /// [`Self::par_iter`], but first ensures the rayon pool is sized per
+    /// `docs/RAYON.md`'s precedence table. Every default method below calls
+    /// this instead of `par_iter` directly — the single choke point that
+    /// makes this trait's R-callable methods CRAN-core-limit compliant.
+    fn par_iter_ready(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_ {
+        super::parallel::ensure_pool();
+        self.par_iter()
+    }
+
     /// Returns the number of elements, if known.
     ///
     /// Default implementation returns -1 (unknown).
@@ -866,7 +886,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into()).sum()
+        self.par_iter_ready().map(|x| x.into()).sum()
     }
 
     /// Computes the parallel sum of i32 elements.
@@ -874,7 +894,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<i32>,
     {
-        self.par_iter().map(|x| x.into()).sum()
+        self.par_iter_ready().map(|x| x.into()).sum()
     }
 
     /// Computes the parallel sum of i64 elements (returned as f64 for R).
@@ -882,7 +902,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<i64>,
     {
-        self.par_iter().map(|x| x.into()).sum::<i64>() as f64
+        self.par_iter_ready().map(|x| x.into()).sum::<i64>() as f64
     }
 
     /// Computes the parallel mean of f64 elements.
@@ -891,7 +911,7 @@ pub trait RParallelIterator {
         Self::Item: Into<f64>,
     {
         let (sum, count) = self
-            .par_iter()
+            .par_iter_ready()
             .map(|x| (x.into(), 1usize))
             .reduce(|| (0.0, 0), |(s1, c1), (s2, c2)| (s1 + s2, c1 + c2));
 
@@ -907,7 +927,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Ord,
     {
-        self.par_iter().min()
+        self.par_iter_ready().min()
     }
 
     /// Finds the parallel maximum.
@@ -915,7 +935,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Ord,
     {
-        self.par_iter().max()
+        self.par_iter_ready().max()
     }
 
     /// Finds the parallel minimum f64 (handles NaN).
@@ -923,7 +943,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter()
+        self.par_iter_ready()
             .map(|x| x.into())
             .reduce(|| f64::INFINITY, |a, b| a.min(b))
     }
@@ -933,7 +953,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter()
+        self.par_iter_ready()
             .map(|x| x.into())
             .reduce(|| f64::NEG_INFINITY, |a, b| a.max(b))
     }
@@ -943,7 +963,7 @@ pub trait RParallelIterator {
     /// The count is returned to R as an `int`; collections larger than
     /// `i32::MAX` saturate rather than silently wrapping.
     fn par_count(&self) -> i32 {
-        i32::try_from(self.par_iter().count()).unwrap_or(i32::MAX)
+        i32::try_from(self.par_iter_ready().count()).unwrap_or(i32::MAX)
     }
 
     /// Computes the parallel product of f64 elements.
@@ -951,7 +971,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into()).product()
+        self.par_iter_ready().map(|x| x.into()).product()
     }
 
     /// Returns true if any element satisfies the predicate (greater than threshold).
@@ -959,7 +979,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().any(|x| x.into() > threshold)
+        self.par_iter_ready().any(|x| x.into() > threshold)
     }
 
     /// Returns true if all elements satisfy the predicate (greater than threshold).
@@ -967,7 +987,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().all(|x| x.into() > threshold)
+        self.par_iter_ready().all(|x| x.into() > threshold)
     }
 
     /// Returns true if any element satisfies the predicate (less than threshold).
@@ -975,7 +995,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().any(|x| x.into() < threshold)
+        self.par_iter_ready().any(|x| x.into() < threshold)
     }
 
     /// Returns true if all elements satisfy the predicate (less than threshold).
@@ -983,7 +1003,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().all(|x| x.into() < threshold)
+        self.par_iter_ready().all(|x| x.into() < threshold)
     }
 
     /// Counts elements greater than threshold.
@@ -991,7 +1011,12 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        i32::try_from(self.par_iter().filter(|&x| x.into() > threshold).count()).unwrap_or(i32::MAX)
+        i32::try_from(
+            self.par_iter_ready()
+                .filter(|&x| x.into() > threshold)
+                .count(),
+        )
+        .unwrap_or(i32::MAX)
     }
 
     /// Counts elements less than threshold.
@@ -999,7 +1024,12 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        i32::try_from(self.par_iter().filter(|&x| x.into() < threshold).count()).unwrap_or(i32::MAX)
+        i32::try_from(
+            self.par_iter_ready()
+                .filter(|&x| x.into() < threshold)
+                .count(),
+        )
+        .unwrap_or(i32::MAX)
     }
 
     /// Counts elements equal to value (within epsilon for floats).
@@ -1008,7 +1038,7 @@ pub trait RParallelIterator {
         Self::Item: Into<f64>,
     {
         i32::try_from(
-            self.par_iter()
+            self.par_iter_ready()
                 .filter(|&x| (x.into() - value).abs() <= epsilon)
                 .count(),
         )
@@ -1026,7 +1056,7 @@ pub trait RParallelIterator {
         }
 
         let (sum_sq_diff, count) = self
-            .par_iter()
+            .par_iter_ready()
             .map(|x| {
                 let diff = x.into() - mean;
                 (diff * diff, 1usize)
@@ -1053,7 +1083,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter()
+        self.par_iter_ready()
             .filter(|&x| x.into() > threshold)
             .map(|x| x.into())
             .collect()
@@ -1064,7 +1094,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter()
+        self.par_iter_ready()
             .filter(|&x| x.into() < threshold)
             .map(|x| x.into())
             .collect()
@@ -1075,7 +1105,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into() * factor).collect()
+        self.par_iter_ready().map(|x| x.into() * factor).collect()
     }
 
     /// Applies offset and collects results (add offset).
@@ -1083,7 +1113,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into() + offset).collect()
+        self.par_iter_ready().map(|x| x.into() + offset).collect()
     }
 
     /// Clamps values to range and collects results.
@@ -1091,7 +1121,9 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into().clamp(min, max)).collect()
+        self.par_iter_ready()
+            .map(|x| x.into().clamp(min, max))
+            .collect()
     }
 
     /// Applies absolute value and collects results.
@@ -1099,7 +1131,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into().abs()).collect()
+        self.par_iter_ready().map(|x| x.into().abs()).collect()
     }
 
     /// Applies square root and collects results.
@@ -1107,7 +1139,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into().sqrt()).collect()
+        self.par_iter_ready().map(|x| x.into().sqrt()).collect()
     }
 
     /// Applies power and collects results.
@@ -1115,7 +1147,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into().powf(exp)).collect()
+        self.par_iter_ready().map(|x| x.into().powf(exp)).collect()
     }
 
     /// Applies natural log and collects results.
@@ -1123,7 +1155,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into().ln()).collect()
+        self.par_iter_ready().map(|x| x.into().ln()).collect()
     }
 
     /// Applies exp and collects results.
@@ -1131,7 +1163,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.par_iter().map(|x| x.into().exp()).collect()
+        self.par_iter_ready().map(|x| x.into().exp()).collect()
     }
 }
 
@@ -1303,6 +1335,7 @@ pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
     where
         Self::Item: RNativeType + Send + Sync,
     {
+        super::parallel::ensure_pool();
         let len = self.len();
 
         // Allocate, protect, and get data pointer on the R main thread
@@ -1364,6 +1397,7 @@ where
     where
         I: rayon::iter::IntoParallelIterator<Item = T>,
     {
+        super::parallel::ensure_pool();
         let vec: Vec<T> = pi.into_par_iter().collect();
         let sexp = with_r_thread(|| vec.into_sexp());
         crate::worker::Sendable(sexp)
@@ -1395,6 +1429,7 @@ where
     Vec<T>: IntoR,
     I: rayon::iter::IntoParallelIterator<Item = T>,
 {
+    super::parallel::ensure_pool();
     let vec: Vec<T> = iter.into_par_iter().collect();
     with_r_thread(|| vec.into_sexp())
 }

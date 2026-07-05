@@ -12,6 +12,18 @@ test_that("AltrepSexp materializes compact integer", {
   expect_equal(altrep_sexp_materialize_int(x), 1:10)
 })
 
+test_that("AltrepSexp materializes compact real", {
+  # Coercing a compact integer sequence yields an ALTREP compact real
+  # sequence (compact_intseq_Coerce in R's altclasses.c).
+  x <- as.numeric(1:10)
+  expect_true(unsafe_C_altrep_sexp_is_altrep(x))
+  expect_equal(altrep_sexp_materialize_real(x), as.numeric(1:10))
+})
+
+test_that("materialize_real errors on wrong SEXPTYPE", {
+  expect_error(altrep_sexp_materialize_real(1:10), "expected REALSXP")
+})
+
 test_that("AltrepSexp detects ALTREP string (as.character(1:10))", {
   y <- as.character(1:10)
   expect_true(unsafe_C_altrep_sexp_is_altrep(y))

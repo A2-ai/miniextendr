@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/r_wrapper_builder/tests.rs
+assertion_line: 395
 expression: output
 ---
 # Basic scalars
@@ -24,5 +25,4 @@ call_args: x, step, verbose
 
 # Missing<T> clean formals
 formals: x, y, z
-call_args: x, y, z
-missing_prelude: if (missing(y)) y <- quote(expr=); if (missing(z)) z <- quote(expr=)
+call_args: x, if (missing(y)) quote(expr=) else y, if (missing(z)) quote(expr=) else z

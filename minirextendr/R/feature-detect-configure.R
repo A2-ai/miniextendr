@@ -271,20 +271,12 @@ list_cargo_features <- function(path = ".") {
   manifest_path <- cargo_toml_path()
 
   # Run cargo metadata (--no-deps: only our package, no transitive deps)
-  result <- run_command("cargo", c(
-    "metadata", "--format-version=1", "--no-deps",
+  result <- run_cargo("metadata", c(
+    "--format-version=1", "--no-deps",
     "--manifest-path", manifest_path
-  ))
+  ), quiet = TRUE)
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    cli::cli_abort(c(
-      "cargo metadata failed",
-      "i" = paste(result, collapse = "\n")
-    ))
-  }
-
-  json <- paste(result, collapse = "\n")
+  json <- paste(result$output, collapse = "\n")
   parsed <- parse_cargo_metadata_json(json)
 
   # Check which features lack detection rules
@@ -440,10 +432,10 @@ parse_cargo_metadata_json <- function(json) {
 
 #' Generate the full robust detect-features.R skeleton
 #'
-#' Emits the Cargo-driven skeleton (parses [features] from src/rust/Cargo.toml,
+#' Emits the Cargo-driven skeleton (parses `[features]` from src/rust/Cargo.toml,
 #' applies a denylist, applies conditional rules from the markers block, sorts,
 #' and cats to stdout). The empty `rules <- list()` block between the
-#' `## BEGIN RULES` / `## END RULES` markers is where [append_feature_rule()]
+#' `## BEGIN RULES` / `## END RULES` markers is where `append_feature_rule()`
 #' writes per-feature predicates. `main()` consumes the global `rules`.
 #'
 #' @param package_name R package name
@@ -524,15 +516,12 @@ generate_empty_detect_script <- function(package_name, features_var) {
     "  #   worker-default       : separate opt-in semantic from `worker-thread`.",
     "  #   indicatif            : progress-bar integration, opt-in (not in the",
     "  #                          default integration set).",
-    "  #   refcount-fast-hash   : swaps the refcount hasher to ahash; perf knob,",
-    "  #                          opt-in (exercised by the scheduled feature-legs",
-    "  #                          CI job).",
     "  deny <- c(",
     "    \"default\", \"full\", \"nonapi\",",
     "    \"macro-coverage\", \"growth-debug\",",
     "    \"strict-default\", \"coerce-default\",",
     "    \"r6-default\", \"s7-default\", \"worker-default\",",
-    "    \"indicatif\", \"refcount-fast-hash\"",
+    "    \"indicatif\"",
     "  )",
     "",
     "  features <- setdiff(available, deny)",

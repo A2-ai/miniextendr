@@ -43,12 +43,10 @@ test_that("as.character.RCoerceTestData works", {
   expect_match(chr, "2 items")
 })
 
-test_that("as_numeric.RCoerceTestData extracts numeric values", {
+test_that("as.numeric.RCoerceTestData works", {
   obj <- RCoerceTestData$new(c("a", "b", "c"), c(1.5, 2.5, 3.5))
 
-  # Note: R's as.numeric() is a primitive that doesn't dispatch S3 methods for
-  # externalptr objects, so we use the as_numeric() wrapper instead.
-  num <- as_numeric(obj)
+  num <- as.numeric(obj)
 
   expect_type(num, "double")
   expect_equal(num, c(1.5, 2.5, 3.5))
@@ -131,4 +129,44 @@ test_that("len method works via S3 generic", {
   obj <- RCoerceTestData$new(c("a", "b", "c"), c(1, 2, 3))
 
   expect_equal(len(obj), 3L)
+})
+
+# =============================================================================
+# Exported snake_case surface (constructor aliases + underscore generics)
+# =============================================================================
+
+test_that("new_rcoercetestdata constructor alias builds a working object", {
+  obj <- new_rcoercetestdata(c("a", "b"), c(1.0, 2.0))
+  expect_true(inherits(obj, "RCoerceTestData"))
+  expect_equal(len(obj), 2L)
+})
+
+test_that("new_rcoerceerrortest constructor alias builds a working object", {
+  obj <- new_rcoerceerrortest(TRUE)
+  expect_true(inherits(obj, "RCoerceErrorTest"))
+  expect_error(as.data.frame(obj), "cannot create data.frame from empty data")
+})
+
+test_that("as_character generic dispatches like as.character", {
+  obj <- RCoerceTestData$new(c("a", "b"), c(1.0, 2.0))
+  expect_equal(as_character(obj), as.character(obj))
+  expect_error(
+    as_character(RCoerceErrorTest$new(FALSE)),
+    "intentional error for testing"
+  )
+})
+
+test_that("as_integer generic truncates values like as.integer", {
+  obj <- RCoerceTestData$new(c("a", "b", "c"), c(10.9, 20.1, 30.5))
+  expect_identical(as_integer(obj), c(10L, 20L, 30L))
+})
+
+test_that("as_numeric generic dispatches like as.numeric", {
+  obj <- RCoerceTestData$new(c("a", "b", "c"), c(1.5, 2.5, 3.5))
+  expect_equal(as_numeric(obj), as.numeric(obj))
+})
+
+test_that("as_data_frame generic dispatches like as.data.frame", {
+  obj <- RCoerceTestData$new(c("a", "b"), c(1.0, 2.0))
+  expect_equal(as_data_frame(obj), as.data.frame(obj))
 })

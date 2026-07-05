@@ -85,6 +85,17 @@ pub mod rayon_bridge;
 pub use rayon_bridge::{RParallelExtend, RParallelIterator};
 // endregion
 
+// region: Parallel - thread pool control
+
+/// Thread pool sizing, CRAN compliance (`_R_CHECK_LIMIT_CORES_`), and
+/// cgroup-aware defaults for the rayon bridge. See `docs/RAYON.md`
+/// ("Controlling parallelism from R").
+///
+/// Enable with `features = ["rayon"]`.
+#[cfg(feature = "rayon")]
+pub mod parallel;
+// endregion
+
 // region: Rand - Random number generation
 
 /// Integration with the `rand` crate for R's RNG.
@@ -99,6 +110,13 @@ pub use rayon_bridge::{RParallelExtend, RParallelIterator};
 pub mod rand_impl;
 #[cfg(feature = "rand")]
 pub use rand_impl::{RDistributionOps, RDistributions, RRng, RRngOps};
+
+/// Re-export of `rand` so downstream crates can name its traits
+/// (`RngExt`, `SeedableRng`, …) at the exact version [`RRng`] implements —
+/// a mismatched direct `rand` dependency would fail trait coherence.
+/// Enable with `features = ["rand"]`.
+#[cfg(feature = "rand")]
+pub use rand;
 
 /// Re-export of `rand_distr` for probability distributions.
 ///

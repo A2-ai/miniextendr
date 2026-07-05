@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
-use crate::dataframe::DataFrame;
+use crate::dataframe::{DataFrame, NamedDataFrameListBuilder};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
@@ -158,118 +158,6 @@ pub fn vec_to_dataframe<T: Serialize>(
     Ok(unsafe { assemble_with_scope(&schema, &columns, nrow, scope) })
 }
 
-// region: NamedDataFrameListBuilder
-
-/// Assemble a named list whose elements are [`DataFrame`]s,
-/// without per-result `OwnedProtect` bookkeeping.
-///
-/// # Why this is distinct from [`DataFrame::builder`]
-///
-/// [`DataFrame::builder`](crate::dataframe::DataFrame::builder) and
-/// [`SerdeRowBuilder`] both produce a *single* [`DataFrame`]. This builder
-/// produces a different shape — a named *list of* data.frames, e.g.
-/// `list(results = df, error = df)` — so it deliberately keeps its own name
-/// rather than folding into the `DataFrame::builder` vocabulary. Its inputs
-/// are [`DataFrame`]s (typically from [`vec_to_dataframe`]); its output is a
-/// [`List`](crate::list::List).
-///
-/// Each [`push`](NamedDataFrameListBuilder::push) protects the input
-/// data.frame's SEXP via an internal [`ProtectScope`](crate::ProtectScope);
-/// [`build`](NamedDataFrameListBuilder::build) consumes the builder and emits
-/// a named list via [`List::from_raw_pairs`](crate::list::List::from_raw_pairs).
-/// The scope drops at the end of `build`, releasing the per-input protects —
-/// by which point the children are reachable from the assembled list.
-///
-/// # Example
-///
-/// ```ignore
-/// let result = NamedDataFrameListBuilder::new()
-///     .push("results", vec_to_dataframe(&oks)?)
-///     .push("error",   vec_to_dataframe(&errs)?)
-///     .build();
-/// ```
-pub struct NamedDataFrameListBuilder {
-    scope: crate::ProtectScope,
-    pairs: Vec<(String, SEXP)>,
-}
-
-impl NamedDataFrameListBuilder {
-    /// Create an empty builder.
-    ///
-    /// # Safety (caller)
-    ///
-    /// Must be called from the R main thread. The internal
-    /// [`ProtectScope`](crate::ProtectScope) carries `!Send + !Sync`
-    /// so the builder cannot be moved to another thread.
-    pub fn new() -> Self {
-        Self {
-            // SAFETY: ProtectScope requires the R main thread. The builder is
-            // constructible only on the R main thread; ProtectScope carries
-            // NoSendSync so it cannot be moved off-thread.
-            scope: unsafe { crate::ProtectScope::new() },
-            pairs: Vec::new(),
-        }
-    }
-
-    /// Create a builder pre-allocated for `n` entries.
-    ///
-    /// Equivalent to [`new`](Self::new) but avoids repeated re-allocations
-    /// when the number of partitions is known up front.
-    pub fn with_capacity(n: usize) -> Self {
-        Self {
-            scope: unsafe { crate::ProtectScope::new() },
-            pairs: Vec::with_capacity(n),
-        }
-    }
-
-    /// Append a named data.frame. The input's SEXP is protected
-    /// internally for the lifetime of the builder.
-    #[must_use]
-    pub fn push<S: Into<String>>(mut self, name: S, df: DataFrame) -> Self {
-        use crate::IntoR as _;
-        let sexp = df.into_sexp();
-        // SAFETY: R main thread (constructor invariant); sexp is a valid
-        // VECSXP just produced by DataFrame::into_sexp.
-        unsafe {
-            self.scope.protect_raw(sexp);
-        }
-        self.pairs.push((name.into(), sexp));
-        self
-    }
-
-    /// Number of entries pushed so far.
-    pub fn len(&self) -> usize {
-        self.pairs.len()
-    }
-
-    /// Whether no entries have been pushed yet.
-    pub fn is_empty(&self) -> bool {
-        self.pairs.is_empty()
-    }
-
-    /// Consume the builder and return the assembled named [`List`](crate::list::List).
-    ///
-    /// The returned `List`'s SEXP is *not* separately protected on return — the
-    /// caller takes responsibility for protection (typically by immediately
-    /// handing it back to R via the `.Call` return path). This matches the
-    /// contract of [`List::from_raw_pairs`](crate::list::List::from_raw_pairs).
-    pub fn build(self) -> crate::list::List {
-        // pairs[i].1 is protected by self.scope; from_raw_pairs protects the
-        // assembled VECSXP and STRSXP during construction. When self drops at
-        // this function's exit, the input SEXPs are unprotected — but they are
-        // now children of the returned list, so they remain reachable.
-        crate::list::List::from_raw_pairs(self.pairs)
-    }
-}
-
-impl Default for NamedDataFrameListBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// endregion
-
 // region: Streaming serialize (iter_to_dataframe + SerdeRowBuilder)
 
 /// Stream rows from an iterator into a columnar data.frame.
@@ -388,6 +276,8 @@ where
     T: Serialize + Send + Sync,
     I: IntoIterator<Item = T>,
 {
+    crate::optionals::parallel::ensure_pool();
+
     // 1. Materialise. rayon needs an indexed source for ordered chunking.
     let rows: Vec<T> = iter.into_iter().collect();
     let Some((schema, merged, nrow)) = par_build_columns(&rows, nrow_hint)? else {
@@ -487,6 +377,8 @@ where
     T: Serialize + Send + Sync,
     I: IntoIterator<Item = T>,
 {
+    crate::optionals::parallel::ensure_pool();
+
     let rows: Vec<T> = iter.into_iter().collect();
     let Some((schema, merged, nrow)) = par_build_columns_growing(&rows, nrow_hint)? else {
         // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
@@ -1022,7 +914,17 @@ where
     }
 
     let ok_df = ok_builder.finish()?;
+    // Root the finished frame across `err_builder.finish()` below: `DataFrame`
+    // is an unrooted SEXP wrapper and the second finish allocates, so under
+    // `gctorture(TRUE)` the collector reclaims `ok_df` mid-assembly otherwise
+    // (caught by gc_stress_dispatch_to_dataframes; same bug class as
+    // reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md).
+    // SAFETY: R main thread (SerdeRowBuilder invariant); `ok_df` is a valid SEXP.
+    let _ok_guard = unsafe { crate::OwnedProtect::new(ok_df.as_sexp()) };
     let err_df = err_builder.finish()?;
+    // SAFETY: as above. Guards drop LIFO after the list below is assembled;
+    // both frames are additionally rooted by the builder's scope once pushed.
+    let _err_guard = unsafe { crate::OwnedProtect::new(err_df.as_sexp()) };
 
     Ok(NamedDataFrameListBuilder::with_capacity(2)
         .push(names.ok, ok_df)
@@ -3299,11 +3201,7 @@ impl crate::IntoR for DataFrameShape {
                         // SAFETY: sentinel originates from the user's `IntoR`
                         // implementation which has already produced a valid
                         // SEXP; protect via the builder's scope.
-                        unsafe {
-                            builder.scope.protect_raw(sentinel);
-                        }
-                        builder.pairs.push(("results".to_string(), sentinel));
-                        builder
+                        unsafe { builder.push_raw("results", sentinel) }
                     }
                 };
                 builder = builder.push("error", error);
@@ -4589,35 +4487,12 @@ impl<T: Serialize, E: Serialize> Serialize for CollatedResultRow<'_, T, E> {
 
 // endregion
 
-// region: Tests (NamedDataFrameListBuilder structural invariants)
+// region: Tests
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde::Serialize;
-
-    /// A new builder has zero length and reports is_empty().
-    #[test]
-    fn builder_new_is_empty() {
-        let b = NamedDataFrameListBuilder::default();
-        assert_eq!(b.len(), 0);
-        assert!(b.is_empty());
-    }
-
-    /// with_capacity reserves space but the builder is still empty.
-    #[test]
-    fn builder_with_capacity_starts_empty() {
-        let b = NamedDataFrameListBuilder::with_capacity(8);
-        assert_eq!(b.len(), 0);
-        assert!(b.is_empty());
-    }
-
-    /// The builder's scope count starts at zero (no protections yet).
-    #[test]
-    fn builder_scope_count_zero_before_push() {
-        let b = NamedDataFrameListBuilder::new();
-        assert_eq!(b.scope.count(), 0);
-    }
 
     // region: TypeSpec → ColumnType collapse
 

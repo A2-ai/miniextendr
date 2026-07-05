@@ -79,6 +79,7 @@
 
 use std::convert::Infallible;
 
+use crate::miniextendr;
 use rand::TryRng;
 
 /// A wrapper around R's random number generator that implements `rand::Rng`.
@@ -266,49 +267,50 @@ impl RDistributions for RRng {
 ///
 /// # Methods
 ///
-/// - `r_random_f64()` - Random float in [0, 1)
-/// - `r_random_i32()` - Random i32 (full range)
-/// - `r_random_bool()` - Random boolean (50/50)
-/// - `r_gen_range_f64(low, high)` - Random float in [low, high)
-/// - `r_gen_range_i32(low, high)` - Random integer in [low, high)
-/// - `r_gen_bool(p)` - Bernoulli trial with probability p
-/// - `r_shuffle(items)` - Shuffle a vector in place
-/// - `r_sample(items, n)` - Sample n items without replacement
+/// - `random_f64()` - Random float in [0, 1)
+/// - `random_i32()` - Random i32 (full range)
+/// - `random_bool()` - Random boolean (50/50)
+/// - `gen_range_f64(low, high)` - Random float in [low, high)
+/// - `gen_range_i32(low, high)` - Random integer in [low, high)
+/// - `gen_bool(p)` - Bernoulli trial with probability p
+/// - `random_f64_vec(n)` / `gen_range_f64_vec(...)` / `gen_range_i32_vec(...)`
+///   / `gen_bool_vec(...)` - Vectorized variants (default methods)
 ///
 /// # Example
 ///
 /// ```ignore
 /// use std::cell::RefCell;
-/// use rand::rngs::StdRng;
-/// use rand::SeedableRng;
+/// use miniextendr_api::rand::rngs::StdRng;
+/// use miniextendr_api::rand::{RngExt, SeedableRng};
 ///
 /// #[derive(ExternalPtr)]
 /// struct MyRng(RefCell<StdRng>);
 ///
+/// #[miniextendr]
 /// impl MyRng {
-///     fn new(seed: u64) -> Self {
-///         Self(RefCell::new(StdRng::seed_from_u64(seed)))
+///     fn new(seed: i32) -> Self {
+///         Self(RefCell::new(StdRng::seed_from_u64(u64::from(seed.unsigned_abs()))))
 ///     }
 /// }
 ///
-/// impl RRngOps for MyRng {
+/// /// RRngOps trait implementation for MyRng.
+/// #[miniextendr]
+/// impl miniextendr_api::rand_impl::RRngOps for MyRng {
 ///     fn random_f64(&self) -> f64 {
-///         use rand::RngExt;
 ///         self.0.borrow_mut().random()
 ///     }
-///     // ... implement other methods using self.0.borrow_mut()
+///     // ... implement ALL trait methods (including defaults) — the trait
+///     // vtable requires every method. Use #[miniextendr(skip)] on a method
+///     // to keep it out of R while still filling the vtable slot.
 /// }
-///
-/// #[miniextendr]
-/// impl RRngOps for MyRng {}
 /// ```
 ///
-/// In R:
+/// In R (trait methods live under the trait's namespace):
 /// ```r
 /// rng <- MyRng$new(42L)
-/// rng$r_random_f64()           # Random float in [0, 1)
-/// rng$r_gen_range_f64(0, 10)   # Random float in [0, 10)
-/// rng$r_gen_bool(0.3)          # TRUE with 30% probability
+/// rng$RRngOps$random_f64()           # Random float in [0, 1)
+/// rng$RRngOps$gen_range_f64(0, 10)   # Random float in [0, 10)
+/// rng$RRngOps$gen_bool(0.3)          # TRUE with 30% probability
 /// ```
 ///
 /// # Design Note
@@ -316,6 +318,7 @@ impl RDistributions for RRng {
 /// Like `RIterator`, this trait does NOT have a blanket impl because
 /// `rand::RngExt` methods require `&mut self`, but R's ExternalPtr pattern
 /// provides `&self`. Users must implement manually using interior mutability.
+#[miniextendr]
 pub trait RRngOps {
     /// Generate a random f64 in [0, 1).
     fn random_f64(&self) -> f64;
@@ -385,17 +388,18 @@ pub trait RRngOps {
 ///
 /// # Methods
 ///
-/// - `r_sample()` - Draw a single sample from the distribution
-/// - `r_sample_n(n)` - Draw n samples from the distribution
-/// - `r_sample_vec(n)` - Alias for sample_n
+/// - `sample()` - Draw a single sample from the distribution
+/// - `sample_n(n)` - Draw n samples from the distribution
+/// - `sample_vec(n)` - Alias for sample_n
+/// - `mean()` / `variance()` / `std_dev()` - Known statistics (default `None`)
 ///
 /// # Example
 ///
 /// ```ignore
 /// use std::cell::RefCell;
-/// use rand::rngs::StdRng;
-/// use rand::SeedableRng;
-/// use rand_distr::{Normal, Distribution};
+/// use miniextendr_api::rand::rngs::StdRng;
+/// use miniextendr_api::rand::SeedableRng;
+/// use miniextendr_api::rand_distr::{Distribution, Normal};
 ///
 /// #[derive(ExternalPtr)]
 /// struct NormalDist {
@@ -403,30 +407,33 @@ pub trait RRngOps {
 ///     rng: RefCell<StdRng>,
 /// }
 ///
+/// #[miniextendr]
 /// impl NormalDist {
-///     fn new(mean: f64, std_dev: f64, seed: u64) -> Self {
+///     fn new(mean: f64, std_dev: f64, seed: i32) -> Self {
 ///         Self {
 ///             dist: Normal::new(mean, std_dev).unwrap(),
-///             rng: RefCell::new(StdRng::seed_from_u64(seed)),
+///             rng: RefCell::new(StdRng::seed_from_u64(u64::from(seed.unsigned_abs()))),
 ///         }
 ///     }
 /// }
 ///
-/// impl RDistributionOps<f64> for NormalDist {
+/// /// RDistributionOps trait implementation for NormalDist.
+/// #[miniextendr]
+/// impl miniextendr_api::rand_impl::RDistributionOps<f64> for NormalDist {
 ///     fn sample(&self) -> f64 {
 ///         self.dist.sample(&mut *self.rng.borrow_mut())
 ///     }
+///     // ... implement ALL trait methods (including defaults) — the trait
+///     // vtable requires every method. Use #[miniextendr(skip)] on a method
+///     // to keep it out of R while still filling the vtable slot.
 /// }
-///
-/// #[miniextendr]
-/// impl RDistributionOps<f64> for NormalDist {}
 /// ```
 ///
-/// In R:
+/// In R (trait methods live under the trait's namespace):
 /// ```r
 /// dist <- NormalDist$new(mean = 0, std_dev = 1, seed = 42L)
-/// dist$r_sample()        # Single sample
-/// dist$r_sample_n(100L)  # 100 samples
+/// dist$RDistributionOps$sample()        # Single sample
+/// dist$RDistributionOps$sample_n(100L)  # 100 samples
 /// ```
 ///
 /// # Design Note
@@ -434,6 +441,7 @@ pub trait RRngOps {
 /// Like `RIterator` and `RRngOps`, this trait does NOT have a blanket impl
 /// because sampling requires mutable RNG state, but R's ExternalPtr pattern
 /// provides `&self`. Users must use interior mutability (RefCell, Mutex, etc.).
+#[miniextendr]
 pub trait RDistributionOps<T> {
     /// Draw a single sample from the distribution.
     fn sample(&self) -> T;

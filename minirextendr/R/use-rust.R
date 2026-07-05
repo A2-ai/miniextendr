@@ -39,14 +39,17 @@ use_miniextendr_rust <- function(path = ".") {
 #' via miniextendr_init!().
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `template_path()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE if file was created
 #' @export
 #' @keywords internal
-use_miniextendr_stub <- function(path = ".") {
+use_miniextendr_stub <- function(path = ".", subdir = NULL) {
   with_project(path)
   ensure_dir(usethis::proj_path("src"))
 
-  stub_src <- template_path("stub.c")
+  stub_src <- template_path("stub.c", subdir = subdir)
   stub_dest <- usethis::proj_path("src", "stub.c")
   fs::file_copy(stub_src, stub_dest, overwrite = TRUE)
   bullet_created("src/stub.c")
@@ -54,7 +57,7 @@ use_miniextendr_stub <- function(path = ".") {
   # r_shim.h wraps <Rinternals.h> in a scoped clang pragma so C TUs avoid
   # -Wno-unknown-warning-option in PKG_CFLAGS (which triggers an R CMD check
   # WARNING under --as-cran). See issue #443.
-  shim_src <- template_path("r_shim.h")
+  shim_src <- template_path("r_shim.h", subdir = subdir)
   shim_dest <- usethis::proj_path("src", "r_shim.h")
   fs::file_copy(shim_src, shim_dest, overwrite = TRUE)
   bullet_created("src/r_shim.h")
@@ -69,16 +72,21 @@ use_miniextendr_stub <- function(path = ".") {
 #' interact with miniextendr's trait system.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory prefix — set to `"rpkg"`
+#'   when scaffolding the R package subdirectory of a monorepo, where
+#'   `inst_include/mx_abi.h` lives one level deeper under the active
+#'   "monorepo" template type.
 #' @return Invisibly returns TRUE if file was created
 #' @keywords internal
-use_miniextendr_mx_abi <- function(path = ".") {
+use_miniextendr_mx_abi <- function(path = ".", subdir = NULL) {
   with_project(path)
   data <- template_data()
 
   # inst/include/ directory and header
   ensure_dir(usethis::proj_path("inst", "include"))
+  mx_abi_subdir <- if (is.null(subdir)) "inst_include" else file.path(subdir, "inst_include")
   use_template("mx_abi.h", save_as = "inst/include/mx_abi.h",
-               subdir = "inst_include", data = data)
+               subdir = mx_abi_subdir, data = data)
 
   invisible(TRUE)
 }
@@ -89,12 +97,15 @@ use_miniextendr_mx_abi <- function(path = ".") {
 #' to check `#[miniextendr]` attributes and registration consistency.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `use_template()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE if file was created
 #' @keywords internal
 #' @export
-use_miniextendr_build_rs <- function(path = ".") {
+use_miniextendr_build_rs <- function(path = ".", subdir = NULL) {
   with_project(path)
   ensure_dir(usethis::proj_path("src", "rust"))
-  use_template("build.rs", save_as = "src/rust/build.rs")
+  use_template("build.rs", save_as = "src/rust/build.rs", subdir = subdir)
   invisible(TRUE)
 }

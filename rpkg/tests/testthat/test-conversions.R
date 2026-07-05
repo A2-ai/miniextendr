@@ -635,6 +635,33 @@ test_that("extension traits (.as_named_vector / .as_named_list) work", {
   expect_equal(list_res$two, 2L)
 })
 
+# ── NamedList (O(1) lookup wrapper) ──────────────────────────────────────────
+
+test_that("NamedList get retrieves entries by name", {
+  expect_equal(conv_named_list_get(list(width = 3L, height = 4L)), 12L)
+  # missing entries fall back to the Rust-side unwrap_or default (0)
+  expect_equal(conv_named_list_get(list(width = 3L)), 0L)
+})
+
+test_that("NamedList contains checks name existence", {
+  expect_equal(
+    conv_named_list_contains(list(a = 1L, b = 2L)),
+    c(TRUE, TRUE, FALSE)
+  )
+})
+
+test_that("NamedList len counts total and named elements", {
+  expect_equal(conv_named_list_len(list(a = 1L, 2L, c = 3L)), c(3L, 2L))
+})
+
+test_that("NamedList round-trips back to an R list", {
+  res <- conv_named_list_roundtrip(list(a = 1L, b = "two"))
+  expect_type(res, "list")
+  expect_equal(names(res), c("a", "b"))
+  expect_equal(res$a, 1L)
+  expect_equal(res$b, "two")
+})
+
 # =============================================================================
 # Map conversion edge cases (Phase A1/A2)
 # =============================================================================

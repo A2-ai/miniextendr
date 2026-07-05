@@ -1606,6 +1606,7 @@ pub(super) fn derive_enum_dataframe(
             #[allow(clippy::uninit_vec)]
             pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
                 use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                ::miniextendr_api::optionals::parallel::ensure_pool();
                 let len = rows.len();
                 #(#par_col_decls)*
                 {
@@ -3313,6 +3314,7 @@ fn build_enum_reader(
         // Extract all columns on the R thread, then parallelize per-row dispatch.
         quote! {
             use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+            ::miniextendr_api::optionals::parallel::ensure_pool();
             let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                 .map_err(|e| e.to_string())?;
             let __nrow = __view.nrow();

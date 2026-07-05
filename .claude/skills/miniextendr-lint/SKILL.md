@@ -103,20 +103,20 @@ The S4 class codegen auto-prefixes generated method names with `s4_`. Writing
 `s4_my_method` in Rust produces `s4_s4_my_method` in R.
 Fix: drop the `s4_` prefix from the Rust method name; the codegen adds it.
 
-**MXL112** — Explicit lifetime parameter on a `#[miniextendr]` fn or impl block.
-An `extern "C-unwind" #[no_mangle]` function is incompatible with any generic
-parameter, including lifetime parameters. The codegen rejects lifetime params
-at macro-expansion time; the lint catches them before expansion.
-Fix: replace `&str` with `String`, `&[T]` with `Vec<T>`, etc. Lifetime elision
-on `&str` / `&[T]` arguments works fine — the lint only fires on explicit
-`<'a>` annotations.
-
 **MXL120** — Invalid vctrs constructor or receiver.
 A vctrs constructor returns `Self` or a named type (must return `SEXP`), or a
 vctrs impl block includes an instance-method receiver (`&self`, `self: &ExternalPtr<Self>`, etc.).
 Mirrors the hard error in `miniextendr-macros`.
 Fix: change the return type to `SEXP` and ensure no instance methods are on the
 vctrs impl.
+
+**MXL303** — Trait-impl vtable symbol collision.
+Two `#[miniextendr]` trait impls collapse to the same
+`__VTABLE_{TRAIT}_FOR_{TYPE}` symbol after the macro's case-folding, producing
+duplicate `#[no_mangle]` statics and a cryptic linker error divorced from the
+source. Error severity (build-breaking).
+Fix: rename one of the colliding trait or type identifiers so the folded
+symbols differ.
 
 ### FFI safety rules (most-commonly-tripped)
 
@@ -138,6 +138,14 @@ already established is a logic error.
 Safe contexts where `*_unchecked` is valid: ALTREP callbacks, inside
 `with_r_unwind_protect`, inside `with_r_thread` blocks.
 Fix: either move the call into a safe context, or switch to the checked variant.
+
+**MXL302** — `into_sexp()` inside a `vec!` / array literal.
+Each `into_sexp()` result in the literal is an unprotected SEXP; the next
+element's allocation can trigger GC and free it (use-after-free). This is the
+lint-side guard for the `Vec<SEXP>`-across-allocations class of bugs.
+Fix: build the container first, protecting each SEXP as it is created
+(`OwnedProtect` / `ProtectScope`), instead of collecting raw `into_sexp()`
+results in one literal.
 
 ## How it works
 
@@ -172,9 +180,14 @@ exploration escape hatch only; committed code must be clean.
 - `miniextendr-lint/src/rules.rs` — rule dispatcher
 - `miniextendr-lint/src/rules/rf_error.rs` — MXL300
 - `miniextendr-lint/src/rules/ffi_unchecked.rs` — MXL301
-- `miniextendr-lint/src/rules/lifetime_param.rs` — MXL112
-- `miniextendr-lint/src/rules/impl_validation.rs` — MXL008 / MXL009 / MXL010 / MXL111
+- `miniextendr-lint/src/rules/impl_validation.rs` — MXL008 / MXL009 / MXL010
 - `miniextendr-lint/src/rules/fn_visibility.rs` — MXL106
+- `miniextendr-lint/src/rules/r_reserved_params.rs` — MXL110
+- `miniextendr-lint/src/rules/s4_method_prefix.rs` — MXL111
+- `miniextendr-lint/src/rules/vctrs_self_ctor.rs` — MXL120
+- `miniextendr-lint/src/rules/export_attrs.rs` — MXL203
+- `miniextendr-lint/src/rules/vec_into_sexp.rs` — MXL302
+- `miniextendr-lint/src/rules/trait_tag_collision.rs` — MXL303
 - `miniextendr-lint/src/lint_code.rs` — MXL code registry
 - `miniextendr-lint/src/helpers.rs` — shared AST predicates
 - `miniextendr-lint/CLAUDE.md` — authoritative rule catalogue
@@ -185,9 +198,11 @@ exploration escape hatch only; committed code must be clean.
   reachable modules, including internal FFI shims. If you see MXL300 on a path
   you didn't write, it is still a bug — the call should go through `panic!()`.
 
-- **MXL112 does not fire on lifetime elision.** `fn foo(x: &str)` is fine —
-  the macro infers the conversion internally. Only explicit `<'a>` annotations
-  trigger MXL112.
+- **There is no lifetime-parameter lint.** Explicit lifetime params on
+  `#[miniextendr]` fns/impl blocks are allowed — lifetimes are erased at
+  codegen, so the symbol stays monomorphic. Only type/const generic params are
+  rejected, and that happens in the proc-macro, not the lint. (The former
+  MXL112 rule is retired.)
 
 - **Cfg-gated modules are only linted when the feature is active.** If a rule
   does not fire during normal `cargo check` but fires in CI with a large feature

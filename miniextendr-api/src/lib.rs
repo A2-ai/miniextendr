@@ -211,7 +211,6 @@
 //! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 //! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
-//! | `refcount-fast-hash` | Use ahash for refcount arenas (opt-in, not DOS-resistant) |
 // Re-export linkme for use by generated code (distributed_slice entries)
 #[doc(hidden)]
 pub use linkme;
@@ -653,7 +652,10 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 
 // The unified owned data.frame type + conversion trait family
 pub mod dataframe;
-pub use dataframe::{DataFrame, DataFrameError, FromDataFrame, IntoDataFrame};
+pub use dataframe::{
+    DataFrame, DataFrameError, FromDataFrame, GroupKey, GroupedDataFrame, IntoDataFrame,
+    NamedDataFrameListBuilder, group_rows,
+};
 
 // Closure-per-column DataFrame builder (parallel fill with `rayon`, serial
 // otherwise). Available regardless of the `rayon` feature (#1055).
@@ -809,10 +811,7 @@ pub use protect_pool::{ProtectKey, ProtectPool};
 
 // Reference-counted GC protection (BTreeMap + VECSXP backing)
 pub mod refcount_protect;
-pub use refcount_protect::{
-    Arena, ArenaGuard, HashMapArena, MapStorage, RefCountedArena, RefCountedGuard,
-    ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
-};
+pub use refcount_protect::{ArenaGuard, RefCountedArena, ThreadLocalArena};
 
 pub mod allocator;
 pub use allocator::RAllocator;
@@ -930,10 +929,14 @@ pub mod optionals;
 
 // Re-export optional types at crate root for backwards compatibility
 #[cfg(feature = "rayon")]
+pub use optionals::parallel;
+#[cfg(feature = "rayon")]
 pub use optionals::rayon_bridge;
 #[cfg(feature = "rayon")]
 pub use optionals::{RParallelExtend, RParallelIterator};
 
+#[cfg(feature = "rand")]
+pub use optionals::rand;
 #[cfg(feature = "rand_distr")]
 pub use optionals::rand_distr;
 #[cfg(feature = "rand")]

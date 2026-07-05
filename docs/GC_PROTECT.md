@@ -451,17 +451,16 @@ unsafe {
 
 ### Arena Variants
 
-| Type | Backing | Thread-Local | Feature |
-|------|---------|-------------|---------|
-| `RefCountedArena` | BTreeMap + RefCell | No | - |
-| `HashMapArena` | HashMap + RefCell | No | - |
-| `ThreadLocalArena` | BTreeMap + thread_local | Yes | - |
-| `ThreadLocalHashArena` | HashMap + thread_local | Yes | - |
-| `FastHashMapArena` | ahash HashMap + RefCell | No | `refcount-fast-hash` |
-| `ThreadLocalFastHashArena` | ahash HashMap + thread_local | Yes | `refcount-fast-hash` |
+| Type | Backing | Thread-Local |
+|------|---------|-------------|
+| `RefCountedArena` | BTreeMap + RefCell | No |
+| `ThreadLocalArena` | BTreeMap + thread_local | Yes |
 
 Thread-local variants avoid RefCell borrow overhead and are fastest for hot loops.
-HashMap variants are faster than BTreeMap for large collections (O(1) vs O(log n)).
+These are the only two flavors instantiated anywhere in the tree; a HashMap-
+and ahash-backed variant family existed previously but was removed for having
+zero production or test consumers (see `refcount_protect.rs`'s module docs for
+the tracking issue if you need to re-add one).
 
 ### Choosing a Strategy
 
@@ -472,8 +471,7 @@ Need GC protection?
 │  ├─ Few values (< 100) → ProtectScope
 │  └─ Accumulator loop → ReprotectSlot
 ├─ Across .Call invocations?
-│  ├─ Small number (< 10) → ProtectPool or R_PreserveObject
-│  └─ Many values (100+) → ThreadLocalArena / ThreadLocalHashArena
-└─ Hot loop with many SEXPs?
-   └─ ThreadLocalFastHashArena (requires refcount-fast-hash feature)
+│  └─ Small number (< 10) → ProtectPool or R_PreserveObject
+└─ Many values (100+) / hot loop with many SEXPs?
+   └─ ThreadLocalArena (or RefCountedArena for a non-thread-local instance)
 ```

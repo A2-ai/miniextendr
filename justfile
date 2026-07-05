@@ -355,14 +355,14 @@ bench-lint *cargo_flags:
 bench-core *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml --bench ffi_calls --bench into_r --bench from_r --bench translate --bench strings --bench externalptr --bench worker --bench unwind_protect {{cargo_flags}}
 
-# Run feature-gated benchmarks (connections, rayon, serde, refcount-fast-hash)
+# Run feature-gated benchmarks (connections, rayon, serde)
 bench-features *cargo_flags:
-    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde,refcount-fast-hash {{cargo_flags}}
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde {{cargo_flags}}
 
 # Run full benchmark suite (core + feature matrix)
 bench-full *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
-    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde,refcount-fast-hash --bench connections --bench rayon --bench refcount_protect {{cargo_flags}}
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde --bench connections --bench rayon --bench refcount_protect {{cargo_flags}}
 
 # Run R-side benchmarks (requires rpkg installed)
 [script("bash")]
@@ -1005,6 +1005,22 @@ _templates-upstream-populate dest:
 
       add "$rel" "$src"
     done <<<"$manifest"
+
+# Audit the end-user Claude skill set (minirextendr/inst/claude/skills/)
+# against a freshly scaffolded package: cited paths must exist in the scaffold
+# layout; cited symbols must exist in this repo's sources. Installs
+# minirextendr into a temp library (pure R, no compile), scaffolds a throwaway
+# package, then runs scripts/skill-freshness-audit.sh --user-layout on it.
+# Requires minirextendr's Imports (cli, fs, usethis) plus cargo on PATH.
+[script("bash")]
+user-skills-check:
+    set -euo pipefail
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp/lib"
+    R CMD INSTALL --no-multiarch --library="$tmp/lib" minirextendr >/dev/null 2>&1
+    R_LIBS="$tmp/lib" Rscript -e "minirextendr::create_miniextendr_package(file.path('$tmp', 'skillcheck.pkg'), open = FALSE)"
+    bash scripts/skill-freshness-audit.sh --user-layout "$tmp/skillcheck.pkg"
 
 # Accept the current delta as approved by regenerating patches/templates.patch
 # (Builds an upstream snapshot from templates-sources before diffing.)
