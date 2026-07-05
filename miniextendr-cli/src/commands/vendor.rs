@@ -4,6 +4,7 @@ use anyhow::{Result, bail};
 
 use crate::bridge::{bash, run_command, run_command_capture};
 use crate::cli::VendorCmd;
+use crate::output::print_json;
 use crate::project::{MINIEXTENDR_CRATES, ProjectContext, find_workspace_root};
 
 pub fn dispatch(cmd: &VendorCmd, ctx: &ProjectContext, quiet: bool, json: bool) -> Result<()> {
@@ -137,7 +138,7 @@ fn vendor_versions(quiet: bool, json: bool) -> Result<()> {
 
     if json {
         let versions: Vec<&str> = output.lines().collect();
-        println!("{}", serde_json::to_string_pretty(&versions)?);
+        print_json(&versions)?;
     } else if !quiet {
         println!("Available miniextendr versions:");
         for line in output.lines() {
@@ -312,7 +313,7 @@ fn vendor_cache_info(json: bool) -> Result<()> {
             "cache_dir": cache_dir.to_string_lossy(),
             "exists": cache_dir.exists(),
         });
-        println!("{}", serde_json::to_string_pretty(&info)?);
+        print_json(&info)?;
     } else {
         println!("Cache directory: {}", cache_dir.display());
         if cache_dir.exists() {

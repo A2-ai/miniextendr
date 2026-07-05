@@ -85,13 +85,5 @@ fn render_format(ctx: &ProjectContext, format: &str, quiet: bool) -> Result<()> 
 }
 
 fn pkg_name(ctx: &ProjectContext) -> String {
-    let desc = ctx.root.join("DESCRIPTION");
-    if let Ok(content) = std::fs::read_to_string(desc) {
-        for line in content.lines() {
-            if let Some(value) = line.strip_prefix("Package:") {
-                return value.trim().to_string();
-            }
-        }
-    }
-    "mypackage".into()
+    ctx.package_name().unwrap_or_else(|| "mypackage".into())
 }
