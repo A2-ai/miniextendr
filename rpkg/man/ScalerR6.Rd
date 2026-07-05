@@ -27,6 +27,12 @@ r6_trait_Scaler_set_mode(x, mode = c("fast", "slow"))
 }
 \arguments{
 \item{x}{A \code{ScalerR6} object}
+
+\item{x_factor}{(undocumented)}
+
+\item{amount}{(undocumented)}
+
+\item{mode}{(undocumented)}
 }
 \description{
 ScalerR6 R6 Class

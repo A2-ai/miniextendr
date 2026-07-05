@@ -1456,6 +1456,12 @@ pub fn gc_stress_typed_dataframe() {
         ("time", time_sexp),
         ("conc", conc_sexp),
     ]);
+    // Root the container: from_raw_pairs' internal guards drop on return, so
+    // the fresh VECSXP is unprotected while as_data_frame() allocates its
+    // class / row.names attributes and TryFromSexp validates. Without this,
+    // gctorture reaps the container and the names attribute reads back nil
+    // once the cell is reused ("DataFrame always carries a names attribute").
+    unsafe { scope.protect_raw(list.as_sexp()) };
     let df = list
         .as_data_frame()
         .expect("synthetic data.frame promotion should succeed");
@@ -1511,6 +1517,8 @@ pub fn gc_stress_typed_dataframe() {
         ("conc", conc2_sexp),
         ("flag", flag2_sexp),
     ]);
+    // Same rooting as above: the container outlives from_raw_pairs' guards.
+    unsafe { scope2.protect_raw(list2.as_sexp()) };
     let df2 = list2
         .as_data_frame()
         .expect("synthetic data.frame promotion should succeed");

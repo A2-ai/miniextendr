@@ -819,10 +819,13 @@ impl<'a> MethodDocBuilder<'a> {
             }
         }
 
-        // Auto-generate @param for undocumented method parameters
+        // Auto-generate @param for undocumented method parameters. Split on
+        // top-level commas only — a naive `split(", ")` shreds a
+        // `mode = c("fast", "slow")` default into a bogus `"slow")` formal,
+        // which surfaces as a spurious @param and an R CMD check warning.
         if let Some(params) = self.r_params {
-            for param in params.split(", ").filter(|p| !p.is_empty()) {
-                let param_name = param.split('=').next().unwrap_or(param).trim();
+            for param in crate::roxygen::split_r_formals(params) {
+                let param_name = crate::roxygen::formal_name(param);
                 if param_name == ".ptr" || param_name == "..." || param_name == "self" {
                     continue;
                 }

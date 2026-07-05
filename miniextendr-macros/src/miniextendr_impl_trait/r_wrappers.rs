@@ -737,9 +737,11 @@ fn generate_trait_s7_r_wrapper(
             }
             // Auto-document any formal lacking an explicit @param tag. `...` is
             // included so roxygen2 covers it (otherwise R CMD check warns about
-            // an undocumented argument).
-            for formal in shortcut_formals.split(", ") {
-                let pname = formal.split('=').next().unwrap_or(formal).trim();
+            // an undocumented argument). Split on top-level commas only — a
+            // naive `split(", ")` breaks a `mode = c("fast", "slow")` default
+            // into a bogus `"slow")` formal (undocumented-argument warning).
+            for formal in crate::roxygen::split_r_formals(&shortcut_formals) {
+                let pname = crate::roxygen::formal_name(formal);
                 if pname == "self" {
                     continue;
                 }
@@ -918,6 +920,29 @@ fn generate_trait_r6_r_wrapper(
             .custom(format!("@param x A `{}` object", type_str));
         for tag in &method.param_tags {
             roxygen = roxygen.custom(tag.clone());
+        }
+        // Auto-document any method formal lacking an explicit @param tag —
+        // `x` is covered above; the rest are in `\usage` and would otherwise
+        // trip R CMD check's "Undocumented arguments" warning. Split on
+        // top-level commas only so a `mode = c("fast", "slow")` default isn't
+        // shredded into a bogus `"slow")` formal.
+        for formal in crate::roxygen::split_r_formals(&full_params) {
+            let pname = crate::roxygen::formal_name(formal);
+            if pname == "x" {
+                continue;
+            }
+            let documented = method
+                .param_tags
+                .iter()
+                .any(|t| t.trim_start().starts_with(&format!("@param {pname} ")));
+            if documented {
+                continue;
+            }
+            roxygen = if pname == "..." {
+                roxygen.custom("@param ... Additional arguments passed to the method.")
+            } else {
+                roxygen.custom(format!("@param {pname} (undocumented)"))
+            };
         }
         lines.extend(roxygen.export().build());
 

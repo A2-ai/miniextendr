@@ -59,8 +59,6 @@ ScalerS7_set_mode(self, mode = c("fast", "slow"), ...)
 \item{amount}{(undocumented)}
 
 \item{mode}{(undocumented)}
-
-\item{"slow")}{(undocumented)}
 }
 \description{
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
