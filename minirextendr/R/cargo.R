@@ -1076,11 +1076,13 @@ cargo_new <- function(path = ".",
 find_workspace_root <- function(path) {
   path <- normalizePath(path, mustWork = FALSE)
 
-  # Try git first — fast and handles deeply nested paths
+  # Try git first — fast and handles deeply nested paths. Run git *in* `path`
+  # (not getwd()): callers pass the resolved project dir, and probing getwd()
+  # instead can resolve an unrelated workspace and register the new crate in
+  # that workspace's Cargo.toml.
   git_root <- tryCatch({
-    out <- system2("git", c("rev-parse", "--show-toplevel"),
-                   stdout = TRUE, stderr = TRUE)
-    if (!is.null(attr(out, "status"))) NULL else trimws(out)
+    out <- run_command("git", c("rev-parse", "--show-toplevel"), wd = path)
+    if (!is.null(attr(out, "status"))) NULL else trimws(paste(out, collapse = "\n"))
   }, error = function(e) NULL, warning = function(w) NULL)
 
   if (!is.null(git_root) && nzchar(git_root)) {
