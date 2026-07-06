@@ -226,9 +226,8 @@ impl NdMatrix {
                 "[{row}, {col}] is out of bounds (must be positive 1-based indices, matrix is {nrows} x {ncols})"
             );
         }
-        RNdSlice2D::get_2d(&self.0, row - 1, col - 1).unwrap_or_else(|| {
-            panic!("[{row}, {col}] out of bounds (matrix is {nrows} x {ncols})")
-        })
+        RNdSlice2D::get_2d(&self.0, row - 1, col - 1)
+            .unwrap_or_else(|| panic!("[{row}, {col}] out of bounds (matrix is {nrows} x {ncols})"))
     }
 
     /// Get a row as a vector (1-based).

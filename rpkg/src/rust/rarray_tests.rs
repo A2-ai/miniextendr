@@ -35,7 +35,9 @@ pub fn rarray_matrix_column(x: SEXP, col: i32) -> Vec<f64> {
     let mat = unsafe { RMatrix::<f64>::from_sexp(x).expect("expected numeric matrix") };
     let ncol = unsafe { mat.dims()[1] };
     if col < 1 {
-        panic!("column {col} is out of bounds (must be a positive 1-based index, matrix has {ncol} columns)");
+        panic!(
+            "column {col} is out of bounds (must be a positive 1-based index, matrix has {ncol} columns)"
+        );
     }
     let column = unsafe { mat.column(col as usize - 1) };
     column.to_vec()
