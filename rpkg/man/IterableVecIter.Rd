@@ -29,5 +29,5 @@ IterableVecIter
 \item{name}{Method name for dispatch.}
 }
 \description{
-IterableVecIter  Class
+IterableVecIter blanket impl: collect all remaining items.
 }

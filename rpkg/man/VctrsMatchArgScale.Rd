@@ -31,5 +31,5 @@ new_vctrsmatchargscale(mode = c("Fast", "Safe", "Debug"))
 \item{to}{A VctrsMatchArgScale prototype.}
 }
 \description{
-VctrsMatchArgScale vctrs S3 Class
+vctrs fixture where the constructor takes a match_arg'd \code{ImplMode} scalar and returns the numeric payload that \code{vctrs::new_vctr()} wraps. Exercises the same \code{MethodContext::match_arg_prelude()} path as the other class systems through the vctrs codegen branch that emits \verb{new_<name>(...)} + \code{vctrs::new_vctr(data, class = "…")}.
 }

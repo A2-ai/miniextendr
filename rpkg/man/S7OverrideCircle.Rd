@@ -28,6 +28,10 @@ S7OverrideCircle_override_radius(self, ...)
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
+S7 circle child class with overridden parent name resolution.
+
+Returns the radius.
+
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not

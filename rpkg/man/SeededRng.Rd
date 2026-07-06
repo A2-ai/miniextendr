@@ -34,9 +34,5 @@ SeededRng
 \item{name}{Method name for dispatch.}
 }
 \description{
-SeededRng  Class
-
-\describe{
-\item{\code{seed}}{Integer seed (absolute value is used).}
-}
+SeededRng inherent methods: constructor.
 }
