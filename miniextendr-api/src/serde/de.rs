@@ -848,19 +848,54 @@ impl<'de> SeqAccess<'de> for VectorElementSeqAccess {
     }
 }
 
-/// Access elements of an R list as a sequence.
-struct ListSeqAccess {
+/// Shared `index`/`len` bookkeeping for the lazy pull-based accessors over a
+/// VECSXP (#1149).
+///
+/// serde's `SeqAccess`/`MapAccess` machinery pulls one element at a time and
+/// must report end-of-iteration as `Ok(None)`, so the eager `map_vecsxp_with`
+/// walk in `from_r.rs` doesn't fit here. The cursor owns only the bounds
+/// check, the advance, and the `vector_elt` pull; type/shape validation stays
+/// in the accessor constructors and per-element deserialization stays serde's
+/// job.
+struct VecsxpCursor {
     sexp: SEXP,
     index: usize,
     len: usize,
 }
 
-impl ListSeqAccess {
+impl VecsxpCursor {
     fn new(sexp: SEXP) -> Self {
-        ListSeqAccess {
+        VecsxpCursor {
             sexp,
             index: 0,
             len: sexp.len(),
+        }
+    }
+
+    /// Index of the element the next `next_elt` call pulls, or `None` when
+    /// exhausted. Does not advance — `NamedListMapAccess` peeks the key here
+    /// and only advances when the paired value is pulled.
+    fn peek_index(&self) -> Option<usize> {
+        (self.index < self.len).then_some(self.index)
+    }
+
+    /// Pull the current element and advance; `None` when exhausted.
+    fn next_elt(&mut self) -> Option<SEXP> {
+        let index = self.peek_index()?;
+        self.index += 1;
+        Some(self.sexp.vector_elt(index as isize))
+    }
+}
+
+/// Access elements of an R list as a sequence.
+struct ListSeqAccess {
+    cursor: VecsxpCursor,
+}
+
+impl ListSeqAccess {
+    fn new(sexp: SEXP) -> Self {
+        ListSeqAccess {
+            cursor: VecsxpCursor::new(sexp),
         }
     }
 }
@@ -872,12 +907,9 @@ impl<'de> SeqAccess<'de> for ListSeqAccess {
         &mut self,
         seed: T,
     ) -> Result<Option<T::Value>, Self::Error> {
-        if self.index >= self.len {
+        let Some(elem) = self.cursor.next_elt() else {
             return Ok(None);
-        }
-
-        let elem = self.sexp.vector_elt(self.index as isize);
-        self.index += 1;
+        };
         seed.deserialize(RDeserializer::from_sexp(elem)).map(Some)
     }
 }
@@ -887,10 +919,8 @@ impl<'de> SeqAccess<'de> for ListSeqAccess {
 
 /// Access named list as a map/struct.
 struct NamedListMapAccess {
-    sexp: SEXP,
     names: SEXP,
-    index: usize,
-    len: usize,
+    cursor: VecsxpCursor,
 }
 
 impl NamedListMapAccess {
@@ -908,20 +938,14 @@ impl NamedListMapAccess {
                 actual: "list (names attribute is not character)".into(),
             });
         }
-        let len = sexp.len();
-        let names_len = names.len();
-        if names_len != len {
+        let cursor = VecsxpCursor::new(sexp);
+        if names.len() != cursor.len {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",
                 actual: "list (names length mismatch)".into(),
             });
         }
-        Ok(NamedListMapAccess {
-            sexp,
-            names,
-            index: 0,
-            len,
-        })
+        Ok(NamedListMapAccess { names, cursor })
     }
 }
 
@@ -932,11 +956,11 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
         &mut self,
         seed: K,
     ) -> Result<Option<K::Value>, Self::Error> {
-        if self.index >= self.len {
+        let Some(index) = self.cursor.peek_index() else {
             return Ok(None);
-        }
+        };
 
-        let name_charsxp = self.names.string_elt(self.index as isize);
+        let name_charsxp = self.names.string_elt(index as isize);
         let name = unsafe { charsxp_to_str(name_charsxp) };
 
         // Create a string deserializer for the key
@@ -947,8 +971,12 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
         &mut self,
         seed: V,
     ) -> Result<V::Value, Self::Error> {
-        let elem = self.sexp.vector_elt(self.index as isize);
-        self.index += 1;
+        // serde's MapAccess contract: next_value_seed is only called after
+        // next_key_seed returned Some, so the cursor cannot be exhausted here.
+        let elem = self
+            .cursor
+            .next_elt()
+            .expect("next_value_seed called past end of named list");
         seed.deserialize(RDeserializer::from_sexp(elem))
     }
 }
