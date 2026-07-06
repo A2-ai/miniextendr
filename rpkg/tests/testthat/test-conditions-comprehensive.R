@@ -454,10 +454,10 @@ test_that("sidecar field read survives before the panicking method runs", {
   expect_equal(obj$doom, "doom!")
 })
 
-test_that("standalone fn consuming sidecar panics with rust_error", {
-  # Use the low-level constructor that returns the bare ExternalPtr — the R6
-  # `$new()` constructor wraps the pointer in an environment and would fail
-  # the ExternalPtr<PanickingSidecar> argument conversion.
+test_that("standalone fn consuming sidecar panics with rust_error (bare pointer)", {
+  # The low-level constructor returns the bare ExternalPtr directly. Both this
+  # and the ergonomic R6 handle (see the next test, audit A9) are valid inputs
+  # to a standalone fn declared as `ExternalPtr<PanickingSidecar>`.
   ptr <- panicking_sidecar_new("ignored")
   e <- tryCatch(sidecar_consumer_panic(ptr), error = function(e) e)
   expect_true(inherits(e, "rust_error"))
@@ -467,6 +467,19 @@ test_that("standalone fn consuming sidecar panics with rust_error", {
   # wrapper.
   expect_false(is.null(cl))
   expect_true(grepl("sidecar_consumer_panic", deparse(cl)[[1]]))
+})
+
+test_that("standalone fn consuming sidecar panics with rust_error (R6 handle, audit A9)", {
+  # `PanickingSidecar$new()` returns the ergonomic R6 handle (the pointer
+  # lives at `private$.ptr`). Before audit A9 this failed the
+  # `ExternalPtr<PanickingSidecar>` argument conversion with a type-mismatch
+  # error; conversion now unwraps the R6 `.__enclos_env__` -> `private` ->
+  # `.ptr` chain transparently, so the call reaches the Rust body and panics
+  # exactly like the bare-pointer case above.
+  obj <- PanickingSidecar$new("ignored")
+  e <- tryCatch(sidecar_consumer_panic(obj), error = function(e) e)
+  expect_true(inherits(e, "rust_error"))
+  expect_equal(conditionMessage(e), "consumer boom")
 })
 
 test_that("raw sidecar accessors read and write the doom field", {
@@ -484,6 +497,67 @@ test_that("raw sidecar accessor on a non-externalptr errors, not crashes", {
   # The panic inside the accessor (failed downcast) must surface as an R
   # error through the call-slot-less wrapper path.
   expect_error(PanickingSidecar_get_doom(42L))
+})
+
+# endregion
+
+# region: audit A9 — ExternalPtr<T> arguments accept class-wrapped handles
+#
+# A class-system object could not previously be passed where a standalone fn
+# expects `ExternalPtr<T>` — only the bare EXTPTRSXP from a low-level
+# constructor worked (see the sidecar region above). Conversion now unwraps
+# the handle transparently per class system; `Any::downcast` remains the
+# type-safety authority, so a handle for the *wrong* T still fails.
+#
+# `s3_raiser_id_via_externalptr()` / `s4_raiser_id_via_externalptr()` /
+# `s7_raiser_id_via_externalptr()` are `noexport` fixtures added alongside
+# this fix (`condition_class_system_tests.rs`); Env and R6 reuse existing
+# exported fixtures (`ptr_identity()`, `sidecar_consumer_panic()` above).
+# Vctrs is intentionally absent: `VctrsRaiser` doesn't derive `ExternalPtr` at
+# all — vctrs objects in this framework are plain classed vectors with no
+# Rust struct behind them, so there is no handle to unwrap.
+
+test_that("Env handle already worked pre-A9 (bare classed EXTPTRSXP)", {
+  a <- PtrIdentityTest$new(10L)
+  b <- ptr_identity(a)
+  expect_true(identical(a, b))
+})
+
+test_that("S3 handle already worked pre-A9 (bare classed EXTPTRSXP)", {
+  obj <- new_s3raiser(7L)
+  expect_equal(miniextendr:::s3_raiser_id_via_externalptr(obj), 7L)
+})
+
+test_that("S4 handle unwraps via the `ptr` slot (audit A9)", {
+  obj <- S4Raiser(9L)
+  expect_equal(miniextendr:::s4_raiser_id_via_externalptr(obj), 9L)
+})
+
+test_that("S7 handle unwraps via the `.ptr` attribute (audit A9)", {
+  obj <- S7Raiser(id = 11L)
+  expect_equal(miniextendr:::s7_raiser_id_via_externalptr(obj), 11L)
+})
+
+test_that("a handle for the wrong T still reports the downcast type mismatch", {
+  wrong <- new_s3raiser(1L) # S3Raiser, not S4Raiser
+  e <- tryCatch(
+    miniextendr:::s4_raiser_id_via_externalptr(wrong),
+    error = function(e) e
+  )
+  expect_true(inherits(e, "rust_error"))
+  # Both type names are named — unwrapping loosened the accepted R-side
+  # shape, not `Any::downcast` type safety.
+  expect_true(grepl("S4Raiser", conditionMessage(e)))
+  expect_true(grepl("S3Raiser", conditionMessage(e)))
+})
+
+test_that("a non-handle object errors with the class-handle hint", {
+  e <- tryCatch(
+    miniextendr:::s4_raiser_id_via_externalptr(new.env()),
+    error = function(e) e
+  )
+  expect_true(inherits(e, "rust_error"))
+  expect_true(grepl("miniextendr class object", conditionMessage(e)))
 })
 
 # endregion

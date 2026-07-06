@@ -66,6 +66,49 @@ let raw = Box::into_raw(Box::new(MyData { value: 1.0 }));
 let ptr = unsafe { ExternalPtr::from_raw(raw) };
 ```
 
+## Passing Class Objects to Standalone Functions
+
+A `#[miniextendr]` argument typed as `ExternalPtr<T>` accepts either the bare
+pointer a low-level constructor returns, **or** the ergonomic class handle
+that wraps it — `MyData$new(...)`, `S4Foo(...)`, etc. Conversion unwraps the
+handle transparently, per class system:
+
+| Class system | Where the pointer lives | Shape |
+|---|---|---|
+| Env, S3 | the object itself | already a classed `EXTPTRSXP` — nothing to unwrap |
+| R6 | `private$.ptr` | `.__enclos_env__` -> `private` -> `.ptr` |
+| S4 | the `ptr` slot | `methods::slot(x, "ptr")` |
+| S7 | the `.ptr` property | stored as a plain attribute (`attr(x, ".ptr")`) |
+
+```rust
+#[derive(ExternalPtr)]
+pub struct MyData { pub value: f64 }
+
+#[miniextendr(r6)]
+impl MyData {
+    pub fn new(value: f64) -> Self { Self { value } }
+}
+
+#[miniextendr]
+pub fn total(items: Vec<ExternalPtr<MyData>>) -> f64 {
+    items.iter().map(|d| d.value).sum()
+}
+```
+
+```r
+a <- MyData$new(1.0)
+b <- MyData$new(2.0)
+total(list(a, b))  # 3 -- no need to reach for a bare-pointer constructor
+```
+
+`Any::downcast` remains the type-safety authority: a handle for the *wrong*
+Rust type still fails with the usual downcast type-mismatch error — this
+only widens the accepted R-side shape, not type safety. Vctrs is the one
+class system where this never applies: a vctrs object is a plain classed
+vector with no Rust struct behind it (vctrs constructors return a payload
+vector, not `Self`), so there's no `ExternalPtr` to unwrap in the first
+place.
+
 ## Accessing the Value
 
 `ExternalPtr<T>` implements `Deref<Target = T>` and `DerefMut`, so you can use it like a reference:
