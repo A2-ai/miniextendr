@@ -95,7 +95,7 @@ miniextendr_configure <- function(path = ".") {
 #' That creates a chicken-and-egg ordering: `document()` can only see the
 #' wrappers after install, but install collates `NAMESPACE` (the export set the
 #' installed image actually exposes) *before* `document()` rewrites it. On a
-#' first build — or any build that adds or renames an exported function — the
+#' first build -- or any build that adds or renames an exported function -- the
 #' freshly-installed image therefore lags the on-disk `NAMESPACE` by one build,
 #' and `library(pkg)` exposes nothing new until the package is built a second
 #' time.
@@ -112,7 +112,7 @@ miniextendr_configure <- function(path = ".") {
 #' are produced by the wrapper-gen pass during install, but a plain
 #' `devtools::install(build = TRUE)` cannot bootstrap them: its `R CMD build`
 #' step runs `bootstrap.R`, which auto-vendors into `inst/vendor.tar.xz`, and
-#' that latch flips `./configure` into offline *tarball* mode — which ships
+#' that latch flips `./configure` into offline *tarball* mode -- which ships
 #' pre-generated wrappers and skips wrapper generation. With no wrappers to
 #' ship, the install either fails loudly ("tarball is missing pre-generated
 #' wrappers") or, worse, leaves the namespace empty.
@@ -124,7 +124,7 @@ miniextendr_configure <- function(path = ".") {
 #' runs. The `MINIEXTENDR_FORCE_WRAPPER_GEN` override forces the
 #' wrapper-gen pass regardless of which install mode configure resolves to: in
 #' a non-git tree configure's self-repair branch may legitimately re-seal the
-#' latch (cargo-revendor on PATH), and that is fine — the FORCE override
+#' latch (cargo-revendor on PATH), and that is fine -- the FORCE override
 #' ensures wrapper generation proceeds. Once wrappers are present, the normal
 #' build path runs unchanged.
 #'
@@ -143,7 +143,7 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   # A build = TRUE install (Step 3/5 below) runs the package's bootstrap.R in the
   # source tree, which auto-vendors when no inst/vendor.tar.xz is present: that
   # FREEZES src/rust/Cargo.toml (rewriting a `path = "../../../my-core"` sibling
-  # to `vendor/my-core`) and leaves inst/vendor.tar.xz behind — flipping the tree
+  # to `vendor/my-core`) and leaves inst/vendor.tar.xz behind -- flipping the tree
   # into tarball mode and stranding the next source-mode build. The dev loop must
   # leave a clean source tree, so snapshot the manifest/lock + tarball presence
   # now and restore on exit (mirrors the `just cran-prep` trap, git-independent).
@@ -177,7 +177,7 @@ miniextendr_build <- function(path = ".", install = TRUE) {
       # R/<pkg>-wrappers.R does not exist yet. The normal devtools::install()
       # below uses build = TRUE, whose R CMD build step runs bootstrap.R, which
       # auto-vendors inst/vendor.tar.xz and flips ./configure into tarball mode
-      # — a mode that SKIPS wrapper generation. So the very build that should
+      # -- a mode that SKIPS wrapper generation. So the very build that should
       # have created the wrappers can't, and library() exposes nothing. Detect
       # this and generate the wrappers first via an in-place source-mode install
       # (build = FALSE), which never touches inst/vendor.tar.xz.
@@ -206,7 +206,7 @@ miniextendr_build <- function(path = ".", install = TRUE) {
 
     # Chicken-and-egg fix: the wrappers file is generated during install and
     # document() reads its @export tags to write NAMESPACE. So the install in
-    # Step 3 collated the *previous* NAMESPACE — if document() just added or
+    # Step 3 collated the *previous* NAMESPACE -- if document() just added or
     # renamed exports, the installed image is one build behind. Reinstall once
     # so library(pkg) exposes the new exports in a single miniextendr_build()
     # pass. The reinstall is bounded to one pass: after it the wrappers and
@@ -242,7 +242,7 @@ miniextendr_build <- function(path = ".", install = TRUE) {
 # lazy-load DB (R/<pkg>.rdb). On R >= 4.6 (libdeflate-compressed .rdb) that read
 # can fail with "internal error 1 in R_decompress1 with libdeflate" / "lazy-load
 # database is corrupt", aborting the build. The build session never needs the
-# package loaded — document() works from source — so reloading is both pointless
+# package loaded -- document() works from source -- so reloading is both pointless
 # and the trigger. Skipping it makes the install -> document hand-off robust.
 install_pkg <- function(pkg_path) {
   old_force <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = NA)
@@ -319,13 +319,13 @@ wrappers_file_exists <- function(pkg_path) {
 #' @noRd
 bootstrap_fresh_wrappers <- function(pkg_path) {
   cli::cli_alert_info(c(
-    "No generated {.path R/*-wrappers.R} found — bootstrapping wrappers ",
+    "No generated {.path R/*-wrappers.R} found \u2014 bootstrapping wrappers ",
     "before the full build."
   ))
 
   # Clear any stale tarball-mode latch so configure gets a clean start.
   # In a non-git tree configure's self-repair may re-seal inst/vendor.tar.xz
-  # (cargo-revendor on PATH); that is fine — MINIEXTENDR_FORCE_WRAPPER_GEN
+  # (cargo-revendor on PATH); that is fine -- MINIEXTENDR_FORCE_WRAPPER_GEN
   # below ensures the wrapper-gen pass runs regardless of install mode.
   clear_install_mode_latch(pkg_path)
 
@@ -346,7 +346,7 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
   )
 
   tryCatch(
-    # reload = FALSE: see install_pkg() — avoid loading the .rdb-backed namespace
+    # reload = FALSE: see install_pkg() -- avoid loading the .rdb-backed namespace
     # that the document()+reinstall below would then corrupt for pkgload (#1000).
     devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
                       reload = FALSE),
@@ -396,7 +396,7 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
 #' offline tarball mode. The unpacked `vendor/` directory and the
 #' tarball-mode `src/rust/.cargo/config.toml` are downstream artifacts of the
 #' same mode. Clearing all three guarantees the next `./configure` resolves in
-#' source mode. Safe and idempotent — no-op if nothing is present.
+#' source mode. Safe and idempotent -- no-op if nothing is present.
 #'
 #' @param pkg_path Absolute path to the package root.
 #' @return Invisibly `TRUE`.
@@ -455,7 +455,7 @@ miniextendr_vendor <- function(path = ".") {
   # [patch."git+url"] override active (it pins cargo's CWD to the manifest
   # dir, so a monorepo .cargo/config.toml is honoured), then stamps the
   # framework crates' `source = "git+url#<sha>"` attribution back into
-  # Cargo.lock — the shape offline source-replacement needs. So a cross-crate
+  # Cargo.lock -- the shape offline source-replacement needs. So a cross-crate
   # feature/dep rename resolves against the local workspace, not git@main
   # (#883), and there is no bare-git "regenerate the lock first" dance: the
   # step that disabled the patch was exactly what broke cross-surface renames.

@@ -6,7 +6,7 @@
 #' project so coding agents working in the package get progressive-loading
 #' context about the miniextendr build pipeline, conversions, class systems,
 #' data.frame interface, parallelism rules, debugging recipes, and the
-#' release/vendoring story — all framed for the scaffolded-package layout
+#' release/vendoring story -- all framed for the scaffolded-package layout
 #' (`src/rust/lib.rs`, `configure`, `tools/`).
 #'
 #' Re-running upgrades in place: each bundled skill directory is deleted and
@@ -17,7 +17,7 @@
 #' When the project root is an R package (a `DESCRIPTION` is present),
 #' `^\.claude$` is added to `.Rbuildignore` so the skills never ship in the
 #' tarball. An `AGENTS.md` stub pointing non-Claude agents at the skill set is
-#' written only if the file does not already exist — it is user-owned content.
+#' written only if the file does not already exist -- it is user-owned content.
 #'
 #' @param path Path to the project root, or `"."` to use the current directory.
 #'   For monorepo layouts call this at the workspace root (where agents run),
@@ -80,7 +80,7 @@ write_agents_md_stub <- function() {
       "",
       "Ground rules:",
       "",
-      "- Rebuild after Rust changes with `minirextendr::miniextendr_build()` —",
+      "- Rebuild after Rust changes with `minirextendr::miniextendr_build()` \u2014",
       "  not bare `R CMD INSTALL .` / `devtools::install()` (they skip wrapper",
       "  generation on a fresh tree; the guide skill explains why).",
       "- Never hand-edit generated files (`R/*-wrappers.R`, `src/Makevars`,",

@@ -776,19 +776,20 @@ test_that("MINIEXTENDR_FORCE_WRAPPER_GEN propagates through install(build = TRUE
   templib <- file.path(tmp, "library")
   dir.create(templib)
 
-  pak_cache_dir <- file.path(tmp, "pak_cache")
-  dir.create(pak_cache_dir, showWarnings = FALSE)
+  # R_USER_CACHE_DIR handling for the pak::local_install_deps() step inside
+  # devtools::install() lives in setup-pak-cache.R (#1154). A per-test
+  # withr::with_envvar() here cannot work: pak's persistent subprocess
+  # snapshots its environment at creation, so the override never reaches it
+  # once any earlier test has used pak.
 
   run_build_install <- function() {
     unlink(result_file)
-    withr::with_envvar(list(R_USER_CACHE_DIR = pak_cache_dir), {
-      withr::with_libpaths(templib, action = "prefix", {
-        suppressMessages(
-          devtools::install(pkg_path, build = TRUE, upgrade = FALSE,
-                            quiet = TRUE, reload = FALSE,
-                            dependencies = FALSE)
-        )
-      })
+    withr::with_libpaths(templib, action = "prefix", {
+      suppressMessages(
+        devtools::install(pkg_path, build = TRUE, upgrade = FALSE,
+                          quiet = TRUE, reload = FALSE,
+                          dependencies = FALSE)
+      )
     })
     skip_if_not(file.exists(result_file),
                 "probe Makevars did not run (no SHLIB build on this platform)")

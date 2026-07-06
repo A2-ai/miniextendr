@@ -137,7 +137,7 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
     )
     tarball_present <- !is.null(vendor_tarball_path) && file.exists(vendor_tarball_path)
     if (tarball_present) {
-      # Marker is inert (tarball mode wins), but still stale — inform rather than warn.
+      # Marker is inert (tarball mode wins), but still stale -- inform rather than warn.
       cli::cli_alert_info(
         "{.path .miniextendr-local} is present but inert: tarball mode wins over the \\
 local override. Remove the marker before distributing: \\
@@ -150,7 +150,7 @@ local override. Remove the marker before distributing: \\
 {.path {local_mx_path}}). Run {.code unuse_local_miniextendr()} before \\
 vendoring or distributing this package."
       )
-      results$warn <- c(results$warn, ".miniextendr-local override active — run unuse_local_miniextendr() before distributing")
+      results$warn <- c(results$warn, ".miniextendr-local override active \u2014 run unuse_local_miniextendr() before distributing")
     }
   } else if (!is.null(local_marker_path)) {
     cli::cli_alert_success("No {.path .miniextendr-local} override marker")
@@ -171,7 +171,7 @@ This is the manual workaround from #823; use \\
 {.code use_local_miniextendr()} instead so configure.ac manages the \\
 patch block in {.path src/rust/.cargo/config.toml}."
       )
-      results$warn <- c(results$warn, "hand-rolled [patch] block in src/rust/Cargo.toml — use use_local_miniextendr()")
+      results$warn <- c(results$warn, "hand-rolled [patch] block in src/rust/Cargo.toml \u2014 use use_local_miniextendr()")
     }
   }
 
@@ -397,7 +397,7 @@ parse_relative_path_deps <- function(lines) {
         # Extract crate name from [dependencies.crate_name]
         current_crate <- sub("^\\[dependencies\\.([^]]+)\\].*", "\\1", stripped)
       } else {
-        # Any other section (including [patch.crates-io]) — stop watching.
+        # Any other section (including [patch.crates-io]) -- stop watching.
         section <- "other"
         current_crate <- NULL
       }
