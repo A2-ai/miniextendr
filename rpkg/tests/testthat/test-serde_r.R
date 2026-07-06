@@ -62,9 +62,41 @@ test_that("serde_r serializes Option::None to NULL", {
   result <- serde_r_serialize_option_i32(NULL)
   expect_null(result)
 })
-test_that("serde_r rejects NA_integer_ with clear error", {
-  # serde_r doesn't auto-convert NA to None for i32 - it raises an error
+
+test_that("serde_r rejects NA_integer_ into a non-Option field with a clear error", {
+  # serde_r_deserialize_wrong_type deserializes into a bare (non-Option) i32.
+  # A typed NA reaching a non-Option field is a genuine missingness error and
+  # is NOT auto-converted to a default value -- only `Option<T>` fields treat
+  # NA as `None` (see the "audit A5" block below).
   expect_error(serde_r_deserialize_wrong_type(NA_integer_), "NA")
+})
+
+test_that("serde_r accepts NA-or-NULL as None for Option<T> fields (audit A5)", {
+  # `Option<T>` deserialization (the serde_r *input* side) accepts *both* NA
+  # and NULL as None, matching the macro `TryFromSexp` convention (see
+  # docs/SERDE_R.md and docs/CONVERSION_MATRIX.md). Only the non-Option
+  # scalar path (tested above) still treats NA as an error.
+  #
+  # These fixtures return `Option<T>` across the `#[miniextendr]` boundary,
+  # so the *output* side goes through the macro's `IntoR` (None -> NA), not
+  # serde_r's `to_r()` (None -> NULL) -- that's why both NA and NULL inputs
+  # come back as NA here, not NULL. See `serde_r_serialize_option_i32` above
+  # for the serde_r output convention (None -> NULL via `to_r()`).
+  expect_true(is.na(serde_r_deserialize_option_i32(NA_integer_)))
+  expect_true(is.na(serde_r_deserialize_option_i32(NULL)))
+  expect_equal(serde_r_deserialize_option_i32(5L), 5L)
+
+  expect_true(is.na(serde_r_deserialize_option_f64(NA_real_)))
+  expect_true(is.na(serde_r_deserialize_option_f64(NULL)))
+  expect_equal(serde_r_deserialize_option_f64(3.5), 3.5)
+
+  expect_true(is.na(serde_r_deserialize_option_bool(NA)))
+  expect_true(is.na(serde_r_deserialize_option_bool(NULL)))
+  expect_true(serde_r_deserialize_option_bool(TRUE))
+
+  expect_true(is.na(serde_r_deserialize_option_string(NA_character_)))
+  expect_true(is.na(serde_r_deserialize_option_string(NULL)))
+  expect_equal(serde_r_deserialize_option_string("hi"), "hi")
 })
 
 # =============================================================================
@@ -150,11 +182,16 @@ test_that("SerdeRPoint3D handles optional label", {
   data1 <- p1$to_r()
   expect_equal(data1$label, "origin")
 
-  # Without label - use NA_character_ instead of NULL for Option<String>
-  # NULL is not accepted by the macro's FromR for Option<String>
+  # Without label - the macro's TryFromSexp for Option<String> accepts
+  # *either* NA_character_ or NULL as None (audit A5: this now matches the
+  # serde_r input convention exercised above).
   p2 <- SerdeRPoint3D$new(1.0, 2.0, 3.0, NA_character_)
   data2 <- p2$to_r()
   expect_null(data2$label)
+
+  p3 <- SerdeRPoint3D$new(1.0, 2.0, 3.0, NULL)
+  data3 <- p3$to_r()
+  expect_null(data3$label)
 })
 
 test_that("Rectangle serializes nested Points", {
@@ -669,6 +706,37 @@ test_that("WithOptionals deserializes with NULL fields", {
 
   # Also confirmed at the Rust level
   expect_true(serde_r_roundtrip_optionals_none())
+})
+
+test_that("WithOptionals deserializes with NA fields, matching NULL (audit A5)", {
+  # A typed scalar NA is accepted as None for Option<T> fields, same as NULL
+  # above -- serde_r's input side no longer distinguishes NA from NULL for
+  # optional fields.
+  data <- list(
+    required_int = 99L,
+    optional_int = NA_integer_,
+    optional_float = NA_real_,
+    optional_string = NA_character_,
+    optional_bool = NA
+  )
+
+  opt <- WithOptionals$from_r(data)
+  expect_type(opt, "externalptr")
+})
+
+test_that("WithOptionals still rejects NA in a non-Option (required) field (audit A5)", {
+  # `required_int` is a bare i32, not Option<i32> -- NA there is a genuine
+  # missingness error, not an absence signal, and serde_r must still reject
+  # it (mirrors the bare-i32 test in section 2 above).
+  data <- list(
+    required_int = NA_integer_,
+    optional_int = 1L,
+    optional_float = 1.0,
+    optional_string = "x",
+    optional_bool = TRUE
+  )
+
+  expect_error(WithOptionals$from_r(data))
 })
 
 # region: RSerializeNative / RDeserializeNative traits + AsSerialize (audit A7)
