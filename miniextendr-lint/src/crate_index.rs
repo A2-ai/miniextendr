@@ -10,9 +10,8 @@ use syn::Item;
 use syn::spanned::Spanned;
 
 use crate::helpers::{
-    extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_altrep_derive,
-    has_external_ptr_derive, has_miniextendr_attr, has_vctrs_derive, impl_type_name,
-    is_altrep_struct, parse_miniextendr_impl_attrs,
+    extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_derive, has_miniextendr_attr,
+    impl_type_name, is_altrep_struct, parse_miniextendr_impl_attrs,
 };
 
 // region: Impl method entry
@@ -531,7 +530,7 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
             Item::Struct(item_struct) => {
                 let is_miniextendr_altrep =
                     has_miniextendr_attr(&item_struct.attrs) && is_altrep_struct(item_struct);
-                let is_derive_altrep = has_altrep_derive(&item_struct.attrs);
+                let is_derive_altrep = has_derive(&item_struct.attrs, "Altrep");
                 if is_miniextendr_altrep || is_derive_altrep {
                     let line = item_struct.ident.span().start().line;
                     data.miniextendr_items.push(LintItem::new(
@@ -540,11 +539,11 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                         line,
                     ));
                 }
-                if has_external_ptr_derive(&item_struct.attrs) {
+                if has_derive(&item_struct.attrs, "ExternalPtr") {
                     data.types_with_external_ptr
                         .insert(item_struct.ident.to_string());
                 }
-                if has_vctrs_derive(&item_struct.attrs) {
+                if has_derive(&item_struct.attrs, "Vctrs") {
                     let line = item_struct.ident.span().start().line;
                     data.miniextendr_items.push(LintItem::new(
                         LintKind::Vctrs,

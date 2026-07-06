@@ -14,41 +14,25 @@
 //! Lives in its own integration binary (each `tests/*.rs` file becomes one)
 //! so taking the worker down here does not disrupt other test binaries that
 //! rely on a live worker.
+//!
+//! # Why this is ONE test function
+//!
+//! `miniextendr_runtime_init` is `Once`-guarded, so the worker spawns at
+//! most once per process; the first `miniextendr_runtime_shutdown()` takes
+//! it down for good (respawn requires re-`dyn.load`ing the DLL — fresh
+//! statics — which a cargo test process can't do). Two `#[test]` fns
+//! sharing that global therefore race under cargo's parallel test threads
+//! (whichever shuts down first strands the other), and even serialized,
+//! only the first one to run exercises a live worker. So the in-flight
+//! scenario, the post-job wake-from-`recv()` join, and shutdown idempotency
+//! are asserted in sequence in a single test.
 
 mod r_test_utils;
 
 use std::time::{Duration, Instant};
 
-#[test]
-#[cfg(feature = "worker-thread")]
-fn worker_exits_after_runtime_shutdown() {
-    // Boot R + the miniextendr runtime (this spawns the worker thread under
-    // the `worker-thread` feature). We don't need to actually dispatch a job:
-    // the worker is parked on `recv()` from the moment init completes, which
-    // is exactly the state where the DLL unload race would manifest.
-    r_test_utils::with_r_thread(|| ());
-
-    // `shutdown` sends `WorkerMsg::Shutdown`, drops the sender, and blocks
-    // on `JoinHandle::join()`. With no jobs in flight the worker wakes from
-    // its `recv()` immediately, matches `Shutdown`, and exits; the join
-    // completes in microseconds.
-    //
-    // We still bound the call at a generous deadline so a regression that
-    // makes shutdown wedge (e.g. a new thread-local cleanup path that
-    // deadlocks) fails loudly instead of hanging the test suite.
-    let start = Instant::now();
-    miniextendr_api::worker::miniextendr_runtime_shutdown();
-    let elapsed = start.elapsed();
-
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "miniextendr_runtime_shutdown did not return within 2 s (took {elapsed:?}). \
-         The shutdown path must block until the worker has joined — if it hangs, \
-         R_unload_<pkg> will hang devtools::test / library.dynam.unload."
-    );
-}
-
-/// `miniextendr_runtime_shutdown` while a **pure-Rust** job is in flight.
+/// `miniextendr_runtime_shutdown` while a **pure-Rust** job is in flight,
+/// followed by idempotent-shutdown assertions.
 ///
 /// # What this characterises (issue #734)
 ///
@@ -70,14 +54,17 @@ fn worker_exits_after_runtime_shutdown() {
 /// a pure-Rust worker job is still executing. No use-after-unmap window
 /// for this shape.
 ///
+/// The idle-worker join path (worker parked on `recv()`, `Shutdown` wakes
+/// it) is exercised by the same sequence: the pending rendezvous `Shutdown`
+/// lands exactly when the worker finishes the job and re-enters `recv()`.
+///
 /// # Why the issue's deadlock scenario is unreachable in production
 ///
 /// The issue worries about `R_unload_<pkg>` firing mid-`with_r_thread`.
 /// That can't happen on the same thread: R is single-threaded, and
 /// `R_unload_<pkg>` only runs once every `.Call` has returned — i.e. once
 /// every `run_on_worker` on the main thread has already received `Done`
-/// and the worker is back parked on `recv()` (the *idle* case, covered by
-/// `worker_exits_after_runtime_shutdown` above). `dispatch_to_worker`
+/// and the worker is back parked on `recv()`. `dispatch_to_worker`
 /// drives its event loop on the calling thread; the main thread cannot be
 /// blocked in that loop *and* be executing `R_unload_<pkg>` at the same
 /// time.
@@ -96,7 +83,7 @@ fn worker_exits_after_runtime_shutdown() {
 /// shutdown from a concurrent thread, asserting shutdown waits for the job.
 #[test]
 #[cfg(feature = "worker-thread")]
-fn shutdown_waits_for_in_flight_pure_rust_job() {
+fn shutdown_waits_for_in_flight_job_then_is_idempotent() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -191,6 +178,19 @@ fn shutdown_waits_for_in_flight_pure_rust_job() {
         "shutdown returned BEFORE the in-flight pure-Rust job finished — \
          this is the #277 / #734 use-after-unmap window: the DLL could be \
          unmapped while the worker is still executing job code"
+    );
+
+    // Second shutdown on an already-shut-down runtime: `WORKER` is `None`,
+    // so this must be a fast no-op (idempotency contract documented on
+    // `worker_channel::shutdown`). Bounded so a regression that re-wedges
+    // (e.g. a new cleanup path that blocks) fails loudly instead of hanging.
+    let start = Instant::now();
+    miniextendr_api::worker::miniextendr_runtime_shutdown();
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "repeat miniextendr_runtime_shutdown did not return within 2 s \
+         (took {elapsed:?}); it must be an idempotent no-op after the first call"
     );
 }
 

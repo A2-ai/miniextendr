@@ -1892,7 +1892,8 @@ pub fn gc_stress_reader_enum_map() {
 /// Arrow buffers, exercising `RecordBatch::into_sexp` → `arrow_array_to_sexp`
 /// → the per-array zero-copy SEXP-recovery path under GC pressure.
 ///
-/// Regression fixture for #867. `test_df_subquery` segfaulted on the strict
+/// Regression fixture for #867. The subquery fixture (now folded into
+/// `test_df_sql_query`) segfaulted on the strict
 /// glibc Linux runner because DataFusion's contiguous-run filter optimization
 /// returns a *slice* of the R-backed input column: `values().as_ptr()` then
 /// points into the middle of the R vector, and the speculative
@@ -1940,7 +1941,8 @@ pub fn gc_stress_arrow_sliced_recordbatch() {
     let cols: Vec<ArrayRef> = vec![Arc::new(x_slice), Arc::new(y_slice)];
     let batch = RecordBatch::try_new(schema, cols).expect("record batch");
 
-    // Drive the production materialization (the path test_df_subquery hits).
+    // Drive the production materialization (the path a subquery via
+    // test_df_sql_query hits).
     let out = batch.into_sexp();
     let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
 
