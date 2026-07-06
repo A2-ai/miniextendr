@@ -189,14 +189,12 @@ pub fn demo_condition_data(n: i32) {
 /// @export
 #[miniextendr]
 pub fn demo_error_data_option(present: i32, has_value: bool) {
-    use miniextendr_api::condition::ConditionDataValue;
+    // Bare `Option<i32>` values ride through via `RValue: From<Option<i32>>`:
+    // `None` materialises as `NA_integer_`.
     let opt: Option<i32> = if has_value { Some(present) } else { None };
     miniextendr_api::error!(
         class = "option_error",
-        data = [
-            ("present", ConditionDataValue::OptInt(Some(present))),
-            ("missing", ConditionDataValue::OptInt(opt))
-        ],
+        data = [("present", Some(present)), ("missing", opt)],
         "option payload"
     );
 }
@@ -221,7 +219,8 @@ pub fn demo_error_data_na_vector() {
 /// @export
 #[miniextendr]
 pub fn demo_error_data_long(value: f64) {
-    // f64 argument lets R pass values beyond i32 range; cast to i64 for the payload.
+    // f64 argument lets R pass values beyond i32 range; the `RValue: From<i64>`
+    // wide-integer ladder narrows to integer(1) when it fits, double(1) otherwise.
     let as_long = value as i64;
     miniextendr_api::error!(
         class = "long_error",
@@ -237,14 +236,14 @@ pub fn demo_error_data_long(value: f64) {
 /// @export
 #[miniextendr]
 pub fn demo_error_data_nested(min: i32, max: i32) {
-    use miniextendr_api::condition::ConditionDataValue;
-    let nested: Vec<(String, ConditionDataValue)> = vec![
-        ("min".to_string(), ConditionDataValue::Int(min)),
-        ("max".to_string(), ConditionDataValue::Int(max)),
+    use miniextendr_api::RValue;
+    let nested: Vec<(Option<String>, RValue)> = vec![
+        (Some("min".to_string()), RValue::from(min)),
+        (Some("max".to_string()), RValue::from(max)),
     ];
     miniextendr_api::error!(
         class = "nested_error",
-        data = ("details", ConditionDataValue::List(nested)),
+        data = ("details", RValue::List(nested)),
         "nested payload"
     );
 }
@@ -257,10 +256,10 @@ pub fn demo_error_data_nested(min: i32, max: i32) {
 /// @export
 #[miniextendr]
 pub fn demo_error_data_debug(lo: i32, hi: i32) {
-    use miniextendr_api::condition::ConditionDataValue;
+    use miniextendr_api::RValue;
     miniextendr_api::error!(
         class = "debug_error",
-        data = ("range", ConditionDataValue::debug(lo..=hi)),
+        data = ("range", RValue::debug(lo..=hi)),
         "debug payload"
     );
 }

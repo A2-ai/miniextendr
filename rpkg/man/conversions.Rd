@@ -1554,7 +1554,7 @@ Return test: Rust \verb{Vec<Option<usize>>} with small values -> R integer vecto
 
 Return test: \code{AsNamedList} with heterogeneous typed values -> R named list.
 
-Previously this fixture used raw \code{SEXP} values (\verb{Vec<(String, SEXP)>}) and suppressed MXL302, because the deferred \code{AsNamedList::into_sexp} ran in a later frame than the value construction — a structural GC hazard with no fixable call site (#1030). It is migrated to typed values via the \code{AsNamedListAny} heterogeneous-element enum: each variant's \code{into_sexp()} runs \emph{inside} \code{AsNamedList::into_sexp}, immediately before being protected and placed into the list, so no sibling is ever unprotected across an allocation. The MXL302 suppression is gone because there is no longer an \code{into_sexp()} call inside the \verb{vec!} literal.
+Previously this fixture used raw \code{SEXP} values (\verb{Vec<(String, SEXP)>}) and suppressed MXL302, because the deferred \code{AsNamedList::into_sexp} ran in a later frame than the value construction — a structural GC hazard with no fixable call site (#1030). It is migrated to typed values via the framework \href{miniextendr_api::RValue}{\code{RValue}} tree: each value's \code{into_sexp()} runs \emph{inside} \code{AsNamedList::into_sexp}, immediately before being protected and placed into the list, so no sibling is ever unprotected across an allocation. The MXL302 suppression is gone because there is no longer an \code{into_sexp()} call inside the \verb{vec!} literal.
 
 Return test: \code{AsNamedList} with duplicate key names -> R named list (duplicates preserved).
 }

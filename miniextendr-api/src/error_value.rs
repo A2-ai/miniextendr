@@ -108,7 +108,7 @@ use crate::cached_class::{
 };
 use crate::sexp_types::CE_UTF8;
 use crate::sys::{self};
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IntoR, SEXP, SEXPTYPE, SexpExt};
 
 /// Canonical kind strings for tagged condition values.
 ///
