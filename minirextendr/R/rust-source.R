@@ -210,19 +210,51 @@ inline_cache_dir <- function() {
   fs::path(tools::R_user_dir("minirextendr", "cache"), "rust_source")
 }
 
-#' Extract pub fn names from Rust code
+#' Extract exported function names from Rust code
 #'
-#' Simple regex extraction of public function names.
+#' Only *top-level* `pub fn`s annotated with `#[miniextendr]` get an R binding
+#' from the wrapper generator, so only those may be exported in the synthesized
+#' NAMESPACE -- exporting methods inside `impl` blocks or un-annotated helpers
+#' makes `library()` fail with "undefined exports" (audit 2026-07-06 #6).
+#' Line-wise scan with brace-depth tracking: a scaffolding convenience for
+#' inline snippets, not a Rust parser. Doc comments and other attributes may
+#' sit between `#[miniextendr]` and its `pub fn`.
 #'
 #' @param code Rust code string
 #' @return Character vector of function names
 #' @noRd
 extract_pub_fn_names <- function(code) {
-  matches <- regmatches(
-    code,
-    gregexpr("\\bpub\\s+fn\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(", code)
-  )[[1]]
-  sub("^pub\\s+fn\\s+", "", sub("\\s*\\($", "", matches))
+  # ponytail: brace counting ignores braces inside string literals; good
+  # enough for inline snippets, swap for real parsing if it ever bites.
+  fn_re <- "\\bpub\\s+fn\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\("
+  lines <- strsplit(code, "\n", fixed = TRUE)[[1]]
+  depth <- 0L
+  pending_attr <- FALSE
+  fn_names <- character()
+  for (raw in lines) {
+    line <- sub("//.*$", "", raw)
+    if (depth == 0L) {
+      is_attr <- grepl("^\\s*#\\s*\\[\\s*miniextendr\\b", line)
+      if (is_attr) pending_attr <- TRUE
+      if (pending_attr) {
+        m <- regmatches(line, regexec(fn_re, line))[[1]]
+        if (length(m) == 2L) {
+          fn_names <- c(fn_names, m[[2]])
+          pending_attr <- FALSE
+        } else if (!is_attr &&
+                   grepl("\\b(impl|struct|enum|trait|mod|fn)\\b", line)) {
+          # The attribute belonged to something that is not an exported free
+          # fn (e.g. `#[miniextendr] impl Foo` -- handled by
+          # extract_impl_names()).
+          pending_attr <- FALSE
+        }
+      }
+    }
+    depth <- depth +
+      lengths(regmatches(line, gregexpr("\\{", line))) -
+      lengths(regmatches(line, gregexpr("\\}", line)))
+  }
+  fn_names
 }
 
 #' Extract impl block type names from Rust code

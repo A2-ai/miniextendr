@@ -61,9 +61,11 @@ test_that("compute_inline_hash trims whitespace", {
 
 # ---- extract_pub_fn_names ----
 
-test_that("extract_pub_fn_names finds pub fn declarations", {
+test_that("extract_pub_fn_names finds annotated pub fn declarations", {
   code <- '
+#[miniextendr]
 pub fn add(a: f64, b: f64) -> f64 { a + b }
+#[miniextendr]
 pub fn hello(name: &str) -> String { format!("Hello, {}!", name) }
 fn private_fn() {}
 '
@@ -74,6 +76,44 @@ fn private_fn() {}
 test_that("extract_pub_fn_names returns empty for no pub fn", {
   code <- 'fn private() {}'
   expect_equal(minirextendr:::extract_pub_fn_names(code), character())
+})
+
+test_that("extract_pub_fn_names skips un-annotated helpers and impl methods", {
+  # audit 2026-07-06 #6: exporting these made library() fail with
+  # "undefined exports" -- only #[miniextendr] top-level free fns have bindings.
+  code <- '
+#[miniextendr]
+pub fn exported(x: i32) -> i32 { helper(x) }
+
+pub fn helper(x: i32) -> i32 { x + 1 }
+
+pub struct Counter { value: i32 }
+
+#[miniextendr]
+impl Counter {
+    pub fn new() -> Self { Counter { value: 0 } }
+    pub fn bump(&mut self) { self.value += 1; }
+}
+'
+  expect_equal(minirextendr:::extract_pub_fn_names(code), "exported")
+})
+
+test_that("extract_pub_fn_names handles attribute args, doc comments, one-liners", {
+  code <- '
+#[miniextendr(invisible)]
+pub fn with_args() {}
+
+#[miniextendr]
+/// doc comment between attribute and fn
+#[allow(dead_code)]
+pub fn documented() {}
+
+#[miniextendr] pub fn one_liner(x: i32) -> i32 { x }
+'
+  expect_equal(
+    minirextendr:::extract_pub_fn_names(code),
+    c("with_args", "documented", "one_liner")
+  )
 })
 
 # ---- extract_impl_names ----
