@@ -37,8 +37,11 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
-    // Check if class has @noRd - if so, skip method documentation
-    let class_has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd");
+    // Check if class has @noRd - if so, skip method documentation. A plain
+    // `noexport` (without `internal`) is folded in too — it must suppress Rd
+    // contribution entirely, matching `ClassDocBuilder::build`'s `suppress_rd` gate.
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd")
+        || (parsed_impl.noexport && !parsed_impl.internal);
 
     let mut lines = Vec::new();
 

@@ -239,8 +239,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
-    // Check if class has @noRd - if so, skip method documentation and exports
-    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    // Check if class has @noRd - if so, skip method documentation and exports. A
+    // plain `noexport` (without `internal`) is folded in too — it must suppress
+    // Rd contribution entirely, matching `ClassDocBuilder::build`'s `suppress_rd`
+    // gate. `should_export` (below) already independently gates @export/@exportMethod.
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd")
+        || (parsed_impl.noexport && !parsed_impl.internal);
     let should_export =
         should_export_from_tags(class_doc_tags, parsed_impl.noexport || parsed_impl.internal);
 

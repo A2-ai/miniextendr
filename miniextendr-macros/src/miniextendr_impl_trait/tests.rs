@@ -227,6 +227,120 @@ fn test_noexport_suppresses_export_s4() {
     );
 }
 
+/// Audit A10: `noexport` (without `internal`) must produce no Rd contribution
+/// at all — same as a user-written `@noRd` — not just suppress `@export`.
+/// Before the fix, `noexport` only stripped `@export`/`@exportMethod` lines,
+/// leaving `@rdname`/`@name`/`@title` intact, so the trait's methods still
+/// landed (undocumented-looking but alias-contributing) on the type's shared
+/// help page.
+#[test]
+fn test_noexport_suppresses_all_roxygen_s4() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let methods = vec![make_test_method("value", true)];
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &methods,
+        &[],
+        opts(ClassSystem::S4, false, false, true),
+    )
+    .unwrap();
+
+    assert!(
+        !result.contains("#'"),
+        "noexport should strip ALL roxygen tags (no alias/rdname contribution) for S4, got:\n{}",
+        result
+    );
+}
+
+/// Companion to the above: `internal` must keep the opposite behavior — the
+/// method stays documented (under `@keywords internal`), so it still
+/// contributes to the type's shared `@rdname` help page.
+#[test]
+fn test_internal_still_contributes_rdname_s4() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let methods = vec![make_test_method("value", true)];
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &methods,
+        &[],
+        opts(ClassSystem::S4, false, true, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("@rdname"),
+        "internal should still contribute to the shared @rdname page for S4, got:\n{}",
+        result
+    );
+}
+
+/// S3/vctrs analog: `noexport` emits `@noRd` (like a user-written `@noRd`)
+/// instead of merely dropping `@export`, and — unlike a plain user `@noRd` —
+/// also drops the S3 dispatch-registration `@export` line (mirrors the
+/// inherent-impl S3 generator's `should_register_s3method = !noexport`, #431:
+/// `noexport` means zero observable NAMESPACE trace, not "undocumented but
+/// still dispatchable").
+#[test]
+fn test_noexport_emits_no_rd_marker_s3() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let methods = vec![make_test_method("value", true)];
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &methods,
+        &[],
+        opts(ClassSystem::S3, false, false, true),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("#' @noRd"),
+        "noexport should emit @noRd for S3, got:\n{}",
+        result
+    );
+    assert!(
+        !result.contains("@export"),
+        "noexport should also drop S3 dispatch @export for S3, got:\n{}",
+        result
+    );
+}
+
+/// `internal` must NOT emit `@noRd` — it stays documented (just unexported).
+#[test]
+fn test_internal_does_not_emit_no_rd_marker_s3() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let methods = vec![make_test_method("value", true)];
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &methods,
+        &[],
+        opts(ClassSystem::S3, false, true, false),
+    )
+    .unwrap();
+
+    assert!(
+        !result.contains("@noRd"),
+        "internal should NOT emit @noRd for S3 (stays documented), got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("@rdname"),
+        "internal should still contribute to the shared @rdname page for S3, got:\n{}",
+        result
+    );
+}
+
 #[test]
 fn test_no_flags_preserves_export_s3() {
     let type_ident = format_ident!("Foo");

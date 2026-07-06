@@ -577,37 +577,50 @@ impl<'a> ClassDocBuilder<'a> {
         let has_export = crate::roxygen::has_roxygen_tag(self.doc_tags, "export");
         let has_no_rd = crate::roxygen::has_roxygen_tag(self.doc_tags, "noRd");
         let has_internal = crate::roxygen::has_roxygen_tag(self.doc_tags, "keywords internal");
+        let effective_internal = has_internal || self.attr_internal;
+
+        // `noexport` (without `internal`) must produce no Rd contribution at all —
+        // no alias, no usage entry, nothing on a shared page — distinct from
+        // `internal`, which stays documented under `\keyword{internal}`. Fold a
+        // plain `noexport` into the same suppression gate as a user-written
+        // `@noRd`. `internal` wins if both flags are set on the same impl block
+        // (mirrors the standalone-fn `#[miniextendr(internal)]` precedence, where
+        // `internal` + `noexport` together is a compile error).
+        let suppress_rd = has_no_rd || (self.attr_noexport && !effective_internal);
 
         let mut lines = Vec::new();
 
-        if !has_title && !has_no_rd {
+        if suppress_rd && !has_no_rd {
+            lines.push("#' @noRd".to_string());
+        }
+
+        if !has_title && !suppress_rd {
             lines.push(format!(
                 "#' @title {} {} Class",
                 self.class_name, self.class_system_label
             ));
         }
-        if !has_name && !has_no_rd {
+        if !has_name && !suppress_rd {
             lines.push(format!("#' @name {}", self.class_name));
         }
-        if !has_rdname && !has_no_rd {
+        if !has_rdname && !suppress_rd {
             lines.push(format!("#' @rdname {}", self.class_name));
         }
         crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
-        if !has_no_rd {
+        if !suppress_rd {
             lines.push(crate::roxygen::class_source_tag(self.type_ident));
         }
         if let Some(ref imports) = self.imports
-            && !has_no_rd
+            && !suppress_rd
         {
             lines.push(format!("#' {}", imports));
         }
         // Inject @keywords internal if attr flag set and not already present
-        let effective_internal = has_internal || self.attr_internal;
-        if self.attr_internal && !has_internal && !has_no_rd {
+        if self.attr_internal && !has_internal && !suppress_rd {
             lines.push("#' @keywords internal".to_string());
         }
         // Don't auto-export if @noRd, @keywords internal, or attr flags are present
-        if !has_export && !has_no_rd && !effective_internal && !self.attr_noexport {
+        if !has_export && !suppress_rd && !effective_internal && !self.attr_noexport {
             lines.push("#' @export".to_string());
         }
 
@@ -951,11 +964,96 @@ impl ParsedImplExt for ParsedImpl {
 
 #[cfg(test)]
 mod tests {
+    use super::ClassDocBuilder;
+
     #[test]
     fn test_method_context_static_call_no_args() {
         // This is a unit test for the static_call method
         // We'd need a mock ParsedMethod to test fully, but we can test the logic
         let call = ".Call(C_Test, .call = match.call())";
         assert!(call.contains(".Call"));
+    }
+
+    /// Audit A10: a class-level `#[miniextendr(noexport)]` (without `internal`)
+    /// must produce no Rd contribution at all — no `@title`/`@name`/`@rdname`/
+    /// `@export` — same as a user-written `@noRd`. Before the fix, `noexport`
+    /// only suppressed `@export`, leaving the class fully documented (with an
+    /// alias) minus the export line.
+    #[test]
+    fn test_class_noexport_suppresses_all_roxygen() {
+        let type_ident: syn::Ident = syn::parse_str("Foo").unwrap();
+        let doc_tags: Vec<String> = vec![];
+        let lines = ClassDocBuilder::new("Foo", &type_ident, &doc_tags, "R6")
+            .with_export_control(false, true)
+            .build();
+        let joined = lines.join("\n");
+
+        assert!(
+            lines.iter().any(|l| l == "#' @noRd"),
+            "noexport should emit @noRd, got:\n{}",
+            joined
+        );
+        assert!(
+            !joined.contains("@title") && !joined.contains("@name") && !joined.contains("@rdname"),
+            "noexport should suppress @title/@name/@rdname entirely, got:\n{}",
+            joined
+        );
+        assert!(
+            !joined.contains("@export"),
+            "noexport should suppress @export, got:\n{}",
+            joined
+        );
+    }
+
+    /// Companion: `#[miniextendr(internal)]` keeps the class documented (under
+    /// `@keywords internal`) — it still contributes `@title`/`@name`/`@rdname`
+    /// so it lands on a real help page, just unexported.
+    #[test]
+    fn test_class_internal_still_documented() {
+        let type_ident: syn::Ident = syn::parse_str("Foo").unwrap();
+        let doc_tags: Vec<String> = vec![];
+        let lines = ClassDocBuilder::new("Foo", &type_ident, &doc_tags, "R6")
+            .with_export_control(true, false)
+            .build();
+        let joined = lines.join("\n");
+
+        assert!(
+            !lines.iter().any(|l| l == "#' @noRd"),
+            "internal should NOT emit @noRd (stays documented), got:\n{}",
+            joined
+        );
+        assert!(
+            joined.contains("@keywords internal"),
+            "internal should add @keywords internal, got:\n{}",
+            joined
+        );
+        assert!(
+            joined.contains("@title") && joined.contains("@name") && joined.contains("@rdname"),
+            "internal should still emit @title/@name/@rdname, got:\n{}",
+            joined
+        );
+        assert!(
+            !joined.contains("#' @export"),
+            "internal should suppress @export, got:\n{}",
+            joined
+        );
+    }
+
+    /// Neither flag set: normal fully-documented, exported class.
+    #[test]
+    fn test_class_no_flags_fully_documented_and_exported() {
+        let type_ident: syn::Ident = syn::parse_str("Foo").unwrap();
+        let doc_tags: Vec<String> = vec![];
+        let lines = ClassDocBuilder::new("Foo", &type_ident, &doc_tags, "R6")
+            .with_export_control(false, false)
+            .build();
+        let joined = lines.join("\n");
+
+        assert!(!joined.contains("@noRd"));
+        assert!(!joined.contains("@keywords internal"));
+        assert!(
+            joined.contains("@title") && joined.contains("@name") && joined.contains("@rdname")
+        );
+        assert!(joined.contains("#' @export"));
     }
 }

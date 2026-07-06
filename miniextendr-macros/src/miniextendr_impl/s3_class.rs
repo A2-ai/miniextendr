@@ -37,7 +37,12 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // S3 convention: lowercase constructor name
     let ctor_name = format!("new_{}", class_name.to_lowercase());
     let class_doc_tags = &parsed_impl.doc_tags;
-    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    // A plain `noexport` (without `internal`) is folded into the @noRd gate too —
+    // it must suppress Rd contribution entirely, matching `ClassDocBuilder::build`'s
+    // `suppress_rd` gate. `@method`/`@export` tags stay preserved for S3 dispatch
+    // registration by the existing @noRd-handling branches below.
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd")
+        || (parsed_impl.noexport && !parsed_impl.internal);
     // Generic export (NAMESPACE `export(generic_name)`): suppressed by
     // @noRd / internal / noexport. An internal class doesn't pollute the
     // package's user-facing surface with a bare generic.
@@ -136,10 +141,17 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Then create the S3 method
         if class_has_no_rd {
-            // @noRd class: minimal roxygen — just @method + @export for NAMESPACE.
+            // @noRd class: minimal roxygen — just @method (+ @export for NAMESPACE
+            // dispatch registration, gated by `should_register_s3method` so a
+            // `noexport`-driven suppression — folded into `class_has_no_rd` above —
+            // also drops S3 dispatch, not just Rd docs; a plain user `@noRd` with
+            // no `noexport` attr still registers dispatch as before, since
+            // `should_register_s3method` is `true` whenever `noexport` isn't set).
             // @export on S3 methods produces S3method() in NAMESPACE (not export()).
             lines.push(format!("#' @method {} {}", generic_name, class_name));
-            lines.push("#' @export".to_string());
+            if should_register_s3method {
+                lines.push("#' @export".to_string());
+            }
         } else {
             let qualified_name = format!("{}.{}", generic_name, class_name);
             let mx_doc = ctx.match_arg_doc_placeholders();
