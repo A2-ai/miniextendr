@@ -702,6 +702,31 @@ fn strip_method_tags_leaves_prose_untouched() {
 // endregion
 
 #[test]
+fn split_r_formals_ignores_nested_commas() {
+    // Plain formals split as before.
+    assert_eq!(split_r_formals("x, y, z"), vec!["x", "y", "z"]);
+    // A match_arg default `c("fast", "slow")` must stay one formal, not be
+    // shredded into `mode = c("fast"` + `"slow")` (the ScalerS7/ScalerR6 bug).
+    assert_eq!(
+        split_r_formals(r#"x, mode = c("fast", "slow"), ..."#),
+        vec!["x", r#"mode = c("fast", "slow")"#, "..."]
+    );
+    // Nested calls / brackets are respected too.
+    assert_eq!(
+        split_r_formals("self, opts = list(a = 1, b = 2), ..."),
+        vec!["self", "opts = list(a = 1, b = 2)", "..."]
+    );
+    assert!(split_r_formals("").is_empty());
+}
+
+#[test]
+fn formal_name_strips_default() {
+    assert_eq!(formal_name("x"), "x");
+    assert_eq!(formal_name(r#"mode = c("fast", "slow")"#), "mode");
+    assert_eq!(formal_name("..."), "...");
+}
+
+#[test]
 fn test_normalize_for_comparison() {
     // Basic normalization
     assert_eq!(normalize_for_comparison("Hello World"), "hello world");
