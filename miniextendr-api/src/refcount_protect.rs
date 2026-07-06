@@ -654,7 +654,7 @@ thread_local! {
 ///
 /// This provides the lowest overhead for protection operations by
 /// eliminating `RefCell` borrow checking — each thread gets its own
-/// [`ThreadLocalState`] accessed through an `UnsafeCell`.
+/// `ThreadLocalState` (private) accessed through an `UnsafeCell`.
 ///
 /// ```ignore
 /// use miniextendr_api::refcount_protect::ThreadLocalArena;
