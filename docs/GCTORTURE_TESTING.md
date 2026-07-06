@@ -44,21 +44,27 @@ gctorture(FALSE)
 
 `testthat::test_dir` may attach extra packages (rlang, withr, dplyr, …) the first time
 it runs. Each `.onLoad` hook is a gctorture-amplified hazard you don't want to debug.
-For targeted testing, **call exported functions directly via `get(name)()`** rather than
-going through `test_dir`. Keep `test_dir` for the final whole-suite sweep, after you've
-loaded everything you need.
+For targeted testing, **call the fixture directly via `get(name, envir = getNamespace("miniextendr"))()`**
+rather than going through `test_dir`. Keep `test_dir` for the final whole-suite sweep,
+after you've loaded everything you need.
 
 ## Recipe — per-function sweep
+
+The gctorture/gc_stress fixtures are deliberately **unexported** (`noexport` — see
+audit A7) so they don't leak into the public API. Enumerate and call them through the
+package namespace, not the attached-exports search path (`ls("package:miniextendr")`
+only sees exports and silently returns zero matches for these fixtures):
 
 ```r
 library(miniextendr)
 gctorture(TRUE)
 
-funs <- ls("package:miniextendr", pattern = "^test_columnar_")  # or any prefix
+ns <- getNamespace("miniextendr")
+funs <- ls(ns, pattern = "^test_columnar_")  # or any prefix, e.g. "^gc_stress_"
 ok <- 0L
 fail <- character(0)
 for (f in funs) {
-  res <- tryCatch({ get(f)(); "ok" }, error = function(e) conditionMessage(e))
+  res <- tryCatch({ get(f, envir = ns)(); "ok" }, error = function(e) conditionMessage(e))
   if (identical(res, "ok")) ok <- ok + 1L
   else fail <- c(fail, sprintf("%s: %s", f, res))
 }

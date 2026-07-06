@@ -31,7 +31,7 @@ impl Coerce<Temperature> for f64 {
 // Test function using the tuple newtype
 /// Test RNativeType derive on a tuple struct newtype (i32 -> UserId -> i32).
 /// @param id Integer input coerced to UserId.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_rnative_newtype(id: i32) -> i32 {
     let user_id: UserId = id.coerce();
     user_id.0 // Extract inner value
@@ -40,7 +40,7 @@ pub fn test_rnative_newtype(id: i32) -> i32 {
 // Test function using the named-field newtype
 /// Test RNativeType derive on a named-field struct (f64 -> Temperature -> f64).
 /// @param temp Numeric input coerced to Temperature.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_rnative_named_field(temp: f64) -> f64 {
     let t: Temperature = temp.coerce();
     t.celsius // Extract inner value
@@ -55,7 +55,7 @@ pub fn test_rnative_named_field(temp: f64) -> f64 {
 // 2. Helper functions with generics that are called with concrete types
 
 // Test 1: Concrete function using Coerce internally (identity)
-#[miniextendr]
+#[miniextendr(noexport)]
 /// @title Coercion Tests
 /// @name rpkg_coercion_tests
 /// @description Coercion and RNativeType tests
@@ -77,7 +77,7 @@ pub fn test_coerce_identity(x: i32) -> i32 {
 // Test 2: Widening coercion (i32 -> f64, always succeeds)
 /// Test widening coercion from i32 to f64 via Coerce trait.
 /// @param x Integer scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_coerce_widen(x: i32) -> f64 {
     x.coerce()
 }
@@ -85,7 +85,7 @@ pub fn test_coerce_widen(x: i32) -> f64 {
 // Test 3: bool -> i32 coercion
 /// Test coercion from Rboolean to i32 via Coerce trait.
 /// @param x Logical scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_coerce_bool_to_int(x: miniextendr_api::Rboolean) -> i32 {
     x.coerce()
 }
@@ -97,7 +97,7 @@ fn helper_accepts_integer<T: Coerce<i32>>(x: T) -> i32 {
 
 /// Test that a generic helper with Coerce trait bound works with a concrete i32.
 /// @param x Integer scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_coerce_via_helper(x: i32) -> i32 {
     // The generic helper works because x is concrete i32 at call site
     helper_accepts_integer(x)
@@ -106,7 +106,7 @@ pub fn test_coerce_via_helper(x: i32) -> i32 {
 // Test 5: TryCoerce - narrowing with potential failure
 /// Test TryCoerce narrowing from f64 to i32 (returns NA on overflow, precision loss, or NaN).
 /// @param x Numeric scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
     match TryCoerce::<i32>::try_coerce(x) {
         Ok(v) => v,
@@ -124,7 +124,7 @@ pub fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
 // R: test_coerce_attr_u16(-1L) should error (overflow)
 /// Test `#[miniextendr(coerce)]` attribute converting i32 to u16 (errors on negative).
 /// @param x Integer scalar coerced to u16.
-#[miniextendr(coerce)]
+#[miniextendr(coerce, noexport)]
 pub fn test_coerce_attr_u16(x: u16) -> i32 {
     x as i32 // Return as R integer
 }
@@ -132,7 +132,7 @@ pub fn test_coerce_attr_u16(x: u16) -> i32 {
 // Test 7: Coerce attribute - scalar i32 -> i16
 /// Test `#[miniextendr(coerce)]` attribute converting i32 to i16.
 /// @param x Integer scalar coerced to i16.
-#[miniextendr(coerce)]
+#[miniextendr(coerce, noexport)]
 pub fn test_coerce_attr_i16(x: i16) -> i32 {
     x as i32
 }
@@ -140,7 +140,7 @@ pub fn test_coerce_attr_i16(x: i16) -> i32 {
 // Test 8: Coerce attribute - Vec<i32> -> Vec<u16>
 /// Test `#[miniextendr(coerce)]` attribute converting `Vec<i32>` to `Vec<u16>` then summing.
 /// @param x Integer vector coerced element-wise to u16.
-#[miniextendr(coerce)]
+#[miniextendr(coerce, noexport)]
 pub fn test_coerce_attr_vec_u16(x: Vec<u16>) -> i32 {
     x.iter().map(|&v| v as i32).sum()
 }
@@ -148,7 +148,7 @@ pub fn test_coerce_attr_vec_u16(x: Vec<u16>) -> i32 {
 // Test 9: Coerce attribute - scalar f64 -> f32
 /// Test `#[miniextendr(coerce)]` attribute narrowing f64 to f32.
 /// @param x Numeric scalar coerced to f32.
-#[miniextendr(coerce)]
+#[miniextendr(coerce, noexport)]
 pub fn test_coerce_attr_f32(x: f32) -> f64 {
     x as f64
 }
@@ -156,7 +156,7 @@ pub fn test_coerce_attr_f32(x: f32) -> f64 {
 // Test 10: Coerce attribute - combined with other attributes
 /// Test `#[miniextendr(coerce, invisible)]` combining coercion with invisible return.
 /// @param x Integer scalar coerced to u16.
-#[miniextendr(coerce, invisible)]
+#[miniextendr(coerce, invisible, noexport)]
 pub fn test_coerce_attr_with_invisible(x: u16) -> i32 {
     x as i32
 }
@@ -168,7 +168,7 @@ pub fn test_coerce_attr_with_invisible(x: u16) -> i32 {
 /// Test per-argument coercion on the first parameter only.
 /// @param x Integer scalar coerced to u16.
 /// @param y Integer scalar (no coercion).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_per_arg_coerce_first(#[miniextendr(coerce)] x: u16, y: i32) -> i32 {
     x as i32 + y
 }
@@ -177,7 +177,7 @@ pub fn test_per_arg_coerce_first(#[miniextendr(coerce)] x: u16, y: i32) -> i32 {
 /// Test per-argument coercion on the second parameter only.
 /// @param x Integer scalar (no coercion).
 /// @param y Integer scalar coerced to u16.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_per_arg_coerce_second(x: i32, #[miniextendr(coerce)] y: u16) -> i32 {
     x + y as i32
 }
@@ -186,7 +186,7 @@ pub fn test_per_arg_coerce_second(x: i32, #[miniextendr(coerce)] y: u16) -> i32 
 /// Test per-argument coercion on both parameters simultaneously.
 /// @param x Integer scalar coerced to u16.
 /// @param y Integer scalar coerced to i16.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_per_arg_coerce_both(
     #[miniextendr(coerce)] x: u16,
     #[miniextendr(coerce)] y: i16,
@@ -198,7 +198,7 @@ pub fn test_per_arg_coerce_both(
 /// Test per-argument coercion on a Vec parameter (`Vec<i32>` coerced to `Vec<u16>`).
 /// @param x Integer vector coerced element-wise to u16.
 /// @param y Integer scalar added to the sum.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_per_arg_coerce_vec(#[miniextendr(coerce)] x: Vec<u16>, y: i32) -> i32 {
     x.iter().map(|&v| v as i32).sum::<i32>() + y
 }

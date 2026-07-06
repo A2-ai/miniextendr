@@ -5,14 +5,14 @@
 # =============================================================================
 
 test_that("test_list_builder_length creates list with correct length", {
-  expect_equal(test_list_builder_length(0L), 0L)
-  expect_equal(test_list_builder_length(1L), 1L)
-  expect_equal(test_list_builder_length(5L), 5L)
-  expect_equal(test_list_builder_length(100L), 100L)
+  expect_equal(miniextendr:::test_list_builder_length(0L), 0L)
+  expect_equal(miniextendr:::test_list_builder_length(1L), 1L)
+  expect_equal(miniextendr:::test_list_builder_length(5L), 5L)
+  expect_equal(miniextendr:::test_list_builder_length(100L), 100L)
 })
 
 test_that("test_list_builder_set creates list with typed elements", {
-  result <- test_list_builder_set()
+  result <- miniextendr:::test_list_builder_set()
 
   expect_true(is.list(result))
   expect_equal(length(result), 3L)
@@ -31,7 +31,7 @@ test_that("test_list_builder_set creates list with typed elements", {
 })
 
 test_that("test_list_set_elt creates list with correct element types and lengths", {
-  result <- test_list_set_elt()
+  result <- miniextendr:::test_list_set_elt()
 
   expect_true(is.list(result))
   expect_equal(length(result), 2L)
@@ -46,7 +46,7 @@ test_that("test_list_set_elt creates list with correct element types and lengths
 })
 
 test_that("test_list_set_elt_with creates list with closure-allocated children", {
-  result <- test_list_set_elt_with()
+  result <- miniextendr:::test_list_set_elt_with()
 
   expect_true(is.list(result))
   expect_equal(length(result), 2L)
@@ -65,14 +65,14 @@ test_that("test_list_set_elt_with creates list with closure-allocated children",
 # =============================================================================
 
 test_that("test_strvec_builder_length creates string vector with correct length", {
-  expect_equal(test_strvec_builder_length(0L), 0L)
-  expect_equal(test_strvec_builder_length(1L), 1L)
-  expect_equal(test_strvec_builder_length(5L), 5L)
-  expect_equal(test_strvec_builder_length(100L), 100L)
+  expect_equal(miniextendr:::test_strvec_builder_length(0L), 0L)
+  expect_equal(miniextendr:::test_strvec_builder_length(1L), 1L)
+  expect_equal(miniextendr:::test_strvec_builder_length(5L), 5L)
+  expect_equal(miniextendr:::test_strvec_builder_length(100L), 100L)
 })
 
 test_that("test_strvec_builder_set creates character vector with expected values", {
-  result <- test_strvec_builder_set()
+  result <- miniextendr:::test_strvec_builder_set()
 
   # Vec<Option<String>> converts to character vector with NA for None
   expect_true(is.character(result))
@@ -90,7 +90,7 @@ test_that("test_strvec_builder_set creates character vector with expected values
 })
 
 test_that("test_strvec_set_str creates character vector with expected values", {
-  result <- test_strvec_set_str()
+  result <- miniextendr:::test_strvec_set_str()
 
   # Vec<Option<String>> converts to character vector with NA for None
   expect_true(is.character(result))
@@ -107,21 +107,21 @@ test_that("test_strvec_set_str creates character vector with expected values", {
 
 test_that("test_reprotect_slot_accumulate replaces vectors without leaking", {
   # After replacing the vector n times, the final length should be n
-  expect_equal(test_reprotect_slot_accumulate(1L), 1L)
-  expect_equal(test_reprotect_slot_accumulate(5L), 5L)
-  expect_equal(test_reprotect_slot_accumulate(10L), 10L)
+  expect_equal(miniextendr:::test_reprotect_slot_accumulate(1L), 1L)
+  expect_equal(miniextendr:::test_reprotect_slot_accumulate(5L), 5L)
+  expect_equal(miniextendr:::test_reprotect_slot_accumulate(10L), 10L)
 })
 
 test_that("test_reprotect_slot_count passes Rust-level protection checks", {
   # Returns 1 if Rust-side protection count assertions pass, 0 on failure
-  expect_equal(test_reprotect_slot_count(), 1L)
+  expect_equal(miniextendr:::test_reprotect_slot_count(), 1L)
 })
 
 test_that("test_reprotect_slot_no_growth does not increase protect stack", {
   # Returns 1 on success (no stack growth), 0 on failure
-  expect_equal(test_reprotect_slot_no_growth(1L), 1L)
-  expect_equal(test_reprotect_slot_no_growth(10L), 1L)
-  expect_equal(test_reprotect_slot_no_growth(100L), 1L)
+  expect_equal(miniextendr:::test_reprotect_slot_no_growth(1L), 1L)
+  expect_equal(miniextendr:::test_reprotect_slot_no_growth(10L), 1L)
+  expect_equal(miniextendr:::test_reprotect_slot_no_growth(100L), 1L)
 })
 
 # =============================================================================
@@ -130,18 +130,18 @@ test_that("test_reprotect_slot_no_growth does not increase protect stack", {
 
 test_that("gc_stress_alloc_wrappers exercises new ProtectScope methods without error", {
   # Returns the count of operations performed (10 in current implementation)
-  result <- gc_stress_alloc_wrappers()
+  result <- miniextendr:::gc_stress_alloc_wrappers()
   expect_true(is.integer(result))
   expect_true(result >= 6L, label = "at least 6 wrapper operations performed")
 })
 
 test_that("Protected<'a, T> bundle protects across CHARSXP allocations", {
   expect_identical(
-    test_protected_strvec_bundle(),
+    miniextendr:::test_protected_strvec_bundle(),
     c("alpha", NA, "gamma")
   )
 })
 
 test_that("Protected::from_trusted + into_inner works on pre-protected SEXPs", {
-  expect_identical(test_protected_from_trusted(), c("trusted", NA))
+  expect_identical(miniextendr:::test_protected_from_trusted(), c("trusted", NA))
 })

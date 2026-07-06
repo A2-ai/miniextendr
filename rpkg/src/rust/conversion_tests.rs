@@ -5,7 +5,7 @@ use miniextendr_api::miniextendr;
 // region: scalar conversion tests
 
 // i32 tests
-#[miniextendr]
+#[miniextendr(noexport)]
 /// @title Conversion Tests
 /// @name rpkg_conversion_tests
 /// @description Scalar and slice conversion tests
@@ -27,7 +27,7 @@ pub fn test_i32_identity(x: i32) -> i32 {
 
 /// Test i32 scalar increment by one.
 /// @param x Integer scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_i32_add_one(x: i32) -> i32 {
     x + 1
 }
@@ -36,7 +36,7 @@ pub fn test_i32_add_one(x: i32) -> i32 {
 /// @param a Integer scalar.
 /// @param b Integer scalar.
 /// @param c Integer scalar.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_i32_sum(a: i32, b: i32, c: i32) -> i32 {
     a + b + c
 }
@@ -44,14 +44,14 @@ pub fn test_i32_sum(a: i32, b: i32, c: i32) -> i32 {
 // f64 tests
 /// Test f64 scalar identity roundtrip.
 /// @param x Numeric scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_f64_identity(x: f64) -> f64 {
     x
 }
 
 /// Test f64 scalar increment by one.
 /// @param x Numeric scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_f64_add_one(x: f64) -> f64 {
     x + 1.0
 }
@@ -59,7 +59,7 @@ pub fn test_f64_add_one(x: f64) -> f64 {
 /// Test f64 scalar multiplication.
 /// @param a Numeric scalar.
 /// @param b Numeric scalar.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_f64_multiply(a: f64, b: f64) -> f64 {
     a * b
 }
@@ -67,14 +67,14 @@ pub fn test_f64_multiply(a: f64, b: f64) -> f64 {
 // u8 (raw) tests
 /// Test u8 (raw byte) scalar identity roundtrip.
 /// @param x Raw scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_u8_identity(x: u8) -> u8 {
     x
 }
 
 /// Test u8 scalar wrapping increment by one.
 /// @param x Raw scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_u8_add_one(x: u8) -> u8 {
     x.wrapping_add(1)
 }
@@ -82,14 +82,14 @@ pub fn test_u8_add_one(x: u8) -> u8 {
 // Rboolean tests
 /// Test logical scalar identity roundtrip.
 /// @param x Logical scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_logical_identity(x: miniextendr_api::Rboolean) -> miniextendr_api::Rboolean {
     x
 }
 
 /// Test logical negation (TRUE becomes FALSE and vice versa).
 /// @param x Logical scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_logical_not(x: miniextendr_api::Rboolean) -> miniextendr_api::Rboolean {
     use miniextendr_api::Rboolean;
     match x {
@@ -101,7 +101,7 @@ pub fn test_logical_not(x: miniextendr_api::Rboolean) -> miniextendr_api::Rboole
 /// Test logical AND of two Rboolean scalars.
 /// @param a Logical scalar.
 /// @param b Logical scalar.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_logical_and(
     a: miniextendr_api::Rboolean,
     b: miniextendr_api::Rboolean,
@@ -116,14 +116,14 @@ pub fn test_logical_and(
 // Mixed type tests
 /// Test widening conversion from i32 to f64.
 /// @param x Integer scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_i32_to_f64(x: i32) -> f64 {
     x as f64
 }
 
 /// Test truncating conversion from f64 to i32.
 /// @param x Numeric scalar input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_f64_to_i32(x: f64) -> i32 {
     x as i32
 }
@@ -135,28 +135,28 @@ pub fn test_f64_to_i32(x: f64) -> i32 {
 // Slice tests - i32
 /// Test getting the length of an i32 slice from R.
 /// @param x Integer vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_i32_slice_len(x: &'static [i32]) -> i32 {
     x.len() as i32
 }
 
 /// Test summing elements of an i32 slice.
 /// @param x Integer vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_i32_slice_sum(x: &'static [i32]) -> i32 {
     x.iter().sum()
 }
 
 /// Test extracting the first element of an i32 slice (0 if empty).
 /// @param x Integer vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_i32_slice_first(x: &'static [i32]) -> i32 {
     x.first().copied().unwrap_or(0)
 }
 
 /// Test extracting the last element of an i32 slice (0 if empty).
 /// @param x Integer vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_i32_slice_last(x: &'static [i32]) -> i32 {
     x.last().copied().unwrap_or(0)
 }
@@ -164,21 +164,21 @@ pub fn test_i32_slice_last(x: &'static [i32]) -> i32 {
 // Slice tests - f64
 /// Test getting the length of an f64 slice from R.
 /// @param x Numeric vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_f64_slice_len(x: &'static [f64]) -> i32 {
     x.len() as i32
 }
 
 /// Test summing elements of an f64 slice.
 /// @param x Numeric vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
     x.iter().sum()
 }
 
 /// Test computing the arithmetic mean of an f64 slice (0.0 if empty).
 /// @param x Numeric vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
     if x.is_empty() {
         0.0
@@ -190,14 +190,14 @@ pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
 // Slice tests - u8 (raw)
 /// Test getting the length of a raw byte slice.
 /// @param x Raw vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_u8_slice_len(x: &'static [u8]) -> i32 {
     x.len() as i32
 }
 
 /// Test summing elements of a raw byte slice as i32.
 /// @param x Raw vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
     x.iter().map(|&b| b as i32).sum()
 }
@@ -205,14 +205,14 @@ pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
 // Slice tests - logical
 /// Test getting the length of an RLogical slice.
 /// @param x Logical vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_logical_slice_len(x: &'static [miniextendr_api::RLogical]) -> i32 {
     x.len() as i32
 }
 
 /// Test whether any element of a logical slice is TRUE.
 /// @param x Logical vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_logical_slice_any_true(
     x: &'static [miniextendr_api::RLogical],
 ) -> miniextendr_api::Rboolean {
@@ -226,7 +226,7 @@ pub fn test_logical_slice_any_true(
 
 /// Test whether all elements of a logical slice are TRUE.
 /// @param x Logical vector input.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_logical_slice_all_true(
     x: &'static [miniextendr_api::RLogical],
 ) -> miniextendr_api::Rboolean {

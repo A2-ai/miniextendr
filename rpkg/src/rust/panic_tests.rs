@@ -208,13 +208,13 @@ pub fn add_left_right_mut(left: i32, right: i32) -> i32 {
 
 /// Test a bare panic without any catch_unwind wrapper.
 #[unsafe(no_mangle)]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub extern "C-unwind" fn C_just_panic() -> SEXP {
     panic!("just panic, no capture");
 }
 
 /// Test that catch_unwind captures a panic and returns an Err.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
@@ -224,7 +224,7 @@ pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
 }
 
 /// Test a direct Rf_error call via raw FFI.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_r_error() -> SEXP {
@@ -233,7 +233,7 @@ pub extern "C-unwind" fn C_r_error() -> SEXP {
 }
 
 /// Test that Rf_error inside catch_unwind is NOT caught (R longjmp bypasses it).
-#[miniextendr]
+#[miniextendr(noexport)]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
@@ -260,7 +260,7 @@ fn extract_panic_message(e: Box<dyn std::any::Any + Send>) -> String {
 }
 
 /// Test that checked Rf_error on a non-R thread panics with a clear thread-check message.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
@@ -277,7 +277,7 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
 }
 
 /// Test that checked Rprintf on a non-R thread panics with a clear thread-check message.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_r_print_in_thread() -> SEXP {

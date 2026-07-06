@@ -496,7 +496,7 @@ pub fn rust_run_progress_to_stderr(n: i32) {
 /// Creates a bar, advances it once, then lets it close on drop.
 /// Called from the gctorture sweep to exercise precious-list GC discipline.
 #[cfg(feature = "connections")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_txt_progress_bar() {
     use miniextendr_api::txt_progress_bar::RTxtProgressBar;
     let pb = RTxtProgressBar::builder(0.0, 1.0).style(1).build();

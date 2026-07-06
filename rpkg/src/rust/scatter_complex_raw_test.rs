@@ -139,7 +139,7 @@ pub fn scatter_raw_all_absent() -> DataFrame {
 /// of `scatter_native` which fills absent rows with `0x00`.
 ///
 /// No arguments — suitable for the fast `gctorture(TRUE)` no-arg sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_scatter_raw() {
     use miniextendr_api::into_r::IntoR as _;
 
@@ -286,7 +286,7 @@ pub fn scatter_complex_all_absent() -> DataFrame {
 ///
 /// No arguments — suitable for the fast `gctorture(TRUE)` no-arg sweep.
 #[cfg(feature = "num-complex")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_scatter_complex() {
     use miniextendr_api::into_r::IntoR as _;
 

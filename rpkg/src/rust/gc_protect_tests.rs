@@ -14,7 +14,7 @@ use miniextendr_api::sys::Rf_allocVector;
 
 /// Test that ListBuilder reports the correct length.
 /// @param n Number of list elements to allocate.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_list_builder_length(n: i32) -> i32 {
     unsafe {
         let scope = ProtectScope::new();
@@ -24,7 +24,7 @@ pub fn test_list_builder_length(n: i32) -> i32 {
 }
 
 /// Test setting heterogeneous child vectors in a ListBuilder.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_list_builder_set() -> List {
     unsafe {
         let scope = ProtectScope::new();
@@ -44,7 +44,7 @@ pub fn test_list_builder_set() -> List {
 }
 
 /// Test List::set_elt with unprotected child vectors (set_elt handles protection).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_list_set_elt() -> List {
     unsafe {
         let scope = ProtectScope::new();
@@ -62,7 +62,7 @@ pub fn test_list_set_elt() -> List {
 }
 
 /// Test List::set_elt_with using closure-based lazy allocation of child vectors.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_list_set_elt_with() -> List {
     unsafe {
         let scope = ProtectScope::new();
@@ -80,7 +80,7 @@ pub fn test_list_set_elt_with() -> List {
 
 /// Test that StrVecBuilder reports the correct length.
 /// @param n Number of string elements to allocate.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_strvec_builder_length(n: i32) -> i32 {
     unsafe {
         let scope = ProtectScope::new();
@@ -90,7 +90,7 @@ pub fn test_strvec_builder_length(n: i32) -> i32 {
 }
 
 /// Test StrVecBuilder set_str, set_na, and set_opt_str methods.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_strvec_builder_set() -> Vec<Option<String>> {
     unsafe {
         let scope = ProtectScope::new();
@@ -112,7 +112,7 @@ pub fn test_strvec_builder_set() -> Vec<Option<String>> {
 }
 
 /// Test StrVec set_str and set_na on a raw STRSXP allocation.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_strvec_set_str() -> Vec<Option<String>> {
     unsafe {
         let scope = ProtectScope::new();
@@ -135,7 +135,7 @@ pub fn test_strvec_set_str() -> Vec<Option<String>> {
 
 /// Test ReprotectSlot by repeatedly replacing with larger vectors up to length n.
 /// @param n Final expected vector length.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_reprotect_slot_accumulate(n: i32) -> i32 {
     unsafe {
         let scope = ProtectScope::new();
@@ -155,7 +155,7 @@ pub fn test_reprotect_slot_accumulate(n: i32) -> i32 {
 }
 
 /// Test that ProtectScope counts protected objects correctly (slot + regular).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_reprotect_slot_count() -> i32 {
     unsafe {
         let scope = ProtectScope::new();
@@ -183,7 +183,7 @@ pub fn test_reprotect_slot_count() -> i32 {
 
 /// Test that ReprotectSlot::set does not grow the protect stack over many iterations.
 /// @param iterations Number of set() calls to perform.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
     unsafe {
         let scope = ProtectScope::new();
@@ -215,7 +215,7 @@ pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
 /// `IntoList for Vec<T>` impl. Each `String::into_sexp()` allocates a fresh
 /// STRSXP; pre-fix the buffer was held unrooted across allocations and crashed
 /// under `gctorture(TRUE)` (same shape as the columnar UAF, issue #307).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_list_from_values_strings_gctorture() -> List {
     let v: Vec<String> = (0..16).map(|i| format!("element-{i}")).collect();
     List::from_values(v)
@@ -223,7 +223,7 @@ pub fn test_list_from_values_strings_gctorture() -> List {
 
 /// Build a named list from a Vec of allocating `(name, value)` pairs via
 /// `List::from_pairs`. Same UAF shape as `test_list_from_values_strings_gctorture`.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_list_from_pairs_strings_gctorture() -> List {
     let pairs: Vec<(String, String)> = (0..16)
         .map(|i| (format!("k{i}"), format!("v{i}")))
@@ -240,7 +240,7 @@ pub fn test_list_from_pairs_strings_gctorture() -> List {
 /// CHARSXP while the bundle's guard is the only protection on the STRSXP
 /// (gctorture-sensitive; no-arg so the fast gc_stress sweep picks it up, #430).
 /// Reads back through `Deref` and `get()` before the guard drops.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_protected_strvec_bundle() -> Vec<Option<String>> {
     use miniextendr_api::gc_protect::Protected;
 
@@ -265,7 +265,7 @@ pub fn test_protected_strvec_bundle() -> Vec<Option<String>> {
 
 /// Exercise `Protected::from_trusted` + `into_inner`: bundle an
 /// already-protected SEXP without double-protecting, then unwrap the view.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_protected_from_trusted() -> Vec<Option<String>> {
     use miniextendr_api::gc_protect::Protected;
 

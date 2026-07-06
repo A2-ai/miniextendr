@@ -117,8 +117,7 @@ enum EventDifferentNested {
 
 /// All-None `Option<u64>` column — single row (the dvs2 trigger case).
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_u64_all_none_single() -> DataFrame {
     let rows = vec![WithOptU64 {
         name: "a".into(),
@@ -129,8 +128,7 @@ pub fn test_columnar_opt_u64_all_none_single() -> DataFrame {
 
 /// All-None `Option<u64>` column — multiple rows.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_u64_all_none_multi() -> DataFrame {
     let rows = vec![
         WithOptU64 {
@@ -151,8 +149,7 @@ pub fn test_columnar_opt_u64_all_none_multi() -> DataFrame {
 
 /// All-None `Option<String>` column.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_string_all_none() -> DataFrame {
     let rows = vec![
         WithOptString { id: 1, label: None },
@@ -163,8 +160,7 @@ pub fn test_columnar_opt_string_all_none() -> DataFrame {
 
 /// All-None `Option<bool>` column.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_bool_all_none() -> DataFrame {
     let rows = vec![
         WithOptBool { id: 1, flag: None },
@@ -179,8 +175,7 @@ pub fn test_columnar_opt_bool_all_none() -> DataFrame {
 /// expansion never fires.  The entire `point` field becomes a single logical NA
 /// column under the field name `"point"` — not per-subfield `"point_x"`/`"point_y"`.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_user_struct_all_none() -> DataFrame {
     let rows = vec![
         WithOptUserStruct { id: 1, point: None },
@@ -191,8 +186,7 @@ pub fn test_columnar_opt_user_struct_all_none() -> DataFrame {
 
 /// All-None `Option<HashMap<…>>` — foreign generic, downgrade still fires.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_hashmap_all_none() -> DataFrame {
     let rows = vec![
         WithOptHashMap { id: 1, attrs: None },
@@ -203,8 +197,7 @@ pub fn test_columnar_opt_hashmap_all_none() -> DataFrame {
 
 /// All-None `Option<Vec<u8>>` — downgrade fires (no values, no list semantics to preserve).
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_bytes_all_none() -> DataFrame {
     let rows = vec![
         WithOptBytes { id: 1, data: None },
@@ -219,8 +212,7 @@ pub fn test_columnar_opt_bytes_all_none() -> DataFrame {
 
 /// Mixed `Option<u64>`: some rows have values, no downgrade.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_u64_mixed() -> DataFrame {
     let rows = vec![
         WithOptU64 {
@@ -241,8 +233,7 @@ pub fn test_columnar_opt_u64_mixed() -> DataFrame {
 
 /// Mixed `Option<String>`: some rows have values.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_opt_string_mixed() -> DataFrame {
     let rows = vec![
         WithOptString {
@@ -260,8 +251,7 @@ pub fn test_columnar_opt_string_mixed() -> DataFrame {
 
 /// `Vec<u8>` field with values — stays a list column regardless.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_bytes_with_values() -> DataFrame {
     let rows = vec![
         WithOptBytes {
@@ -283,8 +273,7 @@ pub fn test_columnar_bytes_with_values() -> DataFrame {
 /// `Vec<u8>` column with values alongside an all-None `Option<u64>` column.
 /// The bytes column stays a list; the optional column downgrades to logical NA.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_bytes_and_opt_none() -> DataFrame {
     let rows = vec![
         WithBytesAndOpt {
@@ -306,8 +295,7 @@ pub fn test_columnar_bytes_and_opt_none() -> DataFrame {
 /// `#[serde(flatten)]` with all-None inner field: the flattened optional field
 /// becomes a logical NA column.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_flatten_all_none() -> DataFrame {
     let rows = vec![
         WithFlattenedOptField {
@@ -334,8 +322,7 @@ pub fn test_columnar_flatten_all_none() -> DataFrame {
 
 /// Enum: all variant-A rows have `x = None` → logical NA column.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_enum_all_none() -> DataFrame {
     let rows = vec![EventWithOptX::A { x: None }, EventWithOptX::A { x: None }];
     vec_to_dataframe(&rows).expect("from_rows")
@@ -348,8 +335,7 @@ pub fn test_columnar_enum_all_none() -> DataFrame {
 /// which beats the `Scalar(Generic)` from variant-A's `x = None`.  The column
 /// ends up as a numeric vector with `NA` in row 1.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_enum_some_flips_type() -> DataFrame {
     let rows = vec![
         EventWithOptX::A { x: None },
@@ -367,8 +353,7 @@ pub fn test_columnar_enum_some_flips_type() -> DataFrame {
 /// Two-phase discovery: the `Scalar(Real)` candidate from row 2 beats
 /// `Scalar(Generic)` from row 1.  Result: numeric column with NA at index 1.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_schema_upgrade_scalar() -> DataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
@@ -384,8 +369,7 @@ pub fn test_columnar_schema_upgrade_scalar() -> DataFrame {
 /// Two-phase discovery: `Compound` candidate from row 2 beats `Scalar(Generic)`
 /// from row 1.  Result: columns `point_x` and `point_y`, with NA in row 1.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_schema_upgrade_nested() -> DataFrame {
     let rows = vec![
         WithOptPoint { id: 1, point: None },
@@ -402,8 +386,7 @@ pub fn test_columnar_schema_upgrade_nested() -> DataFrame {
 /// Rows: None, None, Some(42u64), None.  Two-phase discovery resolves the
 /// column to `Scalar(Real)`.  Result: numeric column with NA at positions 1, 2, 4.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_schema_upgrade_multi_none_first() -> DataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
@@ -435,8 +418,7 @@ pub fn test_columnar_schema_upgrade_multi_none_first() -> DataFrame {
 /// struct differs per variant), the first Compound wins silently.  Recursive
 /// Compound union is tracked as a separate follow-up issue.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_compound_different_shapes() -> DataFrame {
     let rows = vec![
         EventDifferentNested::A { value: 1.0 },

@@ -58,7 +58,7 @@ test_that("scatter_raw_all_absent: all data_byte cells are as.raw(0)", {
 })
 
 test_that("gc_stress_scatter_raw runs without error", {
-  expect_no_error(gc_stress_scatter_raw())
+  expect_no_error(miniextendr:::gc_stress_scatter_raw())
 })
 
 # endregion
@@ -118,7 +118,7 @@ test_that("scatter_complex_all_absent: all data_value cells are NA_complex_", {
 test_that("gc_stress_scatter_complex runs without error", {
   skip_if_not(has_num_complex(), "num-complex feature not compiled in")
 
-  expect_no_error(gc_stress_scatter_complex())
+  expect_no_error(miniextendr:::gc_stress_scatter_complex())
 })
 
 # endregion

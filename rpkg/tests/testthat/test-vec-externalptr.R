@@ -56,5 +56,5 @@ test_that("Vec<Option<ExternalPtr<T>>> argument accepts a hand-built mixed list"
 test_that("gc_stress fixture drives both directions without corruption", {
   # Smoke test; the real value is the gctorture sweep, but make sure the
   # no-arg fixture runs and its internal assertions hold.
-  expect_null(gc_stress_vec_externalptr())
+  expect_null(miniextendr:::gc_stress_vec_externalptr())
 })

@@ -13,11 +13,11 @@
 # the main thread via the with_r_thread mechanism.
 
 # test_that("RThreadBuilder with custom stack size works", {
-#   result <- unsafe_C_test_r_thread_builder()
+#   result <- miniextendr:::unsafe_C_test_r_thread_builder()
 #   expect_equal(result, 123L)
 # })
 
 # test_that("RThreadBuilder::spawn_join works", {
-#   result <- unsafe_C_test_r_thread_builder_spawn_join()
+#   result <- miniextendr:::unsafe_C_test_r_thread_builder_spawn_join()
 #   expect_equal(result, 456L)
 # })

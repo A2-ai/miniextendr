@@ -7,7 +7,7 @@ use miniextendr_api::sys::{IDENT_USE_CLOENV, R_compute_identical};
 /// Test SEXP pointer equality vs R_compute_identical semantic equality.
 /// @param x First SEXP to compare.
 /// @param y Second SEXP to compare.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {
     use miniextendr_api::Rboolean;

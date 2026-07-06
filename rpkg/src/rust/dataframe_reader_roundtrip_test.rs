@@ -419,8 +419,7 @@ pub fn with_int_map_roundtrip_par(df: SEXP) -> SEXP {
 // it straight back with the reader while the assembled frame SEXP is held live.
 
 /// Drives the basic struct-flatten reader under gctorture.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_struct_flatten() {
     let rows: Vec<ROuter> = (0..16)
         .map(|i| ROuter {
@@ -437,8 +436,7 @@ pub fn gc_stress_reader_struct_flatten() {
 }
 
 /// Drives the recursive (three-level) struct-flatten reader under gctorture.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_nested_flatten() {
     let rows: Vec<RNestOuter> = (0..16)
         .map(|i| RNestOuter {
@@ -458,8 +456,7 @@ pub fn gc_stress_reader_nested_flatten() {
 
 /// Drives the list-column reader under gctorture. The reader does per-row R access in
 /// a loop, so it must survive `gctorture(TRUE)` with SEXP elements protected correctly.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_list_column() {
     let rows: Vec<RListVecRow> = (0..16)
         .map(|i| RListVecRow {
@@ -475,8 +472,7 @@ pub fn gc_stress_reader_list_column() {
 /// Drives the map-column reader (#764) under gctorture. `Vec<map>: TryFromSexp`
 /// walks the list column per row and each named list per entry (string-key
 /// extraction allocates), so it must survive `gctorture(TRUE)`.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_map_column() {
     let rows: Vec<RMapRow> = (0..16)
         .map(|i| RMapRow {
@@ -496,8 +492,7 @@ pub fn gc_stress_reader_map_column() {
 /// walks two VECSXP list-columns (`tally_keys` / `tally_values`) per row,
 /// so it must survive `gctorture(TRUE)`. Includes an empty-map row (row 0)
 /// to exercise the empty-Vec defensive path.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_int_map() {
     let rows: Vec<WithIntMap> = (0..16)
         .map(|i| WithIntMap {
@@ -548,8 +543,7 @@ where
 }
 
 /// Drives the fixed-array (`[f64; 3]`) expansion reader under gctorture.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_fixed() {
     roundtrip_rooted(
         (0..16)
@@ -562,8 +556,7 @@ pub fn gc_stress_reader_fixed() {
 }
 
 /// Drives the pinned-width `Vec<f64>` expansion reader under gctorture.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_pinned() {
     roundtrip_rooted(
         (0..16)
@@ -578,8 +571,7 @@ pub fn gc_stress_reader_pinned() {
 /// Drives the pinned-width `Box<[f64]>` expansion reader under gctorture.
 /// Exercises the reader's `.into()` conversion from the collected `Vec` back to
 /// the boxed slice.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_box_pinned() {
     roundtrip_rooted(
         (0..16)
@@ -593,8 +585,7 @@ pub fn gc_stress_reader_box_pinned() {
 
 /// Drives the auto-expand `Vec<f64>` reader (runtime column count) under
 /// gctorture.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_auto() {
     // Uniform width so `into_dataframe` can re-expand (auto-expand requires a
     // consistent per-row length across the batch).
@@ -615,8 +606,7 @@ pub fn gc_stress_reader_auto() {
 
 /// Drives the auto-expand `Box<[i32]>` reader under gctorture. Exercises the
 /// `.into()` conversion on the boxed-slice container.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_auto_box() {
     roundtrip_rooted(
         (0..16)
@@ -636,8 +626,7 @@ pub fn gc_stress_reader_auto_box() {
 /// (`owner_label` / `owner_age`) under gctorture. The basic
 /// `gc_stress_reader_struct_flatten` only covers all-`f64` inner fields; this
 /// exercises the STRSXP sub-column select + densify path.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_flatten_mixed() {
     roundtrip_rooted(
         (0..16)
@@ -660,8 +649,7 @@ pub fn gc_stress_reader_flatten_mixed() {
 /// `gc_stress_reader_list_column` only covers the `Vec<f64>` variant; this
 /// exercises the integer list-column read plus the per-row `.into()` boxed-slice
 /// conversion.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_list_box() {
     roundtrip_rooted(
         (0..16)
@@ -676,8 +664,7 @@ pub fn gc_stress_reader_list_box() {
 /// Drives the multi-list-column reader (`Vec<i32>` + `Vec<String>` in one row)
 /// under gctorture. Two heterogeneous VECSXP list-columns are walked per row, so
 /// each element SEXP must stay protected across the next allocation.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_list_multi() {
     roundtrip_rooted(
         (0..16)
@@ -699,8 +686,7 @@ pub fn gc_stress_reader_list_multi() {
 /// list-of-named-lists read machinery. The per-row maps round-trip exactly
 /// (`HashMap` equality is order-insensitive), so `roundtrip_rooted`'s value
 /// comparison holds despite HashMap's non-deterministic iteration order.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_hashmap() {
     roundtrip_rooted(
         (0..16)
@@ -774,9 +760,8 @@ where
 }
 
 /// Drives the parallel fixed-array (`[f64; 3]`) reader under gctorture.
-/// @export
 #[cfg(feature = "rayon")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_fixed_par() {
     roundtrip_rooted_par(
         (0..16)
@@ -789,9 +774,8 @@ pub fn gc_stress_reader_fixed_par() {
 }
 
 /// Drives the parallel struct-flatten reader under gctorture.
-/// @export
 #[cfg(feature = "rayon")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_flatten_par() {
     roundtrip_rooted_par(
         (0..16)
@@ -808,9 +792,8 @@ pub fn gc_stress_reader_flatten_par() {
 
 /// Drives the parallel opaque list-column (`Vec<f64>`) reader under gctorture.
 /// The off-thread index assembly walks the VECSXP list-column per row.
-/// @export
 #[cfg(feature = "rayon")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_list_vec_par() {
     roundtrip_rooted_par(
         (0..16)
@@ -823,9 +806,8 @@ pub fn gc_stress_reader_list_vec_par() {
 }
 
 /// Drives the parallel String-keyed map-column reader under gctorture.
-/// @export
 #[cfg(feature = "rayon")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_map_par() {
     roundtrip_rooted_par(
         (0..16)
@@ -843,9 +825,8 @@ pub fn gc_stress_reader_map_par() {
 /// Drives the parallel non-String-keyed map-column reader (#919) under
 /// gctorture. Walks the two `tally_keys` / `tally_values` VECSXP list-columns
 /// per row off-thread. Includes an empty-map row to exercise the empty-Vec path.
-/// @export
 #[cfg(feature = "rayon")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_int_map_par() {
     roundtrip_rooted_par(
         (0..16)

@@ -134,7 +134,7 @@ test_that("group_rows_summary groups typed rows Rust-side (Option key, None firs
 })
 
 test_that("gc_stress_group_by smoke-runs and returns the expected partitions", {
-  out <- gc_stress_group_by()
+  out <- miniextendr:::gc_stress_group_by()
   expect_identical(names(out), c("a", "b", "c", "NA"))
   expect_identical(sum(vapply(out, nrow, integer(1))), 60L)
 })

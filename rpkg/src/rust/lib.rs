@@ -706,7 +706,7 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
 /// @rdname altrep_constructors
 /// @param x An ALTREP integer vector created by `lazy_int_seq`.
 /// @return Logical scalar: TRUE if materialized, FALSE otherwise.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {

@@ -63,7 +63,7 @@ impl SharedData {
 /// new `Drop` → `R_ReleaseObject` path while the kept handles are still live.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_externalptr_vec() {
     use miniextendr_api::externalptr::ExternalPtr;
 
@@ -121,7 +121,7 @@ pub fn gc_stress_externalptr_vec() {
 /// without us touching R's protect stack off the main thread.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_externalptr_collect_list() {
     use miniextendr_api::externalptr::ExternalPtr;
 
@@ -153,7 +153,7 @@ pub fn gc_stress_externalptr_collect_list() {
 /// `Vec<Option<BTreeSet<i32>>>` and converts each to SEXP, verifying that the
 /// `OwnedProtect` in `vec_option_of_into_r_to_list` keeps the outer list live
 /// across inner `into_sexp()` calls.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_vec_option_collection() {
     // Vec<Option<Vec<i32>>>: mix of Some and None
     let vec_opt: Vec<Option<Vec<i32>>> = vec![
@@ -186,7 +186,7 @@ pub fn gc_stress_vec_option_collection() {
 ///
 /// Allocates STRSXP + list-column SEXPs with interleaved None/Some values to verify
 /// PROTECT discipline across string and slice allocations.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_vec_option_borrowed() {
     // Vec<Option<&str>>: STRSXP with NA_character_
     let str_opt: Vec<Option<&str>> = vec![Some("hello"), None, Some("world"), None];
@@ -213,7 +213,7 @@ pub fn gc_stress_vec_option_borrowed() {
 /// Verifies that the `ProtectScope::protect_raw` calls in the generated map-column
 /// code keep each inner `Vec<K>` / `Vec<V>` SEXP live across the subsequent
 /// `into_sexp()` call for the parallel column.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_map() {
     // HashMap align path — multiple variants, multiple rows, includes empty map.
     let hm_rows = vec![
@@ -270,7 +270,7 @@ pub fn gc_stress_dataframe_map() {
 /// `to_dataframe` (align) and `to_dataframe_split`, and converts to SEXP,
 /// verifying that `ProtectScope` keeps inner column SEXPs live across scatter
 /// allocations.  No arguments required — suitable for the fast gctorture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_struct() {
     use miniextendr_api::into_r::IntoR as _;
 
@@ -313,7 +313,7 @@ pub fn gc_stress_dataframe_struct() {
 /// Drives both `to_dataframe` (align) and `to_dataframe_split` paths for all
 /// three nested-enum field modes. No arguments — suitable for the fast gctorture
 /// sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_nested_enum() {
     use miniextendr_api::into_r::IntoR as _;
 
@@ -377,7 +377,7 @@ pub fn gc_stress_dataframe_nested_enum() {
 /// the `data1` allocation would be caught by `gctorture(TRUE)`.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_native_sexp_altrep() {
     use crate::native_sexp_altrep_fixture::native_sexp_altrep_new;
     use miniextendr_api::prelude::SexpExt as _;
@@ -413,7 +413,7 @@ pub fn gc_stress_native_sexp_altrep() {
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[cfg(feature = "jiff")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_jiff_zoned_vec() {
     use miniextendr_api::jiff::tz::TimeZone;
 
@@ -449,7 +449,7 @@ pub fn gc_stress_jiff_zoned_vec() {
 /// the `OwnedProtect` guards keep each allocation live across the fill loop.
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[cfg(feature = "toml")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_toml_array() {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::toml_impl::TomlValue;
@@ -497,7 +497,7 @@ pub fn gc_stress_toml_array() {
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_named_df_list_builder() -> SEXP {
     use miniextendr_api::NamedDataFrameListBuilder;
     use miniextendr_api::into_r::IntoR as _;
@@ -547,7 +547,7 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
 /// character key (incl. NAs) internally.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_group_by() -> SEXP {
     use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
 
@@ -608,7 +608,7 @@ pub fn into_sexp_altrep(x: SEXP) -> SEXP {
 /// to reconstruct the original rows. Returns the row count to verify execution.
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_to_vec() -> i32 {
     use crate::serde::{Deserialize, Serialize};
     use miniextendr_api::into_r::IntoR as _;
@@ -655,7 +655,7 @@ pub fn gc_stress_dataframe_to_vec() -> i32 {
 /// to compute a sum via the scoped callback. Returns the sum to verify execution.
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_with_dataframe_rows() -> f64 {
     use crate::serde::{Deserialize, Serialize};
     use miniextendr_api::into_r::IntoR as _;
@@ -701,7 +701,7 @@ pub fn gc_stress_with_dataframe_rows() -> f64 {
 /// using the single-underscore prefix-matching path. Returns the row count.
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_to_vec_nested() -> i32 {
     use crate::serde::{Deserialize, Serialize};
     use miniextendr_api::into_r::IntoR as _;
@@ -758,7 +758,7 @@ pub fn gc_stress_dataframe_to_vec_nested() -> i32 {
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_iter_to_dataframe() -> SEXP {
     use crate::serde::Serialize;
     use miniextendr_api::into_r::IntoR as _;
@@ -795,7 +795,7 @@ pub fn gc_stress_iter_to_dataframe() -> SEXP {
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
     use crate::serde::Serialize;
     use miniextendr_api::into_r::IntoR as _;
@@ -847,7 +847,7 @@ pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_builder_with_schema() -> SEXP {
     use crate::serde::Serialize;
     use miniextendr_api::into_r::IntoR as _;
@@ -897,7 +897,7 @@ pub fn gc_stress_builder_with_schema() -> SEXP {
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_builder_grow_schema() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::SerdeRowBuilder;
@@ -937,7 +937,7 @@ pub fn gc_stress_builder_grow_schema() -> SEXP {
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_borrowed_rows() -> i32 {
     use crate::serde::{Deserialize, Serialize};
     use miniextendr_api::into_r::IntoR as _;
@@ -996,7 +996,7 @@ pub fn gc_stress_borrowed_rows() -> i32 {
 /// allocations that can fire GC — exactly the shape that broke in PR #344's
 /// `make_rust_condition_value`. No arguments — suitable for the fast
 /// gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_protect_discipline() {
     use miniextendr_api::NamedVector;
     use miniextendr_api::factor::{FactorOptionVec, FactorVec};
@@ -1065,7 +1065,7 @@ pub fn gc_stress_protect_discipline() {
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_map_to_dataframe() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::map_to_dataframe;
@@ -1098,7 +1098,7 @@ pub fn gc_stress_map_to_dataframe() -> SEXP {
 /// rows. Exercises the split path (intermediate `DataFrame` pair +
 /// `NamedDataFrameListBuilder` assembly in `IntoR for DataFrameShape`).
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_result_to_dataframe_auto() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::{ResultShape, result_to_dataframe};
@@ -1145,7 +1145,7 @@ pub fn gc_stress_result_to_dataframe_auto() -> SEXP {
 /// Exercise `result_to_dataframe(Collated)` under GC pressure. Union-schema
 /// emission goes through the `TaggedVariantRow`/`MapForwarder` path.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_result_to_dataframe_collated() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::{ResultShape, result_to_dataframe};
@@ -1188,7 +1188,7 @@ pub fn gc_stress_result_to_dataframe_collated() -> SEXP {
 /// path. Validates that the user-supplied sentinel SEXP is rooted while
 /// the outer named list is assembled.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_result_to_dataframe_split_sentinel() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::{ResultShape, result_to_dataframe};
@@ -1230,7 +1230,7 @@ pub fn gc_stress_result_to_dataframe_split_sentinel() -> SEXP {
 /// pressure. The tag-column prepend allocates a per-partition STRSXP that
 /// must be protected through the `prepend_column` VECSXP reshuffle.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_split_with_tag() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::{SplitShape, vec_to_dataframe_split};
@@ -1272,7 +1272,7 @@ pub fn gc_stress_split_with_tag() -> SEXP {
 /// the `TaggedVariantRow` / `MapForwarder` collation path through the
 /// schema-union machinery in `vec_to_dataframe`.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_split_collated() -> SEXP {
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::{SplitShape, vec_to_dataframe_split};
@@ -1327,7 +1327,7 @@ pub fn gc_stress_split_collated() -> SEXP {
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_factor_labels() -> i32 {
     use crate::serde::Deserialize;
     use miniextendr_api::SEXPTYPE;
@@ -1420,7 +1420,7 @@ pub fn gc_stress_factor_labels() -> i32 {
 /// data.frame).
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_typed_dataframe() {
     use crate::typed_dataframe_tests::TheophDf;
     use miniextendr_api::IntoR as _;
@@ -1557,7 +1557,7 @@ pub fn gc_stress_typed_dataframe() {
 /// parent `VECSXP`. This is exactly the SEXP-across-allocation path that needs a
 /// gctorture pass. No arguments — suitable for the fast gctorture sweep.
 #[cfg(feature = "rayon")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_rayon() {
     // Shape 1: balanced 3-column frame.
     build_and_check_rayon_df(200);
@@ -1694,7 +1694,7 @@ fn build_and_check_rayon_df_tall(nrow: usize) {
 /// protected across the subsequent column / names / row.names / class allocations
 /// — the SEXP-across-allocation path that needs a gctorture pass. No arguments —
 /// suitable for the fast gctorture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_builder_serial() {
     use miniextendr_api::dataframe::DataFrame;
     use miniextendr_api::gc_protect::ProtectScope;
@@ -1769,7 +1769,7 @@ pub fn gc_stress_dataframe_builder_serial() {
 /// it back with `Vec::<RETracked>::from_dataframe`. The reader calls `select` +
 /// `strip_prefix` + `select_rows` + inner reader, each of which may fire GC.
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_enum_flatten() {
     use crate::dataframe_reader_enum_roundtrip_test::{REStatus, RETracked};
     use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
@@ -1808,7 +1808,7 @@ pub fn gc_stress_reader_enum_flatten() {
 /// `unit_factor_option_vec_from_sexp` which validates levels and reads INTSXP
 /// elements — exercises the factor PROTECT path.
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_enum_factor() {
     use crate::dataframe_reader_enum_roundtrip_test::{REDir, REMove};
     use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
@@ -1849,7 +1849,7 @@ pub fn gc_stress_reader_enum_factor() {
 /// `Vec<elem>: TryFromSexp` — exercises the list-column regroup path (NULL rows,
 /// empty-map rows, and populated rows all present in the fixture frame).
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_reader_enum_map() {
     use crate::dataframe_reader_enum_roundtrip_test::REMapB;
     use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
@@ -1910,7 +1910,7 @@ pub fn gc_stress_reader_enum_map() {
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[cfg(feature = "arrow")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_arrow_sliced_recordbatch() {
     use miniextendr_api::arrow_impl::{
         ArrayRef, DataType, Field, Float64Array, Int32Array, RecordBatch, Schema,
@@ -1976,7 +1976,7 @@ pub fn gc_stress_arrow_sliced_recordbatch() {
 /// SEXP.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_cow_subslice_roundtrip() {
     use miniextendr_api::from_r::TryFromSexp;
     use std::borrow::Cow;
@@ -2031,7 +2031,7 @@ pub fn gc_stress_cow_subslice_roundtrip() {
 /// under `gctorture(TRUE)`.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_rcow_roundtrip() {
     use miniextendr_api::RCow;
     use miniextendr_api::from_r::TryFromSexp;
@@ -2099,7 +2099,7 @@ pub fn gc_stress_rcow_roundtrip() {
 /// errors and that the condition is a `simpleError` carrying the original
 /// message (and explicitly NOT a `rust_error`). Existing `test-worker.R`
 /// coverage of the same raw-`Rf_error` shape only matched the message text.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_with_r_thread_stop() -> SEXP {
     use miniextendr_api::worker::{run_on_worker, with_r_thread};
 
@@ -2163,7 +2163,7 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 /// No arguments — also picked up by the fast `gctorture(TRUE)` no-arg sweep
 /// (#430): it holds no SEXPs across allocations itself, but exercising the worker
 /// dispatch under GC pressure is cheap insurance.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_worker_roundtrip() -> i32 {
     use miniextendr_api::worker::{run_on_worker, with_r_thread};
 
@@ -2210,7 +2210,7 @@ pub fn str_borrow_len(s: &str) -> i32 {
 /// surface as wrong contents rather than a clean read.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_str_borrow() {
     let inputs = ["", "ascii", "héllo-wörld", "a longer string with spaces"];
 
@@ -2248,7 +2248,7 @@ pub fn gc_stress_str_borrow() {
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[cfg(feature = "serde")]
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_serde_ser() {
     use crate::serde::Serialize;
     use miniextendr_api::serde::to_r;
@@ -2342,7 +2342,7 @@ pub fn gc_stress_serde_ser() {
 /// back to verify integrity.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_condition_data() {
     use miniextendr_api::RValue;
     use miniextendr_api::condition::ConditionData;
@@ -2461,7 +2461,7 @@ pub fn gc_stress_condition_data() {
 /// any missing protect.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_r_macro_lowering() {
     // Each r!() call here goes through the lowered RCall path (call-shaped
     // top-level expression). We verify the result to confirm correct
@@ -2509,7 +2509,7 @@ pub fn gc_stress_r_macro_lowering() {
 /// (the number of operations performed) so the testthat assertion is meaningful.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_alloc_wrappers() -> i32 {
     use miniextendr_api::SEXPTYPE;
     use miniextendr_api::cetype_t::CE_UTF8;
@@ -2600,7 +2600,7 @@ pub fn gc_stress_alloc_wrappers() -> i32 {
 /// as a wrong/garbage element rather than silently passing.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_as_named_list_deferred() {
     use miniextendr_api::prelude::SexpExt as _;
     use miniextendr_api::{AsNamedList, RValue};
@@ -2660,7 +2660,7 @@ pub fn gc_stress_as_named_list_deferred() {
 /// discipline. Returns `paste("alpha", "beta", sep = "-")`, i.e. "alpha-beta".
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_expression_call() -> Result<SEXP, String> {
     use miniextendr_api::expression::RCall;
 
@@ -2695,7 +2695,7 @@ pub fn gc_stress_expression_call() -> Result<SEXP, String> {
 /// protect discipline; a collected child would surface as a wrong/garbage slot.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_rvalue_roundtrip() {
     use miniextendr_api::from_r::TryFromSexp as _;
     use miniextendr_api::{IntoR, RValue};

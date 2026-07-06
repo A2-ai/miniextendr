@@ -16,7 +16,7 @@
 # protected result list instead of the pool (no per-element pool traffic).
 
 test_that("naive Vec<ExternalPtr> construction runs without corruption", {
-  expect_null(gc_stress_externalptr_vec())
+  expect_null(miniextendr:::gc_stress_externalptr_vec())
 })
 
 test_that("naive Vec<ExternalPtr> construction survives gctorture", {
@@ -26,18 +26,18 @@ test_that("naive Vec<ExternalPtr> construction survives gctorture", {
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
   for (i in seq_len(3)) {
-    expect_null(gc_stress_externalptr_vec())
+    expect_null(miniextendr:::gc_stress_externalptr_vec())
   }
 })
 
 test_that("collect_into_r_list bulk build runs without corruption", {
-  expect_null(gc_stress_externalptr_collect_list())
+  expect_null(miniextendr:::gc_stress_externalptr_collect_list())
 })
 
 test_that("collect_into_r_list bulk build survives gctorture", {
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
   for (i in seq_len(3)) {
-    expect_null(gc_stress_externalptr_collect_list())
+    expect_null(miniextendr:::gc_stress_externalptr_collect_list())
   }
 })

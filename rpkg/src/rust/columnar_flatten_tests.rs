@@ -98,8 +98,7 @@ enum TaggedEvent {
 
 // endregion
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_nested() -> DataFrame {
     let rows = vec![
         Outer {
@@ -114,8 +113,7 @@ pub fn test_columnar_nested() -> DataFrame {
     vec_to_dataframe(&rows).expect("from_rows")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_optional_struct() -> DataFrame {
     let rows = vec![
         WithOptionalStruct {
@@ -134,8 +132,7 @@ pub fn test_columnar_optional_struct() -> DataFrame {
     vec_to_dataframe(&rows).expect("from_rows")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_deep_nesting() -> DataFrame {
     let rows = vec![
         Deep {
@@ -156,8 +153,7 @@ pub fn test_columnar_deep_nesting() -> DataFrame {
     vec_to_dataframe(&rows).expect("from_rows")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_serde_flatten() -> DataFrame {
     let rows = vec![
         WithFlatten {
@@ -172,8 +168,7 @@ pub fn test_columnar_serde_flatten() -> DataFrame {
     vec_to_dataframe(&rows).expect("from_rows")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_skip_serializing_if() -> DataFrame {
     let rows = vec![
         WithSkip {
@@ -195,8 +190,7 @@ pub fn test_columnar_skip_serializing_if() -> DataFrame {
     vec_to_dataframe(&rows).expect("from_rows")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_rename() -> DataFrame {
     let rows = vec![
         Outer {
@@ -214,8 +208,7 @@ pub fn test_columnar_rename() -> DataFrame {
         .rename("point_y", "py")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_rename_noop() -> DataFrame {
     let rows = vec![Inner { x: 1.0, y: 2.0 }];
     vec_to_dataframe(&rows)
@@ -223,14 +216,12 @@ pub fn test_columnar_rename_noop() -> DataFrame {
         .rename("nonexistent", "z")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_empty() -> DataFrame {
     vec_to_dataframe::<Inner>(&[]).expect("from_rows")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_drop() -> DataFrame {
     let rows = vec![
         Outer {
@@ -245,8 +236,7 @@ pub fn test_columnar_drop() -> DataFrame {
     vec_to_dataframe(&rows).expect("from_rows").drop("point_y")
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_select() -> DataFrame {
     let rows = vec![
         Outer {
@@ -266,8 +256,7 @@ pub fn test_columnar_select() -> DataFrame {
 /// with_column: replace an existing integer column with a character SEXP of
 /// matching length.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_with_column_replace() -> DataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
@@ -288,8 +277,7 @@ pub fn test_columnar_with_column_replace() -> DataFrame {
 
 /// with_column: append a new column when the name doesn't exist.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_with_column_append() -> DataFrame {
     let rows = vec![Inner { x: 1.0, y: 2.0 }, Inner { x: 3.0, y: 4.0 }];
     let new_col = vec!["first".to_string(), "second".to_string()].into_sexp();
@@ -300,8 +288,7 @@ pub fn test_columnar_with_column_append() -> DataFrame {
 
 /// strip_prefix: remove "point_" from column names.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_strip_prefix() -> DataFrame {
     let rows = vec![
         Outer {
@@ -321,8 +308,7 @@ pub fn test_columnar_strip_prefix() -> DataFrame {
 /// Untagged enum: Ok rows have status+size, Err rows have error.
 /// Multi-row discovery unions them all.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_untagged_enum() -> DataFrame {
     let rows = vec![
         WithUntaggedEnum {
@@ -351,8 +337,7 @@ pub fn test_columnar_untagged_enum() -> DataFrame {
 
 /// Internally tagged enum: "kind" column acts as discriminator.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_tagged_enum() -> DataFrame {
     let rows = vec![
         TaggedEvent::Click { x: 10.0, y: 20.0 },
@@ -373,8 +358,7 @@ enum ExtEvent {
 
 /// Externally-tagged enum split: per-variant data.frames, no NA columns.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_ext_tagged_split() -> DataFrameShape {
     let rows = vec![
         ExtEvent::Click { x: 1.0, y: 2.0 },
@@ -386,8 +370,7 @@ pub fn test_columnar_ext_tagged_split() -> DataFrameShape {
 
 /// Internally-tagged enum split: tag column dropped, per-variant data.frames.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_int_tagged_split() -> DataFrameShape {
     let rows = vec![
         TaggedEvent::Click { x: 10.0, y: 20.0 },
@@ -399,8 +382,7 @@ pub fn test_columnar_int_tagged_split() -> DataFrameShape {
 
 /// Single-variant externally-tagged split returns a bare data.frame.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_single_variant_split() -> DataFrameShape {
     let rows = vec![
         ExtEvent::Click { x: 1.0, y: 2.0 },
@@ -411,8 +393,7 @@ pub fn test_columnar_single_variant_split() -> DataFrameShape {
 
 /// Empty input split — variant set is unknowable, returns an empty named list.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_empty_split() -> DataFrameShape {
     let rows: Vec<ExtEvent> = Vec::new();
     vec_to_dataframe_split(&rows, SplitShape::PerVariantList).expect("split")
@@ -420,8 +401,7 @@ pub fn test_columnar_empty_split() -> DataFrameShape {
 
 /// Externally-tagged enum split WITH a variant-tag column on each partition.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_split_with_tag() -> DataFrameShape {
     let rows = vec![
         ExtEvent::Click { x: 1.0, y: 2.0 },
@@ -439,8 +419,7 @@ pub fn test_columnar_split_with_tag() -> DataFrameShape {
 
 /// Collated split: single data.frame with union schema + variant column.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_columnar_split_collated() -> DataFrameShape {
     let rows = vec![
         ExtEvent::Click { x: 1.0, y: 2.0 },
@@ -469,8 +448,7 @@ struct CmaxValue {
 
 /// map_to_dataframe over BTreeMap<i32, CmaxValue>.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_map_to_dataframe_btreemap() -> DataFrame {
     use std::collections::BTreeMap;
     let mut map: BTreeMap<i32, CmaxValue> = BTreeMap::new();
@@ -500,8 +478,7 @@ pub fn test_map_to_dataframe_btreemap() -> DataFrame {
 
 /// hashmap_to_dataframe over HashMap<i32, CmaxValue>.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_hashmap_to_dataframe() -> DataFrame {
     use std::collections::HashMap;
     let mut map: HashMap<i32, CmaxValue> = HashMap::new();
@@ -560,8 +537,7 @@ fn make_mixed_rows() -> Vec<Result<GoodRow, BadRow>> {
 
 /// result_to_dataframe under Auto with all-Ok input → bare data.frame.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_result_to_dataframe_auto_all_ok() -> DataFrameShape {
     use miniextendr_api::serde::ResultShape;
     let rows: Vec<Result<GoodRow, BadRow>> = vec![
@@ -579,8 +555,7 @@ pub fn test_result_to_dataframe_auto_all_ok() -> DataFrameShape {
 
 /// result_to_dataframe under Auto with mixed Ok/Err → list(results=, error=).
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_result_to_dataframe_auto_mixed() -> DataFrameShape {
     use miniextendr_api::serde::ResultShape;
     miniextendr_api::serde::result_to_dataframe(
@@ -594,8 +569,7 @@ pub fn test_result_to_dataframe_auto_mixed() -> DataFrameShape {
 
 /// result_to_dataframe under Collated → single data.frame with is_error column.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_result_to_dataframe_collated() -> DataFrameShape {
     use miniextendr_api::serde::ResultShape;
     miniextendr_api::serde::result_to_dataframe::<_, _, ()>(
@@ -607,8 +581,7 @@ pub fn test_result_to_dataframe_collated() -> DataFrameShape {
 
 /// result_to_dataframe under Split with all-Err input → sentinel in results slot.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_result_to_dataframe_split_all_err() -> DataFrameShape {
     use miniextendr_api::serde::ResultShape;
     let rows: Vec<Result<GoodRow, BadRow>> = vec![

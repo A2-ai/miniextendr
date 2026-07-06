@@ -17,7 +17,7 @@ test_that("gc_stress_named_df_list_builder returns a valid named list under gcto
   fail <- character(0L)
   for (i in seq_len(20L)) {
     res <- tryCatch(
-      { gc_stress_named_df_list_builder(); "ok" },
+      { miniextendr:::gc_stress_named_df_list_builder(); "ok" },
       error = function(e) conditionMessage(e)
     )
     if (identical(res, "ok")) {
@@ -31,7 +31,7 @@ test_that("gc_stress_named_df_list_builder returns a valid named list under gcto
 })
 
 test_that("gc_stress_named_df_list_builder returns correct structure", {
-  result <- gc_stress_named_df_list_builder()
+  result <- miniextendr:::gc_stress_named_df_list_builder()
   expect_type(result, "list")
   expect_named(result, c("results", "error"))
   expect_s3_class(result[["results"]], "data.frame")
@@ -64,7 +64,7 @@ test_that("gc_stress_str_borrow keeps zero-copy &str views intact under gctortur
   fail <- character(0L)
   for (i in seq_len(20L)) {
     res <- tryCatch(
-      { gc_stress_str_borrow(); "ok" },
+      { miniextendr:::gc_stress_str_borrow(); "ok" },
       error = function(e) conditionMessage(e)
     )
     if (identical(res, "ok")) {
@@ -89,11 +89,11 @@ test_that("List::from_values / from_pairs string fixtures survive gctorture", {
   on.exit(gctorture(FALSE), add = TRUE)
 
   for (i in seq_len(5L)) {
-    v <- test_list_from_values_strings_gctorture()
+    v <- miniextendr:::test_list_from_values_strings_gctorture()
     expect_length(v, 16L)
     expect_equal(v[[1]], "element-0")
 
-    p <- test_list_from_pairs_strings_gctorture()
+    p <- miniextendr:::test_list_from_pairs_strings_gctorture()
     expect_length(p, 16L)
     expect_equal(names(p)[[1]], "k0")
     expect_equal(p[[1]], "v0")
@@ -163,7 +163,7 @@ test_that("gc_stress_expression_call survives gctorture and returns the right va
   for (i in seq_len(20L)) {
     res <- tryCatch(
       {
-        stopifnot(identical(gc_stress_expression_call(), "alpha-beta"))
+        stopifnot(identical(miniextendr:::gc_stress_expression_call(), "alpha-beta"))
         "ok"
       },
       error = function(e) conditionMessage(e)

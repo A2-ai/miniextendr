@@ -229,5 +229,5 @@ test_that("RTxtProgressBar explicit close() succeeds and Drop is no-op", {
 })
 
 test_that("gc_stress_txt_progress_bar does not segfault", {
-  expect_no_error(gc_stress_txt_progress_bar())
+  expect_no_error(miniextendr:::gc_stress_txt_progress_bar())
 })

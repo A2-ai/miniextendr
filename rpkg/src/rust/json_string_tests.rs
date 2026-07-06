@@ -20,14 +20,12 @@ pub struct Config {
 
 // region: AsJson — compact JSON output
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_json_point() -> AsJson<Point> {
     AsJson(Point { x: 1.5, y: 2.5 })
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_json_config() -> AsJson<Config> {
     AsJson(Config {
         max_threads: 4,
@@ -39,8 +37,7 @@ pub fn test_json_config() -> AsJson<Config> {
 
 // region: AsJsonPretty — pretty-printed JSON
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_json_pretty_point() -> AsJsonPretty<Point> {
     AsJsonPretty(Point { x: 1.0, y: 2.0 })
 }
@@ -49,20 +46,17 @@ pub fn test_json_pretty_point() -> AsJsonPretty<Point> {
 
 // region: FromJson — parse JSON from R character
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_fromjson_config(json: FromJson<Config>) -> i32 {
     json.0.max_threads
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_fromjson_point_sum(json: FromJson<Point>) -> f64 {
     json.0.x + json.0.y
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_fromjson_bad(json: FromJson<Config>) -> i32 {
     json.0.max_threads
 }
@@ -71,8 +65,7 @@ pub fn test_fromjson_bad(json: FromJson<Config>) -> i32 {
 
 // region: AsJsonVec — Vec<T> → character vector of JSON strings
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_json_vec_points() -> AsJsonVec<Point> {
     AsJsonVec(vec![Point { x: 1.0, y: 2.0 }, Point { x: 3.0, y: 4.0 }])
 }
