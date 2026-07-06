@@ -1,7 +1,11 @@
-//! Sparse iterator-backed ALTREP with skipping support.
+//! Sparse iterator-backed ALTREP data adaptors with skipping support.
 //!
 //! Provides `SparseIterState<I, T>` which uses `Iterator::nth()` to skip elements
-//! efficiently, and wrapper types for each ALTREP family.
+//! efficiently, and data-adaptor types for each ALTREP family.
+//!
+//! See the [`super`](crate::altrep_data::iter) module docs for how to expose
+//! these adaptors to R (wrap in a `#[derive(Altrep*)]` + `#[altrep(manual)]`
+//! struct).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -168,7 +172,7 @@ where
     }
 }
 
-/// Sparse iterator-backed integer vector data.
+/// Sparse iterator-backed integer vector data adaptor.
 ///
 /// Uses `Iterator::nth()` to skip directly to requested indices.
 /// Only accessed elements are cached; skipped elements return `NA_INTEGER`.
@@ -227,17 +231,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for SparseIterIntData<I> {
     }
 }
 
-impl<I: Iterator<Item = i32> + 'static> crate::externalptr::TypedExternal for SparseIterIntData<I> {
-    const TYPE_NAME: &'static str = "SparseIterIntData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"SparseIterIntData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::SparseIterIntData\0";
-}
-
-crate::impl_altinteger_from_data_generic!(
-    {I} SparseIterIntData<I> {I: Iterator<Item = i32> + 'static}
-);
-
-/// Sparse iterator-backed real (f64) vector data.
+/// Sparse iterator-backed real (f64) vector data adaptor.
 ///
 /// Uses `Iterator::nth()` to skip directly to requested indices.
 /// Only accessed elements are cached; skipped elements return `NaN`.
@@ -283,19 +277,7 @@ impl<I: Iterator<Item = f64>> AltRealData for SparseIterRealData<I> {
     }
 }
 
-impl<I: Iterator<Item = f64> + 'static> crate::externalptr::TypedExternal
-    for SparseIterRealData<I>
-{
-    const TYPE_NAME: &'static str = "SparseIterRealData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"SparseIterRealData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::SparseIterRealData\0";
-}
-
-crate::impl_altreal_from_data_generic!(
-    {I} SparseIterRealData<I> {I: Iterator<Item = f64> + 'static}
-);
-
-/// Sparse iterator-backed logical vector data.
+/// Sparse iterator-backed logical vector data adaptor.
 pub struct SparseIterLogicalData<I: Iterator<Item = bool>> {
     state: SparseIterState<I, bool>,
 }
@@ -337,19 +319,7 @@ impl<I: Iterator<Item = bool>> AltLogicalData for SparseIterLogicalData<I> {
     }
 }
 
-impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal
-    for SparseIterLogicalData<I>
-{
-    const TYPE_NAME: &'static str = "SparseIterLogicalData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"SparseIterLogicalData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::SparseIterLogicalData\0";
-}
-
-crate::impl_altlogical_from_data_generic!(
-    {I} SparseIterLogicalData<I> {I: Iterator<Item = bool> + 'static}
-);
-
-/// Sparse iterator-backed raw (u8) vector data.
+/// Sparse iterator-backed raw (u8) vector data adaptor.
 pub struct SparseIterRawData<I: Iterator<Item = u8>> {
     state: SparseIterState<I, u8>,
 }
@@ -392,17 +362,7 @@ impl<I: Iterator<Item = u8>> AltRawData for SparseIterRawData<I> {
     }
 }
 
-impl<I: Iterator<Item = u8> + 'static> crate::externalptr::TypedExternal for SparseIterRawData<I> {
-    const TYPE_NAME: &'static str = "SparseIterRawData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"SparseIterRawData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::SparseIterRawData\0";
-}
-
-crate::impl_altraw_from_data_generic!(
-    {I} SparseIterRawData<I> {I: Iterator<Item = u8> + 'static}
-);
-
-/// Sparse iterator-backed complex number vector.
+/// Sparse iterator-backed complex number vector data adaptor.
 pub struct SparseIterComplexData<I>
 where
     I: Iterator<Item = crate::Rcomplex>,
@@ -462,16 +422,3 @@ where
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
-
-impl<I: Iterator<Item = crate::Rcomplex> + 'static> crate::externalptr::TypedExternal
-    for SparseIterComplexData<I>
-{
-    const TYPE_NAME: &'static str = "SparseIterComplexData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"SparseIterComplexData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::SparseIterComplexData\0";
-}
-
-crate::impl_altcomplex_from_data_generic!(
-    {I} SparseIterComplexData<I> {I: Iterator<Item = crate::Rcomplex> + 'static}
-);
-// endregion

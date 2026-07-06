@@ -1,12 +1,18 @@
-//! Windowed iterator-backed ALTREP infrastructure.
+//! Windowed iterator-backed ALTREP data adaptors.
 //!
 //! Provides `WindowedIterState<I, T>` which keeps a sliding window of elements
-//! in memory, and wrapper types for each ALTREP family.
+//! in memory, and data-adaptor types for the integer/real ALTREP families.
+//!
+//! See the [`super`](crate::altrep_data::iter) module docs for how to expose
+//! these adaptors to R (wrap in a `#[derive(Altrep*)]` + `#[altrep(manual)]`
+//! struct).
 
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use crate::altrep_data::{AltIntegerData, AltRealData, AltrepLen, fill_region};
+
+// region: WindowedIterState
 
 /// Core state for windowed iterator-backed ALTREP vectors.
 ///
@@ -220,9 +226,9 @@ where
 }
 // endregion
 
-// region: Windowed Iterator wrapper types
+// region: Windowed Iterator data adaptors
 
-/// Windowed iterator-backed integer vector data.
+/// Windowed iterator-backed integer vector data adaptor.
 ///
 /// Like [`super::IterIntData`], but only keeps a sliding window of elements in memory.
 /// Sequential forward access within the window is O(1). Access outside the
@@ -271,19 +277,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for WindowedIterIntData<I> {
     }
 }
 
-impl<I: Iterator<Item = i32> + 'static> crate::externalptr::TypedExternal
-    for WindowedIterIntData<I>
-{
-    const TYPE_NAME: &'static str = "WindowedIterIntData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"WindowedIterIntData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::WindowedIterIntData\0";
-}
-
-crate::impl_altinteger_from_data_generic!(
-    {I} WindowedIterIntData<I> {I: Iterator<Item = i32> + 'static}
-);
-
-/// Windowed iterator-backed real (f64) vector data.
+/// Windowed iterator-backed real (f64) vector data adaptor.
 ///
 /// Like [`super::IterRealData`], but only keeps a sliding window of elements in memory.
 /// Sequential forward access within the window is O(1). Access outside the
@@ -330,15 +324,4 @@ impl<I: Iterator<Item = f64>> AltRealData for WindowedIterRealData<I> {
     }
 }
 
-impl<I: Iterator<Item = f64> + 'static> crate::externalptr::TypedExternal
-    for WindowedIterRealData<I>
-{
-    const TYPE_NAME: &'static str = "WindowedIterRealData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"WindowedIterRealData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::WindowedIterRealData\0";
-}
-
-crate::impl_altreal_from_data_generic!(
-    {I} WindowedIterRealData<I> {I: Iterator<Item = f64> + 'static}
-);
 // endregion

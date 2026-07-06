@@ -1,8 +1,14 @@
-//! Streaming ALTREP data backed by chunk-cached reader closures.
+//! Streaming ALTREP data adaptors backed by chunk-cached reader closures.
 //!
-//! These types provide ALTREP vectors where elements are loaded on-demand
-//! from a reader function in fixed-size chunks. Chunks are cached for
-//! repeated access within the same region.
+//! These types provide backing data for ALTREP vectors where elements are
+//! loaded on-demand from a reader function in fixed-size chunks. Chunks are
+//! cached for repeated access within the same region.
+//!
+//! Like the [`iter`](crate::altrep_data::iter) adaptors, these implement only
+//! the data-level traits ([`AltrepLen`] + `Alt*Data`); to expose one to R,
+//! wrap it in a concrete `#[derive(Altrep*)]` + `#[altrep(manual)]` struct
+//! that delegates the data-trait methods (see the
+//! [`iter`](crate::altrep_data::iter) module docs for the pattern).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -11,7 +17,7 @@ use super::{AltIntegerData, AltRealData, AltrepLen};
 
 // region: StreamingRealData
 
-/// Streaming ALTREP for real (f64) vectors.
+/// Streaming data adaptor for ALTREP real (f64) vectors.
 ///
 /// Elements are loaded on-demand via a reader closure in fixed-size chunks.
 /// Chunks are cached in a `BTreeMap` for repeated access.
@@ -104,22 +110,11 @@ impl<F: Fn(usize, &mut [f64]) -> usize> AltRealData for StreamingRealData<F> {
     }
 }
 
-impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::externalptr::TypedExternal
-    for StreamingRealData<F>
-{
-    const TYPE_NAME: &'static str = "StreamingRealData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"StreamingRealData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::StreamingRealData\0";
-}
-
-crate::impl_altreal_from_data_generic!(
-    {F} StreamingRealData<F> {F: Fn(usize, &mut [f64]) -> usize + 'static}
-);
 // endregion
 
 // region: StreamingIntData
 
-/// Streaming ALTREP for integer (i32) vectors.
+/// Streaming data adaptor for ALTREP integer (i32) vectors.
 ///
 /// Elements are loaded on-demand via a reader closure in fixed-size chunks.
 /// Chunks are cached in a `BTreeMap` for repeated access.
@@ -212,15 +207,4 @@ impl<F: Fn(usize, &mut [i32]) -> usize> AltIntegerData for StreamingIntData<F> {
     }
 }
 
-impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::externalptr::TypedExternal
-    for StreamingIntData<F>
-{
-    const TYPE_NAME: &'static str = "StreamingIntData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"StreamingIntData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::StreamingIntData\0";
-}
-
-crate::impl_altinteger_from_data_generic!(
-    {F} StreamingIntData<F> {F: Fn(usize, &mut [i32]) -> usize + 'static}
-);
 // endregion
