@@ -7,12 +7,16 @@
 has_miniextendr_git_hooks(path = ".")
 }
 \arguments{
-\item{path}{Path to the R package root.}
+\item{path}{Path to the R package directory (the enclosing git repository is
+discovered from here).}
 }
 \value{
 Named logical vector indicating which hooks are installed.
 }
 \description{
-Check if miniextendr git hooks are installed
+Resolves the hooks directory through git (the same way
+\code{\link[=use_miniextendr_git_hooks]{use_miniextendr_git_hooks()}} installs them), so the check agrees with the
+installer for nested packages, linked worktrees, and a configured
+\code{core.hooksPath}.
 }
 \keyword{internal}
