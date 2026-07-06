@@ -45,6 +45,16 @@ use_native_package <- function(pkg,
     ))
   }
 
+  # Precondition (#1171): verify configure.ac can take the include-path wiring
+  # BEFORE mutating DESCRIPTION. add_native_to_configure_ac() runs after the
+  # LinkingTo/Imports edit; a hand-mangled configure.ac with no insertion
+  # anchor would otherwise be discovered too late, leaving DESCRIPTION mutated
+  # with no include-path detection wired in.
+  configure_ac <- usethis::proj_path("configure.ac")
+  if (fs::file_exists(configure_ac)) {
+    abort_if_missing_native_anchor(readLines(configure_ac, warn = FALSE))
+  }
+
   # 1. Add LinkingTo + Imports in DESCRIPTION
   add_linking_to(pkg)
 
@@ -504,6 +514,40 @@ add_linking_to <- function(pkg) {
 # configure.ac generation
 # =============================================================================
 
+#' Abort if `configure.ac` lacks an anchor for native include detection
+#'
+#' [add_native_to_configure_ac()] needs one of three insertion points, in
+#' priority order: the `MINIREXTENDR: native-pkg-cppflags` marker, an existing
+#' `AC_SUBST([NATIVE_PKG_CPPFLAGS])`, or `AC_CONFIG_SRCDIR` (the anchor for
+#' creating the whole section). A hand-mangled configure.ac with none of them
+#' used to be discovered only AFTER [use_native_package()] had edited
+#' DESCRIPTION, leaving `LinkingTo`/`Imports` mutated with no include-path
+#' wiring (#1171). Called up front, before the DESCRIPTION edit, mirroring
+#' [abort_if_missing_vendor_lib_anchors()] -- a precondition is smaller and
+#' safer than rolling back partial edits.
+#'
+#' @param lines Character vector of `configure.ac` lines
+#' @return Invisibly `TRUE` if an anchor is present; aborts otherwise
+#' @noRd
+abort_if_missing_native_anchor <- function(lines) {
+  has_anchor <-
+    any(grepl("MINIREXTENDR: native-pkg-cppflags", lines, fixed = TRUE)) ||
+    any(grepl("AC_SUBST.*NATIVE_PKG_CPPFLAGS", lines)) ||
+    any(grepl("AC_CONFIG_SRCDIR", lines))
+  if (has_anchor) {
+    return(invisible(TRUE))
+  }
+  cli::cli_abort(c(
+    "configure.ac is missing the {.code AC_CONFIG_SRCDIR} anchor",
+    "x" = paste(
+      "Editing {.file DESCRIPTION} without it would leave the package",
+      "half-configured: {.code LinkingTo}/{.code Imports} added but no",
+      "include-path detection wired into {.file configure.ac}."
+    ),
+    "i" = "Run {.run upgrade_miniextendr_package()} first to refresh the scaffolding."
+  ))
+}
+
 #' Append native package include detection to configure.ac
 #'
 #' Adds an m4 block that resolves the package's include path at configure time
@@ -550,8 +594,10 @@ add_native_to_configure_ac <- function(pkg) {
     # No NATIVE_PKG_CPPFLAGS section -- need to add one
     srcdir_idx <- grep("AC_CONFIG_SRCDIR", lines)
     if (length(srcdir_idx) == 0) {
-      cli::cli_warn("Could not find insertion point in configure.ac")
-      return(invisible())
+      # Unreachable from use_native_package() (precondition, #1171); for any
+      # direct caller a hard stop beats the old warn-and-skip that left the
+      # package half-configured.
+      abort_if_missing_native_anchor(lines)
     }
     # Add the full section before AC_CONFIG_SRCDIR
     section <- c(
