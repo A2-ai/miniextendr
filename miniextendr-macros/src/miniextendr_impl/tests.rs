@@ -1243,6 +1243,151 @@ fn vctrs_protocol_method_override() {
     assert!(wrapper.contains("currency_symbol <- function(amounts)"));
     assert!(!wrapper.contains("currency_symbol <- function(amounts, ...)"));
 }
+
+/// #1180: a `#[miniextendr(vctrs(...), noexport)]` impl must not contribute to
+/// any Rd page — the self-coercion blocks (`vec_ptype_abbr` / `vec_ptype2` /
+/// `vec_cast`) and static-method docs all collapse to `@noRd`, matching the
+/// other five class generators' `class_has_no_rd || (noexport && !internal)`
+/// fold. `@method` + `@export` S3method() registration pairs survive
+/// (NAMESPACE dispatch plumbing, not Rd/export() surface) and the R functions
+/// themselves are still emitted.
+#[test]
+fn vctrs_noexport_suppresses_all_rd() {
+    // No constructor on purpose: the class-doc header goes through the shared
+    // ClassDocBuilder (audit A10's path); this test pins the blocks the vctrs
+    // generator owns itself.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Hidden {
+            // Static helper — &self is not allowed on vctrs impls (MXL120)
+            pub fn payload_sum(values: Vec<f64>) -> f64 { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: Some("hid".to_string()),
+    };
+    attrs.noexport = true;
+    let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    assert!(
+        wrapper.contains("#' @noRd"),
+        "noexport must emit @noRd, got:\n{wrapper}"
+    );
+    for tag in ["@rdname", "@title", "@description", "@param"] {
+        assert!(
+            !wrapper.contains(tag),
+            "noexport must not emit `{tag}` (no Rd contribution), got:\n{wrapper}"
+        );
+    }
+    // The R functions themselves are still emitted (callable via :::)…
+    assert!(wrapper.contains("vec_ptype_abbr.Hidden <- function(x, ...) \"hid\""));
+    assert!(wrapper.contains("vec_ptype2.Hidden.Hidden <- function(x, y, ...)"));
+    assert!(wrapper.contains("vec_cast.Hidden.Hidden <- function(x, to, ...) x"));
+    // …the @method + @export S3method() registration pairs survive the gate
+    // (dispatch from the vctrs namespace requires them; roxygen2 warns on
+    // recognized-but-unregistered S3 methods)…
+    assert!(wrapper.contains("#' @method vec_ptype_abbr Hidden\n#' @export"));
+    assert!(wrapper.contains("#' @method vec_ptype2 Hidden.Hidden\n#' @export"));
+    assert!(wrapper.contains("#' @method vec_cast Hidden.Hidden\n#' @export"));
+    // …while the plain-function static helper gets @noRd and no @export at all.
+    assert!(
+        wrapper.contains("#' @noRd\nhidden_payload_sum <- function(values)"),
+        "static helper must be @noRd with no @export, got:\n{wrapper}"
+    );
+}
+
+/// #1180: a user-written `@noRd` on the impl block engages the same gate as
+/// `noexport` — every block (constructor included, via ClassDocBuilder)
+/// collapses to `@noRd`.
+#[test]
+fn vctrs_class_no_rd_tag_suppresses_all_rd() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        /// @noRd
+        impl Quiet {
+            pub fn new(values: Vec<f64>) -> Vec<f64> { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: Some("qt".to_string()),
+    };
+    let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    assert!(
+        wrapper.contains("#' @noRd"),
+        "@noRd class must emit @noRd, got:\n{wrapper}"
+    );
+    for tag in ["@rdname", "@title"] {
+        assert!(
+            !wrapper.contains(tag),
+            "@noRd class must not emit `{tag}`, got:\n{wrapper}"
+        );
+    }
+    // Constructor is emitted but carries no @export (ClassDocBuilder gates it).
+    assert!(wrapper.contains("new_quiet <- function(values)"));
+    assert!(
+        !wrapper.contains("#' @export\nnew_quiet <- function"),
+        "@noRd class constructor must not be exported, got:\n{wrapper}"
+    );
+    // Self-coercion keeps its S3method() registration pair.
+    assert!(wrapper.contains("#' @method vec_ptype2 Quiet.Quiet\n#' @export"));
+    assert!(wrapper.contains("vec_ptype2.Quiet.Quiet <- function(x, y, ...)"));
+}
+
+/// Companion: `#[miniextendr(vctrs(...), internal)]` stays documented — the
+/// self-coercion blocks keep `@rdname`/`@param`, no `@noRd` anywhere; the
+/// class-level export() surface is suppressed while S3method() registration
+/// stays (#431 semantics: internal keeps dispatch working).
+#[test]
+fn vctrs_internal_stays_documented() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Gauge {
+            pub fn new(values: Vec<f64>) -> Vec<f64> { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: Some("gau".to_string()),
+    };
+    attrs.internal = true;
+    let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    assert!(
+        wrapper.contains("#' @rdname Gauge"),
+        "internal must keep @rdname (stays documented), got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @keywords internal"),
+        "internal must add @keywords internal on the class block, got:\n{wrapper}"
+    );
+    assert!(
+        !wrapper.contains("#' @noRd"),
+        "internal must NOT emit @noRd, got:\n{wrapper}"
+    );
+    assert!(
+        !wrapper.contains("#' @export\nnew_gauge <- function"),
+        "internal class constructor must not be exported, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @method vec_ptype2 Gauge.Gauge"),
+        "internal must keep the S3method() registration pair, got:\n{wrapper}"
+    );
+}
 // endregion
 
 // region: S7 property class type tests
