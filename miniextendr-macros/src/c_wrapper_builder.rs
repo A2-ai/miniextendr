@@ -81,6 +81,15 @@ pub enum ReturnHandling {
     /// inner value via `IntoR::into_sexp`. Raises an error on `None`. Suitable when `T: IntoR`
     /// but `Option<T>` doesn't have a direct `IntoR` impl (e.g., `Option<SomeExternalPtr>`).
     OptionIntoRUnwrap,
+    /// Returns `Option<Self>` -- a lookup-shaped fallible constructor (e.g. `try_find`).
+    /// Raises an error on `None` (same as [`OptionIntoRUnwrap`](Self::OptionIntoRUnwrap)),
+    /// but wraps `Some(Self)` in an `ExternalPtr` via `ExternalPtr::new` (same as
+    /// [`ExternalPtr`](Self::ExternalPtr)) instead of routing it through `IntoR` (which
+    /// `Self` generally does not implement). The R-side wrapper mirrors this: a successful
+    /// return is treated exactly like a bare `Self` return (wrapped class object via
+    /// `ReturnStrategy::for_method` — see `ParsedMethod::returns_option_self`). Symmetric
+    /// with [`ResultExternalPtr`](Self::ResultExternalPtr).
+    OptionExternalPtr,
     /// Returns `Result<(), E>` -- raises an error on `Err`, otherwise emits `R_NilValue`.
     ResultUnit,
     /// Returns `Result<SEXP, E>` -- raises an error on `Err`, otherwise passes through.
@@ -670,6 +679,23 @@ impl CWrapperContext {
                     #conversion
                 }
             }
+            // Option<Self>: raise on None like OptionIntoRUnwrap, but wrap Some(Self) in an
+            // ExternalPtr like the bare-Self path rather than routing through IntoR.
+            ReturnHandling::OptionExternalPtr => {
+                let error_msg = format!("`{}()` returned no value", fn_ident);
+                quote! {
+                    let __result = #call_expr;
+                    let __result = match __result {
+                        Some(v) => v,
+                        None => return ::miniextendr_api::error_value::make_rust_condition_value(
+                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                        ),
+                    };
+                    ::miniextendr_api::into_r::IntoR::into_sexp(
+                        ::miniextendr_api::externalptr::ExternalPtr::new(__result)
+                    )
+                }
+            }
             ReturnHandling::ResultUnit => {
                 quote! {
                     let __result = #call_expr;
@@ -886,6 +912,27 @@ impl CWrapperContext {
                 let convert = quote! {
                     match __miniextendr_result {
                         Some(#result_ident) => #unwind_fn(|| #conversion, None),
+                        None => ::miniextendr_api::error_value::make_rust_condition_value(
+                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                        ),
+                    }
+                };
+                (worker, convert)
+            }
+            // Option<Self>: raise on None like OptionIntoRUnwrap, but wrap Some(Self) in an
+            // ExternalPtr like the bare-Self path rather than routing through IntoR.
+            ReturnHandling::OptionExternalPtr => {
+                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let worker = quote! { #call_expr };
+                let unwind_fn = self.worker_conversion_unwind_fn();
+                let convert = quote! {
+                    match __miniextendr_result {
+                        Some(v) => #unwind_fn(
+                            || ::miniextendr_api::into_r::IntoR::into_sexp(
+                                ::miniextendr_api::externalptr::ExternalPtr::new(v)
+                            ),
+                            None,
+                        ),
                         None => ::miniextendr_api::error_value::make_rust_condition_value(
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                         ),
@@ -1489,7 +1536,8 @@ pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnH
 /// - `()` -> [`Unit`](ReturnHandling::Unit)
 /// - `Self` -> [`ExternalPtr`](ReturnHandling::ExternalPtr)
 /// - `SEXP` -> [`RawSexp`](ReturnHandling::RawSexp)
-/// - `Option<T>` -> recurses into `T` for `OptionUnit`, `OptionSexp`, or `OptionIntoRUnwrap`
+/// - `Option<T>` -> recurses into `T` for `OptionUnit`, `OptionSexp`, `OptionExternalPtr`
+///   (`T = Self`), or `OptionIntoRUnwrap`
 /// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, `ResultExternalPtr`
 ///   (`T = Self`), or `ResultIntoR`
 /// - Anything else -> [`IntoR`](ReturnHandling::IntoR)
@@ -1545,6 +1593,20 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
                             .unwrap_or(false) =>
                     {
                         ReturnHandling::OptionSexp
+                    }
+                    // Option<Self>: a lookup-shaped fallible constructor. Wrap
+                    // `Some(Self)` in an ExternalPtr like the bare-`Self` path, rather
+                    // than routing it through `IntoR` (which `Self` generally lacks).
+                    // Symmetric with `Result<Self, E>` -> `ResultExternalPtr` below.
+                    syn::Type::Path(ip)
+                        if ip
+                            .path
+                            .segments
+                            .last()
+                            .map(|s| s.ident == "Self")
+                            .unwrap_or(false) =>
+                    {
+                        ReturnHandling::OptionExternalPtr
                     }
                     _ => ReturnHandling::OptionIntoRUnwrap,
                 }

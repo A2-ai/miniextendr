@@ -2084,6 +2084,36 @@ impl ParsedMethod {
             if ip.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))
     }
 
+    /// Returns true if this method returns `Option<Self>` — a lookup-shaped
+    /// fallible constructor (e.g. `try_find`). On the R side this is treated
+    /// exactly like a bare `Self` return (wrapped class object via
+    /// [`crate::ReturnStrategy::for_method`]); the C wrapper still raises on
+    /// `None` via the normal `Option` error path (see
+    /// [`crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr`]).
+    /// Symmetric with [`Self::returns_result_self`].
+    pub fn returns_option_self(&self) -> bool {
+        let syn::ReturnType::Type(_, ty) = &self.sig.output else {
+            return false;
+        };
+        let syn::Type::Path(p) = ty.as_ref() else {
+            return false;
+        };
+        let Some(seg) = p.path.segments.last() else {
+            return false;
+        };
+        if seg.ident != "Option" {
+            return false;
+        }
+        let syn::PathArguments::AngleBracketed(ab) = &seg.arguments else {
+            return false;
+        };
+        let Some(syn::GenericArgument::Type(some_ty)) = ab.args.first() else {
+            return false;
+        };
+        matches!(some_ty, syn::Type::Path(ip)
+            if ip.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))
+    }
+
     /// Returns true if this method returns a reference to `Self` (`&Self` or
     /// `&mut Self`) — the idiomatic Rust in-place builder signature.
     ///

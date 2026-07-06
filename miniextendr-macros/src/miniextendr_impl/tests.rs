@@ -965,6 +965,68 @@ fn result_self_static_wraps_like_constructor() {
     );
 }
 
+/// #1164: a static returning `Option<Self>` (e.g. `try_find`) must wrap its
+/// successful return exactly like a bare-`Self`-returning constructor (e.g.
+/// `new`) — a usable class object, not a bare `ExternalPtr`. The C wrapper
+/// still raises on `None` via the normal `Option` error path. Symmetric with
+/// the `Result<Self, E>` case above (audit A4).
+#[test]
+fn option_self_static_wraps_like_constructor() {
+    use crate::c_wrapper_builder::ReturnHandling;
+
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl OptionLookup {
+            pub fn new(id: i32) -> Self { unimplemented!() }
+            pub fn try_find(id: i32) -> Option<Self> { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let try_find = parsed
+        .methods
+        .iter()
+        .find(|m| m.ident == "try_find")
+        .unwrap();
+
+    // Detected as an `Option<Self>` return, not a bare `Self` return.
+    assert!(try_find.returns_option_self());
+    assert!(!try_find.returns_self());
+    assert!(!try_find.returns_result_self());
+
+    // C-wrapper return handling wraps `Some(Self)` in an ExternalPtr, distinct
+    // from the plain `Option<T> -> IntoR` unwrap path.
+    assert!(matches!(
+        crate::c_wrapper_builder::detect_return_handling(&try_find.sig.output),
+        ReturnHandling::OptionExternalPtr
+    ));
+
+    // R-side strategy matches the bare-Self constructor path.
+    let new_method = parsed.methods.iter().find(|m| m.ident == "new").unwrap();
+    assert_eq!(
+        crate::ReturnStrategy::for_method(try_find),
+        crate::ReturnStrategy::for_method(new_method)
+    );
+    assert_eq!(
+        crate::ReturnStrategy::for_method(try_find),
+        crate::ReturnStrategy::ReturnSelf
+    );
+
+    // The generated Env wrapper wraps the successful result in the class,
+    // exactly like `$new()`.
+    let wrapper = generate_env_r_wrapper(&parsed);
+    let try_find_body = wrapper
+        .split("OptionLookup$try_find <- function(id) {")
+        .nth(1)
+        .expect("try_find method body")
+        .split("\n}")
+        .next()
+        .expect("try_find method body");
+    assert!(
+        try_find_body.contains("class(.val) <- \"OptionLookup\""),
+        "try_find should wrap its successful return like a class constructor, got:\n{try_find_body}"
+    );
+}
+
 #[test]
 fn returns_unit_method_in_r6() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
