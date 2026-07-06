@@ -9,7 +9,7 @@ cargo_new(
   name,
   lib = TRUE,
   edition = "2024",
-  vcs = "none",
+  vcs = c("none", "git", "hg", "pijul", "fossil"),
   add_to_workspace = TRUE,
   quiet = FALSE
 )

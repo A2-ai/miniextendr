@@ -6,7 +6,7 @@
 \usage{
 use_miniextendr(
   path = ".",
-  template_type = "auto",
+  template_type = c("auto", "rpkg", "monorepo"),
   rpkg_name = NULL,
   miniextendr_version = "main",
   local_path = NULL,
@@ -16,9 +16,9 @@ use_miniextendr(
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 
-\item{template_type}{Template type: "auto" (detect from directory structure),
-"rpkg" for standalone R package, or "monorepo" for Rust workspace.
-Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.}
+\item{template_type}{Template type. One of \code{"auto"} (the default; detect
+from directory structure based on whether Cargo.toml or DESCRIPTION exists),
+\code{"rpkg"} for a standalone R package, or \code{"monorepo"} for a Rust workspace.}
 
 \item{rpkg_name}{Name of the R package subdirectory for monorepo template
 (default: derived from package name). Only used when template_type is "monorepo".}

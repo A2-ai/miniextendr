@@ -288,9 +288,9 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' `devtools::document()` populates it from your roxygen comments.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
-#' @param template_type Template type: "auto" (detect from directory structure),
-#'   "rpkg" for standalone R package, or "monorepo" for Rust workspace.
-#'   Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.
+#' @param template_type Template type. One of `"auto"` (the default; detect
+#'   from directory structure based on whether Cargo.toml or DESCRIPTION exists),
+#'   `"rpkg"` for a standalone R package, or `"monorepo"` for a Rust workspace.
 #' @param rpkg_name Name of the R package subdirectory for monorepo template
 #'   (default: derived from package name). Only used when template_type is "monorepo".
 #' @param miniextendr_version Version of miniextendr to vendor (default: "main").
@@ -305,9 +305,11 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' @return Invisibly returns TRUE
 #' @export
 use_miniextendr <- function(path = ".",
-                            template_type = "auto", rpkg_name = NULL,
+                            template_type = c("auto", "rpkg", "monorepo"),
+                            rpkg_name = NULL,
                             miniextendr_version = "main", local_path = NULL,
                             claude_skills = TRUE) {
+  template_type <- match.arg(template_type)
   with_project(path)
   # Warn if the package directory being scaffolded is not at a git workspace
   # root. Resolve everything from the *project* directory, not getwd():
