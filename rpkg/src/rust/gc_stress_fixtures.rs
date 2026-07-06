@@ -2379,32 +2379,6 @@ pub fn gc_stress_condition_data() {
                     (Some("y".to_string()), RValue::from(vec![Some(7_i32), None])),
                 ]),
             ),
-            // #995 richer value types: NA-aware Option / Vec<Option>, wide
-            // integer, Debug-stringify fallback, and a nested named list (which
-            // itself allocates a fresh VECSXP + names under GC pressure).
-            ("opt_int".to_string(), ConditionDataValue::from(None::<i32>)),
-            (
-                "opt_int_vec".to_string(),
-                ConditionDataValue::from(vec![Some(1_i32), None, Some(3)]),
-            ),
-            (
-                "long".to_string(),
-                ConditionDataValue::from(5_000_000_000_i64),
-            ),
-            (
-                "dbg".to_string(),
-                ConditionDataValue::debug(round..=round + 2),
-            ),
-            (
-                "nested".to_string(),
-                ConditionDataValue::List(vec![
-                    ("x".to_string(), ConditionDataValue::Int(round)),
-                    (
-                        "y".to_string(),
-                        ConditionDataValue::from(vec![Some(7_i32), None]),
-                    ),
-                ]),
-            ),
         ];
 
         let tagged = make_rust_condition_value_with_data(
