@@ -344,8 +344,25 @@ use_miniextendr <- function(path = ".",
   # Auto-detect template type if requested
   if (template_type == "auto") {
     detected <- detect_project_type()
+    proj_dir <- usethis::proj_get()
     if (is.null(detected)) {
       cli::cli_alert_info("Could not auto-detect project type, defaulting to 'rpkg'")
+      template_type <- "rpkg"
+    } else if (detected == "monorepo" &&
+               !file.exists(file.path(proj_dir, "Cargo.toml"))) {
+      # detect_project_type() reports "monorepo" both when the project dir is
+      # itself a Rust crate and when a DESCRIPTION-bearing R package merely sits
+      # *inside* a Rust repo (Cargo.toml in an ancestor, not the project dir).
+      # The monorepo scaffold branch below reads the crate name from Cargo.toml
+      # at the project root, so the ancestor-only case would abort opaquely.
+      # Scaffold as a standalone rpkg into this directory instead.
+      rust_root <- find_rust_root(proj_dir)
+      cli::cli_alert_info(
+        "Found a Rust project at {.path {rust_root}}, but {.path {proj_dir}} has no {.file Cargo.toml} of its own — scaffolding as a standalone {.val rpkg}."
+      )
+      cli::cli_alert_info(
+        "To create a monorepo layout instead, run {.fn use_miniextendr} from the Rust workspace root."
+      )
       template_type <- "rpkg"
     } else {
       template_type <- detected

@@ -388,3 +388,61 @@ test_that("B3: patched workflow parses as YAML with working-directory on each co
 })
 
 # endregion ---------------------------------------------------------------
+
+# region: B4 — use_miniextendr() auto-detect fallback -------------------
+# detect_project_type() returns "monorepo" both when the project dir is a Rust
+# crate and when a DESCRIPTION-only R package sits *inside* a Rust repo
+# (Cargo.toml in an ancestor). The monorepo scaffold branch reads the crate name
+# from Cargo.toml at the project root, so the ancestor-only case used to abort
+# with an opaque "Cargo.toml not found". use_miniextendr() must instead fall back
+# to a standalone rpkg. These tests short-circuit the heavy scaffold steps with a
+# sentinel and assert which branch the auto-detect logic selects.
+
+test_that("B4: auto-detect falls back to rpkg for an R package nested in a Rust repo", {
+  tmp <- withr::local_tempdir()
+  # Rust workspace root; the R package lives in a subdir with only a DESCRIPTION.
+  writeLines("[workspace]", file.path(tmp, "Cargo.toml"))
+  pkg <- file.path(tmp, "pkg")
+  dir.create(pkg)
+  writeLines(c("Package: testpkg", "Version: 0.0.1"), file.path(pkg, "DESCRIPTION"))
+
+  local_mocked_bindings(
+    check_rust = function() invisible(),
+    # First real step of each branch — used as a sentinel to observe the choice.
+    create_rpkg_subdirectory = function(...) stop("BRANCH:monorepo"),
+    use_miniextendr_description = function(...) stop("BRANCH:rpkg"),
+    .package = "minirextendr"
+  )
+
+  # With the fix the standalone (rpkg) branch runs; before it, the monorepo
+  # branch aborted at get_package_name_from_cargo() with "Cargo.toml".
+  expect_error(
+    suppressMessages(suppressWarnings(
+      use_miniextendr(path = pkg, template_type = "auto", claude_skills = FALSE)
+    )),
+    "BRANCH:rpkg"
+  )
+})
+
+test_that("B4: auto-detect stays monorepo when the project dir has its own Cargo.toml", {
+  tmp <- withr::local_tempdir()
+  # Rust workspace root that IS the project dir — a real monorepo entry point.
+  writeLines(c("[package]", 'name = "my-crate"', 'version = "0.1.0"'),
+             file.path(tmp, "Cargo.toml"))
+
+  local_mocked_bindings(
+    check_rust = function() invisible(),
+    create_rpkg_subdirectory = function(...) stop("BRANCH:monorepo"),
+    use_miniextendr_description = function(...) stop("BRANCH:rpkg"),
+    .package = "minirextendr"
+  )
+
+  expect_error(
+    suppressMessages(suppressWarnings(
+      use_miniextendr(path = tmp, template_type = "auto", claude_skills = FALSE)
+    )),
+    "BRANCH:monorepo"
+  )
+})
+
+# endregion ---------------------------------------------------------------

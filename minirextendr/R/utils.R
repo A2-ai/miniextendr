@@ -509,7 +509,11 @@ to_rust_name <- function(name) {
 #' @noRd
 get_package_name_from_cargo <- function(cargo_path = file.path(usethis::proj_get(), "Cargo.toml")) {
   if (!file.exists(cargo_path)) {
-    cli::cli_abort("Cargo.toml not found")
+    cli::cli_abort(c(
+      "No {.file Cargo.toml} found at {.path {cargo_path}}.",
+      "i" = "The {.val monorepo} template reads the crate name from a Rust workspace {.file Cargo.toml} at the project root.",
+      "i" = "For a standalone R package, pass {.code template_type = \"rpkg\"}."
+    ))
   }
 
   lines <- readLines(cargo_path, warn = FALSE)
