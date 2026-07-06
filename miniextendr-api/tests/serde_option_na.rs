@@ -15,6 +15,11 @@
 //! `miniextendr-api/src`, because a real SEXP requires an initialized R
 //! runtime (see the comment in `src/strict.rs`). These integration tests use
 //! the embedded-R harness in `tests/r_test_utils.rs` instead.
+//!
+//! Also covers #1166: an NA *element* of an atomic vector must behave like
+//! the scalar path — `Vec<T>` errors with `RSerdeError::UnexpectedNa` (not a
+//! leaked serde "invalid type: Option value" internal), `Vec<Option<T>>`
+//! yields `None`.
 
 #![cfg(feature = "serde")]
 
@@ -23,8 +28,9 @@ mod r_test_utils;
 use miniextendr_api::SEXPTYPE;
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use miniextendr_api::from_r::TryFromSexp;
+use miniextendr_api::into_r::IntoR;
 use miniextendr_api::prelude::{SEXP, SexpExt};
-use miniextendr_api::serde::from_r;
+use miniextendr_api::serde::{RSerdeError, from_r};
 use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 use serde::Deserialize;
 
@@ -73,6 +79,9 @@ fn serde_option_na_suite() {
         bare_scalar_na_still_errors();
         struct_field_na_becomes_none_matching_null();
         struct_required_field_na_still_errors();
+        vec_na_element_errors_with_unexpected_na();
+        vec_option_na_element_becomes_none();
+        vec_without_na_still_roundtrips();
     });
 }
 
@@ -215,3 +224,77 @@ fn struct_required_field_na_still_errors() {
         );
     }
 }
+
+// region: vector-element NA handling (#1166)
+
+/// Assert an error is the clear `UnexpectedNa`, not a leaked serde internal
+/// like "invalid type: Option value, expected i32".
+#[track_caller]
+fn assert_unexpected_na(err: &RSerdeError, context: &str) {
+    assert!(
+        matches!(err, RSerdeError::UnexpectedNa),
+        "{context}: expected RSerdeError::UnexpectedNa, got: {err:?}"
+    );
+    assert_eq!(err.to_string(), "unexpected NA value");
+}
+
+/// An NA element inside a non-`Option` `Vec<T>` is still an error, but with
+/// the same clear `UnexpectedNa` message the bare-scalar path produces.
+fn vec_na_element_errors_with_unexpected_na() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let ints = guard.protect(vec![Some(1i32), None, Some(3)].into_sexp());
+        let err = from_r::<Vec<i32>>(ints).expect_err("NA element in Vec<i32> must error");
+        assert_unexpected_na(&err, "Vec<i32>");
+
+        let reals = guard.protect(vec![Some(1.5f64), None].into_sexp());
+        let err = from_r::<Vec<f64>>(reals).expect_err("NA element in Vec<f64> must error");
+        assert_unexpected_na(&err, "Vec<f64>");
+
+        let bools = guard.protect(vec![Some(true), None].into_sexp());
+        let err = from_r::<Vec<bool>>(bools).expect_err("NA element in Vec<bool> must error");
+        assert_unexpected_na(&err, "Vec<bool>");
+
+        let strs = guard.protect(vec![Some("a".to_string()), None].into_sexp());
+        let err = from_r::<Vec<String>>(strs).expect_err("NA element in Vec<String> must error");
+        assert_unexpected_na(&err, "Vec<String>");
+    }
+}
+
+/// `Vec<Option<T>>` still maps NA elements to `None` and non-NA elements to
+/// `Some` via the new `VectorElementDeserializer::deserialize_option`.
+fn vec_option_na_element_becomes_none() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let ints = guard.protect(vec![Some(1i32), None, Some(3)].into_sexp());
+        let vals: Vec<Option<i32>> = from_r(ints).expect("Vec<Option<i32>> with NA element");
+        assert_eq!(vals, vec![Some(1), None, Some(3)]);
+
+        let reals = guard.protect(vec![Some(1.5f64), None].into_sexp());
+        let vals: Vec<Option<f64>> = from_r(reals).expect("Vec<Option<f64>> with NA element");
+        assert_eq!(vals, vec![Some(1.5), None]);
+
+        let bools = guard.protect(vec![Some(true), None, Some(false)].into_sexp());
+        let vals: Vec<Option<bool>> = from_r(bools).expect("Vec<Option<bool>> with NA element");
+        assert_eq!(vals, vec![Some(true), None, Some(false)]);
+
+        let strs = guard.protect(vec![Some("a".to_string()), None].into_sexp());
+        let vals: Vec<Option<String>> = from_r(strs).expect("Vec<Option<String>> with NA element");
+        assert_eq!(vals, vec![Some("a".to_string()), None]);
+    }
+}
+
+/// NA-free vectors are unaffected for both `Vec<T>` and `Vec<Option<T>>`.
+fn vec_without_na_still_roundtrips() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let ints = guard.protect(vec![1i32, 2, 3].into_sexp());
+        let vals: Vec<i32> = from_r(ints).expect("Vec<i32> without NA");
+        assert_eq!(vals, vec![1, 2, 3]);
+
+        let vals: Vec<Option<i32>> = from_r(ints).expect("Vec<Option<i32>> without NA");
+        assert_eq!(vals, vec![Some(1), Some(2), Some(3)]);
+    }
+}
+
+// endregion

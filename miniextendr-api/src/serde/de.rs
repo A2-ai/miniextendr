@@ -732,6 +732,41 @@ struct VectorElementDeserializer {
     index: usize,
 }
 
+impl VectorElementDeserializer {
+    /// Whether the element at `index` is NA for the vector's type.
+    ///
+    /// RAWSXP has no NA representation, so raw elements are never NA.
+    fn is_na(&self) -> bool {
+        match self.sexp_type {
+            SEXPTYPE::LGLSXP => self.sexp.logical_elt(self.index as isize) == NA_LOGICAL,
+            SEXPTYPE::INTSXP => self.sexp.integer_elt(self.index as isize) == NA_INTEGER,
+            SEXPTYPE::REALSXP => {
+                self.sexp.real_elt(self.index as isize).to_bits() == NA_REAL.to_bits()
+            }
+            SEXPTYPE::STRSXP => self.sexp.string_elt(self.index as isize) == SEXP::na_string(),
+            _ => false,
+        }
+    }
+}
+
+/// Generates the bare scalar `deserialize_*` methods for
+/// `VectorElementDeserializer`: an NA element reaching a non-`Option` scalar
+/// target is a genuine missingness error (`RSerdeError::UnexpectedNa`),
+/// matching the top-level scalar path in `RDeserializer`. Only
+/// `deserialize_option` maps NA to `None` (#1166).
+macro_rules! vector_element_scalar_na_errors {
+    ($($method:ident)*) => {
+        $(
+            fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+                if self.is_na() {
+                    return Err(RSerdeError::UnexpectedNa);
+                }
+                self.deserialize_any(visitor)
+            }
+        )*
+    };
+}
+
 impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
     type Error = RSerdeError;
 
@@ -815,9 +850,31 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
         self.deserialize_tuple(len, visitor)
     }
 
+    /// NA element -> `None`, everything else -> `Some(value)`.
+    ///
+    /// Parallel to `RDeserializer::deserialize_option`: only this
+    /// `Option`-driven path maps NA to `visit_none()`. The bare scalar
+    /// methods below error with `RSerdeError::UnexpectedNa` instead, so
+    /// `Vec<i32>` with an NA element reports a clear NA error rather than
+    /// leaking serde's "invalid type: Option value" internal (#1166).
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        if self.is_na() {
+            visitor.visit_none()
+        } else {
+            visitor.visit_some(self)
+        }
+    }
+
+    vector_element_scalar_na_errors! {
+        deserialize_bool
+        deserialize_i8 deserialize_i16 deserialize_i32 deserialize_i64
+        deserialize_u8 deserialize_u16 deserialize_u32 deserialize_u64
+        deserialize_f32 deserialize_f64
+        deserialize_char deserialize_str deserialize_string
+    }
+
     serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes byte_buf
-        option unit unit_struct newtype_struct map struct
+        bytes byte_buf unit unit_struct newtype_struct map struct
         enum identifier ignored_any
     }
 }
