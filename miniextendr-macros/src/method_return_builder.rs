@@ -93,9 +93,11 @@ pub enum ReturnStrategy {
 impl ReturnStrategy {
     /// Determine the return strategy for a parsed method.
     ///
-    /// - Methods that return `Self` or `Result<Self, E>` use `ReturnSelf`. For the
-    ///   latter, the C wrapper already raised on `Err` (see
-    ///   [`crate::c_wrapper_builder::ReturnHandling::ResultExternalPtr`]), so a
+    /// - Methods that return `Self`, `Result<Self, E>`, or `Option<Self>` use
+    ///   `ReturnSelf`. For the latter two, the C wrapper already raised on
+    ///   `Err` / `None` (see
+    ///   [`crate::c_wrapper_builder::ReturnHandling::ResultExternalPtr`] and
+    ///   [`crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr`]), so a
     ///   successful `.val` is a bare ExternalPtr — identical in shape to the
     ///   bare-`Self` case — and gets the same class-wrapping tail.
     /// - In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
@@ -110,7 +112,7 @@ impl ReturnStrategy {
         // `&mut self -> ()` mutators both return the receiver object.
         let is_self_ref_builder = method.returns_self_ref() && method.env.is_instance();
         let is_unit_mutator = method.env.is_mut() && method.returns_unit();
-        if method.returns_self() || method.returns_result_self() {
+        if method.returns_self() || method.returns_result_self() || method.returns_option_self() {
             ReturnStrategy::ReturnSelf
         } else if is_self_ref_builder || is_unit_mutator {
             ReturnStrategy::ChainableMutation

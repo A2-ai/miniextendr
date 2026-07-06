@@ -79,4 +79,13 @@ fn return_handling_detection() {
         detect_return_handling(&result_self_ty),
         ReturnHandling::ResultExternalPtr
     ));
+
+    // -> Option<Self> -> OptionExternalPtr (#1164: lookup-shaped fallible constructors
+    // like `try_find` wrap `Some(Self)` in an ExternalPtr, not `IntoR` — symmetric with
+    // the Result<Self, E> case above).
+    let option_self_ty: syn::ReturnType = syn::parse_quote!(-> Option<Self>);
+    assert!(matches!(
+        detect_return_handling(&option_self_ty),
+        ReturnHandling::OptionExternalPtr
+    ));
 }

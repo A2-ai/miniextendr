@@ -234,6 +234,7 @@ mod ndarray_tests;
 mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]
 mod num_traits_adapter_tests;
+mod option_self_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
 mod panic_telemetry_tests;
