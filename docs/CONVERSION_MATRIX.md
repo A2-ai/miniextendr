@@ -104,6 +104,8 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<String>>` | STRSXP only | NA_character_ -> None |
 | `Vec<i64>` (strict) | INTSXP or REALSXP | Per-element checked coercion; RAWSXP/LGLSXP rejected |
 | `Vec<u64>` (strict) | INTSXP or REALSXP | Per-element checked coercion; RAWSXP/LGLSXP rejected |
+| `Vec<Option<i64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<i64>` (strict); NA -> None |
+| `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
 | `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
 
 ---

@@ -144,9 +144,14 @@ test_that("strict Vec<Option<i64>> handles all-NA input", {
   expect_equal(length(result), 2L)
 })
 
-test_that("strict Vec<Option<i64>> coerces logical input (strict only checks output range)", {
-  # Strict mode for Vec<Option<i64>> checks output values fit i32 range.
-  # Input type coercion (LGLSXP → i64) is handled by TryFromSexp, not strict.
-  result <- strict_echo_vec_option_i64(c(TRUE, FALSE))
-  expect_equal(result, c(1L, 0L))
+test_that("strict Vec<Option<i64>> rejects logical input (audit A6)", {
+  # Strict mode for Vec<Option<i64>> now applies the same input-SEXP-type gate
+  # as Vec<i64> (strict): only INTSXP/REALSXP are accepted, LGLSXP is rejected.
+  # Previously this silently coerced via the lax TryFromSexp path (audit
+  # finding #3 in audit/2026-07-03-api-sense-runtime-vctrs-misc.md).
+  expect_error(strict_echo_vec_option_i64(c(TRUE, FALSE)), "strict conversion failed")
+})
+
+test_that("strict Vec<Option<i64>> rejects raw input", {
+  expect_error(strict_echo_vec_option_i64(as.raw(c(1, 2))), "strict conversion failed")
 })
