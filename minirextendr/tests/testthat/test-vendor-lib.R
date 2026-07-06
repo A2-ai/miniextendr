@@ -277,3 +277,66 @@ test_that("use_vendor_lib rejects non-miniextendr packages", {
 
   expect_error(use_vendor_lib("dvs", "*", "../dvs"), "Not a miniextendr package")
 })
+
+# =============================================================================
+# anchor precondition (audit 2026-07-06 finding #5)
+# =============================================================================
+
+# Remove the vendor-lib anchors from a make_test_project() configure.ac while
+# keeping it a valid miniextendr package (CARGO_FEATURES line stays).
+strip_vendor_lib_anchors <- function(tmp,
+                                     vendor_out = TRUE,
+                                     post_config = TRUE) {
+  conf <- file.path(tmp, "configure.ac")
+  lines <- readLines(conf, warn = FALSE)
+  if (vendor_out) {
+    lines <- lines[!grepl("AC_SUBST\\(\\[VENDOR_OUT_CARGO\\]\\)|AC_SUBST\\(\\[VENDOR_OUT\\]\\)", lines)]
+  }
+  if (post_config) {
+    lines <- sub("AC_CONFIG_COMMANDS([post-config],",
+                 "AC_CONFIG_COMMANDS([final-config],",
+                 lines, fixed = TRUE)
+  }
+  writeLines(lines, conf)
+}
+
+test_that("use_vendor_lib aborts before mutating Cargo.toml when anchors are missing", {
+  tmp <- make_test_project()
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  strip_vendor_lib_anchors(tmp)
+
+  cargo_path <- file.path(tmp, "src", "rust", "Cargo.toml")
+  cargo_before <- readLines(cargo_path, warn = FALSE)
+  conf_before <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
+
+  expect_error(
+    use_vendor_lib("dvs", "*", "../../../dvs"),
+    "missing the vendor-lib anchor"
+  )
+
+  # The whole point: nothing was half-configured.
+  expect_identical(readLines(cargo_path, warn = FALSE), cargo_before)
+  expect_identical(readLines(file.path(tmp, "configure.ac"), warn = FALSE), conf_before)
+})
+
+test_that("use_vendor_lib names the specific missing anchor", {
+  tmp <- make_test_project()
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  strip_vendor_lib_anchors(tmp, vendor_out = FALSE, post_config = TRUE)
+
+  expect_error(use_vendor_lib("dvs", "*", "../../../dvs"), "post-config")
+})
+
+test_that("add_vendor_lib_to_configure_ac aborts instead of warning on missing anchors", {
+  tmp <- make_test_project()
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  strip_vendor_lib_anchors(tmp)
+
+  conf_before <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
+
+  expect_error(
+    minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs"),
+    "missing the vendor-lib anchor"
+  )
+  expect_identical(readLines(file.path(tmp, "configure.ac"), warn = FALSE), conf_before)
+})
