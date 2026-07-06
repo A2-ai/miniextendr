@@ -30,10 +30,5 @@ ChainedError
 \item{name}{Method name for dispatch.}
 }
 \description{
-ChainedError  Class
-
-\describe{
-\item{\code{outer_msg}}{Character string for the outer error message.}
-\item{\code{inner_msg}}{Character string for the inner (source) error message.}
-}
+ChainedError inherent methods: constructors with and without source errors.
 }

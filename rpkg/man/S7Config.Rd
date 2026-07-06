@@ -32,6 +32,10 @@ S7Config_get_version(self, ...)
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
+S7 config class demonstrating default, required, and deprecated properties.
+
+Regular getter for version.
+
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
@@ -42,6 +46,6 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 \section{Additional properties}{
 
 \describe{
-\item{\code{@old_version}}{Deprecated property - emits warning when accessed}
+\item{\code{@old_version}}{Deprecated property - emits warning when accessed.}
 }}
 

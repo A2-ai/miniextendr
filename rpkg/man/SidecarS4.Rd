@@ -48,6 +48,8 @@ The SidecarS4 pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS4}.
+
+S4 class registration for SidecarS4 (enables setMethod slot accessors).
 }
 \section{Slots}{
 

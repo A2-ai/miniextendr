@@ -89,4 +89,6 @@ The SidecarRawSexp pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarRawSexp}.
+
+Env class registration for SidecarRawSexp (raw SEXP slot testing).
 }
