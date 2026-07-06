@@ -91,6 +91,42 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 /// `@description` tag — never `@title`. The `@title` is left to the caller
 /// (structural name); see [`leading_prose_from_attrs`] for why.
 fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
+    let mut tags = explicit_roxygen_tags_from_attrs(attrs);
+
+    // Check which tags are present
+    let tag_names_set = tag_names(&tags);
+    let has_description = tag_names_set.contains("description");
+
+    // Promote leading prose doc comments to `@description` (all paragraphs before
+    // the first `@tag`), unless the author already wrote an explicit `@description`.
+    //
+    // The page `@title` is NOT synthesized from prose. Rustdoc summaries are markdown
+    // written for `cargo doc` — intra-doc links (`[`Foo`]`, `[x][crate::y]`) and code
+    // spans — which roxygen2's markdown parser tries to resolve as R `\link{}` topics
+    // and fails ("could not resolve link to topic" / "refers to un-installed package").
+    // Titles come from the structural name instead: the wrapper name for standalone
+    // functions (see `lib.rs`) and `@title {Name} Class` for class blocks (see
+    // `ClassDocBuilder`). Demoting prose to `@description` keeps it visible while the
+    // title stays link-free.
+    //
+    // `leading_prose_from_attrs` returns `None` for tag-led blocks (no leading prose),
+    // so `@inherit`/`@rdname`-only docs never gain a spurious description.
+    if !has_description && let Some(desc) = leading_prose_from_attrs(attrs) {
+        tags.insert(0, format!("@description {}", desc));
+    }
+
+    tags
+}
+
+/// Parse only the author-written `@tag` lines from doc attributes — no
+/// leading-prose promotion.
+///
+/// [`roxygen_tags_from_attrs_impl`] layers the leading-prose → `@description`
+/// promotion on top of this. [`doc_conflict_warnings`] must use this raw parse
+/// instead: comparing the *synthesized* description (all leading prose) against
+/// the implicit one (second paragraph) warned on every multi-paragraph doc
+/// comment that had no explicit `@description` at all (#1172).
+fn explicit_roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
     let mut tags = Vec::new();
 
     // Partition: doc attrs first (stable), non-doc attrs after.
@@ -121,30 +157,9 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
                 last.push_str(trimmed);
             }
             // Leading prose (before any @tag) is captured separately by
-            // `leading_prose_from_attrs` and promoted to @description below.
+            // `leading_prose_from_attrs` and promoted to @description in
+            // `roxygen_tags_from_attrs_impl`.
         }
-    }
-
-    // Check which tags are present
-    let tag_names_set = tag_names(&tags);
-    let has_description = tag_names_set.contains("description");
-
-    // Promote leading prose doc comments to `@description` (all paragraphs before
-    // the first `@tag`), unless the author already wrote an explicit `@description`.
-    //
-    // The page `@title` is NOT synthesized from prose. Rustdoc summaries are markdown
-    // written for `cargo doc` — intra-doc links (`[`Foo`]`, `[x][crate::y]`) and code
-    // spans — which roxygen2's markdown parser tries to resolve as R `\link{}` topics
-    // and fails ("could not resolve link to topic" / "refers to un-installed package").
-    // Titles come from the structural name instead: the wrapper name for standalone
-    // functions (see `lib.rs`) and `@title {Name} Class` for class blocks (see
-    // `ClassDocBuilder`). Demoting prose to `@description` keeps it visible while the
-    // title stays link-free.
-    //
-    // `leading_prose_from_attrs` returns `None` for tag-led blocks (no leading prose),
-    // so `@inherit`/`@rdname`-only docs never gain a spurious description.
-    if !has_description && let Some(desc) = leading_prose_from_attrs(attrs) {
-        tags.insert(0, format!("@description {}", desc));
     }
 
     tags
@@ -555,7 +570,10 @@ pub(crate) fn doc_conflict_warnings(
 ) -> proc_macro2::TokenStream {
     use quote::quote;
 
-    let tags = roxygen_tags_from_attrs(attrs);
+    // Raw parse only: `roxygen_tags_from_attrs` synthesizes a `@description`
+    // from leading prose, which this lint must not mistake for an
+    // author-written tag (#1172).
+    let tags = explicit_roxygen_tags_from_attrs(attrs);
     let mut warnings = proc_macro2::TokenStream::new();
 
     // Check @title conflict
