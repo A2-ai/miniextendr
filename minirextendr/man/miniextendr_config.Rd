@@ -7,7 +7,8 @@
 miniextendr_config(path = ".")
 }
 \arguments{
-\item{path}{Path to the project root (default: current directory).}
+\item{path}{Path to the project root (default: the active project, like
+every other \verb{miniextendr_*()} helper).}
 }
 \value{
 A list of configuration values.

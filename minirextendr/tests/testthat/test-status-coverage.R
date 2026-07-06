@@ -262,3 +262,33 @@ test_that("miniextendr_validate warns on AC_INIT mismatch", {
   expect_type(result, "logical")
 })
 
+
+test_that("miniextendr_validate records a missing Rust toolchain as an issue", {
+  # audit 2026-07-06 #4: the tryCatch error handler assigned `issues` locally
+  # (no <<-), so a missing toolchain printed "Rust not found" (danger) and the
+  # summary still reported "All checks passed!" and returned TRUE.
+  tmp <- tempfile("validate-norust-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+
+  # Everything else valid, so Rust is the ONLY issue.
+  writeLines(paste0(
+    "Package: testpkg\nTitle: Test\nVersion: 0.0.1\n",
+    "Config/build/bootstrap: TRUE\n",
+    "SystemRequirements: Rust (>= 1.85)\n"
+  ), file.path(tmp, "DESCRIPTION"))
+  writeLines("AC_INIT([testpkg], [0.0.1])\nCARGO_FEATURES=\n",
+    file.path(tmp, "configure.ac"))
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "testpkg"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  local_mocked_bindings(check_rust = function() cli::cli_abort("no rust toolchain"))
+
+  msgs <- capture_messages(result <- miniextendr_validate(tmp))
+  expect_false(result)
+  expect_true(any(grepl("Rust not found", msgs)))
+  expect_false(any(grepl("All checks passed", msgs)))
+})

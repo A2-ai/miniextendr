@@ -18,7 +18,11 @@
 #' @return Called for its side effect; returns `NULL` invisibly.
 #' @noRd
 with_project <- function(path, .local_envir = parent.frame()) {
-  if (identical(path, ".")) {
+  # NULL is documented as "use the active project" on several exported
+  # signatures; usethis::local_project(NULL) would instead UNSET the active
+  # project, so treat NULL exactly like "." (audit 2026-07-06 #7).
+  if (is.null(path) || identical(path, ".")) {
+    path <- "."
     active <- tryCatch(usethis::proj_get(), error = function(e) NULL)
     if (!is.null(active)) {
       path <- active

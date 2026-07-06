@@ -28,11 +28,15 @@
 #' If unsure: leave it where [use_miniextendr()] scaffolded it, or
 #' delete it — both are safe.
 #'
-#' @param path Path to the project root (default: current directory).
+#' @param path Path to the project root (default: the active project, like
+#'   every other `miniextendr_*()` helper).
 #' @return A list of configuration values.
 #' @export
 miniextendr_config <- function(path = ".") {
-  config_path <- file.path(path, "miniextendr.yml")
+  # Resolve like the sibling helpers (doctor, use_*): "." means the active
+  # usethis project, not getwd() (audit 2026-07-06 #7).
+  with_project(path)
+  config_path <- usethis::proj_path("miniextendr.yml")
   defaults <- miniextendr_config_defaults()
 
   if (!file.exists(config_path)) {

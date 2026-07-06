@@ -78,3 +78,20 @@ test_that("miniextendr_config() handles malformed yaml gracefully", {
   )
   expect_equal(config, miniextendr_config_defaults())
 })
+
+test_that("miniextendr_config resolves '.' and NULL to the active project, not getwd()", {
+  skip_if_not_installed("yaml")
+
+  # audit 2026-07-06 #7: miniextendr_config() read file.path(path, ...) against
+  # getwd(), unlike every sibling helper; and with_project(NULL) UNSET the
+  # active project instead of using it as documented.
+  tmp <- withr::local_tempdir()
+  writeLines("class_system: r6", file.path(tmp, "miniextendr.yml"))
+  usethis::local_project(tmp, force = TRUE, setwd = FALSE)
+
+  foreign <- withr::local_tempdir()
+  withr::local_dir(foreign)
+
+  expect_equal(miniextendr_config()$class_system, "r6")
+  expect_equal(miniextendr_config(path = NULL)$class_system, "r6")
+})
