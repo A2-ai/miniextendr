@@ -2065,6 +2065,35 @@ impl ParsedMethod {
                 if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)))
     }
 
+    /// Returns true if this method returns `Result<Self, E>` — a fallible
+    /// constructor-shaped method (e.g. `from_r`, `try_new`). On the R side this
+    /// is treated exactly like a bare `Self` return (wrapped class object via
+    /// [`crate::ReturnStrategy::for_method`]); the C wrapper still raises on
+    /// `Err` via the normal `Result` error path (see
+    /// [`crate::c_wrapper_builder::ReturnHandling::ResultExternalPtr`]).
+    pub fn returns_result_self(&self) -> bool {
+        let syn::ReturnType::Type(_, ty) = &self.sig.output else {
+            return false;
+        };
+        let syn::Type::Path(p) = ty.as_ref() else {
+            return false;
+        };
+        let Some(seg) = p.path.segments.last() else {
+            return false;
+        };
+        if seg.ident != "Result" {
+            return false;
+        }
+        let syn::PathArguments::AngleBracketed(ab) = &seg.arguments else {
+            return false;
+        };
+        let Some(syn::GenericArgument::Type(ok_ty)) = ab.args.first() else {
+            return false;
+        };
+        matches!(ok_ty, syn::Type::Path(ip)
+            if ip.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))
+    }
+
     /// Returns true if this method returns a reference to `Self` (`&Self` or
     /// `&mut Self`) — the idiomatic Rust in-place builder signature.
     ///

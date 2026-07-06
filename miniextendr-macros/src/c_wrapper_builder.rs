@@ -90,6 +90,14 @@ pub enum ReturnHandling {
     /// Returns `Result<T, ()>` -- maps `Err(())` to `Err(NullOnErr)` then converts via `IntoR`.
     /// `None`/`Err` maps to R `NULL` (unit error is a deliberate sentinel, not a Rust failure).
     ResultNullOnErr,
+    /// Returns `Result<Self, E>` -- a fallible constructor-shaped method (e.g. `from_r`,
+    /// `try_new`). Raises an error on `Err` (same as [`ResultIntoR`](Self::ResultIntoR)), but
+    /// wraps `Ok(Self)` in an `ExternalPtr` via `ExternalPtr::new` (same as
+    /// [`ExternalPtr`](Self::ExternalPtr)) instead of routing it through `IntoR` (which `Self`
+    /// generally does not implement). The R-side wrapper mirrors this: a successful return is
+    /// treated exactly like a bare `Self` return (wrapped class object via
+    /// `ReturnStrategy::for_method` — see `ParsedMethod::returns_result_self`).
+    ResultExternalPtr,
     /// Returns `T` where `T: IntoList` -- wraps in `AsList(result)` then calls `IntoR::into_sexp`.
     ///
     /// Produced when `#[miniextendr(prefer = "list")]` is used on a function returning `T: IntoList`.
@@ -710,6 +718,22 @@ impl CWrapperContext {
                     }
                 }
             }
+            // Result<Self, E>: raise on Err like ResultIntoR, but wrap Ok(Self) in an
+            // ExternalPtr like the bare-Self path rather than routing through IntoR.
+            ReturnHandling::ResultExternalPtr => {
+                quote! {
+                    let __result = #call_expr;
+                    let __result = match __result {
+                        Ok(v) => v,
+                        Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                            &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                        ),
+                    };
+                    ::miniextendr_api::into_r::IntoR::into_sexp(
+                        ::miniextendr_api::externalptr::ExternalPtr::new(__result)
+                    )
+                }
+            }
             ReturnHandling::AsListOf => {
                 quote! {
                     let __result = #call_expr;
@@ -922,6 +946,26 @@ impl CWrapperContext {
                     match __miniextendr_result {
                         Ok(#result_ident) => #unwind_fn(|| #conversion, None),
                         Err(()) => ::miniextendr_api::SEXP::nil(),
+                    }
+                };
+                (worker, convert)
+            }
+            // Result<Self, E>: raise on Err like ResultIntoR, but wrap Ok(Self) in an
+            // ExternalPtr like the bare-Self path rather than routing through IntoR.
+            ReturnHandling::ResultExternalPtr => {
+                let worker = quote! { #call_expr };
+                let unwind_fn = self.worker_conversion_unwind_fn();
+                let convert = quote! {
+                    match __miniextendr_result {
+                        Ok(v) => #unwind_fn(
+                            || ::miniextendr_api::into_r::IntoR::into_sexp(
+                                ::miniextendr_api::externalptr::ExternalPtr::new(v)
+                            ),
+                            None,
+                        ),
+                        Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                            &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                        ),
                     }
                 };
                 (worker, convert)
@@ -1446,7 +1490,8 @@ pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnH
 /// - `Self` -> [`ExternalPtr`](ReturnHandling::ExternalPtr)
 /// - `SEXP` -> [`RawSexp`](ReturnHandling::RawSexp)
 /// - `Option<T>` -> recurses into `T` for `OptionUnit`, `OptionSexp`, or `OptionIntoRUnwrap`
-/// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, or `ResultIntoR`
+/// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, `ResultExternalPtr`
+///   (`T = Self`), or `ResultIntoR`
 /// - Anything else -> [`IntoR`](ReturnHandling::IntoR)
 ///
 /// Note: The default for `Option<T>` (non-unit, non-SEXP) is `OptionIntoRUnwrap` (unwrap
@@ -1536,6 +1581,19 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
                             .unwrap_or(false) =>
                     {
                         ReturnHandling::ResultSexp
+                    }
+                    // Result<Self, E>: a fallible constructor-shaped method. Wrap
+                    // `Ok(Self)` in an ExternalPtr like the bare-`Self` path, rather
+                    // than routing it through `IntoR` (which `Self` generally lacks).
+                    syn::Type::Path(ip)
+                        if ip
+                            .path
+                            .segments
+                            .last()
+                            .map(|s| s.ident == "Self")
+                            .unwrap_or(false) =>
+                    {
+                        ReturnHandling::ResultExternalPtr
                     }
                     _ => ReturnHandling::ResultIntoR,
                 }
