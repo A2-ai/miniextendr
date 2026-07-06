@@ -5,7 +5,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::cli::ConfigCmd;
-use crate::output::print_status;
+use crate::output::{print_json, print_status};
 use crate::project::ProjectContext;
 
 #[derive(Serialize, Clone)]
@@ -99,18 +99,18 @@ pub fn dispatch(cmd: &ConfigCmd, ctx: &ProjectContext, _quiet: bool, json: bool)
         ConfigCmd::Show => {
             let cfg = read_config(&ctx.root);
             if json {
-                println!("{}", serde_json::to_string_pretty(&cfg)?);
+                print_json(&cfg)?;
             } else {
-                print_status(&cfg.to_string(), false);
+                print_status(&cfg.to_string());
             }
             Ok(())
         }
         ConfigCmd::Defaults => {
             let cfg = defaults();
             if json {
-                println!("{}", serde_json::to_string_pretty(&cfg)?);
+                print_json(&cfg)?;
             } else {
-                print_status(&cfg.to_string(), false);
+                print_status(&cfg.to_string());
             }
             Ok(())
         }

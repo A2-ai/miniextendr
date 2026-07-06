@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use crate::bridge::{has_program, run_command};
 use crate::cli::InitCmd;
@@ -28,7 +28,7 @@ pub fn dispatch(cmd: &InitCmd, ctx: &ProjectContext, quiet: bool) -> Result<()> 
             rpkg_name: _,
             miniextendr_version: _,
             local_path: _,
-        } => init_use(&ctx.root, quiet),
+        } => init_use(ctx, quiet),
     }
 }
 
@@ -172,14 +172,17 @@ fn init_monorepo(
 }
 
 /// Add miniextendr scaffolding to an existing project.
-fn init_use(root: &Path, quiet: bool) -> Result<()> {
+fn init_use(ctx: &ProjectContext, quiet: bool) -> Result<()> {
+    let root = &ctx.root;
     let desc_path = root.join("DESCRIPTION");
     if !desc_path.exists() {
         bail!("No DESCRIPTION found. Is this an R package directory?");
     }
 
     // Read package name
-    let pkg_name = read_pkg_name(root)?;
+    let pkg_name = ctx
+        .package_name()
+        .context("Could not read Package field from DESCRIPTION")?;
     let crate_name = pkg_name.replace(['.', '-'], "_");
 
     if !quiet {
@@ -519,14 +522,4 @@ fn update_description_for_miniextendr(root: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn read_pkg_name(root: &Path) -> Result<String> {
-    let desc = std::fs::read_to_string(root.join("DESCRIPTION"))?;
-    for line in desc.lines() {
-        if let Some(value) = line.strip_prefix("Package:") {
-            return Ok(value.trim().to_string());
-        }
-    }
-    bail!("Could not read Package field from DESCRIPTION");
 }

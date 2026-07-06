@@ -655,15 +655,11 @@ impl RDeserializer {
     }
 
     fn deserialize_str_inner(&self) -> Result<&str, RSerdeError> {
-        let sexp_type = self.sexp_type();
-        if sexp_type != SEXPTYPE::STRSXP || self.len() != 1 {
-            return Err(RSerdeError::TypeMismatch {
+        let charsxp =
+            crate::from_r::scalar_charsxp(self.sexp).map_err(|_| RSerdeError::TypeMismatch {
                 expected: "character(1)",
                 actual: self.type_name(),
-            });
-        }
-
-        let charsxp = self.sexp.string_elt(0);
+            })?;
         if charsxp == SEXP::na_string() {
             return Err(RSerdeError::UnexpectedNa);
         }
