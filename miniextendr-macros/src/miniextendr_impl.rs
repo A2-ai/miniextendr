@@ -1212,16 +1212,6 @@ impl ParsedMethod {
         Ok(())
     }
 
-    /// Split a comma-separated choices list (as given to `choices(param = "a, b, c")`)
-    /// into individual trimmed entries. Surrounding double-quotes are tolerated so
-    /// users can spell the list either way: `"a, b"` or `"\"a\", \"b\""`.
-    fn split_choice_list(raw: &str) -> Vec<String> {
-        raw.split(',')
-            .map(|s| s.trim().trim_matches('"').to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    }
-
     /// Parse method attributes in #[miniextendr(class_system(...))] format.
     ///
     /// Supported formats:
@@ -1464,7 +1454,7 @@ impl ParsedMethod {
                             .to_string();
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
-                        let choices = Self::split_choice_list(&value.value());
+                        let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
                         method_attrs.per_param.entry(name).or_default().choices = Some(choices);
                         Ok(())
                     })?;
@@ -1479,7 +1469,7 @@ impl ParsedMethod {
                             .to_string();
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
-                        let choices = Self::split_choice_list(&value.value());
+                        let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
                         let entry = method_attrs.per_param.entry(name).or_default();
                         entry.choices = Some(choices);
                         entry.several_ok = true;

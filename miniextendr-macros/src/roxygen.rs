@@ -723,6 +723,54 @@ pub(crate) fn extract_param_names(tags: &[String]) -> HashSet<String> {
     names
 }
 
+/// Split an R formals/argument string on **top-level** commas only.
+///
+/// Commas nested inside parentheses, brackets, or braces — or inside a single-
+/// or double-quoted string literal — are ignored. So `x, mode = c("a", "b"), ...`
+/// yields `["x", "mode = c(\"a\", \"b\")", "..."]`, whereas a naive
+/// `split(", ")` wrongly breaks the `c("a", "b")` default into two bogus
+/// formals (`mode = c("a"` and `"b")`) — the source of spurious `@param "b")`
+/// roxygen entries on match_arg'd trait-method shortcuts (ScalerS7 / ScalerR6).
+pub(crate) fn split_r_formals(formals: &str) -> Vec<&str> {
+    let bytes = formals.as_bytes();
+    let mut out = Vec::new();
+    let mut depth: i32 = 0;
+    let mut quote: Option<u8> = None;
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match quote {
+            Some(q) => {
+                if b == b'\\' {
+                    i += 1; // skip the escaped char
+                } else if b == q {
+                    quote = None;
+                }
+            }
+            None => match b {
+                b'"' | b'\'' => quote = Some(b),
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth -= 1,
+                b',' if depth == 0 => {
+                    out.push(formals[start..i].trim());
+                    start = i + 1;
+                }
+                _ => {}
+            },
+        }
+        i += 1;
+    }
+    out.push(formals[start..].trim());
+    out.into_iter().filter(|s| !s.is_empty()).collect()
+}
+
+/// Extract the R parameter name from a single formal (e.g. `mode = c("a","b")`
+/// → `mode`). Pair with [`split_r_formals`], never a raw `split(',')`.
+pub(crate) fn formal_name(formal: &str) -> &str {
+    formal.split('=').next().unwrap_or(formal).trim()
+}
+
 /// Like [`strip_method_tags`] but for R6 impl blocks.
 ///
 /// R6 class-level `@param` tags are **kept** (roxygen2 8.0.0 inherits them into

@@ -5,7 +5,8 @@
 //! constants. The top-level [`generate_trait_r_wrapper`] dispatches to the
 //! appropriate generator and applies post-processing for export/documentation control.
 
-use super::{TraitConst, TraitMethod, trait_method_body_lines, trait_method_preamble_lines};
+use super::method_context::TraitMethodContext;
+use super::{TraitConst, TraitMethod, trait_method_body_lines};
 use crate::miniextendr_impl::ClassSystem;
 use crate::r_class_formatter::emit_s3_generic_guard;
 
@@ -181,14 +182,7 @@ fn generate_trait_env_r_wrapper(
 
     for method in methods {
         let r_name = method.r_method_name();
-
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // Build roxygen tags
         let roxygen = RoxygenBuilder::new()
@@ -214,23 +208,15 @@ fn generate_trait_env_r_wrapper(
         }
 
         // Build .Call() invocation — C name uses Rust ident, R name uses r_name
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         let (full_params, call) = if method.has_self {
-            let fp = if formals.is_empty() {
+            let fp = if ctx.params.is_empty() {
                 "x".to_string()
             } else {
-                format!("x, {}", formals)
+                format!("x, {}", ctx.params)
             };
-            let c = DotCallBuilder::new(&c_ident)
-                .with_self("x")
-                .with_args(&params)
-                .build();
-            (fp, c)
+            (fp, ctx.instance_call("x"))
         } else {
-            (
-                formals.clone(),
-                DotCallBuilder::new(&c_ident).with_args(&params).build(),
-            )
+            (ctx.params.clone(), ctx.static_call())
         };
 
         // Generate method wrapper (R-facing name)
@@ -238,7 +224,7 @@ fn generate_trait_env_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, r_name, full_params
         ));
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(trait_method_body_lines(&call, "  "));
         if method.has_self && method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -327,13 +313,7 @@ fn generate_trait_s3_r_wrapper(
     for method in &instance_methods {
         let generic_name = method.r_method_name();
         let s3_method_name = format!("{}.{}", generic_name, type_str);
-
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // S3 generic roxygen (only create if doesn't exist)
         // Use type-qualified @name to avoid duplicate aliases across types
@@ -367,25 +347,21 @@ fn generate_trait_s3_r_wrapper(
         lines.extend(method_roxygen.build());
 
         // S3 method: generic.class
-        let full_params = if formals.is_empty() {
+        let full_params = if ctx.params.is_empty() {
             "x, ...".to_string()
         } else {
-            format!("x, {}, ...", formals)
+            format!("x, {}, ...", ctx.params)
         };
 
         // Build .Call() invocation
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident)
-            .with_self("x")
-            .with_args(&params)
-            .build();
+        let call = ctx.instance_call("x");
 
         // Always define the S3 method (roxygen expects it for NAMESPACE export)
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params
         ));
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        ctx.emit_method_prelude(&mut lines, "  ", &generic_name);
         lines.extend(trait_method_body_lines(&call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
@@ -417,12 +393,7 @@ fn generate_trait_s3_r_wrapper(
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
         let r_name = method.r_method_name();
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // Static method roxygen
         lines.push(format!(
@@ -435,15 +406,13 @@ fn generate_trait_s3_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        // Build .Call() invocation — C name uses Rust ident
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
+        let call = ctx.static_call();
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident, trait_name, r_name, formals
+            type_ident, trait_name, r_name, ctx.params
         ));
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -522,19 +491,13 @@ fn generate_trait_s4_r_wrapper(
     for method in &instance_methods {
         let method_name = &method.ident;
         let generic_name = format!("s4_trait_{}_{}", trait_name, method.r_method_name());
-
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // Build full parameter list (x first, then others, then ...)
-        let full_params = if formals.is_empty() {
+        let full_params = if ctx.params.is_empty() {
             "x, ...".to_string()
         } else {
-            format!("x, {}, ...", formals)
+            format!("x, {}, ...", ctx.params)
         };
 
         // S4 generic roxygen (include @param tags from method doc comments)
@@ -571,21 +534,14 @@ fn generate_trait_s4_r_wrapper(
         }
         lines.push(format!("#' @exportMethod {}", generic_name));
 
-        // Build .Call() invocation
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident)
-            .with_self("x")
-            .with_args(&params)
-            .build();
-
         lines.push(format!(
             "methods::setMethod(\"{}\", \"{}\", function({}) {{",
             generic_name, type_str, full_params
         ));
         // S4 objects store the ExternalPtr in x@ptr — extract it for .Call()
         lines.push("  .ptr <- x@ptr".to_string());
-        let s4_call = call.replace(", x", ", .ptr");
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        let s4_call = ctx.instance_call(".ptr");
+        ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
         lines.extend(trait_method_body_lines(&s4_call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
@@ -599,12 +555,7 @@ fn generate_trait_s4_r_wrapper(
     for method in &static_methods {
         let r_name = method.r_method_name();
         let fn_name = format!("{}_{}_{}", type_str, trait_str, r_name);
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // Static method roxygen
         lines.push(format!(
@@ -618,12 +569,10 @@ fn generate_trait_s4_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        // Build .Call() invocation — C name uses Rust ident
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
+        let call = ctx.static_call();
 
-        lines.push(format!("{} <- function({}) {{", fn_name, formals));
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+        ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -702,19 +651,13 @@ fn generate_trait_s7_r_wrapper(
     for method in &instance_methods {
         let method_name = &method.ident;
         let generic_name = format!("s7_trait_{}_{}", trait_name, method.r_method_name());
-
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // Build full parameter list (x first, then others, then ...)
-        let full_params = if formals.is_empty() {
+        let full_params = if ctx.params.is_empty() {
             "x, ...".to_string()
         } else {
-            format!("x, {}, ...", formals)
+            format!("x, {}, ...", ctx.params)
         };
 
         // S7 generic roxygen
@@ -746,13 +689,6 @@ fn generate_trait_s7_r_wrapper(
         lines.push("}".to_string());
         lines.push(String::new());
 
-        // Build .Call() invocation
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident)
-            .with_self("x")
-            .with_args(&params)
-            .build();
-
         // S7 method definition
         lines.push(format!(
             "S7::method({}, {}) <- function({}) {{",
@@ -760,8 +696,8 @@ fn generate_trait_s7_r_wrapper(
         ));
         // S7 objects store the ExternalPtr in x@.ptr — extract it for .Call()
         lines.push("  .ptr <- x@.ptr".to_string());
-        let s7_call = call.replace(", x", ", .ptr");
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        let s7_call = ctx.instance_call(".ptr");
+        ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
         lines.extend(trait_method_body_lines(&s7_call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
@@ -780,15 +716,12 @@ fn generate_trait_s7_r_wrapper(
         // `s7(no_shortcut)` opts a method out.
         if !method.no_shortcut {
             let shortcut_name = format!("{}_{}", type_str, method.r_method_name());
-            let shortcut_formals = if formals.is_empty() {
+            let shortcut_formals = if ctx.params.is_empty() {
                 "self, ...".to_string()
             } else {
-                format!("self, {}, ...", formals)
+                format!("self, {}, ...", ctx.params)
             };
-            let shortcut_call = DotCallBuilder::new(&c_ident)
-                .with_self("self@.ptr")
-                .with_args(&params)
-                .build();
+            let shortcut_call = ctx.instance_call("self@.ptr");
 
             // Roxygen: shared advisory prose + scaffolding. The shared @rdname
             // page (type_str) already carries the method's prose via the generic
@@ -804,9 +737,11 @@ fn generate_trait_s7_r_wrapper(
             }
             // Auto-document any formal lacking an explicit @param tag. `...` is
             // included so roxygen2 covers it (otherwise R CMD check warns about
-            // an undocumented argument).
-            for formal in shortcut_formals.split(", ") {
-                let pname = formal.split('=').next().unwrap_or(formal).trim();
+            // an undocumented argument). Split on top-level commas only — a
+            // naive `split(", ")` breaks a `mode = c("fast", "slow")` default
+            // into a bogus `"slow")` formal (undocumented-argument warning).
+            for formal in crate::roxygen::split_r_formals(&shortcut_formals) {
+                let pname = crate::roxygen::formal_name(formal);
                 if pname == "self" {
                     continue;
                 }
@@ -838,7 +773,7 @@ fn generate_trait_s7_r_wrapper(
                 "{} <- function({}) {{",
                 shortcut_name, shortcut_formals
             ));
-            lines.extend(trait_method_preamble_lines(method, "  "));
+            ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
             lines.extend(trait_method_body_lines(&shortcut_call, "  "));
             // Void instance methods return invisible(self) for pipe-friendly chaining
             if method.returns_unit() {
@@ -860,12 +795,7 @@ fn generate_trait_s7_r_wrapper(
     // Generate static methods in trait namespace
     for method in &static_methods {
         let r_name = method.r_method_name();
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
@@ -877,15 +807,13 @@ fn generate_trait_s7_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        // C name uses Rust ident
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
+        let call = ctx.static_call();
 
         lines.push(format!(
             "{}${} <- function({}) {{",
-            trait_env_var, r_name, formals
+            trait_env_var, r_name, ctx.params
         ));
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -968,19 +896,13 @@ fn generate_trait_r6_r_wrapper(
     for method in &instance_methods {
         let method_name = &method.ident;
         let fn_name = format!("r6_trait_{}_{}", trait_name, method.r_method_name());
-
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // Build parameter list (x first, then others)
-        let full_params = if formals.is_empty() {
+        let full_params = if ctx.params.is_empty() {
             "x".to_string()
         } else {
-            format!("x, {}", formals)
+            format!("x, {}", ctx.params)
         };
 
         // R6 trait method roxygen (include @param tags from method doc comments)
@@ -999,22 +921,38 @@ fn generate_trait_r6_r_wrapper(
         for tag in &method.param_tags {
             roxygen = roxygen.custom(tag.clone());
         }
+        // Auto-document any method formal lacking an explicit @param tag —
+        // `x` is covered above; the rest are in `\usage` and would otherwise
+        // trip R CMD check's "Undocumented arguments" warning. Split on
+        // top-level commas only so a `mode = c("fast", "slow")` default isn't
+        // shredded into a bogus `"slow")` formal.
+        for formal in crate::roxygen::split_r_formals(&full_params) {
+            let pname = crate::roxygen::formal_name(formal);
+            if pname == "x" {
+                continue;
+            }
+            let documented = method
+                .param_tags
+                .iter()
+                .any(|t| t.trim_start().starts_with(&format!("@param {pname} ")));
+            if documented {
+                continue;
+            }
+            roxygen = if pname == "..." {
+                roxygen.custom("@param ... Additional arguments passed to the method.")
+            } else {
+                roxygen.custom(format!("@param {pname} (undocumented)"))
+            };
+        }
         lines.extend(roxygen.export().build());
 
-        // Build .Call() invocation
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident)
-            .with_self("x")
-            .with_args(&params)
-            .build();
+        let call = ctx.instance_call(".ptr");
 
         lines.push(format!("{} <- function({}) {{", fn_name, full_params));
         // R6 objects store the ExternalPtr in private$.ptr — extract it for .Call()
         lines.push("  .ptr <- x$.__enclos_env__$private$.ptr".to_string());
-        // Replace x with .ptr in the .Call
-        let r6_call = call.replace(", x", ", .ptr");
-        lines.extend(trait_method_preamble_lines(method, "  "));
-        lines.extend(trait_method_body_lines(&r6_call, "  "));
+        ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
+        lines.extend(trait_method_body_lines(&call, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -1035,12 +973,7 @@ fn generate_trait_r6_r_wrapper(
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
         let r_name = method.r_method_name();
-        // Build R formals with defaults applied
-        let formals =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        // Collect param names for .Call() (without defaults)
-        let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
@@ -1052,15 +985,13 @@ fn generate_trait_r6_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        // C name uses Rust ident
-        let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
+        let call = ctx.static_call();
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident, trait_name, r_name, formals
+            type_ident, trait_name, r_name, ctx.params
         ));
-        lines.extend(trait_method_preamble_lines(method, "  "));
+        ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(trait_method_body_lines(&call, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
