@@ -17,10 +17,12 @@ pub struct NdVec(Array1<f64>);
 
 /// NdVec methods: 1D numeric array operations, slicing, and conversion.
 /// @param data Numeric vector of array elements.
-/// @details `get`, `get_many`, and `is_valid_index` take 1-based indices
-///   (R-idiomatic, matching the rest of the package). `get` errors on an
-///   out-of-bounds or non-positive index; `get_many` returns `NA` per
-///   out-of-bounds element instead (vectorized contract).
+/// @details `get`, `get_many`, `is_valid_index`, and `slice_1d` take 1-based
+///   indices (R-idiomatic, matching the rest of the package). `get` errors on
+///   an out-of-bounds or non-positive index; `get_many` returns `NA` per
+///   out-of-bounds element instead (vectorized contract). `slice_1d` takes
+///   1-based inclusive bounds (R's `x[start:end]` convention) and errors
+///   unless `1 <= start <= end <= length`.
 // env pinned: method names collide with base R non-generics (var/get/row/col/
 // diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
 #[miniextendr(env)]
@@ -106,8 +108,19 @@ impl NdVec {
         RNdSlice::last(&self.0)
     }
 
+    /// Extract the elements `start:end` (1-based, inclusive on both ends —
+    /// R's `x[start:end]` convention).
+    /// @param start 1-based inclusive start index.
+    /// @param end 1-based inclusive end index. Errors unless `1 <= start <= end <= length`.
     fn slice_1d(&self, start: i32, end: i32) -> Vec<f64> {
-        RNdSlice::slice_1d(&self.0, start, end)
+        let len = RNdArrayOps::len(&self.0);
+        if start < 1 || start > end || end > len {
+            panic!(
+                "slice bounds [{start}, {end}] are out of bounds (must satisfy 1 <= start <= end <= length, length {len})"
+            );
+        }
+        // 1-based inclusive -> trait's 0-based half-open: [start - 1, end)
+        RNdSlice::slice_1d(&self.0, start - 1, end)
     }
 
     /// Get elements at the given 1-based indices.
@@ -288,9 +301,13 @@ pub struct NdArrayDyn(ArrayD<f64>);
 /// NdArrayDyn methods: N-dimensional array operations, indexing, and reshaping.
 /// @param shape Integer vector specifying array dimensions.
 /// @param data Numeric vector of array elements.
-/// @details `get_nd` and `is_valid_nd` take 1-based indices (R-idiomatic,
-///   matching the rest of the package). `get_nd` and `reshape` error on an
-///   out-of-bounds/invalid argument instead of silently yielding no value.
+/// @details `get_nd`, `is_valid_nd`, `slice_nd`, and `axis_slice` take
+///   1-based indices (R-idiomatic, matching the rest of the package).
+///   `slice_nd` takes 1-based inclusive per-dimension bounds (R's
+///   `x[s1:e1, s2:e2, ...]` convention); `axis_slice`'s `axis` follows R's
+///   `MARGIN` convention (1 = first dimension). `get_nd`, `reshape`,
+///   `slice_nd`, and `axis_slice` error on an out-of-bounds/invalid argument
+///   instead of silently yielding no value.
 // env pinned: method names collide with base R non-generics (var/get/row/col/
 // diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
 #[miniextendr(env)]
@@ -362,8 +379,29 @@ impl NdArrayDyn {
             .unwrap_or_else(|| panic!("indices {indices:?} out of bounds (shape {shape:?})"))
     }
 
-    fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<f64>> {
-        RNdIndex::slice_nd(&self.0, start, end)
+    /// Extract a subarray bounded by `start` and `end` (1-based, inclusive on
+    /// both ends per dimension — R's `x[s1:e1, s2:e2, ...]` convention).
+    /// Elements are returned flattened in column-major (R) order.
+    /// @param start 1-based inclusive start indices, one per dimension.
+    /// @param end 1-based inclusive end indices, one per dimension. Errors on a dimensionality mismatch or when any dimension violates `1 <= start <= end <= extent`.
+    fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Vec<f64> {
+        let shape = RNdIndex::shape_nd(&self.0);
+        if start.len() != shape.len() || end.len() != shape.len() {
+            panic!(
+                "start {start:?} and end {end:?} must each have one bound per dimension (shape {shape:?})"
+            );
+        }
+        for (i, &extent) in shape.iter().enumerate() {
+            let (s, e) = (start[i], end[i]);
+            if s < 1 || s > e || e > extent {
+                panic!(
+                    "slice bounds start {start:?}, end {end:?} are out of bounds (each dimension must satisfy 1 <= start <= end <= extent, shape {shape:?})"
+                );
+            }
+        }
+        // 1-based inclusive -> trait's 0-based half-open: [start - 1, end)
+        let zero_based_start: Vec<i32> = start.iter().map(|&s| s - 1).collect();
+        RNdIndex::slice_nd(&self.0, zero_based_start, end).expect("bounds validated above")
     }
 
     fn shape_nd(&self) -> Vec<i32> {
@@ -392,8 +430,27 @@ impl NdArrayDyn {
             && RNdIndex::is_valid_nd(&self.0, indices.into_iter().map(|i| i - 1).collect())
     }
 
+    /// Get all elements where dimension `axis` is fixed at position `index`.
+    /// Both arguments are 1-based: `axis` follows R's `MARGIN` convention
+    /// (1 = first dimension), and `index` matches `row`/`col`. Elements are
+    /// returned in column-major (R) order.
+    /// @param axis 1-based dimension selector (R's `MARGIN` convention). Errors if out of `1..=ndim`.
+    /// @param index 1-based position along that dimension. Errors if out of `1..=extent`.
     fn axis_slice(&self, axis: i32, index: i32) -> Vec<f64> {
-        RNdIndex::axis_slice(&self.0, axis, index)
+        let shape = RNdIndex::shape_nd(&self.0);
+        let ndim = RNdIndex::ndim(&self.0);
+        if axis < 1 || axis > ndim {
+            panic!(
+                "axis {axis} is out of bounds (must be a positive 1-based dimension selector, array has {ndim} dimensions)"
+            );
+        }
+        let extent = shape[usize::try_from(axis - 1).expect("axis >= 1 checked above")];
+        if index < 1 || index > extent {
+            panic!(
+                "index {index} is out of bounds along axis {axis} (must be a positive 1-based index, extent {extent})"
+            );
+        }
+        RNdIndex::axis_slice(&self.0, axis - 1, index - 1)
     }
 
     /// Reshape the array to new dimensions (data must fit exactly).
@@ -420,8 +477,10 @@ pub struct NdIntVec(Array1<i32>);
 
 /// NdIntVec methods: 1D integer array operations, slicing, and conversion.
 /// @param data Integer vector of array elements.
-/// @details `get` takes a 1-based index (R-idiomatic, matching the rest of
-///   the package) and errors on an out-of-bounds or non-positive index.
+/// @details `get` and `slice_1d` take 1-based indices (R-idiomatic, matching
+///   the rest of the package) and error on out-of-bounds or non-positive
+///   indices. `slice_1d` takes 1-based inclusive bounds (R's `x[start:end]`
+///   convention) and errors unless `1 <= start <= end <= length`.
 // env pinned: method names collide with base R non-generics (var/get/row/col/
 // diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
 #[miniextendr(env)]
@@ -497,8 +556,19 @@ impl NdIntVec {
         RNdSlice::last(&self.0)
     }
 
+    /// Extract the elements `start:end` (1-based, inclusive on both ends —
+    /// R's `x[start:end]` convention).
+    /// @param start 1-based inclusive start index.
+    /// @param end 1-based inclusive end index. Errors unless `1 <= start <= end <= length`.
     fn slice_1d(&self, start: i32, end: i32) -> Vec<i32> {
-        RNdSlice::slice_1d(&self.0, start, end)
+        let len = RNdArrayOps::len(&self.0);
+        if start < 1 || start > end || end > len {
+            panic!(
+                "slice bounds [{start}, {end}] are out of bounds (must satisfy 1 <= start <= end <= length, length {len})"
+            );
+        }
+        // 1-based inclusive -> trait's 0-based half-open: [start - 1, end)
+        RNdSlice::slice_1d(&self.0, start - 1, end)
     }
 
     // --- Conversion ---

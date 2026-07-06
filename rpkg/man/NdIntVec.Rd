@@ -79,8 +79,17 @@ Get the element at the given 1-based index.
 \describe{
 \item{\code{index}}{1-based index. Errors if out of \verb{1..=length}.}
 }
+
+Extract the elements \code{start:end} (1-based, inclusive on both ends — R's \code{x[start:end]} convention).
+
+\describe{
+\item{\code{start}}{1-based inclusive start index.}
+\item{\code{end}}{1-based inclusive end index. Errors unless \verb{1 <= start <= end <= length}.}
+}
 }
 \details{
-\code{get} takes a 1-based index (R-idiomatic, matching the rest of
-the package) and errors on an out-of-bounds or non-positive index.
+\code{get} and \code{slice_1d} take 1-based indices (R-idiomatic, matching
+the rest of the package) and error on out-of-bounds or non-positive
+indices. \code{slice_1d} takes 1-based inclusive bounds (R's \code{x[start:end]}
+convention) and errors unless \verb{1 <= start <= end <= length}.
 }
