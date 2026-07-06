@@ -36,9 +36,5 @@ GrowableVec
 \item{name}{Method name for dispatch.}
 }
 \description{
-GrowableVec  Class
-
-\describe{
-\item{\code{data}}{Integer vector of initial elements.}
-}
+GrowableVec inherent methods: constructors, conversion, and clearing.
 }

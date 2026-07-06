@@ -57,16 +57,24 @@ convert(from, to, ...)
 \item{c}{(undocumented)}
 }
 \description{
-Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
-(the class walk + method-table lookup). Use in hot loops where the
-per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
-will \emph{not} be honoured. Use the generic when subclassing is possible.
+S7 Fahrenheit temperature class with convert_from and convert_to methods.
+
+Get the temperature value.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch — a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Convert Fahrenheit to Celsius. Uses S7::convert() for type coercion: S7::convert(fahrenheit_obj, S7Celsius)
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch — a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Convert Fahrenheit from Celsius. Uses S7::convert() for type coercion: S7::convert(celsius_obj, S7Fahrenheit)
 }
 \keyword{internal}

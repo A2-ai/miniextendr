@@ -53,11 +53,9 @@ S7Counter_default_counter()
 \item{amount}{(undocumented)}
 }
 \description{
-Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
-(the class walk + method-table lookup). Use in hot loops where the
-per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
-will \emph{not} be honoured. Use the generic when subclassing is possible.
+S7 counter class with new_generic method dispatch.
+
+Returns the current value (S7-specific method name to avoid conflicts).
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -65,10 +63,22 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch — a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
+Increments the counter by 1 and returns the new value.
+
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch — a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Adds the given amount to the counter and returns the new value.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch — a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+A static method that returns a default counter (value = 0).
 }
 \keyword{internal}

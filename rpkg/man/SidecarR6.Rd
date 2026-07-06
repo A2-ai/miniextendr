@@ -37,6 +37,8 @@ The SidecarR6 pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarR6}.
+
+R6 class registration for SidecarR6 with active binding sidecar accessors.
 }
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
@@ -57,7 +59,7 @@ Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarR6}.
 \if{html}{\out{<a id="method-SidecarR6-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarR6-initialize}{}}}
 \subsection{\code{SidecarR6$new()}}{
-  Create a new SidecarR6 with initial values
+  Create a new SidecarR6 with initial values.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarR6$new(value, label, .ptr = NULL)}

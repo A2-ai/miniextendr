@@ -15,12 +15,12 @@ S7PropOuter(inner_label, .ptr = NULL)
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
-S7PropOuter S7 Class
+Outer S7 class with a getter returning another S7 class.
 }
 \keyword{internal}
 \section{Additional properties}{
 
 \describe{
-\item{\code{@inner}}{Getter whose return type is another S7 class}
+\item{\code{@inner}}{Getter whose return type is another S7 class. The generated \code{S7::new_property(class = ...)} should resolve to \code{S7PropInner} (not \code{S7::class_any}) via the \code{.__MX_S7_PROP_CLASS_S7PropInner__} write-time placeholder (see \verb{#154}).}
 }}
 

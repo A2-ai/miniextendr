@@ -37,11 +37,17 @@ S7Dog_bark(self, ...)
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
+S7 dog class inheriting from S7Animal (mid-level in chain).
+
+Returns the dog breed.
+
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch — a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+All dogs bark.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

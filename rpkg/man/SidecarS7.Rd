@@ -57,6 +57,8 @@ The SidecarS7 pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS7}.
+
+S7 class registration for SidecarS7 with property-based sidecar accessors.
 }
 \section{Additional properties}{
 

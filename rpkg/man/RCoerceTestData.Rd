@@ -91,35 +91,59 @@ RCoerceTestData
 \description{
 Test type for as.data.frame, as.list, and as.character methods
 
+Create a new test data object.
+
 S3 generic for \code{len}
 
+Get the number of items.
+
 S3 generic for \code{as_data_frame}
+
+Convert to data.frame.
 
 Creates a data.frame with columns "name" and "value".
 
 S3 generic for \code{as_list}
 
+Convert to list.
+
 Creates a list with "names" and "values" elements.
 
 S3 generic for \code{as_character}
+
+Convert to character representation.
 
 Returns a single string describing the data.
 
 S3 generic for \code{as_numeric}
 
+Convert to numeric vector.
+
 Returns the values as a numeric vector.
 
 S3 generic for \code{as_integer}
 
+Convert to integer vector.
+
 Returns the values truncated to integers.
+
+Convert to data.frame.
 
 Creates a data.frame with columns "name" and "value".
 
+Convert to list.
+
 Creates a list with "names" and "values" elements.
+
+Convert to character representation.
 
 Returns a single string describing the data.
 
+Convert to numeric vector.
+
 Returns the values as a numeric vector.
+
+Convert to integer vector.
 
 Returns the values truncated to integers.
 }

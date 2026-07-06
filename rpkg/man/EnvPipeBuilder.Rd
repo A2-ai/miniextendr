@@ -30,14 +30,15 @@ EnvPipeBuilder
 \item{name}{Method name for dispatch.}
 }
 \description{
-EnvPipeBuilder  Class
+Env builder with a \verb{&mut self -> &mut Self} step and a terminal accessor. Chains as \code{b$add(1L)$add(2L)$total()}.
 
-Create a new builder starting at zero
+Create a new builder starting at zero.
 
-Add \code{amount} in place and return the builder for chaining
+Add \code{amount} in place and return the builder for chaining.
+
 \describe{
 \item{\code{amount}}{Amount to add.}
 }
 
-Terminal accessor: read the accumulated total
+Terminal accessor: read the accumulated total.
 }
