@@ -131,9 +131,6 @@ worker-default = ["miniextendr-macros/worker-default", "worker-thread"]
 ## Provides track_growth! and report_growth! macros for diagnosing unexpected
 ## Vec/arena reallocations. Zero-cost (no-ops) when disabled.
 growth-debug = []
-## Enable fast hasher for refcount protect arenas. Uses ahash instead of SipHash
-## for improved throughput on large collections. Not DOS-resistant.
-refcount-fast-hash = ["dep:ahash"]
 # region: feature aggregates
 #
 # Two composable aggregates so "all features" is defined in ONE place and CI's
@@ -165,12 +162,11 @@ full-integrations = [
 ## Every codegen selector / runtime-surface feature that CI wants linted:
 ## the `*-default` forwarding selectors (one mutex side — `r6-default`, NOT
 ## `s7-default`), plus `nonapi`, `connections`, `worker-thread` (via
-## `worker-default`), `indicatif`, and `refcount-fast-hash` (the ahash-backed
-## refcount-arena hasher knob). This whole set compiles together — it is
-## the unit CI's `clippy_all` derives.
+## `worker-default`), and `indicatif`. This whole set compiles together — it
+## is the unit CI's `clippy_all` derives.
 full-codegen = [
     "strict-default", "coerce-default", "r6-default", "worker-default",
-    "nonapi", "connections", "indicatif", "refcount-fast-hash",
+    "nonapi", "connections", "indicatif",
 ]
 
 ## `full-codegen` with the r6/s7 mutex flipped: `s7-default` instead of
@@ -180,7 +176,7 @@ full-codegen = [
 ## clippy steps never reach rpkg/src/rust).
 full-codegen-s7 = [
     "strict-default", "coerce-default", "s7-default", "worker-default",
-    "nonapi", "connections", "indicatif", "refcount-fast-hash",
+    "nonapi", "connections", "indicatif",
 ]
 
 ## Back-compat kitchen sink: integrations + codegen selectors + debug/audit
@@ -230,7 +226,6 @@ aho-corasick = { version = "1.1.4", optional = true }
 toml = { version = "0.9.8", optional = true }
 tabled = { version = "0.20.0", optional = true }
 bytemuck = { version = "1.23.0", optional = true, features = ["derive"] }
-ahash = { version = "0.8", optional = true }
 tinyvec = { version = "1.9", optional = true, features = ["alloc"] }
 borsh = { version = "1", optional = true, features = ["derive"] }
 arrow-array = { version = "55", optional = true }

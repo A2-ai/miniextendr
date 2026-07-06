@@ -71,9 +71,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         let mut is_utf8 = false;
         for i in 0..n {
             let name_charsxp = names.string_elt(i);
-            let name_ptr = name_charsxp.r_char();
-            let name = std::ffi::CStr::from_ptr(name_ptr);
-            if name == c"UTF-8" {
+            if name_charsxp.r_char_str() == Some("UTF-8") {
                 let elt = info.vector_elt(i);
                 is_utf8 = elt.logical_elt(0) != 0;
                 break;

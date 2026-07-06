@@ -129,4 +129,95 @@ impl ProjectContext {
     pub fn has_miniextendr(&self) -> bool {
         self.cargo_manifest.is_some() && self.description.is_some()
     }
+
+    /// Read a field's value from `DESCRIPTION`, if present.
+    ///
+    /// DCF (Debian Control File, the format `DESCRIPTION` uses) allows a
+    /// field's value to continue onto following lines: a continuation line
+    /// starts with whitespace and is joined onto the value of the field it
+    /// extends, separated by a single space.
+    pub fn description_field(&self, field: &str) -> Option<String> {
+        let content = std::fs::read_to_string(self.root.join("DESCRIPTION")).ok()?;
+        parse_description_field(&content, field)
+    }
+
+    /// The `Package` field from `DESCRIPTION`, if present.
+    pub fn package_name(&self) -> Option<String> {
+        self.description_field("Package")
+    }
+}
+
+/// Parse a single field's value out of DCF-formatted `content` (the format
+/// used by `DESCRIPTION` files), joining continuation lines onto the field
+/// they extend.
+fn parse_description_field(content: &str, field: &str) -> Option<String> {
+    let prefix = format!("{field}:");
+    let mut lines = content.lines().peekable();
+    while let Some(line) = lines.next() {
+        let Some(value) = line.strip_prefix(&prefix) else {
+            continue;
+        };
+        let mut value = value.trim().to_string();
+        while let Some(next_line) = lines.peek() {
+            if !next_line.starts_with(|c: char| c.is_whitespace()) {
+                break;
+            }
+            let cont = lines.next().unwrap().trim();
+            if !cont.is_empty() {
+                if !value.is_empty() {
+                    value.push(' ');
+                }
+                value.push_str(cont);
+            }
+        }
+        return Some(value);
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_description_field;
+
+    #[test]
+    fn simple_field() {
+        let content = "Package: mypkg\nVersion: 0.1.0\n";
+        assert_eq!(
+            parse_description_field(content, "Package"),
+            Some("mypkg".to_string())
+        );
+    }
+
+    #[test]
+    fn continuation_line_field() {
+        let content = "Package: mypkg\n\
+             Description: This is a\n    long description that\n    wraps.\n\
+             Version: 0.1.0\n";
+        assert_eq!(
+            parse_description_field(content, "Description"),
+            Some("This is a long description that wraps.".to_string())
+        );
+    }
+
+    #[test]
+    fn missing_field() {
+        let content = "Package: mypkg\nVersion: 0.1.0\n";
+        assert_eq!(parse_description_field(content, "License"), None);
+    }
+
+    #[test]
+    fn field_name_prefix_of_another() {
+        // "Packaged:" must not be mistaken for a match on "Package".
+        let content = "Packaged: 2024-01-01\nPackage: mypkg\n";
+        assert_eq!(
+            parse_description_field(content, "Package"),
+            Some("mypkg".to_string())
+        );
+        // And querying the longer name should not pick up the shorter one.
+        let content = "Package: mypkg\nPackaged: 2024-01-01\n";
+        assert_eq!(
+            parse_description_field(content, "Packaged"),
+            Some("2024-01-01".to_string())
+        );
+    }
 }

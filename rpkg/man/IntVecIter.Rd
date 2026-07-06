@@ -29,9 +29,5 @@ IntVecIter
 \item{name}{Method name for dispatch.}
 }
 \description{
-IntVecIter  Class
-
-\describe{
-\item{\code{data}}{Integer vector of elements to iterate over.}
-}
+IntVecIter inherent methods: constructor from integer vector.
 }

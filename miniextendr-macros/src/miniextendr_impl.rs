@@ -1212,16 +1212,6 @@ impl ParsedMethod {
         Ok(())
     }
 
-    /// Split a comma-separated choices list (as given to `choices(param = "a, b, c")`)
-    /// into individual trimmed entries. Surrounding double-quotes are tolerated so
-    /// users can spell the list either way: `"a, b"` or `"\"a\", \"b\""`.
-    fn split_choice_list(raw: &str) -> Vec<String> {
-        raw.split(',')
-            .map(|s| s.trim().trim_matches('"').to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    }
-
     /// Parse method attributes in #[miniextendr(class_system(...))] format.
     ///
     /// Supported formats:
@@ -1464,7 +1454,7 @@ impl ParsedMethod {
                             .to_string();
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
-                        let choices = Self::split_choice_list(&value.value());
+                        let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
                         method_attrs.per_param.entry(name).or_default().choices = Some(choices);
                         Ok(())
                     })?;
@@ -1479,7 +1469,7 @@ impl ParsedMethod {
                             .to_string();
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
-                        let choices = Self::split_choice_list(&value.value());
+                        let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
                         let entry = method_attrs.per_param.entry(name).or_default();
                         entry.choices = Some(choices);
                         entry.several_ok = true;
@@ -2938,12 +2928,15 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         // Build method context for .Call generation
         let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
 
-        // Normalize coercion target for R generic name
-        // R has both as.numeric and as.double - they're equivalent, but we use the specified one
+        // Normalize coercion target for R generic name.
+        // `as.numeric()` is a thin base-R wrapper that dispatches via the internal
+        // generic `as.double` (not `as.numeric` itself) — an `as.numeric.<Class>`
+        // S3 method is never consulted. Register under `as.double` for both
+        // "numeric" and "double" targets so `as.double(x)` AND `as.numeric(x)`
+        // both dispatch to it.
         // Some targets use non-standard S3 generic names (e.g., tibble uses as_tibble, not as.tibble)
         let r_generic = match coercion_target.as_str() {
-            "numeric" => "as.numeric".to_string(),
-            "double" => "as.double".to_string(),
+            "numeric" | "double" => "as.double".to_string(),
             "tibble" => "as_tibble".to_string(),
             "ts" => "as.ts".to_string(),
             other => format!("as.{}", other),

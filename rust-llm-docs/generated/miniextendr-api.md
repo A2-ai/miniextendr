@@ -209,7 +209,6 @@ calls from other threads. R is still not thread-safe; serialize all R API use.
 | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 | `growth-debug` | Track and report collection growth events (zero-cost when off) |
-| `refcount-fast-hash` | Use ahash for refcount arenas (opt-in, not DOS-resistant) |
 
 ---
 

@@ -28,6 +28,10 @@ Shape_shape_kind(self, ...)
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
+S7 shape class with overridden R class name \code{Shape}.
+
+Returns the kind of shape.
+
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not

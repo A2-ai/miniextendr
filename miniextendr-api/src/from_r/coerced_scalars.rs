@@ -327,62 +327,12 @@ impl TryFromSexp for f32 {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(value as f32)
-            }
-            SEXPTYPE::REALSXP => {
-                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(value as f32)
-            }
-            SEXPTYPE::RAWSXP => {
-                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(value as f32)
-            }
-            SEXPTYPE::LGLSXP => {
-                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-                if value.is_na() {
-                    return Err(lglsxp_na_error());
-                }
-                Ok(value.to_i32() as f32)
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        try_from_sexp_numeric_scalar(sexp)
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                Ok(value as f32)
-            }
-            SEXPTYPE::REALSXP => {
-                let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                Ok(value as f32)
-            }
-            SEXPTYPE::RAWSXP => {
-                let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                Ok(value as f32)
-            }
-            SEXPTYPE::LGLSXP => {
-                let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                if value.is_na() {
-                    return Err(lglsxp_na_error());
-                }
-                Ok(value.to_i32() as f32)
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
     }
 }
 
@@ -447,86 +397,12 @@ impl TryFromSexp for Option<f32> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-                if value == crate::altrep_traits::NA_INTEGER {
-                    Ok(None)
-                } else {
-                    Ok(Some(value as f32))
-                }
-            }
-            SEXPTYPE::REALSXP => {
-                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-                if is_na_real(value) {
-                    Ok(None)
-                } else {
-                    Ok(Some(value as f32))
-                }
-            }
-            SEXPTYPE::RAWSXP => {
-                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(Some(value as f32))
-            }
-            SEXPTYPE::LGLSXP => {
-                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-                if value.is_na() {
-                    Ok(None)
-                } else {
-                    Ok(Some(value.to_i32() as f32))
-                }
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        try_from_sexp_numeric_option(sexp)
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                if value == crate::altrep_traits::NA_INTEGER {
-                    Ok(None)
-                } else {
-                    Ok(Some(value as f32))
-                }
-            }
-            SEXPTYPE::REALSXP => {
-                let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                if is_na_real(value) {
-                    Ok(None)
-                } else {
-                    Ok(Some(value as f32))
-                }
-            }
-            SEXPTYPE::RAWSXP => {
-                let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                Ok(Some(value as f32))
-            }
-            SEXPTYPE::LGLSXP => {
-                let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-                if value.is_na() {
-                    Ok(None)
-                } else {
-                    Ok(Some(value.to_i32() as f32))
-                }
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
     }
 }
 // endregion
@@ -633,46 +509,12 @@ impl TryFromSexp for usize {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // Try i32 first (more common), fall back to f64 for large values
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                use crate::coerce::TryCoerce;
-                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-                value
-                    .try_coerce()
-                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))
-            }
-            SEXPTYPE::REALSXP => {
-                use crate::coerce::TryCoerce;
-                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-                let u: u64 = value
-                    .try_coerce()
-                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
-                u.try_into()
-                    .map_err(|_| SexpError::InvalidValue("value out of usize range".into()))
-            }
-            SEXPTYPE::RAWSXP => {
-                use crate::coerce::Coerce;
-                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(value.coerce())
-            }
-            SEXPTYPE::LGLSXP => {
-                use crate::coerce::TryCoerce;
-                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-                if value.is_na() {
-                    return Err(lglsxp_na_error());
-                }
-                value
-                    .to_i32()
-                    .try_coerce()
-                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        try_from_sexp_numeric_scalar(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
     }
 }
 
@@ -681,64 +523,12 @@ impl TryFromSexp for Option<usize> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                use crate::coerce::TryCoerce;
-                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-                if value == crate::altrep_traits::NA_INTEGER {
-                    Ok(None)
-                } else {
-                    value
-                        .try_coerce()
-                        .map(Some)
-                        .map_err(|e| SexpError::InvalidValue(format!("{e}")))
-                }
-            }
-            SEXPTYPE::REALSXP => {
-                use crate::coerce::TryCoerce;
-                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-                if is_na_real(value) {
-                    return Ok(None);
-                }
-                let u: u64 = value
-                    .try_coerce()
-                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
-                u.try_into()
-                    .map(Some)
-                    .map_err(|_| SexpError::InvalidValue("value out of usize range".into()))
-            }
-            SEXPTYPE::RAWSXP => {
-                use crate::coerce::Coerce;
-                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(Some(value.coerce()))
-            }
-            SEXPTYPE::LGLSXP => {
-                use crate::coerce::TryCoerce;
-                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-                if value.is_na() {
-                    Ok(None)
-                } else {
-                    value
-                        .to_i32()
-                        .try_coerce()
-                        .map(Some)
-                        .map_err(|e| SexpError::InvalidValue(format!("{e}")))
-                }
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        try_from_sexp_numeric_option(sexp)
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
     }
 }
 
@@ -747,41 +537,12 @@ impl TryFromSexp for isize {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // Try i32 first (more common), fall back to f64 for large values
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                use crate::coerce::Coerce;
-                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(value.coerce())
-            }
-            SEXPTYPE::REALSXP => {
-                use crate::coerce::TryCoerce;
-                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-                let i: i64 = value
-                    .try_coerce()
-                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
-                i.try_into()
-                    .map_err(|_| SexpError::InvalidValue("value out of isize range".into()))
-            }
-            SEXPTYPE::RAWSXP => {
-                use crate::coerce::Coerce;
-                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(value.coerce())
-            }
-            SEXPTYPE::LGLSXP => {
-                use crate::coerce::Coerce;
-                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-                if value.is_na() {
-                    return Err(lglsxp_na_error());
-                }
-                Ok(value.to_i32().coerce())
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        try_from_sexp_numeric_scalar(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
     }
 }
 
@@ -790,57 +551,12 @@ impl TryFromSexp for Option<isize> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        let actual = sexp.type_of();
-        match actual {
-            SEXPTYPE::INTSXP => {
-                use crate::coerce::Coerce;
-                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-                if value == crate::altrep_traits::NA_INTEGER {
-                    Ok(None)
-                } else {
-                    Ok(Some(value.coerce()))
-                }
-            }
-            SEXPTYPE::REALSXP => {
-                use crate::coerce::TryCoerce;
-                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-                if is_na_real(value) {
-                    return Ok(None);
-                }
-                let i: i64 = value
-                    .try_coerce()
-                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
-                i.try_into()
-                    .map(Some)
-                    .map_err(|_| SexpError::InvalidValue("value out of isize range".into()))
-            }
-            SEXPTYPE::RAWSXP => {
-                use crate::coerce::Coerce;
-                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(Some(value.coerce()))
-            }
-            SEXPTYPE::LGLSXP => {
-                use crate::coerce::Coerce;
-                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-                if value.is_na() {
-                    Ok(None)
-                } else {
-                    Ok(Some(value.to_i32().coerce()))
-                }
-            }
-            _ => Err(SexpError::InvalidValue(format!(
-                "expected integer, numeric, logical, or raw; got {:?}",
-                actual
-            ))),
-        }
+        try_from_sexp_numeric_option(sexp)
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
     }
 }
 // endregion

@@ -6,11 +6,14 @@
 #' discovery, feature flags, and generates build files.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `use_template()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE if file was created
 #' @keywords internal
-use_miniextendr_configure <- function(path = ".") {
+use_miniextendr_configure <- function(path = ".", subdir = NULL) {
   with_project(path)
-  use_template("configure.ac", data = template_data())
+  use_template("configure.ac", subdir = subdir, data = template_data())
   cli::cli_alert_info("Run {.code minirextendr::miniextendr_autoconf()} to generate configure script")
   invisible(TRUE)
 }
@@ -21,11 +24,14 @@ use_miniextendr_configure <- function(path = ".") {
 #' `Config/build/bootstrap: TRUE` is set in DESCRIPTION.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `use_template()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE if file was created
 #' @keywords internal
-use_miniextendr_bootstrap <- function(path = ".") {
+use_miniextendr_bootstrap <- function(path = ".", subdir = NULL) {
   with_project(path)
-  use_template("bootstrap.R")
+  use_template("bootstrap.R", subdir = subdir)
   invisible(TRUE)
 }
 
@@ -35,13 +41,16 @@ use_miniextendr_bootstrap <- function(path = ".") {
 #' build artifacts after installation (used on CRAN).
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `use_template()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE if files were created
 #' @keywords internal
-use_miniextendr_cleanup <- function(path = ".") {
+use_miniextendr_cleanup <- function(path = ".", subdir = NULL) {
   with_project(path)
-  use_template("cleanup")
-  use_template("cleanup.win")
-  use_template("cleanup.ucrt")
+  use_template("cleanup", subdir = subdir)
+  use_template("cleanup.win", subdir = subdir)
+  use_template("cleanup.ucrt", subdir = subdir)
 
   # Ensure cleanup scripts are executable (R CMD build warns otherwise)
   for (script in c("cleanup", "cleanup.win", "cleanup.ucrt")) {
@@ -60,12 +69,15 @@ use_miniextendr_cleanup <- function(path = ".") {
 #' POSIX configure script.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `use_template()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE if files were created
 #' @keywords internal
-use_miniextendr_configure_win <- function(path = ".") {
+use_miniextendr_configure_win <- function(path = ".", subdir = NULL) {
   with_project(path)
-  use_template("configure.win")
-  use_template("configure.ucrt")
+  use_template("configure.win", subdir = subdir)
+  use_template("configure.ucrt", subdir = subdir)
 
   # R expects configure.win / configure.ucrt to be executable; use_template
   # writes with default mode 644 so we restore 755 here (same pattern as cleanup).
@@ -86,25 +98,25 @@ use_miniextendr_configure_win <- function(path = ".") {
 #' and are referenced by AC_CONFIG_AUX_DIR([tools]) in configure.ac.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `template_path()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo, where `tools/lock-shape-check.R` lives one
+#'   level deeper under the active "monorepo" template type.
 #' @return Invisibly returns TRUE if files were copied
 #' @keywords internal
-use_miniextendr_config_scripts <- function(path = ".") {
+use_miniextendr_config_scripts <- function(path = ".", subdir = NULL) {
   with_project(path)
-  # These go in tools/ directory per AC_CONFIG_AUX_DIR([tools]) in configure.ac
+  # These go in tools/ directory per AC_CONFIG_AUX_DIR([tools]) in configure.ac.
+  # config.guess/config.sub are bundled scripts (not templates), shared with
+  # the monorepo and inline scaffold paths via copy_config_scripts().
   ensure_dir(usethis::proj_path("tools"))
-  for (script in c("config.guess", "config.sub")) {
-    fs::file_copy(
-      script_path(script),
-      usethis::proj_path("tools", script),
-      overwrite = TRUE
-    )
-    bullet_created(file.path("tools", script), "Copied")
-  }
+  copy_config_scripts(usethis::proj_path("tools"), display_prefix = "tools")
 
   # tools/lock-shape-check.R is referenced by configure.ac's
   # AC_CONFIG_COMMANDS([lock-shape-check]) block; without it, configure
   # fails in tarball mode with "cannot open file 'tools/lock-shape-check.R'".
-  lock_check_src <- template_path("lock-shape-check.R", subdir = "tools")
+  tools_subdir <- if (is.null(subdir)) "tools" else file.path(subdir, "tools")
+  lock_check_src <- template_path("lock-shape-check.R", subdir = tools_subdir)
   lock_check_dest <- usethis::proj_path("tools", "lock-shape-check.R")
   fs::file_copy(lock_check_src, lock_check_dest, overwrite = TRUE)
   bullet_created(file.path("tools", "lock-shape-check.R"), "Copied")
@@ -118,13 +130,16 @@ use_miniextendr_config_scripts <- function(path = ".") {
 #' the actual Makevars used during package build.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `use_template()`) — set to `"rpkg"` when scaffolding the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE if file was created
 #' @keywords internal
-use_miniextendr_makevars <- function(path = ".") {
+use_miniextendr_makevars <- function(path = ".", subdir = NULL) {
   with_project(path)
   ensure_dir(usethis::proj_path("src"))
-  use_template("Makevars.in", save_as = "src/Makevars.in")
-  use_template("win.def.in", save_as = "src/win.def.in")
+  use_template("Makevars.in", save_as = "src/Makevars.in", subdir = subdir)
+  use_template("win.def.in", save_as = "src/win.def.in", subdir = subdir)
 
   invisible(TRUE)
 }

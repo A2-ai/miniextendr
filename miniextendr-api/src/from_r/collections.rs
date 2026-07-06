@@ -16,7 +16,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str, map_vecsxp_with};
 use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_map_try_from_sexp {
@@ -157,25 +157,7 @@ where
     M: TryFromSexp,
     M::Error: Into<SexpError>,
 {
-    let actual = sexp.type_of();
-    if actual != SEXPTYPE::VECSXP {
-        return Err(SexpTypeError {
-            expected: SEXPTYPE::VECSXP,
-            actual,
-        }
-        .into());
-    }
-
-    let len = sexp.len();
-    let mut result = Vec::with_capacity(len);
-
-    for i in 0..len {
-        let elem = sexp.vector_elt(i as crate::R_xlen_t);
-        let map = M::try_from_sexp(elem).map_err(Into::into)?;
-        result.push(map);
-    }
-
-    Ok(result)
+    map_vecsxp_with(sexp, |_i, elem| M::try_from_sexp(elem).map_err(Into::into))
 }
 
 macro_rules! impl_set_try_from_sexp_native {

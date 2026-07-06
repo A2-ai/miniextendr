@@ -36,15 +36,13 @@ ErrorInRCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-ErrorInRCounter  Class
+Create a new counter.
 
-Create a new counter
+Get the current value -- should always succeed.
 
-Get the current value -- should always succeed
+Increment -- mutable method, should succeed and allow chaining.
 
-Increment -- mutable method, should succeed and allow chaining
+Deliberately panic in a method.
 
-Deliberately panic in a method
-
-Return Result::Err in a method
+Return Result::Err in a method.
 }

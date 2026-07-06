@@ -196,6 +196,9 @@ mod newtype_derive;
 // Struct/enum dispatch for #[miniextendr] on structs and enums
 mod struct_enum_dispatch;
 
+// r! proc-macro implementation
+mod r_macro;
+
 // vctrs support
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
@@ -724,6 +727,7 @@ pub fn miniextendr(
         rng,
         unwrap_in_r,
         return_pref,
+        return_pref_span,
         s3_generic,
         s3_class,
         dots_spec,
@@ -931,21 +935,37 @@ pub fn miniextendr(
 
     // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
+    let return_pref_is_set = !matches!(return_pref, crate::miniextendr_fn::ReturnPref::Auto);
     let fn_return_handling = if unwrap_in_r && crate::return_type_analysis::output_is_result(output)
     {
-        // Note: prefer= is intentionally ignored when unwrap_in_r overrides the return
-        // handling. In unwrap_in_r mode the IntoR here operates on the whole Result<T,E>
-        // (the framework's IntoR for Result encodes it as a tagged list for R to decode),
-        // NOT on the inner T. Applying prefer= would require Result<T,E>: IntoList /
-        // IntoExternalPtr / RNativeType — almost certainly absent. The prefer= attribute
-        // is effectively a no-op when unwrap_in_r is active.
+        // In unwrap_in_r mode the IntoR here operates on the whole Result<T,E> (the
+        // framework's IntoR for Result encodes it as a tagged list for R to decode), NOT on
+        // the inner T. prefer= always targets that inner T, so there is nothing for it to
+        // wrap here — reject rather than silently drop it (see apply_return_pref docstring
+        // and the BUG4 audit finding).
+        if return_pref_is_set {
+            let span = return_pref_span.unwrap_or_else(proc_macro2::Span::call_site);
+            return syn::Error::new(
+                span,
+                "`prefer = ...` cannot be combined with `unwrap_in_r` on a function returning \
+                 `Result<T, E>`: `unwrap_in_r` converts the whole `Result<T, E>` via a single \
+                 `IntoR` impl (a tagged list for R to decode), not the inner `T` alone, so \
+                 there is no plain `T` for `prefer=` to wrap. Remove `prefer=`.",
+            )
+            .into_compile_error()
+            .into();
+        }
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
         let auto = c_wrapper_builder::detect_return_handling_standalone_fn(output);
         // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
         // Only applies to the plain IntoR variant — Option*/Result*/Unit/RawSexp/ExternalPtr
-        // variants pass through unchanged (see apply_return_pref docstring).
-        apply_return_pref(auto, return_pref)
+        // variants have no bare T to wrap and now hard-error instead of silently ignoring
+        // prefer= (see apply_return_pref docstring).
+        match apply_return_pref(auto, return_pref, return_pref_span) {
+            Ok(handling) => handling,
+            Err(err) => return err.into_compile_error().into(),
+        }
     };
 
     let thread_strategy = if use_main_thread {
@@ -1160,14 +1180,13 @@ pub fn miniextendr(
         }
     }
 
-    // Ensure a @title exists when we have auto-generated tags (e.g., @param from choices)
-    // but the auto-title logic in roxygen_tags_from_attrs didn't fire (because has_any_tags
-    // was false at that point — choices @param tags are added after extraction).
-    // Prefer the implicit title from doc comments; fall back to the function name.
+    // A standalone function's reference page is titled by its R wrapper name — never
+    // the doc-comment prose. rustdoc summaries are markdown (intra-doc links, code
+    // spans) that roxygen2 can't resolve as a `\title`; the prose is promoted to
+    // `@description` by `roxygen_tags_from_attrs` instead. Without a `@title`, roxygen2
+    // skips the `.Rd` entirely (#1054), so inject the wrapper name when none exists.
     if !roxygen_tags.is_empty() && !crate::roxygen::has_roxygen_tag(&roxygen_tags, "title") {
-        let title = crate::roxygen::implicit_title_from_attrs(attrs)
-            .unwrap_or_else(|| rust_ident.to_string().replace('_', " "));
-        roxygen_tags.insert(0, format!("@title {}", title));
+        roxygen_tags.insert(0, format!("@title {}", r_wrapper_ident_str));
     }
 
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
@@ -1537,37 +1556,89 @@ pub fn miniextendr(
 
 /// Maps a `ReturnPref` attribute value onto an auto-detected `ReturnHandling`.
 ///
-/// Only substitutes the plain `IntoR` variant with its pref-specific counterpart.
-/// All other variants (`Unit`, `RawSexp`, `ExternalPtr`, `Result*`, `OptionIntoR`,
-/// `OptionIntoRUnwrap`) are left unchanged — wrapping would be semantically wrong
-/// or there is no plain value to wrap.
-///
-/// # Notes
-///
-/// When `prefer=` is combined with `Option<T>` or `Result<T,E>` returns, only the
-/// plain-T fast path is affected — `Option`/`Result` wrappers behave as if `prefer=`
-/// were absent. A future PR can add explicit `Option*` handling if a user needs it.
+/// Only the plain `IntoR` variant has a bare `T` for `prefer=` to wrap, so it is the
+/// only variant substituted with its pref-specific counterpart
+/// (`AsListOf`/`AsExternalPtrOf`/`AsNativeOf`). Every other variant (`Unit`, `RawSexp`,
+/// `ExternalPtr`, `Option*`, `Result*`) has its own fixed SEXP-shape rule that
+/// `prefer=` cannot compose with — returning a compile error for those is better than
+/// silently dropping the attribute (see the BUG4 audit finding: `prefer = "list"` on an
+/// `Option<T>` return used to be accepted and silently ignored).
 fn apply_return_pref(
     auto: c_wrapper_builder::ReturnHandling,
     pref: crate::miniextendr_fn::ReturnPref,
-) -> c_wrapper_builder::ReturnHandling {
+    pref_span: Option<proc_macro2::Span>,
+) -> syn::Result<c_wrapper_builder::ReturnHandling> {
     use crate::miniextendr_fn::ReturnPref;
     use c_wrapper_builder::ReturnHandling;
 
-    match pref {
-        ReturnPref::Auto => auto,
+    let wrapped = match pref {
+        ReturnPref::Auto => return Ok(auto),
         ReturnPref::List => match auto {
-            ReturnHandling::IntoR => ReturnHandling::AsListOf,
-            other => other, // Unit, RawSexp, ExternalPtr, Result*, Option* — ignore prefer on incompatible types
+            ReturnHandling::IntoR => Some(ReturnHandling::AsListOf),
+            _ => None,
         },
         ReturnPref::ExternalPtr => match auto {
-            ReturnHandling::IntoR => ReturnHandling::AsExternalPtrOf,
-            other => other,
+            ReturnHandling::IntoR => Some(ReturnHandling::AsExternalPtrOf),
+            _ => None,
         },
         ReturnPref::Native => match auto {
-            ReturnHandling::IntoR => ReturnHandling::AsNativeOf,
-            other => other,
+            ReturnHandling::IntoR => Some(ReturnHandling::AsNativeOf),
+            _ => None,
         },
+    };
+
+    wrapped.ok_or_else(|| {
+        let (pref_name, wrapper_name) = return_pref_names(pref);
+        let span = pref_span.unwrap_or_else(proc_macro2::Span::call_site);
+        syn::Error::new(
+            span,
+            format!(
+                "`prefer = \"{pref_name}\"` cannot be honored on this return type. \
+                 `prefer=` only applies to a function returning a plain `T: IntoR` value, \
+                 which it wraps in `{wrapper_name}` before conversion. This function's return \
+                 type falls into a different codegen category ({}) with its own fixed \
+                 SEXP-shape rule, so there is no plain `T` for `prefer=` to wrap. Remove \
+                 `prefer=`, or change the return type to a plain `T`.",
+                return_handling_category_description(&auto),
+            ),
+        )
+    })
+}
+
+/// Human-readable `(attribute value, wrapper type)` pair for a [`ReturnPref`](crate::miniextendr_fn::ReturnPref),
+/// used to phrase the `apply_return_pref` compile error.
+fn return_pref_names(pref: crate::miniextendr_fn::ReturnPref) -> (&'static str, &'static str) {
+    use crate::miniextendr_fn::ReturnPref;
+    match pref {
+        ReturnPref::Auto => ("auto", ""),
+        ReturnPref::List => ("list", "AsList"),
+        ReturnPref::ExternalPtr => ("externalptr", "AsExternalPtr"),
+        ReturnPref::Native => ("native", "AsRNative"),
+    }
+}
+
+/// Human-readable description of a [`ReturnHandling`](c_wrapper_builder::ReturnHandling)
+/// category, for the `apply_return_pref` compile error. Only describes the categories
+/// [`c_wrapper_builder::detect_return_handling_standalone_fn`] can actually produce;
+/// the wildcard arm covers variants that never reach `apply_return_pref` as `auto`
+/// (`IntoR` itself, method-only `SelfHandle`, and the `As*Of` variants `apply_return_pref`
+/// produces as *output*, never takes as input).
+fn return_handling_category_description(rh: &c_wrapper_builder::ReturnHandling) -> &'static str {
+    use c_wrapper_builder::ReturnHandling;
+    match rh {
+        ReturnHandling::Unit => "the unit return type `()`",
+        ReturnHandling::RawSexp => "a raw `SEXP` return type",
+        ReturnHandling::ExternalPtr => {
+            "a `Self`-returning constructor, already converted via `ExternalPtr::new`"
+        }
+        ReturnHandling::OptionUnit => "`Option<()>`",
+        ReturnHandling::OptionSexp => "`Option<SEXP>`",
+        ReturnHandling::OptionIntoR | ReturnHandling::OptionIntoRUnwrap => "`Option<T>`",
+        ReturnHandling::ResultUnit => "`Result<(), E>`",
+        ReturnHandling::ResultSexp => "`Result<SEXP, E>`",
+        ReturnHandling::ResultIntoR => "`Result<T, E>`",
+        ReturnHandling::ResultNullOnErr => "`Result<T, ()>`",
+        _ => "this return type",
     }
 }
 
@@ -2683,6 +2754,68 @@ pub fn typed_dataframe(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as list_macro::ListInput);
     list_macro::expand_list(parsed).into()
+}
+
+/// Evaluate R code written as **Rust tokens**, validated at compile time.
+///
+/// `r!` takes a single R expression as a token stream, `stringify!`s it into a
+/// static R source string at build time, and evaluates it via
+/// [`miniextendr_api::expression::r_eval_str`] (the same protect-safe parse + eval
+/// path as `r_str!`).
+///
+/// # What you get today
+///
+/// Because the argument is a Rust token tree, the Rust front-end already
+/// rejects **unbalanced delimiters** (`r!(f(1, 2)` won't compile) and
+/// lexically invalid tokens before R ever sees the string — a cheap
+/// compile-time guard over the pure-runtime `r_str!`. The source is lowered to
+/// a `&'static str` (`stringify!`), so there is no `format!` allocation at the
+/// call site.
+///
+/// This proc-macro additionally validates a conservative subset of known-bad
+/// R syntax constructs (trailing binary operators, consecutive non-unary
+/// binary operators, bare `if`/`while`/`for` without a body, etc.) and emits
+/// a precise compile error pointing at the offending token. Empty (missing)
+/// call arguments — `f(, x)`, `matrix(, 2, 2)` — are valid R and pass.
+///
+/// # What is deferred
+///
+/// Direct `Rf_lang*` call-tree lowering (skipping the runtime parser entirely)
+/// is tracked as a follow-up in issue #938 (item 2). Until then `r!` parses
+/// its static string at first evaluation, exactly like `r_str!`.
+///
+/// # Non-goals
+///
+/// A complete R grammar validator is not achievable over Rust tokens:
+/// - Single-quoted strings (`'hello'`) and backtick-quoted names (`` `foo` ``)
+///   already die at the Rust lexer — nothing to validate.
+/// - `%op%` tokenises as `%`, ident, `%` and is accepted without analysis.
+/// - Anything the validator cannot confidently classify as wrong passes through
+///   unvalidated (conservative reject-only-known-bad design).
+///
+/// # Forms
+///
+/// - `r!(R tokens…)` — evaluate in `R_GlobalEnv`.
+/// - `r!(env: e; R tokens…)` — evaluate in the environment SEXP `e`. The
+///   leading `env: <expr> ;` is consumed as Rust, the rest is R source.
+///
+/// Both evaluate to `Result<SEXP, String>`; the `SEXP` is **unprotected**.
+///
+/// # Safety
+///
+/// Expands to an `unsafe` block; the underlying FFI is `#[r_ffi_checked]`, so
+/// calls from a worker thread are serialized onto the R thread.
+///
+/// # Example
+///
+/// ```ignore
+/// let three = r!(1L + 2L)?;
+/// let rows = r!(getFromNamespace(".theoph_rows", "dataframeflows")())?;
+/// let in_env = r!(env: my_env; x + 1)?;
+/// ```
+#[proc_macro]
+pub fn r(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    r_macro::expand(input)
 }
 
 /// Internal proc macro used by TPIE (Trait-Provided Impl Expansion).

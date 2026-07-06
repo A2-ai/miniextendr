@@ -2,6 +2,7 @@ use anyhow::{Result, bail};
 
 use crate::bridge::{rscript_eval, run_command};
 use crate::cli::{FeatureCmd, FeatureDetectCmd, FeatureRuleCmd};
+use crate::output::print_json;
 use crate::project::ProjectContext;
 
 pub fn dispatch(cmd: &FeatureCmd, ctx: &ProjectContext, quiet: bool, json: bool) -> Result<()> {
@@ -164,7 +165,7 @@ fn feature_list(ctx: &ProjectContext, json: bool) -> Result<()> {
         if !optional_deps.is_empty() {
             map.insert("_optional_deps".into(), serde_json::json!(optional_deps));
         }
-        println!("{}", serde_json::to_string_pretty(&map)?);
+        print_json(&map)?;
     } else {
         println!("Cargo features:");
         for (name, deps) in &features {
@@ -320,7 +321,7 @@ fn feature_rule_list(ctx: &ProjectContext, json: bool) -> Result<()> {
         .collect();
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&rules)?);
+        print_json(&rules)?;
     } else if rules.is_empty() {
         println!("No feature detection rules defined.");
     } else {
@@ -385,24 +386,21 @@ fn add_desc_field(ctx: &ProjectContext, field: &str, pkg: &str, quiet: bool) -> 
         return Ok(());
     }
 
-    let content = std::fs::read_to_string(&desc_path)?;
-    let prefix = format!("{field}:");
-
-    // Check if field exists and if pkg is already listed
-    let mut found_field = false;
-    for line in content.lines() {
-        if line.starts_with(&prefix) {
-            found_field = true;
-            if line.contains(pkg) {
-                if !quiet {
-                    println!("{pkg} already in {field}");
-                }
-                return Ok(());
-            }
+    // Check if field exists and if pkg is already listed (DCF-aware, so a
+    // value wrapped across continuation lines is still searched in full).
+    let existing = ctx.description_field(field);
+    if let Some(value) = &existing
+        && value.contains(pkg)
+    {
+        if !quiet {
+            println!("{pkg} already in {field}");
         }
+        return Ok(());
     }
 
-    let new_content = if found_field {
+    let content = std::fs::read_to_string(&desc_path)?;
+    let prefix = format!("{field}:");
+    let new_content = if existing.is_some() {
         // Append to existing field
         content.replace(&prefix.to_string(), &format!("{prefix} {pkg},"))
     } else {
