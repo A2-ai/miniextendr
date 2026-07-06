@@ -519,14 +519,15 @@ fn s4_wrapper_full_snapshot() {
     assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
     assert!(wrapper.contains("methods::new(\"Counter\", ptr = .val)"));
 
-    // Verify S4 generics (unconditional - setGeneric is idempotent)
-    assert!(
-        wrapper.contains(
-            "methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
-        )
-    );
+    // Verify S4 generics: guarded by a namespace-local exists() check. A bare
+    // isGeneric() sees an attached installed copy and starves setMethod under
+    // load_all(); isGeneric(where=) routes through package resolution and
+    // breaks mid-install (findpack). exists() is a plain env lookup (#1158).
     assert!(wrapper.contains(
-        "methods::setGeneric(\"s4_increment\", function(x, ...) standardGeneric(\"s4_increment\"))"
+        "if (!exists(\"s4_get\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
+    ));
+    assert!(wrapper.contains(
+        "if (!exists(\"s4_increment\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"s4_increment\", function(x, ...) standardGeneric(\"s4_increment\"))"
     ));
 
     // Verify setMethod calls
@@ -906,6 +907,62 @@ fn self_ref_builder_uses_self_handle_return() {
     );
     // Sanity: SelfHandle exists and is distinct.
     let _ = ReturnHandling::SelfHandle;
+}
+
+/// Audit A4: a static returning `Result<Self, E>` (e.g. `from_r`) must wrap its
+/// successful return exactly like a bare-`Self`-returning constructor (e.g.
+/// `new`) — a usable class object, not a bare `ExternalPtr`. The C wrapper still
+/// raises on `Err` via the normal `Result` error path.
+#[test]
+fn result_self_static_wraps_like_constructor() {
+    use crate::c_wrapper_builder::ReturnHandling;
+
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl SerdeRPoint {
+            pub fn new(x: f64, y: f64) -> Self { unimplemented!() }
+            pub fn from_r(sexp: SEXP) -> Result<Self, String> { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let from_r = parsed.methods.iter().find(|m| m.ident == "from_r").unwrap();
+
+    // Detected as a `Result<Self, E>` return, not a bare `Self` return.
+    assert!(from_r.returns_result_self());
+    assert!(!from_r.returns_self());
+
+    // C-wrapper return handling wraps `Ok(Self)` in an ExternalPtr, distinct
+    // from the plain `Result<T, E> -> IntoR` path.
+    assert!(matches!(
+        crate::c_wrapper_builder::detect_return_handling(&from_r.sig.output),
+        ReturnHandling::ResultExternalPtr
+    ));
+
+    // R-side strategy matches the bare-Self constructor path.
+    let new_method = parsed.methods.iter().find(|m| m.ident == "new").unwrap();
+    assert_eq!(
+        crate::ReturnStrategy::for_method(from_r),
+        crate::ReturnStrategy::for_method(new_method)
+    );
+    assert_eq!(
+        crate::ReturnStrategy::for_method(from_r),
+        crate::ReturnStrategy::ReturnSelf
+    );
+
+    // The generated Env wrapper wraps the successful result in the class,
+    // exactly like `$new()`.
+    let wrapper = generate_env_r_wrapper(&parsed);
+    let from_r_body = wrapper
+        .split("SerdeRPoint$from_r <- function(sexp) {")
+        .nth(1)
+        .expect("from_r method body")
+        .split("\n}")
+        .next()
+        .expect("from_r method body");
+    assert!(
+        from_r_body.contains("class(.val) <- \"SerdeRPoint\""),
+        "from_r should wrap its successful return like a class constructor, got:\n{from_r_body}"
+    );
 }
 
 #[test]
