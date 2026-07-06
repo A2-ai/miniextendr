@@ -32,5 +32,5 @@ test_that("unified verbs handle an empty data.frame", {
 })
 
 test_that("gc_stress_unified_dataframe drives both verbs without error", {
-  expect_no_error(gc_stress_unified_dataframe())
+  expect_no_error(miniextendr:::gc_stress_unified_dataframe())
 })

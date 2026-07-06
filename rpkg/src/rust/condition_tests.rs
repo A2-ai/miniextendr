@@ -5,14 +5,12 @@ use miniextendr_api::miniextendr;
 
 // region: Simple errors
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_condition_parse_int(s: &str) -> Result<i32, AsRError<std::num::ParseIntError>> {
     s.parse::<i32>().map_err(AsRError)
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_condition_ok() -> Result<i32, AsRError<std::num::ParseIntError>> {
     Ok(42)
 }
@@ -39,8 +37,7 @@ impl std::error::Error for ConfigError {
     }
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_condition_chained(s: &str) -> Result<i32, AsRError<ConfigError>> {
     let value = s.parse::<i32>().map_err(|e| {
         AsRError(ConfigError {

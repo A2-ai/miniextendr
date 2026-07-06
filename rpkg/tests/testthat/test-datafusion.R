@@ -12,7 +12,7 @@ make_test_df <- function() {
 
 test_that("DataFusion SQL query works on data.frame", {
   df <- make_test_df()
-  result <- test_df_sql_query(df, "SELECT x, y FROM df WHERE x > 2")
+  result <- miniextendr:::test_df_sql_query(df, "SELECT x, y FROM df WHERE x > 2")
   expect_true(is.data.frame(result))
   expect_equal(nrow(result), 3)
   expect_true(all(result$x > 2))
@@ -20,7 +20,7 @@ test_that("DataFusion SQL query works on data.frame", {
 
 test_that("DataFusion SQL aggregation works", {
   df <- make_test_df()
-  result <- test_df_sql_query(df, "SELECT SUM(y) as total FROM df")
+  result <- miniextendr:::test_df_sql_query(df, "SELECT SUM(y) as total FROM df")
   expect_equal(result$total, 150.0)
 })
 
@@ -30,7 +30,7 @@ test_that("DataFusion SQL aggregation works", {
 
 test_that("RDataFrame select returns subset of columns", {
   df <- make_test_df()
-  result <- test_df_select(df, c("x", "y"))
+  result <- miniextendr:::test_df_select(df, c("x", "y"))
   expect_true(is.data.frame(result))
   expect_equal(names(result), c("x", "y"))
   expect_equal(nrow(result), 5)
@@ -38,7 +38,7 @@ test_that("RDataFrame select returns subset of columns", {
 
 test_that("RDataFrame sort + limit works", {
   df <- make_test_df()
-  result <- test_df_sort_limit(df, "y", FALSE, 3L)
+  result <- miniextendr:::test_df_sort_limit(df, "y", FALSE, 3L)
   expect_equal(nrow(result), 3)
   # Descending sort: largest y first
   expect_equal(result$y, c(50.0, 40.0, 30.0))
@@ -46,13 +46,13 @@ test_that("RDataFrame sort + limit works", {
 
 test_that("RDataFrame columns returns column names", {
   df <- make_test_df()
-  cols <- test_df_columns(df)
+  cols <- miniextendr:::test_df_columns(df)
   expect_equal(cols, c("x", "y", "name"))
 })
 
 test_that("RDataFrame chain (SQL WHERE + sort + limit)", {
   df <- make_test_df()
-  result <- test_df_chain(df)
+  result <- miniextendr:::test_df_chain(df)
   expect_true(is.data.frame(result))
   expect_true(all(result$x > 2))
   expect_true(nrow(result) <= 3)
@@ -69,7 +69,7 @@ test_that("RDataFrame aggregate with group_by works", {
     name = c("a", "a", "b", "b"),
     y = c(10.0, 20.0, 30.0, 40.0)
   )
-  result <- test_df_aggregate(df)
+  result <- miniextendr:::test_df_aggregate(df)
   expect_true(is.data.frame(result))
   expect_equal(nrow(result), 2)
   # Group "a": sum=30, count=2; group "b": sum=70, count=2
@@ -80,7 +80,7 @@ test_that("RDataFrame aggregate with group_by works", {
 
 test_that("RDataFrame global aggregation (no group_by) works", {
   df <- make_test_df()
-  result <- test_df_global_agg(df)
+  result <- miniextendr:::test_df_global_agg(df)
   expect_equal(nrow(result), 1)
   expect_equal(result$avg_y, 30.0)
   expect_equal(result$max_x, 5L)
@@ -88,7 +88,7 @@ test_that("RDataFrame global aggregation (no group_by) works", {
 
 test_that("RDataFrame count works", {
   df <- make_test_df()
-  result <- test_df_count(df)
+  result <- miniextendr:::test_df_count(df)
   expect_equal(result, 3L)  # x > 2: values 3, 4, 5
 })
 
@@ -100,7 +100,7 @@ test_that("test_df_join performs SQL JOIN", {
 
   left <- data.frame(id = 1:3, name = c("a", "b", "c"), stringsAsFactors = FALSE)
   right <- data.frame(id = c(2L, 3L, 4L), val = c(20.0, 30.0, 40.0))
-  result <- test_df_join(left, right,
+  result <- miniextendr:::test_df_join(left, right,
     "SELECT left_t.id, left_t.name, right_t.val FROM left_t INNER JOIN right_t ON left_t.id = right_t.id ORDER BY left_t.id")
   expect_equal(nrow(result), 2L)
   expect_equal(result$id, c(2L, 3L))
@@ -110,7 +110,7 @@ test_that("test_df_join performs SQL JOIN", {
 test_that("test_df_sql_query runs window functions", {
 
   df <- data.frame(x = c(3L, 1L, 2L), y = c(30.0, 10.0, 20.0))
-  result <- test_df_sql_query(df,
+  result <- miniextendr:::test_df_sql_query(df,
     "SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as rn FROM df")
   expect_equal(nrow(result), 3L)
   expect_true("rn" %in% names(result))
@@ -119,7 +119,7 @@ test_that("test_df_sql_query runs window functions", {
 test_that("test_df_sql_query runs subquery", {
 
   df <- data.frame(x = 1:5, y = c(10.0, 20.0, 30.0, 40.0, 50.0))
-  result <- test_df_sql_query(df,
+  result <- miniextendr:::test_df_sql_query(df,
     "SELECT * FROM df WHERE x IN (SELECT x FROM df WHERE y > 25) ORDER BY x")
   expect_equal(result$x, c(3L, 4L, 5L))
 })

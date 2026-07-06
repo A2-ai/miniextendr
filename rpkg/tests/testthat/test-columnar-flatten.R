@@ -1,5 +1,5 @@
 test_that("nested struct flattening produces prefixed columns", {
-  df <- test_columnar_nested()
+  df <- miniextendr:::test_columnar_nested()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   expect_equal(names(df), c("label", "point_x", "point_y"))
@@ -9,7 +9,7 @@ test_that("nested struct flattening produces prefixed columns", {
 })
 
 test_that("Option<Struct> with skip_serializing_if produces NA rows", {
-  df <- test_columnar_optional_struct()
+  df <- miniextendr:::test_columnar_optional_struct()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
   expect_equal(names(df), c("name", "extra_x", "extra_y"))
@@ -19,7 +19,7 @@ test_that("Option<Struct> with skip_serializing_if produces NA rows", {
 })
 
 test_that("deep nesting (3 levels) flattens fully", {
-  df <- test_columnar_deep_nesting()
+  df <- miniextendr:::test_columnar_deep_nesting()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   expect_equal(names(df), c("a", "mid_b", "mid_leaf_c"))
@@ -29,7 +29,7 @@ test_that("deep nesting (3 levels) flattens fully", {
 })
 
 test_that("serde flatten removes prefix", {
-  df <- test_columnar_serde_flatten()
+  df <- miniextendr:::test_columnar_serde_flatten()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   expect_equal(names(df), c("id", "x", "y"))
@@ -39,7 +39,7 @@ test_that("serde flatten removes prefix", {
 })
 
 test_that("scalar skip_serializing_if produces NA", {
-  df <- test_columnar_skip_serializing_if()
+  df <- miniextendr:::test_columnar_skip_serializing_if()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
   expect_equal(names(df), c("name", "tag", "value"))
@@ -48,7 +48,7 @@ test_that("scalar skip_serializing_if produces NA", {
 })
 
 test_that("rename API changes column names", {
-  df <- test_columnar_rename()
+  df <- miniextendr:::test_columnar_rename()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   expect_equal(names(df), c("label", "px", "py"))
@@ -57,7 +57,7 @@ test_that("rename API changes column names", {
 })
 
 test_that("rename nonexistent column is a silent no-op", {
-  df <- test_columnar_rename_noop()
+  df <- miniextendr:::test_columnar_rename_noop()
   expect_s3_class(df, "data.frame")
   expect_equal(names(df), c("x", "y"))
   expect_equal(df$x, 1.0)
@@ -65,14 +65,14 @@ test_that("rename nonexistent column is a silent no-op", {
 })
 
 test_that("empty vec produces empty data.frame", {
-  df <- test_columnar_empty()
+  df <- miniextendr:::test_columnar_empty()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 0)
   expect_equal(ncol(df), 0)
 })
 
 test_that("drop removes a column", {
-  df <- test_columnar_drop()
+  df <- miniextendr:::test_columnar_drop()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   expect_equal(names(df), c("label", "point_x"))
@@ -81,7 +81,7 @@ test_that("drop removes a column", {
 })
 
 test_that("select keeps only named columns in order", {
-  df <- test_columnar_select()
+  df <- miniextendr:::test_columnar_select()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   expect_equal(names(df), c("point_y", "label"))
@@ -90,7 +90,7 @@ test_that("select keeps only named columns in order", {
 })
 
 test_that("with_column replaces an existing column", {
-  df <- test_columnar_with_column_replace()
+  df <- miniextendr:::test_columnar_with_column_replace()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
   expect_equal(names(df), c("id", "value"))
@@ -102,7 +102,7 @@ test_that("with_column replaces an existing column", {
 })
 
 test_that("with_column appends a new column when the name is absent", {
-  df <- test_columnar_with_column_append()
+  df <- miniextendr:::test_columnar_with_column_append()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   # Original columns first, new "label" appended at the end.
@@ -114,7 +114,7 @@ test_that("with_column appends a new column when the name is absent", {
 })
 
 test_that("strip_prefix removes prefix from matching columns", {
-  df <- test_columnar_strip_prefix()
+  df <- miniextendr:::test_columnar_strip_prefix()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   # "point_x" -> "x", "point_y" -> "y", "label" unchanged (no prefix match)
@@ -124,7 +124,7 @@ test_that("strip_prefix removes prefix from matching columns", {
 })
 
 test_that("untagged enum: multi-row discovery unions variant fields", {
-  df <- test_columnar_untagged_enum()
+  df <- miniextendr:::test_columnar_untagged_enum()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
   # Ok rows have status+size, Err rows have error — all columns present
@@ -141,7 +141,7 @@ test_that("untagged enum: multi-row discovery unions variant fields", {
 })
 
 test_that("internally tagged enum: kind column + variant-specific fields", {
-  df <- test_columnar_tagged_enum()
+  df <- miniextendr:::test_columnar_tagged_enum()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
   # Tag column
@@ -160,7 +160,7 @@ test_that("internally tagged enum: kind column + variant-specific fields", {
 # ── vec_to_dataframe_split ────────────────────────────────────────────────────
 
 test_that("externally-tagged enum split: named list, no NA columns", {
-  result <- test_columnar_ext_tagged_split()
+  result <- miniextendr:::test_columnar_ext_tagged_split()
 
   # outer result is a named list, not a data.frame
   expect_type(result, "list")
@@ -184,7 +184,7 @@ test_that("externally-tagged enum split: named list, no NA columns", {
 })
 
 test_that("internally-tagged enum split: tag column dropped, no NA columns", {
-  result <- test_columnar_int_tagged_split()
+  result <- miniextendr:::test_columnar_int_tagged_split()
 
   # outer result is a named list
   expect_type(result, "list")
@@ -210,7 +210,7 @@ test_that("internally-tagged enum split: tag column dropped, no NA columns", {
 })
 
 test_that("single-variant split returns bare data.frame", {
-  result <- test_columnar_single_variant_split()
+  result <- miniextendr:::test_columnar_single_variant_split()
 
   # single variant → bare data.frame, not a named list of data.frames
   expect_s3_class(result, "data.frame")
@@ -221,7 +221,7 @@ test_that("single-variant split returns bare data.frame", {
 })
 
 test_that("empty input split returns an empty list()", {
-  result <- test_columnar_empty_split()
+  result <- miniextendr:::test_columnar_empty_split()
 
   # variant set is unknowable from zero rows → list(), not a data.frame
   expect_type(result, "list")
@@ -232,7 +232,7 @@ test_that("empty input split returns an empty list()", {
 # region: vec_to_dataframe_split with-tag + collated shapes (closes #699)
 
 test_that("PerVariantListWithTag prepends variant column to each partition", {
-  result <- test_columnar_split_with_tag()
+  result <- miniextendr:::test_columnar_split_with_tag()
 
   expect_type(result, "list")
   expect_setequal(names(result), c("Click", "Scroll"))
@@ -251,7 +251,7 @@ test_that("PerVariantListWithTag prepends variant column to each partition", {
 })
 
 test_that("Collated shape returns a single data.frame with union schema + variant column", {
-  df <- test_columnar_split_collated()
+  df <- miniextendr:::test_columnar_split_collated()
 
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
@@ -275,7 +275,7 @@ test_that("Collated shape returns a single data.frame with union schema + varian
 # region: map_to_dataframe (closes #700)
 
 test_that("map_to_dataframe over BTreeMap returns key column first", {
-  df <- test_map_to_dataframe_btreemap()
+  df <- miniextendr:::test_map_to_dataframe_btreemap()
 
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
@@ -289,7 +289,7 @@ test_that("map_to_dataframe over BTreeMap returns key column first", {
 })
 
 test_that("hashmap_to_dataframe sorts by key for deterministic order", {
-  df <- test_hashmap_to_dataframe()
+  df <- miniextendr:::test_hashmap_to_dataframe()
 
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
@@ -304,14 +304,14 @@ test_that("hashmap_to_dataframe sorts by key for deterministic order", {
 # region: result_to_dataframe (closes #697)
 
 test_that("result_to_dataframe(Auto) returns bare data.frame on all-Ok", {
-  df <- test_result_to_dataframe_auto_all_ok()
+  df <- miniextendr:::test_result_to_dataframe_auto_all_ok()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2)
   expect_equal(sort(names(df)), sort(c("id", "value")))
 })
 
 test_that("result_to_dataframe(Auto) returns list(results, error) on mixed input", {
-  res <- test_result_to_dataframe_auto_mixed()
+  res <- miniextendr:::test_result_to_dataframe_auto_mixed()
   expect_type(res, "list")
   expect_equal(names(res), c("results", "error"))
   expect_s3_class(res$results, "data.frame")
@@ -322,7 +322,7 @@ test_that("result_to_dataframe(Auto) returns list(results, error) on mixed input
 })
 
 test_that("result_to_dataframe(Collated) produces single data.frame with is_error", {
-  df <- test_result_to_dataframe_collated()
+  df <- miniextendr:::test_result_to_dataframe_collated()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
   expect_equal(names(df)[1], "is_error")
@@ -338,7 +338,7 @@ test_that("result_to_dataframe(Collated) produces single data.frame with is_erro
 })
 
 test_that("result_to_dataframe(Split) with all-Err puts sentinel in results slot", {
-  res <- test_result_to_dataframe_split_all_err()
+  res <- miniextendr:::test_result_to_dataframe_split_all_err()
   expect_type(res, "list")
   expect_equal(names(res), c("results", "error"))
   # No Ok rows → sentinel `()` lands as NULL on the R side

@@ -13,14 +13,14 @@ use miniextendr_api::vctrs::{VctrsBuildError, new_list_of, new_rcrd, new_vctr};
 ///
 /// Creates a vctr with the given class name(s) from data.
 /// Uses default inherit_base_type (true for lists, false otherwise).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_new_vctr(data: SEXP, class: Vec<String>) -> Result<SEXP, String> {
     let class_refs: Vec<&str> = class.iter().map(|s| s.as_str()).collect();
     new_vctr(data, &class_refs, &[], None).map_err(|e| e.to_string())
 }
 
 /// Test new_vctr with explicit inherit_base_type.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_new_vctr_inherit(
     data: SEXP,
     class: Vec<String>,
@@ -31,7 +31,7 @@ pub fn test_new_vctr_inherit(
 }
 
 /// Test new_rcrd with the given field list and class name(s).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_new_rcrd(fields: SEXP, class: Vec<String>) -> Result<SEXP, String> {
     let fields = unsafe { List::from_raw(fields) };
     let class_refs: Vec<&str> = class.iter().map(|s| s.as_str()).collect();
@@ -39,7 +39,7 @@ pub fn test_new_rcrd(fields: SEXP, class: Vec<String>) -> Result<SEXP, String> {
 }
 
 /// Test new_list_of with a ptype.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_new_list_of_ptype(x: SEXP, ptype: SEXP, class: Vec<String>) -> Result<SEXP, String> {
     let x = unsafe { List::from_raw(x) };
     let class_refs: Vec<&str> = class.iter().map(|s| s.as_str()).collect();
@@ -47,7 +47,7 @@ pub fn test_new_list_of_ptype(x: SEXP, ptype: SEXP, class: Vec<String>) -> Resul
 }
 
 /// Test new_list_of with a size.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_new_list_of_size(x: SEXP, size: i32, class: Vec<String>) -> Result<SEXP, String> {
     let x = unsafe { List::from_raw(x) };
     let class_refs: Vec<&str> = class.iter().map(|s| s.as_str()).collect();
@@ -55,7 +55,7 @@ pub fn test_new_list_of_size(x: SEXP, size: i32, class: Vec<String>) -> Result<S
 }
 
 /// Get the VctrsBuildError message for a specific error type.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_vctrs_build_error_message(error_type: &str) -> String {
     let err: VctrsBuildError = match error_type {
         "not_a_vector" => VctrsBuildError::NotAVector,

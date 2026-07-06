@@ -15,7 +15,7 @@ use miniextendr_api::thread::RThreadBuilder;
 /// }
 /// @aliases unsafe_C_test_r_thread_builder unsafe_C_test_r_thread_builder_spawn_join
 ///   unsafe_C_test_spawn_with_r_lean_stack unsafe_C_test_stack_check_guard_lean
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
@@ -34,7 +34,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
 }
 
 /// Test RThreadBuilder spawn_join convenience method.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {

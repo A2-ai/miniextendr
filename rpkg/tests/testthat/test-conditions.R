@@ -3,22 +3,22 @@
 # region: AsRError structured error adapter (legacy path)
 
 test_that("AsRError propagates parse error", {
-  expect_error(test_condition_parse_int("not_a_number"), "invalid digit")
+  expect_error(miniextendr:::test_condition_parse_int("not_a_number"), "invalid digit")
 })
 
 test_that("AsRError passes through on success", {
-  expect_equal(test_condition_ok(), 42L)
+  expect_equal(miniextendr:::test_condition_ok(), 42L)
 })
 
 test_that("AsRError includes cause chain in error message", {
-  err <- tryCatch(test_condition_chained("abc"), error = function(e) e)
+  err <- tryCatch(miniextendr:::test_condition_chained("abc"), error = function(e) e)
   expect_true(grepl("config error", err$message))
   expect_true(grepl("caused by", err$message))
   expect_true(grepl("invalid digit", err$message))
 })
 
 test_that("AsRError chained succeeds on valid input", {
-  expect_equal(test_condition_chained("8"), 8L)
+  expect_equal(miniextendr:::test_condition_chained("8"), 8L)
 })
 
 # endregion
@@ -318,7 +318,7 @@ test_that("keyed builder sugar produces the same fields as a pair list", {
 })
 
 test_that("gc_stress_condition_data drives the richer payload path without error", {
-  expect_null(gc_stress_condition_data())
+  expect_null(miniextendr:::gc_stress_condition_data())
 })
 
 # endregion

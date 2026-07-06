@@ -6,8 +6,7 @@ use miniextendr_api::optionals::datafusion_impl::RSessionContext;
 
 // region: RSessionContext — SQL queries
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_sql_query(df: RecordBatch, sql: &str) -> RecordBatch {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("df", df).unwrap();
@@ -18,8 +17,7 @@ pub fn test_df_sql_query(df: RecordBatch, sql: &str) -> RecordBatch {
 
 // region: RDataFrame — lazy operations
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_select(df: RecordBatch, cols: Vec<String>) -> RecordBatch {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("t", df).unwrap();
@@ -32,8 +30,7 @@ pub fn test_df_select(df: RecordBatch, cols: Vec<String>) -> RecordBatch {
         .unwrap()
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_sort_limit(df: RecordBatch, col: &str, asc: bool, n: i32) -> RecordBatch {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("t", df).unwrap();
@@ -47,16 +44,14 @@ pub fn test_df_sort_limit(df: RecordBatch, col: &str, asc: bool, n: i32) -> Reco
         .unwrap()
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_columns(df: RecordBatch) -> Vec<String> {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("t", df).unwrap();
     ctx.sql("SELECT * FROM t").unwrap().columns()
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_chain(df: RecordBatch) -> RecordBatch {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("t", df).unwrap();
@@ -70,8 +65,7 @@ pub fn test_df_chain(df: RecordBatch) -> RecordBatch {
         .unwrap()
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_aggregate(df: RecordBatch) -> RecordBatch {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("t", df).unwrap();
@@ -85,8 +79,7 @@ pub fn test_df_aggregate(df: RecordBatch) -> RecordBatch {
         .unwrap()
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_global_agg(df: RecordBatch) -> RecordBatch {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("t", df).unwrap();
@@ -98,8 +91,7 @@ pub fn test_df_global_agg(df: RecordBatch) -> RecordBatch {
         .unwrap()
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_count(df: RecordBatch) -> i32 {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("t", df).unwrap();
@@ -117,8 +109,7 @@ pub fn test_df_count(df: RecordBatch) -> i32 {
 /// @param left Left RecordBatch.
 /// @param right Right RecordBatch.
 /// @param sql SQL query with tables "left_t" and "right_t".
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_df_join(left: RecordBatch, right: RecordBatch, sql: &str) -> RecordBatch {
     let ctx = RSessionContext::new();
     ctx.register_record_batch("left_t", left).unwrap();

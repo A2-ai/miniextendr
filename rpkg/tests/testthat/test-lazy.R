@@ -3,13 +3,13 @@
 # region: Lazy<Vec<T>>
 
 test_that("Lazy<Vec<f64>> returns correct numeric values", {
-  result <- test_lazy_vec_f64(5L)
+  result <- miniextendr:::test_lazy_vec_f64(5L)
   expect_type(result, "double")
   expect_length(result, 5)
   expect_equal(result, sin(0:4))
 })
 test_that("Lazy<Vec<i32>> returns ALTREP integer", {
-  result <- test_lazy_vec_i32(5L)
+  result <- miniextendr:::test_lazy_vec_i32(5L)
   expect_type(result, "integer")
   expect_equal(result, c(0L, 1L, 4L, 9L, 16L))
 })
@@ -19,20 +19,20 @@ test_that("Lazy<Vec<i32>> returns ALTREP integer", {
 # region: Lazy<Arrow arrays>
 
 test_that("Lazy<Float64Array> returns ALTREP numeric", {
-  result <- test_lazy_arrow_f64(5L)
+  result <- miniextendr:::test_lazy_arrow_f64(5L)
   expect_type(result, "double")
   expect_length(result, 5)
   expect_equal(result, (0:4) * 1.5)
 })
 
 test_that("Lazy<Int32Array> returns ALTREP integer", {
-  result <- test_lazy_arrow_i32(5L)
+  result <- miniextendr:::test_lazy_arrow_i32(5L)
   expect_type(result, "integer")
   expect_equal(result, c(0L, 10L, 20L, 30L, 40L))
 })
 
 test_that("Lazy<BooleanArray> returns ALTREP logical", {
-  result <- test_lazy_arrow_bool(5L)
+  result <- miniextendr:::test_lazy_arrow_bool(5L)
   expect_type(result, "logical")
   expect_length(result, 5)
   expect_true(result[1])
@@ -41,7 +41,7 @@ test_that("Lazy<BooleanArray> returns ALTREP logical", {
 })
 
 test_that("Lazy<Float64Array> with nulls becomes NA", {
-  result <- test_lazy_arrow_f64_with_nulls()
+  result <- miniextendr:::test_lazy_arrow_f64_with_nulls()
   expect_type(result, "double")
   expect_length(result, 5)
   expect_equal(result[1], 1.0)
@@ -52,14 +52,14 @@ test_that("Lazy<Float64Array> with nulls becomes NA", {
 })
 
 test_that("Lazy<StringArray> returns character on demand", {
-  result <- test_lazy_arrow_string()
+  result <- miniextendr:::test_lazy_arrow_string()
   expect_type(result, "character")
   expect_length(result, 3)
   expect_equal(result, c("hello", "world", "foo"))
 })
 
 test_that("Lazy<StringArray> with nulls becomes NA_character_", {
-  result <- test_lazy_arrow_string_with_nulls()
+  result <- miniextendr:::test_lazy_arrow_string_with_nulls()
   expect_type(result, "character")
   expect_length(result, 3)
   expect_equal(result[1], "a")
@@ -72,14 +72,14 @@ test_that("Lazy<StringArray> with nulls becomes NA_character_", {
 # region: Lazy<ndarray::Array1>
 
 test_that("Lazy<Array1<f64>> returns correct numeric values", {
-  result <- test_lazy_ndarray_f64(5L)
+  result <- miniextendr:::test_lazy_ndarray_f64(5L)
   expect_type(result, "double")
   expect_length(result, 5)
   expect_equal(result, (0:4) * 0.5)
 })
 
 test_that("Lazy<Array1<i32>> returns correct integer values", {
-  result <- test_lazy_ndarray_i32(5L)
+  result <- miniextendr:::test_lazy_ndarray_i32(5L)
   expect_type(result, "integer")
   expect_equal(result, 0L:4L)
 })
@@ -89,14 +89,14 @@ test_that("Lazy<Array1<i32>> returns correct integer values", {
 # region: Lazy<nalgebra::DVector>
 
 test_that("Lazy<DVector<f64>> returns correct numeric values", {
-  result <- test_lazy_nalgebra_f64(5L)
+  result <- miniextendr:::test_lazy_nalgebra_f64(5L)
   expect_type(result, "double")
   expect_length(result, 5)
   expect_equal(result, (0:4) * 2.0)
 })
 
 test_that("Lazy<DVector<i32>> returns correct integer values", {
-  result <- test_lazy_nalgebra_i32(5L)
+  result <- miniextendr:::test_lazy_nalgebra_i32(5L)
   expect_type(result, "integer")
   expect_equal(result, 0L:4L)
 })

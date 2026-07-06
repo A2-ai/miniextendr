@@ -1,7 +1,7 @@
-test_that("unsafe_C_unwind_protect_normal() returns value and drops resources", {
+test_that("miniextendr:::unsafe_C_unwind_protect_normal() returns value and drops resources", {
   # Drop messages are printed to stderr but can't be reliably captured in testthat.
   # Visual verification: you should see "[Rust] Dropped: stack/heap resource" in output.
-  result <- unsafe_C_unwind_protect_normal()
+  result <- miniextendr:::unsafe_C_unwind_protect_normal()
   expect_equal(result, 42L)
 })
 

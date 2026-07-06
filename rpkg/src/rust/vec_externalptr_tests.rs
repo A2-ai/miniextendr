@@ -94,7 +94,7 @@ pub fn veptr_make_bags_with_holes(n: i32) -> Vec<Option<ExternalPtr<Bag>>> {
 /// exists to stress. The list is held under `OwnedProtect` across the readback
 /// (which allocates). No arguments — suitable for the fast gctorture no-arg
 /// sweep (issues #827, #430).
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_vec_externalptr() {
     use miniextendr_api::OwnedProtect;
     use miniextendr_api::from_r::TryFromSexp;

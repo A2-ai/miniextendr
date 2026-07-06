@@ -117,5 +117,5 @@ test_that("tibbles work (inherit from data.frame)", {
 test_that("gc_stress_typed_dataframe runs without error", {
   # Smoke test — the gctorture nightly sweep exercises this under
   # gctorture(TRUE).
-  expect_null(gc_stress_typed_dataframe())
+  expect_null(miniextendr:::gc_stress_typed_dataframe())
 })

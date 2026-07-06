@@ -6,7 +6,7 @@
 # region: All-None → logical NA column
 
 test_that("Option<u64> all-None single row lands as logical NA", {
-  df <- test_columnar_opt_u64_all_none_single()
+  df <- miniextendr:::test_columnar_opt_u64_all_none_single()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 1L)
   expect_true(is.logical(df$stored))
@@ -16,7 +16,7 @@ test_that("Option<u64> all-None single row lands as logical NA", {
 })
 
 test_that("Option<u64> all-None multi-row lands as logical NA", {
-  df <- test_columnar_opt_u64_all_none_multi()
+  df <- miniextendr:::test_columnar_opt_u64_all_none_multi()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3L)
   expect_true(is.logical(df$stored))
@@ -24,7 +24,7 @@ test_that("Option<u64> all-None multi-row lands as logical NA", {
 })
 
 test_that("Option<String> all-None lands as logical NA", {
-  df <- test_columnar_opt_string_all_none()
+  df <- miniextendr:::test_columnar_opt_string_all_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.logical(df$label))
@@ -32,7 +32,7 @@ test_that("Option<String> all-None lands as logical NA", {
 })
 
 test_that("Option<bool> all-None lands as logical NA", {
-  df <- test_columnar_opt_bool_all_none()
+  df <- miniextendr:::test_columnar_opt_bool_all_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.logical(df$flag))
@@ -40,7 +40,7 @@ test_that("Option<bool> all-None lands as logical NA", {
 })
 
 test_that("Option<UserStruct> all-None: column lands as single logical NA column", {
-  df <- test_columnar_opt_user_struct_all_none()
+  df <- miniextendr:::test_columnar_opt_user_struct_all_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   # When every row is None for an Option<Struct>, the probe never sees any
@@ -52,7 +52,7 @@ test_that("Option<UserStruct> all-None: column lands as single logical NA column
 })
 
 test_that("Option<HashMap> all-None lands as logical NA", {
-  df <- test_columnar_opt_hashmap_all_none()
+  df <- miniextendr:::test_columnar_opt_hashmap_all_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.logical(df$attrs))
@@ -60,7 +60,7 @@ test_that("Option<HashMap> all-None lands as logical NA", {
 })
 
 test_that("Option<Vec<u8>> all-None lands as logical NA", {
-  df <- test_columnar_opt_bytes_all_none()
+  df <- miniextendr:::test_columnar_opt_bytes_all_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.logical(df$data))
@@ -72,7 +72,7 @@ test_that("Option<Vec<u8>> all-None lands as logical NA", {
 # region: Mixed Some/None — no downgrade
 
 test_that("Option<u64> mixed Some/None: numeric column with NA", {
-  df <- test_columnar_opt_u64_mixed()
+  df <- miniextendr:::test_columnar_opt_u64_mixed()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3L)
   expect_true(is.numeric(df$stored))
@@ -80,7 +80,7 @@ test_that("Option<u64> mixed Some/None: numeric column with NA", {
 })
 
 test_that("Option<String> mixed Some/None: character column with NA", {
-  df <- test_columnar_opt_string_mixed()
+  df <- miniextendr:::test_columnar_opt_string_mixed()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.character(df$label))
@@ -92,7 +92,7 @@ test_that("Option<String> mixed Some/None: character column with NA", {
 # region: Vec<u8> with values stays a list column
 
 test_that("Vec<u8> with values is still a list column", {
-  df <- test_columnar_bytes_with_values()
+  df <- miniextendr:::test_columnar_bytes_with_values()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.list(df$data))
@@ -106,7 +106,7 @@ test_that("Vec<u8> with values is still a list column", {
 # region: Mixed columns — bytes stays list, opt-none downgrades
 
 test_that("Vec<u8> column stays list; adjacent all-None Option<u64> downgrades", {
-  df <- test_columnar_bytes_and_opt_none()
+  df <- miniextendr:::test_columnar_bytes_and_opt_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   # raw bytes column: still a list
@@ -121,7 +121,7 @@ test_that("Vec<u8> column stays list; adjacent all-None Option<u64> downgrades",
 # region: Enum union
 
 test_that("enum all-variant-A with x=None: x column is logical NA", {
-  df <- test_columnar_enum_all_none()
+  df <- miniextendr:::test_columnar_enum_all_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.logical(df$x))
@@ -132,7 +132,7 @@ test_that("enum with one variant-B x=Some(42): x column is numeric with NA in ro
   # Two-phase discovery: the probe scans ALL rows before resolving the schema.
   # Variant-B's x=Some(42u64) contributes Scalar(Real), which beats Scalar(Generic)
   # from variant-A's x=None.  The column is numeric, not a list.
-  df <- test_columnar_enum_some_flips_type()
+  df <- miniextendr:::test_columnar_enum_some_flips_type()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.numeric(df$x))
@@ -145,7 +145,7 @@ test_that("enum with one variant-B x=Some(42): x column is numeric with NA in ro
 # region: Flatten with all-None inner field
 
 test_that("serde(flatten) with all-None inner Option field: column is logical NA", {
-  df <- test_columnar_flatten_all_none()
+  df <- miniextendr:::test_columnar_flatten_all_none()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_equal(df$id, c(1L, 2L))
@@ -163,8 +163,8 @@ test_that("serde(flatten) with all-None inner Option field: column is logical NA
 # region: R coercion smoke tests
 
 test_that("logical NA column coerces to numeric when combined with numeric values", {
-  df_none <- test_columnar_opt_u64_all_none_multi()
-  df_some <- test_columnar_opt_u64_mixed()
+  df_none <- miniextendr:::test_columnar_opt_u64_all_none_multi()
+  df_some <- miniextendr:::test_columnar_opt_u64_mixed()
 
   # bind_rows coerces the logical NA column to the numeric column type
   if (requireNamespace("dplyr", quietly = TRUE)) {
@@ -181,8 +181,8 @@ test_that("logical NA column coerces to numeric when combined with numeric value
 })
 
 test_that("logical NA column coerces to character when combined with character values", {
-  df_none <- test_columnar_opt_string_all_none()
-  df_some <- test_columnar_opt_string_mixed()
+  df_none <- miniextendr:::test_columnar_opt_string_all_none()
+  df_some <- miniextendr:::test_columnar_opt_string_mixed()
 
   if (requireNamespace("dplyr", quietly = TRUE)) {
     combined <- dplyr::bind_rows(df_none, df_some)
@@ -200,7 +200,7 @@ test_that("logical NA column coerces to character when combined with character v
 # region: Schema upgrade — first-row-None then Some
 
 test_that("first-row-None scalar upgrades to numeric when later row has Some(42u64)", {
-  df <- test_columnar_schema_upgrade_scalar()
+  df <- miniextendr:::test_columnar_schema_upgrade_scalar()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true(is.numeric(df$x))
@@ -209,7 +209,7 @@ test_that("first-row-None scalar upgrades to numeric when later row has Some(42u
 })
 
 test_that("first-row-None nested struct: columns point_x and point_y appear, row 1 has NA", {
-  df <- test_columnar_schema_upgrade_nested()
+  df <- miniextendr:::test_columnar_schema_upgrade_nested()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   # Must have per-subfield columns, NOT a single "point" column
@@ -225,7 +225,7 @@ test_that("first-row-None nested struct: columns point_x and point_y appear, row
 })
 
 test_that("multiple leading None rows then Some(42): numeric column with NAs at 1,2,4", {
-  df <- test_columnar_schema_upgrade_multi_none_first()
+  df <- miniextendr:::test_columnar_schema_upgrade_multi_none_first()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 4L)
   expect_true(is.numeric(df$x))
@@ -241,7 +241,7 @@ test_that("compound-vs-compound different shapes: both field sets discovered", {
   # so both 'value' and 'extra' are found regardless of order.
   # TODO: union recursion — when one key maps to two different Compound shapes, only
   # the first Compound wins.  This test verifies existing-wins semantics remain stable.
-  df <- test_columnar_compound_different_shapes()
+  df <- miniextendr:::test_columnar_compound_different_shapes()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 2L)
   expect_true("value" %in% names(df))

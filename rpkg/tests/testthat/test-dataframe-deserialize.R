@@ -10,22 +10,22 @@
 
 test_that("gc_stress_dataframe_to_vec — returns expected row count", {
   skip_if_not(
-    exists("gc_stress_dataframe_to_vec", mode = "function"),
+    exists("gc_stress_dataframe_to_vec", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_dataframe_to_vec not compiled (serde feature missing)"
   )
-  n <- gc_stress_dataframe_to_vec()
+  n <- miniextendr:::gc_stress_dataframe_to_vec()
   expect_equal(n, 10L)
 })
 
 test_that("gc_stress_dataframe_to_vec — survives gctorture(TRUE)", {
   skip_if_not(
-    exists("gc_stress_dataframe_to_vec", mode = "function"),
+    exists("gc_stress_dataframe_to_vec", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_dataframe_to_vec not compiled (serde feature missing)"
   )
   old <- gctorture(TRUE)
   on.exit(gctorture(old), add = TRUE)
 
-  n <- gc_stress_dataframe_to_vec()
+  n <- miniextendr:::gc_stress_dataframe_to_vec()
   expect_equal(n, 10L)
 })
 
@@ -35,22 +35,22 @@ test_that("gc_stress_dataframe_to_vec — survives gctorture(TRUE)", {
 
 test_that("gc_stress_dataframe_to_vec_nested — returns expected row count", {
   skip_if_not(
-    exists("gc_stress_dataframe_to_vec_nested", mode = "function"),
+    exists("gc_stress_dataframe_to_vec_nested", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_dataframe_to_vec_nested not compiled (serde feature missing)"
   )
-  n <- gc_stress_dataframe_to_vec_nested()
+  n <- miniextendr:::gc_stress_dataframe_to_vec_nested()
   expect_equal(n, 10L)
 })
 
 test_that("gc_stress_dataframe_to_vec_nested — survives gctorture(TRUE)", {
   skip_if_not(
-    exists("gc_stress_dataframe_to_vec_nested", mode = "function"),
+    exists("gc_stress_dataframe_to_vec_nested", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_dataframe_to_vec_nested not compiled (serde feature missing)"
   )
   old <- gctorture(TRUE)
   on.exit(gctorture(old), add = TRUE)
 
-  n <- gc_stress_dataframe_to_vec_nested()
+  n <- miniextendr:::gc_stress_dataframe_to_vec_nested()
   expect_equal(n, 10L)
 })
 
@@ -60,23 +60,23 @@ test_that("gc_stress_dataframe_to_vec_nested — survives gctorture(TRUE)", {
 
 test_that("gc_stress_with_dataframe_rows — returns expected sum", {
   skip_if_not(
-    exists("gc_stress_with_dataframe_rows", mode = "function"),
+    exists("gc_stress_with_dataframe_rows", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_with_dataframe_rows not compiled (serde feature missing)"
   )
   # rows 0..9, value = i * 2.0; sum = 2*(0+1+...+9) = 2*45 = 90
-  total <- gc_stress_with_dataframe_rows()
+  total <- miniextendr:::gc_stress_with_dataframe_rows()
   expect_equal(total, 90.0)
 })
 
 test_that("gc_stress_with_dataframe_rows — survives gctorture(TRUE)", {
   skip_if_not(
-    exists("gc_stress_with_dataframe_rows", mode = "function"),
+    exists("gc_stress_with_dataframe_rows", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_with_dataframe_rows not compiled (serde feature missing)"
   )
   old <- gctorture(TRUE)
   on.exit(gctorture(old), add = TRUE)
 
-  total <- gc_stress_with_dataframe_rows()
+  total <- miniextendr:::gc_stress_with_dataframe_rows()
   expect_equal(total, 90.0)
 })
 
@@ -86,24 +86,24 @@ test_that("gc_stress_with_dataframe_rows — survives gctorture(TRUE)", {
 
 test_that("gc_stress_factor_labels — round-trips factor column to labels", {
   skip_if_not(
-    exists("gc_stress_factor_labels", mode = "function"),
+    exists("gc_stress_factor_labels", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_factor_labels not compiled (serde feature missing)"
   )
   # Fixture builds 30 rows cycling 1..3 over levels c("active","pending","archived")
   # with NA cells at i %% 7 == 0.
-  n <- gc_stress_factor_labels()
+  n <- miniextendr:::gc_stress_factor_labels()
   expect_equal(n, 30L)
 })
 
 test_that("gc_stress_factor_labels — survives gctorture(TRUE)", {
   skip_if_not(
-    exists("gc_stress_factor_labels", mode = "function"),
+    exists("gc_stress_factor_labels", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_factor_labels not compiled (serde feature missing)"
   )
   old <- gctorture(TRUE)
   on.exit(gctorture(old), add = TRUE)
 
-  n <- gc_stress_factor_labels()
+  n <- miniextendr:::gc_stress_factor_labels()
   expect_equal(n, 30L)
 })
 

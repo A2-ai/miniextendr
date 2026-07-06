@@ -153,7 +153,7 @@ test_that("struct-in-struct flatten — survives gctorture (basic)", {
   # The fixture itself returns a built data.frame. gctorture is the harness's
   # job in nightly; here we at least verify the SEXP shape is sane under
   # normal GC.
-  res <- gc_stress_struct_flatten()
+  res <- miniextendr:::gc_stress_struct_flatten()
   expect_s3_class(res, "data.frame")
   expect_identical(colnames(res), c("id", "origin_x", "origin_y"))
   expect_equal(nrow(res), 32L)
@@ -163,7 +163,7 @@ test_that("struct-in-struct flatten — survives gctorture (basic)", {
 })
 
 test_that("struct-in-struct flatten — survives gctorture (nested)", {
-  res <- gc_stress_struct_flatten_nested()
+  res <- miniextendr:::gc_stress_struct_flatten_nested()
   expect_s3_class(res, "data.frame")
   expect_identical(colnames(res), c("id", "inner_a", "inner_sub_depth"))
   expect_equal(nrow(res), 16L)

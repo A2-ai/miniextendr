@@ -10,8 +10,7 @@ use miniextendr_api::prelude::{SEXP, SexpExt};
 /// Returns a character vector: c(is_altrep, sexptype, length).
 ///
 /// @param x A SEXP to inspect.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_altrep_sexp_check(x: SEXP) -> SEXP {
@@ -71,8 +70,7 @@ pub fn altrep_sexp_materialize_strings(x: AltrepSexp) -> Vec<Option<String>> {
 /// then materializes and converts normally.
 ///
 /// @param x A SEXP to materialize.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_altrep_ensure_materialized_int(x: SEXP) -> SEXP {
@@ -87,8 +85,7 @@ pub extern "C-unwind" fn C_altrep_ensure_materialized_int(x: SEXP) -> SEXP {
 /// Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection.
 ///
 /// @param x A SEXP to materialize.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_altrep_ensure_materialized_str(x: SEXP) -> SEXP {
@@ -103,8 +100,7 @@ pub extern "C-unwind" fn C_altrep_ensure_materialized_str(x: SEXP) -> SEXP {
 /// Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection.
 ///
 /// @param x A SEXP to check.
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_altrep_sexp_is_altrep(x: SEXP) -> SEXP {

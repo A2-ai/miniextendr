@@ -11,7 +11,7 @@ pub fn greet(#[miniextendr(default = "\"World\"")] name: String) -> String {
 
 /// Test greeting with a hidden default parameter.
 /// @param name Character name to greet (defaults to "World").
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn greet_hidden(#[miniextendr(default = "\"World\"")] name: String) -> String {
     format!("Hello, {}!", name)
 }

@@ -90,8 +90,7 @@ pub fn create_large_par_events(n: i32) -> DataFrame {
 /// parallel region itself makes no R API calls. Driving this under gctorture
 /// proves the extraction step's PROTECT discipline holds before rayon takes over.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_dataframe_par_reader() {
     use miniextendr_api::into_r::IntoR as _;
 

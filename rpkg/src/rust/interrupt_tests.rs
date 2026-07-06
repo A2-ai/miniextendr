@@ -5,7 +5,7 @@ use miniextendr_api::prelude::SEXP;
 use miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise;
 
 /// Test R_CheckUserInterrupt after a 2-second sleep.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_check_interupt_after() -> SEXP {
@@ -20,7 +20,7 @@ pub extern "C-unwind" fn C_check_interupt_after() -> SEXP {
 }
 
 /// Test R_CheckUserInterrupt inside with_r_unwind_protect_or_raise after a 2-second sleep.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {

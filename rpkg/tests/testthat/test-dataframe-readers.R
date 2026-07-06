@@ -126,8 +126,8 @@ test_that("readers handle a zero-row data.frame", {
 })
 
 test_that("reader gctorture fixtures drive the struct-flatten read path", {
-  expect_no_error(gc_stress_reader_struct_flatten())
-  expect_no_error(gc_stress_reader_nested_flatten())
+  expect_no_error(miniextendr:::gc_stress_reader_struct_flatten())
+  expect_no_error(miniextendr:::gc_stress_reader_nested_flatten())
 })
 
 # region: opaque list-column readers (#809) ------------------------------------
@@ -168,7 +168,7 @@ test_that("opaque list-column reader handles empty per-row collections", {
 })
 
 test_that("reader gctorture fixtures drive the list-column read path", {
-  expect_no_error(gc_stress_reader_list_column())
+  expect_no_error(miniextendr:::gc_stress_reader_list_column())
 })
 
 # region: map-column readers (#764) --------------------------------------------
@@ -220,7 +220,7 @@ test_that("map-column reader handles a zero-row data.frame", {
 })
 
 test_that("reader gctorture fixture drives the map-column read path", {
-  expect_no_error(gc_stress_reader_map_column())
+  expect_no_error(miniextendr:::gc_stress_reader_map_column())
 })
 
 # region: non-String-keyed map readers (#919) -----------------------------------
@@ -251,7 +251,7 @@ test_that("BTreeMap<i32, f64> parallel list-columns round-trip (parallel)", {
 })
 
 test_that("non-String-keyed map gctorture fixture exercises empty-map row", {
-  expect_no_error(gc_stress_reader_int_map())
+  expect_no_error(miniextendr:::gc_stress_reader_int_map())
 })
 
 # endregion

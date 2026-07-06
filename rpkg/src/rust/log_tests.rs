@@ -2,32 +2,27 @@
 
 use miniextendr_api::miniextendr;
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_log_info(msg: &str) {
     log::info!("{msg}");
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_log_warn(msg: &str) {
     log::warn!("{msg}");
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_log_error(msg: &str) {
     log::error!("{msg}");
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_log_set_level(level: &str) {
     miniextendr_api::optionals::log_impl::set_log_level(level);
 }
 
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn test_log_debug(msg: &str) {
     log::debug!("{msg}");
 }

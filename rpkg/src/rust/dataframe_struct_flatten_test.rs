@@ -396,7 +396,7 @@ pub fn qual_located_basic() -> DataFrame {
 
 /// Drives flattening with a non-trivial row count under gctorture.
 /// Pairs with the existing `rpkg/src/rust/gc_stress_fixtures.rs` sweep.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_struct_flatten() -> List {
     let rows: Vec<FlatLocated> = (0..32)
         .map(|i| FlatLocated {
@@ -413,7 +413,7 @@ pub fn gc_stress_struct_flatten() -> List {
 }
 
 /// Drives nested flattening under gctorture.
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_struct_flatten_nested() -> List {
     let rows: Vec<FlatNested> = (0..16)
         .map(|i| FlatNested {

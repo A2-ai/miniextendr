@@ -5,7 +5,7 @@ use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
 /// Non-API Thread Tests
 ///
 /// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
-#[miniextendr]
+#[miniextendr(noexport)]
 /// @name rpkg_nonapi
 /// @keywords internal
 /// @examples
@@ -28,7 +28,7 @@ pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
 }
 
 /// Test StackCheckGuard with Rust's default 2 MiB stack.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {

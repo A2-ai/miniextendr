@@ -104,15 +104,15 @@ test_that("re_map_h: HashMap map-column round-trips (order-independent)", {
 })
 
 test_that("gc stress: enum flatten reader runs clean", {
-  expect_no_error(gc_stress_reader_enum_flatten())
+  expect_no_error(miniextendr:::gc_stress_reader_enum_flatten())
 })
 
 test_that("gc stress: enum factor reader runs clean", {
-  expect_no_error(gc_stress_reader_enum_factor())
+  expect_no_error(miniextendr:::gc_stress_reader_enum_factor())
 })
 
 test_that("gc stress: enum map reader runs clean", {
-  expect_no_error(gc_stress_reader_enum_map())
+  expect_no_error(miniextendr:::gc_stress_reader_enum_map())
 })
 
 test_that("re_scalar: parallel round-trip matches sequential", {

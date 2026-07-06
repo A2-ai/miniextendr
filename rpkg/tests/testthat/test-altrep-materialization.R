@@ -84,10 +84,10 @@ test_that("sum then dataptr on same object", {
   lazy <- lazy_int_seq(1L, 100L, 1L)
   # sum uses O(1) formula, no materialization
   expect_equal(sum(lazy), 5050L)
-  expect_false(unsafe_C_lazy_int_seq_is_materialized(lazy))
+  expect_false(miniextendr:::unsafe_C_lazy_int_seq_is_materialized(lazy))
   # Now force materialization
   y <- lazy + 0L
-  expect_true(unsafe_C_lazy_int_seq_is_materialized(lazy))
+  expect_true(miniextendr:::unsafe_C_lazy_int_seq_is_materialized(lazy))
   expect_equal(y, 1:100)
   # sum again after materialization
   expect_equal(sum(lazy), 5050L)
@@ -126,11 +126,11 @@ test_that("serialized ALTREP materializes correctly after round-trip", {
   # Serialize + unserialize
   lazy2 <- unserialize(serialize(lazy, NULL))
   # The unserialized version should not be materialized
-  expect_false(unsafe_C_lazy_int_seq_is_materialized(lazy2))
+  expect_false(miniextendr:::unsafe_C_lazy_int_seq_is_materialized(lazy2))
   # Materialize the round-tripped version
   y <- lazy2 + 0L
   expect_equal(y, 1:30)
-  expect_true(unsafe_C_lazy_int_seq_is_materialized(lazy2))
+  expect_true(miniextendr:::unsafe_C_lazy_int_seq_is_materialized(lazy2))
   # Original should still work
   expect_equal(lazy[15], 15L)
 })

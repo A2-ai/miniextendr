@@ -24,7 +24,7 @@ impl Drop for SimpleDropMsg {
 /// }
 /// @aliases unsafe_C_unwind_protect_normal unsafe_C_unwind_protect_r_error
 ///   unsafe_C_unwind_protect_lowlevel_test
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
@@ -39,7 +39,7 @@ pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
 }
 
 /// Test with_r_unwind_protect_or_raise cleanup when an R error is triggered.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
@@ -70,7 +70,7 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
 }
 
 /// Test low-level with_r_unwind_protect_or_raise that triggers an R error directly.
-#[miniextendr]
+#[miniextendr(noexport)]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {

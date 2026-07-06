@@ -53,8 +53,7 @@ pub fn unified_roundtrip_count(df: SEXP) -> i32 {
 /// reader while the assembled `DataFrame` SEXP is held live across the second
 /// allocation — the window where a GC barrier bug would surface.
 ///
-/// @export
-#[miniextendr]
+#[miniextendr(noexport)]
 pub fn gc_stress_unified_dataframe() {
     let rows: Vec<UnifiedPoint> = (0..16)
         .map(|i| UnifiedPoint {
