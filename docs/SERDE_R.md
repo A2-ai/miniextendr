@@ -53,10 +53,10 @@ miniextendr-api = { version = "0.1", features = ["serde_full"] }
 
 | R Type | Rust Type | Notes |
 |--------|-----------|-------|
-| `logical(1)` | `bool` | NA → error or `Option::None` |
-| `integer(1)` | `i32` | NA → error or `Option::None` |
-| `numeric(1)` | `f64` | NA → error or `Option::None` |
-| `character(1)` | `String` | NA → error or `Option::None` |
+| `logical(1)` | `bool` | Bare (non-`Option`) target: NA is an error |
+| `integer(1)` | `i32` | Bare (non-`Option`) target: NA is an error |
+| `numeric(1)` | `f64` | Bare (non-`Option`) target: NA is an error |
+| `character(1)` | `String` | Bare (non-`Option`) target: NA is an error |
 | `integer` vector | `Vec<i32>` | |
 | `numeric` vector | `Vec<f64>` | |
 | `logical` vector | `Vec<bool>` | |
@@ -65,6 +65,17 @@ miniextendr-api = { version = "0.1", features = ["serde_full"] }
 | named `list` | struct / `HashMap` | Field matching |
 | unnamed `list` | `Vec<T>` / tuple | Positional |
 | `NULL` | `()` / `Option::None` | |
+| `NA` (any of the four above) or `NULL` | `Option<T>::None` | See [NA/NULL Handling](#nanull-handling) below |
+
+**Input-side contract (audit A5):** a typed scalar `NA` reaching a *bare*
+(non-`Option`) field is a genuine missingness error and is rejected — it is
+never silently coerced. An `Option<T>` field accepts *either* `NA` or `NULL`
+as `None`. This matches the macro `TryFromSexp` convention documented in
+[`CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md) (see its `Option<T>` table),
+so the two conversion layers now agree on what counts as "missing" on input.
+Output-side conventions remain per-layer and unchanged: `serde_r`'s `to_r()`
+always serializes `None` to `NULL` (see the Serialization table above), while
+the macro's scalar `IntoR` serializes `None` to `NA`.
 
 ## Basic Usage
 
@@ -155,8 +166,8 @@ Use `Option<T>` to represent potentially missing values:
 #[derive(Serialize, Deserialize, ExternalPtr)]
 pub struct Record {
     pub id: i32,                    // Required
-    pub name: Option<String>,       // Optional (can be NULL)
-    pub value: Option<f64>,         // Optional (can be NULL)
+    pub name: Option<String>,       // Optional (can be NULL or NA_character_)
+    pub value: Option<f64>,         // Optional (can be NULL or NA_real_)
 }
 ```
 
@@ -165,12 +176,22 @@ From R:
 # Create with all values
 r1 <- Record$from_r(list(id = 1L, name = "test", value = 3.14))
 
-# Create with missing values
+# Create with missing values -- NULL and the type-appropriate NA sentinel
+# are equivalent inputs for an Option<T> field (audit A5).
 r2 <- Record$from_r(list(id = 2L, name = NULL, value = NULL))
+r3 <- Record$from_r(list(id = 3L, name = NA_character_, value = NA_real_))
 
-# Serialize back
+# Serialize back -- serde_r's output convention is always NULL for None,
+# regardless of whether NA or NULL was the input.
 r2$to_r()
 # list(id = 2L, name = NULL, value = NULL)
+r3$to_r()
+# list(id = 3L, name = NULL, value = NULL)
+
+# `id` is a bare (non-Option) i32: a typed NA there is a genuine
+# missingness error, not an absence signal, so this still fails.
+Record$from_r(list(id = NA_integer_, name = "test", value = 3.14))
+# Error: unexpected NA value
 ```
 
 ## Nested Structures

@@ -466,6 +466,38 @@ pub fn serde_r_deserialize_string(sexp: SEXP) -> String {
     from_r(sexp).expect("deserialize string")
 }
 
+/// Test deserializing NA or NULL to `Option<i32>::None` via serde_r (audit A5).
+///
+/// Unlike the bare `i32` path (see [`serde_r_deserialize_wrong_type`]), an
+/// `Option<i32>` field accepts *either* `NA_integer_` or `NULL` as `None`,
+/// matching the macro `TryFromSexp` convention.
+/// @param sexp `NA_integer_`, `NULL`, or an integer scalar.
+#[miniextendr]
+pub fn serde_r_deserialize_option_i32(sexp: SEXP) -> Result<Option<i32>, String> {
+    from_r(sexp).map_err(|e: RSerdeError| e.to_string())
+}
+
+/// Test deserializing NA or NULL to `Option<f64>::None` via serde_r (audit A5).
+/// @param sexp `NA_real_`, `NULL`, or a numeric scalar.
+#[miniextendr]
+pub fn serde_r_deserialize_option_f64(sexp: SEXP) -> Result<Option<f64>, String> {
+    from_r(sexp).map_err(|e: RSerdeError| e.to_string())
+}
+
+/// Test deserializing NA or NULL to `Option<bool>::None` via serde_r (audit A5).
+/// @param sexp `NA`, `NULL`, or a logical scalar.
+#[miniextendr]
+pub fn serde_r_deserialize_option_bool(sexp: SEXP) -> Result<Option<bool>, String> {
+    from_r(sexp).map_err(|e: RSerdeError| e.to_string())
+}
+
+/// Test deserializing NA or NULL to `Option<String>::None` via serde_r (audit A5).
+/// @param sexp `NA_character_`, `NULL`, or a character scalar.
+#[miniextendr]
+pub fn serde_r_deserialize_option_string(sexp: SEXP) -> Result<Option<String>, String> {
+    from_r(sexp).map_err(|e: RSerdeError| e.to_string())
+}
+
 /// Test deserializing an R integer vector to Vec<i32> then re-serializing.
 /// @param sexp R integer vector to roundtrip.
 #[miniextendr]
