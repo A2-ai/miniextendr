@@ -11,7 +11,8 @@ use_miniextendr_git_hooks(
 )
 }
 \arguments{
-\item{path}{Path to the R package (or monorepo) root.}
+\item{path}{Path to the R package (or monorepo) directory. The enclosing git
+repository is discovered from here; the package need not be the repo root.}
 
 \item{hooks}{Character vector of hook names to install. Defaults to
 \code{c("pre-commit", "post-merge")}.}
@@ -40,4 +41,12 @@ build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
 
 Existing hooks are preserved: if a hook file already exists, the miniextendr
 hook is appended as a sourced fragment so both run.
+
+Git hooks belong to the \strong{enclosing repository}, regardless of where the
+package sits inside it. This matches \code{\link[=use_miniextendr]{use_miniextendr()}}'s worldview: a
+package nested somewhere under a repo root, or scaffolded at the root of a
+linked git worktree, still gets its hooks installed in that repo. The hooks
+directory is resolved through git itself (\verb{git rev-parse --git-path hooks}),
+so nesting, linked worktrees (whose \code{.git} is a file, not a directory), and
+a configured \code{core.hooksPath} are all honoured.
 }

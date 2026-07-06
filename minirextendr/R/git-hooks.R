@@ -22,7 +22,16 @@ miniextendr_hook_marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\
 #' Existing hooks are preserved: if a hook file already exists, the miniextendr
 #' hook is appended as a sourced fragment so both run.
 #'
-#' @param path Path to the R package (or monorepo) root.
+#' Git hooks belong to the **enclosing repository**, regardless of where the
+#' package sits inside it. This matches [use_miniextendr()]'s worldview: a
+#' package nested somewhere under a repo root, or scaffolded at the root of a
+#' linked git worktree, still gets its hooks installed in that repo. The hooks
+#' directory is resolved through git itself (`git rev-parse --git-path hooks`),
+#' so nesting, linked worktrees (whose `.git` is a file, not a directory), and
+#' a configured `core.hooksPath` are all honoured.
+#'
+#' @param path Path to the R package (or monorepo) directory. The enclosing git
+#'   repository is discovered from here; the package need not be the repo root.
 #' @param hooks Character vector of hook names to install. Defaults to
 #'   `c("pre-commit", "post-merge")`.
 #' @param force If `TRUE`, replaces an existing miniextendr hook section with
@@ -35,13 +44,13 @@ use_miniextendr_git_hooks <- function(path = ".", hooks = miniextendr_hook_names
   with_project(path)
   changed <- FALSE
 
-  git_dir <- tryCatch(usethis::proj_path(".git"), error = function(e) NULL)
-  if (is.null(git_dir) || !dir.exists(git_dir)) {
-    cli::cli_alert_warning("No .git directory found. Initialize git first with {.code usethis::use_git()}.")
+  proj_dir <- usethis::proj_get()
+  hooks_dir <- resolve_git_hooks_dir(proj_dir)
+  if (is.null(hooks_dir)) {
+    cli::cli_alert_warning("No git repository found for {.path {proj_dir}}. Initialize git first with {.code usethis::use_git()}.")
     return(invisible(FALSE))
   }
 
-  hooks_dir <- file.path(git_dir, "hooks")
   if (!dir.exists(hooks_dir)) {
     dir.create(hooks_dir, recursive = TRUE)
   }
@@ -110,18 +119,22 @@ use_miniextendr_git_hooks <- function(path = ".", hooks = miniextendr_hook_names
 
 #' Check if miniextendr git hooks are installed
 #'
-#' @param path Path to the R package root.
+#' Resolves the hooks directory through git (the same way
+#' [use_miniextendr_git_hooks()] installs them), so the check agrees with the
+#' installer for nested packages, linked worktrees, and a configured
+#' `core.hooksPath`.
+#'
+#' @param path Path to the R package directory (the enclosing git repository is
+#'   discovered from here).
 #' @return Named logical vector indicating which hooks are installed.
 #' @keywords internal
 has_miniextendr_git_hooks <- function(path = ".") {
-  git_dir <- file.path(path, ".git")
-  if (!dir.exists(git_dir)) {
+  hooks_dir <- resolve_git_hooks_dir(path)
+  if (is.null(hooks_dir) || !dir.exists(hooks_dir)) {
     result <- rep(FALSE, length(miniextendr_hook_names))
     names(result) <- miniextendr_hook_names
     return(result)
   }
-
-  hooks_dir <- file.path(git_dir, "hooks")
 
   result <- vapply(miniextendr_hook_names, function(name) {
     hook_file <- file.path(hooks_dir, name)
@@ -131,6 +144,47 @@ has_miniextendr_git_hooks <- function(path = ".") {
   }, logical(1))
 
   result
+}
+
+#' Resolve the git hooks directory for a package directory
+#'
+#' Asks git itself where hooks live, from the perspective of `proj_dir`:
+#' `git rev-parse --git-path hooks`. Going through git (rather than assuming
+#' `<proj>/.git/hooks`) means the result is correct when
+#'
+#' - the package is nested inside a larger repo (the enclosing repo's hooks dir
+#'   is returned, not a non-existent `<proj>/.git`);
+#' - `proj_dir` is a linked git worktree, whose `.git` is a *file* (a gitlink)
+#'   rather than a directory — git returns the common hooks dir;
+#' - `core.hooksPath` is configured (git >= 2.36 reflects it here — verified
+#'   against this repo's own `core.hooksPath = .githooks`).
+#'
+#' `--git-path` yields a path relative to the current directory; `run_command()`
+#' runs git with the working directory set to `proj_dir`, so a relative result
+#' is anchored there before being normalised to an absolute path.
+#'
+#' @param proj_dir Package directory to resolve from.
+#' @return Absolute path to the hooks directory, or `NULL` when git is
+#'   unavailable or `proj_dir` is not inside a git repository.
+#' @keywords internal
+resolve_git_hooks_dir <- function(proj_dir) {
+  if (!nzchar(Sys.which("git"))) {
+    return(NULL)
+  }
+  res <- run_command("git", c("rev-parse", "--git-path", "hooks"), wd = proj_dir)
+  status <- attr(res, "status")
+  # Non-zero exit means git found no repository (or errored) -- treat as "no repo".
+  if (!is.null(status) && !identical(as.integer(status), 0L)) {
+    return(NULL)
+  }
+  hooks_path <- trimws(paste(res, collapse = "\n"))
+  if (!nzchar(hooks_path)) {
+    return(NULL)
+  }
+  if (!is_absolute_path(hooks_path)) {
+    hooks_path <- file.path(proj_dir, hooks_path)
+  }
+  normalizePath(hooks_path, mustWork = FALSE)
 }
 
 #' Strip miniextendr section from a hook file's lines
