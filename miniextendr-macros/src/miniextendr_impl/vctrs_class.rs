@@ -29,6 +29,13 @@ use super::{ParsedImpl, VctrsKind};
 /// - Static methods: regular functions named `<class>_<method>(...)`
 ///
 /// Roxygen2 documentation and `@importFrom vctrs ...` tags are generated automatically.
+/// A class-level `@noRd` (or a plain `noexport` without `internal`) suppresses the Rd
+/// contribution of every block — self-coercion methods, instance-method generics, and
+/// instance/static method docs all collapse to `@noRd` (#1180), like the other five
+/// class-system generators. S3 `S3method()` dispatch registration (`@method` +
+/// `@export`) is kept unconditionally: vctrs generics dispatch from the vctrs
+/// namespace, so an unregistered method would leave even a gated class non-functional
+/// (and roxygen2 warns on any recognized-but-unregistered S3 method).
 pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
@@ -41,6 +48,23 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let vctrs_attrs = &parsed_impl.vctrs_attrs;
     let should_export =
         should_export_from_tags(class_doc_tags, parsed_impl.noexport || parsed_impl.internal);
+    // Check if the class has @noRd — if so, skip method documentation (#1180). A
+    // plain `noexport` (without `internal`) is folded into the gate too: it must
+    // suppress Rd contribution entirely (audit A10 semantics), matching the other
+    // five class generators. `internal` keeps full docs (the constructor's
+    // ClassDocBuilder adds `@keywords internal`); `should_export` (above) gates
+    // the export()-shaped surface (custom S3 generics) and is always false when
+    // this gate is true.
+    //
+    // S3-method-shaped emissions (`vec_ptype_abbr`/`vec_ptype2`/`vec_cast`,
+    // protocol overrides, instance methods) keep their `@method` + `@export`
+    // pair unconditionally: with `@method`, `@export` produces an `S3method()`
+    // dispatch registration in NAMESPACE — not an `export()` — and both
+    // roxygen2 (`warn_missing_s3_exports`) and vctrs itself (generics dispatch
+    // from the vctrs namespace) require registered methods. A gated class stays
+    // hidden (no Rd page, no `export()` entries) but remains a functioning vctr.
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd")
+        || (parsed_impl.noexport && !parsed_impl.internal);
 
     // Constructor name follows vctrs convention: new_<class>
     let ctor_name = format!("new_{}", class_name.to_lowercase());
@@ -123,11 +147,15 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // vec_ptype_abbr for compact printing (if abbr is specified)
     if let Some(abbr) = &vctrs_attrs.abbr {
-        lines.push(format!("#' @rdname {}", class_name));
-        lines.push(format!("#' @method vec_ptype_abbr {}", class_name));
-        if should_export {
-            lines.push("#' @export".to_string());
+        if class_has_no_rd {
+            // Gated class (@noRd / plain noexport): no Rd contribution — keep
+            // only the @method + @export S3method() registration pair.
+            lines.push("#' @noRd".to_string());
+        } else {
+            lines.push(format!("#' @rdname {}", class_name));
         }
+        lines.push(format!("#' @method vec_ptype_abbr {}", class_name));
+        lines.push("#' @export".to_string());
         lines.push(format!(
             "vec_ptype_abbr.{} <- function(x, ...) \"{}\"",
             class_name, abbr
@@ -137,17 +165,23 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Self-coercion methods (required for vctrs to work properly)
     // vec_ptype2.<class>.<class> - returns prototype for combining same types
-    lines.push(format!("#' @rdname {}", class_name));
-    lines.push(format!(
-        "#' @method vec_ptype2 {}.{}",
-        class_name, class_name
-    ));
-    lines.push(format!("#' @param x A {} vector.", class_name));
-    lines.push(format!("#' @param y A {} vector.", class_name));
-    lines.push("#' @param ... Additional arguments (unused).".to_string());
-    if should_export {
-        lines.push("#' @export".to_string());
+    if class_has_no_rd {
+        lines.push("#' @noRd".to_string());
+        lines.push(format!(
+            "#' @method vec_ptype2 {}.{}",
+            class_name, class_name
+        ));
+    } else {
+        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(format!(
+            "#' @method vec_ptype2 {}.{}",
+            class_name, class_name
+        ));
+        lines.push(format!("#' @param x A {} vector.", class_name));
+        lines.push(format!("#' @param y A {} vector.", class_name));
+        lines.push("#' @param ... Additional arguments (unused).".to_string());
     }
+    lines.push("#' @export".to_string());
     match vctrs_attrs.kind {
         VctrsKind::Vctr => {
             let base_type = vctrs_attrs
@@ -190,14 +224,17 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(String::new());
 
     // vec_cast.<class>.<class> - identity cast (no-op for same type)
-    lines.push(format!("#' @rdname {}", class_name));
-    lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
-    lines.push(format!("#' @param x A {} vector to cast.", class_name));
-    lines.push(format!("#' @param to A {} prototype.", class_name));
-    lines.push("#' @param ... Additional arguments (unused).".to_string());
-    if should_export {
-        lines.push("#' @export".to_string());
+    if class_has_no_rd {
+        lines.push("#' @noRd".to_string());
+        lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
+    } else {
+        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
+        lines.push(format!("#' @param x A {} vector to cast.", class_name));
+        lines.push(format!("#' @param to A {} prototype.", class_name));
+        lines.push("#' @param ... Additional arguments (unused).".to_string());
     }
+    lines.push("#' @export".to_string());
     lines.push(format!(
         "vec_cast.{c}.{c} <- function(x, to, ...) x",
         c = class_name
@@ -225,20 +262,29 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Only create the S3 generic if no generic/class override was provided
         // vctrs protocol methods use existing generics from the vctrs package
         if !is_protocol && !ctx.has_generic_override() && !ctx.has_class_override() {
-            lines.push(format!("#' @title S3 generic for `{}`", generic_name));
-            lines.push(format!("#' @description S3 generic for `{}`", generic_name));
-            lines.push(format!("#' @rdname {}", class_name));
-            // Use class-qualified name to avoid duplicate alias when multiple
-            // classes define the same S3 generic.
-            lines.push(format!("#' @name {}.{}", generic_name, class_name));
-            lines.push("#' @param x An object".to_string());
-            lines.push("#' @param ... Additional arguments passed to methods".to_string());
-            lines.push(crate::roxygen::method_source_tag(
-                type_ident,
-                &ctx.method.ident,
-            ));
-            if should_export {
-                lines.push("#' @export".to_string());
+            if class_has_no_rd {
+                lines.push("#' @noRd".to_string());
+            } else {
+                lines.push(format!("#' @title S3 generic for `{}`", generic_name));
+                lines.push(format!("#' @description S3 generic for `{}`", generic_name));
+                lines.push(format!("#' @rdname {}", class_name));
+                // Use class-qualified name to avoid duplicate alias when multiple
+                // classes define the same S3 generic.
+                lines.push(format!("#' @name {}.{}", generic_name, class_name));
+                lines.push("#' @param x An object".to_string());
+                lines.push("#' @param ... Additional arguments passed to methods".to_string());
+                lines.push(crate::roxygen::method_source_tag(
+                    type_ident,
+                    &ctx.method.ident,
+                ));
+                if should_export {
+                    // Explicit name on @export: the generic is wrapped in
+                    // `if (!exists(...))`, which roxygen2 can't introspect, and
+                    // the @name tag above is the class-qualified form. Without
+                    // an explicit target, roxygen2 attaches the export to the
+                    // next parseable function (the S3 method) — see s3_class.rs.
+                    lines.push(format!("#' @export {}", generic_name));
+                }
             }
             lines.push(emit_s3_generic_guard(&generic_name));
             lines.push(String::new());
@@ -251,15 +297,14 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
                 .with_r_params(&ctx.params)
                 .with_match_arg_doc_placeholders(&mx_doc)
-                .with_r_name(qualified_name);
+                .with_r_name(qualified_name)
+                .with_class_no_rd(class_has_no_rd);
         lines.extend(method_doc.build());
         lines.push(format!(
             "#' @method {} {}",
             generic_name, method_class_suffix
         ));
-        if should_export {
-            lines.push("#' @export".to_string());
-        }
+        lines.push("#' @export".to_string());
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params
@@ -303,18 +348,18 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
                     .with_match_arg_doc_placeholders(&mx_doc)
-                    .with_r_name(r_name.clone());
+                    .with_r_name(r_name.clone())
+                    .with_class_no_rd(class_has_no_rd);
             lines.extend(method_doc.build());
             lines.push(format!("#' @method {} {}", proto, class_name));
-            if should_export {
-                lines.push("#' @export".to_string());
-            }
+            lines.push("#' @export".to_string());
         } else {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
                     .with_match_arg_doc_placeholders(&mx_doc)
-                    .with_r_name(r_name.clone());
+                    .with_r_name(r_name.clone())
+                    .with_class_no_rd(class_has_no_rd);
             lines.extend(method_doc.build());
         }
 
