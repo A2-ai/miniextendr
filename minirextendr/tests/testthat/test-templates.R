@@ -466,6 +466,22 @@ test_that("create_miniextendr_package rejects invalid R package names", {
   expect_error(create_miniextendr_package(file.path(tmp, "1badname"), open = FALSE))
 })
 
+test_that("use_miniextendr validates template_type against its choices", {
+  tmp <- tempfile("bad-template-type-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  # An unknown template_type errors immediately (match.arg is the first
+  # statement in the body), before any scaffolding side effects occur.
+  expect_error(
+    use_miniextendr(path = tmp, template_type = "banana"),
+    "should be one of"
+  )
+
+  # The default (a missing arg) still resolves to "auto": the choices vector
+  # lists it first, so match.arg() picks it unchanged.
+  expect_identical(eval(formals(use_miniextendr)$template_type)[[1]], "auto")
+})
+
 # -----------------------------------------------------------------------------
 # Monorepo end-to-end
 # -----------------------------------------------------------------------------

@@ -980,10 +980,11 @@ cargo_new <- function(path = ".",
                       name,
                       lib = TRUE,
                       edition = "2024",
-                      vcs = "none",
+                      vcs = c("none", "git", "hg", "pijul", "fossil"),
                       add_to_workspace = TRUE,
                       quiet = FALSE) {
   with_project(path)
+  vcs <- match.arg(vcs)
   check_rust()
 
   # Validate inputs
@@ -1006,9 +1007,6 @@ cargo_new <- function(path = ".",
     cli::cli_abort("edition must be a single string.")
   }
   edition <- trimws(edition)
-
-  vcs <- match.arg(vcs, c("git", "hg", "pijul", "fossil", "none"))
-
 
   # Determine where to run cargo new from
   # If in a workspace, run from workspace root
