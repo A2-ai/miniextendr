@@ -28,9 +28,5 @@ IntSet
 \item{name}{Method name for dispatch.}
 }
 \description{
-IntSet  Class
-
-\describe{
-\item{\code{value}}{Integer value to check for membership.}
-}
+IntSet inherent methods: membership test.
 }

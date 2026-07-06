@@ -36,11 +36,9 @@ r6_trait_Counter_checked_add(x, n)
 \item{n}{Amount to add.}
 }
 \description{
-R6TraitCounter R6 Class
+R6TraitCounter inherent methods (constructor and getters).
 
-Create a new R6 trait counter
-
-Static trait method Counter::default_initial()
+Create a new R6 trait counter.
 }
 \section{Methods}{
 \subsection{Public methods}{
@@ -72,7 +70,7 @@ Static trait method Counter::default_initial()
 \if{html}{\out{<a id="method-R6TraitCounter-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-R6TraitCounter-get_value}{}}}
 \subsection{\code{R6TraitCounter$get_value()}}{
-  Get value via inherent method
+  Get value via inherent method.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6TraitCounter$get_value()}

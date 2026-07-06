@@ -35,11 +35,9 @@ SimpleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-SimpleCounter  Class
+Get the counter's value.
 
-Get the counter's value
+Add to the counter using the trait method.
 
-Add to the counter using the trait method
-
-Create a new counter with given initial value
+Create a new counter with given initial value.
 }
