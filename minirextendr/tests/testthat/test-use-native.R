@@ -82,6 +82,80 @@ test_that("resolve_include_paths is recursive", {
   expect_true(eigen_found)
 })
 
+# =============================================================================
+# anchor precondition (#1171)
+# =============================================================================
+
+test_that("abort_if_missing_native_anchor accepts any of the three anchors", {
+  expect_true(minirextendr:::abort_if_missing_native_anchor(
+    "AC_CONFIG_SRCDIR([src/rust/lib.rs])"
+  ))
+  expect_true(minirextendr:::abort_if_missing_native_anchor(
+    "dnl MINIREXTENDR: native-pkg-cppflags insertion marker"
+  ))
+  expect_true(minirextendr:::abort_if_missing_native_anchor(
+    "AC_SUBST([NATIVE_PKG_CPPFLAGS])"
+  ))
+  expect_error(
+    minirextendr:::abort_if_missing_native_anchor(
+      c("AC_INIT([testpkg], [1.0])", "AC_OUTPUT")
+    ),
+    "AC_CONFIG_SRCDIR"
+  )
+})
+
+test_that("use_native_package aborts before mutating DESCRIPTION when configure.ac has no anchor (#1171)", {
+  skip_if_not_installed("cli")
+  skip_if(nchar(Sys.which("bindgen")) == 0, "bindgen not installed")
+  tmp <- withr::local_tempdir()
+  # Hand-mangled configure.ac: no AC_CONFIG_SRCDIR, no NATIVE_PKG_CPPFLAGS
+  # section, no insertion marker -- nothing to hang include detection off.
+  writeLines(c(
+    "AC_INIT([testpkg], [1.0])",
+    "AC_OUTPUT"
+  ), file.path(tmp, "configure.ac"))
+  writeLines(c(
+    "Package: testpkg",
+    "Title: Test",
+    "Version: 0.1.0"
+  ), file.path(tmp, "DESCRIPTION"))
+  desc_before <- readLines(file.path(tmp, "DESCRIPTION"), warn = FALSE)
+  withr::local_dir(tmp)
+  usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
+
+  expect_error(
+    use_native_package("cli", path = tmp),
+    "AC_CONFIG_SRCDIR"
+  )
+
+  # The whole point: DESCRIPTION untouched, no half-configured package.
+  expect_identical(
+    readLines(file.path(tmp, "DESCRIPTION"), warn = FALSE),
+    desc_before
+  )
+})
+
+test_that("add_native_to_configure_ac aborts instead of warning on missing anchor (#1171)", {
+  tmp <- withr::local_tempdir()
+  writeLines(c(
+    "AC_INIT([testpkg], [1.0])",
+    "AC_OUTPUT"
+  ), file.path(tmp, "configure.ac"))
+  writeLines("Package: testpkg", file.path(tmp, "DESCRIPTION"))
+  conf_before <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
+  withr::local_dir(tmp)
+  usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
+
+  expect_error(
+    minirextendr:::add_native_to_configure_ac("cli"),
+    "AC_CONFIG_SRCDIR"
+  )
+  expect_identical(
+    readLines(file.path(tmp, "configure.ac"), warn = FALSE),
+    conf_before
+  )
+})
+
 test_that("add_native_to_configure_ac appends detection block", {
   skip_if_not_installed("cli")
   tmp <- withr::local_tempdir()
