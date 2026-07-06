@@ -26,3 +26,90 @@ test_that("noexport function is callable but not exported", {
   export_lines <- ns[grepl("^export\\(", ns)]
   expect_false(any(grepl("export_control_noexport", export_lines)))
 })
+
+# region: man-page-level distinction (audit A10)
+#
+# `internal` and `noexport` both suppress NAMESPACE `export()`, but must
+# differ at the documentation level: `internal` stays documented (with an
+# alias) under `\keyword{internal}`; `noexport` gets no Rd contribution at
+# all (`@noRd`) — no alias, anywhere. Before the fix, `noexport` still
+# contributed an `\alias{}` to the shared `export_control_tests.Rd` page.
+
+test_that("internal function has an alias in the rendered Rd", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_name <- grep("export_control", names(rd_db), value = TRUE)[1]
+  skip_if(is.na(rd_name), "export_control_tests.Rd not found — package not documented")
+
+  rd <- rd_db[[rd_name]]
+  rd_text <- paste(capture.output(print(rd)), collapse = "\n")
+
+  expect_true(
+    grepl("export_control_internal", rd_text),
+    info = paste(
+      "`export_control_internal` must have an alias in the rendered Rd",
+      "(documented, just unexported). Got:\n", rd_text
+    )
+  )
+})
+
+test_that("noexport function has no alias anywhere in the rendered Rd", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+
+  # `export_control_noexport` must not be an alias target on ANY Rd page —
+  # not just the shared `export_control_tests.Rd` page it used to leak into.
+  has_alias <- vapply(rd_db, function(rd) {
+    grepl("export_control_noexport", paste(capture.output(print(rd)), collapse = "\n"))
+  }, logical(1))
+
+  expect_false(
+    any(has_alias),
+    info = paste(
+      "`export_control_noexport` must not appear in any rendered Rd page.",
+      "Found in:", paste(names(rd_db)[has_alias], collapse = ", ")
+    )
+  )
+})
+
+# The same distinction on the trait-impl codegen path: `ExportControlTraitPoint`
+# (rpkg/src/rust/adapter_traits_tests.rs) implements `RDebug` with `internal`
+# and `RDisplay` with `noexport`.
+
+test_that("internal trait method has an alias in the rendered Rd", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_name <- grep("ExportControlTraitPoint", names(rd_db), value = TRUE)[1]
+  skip_if(is.na(rd_name), "ExportControlTraitPoint.Rd not found — package not documented")
+
+  rd <- rd_db[[rd_name]]
+  rd_text <- paste(capture.output(print(rd)), collapse = "\n")
+
+  expect_true(
+    grepl("RDebug", rd_text, fixed = TRUE),
+    info = paste(
+      "internal trait impl (RDebug) must have an alias in the rendered Rd.",
+      "Got:\n", rd_text
+    )
+  )
+})
+
+test_that("noexport trait method has no alias in the rendered Rd", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_name <- grep("ExportControlTraitPoint", names(rd_db), value = TRUE)[1]
+  skip_if(is.na(rd_name), "ExportControlTraitPoint.Rd not found — package not documented")
+
+  rd <- rd_db[[rd_name]]
+  rd_text <- paste(capture.output(print(rd)), collapse = "\n")
+
+  expect_false(
+    grepl("RDisplay", rd_text, fixed = TRUE),
+    info = paste(
+      "noexport trait impl (RDisplay) must NOT have an alias in the rendered Rd.",
+      "Got:\n", rd_text
+    )
+  )
+})
+
+# endregion

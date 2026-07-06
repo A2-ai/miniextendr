@@ -499,7 +499,9 @@ impl ExportControlTraitPoint {
 #[miniextendr(internal)]
 impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint {}
 
-/// Noexport trait impl: should have docs but no @export
+/// Noexport trait impl: no Rd contribution at all (no alias, no usage, no
+/// @export) — distinct from `internal` above, which stays documented under
+/// `@keywords internal`. See audit A10.
 #[miniextendr(noexport)]
 impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint {}
 // endregion
