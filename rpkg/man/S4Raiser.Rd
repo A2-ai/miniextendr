@@ -56,3 +56,4 @@ S4Raiser S4 Class
 \item{\code{ptr}}{External pointer to Rust \code{S4Raiser} struct}
 }}
 
+\keyword{internal}

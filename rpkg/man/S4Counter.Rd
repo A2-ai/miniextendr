@@ -52,3 +52,4 @@ A static method that returns a default counter (value = 0).
 \item{\code{ptr}}{External pointer to Rust \code{S4Counter} struct}
 }}
 
+\keyword{internal}
