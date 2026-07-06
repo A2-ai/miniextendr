@@ -1,18 +1,26 @@
 //! `Result<T, E>` conversions to R.
 //!
-//! Used by `#[miniextendr(unwrap_in_r)]` to pass Results to R as lists
-//! with `ok` and `err` fields, instead of unwrapping in Rust.
+//! Used by `#[miniextendr(unwrap_in_r)]` to pass Results to R as values
+//! (`Err` becomes `list(error = ...)`), instead of unwrapping in Rust.
 //! Also provides `NullOnErr` for `Result<T, ()>` → NULL-on-error semantics.
 //!
 //! # Tradeoff
 //!
-//! These impls only fire under `#[miniextendr(unwrap_in_r)]` (Result-as-value).
-//! Without that attribute, a `Result<T, E>` return acts as an **error
-//! boundary**: `Err(e)` panics with `Debug`-formatted `e`, the framework's
-//! tagged-condition transport carries it to R, and the wrapper raises a
-//! classed `rust_*` condition. Failure mode of opting into `unwrap_in_r`
-//! without telling R callers: they suddenly need to inspect `$ok` / `$err`
-//! on every return value instead of using `tryCatch`.
+//! The two impls in this module have different gating conditions:
+//!
+//! - `IntoR for Result<T, E: Display>` (the `list(error = ...)` shape) fires
+//!   **only** under `#[miniextendr(unwrap_in_r)]` (Result-as-value). Without
+//!   that attribute, a `Result<T, E>` return acts as an **error boundary**:
+//!   `Err(e)` panics with `Debug`-formatted `e`, the framework's
+//!   tagged-condition transport carries it to R, and the wrapper raises a
+//!   classed `rust_*` condition. Failure mode of opting into `unwrap_in_r`
+//!   without telling R callers: they suddenly need to check `$error` on every
+//!   return value instead of using `tryCatch`.
+//! - `IntoR for Result<T, NullOnErr>` fires whenever the error type is `()`,
+//!   **independent of `unwrap_in_r`**: the macro rewrites `Result<T, ()>` to
+//!   `Result<T, NullOnErr>` before the `unwrap_in_r` check, so `Err(())`
+//!   returns `NULL` to R in both modes. A unit error is a deliberate
+//!   "no value" sentinel, not a Rust failure — it never raises an R error.
 
 use std::collections::HashMap;
 
@@ -45,6 +53,10 @@ use crate::into_r::IntoR;
 /// **With `unwrap_in_r`**: `Result<T, E>` is passed through to R:
 /// - `Ok(v)` → `v` converted to R
 /// - `Err(e)` → `list(error = e.to_string())` (requires `E: Display`)
+///
+/// **Exception**: `Result<T, ()>` never reaches this impl in either mode —
+/// the macro rewrites it to `Result<T, NullOnErr>` before the `unwrap_in_r`
+/// check, and `Err(())` returns `NULL`. See [`NullOnErr`].
 ///
 /// # Example
 ///
@@ -109,7 +121,9 @@ where
 /// ```
 ///
 /// The macro generates code that converts `Err(())` to `Err(NullOnErr)` and
-/// returns `NULL` in R.
+/// returns `NULL` in R. This rewrite fires whenever the error type is `()`,
+/// **whether or not** `#[miniextendr(unwrap_in_r)]` is set — the unit-error
+/// check runs before the `unwrap_in_r` check.
 ///
 /// # Note
 ///
@@ -123,6 +137,8 @@ pub struct NullOnErr;
 ///
 /// This is a special case for `Result<T, ()>` types where the error
 /// carries no information. Instead of raising an R error, we return NULL.
+/// Fires whenever the error type is `()`, independent of
+/// `#[miniextendr(unwrap_in_r)]`.
 impl<T: IntoR> IntoR for Result<T, NullOnErr> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
@@ -138,4 +154,3 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
         }
     }
 }
-// endregion
