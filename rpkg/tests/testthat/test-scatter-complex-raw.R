@@ -14,10 +14,10 @@
 #   data_value — CPLXSXP
 #
 # Complex fixtures require the num-complex feature and are only executed when
-# the feature is compiled in (checked via rpkg_enabled_features()).
+# the feature is compiled in (checked via miniextendr_enabled_features()).
 
 has_num_complex <- function() {
-  "num-complex" %in% miniextendr::rpkg_enabled_features()
+  "num-complex" %in% miniextendr::miniextendr_enabled_features()
 }
 
 # region: RAWSXP scatter (always runs)

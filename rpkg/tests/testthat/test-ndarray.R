@@ -5,7 +5,7 @@
 
 # Helper to skip if ndarray feature is not enabled
 skip_if_ndarray_disabled <- function() {
-  skip_if_not("ndarray" %in% miniextendr::rpkg_enabled_features(), "ndarray feature not enabled")
+  skip_if_not("ndarray" %in% miniextendr::miniextendr_enabled_features(), "ndarray feature not enabled")
 }
 
 # =============================================================================

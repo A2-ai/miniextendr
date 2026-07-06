@@ -5,11 +5,11 @@
 #' @param name Character string naming the feature to check.
 #' @return Logical `TRUE` if the feature is enabled, `FALSE` otherwise.
 #' @examples
-#' rpkg_has_feature("uuid")
-#' rpkg_has_feature("time")
+#' miniextendr_has_feature("uuid")
+#' miniextendr_has_feature("time")
 #' @export
-rpkg_has_feature <- function(name) {
-  name %in% rpkg_enabled_features()
+miniextendr_has_feature <- function(name) {
+  name %in% miniextendr_enabled_features()
 }
 
 #' Skip test if feature is missing
@@ -27,7 +27,7 @@ rpkg_has_feature <- function(name) {
 #' }
 #' @export
 skip_if_missing_feature <- function(name) {
-  if (!rpkg_has_feature(name)) {
+  if (!miniextendr_has_feature(name)) {
     testthat::skip(paste("feature not enabled:", name))
   }
 }

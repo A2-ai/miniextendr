@@ -9,7 +9,7 @@
 test_that("worker-default routes bare functions to the worker thread", {
   bare <- fdefault_worker_thread_name()
   pinned <- fdefault_no_worker_thread_name()
-  if (rpkg_has_feature("worker-default")) {
+  if (miniextendr_has_feature("worker-default")) {
     expect_equal(bare, "miniextendr-worker")
     expect_false(identical(bare, pinned))
   } else {
@@ -18,8 +18,8 @@ test_that("worker-default routes bare functions to the worker thread", {
 })
 
 test_that("strict-default rejects logical/raw inputs to i64 params", {
-  strict_on <- rpkg_has_feature("strict-default")
-  coerce_on <- rpkg_has_feature("coerce-default")
+  strict_on <- miniextendr_has_feature("strict-default")
+  coerce_on <- miniextendr_has_feature("coerce-default")
   # INTSXP is accepted in every mode.
   expect_equal(as.numeric(fdefault_strict_i64(1L)), 1)
   expect_equal(as.numeric(fdefault_no_strict_i64(1L)), 1)
@@ -43,7 +43,7 @@ test_that("strict-default rejects logical/raw inputs to i64 params", {
 })
 
 test_that("coerce-default converts bool params from R integers", {
-  if (rpkg_has_feature("coerce-default")) {
+  if (miniextendr_has_feature("coerce-default")) {
     expect_true(fdefault_coerce_flag(1L))
     expect_false(fdefault_coerce_flag(0L))
     # Only 0/1 coerce to bool.
@@ -63,11 +63,11 @@ test_that("coerce-default converts bool params from R integers", {
 })
 
 test_that("class-system default selects Env/R6/S7 for the bare probe impl", {
-  if (rpkg_has_feature("r6-default")) {
+  if (miniextendr_has_feature("r6-default")) {
     expect_true(inherits(FdefaultProbe, "R6ClassGenerator"))
     obj <- FdefaultProbe$new(7L)
     expect_equal(obj$probe_value(), 7L)
-  } else if (rpkg_has_feature("s7-default")) {
+  } else if (miniextendr_has_feature("s7-default")) {
     expect_true(inherits(FdefaultProbe, "S7_class"))
     obj <- FdefaultProbe(7L)
     # ::: — the S7 shortcut only exists in s7-default builds, so it is never in
