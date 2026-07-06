@@ -286,6 +286,10 @@ unsafe extern "C-unwind" {
     /// Encapsulated by SEXP::missing_arg()
     pub static R_MissingArg: SEXP;
 
+    /// Sentinel returned by `Rf_findVarInFrame`/`Rf_findVarInFrame3` when the
+    /// symbol has no binding in the searched frame(s).
+    pub static R_UnboundValue: SEXP;
+
     // Issue #112 cat. 10: kept pub(crate) — single-caller utilities; wrapping adds no value
     // Rinterface.h
     pub(crate) fn R_FlushConsole();

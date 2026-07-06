@@ -1419,6 +1419,35 @@ impl_set_try_from_sexp_bool!(BTreeSet);
 
 use crate::externalptr::{ExternalPtr, TypeMismatchError, TypedExternal};
 
+/// Map a downcast [`TypeMismatchError`] to the [`SexpError`] surfaced from
+/// `ExternalPtr<T>` argument conversion. Shared by the checked and unchecked
+/// `TryFromSexp` paths below.
+fn type_mismatch_to_sexp_error(e: TypeMismatchError) -> SexpError {
+    match e {
+        TypeMismatchError::NullPointer => {
+            SexpError::InvalidValue("external pointer is null".to_string())
+        }
+        TypeMismatchError::InvalidTypeId => {
+            SexpError::InvalidValue("external pointer has no valid type id".to_string())
+        }
+        TypeMismatchError::Mismatch { expected, found } => SexpError::InvalidValue(format!(
+            "type mismatch: expected `{}`, found `{}`",
+            expected, found
+        )),
+    }
+}
+
+/// Error for an `ExternalPtr<T>` argument that is neither a bare `EXTPTRSXP`
+/// nor a class handle wrapping one (audit A9 — class-wrapped handles like
+/// `Foo$new(...)` are unwrapped automatically; this fires only when *no*
+/// `.ptr`/slot/attribute could be recovered at all).
+fn not_a_handle_error(actual: SEXPTYPE) -> SexpError {
+    SexpError::InvalidValue(format!(
+        "expected an external pointer or a miniextendr class object wrapping one, got {:?}",
+        actual
+    ))
+}
+
 /// Convert R EXTPTRSXP to `ExternalPtr<T>`.
 ///
 /// This enables using `ExternalPtr<T>` as parameter types in `#[miniextendr]` functions.
@@ -1440,36 +1469,34 @@ impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
         if actual != SEXPTYPE::EXTPTRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::EXTPTRSXP,
-                actual,
-            }
-            .into());
+            // Not a bare pointer — try unwrapping a class-wrapped handle
+            // (R6 `private$.ptr`, S4 `ptr` slot, S7 `.ptr` attribute; Env/S3
+            // handles are already bare EXTPTRSXPs and never reach here).
+            return match unsafe { crate::externalptr::unwrap_class_handle(sexp) } {
+                Some(inner) => unsafe { ExternalPtr::wrap_sexp_with_error(inner) }
+                    .map_err(type_mismatch_to_sexp_error),
+                None => Err(not_a_handle_error(actual)),
+            };
         }
 
         // Use ExternalPtr's type-checked constructor
-        unsafe { ExternalPtr::wrap_sexp_with_error(sexp) }.map_err(|e| match e {
-            TypeMismatchError::NullPointer => {
-                SexpError::InvalidValue("external pointer is null".to_string())
-            }
-            TypeMismatchError::InvalidTypeId => {
-                SexpError::InvalidValue("external pointer has no valid type id".to_string())
-            }
-            TypeMismatchError::Mismatch { expected, found } => SexpError::InvalidValue(format!(
-                "type mismatch: expected `{}`, found `{}`",
-                expected, found
-            )),
-        })
+        unsafe { ExternalPtr::wrap_sexp_with_error(sexp) }.map_err(type_mismatch_to_sexp_error)
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
         if actual != SEXPTYPE::EXTPTRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::EXTPTRSXP,
-                actual,
-            }
-            .into());
+            return match unsafe { crate::externalptr::unwrap_class_handle(sexp) } {
+                Some(inner) => {
+                    unsafe { ExternalPtr::wrap_sexp_unchecked(inner) }.ok_or_else(|| {
+                        SexpError::InvalidValue(
+                            "failed to convert external pointer: type mismatch or null pointer"
+                                .to_string(),
+                        )
+                    })
+                }
+                None => Err(not_a_handle_error(actual)),
+            };
         }
 
         // Use ExternalPtr's type-checked constructor (unchecked variant)

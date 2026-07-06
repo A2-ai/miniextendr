@@ -169,8 +169,9 @@ use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
-    R_RegisterCFinalizerEx_unchecked, Rf_allocVector, Rf_allocVector_unchecked, Rf_install,
-    Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
+    R_RegisterCFinalizerEx_unchecked, R_UnboundValue, Rf_allocVector, Rf_allocVector_unchecked,
+    Rf_findVarInFrame, Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked,
+    Rf_unprotect, Rf_unprotect_unchecked,
 };
 use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -331,6 +332,101 @@ impl TypedExternal for () {
     const TYPE_NAME_CSTR: &'static [u8] = b"()\0";
     // Unit type is special - same ID as name since it's only used for type-erased ptrs
     const TYPE_ID_CSTR: &'static [u8] = b"()\0";
+}
+// endregion
+
+// region: Class-handle unwrapping (audit A9)
+
+/// Look up a variable bound directly in a single environment frame (no search
+/// of enclosing frames — this is `Rf_findVarInFrame`, not `Rf_findVar`).
+///
+/// Returns `None` if `env` is not itself an environment, or if `name` has no
+/// binding in it. Active bindings are forced transparently by R, same as any
+/// other variable read.
+///
+/// # Safety
+///
+/// Must be called from R's main thread.
+unsafe fn env_binding(env: SEXP, name: &std::ffi::CStr) -> Option<SEXP> {
+    unsafe {
+        if !env.is_environment() {
+            return None;
+        }
+        let sym = Rf_install(name.as_ptr());
+        let val = Rf_findVarInFrame(env, sym);
+        if ptr::addr_eq(val.0, R_UnboundValue.0) {
+            None
+        } else {
+            Some(val)
+        }
+    }
+}
+
+/// Attempt to unwrap a class-wrapped handle down to the bare `EXTPTRSXP` it
+/// carries, so [`ExternalPtr::<T>`](ExternalPtr) argument conversion accepts
+/// the ergonomic class handle (e.g. `Foo$new(...)`) in addition to the raw
+/// pointer returned by a low-level constructor (audit finding A9 —
+/// `audit/2026-07-03-api-sense-conversions-dataframe-errors.md` #5).
+///
+/// Tries, in order:
+/// - **Env / R6**: a direct `.ptr` binding on `sexp` itself — most
+///   `#[miniextendr(env)]` classes are actually a bare classed `EXTPTRSXP`
+///   (the generated constructor does `class(.val) <- "T"` directly on the
+///   pointer returned by Rust, see `env_class.rs`), which already satisfies
+///   the plain `EXTPTRSXP` check and never reaches this function, but a
+///   user-authored environment that binds `.ptr` is covered here too. Then
+///   the R6 handle chain `.__enclos_env__` -> `private` -> `.ptr` (R6
+///   objects are the *public* environment; `private` only hangs off the
+///   enclosing environment stored at `.__enclos_env__` for `portable`
+///   classes, the default — see `r6_class.rs`).
+/// - **S4**: the `ptr` slot via `methods::slot()`
+///   ([`crate::s4_helpers::s4_get_slot`]). Guarded by `isS4()`, which
+///   excludes S7 objects even though both share the `S4SXP`/`OBJSXP`
+///   `SEXPTYPE` — S7's `new_object(S7_object(), ...)` base never sets the S4
+///   bit.
+/// - **Anything else carrying a `.ptr` attribute**: S7 stores properties as
+///   plain attributes on its base object (see `s7_class.rs`), so
+///   `Rf_getAttrib(x, ".ptr")` recovers the pointer without going through
+///   S7's `@`/`prop()` dispatch machinery.
+///
+/// Returns `Some(inner)` only when the unwrapped value is itself an
+/// `EXTPTRSXP` — anything else (e.g. a `.ptr`-named field that isn't a
+/// pointer) is treated as "no handle found" rather than an error. No
+/// recursion beyond one unwrap level. `Any::downcast` remains the type-safety
+/// authority: unwrapping a handle for the *wrong* `T` still fails at the
+/// caller with the existing type-mismatch error — this only loosens the
+/// accepted R-side shape, not type safety.
+///
+/// # Safety
+///
+/// - Must be called from R's main thread.
+/// - The returned SEXP is reachable from `sexp` (an env binding, S4 slot, or
+///   attribute) for as long as `sexp` itself is protected. Macro-generated
+///   `.Call()` wrappers hold every argument alive in the call's PROTECT stack
+///   for the duration of the call, so no additional protection is needed
+///   here.
+pub(crate) unsafe fn unwrap_class_handle(sexp: SEXP) -> Option<SEXP> {
+    unsafe {
+        if sexp.is_environment() {
+            if let Some(direct) = env_binding(sexp, c".ptr") {
+                if direct.type_of() == SEXPTYPE::EXTPTRSXP {
+                    return Some(direct);
+                }
+            }
+            let enclos = env_binding(sexp, c".__enclos_env__")?;
+            let private = env_binding(enclos, c"private")?;
+            let inner = env_binding(private, c".ptr")?;
+            return (inner.type_of() == SEXPTYPE::EXTPTRSXP).then_some(inner);
+        }
+
+        if sexp.is_s4() {
+            let slot = crate::s4_helpers::s4_get_slot(sexp, "ptr").ok()?;
+            return (slot.type_of() == SEXPTYPE::EXTPTRSXP).then_some(slot);
+        }
+
+        let attr = sexp.get_attr(Rf_install(c".ptr".as_ptr()));
+        (attr.type_of() == SEXPTYPE::EXTPTRSXP).then_some(attr)
+    }
 }
 // endregion
 
