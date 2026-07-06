@@ -69,6 +69,40 @@ unsafe fn scalar_logical_raw(v: i32, g: &mut Guard) -> SEXP {
     unsafe { g.protect(SEXP::scalar_logical_raw(v)) }
 }
 
+unsafe fn vec_int(values: &[i32], g: &mut Guard) -> SEXP {
+    unsafe {
+        let s = g.protect(Rf_allocVector(SEXPTYPE::INTSXP, values.len() as isize));
+        s.as_mut_slice::<i32>().copy_from_slice(values);
+        s
+    }
+}
+
+unsafe fn vec_real(values: &[f64], g: &mut Guard) -> SEXP {
+    unsafe {
+        let s = g.protect(Rf_allocVector(SEXPTYPE::REALSXP, values.len() as isize));
+        s.as_mut_slice::<f64>().copy_from_slice(values);
+        s
+    }
+}
+
+unsafe fn vec_logical(values: &[i32], g: &mut Guard) -> SEXP {
+    unsafe {
+        let s = g.protect(Rf_allocVector(SEXPTYPE::LGLSXP, values.len() as isize));
+        for (i, &v) in values.iter().enumerate() {
+            s.set_logical_elt(i as isize, v);
+        }
+        s
+    }
+}
+
+unsafe fn vec_raw(values: &[u8], g: &mut Guard) -> SEXP {
+    unsafe {
+        let s = g.protect(Rf_allocVector(SEXPTYPE::RAWSXP, values.len() as isize));
+        s.as_mut_slice::<u8>().copy_from_slice(values);
+        s
+    }
+}
+
 // endregion
 
 // region: strict.rs — checked_into_sexp_* (outbound strict conversions)
@@ -231,6 +265,132 @@ fn strict_input_i64_accepts_real() {
         let s = unsafe { scalar_real(7.0, &mut g) };
         let val = checked_try_from_sexp_i64(s, "x");
         assert_eq!(val, 7i64);
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_i64` — audit A6 regression.
+/// Must apply the same input-SEXP-type gate as `checked_vec_try_from_sexp_i64`
+/// (reject LGLSXP), not silently coerce like the lax `TryFromSexp` path does.
+#[test]
+#[should_panic(expected = "strict conversion failed")]
+fn strict_input_vec_option_i64_rejects_logical() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_i64;
+        let mut g = Guard(0);
+        let lgl = unsafe { vec_logical(&[1, 0], &mut g) };
+        let _ = checked_vec_option_try_from_sexp_i64(lgl, "x");
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_i64` rejects RAWSXP.
+#[test]
+#[should_panic(expected = "strict conversion failed")]
+fn strict_input_vec_option_i64_rejects_raw() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_i64;
+        let mut g = Guard(0);
+        let raw = unsafe { vec_raw(&[1, 2], &mut g) };
+        let _ = checked_vec_option_try_from_sexp_i64(raw, "x");
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_i64` accepts INTSXP,
+/// mapping `NA_integer_` elements to `None`.
+#[test]
+fn strict_input_vec_option_i64_accepts_int_with_na() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_i64;
+        let mut g = Guard(0);
+        let s = unsafe { vec_int(&[1, NA_INTEGER, 3], &mut g) };
+        let val = checked_vec_option_try_from_sexp_i64(s, "x");
+        assert_eq!(val, vec![Some(1i64), None, Some(3i64)]);
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_i64` accepts REALSXP,
+/// mapping `NA_real_` elements to `None`.
+#[test]
+fn strict_input_vec_option_i64_accepts_real_with_na() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_i64;
+        let mut g = Guard(0);
+        let s = unsafe { vec_real(&[1.0, NA_REAL, 3.0], &mut g) };
+        let val = checked_vec_option_try_from_sexp_i64(s, "x");
+        assert_eq!(val, vec![Some(1i64), None, Some(3i64)]);
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_i64` — an out-of-range
+/// `Some` element still panics (range checking, not just the type gate).
+#[test]
+#[should_panic(expected = "strict conversion failed")]
+fn strict_input_vec_option_i64_out_of_range_panics() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_i64;
+        let mut g = Guard(0);
+        // f64 above i64 range fails the i64-from-f64 TryCoerce step.
+        let s = unsafe { vec_real(&[1.0, 1e300], &mut g) };
+        let _ = checked_vec_option_try_from_sexp_i64(s, "x");
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_u64` rejects LGLSXP.
+#[test]
+#[should_panic(expected = "strict conversion failed")]
+fn strict_input_vec_option_u64_rejects_logical() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_u64;
+        let mut g = Guard(0);
+        let lgl = unsafe { vec_logical(&[1, 0], &mut g) };
+        let _ = checked_vec_option_try_from_sexp_u64(lgl, "x");
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_isize` rejects LGLSXP.
+#[test]
+#[should_panic(expected = "strict conversion failed")]
+fn strict_input_vec_option_isize_rejects_logical() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_isize;
+        let mut g = Guard(0);
+        let lgl = unsafe { vec_logical(&[1, 0], &mut g) };
+        let _ = checked_vec_option_try_from_sexp_isize(lgl, "x");
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_usize` rejects LGLSXP.
+#[test]
+#[should_panic(expected = "strict conversion failed")]
+fn strict_input_vec_option_usize_rejects_logical() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_usize;
+        let mut g = Guard(0);
+        let lgl = unsafe { vec_logical(&[1, 0], &mut g) };
+        let _ = checked_vec_option_try_from_sexp_usize(lgl, "x");
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_isize` accepts INTSXP with NA.
+#[test]
+fn strict_input_vec_option_isize_accepts_int_with_na() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_isize;
+        let mut g = Guard(0);
+        let s = unsafe { vec_int(&[5, NA_INTEGER], &mut g) };
+        let val = checked_vec_option_try_from_sexp_isize(s, "x");
+        assert_eq!(val, vec![Some(5isize), None]);
+    });
+}
+
+/// Strict INPUT: `checked_vec_option_try_from_sexp_usize` accepts INTSXP with NA.
+#[test]
+fn strict_input_vec_option_usize_accepts_int_with_na() {
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::strict::checked_vec_option_try_from_sexp_usize;
+        let mut g = Guard(0);
+        let s = unsafe { vec_int(&[5, NA_INTEGER], &mut g) };
+        let val = checked_vec_option_try_from_sexp_usize(s, "x");
+        assert_eq!(val, vec![Some(5usize), None]);
     });
 }
 

@@ -303,6 +303,54 @@ pub fn checked_vec_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<usize> {
         .collect()
 }
 
+/// Convert R SEXP to `Vec<Option<i64>>` in strict mode.
+///
+/// Applies the same input-SEXP-type gate as [`checked_vec_try_from_sexp_i64`]
+/// — only INTSXP and REALSXP are accepted; LGLSXP and RAWSXP are rejected.
+/// NA elements become `None`; type strictness and missingness are orthogonal.
+pub fn checked_vec_option_try_from_sexp_i64(sexp: SEXP, param: &str) -> Vec<Option<i64>> {
+    checked_vec_option_try_from_sexp_numeric::<i64>(sexp, param)
+}
+
+/// Convert R SEXP to `Vec<Option<u64>>` in strict mode.
+pub fn checked_vec_option_try_from_sexp_u64(sexp: SEXP, param: &str) -> Vec<Option<u64>> {
+    checked_vec_option_try_from_sexp_numeric::<u64>(sexp, param)
+}
+
+/// Convert R SEXP to `Vec<Option<isize>>` in strict mode.
+pub fn checked_vec_option_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<Option<isize>> {
+    checked_vec_option_try_from_sexp_i64(sexp, param)
+        .into_iter()
+        .map(|opt| {
+            opt.map(|x| {
+                isize::try_from(x).unwrap_or_else(|_| {
+                    panic!(
+                        "strict conversion failed for parameter '{}': i64 value {} does not fit in isize",
+                        param, x
+                    )
+                })
+            })
+        })
+        .collect()
+}
+
+/// Convert R SEXP to `Vec<Option<usize>>` in strict mode.
+pub fn checked_vec_option_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<Option<usize>> {
+    checked_vec_option_try_from_sexp_u64(sexp, param)
+        .into_iter()
+        .map(|opt| {
+            opt.map(|x| {
+                usize::try_from(x).unwrap_or_else(|_| {
+                    panic!(
+                        "strict conversion failed for parameter '{}': u64 value {} does not fit in usize",
+                        param, x
+                    )
+                })
+            })
+        })
+        .collect()
+}
+
 /// Generic strict scalar conversion: only INTSXP and REALSXP allowed.
 #[inline]
 fn checked_try_from_sexp_numeric_scalar<T>(sexp: SEXP, param: &str) -> T
@@ -386,6 +434,65 @@ where
                             param, e
                         )
                     })
+                })
+                .collect()
+        }
+        _ => panic!(
+            "strict conversion failed for parameter '{}': expected integer or double vector, got {:?}",
+            param, actual
+        ),
+    }
+}
+
+/// Generic strict `Vec<Option<T>>` conversion: only INTSXP and REALSXP allowed.
+///
+/// Mirrors [`checked_vec_try_from_sexp_numeric`] but maps R's NA sentinel
+/// (`NA_INTEGER` for INTSXP, `NA_REAL` for REALSXP) to `None` instead of
+/// erroring — missingness is orthogonal to the input-type gate.
+fn checked_vec_option_try_from_sexp_numeric<T>(sexp: SEXP, param: &str) -> Vec<Option<T>>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let slice: &[i32] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .copied()
+                .map(|v| {
+                    if v == crate::altrep_traits::NA_INTEGER {
+                        None
+                    } else {
+                        Some(TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
+                            panic!(
+                                "strict conversion failed for parameter '{}': {:?}",
+                                param, e
+                            )
+                        }))
+                    }
+                })
+                .collect()
+        }
+        SEXPTYPE::REALSXP => {
+            let slice: &[f64] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .copied()
+                .map(|v| {
+                    if crate::from_r::is_na_real(v) {
+                        None
+                    } else {
+                        Some(TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
+                            panic!(
+                                "strict conversion failed for parameter '{}': {:?}",
+                                param, e
+                            )
+                        }))
+                    }
                 })
                 .collect()
         }
