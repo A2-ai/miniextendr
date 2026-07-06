@@ -360,7 +360,7 @@ use_miniextendr <- function(path = ".",
       # Scaffold as a standalone rpkg into this directory instead.
       rust_root <- find_rust_root(proj_dir)
       cli::cli_alert_info(
-        "Found a Rust project at {.path {rust_root}}, but {.path {proj_dir}} has no {.file Cargo.toml} of its own — scaffolding as a standalone {.val rpkg}."
+        "Found a Rust project at {.path {rust_root}}, but {.path {proj_dir}} has no {.file Cargo.toml} of its own \u2014 scaffolding as a standalone {.val rpkg}."
       )
       cli::cli_alert_info(
         "To create a monorepo layout instead, run {.fn use_miniextendr} from the Rust workspace root."

@@ -94,7 +94,7 @@ unuse_local_miniextendr <- function(path = ".") {
   with_project(path)
   marker <- usethis::proj_path(".miniextendr-local")
   if (!fs::file_exists(marker)) {
-    cli::cli_alert_info("No {.path .miniextendr-local} marker present — nothing to remove.")
+    cli::cli_alert_info("No {.path .miniextendr-local} marker present \u2014 nothing to remove.")
     return(invisible(FALSE))
   }
   fs::file_delete(marker)
