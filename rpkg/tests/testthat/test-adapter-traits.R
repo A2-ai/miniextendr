@@ -85,7 +85,7 @@ test_that("Point - RFromStr from_str parses string to Point", {
   expect_equal(p_ptr$y(), 20L)
 
   # Invalid string returns error (Option<T> with None becomes R error)
-  expect_error(Point$RFromStr$from_str("invalid"), "returned None")
+  expect_error(Point$RFromStr$from_str("invalid"), "returned no value")
 
   # Empty parens with valid numbers
   p2_ptr <- Point$RFromStr$from_str("(-5, 15)")
@@ -141,9 +141,9 @@ test_that("MyFloat - RPartialOrd handles NaN correctly", {
 
   # NaN is not comparable to anything (including itself)
   # Option<T> returning None throws error in miniextendr
-  expect_error(nan$RPartialOrd$partial_cmp(f1), "returned None")
-  expect_error(f1$RPartialOrd$partial_cmp(nan), "returned None")
-  expect_error(nan$RPartialOrd$partial_cmp(nan), "returned None")
+  expect_error(nan$RPartialOrd$partial_cmp(f1), "returned no value")
+  expect_error(f1$RPartialOrd$partial_cmp(nan), "returned no value")
+  expect_error(nan$RPartialOrd$partial_cmp(nan), "returned no value")
 })
 
 # =============================================================================
@@ -191,7 +191,7 @@ test_that("IntVecIter - basic iteration works", {
   expect_equal(it$RIterator$next_item(), 2L)
   expect_equal(it$RIterator$next_item(), 3L)
   # Option<T> returning None throws error in miniextendr
-  expect_error(it$RIterator$next_item(), "returned None")
+  expect_error(it$RIterator$next_item(), "returned no value")
 })
 
 test_that("IntVecIter - RIterator next_item and count work via trait namespace", {
@@ -207,7 +207,7 @@ test_that("IntVecIter - count works", {
   expect_equal(it$RIterator$count(), 5L)
 
   # After count, iterator is exhausted - Option<T> returning None throws
-  expect_error(it$RIterator$next_item(), "returned None")
+  expect_error(it$RIterator$next_item(), "returned no value")
 })
 
 test_that("IntVecIter - collect_n works", {
@@ -243,7 +243,7 @@ test_that("IntVecIter - nth works", {
   expect_equal(it$RIterator$nth(1L), 30L)
 
   # nth past end throws error - Option<T> returning None throws
-  expect_error(it$RIterator$nth(10L), "returned None")
+  expect_error(it$RIterator$nth(10L), "returned no value")
 })
 
 # =============================================================================

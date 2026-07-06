@@ -15,7 +15,12 @@ test_that("RVector sum returns correct total", {
 
 test_that("RMatrix column extraction works", {
   m <- matrix(c(1, 2, 3, 4, 5, 6), nrow = 2, ncol = 3)
-  expect_equal(rarray_matrix_column(m, 0L), c(1, 2))
-  expect_equal(rarray_matrix_column(m, 1L), c(3, 4))
-  expect_equal(rarray_matrix_column(m, 2L), c(5, 6))
+  # 1-based access
+  expect_equal(rarray_matrix_column(m, 1L), c(1, 2))
+  expect_equal(rarray_matrix_column(m, 2L), c(3, 4))
+  expect_equal(rarray_matrix_column(m, 3L), c(5, 6))
+
+  # Out of bounds / non-positive index errors
+  expect_error(rarray_matrix_column(m, 0L), "positive 1-based")
+  expect_error(rarray_matrix_column(m, 4L), "out of bounds")
 })

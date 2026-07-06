@@ -17,6 +17,10 @@ pub struct NdVec(Array1<f64>);
 
 /// NdVec methods: 1D numeric array operations, slicing, and conversion.
 /// @param data Numeric vector of array elements.
+/// @details `get`, `get_many`, and `is_valid_index` take 1-based indices
+///   (R-idiomatic, matching the rest of the package). `get` errors on an
+///   out-of-bounds or non-positive index; `get_many` returns `NA` per
+///   out-of-bounds element instead (vectorized contract).
 // env pinned: method names collide with base R non-generics (var/get/row/col/
 // diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
 #[miniextendr(env)]
@@ -81,8 +85,17 @@ impl NdVec {
     }
 
     // --- RNdSlice methods ---
-    fn get(&self, index: i32) -> Option<f64> {
-        RNdSlice::get(&self.0, index)
+    /// Get the element at the given 1-based index.
+    /// @param index 1-based index. Errors if out of `1..=length`.
+    fn get(&self, index: i32) -> f64 {
+        let len = self.0.len();
+        if index < 1 {
+            panic!(
+                "index {index} is out of bounds (must be a positive 1-based index, length {len})"
+            );
+        }
+        RNdSlice::get(&self.0, index - 1)
+            .unwrap_or_else(|| panic!("index {index} out of bounds (length {len})"))
     }
 
     fn first(&self) -> Option<f64> {
@@ -97,12 +110,15 @@ impl NdVec {
         RNdSlice::slice_1d(&self.0, start, end)
     }
 
+    /// Get elements at the given 1-based indices.
+    /// @param indices 1-based indices. Out-of-bounds indices yield `NA`.
     fn get_many(&self, indices: Vec<i32>) -> Vec<Option<f64>> {
-        RNdSlice::get_many(&self.0, indices)
+        RNdSlice::get_many(&self.0, indices.into_iter().map(|i| i - 1).collect())
     }
 
+    /// Check if the given 1-based index is valid.
     fn is_valid_index(&self, index: i32) -> bool {
-        RNdSlice::is_valid_index(&self.0, index)
+        index >= 1 && RNdSlice::is_valid_index(&self.0, index - 1)
     }
 
     // --- Conversion ---
@@ -128,6 +144,9 @@ pub struct NdMatrix(Array2<f64>);
 /// @param nrow Integer number of rows.
 /// @param ncol Integer number of columns.
 /// @param data Numeric vector of matrix elements (in row-major order).
+/// @details `get_2d`, `row`, and `col` take 1-based indices (R-idiomatic,
+///   matching the rest of the package) and error on an out-of-bounds or
+///   non-positive index.
 // env pinned: method names collide with base R non-generics (var/get/row/col/
 // diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
 #[miniextendr(env)]
@@ -196,16 +215,43 @@ impl NdMatrix {
     }
 
     // --- RNdSlice2D methods ---
-    fn get_2d(&self, row: i32, col: i32) -> Option<f64> {
-        RNdSlice2D::get_2d(&self.0, row, col)
+    /// Get the element at (row, col) (1-based).
+    /// @param row 1-based row index. Errors if out of `1..=nrows()`.
+    /// @param col 1-based column index. Errors if out of `1..=ncols()`.
+    fn get_2d(&self, row: i32, col: i32) -> f64 {
+        let nrows = RNdSlice2D::nrows(&self.0);
+        let ncols = RNdSlice2D::ncols(&self.0);
+        if row < 1 || col < 1 {
+            panic!(
+                "[{row}, {col}] is out of bounds (must be positive 1-based indices, matrix is {nrows} x {ncols})"
+            );
+        }
+        RNdSlice2D::get_2d(&self.0, row - 1, col - 1)
+            .unwrap_or_else(|| panic!("[{row}, {col}] out of bounds (matrix is {nrows} x {ncols})"))
     }
 
+    /// Get a row as a vector (1-based).
+    /// @param row 1-based row index. Errors if out of `1..=nrows()`.
     fn row(&self, row: i32) -> Vec<f64> {
-        RNdSlice2D::row(&self.0, row)
+        let nrows = RNdSlice2D::nrows(&self.0);
+        if row < 1 || row > nrows {
+            panic!(
+                "row {row} is out of bounds (must be a positive 1-based index, matrix has {nrows} rows)"
+            );
+        }
+        RNdSlice2D::row(&self.0, row - 1)
     }
 
+    /// Get a column as a vector (1-based).
+    /// @param col 1-based column index. Errors if out of `1..=ncols()`.
     fn col(&self, col: i32) -> Vec<f64> {
-        RNdSlice2D::col(&self.0, col)
+        let ncols = RNdSlice2D::ncols(&self.0);
+        if col < 1 || col > ncols {
+            panic!(
+                "col {col} is out of bounds (must be a positive 1-based index, matrix has {ncols} columns)"
+            );
+        }
+        RNdSlice2D::col(&self.0, col - 1)
     }
 
     fn diag(&self) -> Vec<f64> {
@@ -242,6 +288,9 @@ pub struct NdArrayDyn(ArrayD<f64>);
 /// NdArrayDyn methods: N-dimensional array operations, indexing, and reshaping.
 /// @param shape Integer vector specifying array dimensions.
 /// @param data Numeric vector of array elements.
+/// @details `get_nd` and `is_valid_nd` take 1-based indices (R-idiomatic,
+///   matching the rest of the package). `get_nd` and `reshape` error on an
+///   out-of-bounds/invalid argument instead of silently yielding no value.
 // env pinned: method names collide with base R non-generics (var/get/row/col/
 // diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
 #[miniextendr(env)]
@@ -301,8 +350,16 @@ impl NdArrayDyn {
     }
 
     // --- RNdIndex methods ---
-    fn get_nd(&self, indices: Vec<i32>) -> Option<f64> {
-        RNdIndex::get_nd(&self.0, indices)
+    /// Get the element at the given n-dimensional 1-based index.
+    /// @param indices 1-based indices, one per dimension. Errors on a non-positive index, an out-of-bounds index, or a length mismatch with the array's dimensionality.
+    fn get_nd(&self, indices: Vec<i32>) -> f64 {
+        let shape = RNdIndex::shape_nd(&self.0);
+        if indices.iter().any(|&i| i < 1) {
+            panic!("indices {indices:?} must be positive 1-based indices (shape {shape:?})");
+        }
+        let zero_based: Vec<i32> = indices.iter().map(|&i| i - 1).collect();
+        RNdIndex::get_nd(&self.0, zero_based)
+            .unwrap_or_else(|| panic!("indices {indices:?} out of bounds (shape {shape:?})"))
     }
 
     fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<f64>> {
@@ -329,16 +386,23 @@ impl NdArrayDyn {
         RNdIndex::flatten_c(&self.0)
     }
 
+    /// Check if the given 1-based n-dimensional index is valid.
     fn is_valid_nd(&self, indices: Vec<i32>) -> bool {
-        RNdIndex::is_valid_nd(&self.0, indices)
+        indices.iter().all(|&i| i >= 1)
+            && RNdIndex::is_valid_nd(&self.0, indices.into_iter().map(|i| i - 1).collect())
     }
 
     fn axis_slice(&self, axis: i32, index: i32) -> Vec<f64> {
         RNdIndex::axis_slice(&self.0, axis, index)
     }
 
-    fn reshape(&self, new_shape: Vec<i32>) -> Option<Vec<f64>> {
-        RNdIndex::reshape(&self.0, new_shape)
+    /// Reshape the array to new dimensions (data must fit exactly).
+    /// @param new_shape Target dimensions. Errors if the total element count doesn't match the array's current length.
+    fn reshape(&self, new_shape: Vec<i32>) -> Vec<f64> {
+        let len = RNdIndex::len_nd(&self.0);
+        RNdIndex::reshape(&self.0, new_shape.clone()).unwrap_or_else(|| {
+            panic!("cannot reshape to {new_shape:?}: element count does not match length {len}")
+        })
     }
 
     // --- Conversion ---
@@ -356,6 +420,8 @@ pub struct NdIntVec(Array1<i32>);
 
 /// NdIntVec methods: 1D integer array operations, slicing, and conversion.
 /// @param data Integer vector of array elements.
+/// @details `get` takes a 1-based index (R-idiomatic, matching the rest of
+///   the package) and errors on an out-of-bounds or non-positive index.
 // env pinned: method names collide with base R non-generics (var/get/row/col/
 // diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
 #[miniextendr(env)]
@@ -410,8 +476,17 @@ impl NdIntVec {
     }
 
     // --- RNdSlice methods ---
-    fn get(&self, index: i32) -> Option<i32> {
-        RNdSlice::get(&self.0, index)
+    /// Get the element at the given 1-based index.
+    /// @param index 1-based index. Errors if out of `1..=length`.
+    fn get(&self, index: i32) -> i32 {
+        let len = self.0.len();
+        if index < 1 {
+            panic!(
+                "index {index} is out of bounds (must be a positive 1-based index, length {len})"
+            );
+        }
+        RNdSlice::get(&self.0, index - 1)
+            .unwrap_or_else(|| panic!("index {index} out of bounds (length {len})"))
     }
 
     fn first(&self) -> Option<i32> {

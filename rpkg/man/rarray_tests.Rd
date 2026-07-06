@@ -25,9 +25,9 @@ rarray_matrix_dims(x)
 rarray_matrix_column(x, col)
 }
 \arguments{
-\item{x}{(no documentation available)}
+\item{x}{A numeric matrix.}
 
-\item{col}{(no documentation available)}
+\item{col}{1-based column index. Errors if \code{col} is not in \verb{1..=ncol}.}
 }
 \description{
 Get total length of a matrix.

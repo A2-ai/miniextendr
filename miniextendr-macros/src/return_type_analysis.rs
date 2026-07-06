@@ -85,7 +85,7 @@ pub(crate) fn analyze_return_type(
     let mut post_call_statements = Vec::new();
 
     let fn_name_str = rust_ident.to_string();
-    let option_none_error_msg = format!("miniextendr function `{fn_name_str}` returned None");
+    let option_none_error_msg = format!("`{fn_name_str}()` returned no value");
 
     match output {
         // No return type (no arrow)

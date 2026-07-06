@@ -618,7 +618,7 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                let error_msg = format!("`{}()` returned no value", fn_ident);
                 quote! {
                     let __result = #call_expr;
                     if __result.is_none() {
@@ -630,7 +630,7 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                let error_msg = format!("`{}()` returned no value", fn_ident);
                 quote! {
                     let __result = #call_expr;
                     match __result {
@@ -656,7 +656,7 @@ impl CWrapperContext {
             ReturnHandling::OptionIntoRUnwrap => {
                 // For Option<T> where T: IntoR but Option<T>: IntoR is not available.
                 // Unwraps first (raises error on None), then converts T via IntoR.
-                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                let error_msg = format!("`{}()` returned no value", fn_ident);
                 let result_ident = format_ident!("__result");
                 let conversion = self.sexp_conversion_expr(&result_ident, true);
                 quote! {
@@ -829,7 +829,7 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                let error_msg = format!("`{}()` returned no value", fn_ident);
                 // Return the Option from worker, check on main thread.
                 let worker = quote! { #call_expr };
                 let convert = quote! {
@@ -844,7 +844,7 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                let error_msg = format!("`{}()` returned no value", fn_ident);
                 let worker = quote! { #call_expr };
                 let convert = quote! {
                     match __miniextendr_result {
@@ -877,7 +877,7 @@ impl CWrapperContext {
             ReturnHandling::OptionIntoRUnwrap => {
                 // For Option<T> where T: IntoR but Option<T>: IntoR is not available.
                 // Unwraps first (raises error on None), then converts T via IntoR.
-                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                let error_msg = format!("`{}()` returned no value", fn_ident);
                 // Return the Option from worker, check on main thread.
                 let worker = quote! { #call_expr };
                 let result_ident = format_ident!("__miniextendr_result");

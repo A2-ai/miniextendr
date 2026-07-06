@@ -73,4 +73,14 @@ NdIntVec
 }
 \description{
 NdIntVec methods: 1D integer array operations, slicing, and conversion.
+
+Get the element at the given 1-based index.
+
+\describe{
+\item{\code{index}}{1-based index. Errors if out of \verb{1..=length}.}
+}
+}
+\details{
+\code{get} takes a 1-based index (R-idiomatic, matching the rest of
+the package) and errors on an out-of-bounds or non-positive index.
 }

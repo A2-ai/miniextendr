@@ -44,7 +44,7 @@ test_that("invisibly_option_return_some() returns NULL invisibly", {
 })
 
 test_that("invisibly_option_return_none() errors when no value is available", {
-  expect_error(invisibly_option_return_none(), "returned None")
+  expect_error(invisibly_option_return_none(), "returned no value")
 })
 
 test_that("invisibly_result_return_ok() returns NULL invisibly", {
