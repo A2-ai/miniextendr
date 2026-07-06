@@ -1,0 +1,5 @@
+error: `prefer = ...` cannot be combined with `unwrap_in_r` on a function returning `Result<T, E>`: `unwrap_in_r` converts the whole `Result<T, E>` via a single `IntoR` impl (a tagged list for R to decode), not the inner `T` alone, so there is no plain `T` for `prefer=` to wrap. Remove `prefer=`.
+  --> tests/ui/fn_prefer_unwrap_in_r.rs:11:15
+   |
+11 | #[miniextendr(prefer = "list", unwrap_in_r)]
+   |               ^^^^^^

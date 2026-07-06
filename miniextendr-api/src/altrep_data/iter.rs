@@ -5,8 +5,9 @@
 //!
 //! ## Submodules
 //!
-//! - [`state`]: Core `IterState<I, T>` + standard wrapper types (Int, Real, Logical, Raw, String, List, Complex)
+//! - [`state`]: Core `IterState<I, T>` + standard wrapper types (Int, Real, Logical, Raw)
 //! - [`coerce`]: Coerced variants (`IterIntCoerceData`, `IterRealCoerceData`, `IterIntFromBoolData`)
+//!   plus the String/List/Complex wrapper types (`IterStringData`, `IterListData`, `IterComplexData`)
 //! - [`sparse`]: Sparse iterators using `nth()` for skip-ahead (`SparseIterState`)
 //! - [`windowed`]: Sliding-window iterators (`WindowedIterState`)
 

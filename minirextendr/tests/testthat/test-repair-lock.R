@@ -256,3 +256,40 @@ test_that("miniextendr_repair_lock errors when path+ entries remain after cargo 
     regexp = "path\\+"
   )
 })
+
+# BUG5 (audit/_worklist-2026-07-03.md): miniextendr_repair_lock() called
+# withr::defer() to restore .cargo/config.toml, but withr is Suggests-only —
+# an exported function reaching for it unconditionally crashed for any user
+# who hadn't installed withr. Fixed with base on.exit(..., add = TRUE), which
+# (like withr::defer()) must still restore the backup when the call errors
+# out partway through, not just on a clean return.
+
+test_that("miniextendr_repair_lock restores .cargo/config.toml even when cargo update fails", {
+  tmp <- make_lock_project(source_shape_with_path)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  cargo_dir <- file.path(tmp, "src", "rust", ".cargo")
+  dir.create(cargo_dir, recursive = TRUE, showWarnings = FALSE)
+  cfg_path <- file.path(cargo_dir, "config.toml")
+  writeLines(
+    c('[patch."git+https://github.com/A2-ai/miniextendr"]',
+      'miniextendr-api = { path = "../../../../miniextendr-api" }'),
+    cfg_path
+  )
+
+  local_mocked_bindings(
+    run_with_logging = function(command, args, log_prefix, wd) {
+      # Simulate `cargo update` itself failing (e.g. network error).
+      list(status = 1L, output = "error: could not resolve", log_file = "", success = FALSE)
+    },
+    .package = "minirextendr"
+  )
+
+  expect_error(miniextendr_repair_lock(tmp, quiet = TRUE))
+
+  # The on.exit restore must run even though check_result() aborted -- the
+  # same guarantee withr::defer() gave, without requiring withr to be
+  # installed.
+  expect_true(file.exists(cfg_path))
+  expect_false(file.exists(paste0(cfg_path, ".tmp_repair_lock")))
+})

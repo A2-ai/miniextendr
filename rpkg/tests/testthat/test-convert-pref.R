@@ -43,17 +43,8 @@ test_that("AsDataFrame wrapper forces a data.frame return", {
   expect_identical(df$label, c("a", "b"))
 })
 
-test_that("prefer = 'list' is a no-op when return type is Option<T>", {
-  # prefer= only applies to plain-T returns (the IntoR variant in apply_return_pref).
-  # For Option<T>, auto-detection produces OptionIntoR which passes through apply_return_pref
-  # unchanged, so prefer="list" is silently ignored on Option<T> returns.
-  # attr_prefer_list_option and plain_option_i32 must therefore produce identical outputs.
-  # Per Option<T> IntoR convention, None maps to NA_<T>_ (not NULL) — see
-  # miniextendr-api/src/into_r/large_integers.rs:177.
-  expect_identical(attr_prefer_list_option(1L), plain_option_i32(1L))
-  expect_identical(attr_prefer_list_option(NULL), plain_option_i32(NULL))
-  expect_identical(attr_prefer_list_option(NULL), NA_integer_)
-  # Crucially, the result is NOT a list (which prefer="list" WOULD produce on a plain T return).
-  expect_false(typeof(attr_prefer_list_option(1L)) == "list")
-})
+# `prefer = "list"` on a function returning `Option<T>` used to be a silent no-op (the
+# attribute was accepted and dropped by `apply_return_pref`). It is now a hard compile
+# error from `#[miniextendr]` — see `miniextendr-macros/tests/ui/fn_prefer_option_return.rs`
+# for the compile-fail regression test (BUG4).
 

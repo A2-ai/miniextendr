@@ -1,0 +1,5 @@
+error: `prefer = "list"` cannot be honored on this return type. `prefer=` only applies to a function returning a plain `T: IntoR` value, which it wraps in `AsList` before conversion. This function's return type falls into a different codegen category (`Option<T>`) with its own fixed SEXP-shape rule, so there is no plain `T` for `prefer=` to wrap. Remove `prefer=`, or change the return type to a plain `T`.
+  --> tests/ui/fn_prefer_option_return.rs:11:15
+   |
+11 | #[miniextendr(prefer = "list")]
+   |               ^^^^^^

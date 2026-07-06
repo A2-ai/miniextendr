@@ -84,11 +84,11 @@ miniextendr_repair_lock <- function(path = ".", quiet = FALSE) {
 
   if (!is.null(cargo_cfg) && fs::file_exists(cargo_cfg)) {
     fs::file_move(cargo_cfg, cargo_cfg_bak)
-    withr::defer({
+    on.exit({
       if (!is.null(cargo_cfg_bak) && fs::file_exists(cargo_cfg_bak)) {
         fs::file_move(cargo_cfg_bak, cargo_cfg)
       }
-    })
+    }, add = TRUE)
   }
 
   cargo_toml <- tryCatch(

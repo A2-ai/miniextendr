@@ -10,6 +10,9 @@ Safe wrappers for building and evaluating R function calls from Rust.
 | `RCall` | Builder for R function calls (LANGSXP) |
 | `REnv` | Well-known R environments (Global, Base, Empty) |
 
+Plus free functions: `r_eval_str` / `r_eval_str_global` (parse + evaluate a
+string of R source) and `dollar_extract` (the R `$` operator).
+
 ## Quick Example
 
 ```rust
@@ -86,15 +89,17 @@ Provides handles to R's well-known environments:
 ```rust
 use miniextendr_api::expression::REnv;
 
-let global = REnv::global();                     // R_GlobalEnv
-let base = REnv::base();                         // R_BaseEnv
-let empty = REnv::empty();                       // R_EmptyEnv
-let base_ns = REnv::base_namespace();            // R_BaseNamespace (for .Internal etc.)
-let methods = REnv::package_namespace("methods"); // getNamespace("methods")
-let caller = REnv::caller();                     // calling environment (R_GetCurrentEnv)
+unsafe {
+    let global = REnv::global();                     // R_GlobalEnv
+    let base = REnv::base();                         // R_BaseEnv
+    let empty = REnv::empty();                       // R_EmptyEnv
+    let base_ns = REnv::base_namespace();            // R_BaseNamespace (for .Internal etc.)
+    let methods = REnv::package_namespace("methods")?; // getNamespace("methods")
+    let caller = REnv::caller();                     // calling environment (R_GetCurrentEnv)
 
-// Use as SEXP
-let sexp = base.as_sexp();
+    // Use as SEXP
+    let sexp = base.as_sexp();
+}
 ```
 
 Prefer `package_namespace(pkg)` over chasing symbols through
@@ -102,6 +107,43 @@ Prefer `package_namespace(pkg)` over chasing symbols through
 against the package's own namespace regardless of what the user has
 attached on the search path. `eval_global()` has been removed; evaluate
 in `base()`, `base_namespace()`, or the caller's env instead.
+
+## r_eval_str
+
+Parse a string of R source and evaluate it — the runtime workhorse behind the
+`r_str!` / `r!` macros. Every top-level expression is evaluated in order
+(so side effects take effect); the value of the **last** one is returned,
+matching `eval(parse(text = ...))`. Empty / whitespace-only input yields
+`R_NilValue`.
+
+```rust
+use miniextendr_api::expression::{r_eval_str, r_eval_str_global};
+
+unsafe {
+    // In a specific environment
+    let three = r_eval_str("1L + 2L", env)?;
+
+    // Convenience wrapper for R_GlobalEnv
+    let six = r_eval_str_global("local({ x <- 2; x * 3 })")?;
+}
+```
+
+Parse failures (syntax error, incomplete input) and R evaluation errors both
+come back as `Err(String)` — evaluation uses `R_tryEvalSilent`, so R errors
+never longjmp through Rust frames. The returned SEXP is unprotected.
+
+## dollar_extract
+
+Convenience wrapper for the R `$` extraction operator, replacing hand-rolled
+`Rf_install("$")` + `Rf_lang3` + `R_tryEvalSilent` ladders:
+
+```rust
+use miniextendr_api::expression::dollar_extract;
+
+unsafe {
+    let value = dollar_extract(list_sexp, "field_name")?;
+}
+```
 
 ## Safety Requirements
 

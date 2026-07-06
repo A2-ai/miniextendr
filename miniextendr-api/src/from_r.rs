@@ -113,6 +113,37 @@ pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, 
     std::borrow::Cow::Borrowed(unsafe { charsxp_to_str(charsxp) })
 }
 
+/// Convert CHARSXP to an owned, lossy `String`.
+///
+/// NA/null-defensive: returns `None` for `NA_character_`, `R_NilValue`, or a
+/// null SEXP. Non-UTF-8 bytes are replaced (`CStr::to_string_lossy`) rather
+/// than rejected. Unlike [`charsxp_to_str`] (the UTF-8-asserted hot path for
+/// package-internal CHARSXPs), this is for defensive reads of *arbitrary* R
+/// objects — S4 class attributes, `geterrmessage()` output, vctrs field
+/// names, `tzone` attributes — where the CHARSXP's origin and encoding
+/// aren't guaranteed.
+///
+/// # Safety
+///
+/// `charsxp` must be a valid SEXP. It may be `R_NilValue` or a null SEXP
+/// (both map to `None`); if it is neither of those and not `NA_character_`,
+/// it must actually be a CHARSXP.
+#[inline]
+pub(crate) unsafe fn charsxp_to_string_lossy(charsxp: SEXP) -> Option<String> {
+    if charsxp.is_null_or_nil() || charsxp.is_na_string() {
+        return None;
+    }
+    let ptr = charsxp.r_char();
+    if ptr.is_null() {
+        return None;
+    }
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
 /// Create a slice from an R data pointer, handling the zero-length case.
 ///
 /// R returns a sentinel pointer (`0x1`) instead of null for empty vectors
@@ -950,48 +981,17 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::VECSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::VECSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let elem = sexp.vector_elt(i as crate::R_xlen_t);
-            let inner: Vec<T> = Vec::<T>::try_from_sexp(elem).map_err(Into::into)?;
-            result.push(inner);
-        }
-
-        Ok(result)
+        map_vecsxp_with(sexp, |_i, elem| {
+            Vec::<T>::try_from_sexp(elem).map_err(Into::into)
+        })
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::VECSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::VECSXP,
-                actual,
-            }
-            .into());
+        unsafe {
+            map_vecsxp_with_unchecked(sexp, |_i, elem| {
+                Vec::<T>::try_from_sexp_unchecked(elem).map_err(Into::into)
+            })
         }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let elem = sexp.vector_elt(i as crate::R_xlen_t);
-            let inner: Vec<T> =
-                unsafe { Vec::<T>::try_from_sexp_unchecked(elem).map_err(Into::into)? };
-            result.push(inner);
-        }
-
-        Ok(result)
     }
 }
 // endregion
@@ -1110,6 +1110,163 @@ where
             actual
         ))),
     }
+}
+
+/// Shared SEXP-dispatch shell for the STRSXP (character vector) walk.
+///
+/// String-side counterpart of [`from_numeric_vec_with`]: checks `STRSXP`,
+/// walks each element via `string_elt`, and applies the per-element `map`
+/// closure to the raw CHARSXP. NA/blank-string policy (`""` vs `None` vs
+/// error) and the target representation (`String` vs `&str` vs `Cow`) are
+/// entirely the caller's closure to encode — this only centralizes the type
+/// check and the walk.
+///
+/// Mirrors `from_numeric_vec_with`'s choice to route both the checked and
+/// unchecked `TryFromSexp` paths through the same (checked-FFI) walk — none
+/// of the current STRSXP vector impls define a distinct unchecked fast path
+/// (they fall back to `TryFromSexp`'s default `try_from_sexp_unchecked`, which
+/// just calls the checked version), so there is no unchecked-FFI twin here.
+#[inline]
+pub(crate) fn map_strsxp_with<U>(
+    sexp: SEXP,
+    mut map: impl FnMut(SEXP /* charsxp */, usize) -> Result<U, SexpError>,
+) -> Result<Vec<U>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::STRSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::STRSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = sexp.len();
+    let mut result = Vec::with_capacity(len);
+    for i in 0..len {
+        let charsxp = sexp.string_elt(i as crate::R_xlen_t);
+        result.push(map(charsxp, i)?);
+    }
+    Ok(result)
+}
+
+/// Shared scalar-STRSXP prologue: type-check + `len == 1` + `string_elt(0)`.
+///
+/// Returns the raw CHARSXP; NA (`SEXP::na_string()`) and blank-string
+/// (`SEXP::blank_string()`) policy stay the caller's decision — some sites
+/// error on NA, some map it to `""`, some to `None`, and `String`'s blank
+/// handling has historically differed from `&str`'s (see audit D6 finding
+/// #3), so this helper does not paper over that divergence.
+#[inline]
+pub(crate) fn scalar_charsxp(sexp: SEXP) -> Result<SEXP, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::STRSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::STRSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = sexp.len();
+    if len != 1 {
+        return Err(SexpLengthError {
+            expected: 1,
+            actual: len,
+        }
+        .into());
+    }
+
+    Ok(sexp.string_elt(0))
+}
+
+/// Unchecked-FFI variant of [`scalar_charsxp`] — uses `len_unchecked` /
+/// `string_elt_unchecked`.
+///
+/// # Safety
+///
+/// Must be called from R's main thread (same contract as
+/// [`TryFromSexp::try_from_sexp_unchecked`]).
+#[inline]
+pub(crate) unsafe fn scalar_charsxp_unchecked(sexp: SEXP) -> Result<SEXP, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::STRSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::STRSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = unsafe { sexp.len_unchecked() };
+    if len != 1 {
+        return Err(SexpLengthError {
+            expected: 1,
+            actual: len,
+        }
+        .into());
+    }
+
+    Ok(unsafe { sexp.string_elt_unchecked(0) })
+}
+
+/// Shared SEXP-dispatch shell for the VECSXP (list) walk.
+///
+/// List-side counterpart of [`from_numeric_vec_with`] / [`map_strsxp_with`]:
+/// checks `VECSXP`, walks each element via `vector_elt`, and applies the
+/// per-element `map` closure (which receives the element's index and SEXP).
+/// Per-element policy (recursion, `NILSXP` → `None`, duplicate-pointer
+/// aliasing checks, …) lives entirely in the closure.
+#[inline]
+pub(crate) fn map_vecsxp_with<U>(
+    sexp: SEXP,
+    mut map: impl FnMut(usize, SEXP) -> Result<U, SexpError>,
+) -> Result<Vec<U>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::VECSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::VECSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = sexp.len();
+    let mut result = Vec::with_capacity(len);
+    for i in 0..len {
+        let elem = sexp.vector_elt(i as crate::R_xlen_t);
+        result.push(map(i, elem)?);
+    }
+    Ok(result)
+}
+
+/// Unchecked-FFI variant of [`map_vecsxp_with`] — uses `len_unchecked` /
+/// `vector_elt_unchecked` for the type-check and walk.
+///
+/// # Safety
+///
+/// Must be called from R's main thread (same contract as
+/// [`TryFromSexp::try_from_sexp_unchecked`]).
+#[inline]
+pub(crate) unsafe fn map_vecsxp_with_unchecked<U>(
+    sexp: SEXP,
+    mut map: impl FnMut(usize, SEXP) -> Result<U, SexpError>,
+) -> Result<Vec<U>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::VECSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::VECSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = unsafe { sexp.len_unchecked() };
+    let mut result = Vec::with_capacity(len);
+    for i in 0..len {
+        let elem = unsafe { sexp.vector_elt_unchecked(i as crate::R_xlen_t) };
+        result.push(map(i, elem)?);
+    }
+    Ok(result)
 }
 
 /// Convert numeric/logical/raw vectors to `Vec<T>` with element-wise coercion.
@@ -1357,41 +1514,17 @@ impl<T: TypedExternal + Send> TryFromSexp for Vec<ExternalPtr<T>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::VECSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::VECSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-        for i in 0..len {
-            let elem = sexp.vector_elt(i as crate::R_xlen_t);
-            result.push(<ExternalPtr<T> as TryFromSexp>::try_from_sexp(elem)?);
-        }
-        Ok(result)
+        map_vecsxp_with(sexp, |_i, elem| {
+            <ExternalPtr<T> as TryFromSexp>::try_from_sexp(elem)
+        })
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::VECSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::VECSXP,
-                actual,
-            }
-            .into());
+        unsafe {
+            map_vecsxp_with_unchecked(sexp, |_i, elem| {
+                <ExternalPtr<T> as TryFromSexp>::try_from_sexp_unchecked(elem)
+            })
         }
-
-        let len = unsafe { sexp.len_unchecked() };
-        let mut result = Vec::with_capacity(len);
-        for i in 0..len {
-            let elem = unsafe { sexp.vector_elt_unchecked(i as crate::R_xlen_t) };
-            result.push(unsafe { <ExternalPtr<T> as TryFromSexp>::try_from_sexp_unchecked(elem)? });
-        }
-        Ok(result)
     }
 }
 
@@ -1402,45 +1535,17 @@ impl<T: TypedExternal + Send> TryFromSexp for Vec<Option<ExternalPtr<T>>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::VECSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::VECSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-        for i in 0..len {
-            let elem = sexp.vector_elt(i as crate::R_xlen_t);
-            result.push(<Option<ExternalPtr<T>> as TryFromSexp>::try_from_sexp(
-                elem,
-            )?);
-        }
-        Ok(result)
+        map_vecsxp_with(sexp, |_i, elem| {
+            <Option<ExternalPtr<T>> as TryFromSexp>::try_from_sexp(elem)
+        })
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::VECSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::VECSXP,
-                actual,
-            }
-            .into());
+        unsafe {
+            map_vecsxp_with_unchecked(sexp, |_i, elem| {
+                <Option<ExternalPtr<T>> as TryFromSexp>::try_from_sexp_unchecked(elem)
+            })
         }
-
-        let len = unsafe { sexp.len_unchecked() };
-        let mut result = Vec::with_capacity(len);
-        for i in 0..len {
-            let elem = unsafe { sexp.vector_elt_unchecked(i as crate::R_xlen_t) };
-            result.push(unsafe {
-                <Option<ExternalPtr<T>> as TryFromSexp>::try_from_sexp_unchecked(elem)?
-            });
-        }
-        Ok(result)
     }
 }
 // endregion
@@ -1780,6 +1885,129 @@ macro_rules! impl_vec_option_try_from_sexp_list {
                     }
                 }
                 Ok(result)
+            }
+        }
+    };
+}
+
+/// Implement the four string-parse `TryFromSexp` impls (`T`, `Option<T>`,
+/// `Vec<T>`, `Vec<Option<T>>`) for a type parsed from an R character vector.
+///
+/// Sibling of [`into_r_infallible!`](crate::into_r) for the reverse direction:
+/// every "parse a scalar type out of an R string" integration (uuid, url,
+/// regex, num-bigint) used to hand-write these four impls — some reinventing
+/// the STRSXP validation `String`'s own `TryFromSexp` already performs.
+/// This macro delegates to `Option<String>` / `Vec<Option<String>>`, so type,
+/// length, and NA checks live in exactly one place.
+///
+/// Semantics:
+/// - `T`: `NA_character_` / `NULL` → `SexpError::Na`; parse failure →
+///   `InvalidValue("invalid <label>: <err>")`.
+/// - `Option<T>`: `NA_character_` / `NULL` → `None`.
+/// - `Vec<T>`: any NA element →
+///   `InvalidValue("NA at index <i> not allowed for Vec<T>")`; parse failure →
+///   `InvalidValue("invalid <label> at index <i>: <err>")`.
+/// - `Vec<Option<T>>`: NA elements → `None`; parse failures error with index.
+///
+/// The parse body is a closure-style `|s| expr` where `s: &str`, returning
+/// `Result<T, E>` with `E: Display`.
+///
+/// ```ignore
+/// try_from_sexp_via_str_parse!(Uuid, "UUID", |s| Uuid::parse_str(s));
+/// ```
+#[macro_export]
+macro_rules! try_from_sexp_via_str_parse {
+    ($ty:ty, $label:literal, |$s:ident| $parse:expr) => {
+        impl $crate::from_r::TryFromSexp for $ty {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                let s = opt.ok_or($crate::from_r::SexpError::Na($crate::from_r::SexpNaError {
+                    sexp_type: $crate::SEXPTYPE::STRSXP,
+                }))?;
+                let $s: &str = &s;
+                ($parse).map_err(|e| {
+                    $crate::from_r::SexpError::InvalidValue(format!(
+                        concat!("invalid ", $label, ": {}"),
+                        e
+                    ))
+                })
+            }
+        }
+
+        impl $crate::from_r::TryFromSexp for Option<$ty> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                match opt {
+                    None => Ok(None),
+                    Some(s) => {
+                        let $s: &str = &s;
+                        ($parse).map(Some).map_err(|e| {
+                            $crate::from_r::SexpError::InvalidValue(format!(
+                                concat!("invalid ", $label, ": {}"),
+                                e
+                            ))
+                        })
+                    }
+                }
+            }
+        }
+
+        impl $crate::from_r::TryFromSexp for Vec<$ty> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, opt)| {
+                        let s = opt.ok_or_else(|| {
+                            $crate::from_r::SexpError::InvalidValue(format!(
+                                concat!(
+                                    "NA at index {} not allowed for Vec<",
+                                    stringify!($ty),
+                                    ">"
+                                ),
+                                i
+                            ))
+                        })?;
+                        let $s: &str = &s;
+                        ($parse).map_err(|e| {
+                            $crate::from_r::SexpError::InvalidValue(format!(
+                                concat!("invalid ", $label, " at index {}: {}"),
+                                i, e
+                            ))
+                        })
+                    })
+                    .collect()
+            }
+        }
+
+        impl $crate::from_r::TryFromSexp for Vec<Option<$ty>> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+                let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+                values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, opt)| match opt {
+                        None => Ok(None),
+                        Some(s) => {
+                            let $s: &str = &s;
+                            ($parse).map(Some).map_err(|e| {
+                                $crate::from_r::SexpError::InvalidValue(format!(
+                                    concat!("invalid ", $label, " at index {}: {}"),
+                                    i, e
+                                ))
+                            })
+                        }
+                    })
+                    .collect()
             }
         }
     };

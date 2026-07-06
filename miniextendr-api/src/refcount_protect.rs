@@ -1,4 +1,4 @@
-//! Reference-counted GC protection using a map + VECSXP backing.
+//! Reference-counted GC protection using a `BTreeMap` + VECSXP backing.
 //!
 //! This module provides an alternative to [`gc_protect`](crate::gc_protect) that uses
 //! reference counting instead of R's LIFO protect stack. This allows releasing
@@ -6,20 +6,11 @@
 //!
 //! # Architecture
 //!
-//! The module is built around two key abstractions:
-//!
-//! 1. **[`MapStorage`]** - Trait abstracting over map implementations (BTreeMap, HashMap)
-//! 2. **[`Arena`]** - Generic arena using RefCell for interior mutability
-//!
-//! For thread-local storage without RefCell overhead, use the `define_thread_local_arena!` macro.
-//!
-//! # How It Works
-//!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────────┐
-//! │  Arena<M: MapStorage>                                               │
+//! │  RefCountedArena / ThreadLocalArena                                 │
 //! │  ┌─────────────────────────┐   ┌───────────────────────────────────┐│
-//! │  │  Map<usize, Entry>      │   │  VECSXP (R_PreserveObject'd)      ││
+//! │  │  BTreeMap<usize, Entry> │   │  VECSXP (R_PreserveObject'd)      ││
 //! │  │  ────────────────────── │   │  ─────────────────────────────    ││
 //! │  │  sexp_a → {count:2, i:0}│◄──┤  [0]: sexp_a                      ││
 //! │  │  sexp_b → {count:1, i:1}│◄──┤  [1]: sexp_b                      ││
@@ -31,29 +22,24 @@
 //!
 //! # Available Types
 //!
-//! | Type | Map | Storage | Use Case |
-//! |------|-----|---------|----------|
-//! | [`RefCountedArena`] | BTreeMap | RefCell | General purpose, ordered |
-//! | [`HashMapArena`] | HashMap | RefCell | Large collections |
-//! | [`ThreadLocalArena`] | BTreeMap | thread_local | Lowest overhead |
-//! | [`ThreadLocalHashArena`] | HashMap | thread_local | Large + low overhead |
+//! | Type | Storage | Use Case |
+//! |------|---------|----------|
+//! | [`RefCountedArena`] | `RefCell` | General purpose, ordered, ppsize-scale workloads |
+//! | [`ThreadLocalArena`] | `thread_local` | Lowest overhead — no `RefCell` borrow checking |
 //!
-//! ## Fast Hash (feature-gated)
-//!
-//! With the `refcount-fast-hash` feature enabled, additional types become available:
-//!
-//! | Type | Map | Storage | Use Case |
-//! |------|-----|---------|----------|
-//! | `FastHashMapArena` | ahash HashMap | RefCell | Faster for large collections |
-//! | `ThreadLocalFastHashArena` | ahash HashMap | thread_local | Fastest for large + hot loops |
-//!
-//! These use ahash instead of SipHash for improved throughput. Not DOS-resistant,
-//! but suitable for local, non-hostile environments.
+//! Only these two flavors are instantiated anywhere in the tree today. This
+//! module previously also shipped HashMap- and ahash-backed variants
+//! (`HashMapArena`, `ThreadLocalHashArena`, `FastHashMapArena`,
+//! `ThreadLocalFastHashArena`) behind a generic `MapStorage` abstraction; they
+//! were removed for having zero production or test consumers (see
+//! <https://github.com/a2-ai/miniextendr/issues/ISSUE_NUMBER_PLACEHOLDER>).
+//! Re-add a flavor (and the generic `MapStorage` plumbing needed to support
+//! more than one map type again) when a real consumer appears.
 
 use crate::sys::{R_PreserveObject, R_ReleaseObject, Rf_allocVector, Rf_protect, Rf_unprotect};
 use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::rc::Rc;
@@ -61,11 +47,8 @@ use std::rc::Rc;
 // region: Entry type
 
 /// Entry in the reference count map.
-///
-/// This is an implementation detail exposed for generic type bounds.
 #[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct Entry {
+struct Entry {
     /// Reference count (how many times this SEXP has been protected)
     count: usize,
     /// Index in the backing VECSXP
@@ -73,215 +56,39 @@ pub struct Entry {
 }
 // endregion
 
-// region: MapStorage trait
-
-/// Trait abstracting over map implementations for arena storage.
-///
-/// This allows [`Arena`] to be generic over the underlying map type,
-/// supporting both `BTreeMap` and `HashMap`.
-pub trait MapStorage: Default {
-    /// Get an entry by key.
-    fn get(&self, key: &usize) -> Option<&Entry>;
-
-    /// Get a mutable entry by key.
-    fn get_mut(&mut self, key: &usize) -> Option<&mut Entry>;
-
-    /// Insert an entry, returning the old value if present.
-    fn insert(&mut self, key: usize, entry: Entry) -> Option<Entry>;
-
-    /// Remove an entry by key.
-    fn remove(&mut self, key: &usize) -> Option<Entry>;
-
-    /// Check if a key exists.
-    fn contains_key(&self, key: &usize) -> bool;
-
-    /// Iterate over all entries.
-    fn for_each_entry<F: FnMut(&Entry)>(&self, f: F);
-
-    /// Clear all entries.
-    fn clear(&mut self);
-
-    /// Reserve capacity for additional entries.
-    ///
-    /// This is a no-op for ordered maps (BTreeMap) but can improve performance
-    /// for hash maps by avoiding rehashing during bulk inserts.
-    #[inline]
-    fn reserve(&mut self, _additional: usize) {
-        // Default no-op for maps that don't support reservation
-    }
-
-    /// Decrement the count for a key and remove if zero.
-    ///
-    /// Returns `Some(true)` if entry was found and removed,
-    /// `Some(false)` if entry was found but count > 0 after decrement,
-    /// `None` if entry was not found.
-    ///
-    /// This uses entry API when available for single-lookup performance.
-    fn decrement_and_maybe_remove(&mut self, key: &usize) -> Option<(bool, usize)> {
-        if let Some(entry) = self.get_mut(key) {
-            entry.count -= 1;
-            if entry.count == 0 {
-                let index = entry.index;
-                self.remove(key);
-                Some((true, index))
-            } else {
-                Some((false, entry.index))
-            }
-        } else {
-            None
-        }
-    }
-}
-
-impl MapStorage for BTreeMap<usize, Entry> {
-    #[inline]
-    fn get(&self, key: &usize) -> Option<&Entry> {
-        BTreeMap::get(self, key)
-    }
-
-    #[inline]
-    fn get_mut(&mut self, key: &usize) -> Option<&mut Entry> {
-        BTreeMap::get_mut(self, key)
-    }
-
-    #[inline]
-    fn insert(&mut self, key: usize, entry: Entry) -> Option<Entry> {
-        BTreeMap::insert(self, key, entry)
-    }
-
-    #[inline]
-    fn remove(&mut self, key: &usize) -> Option<Entry> {
-        BTreeMap::remove(self, key)
-    }
-
-    #[inline]
-    fn contains_key(&self, key: &usize) -> bool {
-        BTreeMap::contains_key(self, key)
-    }
-
-    #[inline]
-    fn for_each_entry<F: FnMut(&Entry)>(&self, mut f: F) {
-        for entry in self.values() {
-            f(entry);
-        }
-    }
-
-    #[inline]
-    fn clear(&mut self) {
-        BTreeMap::clear(self);
-    }
-}
-
-/// Implement [`MapStorage`] for a HashMap-like type.
-///
-/// Both `HashMap<usize, Entry>` and `FastHashMap` (ahash) share the same API
-/// including the entry API for single-lookup decrement. This macro avoids
-/// duplicating the ~60-line impl for each hasher type.
-macro_rules! impl_hashmap_map_storage {
-    ($ty:ty) => {
-        impl MapStorage for $ty {
-            #[inline]
-            fn get(&self, key: &usize) -> Option<&Entry> {
-                std::collections::HashMap::get(self, key)
-            }
-
-            #[inline]
-            fn get_mut(&mut self, key: &usize) -> Option<&mut Entry> {
-                std::collections::HashMap::get_mut(self, key)
-            }
-
-            #[inline]
-            fn insert(&mut self, key: usize, entry: Entry) -> Option<Entry> {
-                std::collections::HashMap::insert(self, key, entry)
-            }
-
-            #[inline]
-            fn remove(&mut self, key: &usize) -> Option<Entry> {
-                std::collections::HashMap::remove(self, key)
-            }
-
-            #[inline]
-            fn contains_key(&self, key: &usize) -> bool {
-                std::collections::HashMap::contains_key(self, key)
-            }
-
-            #[inline]
-            fn for_each_entry<F: FnMut(&Entry)>(&self, mut f: F) {
-                for entry in self.values() {
-                    f(entry);
-                }
-            }
-
-            #[inline]
-            fn clear(&mut self) {
-                std::collections::HashMap::clear(self);
-            }
-
-            #[inline]
-            fn reserve(&mut self, additional: usize) {
-                std::collections::HashMap::reserve(self, additional);
-            }
-
-            /// Entry-based decrement for single-lookup performance.
-            #[inline]
-            fn decrement_and_maybe_remove(&mut self, key: &usize) -> Option<(bool, usize)> {
-                use std::collections::hash_map::Entry as HashEntry;
-
-                match self.entry(*key) {
-                    HashEntry::Occupied(mut occupied) => {
-                        let entry = occupied.get_mut();
-                        entry.count -= 1;
-                        if entry.count == 0 {
-                            let index = entry.index;
-                            occupied.remove();
-                            Some((true, index))
-                        } else {
-                            Some((false, entry.index))
-                        }
-                    }
-                    HashEntry::Vacant(_) => None,
-                }
-            }
-        }
-    };
-}
-
-impl_hashmap_map_storage!(HashMap<usize, Entry>);
-// endregion
-
 // region: Core arena state (shared between RefCell and thread_local variants)
 
 /// Core arena state without interior mutability.
 ///
-/// This is used internally by both [`Arena`] (with RefCell) and
-/// thread-local arenas (with UnsafeCell).
-#[doc(hidden)]
-pub struct ArenaState<M> {
+/// This is used internally by both [`RefCountedArena`] (with `RefCell`) and
+/// [`ThreadLocalArena`] (with `UnsafeCell`).
+struct ArenaState {
     /// Map from SEXP pointer to entry
-    pub map: MaybeUninit<M>,
+    map: MaybeUninit<BTreeMap<usize, Entry>>,
     /// Backing VECSXP (preserved via R_PreserveObject)
-    pub backing: SEXP,
+    backing: SEXP,
     /// Current capacity
-    pub capacity: usize,
+    capacity: usize,
     /// Number of active entries
-    pub len: usize,
+    len: usize,
     /// Free list for slot reuse
-    pub free_list: Vec<usize>,
+    free_list: Vec<usize>,
     /// Monotonic write cursor: next index to hand out on the fresh-slot path.
     /// Distinct from `len` (live count) — after release cycles `len` can be
     /// lower than the highest index ever handed out, so using `len` as the
     /// cursor can return an index that is already on the free-list.
-    pub next_slot: usize,
+    next_slot: usize,
 }
 
-impl<M: MapStorage> ArenaState<M> {
+impl ArenaState {
     /// Initial capacity for the backing VECSXP.
     ///
     /// This is suitable for light usage (a handful of protected values).
     /// For ppsize-scale workloads (hundreds or thousands of protected values),
-    /// use [`Arena::with_capacity`] or [`init_with_capacity`](ThreadLocalState::init_with_capacity)
-    /// to avoid repeated backing VECSXP growth and map rehashing.
-    pub const INITIAL_CAPACITY: usize = 16;
+    /// use [`RefCountedArena::with_capacity`] or
+    /// [`ThreadLocalArena::init_with_capacity`] to avoid repeated backing
+    /// VECSXP growth and map rehashing.
+    const INITIAL_CAPACITY: usize = 16;
 
     /// Maximum capacity: the backing VECSXP is indexed by `R_xlen_t` (isize),
     /// so the capacity must fit in a non-negative `R_xlen_t`.
@@ -300,7 +107,7 @@ impl<M: MapStorage> ArenaState<M> {
     }
 
     /// Create uninitialized state (for thread_local).
-    pub const fn uninit() -> Self {
+    const fn uninit() -> Self {
         Self {
             map: MaybeUninit::uninit(),
             backing: SEXP(std::ptr::null_mut()),
@@ -316,7 +123,7 @@ impl<M: MapStorage> ArenaState<M> {
     /// # Safety
     ///
     /// Must be called exactly once before using the state.
-    pub unsafe fn init(&mut self, capacity: usize) {
+    unsafe fn init(&mut self, capacity: usize) {
         let capacity = capacity.max(1);
         assert!(
             capacity <= Self::MAX_CAPACITY,
@@ -330,9 +137,7 @@ impl<M: MapStorage> ArenaState<M> {
             R_PreserveObject(backing);
             Rf_unprotect(1);
 
-            let mut map = M::default();
-            map.reserve(capacity);
-            self.map.write(map);
+            self.map.write(BTreeMap::new());
             self.backing = backing;
             self.capacity = capacity;
             self.len = 0;
@@ -344,10 +149,8 @@ impl<M: MapStorage> ArenaState<M> {
     /// Create initialized state.
     unsafe fn new(capacity: usize) -> Self {
         let capacity = capacity.max(1);
-        let mut map = M::default();
-        map.reserve(capacity);
         let mut state = Self {
-            map: MaybeUninit::new(map),
+            map: MaybeUninit::new(BTreeMap::new()),
             backing: SEXP(std::ptr::null_mut()),
             capacity: 0,
             len: 0,
@@ -380,16 +183,38 @@ impl<M: MapStorage> ArenaState<M> {
 
     /// Get a reference to the map.
     #[inline]
-    fn map(&self) -> &M {
+    fn map(&self) -> &BTreeMap<usize, Entry> {
         // SAFETY: Map is initialized before any access
         unsafe { self.map.assume_init_ref() }
     }
 
     /// Get a mutable reference to the map.
     #[inline]
-    fn map_mut(&mut self) -> &mut M {
+    fn map_mut(&mut self) -> &mut BTreeMap<usize, Entry> {
         // SAFETY: Map is initialized before any access
         unsafe { self.map.assume_init_mut() }
+    }
+
+    /// Decrement the count for a key and remove if zero.
+    ///
+    /// Returns `Some((true, index))` if the entry was found and removed,
+    /// `Some((false, index))` if the entry was found but count > 0 after
+    /// decrement, `None` if the entry was not found.
+    #[inline]
+    fn decrement_and_maybe_remove(&mut self, key: &usize) -> Option<(bool, usize)> {
+        let map = self.map_mut();
+        if let Some(entry) = map.get_mut(key) {
+            entry.count -= 1;
+            if entry.count == 0 {
+                let index = entry.index;
+                map.remove(key);
+                Some((true, index))
+            } else {
+                Some((false, entry.index))
+            }
+        } else {
+            None
+        }
     }
 
     /// Protect a SEXP from garbage collection.
@@ -398,7 +223,7 @@ impl<M: MapStorage> ArenaState<M> {
     ///
     /// Must be called from the R main thread. The SEXP must be valid.
     #[inline]
-    pub unsafe fn protect(&mut self, x: SEXP) -> SEXP {
+    unsafe fn protect(&mut self, x: SEXP) -> SEXP {
         if x.is_nil() {
             return x;
         }
@@ -424,15 +249,14 @@ impl<M: MapStorage> ArenaState<M> {
     /// Must be called from the R main thread. The SEXP must have been
     /// previously protected by this arena.
     #[inline]
-    pub unsafe fn unprotect(&mut self, x: SEXP) {
+    unsafe fn unprotect(&mut self, x: SEXP) {
         if x.is_nil() {
             return;
         }
 
         let key = x.0 as usize;
 
-        // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
-        match self.map_mut().decrement_and_maybe_remove(&key) {
+        match self.decrement_and_maybe_remove(&key) {
             Some((true, index)) => {
                 // Entry was removed (count reached 0)
                 self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());
@@ -454,15 +278,14 @@ impl<M: MapStorage> ArenaState<M> {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn try_unprotect(&mut self, x: SEXP) -> bool {
+    unsafe fn try_unprotect(&mut self, x: SEXP) -> bool {
         if x.is_nil() {
             return false;
         }
 
         let key = x.0 as usize;
 
-        // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
-        match self.map_mut().decrement_and_maybe_remove(&key) {
+        match self.decrement_and_maybe_remove(&key) {
             Some((true, index)) => {
                 // Entry was removed (count reached 0)
                 self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());
@@ -480,7 +303,7 @@ impl<M: MapStorage> ArenaState<M> {
 
     #[inline]
     /// Returns true if this arena currently protects `x`.
-    pub fn is_protected(&self, x: SEXP) -> bool {
+    fn is_protected(&self, x: SEXP) -> bool {
         if x.is_nil() {
             return false;
         }
@@ -492,7 +315,7 @@ impl<M: MapStorage> ArenaState<M> {
     /// Returns the current reference count for `x` in this arena.
     ///
     /// Returns 0 if `x` is not protected or is `SEXP::nil()`.
-    pub fn ref_count(&self, x: SEXP) -> usize {
+    fn ref_count(&self, x: SEXP) -> usize {
         if x.is_nil() {
             return 0;
         }
@@ -551,11 +374,11 @@ impl<M: MapStorage> ArenaState<M> {
     /// # Safety
     ///
     /// Must be called from the R main thread.
-    pub unsafe fn clear(&mut self) {
-        self.map().for_each_entry(|entry| {
+    unsafe fn clear(&mut self) {
+        for entry in self.map().values() {
             self.backing
                 .set_vector_elt(entry.index as R_xlen_t, SEXP::nil());
-        });
+        }
         self.map_mut().clear();
         self.free_list.clear();
         self.len = 0;
@@ -571,28 +394,23 @@ impl<M: MapStorage> ArenaState<M> {
 }
 // endregion
 
-// region: Arena<M> - RefCell-based generic arena
+// region: RefCountedArena - RefCell-based arena
 
 /// Enforces `!Send + !Sync` (R API is not thread-safe).
 type NoSendSync = PhantomData<Rc<()>>;
 
-/// A reference-counted arena for GC protection, generic over map type.
+/// A reference-counted arena for GC protection, backed by a `BTreeMap`.
 ///
 /// This provides an alternative to R's PROTECT stack that:
 /// - Uses reference counting for each SEXP
 /// - Allows releasing protections in any order
 /// - Has no stack size limit (uses heap allocation)
-///
-/// # Type Aliases
-///
-/// - [`RefCountedArena`] = `Arena<BTreeMap<...>>` (ordered, good for ref counting)
-/// - [`HashMapArena`] = `Arena<HashMap<...>>` (faster for large collections)
-pub struct Arena<M: MapStorage> {
-    state: RefCell<ArenaState<M>>,
+pub struct RefCountedArena {
+    state: RefCell<ArenaState>,
     _nosend: NoSendSync,
 }
 
-impl<M: MapStorage> Arena<M> {
+impl RefCountedArena {
     /// Create a new arena with default capacity (16 slots).
     ///
     /// For workloads protecting many distinct SEXPs (e.g., ppsize-scale loops),
@@ -603,7 +421,7 @@ impl<M: MapStorage> Arena<M> {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn new() -> Self {
-        unsafe { Self::with_capacity(ArenaState::<M>::INITIAL_CAPACITY) }
+        unsafe { Self::with_capacity(ArenaState::INITIAL_CAPACITY) }
     }
 
     /// Create a new arena with specific initial capacity.
@@ -701,73 +519,44 @@ impl<M: MapStorage> Arena<M> {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn guard(&self, x: SEXP) -> ArenaGuard<'_, M> {
+    pub unsafe fn guard(&self, x: SEXP) -> ArenaGuard<'_> {
         unsafe { ArenaGuard::new(self, x) }
     }
 }
 
-impl<M: MapStorage> Drop for Arena<M> {
+impl Drop for RefCountedArena {
     fn drop(&mut self) {
         let state = self.state.get_mut();
-        // Drop the map first (always initialized for Arena<M>, which uses ArenaState::new()).
-        // SAFETY: Arena<M> always constructs via ArenaState::new() which initializes the map.
+        // SAFETY: RefCountedArena always constructs via ArenaState::new(),
+        // which initializes the map.
         unsafe { state.map.assume_init_drop() };
         unsafe { state.release_backing() };
     }
 }
 
-impl<M: MapStorage> Default for Arena<M> {
+impl Default for RefCountedArena {
     fn default() -> Self {
         unsafe { Self::new() }
     }
 }
 // endregion
 
-// region: Type aliases for common arena types
-
-/// BTreeMap-based arena (default, good for reference counting).
-pub type RefCountedArena = Arena<BTreeMap<usize, Entry>>;
-
-/// HashMap-based arena (faster for large collections).
-pub type HashMapArena = Arena<HashMap<usize, Entry>>;
-// endregion
-
-// region: Fast hash types (feature-gated)
-
-/// HashMap with ahash for faster hashing (not DOS-resistant).
-///
-/// Uses ahash instead of SipHash for improved throughput. Not DOS-resistant,
-/// suitable for local, non-hostile environments.
-#[cfg(feature = "refcount-fast-hash")]
-pub type FastHashMap = std::collections::HashMap<usize, Entry, ahash::RandomState>;
-
-#[cfg(feature = "refcount-fast-hash")]
-impl_hashmap_map_storage!(FastHashMap);
-
-/// Fast hash arena using ahash (requires `refcount-fast-hash` feature).
-///
-/// Uses ahash instead of SipHash for improved throughput on large collections.
-/// Not DOS-resistant, suitable for local, non-hostile environments.
-#[cfg(feature = "refcount-fast-hash")]
-pub type FastHashMapArena = Arena<FastHashMap>;
-// endregion
-
 // region: RAII Guard
 
 /// An RAII guard that unprotects a SEXP when dropped.
-pub struct ArenaGuard<'a, M: MapStorage> {
-    arena: &'a Arena<M>,
+pub struct ArenaGuard<'a> {
+    arena: &'a RefCountedArena,
     sexp: SEXP,
 }
 
-impl<'a, M: MapStorage> ArenaGuard<'a, M> {
+impl<'a> ArenaGuard<'a> {
     /// Create a new guard that protects the SEXP and unprotects on drop.
     ///
     /// # Safety
     ///
     /// Must be called from the R main thread. The SEXP must be valid.
     #[inline]
-    pub unsafe fn new(arena: &'a Arena<M>, sexp: SEXP) -> Self {
+    pub unsafe fn new(arena: &'a RefCountedArena, sexp: SEXP) -> Self {
         unsafe { arena.protect(sexp) };
         Self { arena, sexp }
     }
@@ -779,13 +568,13 @@ impl<'a, M: MapStorage> ArenaGuard<'a, M> {
     }
 }
 
-impl<M: MapStorage> Drop for ArenaGuard<'_, M> {
+impl Drop for ArenaGuard<'_> {
     fn drop(&mut self) {
         unsafe { self.arena.unprotect(self.sexp) };
     }
 }
 
-impl<M: MapStorage> std::ops::Deref for ArenaGuard<'_, M> {
+impl std::ops::Deref for ArenaGuard<'_> {
     type Target = SEXP;
 
     #[inline]
@@ -793,41 +582,99 @@ impl<M: MapStorage> std::ops::Deref for ArenaGuard<'_, M> {
         &self.sexp
     }
 }
-
-/// Legacy type alias for backwards compatibility.
-pub type RefCountedGuard<'a> = ArenaGuard<'a, BTreeMap<usize, Entry>>;
 // endregion
 
-// region: Thread-local arena trait + macro
+// region: ThreadLocalArena
 
-/// Trait providing default implementations for all thread-local arena methods.
+/// State wrapper for the thread-local arena.
+struct ThreadLocalState {
+    inner: ArenaState,
+    initialized: bool,
+}
+
+impl ThreadLocalState {
+    /// Create an uninitialized thread-local arena state.
+    ///
+    /// Call `init` or `init_with_capacity` before use.
+    const fn uninit() -> Self {
+        Self {
+            inner: ArenaState::uninit(),
+            initialized: false,
+        }
+    }
+
+    /// Initialize with default capacity (16 slots).
+    ///
+    /// For ppsize-scale workloads, prefer [`init_with_capacity`](Self::init_with_capacity)
+    /// to avoid backing VECSXP growth and map rehashing during operation.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Must only be called once.
+    unsafe fn init(&mut self) {
+        unsafe { self.inner.init(ArenaState::INITIAL_CAPACITY) };
+        self.initialized = true;
+    }
+
+    /// Initialize with specific capacity.
+    ///
+    /// Pre-sizing avoids growth of the backing VECSXP and rehashing of the
+    /// internal map. Use this when the expected number of distinct protected
+    /// values is known or can be estimated (e.g., the length of an input vector).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Must only be called once.
+    unsafe fn init_with_capacity(&mut self, capacity: usize) {
+        unsafe { self.inner.init(capacity) };
+        self.initialized = true;
+    }
+}
+
+impl Drop for ThreadLocalState {
+    fn drop(&mut self) {
+        if self.initialized {
+            // SAFETY: The map was initialized in init() or init_with_capacity().
+            // We must manually drop it because MaybeUninit does not run Drop.
+            unsafe { self.inner.map.assume_init_drop() };
+        }
+        // R backing is released separately via release_backing() if needed.
+        // Thread-local destructors may run after R has shut down, so we do NOT
+        // call R_ReleaseObject here — the R runtime owns the backing VECSXP
+        // lifetime via R_PreserveObject.
+    }
+}
+
+thread_local! {
+    static THREAD_LOCAL_STATE: std::cell::UnsafeCell<ThreadLocalState> =
+        const { std::cell::UnsafeCell::new(ThreadLocalState::uninit()) };
+}
+
+/// Thread-local, `BTreeMap`-backed reference-counted GC protection arena.
 ///
-/// Implementors only need to provide [`with_state`](Self::with_state) to access
-/// the thread-local state; all 14 arena methods are provided as defaults.
-///
-/// The `define_thread_local_arena!` macro generates both the struct and the
-/// `ThreadLocalArenaOps` impl, so this trait is an implementation detail.
-/// Import it when calling methods on thread-local arena types:
+/// This provides the lowest overhead for protection operations by
+/// eliminating `RefCell` borrow checking — each thread gets its own
+/// [`ThreadLocalState`] accessed through an `UnsafeCell`.
 ///
 /// ```ignore
-/// use miniextendr_api::refcount_protect::{ThreadLocalArena, ThreadLocalArenaOps};
+/// use miniextendr_api::refcount_protect::ThreadLocalArena;
 /// unsafe { ThreadLocalArena::protect(x) };
 /// ```
-pub trait ThreadLocalArenaOps {
-    /// The map storage type used by this arena.
-    type Map: MapStorage;
+pub struct ThreadLocalArena;
 
+impl ThreadLocalArena {
     /// Access the thread-local state.
-    ///
-    /// Implementors route through `thread_local!` + `UnsafeCell`.
-    fn with_state<R, F: FnOnce(&mut ThreadLocalState<Self::Map>) -> R>(f: F) -> R;
+    #[inline]
+    fn with_state<R, F: FnOnce(&mut ThreadLocalState) -> R>(f: F) -> R {
+        THREAD_LOCAL_STATE.with(|cell| f(unsafe { &mut *cell.get() }))
+    }
 
     /// Initialize the arena with default capacity (called automatically on first use).
     ///
     /// # Safety
     ///
     /// Must be called from the R main thread.
-    unsafe fn init() {
+    pub unsafe fn init() {
         Self::with_state(|s| {
             if !s.initialized {
                 unsafe { s.init() };
@@ -845,7 +692,7 @@ pub trait ThreadLocalArenaOps {
     /// # Safety
     ///
     /// Must be called from the R main thread.
-    unsafe fn init_with_capacity(capacity: usize) {
+    pub unsafe fn init_with_capacity(capacity: usize) {
         Self::with_state(|s| {
             if !s.initialized {
                 unsafe { s.init_with_capacity(capacity) };
@@ -859,7 +706,7 @@ pub trait ThreadLocalArenaOps {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    unsafe fn protect(x: SEXP) -> SEXP {
+    pub unsafe fn protect(x: SEXP) -> SEXP {
         Self::with_state(|s| {
             if !s.initialized {
                 unsafe { s.init() };
@@ -874,7 +721,7 @@ pub trait ThreadLocalArenaOps {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    unsafe fn unprotect(x: SEXP) {
+    pub unsafe fn unprotect(x: SEXP) {
         Self::with_state(|s| {
             // If the arena was never initialized, no SEXP could have been
             // protected by it, so there is nothing to unprotect.
@@ -891,7 +738,7 @@ pub trait ThreadLocalArenaOps {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    unsafe fn try_unprotect(x: SEXP) -> bool {
+    pub unsafe fn try_unprotect(x: SEXP) -> bool {
         Self::with_state(|s| {
             // If the arena was never initialized, no SEXP could have been
             // protected by it, so return false.
@@ -911,7 +758,7 @@ pub trait ThreadLocalArenaOps {
     /// - Must be called from the R main thread.
     /// - The arena must have been initialized via `init()` or `init_with_capacity()`.
     #[inline]
-    unsafe fn protect_fast(x: SEXP) -> SEXP {
+    pub unsafe fn protect_fast(x: SEXP) -> SEXP {
         Self::with_state(|s| {
             debug_assert!(s.initialized, "protect_fast called before init");
             unsafe { s.inner.protect(x) }
@@ -927,7 +774,7 @@ pub trait ThreadLocalArenaOps {
     /// - Must be called from the R main thread.
     /// - The arena must have been initialized via `init()` or `init_with_capacity()`.
     #[inline]
-    unsafe fn unprotect_fast(x: SEXP) {
+    pub unsafe fn unprotect_fast(x: SEXP) {
         Self::with_state(|s| {
             debug_assert!(s.initialized, "unprotect_fast called before init");
             unsafe { s.inner.unprotect(x) };
@@ -943,7 +790,7 @@ pub trait ThreadLocalArenaOps {
     /// - Must be called from the R main thread.
     /// - The arena must have been initialized via `init()` or `init_with_capacity()`.
     #[inline]
-    unsafe fn try_unprotect_fast(x: SEXP) -> bool {
+    pub unsafe fn try_unprotect_fast(x: SEXP) -> bool {
         Self::with_state(|s| {
             debug_assert!(s.initialized, "try_unprotect_fast called before init");
             unsafe { s.inner.try_unprotect(x) }
@@ -952,7 +799,7 @@ pub trait ThreadLocalArenaOps {
 
     /// Check if a SEXP is protected.
     #[inline]
-    fn is_protected(x: SEXP) -> bool {
+    pub fn is_protected(x: SEXP) -> bool {
         Self::with_state(|s| {
             if !s.initialized {
                 return false;
@@ -963,7 +810,7 @@ pub trait ThreadLocalArenaOps {
 
     /// Get reference count.
     #[inline]
-    fn ref_count(x: SEXP) -> usize {
+    pub fn ref_count(x: SEXP) -> usize {
         Self::with_state(|s| {
             if !s.initialized {
                 return 0;
@@ -974,19 +821,19 @@ pub trait ThreadLocalArenaOps {
 
     /// Number of protected SEXPs.
     #[inline]
-    fn len() -> usize {
+    pub fn len() -> usize {
         Self::with_state(|s| s.inner.len)
     }
 
     /// Check if empty.
     #[inline]
-    fn is_empty() -> bool {
+    pub fn is_empty() -> bool {
         Self::len() == 0
     }
 
     /// Get capacity.
     #[inline]
-    fn capacity() -> usize {
+    pub fn capacity() -> usize {
         Self::with_state(|s| s.inner.capacity)
     }
 
@@ -995,7 +842,7 @@ pub trait ThreadLocalArenaOps {
     /// # Safety
     ///
     /// Must be called from the R main thread.
-    unsafe fn clear() {
+    pub unsafe fn clear() {
         Self::with_state(|s| {
             if s.initialized {
                 unsafe { s.inner.clear() };
@@ -1003,148 +850,6 @@ pub trait ThreadLocalArenaOps {
         });
     }
 }
-
-/// Macro to define a thread-local arena with a specific map type.
-///
-/// This creates a zero-sized struct implementing [`ThreadLocalArenaOps`],
-/// providing all arena methods via the trait's default implementations.
-///
-/// # Example
-///
-/// ```ignore
-/// define_thread_local_arena!(
-///     /// My custom thread-local arena.
-///     pub MyArena,
-///     BTreeMap<usize, Entry>,
-///     MY_ARENA_STATE
-/// );
-/// ```
-#[macro_export]
-macro_rules! define_thread_local_arena {
-    (
-        $(#[$meta:meta])*
-        $vis:vis $name:ident,
-        $map:ty,
-        $state_name:ident
-    ) => {
-        thread_local! {
-            static $state_name: std::cell::UnsafeCell<$crate::refcount_protect::ThreadLocalState<$map>> =
-                const { std::cell::UnsafeCell::new($crate::refcount_protect::ThreadLocalState::uninit()) };
-        }
-
-        $(#[$meta])*
-        $vis struct $name;
-
-        impl $crate::refcount_protect::ThreadLocalArenaOps for $name {
-            type Map = $map;
-
-            fn with_state<R, F: FnOnce(&mut $crate::refcount_protect::ThreadLocalState<$map>) -> R>(f: F) -> R {
-                $state_name.with(|cell| f(unsafe { &mut *cell.get() }))
-            }
-        }
-    };
-}
-
-/// State wrapper for thread-local arenas (used by macro).
-#[doc(hidden)]
-pub struct ThreadLocalState<M: MapStorage> {
-    pub inner: ArenaState<M>,
-    pub initialized: bool,
-}
-
-impl<M: MapStorage> ThreadLocalState<M> {
-    /// Create an uninitialized thread-local arena state.
-    ///
-    /// Call `init` or `init_with_capacity` before use.
-    pub const fn uninit() -> Self {
-        Self {
-            inner: ArenaState::uninit(),
-            initialized: false,
-        }
-    }
-
-    /// Initialize with default capacity (16 slots).
-    ///
-    /// For ppsize-scale workloads, prefer [`init_with_capacity`](Self::init_with_capacity)
-    /// to avoid backing VECSXP growth and map rehashing during operation.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread. Must only be called once.
-    pub unsafe fn init(&mut self) {
-        unsafe { self.inner.init(ArenaState::<M>::INITIAL_CAPACITY) };
-        self.initialized = true;
-    }
-
-    /// Initialize with specific capacity.
-    ///
-    /// Pre-sizing avoids growth of the backing VECSXP and rehashing of the
-    /// internal map. Use this when the expected number of distinct protected
-    /// values is known or can be estimated (e.g., the length of an input vector).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread. Must only be called once.
-    pub unsafe fn init_with_capacity(&mut self, capacity: usize) {
-        unsafe { self.inner.init(capacity) };
-        self.initialized = true;
-    }
-}
-
-impl<M: MapStorage> Drop for ThreadLocalState<M> {
-    fn drop(&mut self) {
-        if self.initialized {
-            // SAFETY: The map was initialized in init() or init_with_capacity().
-            // We must manually drop it because MaybeUninit does not run Drop.
-            unsafe { self.inner.map.assume_init_drop() };
-        }
-        // R backing is released separately via release_backing() if needed.
-        // Thread-local destructors may run after R has shut down, so we do NOT
-        // call R_ReleaseObject here — the R runtime owns the backing VECSXP
-        // lifetime via R_PreserveObject.
-    }
-}
-// endregion
-
-// region: Built-in thread-local arenas
-
-define_thread_local_arena!(
-    /// Thread-local BTreeMap-based arena.
-    ///
-    /// This provides the lowest overhead for protection operations by
-    /// eliminating RefCell borrow checking.
-    pub ThreadLocalArena,
-    BTreeMap<usize, Entry>,
-    THREAD_LOCAL_BTREE_STATE
-);
-
-define_thread_local_arena!(
-    /// Thread-local HashMap-based arena.
-    ///
-    /// Combines HashMap's performance for large collections with
-    /// thread-local storage's low overhead.
-    pub ThreadLocalHashArena,
-    HashMap<usize, Entry>,
-    THREAD_LOCAL_HASH_STATE
-);
-// endregion
-
-// region: Fast hash thread-local arena (feature-gated)
-
-#[cfg(feature = "refcount-fast-hash")]
-define_thread_local_arena!(
-    /// Thread-local fast hash arena using ahash.
-    ///
-    /// Combines ahash's faster hashing with thread-local storage's low overhead.
-    /// Ideal for hot loops protecting many distinct values.
-    ///
-    /// Not DOS-resistant, suitable for local, non-hostile environments.
-    ///
-    /// Requires the `refcount-fast-hash` feature.
-    pub ThreadLocalFastHashArena,
-    FastHashMap,
-    THREAD_LOCAL_FAST_HASH_STATE
-);
 
 // Tests are in tests/refcount_protect.rs (requires R runtime via miniextendr-engine)
 // endregion

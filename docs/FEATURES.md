@@ -9,7 +9,6 @@ Only `default` features are enabled automatically.
 |---------|----------------|-------------------|
 | **Default** | | |
 | `doc-lint` | Build-time lint checking `#[miniextendr]` source-level attributes | (forwarded to miniextendr-macros) |
-| `refcount-fast-hash` | Fast hasher for refcount protect arenas | ahash |
 | **Core / R Integration** | | |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
@@ -81,12 +80,6 @@ for consistency. Warns on missing or mismatched annotations.
 
 Forwarded to `miniextendr-macros/doc-lint`. Disable with `default-features = false` if
 the lint causes issues during development.
-
-### `refcount-fast-hash`
-
-Uses `ahash` instead of the standard `SipHash` for refcount protect arenas, improving
-throughput on large collections of protected R objects. Not DOS-resistant, but this is
-fine for internal arena use.
 
 ---
 

@@ -500,6 +500,10 @@ attr(DoubleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 #' @name DoubleCounter$Counter$add
 #' @rdname DoubleCounter
 DoubleCounter$Counter$add <- function(x, n) {
+  stopifnot(
+    "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
+    "'n' must have length 1" = length(n) == 1L
+  )
   .val <- .Call(C_DoubleCounter__Counter__add, .call = match.call(), x, n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
@@ -520,6 +524,10 @@ attr(DoubleCounter$Counter$panic_plain, ".__mx_instance__") <- TRUE
 #' @name DoubleCounter$Counter$error_with_class
 #' @rdname DoubleCounter
 DoubleCounter$Counter$error_with_class <- function(x, class_name) {
+  stopifnot(
+    "'class_name' must be character" = is.character(class_name),
+    "'class_name' must have length 1" = length(class_name) == 1L
+  )
   .val <- .Call(C_DoubleCounter__Counter__error_with_class, .call = match.call(), x, class_name)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
@@ -530,6 +538,10 @@ attr(DoubleCounter$Counter$error_with_class, ".__mx_instance__") <- TRUE
 #' @name DoubleCounter$Counter$raise_error
 #' @rdname DoubleCounter
 DoubleCounter$Counter$raise_error <- function(x, msg) {
+  stopifnot(
+    "'msg' must be character" = is.character(msg),
+    "'msg' must have length 1" = length(msg) == 1L
+  )
   .val <- .Call(C_DoubleCounter__Counter__raise_error, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
@@ -540,6 +552,10 @@ attr(DoubleCounter$Counter$raise_error, ".__mx_instance__") <- TRUE
 #' @name DoubleCounter$Counter$raise_warning
 #' @rdname DoubleCounter
 DoubleCounter$Counter$raise_warning <- function(x, msg) {
+  stopifnot(
+    "'msg' must be character" = is.character(msg),
+    "'msg' must have length 1" = length(msg) == 1L
+  )
   .val <- .Call(C_DoubleCounter__Counter__raise_warning, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
@@ -550,6 +566,10 @@ attr(DoubleCounter$Counter$raise_warning, ".__mx_instance__") <- TRUE
 #' @name DoubleCounter$Counter$raise_message
 #' @rdname DoubleCounter
 DoubleCounter$Counter$raise_message <- function(x, msg) {
+  stopifnot(
+    "'msg' must be character" = is.character(msg),
+    "'msg' must have length 1" = length(msg) == 1L
+  )
   .val <- .Call(C_DoubleCounter__Counter__raise_message, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
@@ -560,6 +580,12 @@ attr(DoubleCounter$Counter$raise_message, ".__mx_instance__") <- TRUE
 #' @name DoubleCounter$Counter$raise_condition_classed
 #' @rdname DoubleCounter
 DoubleCounter$Counter$raise_condition_classed <- function(x, class_name, msg) {
+  stopifnot(
+    "'class_name' must be character" = is.character(class_name),
+    "'class_name' must have length 1" = length(class_name) == 1L,
+    "'msg' must be character" = is.character(msg),
+    "'msg' must have length 1" = length(msg) == 1L
+  )
   .val <- .Call(C_DoubleCounter__Counter__raise_condition_classed, .call = match.call(), x, class_name, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
