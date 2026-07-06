@@ -2374,10 +2374,7 @@ pub fn gc_stress_condition_data() {
                 "nested".to_string(),
                 RValue::List(vec![
                     (Some("x".to_string()), RValue::from(round)),
-                    (
-                        Some("y".to_string()),
-                        RValue::from(vec![Some(7_i32), None]),
-                    ),
+                    (Some("y".to_string()), RValue::from(vec![Some(7_i32), None])),
                 ]),
             ),
         ];
