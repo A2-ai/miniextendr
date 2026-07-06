@@ -1,7 +1,13 @@
-//! Iterator-backed ALTREP with coercion support.
+//! Iterator-backed ALTREP data adaptors with coercion support.
 //!
 //! Provides `IterIntCoerceData`, `IterRealCoerceData`, and `IterIntFromBoolData`
-//! for iterators that produce values coercible to the target R type.
+//! for iterators that produce values coercible to the target R type, plus the
+//! string/list/complex adaptors (`IterStringData`, `IterListData`,
+//! `IterComplexData`).
+//!
+//! See the [`super`](crate::altrep_data::iter) module docs for how to expose
+//! these adaptors to R (wrap in a `#[derive(Altrep*)]` + `#[altrep(manual)]`
+//! struct).
 
 use super::IterState;
 use crate::SEXP;
@@ -9,9 +15,12 @@ use crate::altrep_data::{
     AltComplexData, AltIntegerData, AltListData, AltRealData, AltStringData, AltrepLen, fill_region,
 };
 
-/// Iterator-backed integer vector with coercion from any integer-like type.
+/// Iterator-backed integer vector data adaptor with coercion from any integer-like type.
 ///
-/// Wraps an iterator producing values that coerce to `i32` (e.g., `u16`, `i8`, etc.).
+/// Wraps an iterator producing values that coerce to `i32` (e.g., `u16`, `i8`, etc.)
+/// and implements the data-level traits ([`AltrepLen`] + [`AltIntegerData`]).
+/// To expose it to R, wrap it in a `#[derive(AltrepInteger)]` +
+/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
 ///
 /// # Example
 ///
@@ -90,24 +99,7 @@ where
     }
 }
 
-impl<I, T> crate::externalptr::TypedExternal for IterIntCoerceData<I, T>
-where
-    I: Iterator<Item = T> + 'static,
-    T: crate::coerce::Coerce<i32> + Copy + 'static,
-{
-    const TYPE_NAME: &'static str = "IterIntCoerceData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterIntCoerceData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterIntCoerceData\0";
-}
-
-// Bridge stack (InferBase + Altrep + AltVec + AltInteger) via the generic
-// `impl_alt*_from_data!` family — see audit D1 / miniextendr-api/CLAUDE.md.
-crate::impl_altinteger_from_data_generic!(
-    {I, T} IterIntCoerceData<I, T>
-    {I: Iterator<Item = T> + 'static, T: crate::coerce::Coerce<i32> + Copy + 'static}
-);
-
-/// Iterator-backed real vector with coercion from any float-like type.
+/// Iterator-backed real vector data adaptor with coercion from any float-like type.
 ///
 /// Wraps an iterator producing values that coerce to `f64` (e.g., `f32`, integer types).
 ///
@@ -187,22 +179,7 @@ where
     }
 }
 
-impl<I, T> crate::externalptr::TypedExternal for IterRealCoerceData<I, T>
-where
-    I: Iterator<Item = T> + 'static,
-    T: crate::coerce::Coerce<f64> + Copy + 'static,
-{
-    const TYPE_NAME: &'static str = "IterRealCoerceData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterRealCoerceData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRealCoerceData\0";
-}
-
-crate::impl_altreal_from_data_generic!(
-    {I, T} IterRealCoerceData<I, T>
-    {I: Iterator<Item = T> + 'static, T: crate::coerce::Coerce<f64> + Copy + 'static}
-);
-
-/// Iterator-backed integer vector with coercion from bool.
+/// Iterator-backed integer vector data adaptor with coercion from bool.
 ///
 /// Wraps an iterator producing `bool` values that coerce to `i32`.
 /// Useful for converting boolean iterators to integer vectors.
@@ -267,21 +244,12 @@ where
     }
 }
 
-impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal
-    for IterIntFromBoolData<I>
-{
-    const TYPE_NAME: &'static str = "IterIntFromBoolData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterIntFromBoolData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterIntFromBoolData\0";
-}
-
-crate::impl_altinteger_from_data_generic!(
-    {I} IterIntFromBoolData<I> {I: Iterator<Item = bool> + 'static}
-);
-
-/// Iterator-backed string vector.
+/// Iterator-backed string vector data adaptor.
 ///
-/// Wraps an iterator producing `String` values and exposes it as an ALTREP character vector.
+/// Wraps an iterator producing `String` values and implements the data-level
+/// traits ([`AltrepLen`] + [`AltStringData`]) for backing an ALTREP character
+/// vector. To expose it to R, wrap it in a `#[derive(AltrepString)]` +
+/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
 ///
 /// # Performance Warning
 ///
@@ -360,22 +328,12 @@ where
     }
 }
 
-impl<I: Iterator<Item = String> + 'static> crate::externalptr::TypedExternal for IterStringData<I> {
-    const TYPE_NAME: &'static str = "IterStringData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterStringData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterStringData\0";
-}
-
-// String ALTREP elt calls Rf_mkCharLenCE (R API) — the generic macro's
-// `__impl_altrep_base!` uses RUnwind (catches R longjmps), matching the
-// hand-rolled guard this replaces.
-crate::impl_altstring_from_data_generic!(
-    {I} IterStringData<I> {I: Iterator<Item = String> + 'static}
-);
-
-/// Iterator-backed list vector.
+/// Iterator-backed list vector data adaptor.
 ///
-/// Wraps an iterator producing R `SEXP` values and exposes it as an ALTREP list.
+/// Wraps an iterator producing R `SEXP` values and implements the data-level
+/// traits ([`AltrepLen`] + [`AltListData`]) for backing an ALTREP list. To
+/// expose it to R, wrap it in a `#[derive(AltrepList)]` + `#[altrep(manual)]`
+/// struct (see the [module docs](crate::altrep_data::iter)).
 ///
 /// # Safety
 ///
@@ -449,19 +407,12 @@ where
     }
 }
 
-impl<I: Iterator<Item = SEXP> + 'static> crate::externalptr::TypedExternal for IterListData<I> {
-    const TYPE_NAME: &'static str = "IterListData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterListData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterListData\0";
-}
-
-crate::impl_altlist_from_data_generic!(
-    {I} IterListData<I> {I: Iterator<Item = SEXP> + 'static}
-);
-
-/// Iterator-backed complex number vector.
+/// Iterator-backed complex number vector data adaptor.
 ///
-/// Wraps an iterator producing `Rcomplex` values and exposes it as an ALTREP complex vector.
+/// Wraps an iterator producing `Rcomplex` values and implements the data-level
+/// traits ([`AltrepLen`] + [`AltComplexData`]) for backing an ALTREP complex
+/// vector. To expose it to R, wrap it in a `#[derive(AltrepComplex)]` +
+/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
 ///
 /// # Example
 ///
@@ -531,16 +482,3 @@ where
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
-
-impl<I: Iterator<Item = crate::Rcomplex> + 'static> crate::externalptr::TypedExternal
-    for IterComplexData<I>
-{
-    const TYPE_NAME: &'static str = "IterComplexData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterComplexData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterComplexData\0";
-}
-
-crate::impl_altcomplex_from_data_generic!(
-    {I} IterComplexData<I> {I: Iterator<Item = crate::Rcomplex> + 'static}
-);
-// endregion

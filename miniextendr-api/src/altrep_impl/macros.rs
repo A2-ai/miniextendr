@@ -14,11 +14,15 @@
 //!
 //! Each family also has an `impl_alt<family>_from_data_generic!` sibling
 //! accepting a brace-delimited generic parameter list and where-clause
-//! (`{$gen} $ty {$where}[, $knob]*`) for adaptor types like
-//! `IterIntCoerceData<I, T>` — see `altrep_data::iter` / `altrep_data::stream`
-//! for the ~19 call sites this replaced (audit D1). The plain macros forward
-//! to their `_generic!` sibling with empty `{}` brackets, so each family has
-//! exactly one emission body regardless of which form is called.
+//! (`{$gen} $ty {$where}[, $knob]*`) for generic types like
+//! `struct Foo<T> { .. }`. The plain macros forward to their `_generic!`
+//! sibling with empty `{}` brackets, so each family has exactly one emission
+//! body regardless of which form is called.
+//!
+//! Note the iterator/stream data adaptors in `altrep_data::iter` /
+//! `altrep_data::stream` deliberately do **not** invoke these macros: they
+//! implement only the data-level traits and are meant to be wrapped by a
+//! concrete `#[derive(Altrep*)]` + `#[altrep(manual)]` struct (#1146).
 
 // region: Macros for generating trait implementations
 
@@ -60,10 +64,10 @@ macro_rules! impl_altinteger_from_data {
 
 /// Generic form of [`impl_altinteger_from_data!`]: accepts an optional
 /// generic parameter list and where-clause (`{T, U} Foo<T, U> {T: Bound, ..}`)
-/// so it can target `struct Foo<T> { .. }` adaptors — e.g. iterator-backed
-/// ALTREP types — not just concrete/monomorphic types. The non-generic macro
-/// above forwards here with empty `{}` brackets so there is exactly one
-/// emission body for both call shapes.
+/// so it can target `struct Foo<T> { .. }` types, not just
+/// concrete/monomorphic ones. The non-generic macro above forwards here with
+/// empty `{}` brackets so there is exactly one emission body for both call
+/// shapes.
 #[macro_export]
 macro_rules! impl_altinteger_from_data_generic {
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*} $(, $knob:ident)*) => {
@@ -1154,7 +1158,7 @@ macro_rules! impl_altlist_from_data {
 
 /// Generic form of [`impl_altlist_from_data!`]: accepts an optional generic
 /// parameter list and where-clause so it can target `struct Foo<T> { .. }`
-/// adaptors, not just concrete types. The non-generic macro above forwards
+/// types, not just concrete ones. The non-generic macro above forwards
 /// here with empty `{}` brackets so there is exactly one emission body.
 #[macro_export]
 macro_rules! impl_altlist_from_data_generic {

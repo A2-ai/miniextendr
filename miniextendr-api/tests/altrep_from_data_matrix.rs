@@ -134,10 +134,11 @@ miniextendr_api::impl_altinteger_from_data!(IntSubsetSerialize, subset, serializ
 
 // region: Generic form — `impl_alt*_from_data_generic!` (audit D1)
 //
-// Coverage for the generic sibling that the ~19 hand-rolled iterator/stream
-// ALTREP adaptors (`altrep_data::iter::*`, `altrep_data::stream::*`) route
-// through: a type with a generic parameter and a `where` clause, mirroring
-// the shape those adaptors need (e.g. `IterIntCoerceData<I, T>`).
+// Coverage for the generic sibling on a type with a generic parameter and a
+// `where` clause. The non-generic macros forward here, so this exercises the
+// single emission body with non-empty `{$gen}` / `{$where}` brackets. (The
+// iterator/stream data adaptors in `altrep_data::iter` / `altrep_data::stream`
+// no longer invoke it — their bridge stack was unreachable dead code, #1146.)
 
 /// Generic fixture: wraps any `T: Copy + Into<i32> + 'static` in a `Vec`.
 struct GenericIntFixture<T>(Vec<T>)

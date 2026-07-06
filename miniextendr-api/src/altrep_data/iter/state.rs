@@ -1,10 +1,16 @@
-//! Core iterator-backed ALTREP infrastructure.
+//! Core iterator-backed ALTREP data adaptors.
 //!
 //! Provides `IterState<I, T>` (the shared lazy-caching state machine) and
-//! wrapper types for the integer/real/logical/raw ALTREP families:
+//! data-adaptor types for the integer/real/logical/raw ALTREP families:
 //! `IterIntData`, `IterRealData`, `IterLogicalData`, `IterRawData`. The
-//! string/list/complex wrappers (`IterStringData`, `IterListData`,
+//! string/list/complex adaptors (`IterStringData`, `IterListData`,
 //! `IterComplexData`) live in `super::coerce`.
+//!
+//! See the [`super`](crate::altrep_data::iter) module docs for how to expose
+//! these adaptors to R: they implement only the data-level traits
+//! ([`AltrepLen`] + `Alt*Data`) and must be wrapped in a concrete
+//! `#[derive(Altrep*)]` + `#[altrep(manual)]` struct to back a live ALTREP
+//! vector.
 
 use std::cell::RefCell;
 use std::sync::OnceLock;
@@ -217,9 +223,12 @@ where
     }
 }
 
-/// Iterator-backed integer vector data.
+/// Iterator-backed integer vector data adaptor.
 ///
-/// Wraps an iterator producing `i32` values and exposes it as an ALTREP integer vector.
+/// Wraps an iterator producing `i32` values and implements the data-level
+/// traits ([`AltrepLen`] + [`AltIntegerData`]) for backing an ALTREP integer
+/// vector. To expose it to R, wrap it in a `#[derive(AltrepInteger)]` +
+/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
 ///
 /// # Example
 ///
@@ -273,19 +282,12 @@ impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
     }
 }
 
-impl<I: Iterator<Item = i32> + 'static> crate::externalptr::TypedExternal for IterIntData<I> {
-    const TYPE_NAME: &'static str = "IterIntData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterIntData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterIntData\0";
-}
-
-crate::impl_altinteger_from_data_generic!(
-    {I} IterIntData<I> {I: Iterator<Item = i32> + 'static}
-);
-
-/// Iterator-backed real (f64) vector data.
+/// Iterator-backed real (f64) vector data adaptor.
 ///
-/// Wraps an iterator producing `f64` values and exposes it as an ALTREP real vector.
+/// Wraps an iterator producing `f64` values and implements the data-level
+/// traits ([`AltrepLen`] + [`AltRealData`]) for backing an ALTREP real vector.
+/// To expose it to R, wrap it in a `#[derive(AltrepReal)]` +
+/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
 pub struct IterRealData<I: Iterator<Item = f64>> {
     state: IterState<I, f64>,
 }
@@ -328,19 +330,12 @@ impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
     }
 }
 
-impl<I: Iterator<Item = f64> + 'static> crate::externalptr::TypedExternal for IterRealData<I> {
-    const TYPE_NAME: &'static str = "IterRealData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterRealData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRealData\0";
-}
-
-crate::impl_altreal_from_data_generic!(
-    {I} IterRealData<I> {I: Iterator<Item = f64> + 'static}
-);
-
-/// Iterator-backed logical vector data.
+/// Iterator-backed logical vector data adaptor.
 ///
-/// Wraps an iterator producing `bool` values and exposes it as an ALTREP logical vector.
+/// Wraps an iterator producing `bool` values and implements the data-level
+/// traits ([`AltrepLen`] + [`AltLogicalData`]) for backing an ALTREP logical
+/// vector. To expose it to R, wrap it in a `#[derive(AltrepLogical)]` +
+/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
 pub struct IterLogicalData<I: Iterator<Item = bool>> {
     state: IterState<I, bool>,
 }
@@ -382,19 +377,12 @@ impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
     }
 }
 
-impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal for IterLogicalData<I> {
-    const TYPE_NAME: &'static str = "IterLogicalData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterLogicalData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterLogicalData\0";
-}
-
-crate::impl_altlogical_from_data_generic!(
-    {I} IterLogicalData<I> {I: Iterator<Item = bool> + 'static}
-);
-
-/// Iterator-backed raw (u8) vector data.
+/// Iterator-backed raw (u8) vector data adaptor.
 ///
-/// Wraps an iterator producing `u8` values and exposes it as an ALTREP raw vector.
+/// Wraps an iterator producing `u8` values and implements the data-level
+/// traits ([`AltrepLen`] + [`AltRawData`]) for backing an ALTREP raw vector.
+/// To expose it to R, wrap it in a `#[derive(AltrepRaw)]` +
+/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
 pub struct IterRawData<I: Iterator<Item = u8>> {
     state: IterState<I, u8>,
 }
@@ -436,14 +424,3 @@ impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
-
-impl<I: Iterator<Item = u8> + 'static> crate::externalptr::TypedExternal for IterRawData<I> {
-    const TYPE_NAME: &'static str = "IterRawData";
-    const TYPE_NAME_CSTR: &'static [u8] = b"IterRawData\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRawData\0";
-}
-
-crate::impl_altraw_from_data_generic!(
-    {I} IterRawData<I> {I: Iterator<Item = u8> + 'static}
-);
-// endregion

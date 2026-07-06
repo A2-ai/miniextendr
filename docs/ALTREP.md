@@ -1605,7 +1605,15 @@ impl OptionallyMaterialized {
 
 ## Iterator-Backed ALTREP
 
-miniextendr provides two iterator-backed ALTREP variants:
+miniextendr provides two iterator-backed ALTREP variants.
+
+The `*Data` types below are **data adaptors**: they implement only the
+data-level traits (`AltrepLen` + the matching `Alt*Data` trait) and cannot back
+a live R vector by themselves (they do not implement `RegisterAltrep`). To
+expose one to R, wrap it in a concrete struct deriving the matching
+`#[derive(Altrep*)]` with `#[altrep(manual)]` and delegate the data-trait
+methods to the inner adaptor — see the wrapper walkthrough in
+[SPARSE_ITERATOR_ALTREP.md](SPARSE_ITERATOR_ALTREP.md) for a complete example.
 
 ### `IterState` (Prefix Caching)
 
