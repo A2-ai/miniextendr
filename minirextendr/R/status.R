@@ -191,19 +191,26 @@ miniextendr_validate <- function(path = ".") {
     }
   }
 
-  # Check Rust toolchain
+  # Check Rust toolchain. The tryCatch returns a flag appended to `issues` in
+  # this frame -- assigning inside the error handler only creates a local
+  # binding, which is how a missing toolchain used to print "Rust not found"
+  # and then report "All checks passed!" (audit 2026-07-06 #4).
   cli::cli_h2("Rust toolchain")
-  tryCatch(
+  rust_ok <- tryCatch(
     {
       check_rust()
       rustc_version <- run_command("rustc", "--version")
       cli::cli_alert_success("Rust installed: {rustc_version}")
+      TRUE
     },
     error = function(e) {
-      issues <- c(issues, "Rust not found")
       cli::cli_alert_danger("Rust not found")
+      FALSE
     }
   )
+  if (!rust_ok) {
+    issues <- c(issues, "Rust not found")
+  }
 
   # Check Cargo.toml declares miniextendr-api
   cli::cli_h2("Cargo.toml")
