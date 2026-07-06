@@ -63,8 +63,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(insert_pos, format!("#' {}", lc_import));
     }
-    // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class definition)
-    if !has_export {
+    // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class
+    // definition). Only pop when the last line actually IS the auto-added
+    // @export — with internal/noexport the builder emits no @export, and a
+    // blind pop would instead drop `@keywords internal` / `@noRd` / a user tag.
+    if !has_export && lines.last().is_some_and(|l| l == "#' @export") {
         lines.pop();
     }
     if !class_has_no_rd {
