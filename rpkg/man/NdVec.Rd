@@ -92,6 +92,13 @@ Get the element at the given 1-based index.
 \item{\code{index}}{1-based index. Errors if out of \verb{1..=length}.}
 }
 
+Extract the elements \code{start:end} (1-based, inclusive on both ends — R's \code{x[start:end]} convention).
+
+\describe{
+\item{\code{start}}{1-based inclusive start index.}
+\item{\code{end}}{1-based inclusive end index. Errors unless \verb{1 <= start <= end <= length}.}
+}
+
 Get elements at the given 1-based indices.
 
 \describe{
@@ -101,8 +108,10 @@ Get elements at the given 1-based indices.
 Check if the given 1-based index is valid.
 }
 \details{
-\code{get}, \code{get_many}, and \code{is_valid_index} take 1-based indices
-(R-idiomatic, matching the rest of the package). \code{get} errors on an
-out-of-bounds or non-positive index; \code{get_many} returns \code{NA} per
-out-of-bounds element instead (vectorized contract).
+\code{get}, \code{get_many}, \code{is_valid_index}, and \code{slice_1d} take 1-based
+indices (R-idiomatic, matching the rest of the package). \code{get} errors on
+an out-of-bounds or non-positive index; \code{get_many} returns \code{NA} per
+out-of-bounds element instead (vectorized contract). \code{slice_1d} takes
+1-based inclusive bounds (R's \code{x[start:end]} convention) and errors
+unless \verb{1 <= start <= end <= length}.
 }

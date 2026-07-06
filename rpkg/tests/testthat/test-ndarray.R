@@ -98,17 +98,19 @@ test_that("NdVec RNdSlice - slice_1d", {
   skip_if_ndarray_disabled()
   v <- NdVec$new(c(1, 2, 3, 4, 5))
 
-  # Normal slice [1, 4) -> elements 2, 3, 4
-  expect_equal(v$slice_1d(1L, 4L), c(2, 3, 4))
+  # 1-based inclusive bounds (R's x[start:end] convention)
+  expect_equal(v$slice_1d(2L, 4L), c(2, 3, 4))
+
+  # Single element
+  expect_equal(v$slice_1d(3L, 3L), 3)
 
   # Full slice
-  expect_equal(v$slice_1d(0L, 5L), c(1, 2, 3, 4, 5))
+  expect_equal(v$slice_1d(1L, 5L), c(1, 2, 3, 4, 5))
 
-  # Clamped end
-  expect_equal(v$slice_1d(3L, 100L), c(4, 5))
-
-  # Empty range
-  expect_equal(v$slice_1d(3L, 2L), numeric(0))
+  # Out-of-bounds / invalid ranges error
+  expect_error(v$slice_1d(0L, 5L), "out of bounds")
+  expect_error(v$slice_1d(3L, 100L), "out of bounds")
+  expect_error(v$slice_1d(3L, 2L), "out of bounds")
 })
 
 test_that("NdVec RNdSlice - get_many", {
@@ -294,12 +296,28 @@ test_that("NdArrayDyn RNdIndex - element access", {
 
 test_that("NdArrayDyn RNdIndex - slice_nd", {
   skip_if_ndarray_disabled()
-  # 3x3 array
+  # 3x3 array (row-major data):
+  # Row 1: [1, 2, 3], Row 2: [4, 5, 6], Row 3: [7, 8, 9]
   arr <- NdArrayDyn$new(c(3L, 3L), as.numeric(1:9))
 
-  # Slice [0:2, 0:2] - 2x2 subarray
-  slice <- arr$slice_nd(c(0L, 0L), c(2L, 2L))
-  expect_length(slice, 4)
+  # 1-based inclusive bounds (R's x[s1:e1, s2:e2] convention):
+  # top-left 2x2 subarray, flattened column-major
+  slice <- arr$slice_nd(c(1L, 1L), c(2L, 2L))
+  expect_equal(slice, c(1, 4, 2, 5))
+
+  # Bottom-right 2x2 subarray
+  expect_equal(arr$slice_nd(c(2L, 2L), c(3L, 3L)), c(5, 8, 6, 9))
+
+  # Single element
+  expect_equal(arr$slice_nd(c(2L, 2L), c(2L, 2L)), 5)
+
+  # Dimensionality mismatch errors
+  expect_error(arr$slice_nd(c(1L), c(2L, 2L)), "one bound per dimension")
+
+  # Out-of-bounds / invalid ranges error
+  expect_error(arr$slice_nd(c(0L, 1L), c(2L, 2L)), "out of bounds")
+  expect_error(arr$slice_nd(c(1L, 1L), c(4L, 2L)), "out of bounds")
+  expect_error(arr$slice_nd(c(2L, 2L), c(1L, 1L)), "out of bounds")
 })
 
 test_that("NdArrayDyn RNdIndex - flatten", {
@@ -328,19 +346,26 @@ test_that("NdArrayDyn RNdIndex - is_valid_nd", {
 
 test_that("NdArrayDyn RNdIndex - axis_slice", {
   skip_if_ndarray_disabled()
-  # 2x3 array
+  # 2x3 array (row-major data): Row 1: [1, 2, 3], Row 2: [4, 5, 6]
   arr <- NdArrayDyn$new(c(2L, 3L), as.numeric(1:6))
 
-  # Row 0 (axis 0, index 0)
-  row0 <- arr$axis_slice(0L, 0L)
-  expect_length(row0, 3)
+  # Both arguments are 1-based; axis follows R's MARGIN convention
+  # (1 = first dimension). Row 1 (axis 1, index 1):
+  expect_equal(arr$axis_slice(1L, 1L), c(1, 2, 3))
 
-  # Column 1 (axis 1, index 1)
-  col1 <- arr$axis_slice(1L, 1L)
-  expect_length(col1, 2)
+  # Row 2
+  expect_equal(arr$axis_slice(1L, 2L), c(4, 5, 6))
 
-  # Invalid axis
-  expect_length(arr$axis_slice(2L, 0L), 0)
+  # Column 2 (axis 2, index 2)
+  expect_equal(arr$axis_slice(2L, 2L), c(2, 5))
+
+  # Out-of-bounds axis errors
+  expect_error(arr$axis_slice(3L, 1L), "axis 3 is out of bounds")
+  expect_error(arr$axis_slice(0L, 1L), "axis 0 is out of bounds")
+
+  # Out-of-bounds index along the axis errors
+  expect_error(arr$axis_slice(1L, 3L), "out of bounds along axis 1")
+  expect_error(arr$axis_slice(1L, 0L), "out of bounds along axis 1")
 })
 
 test_that("NdArrayDyn RNdIndex - reshape", {
@@ -528,8 +553,14 @@ test_that("NdIntVec slice_1d works", {
   skip_if_ndarray_disabled()
   v <- NdIntVec$new(1:5)
 
-  expect_equal(v$slice_1d(1L, 4L), 2:4)
-  expect_equal(v$slice_1d(0L, 5L), 1:5)
+  # 1-based inclusive bounds (R's x[start:end] convention)
+  expect_equal(v$slice_1d(2L, 4L), 2:4)
+  expect_equal(v$slice_1d(1L, 5L), 1:5)
+
+  # Out-of-bounds / invalid ranges error
+  expect_error(v$slice_1d(0L, 5L), "out of bounds")
+  expect_error(v$slice_1d(2L, 6L), "out of bounds")
+  expect_error(v$slice_1d(4L, 2L), "out of bounds")
 })
 
 test_that("NdIntVec variance and std work", {

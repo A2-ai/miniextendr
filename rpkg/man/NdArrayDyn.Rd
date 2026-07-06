@@ -98,7 +98,21 @@ Get the element at the given n-dimensional 1-based index.
 \item{\code{indices}}{1-based indices, one per dimension. Errors on a non-positive index, an out-of-bounds index, or a length mismatch with the array's dimensionality.}
 }
 
+Extract a subarray bounded by \code{start} and \code{end} (1-based, inclusive on both ends per dimension — R's \code{x[s1:e1, s2:e2, ...]} convention). Elements are returned flattened in column-major (R) order.
+
+\describe{
+\item{\code{start}}{1-based inclusive start indices, one per dimension.}
+\item{\code{end}}{1-based inclusive end indices, one per dimension. Errors on a dimensionality mismatch or when any dimension violates \verb{1 <= start <= end <= extent}.}
+}
+
 Check if the given 1-based n-dimensional index is valid.
+
+Get all elements where dimension \code{axis} is fixed at position \code{index}. Both arguments are 1-based: \code{axis} follows R's \code{MARGIN} convention (1 = first dimension), and \code{index} matches \code{row}/\code{col}. Elements are returned in column-major (R) order.
+
+\describe{
+\item{\code{axis}}{1-based dimension selector (R's \code{MARGIN} convention). Errors if out of \verb{1..=ndim}.}
+\item{\code{index}}{1-based position along that dimension. Errors if out of \verb{1..=extent}.}
+}
 
 Reshape the array to new dimensions (data must fit exactly).
 
@@ -107,7 +121,11 @@ Reshape the array to new dimensions (data must fit exactly).
 }
 }
 \details{
-\code{get_nd} and \code{is_valid_nd} take 1-based indices (R-idiomatic,
-matching the rest of the package). \code{get_nd} and \code{reshape} error on an
-out-of-bounds/invalid argument instead of silently yielding no value.
+\code{get_nd}, \code{is_valid_nd}, \code{slice_nd}, and \code{axis_slice} take
+1-based indices (R-idiomatic, matching the rest of the package).
+\code{slice_nd} takes 1-based inclusive per-dimension bounds (R's
+\code{x[s1:e1, s2:e2, ...]} convention); \code{axis_slice}'s \code{axis} follows R's
+\code{MARGIN} convention (1 = first dimension). \code{get_nd}, \code{reshape},
+\code{slice_nd}, and \code{axis_slice} error on an out-of-bounds/invalid argument
+instead of silently yielding no value.
 }
