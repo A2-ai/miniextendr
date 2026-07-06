@@ -519,14 +519,15 @@ fn s4_wrapper_full_snapshot() {
     assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
     assert!(wrapper.contains("methods::new(\"Counter\", ptr = .val)"));
 
-    // Verify S4 generics (unconditional - setGeneric is idempotent)
-    assert!(
-        wrapper.contains(
-            "methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
-        )
-    );
+    // Verify S4 generics: guarded by a namespace-local exists() check. A bare
+    // isGeneric() sees an attached installed copy and starves setMethod under
+    // load_all(); isGeneric(where=) routes through package resolution and
+    // breaks mid-install (findpack). exists() is a plain env lookup (#1158).
     assert!(wrapper.contains(
-        "methods::setGeneric(\"s4_increment\", function(x, ...) standardGeneric(\"s4_increment\"))"
+        "if (!exists(\"s4_get\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
+    ));
+    assert!(wrapper.contains(
+        "if (!exists(\"s4_increment\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"s4_increment\", function(x, ...) standardGeneric(\"s4_increment\"))"
     ));
 
     // Verify setMethod calls

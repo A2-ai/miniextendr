@@ -521,9 +521,12 @@ fn generate_trait_s4_r_wrapper(
         }
         lines.extend(generic_roxygen.export().build());
 
-        // Define generic only if it doesn't already exist (avoid clearing methods)
+        // Define generic only if it doesn't already exist in THIS namespace
+        // (avoid clearing methods). Scoped to topenv(environment()) so an
+        // attached installed copy of the package can't satisfy the check and
+        // starve the setMethod below during load_all() (#1158).
         lines.push(format!(
-            "if (!methods::isGeneric(\"{generic_name}\")) methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
+            "if (!exists(\"{generic_name}\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
         ));
         lines.push(String::new());
 

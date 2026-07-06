@@ -18,8 +18,8 @@ use super::ParsedImpl;
 ///   with a single `ptr` slot holding the `ExternalPtr` to the Rust struct
 /// - Constructor function: `ClassName(...)` that calls the Rust `new` constructor
 ///   and wraps the result with `methods::new("<class>", ptr = .val)`
-/// - S4 generics: `methods::setGeneric(...)` for each instance method (idempotent,
-///   always emitted rather than using conditional `isGeneric()` checks)
+/// - S4 generics: `methods::setGeneric(...)` for each instance method, guarded by
+///   a namespace-local `exists()` check (see #1158 for why not `isGeneric()`)
 /// - S4 methods: `methods::setMethod("<generic>", "<class>", function(x, ...) ...)`
 ///   dispatching to the Rust `.Call()` wrapper, extracting the ptr via `x@ptr`
 /// - Static methods: regular functions named `<class>_<method>(...)`
@@ -162,12 +162,20 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(doc_lines);
         }
 
-        // Define generic only if it doesn't already exist. Unconditional setGeneric()
-        // replaces the generic object, clearing previously registered methods. This
-        // matters when multiple types share the same generic name (e.g., s4_get_value
-        // used by both S4TraitCounter and CounterTraitS4).
+        // Define generic only if it doesn't already exist IN THIS NAMESPACE.
+        // Unconditional setGeneric() replaces the generic object, clearing
+        // previously registered methods — that matters when multiple types share
+        // the same generic name (e.g., s4_get_value used by both S4TraitCounter
+        // and CounterTraitS4). The check must be a namespace-local exists():
+        // a bare isGeneric() searches S4 metadata globally, so with an installed
+        // copy of the package *attached*, load_all() skips setGeneric here while
+        // setMethod below still can't see the generic from the namespace being
+        // loaded — "no existing definition for function ..." — and
+        // isGeneric(where=) resolves the namespace to a package name, which
+        // fails mid-install (findpack). exists() is a plain env lookup and the
+        // generic function is exactly what setGeneric assigns there (#1158).
         lines.push(format!(
-            "if (!methods::isGeneric(\"{0}\")) methods::setGeneric(\"{0}\", function(x, ...) standardGeneric(\"{0}\"))",
+            "if (!exists(\"{0}\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"{0}\", function(x, ...) standardGeneric(\"{0}\"))",
             method_name
         ));
 
