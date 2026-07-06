@@ -132,16 +132,15 @@ test_that("SerdeRPoint serializes to named list", {
 })
 
 test_that("SerdeRPoint deserializes from named list", {
-  # Note: from_r returns a raw ExternalPtr, not a proper S3 object
-  # This is a limitation of static methods returning Result<Self, String>
-  # The actual deserialization is tested via serde_r_roundtrip_point()
+  # from_r wraps its Result<Self, String> exactly like $new() does — the
+  # returned object is a usable SerdeRPoint, not a bare ExternalPtr.
   data <- list(x = 3.0, y = 4.0)
   p <- SerdeRPoint$from_r(data)
 
-  # Returns an ExternalPtr (not S3 wrapped)
-  expect_type(p, "externalptr")
+  expect_s3_class(p, "SerdeRPoint")
+  expect_equal(p$to_r(), data)
 
-  # Full roundtrip works at Rust level
+  # Also confirmed at the Rust level
   expect_true(serde_r_roundtrip_point(3.0, 4.0))
 })
 
@@ -175,8 +174,7 @@ test_that("Rectangle serializes nested Points", {
 })
 
 test_that("Rectangle deserializes from nested list", {
-  # Note: from_r returns raw ExternalPtr, not S3 wrapped
-  # Roundtrip tested via serde_r_roundtrip_rectangle()
+  # from_r wraps its Result<Self, String> exactly like $new() does.
   data <- list(
     top_left = list(x = 1.0, y = 2.0),
     bottom_right = list(x = 5.0, y = 6.0),
@@ -184,9 +182,10 @@ test_that("Rectangle deserializes from nested list", {
   )
   r <- Rectangle$from_r(data)
 
-  expect_type(r, "externalptr")
+  expect_s3_class(r, "Rectangle")
+  expect_equal(r$to_r(), data)
 
-  # Test roundtrip at Rust level
+  # Also confirmed at the Rust level
   expect_true(serde_r_roundtrip_rectangle(0.0, 0.0, 10.0, 10.0))
 })
 
@@ -310,15 +309,15 @@ test_that("WithOptionals roundtrip with all None values", {
 })
 
 test_that("SerdeRPoint$to_r() -> SerdeRPoint$from_r() roundtrip", {
-  # from_r returns raw externalptr, so we test the Rust-level roundtrip
   original <- SerdeRPoint$new(42.0, 24.0)
   data <- original$to_r()
   restored <- SerdeRPoint$from_r(data)
 
-  # Verify from_r worked (returns externalptr)
-  expect_type(restored, "externalptr")
+  # restored is a usable SerdeRPoint, comparable directly with $new()'s output
+  expect_s3_class(restored, "SerdeRPoint")
+  expect_equal(restored$to_r(), original$to_r())
 
-  # Full roundtrip works at Rust level
+  # Also confirmed at the Rust level
   expect_true(serde_r_roundtrip_point(42.0, 24.0))
 })
 
@@ -473,21 +472,24 @@ test_that("Deserialization missing field returns error", {
 # =============================================================================
 
 test_that("serde_r deserializes from named list", {
-  # Named lists are the primary input format for serde_r deserialization
+  # Named lists are the primary input format for serde_r deserialization.
+  # from_r wraps its Result<Self, String> exactly like $new() does.
   p <- SerdeRPoint$from_r(list(x = 1.0, y = 2.0))
-  # from_r returns raw ExternalPtr, not S3 object
-  expect_type(p, "externalptr")
+  expect_s3_class(p, "SerdeRPoint")
+  expect_equal(p$to_r(), list(x = 1.0, y = 2.0))
 })
 
 test_that("serde_r handles R lists created various ways", {
   # list()
   p1 <- SerdeRPoint$from_r(list(x = 1.0, y = 2.0))
-  expect_type(p1, "externalptr")
+  expect_s3_class(p1, "SerdeRPoint")
+  expect_equal(p1$to_r(), list(x = 1.0, y = 2.0))
 
   # as.list()
   vec <- c(x = 1.0, y = 2.0)
   p2 <- SerdeRPoint$from_r(as.list(vec))
-  expect_type(p2, "externalptr")
+  expect_s3_class(p2, "SerdeRPoint")
+  expect_equal(p2$to_r(), list(x = 1.0, y = 2.0))
 })
 
 test_that("serde_r handles environment-to-list conversion", {
@@ -498,7 +500,8 @@ test_that("serde_r handles environment-to-list conversion", {
 
   data <- as.list(e)
   p <- SerdeRPoint$from_r(data)
-  expect_type(p, "externalptr")
+  expect_s3_class(p, "SerdeRPoint")
+  expect_equal(p$to_r(), list(x = 5.0, y = 10.0))
 })
 
 test_that("serde_r works with R6 class data", {
@@ -522,8 +525,8 @@ test_that("serde_r works with R6 class data", {
   obj <- TestClass$new(3.0, 4.0)
   data <- obj$to_list()
   p <- SerdeRPoint$from_r(data)
-  # from_r returns raw ExternalPtr, not S3 object
-  expect_type(p, "externalptr")
+  expect_s3_class(p, "SerdeRPoint")
+  expect_equal(p$to_r(), list(x = 3.0, y = 4.0))
 })
 
 test_that("serde_r works with S4 class slots as list", {
@@ -534,8 +537,8 @@ test_that("serde_r works with S4 class slots as list", {
   # Extract slots as list
   data <- list(x = s4obj@x, y = s4obj@y)
   p <- SerdeRPoint$from_r(data)
-  # from_r returns raw ExternalPtr, not S3 object
-  expect_type(p, "externalptr")
+  expect_s3_class(p, "SerdeRPoint")
+  expect_equal(p$to_r(), list(x = 7.0, y = 8.0))
 
   # Cleanup
   removeClass("S4Point")
@@ -557,8 +560,8 @@ test_that("serde_r works with S7 class data", {
   # Extract properties as list
   data <- list(x = S7::prop(s7obj, "x"), y = S7::prop(s7obj, "y"))
   p <- SerdeRPoint$from_r(data)
-  # from_r returns raw ExternalPtr, not S3 object
-  expect_type(p, "externalptr")
+  expect_s3_class(p, "SerdeRPoint")
+  expect_equal(p$to_r(), list(x = 9.0, y = 10.0))
 })
 
 # =============================================================================
@@ -607,10 +610,10 @@ test_that("serde_r handles deeply nested list from R", {
   )
 
   dn <- DeepNest$from_r(deep)
-  # from_r returns raw ExternalPtr, not S3 object
-  expect_type(dn, "externalptr")
+  expect_s3_class(dn, "DeepNest")
+  expect_equal(dn$to_r(), deep)
 
-  # Verify roundtrip works at Rust level
+  # Also confirmed at the Rust level
   expect_true(serde_r_roundtrip_deep_nest())
 })
 
@@ -661,10 +664,10 @@ test_that("WithOptionals deserializes with NULL fields", {
   )
 
   opt <- WithOptionals$from_r(data)
-  # from_r returns raw ExternalPtr, not S3 object
-  expect_type(opt, "externalptr")
+  expect_s3_class(opt, "WithOptionals")
+  expect_equal(opt$to_r(), data)
 
-  # Verify roundtrip works at Rust level
+  # Also confirmed at the Rust level
   expect_true(serde_r_roundtrip_optionals_none())
 })
 

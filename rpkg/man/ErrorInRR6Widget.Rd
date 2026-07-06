@@ -22,7 +22,7 @@ ErrorInRR6Widget R6 Class
 \if{html}{\out{<a id="method-ErrorInRR6Widget-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-ErrorInRR6Widget-initialize}{}}}
 \subsection{\code{ErrorInRR6Widget$new()}}{
-  Create a new widget
+  Create a new widget.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ErrorInRR6Widget$new(name, .ptr = NULL)}
@@ -42,7 +42,7 @@ ErrorInRR6Widget R6 Class
 \if{html}{\out{<a id="method-ErrorInRR6Widget-get_name"></a>}}
 \if{latex}{\out{\hypertarget{method-ErrorInRR6Widget-get_name}{}}}
 \subsection{\code{ErrorInRR6Widget$get_name()}}{
-  Get the name -- should always succeed
+  Get the name -- should always succeed.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ErrorInRR6Widget$get_name()}
@@ -54,7 +54,7 @@ ErrorInRR6Widget R6 Class
 \if{html}{\out{<a id="method-ErrorInRR6Widget-panic_method"></a>}}
 \if{latex}{\out{\hypertarget{method-ErrorInRR6Widget-panic_method}{}}}
 \subsection{\code{ErrorInRR6Widget$panic_method()}}{
-  Deliberately panic
+  Deliberately panic.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ErrorInRR6Widget$panic_method()}
@@ -66,7 +66,7 @@ ErrorInRR6Widget R6 Class
 \if{html}{\out{<a id="method-ErrorInRR6Widget-failing_result"></a>}}
 \if{latex}{\out{\hypertarget{method-ErrorInRR6Widget-failing_result}{}}}
 \subsection{\code{ErrorInRR6Widget$failing_result()}}{
-  Return Result::Err
+  Return Result::Err.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ErrorInRR6Widget$failing_result()}

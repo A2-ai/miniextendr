@@ -30,11 +30,5 @@ SeededNormal
 \item{name}{Method name for dispatch.}
 }
 \description{
-SeededNormal  Class
-
-\describe{
-\item{\code{mean}}{Mean of the normal distribution.}
-\item{\code{sd}}{Standard deviation (must be finite).}
-\item{\code{seed}}{Integer seed (absolute value is used).}
-}
+SeededNormal inherent methods: constructor.
 }

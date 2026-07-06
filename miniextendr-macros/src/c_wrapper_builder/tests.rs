@@ -71,4 +71,12 @@ fn return_handling_detection() {
         detect_return_handling(&result_unit_unit_ty),
         ReturnHandling::ResultNullOnErr
     ));
+
+    // -> Result<Self, E> -> ResultExternalPtr (audit A4: fallible constructor-shaped
+    // methods like `from_r` wrap `Ok(Self)` in an ExternalPtr, not `IntoR`).
+    let result_self_ty: syn::ReturnType = syn::parse_quote!(-> Result<Self, E>);
+    assert!(matches!(
+        detect_return_handling(&result_self_ty),
+        ReturnHandling::ResultExternalPtr
+    ));
 }

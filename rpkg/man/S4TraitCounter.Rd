@@ -54,13 +54,11 @@ S4TraitCounter_Counter_MAX_VALUE()
 \item{n}{Amount to add.}
 }
 \description{
-S4TraitCounter S4 Class
+S4TraitCounter inherent methods (constructor and getters).
 
-Get value via inherent method
+Get value via inherent method.
 
-Create a new S4 trait counter
-
-Static trait method Counter::default_initial() for S4TraitCounter
+Create a new S4 trait counter.
 }
 \section{Slots}{
 
