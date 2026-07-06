@@ -203,6 +203,31 @@ mx_license_content <- function(pkg_name) {
           format(Sys.Date(), "%Y"), pkg_name)
 }
 
+#' Ignore-file patterns from an ignore template
+#'
+#' Reads an ignore-file template (`Rbuildignore` / `gitignore`) and filters it
+#' down to the bare patterns: blank lines and `#` comment lines are dropped.
+#' Shared prep step between the standalone path
+#' (`use_miniextendr_rbuildignore()` / `use_miniextendr_gitignore()`, which
+#' hand the patterns to `usethis::use_build_ignore()` /
+#' `usethis::use_git_ignore()` for append + dedupe into a possibly
+#' pre-existing file) and the monorepo path (`create_rpkg_subdirectory()`,
+#' which writes them to a brand-new file). Empirically the two write paths
+#' produce byte-identical files when the target does not yet exist (usethis
+#' writes exactly the given lines, in order, newline-terminated), so a fresh
+#' scaffold gets the same ignore-file content on both paths. See #1151.
+#'
+#' @param template Template file name (`"Rbuildignore"` or `"gitignore"`),
+#'   resolved against the active template type via `template_path()`.
+#' @param subdir Optional subdirectory within the template type (e.g. `"rpkg"`
+#'   when scaffolding the R package subdirectory of a monorepo).
+#' @return Character vector of ignore patterns.
+#' @noRd
+mx_ignore_patterns <- function(template, subdir = NULL) {
+  lines <- readLines(template_path(template, subdir = subdir))
+  lines[nzchar(lines) & !grepl("^#", lines)]
+}
+
 #' Copy the bundled config.guess / config.sub autoconf helper scripts
 #'
 #' All three scaffold paths need these under `tools/` for cross-compilation

@@ -143,15 +143,11 @@ use_miniextendr_description <- function(path = ".") {
 #' @keywords internal
 use_miniextendr_rbuildignore <- function(path = ".") {
   with_project(path)
-  # Read template content (already regex patterns, skip escaping)
-  template_content <- readLines(template_path("Rbuildignore"))
-
-  # Filter out empty lines and comments for usethis
-  patterns <- template_content[nzchar(template_content) & !grepl("^#", template_content)]
-
-  # usethis handles deduplication and file creation automatically
-  # escape = FALSE because our template already contains regex patterns
-  usethis::use_build_ignore(patterns, escape = FALSE)
+  # Shared "read template, filter comments" prep with the monorepo path
+  # (create_rpkg_subdirectory()) — see mx_ignore_patterns() (#1151).
+  # usethis handles deduplication and file creation automatically;
+  # escape = FALSE because our template already contains regex patterns.
+  usethis::use_build_ignore(mx_ignore_patterns("Rbuildignore"), escape = FALSE)
 
   invisible(TRUE)
 }
@@ -166,14 +162,10 @@ use_miniextendr_rbuildignore <- function(path = ".") {
 #' @keywords internal
 use_miniextendr_gitignore <- function(path = ".") {
   with_project(path)
-  # Read template content
-  template_content <- readLines(template_path("gitignore"))
-
-  # Filter out empty lines and comments for usethis
-  patterns <- template_content[nzchar(template_content) & !grepl("^#", template_content)]
-
-  # usethis handles deduplication and file creation automatically
-  usethis::use_git_ignore(patterns, directory = ".")
+  # Shared "read template, filter comments" prep with the monorepo path
+  # (create_rpkg_subdirectory()) — see mx_ignore_patterns() (#1151).
+  # usethis handles deduplication and file creation automatically.
+  usethis::use_git_ignore(mx_ignore_patterns("gitignore"), directory = ".")
 
   invisible(TRUE)
 }

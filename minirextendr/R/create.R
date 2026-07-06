@@ -262,9 +262,19 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_miniextendr_build_rs(path = rpkg_path, subdir = "rpkg")
   use_template("lib.rs", save_as = file.path(rpkg_name, "src", "rust", "lib.rs"), subdir = "rpkg", data = data)
 
-  # Ignore files
-  use_template("Rbuildignore", save_as = file.path(rpkg_name, ".Rbuildignore"), subdir = "rpkg")
-  use_template("gitignore", save_as = file.path(rpkg_name, ".gitignore"), subdir = "rpkg")
+  # Ignore files. Content comes from the same "read template, filter comments"
+  # prep as the standalone use_miniextendr_rbuildignore() /
+  # use_miniextendr_gitignore() — see mx_ignore_patterns() (#1151) — but this
+  # path keeps its fresh-file overwrite semantics (re-running the scaffold
+  # resets scaffolding files) rather than usethis's append + dedupe into a
+  # pre-existing file. For a brand-new file the two write paths are
+  # byte-identical, so fresh scaffolds match the standalone output exactly.
+  rbuildignore_path <- usethis::proj_path(rpkg_name, ".Rbuildignore")
+  writeLines(mx_ignore_patterns("Rbuildignore", subdir = "rpkg"), rbuildignore_path)
+  bullet_created(file.path(rpkg_name, ".Rbuildignore"))
+  gitignore_path <- usethis::proj_path(rpkg_name, ".gitignore")
+  writeLines(mx_ignore_patterns("gitignore", subdir = "rpkg"), gitignore_path)
+  bullet_created(file.path(rpkg_name, ".gitignore"))
 
   invisible(TRUE)
 }
