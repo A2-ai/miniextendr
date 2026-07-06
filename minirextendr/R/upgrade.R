@@ -77,7 +77,7 @@ upgrade_miniextendr_package <- function(path = ".",
 
   # --- Dirty check ---
   if (!allow_dirty) {
-    check_scaffolding_clean()
+    check_scaffolding_clean(resolved_path)
   }
 
   # --- Build system templates ---
@@ -165,15 +165,23 @@ find_rpkg_subdir <- function(path) {
 #' Uses `git status --porcelain` to inspect build system files that will be
 #' overwritten during upgrade. Aborts if any have uncommitted changes.
 #'
+#' Every git invocation runs *in* `proj_dir` (via `run_command(wd = )`), not the
+#' caller's working directory. `with_project()` activates the usethis project
+#' without changing the working directory (`setwd = FALSE`), so probing git in
+#' `getwd()` would inspect an unrelated repo -- or no repo at all, which would
+#' silently skip this guard and let the upgrade overwrite the target's
+#' uncommitted files.
+#'
+#' @param proj_dir Package directory to inspect (default `usethis::proj_get()`).
+#'   The relative `scaffolding_files` pathspecs are interpreted against it.
 #' @noRd
-check_scaffolding_clean <- function() {
+check_scaffolding_clean <- function(proj_dir = usethis::proj_get()) {
   # Bail out if git is not available
   if (!nzchar(Sys.which("git"))) return(invisible())
 
   # Bail out if not in a git repo
   repo <- tryCatch({
-    out <- system2("git", c("rev-parse", "--show-toplevel"),
-                   stdout = TRUE, stderr = TRUE)
+    out <- run_command("git", c("rev-parse", "--show-toplevel"), wd = proj_dir)
     if (!is.null(attr(out, "status"))) NULL else out
   }, error = function(e) NULL)
   if (is.null(repo)) return(invisible())
@@ -198,8 +206,8 @@ check_scaffolding_clean <- function() {
     ".gitignore"
   )
 
-  out <- system2("git", c("status", "--porcelain", "--", scaffolding_files),
-                 stdout = TRUE, stderr = TRUE)
+  out <- run_command("git", c("status", "--porcelain", "--", scaffolding_files),
+                     wd = proj_dir)
   if (is.null(out) || length(out) == 0) return(invisible())
 
   cli::cli_abort(c(
