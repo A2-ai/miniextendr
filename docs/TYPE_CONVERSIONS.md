@@ -59,6 +59,13 @@ Use `Option<T>` to handle NA safely on both input and output.
 Note: `i32` rejects `NA_integer_` (= `i32::MIN`) on input; you must use `Option<i32>` to receive integer NA.
 Note: `bool` rejects logical NA on input; use `Option<bool>` to receive logical NA.
 
+**This table covers owned scalars only.** A reference return
+(`Option<&i32>`) or a container return (`Option<Vec<T>>`,
+`Option<HashMap<...>>`) maps `None` to `NULL` instead of NA — same for
+`Result::Err` in most shapes. See the full "Absence Contract" table in
+[CONVERSION_MATRIX.md](CONVERSION_MATRIX.md#the-absence-contract-what-none-becomes-in-r)
+for every return-type category, including the `Result` side.
+
 ### ALTREP-Aware Types
 
 R frequently passes ALTREP vectors (e.g., `1:10`, `seq_len(N)`) to Rust. All

@@ -14,7 +14,17 @@
 #[doc(hidden)]
 macro_rules! __impl_inferbase {
     ($ty:ty, $base:ident, $make_fn:path, $install_fn:ident) => {
-        impl $crate::altrep_data::InferBase for $ty {
+        $crate::__impl_inferbase!({} $ty {}, $base, $make_fn, $install_fn);
+    };
+    // Generic form: `{$gen} $ty {$where}, $base, $make_fn, $install_fn`. Brace
+    // delimiters (not `[]`/`()`) are deliberate — see `__impl_altrep_base!` in
+    // `altrep_impl/macros.rs` for why: `{` can never start a `$ty:ty` fragment,
+    // so the bare-`$ty:ty` arm above fails cleanly against a brace-led
+    // invocation instead of hard-erroring on a bogus type parse. The
+    // non-generic arm above forwards here with empty `{}` brackets so there
+    // is exactly one emission body.
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $base:ident, $make_fn:path, $install_fn:ident) => {
+        impl<$($gen)*> $crate::altrep_data::InferBase for $ty where $($whr)* {
             const BASE: $crate::altrep::RBase = $crate::altrep::RBase::$base;
 
             unsafe fn make_class(
@@ -39,11 +49,18 @@ macro_rules! __impl_inferbase {
 }
 
 /// Implement `InferBase` for an integer ALTREP data type.
+///
+/// Accepts an optional generic form: `impl_inferbase_integer!({T} Foo<T> {T:
+/// Bound})` — see [`crate::impl_altinteger_from_data_generic!`] for the same
+/// convention at the family-macro layer.
 #[macro_export]
 macro_rules! impl_inferbase_integer {
     ($ty:ty) => {
+        $crate::impl_inferbase_integer!({} $ty {});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         $crate::__impl_inferbase!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             Int,
             $crate::sys::altrep::R_make_altinteger_class,
             install_int
@@ -51,12 +68,16 @@ macro_rules! impl_inferbase_integer {
     };
 }
 
-/// Implement `InferBase` for a real ALTREP data type.
+/// Implement `InferBase` for a real ALTREP data type. See
+/// [`impl_inferbase_integer!`] for the generic calling convention.
 #[macro_export]
 macro_rules! impl_inferbase_real {
     ($ty:ty) => {
+        $crate::impl_inferbase_real!({} $ty {});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         $crate::__impl_inferbase!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             Real,
             $crate::sys::altrep::R_make_altreal_class,
             install_real
@@ -64,12 +85,16 @@ macro_rules! impl_inferbase_real {
     };
 }
 
-/// Implement `InferBase` for a logical ALTREP data type.
+/// Implement `InferBase` for a logical ALTREP data type. See
+/// [`impl_inferbase_integer!`] for the generic calling convention.
 #[macro_export]
 macro_rules! impl_inferbase_logical {
     ($ty:ty) => {
+        $crate::impl_inferbase_logical!({} $ty {});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         $crate::__impl_inferbase!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             Logical,
             $crate::sys::altrep::R_make_altlogical_class,
             install_lgl
@@ -77,12 +102,16 @@ macro_rules! impl_inferbase_logical {
     };
 }
 
-/// Implement `InferBase` for a raw ALTREP data type.
+/// Implement `InferBase` for a raw ALTREP data type. See
+/// [`impl_inferbase_integer!`] for the generic calling convention.
 #[macro_export]
 macro_rules! impl_inferbase_raw {
     ($ty:ty) => {
+        $crate::impl_inferbase_raw!({} $ty {});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         $crate::__impl_inferbase!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             Raw,
             $crate::sys::altrep::R_make_altraw_class,
             install_raw
@@ -90,12 +119,16 @@ macro_rules! impl_inferbase_raw {
     };
 }
 
-/// Implement `InferBase` for a string ALTREP data type.
+/// Implement `InferBase` for a string ALTREP data type. See
+/// [`impl_inferbase_integer!`] for the generic calling convention.
 #[macro_export]
 macro_rules! impl_inferbase_string {
     ($ty:ty) => {
+        $crate::impl_inferbase_string!({} $ty {});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         $crate::__impl_inferbase!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             String,
             $crate::sys::altrep::R_make_altstring_class,
             install_str
@@ -103,12 +136,16 @@ macro_rules! impl_inferbase_string {
     };
 }
 
-/// Implement `InferBase` for a complex ALTREP data type.
+/// Implement `InferBase` for a complex ALTREP data type. See
+/// [`impl_inferbase_integer!`] for the generic calling convention.
 #[macro_export]
 macro_rules! impl_inferbase_complex {
     ($ty:ty) => {
+        $crate::impl_inferbase_complex!({} $ty {});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         $crate::__impl_inferbase!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             Complex,
             $crate::sys::altrep::R_make_altcomplex_class,
             install_cplx
@@ -116,12 +153,16 @@ macro_rules! impl_inferbase_complex {
     };
 }
 
-/// Implement `InferBase` for a list ALTREP data type.
+/// Implement `InferBase` for a list ALTREP data type. See
+/// [`impl_inferbase_integer!`] for the generic calling convention.
 #[macro_export]
 macro_rules! impl_inferbase_list {
     ($ty:ty) => {
+        $crate::impl_inferbase_list!({} $ty {});
+    };
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         $crate::__impl_inferbase!(
-            $ty,
+            {$($gen)*} $ty {$($whr)*},
             List,
             $crate::sys::altrep::R_make_altlist_class,
             install_list

@@ -1,5 +1,11 @@
 # Columnar data.frame: all-None Option columns
 
+This page covers a **column** of `Option<T>` values in a columnar/
+`DataFrameRow` context. For what a **bare scalar** `Option<T>` / `Result<T,
+E>` return becomes in R (NA vs NULL vs a raised error, by return-type
+category), see the absence-contract table in
+[CONVERSION_MATRIX.md](CONVERSION_MATRIX.md#the-absence-contract-what-none-becomes-in-r).
+
 ## The old failure
 
 `vec_to_dataframe` discovers column types by probing runtime values.

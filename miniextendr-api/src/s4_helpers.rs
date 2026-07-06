@@ -30,7 +30,6 @@
 /// ```
 use crate::expression::{RCall, REnv};
 use crate::{SEXP, SexpExt};
-use std::ffi::CStr;
 
 /// Get the `methods` package namespace for evaluating S4 functions.
 ///
@@ -133,16 +132,7 @@ pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
         }
 
         let first = class_attr.string_elt(0);
-        if first.is_null_or_nil() {
-            return None;
-        }
-
-        let ptr = first.r_char();
-        if ptr.is_null() {
-            return None;
-        }
-
-        Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+        crate::from_r::charsxp_to_string_lossy(first)
     }
 }
 

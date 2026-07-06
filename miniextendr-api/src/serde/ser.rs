@@ -526,17 +526,7 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
 
 /// Extract a string from a SEXP (must be STRSXP of length 1).
 fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
-    let sexp_type = sexp.type_of();
-    if sexp_type != SEXPTYPE::STRSXP {
-        return Err(RSerdeError::NonStringKey);
-    }
-
-    let len = sexp.xlength();
-    if len != 1 {
-        return Err(RSerdeError::NonStringKey);
-    }
-
-    let charsxp = sexp.string_elt(0);
+    let charsxp = crate::from_r::scalar_charsxp(sexp).map_err(|_| RSerdeError::NonStringKey)?;
     if charsxp == SEXP::na_string() {
         return Err(RSerdeError::NonStringKey);
     }

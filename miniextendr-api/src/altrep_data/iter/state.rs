@@ -1,16 +1,16 @@
 //! Core iterator-backed ALTREP infrastructure.
 //!
 //! Provides `IterState<I, T>` (the shared lazy-caching state machine) and
-//! wrapper types for each ALTREP family: `IterIntData`, `IterRealData`,
-//! `IterLogicalData`, `IterRawData`, `IterStringData`, `IterListData`,
-//! `IterComplexData`.
+//! wrapper types for the integer/real/logical/raw ALTREP families:
+//! `IterIntData`, `IterRealData`, `IterLogicalData`, `IterRawData`. The
+//! string/list/complex wrappers (`IterStringData`, `IterListData`,
+//! `IterComplexData`) live in `super::coerce`.
 
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use crate::altrep_data::{
-    AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltrepLen, InferBase, Logical,
-    fill_region,
+    AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltrepLen, Logical, fill_region,
 };
 
 /// Core state for iterator-backed ALTREP vectors.
@@ -279,54 +279,9 @@ impl<I: Iterator<Item = i32> + 'static> crate::externalptr::TypedExternal for It
     const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterIntData\0";
 }
 
-impl<I: Iterator<Item = i32> + 'static> InferBase for IterIntData<I> {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::Int;
-
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        unsafe {
-            crate::sys::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
-        }
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_int::<Self>(cls) };
-    }
-}
-
-impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::Altrep for IterIntData<I> {
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::R_xlen_t
-    }
-}
-
-impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltVec for IterIntData<I> {}
-
-impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger for IterIntData<I> {
-    const HAS_ELT: bool = true;
-
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltIntegerData::elt(data, i as usize)
-    }
-
-    const HAS_GET_REGION: bool = true;
-
-    fn get_region(
-        x: crate::SEXP,
-        start: crate::R_xlen_t,
-        len: crate::R_xlen_t,
-        buf: &mut [i32],
-    ) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
-    }
-}
+crate::impl_altinteger_from_data_generic!(
+    {I} IterIntData<I> {I: Iterator<Item = i32> + 'static}
+);
 
 /// Iterator-backed real (f64) vector data.
 ///
@@ -379,54 +334,9 @@ impl<I: Iterator<Item = f64> + 'static> crate::externalptr::TypedExternal for It
     const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRealData\0";
 }
 
-impl<I: Iterator<Item = f64> + 'static> InferBase for IterRealData<I> {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::Real;
-
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        unsafe {
-            crate::sys::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
-        }
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_real::<Self>(cls) };
-    }
-}
-
-impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::Altrep for IterRealData<I> {
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::R_xlen_t
-    }
-}
-
-impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltVec for IterRealData<I> {}
-
-impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for IterRealData<I> {
-    const HAS_ELT: bool = true;
-
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> f64 {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRealData::elt(data, i as usize)
-    }
-
-    const HAS_GET_REGION: bool = true;
-
-    fn get_region(
-        x: crate::SEXP,
-        start: crate::R_xlen_t,
-        len: crate::R_xlen_t,
-        buf: &mut [f64],
-    ) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
-    }
-}
+crate::impl_altreal_from_data_generic!(
+    {I} IterRealData<I> {I: Iterator<Item = f64> + 'static}
+);
 
 /// Iterator-backed logical vector data.
 ///
@@ -478,54 +388,9 @@ impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal for I
     const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterLogicalData\0";
 }
 
-impl<I: Iterator<Item = bool> + 'static> InferBase for IterLogicalData<I> {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::Logical;
-
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        unsafe {
-            crate::sys::altrep::R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut())
-        }
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_lgl::<Self>(cls) };
-    }
-}
-
-impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep for IterLogicalData<I> {
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::R_xlen_t
-    }
-}
-
-impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltVec for IterLogicalData<I> {}
-
-impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltLogical for IterLogicalData<I> {
-    const HAS_ELT: bool = true;
-
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltLogicalData::elt(data, i as usize).to_r_int()
-    }
-
-    const HAS_GET_REGION: bool = true;
-
-    fn get_region(
-        x: crate::SEXP,
-        start: crate::R_xlen_t,
-        len: crate::R_xlen_t,
-        buf: &mut [i32],
-    ) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltLogicalData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
-    }
-}
+crate::impl_altlogical_from_data_generic!(
+    {I} IterLogicalData<I> {I: Iterator<Item = bool> + 'static}
+);
 
 /// Iterator-backed raw (u8) vector data.
 ///
@@ -578,52 +443,7 @@ impl<I: Iterator<Item = u8> + 'static> crate::externalptr::TypedExternal for Ite
     const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRawData\0";
 }
 
-impl<I: Iterator<Item = u8> + 'static> InferBase for IterRawData<I> {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::Raw;
-
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        unsafe {
-            crate::sys::altrep::R_make_altraw_class(class_name, pkg_name, core::ptr::null_mut())
-        }
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_raw::<Self>(cls) };
-    }
-}
-
-impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::Altrep for IterRawData<I> {
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        data.len() as crate::R_xlen_t
-    }
-}
-
-impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltVec for IterRawData<I> {}
-
-impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltRaw for IterRawData<I> {
-    const HAS_ELT: bool = true;
-
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> u8 {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRawData::elt(data, i as usize)
-    }
-
-    const HAS_GET_REGION: bool = true;
-
-    fn get_region(
-        x: crate::SEXP,
-        start: crate::R_xlen_t,
-        len: crate::R_xlen_t,
-        buf: &mut [u8],
-    ) -> crate::R_xlen_t {
-        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        AltRawData::get_region(data, start as usize, len as usize, buf) as crate::R_xlen_t
-    }
-}
+crate::impl_altraw_from_data_generic!(
+    {I} IterRawData<I> {I: Iterator<Item = u8> + 'static}
+);
 // endregion

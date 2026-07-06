@@ -22,8 +22,8 @@
 //! counterparts: `String` / `&str` impls in [`crate::into_r`].
 
 use crate::from_r::{
-    SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
-    charsxp_to_str_unchecked,
+    SexpError, TryFromSexp, charsxp_to_str, charsxp_to_str_unchecked, scalar_charsxp,
+    scalar_charsxp_unchecked,
 };
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
@@ -49,26 +49,7 @@ impl TryFromSexp for &'static str {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        // Get the CHARSXP at index 0
-        let charsxp = sexp.string_elt(0);
+        let charsxp = scalar_charsxp(sexp)?;
 
         // Check for NA_STRING or R_BlankString
         if charsxp == SEXP::na_string() {
@@ -84,26 +65,7 @@ impl TryFromSexp for &'static str {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = unsafe { sexp.len_unchecked() };
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        // Get the CHARSXP at index 0
-        let charsxp = unsafe { sexp.string_elt_unchecked(0) };
+        let charsxp = unsafe { scalar_charsxp_unchecked(sexp)? };
 
         // Check for NA_STRING or R_BlankString
         if charsxp == SEXP::na_string() {
@@ -127,25 +89,7 @@ impl TryFromSexp for Option<&'static str> {
             return Ok(None);
         }
 
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        let charsxp = sexp.string_elt(0);
+        let charsxp = scalar_charsxp(sexp)?;
         if charsxp == SEXP::na_string() {
             return Ok(None);
         }
@@ -162,25 +106,7 @@ impl TryFromSexp for Option<&'static str> {
             return Ok(None);
         }
 
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = unsafe { sexp.len_unchecked() };
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        let charsxp = unsafe { sexp.string_elt_unchecked(0) };
+        let charsxp = unsafe { scalar_charsxp_unchecked(sexp)? };
         if charsxp == SEXP::na_string() {
             return Ok(None);
         }
@@ -247,25 +173,7 @@ impl TryFromSexp for String {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        let charsxp = sexp.string_elt(0);
+        let charsxp = scalar_charsxp(sexp)?;
 
         if charsxp == SEXP::na_string() {
             return Ok(String::new());
@@ -276,25 +184,7 @@ impl TryFromSexp for String {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = unsafe { sexp.len_unchecked() };
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        let charsxp = unsafe { sexp.string_elt_unchecked(0) };
+        let charsxp = unsafe { scalar_charsxp_unchecked(sexp)? };
 
         if charsxp == SEXP::na_string() {
             return Ok(String::new());
@@ -319,29 +209,12 @@ impl TryFromSexp for Option<String> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
         // NULL -> None
-        if actual == SEXPTYPE::NILSXP {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        if actual != SEXPTYPE::STRSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual,
-            }
-            .into());
-        }
 
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        let charsxp = sexp.string_elt(0);
+        let charsxp = scalar_charsxp(sexp)?;
 
         // Return None for NA_STRING
         if charsxp == SEXP::na_string() {

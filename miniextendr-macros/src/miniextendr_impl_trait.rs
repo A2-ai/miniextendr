@@ -163,6 +163,12 @@ struct TraitMethod {
     /// (set via `#[miniextendr(s7(no_shortcut))]`). Only meaningful for S7 trait
     /// impls; ignored by the other class systems.
     no_shortcut: bool,
+    /// Per-parameter `#[miniextendr(match_arg(...))]` / `choices(...)` /
+    /// `several_ok` attributes, keyed by Rust parameter name. Mirrors
+    /// `MethodAttrs::per_param` on the inherent-impl path (`miniextendr_impl.rs`)
+    /// so trait methods get the same `match.arg()` validation prelude — see
+    /// `TraitMethodContext::match_arg_prelude`.
+    per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 }
 
 impl TraitMethod {
@@ -349,6 +355,7 @@ fn extract_trait_and_type(impl_item: &ItemImpl) -> syn::Result<(syn::Path, syn::
 
 // region: Sub-modules
 
+mod method_context;
 mod r_wrappers;
 mod vtable;
 
@@ -357,44 +364,6 @@ use r_wrappers::generate_trait_r_wrapper;
 use vtable::generate_trait_method_c_wrapper;
 use vtable::generate_vtable_static;
 use vtable::is_self_ref_type;
-
-/// Generate R function body preamble lines (r_entry, on.exit, lifecycle, r_post_checks).
-///
-/// Returns lines to insert at the top of the R function body, before the `.Call()`.
-fn trait_method_preamble_lines(method: &TraitMethod, indent: &str) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    // r_entry: inject at the very top
-    if let Some(ref entry) = method.r_entry {
-        for line in entry.lines() {
-            lines.push(format!("{}{}", indent, line));
-        }
-    }
-
-    // on.exit: register cleanup
-    if let Some(ref on_exit) = method.r_on_exit {
-        lines.push(format!("{}{}", indent, on_exit.to_r_code()));
-    }
-
-    // lifecycle: deprecation/experimental warnings
-    if let Some(ref spec) = method.lifecycle {
-        let what = method.r_method_name();
-        if let Some(prelude) = spec.r_prelude(&what) {
-            for line in prelude.lines() {
-                lines.push(format!("{}{}", indent, line));
-            }
-        }
-    }
-
-    // r_post_checks: inject after all checks, before .Call()
-    if let Some(ref post) = method.r_post_checks {
-        for line in post.lines() {
-            lines.push(format!("{}{}", indent, line));
-        }
-    }
-
-    lines
-}
 
 /// Generate R function body lines that capture the `.Call()` result in `.val`,
 /// check for a tagged `rust_condition_value`, and return `.val`.
@@ -779,6 +748,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 r_post_checks: None,
                 r_on_exit: None,
                 no_shortcut: false,
+                per_param: Default::default(),
                 r_name: if tm.sig.ident == tm.r_name {
                     None // r_name matches ident → no override
                 } else {

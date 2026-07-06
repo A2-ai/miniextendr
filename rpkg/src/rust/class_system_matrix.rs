@@ -218,5 +218,140 @@ impl StaticXParam for CounterTraitEnv {
 }
 // endregion
 
+// region: trait-method-emitter regression (audit/2026-07-03-dogfooding-macros-codegen.md #1)
+//
+// `scale`'s `x_factor` param used to be corrupted by the S4/S7/R6 trait
+// generators' receiver-ptr extraction: they built the `.Call()` invocation
+// assuming self="x", then ran `call.replace(", x", ", .ptr")`. `str::replace`
+// rewrites *every* match of that substring, so a parameter whose R name
+// starts with `x` was silently rewritten too (`x_factor` -> `.ptr_factor`),
+// producing a runtime "object '.ptr_factor' not found" error. `bump`
+// exercises the `stopifnot()` precondition-check prelude step trait methods
+// used to skip entirely; `set_mode`'s `choices(...)` param exercises
+// `match.arg()` support, which trait methods had none of at all before this
+// refactor. See `TraitMethodContext` (miniextendr_impl_trait/method_context.rs).
+
+#[miniextendr]
+pub trait Scaler {
+    /// Regression for the `x`-prefixed substring-corruption bug (BUG1).
+    fn scale(&mut self, x_factor: f64) -> f64;
+    /// Regression for the missing `stopifnot()` precondition prelude (BUG2).
+    fn bump(&mut self, amount: i32) -> f64;
+    /// Regression for trait methods having no `match_arg`/`choices` support
+    /// at all (BUG2). `choices(...)` is set per-impl (see below), matching
+    /// how `#[miniextendr(...)]` attributes work on `impl Trait for Type`
+    /// method bodies rather than the trait declaration.
+    fn set_mode(&mut self, mode: String) -> String;
+}
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct ScalerS4 {
+    value: f64,
+    mode: String,
+}
+
+#[miniextendr(s4, internal)]
+impl ScalerS4 {
+    pub fn new(v: f64) -> Self {
+        Self {
+            value: v,
+            mode: "fast".to_string(),
+        }
+    }
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+}
+
+#[miniextendr(s4, internal)]
+impl Scaler for ScalerS4 {
+    fn scale(&mut self, x_factor: f64) -> f64 {
+        self.value *= x_factor;
+        self.value
+    }
+    fn bump(&mut self, amount: i32) -> f64 {
+        self.value += f64::from(amount);
+        self.value
+    }
+    #[miniextendr(choices(mode = "fast, slow"))]
+    fn set_mode(&mut self, mode: String) -> String {
+        self.mode = mode.clone();
+        mode
+    }
+}
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct ScalerS7 {
+    value: f64,
+    mode: String,
+}
+
+#[miniextendr(s7, internal)]
+impl ScalerS7 {
+    pub fn new(v: f64) -> Self {
+        Self {
+            value: v,
+            mode: "fast".to_string(),
+        }
+    }
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+}
+
+#[miniextendr(s7, internal)]
+impl Scaler for ScalerS7 {
+    fn scale(&mut self, x_factor: f64) -> f64 {
+        self.value *= x_factor;
+        self.value
+    }
+    fn bump(&mut self, amount: i32) -> f64 {
+        self.value += f64::from(amount);
+        self.value
+    }
+    #[miniextendr(choices(mode = "fast, slow"))]
+    fn set_mode(&mut self, mode: String) -> String {
+        self.mode = mode.clone();
+        mode
+    }
+}
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct ScalerR6 {
+    value: f64,
+    mode: String,
+}
+
+#[miniextendr(r6)]
+impl ScalerR6 {
+    pub fn new(v: f64) -> Self {
+        Self {
+            value: v,
+            mode: "fast".to_string(),
+        }
+    }
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+}
+
+#[miniextendr(r6)]
+impl Scaler for ScalerR6 {
+    fn scale(&mut self, x_factor: f64) -> f64 {
+        self.value *= x_factor;
+        self.value
+    }
+    fn bump(&mut self, amount: i32) -> f64 {
+        self.value += f64::from(amount);
+        self.value
+    }
+    #[miniextendr(choices(mode = "fast, slow"))]
+    fn set_mode(&mut self, mode: String) -> String {
+        self.mode = mode.clone();
+        mode
+    }
+}
+// endregion
+
 // region: Module registration
 // endregion

@@ -1,0 +1,5 @@
+error: R syntax error: `for` loop missing `in` — expected `for (ident in seq)`
+ --> tests/ui/r_macro_for_missing_in.rs:6:20
+  |
+6 |     let _ = r!(for (x) {});
+  |                    ^^^
