@@ -1890,6 +1890,38 @@ macro_rules! impl_vec_option_try_from_sexp_list {
     };
 }
 
+/// Cap on the number of per-element failures listed in a batched vector
+/// conversion error; the remainder is summarized as `"and N more"`.
+const BATCHED_ERROR_CAP: usize = 10;
+
+/// Combine indexed per-element conversion failures into one batched
+/// [`SexpError::InvalidValue`].
+///
+/// Backs the `Vec<T>` / `Vec<Option<T>>` arms of
+/// [`try_from_sexp_via_str_parse!`]: instead of bailing on the first NA or
+/// parse failure, those arms walk the whole vector, accumulate the
+/// already-formatted per-element messages, and hand them here. Entries are
+/// joined with `"; "`; at most the first 10 are listed and the remainder is
+/// summarized as `"and N more"`.
+///
+/// Public (but hidden) because `try_from_sexp_via_str_parse!` is
+/// `#[macro_export]` and expands in downstream crates — not intended to be
+/// called directly.
+#[doc(hidden)]
+pub fn batch_conversion_errors(container: &str, errors: Vec<String>) -> SexpError {
+    debug_assert!(!errors.is_empty(), "batching zero conversion errors");
+    let total = errors.len();
+    let mut msg = format!(
+        "{container} conversion failed: {}",
+        errors[..total.min(BATCHED_ERROR_CAP)].join("; ")
+    );
+    if total > BATCHED_ERROR_CAP {
+        use std::fmt::Write;
+        let _ = write!(msg, "; and {} more", total - BATCHED_ERROR_CAP);
+    }
+    SexpError::InvalidValue(msg)
+}
+
 /// Implement the four string-parse `TryFromSexp` impls (`T`, `Option<T>`,
 /// `Vec<T>`, `Vec<Option<T>>`) for a type parsed from an R character vector.
 ///
@@ -1904,10 +1936,12 @@ macro_rules! impl_vec_option_try_from_sexp_list {
 /// - `T`: `NA_character_` / `NULL` → `SexpError::Na`; parse failure →
 ///   `InvalidValue("invalid <label>: <err>")`.
 /// - `Option<T>`: `NA_character_` / `NULL` → `None`.
-/// - `Vec<T>`: any NA element →
-///   `InvalidValue("NA at index <i> not allowed for Vec<T>")`; parse failure →
-///   `InvalidValue("invalid <label> at index <i>: <err>")`.
-/// - `Vec<Option<T>>`: NA elements → `None`; parse failures error with index.
+/// - `Vec<T>`: NA elements and parse failures are collected across the whole
+///   vector into one batched `InvalidValue` (see [`batch_conversion_errors`]).
+///   Per-element entries keep the `"NA at index <i> not allowed for Vec<T>"`
+///   and `"invalid <label> at index <i>: <err>"` shapes; the first 10 are
+///   listed and the remainder is summarized as `"and N more"`.
+/// - `Vec<Option<T>>`: NA elements → `None`; parse failures batch as above.
 ///
 /// The parse body is a closure-style `|s| expr` where `s: &str`, returning
 /// `Result<T, E>` with `E: Display`.
@@ -1961,29 +1995,34 @@ macro_rules! try_from_sexp_via_str_parse {
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
-                values
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, opt)| {
-                        let s = opt.ok_or_else(|| {
-                            $crate::from_r::SexpError::InvalidValue(format!(
-                                concat!(
-                                    "NA at index {} not allowed for Vec<",
-                                    stringify!($ty),
-                                    ">"
-                                ),
-                                i
-                            ))
-                        })?;
-                        let $s: &str = &s;
-                        ($parse).map_err(|e| {
-                            $crate::from_r::SexpError::InvalidValue(format!(
-                                concat!("invalid ", $label, " at index {}: {}"),
-                                i, e
-                            ))
-                        })
-                    })
-                    .collect()
+                let mut result = Vec::with_capacity(values.len());
+                let mut errors: Vec<String> = Vec::new();
+                for (i, opt) in values.into_iter().enumerate() {
+                    match opt {
+                        None => errors.push(format!(
+                            concat!("NA at index {} not allowed for Vec<", stringify!($ty), ">"),
+                            i
+                        )),
+                        Some(s) => {
+                            let $s: &str = &s;
+                            match ($parse) {
+                                Ok(v) => result.push(v),
+                                Err(e) => errors.push(format!(
+                                    concat!("invalid ", $label, " at index {}: {}"),
+                                    i, e
+                                )),
+                            }
+                        }
+                    }
+                }
+                if errors.is_empty() {
+                    Ok(result)
+                } else {
+                    Err($crate::from_r::batch_conversion_errors(
+                        concat!("Vec<", stringify!($ty), ">"),
+                        errors,
+                    ))
+                }
             }
         }
 
@@ -1992,22 +2031,31 @@ macro_rules! try_from_sexp_via_str_parse {
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
-                values
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, opt)| match opt {
-                        None => Ok(None),
+                let mut result = Vec::with_capacity(values.len());
+                let mut errors: Vec<String> = Vec::new();
+                for (i, opt) in values.into_iter().enumerate() {
+                    match opt {
+                        None => result.push(None),
                         Some(s) => {
                             let $s: &str = &s;
-                            ($parse).map(Some).map_err(|e| {
-                                $crate::from_r::SexpError::InvalidValue(format!(
+                            match ($parse) {
+                                Ok(v) => result.push(Some(v)),
+                                Err(e) => errors.push(format!(
                                     concat!("invalid ", $label, " at index {}: {}"),
                                     i, e
-                                ))
-                            })
+                                )),
+                            }
                         }
-                    })
-                    .collect()
+                    }
+                }
+                if errors.is_empty() {
+                    Ok(result)
+                } else {
+                    Err($crate::from_r::batch_conversion_errors(
+                        concat!("Vec<Option<", stringify!($ty), ">>"),
+                        errors,
+                    ))
+                }
             }
         }
     };
