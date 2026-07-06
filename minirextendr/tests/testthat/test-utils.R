@@ -132,3 +132,21 @@ test_that("detect_project_type identifies rpkg inside monorepo (workspace)", {
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
   expect_equal(minirextendr:::detect_project_type(file.path(tmp, "rpkg")), "monorepo")
 })
+
+test_that("get_package_name_from_cargo() abort names the path and suggests rpkg", {
+  tmp <- withr::local_tempdir()
+  missing <- file.path(tmp, "Cargo.toml")
+
+  err <- tryCatch(
+    minirextendr:::get_package_name_from_cargo(missing),
+    error = function(e) e
+  )
+  expect_s3_class(err, "rlang_error")
+
+  msg <- conditionMessage(err)
+  # Names the exact path it looked at (so the user knows where it expected one).
+  expect_match(msg, basename(tmp), fixed = TRUE)
+  expect_match(msg, "Cargo.toml", fixed = TRUE)
+  # Points at the correct escape hatch for a standalone package.
+  expect_match(msg, "rpkg", fixed = TRUE)
+})
