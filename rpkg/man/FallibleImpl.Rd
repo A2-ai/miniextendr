@@ -29,9 +29,7 @@ FallibleImpl
 \item{name}{Method name for dispatch.}
 }
 \description{
-FallibleImpl  Class
+Create a new FallibleImpl.
 
-Create a new FallibleImpl
-
-Get value via inherent method
+Get value via inherent method.
 }

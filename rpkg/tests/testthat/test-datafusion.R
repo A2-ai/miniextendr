@@ -107,20 +107,20 @@ test_that("test_df_join performs SQL JOIN", {
   expect_equal(result$val, c(20.0, 30.0))
 })
 
-test_that("test_df_window runs window functions", {
+test_that("test_df_sql_query runs window functions", {
 
   df <- data.frame(x = c(3L, 1L, 2L), y = c(30.0, 10.0, 20.0))
-  result <- test_df_window(df,
-    "SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as rn FROM t")
+  result <- test_df_sql_query(df,
+    "SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as rn FROM df")
   expect_equal(nrow(result), 3L)
   expect_true("rn" %in% names(result))
 })
 
-test_that("test_df_subquery runs subquery", {
+test_that("test_df_sql_query runs subquery", {
 
   df <- data.frame(x = 1:5, y = c(10.0, 20.0, 30.0, 40.0, 50.0))
-  result <- test_df_subquery(df,
-    "SELECT * FROM t WHERE x IN (SELECT x FROM t WHERE y > 25) ORDER BY x")
+  result <- test_df_sql_query(df,
+    "SELECT * FROM df WHERE x IN (SELECT x FROM df WHERE y > 25) ORDER BY x")
   expect_equal(result$x, c(3L, 4L, 5L))
 })
 

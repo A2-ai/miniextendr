@@ -27,32 +27,10 @@ pub fn impl_type_name(ty: &syn::Type) -> Option<String> {
     }
 }
 
-/// Returns true if the attribute list contains `#[derive(ExternalPtr)]`
-/// or `#[derive(miniextendr_api::ExternalPtr)]`.
-pub fn has_external_ptr_derive(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        if !attr.path().is_ident("derive") {
-            return false;
-        }
-        let syn::Meta::List(meta_list) = &attr.meta else {
-            return false;
-        };
-        let Ok(paths) = meta_list.parse_args_with(
-            syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
-        ) else {
-            return false;
-        };
-        paths.iter().any(|p| {
-            p.segments
-                .last()
-                .is_some_and(|seg| seg.ident == "ExternalPtr")
-        })
-    })
-}
-
-/// Returns true if the attribute list contains `#[derive(Altrep)]`
-/// or `#[derive(miniextendr_api::Altrep)]`.
-pub fn has_altrep_derive(attrs: &[Attribute]) -> bool {
+/// Returns true if the attribute list contains `#[derive(name)]`
+/// or `#[derive(miniextendr_api::name)]` for the given derive `name`
+/// (e.g. `"ExternalPtr"`, `"Altrep"`, `"Vctrs"`).
+pub fn has_derive(attrs: &[Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| {
         if !attr.path().is_ident("derive") {
             return false;
@@ -67,28 +45,7 @@ pub fn has_altrep_derive(attrs: &[Attribute]) -> bool {
         };
         paths
             .iter()
-            .any(|p| p.segments.last().is_some_and(|seg| seg.ident == "Altrep"))
-    })
-}
-
-/// Returns true if the attribute list contains `#[derive(Vctrs)]`
-/// or `#[derive(miniextendr_api::Vctrs)]`.
-pub fn has_vctrs_derive(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        if !attr.path().is_ident("derive") {
-            return false;
-        }
-        let syn::Meta::List(meta_list) = &attr.meta else {
-            return false;
-        };
-        let Ok(paths) = meta_list.parse_args_with(
-            syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
-        ) else {
-            return false;
-        };
-        paths
-            .iter()
-            .any(|p| p.segments.last().is_some_and(|seg| seg.ident == "Vctrs"))
+            .any(|p| p.segments.last().is_some_and(|seg| seg.ident == name))
     })
 }
 

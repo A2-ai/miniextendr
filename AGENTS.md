@@ -45,7 +45,7 @@ miniextendr-api/      # Runtime (FFI, ExternalPtr, ALTREP, worker thread)
 miniextendr-macros/   # Proc macros (#[miniextendr], derives; naming in src/naming.rs)
 miniextendr-bench/    # Benchmarks (separate workspace member)
 miniextendr-lint/     # Static analysis
-miniextendr-engine/   # Code generation engine
+miniextendr-engine/   # Standalone R embedding (REngine) for Rust binaries/tests
 cargo-revendor/       # Standalone cargo subcommand (not in workspace)
 rpkg/                 # Example R package (installed as `miniextendr`)
 minirextendr/         # Pure R scaffolding helper

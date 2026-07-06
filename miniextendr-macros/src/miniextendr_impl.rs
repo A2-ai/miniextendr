@@ -1212,16 +1212,6 @@ impl ParsedMethod {
         Ok(())
     }
 
-    /// Split a comma-separated choices list (as given to `choices(param = "a, b, c")`)
-    /// into individual trimmed entries. Surrounding double-quotes are tolerated so
-    /// users can spell the list either way: `"a, b"` or `"\"a\", \"b\""`.
-    fn split_choice_list(raw: &str) -> Vec<String> {
-        raw.split(',')
-            .map(|s| s.trim().trim_matches('"').to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    }
-
     /// Parse method attributes in #[miniextendr(class_system(...))] format.
     ///
     /// Supported formats:
@@ -1464,7 +1454,7 @@ impl ParsedMethod {
                             .to_string();
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
-                        let choices = Self::split_choice_list(&value.value());
+                        let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
                         method_attrs.per_param.entry(name).or_default().choices = Some(choices);
                         Ok(())
                     })?;
@@ -1479,7 +1469,7 @@ impl ParsedMethod {
                             .to_string();
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
-                        let choices = Self::split_choice_list(&value.value());
+                        let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
                         let entry = method_attrs.per_param.entry(name).or_default();
                         entry.choices = Some(choices);
                         entry.several_ok = true;
@@ -2063,6 +2053,35 @@ impl ParsedMethod {
         matches!(&self.sig.output, syn::ReturnType::Type(_, ty)
             if matches!(ty.as_ref(), syn::Type::Path(p)
                 if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)))
+    }
+
+    /// Returns true if this method returns `Result<Self, E>` — a fallible
+    /// constructor-shaped method (e.g. `from_r`, `try_new`). On the R side this
+    /// is treated exactly like a bare `Self` return (wrapped class object via
+    /// [`crate::ReturnStrategy::for_method`]); the C wrapper still raises on
+    /// `Err` via the normal `Result` error path (see
+    /// [`crate::c_wrapper_builder::ReturnHandling::ResultExternalPtr`]).
+    pub fn returns_result_self(&self) -> bool {
+        let syn::ReturnType::Type(_, ty) = &self.sig.output else {
+            return false;
+        };
+        let syn::Type::Path(p) = ty.as_ref() else {
+            return false;
+        };
+        let Some(seg) = p.path.segments.last() else {
+            return false;
+        };
+        if seg.ident != "Result" {
+            return false;
+        }
+        let syn::PathArguments::AngleBracketed(ab) = &seg.arguments else {
+            return false;
+        };
+        let Some(syn::GenericArgument::Type(ok_ty)) = ab.args.first() else {
+            return false;
+        };
+        matches!(ok_ty, syn::Type::Path(ip)
+            if ip.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))
     }
 
     /// Returns true if this method returns a reference to `Self` (`&Self` or

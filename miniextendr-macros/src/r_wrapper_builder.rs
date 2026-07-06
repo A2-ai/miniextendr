@@ -64,6 +64,20 @@ pub fn normalize_r_arg_string(name: &str) -> String {
     }
 }
 
+/// Split a comma-separated choices list (as given to `choices(param = "a, b, c")`)
+/// into individual trimmed entries. Surrounding double-quotes are tolerated so
+/// users can spell the list either way: `"a, b"` or `"\"a\", \"b\""`.
+///
+/// Shared by the inherent-impl (`miniextendr_impl.rs`) and trait-impl
+/// (`miniextendr_impl_trait/vtable.rs`) `choices(...)` attribute parsers so the
+/// two independently-maintained parsers can't drift on quoting/whitespace rules.
+pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 /// Builder for R function formal parameters and call arguments.
 ///
 /// Handles:
@@ -280,39 +294,6 @@ pub(crate) fn build_r_call_args_from_sig(sig: &syn::Signature) -> String {
         builder = builder.skip_first();
     }
     builder.build_call_args()
-}
-
-/// Collect parameter identifiers from a function signature.
-///
-/// Skips `self`/`&self` receivers unconditionally. When `skip_first` is true,
-/// also skips the first `FnArg::Typed` parameter (used for methods where the
-/// first typed argument is the self external pointer). When `normalize` is true,
-/// applies [`normalize_r_arg_ident`] to strip leading underscores.
-///
-/// Returns parameter names in declaration order.
-pub(crate) fn collect_param_idents(
-    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-    skip_first: bool,
-    normalize: bool,
-) -> Vec<String> {
-    let mut params = Vec::new();
-    for (idx, arg) in inputs.iter().enumerate() {
-        if skip_first && idx == 0 {
-            continue;
-        }
-        let syn::FnArg::Typed(pt) = arg else {
-            continue;
-        };
-        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
-            continue;
-        };
-        if normalize {
-            params.push(normalize_r_arg_ident(&pat_ident.ident).to_string());
-        } else {
-            params.push(pat_ident.ident.to_string());
-        }
-    }
-    params
 }
 
 // region: Missing<T> detection for automatic defaults

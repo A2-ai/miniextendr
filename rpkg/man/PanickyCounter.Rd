@@ -35,11 +35,9 @@ PanickyCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-PanickyCounter  Class
+Get value.
 
-Get value
+Add (may panic).
 
-Add (may panic)
-
-Create a new panicky counter
+Create a new panicky counter.
 }

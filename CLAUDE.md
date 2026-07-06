@@ -7,7 +7,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 ```
 miniextendr-api/      # Runtime (FFI, ExternalPtr, ALTREP, worker thread)
 miniextendr-macros/   # Proc macros (#[miniextendr], derives)
-miniextendr-engine/   # Codegen: collect/order R-wrapper distributed_slice entries
+miniextendr-engine/   # Standalone R embedding (REngine) for Rust binaries/tests
 miniextendr-lint/     # Build-time static analysis (MXL* rules)
 miniextendr-bench/    # Benchmarks (separate workspace member)
 miniextendr-cli/      # CLI helpers

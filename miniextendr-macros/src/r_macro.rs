@@ -1,33 +1,38 @@
 //! Implementation of the `r!` proc-macro.
 //!
 //! Parses the optional `env: <expr> ;` head, validates the R token tail with
-//! the conservative grammar checker in [`grammar`], then emits an expansion
-//! byte-identical to the old `macro_rules! r` expansion:
+//! the conservative grammar checker in [`grammar`], then either:
+//!
+//! 1. **Lowers** the tail to `RCall`-based `Rf_lang*` construction when the
+//!    tail is a single call of the lowerable subset (see [`lowering`]), or
+//! 2. **Falls back** to the `r_eval_str` string path for everything else.
+//!
+//! The fallback path produces code byte-identical to the old `macro_rules! r`
+//! expansion — `::core::stringify!` rather than `TokenStream::to_string()` so
+//! spacing normalisation is identical.
 //!
 //! ```rust,ignore
-//! // r!(tokens)
+//! // Lowered: r!(c(1L, 2L, 3L))
+//! unsafe {
+//!     let __r_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+//!     // ... protect each arg ...
+//!     ::miniextendr_api::expression::RCall::new("c")
+//!         .arg(__r_arg_0)
+//!         ...
+//!         .eval(::miniextendr_api::sys::R_GlobalEnv)
+//! }
+//!
+//! // Fallback: r!(1L + 2L)
 //! unsafe {
 //!     ::miniextendr_api::expression::r_eval_str(
-//!         ::core::stringify!(tokens),
+//!         ::core::stringify!(1L + 2L),
 //!         ::miniextendr_api::sys::R_GlobalEnv,
 //!     )
 //! }
-//!
-//! // r!(env: e; tokens)
-//! unsafe {
-//!     ::miniextendr_api::expression::r_eval_str(
-//!         ::core::stringify!(tokens),
-//!         e,
-//!     )
-//! }
 //! ```
-//!
-//! The `::core::stringify!` re-emission (rather than `TokenStream::to_string()`)
-//! guarantees byte-identical runtime behaviour: `stringify!` is the same
-//! built-in that the old `macro_rules!` used, so spacing normalisation is
-//! identical.
 
 pub(crate) mod grammar;
+pub(crate) mod lowering;
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -54,22 +59,22 @@ fn expand_inner(input: TokenStream) -> Result<TokenStream, Error> {
     // Conservative grammar validation on the tail.
     grammar::validate(&tail_tokens)?;
 
-    // Emit byte-identical expansion.
-    let expanded = if let Some(env) = env_expr {
-        quote! {
-            unsafe {
-                ::miniextendr_api::expression::r_eval_str(
-                    ::core::stringify!(#tail_tokens),
-                    #env,
-                )
-            }
-        }
+    // Build the environment expression used in both paths.
+    let env_ts: TokenStream = match env_expr {
+        Some(ref e) => quote! { #e },
+        None => quote! { ::miniextendr_api::sys::R_GlobalEnv },
+    };
+
+    // Attempt to lower the tail to an RCall-based expansion.
+    // Falls back to the stringify + r_eval_str path when not applicable.
+    let expanded = if let Some(lowered) = lowering::try_lower(&tail_tokens, &env_ts) {
+        lowered
     } else {
         quote! {
             unsafe {
                 ::miniextendr_api::expression::r_eval_str(
                     ::core::stringify!(#tail_tokens),
-                    ::miniextendr_api::sys::R_GlobalEnv,
+                    #env_ts,
                 )
             }
         }

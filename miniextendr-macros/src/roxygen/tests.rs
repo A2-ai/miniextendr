@@ -129,80 +129,6 @@ mod doc_lint_tests {
             Some("Description after multiple blanks.".to_string())
         );
     }
-
-    // region: implicit_details_from_attrs unit tests
-
-    #[test]
-    fn test_implicit_details_none_when_one_paragraph() {
-        let attrs = make_doc_attrs(&["Just a title."]);
-        assert_eq!(implicit_details_from_attrs(&attrs), None);
-    }
-
-    #[test]
-    fn test_implicit_details_none_when_two_paragraphs() {
-        let attrs = make_doc_attrs(&["Title.", "", "Description only."]);
-        assert_eq!(implicit_details_from_attrs(&attrs), None);
-    }
-
-    #[test]
-    fn test_implicit_details_returns_third_paragraph() {
-        let attrs = make_doc_attrs(&["Title.", "", "Description.", "", "Details paragraph."]);
-        assert_eq!(
-            implicit_details_from_attrs(&attrs),
-            Some("Details paragraph.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_implicit_details_joins_multiple_detail_paragraphs() {
-        let attrs = make_doc_attrs(&[
-            "Title.",
-            "",
-            "Description.",
-            "",
-            "First details para.",
-            "",
-            "Second details para.",
-        ]);
-        assert_eq!(
-            implicit_details_from_attrs(&attrs),
-            Some("First details para.\n\nSecond details para.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_implicit_details_stops_at_tag() {
-        let attrs = make_doc_attrs(&[
-            "Title.",
-            "",
-            "Description.",
-            "",
-            "Details here.",
-            "@param x Something",
-        ]);
-        assert_eq!(
-            implicit_details_from_attrs(&attrs),
-            Some("Details here.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_implicit_details_multiline_detail_paragraph() {
-        let attrs = make_doc_attrs(&[
-            "Title.",
-            "",
-            "Description.",
-            "",
-            "First line of details.",
-            "Second line of details.",
-        ]);
-        assert_eq!(
-            implicit_details_from_attrs(&attrs),
-            Some("First line of details. Second line of details.".to_string())
-        );
-    }
-
-    // endregion
 }
 // endregion
 
@@ -284,7 +210,11 @@ fn attr_interrupt_multiple_cfg_between_doc_all_continue() {
 
 // endregion
 
-// region: #578 — auto_description path emits @title not @description
+// region: method doc prose is promoted to @description, never @title
+//
+// The page @title is the structural class/method name (emitted by ClassDocBuilder /
+// lib.rs), so the core never derives a @title from prose. Leading prose folds into a
+// single multi-paragraph @description.
 
 fn make_r6_method_doc_attrs(lines: &[&str]) -> Vec<syn::Attribute> {
     lines
@@ -294,78 +224,50 @@ fn make_r6_method_doc_attrs(lines: &[&str]) -> Vec<syn::Attribute> {
 }
 
 #[test]
-fn auto_description_one_para_emits_title_only() {
-    // Single paragraph: auto-description path should emit @title, not @description
+fn method_prose_emits_description_not_title() {
     let attrs = make_r6_method_doc_attrs(&["Compute the sum of all elements."]);
     let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
     assert!(
-        tags.iter().any(|t| t.starts_with("@title")),
-        "expected @title tag: {:?}",
+        !tags.iter().any(|t| t.starts_with("@title")),
+        "prose must not become @title: {:?}",
         tags
     );
+    let desc = tags.iter().find(|t| t.starts_with("@description"));
+    assert!(desc.is_some(), "expected @description: {:?}", tags);
     assert!(
-        !tags.iter().any(|t| t.starts_with("@description")),
-        "single-para must not emit @description: {:?}",
+        desc.unwrap().contains("Compute the sum of all elements."),
+        "wrong @description content: {:?}",
         tags
     );
 }
 
 #[test]
-fn auto_description_two_para_emits_title_and_description() {
+fn method_prose_paragraphs_fold_into_one_description() {
     let attrs = make_r6_method_doc_attrs(&[
         "Compute the sum of all elements.",
         "",
-        "This is the description paragraph.",
+        "This is the second paragraph.",
     ]);
     let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
     assert!(
-        tags.iter().any(|t| t.starts_with("@title")),
-        "expected @title: {:?}",
+        !tags
+            .iter()
+            .any(|t| t.starts_with("@title") || t.starts_with("@details")),
+        "no @title or @details from prose: {:?}",
         tags
     );
+    let desc = tags.iter().find(|t| t.starts_with("@description")).unwrap();
+    // Both paragraphs land in the description, separated by a blank line.
     assert!(
-        tags.iter().any(|t| t.starts_with("@description")),
-        "expected @description: {:?}",
-        tags
-    );
-    assert!(
-        !tags.iter().any(|t| t.starts_with("@details")),
-        "two-para must not emit @details: {:?}",
+        desc.contains("Compute the sum of all elements.")
+            && desc.contains("This is the second paragraph."),
+        "both paragraphs must be in @description: {:?}",
         tags
     );
 }
 
 #[test]
-fn auto_description_three_para_emits_title_description_details() {
-    let attrs = make_r6_method_doc_attrs(&[
-        "Short title.",
-        "",
-        "Description paragraph.",
-        "",
-        "Details paragraph goes here.",
-    ]);
-    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
-    assert!(
-        tags.iter().any(|t| t.starts_with("@title")),
-        "expected @title: {:?}",
-        tags
-    );
-    assert!(
-        tags.iter().any(|t| t.starts_with("@description")),
-        "expected @description: {:?}",
-        tags
-    );
-    let details = tags.iter().find(|t| t.starts_with("@details"));
-    assert!(details.is_some(), "expected @details: {:?}", tags);
-    assert!(
-        details.unwrap().contains("Details paragraph"),
-        "wrong @details content: {:?}",
-        tags
-    );
-}
-
-#[test]
-fn auto_description_no_doc_emits_nothing() {
+fn method_no_doc_emits_nothing() {
     let attrs: Vec<syn::Attribute> = vec![];
     let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
     assert!(
@@ -377,7 +279,7 @@ fn auto_description_no_doc_emits_nothing() {
 
 // endregion
 
-// region: @details auto-injection integration tests (via roxygen_tags_from_attrs)
+// region: prose → @description promotion (via roxygen_tags_from_attrs)
 
 fn make_doc_attrs_plain(lines: &[&str]) -> Vec<syn::Attribute> {
     lines
@@ -387,116 +289,185 @@ fn make_doc_attrs_plain(lines: &[&str]) -> Vec<syn::Attribute> {
 }
 
 #[test]
-fn auto_details_not_injected_for_one_paragraph() {
-    // One paragraph + @param → no @details
-    let attrs = make_doc_attrs_plain(&["Title.", "@param x A value"]);
-    let tags = roxygen_tags_from_attrs(&attrs);
-    assert!(!tags.iter().any(|t| t.starts_with("@details")));
-}
-
-#[test]
-fn auto_details_not_injected_for_two_paragraphs() {
-    // Two paragraphs + @param → @description injected but no @details
-    let attrs = make_doc_attrs_plain(&["Title.", "", "Description.", "@param x A value"]);
-    let tags = roxygen_tags_from_attrs(&attrs);
-    assert!(tags.iter().any(|t| t.starts_with("@description")));
-    assert!(!tags.iter().any(|t| t.starts_with("@details")));
-}
-
-#[test]
-fn auto_details_injected_for_three_paragraphs() {
-    // Three paragraphs + @param → both @description and @details injected
+fn prose_promoted_to_description_never_title_or_details() {
+    // The core never derives @title (structural name, set by the caller) nor @details
+    // (folded into @description) from prose.
     let attrs = make_doc_attrs_plain(&[
         "Title.",
         "",
         "Description.",
         "",
-        "Details paragraph.",
+        "What used to be details.",
         "@param x A value",
     ]);
     let tags = roxygen_tags_from_attrs(&attrs);
-    assert!(tags.iter().any(|t| t.starts_with("@description")));
-    let details_tag = tags.iter().find(|t| t.starts_with("@details"));
     assert!(
-        details_tag.is_some(),
-        "expected @details tag in: {:?}",
-        tags
-    );
-    assert!(details_tag.unwrap().contains("Details paragraph."));
-}
-
-#[test]
-fn auto_details_joins_four_paragraphs() {
-    // Four paragraphs → @details joins paragraphs 3 and 4 with \n\n
-    let attrs = make_doc_attrs_plain(&[
-        "Title.",
-        "",
-        "Description.",
-        "",
-        "First details.",
-        "",
-        "Second details.",
-        "@param x A value",
-    ]);
-    let tags = roxygen_tags_from_attrs(&attrs);
-    let details_tag = tags.iter().find(|t| t.starts_with("@details")).unwrap();
-    assert!(
-        details_tag.contains("First details."),
-        "missing first: {:?}",
+        !tags.iter().any(|t| t.starts_with("@title")),
+        "no @title from prose: {:?}",
         tags
     );
     assert!(
-        details_tag.contains("Second details."),
-        "missing second: {:?}",
+        !tags.iter().any(|t| t.starts_with("@details")),
+        "no @details from prose: {:?}",
+        tags
+    );
+    let desc = tags.iter().find(|t| t.starts_with("@description")).unwrap();
+    // All three leading paragraphs fold into the single @description.
+    assert!(
+        desc.contains("Title.")
+            && desc.contains("Description.")
+            && desc.contains("What used to be details."),
+        "all leading paragraphs must fold into @description: {:?}",
+        tags
+    );
+    // @description precedes @param.
+    assert!(
+        tags.iter().position(|t| t.starts_with("@description"))
+            < tags.iter().position(|t| t.starts_with("@param")),
+        "@description must precede @param: {:?}",
         tags
     );
 }
 
 #[test]
-fn auto_details_idempotent_when_explicit_details_present() {
-    // Explicit @details → no auto-injection
+fn explicit_description_not_clobbered_by_prose() {
+    // An author-written @description suppresses prose promotion entirely.
     let attrs = make_doc_attrs_plain(&[
-        "Title.",
-        "",
-        "Description.",
-        "",
-        "This would become details.",
-        "@details Explicit details.",
+        "Leading prose that would otherwise become the description.",
+        "@description Explicit description.",
         "@param x A value",
     ]);
     let tags = roxygen_tags_from_attrs(&attrs);
-    let count = tags.iter().filter(|t| t.starts_with("@details")).count();
-    assert_eq!(count, 1, "expected exactly one @details tag: {:?}", tags);
-    // It should be the explicit one
-    let details_tag = tags.iter().find(|t| t.starts_with("@details")).unwrap();
-    assert!(details_tag.contains("Explicit details."));
+    let count = tags
+        .iter()
+        .filter(|t| t.starts_with("@description"))
+        .count();
+    assert_eq!(count, 1, "expected exactly one @description: {:?}", tags);
+    let desc = tags.iter().find(|t| t.starts_with("@description")).unwrap();
+    assert!(
+        desc.contains("Explicit description.") && !desc.contains("Leading prose"),
+        "explicit @description must win: {:?}",
+        tags
+    );
 }
 
 #[test]
-fn auto_details_order_is_title_description_details_param() {
-    // Verify order: @title before @description before @details before @param
-    let attrs = make_doc_attrs_plain(&[
-        "Title.",
-        "",
-        "Description.",
-        "",
-        "Details.",
-        "@param x A value",
-    ]);
+fn tag_led_block_gets_no_description_or_title() {
+    // An @inherit-led block (no leading prose) must NOT gain a spurious description
+    // or title; the tag is preserved.
+    let attrs = make_doc_attrs_plain(&["@inherit foo"]);
     let tags = roxygen_tags_from_attrs(&attrs);
-    let title_pos = tags.iter().position(|t| t.starts_with("@title"));
-    let desc_pos = tags.iter().position(|t| t.starts_with("@description"));
-    let details_pos = tags.iter().position(|t| t.starts_with("@details"));
-    let param_pos = tags.iter().position(|t| t.starts_with("@param"));
     assert!(
-        title_pos < desc_pos && desc_pos < details_pos && details_pos < param_pos,
-        "expected title<desc<details<param order, got positions: title={:?} desc={:?} details={:?} param={:?}\ntags={:?}",
-        title_pos,
-        desc_pos,
-        details_pos,
-        param_pos,
+        !tags
+            .iter()
+            .any(|t| t.starts_with("@title") || t.starts_with("@description")),
+        "tag-led block must not gain @title/@description: {:?}",
         tags
     );
+    assert!(
+        tags.iter().any(|t| t.starts_with("@inherit")),
+        "the @inherit tag must be preserved: {:?}",
+        tags
+    );
+}
+
+// endregion
+
+// region: rustdoc intra-doc links neutralized for roxygen2 (#1054 follow-up)
+//
+// rpkg's DESCRIPTION enables `Config/roxygen2/markdown: TRUE`, so roxygen2 reads
+// `[Foo]` as a `\link{}` to an R topic. rustdoc summaries use the same syntax for
+// *Rust* items, which roxygen2 can't resolve. `sanitize_roxygen_links` strips the
+// link brackets (keeping `` `code` `` spans) before prose becomes `@description`.
+
+#[test]
+fn sanitize_strips_shortcut_and_reference_links() {
+    // Shortcut `[`Foo`]` → keep the code span; reference `[x][crate::y]` → keep `x`.
+    assert_eq!(
+        sanitize_roxygen_links("same column shape as [`REMapB`]"),
+        "same column shape as `REMapB`"
+    );
+    assert_eq!(
+        sanitize_roxygen_links("see [`AsSerialize`][serde::AsSerialize] wrapper"),
+        "see `AsSerialize` wrapper"
+    );
+    assert_eq!(
+        sanitize_roxygen_links("a plain [Topic] link"),
+        "a plain Topic link"
+    );
+}
+
+#[test]
+fn sanitize_keeps_real_markdown_links() {
+    // `[text](url)` is valid roxygen2 markdown — leave it alone.
+    let s = "see [the docs](https://example.com) for more";
+    assert_eq!(sanitize_roxygen_links(s), s);
+}
+
+#[test]
+fn sanitize_leaves_brackets_inside_code_spans() {
+    // Markdown (and roxygen2) never parse `[...]` inside backticks as a
+    // link — stripping there would corrupt code like `x[i]`.
+    let s = "index with `x[i]` or `m[, 1]` as usual";
+    assert_eq!(sanitize_roxygen_links(s), s);
+    // A rustdoc link *around* a code span is still stripped.
+    assert_eq!(
+        sanitize_roxygen_links("see [`Vec<T>`] and `v[0]`"),
+        "see `Vec<T>` and `v[0]`"
+    );
+}
+
+#[test]
+fn sanitize_is_utf8_safe() {
+    // Multi-byte chars around a link must not panic or corrupt.
+    assert_eq!(
+        sanitize_roxygen_links("café [`Foo`] — déjà"),
+        "café `Foo` — déjà"
+    );
+}
+
+#[test]
+fn sanitize_preserves_escaped_brackets() {
+    // `\[u8\]` is idiomatic rustdoc for a literal bracket (suppresses
+    // intra-doc link resolution). Eating the brackets but not the
+    // backslashes produced invalid Rd macros like `Box<\u8\>` in
+    // altrep_vec.Rd. Pass the escape through; roxygen2 markdown unescapes.
+    let s = r"Create a Box<\[u8\]> ALTREP raw vector.";
+    assert_eq!(sanitize_roxygen_links(s), s);
+    // An unescaped shortcut link in the same string is still stripped.
+    assert_eq!(
+        sanitize_roxygen_links(r"see [Foo] and Box<\[u8\]>"),
+        r"see Foo and Box<\[u8\]>"
+    );
+}
+
+#[test]
+fn leading_prose_promotes_and_sanitizes() {
+    let attrs = make_doc_attrs_plain(&[
+        "`HashMap` field — same column shape as [`REMapB`].",
+        "",
+        "Second paragraph references [`S7PropOuter`].",
+    ]);
+    let desc = leading_prose_from_attrs(&attrs).expect("expected leading prose");
+    assert!(
+        desc.contains("`REMapB`") && !desc.contains("[`REMapB`]"),
+        "links must be neutralized: {desc:?}"
+    );
+    assert!(
+        desc.contains("`S7PropOuter`") && !desc.contains("[`S7PropOuter`]"),
+        "second-paragraph links must be neutralized: {desc:?}"
+    );
+    // Paragraph boundary preserved as a blank-line separator.
+    assert!(
+        desc.contains("\n\n"),
+        "paragraph break must be preserved: {desc:?}"
+    );
+}
+
+#[test]
+fn leading_prose_none_for_tag_led_block() {
+    let attrs = make_doc_attrs_plain(&["@param x A value"]);
+    assert_eq!(leading_prose_from_attrs(&attrs), None);
 }
 
 // endregion
@@ -700,6 +671,31 @@ fn strip_method_tags_leaves_prose_untouched() {
 }
 
 // endregion
+
+#[test]
+fn split_r_formals_ignores_nested_commas() {
+    // Plain formals split as before.
+    assert_eq!(split_r_formals("x, y, z"), vec!["x", "y", "z"]);
+    // A match_arg default `c("fast", "slow")` must stay one formal, not be
+    // shredded into `mode = c("fast"` + `"slow")` (the ScalerS7/ScalerR6 bug).
+    assert_eq!(
+        split_r_formals(r#"x, mode = c("fast", "slow"), ..."#),
+        vec!["x", r#"mode = c("fast", "slow")"#, "..."]
+    );
+    // Nested calls / brackets are respected too.
+    assert_eq!(
+        split_r_formals("self, opts = list(a = 1, b = 2), ..."),
+        vec!["self", "opts = list(a = 1, b = 2)", "..."]
+    );
+    assert!(split_r_formals("").is_empty());
+}
+
+#[test]
+fn formal_name_strips_default() {
+    assert_eq!(formal_name("x"), "x");
+    assert_eq!(formal_name(r#"mode = c("fast", "slow")"#), "mode");
+    assert_eq!(formal_name("..."), "...");
+}
 
 #[test]
 fn test_normalize_for_comparison() {

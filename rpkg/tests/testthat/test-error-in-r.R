@@ -38,7 +38,7 @@ test_that("error_in_r Option::None raises rust_error condition", {
   )
   expect_s3_class(err, "rust_error")
   expect_equal(err$kind, "none_err")
-  expect_match(err$message, "returned None")
+  expect_match(err$message, "returned no value")
 })
 
 test_that("error_in_r Option::Some returns NULL", {

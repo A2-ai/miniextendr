@@ -1892,7 +1892,8 @@ pub fn gc_stress_reader_enum_map() {
 /// Arrow buffers, exercising `RecordBatch::into_sexp` → `arrow_array_to_sexp`
 /// → the per-array zero-copy SEXP-recovery path under GC pressure.
 ///
-/// Regression fixture for #867. `test_df_subquery` segfaulted on the strict
+/// Regression fixture for #867. The subquery fixture (now folded into
+/// `test_df_sql_query`) segfaulted on the strict
 /// glibc Linux runner because DataFusion's contiguous-run filter optimization
 /// returns a *slice* of the R-backed input column: `values().as_ptr()` then
 /// points into the middle of the R vector, and the speculative
@@ -1940,7 +1941,8 @@ pub fn gc_stress_arrow_sliced_recordbatch() {
     let cols: Vec<ArrayRef> = vec![Arc::new(x_slice), Arc::new(y_slice)];
     let batch = RecordBatch::try_new(schema, cols).expect("record batch");
 
-    // Drive the production materialization (the path test_df_subquery hits).
+    // Drive the production materialization (the path a subquery via
+    // test_df_sql_query hits).
     let out = batch.into_sexp();
     let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
 
@@ -2377,6 +2379,32 @@ pub fn gc_stress_condition_data() {
                     (Some("y".to_string()), RValue::from(vec![Some(7_i32), None])),
                 ]),
             ),
+            // #995 richer value types: NA-aware Option / Vec<Option>, wide
+            // integer, Debug-stringify fallback, and a nested named list (which
+            // itself allocates a fresh VECSXP + names under GC pressure).
+            ("opt_int".to_string(), ConditionDataValue::from(None::<i32>)),
+            (
+                "opt_int_vec".to_string(),
+                ConditionDataValue::from(vec![Some(1_i32), None, Some(3)]),
+            ),
+            (
+                "long".to_string(),
+                ConditionDataValue::from(5_000_000_000_i64),
+            ),
+            (
+                "dbg".to_string(),
+                ConditionDataValue::debug(round..=round + 2),
+            ),
+            (
+                "nested".to_string(),
+                ConditionDataValue::List(vec![
+                    ("x".to_string(), ConditionDataValue::Int(round)),
+                    (
+                        "y".to_string(),
+                        ConditionDataValue::from(vec![Some(7_i32), None]),
+                    ),
+                ]),
+            ),
         ];
 
         let tagged = make_rust_condition_value_with_data(
@@ -2448,6 +2476,44 @@ pub fn gc_stress_condition_data() {
         assert_eq!(names.string_elt_str(7), Some("labels"));
         assert_eq!(names.string_elt_str(12), Some("nested"));
     }
+}
+
+/// Drive the lowered `r!()` call-tree path under GC pressure.
+///
+/// The lowered path for a call like `r!(c(1L, 2L, 3L))` builds several
+/// `SEXP` scalars and a nested `LANGSXP`, protecting each via
+/// `ProtectScope::protect_raw` before passing them to `RCall`. This fixture
+/// exercises that SEXP-storage sequence under `gctorture(TRUE)` to catch
+/// any missing protect.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr]
+pub fn gc_stress_r_macro_lowering() {
+    // Each r!() call here goes through the lowered RCall path (call-shaped
+    // top-level expression). We verify the result to confirm correct
+    // evaluation, not just survival.
+    let result = miniextendr_api::r!(c(1L, 2L, 3L)).expect("r!(c(1L, 2L, 3L)) should evaluate");
+    let len = result.xlength();
+    assert_eq!(len, 3, "c(1L, 2L, 3L) should have length 3");
+
+    // Nested call: c(1L, c(2L, 3L)) — exercises nested LANGSXP protection.
+    let result2 =
+        miniextendr_api::r!(c(1L, c(2L, 3L))).expect("r!(c(1L, c(2L, 3L))) should evaluate");
+    assert_eq!(result2.xlength(), 3, "nested c() should have length 3");
+    assert_eq!(result2.integer_elt(0), 1);
+    assert_eq!(result2.integer_elt(1), 2);
+    assert_eq!(result2.integer_elt(2), 3);
+
+    // String args — tests scalar_string_from_str protect.
+    let pasted =
+        miniextendr_api::r!(paste("gc", "stress")).expect("r!(paste(...)) should evaluate");
+    // paste() returns a character(1); check it's non-nil.
+    assert!(!pasted.is_nil(), "paste() result must not be nil");
+
+    // Named arg — tests named_arg path.
+    let seqed =
+        miniextendr_api::r!(seq(1L, 6L, by = 2L)).expect("r!(seq(1L, 6L, by = 2L)) should work");
+    assert_eq!(seqed.xlength(), 3, "seq(1,6,by=2) should have length 3");
 }
 
 // endregion

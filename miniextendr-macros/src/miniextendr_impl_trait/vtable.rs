@@ -552,6 +552,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 r_post_checks: attrs.r_post_checks,
                 r_on_exit: attrs.r_on_exit,
                 no_shortcut: attrs.no_shortcut,
+                per_param: attrs.per_param,
             });
         }
     }
@@ -593,6 +594,9 @@ struct TraitMethodAttrs {
     r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
     /// Opt out of the S7 fast-dispatch shortcut (`#[miniextendr(s7(no_shortcut))]`).
     no_shortcut: bool,
+    /// Per-parameter `match_arg`/`choices`/`several_ok` attributes, keyed by
+    /// Rust parameter name. See `TraitMethod::per_param`.
+    per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 }
 
 /// Parse `#[miniextendr(...)]` attributes from a trait method.
@@ -619,6 +623,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut r_post_checks: Option<String> = None;
     let mut r_on_exit: Option<crate::miniextendr_fn::ROnExit> = None;
     let mut no_shortcut = false;
+    let mut per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs> =
+        std::collections::HashMap::new();
 
     for attr in attrs {
         if !attr.path().is_ident("miniextendr") {
@@ -775,12 +781,57 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     })?;
                     r_on_exit = Some(crate::miniextendr_fn::ROnExit { expr, add, after });
                 }
+            } else if meta.path.is_ident("choices") {
+                // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
+                //
+                // NOTE: `match_arg`/`match_arg_several_ok` (choices derived from a
+                // `#[derive(MatchArg)]` enum's `CHOICES` const) are intentionally NOT
+                // supported here yet. The inherent-impl path additionally emits a
+                // `__match_arg_choices__<param>` C helper + `MX_MATCH_ARG_CHOICES`
+                // registration (`generate_method_match_arg_helpers` in
+                // `miniextendr_impl.rs`) that resolves the write-time placeholder
+                // formal default into the enum's literal choice list — trait methods
+                // have no equivalent C-wrapper generation yet, so accepting `match_arg`
+                // here would silently ship a formal default that never resolves
+                // (`object '.__MX_MATCH_ARG_CHOICES_...__' not found` at call time).
+                // `choices(...)` needs no such resolution (the literal list is baked in
+                // at macro-expansion time), so it's safe to support today. Tracked in
+                // the trait-method-emitter follow-up issue for full match_arg parity.
+                meta.parse_nested_meta(|inner| {
+                    let name = inner
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| inner.error("expected parameter name"))?
+                        .to_string();
+                    let _: syn::Token![=] = inner.input.parse()?;
+                    let value: syn::LitStr = inner.input.parse()?;
+                    let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
+                    per_param.entry(name).or_default().choices = Some(choices);
+                    Ok(())
+                })?;
+            } else if meta.path.is_ident("choices_several_ok") {
+                // `choices_several_ok(param = "a, b, c")` — choices + several_ok.
+                meta.parse_nested_meta(|inner| {
+                    let name = inner
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| inner.error("expected parameter name"))?
+                        .to_string();
+                    let _: syn::Token![=] = inner.input.parse()?;
+                    let value: syn::LitStr = inner.input.parse()?;
+                    let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
+                    let entry = per_param.entry(name).or_default();
+                    entry.choices = Some(choices);
+                    entry.several_ok = true;
+                    Ok(())
+                })?;
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `skip`, `no_shortcut`, `r_name`, \
-                     `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`",
+                     `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
+                     `choices`, `choices_several_ok`",
                 ));
             }
             Ok(())
@@ -803,6 +854,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         r_post_checks,
         r_on_exit,
         no_shortcut,
+        per_param,
     })
 }
 

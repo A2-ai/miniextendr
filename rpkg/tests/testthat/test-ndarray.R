@@ -70,14 +70,15 @@ test_that("NdVec RNdSlice - element access", {
   skip_if_ndarray_disabled()
   v <- NdVec$new(c(10, 20, 30, 40, 50))
 
-  # 0-indexed access
-  expect_equal(v$get(0L), 10)
-  expect_equal(v$get(2L), 30)
-  expect_equal(v$get(4L), 50)
+  # 1-based access
+  expect_equal(v$get(1L), 10)
+  expect_equal(v$get(3L), 30)
+  expect_equal(v$get(5L), 50)
 
-  # Out of bounds returns error (Option::None becomes error in miniextendr)
-  expect_error(v$get(5L), "returned None")
-  expect_error(v$get(-1L), "returned None")
+  # Out of bounds / non-positive index errors
+  expect_error(v$get(6L), "out of bounds")
+  expect_error(v$get(0L), "positive 1-based")
+  expect_error(v$get(-1L), "positive 1-based")
 })
 
 test_that("NdVec RNdSlice - first and last", {
@@ -87,10 +88,10 @@ test_that("NdVec RNdSlice - first and last", {
   expect_equal(v$first(), 1)
   expect_equal(v$last(), 3)
 
-  # Empty vector - Option::None becomes error
+  # Empty vector - no value becomes an error
   empty <- NdVec$new(numeric(0))
-  expect_error(empty$first(), "returned None")
-  expect_error(empty$last(), "returned None")
+  expect_error(empty$first(), "returned no value")
+  expect_error(empty$last(), "returned no value")
 })
 
 test_that("NdVec RNdSlice - slice_1d", {
@@ -114,7 +115,7 @@ test_that("NdVec RNdSlice - get_many", {
   skip_if_ndarray_disabled()
   v <- NdVec$new(c(10, 20, 30, 40, 50))
 
-  results <- v$get_many(c(0L, 2L, 4L, 10L))
+  results <- v$get_many(c(1L, 3L, 5L, 11L))
   expect_equal(results[[1]], 10)
   expect_equal(results[[2]], 30)
   expect_equal(results[[3]], 50)
@@ -125,9 +126,10 @@ test_that("NdVec RNdSlice - is_valid_index", {
   skip_if_ndarray_disabled()
   v <- NdVec$new(c(1, 2, 3))
 
-  expect_true(v$is_valid_index(0L))
-  expect_true(v$is_valid_index(2L))
-  expect_false(v$is_valid_index(3L))
+  expect_true(v$is_valid_index(1L))
+  expect_true(v$is_valid_index(3L))
+  expect_false(v$is_valid_index(4L))
+  expect_false(v$is_valid_index(0L))
   expect_false(v$is_valid_index(-1L))
 })
 
@@ -189,31 +191,31 @@ test_that("NdMatrix RNdSlice2D - element access", {
   # R matrix fills by column: [[1,3,5], [2,4,6]]
   m <- NdMatrix$new(matrix(as.double(1:6), nrow = 2, ncol = 3))
 
-  # 0-indexed access
-  expect_equal(m$get_2d(0L, 0L), 1)
-  expect_equal(m$get_2d(1L, 0L), 2)
-  expect_equal(m$get_2d(0L, 2L), 5)
-  expect_equal(m$get_2d(1L, 2L), 6)
+  # 1-based access
+  expect_equal(m$get_2d(1L, 1L), 1)
+  expect_equal(m$get_2d(2L, 1L), 2)
+  expect_equal(m$get_2d(1L, 3L), 5)
+  expect_equal(m$get_2d(2L, 3L), 6)
 
-  # Out of bounds - Option::None becomes error
-  expect_error(m$get_2d(2L, 0L), "returned None")
-  expect_error(m$get_2d(-1L, 0L), "returned None")
+  # Out of bounds / non-positive index errors
+  expect_error(m$get_2d(3L, 1L), "out of bounds")
+  expect_error(m$get_2d(0L, 1L), "positive 1-based")
 })
 
 test_that("NdMatrix RNdSlice2D - row and col", {
   skip_if_ndarray_disabled()
   m <- NdMatrix$new(matrix(as.double(1:6), nrow = 2, ncol = 3))
 
-  # Rows
-  expect_equal(m$row(0L), c(1, 3, 5))
-  expect_equal(m$row(1L), c(2, 4, 6))
-  expect_equal(m$row(2L), numeric(0))  # Out of bounds
+  # Rows (1-based)
+  expect_equal(m$row(1L), c(1, 3, 5))
+  expect_equal(m$row(2L), c(2, 4, 6))
+  expect_error(m$row(3L), "out of bounds")  # Out of bounds errors
 
-  # Columns
-  expect_equal(m$col(0L), c(1, 2))
-  expect_equal(m$col(1L), c(3, 4))
-  expect_equal(m$col(2L), c(5, 6))
-  expect_equal(m$col(3L), numeric(0))  # Out of bounds
+  # Columns (1-based)
+  expect_equal(m$col(1L), c(1, 2))
+  expect_equal(m$col(2L), c(3, 4))
+  expect_equal(m$col(3L), c(5, 6))
+  expect_error(m$col(4L), "out of bounds")  # Out of bounds errors
 })
 
 test_that("NdMatrix RNdSlice2D - diag", {
@@ -274,20 +276,20 @@ test_that("NdArrayDyn RNdIndex - element access", {
   skip_if_ndarray_disabled()
   arr <- NdArrayDyn$new(c(2L, 3L), as.numeric(1:6))
 
-  # 0-indexed access (row-major order)
+  # 1-based access (row-major order)
   # Shape (2, 3) with data 1:6:
-  # Row 0: [1, 2, 3], Row 1: [4, 5, 6]
-  expect_equal(arr$get_nd(c(0L, 0L)), 1)
-  expect_equal(arr$get_nd(c(0L, 1L)), 2)
-  expect_equal(arr$get_nd(c(1L, 0L)), 4)
-  expect_equal(arr$get_nd(c(1L, 2L)), 6)
+  # Row 1: [1, 2, 3], Row 2: [4, 5, 6]
+  expect_equal(arr$get_nd(c(1L, 1L)), 1)
+  expect_equal(arr$get_nd(c(1L, 2L)), 2)
+  expect_equal(arr$get_nd(c(2L, 1L)), 4)
+  expect_equal(arr$get_nd(c(2L, 3L)), 6)
 
-  # Out of bounds - Option::None becomes error
-  expect_error(arr$get_nd(c(2L, 0L)), "returned None")
+  # Out of bounds errors
+  expect_error(arr$get_nd(c(3L, 1L)), "out of bounds")
 
-  # Wrong number of indices - Option::None becomes error
-  expect_error(arr$get_nd(c(0L)), "returned None")
-  expect_error(arr$get_nd(c(0L, 0L, 0L)), "returned None")
+  # Wrong number of indices errors
+  expect_error(arr$get_nd(c(1L)), "out of bounds")
+  expect_error(arr$get_nd(c(1L, 1L, 1L)), "out of bounds")
 })
 
 test_that("NdArrayDyn RNdIndex - slice_nd", {
@@ -318,10 +320,10 @@ test_that("NdArrayDyn RNdIndex - is_valid_nd", {
   skip_if_ndarray_disabled()
   arr <- NdArrayDyn$new(c(2L, 3L), as.numeric(1:6))
 
-  expect_true(arr$is_valid_nd(c(0L, 0L)))
-  expect_true(arr$is_valid_nd(c(1L, 2L)))
-  expect_false(arr$is_valid_nd(c(2L, 0L)))
-  expect_false(arr$is_valid_nd(c(-1L, 0L)))
+  expect_true(arr$is_valid_nd(c(1L, 1L)))
+  expect_true(arr$is_valid_nd(c(2L, 3L)))
+  expect_false(arr$is_valid_nd(c(3L, 1L)))
+  expect_false(arr$is_valid_nd(c(0L, 1L)))
 })
 
 test_that("NdArrayDyn RNdIndex - axis_slice", {
@@ -353,8 +355,8 @@ test_that("NdArrayDyn RNdIndex - reshape", {
   flat <- arr$reshape(c(6L))
   expect_length(flat, 6)
 
-  # Invalid reshape (wrong total size) - Option::None becomes error
-  expect_error(arr$reshape(c(2L, 2L)), "returned None")
+  # Invalid reshape (wrong total size) errors
+  expect_error(arr$reshape(c(2L, 2L)), "does not match")
 })
 
 # =============================================================================
@@ -382,10 +384,10 @@ test_that("NdIntVec RNdSlice - element access", {
   skip_if_ndarray_disabled()
   v <- NdIntVec$new(c(10L, 20L, 30L))
 
-  expect_equal(v$get(0L), 10L)
-  expect_equal(v$get(2L), 30L)
-  # Out of bounds - Option::None becomes error
-  expect_error(v$get(3L), "returned None")
+  expect_equal(v$get(1L), 10L)
+  expect_equal(v$get(3L), 30L)
+  # Out of bounds errors
+  expect_error(v$get(4L), "out of bounds")
 })
 
 test_that("NdIntVec to_r returns R integer vector", {

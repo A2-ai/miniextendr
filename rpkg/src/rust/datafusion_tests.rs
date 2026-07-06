@@ -126,26 +126,4 @@ pub fn test_df_join(left: RecordBatch, right: RecordBatch, sql: &str) -> RecordB
     ctx.sql_to_record_batch(sql).unwrap()
 }
 
-/// SQL window function query.
-/// @param df RecordBatch to query.
-/// @param sql SQL query using window functions.
-/// @export
-#[miniextendr]
-pub fn test_df_window(df: RecordBatch, sql: &str) -> RecordBatch {
-    let ctx = RSessionContext::new();
-    ctx.register_record_batch("t", df).unwrap();
-    ctx.sql_to_record_batch(sql).unwrap()
-}
-
-/// SQL subquery.
-/// @param df RecordBatch to query.
-/// @param sql SQL query containing a subquery.
-/// @export
-#[miniextendr]
-pub fn test_df_subquery(df: RecordBatch, sql: &str) -> RecordBatch {
-    let ctx = RSessionContext::new();
-    ctx.register_record_batch("t", df).unwrap();
-    ctx.sql_to_record_batch(sql).unwrap()
-}
-
 // endregion
