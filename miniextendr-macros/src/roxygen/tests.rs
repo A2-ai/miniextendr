@@ -129,6 +129,59 @@ mod doc_lint_tests {
             Some("Description after multiple blanks.".to_string())
         );
     }
+
+    // region: #1172 — lint must only fire on author-written @description
+
+    /// Multi-paragraph prose with no explicit tags must not warn. Before the
+    /// fix, `doc_conflict_warnings` saw the `@description` synthesized from
+    /// leading prose by `roxygen_tags_from_attrs` and compared it against the
+    /// second paragraph — a guaranteed mismatch for every multi-paragraph doc.
+    #[test]
+    fn test_no_desc_warning_for_prose_only_docs() {
+        let attrs = make_doc_attrs(&[
+            "Create a lazy integer sequence ALTREP.",
+            "",
+            "Elements are computed on demand.",
+            "@param n Length.",
+        ]);
+        let warnings = doc_conflict_warnings(&attrs, proc_macro2::Span::call_site());
+        assert!(
+            warnings.is_empty(),
+            "prose-only docs must not trigger the @description lint: {warnings}"
+        );
+    }
+
+    #[test]
+    fn test_desc_warning_fires_on_drifted_explicit_description() {
+        let attrs = make_doc_attrs(&[
+            "Title.",
+            "",
+            "Second paragraph.",
+            "@description Something entirely different.",
+        ]);
+        let warnings = doc_conflict_warnings(&attrs, proc_macro2::Span::call_site());
+        assert!(
+            warnings.to_string().contains("MINIEXTENDR_DOC_LINT_DESC"),
+            "drifted explicit @description must still warn: {warnings}"
+        );
+    }
+
+    #[test]
+    fn test_no_desc_warning_when_explicit_matches_second_paragraph() {
+        let attrs = make_doc_attrs(&[
+            "Title.",
+            "",
+            "Second paragraph.",
+            "@description Second paragraph.",
+        ]);
+        let warnings = doc_conflict_warnings(&attrs, proc_macro2::Span::call_site());
+        assert!(
+            warnings.is_empty(),
+            "matching explicit @description must not warn: {warnings}"
+        );
+    }
+
+    // endregion
 }
 // endregion
 
