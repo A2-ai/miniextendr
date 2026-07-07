@@ -20,7 +20,7 @@
 //! | First C param | `__miniextendr_call: SEXP` | none |
 //! | C `numArgs` | 1 + user args | `1` (getter) / `2` (setter) |
 //! | R `.Call` | `.Call(C_…, .call = match.call(), …)` | `.Call(C_…, x)` / `.Call(C_…, x, value)` |
-//! | Error transport | tagged-condition SEXP via `with_r_unwind_protect_error_in_r` | tagged-condition SEXP, no call attribution |
+//! | Error transport | tagged-condition SEXP via `with_r_unwind_protect(…, Some(call))` | tagged-condition SEXP via `with_r_unwind_protect(…, None)`; the R guard's `sys.call()` supplies attribution |
 //!
 //! **Do not add `.call = match.call()` to a sidecar R wrapper.** The C
 //! function doesn't have a slot for it — R will throw "Incorrect number of
@@ -408,7 +408,11 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
 /// - Scalar kinds: wraps in `Rf_Scalar*` for zero-overhead conversion.
 /// - `Conversion`: clones the value and calls `IntoR::into_sexp`.
 ///
-/// Returns `R_NilValue` if the external pointer address is null.
+/// The body runs inside `with_r_unwind_protect` (see the emission site in
+/// [`generate_sidecar_accessors`]); a non-external-pointer argument, a null
+/// pointer address, or a wrong stored type panics with the same
+/// `expected ExternalPtr<T>` message the main class-method path uses. The
+/// panic is transported as a tagged condition and re-raised by the R wrapper.
 fn generate_getter_body(
     struct_name: &syn::Ident,
     slot: &SidecarSlot,
@@ -418,18 +422,28 @@ fn generate_getter_body(
 
     // Helper: generate the pointer extraction code for Box<dyn Any> storage.
     // R_ExternalPtrAddr returns *mut Box<dyn Any>; we downcast to &T.
+    // Failure modes panic (caught by the surrounding with_r_unwind_protect
+    // and raised as an R error) instead of silently returning R_NilValue.
     let extract_ref = quote::quote! {
-        use ::miniextendr_api::SEXP;
+        use ::miniextendr_api::{SEXP, SexpExt};
         use ::miniextendr_api::sys::R_ExternalPtrAddr;
+        if x.type_of() != ::miniextendr_api::SEXPTYPE::EXTPTRSXP {
+            ::std::panic!(concat!(
+                "expected ExternalPtr<", stringify!(#struct_name),
+                ">, got a non-external-pointer object"
+            ));
+        }
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
-            return SEXP::nil();
+            ::std::panic!(concat!(
+                "expected ExternalPtr<", stringify!(#struct_name),
+                ">, got a null external pointer"
+            ));
         }
         let any_box: &Box<dyn ::std::any::Any> = &*any_raw;
-        let data: &#struct_name = match any_box.downcast_ref::<#struct_name>() {
-            Some(v) => v,
-            None => return SEXP::nil(),
-        };
+        let data: &#struct_name = any_box
+            .downcast_ref::<#struct_name>()
+            .expect(concat!("expected ExternalPtr<", stringify!(#struct_name), ">"));
     };
 
     match slot.kind {
@@ -498,11 +512,19 @@ fn generate_getter_body(
 /// Converts the incoming R SEXP `value` and writes it to the corresponding
 /// Rust struct field. The conversion strategy depends on the slot kind:
 /// - `RawSexp`: stores the SEXP directly.
-/// - Scalar kinds: uses `Rf_as*` or coercion for single-element extraction.
-/// - `Conversion`: uses `TryFromSexp::try_from_sexp`, silently ignoring errors.
+/// - Scalar kinds: uses `Rf_as*` or coercion for single-element extraction;
+///   an input that doesn't reduce to a single non-NA scalar raises a
+///   conversion error instead of silently storing an NA/`false` sentinel.
+/// - `Conversion`: uses `TryFromSexp::try_from_sexp`; a failed conversion
+///   raises a conversion error instead of silently dropping the write.
 ///
-/// Always returns the external pointer `x` (for R's invisible return convention).
-/// No-op if the external pointer address is null.
+/// Returns the external pointer `x` (for R's invisible return convention).
+/// The body runs inside `with_r_unwind_protect` (see the emission site in
+/// [`generate_sidecar_accessors`]); a bad receiver panics with the main-path
+/// `expected ExternalPtr<T>` message and conversion failures return a tagged
+/// condition SEXP with kind `conversion` — both are re-raised by the R
+/// wrapper. Sidecar accessors have no `__miniextendr_call` slot (#344/#348),
+/// so the tagged conditions carry null call attribution.
 fn generate_setter_body(
     struct_name: &syn::Ident,
     slot: &SidecarSlot,
@@ -511,16 +533,41 @@ fn generate_setter_body(
     let field_name = &slot.name;
 
     // Helper: extract mutable reference via Box<dyn Any> downcast.
+    // Failure modes panic (caught by the surrounding with_r_unwind_protect
+    // and raised as an R error) instead of silently no-op'ing.
     let extract_mut = quote::quote! {
+        use ::miniextendr_api::SexpExt;
         use ::miniextendr_api::sys::R_ExternalPtrAddr;
+        if x.type_of() != ::miniextendr_api::SEXPTYPE::EXTPTRSXP {
+            ::std::panic!(concat!(
+                "expected ExternalPtr<", stringify!(#struct_name),
+                ">, got a non-external-pointer object"
+            ));
+        }
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
-            return x;
+            ::std::panic!(concat!(
+                "expected ExternalPtr<", stringify!(#struct_name),
+                ">, got a null external pointer"
+            ));
         }
         let any_box: &mut Box<dyn ::std::any::Any> = &mut *any_raw;
-        let Some(data) = any_box.downcast_mut::<#struct_name>() else {
-            return x;
-        };
+        let data = any_box
+            .downcast_mut::<#struct_name>()
+            .expect(concat!("expected ExternalPtr<", stringify!(#struct_name), ">"));
+    };
+
+    // Conversion-failure error message prefix, mirroring the main path's
+    // "failed to convert parameter '<name>' to <ty>: ..." wording.
+    let err_prefix = format!(
+        "failed to convert value for sidecar field '{}' on `{}`",
+        field_name, struct_name
+    );
+    let scalar_err = |expected: &str| -> syn::LitStr {
+        syn::LitStr::new(
+            &format!("{err_prefix}: expected {expected}"),
+            field_name.span(),
+        )
     };
 
     match slot.kind {
@@ -534,41 +581,77 @@ fn generate_setter_body(
             }
         }
         SlotKind::ScalarInt => {
+            let err_msg = scalar_err("a single non-NA integer-compatible value");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = value.as_integer().unwrap_or(::miniextendr_api::altrep_traits::NA_INTEGER);
+                    data.#field_name = match value.as_integer() {
+                        Some(v) => v,
+                        None => return ::miniextendr_api::error_value::make_rust_condition_value(
+                            #err_msg,
+                            ::miniextendr_api::error_value::kind::CONVERSION,
+                            ::core::option::Option::None,
+                            ::core::option::Option::None,
+                        ),
+                    };
                     x
                 }
             }
         }
         SlotKind::ScalarReal => {
+            let err_msg = scalar_err("a single non-NA numeric-compatible value");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = value.as_real().unwrap_or(::miniextendr_api::altrep_traits::NA_REAL);
+                    data.#field_name = match value.as_real() {
+                        Some(v) => v,
+                        None => return ::miniextendr_api::error_value::make_rust_condition_value(
+                            #err_msg,
+                            ::miniextendr_api::error_value::kind::CONVERSION,
+                            ::core::option::Option::None,
+                            ::core::option::Option::None,
+                        ),
+                    };
                     x
                 }
             }
         }
         SlotKind::ScalarLogical => {
+            let err_msg = scalar_err("a single non-NA logical-compatible value");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = value.as_logical().unwrap_or(false);
+                    data.#field_name = match value.as_logical() {
+                        Some(v) => v,
+                        None => return ::miniextendr_api::error_value::make_rust_condition_value(
+                            #err_msg,
+                            ::miniextendr_api::error_value::kind::CONVERSION,
+                            ::core::option::Option::None,
+                            ::core::option::Option::None,
+                        ),
+                    };
                     x
                 }
             }
         }
         SlotKind::ScalarRaw => {
+            let err_msg = scalar_err("at least one raw-compatible value");
             quote::quote! {
                 use ::miniextendr_api::{SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
                     let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
+                    if raw_vec.len() == 0 {
+                        return ::miniextendr_api::error_value::make_rust_condition_value(
+                            #err_msg,
+                            ::miniextendr_api::error_value::kind::CONVERSION,
+                            ::core::option::Option::None,
+                            ::core::option::Option::None,
+                        );
+                    }
                     data.#field_name = raw_vec.raw_elt(0);
                     x
                 }
@@ -576,13 +659,20 @@ fn generate_setter_body(
         }
         SlotKind::Conversion => {
             let ty = &slot.ty;
+            let err_msg_lit = syn::LitStr::new(&err_prefix, field_name.span());
             quote::quote! {
                 use ::miniextendr_api::TryFromSexp;
                 unsafe {
                     #extract_mut
-                    if let Ok(val) = <#ty as TryFromSexp>::try_from_sexp(value) {
-                        data.#field_name = val;
-                    }
+                    data.#field_name = match <#ty as TryFromSexp>::try_from_sexp(value) {
+                        Ok(val) => val,
+                        Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                            &format!("{}: {e}", #err_msg_lit),
+                            ::miniextendr_api::error_value::kind::CONVERSION,
+                            ::core::option::Option::None,
+                            ::core::option::Option::None,
+                        ),
+                    };
                     x
                 }
             }
@@ -596,10 +686,17 @@ fn generate_setter_body(
 /// points via `.Call`. The generated R code includes roxygen tags (`@rdname`,
 /// `@param`, `@return`, `@export`) for documentation.
 ///
-/// All class systems currently generate the same standalone function pattern
-/// (`Type_get_field` / `Type_set_field`). Class-specific integration (e.g.,
-/// R6 active bindings, S7 properties) is handled separately by
-/// [`generate_class_integration_r_code`].
+/// All class systems generate the same standalone function pattern
+/// (`Type_get_field` / `Type_set_field`); only the roxygen title suffix
+/// differs. Class-specific integration (e.g., R6 active bindings, S7
+/// properties) is handled separately by [`generate_class_integration_r_code`].
+///
+/// Each wrapper body carries the shared tagged-condition guard
+/// ([`crate::method_return_builder::standalone_body`]) so Rust-origin
+/// panics/conversion failures are re-raised as structured R conditions.
+/// Note the sidecar C functions have **no** `.call` slot — the `.Call()` must
+/// not pass `.call = match.call()` (#344/#348); `sys.call()` inside the guard
+/// supplies fallback attribution instead.
 fn generate_r_wrapper_for_slot(
     class_system: ClassSystem,
     type_name: &str,
@@ -607,207 +704,56 @@ fn generate_r_wrapper_for_slot(
     getter_c_name: &str,
     setter_c_name: &str,
 ) -> String {
-    match class_system {
-        ClassSystem::Env => {
-            // Standalone functions: Type_get_field(), Type_set_field()
-            let r_getter_name = format!("{}_get_{}", type_name, field_name);
-            let r_setter_name = format!("{}_set_{}", type_name, field_name);
-            format!(
-                r#"
-#' Get `{field}` field from {type}
+    // Only the roxygen title suffix differs between class systems.
+    let suffix = match class_system {
+        ClassSystem::Env => "",
+        ClassSystem::R6 => " (for R6)",
+        ClassSystem::S3 => " (for S3)",
+        ClassSystem::S4 => " (for S4)",
+        ClassSystem::S7 => " (for S7)",
+        ClassSystem::Vctrs => " (for vctrs)",
+    };
+    let r_getter_name = format!("{}_get_{}", type_name, field_name);
+    let r_setter_name = format!("{}_set_{}", type_name, field_name);
+    let getter_body = crate::method_return_builder::standalone_body(
+        &format!(".Call({getter_c_name}, x)"),
+        ".val",
+        "  ",
+    );
+    let setter_body = crate::method_return_builder::standalone_body(
+        &format!(".Call({setter_c_name}, x, value)"),
+        "invisible(x)",
+        "  ",
+    );
+    format!(
+        r#"
+#' Get `{field}` field from {type}{suffix}
 #' @rdname {type}
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
-{r_getter} <- function(x) .Call({getter_c}, x)
+{r_getter} <- function(x) {{
+  {getter_body}
+}}
 
-#' Set `{field}` field on {type}
+#' Set `{field}` field on {type}{suffix}
 #' @rdname {type}
 #' @param x The {type} external pointer
 #' @param value The new value to set
 #' @return The {type} pointer (invisibly)
 #' @export
 {r_setter} <- function(x, value) {{
-  .Call({setter_c}, x, value)
-  invisible(x)
+  {setter_body}
 }}
 "#,
-                type = type_name,
-                field = field_name,
-                r_getter = r_getter_name,
-                r_setter = r_setter_name,
-                getter_c = getter_c_name,
-                setter_c = setter_c_name,
-            )
-        }
-        ClassSystem::R6 => {
-            // R6: Generate env-style accessors that can be called from R6 active bindings.
-            // Note: The getter takes x (the ExternalPtr), not private$.ptr.
-            let r_getter_name = format!("{}_get_{}", type_name, field_name);
-            let r_setter_name = format!("{}_set_{}", type_name, field_name);
-            format!(
-                r#"
-#' Get `{field}` field from {type} (for R6)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @return The value of the `{field}` field
-#' @export
-{r_getter} <- function(x) .Call({getter_c}, x)
-
-#' Set `{field}` field on {type} (for R6)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @param value The new value to set
-#' @return The {type} pointer (invisibly)
-#' @export
-{r_setter} <- function(x, value) {{
-  .Call({setter_c}, x, value)
-  invisible(x)
-}}
-"#,
-                type = type_name,
-                field = field_name,
-                r_getter = r_getter_name,
-                r_setter = r_setter_name,
-                getter_c = getter_c_name,
-                setter_c = setter_c_name,
-            )
-        }
-        ClassSystem::S3 => {
-            // S3: Generate env-style accessors. Users can combine these into
-            // `$.class` and `$<-.class` methods if desired.
-            // Generating separate `$.class` methods per field would overwrite each other.
-            let r_getter_name = format!("{}_get_{}", type_name, field_name);
-            let r_setter_name = format!("{}_set_{}", type_name, field_name);
-            format!(
-                r#"
-#' Get `{field}` field from {type} (for S3)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @return The value of the `{field}` field
-#' @export
-{r_getter} <- function(x) .Call({getter_c}, x)
-
-#' Set `{field}` field on {type} (for S3)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @param value The new value to set
-#' @return The {type} pointer (invisibly)
-#' @export
-{r_setter} <- function(x, value) {{
-  .Call({setter_c}, x, value)
-  invisible(x)
-}}
-"#,
-                type = type_name,
-                field = field_name,
-                r_getter = r_getter_name,
-                r_setter = r_setter_name,
-                getter_c = getter_c_name,
-                setter_c = setter_c_name,
-            )
-        }
-        ClassSystem::S4 => {
-            // S4: Generate env-style accessors. Users can wrap these in setMethod()
-            // with appropriate generics if desired.
-            let r_getter_name = format!("{}_get_{}", type_name, field_name);
-            let r_setter_name = format!("{}_set_{}", type_name, field_name);
-            format!(
-                r#"
-#' Get `{field}` field from {type} (for S4)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @return The value of the `{field}` field
-#' @export
-{r_getter} <- function(x) .Call({getter_c}, x)
-
-#' Set `{field}` field on {type} (for S4)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @param value The new value to set
-#' @return The {type} pointer (invisibly)
-#' @export
-{r_setter} <- function(x, value) {{
-  .Call({setter_c}, x, value)
-  invisible(x)
-}}
-"#,
-                type = type_name,
-                field = field_name,
-                r_getter = r_getter_name,
-                r_setter = r_setter_name,
-                getter_c = getter_c_name,
-                setter_c = setter_c_name,
-            )
-        }
-        ClassSystem::S7 => {
-            // S7: Generate env-style accessors that can be used with S7 properties.
-            // These are standalone functions that the user can wrap in S7::new_property().
-            let r_getter_name = format!("{}_get_{}", type_name, field_name);
-            let r_setter_name = format!("{}_set_{}", type_name, field_name);
-            format!(
-                r#"
-#' Get `{field}` field from {type} (for S7)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @return The value of the `{field}` field
-#' @export
-{r_getter} <- function(x) .Call({getter_c}, x)
-
-#' Set `{field}` field on {type} (for S7)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @param value The new value to set
-#' @return The {type} pointer (invisibly)
-#' @export
-{r_setter} <- function(x, value) {{
-  .Call({setter_c}, x, value)
-  invisible(x)
-}}
-"#,
-                type = type_name,
-                field = field_name,
-                r_getter = r_getter_name,
-                r_setter = r_setter_name,
-                getter_c = getter_c_name,
-                setter_c = setter_c_name,
-            )
-        }
-        ClassSystem::Vctrs => {
-            // Vctrs: Generate env-style accessors. Users can combine these into
-            // `$.class` and `$<-.class` methods if desired.
-            // Generating separate `$.class` methods per field would overwrite each other.
-            let r_getter_name = format!("{}_get_{}", type_name, field_name);
-            let r_setter_name = format!("{}_set_{}", type_name, field_name);
-            format!(
-                r#"
-#' Get `{field}` field from {type} (for vctrs)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @return The value of the `{field}` field
-#' @export
-{r_getter} <- function(x) .Call({getter_c}, x)
-
-#' Set `{field}` field on {type} (for vctrs)
-#' @rdname {type}
-#' @param x The {type} external pointer
-#' @param value The new value to set
-#' @return The {type} pointer (invisibly)
-#' @export
-{r_setter} <- function(x, value) {{
-  .Call({setter_c}, x, value)
-  invisible(x)
-}}
-"#,
-                type = type_name,
-                field = field_name,
-                r_getter = r_getter_name,
-                r_setter = r_setter_name,
-                getter_c = getter_c_name,
-                setter_c = setter_c_name,
-            )
-        }
-    }
+        type = type_name,
+        field = field_name,
+        suffix = suffix,
+        r_getter = r_getter_name,
+        r_setter = r_setter_name,
+        getter_body = getter_body,
+        setter_body = setter_body,
+    )
 }
 
 /// Generate class-integrated R code for sidecar fields.
@@ -827,6 +773,12 @@ fn generate_class_integration_r_code(
     if pub_slots.is_empty() {
         return String::new();
     }
+
+    // Shared tagged-condition guard (one line); `sys.call()` supplies fallback
+    // attribution because the sidecar C functions carry no `.call` slot
+    // (#344/#348 — never add `.call = match.call()` to a sidecar `.Call()`).
+    let guard =
+        |indent: &str| crate::method_return_builder::condition_check_lines(indent).join("\n");
 
     match class_system {
         ClassSystem::R6 => {
@@ -853,12 +805,21 @@ fn generate_class_integration_r_code(
                 let setter_c = format!("C__mx_rdata_set_{}_{}", type_name, field);
                 code.push_str(&format!(
                     "  cls$set(\"active\", \"{field}\", function(value) {{\n\
-                     \x20   if (missing(value)) .Call({getter_c}, private$.ptr)\n\
-                     \x20   else {{ .Call({setter_c}, private$.ptr, value); invisible(self) }}\n\
+                     \x20   if (missing(value)) {{\n\
+                     \x20     .val <- .Call({getter_c}, private$.ptr)\n\
+                     {getter_guard}\n\
+                     \x20     .val\n\
+                     \x20   }} else {{\n\
+                     \x20     .val <- .Call({setter_c}, private$.ptr, value)\n\
+                     {setter_guard}\n\
+                     \x20     invisible(self)\n\
+                     \x20   }}\n\
                      \x20 }}, overwrite = TRUE)\n",
                     field = field,
                     getter_c = getter_c,
                     setter_c = setter_c,
+                    getter_guard = guard("      "),
+                    setter_guard = guard("      "),
                 ));
             }
             code.push_str("}\n");
@@ -883,12 +844,22 @@ fn generate_class_integration_r_code(
                 let comma = if i < pub_slots.len() - 1 { "," } else { "" };
                 code.push_str(&format!(
                     "    {field} = S7::new_property(\n\
-                     \x20       getter = function(self) .Call({getter_c}, self@.ptr),\n\
-                     \x20       setter = function(self, value) {{ .Call({setter_c}, self@.ptr, value); self }}\n\
+                     \x20       getter = function(self) {{\n\
+                     \x20         .val <- .Call({getter_c}, self@.ptr)\n\
+                     {getter_guard}\n\
+                     \x20         .val\n\
+                     \x20       }},\n\
+                     \x20       setter = function(self, value) {{\n\
+                     \x20         .val <- .Call({setter_c}, self@.ptr, value)\n\
+                     {setter_guard}\n\
+                     \x20         self\n\
+                     \x20       }}\n\
                      \x20   ){comma}\n",
                     field = field,
                     getter_c = getter_c,
                     setter_c = setter_c,
+                    getter_guard = guard("          "),
+                    setter_guard = guard("          "),
                     comma = comma,
                 ));
             }
@@ -987,7 +958,14 @@ NULL
         let getter_body = generate_getter_body(name, slot, &prot_index_lit);
         let setter_body = generate_setter_body(name, slot, &prot_index_lit);
 
-        // Generate C getter function
+        // Generate C getter function.
+        //
+        // The body runs under `with_r_unwind_protect` so Rust panics (and R
+        // longjmps during allocation) become a tagged condition SEXP that the
+        // R wrapper re-raises, matching the main call-slot path. Sidecar
+        // accessors have no `__miniextendr_call` slot (#344/#348), so the
+        // transport uses null call attribution; the R wrapper's guard passes
+        // `sys.call()` to `.miniextendr_raise_condition` as the fallback.
         c_functions.push(quote::quote! {
             #[doc = #getter_doc_lit]
             #[doc = #source_location_doc]
@@ -997,11 +975,15 @@ NULL
             pub unsafe extern "C-unwind" fn #getter_fn_name(
                 x: ::miniextendr_api::SEXP
             ) -> ::miniextendr_api::SEXP {
-                #getter_body
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    || { #getter_body },
+                    ::core::option::Option::None,
+                )
             }
         });
 
-        // Generate C setter function
+        // Generate C setter function (same unwind/condition transport as the
+        // getter above).
         c_functions.push(quote::quote! {
             #[doc = #setter_doc_lit]
             #[doc = #source_location_doc]
@@ -1012,7 +994,10 @@ NULL
                 x: ::miniextendr_api::SEXP,
                 value: ::miniextendr_api::SEXP,
             ) -> ::miniextendr_api::SEXP {
-                #setter_body
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    || { #setter_body },
+                    ::core::option::Option::None,
+                )
             }
         });
 
@@ -1317,7 +1302,16 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClassSystem, generate_r_wrapper_for_slot};
+    use super::{ClassSystem, generate_class_integration_r_code, generate_r_wrapper_for_slot};
+
+    const ALL_CLASS_SYSTEMS: [ClassSystem; 6] = [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ];
 
     /// Sidecar accessor C functions take only `x` (getter) or `x, value` (setter) —
     /// no `__miniextendr_call` parameter. The R wrappers must NOT pass `.call = match.call()`
@@ -1328,14 +1322,7 @@ mod tests {
         let getter_c = "C__mx_rdata_get_T_f";
         let setter_c = "C__mx_rdata_set_T_f";
 
-        for cs in [
-            ClassSystem::Env,
-            ClassSystem::R6,
-            ClassSystem::S3,
-            ClassSystem::S4,
-            ClassSystem::S7,
-            ClassSystem::Vctrs,
-        ] {
+        for cs in ALL_CLASS_SYSTEMS {
             let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c);
             // Correct form: no .call argument — the C function only accepts x (getter) or x, value (setter).
             assert!(
@@ -1350,6 +1337,56 @@ mod tests {
             assert!(
                 !out.contains(".call = match.call()"),
                 "{cs:?} sidecar wrapper must not pass .call = match.call():\n{out}"
+            );
+        }
+    }
+
+    /// Every sidecar R wrapper (getter and setter, all class systems) must
+    /// carry the tagged-condition guard so Rust panics / conversion failures
+    /// transported by `with_r_unwind_protect(…, None)` are re-raised as
+    /// structured R conditions instead of leaking the tagged SEXP to the user.
+    #[test]
+    fn sidecar_accessors_reraise_tagged_conditions() {
+        let getter_c = "C__mx_rdata_get_T_f";
+        let setter_c = "C__mx_rdata_set_T_f";
+
+        for cs in ALL_CLASS_SYSTEMS {
+            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c);
+            assert_eq!(
+                out.matches(".miniextendr_raise_condition(.val, sys.call())")
+                    .count(),
+                2,
+                "{cs:?} getter+setter should each carry the condition guard:\n{out}"
+            );
+        }
+    }
+
+    /// The R6 active-binding and S7 property integration code also call the
+    /// sidecar C entrypoints directly; they need the same guard (with
+    /// `sys.call()` fallback attribution) and must not pass `.call =`.
+    #[test]
+    fn sidecar_class_integration_reraises_tagged_conditions() {
+        let slot = super::SidecarSlot {
+            name: syn::Ident::new("f", proc_macro2::Span::call_site()),
+            ty: syn::parse_quote!(i32),
+            index: 0,
+            is_public: true,
+            kind: super::SlotKind::ScalarInt,
+            prop_doc: None,
+        };
+        let slots = [&slot];
+
+        for cs in [ClassSystem::R6, ClassSystem::S7] {
+            let out = generate_class_integration_r_code(cs, "T", &slots);
+            assert_eq!(
+                out.matches(".miniextendr_raise_condition(.val, sys.call())")
+                    .count(),
+                2,
+                "{cs:?} integration getter+setter should each carry the condition guard:\n{out}"
+            );
+            assert!(
+                !out.contains(".call = match.call()"),
+                "{cs:?} integration code must not pass .call = match.call():\n{out}"
             );
         }
     }

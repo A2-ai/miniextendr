@@ -381,6 +381,135 @@ test_that("SidecarEnv raw_slot preserves SEXP identity", {
 })
 
 # =============================================================================
+# Accessor guard tests: wrong receiver / bad input / panic transport (#1195)
+# =============================================================================
+
+test_that("sidecar getter on a wrong-type external pointer errors (not NULL)", {
+  wrong <- rdata_sidecar_s3_new(data = 1.5)
+  expect_error(
+    SidecarEnv_get_count(wrong),
+    "expected ExternalPtr<SidecarEnv>",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+})
+
+test_that("sidecar getter on a non-external-pointer object errors (not NULL)", {
+  expect_error(
+    SidecarEnv_get_count(42L),
+    "expected ExternalPtr<SidecarEnv>, got a non-external-pointer object",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+})
+
+test_that("sidecar setter on a wrong-type external pointer errors (no silent no-op)", {
+  wrong <- rdata_sidecar_s3_new(data = 1.5)
+  expect_error(
+    SidecarEnv_set_count(wrong, 1L),
+    "expected ExternalPtr<SidecarEnv>",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+  # The wrongly-targeted object is untouched
+  expect_equal(SidecarS3_get_data(wrong), 1.5)
+})
+
+test_that("sidecar int setter rejects un-convertible input (no silent NA store)", {
+  obj <- rdata_sidecar_env_new(count = 7L, score = 1.0, flag = TRUE, name = "x")
+
+  expect_error(
+    suppressWarnings(SidecarEnv_set_count(obj, "oops")),
+    "failed to convert value for sidecar field 'count'",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+  expect_error(
+    SidecarEnv_set_count(obj, NA_integer_),
+    "failed to convert value for sidecar field 'count'",
+    fixed = TRUE
+  )
+  # Failed sets must not have written anything
+  expect_identical(SidecarEnv_get_count(obj), 7L)
+})
+
+test_that("sidecar real and logical setters reject NA (no silent sentinel store)", {
+  obj <- rdata_sidecar_env_new(count = 1L, score = 2.5, flag = TRUE, name = "x")
+
+  expect_error(
+    SidecarEnv_set_score(obj, NA_real_),
+    "failed to convert value for sidecar field 'score'",
+    fixed = TRUE
+  )
+  expect_error(
+    SidecarEnv_set_flag(obj, NA),
+    "failed to convert value for sidecar field 'flag'",
+    fixed = TRUE
+  )
+  expect_identical(SidecarEnv_get_score(obj), 2.5)
+  expect_identical(SidecarEnv_get_flag(obj), TRUE)
+})
+
+test_that("sidecar conversion setter surfaces TryFromSexp errors (no silent drop)", {
+  obj <- rdata_sidecar_env_new(count = 1L, score = 1.0, flag = TRUE, name = "keep")
+
+  expect_error(
+    SidecarEnv_set_name(obj, 123),
+    "failed to convert value for sidecar field 'name'",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+  expect_identical(SidecarEnv_get_name(obj), "keep")
+})
+
+test_that("sidecar getter panic becomes a structured R condition (no crash)", {
+  obj <- rdata_sidecar_panicky_new()
+
+  expect_error(
+    SidecarPanicky_get_boom(obj),
+    "intentional panic in sidecar getter",
+    class = "rust_error"
+  )
+  # The panic was transported as a condition; the session and object survive.
+  expect_true(inherits(obj, "externalptr"))
+  expect_error(SidecarPanicky_get_boom(obj), class = "rust_error")
+})
+
+test_that("sidecar setter conversion failure carries the TryFromSexp error message", {
+  obj <- rdata_sidecar_panicky_new()
+
+  expect_error(
+    SidecarPanicky_set_boom(obj, 1),
+    "PanicOnGet cannot be constructed from an R value",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+})
+
+test_that("SidecarR6 active binding setter propagates conversion errors", {
+  obj <- SidecarR6$new(value = 5L, label = "a")
+
+  expect_error(
+    obj$value <- NA_integer_,
+    "failed to convert value for sidecar field 'value'",
+    fixed = TRUE
+  )
+  expect_identical(obj$value, 5L)
+})
+
+test_that("SidecarS7 property setter propagates conversion errors", {
+  skip_if_not("s7" %in% miniextendr_enabled_features(), "S7 feature not enabled")
+  obj <- SidecarS7(prop_int = 5L, prop_flag = TRUE, prop_name = "a")
+
+  expect_error(
+    obj@prop_int <- NA_integer_,
+    "failed to convert value for sidecar field 'prop_int'",
+    fixed = TRUE
+  )
+  expect_identical(obj@prop_int, 5L)
+})
+
+# =============================================================================
 # SidecarVctrs vctrs S3 dispatch tests
 # =============================================================================
 
