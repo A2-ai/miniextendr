@@ -8,8 +8,53 @@
 //! Slower than env (R6 dispatch chain) and requires the R6 package; no value
 //! semantics — for value-semantics formal OOP, use S7.
 
-use super::ParsedImpl;
+use super::{ParsedImpl, ParsedMethod};
 use crate::r_class_formatter::class_ref_or_verbatim;
+
+/// Build the `stopifnot()` precondition lines for the setter branch of a
+/// combined getter/setter active binding.
+///
+/// This is the same precondition block the standalone `set_*` method gets via
+/// [`crate::r_class_formatter::MethodContext::precondition_checks`] — the
+/// active-binding branch used to skip it (audit 2026-07-06 finding 4), so
+/// `obj$prop <- "bad"` bypassed the R-level type check the standalone setter
+/// enforces.
+///
+/// R6 active bindings always receive the assigned value through a formal
+/// named `value`, while the Rust setter's parameter may have any name, so the
+/// first non-receiver parameter (the only one the binding forwards — see the
+/// `.with_args(&["value"])` call site) is renamed to `value` before the
+/// checks are built. Any additional parameters are ignored: the binding never
+/// passes them, and checks referencing their names would error at runtime.
+fn active_setter_precondition_checks(setter: &ParsedMethod) -> Vec<String> {
+    let Some(mut value_arg) = setter.sig.inputs.iter().find_map(|arg| match arg {
+        syn::FnArg::Typed(pat_type) => Some(pat_type.clone()),
+        syn::FnArg::Receiver(_) => None,
+    }) else {
+        return Vec::new();
+    };
+
+    let mut per_param = setter.method_attrs.per_param.clone();
+    if let syn::Pat::Ident(pat_ident) = value_arg.pat.as_mut() {
+        let rust_name = pat_ident.ident.to_string();
+        if rust_name != "value" {
+            if let Some(attrs) = per_param.remove(&rust_name) {
+                per_param.insert("value".to_string(), attrs);
+            }
+            pat_ident.ident = syn::Ident::new("value", pat_ident.ident.span());
+        }
+    }
+
+    let mut inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> =
+        syn::punctuated::Punctuated::new();
+    inputs.push(syn::FnArg::Typed(value_arg));
+
+    crate::r_class_formatter::build_method_precondition_checks(
+        &inputs,
+        &per_param,
+        setter.method_attrs.coerce,
+    )
+}
 
 /// Marker prefix emitted by the proc-macro when a subclass method param might be
 /// inherited from a parent class documented in-package. Resolved at write-time in
@@ -471,13 +516,29 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("    {} = function(value) {{", prop_name));
                 lines.push("      if (missing(value)) {".to_string());
 
-                // Getter call
+                // Getter call — same condition re-raise guard as the
+                // getter-only active binding path below.
                 let getter_call = ctx.instance_call("private$.ptr");
-                lines.push(format!("        {}", getter_call));
+                let getter_strategy = crate::ReturnStrategy::for_method(ctx.method);
+                let getter_builder = crate::MethodReturnBuilder::new(getter_call)
+                    .with_strategy(getter_strategy)
+                    .with_class_name(class_name.clone())
+                    .with_indent(8);
+                lines.extend(getter_builder.build_r6_body());
 
                 lines.push("      } else {".to_string());
 
-                // Setter call - construct directly
+                // Same `stopifnot` precondition block the standalone `set_*`
+                // method gets (audit 2026-07-06 finding 4): without it,
+                // `obj$prop <- <bad value>` skipped the R-level type check.
+                for check in active_setter_precondition_checks(setter_method) {
+                    lines.push(format!("        {}", check));
+                }
+
+                // Setter call — construct directly, then re-raise any
+                // transported Rust condition (the bare `.Call()` used to
+                // discard the tagged condition value, silently dropping the
+                // assignment error).
                 let setter_c_ident = setter_method
                     .c_wrapper_ident(type_ident, parsed_impl.label.as_deref())
                     .to_string();
@@ -485,7 +546,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     .with_self("private$.ptr")
                     .with_args(&["value"])
                     .build();
-                lines.push(format!("        {}", setter_call));
+                lines.push(format!("        .val <- {}", setter_call));
+                lines.extend(crate::method_return_builder::condition_check_lines(
+                    "        ",
+                ));
                 lines.push("        invisible(self)".to_string());
 
                 lines.push("      }".to_string());

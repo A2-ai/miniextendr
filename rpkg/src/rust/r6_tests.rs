@@ -178,6 +178,25 @@ impl R6Temperature {
     pub fn set_fahrenheit(&mut self, value: f64) {
         self.celsius = (value - 32.0) * 5.0 / 9.0;
     }
+
+    /// Get the temperature in Kelvin (active binding with a validating setter).
+    #[miniextendr(r6(active, prop = "kelvin"))]
+    pub fn kelvin(&self) -> f64 {
+        self.celsius + 273.15
+    }
+
+    /// Set the temperature via Kelvin (active binding setter that raises).
+    ///
+    /// Raises an R error for values below absolute zero — exercises the
+    /// active-binding setter's `rust_condition_value` re-raise guard
+    /// (a Rust-side error that passes the R-level `stopifnot` precondition).
+    #[miniextendr(r6(setter, prop = "kelvin"))]
+    pub fn set_kelvin(&mut self, value: f64) {
+        if value < 0.0 {
+            miniextendr_api::error!("kelvin must be non-negative, got {value}");
+        }
+        self.celsius = value - 273.15;
+    }
 }
 
 /// An R6 class demonstrating cloneable support.

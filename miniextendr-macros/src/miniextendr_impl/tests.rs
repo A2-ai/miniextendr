@@ -379,6 +379,72 @@ fn r6_active_binding_internal_emits_field_internal() {
         wrapper
     );
 }
+
+#[test]
+fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
+    // Audit 2026-07-06 finding 4: the setter branch of a combined
+    // getter/setter active binding used to be a bare `.Call()` — no
+    // `stopifnot` precondition (unlike the standalone `set_*` method) and no
+    // `rust_condition_value` re-raise guard, so `obj$prop <- <bad value>`
+    // silently discarded the transported conversion error.
+    //
+    // The setter's Rust parameter is deliberately NOT named `value` here: the
+    // active binding's formal is always `value`, so the emitted checks must be
+    // renamed to match (a check referencing `temp` would error at runtime).
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Temperature {
+            pub fn new(celsius: f64) -> Self { unimplemented!() }
+            #[miniextendr(r6(active))]
+            pub fn celsius(&self) -> f64 { unimplemented!() }
+            #[miniextendr(r6(setter, prop = "celsius"))]
+            pub fn set_celsius(&mut self, temp: f64) { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    // Setter branch: precondition block referencing the binding's `value`
+    // formal (not the Rust parameter name `temp`).
+    assert!(
+        wrapper.contains(
+            "      } else {\n\
+             \x20       stopifnot(\n\
+             \x20         \"'value' must be numeric, logical, or raw\" = is.numeric(value) || is.logical(value) || is.raw(value),\n\
+             \x20         \"'value' must have length 1\" = length(value) == 1L\n\
+             \x20       )"
+        ),
+        "active-binding setter branch must emit the standalone setter's stopifnot block, renamed to 'value'\n{}",
+        wrapper
+    );
+    // The standalone `set_celsius` method keeps its own `temp` formal; only
+    // the active-binding section must not reference the Rust parameter name.
+    let active_section = wrapper
+        .split("  active = list(")
+        .nth(1)
+        .expect("wrapper must contain an active bindings list");
+    assert!(
+        !active_section.contains("temp"),
+        "active-binding preconditions must not reference the Rust parameter name 'temp'\n{}",
+        active_section
+    );
+
+    // Setter branch: `.Call()` result must be captured and guarded so a
+    // transported Rust condition re-raises instead of being discarded.
+    assert!(
+        wrapper.contains("        .val <- .Call(C_Temperature__set_celsius"),
+        "setter branch must capture the .Call result in .val\n{}",
+        wrapper
+    );
+
+    // Getter branch of the combined binding gets the same guard as the
+    // getter-only active-binding path.
+    assert!(
+        wrapper.contains("        .val <- .Call(C_Temperature__celsius"),
+        "getter branch must capture the .Call result in .val\n{}",
+        wrapper
+    );
+}
 // endregion
 
 // region: S3 class system tests
@@ -2447,6 +2513,33 @@ fn snapshot_r6_with_options() {
     attrs.r6_cloneable = Some(true);
     attrs.r6_lock_class = Some(true);
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    insta::assert_snapshot!(generate_r6_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_r6_active_bindings() {
+    // Pins the combined getter/setter active-binding emission: the setter
+    // branch must carry the standalone setter's stopifnot precondition block
+    // (renamed to the binding's `value` formal) and both branches must guard
+    // the `.Call()` result against transported Rust conditions (audit
+    // 2026-07-06 finding 4).
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Temperature {
+            /// Create a new temperature.
+            /// @param celsius Temperature in Celsius.
+            pub fn new(celsius: f64) -> Self { unimplemented!() }
+            /// Temperature in Celsius.
+            #[miniextendr(r6(active))]
+            pub fn celsius(&self) -> f64 { unimplemented!() }
+            /// Set the temperature in Celsius.
+            #[miniextendr(r6(setter, prop = "celsius"))]
+            pub fn set_celsius(&mut self, value: f64) { unimplemented!() }
+            /// Temperature in Fahrenheit (read-only).
+            #[miniextendr(r6(active))]
+            pub fn fahrenheit(&self) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
     insta::assert_snapshot!(generate_r6_r_wrapper(&parsed));
 }
 

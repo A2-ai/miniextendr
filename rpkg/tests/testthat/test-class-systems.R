@@ -132,6 +132,40 @@ test_that("R6Temperature active binding setters work", {
   expect_equal(t$celsius, 0)  # Should be back to 0 C
 })
 
+# Audit 2026-07-06 finding 4 (#1196): the active-binding setter branch used to
+# be a bare .Call() — no stopifnot precondition (unlike the standalone set_*
+# method) and no rust_condition_value re-raise guard, so a bad assignment was
+# a silent no-op instead of an error.
+test_that("R6 active-binding setter enforces the R-level precondition (#1196)", {
+  t <- R6Temperature$new(0)
+
+  # Wrong type: same friendly message as the standalone setter method.
+  expect_error(t$celsius <- "x", "'value' must be numeric, logical, or raw", fixed = TRUE)
+  expect_equal(t$celsius, 0) # assignment must not have gone through
+
+  # Wrong length.
+  expect_error(t$fahrenheit <- c(1, 2), "'value' must have length 1", fixed = TRUE)
+  expect_equal(t$celsius, 0)
+
+  # Parity with the standalone setter method's message.
+  expect_error(t$set_celsius("x"), "'value' must be numeric, logical, or raw", fixed = TRUE)
+})
+
+test_that("R6 active-binding setter re-raises Rust conditions (#1196)", {
+  t <- R6Temperature$new(0)
+
+  # Passes the stopifnot precondition (numeric, length 1) but the Rust setter
+  # raises — the transported condition must re-raise, not be discarded.
+  expect_error(t$kelvin <- -5, "kelvin must be non-negative", fixed = TRUE)
+  expect_equal(t$celsius, 0) # assignment must not have gone through
+
+  # A valid assignment through the same guarded branch still works.
+  t$kelvin <- 273.15
+  expect_equal(t$celsius, 0)
+  t$kelvin <- 373.15
+  expect_equal(t$celsius, 100)
+})
+
 test_that("S7Range computed property (length) works", {
   r <- S7Range(0, 10)
   # Computed property - read-only via @

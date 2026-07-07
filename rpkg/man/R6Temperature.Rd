@@ -15,6 +15,8 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
     \item{\code{celsius}}{Get the temperature in Celsius (active binding getter).}
 
     \item{\code{fahrenheit}}{Get the temperature in Fahrenheit (active binding with getter+setter).}
+
+    \item{\code{kelvin}}{Get the temperature in Kelvin (active binding with a validating setter).}
   }
   \if{html}{\out{</div>}}
 }
@@ -24,6 +26,7 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
     \item \href{#method-R6Temperature-initialize}{\code{R6Temperature$new()}}
     \item \href{#method-R6Temperature-set_celsius}{\code{R6Temperature$set_celsius()}}
     \item \href{#method-R6Temperature-set_fahrenheit}{\code{R6Temperature$set_fahrenheit()}}
+    \item \href{#method-R6Temperature-set_kelvin}{\code{R6Temperature$set_kelvin()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -73,6 +76,27 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Temperature$set_fahrenheit(value)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{value}}{(no documentation available)}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6Temperature-set_kelvin"></a>}}
+\if{latex}{\out{\hypertarget{method-R6Temperature-set_kelvin}{}}}
+\subsection{\code{R6Temperature$set_kelvin()}}{
+  Set the temperature via Kelvin (active binding setter that raises).
+
+Raises an R error for values below absolute zero — exercises the active-binding setter's \code{rust_condition_value} re-raise guard (a Rust-side error that passes the R-level \code{stopifnot} precondition).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6Temperature$set_kelvin(value)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
