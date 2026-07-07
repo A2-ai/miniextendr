@@ -23,20 +23,22 @@ sparse_iter_int(from, to)
 
 sparse_iter_raw(n)
 
-sparse_iter_real(from, step, n)
+sparse_iter_real(from, step, length_out)
 
 sparse_iter_logical(n)
 
 sparse_iter_int_squares(n)
 }
 \arguments{
-\item{from}{Start value.}
+\item{from}{Start value. Matches base R's \code{seq(from, by, length.out=)}.}
 
 \item{to}{End value (exclusive).}
 
 \item{n}{Number of elements.}
 
-\item{step}{Step between consecutive elements.}
+\item{step}{Step between consecutive elements (\code{by} in base R's \code{seq()}).}
+
+\item{length_out}{Number of elements (\code{length.out} in base R's \code{seq()}).}
 }
 \value{
 An ALTREP integer vector.

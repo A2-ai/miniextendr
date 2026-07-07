@@ -1,5 +1,5 @@
 test_that("ALTREP constructors produce vectors", {
-  expect_equal(altrep_compact_int(5L, 1L, 2L)[[1]], 1L)
+  expect_equal(altrep_compact_int(1L, 2L, 5L)[[1]], 1L)
   expect_equal(altrep_from_doubles(c(1,2,3))[[2]], 2)
   expect_equal(altrep_from_strings(c("a","b"))[[2]], "b")
   expect_equal(altrep_from_logicals(c(TRUE, FALSE))[[1]], TRUE)

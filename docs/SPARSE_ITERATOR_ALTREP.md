@@ -240,8 +240,8 @@ pub struct SparseRealIterData {
 // ... trait delegation same as integer variant ...
 
 #[miniextendr]
-pub fn sparse_iter_real(from: f64, step: f64, n: i32) -> SEXP {
-    let len = n.max(0) as usize;
+pub fn sparse_iter_real(from: f64, step: f64, length_out: i32) -> SEXP {
+    let len = length_out.max(0) as usize;
     let iter: BoxedRealIter = Box::new(
         (0..len).map(move |i| from + (i as f64) * step)
     );

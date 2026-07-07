@@ -37,7 +37,7 @@ altrep_from_raw(x)
 
 altrep_from_list(x)
 
-altrep_compact_int(n, start, step)
+altrep_compact_int(from, step, length_out)
 
 altrep_from_doubles(x)
 
@@ -50,7 +50,7 @@ altrep_from_logicals(x)
 unsafe_C_lazy_int_seq_is_materialized(x)
 }
 \arguments{
-\item{from}{Start value.}
+\item{from}{Starting value. Matches base R's \code{seq(from, by, length.out=)}.}
 
 \item{to}{End value (inclusive).}
 
@@ -58,11 +58,9 @@ unsafe_C_lazy_int_seq_is_materialized(x)
 
 \item{x}{An ALTREP integer vector created by \code{lazy_int_seq}.}
 
-\item{n}{Number of elements.}
+\item{step}{Step between elements (\code{by} in base R's \code{seq()}).}
 
-\item{start}{Starting value.}
-
-\item{step}{Step between elements.}
+\item{length_out}{Number of elements (\code{length.out} in base R's \code{seq()}).}
 }
 \value{
 An ALTREP integer vector.

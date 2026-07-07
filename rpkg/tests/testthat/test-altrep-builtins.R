@@ -108,7 +108,7 @@ test_that("Range<i32> NA sentinel handling is tested at Rust level", {
 
 test_that("LazyIntSeq works for normal sequences", {
   # Normal sequence - no NA
-  seq <- altrep_compact_int(5L, 1L, 2L)  # 1, 3, 5, 7, 9
+  seq <- altrep_compact_int(1L, 2L, 5L)  # 1, 3, 5, 7, 9
   expect_equal(length(seq), 5L)
   expect_equal(seq[1], 1L)
   expect_equal(seq[5], 9L)
@@ -118,7 +118,7 @@ test_that("LazyIntSeq works for normal sequences", {
   expect_equal(max(seq), 9L)
 
   # Descending sequence - no NA
-  desc <- altrep_compact_int(5L, 100L, -10L)  # 100, 90, 80, 70, 60
+  desc <- altrep_compact_int(100L, -10L, 5L)  # 100, 90, 80, 70, 60
   expect_equal(length(desc), 5L)
   expect_false(anyNA(desc))
   expect_equal(min(desc), 60L)
@@ -129,7 +129,7 @@ test_that("LazyIntSeq handles sequences near integer bounds", {
   # Sequence near max int - should not overflow to NA
   # i32::MAX is 2147483647
   max_int <- .Machine$integer.max
-  near_max <- altrep_compact_int(3L, max_int - 2L, 1L)  # max-2, max-1, max
+  near_max <- altrep_compact_int(max_int - 2L, 1L, 3L)  # max-2, max-1, max
   expect_equal(length(near_max), 3L)
   expect_equal(near_max[1], max_int - 2L)
   expect_equal(near_max[3], max_int)
