@@ -746,7 +746,11 @@ pub fn altrep_compact_int(from: i32, step: i32, length_out: i32) -> LazyIntSeqDa
     if length_out < 0 {
         panic!("altrep_compact_int: length_out must be >= 0");
     }
-    let len = if length_out == 0 { 0 } else { length_out as usize };
+    let len = if length_out == 0 {
+        0
+    } else {
+        length_out as usize
+    };
     LazyIntSeqData {
         start: from,
         step,
