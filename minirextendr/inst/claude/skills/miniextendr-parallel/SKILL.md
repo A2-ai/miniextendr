@@ -93,9 +93,17 @@ unrestricted — and the conversions themselves have parallel variants
 - **Chunk boundaries depend on thread count**, so chunk-seeded randomness
   differs across machines. For cross-machine reproducibility pin the pool:
   `rayon::ThreadPoolBuilder::new().num_threads(4).build_global()`.
-- Respect user/CRAN thread limits: honor an env var or R option for thread
-  count rather than silently taking all cores (CRAN policy caps checks at 2
-  cores — make thread count configurable).
+- **Respect user/CRAN thread limits** — don't silently take all cores. On the
+  Rust side, `miniextendr_api::optionals::parallel::effective_threads()`,
+  `::ensure_pool()`, and `::set_threads()` centralize this;
+  `effective_threads()` already applies the CRAN core cap
+  (`_R_CHECK_LIMIT_CORES_`). To let R users tune the count, expose thin
+  wrappers like `miniextendr_num_threads()` / `miniextendr_set_threads()` — the
+  miniextendr exemplar package ships these, but scaffolded packages don't get
+  them automatically yet (tracked upstream in issue #1132). For the full
+  precedence table (env var, R option, explicit call, CRAN cap), see the
+  miniextendr manual's "Controlling Parallelism from R" section — don't
+  restate it here.
 
 ## Long-lived / hand-rolled threads
 
