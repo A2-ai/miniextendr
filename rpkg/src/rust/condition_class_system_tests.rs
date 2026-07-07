@@ -452,6 +452,7 @@ pub fn condition_error_empty() {
 
 /// Unwraps an S3-wrapped `S3Raiser` handle (a classed `EXTPTRSXP` — already
 /// worked pre-A9) and returns its `id`.
+/// @param x A raiser handle (class object or bare external pointer).
 #[miniextendr(noexport)]
 pub fn s3_raiser_id_via_externalptr(x: ExternalPtr<S3Raiser>) -> i32 {
     x.id
@@ -459,6 +460,7 @@ pub fn s3_raiser_id_via_externalptr(x: ExternalPtr<S3Raiser>) -> i32 {
 
 /// Unwraps an S4-wrapped `S4Raiser` handle (the `ptr` slot, via
 /// `methods::slot()`) and returns its `id`.
+/// @param x A raiser handle (class object or bare external pointer).
 #[miniextendr(noexport)]
 pub fn s4_raiser_id_via_externalptr(x: ExternalPtr<S4Raiser>) -> i32 {
     x.id
@@ -466,6 +468,7 @@ pub fn s4_raiser_id_via_externalptr(x: ExternalPtr<S4Raiser>) -> i32 {
 
 /// Unwraps an S7-wrapped `S7Raiser` handle (the `.ptr` attribute) and
 /// returns its `id`.
+/// @param x A raiser handle (class object or bare external pointer).
 #[miniextendr(noexport)]
 pub fn s7_raiser_id_via_externalptr(x: ExternalPtr<S7Raiser>) -> i32 {
     x.id
