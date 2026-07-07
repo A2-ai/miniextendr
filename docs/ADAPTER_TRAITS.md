@@ -83,7 +83,7 @@ These have blanket implementations so you just need to export them for your type
 | `RDebug` | `Debug` | `debug_str()`, `debug_str_pretty()` |
 | `RDisplay` | `Display` | `as_r_string()` |
 | `RFromStr` | `FromStr` | `from_str(s) -> Option<Self>` |
-| `RHash` | `Hash` | `hash() -> i64` |
+| `RHash` | `Hash` | `hash() -> String` |
 | `ROrd` | `Ord` | `cmp(&self, other) -> i32` |
 | `RPartialOrd` | `PartialOrd` | `partial_cmp(&self, other) -> Option<i32>` |
 | `RError` | `Error` | `error_message()`, `error_chain()`, `error_chain_length()` |
