@@ -363,5 +363,58 @@ pub fn rdata_sidecar_raw_new(byte_val: u8) -> ExternalPtr<SidecarRaw> {
 }
 // endregion
 
+// region: Panic / error-transport fixtures
+
+/// Field type whose `IntoR` conversion always panics.
+///
+/// Used to prove that a panic inside a sidecar getter body is caught by the
+/// accessor's `with_r_unwind_protect` guard and re-raised as a structured R
+/// condition instead of unwinding across the `extern "C-unwind"` FFI frame.
+#[derive(Debug, Clone, Default)]
+pub struct PanicOnGet;
+
+impl miniextendr_api::into_r::IntoR for PanicOnGet {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        panic!("intentional panic in sidecar getter (PanicOnGet)")
+    }
+}
+
+impl miniextendr_api::TryFromSexp for PanicOnGet {
+    type Error = &'static str;
+
+    fn try_from_sexp(_sexp: SEXP) -> Result<Self, Self::Error> {
+        Err("PanicOnGet cannot be constructed from an R value")
+    }
+}
+
+/// Sidecar struct whose only slot panics on read (and fails conversion on
+/// write) — exercises the accessor guard + condition transport end to end.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(env)]
+pub struct SidecarPanicky {
+    #[r_data]
+    _r: RSidecar,
+
+    /// Getter panics; setter always fails conversion.
+    #[r_data]
+    pub boom: PanicOnGet,
+}
+
+/// Env class registration for SidecarPanicky (panic-transport testing).
+#[miniextendr(env)]
+impl SidecarPanicky {}
+
+/// Test creating a SidecarPanicky whose `boom` getter panics on access.
+#[miniextendr]
+pub fn rdata_sidecar_panicky_new() -> ExternalPtr<SidecarPanicky> {
+    ExternalPtr::new(SidecarPanicky {
+        _r: RSidecar,
+        boom: PanicOnGet,
+    })
+}
+// endregion
+
 // region: Module registration
 // endregion
