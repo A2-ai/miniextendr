@@ -380,6 +380,26 @@ fn validate_extern_signature(
     Ok(())
 }
 
+/// Builds the `let dots_typed = <dots>.typed(<spec>)...` statement injected
+/// at the start of a function body when `#[miniextendr(dots =
+/// typed_list!(...))]` is used.
+///
+/// Uses `unwrap_or_else(|e| panic!("...: {e}"))` rather than
+/// `Result::expect`, which formats the error with `Debug` instead of
+/// `Display` — for `TypedListError` that leaks PascalCase enum-variant names
+/// (`Missing { name: "x" }`) into the R-visible message instead of the
+/// human-phrased text (`missing required field: "x"`) that the direct
+/// `typed_list!` path already produces via `Display`. See audit A8.
+fn build_dots_validation_stmt(
+    dots_param: &syn::Ident,
+    spec_tokens: &proc_macro2::TokenStream,
+) -> syn::Stmt {
+    syn::parse_quote! {
+        let dots_typed = #dots_param.typed(#spec_tokens)
+            .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
+    }
+}
+
 /// Emit the `extern "C-unwind"` helper + `R_CallMethodDef` registration for
 /// each standalone-fn `match_arg` param.
 ///
@@ -1426,10 +1446,7 @@ pub fn miniextendr(
         let dots_param = named_dots.clone().unwrap_or_else(|| {
             syn::Ident::new("__miniextendr_dots", proc_macro2::Span::call_site())
         });
-        let validation_stmt: syn::Stmt = syn::parse_quote! {
-            let dots_typed = #dots_param.typed(#spec_tokens)
-                .expect("dots validation failed");
-        };
+        let validation_stmt = build_dots_validation_stmt(&dots_param, spec_tokens);
         original_item.block.stmts.insert(0, validation_stmt);
     }
 
@@ -2614,7 +2631,8 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///
 /// This injects validation at the start of the function body:
 /// ```ignore
-/// let dots_typed = _dots.typed(typed_list!(...)).expect("dots validation failed");
+/// let dots_typed = _dots.typed(typed_list!(...))
+///     .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
 /// ```
 ///
 /// See the [`#[miniextendr]`](macro@miniextendr) attribute documentation for more details.

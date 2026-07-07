@@ -139,6 +139,30 @@ fn miniextendr_attr_accepts_unwrap_in_r() {
 }
 
 #[test]
+fn dots_validation_stmt_formats_error_with_display_not_debug() {
+    // Audit A8: `#[miniextendr(dots = typed_list!(...))]` used to inject
+    // `.expect("dots validation failed")`, which Debug-formats the
+    // `TypedListError` and leaks PascalCase enum-variant names (e.g.
+    // `Missing { name: "x" }`) into the R-visible message — a different
+    // style than the direct `typed_list!` path, which already goes through
+    // `TypedListError`'s human-phrased `Display` impl. Pin that the
+    // generated statement uses `unwrap_or_else` + `{e}` (Display) instead
+    // of `expect` (Debug).
+    let dots_param = syn::Ident::new("__miniextendr_dots", proc_macro2::Span::call_site());
+    // The real `spec_tokens` is the whole `typed_list!(...)` invocation captured
+    // as an expression (see `dots_spec` in miniextendr_fn.rs), not the bare spec
+    // interior — pass the same shape so `parse_quote!` sees valid Rust.
+    let spec_tokens = quote::quote! { typed_list!(x => numeric()) };
+
+    let stmt = crate::build_dots_validation_stmt(&dots_param, &spec_tokens);
+    let s = normalize_tokens(quote::quote! { #stmt });
+
+    assert!(s.contains("unwrap_or_else"));
+    assert!(s.contains("panic!(\"dotsvalidationfailed:{e}\")"));
+    assert!(!s.contains(".expect("));
+}
+
+#[test]
 fn parsed_fn_adds_inline_never_for_rust_abi() {
     let mut parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn f() {} }).unwrap();
     parsed.add_inline_never_if_needed();
