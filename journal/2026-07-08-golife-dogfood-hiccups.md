@@ -122,27 +122,36 @@ that retrieval requires a different code path than scalars. Likely fix:
 relax the bound on `get`/`get_opt` to accept any `TryFromSexp` and map both
 error variants into `TypedListError::WrongType`.
 
-### 6. `minirextendr::miniextendr_build()` itself needs two passes for a new export
+### 6. `minirextendr::miniextendr_build()` needs two passes for a new export — FALSE ALARM, root cause is hiccup #1
 
-Confirmed the same "second install needed" gotcha that root `CLAUDE.md`
-already documents for the monorepo's `just rcmdinstall && just
-force-document` maintainer recipe — but it also silently applies to
-`minirextendr::miniextendr_build()`, the single all-in-one command the
-scaffolded `lib.rs` template itself tells end users to run. First call:
-compiles Rust, regenerates `R/*-wrappers.R`, installs (against the *old*
-`NAMESPACE`), then documents (writes the *new* `NAMESPACE`/`man/*.Rd` to
-disk) — but the already-installed copy doesn't reflect that new
-`NAMESPACE`. Calling the freshly-added function raises `could not find
-function "..."` even though it's right there in `NAMESPACE` on disk. A
-second `miniextendr_build()` call fixes it (reinstalls against the
-now-current `NAMESPACE`). Nothing in the getting-started skill or in
-`miniextendr_build()`'s own messages mentioned this. **Fixed**: updated
-`.claude/skills/miniextendr-getting-started/SKILL.md` Step 3/4 in this repo
-to recommend `miniextendr_build()` as the primary standalone-package path
-(matching what the scaffold itself already tells users) and to spell out the
-two-pass requirement. The real fix belongs in `miniextendr_build()` itself
-(document-then-install, or install twice internally) — worth a `gh issue
-create`.
+Originally logged as the same "second install needed" gotcha that root
+`CLAUDE.md` documents for the monorepo's maintainer-only `just rcmdinstall
+&& just force-document` recipe, silently recurring in
+`minirextendr::miniextendr_build()` itself. A repo-wide audit (dispatched
+after this session) found that's wrong: `miniextendr_build()`
+(`minirextendr/R/workflow.R:136-224`) already does exactly the right thing —
+it snapshots `NAMESPACE` before/after `devtools::document()` and, if it
+changed, runs a same-call reinstall (lines 199-224, documented in the
+`@section Why a conditional reinstall` comment at lines 92-108). This is
+issue **#860** ("`miniextendr_build()` installs before `document()` → first
+build exports nothing"), closed 2026-06-09, with a dedicated regression test
+(`minirextendr/tests/testthat/test-templates.R:637-706`) that calls
+`miniextendr_build()` **exactly once** and asserts the new export is
+callable.
+
+What golife actually hit was a knock-on effect of hiccup #1: once the
+scaffold silently latched into tarball mode (no `.git` ancestor at configure
+time), install skips wrapper regeneration entirely
+(`minirextendr/R/workflow.R:114-118`), which defeats the #860
+document()-diff-triggered reinstall regardless — `miniextendr_build()` had
+nothing to diff against because the wrappers never regenerated in the first
+place. The skill edit made in this repo
+(`.claude/skills/miniextendr-getting-started/SKILL.md` Step 3/4,
+recommending `miniextendr_build()` as the primary standalone-package path)
+is still a reasonable improvement on its own merits, but the "two-pass"
+framing and the `gh issue create` this entry originally called for are
+retracted — there is no bug left in `miniextendr_build()` to file. See
+hiccup #1's fix instead.
 
 ### 7. R6 trait-impl methods are flat free functions, not `obj$method()` — genuine gap, not a documented tradeoff
 
