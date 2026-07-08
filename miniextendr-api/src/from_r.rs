@@ -1018,7 +1018,7 @@ where
     R: TryFromSexp,
     R: TryCoerce<T>,
     <R as TryFromSexp>::Error: Into<SexpError>,
-    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    <R as TryCoerce<T>>::Error: std::fmt::Display,
 {
     type Error = SexpError;
 
@@ -1027,7 +1027,7 @@ where
         let r_val: R = R::try_from_sexp(sexp).map_err(Into::into)?;
         let value: T = r_val
             .try_coerce()
-            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))?;
+            .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
         Ok(Coerced::new(value))
     }
 
@@ -1036,7 +1036,7 @@ where
         let r_val: R = unsafe { R::try_from_sexp_unchecked(sexp).map_err(Into::into)? };
         let value: T = r_val
             .try_coerce()
-            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))?;
+            .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
         Ok(Coerced::new(value))
     }
 }
@@ -1049,20 +1049,66 @@ where
 // in into_r.rs for the reverse direction.
 
 /// Helper to coerce a slice element-wise into a Vec.
+///
+/// Walks the whole slice, accumulating every per-element coercion failure into
+/// one batched [`SexpError::InvalidValue`] via [`batch_conversion_errors`]
+/// (`container` names the target type, e.g. `"Vec<bool>"`) instead of bailing on
+/// the first `Err`. Allocation-free on the happy path — the errors `Vec` never
+/// allocates until the first failure.
 #[inline]
-fn coerce_slice_to_vec<R, T>(slice: &[R]) -> Result<Vec<T>, SexpError>
+fn coerce_slice_to_vec<R, T>(slice: &[R], container: &str) -> Result<Vec<T>, SexpError>
 where
     R: Copy + TryCoerce<T>,
-    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    <R as TryCoerce<T>>::Error: std::fmt::Display,
 {
-    slice
-        .iter()
-        .copied()
-        .map(|v| {
-            v.try_coerce()
-                .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
-        })
-        .collect()
+    let mut result = Vec::with_capacity(slice.len());
+    let mut errors: Vec<String> = Vec::new();
+    for (i, v) in slice.iter().copied().enumerate() {
+        match v.try_coerce() {
+            Ok(x) => result.push(x),
+            Err(e) => errors.push(format!("invalid value at index {i}: {e}")),
+        }
+    }
+    if errors.is_empty() {
+        Ok(result)
+    } else {
+        Err(batch_conversion_errors(container, errors))
+    }
+}
+
+/// Drive a per-element coercion, batching every failure into one diagnostic.
+///
+/// Backs [`from_numeric_vec_with`]'s four SEXP-type branches: successes go into
+/// the output `Vec`, failures accumulate as `"invalid value at index <i>: <err>"`
+/// and are combined via [`batch_conversion_errors`] (matching the message grammar
+/// of the `Vec<T>` arm of `try_from_sexp_via_str_parse!`). The per-element closure
+/// wraps coercion failures as [`SexpError::InvalidValue`]; we unwrap that inner
+/// message so the batched entry reads `"...: value out of range"` rather than the
+/// doubled `"...: invalid value: value out of range"` that `SexpError`'s `Display`
+/// would produce. Allocation-free on the happy path — the errors `Vec` never
+/// allocates until the first failure.
+#[inline]
+fn collect_coerced<U>(
+    container: &str,
+    len: usize,
+    iter: impl Iterator<Item = Result<U, SexpError>>,
+) -> Result<Vec<U>, SexpError> {
+    let mut result = Vec::with_capacity(len);
+    let mut errors: Vec<String> = Vec::new();
+    for (i, item) in iter.enumerate() {
+        match item {
+            Ok(v) => result.push(v),
+            Err(SexpError::InvalidValue(msg)) => {
+                errors.push(format!("invalid value at index {i}: {msg}"))
+            }
+            Err(other) => errors.push(format!("invalid value at index {i}: {other}")),
+        }
+    }
+    if errors.is_empty() {
+        Ok(result)
+    } else {
+        Err(batch_conversion_errors(container, errors))
+    }
 }
 
 /// Shared SEXP-dispatch shell for coerced numeric/logical/raw vectors.
@@ -1073,9 +1119,14 @@ where
 /// `try_from_sexp_numeric_option_vec` (in [`na_vectors`]) share one dispatch.
 /// LGLSXP NA (`NA_LOGICAL`) and INTSXP NA (`i32::MIN`) round through as raw
 /// sentinels here; any NA-to-`None` policy is the caller's closure to encode.
+///
+/// Per-element coercion failures are accumulated (not short-circuited) and
+/// reported as one batched diagnostic; `container` names the target type for the
+/// message (e.g. `"Vec<u32>"`, `"HashSet<i64>"`). See [`collect_coerced`].
 #[inline]
 pub(crate) fn from_numeric_vec_with<U, FI, FD, FR, FL>(
     sexp: SEXP,
+    container: &str,
     map_i32: FI,
     map_f64: FD,
     map_u8: FR,
@@ -1091,19 +1142,19 @@ where
     match actual {
         SEXPTYPE::INTSXP => {
             let slice: &[i32] = unsafe { sexp.as_slice() };
-            slice.iter().copied().map(map_i32).collect()
+            collect_coerced(container, slice.len(), slice.iter().copied().map(map_i32))
         }
         SEXPTYPE::REALSXP => {
             let slice: &[f64] = unsafe { sexp.as_slice() };
-            slice.iter().copied().map(map_f64).collect()
+            collect_coerced(container, slice.len(), slice.iter().copied().map(map_f64))
         }
         SEXPTYPE::RAWSXP => {
             let slice: &[u8] = unsafe { sexp.as_slice() };
-            slice.iter().copied().map(map_u8).collect()
+            collect_coerced(container, slice.len(), slice.iter().copied().map(map_u8))
         }
         SEXPTYPE::LGLSXP => {
             let slice: &[RLogical] = unsafe { sexp.as_slice() };
-            slice.iter().copied().map(map_lgl).collect()
+            collect_coerced(container, slice.len(), slice.iter().copied().map(map_lgl))
         }
         _ => Err(SexpError::InvalidValue(format!(
             "expected integer, numeric, logical, or raw; got {:?}",
@@ -1273,18 +1324,21 @@ pub(crate) unsafe fn map_vecsxp_with_unchecked<U>(
 ///
 /// NA-unaware: an R `NA` round-trips as the coerced sentinel rather than being
 /// rejected. Bind `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA.
+/// Per-element coercion failures batch into one diagnostic (`container` names the
+/// target type for the message, e.g. `"Vec<u32>"`).
 #[inline]
-fn try_from_sexp_numeric_vec<T>(sexp: SEXP) -> Result<Vec<T>, SexpError>
+fn try_from_sexp_numeric_vec<T>(sexp: SEXP, container: &str) -> Result<Vec<T>, SexpError>
 where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
     u8: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Display,
 {
     from_numeric_vec_with(
         sexp,
+        container,
         coerce_value,
         coerce_value,
         coerce_value,
@@ -1299,11 +1353,11 @@ macro_rules! impl_vec_try_from_sexp_numeric {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_vec(sexp)
+                try_from_sexp_numeric_vec(sexp, concat!("Vec<", stringify!($target), ">"))
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_vec(sexp)
+                try_from_sexp_numeric_vec(sexp, concat!("Vec<", stringify!($target), ">"))
             }
         }
     };
@@ -1333,7 +1387,7 @@ impl TryFromSexp for Vec<bool> {
             .into());
         }
         let slice: &[RLogical] = unsafe { sexp.as_slice() };
-        coerce_slice_to_vec(slice)
+        coerce_slice_to_vec(slice, "Vec<bool>")
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -1345,18 +1399,21 @@ impl TryFromSexp for Vec<bool> {
 // region: Direct HashSet / BTreeSet coercion conversions
 
 /// Convert numeric/logical/raw vectors to a set type with element-wise coercion.
+///
+/// Inherits [`try_from_sexp_numeric_vec`]'s batching; `container` names the target
+/// set type for the message (e.g. `"HashSet<u32>"`).
 #[inline]
-fn try_from_sexp_numeric_set<T, S>(sexp: SEXP) -> Result<S, SexpError>
+fn try_from_sexp_numeric_set<T, S>(sexp: SEXP, container: &str) -> Result<S, SexpError>
 where
     S: std::iter::FromIterator<T>,
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
     u8: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Display,
 {
-    let vec = try_from_sexp_numeric_vec(sexp)?;
+    let vec = try_from_sexp_numeric_vec(sexp, container)?;
     Ok(vec.into_iter().collect())
 }
 
@@ -1366,11 +1423,17 @@ macro_rules! impl_set_try_from_sexp_numeric {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_set(sexp)
+                try_from_sexp_numeric_set(
+                    sexp,
+                    concat!(stringify!($set_ty), "<", stringify!($target), ">"),
+                )
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_set(sexp)
+                try_from_sexp_numeric_set(
+                    sexp,
+                    concat!(stringify!($set_ty), "<", stringify!($target), ">"),
+                )
             }
         }
     };
@@ -1925,8 +1988,10 @@ const BATCHED_ERROR_CAP: usize = 10;
 /// [`SexpError::InvalidValue`].
 ///
 /// Backs the `Vec<T>` / `Vec<Option<T>>` arms of
-/// [`try_from_sexp_via_str_parse!`]: instead of bailing on the first NA or
-/// parse failure, those arms walk the whole vector, accumulate the
+/// [`try_from_sexp_via_str_parse!`] (string-parse paths, #1143) **and** the
+/// numeric-coercion vector shells [`from_numeric_vec_with`] / [`collect_coerced`]
+/// / [`coerce_slice_to_vec`] (#1192): instead of bailing on the first NA or
+/// coercion failure, those walk the whole vector, accumulate the
 /// already-formatted per-element messages, and hand them here. Entries are
 /// joined with `"; "`; at most the first 10 are listed and the remainder is
 /// summarized as `"and N more"`.
