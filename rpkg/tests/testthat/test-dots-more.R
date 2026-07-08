@@ -100,16 +100,20 @@ test_that("validate_with_attribute works with valid input", {
 })
 
 test_that("validate_with_attribute fails on missing required field", {
+  # Same wording as the direct typed_list! path (Display, not Debug) — see
+  # "validate_numeric_args validates type and length" above.
   expect_error(
     validate_with_attribute(x = 1.0),
-    "Missing"
+    "missing"
   )
 })
 
 test_that("validate_with_attribute fails on wrong type", {
+  # Same wording as the direct typed_list! path (Display, not Debug) — see
+  # "validate_numeric_args validates type and length" above.
   expect_error(
     validate_with_attribute(x = "not a number", y = 2.0),
-    "WrongType"
+    "wrong type"
   )
 })
 
@@ -121,4 +125,24 @@ test_that("validate_attr_optional works without optional field", {
 test_that("validate_attr_optional works with optional field", {
   result <- validate_attr_optional(name = "Bob", greeting = "Hi")
   expect_equal(result, "Hi, Bob!")
+})
+
+test_that("direct and attribute-sugar typed_list paths share one message style", {
+  # Audit A8: the attribute-sugar path used to Debug-format TypedListError
+  # (PascalCase variant names like `Missing { name: "y" }`), so a user regex
+  # matching one entry point missed the other. Both now go through the
+  # Display impl — assert the SAME regex matches both paths.
+  missing_re <- "missing required field"
+  expect_error(validate_numeric_args(beta = list(1, 2)), missing_re) # direct
+  expect_error(validate_with_attribute(x = 1.0), missing_re) # attribute sugar
+
+  wrong_type_re <- "has wrong type: expected"
+  expect_error(
+    validate_numeric_args(alpha = 1:4, beta = list(1, 2)), # direct
+    wrong_type_re
+  )
+  expect_error(
+    validate_with_attribute(x = "not a number", y = 2.0), # attribute sugar
+    wrong_type_re
+  )
 })
