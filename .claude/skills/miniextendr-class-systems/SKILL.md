@@ -52,6 +52,44 @@ Every class system maps Rust method receivers to R dispatch differently.
 
 Static methods for Env/S4/S7/S3 are named `<Class>_<method>(...)` or `<Class>$<method>(...)`.
 
+### In-place builder idiom (`&mut self -> &mut Self`)
+
+A method signature of `&mut self -> &mut Self` (not just `&mut self -> ()`)
+is a deliberately supported, cross-class-system idiom for builder-pattern
+types — mutate a field, return the same receiver, so calls compose into a
+chain. It's implemented and tested for **all six class systems**, not just
+R6:
+
+- **R6 / Env** (reference-semantic): the chain reads through the *same*
+  underlying object — `builder$set_name("x")$set_loud(TRUE)$build()` /
+  `b$add(1L)$add(2L)$total()`. Codegen must return the receiver directly,
+  **not** re-wrap it (e.g. `R6PipeBuilder$new(.ptr = .val)` would mint a
+  fresh R6 environment around the same pointer and silently break object
+  identity for anything holding the original reference — see issue #769,
+  guarded by `rpkg/src/rust/pipe_builder_tests.rs`'s R6 fixture).
+- **S3 / S4 / S7** (free-function dispatch): the mutator methods become free
+  functions taking the object first (`builder_set_name(x, "World")`,
+  `s4_add(x, 1L)`, `s7_add(x, 1L)`) whose body returns the receiver — which
+  means they compose directly under R's native pipe: `b <- new_builder() |>
+  builder_set_name("World") |> builder_set_loud(TRUE)`. S4 method names are
+  auto-prefixed (`add` → `s4_add`; naming the Rust method `s4_*` yourself
+  trips MXL111). S7 names are **not** auto-prefixed, so fixtures write
+  `s7_add`/`s7_total` explicitly to keep the generated generics in a clean
+  namespace.
+- A terminal step normally takes `&self` (not `self`) and returns a
+  different type — e.g. `pub fn build(&self) -> String` — converted to R
+  via the ordinary `IntoR` path, ending the chain.
+
+This is distinct from the plain `&mut self -> ()` case in the table above:
+that one exists for regular mutators that don't need chaining and merely
+gets `invisible(self)` in R6 so a bare `obj$mutate()` doesn't print `NULL`;
+`&mut self -> &mut Self` is the idiom to reach for when you're deliberately
+designing a chainable/builder API, and it's the only form validated to
+preserve object identity across R6 chains and to compose under `|>` for the
+free-function class systems. See `rpkg/src/rust/pipe_builder_tests.rs` for
+one worked fixture per class system, and
+`rpkg/tests/testthat/test-pipe-builder.R` for the R-side usage each produces.
+
 ### Constructor generation and error checking
 
 For every class system, the constructor calls `.Call(C_Type__new, ...)` and
@@ -346,6 +384,14 @@ The generated class is named after the Rust type by default. Override with
    `s4_trait_<MyTrait>_<method>(obj)`; S7 as `s7_trait_<MyTrait>_<method>(obj)`
    (plus an optional `MyType_method(obj)` fast-path). See "Trait methods across
    class systems" above for the full shape table.
+
+### How do I build a chainable builder-pattern API?
+
+Use a `&mut self -> &mut Self` method signature (not `-> ()`) for each
+mutator step — see "In-place builder idiom" above. Works the same way
+regardless of which class system you pick; choose the class system by your
+desired call syntax (`obj$step()` chains for R6/Env, `obj |> step()` pipes
+for S3/S4/S7).
 
 ### My constructor panics but R doesn't see an error — what went wrong?
 
