@@ -1,5 +1,5 @@
 use miniextendr_api::SEXP;
-use miniextendr_api::{DataFrame, IntoDataFrame};
+use miniextendr_api::{BuiltDataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
 
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -14,7 +14,7 @@ pub struct ParPoint {
 /// @param n Number of rows to create.
 /// @export
 #[miniextendr]
-pub fn create_large_par_points(n: i32) -> DataFrame {
+pub fn create_large_par_points(n: i32) -> BuiltDataFrame {
     let rows: Vec<ParPoint> = (0..n)
         .map(|i| ParPoint {
             x: i as f64,
@@ -62,7 +62,7 @@ pub enum ParEvent {
 /// @param n Number of rows to create.
 /// @export
 #[miniextendr]
-pub fn create_large_par_events(n: i32) -> DataFrame {
+pub fn create_large_par_events(n: i32) -> BuiltDataFrame {
     let rows: Vec<ParEvent> = (0..n)
         .map(|i| {
             if i % 2 == 0 {

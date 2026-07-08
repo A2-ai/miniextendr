@@ -13,9 +13,9 @@
 //! ```ignore
 //! use miniextendr_api::dataframe::{DataFrame, IntoDataFrame, FromDataFrame};
 //!
-//! // Rust → R
-//! let df: DataFrame = rows.into_dataframe()?;          // sequential
-//! let df: DataFrame = rows.into_dataframe_par()?;      // parallel (feature = "rayon")
+//! // Rust → R (returns an owned, GC-rooted `BuiltDataFrame` that `Deref`s to `DataFrame`)
+//! let df = rows.into_dataframe()?;          // sequential
+//! let df = rows.into_dataframe_par()?;      // parallel (feature = "rayon")
 //!
 //! // R → Rust
 //! let rows: Vec<Row> = Vec::<Row>::from_dataframe(&df)?;
@@ -139,10 +139,11 @@ impl From<crate::serde::RSerdeError> for DataFrameError {
 ///
 /// # Building
 ///
-/// Prefer the [`IntoDataFrame`] trait on your data:
+/// Prefer the [`IntoDataFrame`] trait on your data (it returns an owned,
+/// GC-rooted [`BuiltDataFrame`] that `Deref`s to `DataFrame`):
 ///
 /// ```ignore
-/// let df: DataFrame = rows.into_dataframe()?;
+/// let df = rows.into_dataframe()?;
 /// ```
 ///
 /// or the closure-fill `DataFrame::builder` for heterogeneous parallel column fill
@@ -604,6 +605,144 @@ impl IntoR for DataFrame {
 }
 // endregion
 
+// region: BuiltDataFrame — owned, GC-rooted, Rust-constructed data.frame
+
+/// An owned, GC-rooted `data.frame` **built on the Rust side**.
+///
+/// [`DataFrame`] is a cheap `Copy` *view* over a bare SEXP with no root of its
+/// own — sound only while something else keeps the SEXP reachable (an R `.Call`
+/// argument frame roots R-supplied frames; a surrounding
+/// [`ProtectScope`](crate::ProtectScope) roots transients). A frame that Rust
+/// *constructs* has no such external root, so holding the bare view across any R
+/// allocation is a latent use-after-free (issue #1128): the GC reclaims the
+/// frame, and a freed-but-intact read passes tests silently until the slot is
+/// reused.
+///
+/// `BuiltDataFrame` is the return type of every Rust-side constructor
+/// ([`IntoDataFrame::into_dataframe`], [`SerdeRowBuilder::finish`](crate::serde::SerdeRowBuilder::finish),
+/// [`DataFrame::builder`]`().build()`, the serde `*_to_dataframe` verbs,
+/// [`NamedList::as_data_frame`]). It roots the frame with `R_PreserveObject` on
+/// construction and releases it with `R_ReleaseObject` on drop, so holding it
+/// across allocations is safe by construction. It [`Deref`](std::ops::Deref)s to
+/// [`DataFrame`], so every read/edit method keeps working unchanged; hand the
+/// frame back to R with [`IntoR::into_sexp`] — or just return it from a
+/// `#[miniextendr]` fn, which converts it through [`IntoR`] transparently.
+///
+/// Not `Copy`/`Clone` (each root is released exactly once) and not `Send`
+/// (R's precious list is R-main-thread state).
+///
+/// # Residual (the split-types trade-off, #1128 option 2)
+///
+/// The cheap view can still be *smuggled* across allocations — e.g. the editing
+/// methods ([`DataFrame::drop`], [`DataFrame::select`], …) build a new frame and
+/// return an unrooted `DataFrame`, and dereferencing then dropping a
+/// `BuiltDataFrame` yields a dangling view. Those are opt-in footguns, not the
+/// common constructor-return path this type makes safe.
+pub struct BuiltDataFrame {
+    view: DataFrame,
+    /// `!Send + !Sync`: rooting/unrooting mutates R's global precious list,
+    /// which is R-main-thread state. Construction and drop only ever happen
+    /// inside framework code already on the R thread.
+    _not_send: std::marker::PhantomData<*mut ()>,
+}
+
+impl BuiltDataFrame {
+    /// Root an already-built `data.frame` SEXP and take ownership of the root.
+    ///
+    /// # Safety
+    ///
+    /// Must run on the R main thread. `sexp` must be a well-formed `data.frame`
+    /// VECSXP. Rooting is immediate — no allocation happens between entry and
+    /// `R_PreserveObject`, and `R_PreserveObject` protects `sexp` while it
+    /// allocates its cons cell — so a freshly-assembled unprotected SEXP is safe
+    /// to pass directly.
+    #[inline]
+    pub unsafe fn adopt_sexp(sexp: SEXP) -> Self {
+        // SAFETY: R main thread (caller contract); R_PreserveObject keeps `sexp`
+        // reachable across its own allocation.
+        unsafe { crate::sys::R_PreserveObject(sexp) };
+        Self {
+            // SAFETY: caller guarantees `sexp` is a well-formed data.frame VECSXP.
+            view: unsafe { DataFrame::from_built_sexp(sexp) },
+            _not_send: std::marker::PhantomData,
+        }
+    }
+
+    /// Root a freshly-built [`DataFrame`] view, taking ownership of the root.
+    ///
+    /// # Safety
+    ///
+    /// Must run on the R main thread. `df` must wrap a Rust-built frame not
+    /// already owned by another `BuiltDataFrame` (otherwise the root is released
+    /// twice).
+    #[inline]
+    pub unsafe fn adopt(df: DataFrame) -> Self {
+        // SAFETY: as documented on this fn.
+        unsafe { Self::adopt_sexp(df.as_sexp()) }
+    }
+
+    /// Detach the rooted SEXP, releasing the Rust-side root without running
+    /// `Drop`. Shared by the [`IntoR`] hand-off methods.
+    ///
+    /// Mirrors [`DataFrame::as_sexp`] / [`IntoR::into_sexp`]: the returned SEXP is
+    /// unprotected and the caller (typically the `.Call` return path) takes over
+    /// protection. Releasing the precious-list root then returning matches that
+    /// existing hand-off contract — `R_ReleaseObject` does not allocate, so no GC
+    /// can run between the release and the return. `into_sexp` is exposed only
+    /// through [`IntoR`] (like [`DataFrame`]), so there is no inherent method to
+    /// shadow the trait's.
+    #[inline]
+    fn release_into_sexp(self) -> SEXP {
+        let sexp = self.view.as_sexp();
+        // SAFETY: `!Send` guarantees we are on the constructing (R main) thread;
+        // release the exact root added in `adopt_sexp`. `mem::forget` prevents
+        // `Drop` from releasing it a second time.
+        unsafe { crate::sys::R_ReleaseObject(sexp) };
+        std::mem::forget(self);
+        sexp
+    }
+}
+
+impl std::ops::Deref for BuiltDataFrame {
+    type Target = DataFrame;
+    #[inline]
+    fn deref(&self) -> &DataFrame {
+        &self.view
+    }
+}
+
+impl Drop for BuiltDataFrame {
+    fn drop(&mut self) {
+        // SAFETY: `!Send` guarantees drop runs on the R main thread; release the
+        // exact root added in `adopt_sexp`. `R_ReleaseObject` does not allocate.
+        unsafe { crate::sys::R_ReleaseObject(self.view.as_sexp()) };
+    }
+}
+
+impl IntoR for BuiltDataFrame {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.release_into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(self.release_into_sexp())
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.release_into_sexp()
+    }
+}
+
+impl std::fmt::Debug for BuiltDataFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BuiltDataFrame")
+            .field("nrow", &self.nrow())
+            .field("ncol", &self.ncol())
+            .finish()
+    }
+}
+// endregion
+
 // region: The conversion trait family (mirrors IntoR / TryFromSexp)
 
 /// Rust data → R `data.frame`. The data-frame analogue of [`IntoR`].
@@ -622,14 +761,14 @@ impl IntoR for DataFrame {
 /// work-list). The verb is stable across feature sets — dropping `_par` degrades cleanly to
 /// the sequential call.
 pub trait IntoDataFrame: Sized {
-    /// Convert this value into a [`DataFrame`].
-    fn into_dataframe(self) -> Result<DataFrame, DataFrameError>;
+    /// Convert this value into an owned, GC-rooted [`BuiltDataFrame`].
+    fn into_dataframe(self) -> Result<BuiltDataFrame, DataFrameError>;
 
     /// Parallel column fill (`feature = "rayon"`). Same result as `into_dataframe()`.
     ///
     /// Defaults to the sequential path; overridden by the derive for a real parallel fill.
     #[cfg(feature = "rayon")]
-    fn into_dataframe_par(self) -> Result<DataFrame, DataFrameError> {
+    fn into_dataframe_par(self) -> Result<BuiltDataFrame, DataFrameError> {
         self.into_dataframe()
     }
 }
@@ -809,34 +948,33 @@ fn no_reader_error() -> DataFrameError {
 }
 
 impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T> {
-    fn into_dataframe(self) -> Result<DataFrame, DataFrameError> {
-        T::rows_into_dataframe(self)
+    fn into_dataframe(self) -> Result<BuiltDataFrame, DataFrameError> {
+        // `rows_into_dataframe` returns the freshly-built frame as a bare view;
+        // root it immediately (no allocation between the `?` and `adopt`) so the
+        // returned handle owns its GC root.
+        // SAFETY: builds SEXPs → runs on the R main thread.
+        Ok(unsafe { BuiltDataFrame::adopt(T::rows_into_dataframe(self)?) })
     }
 
     #[cfg(feature = "rayon")]
-    fn into_dataframe_par(self) -> Result<DataFrame, DataFrameError> {
-        T::rows_into_dataframe_par(self)
+    fn into_dataframe_par(self) -> Result<BuiltDataFrame, DataFrameError> {
+        // SAFETY: as in `into_dataframe` above.
+        Ok(unsafe { BuiltDataFrame::adopt(T::rows_into_dataframe_par(self)?) })
     }
 }
 
 impl<T: DataFrameRowConvert> FromDataFrame for Vec<T> {
     fn from_dataframe(df: &DataFrame) -> Result<Self, DataFrameError> {
-        // Root the input across the read. A `.Call` caller gets this from R's
-        // argument frame, but a Rust caller may hand in a freshly-built,
-        // unprotected frame (`into_dataframe` returns an unrooted SEXP wrapper);
-        // reader-internal allocations would reclaim it mid-read under
-        // `gctorture(TRUE)` (caught by gc_stress_reader_nested_flatten).
-        // Mirrors the guard in serde's `dataframe_to_vec` — see
-        // reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md.
-        // SAFETY: reader entry runs on the R main thread; `df` wraps a valid SEXP.
-        let _input = unsafe { crate::OwnedProtect::new(df.as_sexp()) };
+        // No input root here: an R-supplied frame is rooted by R's `.Call`
+        // argument frame, and a Rust-built frame now reaches the reader as a
+        // borrowed `BuiltDataFrame` (rooted for the borrow) — the handle
+        // supersedes the old `OwnedProtect` guard (#1128). The reader's own
+        // sub-frame allocations stay protected by their internal guards.
         T::rows_from_dataframe(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 
     #[cfg(feature = "rayon")]
     fn from_dataframe_par(df: &DataFrame) -> Result<Self, DataFrameError> {
-        // SAFETY: as in `from_dataframe` above.
-        let _input = unsafe { crate::OwnedProtect::new(df.as_sexp()) };
         T::rows_from_dataframe_par(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 }
@@ -945,13 +1083,12 @@ impl NamedList {
     /// # Errors
     ///
     /// Returns [`DataFrameError::UnequalLengths`] if columns differ in length.
-    pub fn as_data_frame(&self) -> Result<DataFrame, DataFrameError> {
+    pub fn as_data_frame(&self) -> Result<BuiltDataFrame, DataFrameError> {
         let nrow = validate_equal_lengths(self)?;
         self.as_list().set_data_frame_class();
         self.as_list().set_row_names_int(nrow);
-        Ok(DataFrame {
-            sexp: self.as_list().as_sexp(),
-        })
+        // SAFETY: R main thread; the list is now a well-formed data.frame VECSXP.
+        Ok(unsafe { BuiltDataFrame::adopt_sexp(self.as_list().as_sexp()) })
     }
 }
 
@@ -961,7 +1098,7 @@ impl List {
     /// # Errors
     ///
     /// Returns [`DataFrameError`] if the list has no names or columns differ in length.
-    pub fn as_data_frame(&self) -> Result<DataFrame, DataFrameError> {
+    pub fn as_data_frame(&self) -> Result<BuiltDataFrame, DataFrameError> {
         let named = NamedList::new(*self).ok_or(DataFrameError::NoNames)?;
         named.as_data_frame()
     }
@@ -995,8 +1132,8 @@ impl List {
 ///
 /// ```ignore
 /// let result = NamedDataFrameListBuilder::new()
-///     .push("results", oks.into_dataframe()?)
-///     .push("error",   errs.into_dataframe()?)
+///     .push("results", *oks.into_dataframe()?)   // deref the BuiltDataFrame to its view
+///     .push("error",   *errs.into_dataframe()?)
 ///     .build();
 /// ```
 pub struct NamedDataFrameListBuilder {

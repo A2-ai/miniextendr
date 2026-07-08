@@ -530,9 +530,12 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
         })
         .collect();
 
+    // `vec_to_dataframe` now returns an owned `BuiltDataFrame`; deref to the view
+    // for `push` (each temporary handle lives to the end of the `.push(...)`
+    // statement, so its frame stays rooted until `push` re-roots it internally).
     NamedDataFrameListBuilder::new()
-        .push("results", vec_to_dataframe(&oks).unwrap())
-        .push("error", vec_to_dataframe(&errs).unwrap())
+        .push("results", *vec_to_dataframe(&oks).unwrap())
+        .push("error", *vec_to_dataframe(&errs).unwrap())
         .build()
         .into_sexp()
 }
@@ -922,6 +925,98 @@ pub fn gc_stress_builder_grow_schema() -> SEXP {
         .finish()
         .expect("gc_stress_builder_grow_schema: finish failed");
     df.into_sexp()
+}
+
+/// Exercise [`BuiltDataFrame`](miniextendr_api::dataframe::BuiltDataFrame)'s GC
+/// root (issue #1128): build a frame via [`SerdeRowBuilder::finish`], force a
+/// burst of R allocations **while holding the handle**, then read every column
+/// back and assert the values survived.
+///
+/// This is the regression harness the issue names. On pre-#1128 code (`finish`
+/// returned a bare, unrooted `DataFrame`) the held frame is reclaimed by the GC
+/// during the allocation burst under `gctorture(TRUE)`, and the column reads
+/// then panic ("DataFrame always carries a names attribute") or return corrupt
+/// values. The owned `BuiltDataFrame` handle roots the frame with
+/// `R_PreserveObject`, so holding it across allocations is safe and this stays
+/// green. (Verified by temporarily dereferencing-then-dropping the handle
+/// (`let df = *b.finish()…`), which reproduces the old bare-view crash.)
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport)]
+pub fn gc_stress_built_dataframe() {
+    use crate::serde::Serialize;
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::serde::SerdeRowBuilder;
+
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        id: i32,
+        ratio: f64,
+        label: String,
+    }
+
+    const N: i32 = 40;
+    let mut b = SerdeRowBuilder::<Row>::new(Some(N as usize));
+    for i in 0..N {
+        b.push(Row {
+            id: i,
+            ratio: f64::from(i) * 0.5,
+            label: format!("row_{i}"),
+        })
+        .expect("gc_stress_built_dataframe: push failed");
+    }
+    // The returned handle owns a GC root (`R_PreserveObject`) for the frame.
+    let built = b.finish().expect("gc_stress_built_dataframe: finish failed");
+
+    // Force a burst of R allocations while `built` is held. Under gctorture(TRUE)
+    // every allocation is a full GC; a bare (unrooted) frame would be reclaimed
+    // here — and, once its nodes are reused by these throwaway vectors, the reads
+    // below would fault or read garbage. Each churn SEXP is dropped immediately,
+    // so only `built`'s root keeps its frame alive.
+    for i in 0..64i32 {
+        let churn: Vec<f64> = (0..128).map(|j| f64::from(i + j)).collect();
+        let _ = churn.into_sexp();
+        let more: Vec<Option<String>> = (0..16).map(|j| Some(format!("g{i}_{j}"))).collect();
+        let _ = more.into_sexp();
+    }
+
+    // Read every column back through the (still-rooted) handle and assert the
+    // frame is intact. `column`/`names` route through `named_list()`, whose
+    // `.expect("DataFrame always carries a names attribute")` fires if the names
+    // attribute was reclaimed.
+    assert_eq!(built.nrow(), N as usize, "row count changed under GC");
+    assert_eq!(built.ncol(), 3, "column count changed under GC");
+    assert_eq!(
+        built.names(),
+        vec!["id", "ratio", "label"],
+        "names reclaimed under GC"
+    );
+    // Read the raw column SEXPs back through the (still-rooted) handle and check
+    // they survived intact — length, type, and first/last values. `column_raw`
+    // routes through `named_list()`, whose `.expect` fires if the names
+    // attribute was reclaimed.
+    let id_col = built.column_raw("id").expect("id column reclaimed under GC");
+    assert_eq!(id_col.type_of(), SEXPTYPE::INTSXP, "id column type corrupted");
+    let ids: &[i32] = unsafe { id_col.as_slice() };
+    assert_eq!(ids.len(), N as usize, "id column length changed under GC");
+    assert_eq!(ids[0], 0);
+    assert_eq!(ids[(N - 1) as usize], N - 1, "id column values corrupted");
+    let label_col = built
+        .column_raw("label")
+        .expect("label column reclaimed under GC");
+    assert_eq!(
+        label_col.type_of(),
+        SEXPTYPE::STRSXP,
+        "label column type corrupted"
+    );
+    assert_eq!(label_col.xlength() as usize, N as usize);
+    assert_eq!(
+        label_col.string_elt_str(0),
+        Some("row_0"),
+        "label[0] corrupted under GC"
+    );
 }
 
 // endregion

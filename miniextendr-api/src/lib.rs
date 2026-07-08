@@ -653,8 +653,8 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 // The unified owned data.frame type + conversion trait family
 pub mod dataframe;
 pub use dataframe::{
-    DataFrame, DataFrameError, FromDataFrame, GroupKey, GroupedDataFrame, IntoDataFrame,
-    NamedDataFrameListBuilder, group_rows,
+    BuiltDataFrame, DataFrame, DataFrameError, FromDataFrame, GroupKey, GroupedDataFrame,
+    IntoDataFrame, NamedDataFrameListBuilder, group_rows,
 };
 
 // Closure-per-column DataFrame builder (parallel fill with `rayon`, serial

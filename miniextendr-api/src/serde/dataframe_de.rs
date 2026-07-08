@@ -241,7 +241,7 @@ pub struct SerdeRows<T>(pub Vec<T>);
 impl<T: serde::Serialize> crate::dataframe::IntoDataFrame for SerdeRows<T> {
     fn into_dataframe(
         self,
-    ) -> Result<crate::dataframe::DataFrame, crate::dataframe::DataFrameError> {
+    ) -> Result<crate::dataframe::BuiltDataFrame, crate::dataframe::DataFrameError> {
         crate::serde::vec_to_dataframe(&self.0).map_err(Into::into)
     }
 }

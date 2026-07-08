@@ -72,7 +72,9 @@ pub use crate::{
 // conversion trait pair, and the `#[derive(DataFrameRow)]` macro. Group-level
 // items (`GroupedDataFrame`, `GroupKey`, `group_rows`) stay at the crate root
 // — `df.group_by(..)` returns them without the caller naming the types.
-pub use crate::{DataFrame, DataFrameError, DataFrameRow, FromDataFrame, IntoDataFrame};
+pub use crate::{
+    BuiltDataFrame, DataFrame, DataFrameError, DataFrameRow, FromDataFrame, IntoDataFrame,
+};
 // endregion
 
 // region: Worker thread

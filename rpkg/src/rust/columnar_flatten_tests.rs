@@ -3,7 +3,7 @@
 
 use crate::serde::Serialize;
 use miniextendr_api::IntoR;
-use miniextendr_api::dataframe::DataFrame;
+use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame};
 use miniextendr_api::miniextendr;
 use miniextendr_api::serde::{
     DataFrameShape, SplitShape, vec_to_dataframe, vec_to_dataframe_split,
@@ -99,7 +99,7 @@ enum TaggedEvent {
 // endregion
 
 #[miniextendr(noexport)]
-pub fn test_columnar_nested() -> DataFrame {
+pub fn test_columnar_nested() -> BuiltDataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -114,7 +114,7 @@ pub fn test_columnar_nested() -> DataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_optional_struct() -> DataFrame {
+pub fn test_columnar_optional_struct() -> BuiltDataFrame {
     let rows = vec![
         WithOptionalStruct {
             name: "has".into(),
@@ -133,7 +133,7 @@ pub fn test_columnar_optional_struct() -> DataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_deep_nesting() -> DataFrame {
+pub fn test_columnar_deep_nesting() -> BuiltDataFrame {
     let rows = vec![
         Deep {
             a: "x".into(),
@@ -154,7 +154,7 @@ pub fn test_columnar_deep_nesting() -> DataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_serde_flatten() -> DataFrame {
+pub fn test_columnar_serde_flatten() -> BuiltDataFrame {
     let rows = vec![
         WithFlatten {
             id: 1,
@@ -169,7 +169,7 @@ pub fn test_columnar_serde_flatten() -> DataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_skip_serializing_if() -> DataFrame {
+pub fn test_columnar_skip_serializing_if() -> BuiltDataFrame {
     let rows = vec![
         WithSkip {
             name: "a".into(),
@@ -217,7 +217,7 @@ pub fn test_columnar_rename_noop() -> DataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_empty() -> DataFrame {
+pub fn test_columnar_empty() -> BuiltDataFrame {
     vec_to_dataframe::<Inner>(&[]).expect("from_rows")
 }
 
@@ -233,7 +233,7 @@ pub fn test_columnar_drop() -> DataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    vec_to_dataframe(&rows).expect("from_rows").drop("point_y")
+    (*vec_to_dataframe(&rows).expect("from_rows")).drop("point_y")
 }
 
 #[miniextendr(noexport)]
@@ -309,7 +309,7 @@ pub fn test_columnar_strip_prefix() -> DataFrame {
 /// Multi-row discovery unions them all.
 ///
 #[miniextendr(noexport)]
-pub fn test_columnar_untagged_enum() -> DataFrame {
+pub fn test_columnar_untagged_enum() -> BuiltDataFrame {
     let rows = vec![
         WithUntaggedEnum {
             path: "a.txt".into(),
@@ -338,7 +338,7 @@ pub fn test_columnar_untagged_enum() -> DataFrame {
 /// Internally tagged enum: "kind" column acts as discriminator.
 ///
 #[miniextendr(noexport)]
-pub fn test_columnar_tagged_enum() -> DataFrame {
+pub fn test_columnar_tagged_enum() -> BuiltDataFrame {
     let rows = vec![
         TaggedEvent::Click { x: 10.0, y: 20.0 },
         TaggedEvent::Scroll { delta: -3.5 },
@@ -449,7 +449,7 @@ struct CmaxValue {
 /// map_to_dataframe over BTreeMap<i32, CmaxValue>.
 ///
 #[miniextendr(noexport)]
-pub fn test_map_to_dataframe_btreemap() -> DataFrame {
+pub fn test_map_to_dataframe_btreemap() -> BuiltDataFrame {
     use std::collections::BTreeMap;
     let mut map: BTreeMap<i32, CmaxValue> = BTreeMap::new();
     map.insert(
@@ -479,7 +479,7 @@ pub fn test_map_to_dataframe_btreemap() -> DataFrame {
 /// hashmap_to_dataframe over HashMap<i32, CmaxValue>.
 ///
 #[miniextendr(noexport)]
-pub fn test_hashmap_to_dataframe() -> DataFrame {
+pub fn test_hashmap_to_dataframe() -> BuiltDataFrame {
     use std::collections::HashMap;
     let mut map: HashMap<i32, CmaxValue> = HashMap::new();
     map.insert(
