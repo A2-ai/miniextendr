@@ -250,7 +250,12 @@ Some agent sandboxes block compilation. For any compiling command (`just force-d
 ## Agent Worktrees
 
 - Run agents in worktrees (`isolation: "worktree"`) to avoid collisions.
-- **Worktrees start with no R library**: `rv/library/` is gitignored, so a fresh worktree can't `R CMD INSTALL` (`ERROR: dependencies '…' are not available`, compile never starts). Symlink it to the main repo's populated one once: `ln -s /Users/elea/Documents/GitHub/miniextendr/rv/library rv/library`. Installs then land in the shared dev library, and the symlink vanishes when the worktree is removed (`rv/` is gitignored).
+- **Worktree R library: `rv sync` per worktree, then install** (never symlink to main). `rv/library/` is gitignored, so a fresh worktree's library is empty. Populate it from rv's shared global cache (`~/.cache/rv`, warm from main — same `rproject.toml`), then install the dev packages:
+  ```bash
+  just worktree-sync   # = RV_LINK_MODE=symlink rv sync — symlinks the ~110 cached deps into this worktree's OWN rv/library (~8s)
+  just configure && just rcmdinstall && just force-document
+  ```
+  `RV_LINK_MODE=symlink` (in `just worktree-sync`) links deps as symlinks into `~/.cache/rv` (zero-copy, no recompile/download) instead of the macOS copy-on-write default. Each worktree gets its own real `rv/library` (deps = symlinks to the shared read-only cache; dev packages = real installed dirs), so parallel worktrees never race and main is untouched. rv's native cross-project cache model: https://a2-ai.github.io/rv-docs/concepts/cache/ . **Order matters**: `rv sync` prunes anything not in the lockfile — including `miniextendr`/`minirextendr` (`dependencies_only`) — so sync first, install second; a later `rv sync` wipes the dev packages (re-install). **Never `ln -s rv/library`** to main (the old fix; reintroduces the shared-install race).
 - **Merge**: rebase worktree onto current main, *then* merge. Rebase must happen immediately before the merge, not when the agent finishes.
 - **Sequential merging** of multiple worktrees: rebase → merge → rebase next → merge. Each rebase must see prior merge commits on main, otherwise changes get silently overwritten.
 - **Never copy whole files** worktree → main — rebase/merge is the only correct flow.
