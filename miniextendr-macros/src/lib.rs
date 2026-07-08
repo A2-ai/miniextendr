@@ -1204,18 +1204,6 @@ pub fn miniextendr(
     } else {
         ""
     };
-    // Inject @noRd if #[miniextendr(noexport)] and not already present. Unlike
-    // `internal` (documented under `\keyword{internal}`), `noexport` must produce
-    // no Rd contribution at all — no alias, no usage entry, nothing on a shared
-    // page. `@noRd` fully suppresses roxygen2's output for this block, and
-    // `collect_r_wrappers()` (miniextendr-api/src/registry.rs) already skips
-    // per-source-file `@rdname` auto-grouping for blocks that carry `@noRd`, so
-    // this alone keeps a noexport fn off any grouped help page too.
-    let no_rd_comment = if noexport && !has_no_rd_tag {
-        "#' @noRd\n"
-    } else {
-        ""
-    };
     // S3 methods need both @method (for registration) AND @export (for NAMESPACE)
     // Don't auto-export functions marked with @noRd, @keywords internal, or attr flags
     // #[miniextendr(export)] forces @export even on non-pub functions
