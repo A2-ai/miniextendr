@@ -5,8 +5,8 @@
 //! constants. The top-level [`generate_trait_r_wrapper`] dispatches to the
 //! appropriate generator and applies post-processing for export/documentation control.
 
-use super::method_context::TraitMethodContext;
-use super::{TraitConst, TraitMethod, trait_method_body_lines};
+use super::method_context::{TraitMethodContext, trait_namespace_env_var, trait_namespace_target};
+use super::{TraitConst, TraitMethod};
 use crate::miniextendr_impl::ClassSystem;
 use crate::r_class_formatter::emit_s3_generic_guard;
 
@@ -162,7 +162,6 @@ fn generate_trait_env_r_wrapper(
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
-    let trait_str = trait_name.to_string();
 
     // Header comment
     lines.push(format!(
@@ -186,9 +185,13 @@ fn generate_trait_env_r_wrapper(
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
+        // Trait-namespace assignment target (`Type$Trait$method`), owned by
+        // `trait_namespace_target` — see #1141.
+        let target = ctx.namespace_target(ClassSystem::Env);
+
         // Build roxygen tags
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, r_name))
+            .name(target.clone())
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
@@ -222,12 +225,9 @@ fn generate_trait_env_r_wrapper(
         };
 
         // Generate method wrapper (R-facing name)
-        lines.push(format!(
-            "{}${}${} <- function({}) {{",
-            type_ident, trait_name, r_name, full_params
-        ));
+        lines.push(format!("{target} <- function({full_params}) {{"));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
-        lines.extend(trait_method_body_lines(&call, "  "));
+        lines.extend(ctx.method_body_lines(&call, ClassSystem::Env));
         if method.has_self && method.returns_unit() {
             lines.push("  invisible(x)".to_string());
         }
@@ -235,10 +235,7 @@ fn generate_trait_env_r_wrapper(
 
         // Stamp instance methods with attribute for $ dispatch detection
         if method.has_self {
-            lines.push(format!(
-                "attr({}${}${}, \".__mx_instance__\") <- TRUE",
-                type_ident, trait_name, r_name
-            ));
+            lines.push(format!("attr({target}, \".__mx_instance__\") <- TRUE"));
         }
 
         lines.push(String::new());
@@ -248,10 +245,11 @@ fn generate_trait_env_r_wrapper(
     for trait_const in consts {
         let const_name = &trait_const.ident;
         let const_str = const_name.to_string();
+        let target = trait_namespace_target(ClassSystem::Env, type_ident, trait_name, &const_str);
 
         // Build roxygen tags
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, const_str))
+            .name(target.clone())
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
@@ -261,10 +259,7 @@ fn generate_trait_env_r_wrapper(
         let call = DotCallBuilder::new(&c_ident).build();
 
         // Generate const wrapper
-        lines.push(format!(
-            "{}${}${} <- function() {{",
-            type_ident, trait_name, const_name
-        ));
+        lines.push(format!("{target} <- function() {{"));
         lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -294,7 +289,6 @@ fn generate_trait_s3_r_wrapper(
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
-    let trait_str = trait_name.to_string();
 
     // Header comment
     lines.push(format!(
@@ -364,7 +358,7 @@ fn generate_trait_s3_r_wrapper(
             s3_method_name, full_params
         ));
         ctx.emit_method_prelude(&mut lines, "  ", &generic_name);
-        lines.extend(trait_method_body_lines(&call, "  "));
+        lines.extend(ctx.method_body_lines(&call, ClassSystem::S3));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -396,6 +390,7 @@ fn generate_trait_s3_r_wrapper(
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
+        let target = ctx.namespace_target(ClassSystem::S3);
 
         // Static method roxygen
         lines.push(format!(
@@ -403,19 +398,16 @@ fn generate_trait_s3_r_wrapper(
             trait_name, r_name
         ));
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, r_name))
+            .name(target.clone())
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
 
         let call = ctx.static_call();
 
-        lines.push(format!(
-            "{}${}${} <- function({}) {{",
-            type_ident, trait_name, r_name, ctx.params
-        ));
+        lines.push(format!("{target} <- function({}) {{", ctx.params));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
-        lines.extend(trait_method_body_lines(&call, "  "));
+        lines.extend(ctx.method_body_lines(&call, ClassSystem::S3));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -424,9 +416,10 @@ fn generate_trait_s3_r_wrapper(
     for trait_const in consts {
         let const_name = &trait_const.ident;
         let const_str = const_name.to_string();
+        let target = trait_namespace_target(ClassSystem::S3, type_ident, trait_name, &const_str);
 
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, const_str))
+            .name(target.clone())
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
@@ -434,10 +427,7 @@ fn generate_trait_s3_r_wrapper(
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
-        lines.push(format!(
-            "{}${}${} <- function() {{",
-            type_ident, trait_name, const_name
-        ));
+        lines.push(format!("{target} <- function() {{"));
         lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -466,7 +456,6 @@ fn generate_trait_s4_r_wrapper(
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
-    let trait_str = trait_name.to_string();
 
     // Header comment
     lines.push(format!(
@@ -547,7 +536,7 @@ fn generate_trait_s4_r_wrapper(
         lines.push("  .ptr <- x@ptr".to_string());
         let s4_call = ctx.instance_call(".ptr");
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
-        lines.extend(trait_method_body_lines(&s4_call, "  "));
+        lines.extend(ctx.method_body_lines(&s4_call, ClassSystem::S4));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -556,11 +545,13 @@ fn generate_trait_s4_r_wrapper(
         lines.push(String::new());
     }
 
-    // Generate static methods as standalone functions
+    // Generate static methods as standalone functions. S4 objects intercept
+    // `$<-`, so these use the flat, class-qualified `Type_Trait_method` name
+    // (owned by `trait_namespace_target`) rather than `Type$Trait$method`.
     for method in &static_methods {
         let r_name = method.r_method_name();
-        let fn_name = format!("{}_{}_{}", type_str, trait_str, r_name);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
+        let fn_name = ctx.namespace_target(ClassSystem::S4);
 
         // Static method roxygen
         lines.push(format!(
@@ -578,15 +569,16 @@ fn generate_trait_s4_r_wrapper(
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
-        lines.extend(trait_method_body_lines(&call, "  "));
+        lines.extend(ctx.method_body_lines(&call, ClassSystem::S4));
         lines.push("}".to_string());
         lines.push(String::new());
     }
 
-    // Generate const wrappers as standalone functions
+    // Generate const wrappers as standalone functions (flat name, as above)
     for trait_const in consts {
         let const_name = &trait_const.ident;
-        let fn_name = format!("{}_{}_{}", type_str, trait_str, const_name);
+        let const_str = const_name.to_string();
+        let fn_name = trait_namespace_target(ClassSystem::S4, type_ident, trait_name, &const_str);
 
         let roxygen = RoxygenBuilder::new()
             .name(&fn_name)
@@ -703,7 +695,7 @@ fn generate_trait_s7_r_wrapper(
         lines.push("  .ptr <- x@.ptr".to_string());
         let s7_call = ctx.instance_call(".ptr");
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
-        lines.extend(trait_method_body_lines(&s7_call, "  "));
+        lines.extend(ctx.method_body_lines(&s7_call, ClassSystem::S7));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -779,7 +771,7 @@ fn generate_trait_s7_r_wrapper(
                 shortcut_name, shortcut_formals
             ));
             ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
-            lines.extend(trait_method_body_lines(&shortcut_call, "  "));
+            lines.extend(ctx.method_body_lines(&shortcut_call, ClassSystem::S7));
             // Void instance methods return invisible(self) for pipe-friendly chaining
             if method.returns_unit() {
                 lines.push("  invisible(self)".to_string());
@@ -791,13 +783,17 @@ fn generate_trait_s7_r_wrapper(
 
     // Create trait namespace for static methods and consts.
     // For S7 classes, use a local variable + attr() to avoid S7's $<- interception.
-    let trait_env_var = format!(".{}__{}", type_ident, trait_name);
+    let trait_env_var = trait_namespace_env_var(type_ident, trait_name);
     if !static_methods.is_empty() || !consts.is_empty() {
         lines.push(format!("{} <- new.env(parent = emptyenv())", trait_env_var));
         lines.push(String::new());
     }
 
-    // Generate static methods in trait namespace
+    // Generate static methods in trait namespace. The wrapper is *assigned*
+    // into the local env (`trait_namespace_target(S7, ..)` = `.Type__Trait$m`),
+    // but its documented `@name` is the call-site form `Type$Trait$m` — S7's
+    // `$` on the class object falls through to the attached attribute, so users
+    // still spell it `Type$Trait$m`.
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
@@ -815,16 +811,18 @@ fn generate_trait_s7_r_wrapper(
         let call = ctx.static_call();
 
         lines.push(format!(
-            "{}${} <- function({}) {{",
-            trait_env_var, r_name, ctx.params
+            "{} <- function({}) {{",
+            ctx.namespace_target(ClassSystem::S7),
+            ctx.params
         ));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
-        lines.extend(trait_method_body_lines(&call, "  "));
+        lines.extend(ctx.method_body_lines(&call, ClassSystem::S7));
         lines.push("}".to_string());
         lines.push(String::new());
     }
 
-    // Generate const wrappers in trait namespace
+    // Generate const wrappers in trait namespace (assigned into `.Type__Trait`,
+    // documented as `Type$Trait$const` — see the static-method note above).
     for trait_const in consts {
         let const_name = &trait_const.ident;
         let const_str = const_name.to_string();
@@ -838,7 +836,10 @@ fn generate_trait_s7_r_wrapper(
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
-        lines.push(format!("{}${} <- function() {{", trait_env_var, const_name));
+        lines.push(format!(
+            "{} <- function() {{",
+            trait_namespace_target(ClassSystem::S7, type_ident, trait_name, &const_str)
+        ));
         lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -860,15 +861,21 @@ fn generate_trait_s7_r_wrapper(
 /// Generate R6-style R wrapper code.
 ///
 /// R6 classes are defined monolithically (all methods in `R6Class()`), so trait
-/// methods cannot be injected into the class definition. Instead, they are
-/// generated as standalone exported functions that accept the R6 object.
+/// methods cannot be injected into the class definition. Instead, both instance
+/// and static trait methods live in the class-scoped `Type$Trait$name`
+/// namespace (env-style) — the R6 generator object is an environment, so
+/// `Type$Trait <- new.env()` attaches cleanly and `Type$Trait$method(x)`
+/// resolves at the call site.
 ///
 /// For `impl Counter for SimpleCounter`, generates:
-/// - `r6_trait_Counter_value(x)` -- exported standalone function
-/// - `r6_trait_Counter_increment(x)` -- exported standalone function
+/// - `SimpleCounter$Counter$value(x)`      -- instance method (takes the object)
+/// - `SimpleCounter$Counter$increment(x)`  -- instance method
 ///
-/// Instance method names are prefixed with `r6_trait_{Trait}_` to avoid collisions.
-/// Static methods and constants use `Type$Trait$name` namespace (env-style).
+/// This class-qualified shape is collision-free by construction: two R6 impls
+/// of one trait on different types no longer share an unqualified
+/// `r6_trait_<Trait>_<method>` name (#1115). It also unifies R6 with the Env/S3
+/// namespace shape (#1141) — R6 instance and static methods previously
+/// disagreed on shape for no functional reason.
 fn generate_trait_r6_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -879,7 +886,6 @@ fn generate_trait_r6_r_wrapper(
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
-    let trait_str = trait_name.to_string();
 
     // Header comment
     lines.push(format!(
@@ -890,18 +896,27 @@ fn generate_trait_r6_r_wrapper(
         "# Generated by #[miniextendr(r6)] impl {} for {}",
         trait_name, type_ident
     ));
-    lines.push("# Note: R6 trait methods are standalone functions".to_string());
+    lines.push("# Note: R6 trait methods live in the Type$Trait$method namespace".to_string());
     lines.push(String::new());
 
     // Separate instance methods from static methods
     let instance_methods: Vec<_> = methods.iter().filter(|m| m.has_self).collect();
     let static_methods: Vec<_> = methods.iter().filter(|m| !m.has_self).collect();
 
-    // Generate standalone functions for instance methods
+    // Create the trait namespace env up front — instance methods now live in it
+    // too (not just static methods / consts).
+    if !methods.is_empty() || !consts.is_empty() {
+        lines.push(format!(
+            "{}${} <- new.env(parent = emptyenv())",
+            type_ident, trait_name
+        ));
+        lines.push(String::new());
+    }
+
+    // Generate instance methods in the Type$Trait$ namespace
     for method in &instance_methods {
-        let method_name = &method.ident;
-        let fn_name = format!("r6_trait_{}_{}", trait_name, method.r_method_name());
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
+        let target = ctx.namespace_target(ClassSystem::R6);
 
         // Build parameter list (x first, then others)
         let full_params = if ctx.params.is_empty() {
@@ -910,54 +925,21 @@ fn generate_trait_r6_r_wrapper(
             format!("x, {}", ctx.params)
         };
 
-        // R6 trait method roxygen (include @param tags from method doc comments)
-        let mut roxygen = RoxygenBuilder::new()
-            .custom(format!(
-                "R6 trait method `{}::{}` for {}",
-                trait_name, method_name, type_str
-            ))
-            .name(&fn_name)
+        // Namespace-member roxygen — a `$<-` assignment target, so roxygen emits
+        // no `\usage` and needs no per-formal `@param` docs (matches Env; #1141).
+        let roxygen = RoxygenBuilder::new()
+            .name(target.clone())
             .rdname(&type_str)
-            .source(format!(
-                "Generated by miniextendr from `impl {} for {}`",
-                trait_name, type_ident
-            ))
-            .custom(format!("@param x A `{}` object", type_str));
-        for tag in &method.param_tags {
-            roxygen = roxygen.custom(tag.clone());
-        }
-        // Auto-document any method formal lacking an explicit @param tag —
-        // `x` is covered above; the rest are in `\usage` and would otherwise
-        // trip R CMD check's "Undocumented arguments" warning. Split on
-        // top-level commas only so a `mode = c("fast", "slow")` default isn't
-        // shredded into a bogus `"slow")` formal.
-        for formal in crate::roxygen::split_r_formals(&full_params) {
-            let pname = crate::roxygen::formal_name(formal);
-            if pname == "x" {
-                continue;
-            }
-            let documented = method
-                .param_tags
-                .iter()
-                .any(|t| t.trim_start().starts_with(&format!("@param {pname} ")));
-            if documented {
-                continue;
-            }
-            roxygen = if pname == "..." {
-                roxygen.custom("@param ... Additional arguments passed to the method.")
-            } else {
-                roxygen.custom(format!("@param {pname} (undocumented)"))
-            };
-        }
-        lines.extend(roxygen.export().build());
+            .build();
+        lines.extend(roxygen);
 
         let call = ctx.instance_call(".ptr");
 
-        lines.push(format!("{} <- function({}) {{", fn_name, full_params));
+        lines.push(format!("{target} <- function({full_params}) {{"));
         // R6 objects store the ExternalPtr in private$.ptr — extract it for .Call()
         lines.push("  .ptr <- x$.__enclos_env__$private$.ptr".to_string());
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
-        lines.extend(trait_method_body_lines(&call, "  "));
+        lines.extend(ctx.method_body_lines(&call, ClassSystem::R6));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -966,38 +948,27 @@ fn generate_trait_r6_r_wrapper(
         lines.push(String::new());
     }
 
-    // Create trait namespace for static methods and consts
-    if !static_methods.is_empty() || !consts.is_empty() {
-        lines.push(format!(
-            "{}${} <- new.env(parent = emptyenv())",
-            type_ident, trait_name
-        ));
-        lines.push(String::new());
-    }
-
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
+        let target = ctx.namespace_target(ClassSystem::R6);
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
             trait_name, r_name
         ));
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, r_name))
+            .name(target.clone())
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
 
         let call = ctx.static_call();
 
-        lines.push(format!(
-            "{}${}${} <- function({}) {{",
-            type_ident, trait_name, r_name, ctx.params
-        ));
+        lines.push(format!("{target} <- function({}) {{", ctx.params));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
-        lines.extend(trait_method_body_lines(&call, "  "));
+        lines.extend(ctx.method_body_lines(&call, ClassSystem::R6));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1006,9 +977,10 @@ fn generate_trait_r6_r_wrapper(
     for trait_const in consts {
         let const_name = &trait_const.ident;
         let const_str = const_name.to_string();
+        let target = trait_namespace_target(ClassSystem::R6, type_ident, trait_name, &const_str);
 
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, const_str))
+            .name(target.clone())
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
@@ -1016,10 +988,7 @@ fn generate_trait_r6_r_wrapper(
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
-        lines.push(format!(
-            "{}${}${} <- function() {{",
-            type_ident, trait_name, const_name
-        ));
+        lines.push(format!("{target} <- function() {{"));
         lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());

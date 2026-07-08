@@ -209,6 +209,57 @@ impl TraitMethod {
         }
     }
 
+    /// Returns true if this method returns `Self` (a factory/clone method).
+    ///
+    /// Mirrors [`crate::miniextendr_impl::ParsedMethod::returns_self`] on the
+    /// inherent-impl path. The C wrapper hands back a bare `ExternalPtr`
+    /// (`ReturnHandling::ExternalPtr`); the R wrapper must re-wrap it into a
+    /// classed object — see `TraitMethodContext::returns_self`.
+    fn returns_self(&self) -> bool {
+        matches!(&self.sig.output, syn::ReturnType::Type(_, ty)
+            if matches!(ty.as_ref(), syn::Type::Path(p)
+                if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)))
+    }
+
+    /// Returns true if this method returns `Result<Self, E>`. Treated exactly
+    /// like a bare `Self` return on the R side (the C wrapper already raised on
+    /// `Err`, so `.val` is a bare `ExternalPtr`). Mirrors
+    /// [`crate::miniextendr_impl::ParsedMethod::returns_result_self`].
+    fn returns_result_self(&self) -> bool {
+        self.first_generic_arg_is_self("Result")
+    }
+
+    /// Returns true if this method returns `Option<Self>`. Treated exactly like
+    /// a bare `Self` return on the R side (the C wrapper already raised on
+    /// `None`). Mirrors
+    /// [`crate::miniextendr_impl::ParsedMethod::returns_option_self`].
+    fn returns_option_self(&self) -> bool {
+        self.first_generic_arg_is_self("Option")
+    }
+
+    /// Shared helper for [`Self::returns_result_self`] /
+    /// [`Self::returns_option_self`]: true when the return type is
+    /// `wrapper<Self, ..>` (e.g. `Result<Self, E>` / `Option<Self>`).
+    fn first_generic_arg_is_self(&self, wrapper: &str) -> bool {
+        let syn::ReturnType::Type(_, ty) = &self.sig.output else {
+            return false;
+        };
+        let syn::Type::Path(p) = ty.as_ref() else {
+            return false;
+        };
+        let Some(seg) = p.path.segments.last() else {
+            return false;
+        };
+        if seg.ident != wrapper {
+            return false;
+        }
+        let syn::PathArguments::AngleBracketed(ab) = &seg.arguments else {
+            return false;
+        };
+        matches!(ab.args.first(), Some(syn::GenericArgument::Type(syn::Type::Path(ip)))
+            if ip.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))
+    }
+
     /// Generates the `R_CallMethodDef` static identifier: `call_method_def_{Type}__{Trait}_{method}`.
     ///
     /// This constant holds the C function pointer and arity used by R's `.Call()` registration.

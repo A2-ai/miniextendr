@@ -787,3 +787,152 @@ fn test_internal_adds_keywords_internal_env() {
         result
     );
 }
+
+// region: #1141 / #1115 — namespace-shape unification + Self-return re-wrapping
+
+/// #1141 / #1115: R6 instance trait methods now live in the class-scoped
+/// `Type$Trait$method` namespace (env-style) instead of a standalone,
+/// unqualified `r6_trait_<Trait>_<method>(x)` function.
+#[test]
+fn test_r6_instance_method_uses_class_qualified_namespace() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let method = make_test_method("value", true);
+
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::R6, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        result.contains("Foo$Bar$value <- function(x)"),
+        "R6 instance method should use the class-scoped Foo$Bar$value shape, got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("  .ptr <- x$.__enclos_env__$private$.ptr"),
+        "R6 instance method should still extract the receiver ptr from the R6 object, got:\n{}",
+        result
+    );
+    assert!(
+        !result.contains("r6_trait_"),
+        "the unqualified r6_trait_* standalone name must be gone (#1115), got:\n{}",
+        result
+    );
+}
+
+/// #1115 regression at the codegen level: two R6 impls of one trait on
+/// different types produce distinct, class-qualified wrapper targets rather
+/// than a shared `r6_trait_<Trait>_<method>` name that aborted wrapper-gen via
+/// the duplicate-definition guard. (The end-to-end install-cleanly regression
+/// is `rpkg/tests/testthat/test-trait-r6-collision.R`.)
+#[test]
+fn test_two_r6_impls_of_one_trait_are_distinct() {
+    let trait_name = format_ident!("Bar");
+    let a = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &trait_name,
+        &[make_test_method("value", true)],
+        &[],
+        opts(ClassSystem::R6, false, false, false),
+    )
+    .unwrap();
+    let b = generate_trait_r_wrapper(
+        &format_ident!("Baz"),
+        &trait_name,
+        &[make_test_method("value", true)],
+        &[],
+        opts(ClassSystem::R6, false, false, false),
+    )
+    .unwrap();
+
+    assert!(a.contains("Foo$Bar$value <- function"), "got:\n{}", a);
+    assert!(b.contains("Baz$Bar$value <- function"), "got:\n{}", b);
+    assert!(
+        !a.contains("r6_trait_") && !b.contains("r6_trait_"),
+        "pre-fix both emitted the colliding r6_trait_Bar_value; must be class-qualified now"
+    );
+}
+
+/// #1141 resp-4: a `-> Self` instance trait method re-wraps the bare
+/// `ExternalPtr` `.val` into a classed object, using each class system's
+/// constructor idiom — the same shared `MethodReturnBuilder` the inherent-impl
+/// generators use. Before this, trait Self-returns leaked a bare, unclassed
+/// pointer to the caller.
+#[test]
+fn test_self_return_rewrapped_per_class_system() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("dup", true);
+    method.sig = syn::parse_quote!(fn dup(&self) -> Self);
+
+    let emit = |cs| {
+        generate_trait_r_wrapper(
+            &type_ident,
+            &trait_name,
+            &[method.clone()],
+            &[],
+            opts(cs, false, false, false),
+        )
+        .unwrap()
+    };
+
+    let env = emit(ClassSystem::Env);
+    assert!(
+        env.contains("class(.val) <- \"Foo\""),
+        "env -> Self should stamp the class attribute, got:\n{env}"
+    );
+
+    let s3 = emit(ClassSystem::S3);
+    assert!(
+        s3.contains("structure(.val, class = \"Foo\")"),
+        "s3 -> Self should wrap via structure(), got:\n{s3}"
+    );
+
+    let s4 = emit(ClassSystem::S4);
+    assert!(
+        s4.contains("methods::new(\"Foo\", ptr = .val)"),
+        "s4 -> Self should wrap via methods::new(), got:\n{s4}"
+    );
+
+    let s7 = emit(ClassSystem::S7);
+    assert!(
+        s7.contains("Foo(.ptr = .val)"),
+        "s7 -> Self should wrap via the S7 constructor, got:\n{s7}"
+    );
+
+    let r6 = emit(ClassSystem::R6);
+    assert!(
+        r6.contains("Foo$new(.ptr = .val)"),
+        "r6 -> Self should wrap via ClassName$new(.ptr = ), got:\n{r6}"
+    );
+}
+
+/// A `-> Self` *static* trait factory method (e.g. `default()`) re-wraps too,
+/// not just instance methods.
+#[test]
+fn test_static_self_return_rewrapped() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("make", false);
+    method.sig = syn::parse_quote!(fn make() -> Self);
+
+    let s4 = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[method],
+        &[],
+        opts(ClassSystem::S4, false, false, false),
+    )
+    .unwrap();
+
+    assert!(
+        s4.contains("methods::new(\"Foo\", ptr = .val)"),
+        "static -> Self should re-wrap via methods::new(), got:\n{s4}"
+    );
+}
+// endregion

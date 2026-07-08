@@ -10,7 +10,56 @@
 //! silent 3-of-6-step prelude omission (missing `precondition_checks` /
 //! `match_arg_prelude`) relative to inherent methods.
 
-use super::TraitMethod;
+use super::{TraitMethod, trait_method_body_lines};
+use crate::miniextendr_impl::ClassSystem;
+
+/// R-visible assignment target for a trait member (method or const) placed in
+/// the per-class trait namespace — the single owner of the namespace-shape
+/// policy the 5 generators previously hand-rolled independently (audit
+/// `2026-07-03-dogfooding-macros-codegen.md` finding #1; #1141). `member` is
+/// the R-facing method/const name.
+///
+/// Policy:
+/// - **Env / S3 / R6 / Vctrs**: `Type$Trait$member` — class-scoped, so it is
+///   collision-free by construction. This is what fixes #1115: two R6 impls of
+///   one trait on *different* types now emit `TypeA$Trait$m` / `TypeB$Trait$m`
+///   rather than a shared, unqualified `r6_trait_Trait_m` that aborted
+///   wrapper-gen via the duplicate-definition guard.
+/// - **S4**: flat `Type_Trait_member` standalone name. S4 objects intercept
+///   `$<-`, so `Type$Trait$member` cannot be assigned onto them; the class
+///   component in the flat name keeps it collision-free.
+/// - **S7**: `env_var$member`, where `env_var` = [`trait_namespace_env_var`]
+///   (`.Type__Trait`) is a local env attached to `Type` via `attr()` at the end
+///   of the generator. S7 objects also intercept `$<-`; routing through an
+///   attribute-attached env lets `Type$Trait$member` still resolve at the call
+///   site (R's `$` on an S7 object falls through to attributes).
+pub(super) fn trait_namespace_target(
+    class_system: ClassSystem,
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    member: &str,
+) -> String {
+    match class_system {
+        ClassSystem::Env | ClassSystem::S3 | ClassSystem::R6 | ClassSystem::Vctrs => {
+            format!("{type_ident}${trait_name}${member}")
+        }
+        ClassSystem::S4 => format!("{type_ident}_{trait_name}_{member}"),
+        ClassSystem::S7 => {
+            format!(
+                "{}${member}",
+                trait_namespace_env_var(type_ident, trait_name)
+            )
+        }
+    }
+}
+
+/// The local environment variable S7 trait wrappers assign members into before
+/// attaching it to the class object via `attr()`. One owner so
+/// [`trait_namespace_target`]'s S7 arm and the generator's `new.env` / `attr()`
+/// lines can't drift apart.
+pub(super) fn trait_namespace_env_var(type_ident: &syn::Ident, trait_name: &syn::Ident) -> String {
+    format!(".{type_ident}__{trait_name}")
+}
 
 /// Pre-computed context for a trait method, mirroring `MethodContext`
 /// (`r_class_formatter.rs`) for inherent-impl methods. Holds the C wrapper
@@ -19,6 +68,12 @@ use super::TraitMethod;
 pub(super) struct TraitMethodContext<'a> {
     /// Reference to the parsed trait method metadata.
     pub(super) method: &'a TraitMethod,
+    /// The implementing type ident (e.g. `Foo`) — used to build the per-class
+    /// trait-namespace assignment target and the Self-return wrapper class.
+    pub(super) type_ident: &'a syn::Ident,
+    /// The trait ident (e.g. `Bar`) — used to build the per-class trait
+    /// namespace assignment target.
+    pub(super) trait_name: &'a syn::Ident,
     /// The C wrapper identifier string (e.g., `"C_Foo__Bar__value"`), used in `.Call()`.
     pub(super) c_ident: String,
     /// R formals string with defaults, used in `function(...)` signatures.
@@ -36,8 +91,8 @@ impl<'a> TraitMethodContext<'a> {
     /// Build a context for `method`, which implements `trait_name` for `type_ident`.
     pub(super) fn new(
         method: &'a TraitMethod,
-        type_ident: &syn::Ident,
-        trait_name: &syn::Ident,
+        type_ident: &'a syn::Ident,
+        trait_name: &'a syn::Ident,
     ) -> Self {
         let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
         // match_arg/choices formal defaults are load-bearing for match.arg()
@@ -52,9 +107,58 @@ impl<'a> TraitMethodContext<'a> {
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         Self {
             method,
+            type_ident,
+            trait_name,
             c_ident,
             params,
             args,
+        }
+    }
+
+    /// The R-visible assignment target for this method within `class_system`'s
+    /// per-class trait namespace — a thin wrapper over [`trait_namespace_target`]
+    /// using this method's R-facing name. See that function for the policy.
+    pub(super) fn namespace_target(&self, class_system: ClassSystem) -> String {
+        trait_namespace_target(
+            class_system,
+            self.type_ident,
+            self.trait_name,
+            &self.method.r_method_name(),
+        )
+    }
+
+    /// Whether this method re-wraps its return into a classed object — i.e. it
+    /// returns `Self` / `Result<Self, E>` / `Option<Self>`. Mirrors the
+    /// `ReturnStrategy::ReturnSelf` arm of `ReturnStrategy::for_method` on the
+    /// inherent-impl path.
+    pub(super) fn returns_self(&self) -> bool {
+        self.method.returns_self()
+            || self.method.returns_result_self()
+            || self.method.returns_option_self()
+    }
+
+    /// Emit the R body lines for a trait method (2-space indent): capture
+    /// `.Call()` into `.val`, run the tagged-condition guard, then return
+    /// `.val` — or, for `-> Self` factory methods, re-wrap `.val` into a
+    /// classed object via the shared [`crate::MethodReturnBuilder`], exactly
+    /// as the inherent-impl generators do (audit finding #4 / #1141). The
+    /// wrapper class is the implementing type; the wrapping idiom is selected
+    /// per class system (`class(.val) <-` / `structure()` / `methods::new()` /
+    /// `Class(.ptr=)` / `Class$new(.ptr=)`).
+    pub(super) fn method_body_lines(&self, call: &str, class_system: ClassSystem) -> Vec<String> {
+        if !self.returns_self() {
+            return trait_method_body_lines(call, "  ");
+        }
+        let builder = crate::MethodReturnBuilder::new(call.to_string())
+            .with_strategy(crate::ReturnStrategy::ReturnSelf)
+            .with_class_name(self.type_ident.to_string())
+            .with_indent(2);
+        match class_system {
+            ClassSystem::Env => builder.build(),
+            ClassSystem::S3 | ClassSystem::Vctrs => builder.build_s3_body(),
+            ClassSystem::S4 => builder.build_s4_body(),
+            ClassSystem::S7 => builder.build_s7_body(),
+            ClassSystem::R6 => builder.build_r6_body(),
         }
     }
 

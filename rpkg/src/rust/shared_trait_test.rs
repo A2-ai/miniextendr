@@ -64,9 +64,9 @@ pub struct SharedSimpleCounter {
     value: i32,
 }
 
-// env pinned: the env-style trait impl below attaches via `Type$Trait <- ...`,
-// which needs an environment-creating inherent impl (breaks under s7-default).
-#[miniextendr(env)]
+// Bare (default class system): the inherent + trait impls flip together, so a
+// feature-default leg gets a consistent class system for both.
+#[miniextendr]
 impl SharedSimpleCounter {
     fn new(initial: i32) -> Self {
         Self { value: initial }
@@ -77,9 +77,12 @@ impl SharedSimpleCounter {
     }
 }
 
-// env pinned: two env trait impls of one trait collide on the unqualified
-// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
-#[miniextendr(env)]
+// Bare: #1115 is fixed — two impls of one trait on different types now emit
+// class-scoped wrappers, so this + AtomicCounter no longer collide when both
+// flip to r6 under r6-default. (The `Type$Trait$method(x)` call form these
+// tests use works under env and r6; test-shared-trait.R runs in the default
+// env build only.)
+#[miniextendr]
 impl SharedCounter for SharedSimpleCounter {
     fn value(&self) -> i32 {
         self.value
@@ -106,9 +109,8 @@ pub struct AtomicCounter {
     value: AtomicI32,
 }
 
-// env pinned: the env-style trait impl below attaches via `Type$Trait <- ...`,
-// which needs an environment-creating inherent impl (breaks under s7-default).
-#[miniextendr(env)]
+// Bare (default class system): flips together with its trait impl below.
+#[miniextendr]
 impl AtomicCounter {
     fn new_atomic(initial: i32) -> Self {
         Self {
@@ -117,9 +119,9 @@ impl AtomicCounter {
     }
 }
 
-// env pinned: two env trait impls of one trait collide on the unqualified
-// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
-#[miniextendr(env)]
+// Bare: see SharedSimpleCounter above — class-scoped r6 wrappers (#1115 fix)
+// mean this and SharedSimpleCounter no longer collide under r6-default.
+#[miniextendr]
 impl SharedCounter for AtomicCounter {
     fn value(&self) -> i32 {
         self.value.load(Ordering::SeqCst)

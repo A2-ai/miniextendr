@@ -255,24 +255,24 @@ test_that("S7 trait static methods and associated constants work", {
 # R6 trait impl tests
 # =============================================================================
 
-test_that("R6TraitCounter trait methods work via standalone functions", {
+test_that("R6TraitCounter trait methods work via Type$Trait$method namespace", {
   # Create an R6TraitCounter using inherent method (Env style)
   counter <- R6TraitCounter$new_r6trait(10L)
   expect_true(inherits(counter, "R6TraitCounter"))
 
-  # Test R6 trait method: r6_trait_Counter_value
-  expect_equal(r6_trait_Counter_value(counter), 10L)
+  # Test R6 trait method: R6TraitCounter$Counter$value
+  expect_equal(R6TraitCounter$Counter$value(counter), 10L)
 
-  # Test R6 trait method: r6_trait_Counter_increment
-  r6_trait_Counter_increment(counter)
-  expect_equal(r6_trait_Counter_value(counter), 11L)
+  # Test R6 trait method: R6TraitCounter$Counter$increment
+  R6TraitCounter$Counter$increment(counter)
+  expect_equal(R6TraitCounter$Counter$value(counter), 11L)
 
-  # Test R6 trait method: r6_trait_Counter_checked_add
-  r6_trait_Counter_checked_add(counter, 5L)
-  expect_equal(r6_trait_Counter_value(counter), 16L)
+  # Test R6 trait method: R6TraitCounter$Counter$checked_add
+  R6TraitCounter$Counter$checked_add(counter, 5L)
+  expect_equal(R6TraitCounter$Counter$value(counter), 16L)
 
   # Verify inherent method and R6 trait method return same value
-  expect_equal(counter$get_value(), r6_trait_Counter_value(counter))
+  expect_equal(counter$get_value(), R6TraitCounter$Counter$value(counter))
 })
 
 test_that("R6 trait static methods and associated constants work", {
