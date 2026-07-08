@@ -461,6 +461,12 @@ impl AltRealData for ArithSeqData {
     }
 }
 
+/// Create a real-valued arithmetic sequence ALTREP (like R's `seq()`).
+/// @param from Starting value. Matches base R's `seq(from, by, length.out=)`.
+/// @param step Step between elements (`by` in base R's `seq()`).
+/// @param length_out Number of elements (`length.out` in base R's `seq()`).
+/// @return An ALTREP real vector.
+/// @export
 #[miniextendr]
 pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
     let len = length_out as usize;
@@ -730,19 +736,23 @@ pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
 
 /// Create a compact integer ALTREP from a lazy arithmetic sequence with printing on materialization.
 /// @rdname altrep_constructors
-/// @param n Number of elements.
-/// @param start Starting value.
-/// @param step Step between elements.
+/// @param from Starting value. Matches base R's `seq(from, by, length.out=)`.
+/// @param step Step between elements (`by` in base R's `seq()`).
+/// @param length_out Number of elements (`length.out` in base R's `seq()`).
 /// @return An ALTREP integer vector.
 /// @export
 #[miniextendr]
-pub fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqData {
-    if n < 0 {
-        panic!("altrep_compact_int: n must be >= 0");
+pub fn altrep_compact_int(from: i32, step: i32, length_out: i32) -> LazyIntSeqData {
+    if length_out < 0 {
+        panic!("altrep_compact_int: length_out must be >= 0");
     }
-    let len = if n == 0 { 0 } else { n as usize };
+    let len = if length_out == 0 {
+        0
+    } else {
+        length_out as usize
+    };
     LazyIntSeqData {
-        start,
+        start: from,
         step,
         len,
         materialized: None,
@@ -1944,14 +1954,14 @@ impl miniextendr_api::altrep_data::AltRealData for SparseRealIterData {
 
 /// Create a sparse real iterator ALTREP with arithmetic progression.
 /// @rdname sparse_altrep
-/// @param from Start value.
-/// @param step Step between consecutive elements.
-/// @param n Number of elements.
+/// @param from Start value. Matches base R's `seq(from, by, length.out=)`.
+/// @param step Step between consecutive elements (`by` in base R's `seq()`).
+/// @param length_out Number of elements (`length.out` in base R's `seq()`).
 /// @return An ALTREP real vector.
 /// @export
 #[miniextendr]
-pub fn sparse_iter_real(from: f64, step: f64, n: i32) -> SEXP {
-    let len = n.max(0) as usize;
+pub fn sparse_iter_real(from: f64, step: f64, length_out: i32) -> SEXP {
+    let len = length_out.max(0) as usize;
     let iter: BoxedRealIter = Box::new((0..len).map(move |i| from + (i as f64) * step));
     let data = SparseRealIterData {
         inner: SparseIterRealData::from_iter(iter, len),

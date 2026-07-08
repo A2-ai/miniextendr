@@ -20,7 +20,7 @@ test_altrep <- function() {
   # ============================================
 
   cat("--- 1. INTEGER: compact sequence ---\n")
-  x <- altrep_compact_int(5L, 10L, 2L)  # 10, 12, 14, 16, 18
+  x <- altrep_compact_int(10L, 2L, 5L)  # 10, 12, 14, 16, 18
   stopifnot(length(x) == 5L)
   stopifnot(x[1] == 10L)
   stopifnot(x[5] == 18L)
@@ -29,7 +29,7 @@ test_altrep <- function() {
   cat("  length:", length(x), "elements:", paste(x, collapse=","), "sum:", sum(x), "\n")
 
   cat("--- 2. INTEGER: descending sequence ---\n")
-  x2 <- altrep_compact_int(4L, 100L, -10L)  # 100, 90, 80, 70
+  x2 <- altrep_compact_int(100L, -10L, 4L)  # 100, 90, 80, 70
   stopifnot(length(x2) == 4L)
   stopifnot(x2[1] == 100L)
   stopifnot(x2[4] == 70L)
@@ -88,7 +88,7 @@ test_altrep <- function() {
   # ============================================
 
   cat("\n--- 8. EDGE: empty vectors ---\n")
-  empty_int <- altrep_compact_int(0L, 0L, 1L)
+  empty_int <- altrep_compact_int(0L, 1L, 0L)
   stopifnot(length(empty_int) == 0L)
   stopifnot(sum(empty_int) == 0L)
 
@@ -100,13 +100,13 @@ test_altrep <- function() {
   cat("  empty vectors work correctly\n")
 
   cat("--- 9. EDGE: single element ---\n")
-  single <- altrep_compact_int(1L, 42L, 1L)
+  single <- altrep_compact_int(42L, 1L, 1L)
   stopifnot(length(single) == 1L)
   stopifnot(single[1] == 42L)
   cat("  single element:", single[1], "\n")
 
   cat("--- 10. EDGE: subsetting ---\n")
-  seq5 <- altrep_compact_int(5L, 1L, 1L)  # 1,2,3,4,5
+  seq5 <- altrep_compact_int(1L, 1L, 5L)  # 1,2,3,4,5
   sub <- seq5[c(1, 3, 5)]
   stopifnot(length(sub) == 3L)
   stopifnot(all(sub == c(1L, 3L, 5L)))
@@ -146,7 +146,7 @@ test_altrep <- function() {
   # ============================================
 
   cat("\n--- 14. OPERATIONS: arithmetic ---\n")
-  seq_a <- altrep_compact_int(3L, 1L, 1L)  # 1,2,3
+  seq_a <- altrep_compact_int(1L, 1L, 3L)  # 1,2,3
   result <- seq_a + 10L
   stopifnot(all(result == c(11L, 12L, 13L)))
   cat("  1:3 + 10 =", paste(result, collapse=","), "\n")
@@ -163,7 +163,7 @@ test_altrep <- function() {
   # ============================================
 
   cat("\n--- 16. O(1) SUM: arithmetic series formula ---\n")
-  big_seq <- altrep_compact_int(1000000L, 1L, 1L)  # 1:1000000
+  big_seq <- altrep_compact_int(1L, 1L, 1000000L)  # 1:1000000
   # Sum should be n*(n+1)/2 = 500000500000
   expected_sum <- 1000000 * 1000001 / 2
   actual_sum <- sum(big_seq)
@@ -174,7 +174,7 @@ test_altrep <- function() {
   stopifnot(min(big_seq) == 1L)
   stopifnot(max(big_seq) == 1000000L)
   # Descending sequence
-  desc_seq <- altrep_compact_int(100L, 100L, -1L)  # 100, 99, ..., 1
+  desc_seq <- altrep_compact_int(100L, -1L, 100L)  # 100, 99, ..., 1
   stopifnot(min(desc_seq) == 1L)
   stopifnot(max(desc_seq) == 100L)
   cat("  min/max work for ascending and descending sequences\n")
@@ -194,7 +194,7 @@ test_altrep <- function() {
 
   cat("\n--- 19. SERIALIZATION: saveRDS/readRDS ---\n")
   # Create a compact sequence
-  compact_ser <- altrep_compact_int(100L, 1L, 1L)  # 1:100
+  compact_ser <- altrep_compact_int(1L, 1L, 100L)  # 1:100
   stopifnot(all(compact_ser == 1:100))
 
   # Save and reload
@@ -210,7 +210,7 @@ test_altrep <- function() {
   cat("  serialization: round-trip successful, length =", length(reloaded), "sum =", sum(reloaded), "\n")
 
   cat("--- 20. SERIALIZATION: large sequence ---\n")
-  big_compact <- altrep_compact_int(1000000L, 1L, 1L)  # 1:1000000
+  big_compact <- altrep_compact_int(1L, 1L, 1000000L)  # 1:1000000
   tmp2 <- tempfile(fileext = ".rds")
   saveRDS(big_compact, tmp2)
   big_reloaded <- readRDS(tmp2)
@@ -224,7 +224,7 @@ test_altrep <- function() {
   # ============================================
 
   cat("\n--- 21. EXTRACT_SUBSET: contiguous range ---\n")
-  big_seq2 <- altrep_compact_int(100L, 1L, 1L)  # 1:100
+  big_seq2 <- altrep_compact_int(1L, 1L, 100L)  # 1:100
   # Extract contiguous subset using integer indices
   subset_range <- big_seq2[10:20]  # Elements 10 to 20
   stopifnot(length(subset_range) == 11L)
@@ -234,7 +234,7 @@ test_altrep <- function() {
   cat("  contiguous subset [10:20]: length =", length(subset_range), "sum =", sum(subset_range), "\n")
 
   cat("--- 22. EXTRACT_SUBSET: large contiguous range ---\n")
-  huge_seq <- altrep_compact_int(10000000L, 1L, 1L)  # 1:10000000
+  huge_seq <- altrep_compact_int(1L, 1L, 10000000L)  # 1:10000000
   # Extract large contiguous subset - should remain compact and have O(1) sum
   huge_subset <- huge_seq[1000000:2000000]  # 1M elements
   stopifnot(length(huge_subset) == 1000001L)
@@ -245,7 +245,7 @@ test_altrep <- function() {
   cat("  large subset [1M:2M]: length =", length(huge_subset), "sum =", actual_sum, "\n")
 
   cat("--- 23. EXTRACT_SUBSET: descending source ---\n")
-  desc_seq <- altrep_compact_int(50L, 100L, -2L)  # 100, 98, 96, ..., 2
+  desc_seq <- altrep_compact_int(100L, -2L, 50L)  # 100, 98, 96, ..., 2
   desc_subset <- desc_seq[10:20]  # Elements at positions 10-20
   stopifnot(length(desc_subset) == 11L)
   stopifnot(desc_subset[1] == 100L - 2L * 9L)  # 82
