@@ -41,7 +41,7 @@ creation_bench <- bench::press(
 print(creation_bench[, c("size", "expression", "median", "mem_alloc", "n_gc")])
 
 # Plot creation performance
-p1 <- ggplot2::autoplot(creation_bench) +
+p1 <- ggplot2::autoplot(creation_bench, type = "jitter") +
   labs(
     title = "ALTREP vs Copy: Creation Performance",
     subtitle = "ALTREP shows dramatic speedup for large vectors (10M: 2000x faster)",
@@ -82,7 +82,7 @@ partial_bench <- bench::press(
 
 print(partial_bench[, c("size", "n_access", "expression", "median", "mem_alloc")])
 
-p2 <- ggplot2::autoplot(partial_bench) +
+p2 <- ggplot2::autoplot(partial_bench, type = "jitter") +
   labs(
     title = "ALTREP vs Copy: Partial Access Pattern",
     subtitle = "Zero-copy advantage when accessing only part of the data",
@@ -122,7 +122,7 @@ iteration_bench <- bench::press(
 
 print(iteration_bench[, c("size", "expression", "median", "mem_alloc")])
 
-p3 <- ggplot2::autoplot(iteration_bench) +
+p3 <- ggplot2::autoplot(iteration_bench, type = "jitter") +
   labs(
     title = "ALTREP vs Copy: Full Iteration",
     subtitle = "sum() faster with ALTREP, mean() faster with copy (multi-pass overhead)",

@@ -12,8 +12,13 @@ cat("\n=== Dots Collection and Validation Benchmark ===\n\n")
 ITERS <- 5000L
 
 bench_one <- function(label, expr, iters = ITERS) {
-  for (i in 1:10) expr
-  elapsed <- system.time(for (i in seq_len(iters)) expr)[["elapsed"]]
+  # `expr` is a promise: referencing it directly evaluates it ONCE and caches
+  # the value, so a naive loop just re-reads the cached result instead of
+  # re-invoking the call. substitute()+eval() forces fresh evaluation each time.
+  call <- substitute(expr)
+  env <- parent.frame()
+  for (i in 1:10) eval(call, env)
+  elapsed <- system.time(for (i in seq_len(iters)) eval(call, env))[["elapsed"]]
   us_per_call <- (elapsed / iters) * 1e6
   cat(sprintf("  %-55s %8.2f us/call\n", label, us_per_call))
   invisible(us_per_call)
