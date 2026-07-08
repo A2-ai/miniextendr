@@ -272,10 +272,13 @@ unit": `fn mutate(&mut self) -> Invisible<Self>` opts into
 then safely mean "return `invisible(NULL)`, not chainable" without a
 behavior change surprising anyone relying on void-as-void. `Invisible<()>`
 would cover the "invisible NULL, not self" case some non-chainable void
-methods might actually want. Worth a `gh issue create` proposing this as a
-future enhancement, not an immediate fix — needs design discussion on
-whether it's additive (new opt-in, old default unchanged) or a breaking
-change to the existing void-method default.
+methods might actually want. **Filed as
+[#1213](https://github.com/A2-ai/miniextendr/issues/1213)**, broadened into a
+brainstorm of the whole "marker newtype controls R wrapper generation" design
+space (`Invisible<T>`, `WrapAs<T>` as an alternative to hiccup #9's
+heuristic, `Raw<T>`, a shared dispatch-table mechanism) — not an immediate
+fix, needs design discussion on scope and whether it's additive or a
+breaking change to the existing void-method default.
 
 Investigated why this is unconditional (agent, `method_return_builder.rs`):
 the check (`ReturnStrategy::for_method`) is purely syntactic — `&mut self`
