@@ -6,6 +6,7 @@ r_version = "4.6"
 # The alias is only used in this file if you want to specifically require a dependency to come from a certain repository.
 # Example: { alias = "PPM", url = "https://packagemanager.posit.co/cran/latest" },
 repositories = [
+    {alias = "stratus", url = "https://prism.dev.a2-ai.cloud/rpkgs/stratus/2026-06-18/"},
     {alias = "CRAN", url = "https://cloud.r-project.org/"},
 ]
 
@@ -37,7 +38,7 @@ dependencies = [
     "knitr",
     "rcmdcheck",
     "rmarkdown",
-    {name = "roxygen2", url = "https://cran.r-project.org/src/contrib/roxygen2_8.0.0.tar.gz"},
+    "roxygen2",
     "withr",
     "yaml",
     "jsonlite",
