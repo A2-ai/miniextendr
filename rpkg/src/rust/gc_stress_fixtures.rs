@@ -2332,7 +2332,7 @@ pub fn gc_stress_serde_ser() {
 /// Exercise `make_rust_condition_value_with_data` under GC pressure.
 ///
 /// The condition-data path builds a fresh VECSXP + names STRSXP and
-/// materialises each [`RValue`](miniextendr_api::RValue) field one at a time,
+/// materialises each `RValue` field one at a time,
 /// rooting every intermediate into the protected data list before the next
 /// allocation — the canonical "SEXP storage across allocations" shape (#430).
 /// This fixture drives the production code path directly with thirteen fields:
