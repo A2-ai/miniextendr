@@ -13,6 +13,7 @@
 //!
 //! Tests live in `rpkg/tests/testthat/test-conditions-comprehensive.R`.
 
+use miniextendr_api::externalptr::ExternalPtr;
 use miniextendr_api::miniextendr;
 
 type RCondition = miniextendr_api::condition::RCondition;
@@ -430,6 +431,47 @@ pub fn condition_error_unicode() {
 #[miniextendr]
 pub fn condition_error_empty() {
     miniextendr_api::error!("");
+}
+
+// endregion
+
+// region: audit A9 — ExternalPtr<T> arguments accept class-wrapped handles
+//
+// Reuses the S3/S4/S7 raisers above (already exported types) to prove a
+// standalone fn declared as `ExternalPtr<T>` now accepts the ergonomic class
+// handle, not just the bare EXTPTRSXP a low-level constructor would return.
+// Env/R6 already had (or gained, for R6) coverage elsewhere:
+// `ptr_identity`/`ptr_pick_larger` (Env, `externalptr_identity_tests.rs`) and
+// `sidecar_consumer_panic` (R6, `condition_sidecar_tests.rs`). Vctrs is not
+// covered here — vctrs objects in this framework are plain classed vectors
+// with no Rust struct behind them (`VctrsRaiser` above doesn't even derive
+// `ExternalPtr`), so there is no handle to unwrap: passing one to an
+// `ExternalPtr<T>` parameter is an ordinary type mismatch, unrelated to A9.
+//
+// Tests live in `rpkg/tests/testthat/test-conditions-comprehensive.R`.
+
+/// Unwraps an S3-wrapped `S3Raiser` handle (a classed `EXTPTRSXP` — already
+/// worked pre-A9) and returns its `id`.
+/// @param x A raiser handle (class object or bare external pointer).
+#[miniextendr(noexport)]
+pub fn s3_raiser_id_via_externalptr(x: ExternalPtr<S3Raiser>) -> i32 {
+    x.id
+}
+
+/// Unwraps an S4-wrapped `S4Raiser` handle (the `ptr` slot, via
+/// `methods::slot()`) and returns its `id`.
+/// @param x A raiser handle (class object or bare external pointer).
+#[miniextendr(noexport)]
+pub fn s4_raiser_id_via_externalptr(x: ExternalPtr<S4Raiser>) -> i32 {
+    x.id
+}
+
+/// Unwraps an S7-wrapped `S7Raiser` handle (the `.ptr` attribute) and
+/// returns its `id`.
+/// @param x A raiser handle (class object or bare external pointer).
+#[miniextendr(noexport)]
+pub fn s7_raiser_id_via_externalptr(x: ExternalPtr<S7Raiser>) -> i32 {
+    x.id
 }
 
 // endregion
