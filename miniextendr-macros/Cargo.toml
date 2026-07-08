@@ -18,12 +18,17 @@ doc-lint = []
 vctrs = []
 ## Project-wide defaults for #[miniextendr] options.
 ## Enable via Cargo.toml features to apply to all functions/impl blocks.
-## Individual items can opt out with no_strict, no_coerce, etc.
+## Individual items can opt out with no_strict, no_coerce, no_fast, etc.
 strict-default = []
 coerce-default = []
 r6-default = []
 s7-default = []
 worker-default = []
+## Enable fast-path knobs (no_preconditions + no_call_attribution) by default
+## for all #[miniextendr] functions and impl blocks. Individual items can opt
+## out with `#[miniextendr(no_fast)]` to restore full error UX.
+## Orthogonal to strict-default and coerce-default (not a mutex pair).
+fast-default = []
 
 [dependencies]
 proc-macro2 = { workspace = true }

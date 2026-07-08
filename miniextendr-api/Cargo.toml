@@ -127,6 +127,9 @@ s7-default = ["miniextendr-macros/s7-default"]
 ## Without this feature, worker APIs are lightweight inline stubs.
 worker-thread = []
 worker-default = ["miniextendr-macros/worker-default", "worker-thread"]
+## Enable fast-path knobs by default crate-wide. Forwards to miniextendr-macros/fast-default.
+## Orthogonal to strict-default and coerce-default (not a mutex pair).
+fast-default = ["miniextendr-macros/fast-default"]
 ## Enable debug instrumentation for tracking collection growth events.
 ## Provides track_growth! and report_growth! macros for diagnosing unexpected
 ## Vec/arena reallocations. Zero-cost (no-ops) when disabled.
@@ -144,9 +147,9 @@ growth-debug = []
 # picks exactly ONE side of that pair (`r6-default`); `full-codegen-s7` is the
 # identical set with the mutex flipped to `s7-default`, so CI can lint both
 # sides. Keep the two lists in lock-step — they must differ ONLY in the mutex
-# member. (`strict-default` and `coerce-default` are NOT a mutex pair —
-# they're orthogonal, see docs/FEATURE_DEFAULTS.md — so both live in
-# `full-codegen` together.)
+# member. (`strict-default`, `coerce-default`, and `fast-default` are NOT a
+# mutex pair — they're orthogonal, see docs/FEATURE_DEFAULTS.md — so all three
+# live in `full-codegen` together.)
 
 ## Every optional integration crate (the "dep:" features). Heavy deps like
 ## arrow/datafusion/log live here; CI's `clippy_all` enables a curated subset.
@@ -165,7 +168,7 @@ full-integrations = [
 ## `worker-default`), and `indicatif`. This whole set compiles together — it
 ## is the unit CI's `clippy_all` derives.
 full-codegen = [
-    "strict-default", "coerce-default", "r6-default", "worker-default",
+    "strict-default", "coerce-default", "fast-default", "r6-default", "worker-default",
     "nonapi", "connections", "indicatif",
 ]
 
@@ -175,7 +178,7 @@ full-codegen = [
 ## tools/detect-features.R denylists `s7-default`, and the root-workspace
 ## clippy steps never reach rpkg/src/rust).
 full-codegen-s7 = [
-    "strict-default", "coerce-default", "s7-default", "worker-default",
+    "strict-default", "coerce-default", "fast-default", "s7-default", "worker-default",
     "nonapi", "connections", "indicatif",
 ]
 

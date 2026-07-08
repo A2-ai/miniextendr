@@ -17,6 +17,8 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         s7_abstract: false,
         r_data_accessors: false,
         strict: false,
+        no_preconditions: false,
+        no_call_attribution: false,
         internal: false,
         noexport: false,
         blanket: false,

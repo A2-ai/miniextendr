@@ -4,7 +4,7 @@ warning: unexpected `cfg` condition value: `rayon`
 11 | #[derive(DataFrameRow)]
    |          ^^^^^^^^^^^^
    |
-   = note: expected values for `feature` are: `coerce-default`, `doc-lint`, `r6-default`, `s7-default`, `strict-default`, `vctrs`, and `worker-default`
+   = note: expected values for `feature` are: `coerce-default`, `doc-lint`, `fast-default`, `r6-default`, `s7-default`, `strict-default`, `vctrs`, and `worker-default`
    = note: using a cfg inside a derive macro will use the cfgs from the destination crate and not the ones from the defining crate
    = help: try referring to `DataFrameRow` crate for guidance on how handle this unexpected cfg
    = help: the derive macro `DataFrameRow` may come from an old version of the `miniextendr_macros` crate, try updating your dependency with `cargo update -p miniextendr_macros`

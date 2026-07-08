@@ -264,6 +264,15 @@ pub struct MethodContext<'a> {
     /// R call arguments string without defaults (e.g., `"value, step"`), used
     /// inside `.Call()` expressions.
     pub args: String,
+    /// Drop the R-side `stopifnot(...)` block from the generated wrapper.
+    /// Inherited from `ImplAttrs::no_preconditions` (set by `#[miniextendr(no_preconditions)]`
+    /// or `fast` on the impl block).
+    pub no_preconditions: bool,
+    /// Emit `.call = NULL` instead of `.call = match.call()` in non-lambda
+    /// dispatch sites. Inherited from `ImplAttrs::no_call_attribution`.
+    /// Lambda sites (`instance_call_null_attr`, R6 finalizer/deep_clone,
+    /// S7 property dispatch) already emit NULL and are unaffected.
+    pub no_call_attribution: bool,
 }
 
 impl<'a> MethodContext<'a> {
@@ -271,7 +280,9 @@ impl<'a> MethodContext<'a> {
     ///
     /// Computes the C wrapper identifier from the method name, type name, and optional
     /// label (for multi-impl-block disambiguation), then formats the R formals and
-    /// call arguments from the method's signature and default values.
+    /// call arguments from the method's signature and default values. Fast-path
+    /// knobs default off; use [`MethodContext::with_fast_flags`] to inherit them
+    /// from `ImplAttrs`.
     pub fn new(method: &'a ParsedMethod, type_ident: &syn::Ident, label: Option<&str>) -> Self {
         let c_ident = method.c_wrapper_ident(type_ident, label).to_string();
         let effective_defaults = effective_r_defaults(
@@ -287,7 +298,17 @@ impl<'a> MethodContext<'a> {
             c_ident,
             params,
             args,
+            no_preconditions: false,
+            no_call_attribution: false,
         }
+    }
+
+    /// Set the fast-path flags inherited from the surrounding `ImplAttrs`.
+    /// Returns `self` so callers can chain on top of `MethodContext::new`.
+    pub fn with_fast_flags(mut self, no_preconditions: bool, no_call_attribution: bool) -> Self {
+        self.no_preconditions = no_preconditions;
+        self.no_call_attribution = no_call_attribution;
+        self
     }
 
     /// Build the R-param-name → @param placeholder map for this method's
@@ -315,19 +336,22 @@ impl<'a> MethodContext<'a> {
 
     /// Build the `.Call()` expression for a static/constructor call.
     pub fn static_call(&self) -> String {
-        crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
-            .with_args_str(&self.args)
-            .build()
+        let mut b = crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident);
+        if self.no_call_attribution {
+            b = b.null_call_attribution();
+        }
+        b.with_args_str(&self.args).build()
     }
 
     /// Build the `.Call()` expression for an instance method with `self` as ptr.
     ///
     /// The `self_expr` is typically "self", "private$.ptr", "x", "x@ptr", or "x@.ptr".
     pub fn instance_call(&self, self_expr: &str) -> String {
-        crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
-            .with_self(self_expr)
-            .with_args_str(&self.args)
-            .build()
+        let mut b = crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident);
+        if self.no_call_attribution {
+            b = b.null_call_attribution();
+        }
+        b.with_self(self_expr).with_args_str(&self.args).build()
     }
 
     /// Like [`instance_call`](Self::instance_call) but passes `.call = NULL`.
@@ -441,6 +465,9 @@ impl<'a> MethodContext<'a> {
     /// any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
     /// those already have a stronger runtime guarantee than `stopifnot(is.character(...))`.
     pub fn precondition_checks(&self) -> Vec<String> {
+        if self.no_preconditions {
+            return Vec::new();
+        }
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so
         // its precondition tightens to `is.integer` (#616). Impl methods carry
         // coerce at method level (`method_attrs.coerce`, equivalent to
@@ -922,43 +949,61 @@ pub trait ParsedImplExt {
 
 impl ParsedImplExt for ParsedImpl {
     fn constructor_context(&self) -> Option<MethodContext<'_>> {
-        self.constructor()
-            .map(|m| MethodContext::new(m, &self.type_ident, self.label()))
+        let no_prec = self.no_preconditions;
+        let no_call = self.no_call_attribution;
+        self.constructor().map(|m| {
+            MethodContext::new(m, &self.type_ident, self.label()).with_fast_flags(no_prec, no_call)
+        })
     }
 
     fn instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        self.instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label))
+        let no_prec = self.no_preconditions;
+        let no_call = self.no_call_attribution;
+        self.instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_fast_flags(no_prec, no_call)
+        })
     }
 
     fn static_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        self.static_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label))
+        let no_prec = self.no_preconditions;
+        let no_call = self.no_call_attribution;
+        self.static_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_fast_flags(no_prec, no_call)
+        })
     }
 
     fn public_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        self.public_instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label))
+        let no_prec = self.no_preconditions;
+        let no_call = self.no_call_attribution;
+        self.public_instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_fast_flags(no_prec, no_call)
+        })
     }
 
     fn private_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        self.private_instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label))
+        let no_prec = self.no_preconditions;
+        let no_call = self.no_call_attribution;
+        self.private_instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_fast_flags(no_prec, no_call)
+        })
     }
 
     fn active_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        self.active_instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label))
+        let no_prec = self.no_preconditions;
+        let no_call = self.no_call_attribution;
+        self.active_instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_fast_flags(no_prec, no_call)
+        })
     }
 }
 
