@@ -58,11 +58,23 @@ pub(super) fn generate_trait_r_wrapper(
         ClassSystem::Vctrs => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
     };
 
-    // When impl block has @noRd, suppress documentation generation.
-    // For S3/vctrs impls we still keep S3 method registration tags so roxygen
-    // can generate NAMESPACE entries without emitting missing-export warnings.
-    if class_has_no_rd {
+    // When the impl block has @noRd, suppress documentation generation. A plain
+    // `noexport` (without `internal`) is folded into the same gate — it must
+    // produce no Rd contribution at all (no alias, no usage entry, nothing on a
+    // shared page), same as `@noRd`. `internal` wins if both flags are set on
+    // the same impl block (mirrors the standalone-fn precedent, where `internal`
+    // + `noexport` together is a compile error). See #431 for the inherent-impl
+    // S3 generator's analogous `should_register_s3method = !noexport` rule.
+    let suppress_all_rd = class_has_no_rd || (noexport && !internal);
+    if suppress_all_rd {
         if matches!(class_system, ClassSystem::S3 | ClassSystem::Vctrs) {
+            // A user-written `@noRd` still preserves S3 dispatch registration
+            // (`@method`/`@export`) so `S3method()` lands in NAMESPACE — the
+            // class stays undocumented but dispatchable. A `noexport`-driven
+            // suppression (no explicit `@noRd`) additionally drops `@export`:
+            // `noexport` means zero observable trace, not "documented nowhere
+            // but still dispatchable".
+            let keep_export = class_has_no_rd;
             let mut filtered = Vec::new();
             let mut roxygen_block: Vec<&str> = Vec::new();
 
@@ -72,7 +84,7 @@ pub(super) fn generate_trait_r_wrapper(
                     for &line in block.iter() {
                         if line.contains("@method ")
                             || line.contains("@param ")
-                            || line.contains("@export")
+                            || (keep_export && line.contains("@export"))
                         {
                             out.push(line.to_string());
                         }
@@ -105,21 +117,14 @@ pub(super) fn generate_trait_r_wrapper(
                 .collect::<Vec<_>>()
                 .join("\n"))
         }
-    } else if !class_has_no_rd && (internal || noexport) {
-        // internal → add @keywords internal + suppress @export/@exportMethod
-        // noexport → suppress @export/@exportMethod only
+    } else if internal {
+        // internal → documented, but @export/@exportMethod becomes @keywords internal
         let has_export = result.lines().any(|line| line.contains("@export"));
         let mut processed: Vec<String> = result
             .lines()
             .flat_map(|line| {
                 if line.contains("@export") {
-                    // Replace @export/@exportMethod with @keywords internal (for internal)
-                    // or just remove (for noexport)
-                    if internal {
-                        vec!["#' @keywords internal".to_string()]
-                    } else {
-                        vec![]
-                    }
+                    vec!["#' @keywords internal".to_string()]
                 } else {
                     vec![line.to_string()]
                 }
@@ -127,10 +132,7 @@ pub(super) fn generate_trait_r_wrapper(
             .collect();
         // For class systems without @export (e.g., Env), insert @keywords internal
         // before the first roxygen tag if no @export line was found to replace.
-        if internal
-            && !has_export
-            && let Some(pos) = processed.iter().position(|l| l.starts_with("#'"))
-        {
+        if !has_export && let Some(pos) = processed.iter().position(|l| l.starts_with("#'")) {
             processed.insert(pos, "#' @keywords internal".to_string());
         }
         Ok(processed.join("\n"))

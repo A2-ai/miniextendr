@@ -2766,3 +2766,114 @@ fn snapshot_vctrs_rcrd() {
     insta::assert_snapshot!(generate_vctrs_r_wrapper(&parsed));
 }
 // endregion
+
+// region: internal / noexport export-control (audit A10)
+
+fn simple_counter_impl() -> syn::ItemImpl {
+    syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            pub fn get(&self) -> i32 { unimplemented!() }
+        }
+    }
+}
+
+/// Audit A10: a `#[miniextendr(<class>, noexport)]` impl block must produce no
+/// Rd contribution at all — its class-doc block carries `@noRd` and no
+/// `@title`/`@name`/`@rdname`, and no `@export` anywhere.
+#[test]
+fn class_generators_noexport_suppresses_all_rd() {
+    type Gen = fn(&ParsedImpl) -> String;
+    let cases: &[(ClassSystem, Gen)] = &[
+        (ClassSystem::Env, generate_env_r_wrapper as Gen),
+        (ClassSystem::R6, generate_r6_r_wrapper as Gen),
+        (ClassSystem::S3, generate_s3_r_wrapper as Gen),
+        (ClassSystem::S4, generate_s4_r_wrapper as Gen),
+        (ClassSystem::S7, generate_s7_r_wrapper as Gen),
+    ];
+    for (class_system, generator) in cases {
+        let mut attrs = default_impl_attrs(*class_system);
+        attrs.noexport = true;
+        let parsed = ParsedImpl::parse(attrs, simple_counter_impl()).unwrap();
+        let wrapper = generator(&parsed);
+
+        assert!(
+            wrapper.contains("@noRd"),
+            "{class_system:?}: noexport must emit @noRd, got:\n{wrapper}"
+        );
+        assert!(
+            !wrapper.contains("@rdname") && !wrapper.contains("@title"),
+            "{class_system:?}: noexport must not emit @rdname/@title (no Rd contribution), got:\n{wrapper}"
+        );
+        assert!(
+            !wrapper.contains("@keywords internal"),
+            "{class_system:?}: noexport must not add @keywords internal, got:\n{wrapper}"
+        );
+        // Env keeps `@export` ONLY for the `$.<Class>` / `[[.<Class>` dispatch
+        // S3 methods (S3method() entries, required for the class to function);
+        // S3-class noexport drops even dispatch registration (see #431).
+        if !matches!(class_system, ClassSystem::Env) {
+            assert!(
+                !wrapper.contains("#' @export"),
+                "{class_system:?}: noexport must not emit @export, got:\n{wrapper}"
+            );
+        }
+    }
+}
+
+/// Companion: `#[miniextendr(<class>, internal)]` stays documented — the
+/// class-doc block keeps `@rdname` and gains `@keywords internal`; no plain
+/// class-level `@export`.
+#[test]
+fn class_generators_internal_stays_documented() {
+    type Gen = fn(&ParsedImpl) -> String;
+    let cases: &[(ClassSystem, Gen)] = &[
+        (ClassSystem::Env, generate_env_r_wrapper as Gen),
+        (ClassSystem::R6, generate_r6_r_wrapper as Gen),
+        (ClassSystem::S3, generate_s3_r_wrapper as Gen),
+        (ClassSystem::S4, generate_s4_r_wrapper as Gen),
+        (ClassSystem::S7, generate_s7_r_wrapper as Gen),
+    ];
+    for (class_system, generator) in cases {
+        let mut attrs = default_impl_attrs(*class_system);
+        attrs.internal = true;
+        let parsed = ParsedImpl::parse(attrs, simple_counter_impl()).unwrap();
+        let wrapper = generator(&parsed);
+
+        assert!(
+            wrapper.contains("@rdname"),
+            "{class_system:?}: internal must keep @rdname (stays documented), got:\n{wrapper}"
+        );
+        assert!(
+            wrapper.contains("@keywords internal"),
+            "{class_system:?}: internal must add @keywords internal, got:\n{wrapper}"
+        );
+        assert!(
+            !wrapper.contains("@noRd"),
+            "{class_system:?}: internal must NOT emit @noRd, got:\n{wrapper}"
+        );
+    }
+}
+
+/// The S4 generator strips the auto-added class-level `@export` by popping the
+/// last ClassDocBuilder line. With `internal` set the builder emits no
+/// `@export`, so a blind pop used to delete `@keywords internal` instead —
+/// regression guard for the conditional pop.
+#[test]
+fn s4_internal_keeps_keywords_internal_on_class_block() {
+    let mut attrs = default_impl_attrs(ClassSystem::S4);
+    attrs.internal = true;
+    let parsed = ParsedImpl::parse(attrs, simple_counter_impl()).unwrap();
+    let wrapper = generate_s4_r_wrapper(&parsed);
+
+    let set_class_pos = wrapper
+        .find("methods::setClass")
+        .expect("setClass must be emitted");
+    let class_block = &wrapper[..set_class_pos];
+    assert!(
+        class_block.contains("@keywords internal"),
+        "S4 internal class block must keep @keywords internal, got:\n{class_block}"
+    );
+}
+
+// endregion

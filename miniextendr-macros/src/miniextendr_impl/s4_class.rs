@@ -34,8 +34,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
-    // Check if class has @noRd - if so, skip method documentation and exports
-    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    // Check if class has @noRd - if so, skip method documentation and exports. A
+    // plain `noexport` (without `internal`) is folded in too — it must suppress
+    // Rd contribution entirely, matching `ClassDocBuilder::build`'s `suppress_rd`
+    // gate. `should_export` (below) already independently gates @export/@exportMethod.
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd")
+        || (parsed_impl.noexport && !parsed_impl.internal);
     let should_export =
         should_export_from_tags(class_doc_tags, parsed_impl.noexport || parsed_impl.internal);
 
@@ -59,8 +63,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(insert_pos, format!("#' {}", lc_import));
     }
-    // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class definition)
-    if !has_export {
+    // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class
+    // definition). Only pop when the last line actually IS the auto-added
+    // @export — with internal/noexport the builder emits no @export, and a
+    // blind pop would instead drop `@keywords internal` / `@noRd` / a user tag.
+    if !has_export && lines.last().is_some_and(|l| l == "#' @export") {
         lines.pop();
     }
     if !class_has_no_rd {

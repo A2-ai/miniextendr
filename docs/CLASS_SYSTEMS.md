@@ -932,12 +932,16 @@ impl MyConfig {
 ## Export Control
 
 Control R export visibility with `#[miniextendr(internal)]` and `#[miniextendr(noexport)]`.
-These work consistently across all five class systems.
+These work consistently across standalone functions, class impl blocks, and
+trait impls. Both suppress NAMESPACE `export()` (the function stays callable
+via `:::`); they differ at the **documentation** level.
 
 ### `#[miniextendr(internal)]`
 
-Adds `@keywords internal` to roxygen and suppresses `@export`. The function still
-gets an `.Rd` man page but is hidden from the package index.
+Adds `@keywords internal` to roxygen and suppresses `@export`. The function is
+still **documented**: it contributes an `\alias{}` and usage entry to its `.Rd`
+page (including shared/grouped pages), which is hidden from the package index
+via `\keyword{internal}` but reachable with `?name`.
 
 ```rust
 #[miniextendr(internal)]
@@ -951,8 +955,15 @@ impl InternalType {
 
 ### `#[miniextendr(noexport)]`
 
-Suppresses `@export` only (no `@keywords internal`). The function gets `@noRd`
-and no man page is generated.
+Emits `@noRd`: **no Rd contribution at all** — no alias, no usage entry, not
+even on a shared/grouped page it would otherwise land on (e.g. the
+per-source-file page standalone functions are grouped onto, or a class's
+`@rdname` page for methods). `?name` finds nothing. No `@keywords internal`.
+
+For S3 class impls, `noexport` also drops the `S3method()` dispatch
+registration from NAMESPACE — zero observable trace. (A hand-written `@noRd`
+doc comment without the `noexport` attribute keeps dispatch registered:
+undocumented but dispatchable.)
 
 ```rust
 #[miniextendr(noexport)]
@@ -961,11 +972,14 @@ pub fn private_helper(x: i32) -> i32 { x * 2 }
 
 ### Comparison
 
-| Attribute | `@export` | `@keywords internal` | Man page |
-|-----------|-----------|---------------------|----------|
+| Attribute | `@export` | `@keywords internal` | Man page / alias |
+|-----------|-----------|---------------------|------------------|
 | (default) | Yes | No | Yes |
-| `internal` | No | Yes | Yes (hidden from index) |
-| `noexport` | No | No | No (`@noRd`) |
+| `internal` | No | Yes | Yes — alias + usage, hidden from index |
+| `noexport` | No | No | No (`@noRd`) — no alias anywhere |
+
+`internal` and `noexport` together on one function is a compile error (on impl
+blocks, `internal` wins).
 
 ---
 

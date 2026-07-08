@@ -601,8 +601,11 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         ));
     }
 
-    // Check if class has @noRd
-    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    // Check if class has @noRd. A plain `noexport` (without `internal`) is folded
+    // in here too — it must suppress Rd contribution entirely, matching
+    // `ClassDocBuilder::build`'s `suppress_rd` gate (see r_class_formatter.rs).
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd")
+        || (parsed_impl.noexport && !parsed_impl.internal);
 
     // Static methods as separate functions on the class object
     for ctx in parsed_impl.static_method_contexts() {

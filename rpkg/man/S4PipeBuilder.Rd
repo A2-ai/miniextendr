@@ -35,3 +35,4 @@ Terminal accessor: read the accumulated total.
 \item{\code{ptr}}{External pointer to Rust \code{S4PipeBuilder} struct}
 }}
 
+\keyword{internal}
