@@ -651,6 +651,16 @@ install_deps:
 dev-tools-install: revendor-install
     cargo install cargo-limit
 
+# Symlinks rv's cached deps from ~/.cache/rv (warm from main, same rproject.toml)
+# into THIS checkout's own rv/library in seconds — no recompile/download — so
+# parallel worktrees never race on a shared install and main's library stays
+# untouched. Caveat: `rv sync` replaces the library with exactly the lockfile, so
+# it prunes miniextendr/minirextendr (dependencies_only) — re-install after any
+# resync. Never `ln -s rv/library` to main. See CLAUDE.md → "Agent worktrees".
+# Bootstrap a fresh worktree's R library from rv's shared cache (run before configure/install)
+worktree-sync:
+    RV_LINK_MODE=symlink rv sync
+
 # Install Windows system tooling via Scoop (https://scoop.sh). Currently installs
 # `rv` (https://github.com/a2-ai/rv), the R version manager used on this repo.
 [windows]

@@ -15,6 +15,12 @@ just r-cmd-build / r-cmd-check  # tarball + check
 ```
 After **anything** that affects R wrapper output (proc-macro roxygen, `r_wrappers.rs`, adding `#[miniextendr]` fns) run `just rcmdinstall && just force-document`, then commit `NAMESPACE` + `man/*.Rd` in the same PR. `R/miniextendr-wrappers.R` and `src/rust/wasm_registry.rs` are **gitignored** (regenerated on every install, like `inst/vendor.tar.xz`) — nothing to commit there. CI's `just wrappers-sync-check` regenerates wrappers.R and git-diffs NAMESPACE + man to catch drift.
 
+## Where installs land (main vs worktree)
+`just rcmdinstall` / `R CMD INSTALL` deposit `miniextendr` into `.libPaths()[1]`,
+which rv's `activate.R` sets to this checkout's own `rv/library/<ver>/<arch>`.
+- **Main checkout**: installs land in `<repo>/rv/library/…`, alongside all deps.
+- **Linked worktree**: run `just worktree-sync` (= `RV_LINK_MODE=symlink rv sync`) **first** — it symlinks the cached deps from `~/.cache/rv` (shared, warm from main) into the worktree's own `rv/library`, then `rcmdinstall` installs `miniextendr` there as a real dir. The worktree is fully isolated; main is untouched; parallel worktrees don't race. `rv sync` prunes non-lockfile packages, so sync **before** installing dev packages (and re-install if you sync again). Full flow + rationale in root `CLAUDE.md` → *Agent worktrees*. **Never `ln -s` `rv/library`** to main — reintroduces the parallel-install race.
+
 ## File-edit rules (templates → generated)
 - `src/Makevars` ← `src/Makevars.in`
 - `src/rust/.cargo/config.toml` ← `src/rust/cargo-config.toml.in`

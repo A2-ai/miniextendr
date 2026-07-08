@@ -459,7 +459,14 @@ Claude Code sandbox blocks compilation. For any compiling command
 ### Agent worktrees
 
 - Run agents in worktrees (`isolation: "worktree"`) to avoid collisions.
-- **Worktrees start with no R library**: `rv/library/` is gitignored, so a fresh worktree can't `just rcmdinstall` / `R CMD INSTALL` (`ERROR: dependencies '…' are not available`, compile never starts). Symlink it to the main repo's populated one once: `ln -s /Users/elea/Documents/GitHub/miniextendr/rv/library rv/library`. Installs then land in the shared dev library, and the symlink vanishes when the worktree is removed (`rv/` is gitignored).
+- **Worktree R library: `rv sync` per worktree, then install** (never symlink to main). `rv/library/` is gitignored, so a fresh worktree's library is empty. Populate it from rv's shared global cache (`~/.cache/rv`, already warm from main — same `rproject.toml` → same cache), then install the dev packages:
+  ```bash
+  just worktree-sync   # = RV_LINK_MODE=symlink rv sync — symlinks the ~110 cached deps into this worktree's OWN rv/library (~8s)
+  just configure && just rcmdinstall && just force-document
+  ```
+  `RV_LINK_MODE=symlink` (baked into `just worktree-sync`) links each dependency as a symlink into `~/.cache/rv` (zero-copy, no recompile or download) rather than the macOS copy-on-write default — either works, symlink is cheapest across many worktrees. Each worktree then gets its **own real `rv/library`** (deps = symlinks to the shared read-only cache; `miniextendr`/`minirextendr` = real dirs installed into it), so parallel worktrees **never race** on a shared install and main's library is untouched. This is rv's native cross-project cache model — see [rv-docs: cache](https://a2-ai.github.io/rv-docs/concepts/cache/) and [env vars](https://a2-ai.github.io/rv-docs/reference/env_vars/).
+  - **Order matters**: `rv sync` "replaces the library with exactly the lockfile", so it *prunes* anything not listed — including `miniextendr`/`minirextendr` (they're `dependencies_only` in `rproject.toml`). Sync **first**, install the dev packages **second**. Re-running `rv sync` wipes the installed dev packages → re-install after.
+  - **Never `ln -s rv/library`** to main. That was the old fix; it forces every worktree into main's single shared library, which is the parallel-install race (spliced `wrappers.R`, one-builder-per-worktree serialization). Don't edit rv's `rv/scripts/*` or the repo `.Rprofile` for this either — the cache model already handles it.
 - **Merge**: rebase worktree onto current main, *then* merge. Rebase must happen immediately before the merge, not when the agent finishes.
 - **Sequential merging** of multiple worktrees: rebase → merge → rebase next → merge. Each rebase must see prior merge commits on main, otherwise changes get silently overwritten.
 - **Never copy whole files** worktree → main — rebase/merge is the only correct flow.
