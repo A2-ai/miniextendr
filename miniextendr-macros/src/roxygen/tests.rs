@@ -676,7 +676,7 @@ fn strip_method_tags_drops_param_return_examples_export() {
     .collect();
 
     let span = proc_macro2::Span::call_site();
-    let (kept, _warnings) = strip_method_tags(&tags, "MyType", span);
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", 0, span);
     assert_eq!(
         kept,
         vec![
@@ -701,7 +701,7 @@ fn strip_method_tags_preserves_export_variants() {
     .map(|s| (*s).to_string())
     .collect();
 
-    let (kept, _warnings) = strip_method_tags(&tags, "MyType", proc_macro2::Span::call_site());
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", 0, proc_macro2::Span::call_site());
     assert_eq!(
         kept,
         vec![
@@ -719,8 +719,39 @@ fn strip_method_tags_leaves_prose_untouched() {
         .map(|s| (*s).to_string())
         .collect();
 
-    let (kept, _warnings) = strip_method_tags(&tags, "MyType", proc_macro2::Span::call_site());
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", 0, proc_macro2::Span::call_site());
     assert_eq!(kept, tags);
+}
+
+#[test]
+fn strip_method_tags_disambiguates_warning_consts_per_block() {
+    // #1118: two impl blocks on the same type each strip a method-only tag.
+    // With a per-block `block_id` the emitted warning-const names must differ,
+    // otherwise the two consts collide with E0428 when spliced side-by-side.
+    let tags: Vec<String> = vec!["@param x an input".to_string()];
+    let span = proc_macro2::Span::call_site();
+
+    let (_, warn_block0) = strip_method_tags(&tags, "MyType", 0, span);
+    let (_, warn_block1) = strip_method_tags(&tags, "MyType", 1, span);
+
+    let s0 = warn_block0.to_string();
+    let s1 = warn_block1.to_string();
+
+    // Each block emits exactly one nudge const, and the names carry the block id.
+    assert!(
+        s0.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"),
+        "block 0 const name unexpected: {s0}"
+    );
+    assert!(
+        s1.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_1_0"),
+        "block 1 const name unexpected: {s1}"
+    );
+    assert_ne!(s0, s1, "warning consts from different blocks must differ");
+
+    // next_impl_tag_block_id() must hand out distinct ids so callers never reuse.
+    let a = crate::roxygen::next_impl_tag_block_id();
+    let b = crate::roxygen::next_impl_tag_block_id();
+    assert_ne!(a, b);
 }
 
 // endregion
