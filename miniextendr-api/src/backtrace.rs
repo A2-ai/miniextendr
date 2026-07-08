@@ -11,6 +11,7 @@
 //! takes it back off. Both are idempotent and paired by the init / unload
 //! code in `worker.rs`.
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// True iff this DLL instance has installed the panic hook.
@@ -18,6 +19,39 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Per-DLL: each dyn.load of the compiled artifact gets a fresh static, so
 /// the install/uninstall lifecycle is scoped to one load.
 static INSTALLED: AtomicBool = AtomicBool::new(false);
+
+thread_local! {
+    /// Source location of the most recent panic on *this* thread, captured by
+    /// the panic hook. `Location` borrows the `PanicHookInfo`, so we snapshot an
+    /// owned `(file, line)`.
+    ///
+    /// Per-thread because the hook fires on the panicking thread: a worker-thread
+    /// panic records here on the worker; a main-thread panic records here on main.
+    /// [`take_last_panic_location`] reads-and-clears so a stale location can never
+    /// leak onto a later, location-less message on the same (reused) thread.
+    static LAST_PANIC_LOCATION: Cell<Option<(String, u32)>> = const { Cell::new(None) };
+}
+
+/// Record a panic's source location into the current thread's take-once slot.
+///
+/// Called unconditionally from the hook (before the `MINIEXTENDR_BACKTRACE`
+/// env check) so the location is available to the panic-stringification sites
+/// regardless of whether the stderr traceback is enabled.
+fn record_panic_location(info: &std::panic::PanicHookInfo<'_>) {
+    let loc = info.location().map(|l| (l.file().to_string(), l.line()));
+    LAST_PANIC_LOCATION.with(|cell| cell.set(loc));
+}
+
+/// Take (read + clear) the last panic location recorded on the current thread.
+///
+/// Returns `None` when no panic hook fired on this thread since the last take
+/// (e.g. the hook was never installed, as in some unit tests / the engine).
+/// Clearing on read means a location from a panic that was caught-and-diverted
+/// (e.g. the internal `RErrorMarker` on the R-longjmp path) never bleeds onto an
+/// unrelated later message.
+pub(crate) fn take_last_panic_location() -> Option<(String, u32)> {
+    LAST_PANIC_LOCATION.with(|cell| cell.take())
+}
 
 /// Register the miniextendr panic hook.
 ///
@@ -41,6 +75,10 @@ pub extern "C-unwind" fn miniextendr_panic_hook() {
 
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |x| {
+        // Capture the panic location for the R-facing message BEFORE the env
+        // check, so `(at file:line)` is surfaced whether or not the stderr
+        // traceback is enabled.
+        record_panic_location(x);
         let show_traceback = std::env::var("MINIEXTENDR_BACKTRACE")
             .ok()
             .and_then(|v| crate::env_flag::parse_bool(&v))

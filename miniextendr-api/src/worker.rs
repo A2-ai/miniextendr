@@ -588,7 +588,23 @@ mod worker_channel {
             let to_send: Result<Box<dyn Any + Send>, String> = match result {
                 Ok(val) => Ok(Box::new(val)),
                 Err(payload) => {
-                    Err(crate::unwind_protect::panic_payload_to_string(&*payload).into_owned())
+                    // Fold the panic location HERE, on the worker (origin)
+                    // thread: the hook fired on the worker for this panic, so
+                    // its take-once slot holds the real `panic!` site. The main
+                    // side then treats the already-final message verbatim
+                    // (`make_rust_condition_value(&__panic_msg, PANIC, …)` in the
+                    // generated worker wrapper) — no second fold, no clobber.
+                    //
+                    // Only genuine generic panics get the `(at …)` suffix. User
+                    // conditions (error!/warning!/message!/condition!) travel as
+                    // `RCondition` payloads and must stay location-free — mirror
+                    // the main-thread RCondition branch by stringifying verbatim.
+                    let msg = if payload.is::<crate::condition::RCondition>() {
+                        crate::unwind_protect::panic_payload_to_string(&*payload).into_owned()
+                    } else {
+                        crate::unwind_protect::panic_message_with_location(&*payload)
+                    };
+                    Err(msg)
                 }
             };
             let _ = worker_tx.send(WorkerMessage::Done(to_send));

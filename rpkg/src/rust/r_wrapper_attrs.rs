@@ -140,37 +140,7 @@ pub fn c_symbol_demo(x: i32) -> i32 {
 }
 // endregion
 
-// region: track_caller (audit A10, docs/TRACK_CALLER.md)
-
-/// Pin the automatic `#[track_caller]` added by `#[miniextendr]`
-/// (docs/TRACK_CALLER.md): with the attribute in effect,
-/// `Location::caller()` inside this function resolves to the *caller's*
-/// call site (in the generated wrapper), not to the line below. Returns
-/// TRUE when the attribute is active.
-///
-/// @export
-#[miniextendr]
-pub fn track_caller_is_active() -> bool {
-    let here = line!();
-    let loc = std::panic::Location::caller();
-    // Without the auto-added attribute, caller() would report exactly the
-    // line above (here + 1) in this file.
-    loc.line() != here + 1
-}
-
-/// Report the location `Location::caller()` resolves to through a
-/// `#[track_caller]` helper chain (mirrors the "propagation through call
-/// chains" section of docs/TRACK_CALLER.md). Returned as "file:line" for
-/// R-side inspection.
-///
-/// @export
-#[miniextendr]
-pub fn track_caller_chain_location() -> String {
-    #[track_caller]
-    fn where_from() -> String {
-        let loc = std::panic::Location::caller();
-        format!("{}:{}", loc.file(), loc.line())
-    }
-    where_from()
-}
-// endregion
+// NB: the former `track_caller_is_active` / `track_caller_chain_location`
+// fixtures were removed when the automatic `#[track_caller]` was dropped
+// (#1121). Panic locations now surface directly in the R error message — see
+// `rpkg/src/rust/panic_location_tests.rs` and docs/TRACK_CALLER.md.

@@ -802,7 +802,10 @@ pub fn miniextendr(
         }
     }
 
-    parsed.add_track_caller_if_needed();
+    // NB: no automatic `#[track_caller]` (dropped in #1121). It made a *direct*
+    // panic's hook-location resolve to the generated wrapper glue instead of the
+    // user's `panic!` line, which defeats the `(at file:line)` suffix now folded
+    // into the R error message from the panic hook. See docs/TRACK_CALLER.md.
     parsed.add_inline_never_if_needed();
 
     // Extract commonly used values
