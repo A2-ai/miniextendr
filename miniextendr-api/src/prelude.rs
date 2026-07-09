@@ -45,6 +45,13 @@
 pub use crate::{
     // Derive macros
     Altrep,
+    AltrepComplex,
+    AltrepInteger,
+    AltrepList,
+    AltrepLogical,
+    AltrepRaw,
+    AltrepReal,
+    AltrepString,
     ExternalPtr,
     MatchArg,
     RFactor,
@@ -56,7 +63,12 @@ pub use crate::{
 // endregion
 
 // region: Core traits
-pub use crate::{Coerce, IntoR, IntoRAltrep, TryCoerce, TryFromSexp};
+pub use crate::altrep::RegisterAltrep;
+// Round out the ALTREP surface so it matches the DataFrame/serde prelude precedent.
+pub use crate::{
+    AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
+    AltStringData, AltrepExtract, AltrepLen, Coerce, IntoR, IntoRAltrep, TryCoerce, TryFromSexp,
+};
 // endregion
 
 // region: Types
