@@ -661,14 +661,31 @@ fn s7_wrapper_full_snapshot() {
     assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
     assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .val)"));
 
-    // Verify S7 generics (now multi-line braced form)
-    assert!(wrapper.contains("if (!exists(\"get\", mode = \"function\")) {"));
+    // Verify S7 generics use the usability classifier (#1114): a plain base
+    // closure like `get` must not be treated as a usable generic. The leading
+    // statement is an `if (!base::exists(...))` (never a top-level assignment,
+    // which roxygen2 would document), with the classifier in the `else if`.
+    assert!(wrapper.contains("if (!base::exists(\"get\", mode = \"function\")) {"));
+    assert!(wrapper.contains(
+        "} else if ({ .mx_gen <- base::get(\"get\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"get\")) }) {"
+    ));
     assert!(
         wrapper.contains(
             "  get <- S7::new_generic(\"get\", \"x\", function(x, ...) S7::S7_dispatch())"
         )
     );
-    assert!(wrapper.contains("if (!exists(\"increment\", mode = \"function\")) {"));
+    // When the local generic masks an existing function, a class_any fallback
+    // delegates ordinary calls to it (keeps `get(...)`/`var(1:10)` working).
+    // `local()` + eager `.mx_masked <-` avoids the unforced-promise capture bug.
+    assert!(
+        wrapper.contains(
+            "    S7::method(.mx_g, S7::class_any) <- function(x, ...) .mx_masked(x, ...)"
+        )
+    );
+    assert!(wrapper.contains("if (!base::exists(\"increment\", mode = \"function\")) {"));
+    assert!(wrapper.contains(
+        "} else if ({ .mx_gen <- base::get(\"increment\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"increment\")) }) {"
+    ));
     assert!(wrapper.contains(
         "  increment <- S7::new_generic(\"increment\", \"x\", function(x, ...) S7::S7_dispatch())"
     ));

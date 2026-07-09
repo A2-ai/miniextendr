@@ -22,6 +22,7 @@ Imports:
     methods,
     R6,
     S7,
+    utils,
     vctrs
 Suggests:
     bench,
