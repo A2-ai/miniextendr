@@ -746,6 +746,8 @@ pub fn miniextendr(
         coerce_all,
         rng,
         unwrap_in_r,
+        no_preconditions,
+        no_call_attribution,
         return_pref,
         return_pref_span,
         s3_generic,
@@ -1079,9 +1081,18 @@ pub fn miniextendr(
     let r_formals = arg_builder.build_formals();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();
 
-    // Prepend .call parameter if using internal C wrapper
+    // Prepend .call parameter if using internal C wrapper.
+    // `#[miniextendr(no_call_attribution)]` / `fast` emits `.call = NULL`
+    // instead of `match.call()` — saves ~1200 ns/call. The R-side
+    // .miniextendr_raise_condition helper falls back to sys.call() so the
+    // error UX is preserved (positional args instead of named).
     if uses_internal_c_wrapper {
-        r_call_args_strs.insert(0, ".call = match.call()".to_string());
+        let call_arg = if no_call_attribution {
+            ".call = NULL".to_string()
+        } else {
+            ".call = match.call()".to_string()
+        };
+        r_call_args_strs.insert(0, call_arg);
     }
 
     // Build the R body string consistently
@@ -1337,22 +1348,30 @@ pub fn miniextendr(
     for (param_name, _) in parsed.choices_params() {
         skip_params.insert(r_wrapper_builder::normalize_r_arg_string(param_name));
     }
-    // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
-    // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
-    // holds Rust names; normalize to R names.
-    let precondition_opts = r_preconditions::PreconditionOptions {
-        coerce_all,
-        coerce_params: coerce_params_list
-            .iter()
-            .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
-            .collect(),
-    };
-    let precondition_output =
-        r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);
-    let precondition_prelude = if precondition_output.static_checks.is_empty() {
+    // `#[miniextendr(no_preconditions)]` / `fast` opts out of the stopifnot
+    // prelude entirely. TryFromSexp still raises a typed Rust error on
+    // mismatched input — see analysis/scaffolding-deep-findings-2026-05-20.md
+    // for why this is ~1230 ns / 1-arg or ~3900 ns / 5-arg of savings.
+    let precondition_prelude = if no_preconditions {
         String::new()
     } else {
-        precondition_output.static_checks.join("\n  ")
+        // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
+        // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
+        // holds Rust names; normalize to R names.
+        let precondition_opts = r_preconditions::PreconditionOptions {
+            coerce_all,
+            coerce_params: coerce_params_list
+                .iter()
+                .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
+                .collect(),
+        };
+        let precondition_output =
+            r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);
+        if precondition_output.static_checks.is_empty() {
+            String::new()
+        } else {
+            precondition_output.static_checks.join("\n  ")
+        }
     };
 
     // Combine all preludes: r_entry, on.exit, lifecycle, static preconditions, match.arg, choices, r_post_checks

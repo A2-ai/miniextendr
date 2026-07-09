@@ -27,7 +27,7 @@
 
 #![allow(dead_code)]
 
-use miniextendr_api::{DataFrame, IntoDataFrame};
+use miniextendr_api::{BuiltDataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // region: Inner types
@@ -212,7 +212,7 @@ pub struct QualLocated {
 // region: #[miniextendr] entrypoints — one per case + multi-row variants
 
 #[miniextendr]
-pub fn flat_basic_1row() -> DataFrame {
+pub fn flat_basic_1row() -> BuiltDataFrame {
     vec![FlatLocated {
         id: 1,
         origin: FlatPoint { x: 1.0, y: 2.0 },
@@ -222,7 +222,7 @@ pub fn flat_basic_1row() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_basic_nrow() -> DataFrame {
+pub fn flat_basic_nrow() -> BuiltDataFrame {
     vec![
         FlatLocated {
             id: 1,
@@ -242,12 +242,12 @@ pub fn flat_basic_nrow() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_basic_zero_rows() -> DataFrame {
+pub fn flat_basic_zero_rows() -> BuiltDataFrame {
     Vec::<FlatLocated>::new().into_dataframe().unwrap()
 }
 
 #[miniextendr]
-pub fn flat_two_struct_fields() -> DataFrame {
+pub fn flat_two_struct_fields() -> BuiltDataFrame {
     vec![
         FlatSegment {
             id: 10,
@@ -265,7 +265,7 @@ pub fn flat_two_struct_fields() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_mixed_inner_types() -> DataFrame {
+pub fn flat_mixed_inner_types() -> BuiltDataFrame {
     vec![
         FlatTagged {
             id: 1,
@@ -287,7 +287,7 @@ pub fn flat_mixed_inner_types() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_renamed_inner() -> DataFrame {
+pub fn flat_renamed_inner() -> BuiltDataFrame {
     vec![FlatRenamed {
         id: 1,
         origin: FlatPoint { x: 1.0, y: 2.0 },
@@ -297,7 +297,7 @@ pub fn flat_renamed_inner() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_skip_inner() -> DataFrame {
+pub fn flat_skip_inner() -> BuiltDataFrame {
     vec![
         FlatSkip {
             id: 1,
@@ -313,7 +313,7 @@ pub fn flat_skip_inner() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_as_list_inner() -> DataFrame {
+pub fn flat_as_list_inner() -> BuiltDataFrame {
     vec![
         FlatAsList {
             id: 1,
@@ -329,7 +329,7 @@ pub fn flat_as_list_inner() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_mixed_order() -> DataFrame {
+pub fn flat_mixed_order() -> BuiltDataFrame {
     vec![
         FlatMixedOrder {
             id: 1,
@@ -347,7 +347,7 @@ pub fn flat_mixed_order() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_tuple_struct() -> DataFrame {
+pub fn flat_tuple_struct() -> BuiltDataFrame {
     vec![
         FlatPair(FlatPoint { x: 1.0, y: 2.0 }, FlatPoint { x: 3.0, y: 4.0 }),
         FlatPair(FlatPoint { x: 5.0, y: 6.0 }, FlatPoint { x: 7.0, y: 8.0 }),
@@ -357,7 +357,7 @@ pub fn flat_tuple_struct() -> DataFrame {
 }
 
 #[miniextendr]
-pub fn flat_nested_struct() -> DataFrame {
+pub fn flat_nested_struct() -> BuiltDataFrame {
     vec![
         FlatNested {
             id: 1,
@@ -381,7 +381,7 @@ pub fn flat_nested_struct() -> DataFrame {
 /// Multi-segment-path field: `geom::QualPoint` (fix for issue #514).
 /// Returns a 1-row data.frame with columns `id`, `pos_qx`, `pos_qy`.
 #[miniextendr]
-pub fn qual_located_basic() -> DataFrame {
+pub fn qual_located_basic() -> BuiltDataFrame {
     vec![QualLocated {
         id: 42,
         origin: geom::QualPoint { qx: 1.5, qy: 2.5 },
@@ -526,7 +526,7 @@ const _: () = {
 /// Expected columns: `id`, `origin_x`, `origin_y`.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_basic_par() -> DataFrame {
+pub fn flat_basic_par() -> BuiltDataFrame {
     vec![
         FlatLocated {
             id: 1,
@@ -549,7 +549,7 @@ pub fn flat_basic_par() -> DataFrame {
 /// Expected columns: `id`, `a_x`, `a_y`, `b_x`, `b_y`.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_two_struct_fields_par() -> DataFrame {
+pub fn flat_two_struct_fields_par() -> BuiltDataFrame {
     vec![
         FlatSegment {
             id: 10,
@@ -570,7 +570,7 @@ pub fn flat_two_struct_fields_par() -> DataFrame {
 /// Expected columns: `id`, `origin` (list column).
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_as_list_par() -> DataFrame {
+pub fn flat_as_list_par() -> BuiltDataFrame {
     vec![
         FlatAsList {
             id: 1,
@@ -589,7 +589,7 @@ pub fn flat_as_list_par() -> DataFrame {
 /// Expected columns: `id`, `inner_a`, `inner_sub_depth`.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn flat_nested_par() -> DataFrame {
+pub fn flat_nested_par() -> BuiltDataFrame {
     vec![
         FlatNested {
             id: 1,

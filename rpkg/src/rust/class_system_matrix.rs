@@ -45,8 +45,10 @@ impl CounterTraitEnv {
     }
 }
 
-// env pinned: two env trait impls of one trait collide on the unqualified
-// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
+// env pinned: this is the deliberate Env cell of the class-system matrix, so it
+// must stay env regardless of the default-class-system feature (it pairs with the
+// env inherent impl above). (#1115's r6 wrapper-name collision is fixed —
+// r6 trait wrappers are class-scoped now — so a flip would no longer collide.)
 #[miniextendr(env)]
 impl MatrixCounter for CounterTraitEnv {
     fn custom_get(&self) -> i32 {
@@ -208,8 +210,8 @@ pub trait StaticXParam {
     fn from_value(x: i32) -> i32;
 }
 
-// env pinned: two env trait impls of one trait collide on the unqualified
-// r6_trait_<Trait>_<method> wrapper names if they flip under r6-default (#1115).
+// env pinned: matches CounterTraitEnv's env inherent impl (the matrix's Env
+// cell), so `CounterTraitEnv$StaticXParam$from_value` attaches to the env object.
 #[miniextendr(env)]
 impl StaticXParam for CounterTraitEnv {
     fn from_value(x: i32) -> i32 {

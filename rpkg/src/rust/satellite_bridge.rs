@@ -10,7 +10,7 @@
 //! routed through the serde bridge.
 
 use miniextendr_api::SEXP;
-use miniextendr_api::dataframe::DataFrame;
+use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::miniextendr;
 use miniextendr_api::serde::{
     AsSerialize, DataFrameShape, SplitShape, from_r, vec_to_dataframe, vec_to_dataframe_split,
@@ -19,14 +19,14 @@ use miniextendr_api::serde::{
 /// Rust → R, columnar: `Vec<Reading>` becomes a native data.frame, one atomic
 /// column per field. `note: Option<String>` carries NA.
 #[miniextendr]
-pub fn satellite_readings_df() -> Result<DataFrame, String> {
+pub fn satellite_readings_df() -> Result<BuiltDataFrame, String> {
     vec_to_dataframe(&satellite::sample_readings()).map_err(|e| e.to_string())
 }
 
 /// Nested-struct flatten: `Station.site` flattens to `site_lat` / `site_lon`.
 /// Also probes i64 → numeric (`readings_taken`).
 #[miniextendr]
-pub fn satellite_stations_df() -> Result<DataFrame, String> {
+pub fn satellite_stations_df() -> Result<BuiltDataFrame, String> {
     vec_to_dataframe(&satellite::sample_stations()).map_err(|e| e.to_string())
 }
 

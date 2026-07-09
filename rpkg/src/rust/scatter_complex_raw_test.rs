@@ -37,7 +37,7 @@
 
 #![allow(dead_code)]
 
-use miniextendr_api::{DataFrame, DataFrameRow, IntoDataFrame, IntoList, miniextendr};
+use miniextendr_api::{BuiltDataFrame, DataFrameRow, IntoDataFrame, IntoList, miniextendr};
 
 // region: Raw scatter — RAWSXP (unconditional)
 
@@ -77,7 +77,7 @@ pub enum ScatterRawEvent {
 /// R-side assertions: rows 1/3/5 have the expected byte values;
 /// rows 2/4 are `as.raw(0)`.
 #[miniextendr]
-pub fn scatter_raw_mixed() -> DataFrame {
+pub fn scatter_raw_mixed() -> BuiltDataFrame {
     vec![
         ScatterRawEvent::WithPayload {
             id: 1,
@@ -100,7 +100,7 @@ pub fn scatter_raw_mixed() -> DataFrame {
 
 /// All rows present — exercises the dense (no-scatter-zero) RAWSXP path.
 #[miniextendr]
-pub fn scatter_raw_all_present() -> DataFrame {
+pub fn scatter_raw_all_present() -> BuiltDataFrame {
     vec![
         ScatterRawEvent::WithPayload {
             id: 1,
@@ -122,7 +122,7 @@ pub fn scatter_raw_all_present() -> DataFrame {
 /// All rows absent — every cell in the `data_byte` column should be
 /// `as.raw(0)`.
 #[miniextendr]
-pub fn scatter_raw_all_absent() -> DataFrame {
+pub fn scatter_raw_all_absent() -> BuiltDataFrame {
     vec![
         ScatterRawEvent::Empty { id: 1 },
         ScatterRawEvent::Empty { id: 2 },
@@ -209,7 +209,7 @@ pub enum ScatterComplexEvent {
 /// `NA_complex_`.
 #[cfg(feature = "num-complex")]
 #[miniextendr]
-pub fn scatter_complex_mixed() -> DataFrame {
+pub fn scatter_complex_mixed() -> BuiltDataFrame {
     vec![
         ScatterComplexEvent::WithPayload {
             id: 1,
@@ -239,7 +239,7 @@ pub fn scatter_complex_mixed() -> DataFrame {
 /// All rows present — exercises the dense (no-scatter-NA) CPLXSXP path.
 #[cfg(feature = "num-complex")]
 #[miniextendr]
-pub fn scatter_complex_all_present() -> DataFrame {
+pub fn scatter_complex_all_present() -> BuiltDataFrame {
     vec![
         ScatterComplexEvent::WithPayload {
             id: 1,
@@ -268,7 +268,7 @@ pub fn scatter_complex_all_present() -> DataFrame {
 /// `NA_complex_`.
 #[cfg(feature = "num-complex")]
 #[miniextendr]
-pub fn scatter_complex_all_absent() -> DataFrame {
+pub fn scatter_complex_all_absent() -> BuiltDataFrame {
     vec![
         ScatterComplexEvent::Empty { id: 1 },
         ScatterComplexEvent::Empty { id: 2 },

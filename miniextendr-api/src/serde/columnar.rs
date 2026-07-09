@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
-use crate::dataframe::{DataFrame, NamedDataFrameListBuilder};
+use crate::dataframe::{BuiltDataFrame, DataFrame, NamedDataFrameListBuilder};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
@@ -96,12 +96,10 @@ macro_rules! reject_non_struct {
 /// | `Option<T>` (every row `None`) | `logical` NA column — R coerces to the surrounding type on first use (`c(NA, 1L)` → integer, `c(NA, "x")` → character) |
 /// | Nested struct | Recursively flattened with `parent_child` naming |
 /// | Other | Falls back to per-element list column |
-pub fn vec_to_dataframe<T: Serialize>(
-    rows: &[T],
-) -> Result<crate::dataframe::DataFrame, RSerdeError> {
+pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<BuiltDataFrame, RSerdeError> {
     if rows.is_empty() {
         // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
-        return Ok(unsafe { crate::dataframe::DataFrame::from_built_sexp(empty_dataframe()) });
+        return Ok(unsafe { BuiltDataFrame::adopt_sexp(empty_dataframe()) });
     }
 
     // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
@@ -192,7 +190,10 @@ pub fn vec_to_dataframe<T: Serialize>(
 /// let rows = (0..10).map(|i| Row { id: i, name: format!("item_{i}") });
 /// let df = iter_to_dataframe(rows, Some(10))?;
 /// ```
-pub fn iter_to_dataframe<T, I>(iter: I, nrow_hint: Option<usize>) -> Result<DataFrame, RSerdeError>
+pub fn iter_to_dataframe<T, I>(
+    iter: I,
+    nrow_hint: Option<usize>,
+) -> Result<BuiltDataFrame, RSerdeError>
 where
     T: Serialize,
     I: IntoIterator<Item = T>,
@@ -269,7 +270,7 @@ where
 pub fn par_iter_to_dataframe<T, I>(
     iter: I,
     nrow_hint: Option<usize>,
-) -> Result<DataFrame, RSerdeError>
+) -> Result<BuiltDataFrame, RSerdeError>
 where
     // `Sync` (not just `Send`): rows are borrowed across rayon workers via
     // `par_chunks`, so `&T: Send`, i.e. `T: Sync`.
@@ -283,7 +284,7 @@ where
     let Some((schema, merged, nrow)) = par_build_columns(&rows, nrow_hint)? else {
         // Empty input: well-formed 0-row data.frame.
         // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
-        return Ok(unsafe { DataFrame::from_built_sexp(empty_dataframe()) });
+        return Ok(unsafe { BuiltDataFrame::adopt_sexp(empty_dataframe()) });
     };
 
     // Assembly allocates SEXPs and must run on the R main thread. The merged
@@ -370,7 +371,7 @@ where
 pub fn par_iter_to_dataframe_growing<T, I>(
     iter: I,
     nrow_hint: Option<usize>,
-) -> Result<DataFrame, RSerdeError>
+) -> Result<BuiltDataFrame, RSerdeError>
 where
     // `Sync` (not just `Send`): rows are borrowed across rayon workers via
     // `par_chunks`, so `&T: Send`, i.e. `T: Sync`.
@@ -382,7 +383,7 @@ where
     let rows: Vec<T> = iter.into_iter().collect();
     let Some((schema, merged, nrow)) = par_build_columns_growing(&rows, nrow_hint)? else {
         // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
-        return Ok(unsafe { DataFrame::from_built_sexp(empty_dataframe()) });
+        return Ok(unsafe { BuiltDataFrame::adopt_sexp(empty_dataframe()) });
     };
 
     // SAFETY: caller invokes this on the R main thread; column lengths all
@@ -913,22 +914,18 @@ where
         }
     }
 
+    // Both finishes return an owned, GC-rooted `BuiltDataFrame`: `ok_df` stays
+    // rooted (by its own handle) across `err_builder.finish()`'s allocation, so
+    // the manual `OwnedProtect` guards this used to need are gone (#1128). The
+    // `*` derefs each handle to its `DataFrame` view for `push` (which re-roots
+    // it in the builder's own scope); the handles live to the end of the
+    // statement, so they remain rooted across the whole assembly.
     let ok_df = ok_builder.finish()?;
-    // Root the finished frame across `err_builder.finish()` below: `DataFrame`
-    // is an unrooted SEXP wrapper and the second finish allocates, so under
-    // `gctorture(TRUE)` the collector reclaims `ok_df` mid-assembly otherwise
-    // (caught by gc_stress_dispatch_to_dataframes; same bug class as
-    // reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md).
-    // SAFETY: R main thread (SerdeRowBuilder invariant); `ok_df` is a valid SEXP.
-    let _ok_guard = unsafe { crate::OwnedProtect::new(ok_df.as_sexp()) };
     let err_df = err_builder.finish()?;
-    // SAFETY: as above. Guards drop LIFO after the list below is assembled;
-    // both frames are additionally rooted by the builder's scope once pushed.
-    let _err_guard = unsafe { crate::OwnedProtect::new(err_df.as_sexp()) };
 
     Ok(NamedDataFrameListBuilder::with_capacity(2)
-        .push(names.ok, ok_df)
-        .push(names.err, err_df)
+        .push(names.ok, *ok_df)
+        .push(names.err, *err_df)
         .build())
 }
 
@@ -1255,10 +1252,10 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     ///
     /// An empty builder produces an empty 0-row 0-column data.frame
     /// (matching `vec_to_dataframe(&[])`).
-    pub fn finish(self) -> Result<DataFrame, RSerdeError> {
+    pub fn finish(self) -> Result<BuiltDataFrame, RSerdeError> {
         let Some(schema) = self.schema else {
             // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
-            return Ok(unsafe { DataFrame::from_built_sexp(empty_dataframe()) });
+            return Ok(unsafe { BuiltDataFrame::adopt_sexp(empty_dataframe()) });
         };
         // SAFETY: nrow columns × matching lengths invariant maintained by push.
         // `assemble_with_scope` runs `assemble_dataframe` then drops the scope —
@@ -2445,9 +2442,10 @@ fn empty_dataframe() -> SEXP {
     }
 }
 
-/// Assemble column buffers into a data.frame, then drop `scope` only after the
-/// assembled VECSXP has copied every protected element. The returned
-/// [`DataFrame`] is rooted by the caller's protection of its SEXP.
+/// Assemble column buffers into a data.frame, root it as a [`BuiltDataFrame`],
+/// then drop `scope` only after the assembled VECSXP has copied every protected
+/// element. Rooting happens *before* the scope drop, so the frame is never
+/// unrooted — not even momentarily.
 ///
 /// Centralises the protect-scope drop discipline shared by
 /// [`vec_to_dataframe`] and [`SerdeRowBuilder::finish`].
@@ -2461,13 +2459,15 @@ unsafe fn assemble_with_scope(
     columns: &[ColumnBuffer],
     nrow: usize,
     scope: crate::ProtectScope,
-) -> DataFrame {
+) -> BuiltDataFrame {
     // SAFETY: `assemble_dataframe` builds a well-formed data.frame SEXP from the
     // column buffers; the caller upholds the main-thread + length invariants.
-    let df =
-        unsafe { DataFrame::from_built_sexp(assemble_dataframe(&schema.fields, columns, nrow)) };
+    // `adopt_sexp` roots the SEXP before `scope` releases its per-column
+    // protects, so the frame is continuously rooted.
+    let built =
+        unsafe { BuiltDataFrame::adopt_sexp(assemble_dataframe(&schema.fields, columns, nrow)) };
     drop(scope);
-    df
+    built
 }
 
 /// Assemble column buffers into an R data.frame SEXP.
@@ -3302,8 +3302,10 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     tag_field: tag_field.map(str::to_string),
                 })
                 .collect();
-            let df = vec_to_dataframe(&wrapped)?;
-            Ok(DataFrameShape::Bare(df))
+            // `DataFrameShape::Bare` carries the cheap view; its `IntoR` re-roots
+            // it. The `built` handle keeps the frame rooted until this fn returns.
+            let built = vec_to_dataframe(&wrapped)?;
+            Ok(DataFrameShape::Bare(*built))
         }
         SplitShape::PerVariantList | SplitShape::PerVariantListWithTag { .. } => {
             // Group indices by variant name (preserve first-seen order).
@@ -3339,26 +3341,33 @@ pub fn vec_to_dataframe_split<T: Serialize>(
             for (name, indices) in &groups {
                 let is_unit = infos[indices[0]].is_unit;
 
-                let df = if is_unit {
+                let df: DataFrame = if is_unit {
                     let sexp = unit_variant_dataframe(indices.len());
                     // SAFETY: `unit_variant_dataframe` returns a well-formed data.frame SEXP.
                     unsafe { DataFrame::from_built_sexp(sexp) }
                 } else if tag_field.is_some() {
                     let refs: Vec<&T> = indices.iter().map(|&i| &rows[i]).collect();
-                    let df = vec_to_dataframe(&refs)?;
+                    // `built` owns the frame's root across `drop`'s allocation;
+                    // it drops (alloc-free) at the end of this block, and the
+                    // resulting view is re-rooted in `scope` immediately below.
+                    let built = vec_to_dataframe(&refs)?;
                     if let Some(tf) = tag_field {
-                        df.drop(tf)
+                        // Deref to the `DataFrame` view first: `BuiltDataFrame`
+                        // implements `Drop`, so `built.drop(tf)` would resolve to
+                        // the destructor (E0040). `(*built)` is a `DataFrame`
+                        // (no `Drop`), so `.drop` binds to `DataFrame::drop`.
+                        (*built).drop(tf)
                     } else {
-                        df
+                        *built
                     }
                 } else {
                     let wrapped: Vec<VariantPayload<&T>> =
                         indices.iter().map(|&i| VariantPayload(&rows[i])).collect();
-                    vec_to_dataframe(&wrapped)?
+                    *vec_to_dataframe(&wrapped)?
                 };
 
                 // SAFETY: R main thread; `df` is a freshly-built, unrooted
-                // data.frame. Root it before the tag-column allocations below
+                // data.frame view. Root it before the tag-column allocations below
                 // and across the remaining loop iterations.
                 unsafe { scope.protect_raw(df.as_sexp()) };
 
@@ -3876,7 +3885,7 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 pub fn vec_to_dataframe_flatten_enums<T: Serialize>(
     rows: &[T],
     flatten_enum_fields: &[&str],
-) -> Result<DataFrame, RSerdeError> {
+) -> Result<BuiltDataFrame, RSerdeError> {
     let wrapped: Vec<FlattenEnumFieldsRow<'_, T>> = rows
         .iter()
         .map(|row| FlattenEnumFieldsRow {
@@ -4242,7 +4251,7 @@ fn flatten_enum_field<M: ser::SerializeMap, V: ?Sized + Serialize>(
 pub fn map_to_dataframe<K, V>(
     map: &std::collections::BTreeMap<K, V>,
     key_column: &str,
-) -> Result<DataFrame, RSerdeError>
+) -> Result<BuiltDataFrame, RSerdeError>
 where
     K: Serialize,
     V: Serialize,
@@ -4273,7 +4282,7 @@ where
 pub fn hashmap_to_dataframe<K, V>(
     map: &std::collections::HashMap<K, V>,
     key_column: &str,
-) -> Result<DataFrame, RSerdeError>
+) -> Result<BuiltDataFrame, RSerdeError>
 where
     K: Serialize + Ord,
     V: Serialize,
@@ -4398,14 +4407,16 @@ where
             // Union-schema across T and E, with is_error column.
             let wrapped: Vec<CollatedResultRow<'_, T, E>> =
                 rows.iter().map(CollatedResultRow::from).collect();
-            let df = vec_to_dataframe(&wrapped)?;
-            Ok(DataFrameShape::Bare(df))
+            // `DataFrameShape::Bare` carries the cheap view; its `IntoR` re-roots
+            // it. `built` keeps the frame rooted until this fn returns.
+            let built = vec_to_dataframe(&wrapped)?;
+            Ok(DataFrameShape::Bare(*built))
         }
         ResultShape::Auto { empty_ok_sentinel } => {
             let (oks, errs) = partition_results(rows);
             if errs.is_empty() {
-                let df = vec_to_dataframe(&oks)?;
-                Ok(DataFrameShape::Bare(df))
+                let built = vec_to_dataframe(&oks)?;
+                Ok(DataFrameShape::Bare(*built))
             } else {
                 build_split(oks, errs, empty_ok_sentinel)
             }
@@ -4439,17 +4450,21 @@ where
     E: Serialize,
     S: crate::IntoR,
 {
+    // `error_df` is an owned handle: it stays GC-rooted across the `oks`/sentinel
+    // allocation below (pre-#1128 it was a bare view reaped mid-build under
+    // gctorture). Its cheap view is stored in the `DataFrameShape` carrier, whose
+    // `IntoR` re-roots it; the handle drops when this fn returns.
     let error_df = vec_to_dataframe(&errs)?;
     let results = if oks.is_empty() {
         let sentinel = empty_ok_sentinel.into_sexp();
         SplitResults::None(sentinel)
     } else {
         let df = vec_to_dataframe(&oks)?;
-        SplitResults::Some(df)
+        SplitResults::Some(*df)
     };
     Ok(DataFrameShape::Split {
         results,
-        error: error_df,
+        error: *error_df,
     })
 }
 

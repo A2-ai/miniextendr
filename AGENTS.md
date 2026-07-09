@@ -25,6 +25,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 
 ### Rust/FFI gotchas
 
+- **`DataFrame` (view) vs `BuiltDataFrame` (owned) split (#1128)**: `DataFrame` is a cheap `Copy` **view** over a bare SEXP with no GC root (sound only while an R `.Call` frame or a `ProtectScope` keeps it reachable). Every **Rust-side constructor** returns `BuiltDataFrame`, an owned RAII handle that roots the frame (`R_PreserveObject`/`R_ReleaseObject`, `!Send`): `IntoDataFrame::into_dataframe`, `SerdeRowBuilder::finish`, `DataFrame::builder().build()`, serde `*_to_dataframe`, `NamedList::as_data_frame`. It `Deref`s to `DataFrame` and returns to R via `IntoR`. `!Send` means it can't cross back out of `with_r_thread`/`run_on_worker` — build+read+drop it on the R thread. Residual (option 2): editing methods (`drop`/`select`/…) still return an unrooted view.
 - **Pointer provenance**: cache `*mut T` via a mutable path (`&mut T`, `Box::into_raw`, `downcast_mut`, `ptr::from_mut`). Never write through a `cached_ptr` derived from `&T` / `downcast_ref` — UB under Stacked Borrows.
 - **`cargo package` for workspace resolution**: when vendoring, let `cargo package` expand workspace inheritance — never hard-code workspace dependency replacements.
 - **m4 in `AC_CONFIG_COMMANDS`**: `$1` is empty (use `$0` or avoid `sh -c`). Escape `[` / `]` in sed/grep as `@<:@` / `@:>@`.

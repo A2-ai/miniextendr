@@ -441,7 +441,7 @@ Return the last day of the month for a civil::Date.
 
 Return a negative Timestamp (1960-01-01 00:00:00 UTC) to test floor-based split.
 
-Roundtrip a Vec\url{civil::Date} through R Date vector.
+Roundtrip a \verb{Vec<civil::Date>} through R Date vector.
 
 Roundtrip a difftime through SignedDuration.
 

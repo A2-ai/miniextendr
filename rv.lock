@@ -48,6 +48,13 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "beeswarm"
+version = "0.4.0"
+source = { repository = "https://cloud.r-project.org/" }
+force_source = false
+dependencies = []
+
+[[packages]]
 name = "bench"
 version = "1.1.4"
 source = { repository = "https://cloud.r-project.org/" }
@@ -334,6 +341,19 @@ dependencies = [
     { name = "rstudioapi", requirement = "(>= 0.11)" },
     "sys",
     { name = "zip", requirement = "(>= 2.1.0)" },
+]
+
+[[packages]]
+name = "ggbeeswarm"
+version = "0.7.3"
+source = { repository = "https://cloud.r-project.org/" }
+force_source = false
+dependencies = [
+    { name = "ggplot2", requirement = "(>= 3.3.0)" },
+    "beeswarm",
+    "lifecycle",
+    "vipor",
+    "cli",
 ]
 
 [[packages]]
@@ -842,7 +862,7 @@ dependencies = [
 [[packages]]
 name = "roxygen2"
 version = "8.0.0"
-source = { url = "https://cran.r-project.org/src/contrib/roxygen2_8.0.0.tar.gz", sha = "75816bf3a25554f5752254b985b7242490b0fabe68a5ada335c340b820ba34e8" }
+source = { repository = "https://prism.dev.a2-ai.cloud/rpkgs/stratus/2026-06-18" }
 force_source = false
 dependencies = [
     "brew",
@@ -1147,6 +1167,13 @@ dependencies = [
     { name = "lifecycle", requirement = "(>= 1.0.3)" },
     { name = "rlang", requirement = "(>= 1.1.7)" },
 ]
+
+[[packages]]
+name = "vipor"
+version = "0.4.7"
+source = { repository = "https://cloud.r-project.org/" }
+force_source = false
+dependencies = []
 
 [[packages]]
 name = "viridisLite"

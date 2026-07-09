@@ -63,17 +63,17 @@ test_that("ScalerS7 set_mode() validates via match.arg() (BUG2)", {
 
 test_that("ScalerR6 scale() does not corrupt the x_factor param (BUG1)", {
   obj <- ScalerR6$new(2)
-  expect_equal(r6_trait_Scaler_scale(obj, x_factor = 3), 6)
+  expect_equal(ScalerR6$Scaler$scale(obj, x_factor = 3), 6)
 })
 
 test_that("ScalerR6 bump() enforces the stopifnot() precondition (BUG2)", {
   obj <- ScalerR6$new(2)
-  expect_equal(r6_trait_Scaler_bump(obj, amount = 3L), 5)
-  expect_error(r6_trait_Scaler_bump(obj, amount = "not a number"))
+  expect_equal(ScalerR6$Scaler$bump(obj, amount = 3L), 5)
+  expect_error(ScalerR6$Scaler$bump(obj, amount = "not a number"))
 })
 
 test_that("ScalerR6 set_mode() validates via match.arg() (BUG2)", {
   obj <- ScalerR6$new(2)
-  expect_equal(r6_trait_Scaler_set_mode(obj, mode = "slow"), "slow")
-  expect_error(r6_trait_Scaler_set_mode(obj, mode = "bogus"))
+  expect_equal(ScalerR6$Scaler$set_mode(obj, mode = "slow"), "slow")
+  expect_error(ScalerR6$Scaler$set_mode(obj, mode = "bogus"))
 })

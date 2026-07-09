@@ -44,7 +44,7 @@ RUST_SRC_DIR="$abs_rpkg_src/rust"
 
 dnl ---- install-mode self-repair ----
 dnl Goal: a tarball that arrives missing inst/vendor.tar.xz becomes self-repairing
-dnl at install time, so end users (who don't have `just`) get an offline-mode
+dnl at install time, so end users (who don't have 'just') get an offline-mode
 dnl build automatically without manual vendoring.
 dnl
 dnl Triggers cargo-revendor when ALL of these hold:
@@ -52,8 +52,8 @@ dnl   1. inst/vendor.tar.xz is absent (nothing to install offline from)
 dnl   2. cargo-revendor is on PATH (end user has the toolchain to do it)
 dnl   3. we are NOT in a developer source tree (no .git ancestor)
 dnl
-dnl Skipping in git-tracked source trees keeps `bash ./configure` from devsource
-dnl fast: the dev workflow uses explicit `miniextendr_vendor()` to produce the
+dnl Skipping in git-tracked source trees keeps 'bash ./configure' from devsource
+dnl fast: the dev workflow uses explicit 'miniextendr_vendor()' to produce the
 dnl tarball when needed, and dev iteration runs in source-mode against
 dnl whichever path overrides the .cargo/config.toml provides.
 dnl
@@ -76,12 +76,12 @@ while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
 done
 
 dnl Distinguish a checked-out source tree from a package produced by
-dnl `R CMD build` / installed by `R CMD INSTALL`. R stamps a `Packaged:` field
+dnl 'R CMD build' / installed by 'R CMD INSTALL'. R stamps a 'Packaged:' field
 dnl into the DESCRIPTION it seals (tools:::.build_packages, unconditional) and
-dnl `R CMD INSTALL` adds `Built:`. A git working tree's DESCRIPTION has neither.
+dnl 'R CMD INSTALL' adds 'Built:'. A git working tree's DESCRIPTION has neither.
 dnl Used by the leaked-tarball guard below to avoid misfiring on a legitimate
 dnl built-tarball install that happens to be extracted into a dir nested under
-dnl the repo .git (e.g. <pkg>.Rcheck/<pkg>/ during `R CMD check`).
+dnl the repo .git (e.g. <pkg>.Rcheck/<pkg>/ during 'R CMD check').
 SOURCE_IS_BUILT=false
 if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
   SOURCE_IS_BUILT=true
@@ -93,8 +93,8 @@ dnl LEAK: a previous build that produced inst/vendor.tar.xz was interrupted
 dnl before its cleanup ran. configure would silently flip to tarball mode and
 dnl build against the frozen vendored sources, ignoring local source edits.
 dnl Fail loud instead. The guard fires only for a real source tree: the
-dnl SOURCE_IS_BUILT gate (no `Packaged:`/`Built:` in DESCRIPTION) suppresses it
-dnl on a legitimate built-tarball install — e.g. `R CMD check` extracts the
+dnl SOURCE_IS_BUILT gate (no 'Packaged:'/'Built:' in DESCRIPTION) suppresses it
+dnl on a legitimate built-tarball install — e.g. 'R CMD check' extracts the
 dnl built tarball into <pkg>.Rcheck/<pkg>/, which is nested under the repo .git
 dnl (SOURCE_IS_GIT=true) yet ships the bundled tarball on purpose. bootstrap.R
 dnl also exports MINIEXTENDR_BOOTSTRAP=1 when it invokes configure (after
@@ -140,7 +140,7 @@ fi
 dnl ---- install-mode detection ----
 dnl Single signal: presence of inst/vendor.tar.xz (possibly produced by the
 dnl self-repair block above, by bootstrap.R at build time, or by an explicit
-dnl `miniextendr_vendor()` call).
+dnl 'miniextendr_vendor()' call).
 dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is in the
 dnl     artifact. configure unpacks it, writes a vendored cargo source
 dnl     replacement, and builds offline.
@@ -322,12 +322,12 @@ dnl
 dnl -Zdefault-visibility=hidden
 dnl    Without it, the Rust staticlib drags thousands of mangled stdlib/dep
 dnl    symbols into the side-module's EXPORT table and webR's dyn.load fails.
-dnl    Hiding all symbols by default leaves only your `#[no_mangle] extern "C"`
+dnl    Hiding all symbols by default leaves only your '#[no_mangle] extern "C"'
 dnl    entry points exported. This is a nightly -Z flag, but the wasm target
 dnl    already requires nightly via -Z build-std, so it adds no new constraint.
 dnl    (savvy's approach; endorsed by webR's maintainer, r-wasm/webr#532.)
 dnl
-dnl (`-C relocation-model=pic` was dropped — wasm32-unknown-emscripten is
+dnl ('-C relocation-model=pic' was dropped — wasm32-unknown-emscripten is
 dnl position-independent by default, so it was a no-op. See miniextendr #745.)
 if test "$is_wasm_install" = true; then
   ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
@@ -473,8 +473,8 @@ dnl ---- derive Cargo [env] block (R-ABI matching) ----
 dnl Goal: every cargo invocation (local dev, CI, end-user R CMD INSTALL) inherits
 dnl R-compatible toolchain settings so the Rust staticlib's ABI matches R's build.
 dnl
-dnl Shell env wins over `[env]` (no `force = true`) — users can still override
-dnl via `MACOSX_DEPLOYMENT_TARGET=12.0 R CMD INSTALL .` etc.
+dnl Shell env wins over '[env]' (no 'force = true') — users can still override
+dnl via 'MACOSX_DEPLOYMENT_TARGET=12.0 R CMD INSTALL .' etc.
 dnl
 dnl Per-platform derivations:
 dnl   macOS   : MACOSX_DEPLOYMENT_TARGET (4-step fallback: env → R config → otool → arch default).
@@ -498,8 +498,8 @@ CARGO_ENV_RUST_TARGET_UPPER=`echo "$CARGO_ENV_RUST_TARGET" | tr 'a-z-' 'A-Z_'`
 
 dnl Default CARGO_NET_GIT_FETCH_WITH_CLI to "true" (works around in-tree
 dnl rustls/CA failures) but let a value set outside configure win, via the same
-dnl AC_ARG_VAR + `: ${VAR=default}` idiom used for CARGO_PROFILE / CARGO_HOME
-dnl above. `=` (not `:=`) defaults only when unset, so an externally-set value —
+dnl AC_ARG_VAR + ': ${VAR=default}' idiom used for CARGO_PROFILE / CARGO_HOME
+dnl above. '=' (not ':=') defaults only when unset, so an externally-set value —
 dnl including an explicit empty one — is preserved.
 AC_ARG_VAR([CARGO_NET_GIT_FETCH_WITH_CLI],
   [Fetch cargo git deps via the system git CLI; "true" works around in-tree rustls/CA issues (default true)])
@@ -524,7 +524,7 @@ case "$host_os" in
     fi
 
     dnl Step 2: parse R CMD config CC / CXX / FC. clang spells it
-    dnl `-mmacos-version-min`; legacy gfortran / older clang use `-mmacosx-version-min`.
+    dnl '-mmacos-version-min'; legacy gfortran / older clang use '-mmacosx-version-min'.
     if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
       for _cfg_key in CC CXX FC; do
         _flag_val=`"${R_HOME}/bin/R" CMD config "$_cfg_key" 2>/dev/null \
@@ -538,7 +538,7 @@ case "$host_os" in
       done
     fi
 
-    dnl Step 3: otool -l on R binary. LC_BUILD_VERSION's `minos` field is
+    dnl Step 3: otool -l on R binary. LC_BUILD_VERSION's 'minos' field is
     dnl the authoritative target R was linked against.
     if test -z "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
       if command -v otool >/dev/null 2>&1; then
@@ -567,7 +567,7 @@ esac
 
 dnl --- Windows: derive rtools gcc linker path ----
 dnl Strategy: R CMD config CC's first token is the C compiler path. If its
-dnl sibling `gcc` (or `gcc.exe`) exists, use that as the cargo linker for
+dnl sibling 'gcc' (or 'gcc.exe') exists, use that as the cargo linker for
 dnl x86_64-pc-windows-gnu / aarch64-pc-windows-gnu. This pins cargo to rtools'
 dnl gcc rather than whichever gcc happens to be on PATH (MSYS2's, etc).
 CARGO_ENV_WIN_LINKER=""
@@ -579,7 +579,7 @@ case "$host_os" in
       for _gcc_cand in "$_r_cc_bindir/gcc.exe" "$_r_cc_bindir/gcc"; do
         if test -x "$_gcc_cand"; then
           dnl Cargo's [env] consumes the path raw; TOML needs forward slashes.
-          dnl `cygpath -m` produces a Windows-native path with forward slashes,
+          dnl 'cygpath -m' produces a Windows-native path with forward slashes,
           dnl which is exactly what cargo's TOML parser wants.
           _gcc_native="$_gcc_cand"
           if test "x$CYGPATH" != "xno"; then
@@ -600,14 +600,14 @@ esac
 
 dnl --- AR / RANLIB overrides (all platforms, only if non-default) ----
 dnl R may be configured with a non-default AR/RANLIB (e.g. a cross-toolchain
-dnl prefix). Cargo's default is `ar` / `ranlib`, so we only emit overrides
+dnl prefix). Cargo's default is 'ar' / 'ranlib', so we only emit overrides
 dnl when R's values differ — otherwise we'd just add noise to the config.
 CARGO_ENV_R_AR=`"${R_HOME}/bin/R" CMD config AR 2>/dev/null`
 CARGO_ENV_R_RANLIB=`"${R_HOME}/bin/R" CMD config RANLIB 2>/dev/null`
 
 dnl --- LTO: mirror R's --enable-lto into cargo profile LTO ----
-dnl R's `--enable-lto` substitutes a value into the LTO make variable
-dnl (typically `-flto`, but users can pass `LTO=-flto=thin` etc).
+dnl R's '--enable-lto' substitutes a value into the LTO make variable
+dnl (typically '-flto', but users can pass 'LTO=-flto=thin' etc).
 dnl We map the flag space onto cargo's profile.lto values:
 dnl   -flto=thin              -> "thin"
 dnl   -flto=fat | -flto=full  -> "fat"
@@ -640,7 +640,7 @@ _r_cxxflags=`"${R_HOME}/bin/R" CMD config CXXFLAGS 2>/dev/null`
 dnl Allowlist regex. Keep ABI-affecting flags only:
 dnl   -march=, -mtune=, -mfpmath=, -mfpu=, -mfloat-abi=, -mabi=, -m{sse,avx,ssse,pclmul,aes},
 dnl   -pthread, -D_REENTRANT, -fopenmp[=…]
-dnl No character classes are used (no `[...]`), so no m4 bracket escaping needed.
+dnl No character classes are used (no '[...]'), so no m4 bracket escaping needed.
 _abi_allow_re='^-march=|^-mtune=|^-mfpmath=|^-mfpu=|^-mfloat-abi=|^-mabi=|^-msse|^-mavx|^-mssse|^-mpclmul|^-maes|^-pthread$|^-D_REENTRANT$|^-fopenmp'
 
 if test -n "$_r_cflags"; then
@@ -652,15 +652,15 @@ fi
 
 dnl wasm32/webR: force -fPIC into the cargo C/C++ build-script flags.
 dnl
-dnl cc-rs hard-excludes the wasm32/wasm64 arch from its default `-fPIC` logic
-dnl (cc 1.2 src/lib.rs: the PIC default is `... && target.arch != "wasm32" &&
-dnl target.arch != "wasm64"`), and `-C relocation-model=pic` does NOT change
+dnl cc-rs hard-excludes the wasm32/wasm64 arch from its default '-fPIC' logic
+dnl (cc 1.2 src/lib.rs: the PIC default is '... && target.arch != "wasm32" &&
+dnl target.arch != "wasm64"'), and '-C relocation-model=pic' does NOT change
 dnl this — cc keys off the arch, not CARGO_CFG_RELOCATION_MODEL. Pure-Rust deps
 dnl are fine (the emscripten target emits PIC by default), but any cc-built C
 dnl dependency (e.g. zstd-sys's bundled libzstd) then produces non-PIC objects.
 dnl emscripten SIDE_MODULE links demand position-independent objects, so the
-dnl link fails: `relocation R_WASM_MEMORY_ADDR_SLEB cannot be used against
-dnl symbol .L.str.N; recompile with -fPIC`. cc reads CFLAGS_<target> (form #1,
+dnl link fails: 'relocation R_WASM_MEMORY_ADDR_SLEB cannot be used against
+dnl symbol .L.str.N; recompile with -fPIC'. cc reads CFLAGS_<target> (form #1,
 dnl literal dashed triple) and appends it verbatim, so this reaches every
 dnl transitive C/C++ build script. Native builds are untouched (gated on
 dnl is_wasm_install). Surfaced by the zstd optional integration (#1005).
@@ -688,7 +688,7 @@ dnl Individual env-derivation variables are propagated to AC_CONFIG_COMMANDS
 dnl via the trailing variable-pass list, and the [env] block body is composed
 dnl inline inside that shell context. Pre-composing here and passing a single
 dnl newline-separated string trips on AC_CONFIG_COMMANDS' heredoc-style
-dnl variable propagation (embedded `"` breaks the outer assignment quoting).
+dnl variable propagation (embedded '"' breaks the outer assignment quoting).
 
 dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)
@@ -720,8 +720,8 @@ AC_CONFIG_COMMANDS([unpack-vendor-tarball],
       echo "configure: tarball install — vendor/ already populated"
     fi
     dnl AUDIT-427: checksum strip removed. PR #408 rewrote cargo-revendor to
-    dnl preserve the original `package` field in each .cargo-checksum.json
-    dnl (matching the lockfile's `checksum = "..."` line). Cargo can therefore
+    dnl preserve the original 'package' field in each .cargo-checksum.json
+    dnl (matching the lockfile's 'checksum = "..."' line). Cargo can therefore
     dnl verify checksums end-to-end; stripping them discards a valid integrity
     dnl check. See issue #427 and tools/lock-shape-check.R which explicitly
     dnl documents that checksum lines are allowed in tarball-shape locks.
@@ -756,22 +756,22 @@ dnl   (cargo follows the git URL declared in Cargo.toml)
 dnl
 dnl WARNING: stale inst/vendor.tar.xz hazard.
 dnl   miniextendr_vendor() / a CRAN-prep build create inst/vendor.tar.xz
-dnl   transiently and remove it via a `trap ... EXIT` handler; if the process is killed
+dnl   transiently and remove it via a 'trap ... EXIT' handler; if the process is killed
 dnl   before the trap fires, the file is left behind.  Configure then detects
 dnl   it and sets IS_TARBALL_INSTALL=true, which (a) writes a tarball-mode
 dnl   config.toml here and (b) makes Makevars.in's post-build cleanup delete
-dnl   src/rust/.cargo/ from the SOURCE TREE on the next `R CMD INSTALL .`.
+dnl   src/rust/.cargo/ from the SOURCE TREE on the next 'R CMD INSTALL .'.
 dnl   Recovery: rm inst/vendor.tar.xz && bash ./configure
 AC_CONFIG_COMMANDS([cargo-config],
 [
   RPKG_CFG="src/rust/.cargo/config.toml"
   rm -f "$RPKG_CFG"
 
-  dnl `[env]` is emitted as the FIRST table in every branch. TOML table-scoping
-  dnl makes any later `[…]` heading end the previous table — so `[env]` must
-  dnl precede `[source.*]` / `[patch.*]` / `[build]` to stay independent.
+  dnl '[env]' is emitted as the FIRST table in every branch. TOML table-scoping
+  dnl makes any later '[…]' heading end the previous table — so '[env]' must
+  dnl precede '[source.*]' / '[patch.*]' / '[build]' to stay independent.
   dnl Cargo applies these to every cargo invocation in this package. Shell env
-  dnl wins (no `force = true`), so users can override case-by-case.
+  dnl wins (no 'force = true'), so users can override case-by-case.
   dnl
   dnl Derivation variables are passed individually via the variable-pass list
   dnl (see second arg) — composing the body here keeps quoting predictable.

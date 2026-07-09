@@ -328,6 +328,22 @@ int cli_progress_num__extern(void) {
 The Rust FFI then links against `cli_progress_num__extern` instead of
 `cli_progress_num`.
 
+### Known limitation: `--wrap-static-fns` is silently ignored in C++ mode
+
+`--wrap-static-fns` only emits the shim file when bindgen parses headers in **C
+mode** (`-x c`). In **C++ mode** (`-x c++` — the mode under which 52% of the
+tested CRAN corpus parses; see the corpus section below) the flag is **silently
+ignored** — no `*_static_wrappers.c` is generated, so any `static` / `static
+inline` `R_GetCCallable` accessors declared in a C++ header get no shim and fail
+to link. This is an upstream bindgen limitation
+([rust-lang/rust-bindgen#3157](https://github.com/rust-lang/rust-bindgen/issues/3157)).
+
+`use_native_package()` sidesteps this by classifying pure-C packages and parsing
+them in C mode, which preserves shim generation. The remaining gap is only C++
+packages that *also* expose `static inline` `R_GetCCallable` functions (rare).
+For those, write the C shim by hand, or invoke bindgen a second time in C mode
+for just those functions.
+
 ## Runtime resolution
 
 At runtime, the call chain is:
