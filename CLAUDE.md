@@ -483,8 +483,8 @@ Claude Code sandbox blocks compilation. For any compiling command
 Use `codex exec` for non-interactive (bare `codex` needs a TTY and fails under Bash tool):
 
 ```bash
-codex exec -m gpt-5.3-codex --full-auto "prompt"
-codex exec -m gpt-5.3-codex review "review these changes"
+codex exec -m gpt-5.5 --full-auto "prompt"
+codex exec -m gpt-5.5 review "review these changes"
 ```
 
 ### Compaction

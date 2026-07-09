@@ -341,9 +341,54 @@ finds nowhere in the repo (WARN), and out-of-range `file.rs:NNN` line cites
 Use `codex exec` for non-interactive (bare `codex` needs a TTY and fails under Bash tool):
 
 ```bash
-codex exec -m gpt-5.3-codex --full-auto "prompt"
-codex exec -m gpt-5.3-codex review "review these changes"
+codex exec -m gpt-5.5 --full-auto "prompt"
+codex exec -m gpt-5.5 review "review these changes"
 ```
+
+## Working a plan file end-to-end (worktree → PR)
+
+A plan file (`plans/*.md`) fully specifies one fix: the bug, the exact change,
+verification, and deliverable. To execute one in isolation, the rule is **one
+plan = one worktree = one PR**:
+
+1. **R version** — `rig default 4.6 && R --version` (must read `4.6.x`, else rv
+   enters safe mode and installs break). Re-check at the start of every fresh
+   shell.
+2. **Read the plan first, from the main checkout.** Plan files are usually
+   *untracked*, so they will NOT appear in a fresh worktree. Read
+   `plans/<plan>.md` (and any journal it cites, e.g.
+   `git show <branch>:journal/<file>.md`) before you branch.
+3. **Worktree** (never work on `main`; never collide with a sibling agent):
+   ```bash
+   git worktree add -b <branch-named-in-plan> ../mx-<slug> origin/main
+   cd ../mx-<slug>
+   just worktree-sync      # populate this worktree's rv/library from ~/.cache/rv (~8s)
+   just configure
+   ```
+4. **Implement exactly what the plan specifies** — it already chose the
+   approach; don't redesign. Fix any warning/lint in code you touch.
+5. **Verify — `fmt` and `clippy` are SEPARATE gates; run BOTH:**
+   ```bash
+   just fmt                      # rustfmt; clippy does NOT cover it, CI fails on it separately
+   just check && just test 2>&1 > /tmp/plan-check.log   # then Read the log
+   # clippy, all -D warnings: clippy_default + clippy_all + clippy_all_s7
+   #   read the feature lists from .github/workflows/ci.yml — never guess them
+   ```
+   A **new `#[miniextendr]` export** is not runtime-callable until a *double*
+   install: `just rcmdinstall && just force-document && just rcmdinstall`, then a
+   **targeted** `testthat::test_file(...)` (full `just devtools-test` can OOM via
+   callr fan-out). Commit regenerated `NAMESPACE`/`man` in sync
+   (`git config core.hooksPath .githooks` first). Known non-issue: 7
+   `derive_dataframe_*` UI trybuild tests skew on local rustc — don't overwrite,
+   CI stable is authoritative.
+6. **Commit early** — right after the code change compiles — so a mid-run
+   disconnect loses nothing; amend/extend as verification completes.
+7. **PR** — `git push -u origin <branch>` then `gh pr create --base main` with
+   the title from the plan's Deliverable section and a *factual* body (reference
+   the hiccup/journal; NEVER leave a literal `TODO: replace this line`). **Do NOT
+   merge.** Any scope cut → `gh issue create`, referenced in the PR body.
+8. **Cleanup after merge** — `git worktree remove -f -f ../mx-<slug> && git
+   worktree prune` (each worktree holds a 2–3 GB `target/`).
 
 ## Compaction
 
