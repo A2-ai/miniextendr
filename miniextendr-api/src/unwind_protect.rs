@@ -515,25 +515,31 @@ where
                         data,
                     } => (kind::CONDITION, message, class, data),
                 };
-                return crate::error_value::make_rust_condition_value_with_data(
-                    &message,
-                    kind,
-                    class.as_deref(),
-                    None,
-                    data,
-                );
+                // SAFETY: on the R main thread inside R_UnwindProtect.
+                return unsafe {
+                    crate::error_value::make_rust_condition_value_with_data(
+                        &message,
+                        kind,
+                        class.as_deref(),
+                        None,
+                        data,
+                    )
+                };
             }
             // endregion
 
             // Generic panic path
             let msg = panic_payload_to_string(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
-            crate::error_value::make_rust_condition_value(
-                &msg,
-                crate::error_value::kind::PANIC,
-                None,
-                None,
-            )
+            // SAFETY: on the R main thread inside R_UnwindProtect.
+            unsafe {
+                crate::error_value::make_rust_condition_value(
+                    &msg,
+                    crate::error_value::kind::PANIC,
+                    None,
+                    None,
+                )
+            }
         }
     }
 }
@@ -591,25 +597,31 @@ where
                     } => (kind::CONDITION, message, class, data),
                 };
                 // No panic telemetry for user-raised conditions — they are intentional.
-                return crate::error_value::make_rust_condition_value_with_data(
-                    &message,
-                    kind,
-                    class.as_deref(),
-                    call,
-                    data,
-                );
+                // SAFETY: on the R main thread inside R_UnwindProtect.
+                return unsafe {
+                    crate::error_value::make_rust_condition_value_with_data(
+                        &message,
+                        kind,
+                        class.as_deref(),
+                        call,
+                        data,
+                    )
+                };
             }
             // endregion
 
             // Generic panic path — unchanged
             let msg = panic_payload_to_string(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
-            crate::error_value::make_rust_condition_value(
-                &msg,
-                crate::error_value::kind::PANIC,
-                None,
-                call,
-            )
+            // SAFETY: on the R main thread inside R_UnwindProtect.
+            unsafe {
+                crate::error_value::make_rust_condition_value(
+                    &msg,
+                    crate::error_value::kind::PANIC,
+                    None,
+                    call,
+                )
+            }
         }
     }
 }

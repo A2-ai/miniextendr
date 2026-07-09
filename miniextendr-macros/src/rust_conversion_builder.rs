@@ -96,12 +96,13 @@ impl RustConversionBuilder {
         quote_spanned! {span=>
             let #ident: #ty = match #try_expr {
                 Ok(v) => v,
-                Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
+                Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                     &format!("{}: {e}", #error_msg),
                     ::miniextendr_api::error_value::kind::CONVERSION,
                     ::core::option::Option::None,
                     Some(__miniextendr_call),
-                ),
+                ) },
             };
         }
     }
@@ -117,12 +118,13 @@ impl RustConversionBuilder {
         quote_spanned! {span=>
             let #ident = match #try_expr {
                 Ok(v) => v,
-                Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
+                Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                     &format!("{}: {e}", #error_msg),
                     ::miniextendr_api::error_value::kind::CONVERSION,
                     ::core::option::Option::None,
                     Some(__miniextendr_call),
-                ),
+                ) },
             };
         }
     }
@@ -256,12 +258,13 @@ impl RustConversionBuilder {
                         quote_spanned! {span=>
                             let mut #storage_ident: #vec_ty = match #try_expr {
                                 Ok(v) => v,
-                                Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                                // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
+                                Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                                     &format!("{}: {e}", #em),
                                     ::miniextendr_api::error_value::kind::CONVERSION,
                                     ::core::option::Option::None,
                                     Some(__miniextendr_call),
-                                ),
+                                ) },
                             };
                         }
                     } else {
@@ -489,21 +492,23 @@ impl RustConversionBuilder {
                             let #ident: #target = {
                                 let __r_val: #r_native = match ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) {
                                     Ok(v) => v,
-                                    Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
+                                    Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                                         &format!("{}: {e}", #error_msg_convert),
                                         ::miniextendr_api::error_value::kind::CONVERSION,
                                         ::core::option::Option::None,
                                         Some(__miniextendr_call),
-                                    ),
+                                    ) },
                                 };
                                 match ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val) {
                                     Ok(v) => v,
-                                    Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
+                                    Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                                         &format!("{}: {e}", #error_msg_coerce),
                                         ::miniextendr_api::error_value::kind::CONVERSION,
                                         ::core::option::Option::None,
                                         Some(__miniextendr_call),
-                                    ),
+                                    ) },
                                 }
                             };
                         }
@@ -525,24 +530,26 @@ impl RustConversionBuilder {
                             let #ident: Vec<#target_elem> = {
                                 let __r_slice: &[#r_native_elem] = match ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) {
                                     Ok(v) => v,
-                                    Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
+                                    Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                                         &format!("{}: {e}", #error_msg_convert),
                                         ::miniextendr_api::error_value::kind::CONVERSION,
                                         ::core::option::Option::None,
                                         Some(__miniextendr_call),
-                                    ),
+                                    ) },
                                 };
                                 match __r_slice.iter().copied()
                                     .map(::miniextendr_api::TryCoerce::<#target_elem>::try_coerce)
                                     .collect::<Result<Vec<_>, _>>()
                                 {
                                     Ok(v) => v,
-                                    Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
+                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
+                                    Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                                         &format!("{}: {e}", #error_msg_coerce),
                                         ::miniextendr_api::error_value::kind::CONVERSION,
                                         ::core::option::Option::None,
                                         Some(__miniextendr_call),
-                                    ),
+                                    ) },
                                 }
                             };
                         }

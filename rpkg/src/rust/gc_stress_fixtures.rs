@@ -2484,13 +2484,16 @@ pub fn gc_stress_condition_data() {
             ),
         ];
 
-        let tagged = make_rust_condition_value_with_data(
-            "gc stress condition",
-            miniextendr_api::error_value::kind::ERROR,
-            Some("gc_stress_class"),
-            None,
-            Some(data),
-        );
+        // SAFETY: gc_stress fixtures run on the R main thread under gctorture.
+        let tagged = unsafe {
+            make_rust_condition_value_with_data(
+                "gc stress condition",
+                miniextendr_api::error_value::kind::ERROR,
+                Some("gc_stress_class"),
+                None,
+                Some(data),
+            )
+        };
         // The returned SEXP is unprotected — root it before the readback
         // (string_elt_str etc. do not allocate, but the next loop round does).
         let _guard = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(tagged) };

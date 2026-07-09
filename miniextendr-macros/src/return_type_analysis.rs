@@ -171,9 +171,10 @@ fn analyze_option_type(
         quote::quote! {
             match #rust_result_ident {
                 Some(()) => ::miniextendr_api::SEXP::nil(),
-                None => ::miniextendr_api::error_value::make_rust_condition_value(
+                // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
+                None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                     #option_none_error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                ),
+                ) },
             }
         }
     } else if is_sexp_inner {
@@ -261,9 +262,10 @@ fn analyze_result_type(
         quote::quote! {
             match #rust_result_ident {
                 Ok(()) => ::miniextendr_api::SEXP::nil(),
-                Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
+                Err(e) => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                     &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                ),
+                ) },
             }
         }
     } else if ok_is_sexp {
@@ -273,9 +275,10 @@ fn analyze_result_type(
         quote::quote! {
             match #rust_result_ident {
                 Ok(v) => v,
-                Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
+                Err(e) => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                     &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                ),
+                ) },
             }
         }
     } else {
@@ -284,9 +287,10 @@ fn analyze_result_type(
         quote::quote! {
             match #rust_result_ident {
                 Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
-                Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
+                Err(e) => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                     &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                ),
+                ) },
             }
         }
     }
