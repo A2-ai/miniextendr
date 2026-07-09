@@ -726,6 +726,41 @@ pub trait ColumnSource {
 }
 // endregion
 
+// region: rayon-gating shim for #[derive(DataFrameRow)] parallel methods
+
+/// Emit the wrapped items only when `miniextendr-api` itself was built with the
+/// `rayon` feature.
+///
+/// `#[derive(DataFrameRow)]` uses this to gate its parallel `*_par` methods on
+/// **this** crate's `rayon` feature instead of stamping a raw
+/// `#[cfg(feature = "rayon")]` into the *consumer* crate. A `cfg` inside a
+/// derive is evaluated against the destination crate, where `rayon` is usually
+/// not a declared feature — so every downstream package that derives
+/// `DataFrameRow` without a `rayon` feature of its own trips the
+/// `unexpected_cfgs` lint (#1117). Routing through this macro moves the `#[cfg]`
+/// decision into `miniextendr-api`, whose feature set always declares `rayon`,
+/// so the consumer crate never sees the attribute. The parallel path now
+/// activates purely on the API crate's `rayon` feature, independent of what the
+/// consumer names its own.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(feature = "rayon")]
+macro_rules! __dataframe_row_when_rayon {
+    ($($item:tt)*) => { $($item)* };
+}
+
+/// No-rayon build: the wrapped parallel methods vanish entirely. The trait's
+/// `*_par` methods are themselves `#[cfg(feature = "rayon")]`, so there is
+/// nothing to override.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(not(feature = "rayon"))]
+macro_rules! __dataframe_row_when_rayon {
+    ($($item:tt)*) => {};
+}
+
+// endregion
+
 // region: DataFrameRowConvert — orphan-rule bridge for `Vec<Row>` conversions
 
 /// Row → DataFrame conversion glue emitted by `#[derive(DataFrameRow)]` on the **row type**.
