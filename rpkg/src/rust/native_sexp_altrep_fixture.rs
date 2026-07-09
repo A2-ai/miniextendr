@@ -49,8 +49,8 @@ use std::sync::OnceLock;
 use miniextendr_api::altrep::RegisterAltrep;
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepDataptr, AltrepExtract, AltrepLen};
 use miniextendr_api::into_r::IntoR;
-use miniextendr_api::sys::{DATAPTR_RO, Rf_allocVector, Rf_protect, Rf_unprotect};
-use miniextendr_api::{R_xlen_t, SEXP, SEXPTYPE, SexpExt as _};
+use miniextendr_api::sys::{DATAPTR_RO, Rf_allocVector};
+use miniextendr_api::{OwnedProtect, R_xlen_t, SEXP, SEXPTYPE, SexpExt as _};
 use miniextendr_api::{impl_inferbase_integer, miniextendr};
 
 // region: NativeSexpIntAltrep — ZST, all data in ALTREP data1
@@ -246,7 +246,7 @@ impl IntoR for NativeSexpIntAltrep {
 fn build_native_sexp_altrep(values: &[i32]) -> SEXP {
     let cls = <NativeSexpIntAltrep as RegisterAltrep>::get_or_init_class();
     let n = values.len() as R_xlen_t;
-    // SAFETY: on R's main thread; `Rf_protect` before `new_altrep` which may GC.
+    // SAFETY: on R's main thread; protect data1 before `new_altrep` which may GC.
     unsafe {
         // Allocate and fill data1 (plain INTSXP).
         let data1 = Rf_allocVector(SEXPTYPE::INTSXP, n);
@@ -255,10 +255,8 @@ fn build_native_sexp_altrep(values: &[i32]) -> SEXP {
             data1.set_integer_elt(i as isize, v);
         }
         // Protect data1 across new_altrep, which may allocate.
-        Rf_protect(data1);
-        let altrep = cls.new_altrep(data1, SEXP::nil());
-        Rf_unprotect(1);
-        altrep
+        let _guard = OwnedProtect::new(data1);
+        cls.new_altrep(data1, SEXP::nil())
     }
 }
 

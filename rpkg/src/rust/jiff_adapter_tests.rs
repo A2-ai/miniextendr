@@ -3,10 +3,9 @@ use miniextendr_api::cached_class::set_posixct_utc;
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::sys::{Rf_protect, Rf_unprotect};
 use miniextendr_api::{
     AltRealData, AltrepLen, JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, JiffZonedVec,
-    SignedDuration, Span, Timestamp, Zoned,
+    OwnedProtect, SignedDuration, Span, Timestamp, Zoned,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -206,9 +205,8 @@ pub fn jiff_altrep_timestamps(n: i32) -> SEXP {
     // Create the ALTREP SEXP and set POSIXct class + UTC tzone.
     let altrep = vec.into_sexp();
     unsafe {
-        Rf_protect(altrep);
+        let _guard = OwnedProtect::new(altrep);
         set_posixct_utc(altrep);
-        Rf_unprotect(1);
     }
     altrep
 }
@@ -568,9 +566,8 @@ pub fn jiff_counted_altrep(n: i32) -> SEXP {
     };
     let altrep = vec.into_sexp();
     unsafe {
-        Rf_protect(altrep);
+        let _guard = OwnedProtect::new(altrep);
         set_posixct_utc(altrep);
-        Rf_unprotect(1);
     }
     altrep
 }
