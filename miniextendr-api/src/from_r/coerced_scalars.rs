@@ -47,11 +47,11 @@ fn lglsxp_na_error() -> SexpError {
 pub(crate) fn coerce_value<R, T>(value: R) -> Result<T, SexpError>
 where
     R: TryCoerce<T>,
-    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    <R as TryCoerce<T>>::Error: std::fmt::Display,
 {
     value
         .try_coerce()
-        .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+        .map_err(|e| SexpError::InvalidValue(format!("{e}")))
 }
 
 #[inline]
@@ -60,9 +60,9 @@ where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
     u8: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Display,
 {
     let actual = sexp.type_of();
     match actual {
@@ -98,9 +98,9 @@ where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
     u8: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Display,
 {
     let actual = sexp.type_of();
     match actual {
@@ -136,9 +136,9 @@ where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
     u8: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Display,
 {
     if sexp.type_of() == SEXPTYPE::NILSXP {
         return Ok(None);
@@ -204,9 +204,9 @@ where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
     u8: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Display,
 {
     if sexp.type_of() == SEXPTYPE::NILSXP {
         return Ok(None);
