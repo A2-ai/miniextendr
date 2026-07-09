@@ -23,6 +23,21 @@ since the second abandonment three weeks ago. The code for attempt #2 is not
 lost — it is sitting on `origin/feat/g6-fast-default-666`, 86 commits behind
 `main`.
 
+## Update (2026-07-09): attempt #3 is now in flight as #1210
+
+Since this investigation, the feature has a **third** landing: PR #1210
+(`feat(macros): fast knob codegen base + fast-default cargo feature (#666)`,
+opened 2026-07-08) does exactly the first "Fix" option below — it rebases the
+`00c8ee01` / `3985865b` commits onto `main` standalone, off the declined
+`error_direct` stack. An independent review traced it end to end and judged it
+real and sound: `fast-default` reachably flips `no_preconditions` /
+`no_call_attribution` through `MethodContext::with_fast_flags` across all six
+class systems, with differential R fixtures for both knob positions. So the
+"silently blocked / shipped zero times" framing below is the **pre-#1210**
+state, not a standing TODO — the re-land is in review (still open, not yet
+merged). The loose end #1210 does not itself close is issue #669, still closed
+against its own recommendation.
+
 ## Timeline
 
 1. **2026-05-20** — `Mossa` (the maintainer) writes `e3279011` (fn/impl-level
@@ -122,7 +137,8 @@ clean cherry-pick.
 ## Fix
 
 Not applied in this pass — this review documents the investigation only.
-Options for whoever picks this up (flat, no priority implied):
+**The first option below is now in flight as #1210** (see the 2026-07-09 update
+above). Remaining options, flat, no priority implied:
 
 - Rebase `00c8ee01`/`3985865b` onto `main` standalone (drop the `error_direct`
   dependency entirely), reopen #666/#1017 against it, close #669 for real
