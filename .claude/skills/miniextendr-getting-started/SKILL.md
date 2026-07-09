@@ -87,6 +87,10 @@ Run this from your new package's root directory (which should already have a
 `DESCRIPTION` file — create it first with `usethis::create_package("mypkg")`
 if needed).
 
+Before running `./configure`, initialize git with `usethis::use_git()` or
+`git init`. Without a `.git` ancestor, configure assumes a CRAN-style/offline
+build context, auto-vendors, and latches into tarball mode.
+
 `use_miniextendr()` writes the following into your package:
 
 - `src/Makevars.in` — build configuration template. `configure` writes

@@ -252,9 +252,11 @@ tarball-mode cleanup in Makevars. Fix: \\
   #     behind it makes the post-build Makevars cleanup delete
   #     src/rust/.cargo/ from the source tree on the next
   #     `miniextendr_build()`. Fail loudly.
-  #   - no `.git` ancestor: most likely intentional CRAN-prep staging
+  #   - no `.git` ancestor: may be intentional CRAN-prep staging
   #     (bootstrap.R runs ./configure in a build-staging dir with no .git) or
-  #     a legitimate offline install. Warn instead of failing.
+  #     a legitimate offline install, but can also mean configure was run
+  #     before `git init` and accidentally latched into tarball mode. Warn
+  #     instead of failing.
   cli::cli_h2("Vendor tarball")
 
   is_dev_source_tree <- !is.null(find_root_with_file(".git", usethis::proj_get()))
@@ -277,11 +279,18 @@ tarball-mode cleanup in Makevars. Fix: \\
       cli::cli_alert_warning("{.path inst/vendor.tar.xz} is present.")
       cli::cli_bullets(c(
         "i" = paste0(
-          "No {.code .git} ancestor found, so this is likely intentional ",
-          "CRAN-prep staging or an offline install -- ignore if you have not ",
-          "yet run {.code R CMD build}."
+          "No {.code .git} ancestor found. If this is a dev tree, configure ",
+          "may have run before {.code git init} and accidentally latched into ",
+          "tarball mode."
         ),
-        "i" = "Run {.code miniextendr_clean_vendor_leak()} to remove it if unintended."
+        "i" = paste0(
+          "Tarball mode skips wrapper regeneration, so new ",
+          "{.code #[miniextendr]} functions never become callable."
+        ),
+        "i" = paste0(
+          "If you are staging for CRAN, this is expected. Otherwise run ",
+          "{.code git init}, then {.code miniextendr_clean_vendor_leak()}."
+        )
       ))
       results$warn <- c(results$warn, "inst/vendor.tar.xz present (may flip tarball mode)")
     }

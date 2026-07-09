@@ -2060,6 +2060,8 @@ if test ! -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && command -v cargo-revendor >/dev/null 2>&1; then
   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: auto-vendor: inst/vendor.tar.xz absent, running cargo-revendor" >&5
 printf '%s\n' "$as_me: auto-vendor: inst/vendor.tar.xz absent, running cargo-revendor" >&6;}
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: auto-vendor: no .git ancestor found — assuming CRAN-style/offline build context" >&5
+printf '%s\n' "$as_me: auto-vendor: no .git ancestor found — assuming CRAN-style/offline build context" >&6;}
   mkdir -p "$abs_top_srcdir/inst"
   if (cd "$abs_top_srcdir" && cargo revendor \
         --manifest-path src/rust/Cargo.toml \
