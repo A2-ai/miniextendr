@@ -321,9 +321,11 @@ macro_rules! __mx_condition_data {
 ///   transport and the `error_in_r` default.
 ///
 /// **Name-collision note.** Because `pub mod error` exists at the crate root,
-/// `use miniextendr_api::error` imports the module rather than this macro.
-/// Invoke via `miniextendr_api::error!(...)` (fully qualified) or via
-/// `mx::error!(...)` after `use miniextendr_api as mx;`.
+/// `use miniextendr_api::error` imports the module rather than this macro, and
+/// glob imports (`use miniextendr_api::*;`) hit the same shadow. Prefer the
+/// collision-free alias [`crate::rust_error!`], which has the identical
+/// expansion; otherwise invoke via `miniextendr_api::error!(...)` (fully
+/// qualified) or `mx::error!(...)` after `use miniextendr_api as mx;`.
 ///
 /// # Examples
 ///
@@ -379,6 +381,30 @@ macro_rules! error {
             data: ::std::option::Option::None,
         })
     };
+}
+
+/// Collision-free alias for [`crate::error!`].
+///
+/// Identical expansion and grammar (`class = …`, `data = …`, and the plain
+/// `format!` forms) — it exists so that `use miniextendr_api::*;` or
+/// `use miniextendr_api::rust_error;` gives you a usable macro name. The bare
+/// `error!` name is shadowed at the crate root by `pub mod error` (see the
+/// name-collision note on [`crate::error!`]), so a glob or direct import
+/// resolves to the module, not the macro. `rust_error!` has no such clash.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rust_error;
+///
+/// #[miniextendr]
+/// fn typed_fail(name: &str) {
+///     rust_error!(class = "my_error", "missing field: {name}");
+/// }
+/// ```
+#[macro_export]
+macro_rules! rust_error {
+    ($($t:tt)*) => { $crate::error!($($t)*) };
 }
 
 /// Raise an R warning from Rust with `rust_warning` class layering.
@@ -537,8 +563,10 @@ macro_rules! message {
 ///
 /// **Name-collision note.** Because `pub mod condition` exists at the crate
 /// root, `use miniextendr_api::condition` imports the module rather than this
-/// macro. Invoke via `miniextendr_api::condition!(...)` (fully qualified) or
-/// via `mx::condition!(...)` after `use miniextendr_api as mx;`.
+/// macro, and glob imports (`use miniextendr_api::*;`) hit the same shadow.
+/// Prefer the collision-free alias [`crate::rust_condition!`], which has the
+/// identical expansion; otherwise invoke via `miniextendr_api::condition!(...)`
+/// (fully qualified) or `mx::condition!(...)` after `use miniextendr_api as mx;`.
 ///
 /// # Example
 ///
@@ -588,6 +616,31 @@ macro_rules! condition {
             data: ::std::option::Option::None,
         })
     };
+}
+
+/// Collision-free alias for [`crate::condition!`].
+///
+/// Identical expansion and grammar (`class = …`, `data = …`, and the plain
+/// `format!` forms) — it exists so that `use miniextendr_api::*;` or
+/// `use miniextendr_api::rust_condition;` gives you a usable macro name. The
+/// bare `condition!` name is shadowed at the crate root by `pub mod condition`
+/// (see the name-collision note on [`crate::condition!`]), so a glob or direct
+/// import resolves to the module, not the macro. `rust_condition!` has no such
+/// clash.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rust_condition;
+///
+/// #[miniextendr]
+/// fn signal_progress(n: i32) {
+///     rust_condition!(class = "my_progress", "processed {n} items");
+/// }
+/// ```
+#[macro_export]
+macro_rules! rust_condition {
+    ($($t:tt)*) => { $crate::condition!($($t)*) };
 }
 
 // endregion
