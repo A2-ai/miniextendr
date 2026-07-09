@@ -12,6 +12,39 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+/// Returns `true` if `ty` is a `&mut [T]`-family type that borrows R's data
+/// pointer directly and can therefore alias another such parameter bound to the
+/// same SEXP (#1104): either `&mut [T]` or `Option<&mut [T]>`.
+///
+/// These are exactly the `TryFromSexp` impls in `miniextendr-api/src/from_r.rs`
+/// that call `r_slice_mut` (a mutable view over R's `DATAPTR`, no copy). `&[T]`
+/// (shared) and `match_arg` + `several_ok` `&mut [T]` (owned `Vec<T>` storage)
+/// don't alias R's buffer and are not flagged.
+fn is_mut_slice_family(ty: &syn::Type) -> bool {
+    match ty {
+        // &mut [T]
+        syn::Type::Reference(r) => {
+            r.mutability.is_some() && matches!(r.elem.as_ref(), syn::Type::Slice(_))
+        }
+        // Option<&mut [T]>
+        syn::Type::Path(tp) => {
+            let Some(seg) = tp.path.segments.last() else {
+                return false;
+            };
+            if seg.ident != "Option" {
+                return false;
+            }
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                return false;
+            };
+            args.args.iter().any(
+                |a| matches!(a, syn::GenericArgument::Type(inner) if is_mut_slice_family(inner)),
+            )
+        }
+        _ => false,
+    }
+}
+
 /// Thread execution strategy for C wrappers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadStrategy {
@@ -383,6 +416,61 @@ impl CWrapperContext {
         (all_pre, all_in)
     }
 
+    /// Emit a debug-only guard against aliasing `&mut [T]` slices (#1104).
+    ///
+    /// `impl TryFromSexp for &mut [T]` (and `Option<&mut [T]>`) hand out a
+    /// mutable slice over R's data pointer without copying. When R binds the
+    /// same vector to two `&mut [T]`-family parameters (`f(x, x)`), the wrapper
+    /// would produce two aliasing `&mut` slices over one buffer — undefined
+    /// behavior. Since the wrapper knows the parameter shapes, we compare the
+    /// raw SEXP identities pairwise before any conversion and panic (converted
+    /// to an R error by the surrounding unwind guard) if two such parameters
+    /// share a SEXP, naming both parameters.
+    ///
+    /// `debug_assert!` compiles to nothing in release builds, so this is a
+    /// zero-cost debugging aid. `match_arg` + `several_ok` `&mut [T]` params are
+    /// excluded: they get their own owned `Vec<T>` storage and never alias R.
+    fn build_alias_guard(&self, sexp_idents: &[syn::Ident]) -> TokenStream {
+        // Collect (sexp_ident, param_name) for every &mut [T]-family parameter
+        // that borrows R's data pointer directly.
+        let mut mut_slice_params: Vec<(&syn::Ident, String)> = Vec::new();
+        for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents.iter()) {
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                let param_name = pat_ident.ident.to_string();
+                if self.match_arg_several_ok_params.contains(&param_name) {
+                    continue;
+                }
+                if is_mut_slice_family(pt.ty.as_ref()) {
+                    mut_slice_params.push((sexp_ident, param_name));
+                }
+            }
+        }
+
+        if mut_slice_params.len() < 2 {
+            return TokenStream::new();
+        }
+
+        let mut checks = Vec::new();
+        for i in 0..mut_slice_params.len() {
+            for j in (i + 1)..mut_slice_params.len() {
+                let (id_a, name_a) = &mut_slice_params[i];
+                let (id_b, name_b) = &mut_slice_params[j];
+                let msg = format!(
+                    "aliasing `&mut [T]` arguments: parameters `{name_a}` and `{name_b}` are bound \
+                     to the same R object, which would produce two aliasing mutable slices over one \
+                     vector (undefined behavior). Pass distinct vectors."
+                );
+                checks.push(quote! {
+                    ::core::debug_assert!(#id_a != #id_b, #msg);
+                });
+            }
+        }
+
+        quote! { #(#checks)* }
+    }
+
     /// Generates an `extern "C-unwind"` wrapper that runs entirely on the R main thread.
     ///
     /// The wrapper body is enclosed in `with_r_unwind_protect`, which catches both Rust
@@ -395,6 +483,7 @@ impl CWrapperContext {
         let generics = &self.generics;
         let (c_params, _, sexp_idents) = self.build_c_params();
         let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
+        let alias_guard = self.build_alias_guard(&sexp_idents);
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
@@ -435,6 +524,7 @@ impl CWrapperContext {
                     let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                         #unwind_protect_fn(
                             || {
+                                #alias_guard
                                 #pre_call_checks
                                 #(#pre_call)*
                                 #(#conversion_stmts)*
@@ -461,6 +551,7 @@ impl CWrapperContext {
                 #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                     #unwind_protect_fn(
                         || {
+                            #alias_guard
                             #pre_call_checks
                             #(#pre_call)*
                             #(#conversion_stmts)*
@@ -490,6 +581,7 @@ impl CWrapperContext {
         let generics = &self.generics;
         let (c_params, _, sexp_idents) = self.build_c_params();
         let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
+        let alias_guard = self.build_alias_guard(&sexp_idents);
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
@@ -550,6 +642,7 @@ impl CWrapperContext {
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                 #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    #alias_guard
                     #pre_call_checks
                     #(#pre_call)*
                     #(#pre_closure_stmts)*

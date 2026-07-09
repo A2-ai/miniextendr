@@ -236,3 +236,41 @@ pub unsafe fn try_recover_r_sexp(
 
     Some(candidate)
 }
+
+// Miri-only regression for the `#[cfg(miri)]` gate in `try_recover_r_sexp` (#202).
+//
+// The whole module is gated `all(test, miri)`: the exercise is inherently a Miri
+// exercise, and running the speculative `sxpinfo` read under a normal `cargo test`
+// would read arbitrary heap bytes adjacent to a Rust allocation (unsound; the very
+// reason the gate exists). Compiled out otherwise, so it neither runs the unsound
+// read nor leaves an unused `use super::*` under the standard toolchain.
+#[cfg(all(test, miri))]
+mod miri_tests {
+    use super::*;
+
+    /// Round-trips `try_recover_r_sexp` on a Rust-allocated buffer under Miri.
+    ///
+    /// A non-zero offset is forced so the function reaches the speculative
+    /// `sxpinfo` read rather than bailing at the `offset == 0` guard. With the
+    /// `#[cfg(miri)]` no-op branch in place the call returns `None` immediately
+    /// and Miri stays clean. If that gate is removed, Miri flags the
+    /// `wrapping_byte_sub` read (a load outside the buffer's provenance) as UB
+    /// and this test fails — which is exactly what keeps the gate honest.
+    #[test]
+    fn recover_from_rust_buffer_returns_none() {
+        // Force the speculative-read path (skip the `offset == 0` early return).
+        // Any plausible SEXPREC header size works; 56 B matches a 64-bit header.
+        SEXPREC_DATA_OFFSET.store(56, Ordering::Relaxed);
+
+        // A Rust-owned buffer; a heap address is far above the 4096-byte floor.
+        let buf = vec![0u8; 1024];
+        let recovered = unsafe { try_recover_r_sexp(buf.as_ptr(), SEXPTYPE::INTSXP, buf.len()) };
+        assert!(
+            recovered.is_none(),
+            "try_recover_r_sexp must return None for a non-R (Rust) buffer under Miri"
+        );
+
+        // Don't leak the bogus offset into any other test in this crate.
+        SEXPREC_DATA_OFFSET.store(0, Ordering::Relaxed);
+    }
+}

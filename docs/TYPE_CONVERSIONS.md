@@ -596,13 +596,19 @@ pub fn get_option(config: NamedList) -> Option<String> {
 
 ---
 
-## Safe Mutable Input
+## Mutable Input
 
-R vectors are copy-on-write, so `&mut [T]` is not supported in `#[miniextendr]` functions (rejected at compile time with a helpful error). Use `Vec<T>` for copy-in/copy-out mutation:
+There are two ways to mutate an R vector's contents from Rust.
+
+### Copy-in / copy-out (`Vec<T>`)
+
+`Vec<T>` copies the R vector on input (`TryFromSexp`), lets you mutate the owned
+copy, and copies out to a *new* R vector on return (`IntoR`). The caller's
+original vector is untouched:
 
 ```rust
 #[miniextendr]
-pub fn double_in_place(mut x: Vec<f64>) -> Vec<f64> {
+pub fn double(mut x: Vec<f64>) -> Vec<f64> {
     for v in x.iter_mut() {
         *v *= 2.0;
     }
@@ -610,13 +616,38 @@ pub fn double_in_place(mut x: Vec<f64>) -> Vec<f64> {
 }
 ```
 
-`Vec<T>` copies the R vector on input (`TryFromSexp`), allows mutation, and copies out to a new R vector on return (`IntoR`).
+### In-place, zero-copy (`&mut [T]`)
+
+`&mut [T]` (and `Option<&mut [T]>`) borrow R's data pointer *directly* and mutate
+the caller's vector **in place** — no copy in, no copy out. This is faster for
+large vectors but only works for the contiguous atomic types (`i32`, `f64`,
+`u8`; not strings), and it mutates the object the caller passed:
+
+```rust
+#[miniextendr]
+pub fn add_one_in_place(x: &mut [i32]) {
+    for v in x.iter_mut() {
+        *v += 1;
+    }
+}
+```
+
+> **Aliasing foot-gun (#1104).** Because `&mut [T]` borrows R's buffer without
+> copying, binding the *same* R vector to two `&mut [T]` parameters — e.g.
+> `f(x, x)` from R — would hand out two aliasing `&mut` slices over one buffer,
+> which is **undefined behavior** in Rust. When a `#[miniextendr]` function has
+> two or more `&mut [T]`-family parameters, the generated wrapper emits a
+> `debug_assert!` that compares the underlying SEXP identities before conversion
+> and raises an error naming both parameters if they share one object. This
+> check is **debug-build only** (zero cost in release), so in a release build the
+> aliasing call is *not* rejected — don't rely on the guard as a correctness
+> boundary; pass distinct vectors. Use non-overlapping parameters, or take
+> `&[T]` / `Vec<T>` if two arguments might reference the same vector.
 
 ---
 
 ## Known Limitations
 
-- **Mutable slice parameters** (`&mut [T]`) are rejected at compile time. Accept `&[T]` and return a new `Vec<T>`, or accept `Vec<T>` directly.
 - **String matrices** (`ndarray::Array<String, Ix2>`) are not directly convertible because R's STRSXP is not contiguous memory. Use `Vec<Vec<String>>` as an intermediary.
 - **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
 

@@ -89,3 +89,79 @@ fn return_handling_detection() {
         ReturnHandling::OptionExternalPtr
     ));
 }
+
+#[test]
+fn mut_slice_family_detection() {
+    // &mut [T] -> flagged
+    let mut_slice: syn::Type = syn::parse_quote!(&mut [i32]);
+    assert!(is_mut_slice_family(&mut_slice));
+
+    // Option<&mut [T]> -> flagged
+    let opt_mut_slice: syn::Type = syn::parse_quote!(Option<&mut [f64]>);
+    assert!(is_mut_slice_family(&opt_mut_slice));
+
+    // &[T] (shared) -> not flagged
+    let shared_slice: syn::Type = syn::parse_quote!(&[i32]);
+    assert!(!is_mut_slice_family(&shared_slice));
+
+    // Option<&[T]> (shared) -> not flagged
+    let opt_shared: syn::Type = syn::parse_quote!(Option<&[i32]>);
+    assert!(!is_mut_slice_family(&opt_shared));
+
+    // &mut T (scalar reference) -> not flagged (only slices)
+    let mut_scalar: syn::Type = syn::parse_quote!(&mut i32);
+    assert!(!is_mut_slice_family(&mut_scalar));
+
+    // Vec<T> -> not flagged
+    let vec_ty: syn::Type = syn::parse_quote!(Vec<i32>);
+    assert!(!is_mut_slice_family(&vec_ty));
+
+    // Option<i32> -> not flagged
+    let opt_scalar: syn::Type = syn::parse_quote!(Option<i32>);
+    assert!(!is_mut_slice_family(&opt_scalar));
+}
+
+#[test]
+fn alias_guard_emitted_only_for_multiple_mut_slices() {
+    // Build a minimal CWrapperContext whose `inputs` are the parameters of the
+    // given function signature.
+    fn ctx_for(sig: syn::ItemFn) -> CWrapperContext {
+        CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_test))
+            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_test))
+            .call_expr(quote::quote!(test()))
+            .inputs(sig.sig.inputs)
+            .build()
+    }
+
+    let sexp_idents: Vec<syn::Ident> = vec![syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)];
+
+    // Two &mut [T] params -> a pairwise debug_assert is emitted.
+    let ctx = ctx_for(syn::parse_quote!(
+        fn alias_probe(a: &mut [i32], b: &mut [i32]) {}
+    ));
+    let guard = ctx.build_alias_guard(&sexp_idents).to_string();
+    assert!(guard.contains("debug_assert"), "guard = {guard}");
+    assert!(guard.contains("arg_0"), "guard = {guard}");
+    assert!(guard.contains("arg_1"), "guard = {guard}");
+
+    // Two mut slices where one is Option-wrapped -> still guarded.
+    let ctx = ctx_for(syn::parse_quote!(
+        fn opt_mut(a: &mut [i32], b: Option<&mut [i32]>) {}
+    ));
+    assert!(!ctx.build_alias_guard(&sexp_idents).is_empty());
+
+    // One &mut [T] + one &[T]: only one mutable slice -> no guard.
+    let ctx = ctx_for(syn::parse_quote!(
+        fn one_mut(a: &mut [i32], b: &[i32]) {}
+    ));
+    assert!(ctx.build_alias_guard(&sexp_idents).is_empty());
+
+    // Single &mut [T] param -> no guard (nothing to alias with).
+    let ctx = ctx_for(syn::parse_quote!(
+        fn single(a: &mut [i32]) {}
+    ));
+    assert!(
+        ctx.build_alias_guard(&[syn::parse_quote!(arg_0)])
+            .is_empty()
+    );
+}
