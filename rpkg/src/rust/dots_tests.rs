@@ -126,3 +126,66 @@ pub fn validate_attr_optional(_dots: ...) -> String {
     format!("{}, {}!", greeting, name)
 }
 // endregion
+
+// region: TypedList::get / get_opt with VECTOR target types (golife hiccup #5)
+
+/// Retrieve `numeric()` / `integer()` / `character()` typed_list fields as
+/// *vectors* via `.get::<Vec<_>>()` and `.get_opt::<Vec<_>>()`.
+///
+/// Regression fixture for golife hiccup #5: before the fix, `get`/`get_opt`
+/// required `T: TryFromSexp<Error = SexpError>`, which only scalar target types
+/// satisfy — every vector `TryFromSexp` impl uses the narrower `SexpTypeError`,
+/// so `.get::<Vec<i32>>()` failed to *compile*. The bound is now
+/// `T: TryFromSexp` where `T::Error: Display`, so vector targets work too.
+///
+/// No arguments: the list is synthesised internally so the fixture is trivially
+/// callable from R (and picked up by the no-arg export sweep). Returns a summary
+/// string the testthat side asserts against.
+#[miniextendr]
+pub fn typed_list_get_vectors() -> Result<String, String> {
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::into_r::IntoR as _;
+    use miniextendr_api::list::List;
+    use miniextendr_api::typed_list::validate_list;
+
+    let weights: Vec<f64> = vec![1.5, 2.5, 3.5];
+    let survive: Vec<i32> = vec![10, 20, 30, 40];
+    let labels: Vec<String> = vec!["a".to_string(), "b".to_string()];
+
+    // Build the named list internally. Each field SEXP must be rooted before
+    // `from_raw_pairs` assembles the container, and the container rooted before
+    // validation allocates attributes — the gc_stress_typed_dataframe idiom.
+    let scope = unsafe { ProtectScope::new() };
+    let weights_sexp = unsafe { scope.protect_raw(weights.into_sexp()) };
+    let survive_sexp = unsafe { scope.protect_raw(survive.into_sexp()) };
+    let labels_sexp = unsafe { scope.protect_raw(labels.into_sexp()) };
+    let list = List::from_raw_pairs(vec![
+        ("weights", weights_sexp),
+        ("survive", survive_sexp),
+        ("labels", labels_sexp),
+    ]);
+    unsafe { scope.protect_raw(list.as_sexp()) };
+
+    let spec = typed_list!(
+        weights => numeric(),
+        survive => integer(),
+        labels? => character(),
+        absent? => character()
+    );
+    let args = validate_list(list, &spec).map_err(|e| e.to_string())?;
+
+    // The fix under test: vector target types now satisfy the get/get_opt bound.
+    let weights_out: Vec<f64> = args.get("weights").map_err(|e| e.to_string())?;
+    let survive_out: Vec<i32> = args.get("survive").map_err(|e| e.to_string())?;
+    let labels_out: Option<Vec<String>> = args.get_opt("labels").map_err(|e| e.to_string())?;
+    let absent_out: Option<Vec<String>> = args.get_opt("absent").map_err(|e| e.to_string())?;
+
+    Ok(format!(
+        "weights_sum={}, survive_sum={}, labels={:?}, absent_is_none={}",
+        weights_out.iter().sum::<f64>(),
+        survive_out.iter().sum::<i32>(),
+        labels_out,
+        absent_out.is_none(),
+    ))
+}
+// endregion

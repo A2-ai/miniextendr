@@ -146,3 +146,16 @@ test_that("direct and attribute-sugar typed_list paths share one message style",
     wrong_type_re
   )
 })
+
+test_that("TypedList::get / get_opt retrieve VECTOR fields (golife hiccup #5)", {
+  # Before hiccup #5, get/get_opt required T: TryFromSexp<Error = SexpError>,
+  # so only scalar target types compiled -- .get::<Vec<i32>>() failed to build.
+  # This fixture retrieves numeric()/integer()/character() fields as Vec<f64> /
+  # Vec<i32> / Option<Vec<String>>; if it links and returns, the vector-target
+  # bound works.
+  result <- typed_list_get_vectors()
+  expect_equal(
+    result,
+    "weights_sum=7.5, survive_sum=100, labels=Some([\"a\", \"b\"]), absent_is_none=true"
+  )
+})

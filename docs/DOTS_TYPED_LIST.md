@@ -148,6 +148,17 @@ After validation, `TypedList` provides typed accessors:
 - `get_raw(&self, name: &str) -> Result<SEXP, TypedListError>` - Get raw SEXP
 - `as_list(&self) -> List` - Get underlying List
 
+`get::<T>()` and `get_opt::<T>()` accept **both** scalar and vector/collection
+target types. `T` can be a scalar (`f64`, `i32`, `String`, `bool`, …) **or** a
+vector (`Vec<f64>`, `Vec<i32>`, `Vec<String>`, `Vec<Option<T>>`, …) — anything
+implementing `TryFromSexp` with a `Display` error type:
+
+```rust
+let survive: Vec<i32> = args.get("survive")?;       // integer() field -> Vec<i32>
+let weights: Vec<f64> = args.get("weights")?;       // numeric() field -> Vec<f64>
+let labels: Option<Vec<String>> = args.get_opt("labels")?;  // optional character()
+```
+
 ## Error Types
 
 `TypedListError` variants:
