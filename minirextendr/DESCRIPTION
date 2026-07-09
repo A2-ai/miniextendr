@@ -20,6 +20,7 @@ Imports:
     usethis (>= 2.0.0)
 Suggests:
     devtools,
+    jsonlite,
     knitr,
     pkgbuild,
     pkgload,
