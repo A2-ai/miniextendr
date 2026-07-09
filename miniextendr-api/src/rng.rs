@@ -78,7 +78,8 @@
 //! use miniextendr_api::sys::unif_rand;
 //!
 //! fn generate_random() -> f64 {
-//!     let _guard = RngGuard::new();
+//!     // SAFETY: called on R's main thread.
+//!     let _guard = unsafe { RngGuard::new() };
 //!     unsafe { unif_rand() }
 //!     // PutRNGstate() called automatically when _guard drops
 //! }
@@ -127,7 +128,8 @@ type NoSendSync = PhantomData<Rc<()>>;
 /// use miniextendr_api::sys::unif_rand;
 ///
 /// fn generate_uniform() -> f64 {
-///     let _guard = RngGuard::new();
+///     // SAFETY: called on R's main thread.
+///     let _guard = unsafe { RngGuard::new() };
 ///     unsafe { unif_rand() }
 /// }
 /// ```
@@ -155,19 +157,17 @@ impl RngGuard {
     ///
     /// # Safety
     ///
-    /// Must be called from R's main thread.
+    /// Must be called from R's main thread — R's RNG state and the underlying
+    /// `GetRNGstate()` / `PutRNGstate()` calls are only valid there. Calling
+    /// this off the main thread is undefined behaviour. There is deliberately
+    /// no `Default` impl: constructing a guard is an unsafe, thread-scoped act,
+    /// not a safe default (#1096).
     #[inline]
-    pub fn new() -> Self {
+    pub unsafe fn new() -> Self {
         unsafe { GetRNGstate() };
         Self {
             _nosend: PhantomData,
         }
-    }
-}
-
-impl Default for RngGuard {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -205,6 +205,13 @@ pub fn with_rng<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    let _guard = RngGuard::new();
+    // SAFETY: `RngGuard::new()` requires the R main thread. Assert it in debug
+    // builds so misuse from a worker/background thread is caught early rather
+    // than silently corrupting R's RNG state (#1096).
+    debug_assert!(
+        crate::worker::is_r_main_thread(),
+        "with_rng must run on R's main thread"
+    );
+    let _guard = unsafe { RngGuard::new() };
     f()
 }

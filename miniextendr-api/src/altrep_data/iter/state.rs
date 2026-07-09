@@ -108,11 +108,10 @@ where
         {
             let iter = iter_opt.as_mut()?;
 
-            // Fill cache up to and including index i. `?` bails with `None`
-            // when the iterator is exhausted before reaching the expected length.
+            // Fill cache up to and including index i. `?` returns None if the
+            // iterator is exhausted before reaching the expected length.
             while cache.len() <= i {
-                let elem = iter.next()?;
-                cache.push(elem);
+                cache.push(iter.next()?);
             }
         }
 

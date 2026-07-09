@@ -64,7 +64,8 @@ pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
 /// @param n Integer number of uniform values to generate.
 #[miniextendr]
 pub fn rng_guard_test(n: i32) -> Vec<f64> {
-    let _guard = RngGuard::new();
+    // SAFETY: #[miniextendr] fns run on R's main thread.
+    let _guard = unsafe { RngGuard::new() };
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 

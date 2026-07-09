@@ -25,6 +25,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The root rust-toolchain.toml (#1243) pins the repo to stable, and a
+    # toolchain file outranks the `rustup default nightly` that
+    # dtolnay/rust-toolchain@nightly sets below — so cargo resolved to stable
+    # and rejected the -Z flags ("-Z ... only accepted on the nightly
+    # channel"). This job's rustdoc builds need nightly (-Z rustdoc-map,
+    # -Z unstable-options), so override the toolchain file explicitly:
+    # RUSTUP_TOOLCHAIN sits above it in rustup's resolution order.
+    env:
+      RUSTUP_TOOLCHAIN: nightly
     steps:
       - uses: actions/checkout@v7
 
