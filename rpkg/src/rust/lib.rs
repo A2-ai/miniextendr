@@ -201,6 +201,7 @@ mod globset_adapter_tests;
 #[cfg(feature = "growth-debug")]
 mod growth_debug_tests;
 mod identical_tests;
+mod impl_dots_tests;
 mod impl_trait_tests;
 #[cfg(feature = "indexmap")]
 mod indexmap_adapter_tests;

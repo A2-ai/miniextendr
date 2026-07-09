@@ -51,6 +51,96 @@ fn parse_impl_with_label(
 }
 // endregion
 
+// region: Impl-method dots support
+
+#[test]
+fn impl_method_rewrites_raw_variadic_in_reemitted_impl() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl DotsThing {
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let method = &parsed.methods[0];
+
+    assert!(method.has_dots);
+    assert_eq!(
+        method.method_attrs.named_dots.as_ref().unwrap().to_string(),
+        "dots"
+    );
+    assert!(method.sig.variadic.is_none());
+
+    let syn::ImplItem::Fn(reemitted) = &parsed.original_impl.items[0] else {
+        panic!("expected reemitted method");
+    };
+    assert!(reemitted.sig.variadic.is_none());
+
+    let Some(syn::FnArg::Typed(last)) = reemitted.sig.inputs.last() else {
+        panic!("expected trailing dots arg");
+    };
+    let syn::Pat::Ident(pat_ident) = last.pat.as_ref() else {
+        panic!("expected dots ident");
+    };
+    assert_eq!(pat_ident.ident, "dots");
+    assert!(crate::miniextendr_fn::is_dots_type(last.ty.as_ref()));
+}
+
+#[test]
+fn r6_dots_constructor_and_method_emit_variadic_r_wrappers() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl R6DotsThing {
+            pub fn new(dots: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("initialize = function(..., .ptr = NULL)"));
+    assert!(wrapper.contains("collect = function(...)"));
+    assert!(wrapper.contains(".Call(C_R6DotsThing__new, .call = match.call(), list(...))"));
+    assert!(
+        wrapper.contains(
+            ".Call(C_R6DotsThing__collect, .call = match.call(), private$.ptr, list(...))"
+        )
+    );
+}
+
+#[test]
+fn s3_user_dots_suppress_duplicate_dispatch_dots() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl S3DotsThing {
+            pub fn new(dots: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("new_s3dotsthing <- function(...)"));
+    assert!(wrapper.contains("collect.S3DotsThing <- function(x, ...)"));
+    assert!(wrapper.contains(".Call(C_S3DotsThing__new, .call = match.call(), list(...))"));
+    assert!(wrapper.contains(".Call(C_S3DotsThing__collect, .call = match.call(), x, list(...))"));
+    assert!(!wrapper.contains("function(x, ..., ...)"));
+}
+
+// endregion
+
 // region: Env class system tests
 
 #[test]

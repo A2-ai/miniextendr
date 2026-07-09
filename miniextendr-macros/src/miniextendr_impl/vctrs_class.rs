@@ -367,8 +367,12 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Protocol methods accept `...` so `format(x, nsmall = 2)` and similar
         // S3 dispatch calls with extra arguments don't error with "unused argument".
         // The `...` is silently dropped; the underlying Rust function has a fixed signature.
-        let formals = if is_protocol {
-            format!("{}, ...", ctx.params)
+        let formals = if is_protocol && !ctx.method.has_dots {
+            if ctx.params.is_empty() {
+                "...".to_string()
+            } else {
+                format!("{}, ...", ctx.params)
+            }
         } else {
             ctx.params.to_string()
         };

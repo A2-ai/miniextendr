@@ -140,6 +140,87 @@ pub(crate) fn is_dots_type(ty: &syn::Type) -> bool {
     type_ends_with(ty, "Dots")
 }
 
+/// Result of normalizing Rust variadic syntax (`...`) into an explicit `&Dots`
+/// parameter.
+#[derive(Debug, Clone)]
+pub(crate) struct VariadicDots {
+    /// Whether the original signature used Rust variadic syntax.
+    pub has_dots: bool,
+    /// User-provided variadic identifier, e.g. `dots` in `dots: ...`.
+    pub named_dots: Option<syn::Ident>,
+}
+
+/// Replace Rust variadic syntax with a trailing `&miniextendr_api::dots::Dots`
+/// parameter so downstream codegen never emits a non-extern variadic Rust fn.
+pub(crate) fn rewrite_variadic_dots(sig: &mut syn::Signature) -> syn::Result<VariadicDots> {
+    use syn::spanned::Spanned;
+
+    let has_dots = sig.variadic.is_some();
+    let named_dots = if has_dots {
+        let dots = sig.variadic.as_ref().unwrap();
+        if let Some(named_dots) = dots.pat.as_ref() {
+            if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
+                Some(named_dots_ident.ident.clone())
+            } else {
+                return Err(syn::Error::new(
+                    named_dots.0.span(),
+                    "variadic pattern must be a simple identifier (e.g. `dots: ...`) or unnamed `...`",
+                ));
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if has_dots {
+        sig.variadic = None;
+        sig.inputs
+            .push(if let Some(named_dots) = named_dots.as_ref() {
+                syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
+            } else {
+                // Cannot use `_` as a variable name, so unnamed `...` needs a
+                // stable synthetic binding that does not collide with user args.
+                for arg in &sig.inputs {
+                    let syn::FnArg::Typed(pat_type) = arg else {
+                        continue;
+                    };
+                    if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+                        && pat_ident.ident == "__miniextendr_dots"
+                    {
+                        return Err(syn::Error::new(
+                            pat_ident.ident.span(),
+                            "parameter named `__miniextendr_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
+                        ));
+                    }
+                }
+                syn::parse_quote!(__miniextendr_dots: &::miniextendr_api::dots::Dots)
+            });
+    }
+
+    Ok(VariadicDots {
+        has_dots,
+        named_dots,
+    })
+}
+
+/// Return the identifier for a trailing `Dots` / `&Dots` parameter, if present.
+pub(crate) fn trailing_dots_ident(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+) -> Option<syn::Ident> {
+    let syn::FnArg::Typed(pat_type) = inputs.last()? else {
+        return None;
+    };
+    if !is_dots_type(pat_type.ty.as_ref()) {
+        return None;
+    }
+    let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+        return None;
+    };
+    Some(pat_ident.ident.clone())
+}
+
 /// Check if a type is `Missing<T>`.
 pub(crate) fn is_missing_type(ty: &syn::Type) -> bool {
     type_ends_with(ty, "Missing")
@@ -541,24 +622,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         let mut item: syn::ItemFn = input.parse()?;
 
         // dots support: parse variadic name (if any) and replace `...` with `&Dots`.
-        let has_dots = item.sig.variadic.is_some();
-        let named_dots = if has_dots {
-            let dots = item.sig.variadic.as_ref().unwrap();
-            if let Some(named_dots) = dots.pat.as_ref() {
-                if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
-                    Some(named_dots_ident.ident.clone())
-                } else {
-                    return Err(syn::Error::new(
-                        named_dots.0.span(),
-                        "variadic pattern must be a simple identifier (e.g. `dots: ...`) or unnamed `...`",
-                    ));
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let dots_info = rewrite_variadic_dots(&mut item.sig)?;
+        let has_dots = dots_info.has_dots;
+        let named_dots = dots_info.named_dots;
 
         // Reject #[export_name] for regular functions (not extern "C-unwind").
         // For extern functions, #[export_name] can be used as an alternative to #[no_mangle].
@@ -703,31 +769,6 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     let #pat = #ident;
                 },
             );
-        }
-
-        if has_dots {
-            item.sig.variadic = None;
-            item.sig
-                .inputs
-                .push(if let Some(named_dots) = named_dots.as_ref() {
-                    syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
-                } else {
-                    // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
-                    // Check that no existing parameter is named `__miniextendr_dots`
-                    for arg in &item.sig.inputs {
-                        let syn::FnArg::Typed(pat_type) = arg else {
-                            continue;
-                        };
-                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
-                            && pat_ident.ident == "__miniextendr_dots" {
-                                return Err(syn::Error::new(
-                                    pat_ident.ident.span(),
-                                    "parameter named `__miniextendr_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
-                                ));
-                            }
-                    }
-                    syn::parse_quote!(__miniextendr_dots: &::miniextendr_api::dots::Dots)
-                });
         }
 
         // Validate: all defaults reference existing parameters

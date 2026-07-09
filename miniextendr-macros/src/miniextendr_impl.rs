@@ -439,6 +439,9 @@ pub struct ParsedMethod {
     pub method_attrs: MethodAttrs,
     /// Parameter default values from `#[miniextendr(default = "...")]`
     pub param_defaults: std::collections::HashMap<String, String>,
+    /// Whether this method accepts dots, either from raw `...` rewritten to
+    /// `&Dots` or from an explicit trailing `&Dots` parameter.
+    pub has_dots: bool,
 }
 
 /// R6-specific per-method markers, separated from [`MethodAttrs`] so the
@@ -589,6 +592,11 @@ pub struct MethodAttrs {
     pub coerce: bool,
     /// Enable RNG state management (GetRNGstate/PutRNGstate)
     pub rng: bool,
+    /// Whether this method accepts dots, either from raw `...` rewritten to
+    /// `&Dots` or from an explicit trailing `&Dots` parameter.
+    pub has_dots: bool,
+    /// User-provided dots binding, if one exists.
+    pub named_dots: Option<syn::Ident>,
     /// Return `Result<T, E>` to R without unwrapping.
     pub unwrap_in_r: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
@@ -1815,10 +1823,24 @@ impl ParsedMethod {
     /// Parse a method from an impl item.
     ///
     /// Regular doc comments are auto-converted to `@description` for all class systems.
-    pub fn from_impl_item(item: syn::ImplItemFn, _class_system: ClassSystem) -> syn::Result<Self> {
+    pub fn from_impl_item(
+        item: &mut syn::ImplItemFn,
+        _class_system: ClassSystem,
+    ) -> syn::Result<Self> {
         use syn::spanned::Spanned;
         let env = Self::detect_env(&item.sig);
         let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
+
+        let variadic_dots = crate::miniextendr_fn::rewrite_variadic_dots(&mut item.sig)?;
+        let explicit_dots = if variadic_dots.has_dots {
+            None
+        } else {
+            crate::miniextendr_fn::trailing_dots_ident(&item.sig.inputs)
+        };
+        let has_dots = variadic_dots.has_dots || explicit_dots.is_some();
+        let named_dots = variadic_dots.named_dots.clone().or(explicit_dots);
+        method_attrs.has_dots = has_dots;
+        method_attrs.named_dots = named_dots.clone();
 
         // match_arg / choices on impl methods: unlike standalone functions, Rust
         // doesn't accept `#[miniextendr(...)]` on method parameters inside an impl
@@ -2006,10 +2028,11 @@ impl ParsedMethod {
             ident: item.sig.ident.clone(),
             env,
             sig: Self::sig_without_env(&item.sig),
-            vis: item.vis,
+            vis: item.vis.clone(),
             doc_tags,
             method_attrs,
             param_defaults,
+            has_dots,
         })
     }
 
@@ -2301,11 +2324,13 @@ impl ParsedImpl {
             }
         }
 
-        // Parse methods and validate attributes
+        // Parse methods and validate attributes. Method parsing also normalizes
+        // raw variadic `...` syntax in the impl clone that gets re-emitted.
+        let mut original_impl = item_impl.clone();
         let mut methods = Vec::new();
-        for item in &item_impl.items {
+        for item in &mut original_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                let method = ParsedMethod::from_impl_item(fn_item.clone(), attrs.class_system)?;
+                let method = ParsedMethod::from_impl_item(fn_item, attrs.class_system)?;
                 // Validate method attributes for this class system
                 ParsedMethod::validate_method_attrs(
                     &method.method_attrs,
@@ -2434,7 +2459,7 @@ impl ParsedImpl {
             // Strip miniextendr attributes (and roxygen tags) before re-emitting,
             // then rewrite ExternalPtr receivers for stable Rust compatibility.
             original_impl: rewrite_external_ptr_receivers(strip_miniextendr_attrs_from_impl(
-                item_impl,
+                original_impl,
             )),
             cfg_attrs,
             vctrs_attrs: attrs.vctrs_attrs,
@@ -2643,13 +2668,14 @@ pub fn generate_method_c_wrapper(
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
     // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(worker)]
     // or by the worker-default feature flag)
-    let thread_strategy = if method.method_attrs.unsafe_main_thread || method.env.is_instance() {
-        ThreadStrategy::MainThread
-    } else if method.method_attrs.worker {
-        ThreadStrategy::WorkerThread
-    } else {
-        ThreadStrategy::MainThread
-    };
+    let thread_strategy =
+        if method.method_attrs.unsafe_main_thread || method.env.is_instance() || method.has_dots {
+            ThreadStrategy::MainThread
+        } else if method.method_attrs.worker {
+            ThreadStrategy::WorkerThread
+        } else {
+            ThreadStrategy::MainThread
+        };
 
     // Build rust argument names from the signature
     let rust_args: Vec<syn::Ident> = method
