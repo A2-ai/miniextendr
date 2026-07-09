@@ -154,8 +154,9 @@ regen (`just vendor` or `just update`) before staging.
 auto-chains `just cargo-lock-restore` as its final step — the Rust-side
 `check` / `build` / `clippy` / `test` and the R-side `rcmdinstall` /
 `devtools-document` / `force-document` / `devtools-test` / `devtools-install` /
-`devtools-load`. `devtools-test` restores even on a red test (via an `EXIT`
-trap), so a failing suite never leaves the papercut behind. So after any of
+`devtools-load` / `gctorture-full` / `wrappers-sync-check`. `devtools-test`,
+`gctorture-full`, and `wrappers-sync-check` restore even on a red test /
+check (via an `EXIT` trap), so a failing suite never leaves the papercut behind. So after any of
 these `just` recipes, `git status` shows the lock clean with no manual
 `git checkout` needed; deliberate lock updates still go through `just update` /
 `just vendor`, which re-stamp tarball-shape. Raw `R CMD INSTALL` (no `just`)

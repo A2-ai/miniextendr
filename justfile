@@ -616,7 +616,9 @@ test-bootstrap-vendor:
 gctorture-full STEP="100": _assert-no-vendor-leak configure
     set -euo pipefail
     libdir="$(mktemp -d)"
-    trap 'rm -rf "$libdir"' EXIT
+    # The source-mode `R CMD INSTALL` below drifts rpkg/src/rust/Cargo.lock; restore
+    # it (and clean the temp lib) on every exit path, incl. a failed sweep. (#1052)
+    trap 'rm -rf "$libdir"; just cargo-lock-restore' EXIT
     R CMD INSTALL --library="$libdir" rpkg
     R_LIBS_USER="$libdir" Rscript scripts/gctorture-full-sweep.R rpkg/tests/testthat {{STEP}}
 
@@ -1189,6 +1191,9 @@ lint-sync-check:
 [script("bash")]
 wrappers-sync-check: _assert-no-vendor-leak configure
     set -euo pipefail
+    # The source-mode `R CMD INSTALL` below drifts rpkg/src/rust/Cargo.lock; restore
+    # it on every exit path, incl. the exit-1 diff-failure branches. (#1052)
+    trap 'just cargo-lock-restore' EXIT
 
     # Install regenerates R/miniextendr-wrappers.R + src/rust/wasm_registry.rs on disk.
     R CMD INSTALL rpkg >/dev/null
