@@ -144,83 +144,79 @@ test_that("rayon_in_thread returns FALSE when called from R", {
 
 # ---------------------------------------------------------------------------
 # Thread pool control (docs/RAYON.md "Controlling Parallelism from R"):
-# MINIEXTENDR_NUM_THREADS > RAYON_NUM_THREADS > _R_CHECK_LIMIT_CORES_ cap >
-# available_parallelism(). The global rayon pool builds once per process, so
-# each scenario needs its own fresh subprocess. callr merges `env` over the
-# inherited environment, so every scenario pins all three resolver vars
-# (blank = unset to the resolver) — otherwise values inherited from the
-# calling process skew baselines: R CMD check --as-cran exports
+# MINIEXTENDR_NUM_THREADS > RAYON_NUM_THREADS > RAYON_RS_NUM_CPUS >
+# _R_CHECK_LIMIT_CORES_ cap > available_parallelism(). The global rayon pool
+# builds once per process, so each scenario that must resolve a *different*
+# thread count needs its own fresh subprocess (via run_isolated() from
+# helper-subprocess.R). To keep the spawn count down, scenarios that share a
+# process are merged (defaults + falsy-flag comparison; set-succeeds +
+# errors-once-built), and the per-value truthiness matrix is left to the Rust
+# unit tests in parallel.rs (`resolve_cran_flag_treats_false_and_empty_as_unset`)
+# rather than one subprocess per value.
+#
+# `rayon_env()` blanks all four resolver env vars (blank = unset to the
+# resolver) and applies the caller's overrides — otherwise values inherited
+# from the calling process skew baselines: R CMD check --as-cran exports
 # _R_CHECK_LIMIT_CORES_=TRUE into this very test run.
 # ---------------------------------------------------------------------------
 
-run_with_env <- function(expr, env_vars = character()) {
-  skip_if_not_installed("callr")
+rayon_env <- function(overrides = character()) {
   vars <- c(
     MINIEXTENDR_NUM_THREADS = "",
     RAYON_NUM_THREADS = "",
+    RAYON_RS_NUM_CPUS = "",
     `_R_CHECK_LIMIT_CORES_` = ""
   )
-  vars[names(env_vars)] <- env_vars
-  callr::r(
-    function(expr_to_eval) {
-      library(miniextendr)
-      eval(expr_to_eval)
-    },
-    args = list(expr_to_eval = substitute(expr)),
-    env = c(callr::rcmd_safe_env(), vars),
-    timeout = 30
-  )
+  vars[names(overrides)] <- overrides
+  vars
 }
 
 test_that("miniextendr_num_threads honors MINIEXTENDR_NUM_THREADS", {
-  result <- run_with_env(
+  result <- run_isolated(
     miniextendr_num_threads(),
-    c(MINIEXTENDR_NUM_THREADS = "3")
+    rayon_env(c(MINIEXTENDR_NUM_THREADS = "3"))
   )
   expect_equal(result, 3L)
 })
 
 test_that("miniextendr_num_threads caps at 2 under _R_CHECK_LIMIT_CORES_", {
-  result <- run_with_env(
+  result <- run_isolated(
     miniextendr_num_threads(),
-    c(`_R_CHECK_LIMIT_CORES_` = "TRUE")
+    rayon_env(c(`_R_CHECK_LIMIT_CORES_` = "TRUE"))
   )
   expect_true(result <= 2L)
 })
 
-test_that("miniextendr_num_threads ignores _R_CHECK_LIMIT_CORES_ = FALSE/empty", {
-  uncapped <- run_with_env(miniextendr_num_threads())
-  for (v in c("FALSE", "false", "")) {
-    result <- run_with_env(
-      miniextendr_num_threads(),
-      c(`_R_CHECK_LIMIT_CORES_` = v)
-    )
-    expect_equal(result, uncapped)
-  }
+test_that("miniextendr_num_threads default is uncapped and ignores a falsy _R_CHECK_LIMIT_CORES_", {
+  # One process establishes the uncapped default (also covers "defaults to
+  # available parallelism"); a second confirms a falsy flag does not cap.
+  uncapped <- run_isolated(miniextendr_num_threads(), rayon_env())
+  expect_true(uncapped >= 1L)
+
+  falsy <- run_isolated(
+    miniextendr_num_threads(),
+    rayon_env(c(`_R_CHECK_LIMIT_CORES_` = "FALSE"))
+  )
+  expect_equal(falsy, uncapped)
 })
 
-test_that("miniextendr_num_threads defaults to available parallelism", {
-  result <- run_with_env(miniextendr_num_threads())
-  expect_true(result >= 1L)
-})
-
-test_that("miniextendr_set_threads changes the reported count before first use", {
-  result <- run_with_env({
-    miniextendr_set_threads(2L)
-    miniextendr_num_threads()
-  })
-  expect_equal(result, 2L)
-})
-
-test_that("miniextendr_set_threads errors once the pool is already built", {
-  msg <- run_with_env({
-    miniextendr_num_threads() # builds the pool
-    tryCatch(
-      miniextendr_set_threads(4L),
-      error = function(e) conditionMessage(e)
-    )
-  })
-  expect_match(msg, "already built", fixed = TRUE)
+test_that("miniextendr_set_threads sets the count before first use, then errors once built", {
+  # Both set-succeeds and errors-once-built exercised in one process: set(2)
+  # builds the pool, so the follow-up set(4) must fail with "already built".
+  result <- run_isolated(
+    {
+      miniextendr_set_threads(2L)
+      before <- miniextendr_num_threads()
+      err <- tryCatch(
+        miniextendr_set_threads(4L),
+        error = function(e) conditionMessage(e)
+      )
+      list(threads = before, err = err)
+    },
+    rayon_env()
+  )
+  expect_equal(result$threads, 2L)
+  expect_match(result$err, "already built", fixed = TRUE)
 })
 
 test_that("miniextendr_set_threads rejects non-positive input", {

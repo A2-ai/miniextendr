@@ -14,20 +14,8 @@ skip_if_not_installed("callr")
 # covered on Linux/macOS.
 skip_on_os("windows")
 
-# ---------------------------------------------------------------------------
-# Helper: run an expression in a subprocess with miniextendr loaded
-# ---------------------------------------------------------------------------
-run_isolated <- function(expr, timeout = 30) {
-  callr::r(
-    function(expr_to_eval) {
-      library(miniextendr)
-      eval(expr_to_eval)
-    },
-    args = list(expr_to_eval = substitute(expr)),
-    timeout = timeout,
-    error = "error"
-  )
-}
+# `run_isolated()` (run an expression in a fresh subprocess with miniextendr
+# loaded) lives in helper-subprocess.R, shared with test-rayon.R.
 
 # ===========================================================================
 # From test-errors-more.R: Thread panic propagation
