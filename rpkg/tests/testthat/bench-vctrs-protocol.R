@@ -21,8 +21,13 @@ cat("\n=== Vctrs Protocol Overhead Benchmark ===\n\n")
 ITERS <- 2000L
 
 bench_one <- function(label, expr, iters = ITERS) {
-  for (i in 1:5) expr
-  elapsed <- system.time(for (i in seq_len(iters)) expr)[["elapsed"]]
+  # `expr` is a promise: referencing it directly evaluates it ONCE and caches
+  # the value, so a naive loop just re-reads the cached result instead of
+  # re-invoking the call. substitute()+eval() forces fresh evaluation each time.
+  call <- substitute(expr)
+  env <- parent.frame()
+  for (i in 1:5) eval(call, env)
+  elapsed <- system.time(for (i in seq_len(iters)) eval(call, env))[["elapsed"]]
   us_per_call <- (elapsed / iters) * 1e6
   cat(sprintf("  %-50s %8.2f us/call\n", label, us_per_call))
   invisible(us_per_call)
@@ -33,13 +38,13 @@ bench_one <- function(label, expr, iters = ITERS) {
 # ---------------------------------------------------------------------------
 cat("DerivedPercent (double-based):\n")
 
-pct_small  <- DerivedPercent$new(c(0.1, 0.5, 0.9))
-pct_medium <- DerivedPercent$new(seq(0, 1, length.out = 100))
+pct_small  <- new_derived_percent(c(0.1, 0.5, 0.9))
+pct_medium <- new_derived_percent(seq(0, 1, length.out = 100))
 raw_small  <- c(0.1, 0.5, 0.9)
 raw_medium <- seq(0, 1, length.out = 100)
 
 # Construction
-bench_one("DerivedPercent$new(3 elem)",      DerivedPercent$new(c(0.1, 0.5, 0.9)))
+bench_one("new_derived_percent(3 elem)",     new_derived_percent(c(0.1, 0.5, 0.9)))
 bench_one("raw numeric(3)",                  c(0.1, 0.5, 0.9))
 
 # vec_c (concatenation)
@@ -66,11 +71,11 @@ cat("\n")
 # ---------------------------------------------------------------------------
 cat("DerivedPoint (record-based, x/y fields):\n")
 
-pt_small  <- DerivedPoint$new(c(1, 2, 3), c(4, 5, 6))
-pt_medium <- DerivedPoint$new(seq_len(100), seq_len(100) * 2)
+pt_small  <- new_derived_point(c(1, 2, 3), c(4, 5, 6))
+pt_medium <- new_derived_point(as.double(seq_len(100)), seq_len(100) * 2)
 
 # Construction
-bench_one("DerivedPoint$new(3 elem)",        DerivedPoint$new(c(1,2,3), c(4,5,6)))
+bench_one("new_derived_point(3 elem)",       new_derived_point(c(1,2,3), c(4,5,6)))
 
 # vec_c
 bench_one("vec_c(pt, pt) small",             vec_c(pt_small, pt_small))
@@ -91,11 +96,11 @@ cat("\n")
 # ---------------------------------------------------------------------------
 cat("DerivedTemp (double-based with arithmetic):\n")
 
-temp_small  <- DerivedTemp$new(c(20, 25, 30))
-temp_medium <- DerivedTemp$new(seq(0, 100, length.out = 100))
+temp_small  <- new_derived_temp(c(20, 25, 30))
+temp_medium <- new_derived_temp(seq(0, 100, length.out = 100))
 
 # Construction
-bench_one("DerivedTemp$new(3 elem)",         DerivedTemp$new(c(20, 25, 30)))
+bench_one("new_derived_temp(3 elem)",        new_derived_temp(c(20, 25, 30)))
 
 # Arithmetic (if supported)
 tryCatch({
