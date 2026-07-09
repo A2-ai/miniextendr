@@ -214,7 +214,7 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 /// - Class definition: `ClassName <- S7::new_class("ClassName", ...)` with a `.ptr` property
 ///   of `class_any` holding the `ExternalPtr`, plus optional computed properties
 /// - Constructor: inline in `new_class(constructor = function(...) ...)`, supports
-///   `.ptr` shortcut parameter for factory methods returning `Self`
+///   `.ptr` shortcut parameter for wrapping pre-built ExternalPtr returns
 /// - Properties: `S7::new_property(...)` for each getter/setter/validator annotated
 ///   with `#[miniextendr(s7(getter))]` etc., with support for class constraints,
 ///   defaults, required, frozen, and deprecated modifiers
@@ -354,13 +354,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let find_method = |ident: &str| -> Option<&ParsedMethod> {
         parsed_impl.methods.iter().find(|m| m.ident == ident)
     };
-
-    // Constructor - check if .ptr param will be added (for static methods returning Self)
-    let has_self_returning_methods = parsed_impl
-        .methods
-        .iter()
-        .filter(|m| m.should_include())
-        .any(|m| m.returns_self());
 
     // Determine imports based on whether we have properties and what class types are used
     let base_imports = "new_class class_any new_object S7_object new_generic method";
@@ -660,47 +653,37 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(ctx) = parsed_impl.constructor_context() {
         let ctor_preconditions = ctx.precondition_checks();
         let ctor_match_arg = ctx.match_arg_prelude();
-        if has_self_returning_methods {
-            let params_with_ptr = if ctx.params.is_empty() {
-                ".ptr = NULL".to_string()
-            } else {
-                format!("{}, .ptr = NULL", ctx.params)
-            };
-            lines.push(format!("  constructor = function({}) {{", params_with_ptr));
-            // Preconditions + match.arg only when not using .ptr shortcut
-            if !ctor_preconditions.is_empty() || !ctor_match_arg.is_empty() {
-                lines.push("    if (is.null(.ptr)) {".to_string());
-                for check in &ctor_preconditions {
-                    lines.push(format!("      {}", check));
-                }
-                for line in &ctor_match_arg {
-                    lines.push(format!("      {}", line));
-                }
-                lines.push("    }".to_string());
-            }
-            lines.push("    if (!is.null(.ptr)) {".to_string());
-            lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
-            lines.push("    } else {".to_string());
-            lines.push(format!("      .val <- {}", ctx.static_call()));
-            lines.extend(crate::method_return_builder::condition_check_lines(
-                "      ",
-            ));
-            lines.push("      S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
-            lines.push("    }".to_string());
-            lines.push("  }".to_string());
+        let params_with_ptr = if ctx.params.is_empty() {
+            ".ptr = NULL".to_string()
         } else {
-            lines.push(format!("  constructor = function({}) {{", ctx.params));
+            format!("{}, .ptr = NULL", ctx.params)
+        };
+        lines.push(format!("  constructor = function({}) {{", params_with_ptr));
+        // Preconditions + match.arg only when not using .ptr shortcut
+        if !ctor_preconditions.is_empty() || !ctor_match_arg.is_empty() {
+            lines.push("    if (is.null(.ptr)) {".to_string());
             for check in &ctor_preconditions {
-                lines.push(format!("    {}", check));
+                lines.push(format!("      {}", check));
             }
             for line in &ctor_match_arg {
-                lines.push(format!("    {}", line));
+                lines.push(format!("      {}", line));
             }
-            lines.push(format!("    .val <- {}", ctx.static_call()));
-            lines.extend(crate::method_return_builder::condition_check_lines("    "));
-            lines.push("    S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
-            lines.push("  }".to_string());
+            lines.push("    }".to_string());
         }
+        lines.push("    if (!is.null(.ptr)) {".to_string());
+        lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
+        lines.push("    } else {".to_string());
+        lines.push(format!("      .val <- {}", ctx.static_call()));
+        lines.extend(crate::method_return_builder::condition_check_lines(
+            "      ",
+        ));
+        lines.push("      S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
+        lines.push("    }".to_string());
+        lines.push("  }".to_string());
+    } else {
+        lines.push("  constructor = function(.ptr = NULL) {".to_string());
+        lines.push("    S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
+        lines.push("  }".to_string());
     }
 
     lines.push(")".to_string());
@@ -801,6 +784,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let body_lines = crate::MethodReturnBuilder::new(call.clone())
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
+                .with_return_class_from_method(ctx.method)
                 .build_s7_body();
 
             let what = format!("{}.{}", generic_name, class_name);
@@ -870,6 +854,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let body_lines = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
+                .with_return_class_from_method(ctx.method)
                 .build_s7_body();
 
             // Use matching formals for method (with or without ...)
@@ -947,6 +932,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let shortcut_body = crate::MethodReturnBuilder::new(shortcut_call)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
+                .with_return_class_from_method(ctx.method)
                 .with_chain_var("self".to_string())
                 .build_s7_body();
 
@@ -990,6 +976,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_return_class_from_method(ctx.method)
             .build_s7_inline();
         lines.push(format!("  {}", return_expr));
 
@@ -1051,6 +1038,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call_with_from)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
+                .with_return_class_from_method(method)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package.

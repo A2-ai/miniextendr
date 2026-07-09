@@ -2149,6 +2149,39 @@ impl ParsedMethod {
             if ip.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))
     }
 
+    /// Returns the bare type name when this method returns a type that may be a
+    /// different registered ExternalPtr-backed class.
+    ///
+    /// This is deliberately syntactic and conservative about primitives and
+    /// common containers. The write-time wrapper resolver checks the complete
+    /// class registry, so an unregistered capitalized type falls back to the
+    /// direct `.val` return.
+    pub fn returns_other_class(&self) -> Option<syn::Ident> {
+        let syn::ReturnType::Type(_, ty) = &self.sig.output else {
+            return None;
+        };
+        let syn::Type::Path(p) = ty.as_ref() else {
+            return None;
+        };
+        let seg = p.path.segments.last()?;
+        if !matches!(seg.arguments, syn::PathArguments::None) {
+            return None;
+        }
+
+        let name = seg.ident.to_string();
+        if name == "Self"
+            || is_builtin_return_type_name(&name)
+            || is_known_return_container_name(&name)
+        {
+            return None;
+        }
+
+        name.chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_uppercase())
+            .then(|| seg.ident.clone())
+    }
+
     /// Returns true if this method returns a reference to `Self` (`&Self` or
     /// `&mut Self`) — the idiomatic Rust in-place builder signature.
     ///
@@ -2175,6 +2208,36 @@ impl ParsedMethod {
             }
         }
     }
+}
+
+fn is_builtin_return_type_name(name: &str) -> bool {
+    matches!(
+        name,
+        "i8" | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "f32"
+            | "f64"
+            | "bool"
+            | "char"
+            | "str"
+            | "String"
+            | "usize"
+            | "isize"
+    )
+}
+
+fn is_known_return_container_name(name: &str) -> bool {
+    matches!(
+        name,
+        "Vec" | "Option" | "Result" | "Box" | "HashMap" | "BTreeMap"
+    )
 }
 
 impl ParsedImpl {

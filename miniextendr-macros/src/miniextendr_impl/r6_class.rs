@@ -85,13 +85,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
 
-    // Check if .ptr parameter will be added to initialize (for static methods returning Self)
-    let has_self_returning_methods = parsed_impl
-        .methods
-        .iter()
-        .filter(|m| m.should_include())
-        .any(|m| m.returns_self());
-
     let mut lines = Vec::new();
 
     // Start R6Class definition with documentation
@@ -113,9 +106,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.insert(insert_pos, format!("#' {}", lc_import));
     }
 
-    // Document .ptr param if initialize will have it (for static methods returning Self)
-    if has_self_returning_methods && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
-    {
+    // Every R6 ExternalPtr class accepts .ptr so write-time cross-class return
+    // wrapping can land in the target constructor.
+    if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
         // Insert before @export (which is last)
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(
@@ -155,8 +148,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let has_public_methods = !public_method_contexts.is_empty();
 
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr.
-    // If there's no explicit `new()` but there are factory methods returning Self,
-    // generate a minimal initialize(.ptr) so factories can call $new(.ptr = val).
+    // If there's no explicit `new()`, generate a minimal initialize(.ptr) so
+    // other class methods can call $new(.ptr = val).
     if let Some(ctx) = parsed_impl.constructor_context() {
         lines.push(format!("    {}", ctx.source_comment(type_ident)));
         // Add inline roxygen documentation for initialize method
@@ -221,53 +214,37 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         let ctor_match_arg = ctx.match_arg_prelude();
 
-        if has_self_returning_methods {
-            let full_params = if ctx.params.is_empty() {
-                ".ptr = NULL".to_string()
-            } else {
-                format!("{}, .ptr = NULL", ctx.params)
-            };
-            lines.push(format!("    initialize = function({}) {{", full_params));
-            // Preconditions + match.arg only when not using .ptr shortcut
-            if !ctor_preconditions.is_empty() || !ctor_match_arg.is_empty() {
-                lines.push("      if (is.null(.ptr)) {".to_string());
-                for check in &ctor_preconditions {
-                    lines.push(format!("        {}", check));
-                }
-                for line in &ctor_match_arg {
-                    lines.push(format!("        {}", line));
-                }
-                lines.push("      }".to_string());
-            }
-            lines.push("      if (!is.null(.ptr)) {".to_string());
-            lines.push("        private$.ptr <- .ptr".to_string());
-            lines.push("      } else {".to_string());
-            lines.push(format!("        .val <- {}", ctx.static_call()));
-            // Use shared condition switch (supports error!/warning!/message!/condition!).
-            for check_line in crate::method_return_builder::condition_check_lines("        ") {
-                lines.push(check_line);
-            }
-            lines.push("        private$.ptr <- .val".to_string());
-            lines.push("      }".to_string());
-            lines.push(format!("    }}{}", comma));
+        let full_params = if ctx.params.is_empty() {
+            ".ptr = NULL".to_string()
         } else {
-            lines.push(format!("    initialize = function({}) {{", ctx.params));
+            format!("{}, .ptr = NULL", ctx.params)
+        };
+        lines.push(format!("    initialize = function({}) {{", full_params));
+        // Preconditions + match.arg only when not using .ptr shortcut
+        if !ctor_preconditions.is_empty() || !ctor_match_arg.is_empty() {
+            lines.push("      if (is.null(.ptr)) {".to_string());
             for check in &ctor_preconditions {
-                lines.push(format!("      {}", check));
+                lines.push(format!("        {}", check));
             }
             for line in &ctor_match_arg {
-                lines.push(format!("      {}", line));
+                lines.push(format!("        {}", line));
             }
-            lines.push(format!("      .val <- {}", ctx.static_call()));
-            lines.extend(crate::method_return_builder::condition_check_lines(
-                "      ",
-            ));
-            lines.push("      private$.ptr <- .val".to_string());
-            lines.push(format!("    }}{}", comma));
+            lines.push("      }".to_string());
         }
-    } else if has_self_returning_methods {
-        // No explicit new() constructor, but factory methods need $new(.ptr = val).
-        // Generate a minimal initialize that only accepts .ptr.
+        lines.push("      if (!is.null(.ptr)) {".to_string());
+        lines.push("        private$.ptr <- .ptr".to_string());
+        lines.push("      } else {".to_string());
+        lines.push(format!("        .val <- {}", ctx.static_call()));
+        // Use shared condition switch (supports error!/warning!/message!/condition!).
+        for check_line in crate::method_return_builder::condition_check_lines("        ") {
+            lines.push(check_line);
+        }
+        lines.push("        private$.ptr <- .val".to_string());
+        lines.push("      }".to_string());
+        lines.push(format!("    }}{}", comma));
+    } else {
+        // No explicit new() constructor, but cross-class returns need
+        // $new(.ptr = val). Generate a minimal initialize that only accepts .ptr.
         let comma = if has_public_methods { "," } else { "" };
         lines.push(format!(
             "    #' @description Create a new `{}`.",
@@ -358,6 +335,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_return_class_from_method(ctx.method)
             .with_indent(6); // R6 methods have 6-space indent
         lines.extend(return_builder.build_r6_body());
 
@@ -405,6 +383,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_return_class_from_method(ctx.method)
             .with_indent(6);
         lines.extend(return_builder.build_r6_body());
 
@@ -523,6 +502,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 let getter_builder = crate::MethodReturnBuilder::new(getter_call)
                     .with_strategy(getter_strategy)
                     .with_class_name(class_name.clone())
+                    .with_return_class_from_method(ctx.method)
                     .with_indent(8);
                 lines.extend(getter_builder.build_r6_body());
 
@@ -564,6 +544,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 let return_builder = crate::MethodReturnBuilder::new(call)
                     .with_strategy(strategy)
                     .with_class_name(class_name.clone())
+                    .with_return_class_from_method(ctx.method)
                     .with_indent(6); // R6 active bindings have 6-space indent
                 lines.extend(return_builder.build_r6_body());
 
@@ -631,7 +612,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_return_class_from_method(ctx.method);
         lines.extend(return_builder.build_r6_body());
 
         lines.push("}".to_string());
