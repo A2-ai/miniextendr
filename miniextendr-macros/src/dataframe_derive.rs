@@ -1027,7 +1027,9 @@ fn resolve_struct_field(
 /// - `#[dataframe(tag = "col")]` — Add variant discriminator column
 ///
 /// Both struct and enum companion types get `from_rows()` (sequential) and
-/// `from_rows_par()` (parallel, `#[cfg(feature = "rayon")]`) methods automatically.
+/// `from_rows_par()` (parallel, gated on miniextendr-api's `rayon` feature via
+/// `__dataframe_row_when_rayon!` — never a raw `#[cfg]` in the consumer crate,
+/// see #1117) methods automatically.
 pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let row_name = &input.ident;
 
