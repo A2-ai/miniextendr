@@ -34,6 +34,9 @@ it picked tarball mode when the auto-vendor branch fires (e.g. "no .git
 ancestor found, assuming CRAN-style build"), or the getting-started skill's
 step 1 could recommend `git init` immediately after `use_miniextendr()`.
 
+**Tracked:** [#1233](https://github.com/A2-ai/miniextendr/pull/1233) —
+`configure` now surfaces the `.git`-ancestor auto-vendor trigger.
+
 ### 2. `#[miniextendr(dots = typed_list!(...))]` sugar is function-only, silently absent inside impl blocks
 
 The attribute sugar documented by the `miniextendr-dots` skill and
@@ -55,6 +58,10 @@ binding — no loss of functionality, just more boilerplate and a surprising
 first encounter. Worth either wiring the sugar into the impl-block parser too,
 or having the skill/docs call out explicitly that it's function-only.
 
+**Tracked:** [#1235](https://github.com/A2-ai/miniextendr/pull/1235) —
+`dots = typed_list!(...)` sugar now accepted on impl-block methods and
+constructors.
+
 ### 3. ALTREP derive macros/traits aren't in `miniextendr_api::prelude`
 
 The `miniextendr-altrep` skill's own minimal example writes `use
@@ -67,6 +74,11 @@ miniextendr_api::{AltrepInteger, ...};`. The prelude does not re-export the
 ALTREP derive macros or the per-family data traits. Either the prelude should
 include them, or the skill's own code sample needs the explicit imports
 added — as written it doesn't compile.
+
+**Tracked:** [#1230](https://github.com/A2-ai/miniextendr/pull/1230) — the
+per-family ALTREP derives and data traits are being re-exported from the
+prelude. Until it merges, the explicit-import fix landed in this PR's
+`miniextendr-altrep` skill edit is what's correct on `main`.
 
 ### 4. Bare `dots: ...` parameter is fully broken inside impl-block methods
 
@@ -97,6 +109,9 @@ the `typed_list!` showcase to a standalone free function instead. Given how
 natural "configurable constructor options via dots" is for a class, this
 looks like a real gap worth a `gh issue create` rather than just a doc note.
 
+**Tracked:** [#1234](https://github.com/A2-ai/miniextendr/pull/1234) — the
+`...` variadic is now rewritten to `&Dots` in impl-block methods.
+
 ### 5. `TypedList::get`/`get_opt` can't retrieve vector fields even though `typed_list!` can validate them
 
 `typed_list!(survive => integer())` happily validates that `survive` is an
@@ -121,6 +136,9 @@ scalar-only restriction anywhere in the `miniextendr-dots` skill or
 that retrieval requires a different code path than scalars. Likely fix:
 relax the bound on `get`/`get_opt` to accept any `TryFromSexp` and map both
 error variants into `TypedListError::WrongType`.
+
+**Tracked:** [#1227](https://github.com/A2-ai/miniextendr/pull/1227) —
+`TypedList::get`/`get_opt` now retrieve vector fields, not just scalars.
 
 ### 6. `minirextendr::miniextendr_build()` needs two passes for a new export — FALSE ALARM, root cause is hiccup #1
 
@@ -152,6 +170,11 @@ is still a reasonable improvement on its own merits, but the "two-pass"
 framing and the `gh issue create` this entry originally called for are
 retracted — there is no bug left in `miniextendr_build()` to file. See
 hiccup #1's fix instead.
+
+**Tracked:** no fix PR (retracted as a false alarm). The real underlying
+issue is hiccup #1, tracked in
+[#1233](https://github.com/A2-ai/miniextendr/pull/1233). `miniextendr_build()`'s
+own single-call reinstall was already correct (issue #860, closed).
 
 ### 7. R6 trait-impl methods are flat free functions, not `obj$method()` — genuine gap, not a documented tradeoff
 
@@ -190,6 +213,16 @@ Investigated with an agent to confirm this isn't a local misunderstanding:
   `$set()`, or explicitly narrow the class-systems skill's "dual calling"
   claim to Env-only so it stops overpromising for R6/S3/S4/S7.
 
+**Tracked:** substantially fixed by
+[#1219](https://github.com/A2-ai/miniextendr/pull/1219) (merged 2026-07-09) —
+R6 instance trait methods now live in the class-scoped `Type$Trait$method(x)`
+namespace (the Env/S3 shape), no longer the standalone
+`r6_trait_<Trait>_<method>(x)` function this entry describes. Note the
+doc-alignment follow-up [#1228](https://github.com/A2-ai/miniextendr/pull/1228)
+predates that merge, so its "R6/S3/S4/S7 emit flat functions, scope dual
+calling to Env" framing is now superseded for R6 by #1219 and needs
+reconciling before it lands.
+
 ### 8. Fresh `use_miniextendr()` scaffold's `.gitignore` doesn't match where generated files actually live
 
 Three generated artifacts that this repo's own `CLAUDE.md` says must be
@@ -226,6 +259,10 @@ documented in root `CLAUDE.md` (which itself was presumably updated after
 the templates were last synced) — worth a `gh issue create` to fix
 `minirextendr`'s `.gitignore` template (`minirextendr/inst/templates/`) to
 match current reality, plus a `.Rbuildignore` fix for the wrappers.R path.
+
+**Tracked:** [#1226](https://github.com/A2-ai/miniextendr/pull/1226) — the
+scaffold `.gitignore` now covers `src/rust/.cargo/config.toml` at its real
+nested path and the `R/*-wrappers.R` location.
 
 ### Correction: builder-pattern support exists and is more first-class than first assessed
 
@@ -336,6 +373,11 @@ piece needed to make cross-type builder `build()` methods usable directly;
 worth a `gh issue create` to have the codegen detect a method's return type
 naming a *different* known `#[miniextendr]`-registered ExternalPtr class and
 emit `ReturnType::new(.ptr = .val)` instead of a bare `.val`.
+
+**Tracked:** [#1232](https://github.com/A2-ai/miniextendr/pull/1232) —
+instance-method returns that name another registered ExternalPtr class are now
+auto-wrapped. (Complements the same-class `-> Self` re-wrapping merged in
+[#1219](https://github.com/A2-ai/miniextendr/pull/1219).)
 
 ### rust-target — checked, NOT a bug
 

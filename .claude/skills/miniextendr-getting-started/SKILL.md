@@ -192,17 +192,21 @@ The iteration loop for Rust changes is:
 1. Edit `.rs` source files.
 2. `minirextendr::miniextendr_build()` (or `just configure && just rcmdinstall
    && just force-document` in the monorepo).
-3. **If you added, removed, or renamed a `#[miniextendr]` item** (function,
-   class, trait impl — anything that changes what's exported): run step 2
-   **a second time**. The first pass compiles Rust and regenerates
-   `R/miniextendr-wrappers.R`, then documents from it (writing the new
-   `NAMESPACE` to disk) — but the package was already installed *before* that
-   documentation step ran, so the newly added export is not yet callable.
-   Calling it raises `could not find function "..."` even though it appears
-   in `NAMESPACE` on disk. A second `miniextendr_build()` call reinstalls
-   against the now-current `NAMESPACE` and the new export becomes callable.
-   Pure signature/body edits to *existing* exports don't need this — only
-   changes to the *set* of exported names do.
+3. **Adding, removing, or renaming a `#[miniextendr]` item** (function, class,
+   trait impl — anything that changes the *set* of exported names) hits a
+   chicken-and-egg ordering: the package is installed *before* roxygen2 rewrites
+   `NAMESPACE` from the freshly generated `R/miniextendr-wrappers.R`, so the
+   installed image lags the on-disk `NAMESPACE` by one build and the new export
+   isn't callable yet (`could not find function "..."`).
+   - `minirextendr::miniextendr_build()` **handles this for you in a single
+     call**: it snapshots `NAMESPACE` before and after `document()` and, if the
+     export set changed, reinstalls once so the installed image matches. No
+     second pass needed.
+   - The monorepo raw recipes do *not* self-heal — after `just rcmdinstall &&
+     just force-document` you must run `just rcmdinstall` once more so the new
+     export becomes runtime-callable.
+   Pure signature/body edits to *existing* exports need neither — only changes
+   to the set of exported names do.
 4. Restart R (or reload the package) and test.
 
 Generated files (`R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must be
