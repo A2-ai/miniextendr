@@ -138,16 +138,16 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 $(WRAPPERS_R): $(SHLIB)
 	@set -e; \
 	if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
-	  echo "wasm32 install: skipping wrapper-gen (pre-generated R/$(PACKAGE_NAME)-wrappers.R + src/rust/wasm_registry.rs expected)"; \
+	  echo "wasm32 install: skipping wrapper-gen (pre-generated R/@PACKAGE_NAME@-wrappers.R + src/rust/wasm_registry.rs expected)"; \
 	  touch '$(WRAPPERS_R)'; \
 	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && [ -s '$(WRAPPERS_R)' ]; then \
-	  echo "tarball install: using pre-shipped R/$(PACKAGE_NAME)-wrappers.R (skipping wrapper-gen, #1022)"; \
+	  echo "tarball install: using pre-shipped R/@PACKAGE_NAME@-wrappers.R (skipping wrapper-gen, #1022)"; \
 	  touch '$(WRAPPERS_R)'; \
 	else \
 	  if [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -n "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; then \
 	    echo "MINIEXTENDR_FORCE_WRAPPER_GEN set: regenerating wrappers from $(SHLIB) (tarball mode override)..."; \
 	  elif [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
-	    echo "tarball install: pre-shipped R/$(PACKAGE_NAME)-wrappers.R absent or empty — falling back to full wrapper-gen (#1022 guard)..." >&2; \
+	    echo "tarball install: pre-shipped R/@PACKAGE_NAME@-wrappers.R absent or empty — falling back to full wrapper-gen (#1022 guard)..." >&2; \
 	  else \
 	    echo "Generating R wrappers + wasm_registry.rs..."; \
 	  fi; \

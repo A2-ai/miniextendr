@@ -117,7 +117,7 @@ pub fn jiff_roundtrip_date(date: JiffDate) -> JiffDate {
     date
 }
 
-/// Roundtrip a Vec<civil::Date> through R Date vector.
+/// Roundtrip a `Vec<civil::Date>` through R Date vector.
 /// @param dates Date vector from R.
 #[miniextendr]
 pub fn jiff_roundtrip_date_vec(dates: Vec<JiffDate>) -> Vec<JiffDate> {

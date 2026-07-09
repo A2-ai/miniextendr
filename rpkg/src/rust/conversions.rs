@@ -1452,7 +1452,7 @@ pub fn conv_as_named_list_array() -> AsNamedList<[(String, f64); 2]> {
 /// suppressed MXL302, because the deferred `AsNamedList::into_sexp` ran in a
 /// later frame than the value construction — a structural GC hazard with no
 /// fixable call site (#1030). It is migrated to typed values via the framework
-/// [`RValue`](miniextendr_api::RValue) tree: each value's `into_sexp()` runs
+/// `RValue` tree: each value's `into_sexp()` runs
 /// *inside* `AsNamedList::into_sexp`, immediately before being protected and
 /// placed into the list, so no sibling is ever unprotected across an allocation.
 /// The MXL302 suppression is gone because there is no longer an `into_sexp()`
