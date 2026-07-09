@@ -968,7 +968,9 @@ pub fn gc_stress_built_dataframe() {
         .expect("gc_stress_built_dataframe: push failed");
     }
     // The returned handle owns a GC root (`R_PreserveObject`) for the frame.
-    let built = b.finish().expect("gc_stress_built_dataframe: finish failed");
+    let built = b
+        .finish()
+        .expect("gc_stress_built_dataframe: finish failed");
 
     // Force a burst of R allocations while `built` is held. Under gctorture(TRUE)
     // every allocation is a full GC; a bare (unrooted) frame would be reclaimed
@@ -997,8 +999,14 @@ pub fn gc_stress_built_dataframe() {
     // they survived intact — length, type, and first/last values. `column_raw`
     // routes through `named_list()`, whose `.expect` fires if the names
     // attribute was reclaimed.
-    let id_col = built.column_raw("id").expect("id column reclaimed under GC");
-    assert_eq!(id_col.type_of(), SEXPTYPE::INTSXP, "id column type corrupted");
+    let id_col = built
+        .column_raw("id")
+        .expect("id column reclaimed under GC");
+    assert_eq!(
+        id_col.type_of(),
+        SEXPTYPE::INTSXP,
+        "id column type corrupted"
+    );
     let ids: &[i32] = unsafe { id_col.as_slice() };
     assert_eq!(ids.len(), N as usize, "id column length changed under GC");
     assert_eq!(ids[0], 0);
