@@ -1598,26 +1598,29 @@ pub(super) fn derive_enum_dataframe(
         }
 
         quote! {
-            /// Parallel row→column transposition using rayon scatter-write.
-            ///
-            /// Always uses rayon — no threshold check. Use `from_rows` for the
-            /// sequential path.
-            #[cfg(feature = "rayon")]
-            #[allow(clippy::uninit_vec)]
-            pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                ::miniextendr_api::optionals::parallel::ensure_pool();
-                let len = rows.len();
-                #(#par_col_decls)*
-                {
-                    #(#writer_decls)*
-                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                        match __row {
-                            #(#par_match_arms)*
-                        }
-                    });
+            // api-side rayon gate (#1117): the cfg lives on miniextendr-api's
+            // macro, not stamped into the consumer crate.
+            ::miniextendr_api::__dataframe_row_when_rayon! {
+                /// Parallel row→column transposition using rayon scatter-write.
+                ///
+                /// Always uses rayon — no threshold check. Use `from_rows` for the
+                /// sequential path.
+                #[allow(clippy::uninit_vec)]
+                pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
+                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                    ::miniextendr_api::optionals::parallel::ensure_pool();
+                    let len = rows.len();
+                    #(#par_col_decls)*
+                    {
+                        #(#writer_decls)*
+                        rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
+                            match __row {
+                                #(#par_match_arms)*
+                            }
+                        });
+                    }
+                    #df_name { #par_tag_field #(#par_struct_fields),* }
                 }
-                #df_name { #par_tag_field #(#par_struct_fields),* }
             }
         }
     } else {
@@ -1918,14 +1921,15 @@ pub(super) fn derive_enum_dataframe(
                 )
             }
 
-            #[cfg(feature = "rayon")]
-            fn rows_from_dataframe_par(
-                __df: &::miniextendr_api::dataframe::DataFrame,
-            ) -> ::core::option::Option<::core::result::Result<Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
-                ::core::option::Option::Some(
-                    #par_reader_body
-                        .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion)
-                )
+            ::miniextendr_api::__dataframe_row_when_rayon! {
+                fn rows_from_dataframe_par(
+                    __df: &::miniextendr_api::dataframe::DataFrame,
+                ) -> ::core::option::Option<::core::result::Result<Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
+                    ::core::option::Option::Some(
+                        #par_reader_body
+                            .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion)
+                    )
+                }
             }
         }
     } else {
@@ -1947,14 +1951,15 @@ pub(super) fn derive_enum_dataframe(
                 )
             }
 
-            #[cfg(feature = "rayon")]
-            fn rows_into_dataframe_par(
-                rows: Vec<Self>,
-            ) -> ::core::result::Result<
-                ::miniextendr_api::dataframe::DataFrame,
-                ::miniextendr_api::dataframe::DataFrameError,
-            > {
-                #rows_into_dataframe_par_body
+            ::miniextendr_api::__dataframe_row_when_rayon! {
+                fn rows_into_dataframe_par(
+                    rows: Vec<Self>,
+                ) -> ::core::result::Result<
+                    ::miniextendr_api::dataframe::DataFrame,
+                    ::miniextendr_api::dataframe::DataFrameError,
+                > {
+                    #rows_into_dataframe_par_body
+                }
             }
 
             #reader_override
@@ -3351,17 +3356,19 @@ fn build_enum_reader(
             #seq_body
         }
 
-        /// Read an R `data.frame` directly into a `Vec<Self>` (parallel).
-        ///
-        /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R thread via
-        /// rayon. All SEXP access happens up front on the R/worker thread; the
-        /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
-        /// struct-flatten/nested-enum fields delegate to the sequential reader instead.
-        #[cfg(feature = "rayon")]
-        pub fn try_from_dataframe_par(
-            sexp: ::miniextendr_api::SEXP,
-        ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
-            #par_body
+        // api-side rayon gate (#1117).
+        ::miniextendr_api::__dataframe_row_when_rayon! {
+            /// Read an R `data.frame` directly into a `Vec<Self>` (parallel).
+            ///
+            /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R thread via
+            /// rayon. All SEXP access happens up front on the R/worker thread; the
+            /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
+            /// struct-flatten/nested-enum fields delegate to the sequential reader instead.
+            pub fn try_from_dataframe_par(
+                sexp: ::miniextendr_api::SEXP,
+            ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+                #par_body
+            }
         }
     })
 }
