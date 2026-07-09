@@ -722,6 +722,13 @@ pub struct ParsedImpl {
     pub r_data_accessors: bool,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
+    /// Drop the R-side `stopifnot(...)` precondition block from method wrappers.
+    /// Inherited from [`ImplAttrs::no_preconditions`] (set by
+    /// `#[miniextendr(no_preconditions)]` or `fast`).
+    pub no_preconditions: bool,
+    /// Emit `.call = NULL` instead of `.call = match.call()` in method wrappers.
+    /// Inherited from [`ImplAttrs::no_call_attribution`].
+    pub no_call_attribution: bool,
     /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
@@ -795,6 +802,19 @@ pub struct ImplAttrs {
     /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
     /// use `strict::checked_*()` instead of `IntoR::into_sexp()`, panicking on overflow.
     pub strict: bool,
+    // endregion
+    // region: Fast-path knobs
+    /// When true, drop the R-side `stopifnot(...)` precondition block from all
+    /// generated method wrappers. TryFromSexp still raises on bad input; the
+    /// message comes from Rust. Saves ~300 ns per assertion. Set by
+    /// `#[miniextendr(no_preconditions)]` or implied by `fast`.
+    pub no_preconditions: bool,
+    /// When true, emit `.call = NULL` instead of `.call = match.call()` in all
+    /// generated method wrappers. Error fallback `sys.call()` preserves
+    /// attribution (positional args). Saves ~1200 ns per call. Set by
+    /// `#[miniextendr(no_call_attribution)]` or implied by `fast`.
+    pub no_call_attribution: bool,
+    // endregion
     /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
@@ -803,7 +823,6 @@ pub struct ImplAttrs {
     /// emitted (a blanket impl already provides it), but C wrappers and R wrappers
     /// ARE generated from the method signatures in the body.
     pub blanket: bool,
-    // endregion
 }
 
 impl syn::parse::Parse for ImplAttrs {
@@ -829,6 +848,8 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_abstract = false;
         let mut r_data_accessors = false;
         let mut strict: Option<bool> = None;
+        let mut no_preconditions: Option<bool> = None;
+        let mut no_call_attribution: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
         let mut blanket = false;
@@ -1091,6 +1112,18 @@ impl syn::parse::Parse for ImplAttrs {
                 strict = Some(true);
             } else if ident_str == "no_strict" {
                 strict = Some(false);
+            } else if ident_str == "no_preconditions" {
+                no_preconditions = Some(true);
+            } else if ident_str == "no_call_attribution" {
+                no_call_attribution = Some(true);
+            } else if ident_str == "fast" {
+                // Bundle alias: drop the two biggest R-side overheads in generated wrappers.
+                no_preconditions = Some(true);
+                no_call_attribution = Some(true);
+            } else if ident_str == "no_fast" {
+                // Explicit opt-out: restore full error UX even when `fast-default` is enabled.
+                no_preconditions = Some(false);
+                no_call_attribution = Some(false);
             } else if ident_str == "internal" {
                 internal = true;
             } else if ident_str == "noexport" {
@@ -1143,6 +1176,8 @@ impl syn::parse::Parse for ImplAttrs {
             s7_abstract,
             r_data_accessors,
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
+            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
+            no_call_attribution: no_call_attribution.unwrap_or(cfg!(feature = "fast-default")),
             internal,
             noexport,
             blanket,
@@ -2349,6 +2384,8 @@ impl ParsedImpl {
             s7_abstract: attrs.s7_abstract,
             r_data_accessors: attrs.r_data_accessors,
             strict: attrs.strict,
+            no_preconditions: attrs.no_preconditions,
+            no_call_attribution: attrs.no_call_attribution,
             internal: attrs.internal,
             noexport: attrs.noexport,
             param_warnings,
@@ -2990,7 +3027,10 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Build method context for .Call generation
-        let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
+        let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_fast_flags(
+            parsed_impl.no_preconditions,
+            parsed_impl.no_call_attribution,
+        );
 
         // Normalize coercion target for R generic name.
         // `as.numeric()` is a thin base-R wrapper that dispatches via the internal

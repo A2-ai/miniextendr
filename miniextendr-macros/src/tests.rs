@@ -1146,3 +1146,108 @@ fn test_altrep_try_from_sexp_expected_tag_uses_family_base() {
     assert!(s.contains("expected:SEXPTYPE::EXTPTRSXP"));
 }
 // endregion
+
+// region: fast-default feature resolution tests
+
+/// When `fast-default` feature is enabled, `no_preconditions` and
+/// `no_call_attribution` both resolve to `true` by default (no annotation
+/// needed). With explicit `no_fast`, they resolve to `false` even under the
+/// feature.
+///
+/// Run with: `cargo test -p miniextendr-macros --features fast-default`
+#[cfg(feature = "fast-default")]
+#[test]
+fn fast_default_fn_attrs_resolve_both_true() {
+    // Empty attrs → both fields resolved via cfg!(feature = "fast-default")
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();
+    assert!(
+        attrs.no_preconditions,
+        "fast-default should set no_preconditions to true by default"
+    );
+    assert!(
+        attrs.no_call_attribution,
+        "fast-default should set no_call_attribution to true by default"
+    );
+}
+
+#[cfg(feature = "fast-default")]
+#[test]
+fn fast_default_no_fast_opt_out_restores_false() {
+    // `no_fast` explicitly opts out of both, even under fast-default
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_fast }).unwrap();
+    assert!(
+        !attrs.no_preconditions,
+        "no_fast should set no_preconditions to false"
+    );
+    assert!(
+        !attrs.no_call_attribution,
+        "no_fast should set no_call_attribution to false"
+    );
+}
+
+#[cfg(not(feature = "fast-default"))]
+#[test]
+fn no_fast_default_fn_attrs_resolve_false() {
+    // Without the feature, empty attrs → both false
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();
+    assert!(
+        !attrs.no_preconditions,
+        "without fast-default, no_preconditions should be false"
+    );
+    assert!(
+        !attrs.no_call_attribution,
+        "without fast-default, no_call_attribution should be false"
+    );
+}
+
+#[test]
+fn fast_bundle_alias_sets_both() {
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { fast }).unwrap();
+    assert!(attrs.no_preconditions, "fast should set no_preconditions");
+    assert!(
+        attrs.no_call_attribution,
+        "fast should set no_call_attribution"
+    );
+}
+
+#[test]
+fn no_fast_clears_both() {
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_fast }).unwrap();
+    // In the non-fast-default case no_fast → Some(false), resolves to false.
+    // In the fast-default case same thing.
+    assert!(
+        !attrs.no_preconditions,
+        "no_fast should clear no_preconditions"
+    );
+    assert!(
+        !attrs.no_call_attribution,
+        "no_fast should clear no_call_attribution"
+    );
+}
+
+#[test]
+fn fast_eq_false_name_value_clears_both() {
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { fast = false }).unwrap();
+    assert!(!attrs.no_preconditions);
+    assert!(!attrs.no_call_attribution);
+}
+
+#[test]
+fn fast_eq_true_name_value_sets_both() {
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { fast = true }).unwrap();
+    assert!(attrs.no_preconditions);
+    assert!(attrs.no_call_attribution);
+}
+
+#[test]
+fn no_preconditions_independent_parse() {
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_preconditions }).unwrap();
+    assert!(attrs.no_preconditions);
+}
+
+#[test]
+fn no_call_attribution_independent_parse() {
+    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_call_attribution }).unwrap();
+    assert!(attrs.no_call_attribution);
+}
+// endregion

@@ -189,24 +189,45 @@ Error path (`demo_error` ≈ 21 μs vs `stop()` ≈ 7 μs):
 
 ---
 
-## Status (2026-06-13)
+## Status (2026-06-13, corrected 2026-07-08)
 
 The original sprint commit (`e3279011`) that produced this roadmap and the
-`fast` knob infrastructure was **never merged**. The work has since re-landed
-piecemeal under the G6 issue group:
+`fast` knob infrastructure was **never merged**. The 2026-06-13 revision of
+this note claimed the work had "re-landed piecemeal under the G6 issue
+group" via PR #1018 (#666) and PR #950 (#665) — that was **wrong**: both PRs
+were closed without merging on 2026-07-01 (see
+`reviews/2026-07-08-fast-knob-vaporware-and-stacked-pr-collateral.md` for the
+full investigation). Only the inert docs/benches in this file's own PR
+(#1019) actually merged; `main` had zero fast-knob code from 2026-06-13
+through 2026-07-08 despite this file asserting otherwise.
 
-- **`fast` knob base + `fast-default` cargo feature** — re-landed via PR #1018
-  (#666), a fresh re-implementation against current macro internals.
-- **`error_direct` C-side direct error raise** — landed via PR #950 (#665).
+Current status:
+
+- **`fast` knob base + `fast-default` cargo feature** — re-landed a second
+  time by rebasing PR #1018's branch (`feat/g6-fast-default-666`) onto
+  current `main`, **with the `error_direct` dependency surgically removed**.
+  #1018 was stacked on top of #950 (`error_direct`) purely for
+  review-sequencing convenience, not because the fast knob needs it; #950 was
+  separately declined on correctness grounds ("would need a bunch of
+  analysis and audits to ensure that this strategy is as good as the current
+  condition-object signals"), which took #1018 down with it as collateral.
+  This re-land keeps only `no_preconditions` / `no_call_attribution` / `fast`
+  / `no_fast` and drops the `fast_and_error_direct` fixture, its test, and
+  the "`fast` + `error_direct` interaction" section of
+  `docs/FEATURE_DEFAULTS.md`.
+- **`error_direct` C-side direct error raise (#665)** — **not** re-attempted.
+  The maintainer's stated objection (soundness relative to the existing
+  tagged-condition path needs more analysis) stands; #665 remains open,
+  unblocked by this PR.
 - **#667 (`internal` ⇒ `fast`)** — closed as wontfix; the repo's own test suite
   asserts error UX against `internal`-marked fixtures, so coupling doc-visibility
   to error-UX degradation would break those tests. The escape hatch is the
   explicit `#[miniextendr(internal, fast)]` spelling or the crate-wide
-  `fast-default` feature, both shipped by PR #1018.
-- **M2 (C-side) + M4 (error-path) attribution benches** — re-landed in this PR
-  alongside this roadmap and the supporting `scaffolding-*` evidence files.
+  `fast-default` feature.
+- **M2 (C-side) + M4 (error-path) attribution benches** — landed via #1019
+  (2026-06-13), independent of the fast-knob codegen.
 
 The numbers above are the original `e3279011` measurements, preserved as dated
-evidence. Re-run `analysis/scaffolding-fast-bench.R` (or the new
+evidence. Re-run `analysis/scaffolding-fast-bench.R` (or the
 `cargo bench` targets `c_side_attribution` / `error_path_attribution`) against
 an installed `fast-default` build to refresh them.

@@ -191,6 +191,7 @@ mod externalptr_self_tests;
 mod externalptr_tests;
 mod externalslice_tests;
 mod factor_tests;
+mod fast_fixtures;
 mod feature_default_fixtures;
 mod ffi_guard_tests;
 mod gc_protect_tests;
