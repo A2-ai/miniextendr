@@ -6,7 +6,7 @@ location to the R condition message:
 ```
 Error in panic_location_main_direct(NULL):
   boom-main-direct
-  (at rpkg/src/rust/panic_location_tests.rs:47)
+  (at panic_location_tests.rs:46)
 ```
 
 The location comes from the process **panic hook** (`PanicHookInfo::location()`),
