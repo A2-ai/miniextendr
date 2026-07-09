@@ -205,22 +205,31 @@ impl DataFrame {
 
     // region: Read API (R → Rust column / row access)
 
-    /// Get a column by name, converting each element to type `T`.
+    /// Get a column by name, converting to type `T`.
     ///
     /// Returns `None` if the column name is not found or conversion fails.
+    ///
+    /// `T` may be a vector/collection target (`Vec<f64>`, `Vec<i32>`,
+    /// `Vec<String>`, …) — the natural shape for a column — or a scalar for a
+    /// length-1 column. The conversion error is discarded (that is what makes
+    /// this return `Option`), so `T::Error` is unconstrained; use
+    /// [`column_raw`](Self::column_raw) when you need the error.
     #[inline]
     pub fn column<T>(&self, name: &str) -> Option<T>
     where
-        T: TryFromSexp<Error = SexpError>,
+        T: TryFromSexp,
     {
         self.named_list().get(name)
     }
 
     /// Get a column by 0-based index, converting to type `T`.
+    ///
+    /// As with [`column`](Self::column), `T` may be a vector/collection or a
+    /// scalar target type; the conversion error is discarded.
     #[inline]
     pub fn column_index<T>(&self, idx: usize) -> Option<T>
     where
-        T: TryFromSexp<Error = SexpError>,
+        T: TryFromSexp,
     {
         let idx_isize: isize = idx.try_into().ok()?;
         self.named_list().get_index(idx_isize)
