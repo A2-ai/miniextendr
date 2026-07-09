@@ -11,6 +11,7 @@ test_that("upgrade_gitignore removes obsolete entries", {
     "src/entrypoint.c",
     "src/mx_abi.c",
     "src/rust/document.rs",
+    ".cargo/config.toml",
     "vendor/"
   ), gitignore)
 
@@ -28,6 +29,8 @@ test_that("upgrade_gitignore removes obsolete entries", {
   expect_false("src/entrypoint.c" %in% result)
   expect_false("src/mx_abi.c" %in% result)
   expect_false("src/rust/document.rs" %in% result)
+  # Superseded mis-anchored cargo-config pattern is dropped (#1226)
+  expect_false(".cargo/config.toml" %in% result)
 })
 
 test_that("check_configure_ac_drift warns on missing elements", {

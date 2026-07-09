@@ -233,7 +233,10 @@ upgrade_gitignore <- function() {
 
   lines <- readLines(gitignore_path, warn = FALSE)
   obsolete <- c("src/entrypoint.c", "src/entrypoint.c.in", "src/mx_abi.c",
-                "src/mx_abi.c.in", "src/rust/document.rs")
+                "src/mx_abi.c.in", "src/rust/document.rs",
+                # Superseded by the correctly-anchored `src/rust/.cargo/config.toml`
+                # (#1226); the bare pattern never matched the nested path.
+                ".cargo/config.toml")
 
   # Remove exact matches (trimmed)
   trimmed <- trimws(lines)
