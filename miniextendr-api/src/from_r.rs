@@ -1051,10 +1051,10 @@ where
 /// Helper to coerce a slice element-wise into a Vec.
 ///
 /// Walks the whole slice, accumulating every per-element coercion failure into
-/// one batched [`SexpError::InvalidValue`] via [`batch_conversion_errors`]
-/// (`container` names the target type, e.g. `"Vec<bool>"`) instead of bailing on
-/// the first `Err`. Allocation-free on the happy path — the errors `Vec` never
-/// allocates until the first failure.
+/// one batched [`SexpError::InvalidValue`] via [`BatchedErrors`] (`container`
+/// names the target type, e.g. `"Vec<bool>"`) instead of bailing on the first
+/// `Err`. The happy path allocates nothing for diagnostics, and a large
+/// all-failing slice never builds more than [`BATCHED_ERROR_CAP`] messages.
 #[inline]
 fn coerce_slice_to_vec<R, T>(slice: &[R], container: &str) -> Result<Vec<T>, SexpError>
 where
@@ -1062,17 +1062,17 @@ where
     <R as TryCoerce<T>>::Error: std::fmt::Display,
 {
     let mut result = Vec::with_capacity(slice.len());
-    let mut errors: Vec<String> = Vec::new();
+    let mut errors = BatchedErrors::default();
     for (i, v) in slice.iter().copied().enumerate() {
         match v.try_coerce() {
             Ok(x) => result.push(x),
-            Err(e) => errors.push(format!("invalid value at index {i}: {e}")),
+            Err(e) => errors.push(|| format!("invalid value at index {i}: {e}")),
         }
     }
     if errors.is_empty() {
         Ok(result)
     } else {
-        Err(batch_conversion_errors(container, errors))
+        Err(errors.into_error(container))
     }
 }
 
@@ -1080,13 +1080,13 @@ where
 ///
 /// Backs [`from_numeric_vec_with`]'s four SEXP-type branches: successes go into
 /// the output `Vec`, failures accumulate as `"invalid value at index <i>: <err>"`
-/// and are combined via [`batch_conversion_errors`] (matching the message grammar
-/// of the `Vec<T>` arm of `try_from_sexp_via_str_parse!`). The per-element closure
-/// wraps coercion failures as [`SexpError::InvalidValue`]; we unwrap that inner
-/// message so the batched entry reads `"...: value out of range"` rather than the
-/// doubled `"...: invalid value: value out of range"` that `SexpError`'s `Display`
-/// would produce. Allocation-free on the happy path — the errors `Vec` never
-/// allocates until the first failure.
+/// and are combined via [`BatchedErrors`] (matching the message grammar of the
+/// `Vec<T>` arm of `try_from_sexp_via_str_parse!`). The per-element closure wraps
+/// coercion failures as [`SexpError::InvalidValue`]; we unwrap that inner message
+/// so the batched entry reads `"...: value out of range"` rather than the doubled
+/// `"...: invalid value: value out of range"` that `SexpError`'s `Display` would
+/// produce. The happy path allocates nothing for diagnostics, and a large
+/// all-failing vector never builds more than [`BATCHED_ERROR_CAP`] messages.
 #[inline]
 fn collect_coerced<U>(
     container: &str,
@@ -1094,20 +1094,20 @@ fn collect_coerced<U>(
     iter: impl Iterator<Item = Result<U, SexpError>>,
 ) -> Result<Vec<U>, SexpError> {
     let mut result = Vec::with_capacity(len);
-    let mut errors: Vec<String> = Vec::new();
+    let mut errors = BatchedErrors::default();
     for (i, item) in iter.enumerate() {
         match item {
             Ok(v) => result.push(v),
             Err(SexpError::InvalidValue(msg)) => {
-                errors.push(format!("invalid value at index {i}: {msg}"))
+                errors.push(|| format!("invalid value at index {i}: {msg}"))
             }
-            Err(other) => errors.push(format!("invalid value at index {i}: {other}")),
+            Err(other) => errors.push(|| format!("invalid value at index {i}: {other}")),
         }
     }
     if errors.is_empty() {
         Ok(result)
     } else {
-        Err(batch_conversion_errors(container, errors))
+        Err(errors.into_error(container))
     }
 }
 
@@ -1984,34 +1984,61 @@ macro_rules! impl_vec_option_try_from_sexp_list {
 /// conversion error; the remainder is summarized as `"and N more"`.
 const BATCHED_ERROR_CAP: usize = 10;
 
-/// Combine indexed per-element conversion failures into one batched
-/// [`SexpError::InvalidValue`].
+/// Bounded accumulator that folds indexed per-element conversion failures into
+/// one batched [`SexpError::InvalidValue`].
 ///
 /// Backs the `Vec<T>` / `Vec<Option<T>>` arms of
 /// [`try_from_sexp_via_str_parse!`] (string-parse paths, #1143) **and** the
 /// numeric-coercion vector shells [`from_numeric_vec_with`] / [`collect_coerced`]
 /// / [`coerce_slice_to_vec`] (#1192): instead of bailing on the first NA or
-/// coercion failure, those walk the whole vector, accumulate the
-/// already-formatted per-element messages, and hand them here. Entries are
-/// joined with `"; "`; at most the first 10 are listed and the remainder is
-/// summarized as `"and N more"`.
+/// coercion failure, those walk the whole vector and record each failure here.
+///
+/// Only the first [`BATCHED_ERROR_CAP`] messages are retained; every later
+/// failure is counted but its message closure is never invoked. This keeps an
+/// all-failing N-element vector from materialising N `String`s just to discard
+/// all but 10 — the memory held is bounded regardless of input size. On
+/// [`into_error`](Self::into_error) the retained entries are joined with `"; "`
+/// and the remainder is summarized as `"and N more"`.
 ///
 /// Public (but hidden) because `try_from_sexp_via_str_parse!` is
 /// `#[macro_export]` and expands in downstream crates — not intended to be
-/// called directly.
+/// used directly.
 #[doc(hidden)]
-pub fn batch_conversion_errors(container: &str, errors: Vec<String>) -> SexpError {
-    debug_assert!(!errors.is_empty(), "batching zero conversion errors");
-    let total = errors.len();
-    let mut msg = format!(
-        "{container} conversion failed: {}",
-        errors[..total.min(BATCHED_ERROR_CAP)].join("; ")
-    );
-    if total > BATCHED_ERROR_CAP {
-        use std::fmt::Write;
-        let _ = write!(msg, "; and {} more", total - BATCHED_ERROR_CAP);
+#[derive(Default)]
+pub struct BatchedErrors {
+    listed: Vec<String>,
+    total: usize,
+}
+
+impl BatchedErrors {
+    /// Record one per-element failure. `msg` is evaluated (and its `String`
+    /// allocated) only for the first [`BATCHED_ERROR_CAP`] failures; later ones
+    /// are counted for the `"and N more"` tail but never formatted.
+    #[inline]
+    pub fn push(&mut self, msg: impl FnOnce() -> String) {
+        if self.listed.len() < BATCHED_ERROR_CAP {
+            self.listed.push(msg());
+        }
+        self.total += 1;
     }
-    SexpError::InvalidValue(msg)
+
+    /// Whether any failure has been recorded.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.total == 0
+    }
+
+    /// Fold the recorded failures into one [`SexpError::InvalidValue`] under
+    /// `container` (e.g. `"Vec<u32>"`).
+    pub fn into_error(self, container: &str) -> SexpError {
+        debug_assert!(self.total > 0, "batching zero conversion errors");
+        let mut msg = format!("{container} conversion failed: {}", self.listed.join("; "));
+        if self.total > self.listed.len() {
+            use std::fmt::Write;
+            let _ = write!(msg, "; and {} more", self.total - self.listed.len());
+        }
+        SexpError::InvalidValue(msg)
+    }
 }
 
 /// Implement the four string-parse `TryFromSexp` impls (`T`, `Option<T>`,
@@ -2029,7 +2056,7 @@ pub fn batch_conversion_errors(container: &str, errors: Vec<String>) -> SexpErro
 ///   `InvalidValue("invalid <label>: <err>")`.
 /// - `Option<T>`: `NA_character_` / `NULL` → `None`.
 /// - `Vec<T>`: NA elements and parse failures are collected across the whole
-///   vector into one batched `InvalidValue` (see [`batch_conversion_errors`]).
+///   vector into one batched `InvalidValue` (see [`BatchedErrors`]).
 ///   Per-element entries keep the `"NA at index <i> not allowed for Vec<T>"`
 ///   and `"invalid <label> at index <i>: <err>"` shapes; the first 10 are
 ///   listed and the remainder is summarized as `"and N more"`.
@@ -2088,21 +2115,26 @@ macro_rules! try_from_sexp_via_str_parse {
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
                 let mut result = Vec::with_capacity(values.len());
-                let mut errors: Vec<String> = Vec::new();
+                let mut errors = $crate::from_r::BatchedErrors::default();
                 for (i, opt) in values.into_iter().enumerate() {
                     match opt {
-                        None => errors.push(format!(
-                            concat!("NA at index {} not allowed for Vec<", stringify!($ty), ">"),
-                            i
-                        )),
+                        None => errors.push(|| {
+                            format!(
+                                concat!(
+                                    "NA at index {} not allowed for Vec<",
+                                    stringify!($ty),
+                                    ">"
+                                ),
+                                i
+                            )
+                        }),
                         Some(s) => {
                             let $s: &str = &s;
                             match ($parse) {
                                 Ok(v) => result.push(v),
-                                Err(e) => errors.push(format!(
-                                    concat!("invalid ", $label, " at index {}: {}"),
-                                    i, e
-                                )),
+                                Err(e) => errors.push(|| {
+                                    format!(concat!("invalid ", $label, " at index {}: {}"), i, e)
+                                }),
                             }
                         }
                     }
@@ -2110,10 +2142,7 @@ macro_rules! try_from_sexp_via_str_parse {
                 if errors.is_empty() {
                     Ok(result)
                 } else {
-                    Err($crate::from_r::batch_conversion_errors(
-                        concat!("Vec<", stringify!($ty), ">"),
-                        errors,
-                    ))
+                    Err(errors.into_error(concat!("Vec<", stringify!($ty), ">")))
                 }
             }
         }
@@ -2124,7 +2153,7 @@ macro_rules! try_from_sexp_via_str_parse {
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
                 let mut result = Vec::with_capacity(values.len());
-                let mut errors: Vec<String> = Vec::new();
+                let mut errors = $crate::from_r::BatchedErrors::default();
                 for (i, opt) in values.into_iter().enumerate() {
                     match opt {
                         None => result.push(None),
@@ -2132,10 +2161,9 @@ macro_rules! try_from_sexp_via_str_parse {
                             let $s: &str = &s;
                             match ($parse) {
                                 Ok(v) => result.push(Some(v)),
-                                Err(e) => errors.push(format!(
-                                    concat!("invalid ", $label, " at index {}: {}"),
-                                    i, e
-                                )),
+                                Err(e) => errors.push(|| {
+                                    format!(concat!("invalid ", $label, " at index {}: {}"), i, e)
+                                }),
                             }
                         }
                     }
@@ -2143,10 +2171,7 @@ macro_rules! try_from_sexp_via_str_parse {
                 if errors.is_empty() {
                     Ok(result)
                 } else {
-                    Err($crate::from_r::batch_conversion_errors(
-                        concat!("Vec<Option<", stringify!($ty), ">>"),
-                        errors,
-                    ))
+                    Err(errors.into_error(concat!("Vec<Option<", stringify!($ty), ">>")))
                 }
             }
         }
