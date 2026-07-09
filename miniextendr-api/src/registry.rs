@@ -1676,11 +1676,14 @@ fn detect_duplicate_wrapper_defs(
             }
             return Err(format!(
                 "miniextendr: wrapper function `{name}` is defined more than once in the \
-                 generated R wrappers. This usually means two `#[miniextendr(s7)]` impl \
-                 blocks (or an S7 shortcut and another generated function) emit the same \
-                 `<Class>_<method>` name. The second definition silently overwrites the \
-                 first at load time. Rename one (`#[miniextendr(s7(r_name = \"...\"))]`) or \
-                 opt the method out of the shortcut (`#[miniextendr(s7(no_shortcut))]`)."
+                 generated R wrappers. Two `#[miniextendr]`-generated top-level functions \
+                 emit the same name and the second silently overwrites the first at load \
+                 time. Common causes: two `#[miniextendr(s7)]` impl blocks (or an S7 \
+                 shortcut and another generated function) sharing a `<Class>_<method>` \
+                 name — rename one (`#[miniextendr(s7(r_name = \"...\"))]`) or opt it out \
+                 of the shortcut (`#[miniextendr(s7(no_shortcut))]`); or two trait impls \
+                 whose generated standalone wrapper names are not class-qualified — rename \
+                 the colliding method (`#[miniextendr(<system>(r_name = \"...\"))]`)."
             ));
         }
     }

@@ -107,10 +107,10 @@ test_that("CounterTraitR6 works with R6 trait impl", {
   # Inherent method (R6 $ dispatch)
   expect_equal(counter$get_value(), 10L)
 
-  # R6 trait method: r6_trait_Trait_method(x)
-  expect_equal(r6_trait_MatrixCounter_custom_get(counter), 10L)
-  r6_trait_MatrixCounter_custom_add(counter, 5L)
-  expect_equal(r6_trait_MatrixCounter_custom_get(counter), 15L)
+  # R6 trait method: Type$Trait$method(x) (class-scoped namespace, #1141/#1115)
+  expect_equal(CounterTraitR6$MatrixCounter$custom_get(counter), 10L)
+  CounterTraitR6$MatrixCounter$custom_add(counter, 5L)
+  expect_equal(CounterTraitR6$MatrixCounter$custom_get(counter), 15L)
 
   # Static trait method
   expect_equal(CounterTraitR6$MatrixCounter$default_value(), 5L)

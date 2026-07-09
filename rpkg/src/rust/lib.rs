@@ -286,6 +286,7 @@ mod tinyvec_adapter_tests;
 mod toml_adapter_tests;
 mod trait_abi_tests;
 mod trait_method_options_tests;
+mod trait_r6_collision;
 mod typed_dataframe_tests;
 mod unified_dataframe_tests;
 mod unwind_protect_tests;
