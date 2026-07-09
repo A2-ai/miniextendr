@@ -335,6 +335,14 @@ impl DataFrame {
     }
 
     /// Remove a column by name. No-op if the column doesn't exist.
+    ///
+    /// # Rooting
+    ///
+    /// Returns an **unrooted** view of a newly-built frame — a source
+    /// [`BuiltDataFrame`]'s root does not transfer to it (split-types residual,
+    /// #1247). Root the result (hold it under a
+    /// [`ProtectScope`](crate::ProtectScope), or re-adopt it with
+    /// [`BuiltDataFrame::adopt`]) before the next R allocation.
     pub fn drop(self, col: &str) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
@@ -369,6 +377,11 @@ impl DataFrame {
     }
 
     /// Keep only the named columns, in the order given. Unknown names are skipped.
+    ///
+    /// # Rooting
+    ///
+    /// Returns an **unrooted** view of a newly-built frame — see
+    /// [`drop`](Self::drop)'s rooting note (split-types residual, #1247).
     pub fn select(self, cols: &[&str]) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
@@ -409,6 +422,11 @@ impl DataFrame {
     ///
     /// Allocates one new column vector per column — `OwnedProtect`s the output list
     /// across the loop so previously-built column SEXPs survive subsequent allocations.
+    ///
+    /// # Rooting
+    ///
+    /// The returned frame is **unrooted** — see [`drop`](Self::drop)'s rooting
+    /// note (split-types residual, #1247).
     pub fn select_rows(&self, idx: &[usize]) -> Self {
         use crate::SexpExt as _;
 
@@ -470,6 +488,11 @@ impl DataFrame {
     }
 
     /// Insert a column at index 0 (leftmost), removing any same-named column first.
+    ///
+    /// # Rooting
+    ///
+    /// Returns an **unrooted** view of a newly-built frame — see
+    /// [`drop`](Self::drop)'s rooting note (split-types residual, #1247).
     pub fn prepend_column(self, name: &str, column: SEXP) -> Self {
         let cleaned = self.drop(name);
         unsafe {
@@ -500,6 +523,13 @@ impl DataFrame {
     }
 
     /// Upsert a column: replace the column named `name` if it exists, else append.
+    ///
+    /// # Rooting
+    ///
+    /// The **append** path (column not present) returns an **unrooted** view of a
+    /// newly-built frame — see [`drop`](Self::drop)'s rooting note (split-types
+    /// residual, #1247). The in-place replace path returns the same (already
+    /// rooted) frame it received.
     pub fn with_column(self, name: &str, column: SEXP) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
