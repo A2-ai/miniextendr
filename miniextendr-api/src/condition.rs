@@ -404,34 +404,7 @@ macro_rules! error {
 /// ```
 #[macro_export]
 macro_rules! rust_error {
-    (class = $class:expr, data = $data:tt, $($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Error {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::Some($class.to_string()),
-            data: $crate::__mx_condition_data!($data),
-        })
-    };
-    (data = $data:tt, $($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Error {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::None,
-            data: $crate::__mx_condition_data!($data),
-        })
-    };
-    (class = $class:expr, $($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Error {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::Some($class.to_string()),
-            data: ::std::option::Option::None,
-        })
-    };
-    ($($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Error {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::None,
-            data: ::std::option::Option::None,
-        })
-    };
+    ($($t:tt)*) => { $crate::error!($($t)*) };
 }
 
 /// Raise an R warning from Rust with `rust_warning` class layering.
@@ -667,34 +640,7 @@ macro_rules! condition {
 /// ```
 #[macro_export]
 macro_rules! rust_condition {
-    (class = $class:expr, data = $data:tt, $($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Condition {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::Some($class.to_string()),
-            data: $crate::__mx_condition_data!($data),
-        })
-    };
-    (data = $data:tt, $($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Condition {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::None,
-            data: $crate::__mx_condition_data!($data),
-        })
-    };
-    (class = $class:expr, $($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Condition {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::Some($class.to_string()),
-            data: ::std::option::Option::None,
-        })
-    };
-    ($($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Condition {
-            message: ::std::format!($($arg)*),
-            class: ::std::option::Option::None,
-            data: ::std::option::Option::None,
-        })
-    };
+    ($($t:tt)*) => { $crate::condition!($($t)*) };
 }
 
 // endregion
