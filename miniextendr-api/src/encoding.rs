@@ -56,29 +56,33 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         "must be called from R main thread"
     );
     use crate::SexpExt;
-    use crate::sys::{R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect};
+    use crate::sys::{R_BaseEnv, Rf_eval, Rf_install};
 
     unsafe {
-        // Call l10n_info()
-        let call = crate::sys::Rf_lang1(Rf_install(c"l10n_info".as_ptr()));
-        Rf_protect(call);
-        let info = Rf_eval(call, R_BaseEnv);
-        Rf_protect(info);
+        // Read `l10n_info()[["UTF-8"]]` inside a scope so the temporaries
+        // (call, info) are unprotected *before* the error branch below —
+        // matching the original ordering (a longjmp out of `Rf_error` would
+        // skip the scope's Drop).
+        let is_utf8 = {
+            let scope = crate::ProtectScope::new();
+            // Call l10n_info()
+            let call = scope.protect_raw(crate::sys::Rf_lang1(Rf_install(c"l10n_info".as_ptr())));
+            let info = scope.protect_raw(Rf_eval(call, R_BaseEnv));
 
-        // Find the "UTF-8" element by name
-        let names = info.get_names();
-        let n = info.xlength();
-        let mut is_utf8 = false;
-        for i in 0..n {
-            let name_charsxp = names.string_elt(i);
-            if name_charsxp.r_char_str() == Some("UTF-8") {
-                let elt = info.vector_elt(i);
-                is_utf8 = elt.logical_elt(0) != 0;
-                break;
+            // Find the "UTF-8" element by name
+            let names = info.get_names();
+            let n = info.xlength();
+            let mut is_utf8 = false;
+            for i in 0..n {
+                let name_charsxp = names.string_elt(i);
+                if name_charsxp.r_char_str() == Some("UTF-8") {
+                    let elt = info.vector_elt(i);
+                    is_utf8 = elt.logical_elt(0) != 0;
+                    break;
+                }
             }
-        }
-
-        Rf_unprotect(2);
+            is_utf8
+        };
 
         if !is_utf8 {
             crate::sys::Rf_error_unchecked(

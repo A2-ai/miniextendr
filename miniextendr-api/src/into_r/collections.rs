@@ -57,12 +57,11 @@ fn map_to_named_list<V: IntoR>(iter: impl ExactSizeIterator<Item = (String, V)>)
             .len()
             .try_into()
             .expect("map length exceeds isize::MAX");
-        let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n);
-        crate::sys::Rf_protect(list);
+        let scope = crate::ProtectScope::new();
+        let list = scope.protect_raw(crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n));
 
         // Allocate names vector
-        let names = crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n);
-        crate::sys::Rf_protect(names);
+        let names = scope.protect_raw(crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, n));
 
         for (i, (key, value)) in iter.enumerate() {
             let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
@@ -77,7 +76,6 @@ fn map_to_named_list<V: IntoR>(iter: impl ExactSizeIterator<Item = (String, V)>)
         // Attach names attribute
         list.set_names(names);
 
-        crate::sys::Rf_unprotect(2);
         list
     }
 }
@@ -91,11 +89,16 @@ unsafe fn map_to_named_list_unchecked<V: IntoR>(
             .len()
             .try_into()
             .expect("map length exceeds isize::MAX");
-        let list = crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::VECSXP, n);
-        crate::sys::Rf_protect(list);
+        let scope = crate::ProtectScope::new();
+        let list = scope.protect_raw(crate::sys::Rf_allocVector_unchecked(
+            crate::SEXPTYPE::VECSXP,
+            n,
+        ));
 
-        let names = crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::STRSXP, n);
-        crate::sys::Rf_protect(names);
+        let names = scope.protect_raw(crate::sys::Rf_allocVector_unchecked(
+            crate::SEXPTYPE::STRSXP,
+            n,
+        ));
 
         for (i, (key, value)) in iter.enumerate() {
             let idx: crate::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
@@ -107,7 +110,6 @@ unsafe fn map_to_named_list_unchecked<V: IntoR>(
 
         list.set_attr_unchecked(crate::SEXP::names_symbol(), names);
 
-        crate::sys::Rf_unprotect(2);
         list
     }
 }

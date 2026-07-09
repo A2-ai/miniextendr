@@ -861,7 +861,7 @@ unsafe fn get_dims<const NDIM: usize>(sexp: SEXP) -> [usize; NDIM] {
 unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
     unsafe {
         let (dim_sexp, dim_slice) = crate::into_r::alloc_r_vector::<i32>(NDIM);
-        sys::Rf_protect(dim_sexp);
+        let _guard = crate::OwnedProtect::new(dim_sexp);
 
         for (slot, &d) in dim_slice.iter_mut().zip(dims.iter()) {
             *slot = i32::try_from(d).unwrap_or_else(|_| {
@@ -870,7 +870,6 @@ unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
         }
 
         sexp.set_dim(dim_sexp);
-        sys::Rf_unprotect(1);
     }
 }
 // endregion

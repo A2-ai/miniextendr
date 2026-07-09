@@ -105,6 +105,9 @@ pub fn sexprec_data_offset() -> usize {
 /// Must be called on R's main thread with R initialized.
 pub unsafe fn init_sexprec_data_offset() {
     unsafe {
+        // keep raw: bootstrap init probe. Runs before the crate's protect
+        // infrastructure is guaranteed set up; a one-shot balanced protect of a
+        // throwaway REALSXP is the clearest expression here.
         let test = sys::Rf_protect(sys::Rf_allocVector(SEXPTYPE::REALSXP, 1));
         let sexp_addr = test.0 as usize;
         let data_addr = sys::DATAPTR_RO(test) as usize;

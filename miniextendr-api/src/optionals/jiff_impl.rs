@@ -47,7 +47,7 @@ use super::datetime_realsxp::impl_realsxp_datetime;
 use crate::cached_class::{date_class_sexp, set_posixct_tz, set_posixct_utc};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_string_lossy};
 use crate::into_r::IntoR;
-use crate::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
+use crate::sys::Rf_allocVector;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// Unix epoch as a civil::Date constant.
@@ -186,7 +186,7 @@ impl IntoR for Zoned {
     fn into_sexp(self) -> SEXP {
         unsafe {
             let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-            Rf_protect(vec);
+            let _guard = crate::OwnedProtect::new(vec);
             let ts = self.timestamp();
             vec.set_real_elt(
                 0,
@@ -194,7 +194,6 @@ impl IntoR for Zoned {
             );
             let iana = self.time_zone().iana_name().unwrap_or("UTC");
             set_posixct_tz(vec, iana);
-            Rf_unprotect(1);
             vec
         }
     }
@@ -246,10 +245,9 @@ impl IntoR for Option<Zoned> {
             Some(z) => z.into_sexp(),
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-                Rf_protect(vec);
+                let _guard = crate::OwnedProtect::new(vec);
                 vec.set_real_elt(0, f64::NAN);
                 set_posixct_utc(vec);
-                Rf_unprotect(1);
                 vec
             },
         }
@@ -348,14 +346,13 @@ impl IntoR for Vec<Zoned> {
             }
 
             let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
+            let _guard = crate::OwnedProtect::new(vec);
             for (slot, z) in dst.iter_mut().zip(self) {
                 let ts = z.timestamp();
                 *slot =
                     ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0);
             }
             set_posixct_tz(vec, &first_iana);
-            Rf_unprotect(1);
             vec
         }
     }
@@ -431,7 +428,7 @@ impl IntoR for Vec<Option<Zoned>> {
                 .to_string();
 
             let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
-            Rf_protect(vec);
+            let _guard = crate::OwnedProtect::new(vec);
             for (slot, opt) in dst.iter_mut().zip(self) {
                 *slot = match opt {
                     Some(z) => {
@@ -443,7 +440,6 @@ impl IntoR for Vec<Option<Zoned>> {
                 };
             }
             set_posixct_tz(vec, &first_iana);
-            Rf_unprotect(1);
             vec
         }
     }
@@ -459,19 +455,21 @@ fn set_difftime_secs_class(sexp: SEXP) {
     unsafe {
         use crate::SexpExt as _;
         // Build class = "difftime"
-        let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        Rf_protect(class_sexp);
-        class_sexp.set_string_elt(0, SEXP::charsxp("difftime"));
-        sexp.set_class(class_sexp);
-        Rf_unprotect(1);
+        {
+            let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _guard = crate::OwnedProtect::new(class_sexp);
+            class_sexp.set_string_elt(0, SEXP::charsxp("difftime"));
+            sexp.set_class(class_sexp);
+        }
 
         // Set units = "secs"
-        let units_sym = SEXP::symbol("units");
-        let units_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        Rf_protect(units_sexp);
-        units_sexp.set_string_elt(0, SEXP::charsxp("secs"));
-        sexp.set_attr(units_sym, units_sexp);
-        Rf_unprotect(1);
+        {
+            let units_sym = SEXP::symbol("units");
+            let units_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _guard = crate::OwnedProtect::new(units_sexp);
+            units_sexp.set_string_elt(0, SEXP::charsxp("secs"));
+            sexp.set_attr(units_sym, units_sexp);
+        }
     }
 }
 
@@ -977,9 +975,8 @@ impl JiffZonedVec {
         let tzone = self.tzone.clone();
         let altrep = self.into_sexp_altrep();
         unsafe {
-            crate::sys::Rf_protect(altrep);
+            let _guard = crate::OwnedProtect::new(altrep);
             set_posixct_tz(altrep, &tzone);
-            crate::sys::Rf_unprotect(1);
         }
         altrep
     }

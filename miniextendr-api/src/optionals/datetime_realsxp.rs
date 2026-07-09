@@ -202,10 +202,9 @@ macro_rules! impl_realsxp_datetime {
         $crate::into_r::into_r_infallible!($ty, |this| {
             unsafe {
                 let vec = $crate::sys::Rf_allocVector($crate::SEXPTYPE::REALSXP, 1);
-                $crate::sys::Rf_protect(vec);
+                let _guard = $crate::OwnedProtect::new(vec);
                 vec.set_real_elt(0, ($encode)(this));
                 ($set_class)(vec);
-                $crate::sys::Rf_unprotect(1);
                 vec
             }
         });
@@ -217,13 +216,12 @@ macro_rules! impl_realsxp_datetime {
         $crate::into_r::into_r_infallible!(Option<$ty>, |this| {
             unsafe {
                 let vec = $crate::sys::Rf_allocVector($crate::SEXPTYPE::REALSXP, 1);
-                $crate::sys::Rf_protect(vec);
+                let _guard = $crate::OwnedProtect::new(vec);
                 match this {
                     Some(t) => vec.set_real_elt(0, ($encode)(t)),
                     None => vec.set_real_elt(0, f64::NAN),
                 }
                 ($set_class)(vec);
-                $crate::sys::Rf_unprotect(1);
                 vec
             }
         });
@@ -235,12 +233,11 @@ macro_rules! impl_realsxp_datetime {
         $crate::into_r::into_r_infallible!(Vec<$ty>, |this| {
             unsafe {
                 let (vec, dst) = $crate::into_r::alloc_r_vector::<f64>(this.len());
-                $crate::sys::Rf_protect(vec);
+                let _guard = $crate::OwnedProtect::new(vec);
                 for (slot, t) in dst.iter_mut().zip(this) {
                     *slot = ($encode)(t);
                 }
                 ($set_class)(vec);
-                $crate::sys::Rf_unprotect(1);
                 vec
             }
         });
@@ -252,7 +249,7 @@ macro_rules! impl_realsxp_datetime {
         $crate::into_r::into_r_infallible!(Vec<Option<$ty>>, |this| {
             unsafe {
                 let (vec, dst) = $crate::into_r::alloc_r_vector::<f64>(this.len());
-                $crate::sys::Rf_protect(vec);
+                let _guard = $crate::OwnedProtect::new(vec);
                 for (slot, opt) in dst.iter_mut().zip(this) {
                     *slot = match opt {
                         Some(t) => ($encode)(t),
@@ -260,7 +257,6 @@ macro_rules! impl_realsxp_datetime {
                     };
                 }
                 ($set_class)(vec);
-                $crate::sys::Rf_unprotect(1);
                 vec
             }
         });
