@@ -616,26 +616,38 @@ test-bootstrap-vendor:
 gctorture-full STEP="100": _assert-no-vendor-leak configure
     set -euo pipefail
     libdir="$(mktemp -d)"
-    trap 'rm -rf "$libdir"' EXIT
+    # The source-mode `R CMD INSTALL` below drifts rpkg/src/rust/Cargo.lock; restore
+    # it (and clean the temp lib) on every exit path, incl. a failed sweep. (#1052)
+    trap 'rm -rf "$libdir"; just cargo-lock-restore' EXIT
     R CMD INSTALL --library="$libdir" rpkg
     R_LIBS_USER="$libdir" Rscript scripts/gctorture-full-sweep.R rpkg/tests/testthat {{STEP}}
 
+# Deliberate lock updates go through `just update` / `just vendor` (they re-stamp
+# tarball-shape); the R-side dev recipes below only DRIFT rpkg/src/rust/Cargo.lock
+# as a source-mode build side effect, so each auto-chains `just cargo-lock-restore`
+# to self-clean (matching check/build/clippy). devtools-test restores even on a red
+# test via a trap, so a failing suite never leaves the papercut behind. (#1052)
 # Load and test rpkg with devtools
+[script("bash")]
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
-    if [ -z "{{FILTER}}" ]; then \
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'; \
-    else \
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'; \
+    set -euo pipefail
+    trap 'just cargo-lock-restore' EXIT
+    if [ -z "{{FILTER}}" ]; then
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
+    else
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'
     fi
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
 devtools-load: _assert-no-vendor-leak devtools-document
     Rscript -e 'devtools::load_all("rpkg")'
+    @just cargo-lock-restore
 
 # Install rpkg with devtools::install
 devtools-install: _assert-no-vendor-leak devtools-document
     Rscript -e 'devtools::install("rpkg")'
+    @just cargo-lock-restore
 
 # Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, vctrs, etc.)
 install_deps:
@@ -707,12 +719,14 @@ devtools-check: devtools-document
 #   just rcmdinstall && just force-document
 devtools-document: configure-fast
     Rscript -e 'if (roxygen2::needs_roxygenize("rpkg")) { devtools::document("rpkg") } else { cat("devtools-document: man/ up to date — skipping (use `just force-document` to override)\n") }'
+    @just cargo-lock-restore
 
 # Force-document rpkg unconditionally — bypasses the needs_roxygenize() check.
 # Use after Rust/macro changes where the mtime cache may not have caught up:
 #   just rcmdinstall && just force-document
 force-document: configure-fast
     Rscript -e 'devtools::document("rpkg")'
+    @just cargo-lock-restore
 
 # Document ALL R packages in the workspace
 # This includes: rpkg, minirextendr, and cross-package test packages
@@ -726,6 +740,7 @@ configure-all: configure cross-configure
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args: _assert-no-vendor-leak configure
     R CMD INSTALL {{args}} rpkg
+    @just cargo-lock-restore
 
 # Build R package tarball
 # Depends on `r-cmd-install` so the host wrapper-gen pass regenerates the UNTRACKED
@@ -1176,6 +1191,9 @@ lint-sync-check:
 [script("bash")]
 wrappers-sync-check: _assert-no-vendor-leak configure
     set -euo pipefail
+    # The source-mode `R CMD INSTALL` below drifts rpkg/src/rust/Cargo.lock; restore
+    # it on every exit path, incl. the exit-1 diff-failure branches. (#1052)
+    trap 'just cargo-lock-restore' EXIT
 
     # Install regenerates R/miniextendr-wrappers.R + src/rust/wasm_registry.rs on disk.
     R CMD INSTALL rpkg >/dev/null
