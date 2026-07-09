@@ -7,7 +7,7 @@
 //! buffers + the prefixed map emission) automatically.
 
 use crate::serde::Serialize;
-use miniextendr_api::dataframe::DataFrame;
+use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::miniextendr;
 use miniextendr_api::serde::vec_to_dataframe_flatten_enums;
 
@@ -61,7 +61,7 @@ struct MaybeRow {
 /// `action_variant` + the union of `action_file` / `action_weight` /
 /// `action_path`. Rows mix the `Add` and `Init` variants so NA-fill applies.
 #[miniextendr]
-pub fn flatten_enum_field_fixture() -> DataFrame {
+pub fn flatten_enum_field_fixture() -> BuiltDataFrame {
     let rows = vec![
         AuditRow {
             id: 1,
@@ -92,7 +92,7 @@ pub fn flatten_enum_field_fixture() -> DataFrame {
 
 /// Unit variant mixed with a data variant: the unit row's payload column is NA.
 #[miniextendr]
-pub fn flatten_enum_unit_variant_fixture() -> DataFrame {
+pub fn flatten_enum_unit_variant_fixture() -> BuiltDataFrame {
     let rows = vec![
         LifecycleRow {
             id: 1,
@@ -108,7 +108,7 @@ pub fn flatten_enum_unit_variant_fixture() -> DataFrame {
 
 /// `Option<Enum>` with a `None` row: tag + payload columns are NA for it.
 #[miniextendr]
-pub fn flatten_enum_option_none_fixture() -> DataFrame {
+pub fn flatten_enum_option_none_fixture() -> BuiltDataFrame {
     let rows = vec![
         MaybeRow {
             id: 1,

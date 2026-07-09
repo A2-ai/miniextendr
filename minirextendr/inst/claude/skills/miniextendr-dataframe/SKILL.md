@@ -20,7 +20,7 @@ the entire NA contract.
 ## The 90% case: derive a row type
 
 ```rust
-use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
+use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame, FromDataFrame, IntoDataFrame};
 use miniextendr_api::{miniextendr, DataFrameRow, IntoList};
 
 #[derive(Clone, IntoList, DataFrameRow)]
@@ -31,8 +31,12 @@ pub struct Point {
     pub weight: Option<f64>,   // NA-able column
 }
 
+// Take an R-supplied frame as the cheap `DataFrame` view; return the freshly
+// built frame as `BuiltDataFrame` (an owned, GC-rooted handle — the return type
+// of every Rust-side constructor like `into_dataframe`). It Derefs to
+// `DataFrame` and converts back to R automatically.
 #[miniextendr]
-pub fn shift_points(df: DataFrame, dx: f64) -> DataFrame {
+pub fn shift_points(df: DataFrame, dx: f64) -> BuiltDataFrame {
     let mut rows = Vec::<Point>::from_dataframe(&df).unwrap();
     for p in &mut rows {
         p.x += dx;

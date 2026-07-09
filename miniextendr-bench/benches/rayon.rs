@@ -203,15 +203,20 @@ mod serde_growing {
 
     #[divan::bench(sample_count = 10)]
     fn dataframe_growing_sequential_union() {
-        let df = with_r_thread(|| vec_to_dataframe(ROWS.as_slice()).unwrap());
-        divan::black_box(df);
+        // `BuiltDataFrame` is `!Send`, so it can't cross back out of
+        // `with_r_thread`; black-box it (and let it drop) on the R thread.
+        with_r_thread(|| {
+            let df = vec_to_dataframe(ROWS.as_slice()).unwrap();
+            divan::black_box(&df);
+        });
     }
 
     #[divan::bench(sample_count = 10)]
     fn dataframe_growing_parallel() {
-        let df =
-            with_r_thread(|| par_iter_to_dataframe_growing(ROWS.iter(), Some(GROW_ROWS)).unwrap());
-        divan::black_box(df);
+        with_r_thread(|| {
+            let df = par_iter_to_dataframe_growing(ROWS.iter(), Some(GROW_ROWS)).unwrap();
+            divan::black_box(&df);
+        });
     }
 }
 

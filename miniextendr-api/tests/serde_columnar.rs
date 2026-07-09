@@ -48,8 +48,8 @@ fn builder_push_protects_input() {
         let errs: Vec<Row> = (0..5).map(|i| Row { id: i, val: -1.0 }).collect();
 
         let list = NamedDataFrameListBuilder::new()
-            .push("results", vec_to_dataframe(&oks).unwrap())
-            .push("error", vec_to_dataframe(&errs).unwrap())
+            .push("results", *vec_to_dataframe(&oks).unwrap())
+            .push("error", *vec_to_dataframe(&errs).unwrap())
             .build();
 
         let sexp = list.into_sexp();
@@ -80,7 +80,7 @@ fn builder_drop_without_build() {
         {
             let rows: Vec<Row> = (0..3).map(|i| Row { x: i }).collect();
             let _builder =
-                NamedDataFrameListBuilder::new().push("a", vec_to_dataframe(&rows).unwrap());
+                NamedDataFrameListBuilder::new().push("a", *vec_to_dataframe(&rows).unwrap());
             // _builder drops here, unprotecting via its internal scope
         }
 
@@ -106,9 +106,9 @@ fn builder_with_capacity_preserves_order() {
     r_test_utils::with_r_thread(|| {
         let rows: Vec<Row> = vec![Row { v: 1 }];
         let list = NamedDataFrameListBuilder::with_capacity(3)
-            .push("a", vec_to_dataframe(&rows).unwrap())
-            .push("b", vec_to_dataframe(&rows).unwrap())
-            .push("c", vec_to_dataframe(&rows).unwrap())
+            .push("a", *vec_to_dataframe(&rows).unwrap())
+            .push("b", *vec_to_dataframe(&rows).unwrap())
+            .push("c", *vec_to_dataframe(&rows).unwrap())
             .build();
 
         let sexp = list.into_sexp();

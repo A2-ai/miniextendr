@@ -298,15 +298,18 @@ impl RDataFrameBuilder {
         self
     }
 
-    /// Allocate, fill, and assemble the [`DataFrame`](crate::dataframe::DataFrame).
+    /// Allocate, fill, and assemble the data.frame, returning an owned,
+    /// GC-rooted [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) (it
+    /// `Deref`s to [`DataFrame`](crate::dataframe::DataFrame)).
     ///
     /// With `rayon`, flattens every column into a single `(column_index,
     /// row-range)` work-list and runs one parallel pass over it (see the
     /// type-level docs for the scheduling argument); without `rayon`, fills each
     /// column serially. Then assembles the `data.frame` on the R thread.
-    pub fn build(self) -> crate::dataframe::DataFrame {
-        // SAFETY: `build_sexp` returns a well-formed data.frame VECSXP.
-        unsafe { crate::dataframe::DataFrame::from_built_sexp(self.build_sexp()) }
+    pub fn build(self) -> crate::dataframe::BuiltDataFrame {
+        // SAFETY: `build_sexp` returns a well-formed data.frame VECSXP; root it
+        // immediately (no allocation between assembly and adopt).
+        unsafe { crate::dataframe::BuiltDataFrame::adopt_sexp(self.build_sexp()) }
     }
 
     /// Assemble and return the raw `VECSXP` SEXP (internal; prefer [`build`](Self::build)).

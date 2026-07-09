@@ -1,6 +1,6 @@
 //! Examples and tests for data frame conversion features.
 
-use miniextendr_api::{DataFrame, IntoDataFrame};
+use miniextendr_api::{BuiltDataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // Test with homogeneous types first
@@ -14,7 +14,7 @@ pub struct Point {
 ///
 /// @export
 #[miniextendr]
-pub fn create_points_df() -> DataFrame {
+pub fn create_points_df() -> BuiltDataFrame {
     let rows = vec![Point { x: 1.0, y: 2.0 }, Point { x: 3.0, y: 4.0 }];
     rows.into_dataframe().unwrap()
 }
@@ -59,7 +59,7 @@ pub struct Person {
 ///
 /// @export
 #[miniextendr]
-pub fn create_people_df() -> DataFrame {
+pub fn create_people_df() -> BuiltDataFrame {
     let rows = vec![
         Person {
             name: "Alice".to_string(),
@@ -98,7 +98,7 @@ pub enum EventRow {
 ///
 /// @export
 #[miniextendr]
-pub fn create_events_df() -> DataFrame {
+pub fn create_events_df() -> BuiltDataFrame {
     let rows = vec![
         EventRow::Click {
             id: 1,
@@ -130,7 +130,7 @@ pub enum ShapeRow {
 ///
 /// @export
 #[miniextendr]
-pub fn create_shapes_df() -> DataFrame {
+pub fn create_shapes_df() -> BuiltDataFrame {
     let rows = vec![
         ShapeRow::Circle {
             radius: 5.0,
@@ -279,7 +279,7 @@ pub struct PointExpanded {
 ///
 /// @export
 #[miniextendr]
-pub fn create_expanded_points_df() -> DataFrame {
+pub fn create_expanded_points_df() -> BuiltDataFrame {
     let rows = vec![
         PointExpanded {
             label: "A".to_string(),
@@ -308,7 +308,7 @@ pub struct ScoredItem {
 ///
 /// @export
 #[miniextendr]
-pub fn create_scored_items_df() -> DataFrame {
+pub fn create_scored_items_df() -> BuiltDataFrame {
     let rows = vec![
         ScoredItem {
             name: "alpha".to_string(),
@@ -341,7 +341,7 @@ pub enum SensorReading {
 ///
 /// @export
 #[miniextendr]
-pub fn create_sensor_readings_df() -> DataFrame {
+pub fn create_sensor_readings_df() -> BuiltDataFrame {
     let rows = vec![
         SensorReading::Xyz {
             sensor_id: 1,
