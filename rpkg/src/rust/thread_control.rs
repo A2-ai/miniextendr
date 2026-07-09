@@ -7,11 +7,9 @@
 #[cfg(feature = "rayon")]
 use miniextendr_api::miniextendr;
 
-/// Report the effective rayon thread count. Follows the precedence in
-/// `docs/RAYON.md` ("Controlling parallelism from R"):
-/// `MINIEXTENDR_NUM_THREADS` env > `RAYON_NUM_THREADS` env > CRAN
-/// `_R_CHECK_LIMIT_CORES_` cap (2) > `available_parallelism()`. Builds the
-/// pool on first call, same as any other rayon entry point.
+/// Report the effective rayon thread count. Builds the pool on first call,
+/// same as any other rayon entry point; the thread-count precedence table is
+/// in `docs/RAYON.md` ("Controlling parallelism from R").
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn miniextendr_num_threads() -> i32 {

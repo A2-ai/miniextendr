@@ -195,10 +195,9 @@ use_s4 <- function(path = ".") {
 #'
 #' Thread count is CRAN- and cgroup-aware by default: call
 #' `miniextendr_api::optionals::parallel::ensure_pool()` at the top of your
-#' rayon-backed functions (the bundled `rayon_bridge` helpers already do this)
-#' to honor `MINIEXTENDR_NUM_THREADS` / `RAYON_NUM_THREADS` / CRAN's
-#' `_R_CHECK_LIMIT_CORES_`. See `docs/RAYON.md` ("Controlling parallelism
-#' from R") for the precedence table.
+#' rayon-backed functions (the bundled `rayon_bridge` helpers already do this).
+#' See `docs/RAYON.md` ("Controlling parallelism from R") for the thread-count
+#' precedence table.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
