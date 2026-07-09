@@ -17,6 +17,13 @@ All four support an optional `class = "name"` argument to prepend a custom class
 for programmatic catching, and an optional `data = ...` argument to attach
 structured named fields readable as `e$<name>` in handlers.
 
+> **Import note.** `error!` and `condition!` are shadowed by the crate-root
+> modules `error` / `condition`, so `use miniextendr_api::*;` (or a direct
+> `use miniextendr_api::error;`) resolves to the module, not the macro. Use the
+> collision-free aliases `rust_error!` / `rust_condition!` (identical
+> expansions), or invoke the bare names fully qualified. `warning!` / `message!`
+> have no such clash.
+
 ## How it works
 
 Each macro calls `std::panic::panic_any(RCondition::...)`. The panic is caught by

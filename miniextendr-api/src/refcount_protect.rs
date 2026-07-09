@@ -419,7 +419,10 @@ impl RefCountedArena {
     ///
     /// # Safety
     ///
-    /// Must be called from the R main thread.
+    /// Must be called from the R main thread. There is deliberately no
+    /// `Default` impl: constructing an arena allocates an R VECSXP (via
+    /// `Rf_allocVector` / `R_PreserveObject`) and is an unsafe, main-thread-only
+    /// act, not a safe default (#1096).
     pub unsafe fn new() -> Self {
         unsafe { Self::with_capacity(ArenaState::INITIAL_CAPACITY) }
     }
@@ -534,11 +537,6 @@ impl Drop for RefCountedArena {
     }
 }
 
-impl Default for RefCountedArena {
-    fn default() -> Self {
-        unsafe { Self::new() }
-    }
-}
 // endregion
 
 // region: RAII Guard
