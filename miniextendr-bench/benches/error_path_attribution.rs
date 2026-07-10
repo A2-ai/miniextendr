@@ -30,19 +30,22 @@ fn main() {
 
 #[divan::bench]
 fn l1_make_condition_simple() -> SEXP {
-    let s = make_rust_condition_value("oops", kind::ERROR, None, None);
+    // SAFETY: the bench harness runs single-threaded on the R main thread.
+    let s = unsafe { make_rust_condition_value("oops", kind::ERROR, None, None) };
     divan::black_box(s)
 }
 
 #[divan::bench]
 fn l1_make_condition_with_class() -> SEXP {
-    let s = make_rust_condition_value("oops", kind::ERROR, Some("my_class"), None);
+    // SAFETY: the bench harness runs single-threaded on the R main thread.
+    let s = unsafe { make_rust_condition_value("oops", kind::ERROR, Some("my_class"), None) };
     divan::black_box(s)
 }
 
 #[divan::bench]
 fn l1_make_condition_warning() -> SEXP {
-    let s = make_rust_condition_value("hmm", kind::WARNING, None, None);
+    // SAFETY: the bench harness runs single-threaded on the R main thread.
+    let s = unsafe { make_rust_condition_value("hmm", kind::WARNING, None, None) };
     divan::black_box(s)
 }
 

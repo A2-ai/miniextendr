@@ -228,10 +228,9 @@ pub fn set_posixct_tz(sexp: crate::SEXP, iana: &str) {
     unsafe {
         let tzone_charsxp = crate::SEXP::charsxp(iana);
         let tzone_sexp = crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, 1);
-        crate::sys::Rf_protect(tzone_sexp);
+        let _guard = crate::OwnedProtect::new(tzone_sexp);
         tzone_sexp.set_string_elt(0, tzone_charsxp);
         sexp.set_attr(tzone_symbol(), tzone_sexp);
-        crate::sys::Rf_unprotect(1);
     }
 }
 

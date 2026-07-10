@@ -769,9 +769,8 @@ impl<K: AsRef<str>, V: Clone + AtomicElement> IntoR for AsNamedVector<&[(K, V)]>
         let (keys, values): (Vec<&K>, Vec<V>) = self.0.iter().map(|(k, v)| (k, v.clone())).unzip();
         let sexp = V::vec_to_sexp(values);
         unsafe {
-            crate::sys::Rf_protect(sexp);
+            let _guard = crate::OwnedProtect::new(sexp);
             crate::named_vector::set_names_on_sexp(sexp, &keys);
-            crate::sys::Rf_unprotect(1);
         }
         sexp
     }
@@ -786,9 +785,8 @@ where
     let (keys, values): (Vec<K>, Vec<V>) = pairs.into_iter().unzip();
     let sexp = V::vec_to_sexp(values);
     unsafe {
-        crate::sys::Rf_protect(sexp);
+        let _guard = crate::OwnedProtect::new(sexp);
         crate::named_vector::set_names_on_sexp(sexp, &keys);
-        crate::sys::Rf_unprotect(1);
     }
     sexp
 }

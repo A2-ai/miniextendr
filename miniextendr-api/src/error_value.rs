@@ -89,8 +89,9 @@
 //! STRSXP, the kind scalar STRSXP, the optional class scalar STRSXP, the
 //! `TRUE` marker LGLSXP, and — when a `data` payload is present — the data
 //! VECSXP, its names STRSXP, and each materialised field value. Each is
-//! `Rf_protect`ed before the next allocation; `prot` counts them;
-//! `Rf_unprotect(prot)` balances at exit on every branch. Field values are
+//! added to a single [`ProtectScope`](crate::ProtectScope) before the next
+//! allocation; the scope releases them all together (`UNPROTECT`) when it
+//! drops at function exit — on every branch. Field values are
 //! materialised one at a time and rooted into the protected data list
 //! immediately (same shape as `List::from_pairs`) so an unrooted value SEXP
 //! never survives across the next allocation.
@@ -169,15 +170,19 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
 ///
 /// # Safety
 ///
-/// See [`make_rust_condition_value_with_data`].
+/// Must be called from R's main thread in a valid R allocation context — the
+/// body performs raw R allocation (`Rf_allocVector`, `SET_VECTOR_ELT`,
+/// `SETATTRIB`) which is UB off the main thread. See
+/// [`make_rust_condition_value_with_data`] for the full contract.
 #[inline]
-pub fn make_rust_condition_value(
+pub unsafe fn make_rust_condition_value(
     message: &str,
     kind: &str,
     class: Option<&str>,
     call: Option<SEXP>,
 ) -> SEXP {
-    make_rust_condition_value_with_data(message, kind, class, call, None)
+    // SAFETY: caller upholds the main-thread + valid-allocation-context contract.
+    unsafe { make_rust_condition_value_with_data(message, kind, class, call, None) }
 }
 
 /// Build a tagged condition-value SEXP for transport across the Rust→R boundary.
@@ -189,18 +194,24 @@ pub fn make_rust_condition_value(
 ///
 /// # Safety
 ///
-/// Must be called from R's main thread (standard R API constraint).
+/// Must be called from R's main thread in a valid R allocation context
+/// (standard R API constraint): the body performs raw R allocation
+/// (`Rf_allocVector`, `SET_VECTOR_ELT`, `SETATTRIB`) which is UB off the main
+/// thread. In practice every caller reaches this through
+/// [`crate::unwind_protect::with_r_unwind_protect`] (or a proc-macro-generated
+/// panic handler), both of which run on the main thread.
 /// The returned SEXP is unprotected — caller must protect if needed.
 ///
 /// # PROTECT discipline
 ///
 /// Every fresh allocation (msg, kind, optional class, true-marker, and — when
-/// present — the `data` VECSXP, its names, and each field value) is protected
-/// before the next allocation that might trigger a GC barrier. The `prot`
-/// counter is incremented on each `Rf_protect` and balanced by
-/// `Rf_unprotect(prot)` at exit on all branches. This pattern was established
-/// by PR #344 commit `af6b4875` to fix a `recursive gc invocation` segfault on
-/// R-devel.
+/// present — the `data` VECSXP, its names, and each field value) is added to a
+/// single [`ProtectScope`](crate::ProtectScope) before the next allocation
+/// that might trigger a GC barrier. The scope releases them all together
+/// (`UNPROTECT`) when it drops at function exit, on every branch — the RAII
+/// equivalent of the former hand-counted `prot` / `Rf_unprotect(prot)` ladder.
+/// This discipline was established by PR #344 commit `af6b4875` to fix a
+/// `recursive gc invocation` segfault on R-devel.
 ///
 /// # Arguments
 ///
@@ -212,7 +223,7 @@ pub fn make_rust_condition_value(
 ///   ...` form). When `Some`, each `(name, value)` becomes a named element of a
 ///   list stored in slot `[4]`; the R helper splices these into the condition
 ///   object so handlers can read `e$<name>`. When `None`, slot `[4]` is `NULL`.
-pub fn make_rust_condition_value_with_data(
+pub unsafe fn make_rust_condition_value_with_data(
     message: &str,
     kind: &str,
     class: Option<&str>,
@@ -225,24 +236,21 @@ pub fn make_rust_condition_value_with_data(
         // trigger old-to-new GC barriers; R-devel's GC fires more aggressively
         // here than R-release/oldrel, so unprotected intermediates corrupt the
         // heap on R-devel even when R 4.5/4.4 happen to survive (PR #344 fix).
-        let list = sys::Rf_allocVector(SEXPTYPE::VECSXP, 5);
-        sys::Rf_protect(list);
-        let mut prot = 1;
+        // A single ProtectScope roots every intermediate; it releases them all
+        // when it drops at function exit.
+        let scope = crate::ProtectScope::new();
+        let list = scope.protect_raw(sys::Rf_allocVector(SEXPTYPE::VECSXP, 5));
 
         // Element 0: error message
         let msg_cstr = to_cstring_lossy(message, "<invalid error message>");
         let msg_charsxp = sys::Rf_mkCharCE(msg_cstr.as_ptr(), CE_UTF8);
-        let msg_sexp = SEXP::scalar_string(msg_charsxp);
-        sys::Rf_protect(msg_sexp);
-        prot += 1;
+        let msg_sexp = scope.protect_raw(SEXP::scalar_string(msg_charsxp));
         list.set_vector_elt(0, msg_sexp);
 
         // Element 1: kind string
         let kind_cstr = to_cstring_lossy(kind, kind::OTHER_RUST_ERROR);
         let kind_charsxp = sys::Rf_mkCharCE(kind_cstr.as_ptr(), CE_UTF8);
-        let kind_sexp = SEXP::scalar_string(kind_charsxp);
-        sys::Rf_protect(kind_sexp);
-        prot += 1;
+        let kind_sexp = scope.protect_raw(SEXP::scalar_string(kind_charsxp));
         list.set_vector_elt(1, kind_sexp);
 
         // Element 2: optional custom class (NULL when not provided).
@@ -250,10 +258,7 @@ pub fn make_rust_condition_value_with_data(
         let class_sexp = if let Some(class_name) = class {
             let class_cstr = to_cstring_lossy(class_name, "rust_condition");
             let class_charsxp = sys::Rf_mkCharCE(class_cstr.as_ptr(), CE_UTF8);
-            let s = SEXP::scalar_string(class_charsxp);
-            sys::Rf_protect(s);
-            prot += 1;
-            s
+            scope.protect_raw(SEXP::scalar_string(class_charsxp))
         } else {
             SEXP::nil()
         };
@@ -278,12 +283,8 @@ pub fn make_rust_condition_value_with_data(
                 .len()
                 .try_into()
                 .expect("condition data length exceeds isize::MAX");
-            let data_list = sys::Rf_allocVector(SEXPTYPE::VECSXP, n);
-            sys::Rf_protect(data_list);
-            prot += 1;
-            let data_names = sys::Rf_allocVector(SEXPTYPE::STRSXP, n);
-            sys::Rf_protect(data_names);
-            prot += 1;
+            let data_list = scope.protect_raw(sys::Rf_allocVector(SEXPTYPE::VECSXP, n));
+            let data_names = scope.protect_raw(sys::Rf_allocVector(SEXPTYPE::STRSXP, n));
             for (i, (name, value)) in fields.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                 // Materialise the value and immediately root it in data_list
@@ -305,12 +306,9 @@ pub fn make_rust_condition_value_with_data(
         // fresh LGLSXP — protect across the SETATTRIB call.
         list.set_names(condition_names_sexp());
         list.set_class(rust_condition_class_sexp());
-        let true_marker = SEXP::scalar_logical(true);
-        sys::Rf_protect(true_marker);
-        prot += 1;
+        let true_marker = scope.protect_raw(SEXP::scalar_logical(true));
         list.set_attr(rust_condition_attr_symbol(), true_marker);
 
-        sys::Rf_unprotect(prot);
         list
     }
 }

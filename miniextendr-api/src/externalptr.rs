@@ -695,6 +695,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let type_sym = unsafe { type_symbol::<T>() };
         let type_id_sym = unsafe { type_id_symbol::<T>() };
 
+        // keep raw: this protect/unprotect straddles the ProtectPool handoff
+        // (`root_owned` below), a two-stage rooting boundary that outlives this
+        // function via the pool key — not a lexical RAII scope. `OwnedProtect` /
+        // `ProtectScope` would misrepresent the ownership transfer.
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
         prot.set_vector_elt(PROT_TYPE_ID_INDEX, type_id_sym);
