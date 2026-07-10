@@ -29,21 +29,54 @@
 // ERR_WORKER_PATH, so the bundle would crash at init building the
 // webr-worker.js worker path off such a baseUrl.)
 //
-// Hard miniextendr Imports (cli/lifecycle/R6/S7/vctrs) are fetched from
-// repo.r-wasm.org via `webR.installPackages` before the library load.
-// If the network fetch fails the smoke aborts loudly — we cannot prove
-// the side-module is healthy without the deps that its NAMESPACE pulls in.
+// Hard miniextendr Imports are derived from rpkg/DESCRIPTION (minus base-R
+// packages) and fetched from repo.r-wasm.org via `webR.installPackages`
+// before the library load. If the network fetch fails the smoke aborts
+// loudly — we cannot prove the side-module is healthy without the deps that
+// its NAMESPACE pulls in. (A newly added Import must exist as a wasm binary
+// on repo.r-wasm.org; this runner surfaces that requirement automatically.)
+
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { WebR } from "file:///opt/webr/src/dist/webr.mjs";
 
 const WASM_LIB_MOUNT = "/wasm-rlib";
 const HOST_WASM_LIB = "/tmp/wasm-lib";
 
-// Imports listed in rpkg/DESCRIPTION. `methods` is part of base R, so we
-// don't try to install it here. Kept in sync manually — if DESCRIPTION's
-// Imports change, update this list and the matching CI permissions on
-// repo.r-wasm.org availability.
-const HARD_IMPORTS = ["cli", "lifecycle", "R6", "S7", "vctrs"];
+// Base-R packages ship with webR itself — never install them from the repo.
+const R_BASE_PKGS = new Set([
+  "base", "compiler", "datasets", "graphics", "grDevices", "grid", "methods",
+  "parallel", "splines", "stats", "stats4", "tcltk", "tools", "utils",
+]);
+
+// Parse the Imports field out of rpkg/DESCRIPTION so there is no hand-synced
+// copy of the list here; the tier-2 workflow step derives its native-install
+// list from the same file. DCF format: the field's value runs until the next
+// line that starts at column 0.
+function hardImportsFromDescription() {
+  const descPath = join(
+    dirname(fileURLToPath(import.meta.url)), "..", "..", "rpkg", "DESCRIPTION",
+  );
+  const lines = readFileSync(descPath, "utf8").split("\n");
+  const start = lines.findIndex((l) => l.startsWith("Imports:"));
+  if (start === -1) throw new Error(`No Imports field found in ${descPath}`);
+  let field = lines[start].slice("Imports:".length);
+  for (let i = start + 1; i < lines.length && /^[ \t]/.test(lines[i]); i++) {
+    field += ` ${lines[i]}`;
+  }
+  const imports = field
+    .split(",")
+    .map((s) => s.trim().replace(/\s*\(.*\)$/, ""))
+    .filter((s) => s.length > 0 && !R_BASE_PKGS.has(s));
+  if (imports.length === 0) {
+    throw new Error(`Parsed zero non-base Imports from ${descPath}`);
+  }
+  return imports;
+}
+
+const HARD_IMPORTS = hardImportsFromDescription();
 
 function unwrapScalar(rJsResult) {
   if (rJsResult && Array.isArray(rJsResult.values) && rJsResult.values.length > 0) {

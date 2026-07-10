@@ -45,7 +45,13 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded runs on PRs only. On main pushes, let the in-flight run
+  # finish: with unconditional cancel-in-progress, the next merge killed the
+  # running tier-2/3 job, so rapid merge bursts left intermediate main commits
+  # with no webR validation at all. Queued (not yet started) main runs are
+  # still deduped by GitHub's pending-run handling, so a burst validates its
+  # first and latest commits without piling up runners.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -53,6 +59,35 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  # The webR base-image digest is pinned in three places that must stay
+  # identical: Dockerfile.webr's WEBR_BASE (the source of truth —
+  # mirror-webr.yml reads that pin to mirror upstream), Dockerfile.webr-arm64's
+  # WEBR_AMD64_DONOR (the copied wasm sysroot must come from the same image
+  # bytes), and this workflow's tier-2 container image. "Bump in lockstep" was
+  # previously a comment-only invariant; this job enforces it.
+  pin-lockstep:
+    name: webR image pin lockstep
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare the three pinned digests
+        run: |
+          set -euo pipefail
+          base=$(grep -E '^ARG WEBR_BASE=' Dockerfile.webr | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+          donor=$(grep -E '^ARG WEBR_AMD64_DONOR=' Dockerfile.webr-arm64 | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+          ci=$(grep -E 'image: ghcr\.io/a2-ai/webr-mirror@' .github/workflows/webr.yml | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+          echo "Dockerfile.webr WEBR_BASE:        $base"
+          echo "Dockerfile.webr-arm64 donor pin:  $donor"
+          echo "webr.yml tier-2 container:        $ci"
+          test -n "$base" && test -n "$donor" && test -n "$ci"
+          if [ "$base" != "$donor" ] || [ "$base" != "$ci" ]; then
+            echo "::error::webR base-image digests are out of lockstep — bump all three together: Dockerfile.webr (WEBR_BASE), Dockerfile.webr-arm64 (WEBR_AMD64_DONOR), .github/workflows/webr.yml (tier-2 container image)."
+            exit 1
+          fi
+          echo "All three pins agree."
+
   cargo-check:
     name: wasm32 check
     runs-on: ubuntu-latest
@@ -113,7 +148,8 @@ jobs:
   # here too, until #745 confirmed it redundant and dropped it.)
   #
   # The container image must stay digest-aligned with Dockerfile.webr's
-  # WEBR_BASE — bump both together. The S7 + autoconf installs mirror the
+  # WEBR_BASE — bump both together (enforced by the pin-lockstep job above).
+  # The S7 + autoconf installs mirror the
   # Dockerfile.webr layers (Dockerfile.webr is the local dev image and bakes
   # them in; CI installs inline so we don't need to publish miniextendr-webr-dev).
   webr-install:
@@ -124,7 +160,8 @@ jobs:
       # Pulled from the mirror at ghcr.io/a2-ai/webr-mirror (closes #496),
       # which `.github/workflows/mirror-webr.yml` keeps digest-aligned with
       # upstream ghcr.io/r-wasm/webr — image bytes are identical at this
-      # sha256. Bump in lockstep with Dockerfile.webr's WEBR_BASE.
+      # sha256. Bump in lockstep with Dockerfile.webr's WEBR_BASE (the
+      # pin-lockstep job fails the workflow if the pins diverge).
       image: ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
       # The mirror package is currently private; auth via the job's
       # GITHUB_TOKEN (workflow-level `packages: read` permission above).
@@ -158,14 +195,27 @@ jobs:
           # ship it. `autoconf` is needed by rpkg/configure.
           apt-get update && apt-get install -y --no-install-recommends autoconf file
           mkdir -p "$R_LIBS_USER"
-          # Install via the host R that Phase 2 uses, so transitive deps land
-          # in a library Phase 2's lazy-load will see. `dependencies = c(...)`
-          # pulls rlang in via lifecycle/vctrs without us having to enumerate.
-          /opt/webr/host/R-4.6.0/bin/Rscript -e \
-            'install.packages(c("cli","lifecycle","R6","S7","vctrs"), dependencies = c("Depends","Imports","LinkingTo"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest", lib=Sys.getenv("R_LIBS_USER"))'
-          # Sanity-check the transitive set landed.
-          /opt/webr/host/R-4.6.0/bin/Rscript -e \
-            'pkgs <- c("cli","lifecycle","rlang","R6","S7","vctrs"); miss <- setdiff(pkgs, rownames(installed.packages(lib.loc=Sys.getenv("R_LIBS_USER")))); if (length(miss)) stop("Missing: ", paste(miss, collapse=", "))'
+          # Derive the Imports list from rpkg/DESCRIPTION (minus base-R
+          # packages) instead of hand-enumerating it — tests/webr-node-smoke/
+          # smoke.mjs derives its copy the same way, so DESCRIPTION is the
+          # single source of truth. Install via the host R that Phase 2 uses,
+          # so transitive deps land in a library Phase 2's lazy-load will see;
+          # `dependencies = c(...)` pulls rlang in via lifecycle/vctrs. The
+          # closing requireNamespace() sweep loads each import through
+          # R_LIBS_USER, exercising the full transitive graph (stronger than
+          # the old hand-maintained installed.packages() list check).
+          /opt/webr/host/R-4.6.0/bin/Rscript -e '
+            imports <- trimws(strsplit(read.dcf("rpkg/DESCRIPTION")[1, "Imports"], ",")[[1]])
+            imports <- sub("\\s*\\(.*\\)$", "", imports)
+            imports <- setdiff(imports, rownames(installed.packages(priority = "base")))
+            stopifnot(length(imports) > 0)
+            cat("Derived hard Imports:", paste(imports, collapse = ", "), "\n")
+            install.packages(imports, dependencies = c("Depends", "Imports", "LinkingTo"),
+                             repos = "https://packagemanager.posit.co/cran/__linux__/noble/latest",
+                             lib = Sys.getenv("R_LIBS_USER"))
+            miss <- imports[!vapply(imports, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(miss)) stop("Unloadable after install: ", paste(miss, collapse = ", "))
+          '
 
       - name: Cache cargo registry + git
         uses: actions/cache@v6
