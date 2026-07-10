@@ -12,8 +12,7 @@ Complete reference for `#[miniextendr]` on every Rust item type.
 | `impl` (inherent) | Env-class methods | `#[miniextendr] impl Counter { ... }` |
 | `impl Trait for Type` | Trait ABI shims | `#[miniextendr(s3)] impl Display for Counter { ... }` |
 | `trait` | Vtable + ABI generation | `#[miniextendr] pub trait Counter { ... }` |
-| 1-field `struct` | ALTREP class | `#[miniextendr] struct MyVec(Vec<i32>)` |
-| multi-field `struct` | ExternalPtr | `#[miniextendr] struct Point { x: f64, y: f64 }` |
+| `struct` (any field count) | ExternalPtr | `#[miniextendr] struct Point { x: f64, y: f64 }` |
 | fieldless `enum` | RFactor | `#[miniextendr] enum Color { Red, Green, Blue }` |
 
 ---
@@ -456,34 +455,26 @@ impl<T: AsRef<str>> Display for T { /* ... */ }
 
 ## Structs
 
-### 1-Field Struct → ALTREP (default)
+### ALTREP via `#[miniextendr]` Is Removed
+
+`#[miniextendr]` no longer generates ALTREP classes. Applying the old ALTREP
+attributes (`class`, `base`) to a 1-field struct is a compile error with
+migration guidance. Use the per-family ALTREP derives instead:
 
 ```rust
-#[miniextendr]
-pub struct LazyInts(Vec<i32>);
+use miniextendr_api::prelude::*;
+
+#[derive(AltrepInteger)]
+#[altrep(len = "len", elt = "value", class = "MyInts")]
+pub struct LazyInts {
+    value: i32,
+    len: usize,
+}
 ```
 
-Generates ALTREP class registration + `IntoR` + `TryFromSexp`. The struct wraps
-a single data field and presents it as an R vector via ALTREP's lazy evaluation.
+See [ALTREP.md](ALTREP.md) for the full derive surface.
 
-Override with ALTREP options:
-
-```rust
-#[miniextendr(class = "MyInts", base = "integer")]
-pub struct LazyInts(Vec<i32>);
-```
-
-Override to use a different representation:
-
-```rust
-#[miniextendr(externalptr)]
-pub struct Wrapper(Vec<i32>);   // ExternalPtr instead of ALTREP
-
-#[miniextendr(list)]
-pub struct Wrapper(Vec<i32>);   // List conversion instead of ALTREP
-```
-
-### Multi-Field Struct → ExternalPtr (default)
+### Struct → ExternalPtr (default)
 
 ```rust
 #[miniextendr]
@@ -491,14 +482,24 @@ pub struct Point { x: f64, y: f64 }
 ```
 
 Generates `ExternalPtr` + `TypedExternal` derives. The struct lives as an opaque
-R external pointer.
+R external pointer. This is the default for **any** field count — a bare 1-field
+struct is ExternalPtr too, not ALTREP.
+
+Override with an explicit mode:
+
+```rust
+#[miniextendr(externalptr)]
+pub struct Wrapper(Vec<i32>);   // ExternalPtr (same as the default)
+
+#[miniextendr(list)]
+pub struct Wrapper(Vec<i32>);   // List conversion instead of ExternalPtr
+```
 
 ### Struct Mode Overrides
 
 | Syntax | Result |
 |--------|--------|
-| `#[miniextendr]` on 1-field | ALTREP |
-| `#[miniextendr]` on multi-field | ExternalPtr |
+| `#[miniextendr]` (no mode attr) | ExternalPtr |
 | `#[miniextendr(list)]` | `IntoList` + `TryFromList` + `PreferList` |
 | `#[miniextendr(dataframe)]` | `IntoList` + `DataFrameRow` + companion type |
 | `#[miniextendr(externalptr)]` | `ExternalPtr` + `TypedExternal` |

@@ -17,11 +17,10 @@ Real-world examples of ALTREP usage patterns in miniextendr.
 **Use case**: Lazy loading of database query results without materializing all rows.
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltListData};
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::*;
 use std::cell::RefCell;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "DatabaseResultSet")]
 pub struct DatabaseResultSet {
     connection_id: usize,
@@ -77,11 +76,12 @@ summary <- results[[1:100]]    # Fetches first 100 rows
 **Use case**: Zero-copy access to large binary files.
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltRawData, AltrepDataptr};
+use miniextendr_api::prelude::*;
+use miniextendr_api::altrep_data::AltrepDataptr;
 use memmap2::Mmap;
 use std::fs::File;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "MappedFile")]
 pub struct MappedFile {
     _file: File,
@@ -134,9 +134,9 @@ checksum <- sum(as.integer(file))  # Process entire file
 **Use case**: Generate time series data on-demand from formula.
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltRealData};
+use miniextendr_api::prelude::*;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "SinewaveTimeSeries")]
 pub struct SinewaveTimeSeries {
     frequency: f64,
@@ -186,10 +186,10 @@ max(wave)           # Find peak (should be ~1.0)
 **Use case**: Efficient representation of sparse data.
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltIntegerData};
+use miniextendr_api::prelude::*;
 use std::collections::HashMap;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "SparseVector")]
 pub struct SparseVector {
     length: usize,
@@ -252,11 +252,11 @@ sparse[1:100]      # Access works normally
 **Use case**: Lazy-load strings from external API with intelligent caching.
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltStringData};
+use miniextendr_api::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "ApiStringCache")]
 pub struct ApiStringCache {
     api_endpoint: String,
