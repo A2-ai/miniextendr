@@ -23,6 +23,20 @@ vendored crate status, generated file freshness, and common
 configuration mistakes.
 }
 \details{
+When the project is inside a git work tree, the doctor also flags
+configure-/install-generated files (\code{src/rust/.cargo/config.toml},
+\code{src/Makevars}, \verb{*-wrappers.R}, \code{src/rust/wasm_registry.rs}) that are
+tracked in git. The scaffold's \code{.gitignore} keeps these out of version
+control, but a \code{.gitignore} only affects \emph{untracked} files, so packages
+scaffolded before the pattern fix in #1226 may have committed them --
+producing VCS churn on every \verb{bash ./configure} and potentially leaking
+one machine's install-mode configuration into the repository. The remedy
+is \verb{git rm --cached <path>} (removes the file from the index, keeps it on
+disk); the doctor only advises and never modifies the git index. This
+check is skipped silently when git is unavailable or there is no
+enclosing git repository (e.g. an extracted source tarball or CRAN's
+build farm).
+
 For more targeted checks, see \code{\link[=miniextendr_status]{miniextendr_status()}} (file presence)
 and \code{\link[=miniextendr_validate]{miniextendr_validate()}} (configuration correctness).
 }

@@ -19,7 +19,7 @@ Copies the bundled agent skills (\verb{.claude/skills/miniextendr-*}) into the
 project so coding agents working in the package get progressive-loading
 context about the miniextendr build pipeline, conversions, class systems,
 data.frame interface, parallelism rules, debugging recipes, and the
-release/vendoring story — all framed for the scaffolded-package layout
+release/vendoring story -- all framed for the scaffolded-package layout
 (\code{src/rust/lib.rs}, \code{configure}, \verb{tools/}).
 }
 \details{
@@ -31,5 +31,5 @@ yourself under \verb{.claude/skills/} are left untouched.
 When the project root is an R package (a \code{DESCRIPTION} is present),
 \verb{^\\.claude$} is added to \code{.Rbuildignore} so the skills never ship in the
 tarball. An \code{AGENTS.md} stub pointing non-Claude agents at the skill set is
-written only if the file does not already exist — it is user-owned content.
+written only if the file does not already exist -- it is user-owned content.
 }

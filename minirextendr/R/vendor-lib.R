@@ -140,7 +140,7 @@ abort_if_missing_vendor_lib_anchors <- function(lines) {
 #' 1. VENDOR_LIB variable (after VENDOR_OUT_CARGO)
 #' 2. vendor-lib AC_CONFIG_COMMANDS block (before post-config)
 #'
-#' Aborts (via [abort_if_missing_vendor_lib_anchors()]) if either anchor is
+#' Aborts (via `abort_if_missing_vendor_lib_anchors()`) if either anchor is
 #' absent, before touching the file -- a warning that leaves a broken build is
 #' worse than a hard stop.
 #'

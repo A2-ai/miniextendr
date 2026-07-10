@@ -25,7 +25,7 @@ Templates may have extra standalone-project logic (e.g., checking for miniextend
 - `R/vendor.R` — `vendor_miniextendr()`, `strip_toml_sections()` (must strip `[[bench]]`, `[[test]]`, `[dev-dependencies]` when those dirs are absent in scaffolded packages).
 - `R/use_*.R` — scaffolding (`use_miniextendr_package`, `use_release_workflow`, `use_template`).
 - `R/upgrade.R` — `upgrade_miniextendr_package()`.
-- `R/doctor.R` — `miniextendr_doctor()`: detects stale `inst/vendor.tar.xz` leak + missing `.cargo/config.toml`; `webr = TRUE` adds the webR import lint.
+- `R/doctor.R` — `miniextendr_doctor()`: detects stale `inst/vendor.tar.xz` leak + missing `.cargo/config.toml` + git-tracked generated files (`git rm --cached` advice, #1250); `webr = TRUE` adds the webR import lint.
 - `R/webr-lint.R` — `miniextendr_webr_import_lint()`: flags namespace-level imports of compiled packages (static probe + curated fallback, #925).
 - `R/check_static.R` — `miniextendr_check_static()` (revamp shipped in PR #296).
 

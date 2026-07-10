@@ -516,14 +516,14 @@ add_linking_to <- function(pkg) {
 
 #' Abort if `configure.ac` lacks an anchor for native include detection
 #'
-#' [add_native_to_configure_ac()] needs one of three insertion points, in
+#' `add_native_to_configure_ac()` needs one of three insertion points, in
 #' priority order: the `MINIREXTENDR: native-pkg-cppflags` marker, an existing
 #' `AC_SUBST([NATIVE_PKG_CPPFLAGS])`, or `AC_CONFIG_SRCDIR` (the anchor for
 #' creating the whole section). A hand-mangled configure.ac with none of them
 #' used to be discovered only AFTER [use_native_package()] had edited
 #' DESCRIPTION, leaving `LinkingTo`/`Imports` mutated with no include-path
 #' wiring (#1171). Called up front, before the DESCRIPTION edit, mirroring
-#' [abort_if_missing_vendor_lib_anchors()] -- a precondition is smaller and
+#' `abort_if_missing_vendor_lib_anchors()` -- a precondition is smaller and
 #' safer than rolling back partial edits.
 #'
 #' @param lines Character vector of `configure.ac` lines

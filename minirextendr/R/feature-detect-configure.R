@@ -371,7 +371,7 @@ parse_cargo_metadata_json <- function(json) {
 #'
 #' @param json Raw JSON string from cargo metadata
 #' @return List with `features` and `optional_deps`, matching
-#'   [parse_cargo_metadata_regex()]'s shape.
+#'   `parse_cargo_metadata_regex()`'s shape.
 #' @noRd
 parse_cargo_metadata_jsonlite <- function(json) {
   pkg <- jsonlite::fromJSON(json, simplifyVector = FALSE)$packages[[1]]
@@ -395,7 +395,7 @@ parse_cargo_metadata_jsonlite <- function(json) {
 #'
 #' Minimal JSON parser using regex — handles the specific structure of
 #' `cargo metadata --no-deps` output without requiring jsonlite. Kept as the
-#' dependency-free fallback for [parse_cargo_metadata_json()].
+#' dependency-free fallback for `parse_cargo_metadata_json()`.
 #'
 #' @param json Raw JSON string from cargo metadata
 #' @return List with `features` and `optional_deps`
