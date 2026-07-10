@@ -87,6 +87,42 @@ test_that("monorepo scaffold ignore files match the standalone fresh-scaffold co
   expect_identical(gitign, minirextendr:::mx_ignore_patterns("gitignore"))
 })
 
+test_that("scaffolded .gitignore actually ignores the generated build paths", {
+  # Behavioral guard for #1226: the structural tests above only assert the
+  # template *text*, so a mis-anchored pattern (`.cargo/config.toml` instead of
+  # `src/rust/.cargo/config.toml`) passed them while never matching the real
+  # nested path. This drives `git check-ignore` against the paths configure /
+  # the host cdylib pass actually generate.
+  skip_if_not(nzchar(Sys.which("git")), "git not available")
+
+  tmp <- withr::local_tempdir()
+  writeLines(c("Package: ignpkg", "Version: 0.0.1"), file.path(tmp, "DESCRIPTION"))
+  usethis::local_project(tmp, force = TRUE, setwd = FALSE)
+  minirextendr:::set_template_type("rpkg")
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+
+  suppressMessages(minirextendr:::use_miniextendr_gitignore(path = tmp))
+
+  # `git check-ignore` needs a repository; the tempdir is outside this repo's
+  # working tree, so `git init` gives it an isolated one (no parent .gitignore).
+  system2("git", c("-C", tmp, "init"), stdout = FALSE, stderr = FALSE)
+
+  generated <- c(
+    "src/rust/.cargo/config.toml", # the #1226 fix
+    "src/Makevars",
+    "R/ignpkg-wrappers.R",
+    "src/rust/wasm_registry.rs"
+  )
+  for (rel in generated) {
+    dir.create(file.path(tmp, dirname(rel)), recursive = TRUE, showWarnings = FALSE)
+    file.create(file.path(tmp, rel))
+    status <- system2("git", c("-C", tmp, "check-ignore", rel),
+                      stdout = FALSE, stderr = FALSE)
+    # check-ignore exits 0 when the path is ignored, 1 when it is not.
+    expect_identical(status, 0L, info = rel)
+  }
+})
+
 test_that("standalone path appends and dedupes into a pre-existing ignore file", {
   tmp <- withr::local_tempdir()
   writeLines(c("Package: ignpkg", "Version: 0.0.1"), file.path(tmp, "DESCRIPTION"))

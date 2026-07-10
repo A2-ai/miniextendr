@@ -2,7 +2,7 @@ configure~
 config.log
 config.status
 autom4te.cache
-.cargo/config.toml
+src/rust/.cargo/config.toml
 src/Makevars
 # Note: Makevars.win is a static file (uses `include Makevars`), tracked in git
 src/*-wrappers.R

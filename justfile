@@ -958,6 +958,7 @@ templates-sources:
     rpkg/configure.ac	rpkg/configure.ac
     rpkg/configure.ucrt	rpkg/configure.ucrt
     rpkg/configure.win	rpkg/configure.win
+    rpkg/gitignore	rpkg/.gitignore
     rpkg/Makevars.in	rpkg/src/Makevars.in
     rpkg/Makevars.win	rpkg/src/Makevars.win
     rpkg/stub.c	rpkg/src/stub.c
@@ -974,6 +975,7 @@ templates-sources:
     monorepo/rpkg/configure.ac	rpkg/configure.ac
     monorepo/rpkg/configure.ucrt	rpkg/configure.ucrt
     monorepo/rpkg/configure.win	rpkg/configure.win
+    monorepo/rpkg/gitignore	rpkg/.gitignore
     monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
     monorepo/rpkg/Makevars.win	rpkg/src/Makevars.win
     monorepo/rpkg/stub.c	rpkg/src/stub.c
