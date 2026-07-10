@@ -1078,14 +1078,23 @@ jobs:
     if: needs.changes.outputs.r == 'true'
     strategy:
       fail-fast: false
+      # Three shards, balanced from measured timings (run 29073963629: the
+      # 2-shard layout ran 20.0 / 20.9 min of tests; the sweep is ~24 min of
+      # that total, the explicit fixture-file blocks ~3 min, the three whole
+      # files ~4 / ~3 / ~2.5 min). Each shard = one sweep third (~8 min) +
+      # the explicit blocks (~3 min, run per-shard — the sweep file is in
+      # every filter) + one whole stress file, so ~14-15 min of tests each.
       matrix:
         include:
-          # Shard 1: sweep half 1 + the ExternalPtr self-root file.
-          - shard: "1/2"
+          # Shard 1: sweep third 1 + the ExternalPtr self-root file.
+          - shard: "1/3"
             filter: "gc-stress-fixtures|externalptr-self-root"
-          # Shard 2: sweep half 2 + the two dataframe stress files.
-          - shard: "2/2"
-            filter: "gc-stress-fixtures|iter-to-dataframe|dataframe-deserialize"
+          # Shard 2: sweep third 2 + the iter-to-dataframe file.
+          - shard: "2/3"
+            filter: "gc-stress-fixtures|iter-to-dataframe"
+          # Shard 3: sweep third 3 + the dataframe-deserialize file.
+          - shard: "3/3"
+            filter: "gc-stress-fixtures|dataframe-deserialize"
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
