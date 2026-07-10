@@ -649,9 +649,13 @@ where
 ///
 /// # Safety note (aliasing)
 ///
-/// This impl can produce aliased `&mut` slices if the same R vector is passed
-/// to multiple mutable slice parameters. The caller is responsible for ensuring
-/// no two `&mut` borrows alias the same SEXP.
+/// This impl hands out a `&mut` view over R's data pointer without copying, so
+/// binding the same R vector to two slice parameters aliases one buffer. That is
+/// undefined behavior whenever at least one borrow is mutable — two `&mut [T]`,
+/// or a `&mut [T]` paired with a shared `&[T]` (which borrows the same buffer).
+/// The macro-generated wrapper emits a `debug_assert!` catching this in debug
+/// builds (#1104); in release the caller is responsible for not passing the same
+/// SEXP to two such parameters when one is mutable.
 impl<T> TryFromSexp for &mut [T]
 where
     T: crate::RNativeType + Copy,

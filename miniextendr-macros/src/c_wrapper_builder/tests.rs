@@ -91,38 +91,40 @@ fn return_handling_detection() {
 }
 
 #[test]
-fn mut_slice_family_detection() {
-    // &mut [T] -> flagged
-    let mut_slice: syn::Type = syn::parse_quote!(&mut [i32]);
-    assert!(is_mut_slice_family(&mut_slice));
+fn slice_borrow_kind_classification() {
+    // &mut [T] -> Mut
+    let ty: syn::Type = syn::parse_quote!(&mut [i32]);
+    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Mut));
 
-    // Option<&mut [T]> -> flagged
-    let opt_mut_slice: syn::Type = syn::parse_quote!(Option<&mut [f64]>);
-    assert!(is_mut_slice_family(&opt_mut_slice));
+    // Option<&mut [T]> -> Mut
+    let ty: syn::Type = syn::parse_quote!(Option<&mut [f64]>);
+    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Mut));
 
-    // &[T] (shared) -> not flagged
-    let shared_slice: syn::Type = syn::parse_quote!(&[i32]);
-    assert!(!is_mut_slice_family(&shared_slice));
+    // &[T] (shared) -> Shared
+    let ty: syn::Type = syn::parse_quote!(&[i32]);
+    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Shared));
 
-    // Option<&[T]> (shared) -> not flagged
-    let opt_shared: syn::Type = syn::parse_quote!(Option<&[i32]>);
-    assert!(!is_mut_slice_family(&opt_shared));
+    // Option<&[T]> (shared) -> Shared
+    let ty: syn::Type = syn::parse_quote!(Option<&[i32]>);
+    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Shared));
 
-    // &mut T (scalar reference) -> not flagged (only slices)
-    let mut_scalar: syn::Type = syn::parse_quote!(&mut i32);
-    assert!(!is_mut_slice_family(&mut_scalar));
+    // &mut T (scalar reference) -> not a slice borrow
+    let ty: syn::Type = syn::parse_quote!(&mut i32);
+    assert_eq!(slice_borrow_kind(&ty), None);
 
-    // Vec<T> -> not flagged
-    let vec_ty: syn::Type = syn::parse_quote!(Vec<i32>);
-    assert!(!is_mut_slice_family(&vec_ty));
+    // Vec<T> / Box<[T]> copy -> not a borrow
+    let ty: syn::Type = syn::parse_quote!(Vec<i32>);
+    assert_eq!(slice_borrow_kind(&ty), None);
+    let ty: syn::Type = syn::parse_quote!(Box<[i32]>);
+    assert_eq!(slice_borrow_kind(&ty), None);
 
-    // Option<i32> -> not flagged
-    let opt_scalar: syn::Type = syn::parse_quote!(Option<i32>);
-    assert!(!is_mut_slice_family(&opt_scalar));
+    // Option<i32> -> not a borrow
+    let ty: syn::Type = syn::parse_quote!(Option<i32>);
+    assert_eq!(slice_borrow_kind(&ty), None);
 }
 
 #[test]
-fn alias_guard_emitted_only_for_multiple_mut_slices() {
+fn alias_guard_emission() {
     // Build a minimal CWrapperContext whose `inputs` are the parameters of the
     // given function signature.
     fn ctx_for(sig: syn::ItemFn) -> CWrapperContext {
@@ -150,9 +152,16 @@ fn alias_guard_emitted_only_for_multiple_mut_slices() {
     ));
     assert!(!ctx.build_alias_guard(&sexp_idents).is_empty());
 
-    // One &mut [T] + one &[T]: only one mutable slice -> no guard.
+    // One &mut [T] + one &[T]: a mutable and a shared borrow over the same
+    // buffer is also UB, so a guard IS emitted (#1104 mixed-aliasing case).
     let ctx = ctx_for(syn::parse_quote!(
         fn one_mut(a: &mut [i32], b: &[i32]) {}
+    ));
+    assert!(!ctx.build_alias_guard(&sexp_idents).is_empty());
+
+    // Two &[T] (both shared): two `&` reads don't conflict -> no guard.
+    let ctx = ctx_for(syn::parse_quote!(
+        fn two_shared(a: &[i32], b: &[i32]) {}
     ));
     assert!(ctx.build_alias_guard(&sexp_idents).is_empty());
 
@@ -164,4 +173,18 @@ fn alias_guard_emitted_only_for_multiple_mut_slices() {
         ctx.build_alias_guard(&[syn::parse_quote!(arg_0)])
             .is_empty()
     );
+
+    // Three slices (two mut + one shared) -> pairwise guards for every pair
+    // touching a mutable borrow (mut/mut, mut/shared, mut/shared = 3 asserts;
+    // the shared/shared pair is skipped).
+    let ctx = ctx_for(syn::parse_quote!(
+        fn three(a: &mut [i32], b: &mut [i32], c: &[i32]) {}
+    ));
+    let three_idents: Vec<syn::Ident> = vec![
+        syn::parse_quote!(arg_0),
+        syn::parse_quote!(arg_1),
+        syn::parse_quote!(arg_2),
+    ];
+    let guard = ctx.build_alias_guard(&three_idents).to_string();
+    assert_eq!(guard.matches("debug_assert").count(), 3, "guard = {guard}");
 }

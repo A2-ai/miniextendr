@@ -633,16 +633,23 @@ pub fn add_one_in_place(x: &mut [i32]) {
 ```
 
 > **Aliasing foot-gun (#1104).** Because `&mut [T]` borrows R's buffer without
-> copying, binding the *same* R vector to two `&mut [T]` parameters — e.g.
-> `f(x, x)` from R — would hand out two aliasing `&mut` slices over one buffer,
-> which is **undefined behavior** in Rust. When a `#[miniextendr]` function has
-> two or more `&mut [T]`-family parameters, the generated wrapper emits a
+> copying, binding the *same* R vector to two slice parameters — e.g. `f(x, x)`
+> from R — hands out two views over one buffer. That is **undefined behavior** in
+> Rust whenever at least one of the two borrows is mutable: two `&mut [T]`, or a
+> `&mut [T]` paired with a `&[T]` (a `&[T]` is *also* a zero-copy view over R's
+> buffer, so a shared borrow aliasing a mutable one is UB too). When a
+> `#[miniextendr]` function has two or more slice-family parameters and a pair of
+> them could alias with one being mutable, the generated wrapper emits a
 > `debug_assert!` that compares the underlying SEXP identities before conversion
-> and raises an error naming both parameters if they share one object. This
-> check is **debug-build only** (zero cost in release), so in a release build the
-> aliasing call is *not* rejected — don't rely on the guard as a correctness
-> boundary; pass distinct vectors. Use non-overlapping parameters, or take
-> `&[T]` / `Vec<T>` if two arguments might reference the same vector.
+> and raises an error naming both parameters if they share one object. (Two
+> shared `&[T]` reads over one vector are sound and are *not* flagged. SEXP
+> identity, not the raw data pointer, is compared, so two *distinct* empty
+> vectors — which share R's `0x1` sentinel data pointer — are not a false
+> positive.) This check is **debug-build only** (zero cost in release), so in a
+> release build the aliasing call is *not* rejected — don't rely on the guard as
+> a correctness boundary; pass distinct vectors. If two arguments might reference
+> the same vector and either mutates it, take `Vec<T>` (copy-in/copy-out) for at
+> least one of them.
 
 ---
 
