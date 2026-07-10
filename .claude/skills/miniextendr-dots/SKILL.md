@@ -112,6 +112,13 @@ After validation, `dots_typed` (a `TypedList`) provides:
 | `get_raw(name)` | `Result<SEXP, TypedListError>` — raw SEXP |
 | `as_list()` | `List` — underlying list |
 
+`get::<T>()` / `get_opt::<T>()` accept **both** scalar and vector target types:
+`T` may be a scalar (`f64`, `i32`, `String`, `bool`) **or** a vector/collection
+(`Vec<f64>`, `Vec<i32>`, `Vec<String>`, …) — any `TryFromSexp` with a `Display`
+error type. So `let x: Vec<f64> = dots_typed.get("x")?` (above) compiles for a
+`numeric()` field, and `dots_typed.get::<Vec<i32>>("survive")` for an
+`integer()` field.
+
 ### Error types
 
 `TypedListError` variants emitted on validation failure:

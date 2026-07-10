@@ -32,7 +32,7 @@
 //! let alpha: Vec<f64> = validated.get("alpha")?;
 //! ```
 
-use crate::from_r::{SexpError, TryFromSexp};
+use crate::from_r::TryFromSexp;
 use crate::list::{List, ListFromSexpError};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use std::collections::HashSet;
@@ -297,9 +297,16 @@ impl TypedList {
     ///
     /// Returns [`TypedListError::Missing`] if the field doesn't exist.
     /// Returns [`TypedListError::WrongType`] if conversion fails.
+    ///
+    /// `T` may be either a scalar target type (`f64`, `i32`, `String`, `bool`,
+    /// …) or a vector/collection target type (`Vec<f64>`, `Vec<i32>`,
+    /// `Vec<String>`, …). The bound accepts any [`TryFromSexp`] whose error
+    /// type is [`Display`](std::fmt::Display) — scalar impls use `SexpError`
+    /// and vector impls use `SexpTypeError`, both of which qualify.
     pub fn get<T>(&self, name: &str) -> Result<T, TypedListError>
     where
-        T: TryFromSexp<Error = SexpError>,
+        T: TryFromSexp,
+        T::Error: std::fmt::Display,
     {
         let sexp = self.get_raw(name)?;
         T::try_from_sexp(sexp).map_err(|e| TypedListError::WrongType {
@@ -313,9 +320,14 @@ impl TypedList {
     ///
     /// Returns `Ok(None)` if the field doesn't exist.
     /// Returns [`TypedListError::WrongType`] if the field exists but conversion fails.
+    ///
+    /// Like [`get`](Self::get), `T` may be a scalar or a vector/collection
+    /// target type; the bound accepts any [`TryFromSexp`] with a
+    /// [`Display`](std::fmt::Display) error type.
     pub fn get_opt<T>(&self, name: &str) -> Result<Option<T>, TypedListError>
     where
-        T: TryFromSexp<Error = SexpError>,
+        T: TryFromSexp,
+        T::Error: std::fmt::Display,
     {
         match self.get_raw(name) {
             Ok(sexp) => {
