@@ -120,10 +120,11 @@ Rscript tools/bump-version.R --sync
 ## webR / wasm note
 
 wasm32 builds cannot generate wrappers (the wasm module can't be loaded by
-host R at build time), so they consume the committed
-`R/<pkg>-wrappers.R` + `src/rust/wasm_registry.rs` produced by your last
-native build. Always run a native `miniextendr_build()` before producing a
-wasm artifact, so those files are current.
+host R at build time), so they consume the pre-generated
+`R/<pkg>-wrappers.R` + `src/rust/wasm_registry.rs` left on disk by your last
+native build (both are gitignored in scaffolded packages — they travel with
+the source tree, not through git). Always run a native `miniextendr_build()`
+before producing a wasm artifact, so those files are current.
 `minirextendr::miniextendr_webr_import_lint()` flags namespace-level imports
 of compiled packages that break under webR.
 

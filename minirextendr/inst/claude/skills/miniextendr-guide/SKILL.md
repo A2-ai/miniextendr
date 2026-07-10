@@ -66,7 +66,7 @@ Three install modes, decided by `./configure`:
 |---|---|---|
 | **dev/source** | no `inst/vendor.tar.xz` | cargo resolves deps from the network (or git) |
 | **tarball** | `inst/vendor.tar.xz` present | offline build from vendored sources; wrapper-gen skipped (pre-shipped wrappers used) |
-| **wasm32** | webR cross-compile | uses committed wrappers + `wasm_registry.rs`; no wrapper-gen possible |
+| **wasm32** | webR cross-compile | uses pre-generated wrappers + `wasm_registry.rs` from a prior native build; no wrapper-gen possible |
 
 ## The dev loop
 

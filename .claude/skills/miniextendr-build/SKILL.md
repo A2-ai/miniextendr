@@ -208,12 +208,14 @@ key targets are:
 In tarball mode, Makevars also scrubs `vendor/`, `rust-target/`, and
 `.cargo/` after a successful build to save installed-package size.
 
-The generated wrappers (`R/miniextendr-wrappers.R`), plus `NAMESPACE`, `man/`,
-and `src/rust/wasm_registry.rs`, are committed and must stay in sync with the
-`#[miniextendr]` Rust source. `just wrappers-sync-check` installs rpkg, runs
-`devtools::document`, and fails on any diff in those paths — catching the
-inverse of the pre-commit hook, which only fires when `*-wrappers.R` is itself
-staged (#602). Regenerate with `just rcmdinstall && just force-document`.
+The generated wrappers (`R/miniextendr-wrappers.R`) and
+`src/rust/wasm_registry.rs` are **gitignored** (regenerated on every host
+install; they ship in the tarball from disk), while `NAMESPACE` and `man/`
+stay tracked and must be committed in sync with the `#[miniextendr]` Rust
+source. `just wrappers-sync-check` installs rpkg, runs `devtools::document`,
+fails on any git diff in `NAMESPACE` / `man/`, and asserts the regenerated
+`wasm_registry.rs` is a real (non-stub) snapshot. Regenerate with
+`just rcmdinstall && just force-document`.
 
 ### configure → cargo feature flags
 

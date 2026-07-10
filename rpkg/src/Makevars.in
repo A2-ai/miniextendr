@@ -48,8 +48,9 @@ export CARGO_HOME
 #      R wrappers — no separate cdylib build. The .so is already a loadable shared
 #      object and carries every linkme #[distributed_slice] entry (force-loaded via
 #      stub.c + codegen-units = 1), so it produces exactly what a throwaway cdylib did.
-#   On wasm32/tarball: the wrapper-gen recipe is a no-op, so the committed
-#   wrappers are reused without loading anything.
+#   On wasm32/tarball: the wrapper-gen recipe is a no-op, so the
+#   pre-generated wrappers (shipped in the source tree / tarball) are
+#   reused without loading anything.
 all: $(SHLIB) $(WRAPPERS_R)
 	@# Source install: touch Cargo.toml so pkgbuild always thinks sources changed
 	@# (dev iteration with devtools::load_all() / install() relies on this).
@@ -125,9 +126,9 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 # package needs no "SystemRequirements: GNU make".
 #   wasm32  : $(SHLIB) is a .wasm SIDE_MODULE that host R cannot dyn.load;
 #             expects pre-generated files from the host devtools::document() pass.
-#   tarball : R/<pkg>-wrappers.R is already committed and ships in the tarball,
-#             so skip loading $(SHLIB) for wrapper-gen entirely (#1022). The
-#             pre-commit hook guarantees the shipped wrappers match the Rust code.
+#   tarball : R/<pkg>-wrappers.R ships in the tarball from disk (the host
+#             install/build that produced the tarball regenerates it), so
+#             skip loading $(SHLIB) for wrapper-gen entirely (#1022).
 #             LOAD-BEARING GUARD: skip only when R/<pkg>-wrappers.R exists AND is
 #             non-empty ([ -s ]). If it is absent or empty (a tarball stripped of
 #             its wrappers, a truncated download, etc.), FALL BACK to full
