@@ -122,8 +122,6 @@ Annotate your struct:
 
 ```rust
 use miniextendr_api::prelude::*;
-use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
-use miniextendr_api::AltrepInteger;
 
 #[derive(AltrepInteger)]
 #[altrep(len = "length", elt = "value", class = "ConstantInt")]
@@ -133,12 +131,10 @@ pub struct ConstantIntVector {
 }
 ```
 
-The prelude only re-exports the generic `Altrep` derive and `IntoRAltrep` —
-not the seven per-family derives (`AltrepInteger`/`Real`/`Logical`/`Raw`/
-`String`/`Complex`/`List`) or the `AltrepLen`/`Alt*Data` traits, which live
-at the crate root and in `altrep_data` respectively. Always add the explicit
-imports above alongside the prelude glob; a bare `use
-miniextendr_api::prelude::*;` is not enough for ALTREP.
+The prelude re-exports the full ALTREP surface (#1230): the seven per-family
+derives (`AltrepInteger`/`Real`/`Logical`/`Raw`/`String`/`Complex`/`List`),
+the `AltrepLen`/`Alt*Data` traits, and `AltrepExtract`/`RegisterAltrep` —
+so `use miniextendr_api::prelude::*;` alone is enough.
 
 The derive emits:
 - `impl AltrepLen for ConstantIntVector` reading `self.length`.
