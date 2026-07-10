@@ -119,7 +119,67 @@ async function main() {
   const version = unwrapScalar(await versionResult.toJs());
   console.log(`[tier3] miniextendr version: ${version}`);
 
+  if (process.env.SMOKE_TESTTHAT === "1") {
+    const budget = new Promise((resolve) =>
+      setTimeout(() => {
+        console.log(
+          "[tier3][testthat] 20-min budget exceeded — abandoning the informational pass.",
+        );
+        resolve();
+      }, TESTTHAT_BUDGET_MS),
+    );
+    await Promise.race([
+      informationalTestthat().catch((e) => {
+        console.log(
+          "[tier3][testthat] informational pass failed (not a gate):",
+          e && e.message ? e.message : e,
+        );
+      }),
+      budget,
+    ]);
+  }
+
   console.log("[tier3] Tier-3 PASSED.");
+}
+
+// ── Informational testthat pass (#1255, opt-in via SMOKE_TESTTHAT=1) ────────
+// Restores the coverage dropped when the local and CI runners were unified:
+// run rpkg's testthat suite inside the webR session and report counts.
+// Strictly informational — many tests legitimately fail or skip under wasm
+// (worker thread / fork / subprocess assumptions), so this NEVER affects the
+// exit status, and the Promise.race budget above keeps a wedged suite from
+// eating the step timeout (the stuck R worker is torn down by webR.close()
+// in the top-level teardown regardless).
+const TESTTHAT_BUDGET_MS = 20 * 60 * 1000;
+
+async function informationalTestthat() {
+  console.log("[tier3][testthat] Installing testthat from repo.r-wasm.org...");
+  await webR.installPackages(["testthat"], { mount: false, quiet: false });
+  // The rpkg source tree (for tests/testthat) — relative to this script's
+  // documented working directory (tests/webr-node-smoke); override with
+  // SMOKE_RPKG_DIR for non-standard layouts.
+  const rpkgDir = process.env.SMOKE_RPKG_DIR || "../../rpkg";
+  await webR.FS.mkdir("/rpkg-src");
+  await webR.FS.mount("NODEFS", { root: rpkgDir }, "/rpkg-src");
+  console.log(
+    `[tier3][testthat] NODEFS-mounted ${rpkgDir} -> /rpkg-src; running test_dir (silent reporter)...`,
+  );
+  const res = await webR.evalR(`
+    tryCatch({
+      res <- testthat::test_dir(
+        "/rpkg-src/tests/testthat",
+        package = "miniextendr",
+        reporter = "silent",
+        stop_on_failure = FALSE
+      )
+      df <- as.data.frame(res)
+      sprintf(
+        "passed=%d failed=%d skipped=%d errors=%d",
+        sum(df$passed), sum(df$failed), sum(df$skipped), sum(df$error)
+      )
+    }, error = function(e) paste0("suite errored: ", conditionMessage(e)))
+  `);
+  console.log("[tier3][testthat] result:", unwrapScalar(await res.toJs()));
 }
 
 // webR boots a dedicated worker (Node `worker_threads`) to host the R runtime.

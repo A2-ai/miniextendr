@@ -277,10 +277,17 @@ jobs:
 
       - name: Tier 3 — run Node + webR smoke (library(miniextendr))
         working-directory: tests/webr-node-smoke
+        env:
+          # Informational testthat pass (#1255): after the gating library()
+          # check, run rpkg's suite inside the webR session and report
+          # counts. Never gates — smoke.mjs races it against a 20-min
+          # JS-side budget so a wedged suite can't eat the step timeout.
+          SMOKE_TESTTHAT: "1"
         run: |
           set -euo pipefail
           # Hard wall-clock cap: webR init + Imports install + library load
-          # should take well under 10 min on a clean runner. If we ever hit
-          # 15 min the runner has wedged on something — fail visibly rather
-          # than burning the 90-min job timeout.
-          timeout 900 node smoke.mjs
+          # should take well under 10 min on a clean runner, plus up to 20
+          # min for the informational testthat pass. If we hit 40 min the
+          # runner has wedged on something — fail visibly rather than
+          # burning the 90-min job timeout.
+          timeout 2400 node smoke.mjs

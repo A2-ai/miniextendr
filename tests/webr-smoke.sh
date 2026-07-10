@@ -3,8 +3,10 @@
 #
 # Local smoke test: builds rpkg as a wasm32 side-module inside the
 # miniextendr-webr-dev container and loads it in a webR Node.js session
-# via the canonical runner tests/webr-node-smoke/smoke.mjs — library() +
-# packageVersion() only (testthat-under-wasm coverage is tracked in #1255).
+# via the canonical runner tests/webr-node-smoke/smoke.mjs. By default the
+# runner then does an informational testthat pass (#1255): suite counts are
+# reported but never gate (many tests legitimately fail or skip under wasm);
+# disable with SMOKE_TESTTHAT=0.
 #
 # Exit codes:
 #   0  — miniextendr loaded in the webR session
@@ -300,10 +302,13 @@ phase_webr_session() {
     "
 
     log "Running canonical Node smoke runner (tests/webr-node-smoke/smoke.mjs)..."
+    # SMOKE_TESTTHAT defaults ON locally (host env passes through; the CI
+    # workflow sets it explicitly). The 2400s cap = ~10 min smoke + the
+    # runner's 20-min informational-testthat budget.
     docker_run "
         set -euo pipefail
         cd /work/tests/webr-node-smoke
-        timeout 900 node smoke.mjs
+        SMOKE_TESTTHAT=${SMOKE_TESTTHAT:-1} timeout 2400 node smoke.mjs
     "
 
     ok "webR session complete (library(miniextendr) loaded)."

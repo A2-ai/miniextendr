@@ -17,13 +17,13 @@ cross-package wasm stubs (#493), side-module `RUSTFLAGS`
 base-image mirror (#496), the redundant `-C relocation-model=pic` flag
 dropped (#745), the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
 release (#755), dependency guidance (#752 — see "Dependencies and webR"
-below), and the compiled-imports lint (#925,
-`minirextendr::miniextendr_webr_import_lint()`). Open follow-ups: #495
+below), the compiled-imports lint (#925,
+`minirextendr::miniextendr_webr_import_lint()`), and the informational
+testthat-under-wasm pass (#1255, `SMOKE_TESTTHAT=1`). Open follow-ups: #495
 (cross-crate trait dispatch), #1254 (on-hardware validation of the
 arm64-native dev image — first cut landed as `Dockerfile.webr-arm64` via
 #788 / PR #916; see "arm64-native dev image" below), #747 (drop mirror creds
-once the GHCR package is public), #1255 (testthat-under-wasm coverage,
-dropped when the smoke runners were unified).
+once the GHCR package is public).
 
 ## Target
 
@@ -110,10 +110,12 @@ the container:
    tier 3 uses), which imports `file:///opt/webr/src/dist/webr.mjs` (see
    "Running a webR session in Node" below), NODEFS-mounts the wasm R lib
    tree, installs the hard Imports from repo.r-wasm.org, and drives
-   `library(miniextendr)` + `packageVersion()`. It does **not** run the
-   testthat suite — that coverage was dropped when the local and CI runners
-   were unified onto `smoke.mjs`; restoring an informational testthat pass
-   is tracked in #1255.
+   `library(miniextendr)` + `packageVersion()`. With `SMOKE_TESTTHAT=1`
+   (the local-smoke default; CI sets it too) it then runs an
+   **informational** testthat pass (#1255): suite counts are reported, but
+   many tests legitimately fail or skip under wasm (worker thread / fork /
+   subprocess assumptions), so the pass never affects the exit status, and
+   a 20-minute JS-side budget abandons a wedged suite.
 
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
 wasm32 build). Subsequent runs reuse the docker image and most cargo
@@ -406,8 +408,9 @@ install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
 `/tmp/wasm-lib/miniextendr`, the empirical validator for the side-module
 `RUSTFLAGS`), then **tier 3** — the Node + webR session
 (`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
-installs the package's Imports from `repo.r-wasm.org`, and drives
-`library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
+installs the package's Imports from `repo.r-wasm.org`, drives
+`library(miniextendr)`, and finishes with the informational testthat pass
+(#1255, never gating). Tier 2 only proves the side-module *links*; tier 3
 is what proves it *loads* in a real webR runtime.
 
 ## See also
@@ -418,8 +421,8 @@ is what proves it *loads* in a real webR runtime.
   (`miniextendr_webr_import_lint()`, shipped);
   #788 — arm64-native dev image (first cut: `Dockerfile.webr-arm64` + the
   `docker-webr-arm64-*` just recipes + the `WEBR_ARM64=1` smoke path;
-  on-hardware validation tracked in #1254); #1255 — testthat-under-wasm
-  coverage (dropped when the smoke runners were unified).
+  on-hardware validation tracked in #1254); #1255 — the informational
+  testthat-under-wasm pass (`SMOKE_TESTTHAT=1`, shipped).
 - Issues #491 / #744 — the base-package variant of the host-R-loads-a-wasm-
   object failure, solved via the install-to-temp-lib pattern (the dependency
   guidance above is the consumer-package-imports variant of the same failure).
