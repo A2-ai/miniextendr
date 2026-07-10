@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
-use crate::dataframe::{BuiltDataFrame, DataFrame, NamedDataFrameListBuilder};
+use crate::dataframe::{BuiltDataFrame, NamedDataFrameListBuilder};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
@@ -67,7 +67,7 @@ macro_rules! reject_non_struct {
 }
 
 /// Convert a slice of serializable structs to an R
-/// [`DataFrame`] in columnar layout.
+/// [`DataFrame`](crate::dataframe::DataFrame) in columnar layout.
 ///
 /// Each field of `T` becomes a column (R atomic vector). Nested structs are
 /// recursively flattened into prefixed columns (`parent_child` naming).
@@ -224,7 +224,7 @@ where
 /// 3. **Merge in row order** (main thread). Chunk results come back ordered
 ///    (rayon's [`collect`](rayon::iter::ParallelIterator::collect) on an `IndexedParallelIterator` preserves index order), so
 ///    concatenating each chunk's column buffers reproduces the original row
-///    order exactly. The merged buffers are assembled into a [`DataFrame`].
+///    order exactly. The merged buffers are assembled into a [`DataFrame`](crate::dataframe::DataFrame).
 ///
 /// # Schema scope (homogeneous only)
 ///
@@ -963,7 +963,7 @@ impl Default for DispatchNames {
 ///    Composes with [`with_schema`](Self::with_schema) to start from a
 ///    declared partial schema.
 ///
-/// Call [`finish`](Self::finish) to produce the [`DataFrame`].
+/// Call [`finish`](Self::finish) to produce the [`DataFrame`](crate::dataframe::DataFrame).
 ///
 /// Use [`iter_to_dataframe`] when an iterator suffices; reach for this when
 /// you need explicit control over push points (conditional skipping,
@@ -3127,10 +3127,20 @@ pub enum SplitShape {
 /// ([`vec_to_dataframe_split`] / [`result_to_dataframe`]).
 ///
 /// Carries enough type information that downstream Rust code can `match`
-/// on the variant without dispatching on SEXP type. Convert to a SEXP at
-/// the `#[miniextendr]` function boundary via the [`crate::IntoR`] impl,
-/// which collapses every variant to the equivalent R value (bare
+/// on the variant without dispatching on SEXP type. Convert to a SEXP via
+/// the [`crate::IntoR`] impl (or just return it from a `#[miniextendr]`
+/// fn), which collapses every variant to the equivalent R value (bare
 /// data.frame / named list of data.frames / `list(results=, error=)`).
+///
+/// # GC discipline (rooted by construction, #1265)
+///
+/// Every frame inside the shape is an owned, GC-rooted
+/// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame), and the
+/// [`SplitResults::None`] sentinel carries its own [`RootedSentinel`]
+/// root — so holding a `DataFrameShape` across R allocations is safe by
+/// construction; there is no convert-immediately contract. The
+/// [`crate::IntoR`] conversion consumes the handles, re-rooting each
+/// child in the assembled R value.
 pub enum DataFrameShape {
     /// Single data.frame.
     ///
@@ -3143,7 +3153,7 @@ pub enum DataFrameShape {
     /// - [`result_to_dataframe`] under [`Auto`](ResultShape::Auto) when
     ///   every row is `Ok`, and always under
     ///   [`Collated`](ResultShape::Collated).
-    Bare(DataFrame),
+    Bare(BuiltDataFrame),
 
     /// `list(results = <df | sentinel>, error = df)`.
     ///
@@ -3154,7 +3164,7 @@ pub enum DataFrameShape {
         /// The Ok partition.
         results: SplitResults,
         /// The error partition (always present, possibly zero-row).
-        error: DataFrame,
+        error: BuiltDataFrame,
     },
 
     /// `list(VariantA = df, VariantB = df, …)`.
@@ -3164,7 +3174,7 @@ pub enum DataFrameShape {
     /// [`PerVariantListWithTag`](SplitShape::PerVariantListWithTag) when
     /// the input contains more than one variant. Order matches first-seen
     /// order in the input slice.
-    PerVariantList(Vec<(String, DataFrame)>),
+    PerVariantList(Vec<(String, BuiltDataFrame)>),
 }
 
 /// Result partition for [`DataFrameShape::Split`].
@@ -3174,15 +3184,63 @@ pub enum DataFrameShape {
 /// zero-row data.frame.
 pub enum SplitResults {
     /// At least one `Ok` row — partition has a concrete data.frame.
-    Some(DataFrame),
-    /// No `Ok` rows — sentinel SEXP supplied by the caller via
-    /// `empty_ok_sentinel`.
+    Some(BuiltDataFrame),
+    /// No `Ok` rows — sentinel value supplied by the caller via
+    /// `empty_ok_sentinel`, GC-rooted by its [`RootedSentinel`] handle.
     ///
-    /// The SEXP is consumed by the [`crate::IntoR`] impl on
-    /// [`DataFrameShape`]; until then it must be kept reachable
-    /// (typically by being a child of `DataFrameShape`, which is itself
-    /// rooted by the `#[miniextendr]` framework's return-value handling).
-    None(SEXP),
+    /// The handle is consumed by the [`crate::IntoR`] impl on
+    /// [`DataFrameShape`]; until then its own root keeps the sentinel
+    /// reachable (#1265) — no immediate-conversion contract for this leg.
+    None(RootedSentinel),
+}
+
+/// GC-rooted holder for the empty-`Ok` sentinel in [`SplitResults::None`].
+///
+/// The sentinel is an arbitrary caller-supplied R value (`NULL`, `NA`,
+/// `FALSE`, a zero-row data.frame, …), so it cannot ride in a
+/// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame); this is the same
+/// RAII pattern (`R_PreserveObject` on construction, `R_ReleaseObject` on
+/// drop, `!Send`) for one bare SEXP. It exists so every leg of
+/// [`DataFrameShape`] is rooted by construction (#1265).
+pub struct RootedSentinel {
+    sexp: SEXP,
+    /// `!Send + !Sync`: rooting/unrooting mutates R's global precious
+    /// list, which is R-main-thread state.
+    _not_send: std::marker::PhantomData<*mut ()>,
+}
+
+impl RootedSentinel {
+    /// Convert `value` to a SEXP and take ownership of a fresh root.
+    ///
+    /// Rooting is immediate: no allocation happens between the
+    /// `into_sexp` return and `R_PreserveObject`, and `R_PreserveObject`
+    /// keeps its argument reachable across its own cons-cell allocation.
+    pub fn new(value: impl crate::IntoR) -> Self {
+        let sexp = value.into_sexp();
+        // SAFETY: `into_sexp` just ran on the R main thread and returned a
+        // valid SEXP; rooting is immediate (see above).
+        unsafe {
+            crate::sys::R_PreserveObject(sexp);
+        }
+        Self {
+            sexp,
+            _not_send: std::marker::PhantomData,
+        }
+    }
+
+    /// The rooted SEXP. Stays reachable for as long as this handle lives.
+    pub fn as_sexp(&self) -> SEXP {
+        self.sexp
+    }
+}
+
+impl Drop for RootedSentinel {
+    fn drop(&mut self) {
+        // SAFETY: `!Send` guarantees drop runs on the constructing (R main)
+        // thread; release the exact root added in `new`. `R_ReleaseObject`
+        // does not allocate.
+        unsafe { crate::sys::R_ReleaseObject(self.sexp) };
+    }
 }
 
 impl crate::IntoR for DataFrameShape {
@@ -3192,26 +3250,36 @@ impl crate::IntoR for DataFrameShape {
         match self {
             DataFrameShape::Bare(df) => Ok(df.into_sexp()),
             DataFrameShape::Split { results, error } => {
-                // Protect both children via a NamedDataFrameListBuilder so
-                // neither is reaped between the two set_vector_elt /
-                // CHARSXP allocations in from_raw_pairs.
+                // Protect both children via the NamedDataFrameListBuilder's
+                // scope so neither is reaped between the set_vector_elt /
+                // CHARSXP allocations in from_raw_pairs. Each owned handle
+                // stays alive until after its child is protected in the
+                // builder's scope, then drops alloc-free — the child is
+                // rooted at every instant.
                 let mut builder = NamedDataFrameListBuilder::with_capacity(2);
                 builder = match results {
-                    SplitResults::Some(df) => builder.push("results", df),
+                    // `push` protects the view; the `df` handle's own root
+                    // releases at the end of this arm, after the protect.
+                    SplitResults::Some(df) => builder.push("results", *df),
                     SplitResults::None(sentinel) => {
-                        // SAFETY: sentinel originates from the user's `IntoR`
-                        // implementation which has already produced a valid
-                        // SEXP; protect via the builder's scope.
-                        unsafe { builder.push_raw("results", sentinel) }
+                        // SAFETY: `sentinel` wraps a valid SEXP kept alive by
+                        // its own root; `push_raw` protects it in the
+                        // builder's scope before the handle drops at the end
+                        // of this arm.
+                        unsafe { builder.push_raw("results", sentinel.as_sexp()) }
                     }
                 };
-                builder = builder.push("error", error);
+                // As above: `error`'s root holds until this arm ends, past
+                // the protect inside `push`.
+                builder = builder.push("error", *error);
                 Ok(builder.build().into_sexp())
             }
             DataFrameShape::PerVariantList(pairs) => {
                 let mut builder = NamedDataFrameListBuilder::with_capacity(pairs.len());
                 for (name, df) in pairs {
-                    builder = builder.push(name, df);
+                    // `push` protects the view; the `df` handle's own root
+                    // releases at the end of the iteration, after the protect.
+                    builder = builder.push(name, *df);
                 }
                 Ok(builder.build().into_sexp())
             }
@@ -3303,10 +3371,10 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     tag_field: tag_field.map(str::to_string),
                 })
                 .collect();
-            // `DataFrameShape::Bare` carries the cheap view; its `IntoR` re-roots
-            // it. The `built` handle keeps the frame rooted until this fn returns.
-            let built = vec_to_dataframe(&wrapped)?;
-            Ok(DataFrameShape::Bare(*built))
+            // `DataFrameShape::Bare` carries the owned, GC-rooted handle
+            // (#1265) — the frame stays rooted for as long as the caller
+            // holds the shape.
+            Ok(DataFrameShape::Bare(vec_to_dataframe(&wrapped)?))
         }
         SplitShape::PerVariantList | SplitShape::PerVariantListWithTag { .. } => {
             // Group indices by variant name (preserve first-seen order).
@@ -3325,52 +3393,42 @@ pub fn vec_to_dataframe_split<T: Serialize>(
             };
 
             // Build per-partition data.frames. We don't use NamedDataFrameListBuilder
-            // here because we want to return owned DataFrames, not a List.
+            // here because we want to return owned frames, not a List.
             // Single-variant short-circuit needs to inspect the count below.
-            let mut partitions: Vec<(String, DataFrame)> = Vec::with_capacity(groups.len());
-
-            // Root every partition data.frame for the remainder of the loop.
-            // `DataFrame` is an unrooted Copy SEXP wrapper (#1128), and each
-            // later iteration allocates (vec_to_dataframe, make_strsxp_repeat,
-            // prepend_column) — without a root, gctorture reaps earlier
-            // partitions (observed as "row names must be 'character' or
-            // 'integer', not 'char'" in gc_stress_split_with_tag). The scope
-            // unprotects when this arm returns.
-            // SAFETY: R main thread (this function allocates SEXPs throughout).
-            let scope = unsafe { crate::ProtectScope::new() };
+            //
+            // Each partition rides in an owned, GC-rooted `BuiltDataFrame`
+            // (#1265): later iterations allocate (vec_to_dataframe,
+            // make_strsxp_repeat, prepend_column), and the handles keep
+            // earlier partitions reachable — no ProtectScope re-rooting
+            // dance, and the roots travel with the returned shape instead of
+            // releasing when this fn returns.
+            let mut partitions: Vec<(String, BuiltDataFrame)> = Vec::with_capacity(groups.len());
 
             for (name, indices) in &groups {
                 let is_unit = infos[indices[0]].is_unit;
 
-                let df: DataFrame = if is_unit {
+                let df: BuiltDataFrame = if is_unit {
                     let sexp = unit_variant_dataframe(indices.len());
-                    // SAFETY: `unit_variant_dataframe` returns a well-formed data.frame SEXP.
-                    unsafe { DataFrame::from_built_sexp(sexp) }
+                    // SAFETY: `unit_variant_dataframe` returns a well-formed,
+                    // freshly-built data.frame SEXP; rooting is immediate (no
+                    // allocation before `R_PreserveObject`).
+                    unsafe { BuiltDataFrame::adopt_sexp(sexp) }
                 } else if tag_field.is_some() {
                     let refs: Vec<&T> = indices.iter().map(|&i| &rows[i]).collect();
                     let built = vec_to_dataframe(&refs)?;
                     if let Some(tf) = tag_field {
                         // `drop` (the inherent `BuiltDataFrame` forward, #1247)
                         // consumes `built` and returns a rooted handle for the
-                        // edited frame; deref to the view. The temporary
-                        // handle's root holds until the end of this `let df`
-                        // statement — `scope.protect_raw` below re-roots the
-                        // view before anything else allocates.
-                        *built.drop(tf)
+                        // edited frame.
+                        built.drop(tf)
                     } else {
-                        *built
+                        built
                     }
                 } else {
                     let wrapped: Vec<VariantPayload<&T>> =
                         indices.iter().map(|&i| VariantPayload(&rows[i])).collect();
-                    *vec_to_dataframe(&wrapped)?
+                    vec_to_dataframe(&wrapped)?
                 };
-
-                // SAFETY: R main thread; `df`'s producing handle releases its
-                // root at the end of the statement above (alloc-free). Root the
-                // view in `scope` before the tag-column allocations below and
-                // across the remaining loop iterations.
-                unsafe { scope.protect_raw(df.as_sexp()) };
 
                 let df = if let Some(col_name) = tag_column.as_deref() {
                     // SAFETY: R main thread. `make_strsxp_repeat` returns an
@@ -3379,15 +3437,11 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     let tag_protect = unsafe {
                         crate::OwnedProtect::new(make_strsxp_repeat(name, indices.len()))
                     };
-                    // `prepend_column` returns a rooted handle (#1247). Re-root
-                    // the view in `scope` for the remaining iterations (the
-                    // pre-tag root above now covers a superseded object; one
-                    // wasted slot per partition), then let the handle's own
-                    // root release at end of block — no allocation in between.
-                    let out = df.prepend_column(col_name, *tag_protect);
-                    drop(tag_protect);
-                    unsafe { scope.protect_raw(out.as_sexp()) };
-                    *out
+                    // `prepend_column` (the inherent forward, #1247) consumes
+                    // `df` — whose root keeps the input frame reachable
+                    // throughout the edit — and returns a rooted handle for
+                    // the tagged frame. `tag_protect` drops right after.
+                    df.prepend_column(col_name, *tag_protect)
                 } else {
                     df
                 };
@@ -4374,10 +4428,12 @@ pub enum ResultShape<S> {
 ///
 /// # GC discipline
 ///
-/// All intermediate data.frames are protected via
-/// [`NamedDataFrameListBuilder`]'s `ProtectScope` while the helper is on
-/// the stack; the returned [`DataFrameShape`] owns the inner SEXPs until
-/// the caller consumes it.
+/// The returned [`DataFrameShape`] is rooted by construction (#1265):
+/// every partition rides in an owned, GC-rooted
+/// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) handle and the
+/// empty-`Ok` sentinel carries its own [`RootedSentinel`] root, so the
+/// shape is safe to hold across R allocations. The [`crate::IntoR`]
+/// conversion consumes the handles.
 ///
 /// # Errors
 ///
@@ -4409,16 +4465,15 @@ where
             // Union-schema across T and E, with is_error column.
             let wrapped: Vec<CollatedResultRow<'_, T, E>> =
                 rows.iter().map(CollatedResultRow::from).collect();
-            // `DataFrameShape::Bare` carries the cheap view; its `IntoR` re-roots
-            // it. `built` keeps the frame rooted until this fn returns.
-            let built = vec_to_dataframe(&wrapped)?;
-            Ok(DataFrameShape::Bare(*built))
+            // `DataFrameShape::Bare` carries the owned, GC-rooted handle
+            // (#1265) — the frame stays rooted for as long as the caller
+            // holds the shape.
+            Ok(DataFrameShape::Bare(vec_to_dataframe(&wrapped)?))
         }
         ResultShape::Auto { empty_ok_sentinel } => {
             let (oks, errs) = partition_results(rows);
             if errs.is_empty() {
-                let built = vec_to_dataframe(&oks)?;
-                Ok(DataFrameShape::Bare(*built))
+                Ok(DataFrameShape::Bare(vec_to_dataframe(&oks)?))
             } else {
                 build_split(oks, errs, empty_ok_sentinel)
             }
@@ -4452,21 +4507,22 @@ where
     E: Serialize,
     S: crate::IntoR,
 {
-    // `error_df` is an owned handle: it stays GC-rooted across the `oks`/sentinel
-    // allocation below (pre-#1128 it was a bare view reaped mid-build under
-    // gctorture). Its cheap view is stored in the `DataFrameShape` carrier, whose
-    // `IntoR` re-roots it; the handle drops when this fn returns.
+    // `error_df` is an owned, GC-rooted handle: it stays rooted across the
+    // `oks`/sentinel allocation below (pre-#1128 it was a bare view reaped
+    // mid-build under gctorture) and rides in the returned shape (#1265), so
+    // the root travels with the caller instead of releasing here.
     let error_df = vec_to_dataframe(&errs)?;
     let results = if oks.is_empty() {
-        let sentinel = empty_ok_sentinel.into_sexp();
-        SplitResults::None(sentinel)
+        // `RootedSentinel::new` converts and immediately roots the
+        // caller-supplied sentinel — every leg of the shape carries its own
+        // root (#1265).
+        SplitResults::None(RootedSentinel::new(empty_ok_sentinel))
     } else {
-        let df = vec_to_dataframe(&oks)?;
-        SplitResults::Some(*df)
+        SplitResults::Some(vec_to_dataframe(&oks)?)
     };
     Ok(DataFrameShape::Split {
         results,
-        error: *error_df,
+        error: error_df,
     })
 }
 

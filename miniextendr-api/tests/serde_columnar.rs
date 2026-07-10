@@ -302,17 +302,53 @@ fn result_to_dataframe_split_all_err_uses_sentinel() {
         let shape = result_to_dataframe(
             &rows,
             ResultShape::Split {
-                empty_ok_sentinel: (),
+                empty_ok_sentinel: "no ok rows".to_string(),
             },
         )
         .unwrap();
-        assert!(matches!(
-            shape,
-            DataFrameShape::Split {
-                results: SplitResults::None(_),
-                ..
-            }
-        ));
+        let DataFrameShape::Split {
+            results: SplitResults::None(sentinel),
+            ..
+        } = &shape
+        else {
+            panic!("expected Split with sentinel");
+        };
+        // The sentinel carries its own GC root (#1265) and exposes the
+        // rooted SEXP for inspection.
+        let s = sentinel.as_sexp();
+        assert_eq!(s.xlength(), 1, "sentinel STRSXP length");
+        assert_eq!(s.string_elt_str(0), Some("no ok rows"));
+    });
+}
+
+/// A `DataFrameShape` is rooted by construction (#1265): holding it across R
+/// allocations and converting later must preserve the children — the
+/// pre-#1265 convert-immediately contract is gone.
+#[test]
+fn dataframe_shape_survives_allocations_before_conversion() {
+    #[derive(Serialize)]
+    enum E {
+        Click { x: f64 },
+        Scroll { delta: f64 },
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![E::Click { x: 1.0 }, E::Scroll { delta: -1.0 }];
+        let shape = vec_to_dataframe_split(&rows, SplitShape::PerVariantList).unwrap();
+
+        // Allocate after the helper returned but before the conversion.
+        for i in 0..64i32 {
+            let v: Vec<f64> = (0..32).map(|j| f64::from(i + j)).collect();
+            let _ = v.into_sexp();
+        }
+
+        let DataFrameShape::PerVariantList(parts) = shape else {
+            panic!("expected PerVariantList");
+        };
+        assert_eq!(parts.len(), 2);
+        for (name, df) in &parts {
+            assert_eq!(df.nrow(), 1, "partition {name} corrupted");
+        }
     });
 }
 

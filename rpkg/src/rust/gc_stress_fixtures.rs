@@ -1563,6 +1563,210 @@ pub fn gc_stress_split_collated() -> SEXP {
     .into_sexp()
 }
 
+/// Hold a `DataFrameShape` across an R-allocation burst before converting —
+/// the exact future-caller UAF #1265 closes.
+///
+/// Pre-#1265 the shape carried bare `DataFrame` views whose producing roots
+/// (the split arm's `ProtectScope`, or the `BuiltDataFrame` handles deref'd
+/// at the `Bare` boundary) released when the helper returned, so the shape
+/// was sound only under an implicit "convert immediately, do not allocate in
+/// between" contract. Now every leg rides its own root (`BuiltDataFrame` /
+/// `RootedSentinel`), so this fixture allocates heavily *between* the helper
+/// call and the `IntoR` conversion, then validates the converted values.
+/// Under `gctorture(TRUE)` every allocation is a full GC — an unrooted
+/// partition would be reaped in the burst.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_shape_held() {
+    use miniextendr_api::dataframe::DataFrame;
+    use miniextendr_api::serde::{
+        DataFrameShape, ResultShape, SplitResults, SplitShape, result_to_dataframe,
+        vec_to_dataframe_split,
+    };
+
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    enum Event {
+        Click { x: f64, y: f64 },
+        Scroll { delta: f64 },
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct OkRow {
+        id: i32,
+        value: f64,
+    }
+    #[derive(crate::serde::Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct ErrRow {
+        id: i32,
+        reason: String,
+    }
+
+    let events: Vec<Event> = (0..24i32)
+        .map(|i| {
+            if i % 2 == 0 {
+                Event::Click {
+                    x: f64::from(i),
+                    y: f64::from(i) * 2.0,
+                }
+            } else {
+                Event::Scroll {
+                    delta: f64::from(i) * -0.5,
+                }
+            }
+        })
+        .collect();
+
+    // Force a burst of R allocations. Under gctorture(TRUE) every allocation
+    // is a full GC — any unrooted frame inside a held shape is reclaimed here.
+    let churn = || {
+        for i in 0..32i32 {
+            let v: Vec<f64> = (0..64).map(|j| f64::from(i + j)).collect();
+            let _ = v.into_sexp();
+            let s: Vec<Option<String>> = (0..8).map(|j| Some(format!("c{i}_{j}"))).collect();
+            let _ = s.into_sexp();
+        }
+    };
+
+    // PerVariantList (with tag): two partition handles held across the burst.
+    {
+        let shape = vec_to_dataframe_split(
+            &events,
+            SplitShape::PerVariantListWithTag {
+                column: "variant".into(),
+            },
+        )
+        .expect("shape_held: split failed");
+        churn();
+        // Read through the still-held handles first…
+        let DataFrameShape::PerVariantList(parts) = &shape else {
+            panic!("shape_held: expected PerVariantList");
+        };
+        assert_eq!(parts.len(), 2, "shape_held: partition count");
+        for (name, df) in parts {
+            assert_eq!(
+                df.names().first().map(String::as_str),
+                Some("variant"),
+                "shape_held: tag column lost in {name}"
+            );
+        }
+        // …then convert and validate the assembled list.
+        // SAFETY: R main thread. Root the converted list across the reads
+        // below — `nrow()`/`from_sexp` go through `Rf_getAttrib(row.names)`,
+        // which can allocate (compact row.names expand to an ALTREP range).
+        let sexp = unsafe { OwnedProtect::new(shape.into_sexp()) };
+        assert_eq!(sexp.xlength(), 2, "shape_held: list length");
+        let names = sexp.get_names();
+        assert_eq!(names.string_elt_str(0), Some("Click"));
+        assert_eq!(names.string_elt_str(1), Some("Scroll"));
+        let click = DataFrame::from_sexp(sexp.vector_elt(0)).expect("shape_held: Click partition");
+        assert_eq!(click.nrow(), 12, "shape_held: Click nrow");
+    }
+
+    // Bare (collated): a single frame handle held across the burst.
+    {
+        let shape = vec_to_dataframe_split(
+            &events,
+            SplitShape::Collated {
+                column: "kind".into(),
+            },
+        )
+        .expect("shape_held: collated failed");
+        churn();
+        let DataFrameShape::Bare(df) = &shape else {
+            panic!("shape_held: expected Bare");
+        };
+        assert_eq!(df.nrow(), 24, "shape_held: collated nrow");
+        assert_eq!(
+            df.names().first().map(String::as_str),
+            Some("kind"),
+            "shape_held: collated tag column"
+        );
+    }
+
+    // Split with an Ok partition: both frame handles held across the burst.
+    {
+        let results: Vec<Result<OkRow, ErrRow>> = (0..20i32)
+            .map(|i| {
+                if i % 4 == 0 {
+                    Err(ErrRow {
+                        id: i,
+                        reason: format!("err {i}"),
+                    })
+                } else {
+                    Ok(OkRow {
+                        id: i,
+                        value: f64::from(i) * 1.5,
+                    })
+                }
+            })
+            .collect();
+        let shape = result_to_dataframe(
+            &results,
+            ResultShape::Auto {
+                empty_ok_sentinel: (),
+            },
+        )
+        .expect("shape_held: result Auto failed");
+        churn();
+        // SAFETY: as above — root the converted list across the reads.
+        let sexp = unsafe { OwnedProtect::new(shape.into_sexp()) };
+        assert_eq!(sexp.xlength(), 2, "shape_held: results+error length");
+        let ok_df =
+            DataFrame::from_sexp(sexp.vector_elt(0)).expect("shape_held: results partition");
+        assert_eq!(ok_df.nrow(), 15, "shape_held: Ok nrow");
+        let err_df = DataFrame::from_sexp(sexp.vector_elt(1)).expect("shape_held: error partition");
+        assert_eq!(err_df.nrow(), 5, "shape_held: Err nrow");
+    }
+
+    // Split with the all-Err sentinel: the `RootedSentinel`'s own root must
+    // keep the sentinel STRSXP alive across the burst.
+    {
+        let all_err: Vec<Result<OkRow, ErrRow>> = (0..10i32)
+            .map(|i| {
+                Err(ErrRow {
+                    id: i,
+                    reason: format!("err {i}"),
+                })
+            })
+            .collect();
+        let shape = result_to_dataframe(
+            &all_err,
+            ResultShape::Split {
+                empty_ok_sentinel: String::from("no ok rows"),
+            },
+        )
+        .expect("shape_held: result Split failed");
+        churn();
+        let DataFrameShape::Split {
+            results: SplitResults::None(sentinel),
+            ..
+        } = &shape
+        else {
+            panic!("shape_held: expected Split with sentinel");
+        };
+        assert_eq!(
+            sentinel.as_sexp().string_elt_str(0),
+            Some("no ok rows"),
+            "shape_held: sentinel reclaimed"
+        );
+        // SAFETY: as above — root the converted list across the reads.
+        let sexp = unsafe { OwnedProtect::new(shape.into_sexp()) };
+        let results_slot = sexp.vector_elt(0);
+        assert_eq!(
+            results_slot.string_elt_str(0),
+            Some("no ok rows"),
+            "shape_held: sentinel slot corrupted"
+        );
+        let err_df =
+            DataFrame::from_sexp(sexp.vector_elt(1)).expect("shape_held: all-err partition");
+        assert_eq!(err_df.nrow(), 10, "shape_held: all-err nrow");
+    }
+}
+
 // endregion
 
 // region: factor-label dataframe_to_vec GC stress (issue #689)
