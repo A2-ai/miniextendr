@@ -1015,20 +1015,6 @@ impl MiniextendrFunctionParsed {
         None
     }
 
-    /// Add `#[track_caller]` if not already present (for better panic locations).
-    /// Only for Rust ABI functions - extern "C-unwind" doesn't support track_caller.
-    pub(crate) fn add_track_caller_if_needed(&mut self) {
-        let has_explicit_abi = self.item.sig.abi.is_some();
-        let has_track_caller = self
-            .item
-            .attrs
-            .iter()
-            .any(|attr| attr.path().is_ident("track_caller"));
-        if !has_track_caller && !has_explicit_abi {
-            self.item.attrs.push(syn::parse_quote!(#[track_caller]));
-        }
-    }
-
     /// Add `#[inline(never)]` if no `#[inline(...)]` attribute is present.
     /// Only for Rust ABI functions - extern "C-unwind" functions are passed through as-is.
     ///

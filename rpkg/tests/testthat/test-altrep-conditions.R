@@ -45,7 +45,10 @@ test_that("PanickingAltrep: condition message is preserved", {
     rust_error = function(e) conditionMessage(e)
   )
 
-  expect_equal(msg, "my specific panic message")
+  # ALTREP callbacks panic through the RUnwind guard, one of the three generic
+  # panic sites, so the message carries the surfaced `(at file:line)` suffix.
+  expect_match(msg, "my specific panic message", fixed = TRUE)
+  expect_match(msg, "\\(at .*altrep_condition_tests\\.rs:[0-9]+\\)")
 })
 
 test_that("PanickingAltrep: catching as simpleError also works", {

@@ -69,14 +69,5 @@ test_that("c_symbol custom C symbol still dispatches from R", {
   expect_identical(c_symbol_demo(1L), 42L)
 })
 
-test_that("#[miniextendr] adds #[track_caller] automatically", {
-  expect_true(track_caller_is_active())
-})
-
-test_that("track_caller chain location resolves into user code, not stdlib", {
-  loc <- track_caller_chain_location()
-  expect_type(loc, "character")
-  # The exact line is codegen detail; the file must be the fixture source,
-  # never core/std internals.
-  expect_match(loc, "r_wrapper_attrs\\.rs")
-})
+# Panic source-location surfacing (formerly the track_caller fixtures, dropped
+# in #1121) now lives in test-panic-location.R.

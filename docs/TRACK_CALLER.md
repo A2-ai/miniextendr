@@ -1,70 +1,77 @@
-# `#[track_caller]` in miniextendr
+# Panic source locations in miniextendr
 
-The `#[miniextendr]` macro automatically adds `#[track_caller]` to Rust functions.
+When a Rust `panic!` becomes an R error, miniextendr appends the Rust source
+location to the R condition message:
 
-## What it actually does
-
-`#[track_caller]` changes what `std::panic::Location::caller()` reports inside
-a function: instead of the exact line where `caller()` (or a panicking
-`.unwrap()` / `.expect()` / `assert!`) sits, the location resolves to the
-function's **call site**. When several `#[track_caller]` functions call each
-other, the location keeps walking up until it exits the attributed chain.
-
-For a `#[miniextendr]` function, the caller is the macro-generated wrapper,
-whose call-site span resolves to the **`#[miniextendr]` attribute line** of
-your function. The observable behavior (pinned by the
-`track_caller_is_active()` / `track_caller_chain_location()` fixtures in
-`rpkg/src/rust/r_wrapper_attrs.rs`):
-
-```rust
-#[miniextendr]              // <- panic locations report THIS line
-pub fn process_data(x: i32) {
-    let result: Option<i32> = None;
-    result.unwrap();        // NOT this line
-}
+```
+Error in panic_location_main_direct(NULL):
+  boom-main-direct
+  (at panic_location_tests.rs:46)
 ```
 
-- **Without the automatic attribute**, `.unwrap()` (which is itself
-  `#[track_caller]` in std) would report the exact `.unwrap()` line.
-- **With it**, the location walks past the function body to the wrapper's
-  call site — the `#[miniextendr]` line.
+The location comes from the process **panic hook** (`PanicHookInfo::location()`),
+not from `#[track_caller]`.
 
-So the automatic attribute trades line-level precision inside the function
-for a stable function-level location: a panic always identifies *which
-exported function* failed, in *your* source file, never a location inside
-generated code or the standard library.
+## How it works
 
-## Propagation through call chains
+`miniextendr-api/src/backtrace.rs` installs a panic hook at package init. On
+every panic the hook records the panic's `(file, line)` into a per-thread,
+take-once slot *before* it decides whether to print the stderr traceback
+(`MINIEXTENDR_BACKTRACE`). At the panic-stringification sites the framework
+folds that location into the message via
+`unwind_protect::panic_message_with_location`, producing the trailing
+`\n(at file:line)`.
 
-Marking helpers `#[track_caller]` extends the walk — their reported location
-also resolves to the `#[miniextendr]` line, not to the helper call site:
+The hook fires on the *panicking* thread, so the slot is per-thread:
 
-```rust
-#[track_caller]
-fn helper() {
-    let x: Option<i32> = None;
-    x.unwrap();             // reports the #[miniextendr] line below
-}
+- **Main-thread `#[miniextendr]` fns** (anything taking a `SEXP` / borrowed R
+  view, returning a `SEXP`, taking `...`, or `check_interrupt`) — panic, hook,
+  and `catch_unwind` all run on main; the location is read on main.
+- **Worker-thread `#[miniextendr(worker)]` fns** — the panic and hook fire on
+  the worker; the location is folded **once, at the worker (origin) thread**
+  (`worker.rs`), and the finished message crosses back to main verbatim. No
+  double-append, no clobber by main-side re-panics.
 
-#[miniextendr]              // <- reported location
-pub fn my_function() {
-    helper();
-}
-```
+## Which errors carry a location
 
-Without `#[track_caller]` on `helper()`, the panic reports the `.unwrap()`
-line inside `helper()` — standard Rust behavior.
+Only the **generic panic** path (`panic!`, `.unwrap()`, `assert!`, …) gets the
+`(at …)` suffix — `error_value::kind::PANIC`. The typed condition path is left
+byte-for-byte unchanged and carries **no** location:
 
-## Where the location surfaces
+- `error!()` / `warning!()` / `message!()` / `condition!()`
+- returning `Result::Err`
+- returning `Option::None`
 
-The panic *message* transported to R (the `rust_panic` condition) contains
-only the payload text, not the location. The location appears on stderr via
-the panic hook, and in `Location::caller()`-based code like the fixtures
-above.
+These are intentional, user-shaped conditions with their own class layering and
+messages; a `(at …)` suffix would be noise.
 
-## Skipped cases
+## Why there is no automatic `#[track_caller]`
 
-The macro does NOT add `#[track_caller]` when:
-1. The function already has `#[track_caller]`
-2. The function has an explicit ABI (e.g., `extern "C-unwind"` — the
-   attribute is not supported there)
+Earlier versions auto-added `#[track_caller]` to every `#[miniextendr]` fn. That
+was **removed** (#1121) because it actively defeats the location above:
+
+- `#[track_caller]` makes `Location::caller()` (and a panicking
+  `.unwrap()` / `assert!`) resolve to the function's **call site**. For a
+  `#[miniextendr]` fn the caller is the macro-generated wrapper, whose span is
+  the `#[miniextendr]` attribute line — i.e. generated glue, not your `panic!`.
+- With the attribute gone, a **direct** panic's hook location points at the
+  real `panic!` line in your source.
+- **Nested** panics (your fn calls a plain Rust helper that panics) were always
+  reported at the helper's `panic!` line, with or without the attribute — the
+  helper isn't `#[track_caller]`.
+
+Investigation note (`tc-invest`, 2026-07-08): before this feature the automatic
+`#[track_caller]` had **no** effect on the R-facing message (which never
+contained a location); the only observable difference was the
+`MINIEXTENDR_BACKTRACE=true` stderr backtrace. So dropping it costs nothing and
+is exactly what makes the newly-surfaced location correct.
+
+The sibling automatic `#[inline(never)]` injection is unrelated and stays — it
+keeps function names in stack traces and preserves the worker/unwind boundary.
+
+## Opting into the stderr traceback
+
+Set `MINIEXTENDR_BACKTRACE=true` (or `1`) to also print the full Rust panic
+traceback to stderr via Rust's default hook, in addition to the R error. The
+`(at file:line)` suffix in the R message is always present, regardless of this
+variable.

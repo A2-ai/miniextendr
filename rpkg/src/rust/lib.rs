@@ -239,6 +239,7 @@ mod num_traits_adapter_tests;
 mod option_self_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
+mod panic_location_tests;
 mod panic_telemetry_tests;
 mod panic_tests;
 mod pipe_builder_tests;

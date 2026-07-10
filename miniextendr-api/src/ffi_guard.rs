@@ -86,7 +86,12 @@ where
         GuardMode::CatchUnwind => match catch_unwind(AssertUnwindSafe(f)) {
             Ok(val) => val,
             Err(payload) => {
-                let msg = panic_payload_to_string(payload.as_ref());
+                // Fold the hook-captured `(at file:line)` into the message, same
+                // as the `RUnwind` sibling below (which routes through
+                // `with_r_unwind_protect_sourced`). The panic and hook fired on
+                // this thread (ALTREP `RustUnwind` callbacks run on main), so the
+                // take-once slot holds the real `panic!` site.
+                let msg = crate::unwind_protect::panic_message_with_location(payload.as_ref());
                 crate::panic_telemetry::fire(&msg, source);
                 crate::error::r_stop(&msg)
             }

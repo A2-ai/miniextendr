@@ -229,6 +229,28 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
     }
 }
 
+/// Stringify a panic payload and fold in the Rust source location the panic
+/// hook recorded on the *current* thread, producing the final R-facing message.
+///
+/// Returns `panic_payload_to_string(payload)` with a `\n(at file:line)` suffix
+/// when [`crate::backtrace::take_last_panic_location`] has a location for this
+/// thread, otherwise the bare message. The location is captured in the process
+/// panic hook (`backtrace.rs`), which fires on the panicking thread — so this
+/// **must be called on the same thread that ran the panicking closure** (main
+/// for main-thread `#[miniextendr]` fns; the worker for worker-dispatched fns).
+///
+/// Only the *generic panic* path uses this. `error!`/`warning!`/`message!`/
+/// `condition!` (and `Result::Err` / `Option::None`) travel the typed
+/// `RCondition` / tagged-value branches and are deliberately left byte-for-byte
+/// unchanged — they carry no location suffix.
+pub(crate) fn panic_message_with_location(payload: &(dyn Any + Send)) -> String {
+    let msg = panic_payload_to_string(payload);
+    match crate::backtrace::take_last_panic_location() {
+        Some((file, line)) => format!("{msg}\n(at {file}:{line})"),
+        None => msg.into_owned(),
+    }
+}
+
 // region: Log drain integration
 
 /// Drain the cross-thread log queue if the `log` feature is enabled.
@@ -448,10 +470,12 @@ where
                     }
                 }
             } else {
-                // Generic panic — no class layering, plain error string.
+                // Generic panic — no class layering, plain error string plus the
+                // `(at file:line)` suffix folded from the panic hook (this branch
+                // runs on the panicking thread for the ALTREP/FFI-guard path).
                 // Fire telemetry and raise via Approach 3 with rust_error class so
                 // tryCatch(rust_error = h, ...) matches even for plain panics.
-                let msg = panic_payload_to_string(payload.as_ref());
+                let msg = panic_message_with_location(payload.as_ref());
                 crate::panic_telemetry::fire(&msg, source);
                 unsafe { raise_rust_condition_via_stop(&msg, None, call) }
             }
@@ -528,8 +552,9 @@ where
             }
             // endregion
 
-            // Generic panic path
-            let msg = panic_payload_to_string(payload.as_ref());
+            // Generic panic path — fold the hook-captured `(at file:line)` into
+            // the message (this shim runs on the panicking thread).
+            let msg = panic_message_with_location(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
             // SAFETY: on the R main thread inside R_UnwindProtect.
             unsafe {
@@ -610,8 +635,12 @@ where
             }
             // endregion
 
-            // Generic panic path — unchanged
-            let msg = panic_payload_to_string(payload.as_ref());
+            // Generic panic path — the primary user-facing route for
+            // `#[miniextendr]` fns running on the main thread. Fold the
+            // hook-captured `(at file:line)` into the message. (The RCondition
+            // branch above is deliberately untouched: error!/warning!/message!/
+            // condition! and Err/None carry no location suffix.)
+            let msg = panic_message_with_location(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
             // SAFETY: on the R main thread inside R_UnwindProtect.
             unsafe {
