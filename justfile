@@ -1438,10 +1438,10 @@ docker-webr-test: docker-webr-build
     just docker-webr-run "cargo check --target wasm32-unknown-emscripten -p miniextendr-api"
 
 # Run the webR/wasm32 smoke test for rpkg.
-# Builds rpkg as a wasm32 side-module inside the dev container, loads it in
-# a webR Node session, and runs the full testthat suite. Many tests will fail
-# (worker thread / fork / threading assumptions) — script reports counts and
-# exits 0 as long as the package itself loads. Stacked on feat/webr-step8.
+# Builds rpkg as a wasm32 side-module inside the dev container and loads it
+# in a webR Node session via the canonical runner
+# tests/webr-node-smoke/smoke.mjs (library() + packageVersion() only;
+# testthat-under-wasm coverage is tracked in #1255).
 docker-webr-smoke *args: docker-webr-build
     bash tests/webr-smoke.sh {{args}}
 

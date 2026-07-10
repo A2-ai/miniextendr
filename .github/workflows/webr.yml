@@ -89,11 +89,13 @@ jobs:
             echo "::endgroup::"
           done
 
-      # rpkg/configure invokes ${R_HOME}/bin/Rscript directly for feature
-      # detection (configure.ac:133, :275, :473). The dummy R_HOME has no
-      # Rscript binary, so configure fails on this bare-ubuntu runner.
-      # Tier 2 (below) runs inside the webR container which has real R, so the
-      # full rpkg install path is exercised there instead.
+      # rpkg/src/rust is not cargo-checked here: rpkg/configure invokes
+      # ${R_HOME}/bin/Rscript directly for feature detection and this
+      # bare-ubuntu runner has no R installed. Tier 2 (below) runs inside the
+      # webR container which has real R, so the full rpkg install path is
+      # exercised there instead. (The crates checked above need no R on
+      # wasm32 — build.rs skips link_to_r() when CARGO_CFG_TARGET_ARCH is
+      # wasm32, #482.)
 
   # ── Tier 2 + 3: full wasm32 R CMD INSTALL + Node smoke ──────────────────
   # Closes #491 (tier 2) and #492 (tier 3 — Node + webR runtime smoke).

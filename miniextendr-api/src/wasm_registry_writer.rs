@@ -5,8 +5,8 @@
 //! Rust source listing every `MX_CALL_DEFS` / `MX_ALTREP_REGISTRATIONS` /
 //! `MX_TRAIT_DISPATCH` entry as `extern "C" {}` declarations + ordinary
 //! `&[T]` static slices. On `wasm32-*` targets, the user crate compiles that
-//! file in place of the linkme distributed_slices (gating happens in step 5
-//! of `plans/webr-support.md`).
+//! file in place of the linkme distributed_slices (`miniextendr_init!` emits
+//! the wasm32-gated `mod __miniextendr_wasm_registry;` that includes it).
 //!
 //! The writer is intentionally pure-text-formatting — no `syn`, no
 //! `proc-macro2`, no template engine. Output is small, append-only, and

@@ -2,11 +2,12 @@
 # tests/webr-smoke.sh
 #
 # Local smoke test: builds rpkg as a wasm32 side-module inside the
-# miniextendr-webr-dev container, loads it in a webR Node.js session,
-# and runs the full testthat suite under wasm.
+# miniextendr-webr-dev container and loads it in a webR Node.js session
+# via the canonical runner tests/webr-node-smoke/smoke.mjs — library() +
+# packageVersion() only (testthat-under-wasm coverage is tracked in #1255).
 #
 # Exit codes:
-#   0  — miniextendr loaded (test failures are expected and tolerated)
+#   0  — miniextendr loaded in the webR session
 #   1  — infrastructure failure (docker, build error, library() crash)
 #
 # Usage:
@@ -20,7 +21,8 @@
 #
 # Environment:
 #   WEBR_ARM64=1      arm64-native dev path (#788, ⚠️ DRAFT — unvalidated on
-#                     arm64 hardware). Selects Dockerfile.webr-arm64 + the
+#                     arm64 hardware; validation checklist tracked in #1254).
+#                     Selects Dockerfile.webr-arm64 + the
 #                     arm64 image, and orchestrates both R passes through the
 #                     native arm64 R on PATH (the donor's amd64 host-R binaries
 #                     under /opt/webr/host + /opt/R can't execute on arm64; the
