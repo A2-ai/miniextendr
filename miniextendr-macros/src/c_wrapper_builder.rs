@@ -12,6 +12,54 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+/// How a `#[miniextendr]` parameter type borrows R's data pointer, if it does.
+///
+/// `&[T]` / `&mut [T]` (and their `Option<_>` wrappers) are the `TryFromSexp`
+/// impls in `miniextendr-api/src/from_r.rs` that return a *view* over R's
+/// `DATAPTR` without copying (`r_slice` / `r_slice_mut`). Two such parameters
+/// bound to the same SEXP alias one buffer; that is undefined behavior whenever
+/// at least one of the two borrows is mutable (#1104).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SliceBorrow {
+    /// `&mut [T]` / `Option<&mut [T]>` — exclusive borrow via `r_slice_mut`.
+    Mut,
+    /// `&[T]` / `Option<&[T]>` — shared borrow via `r_slice`.
+    Shared,
+}
+
+/// Classify `ty` as a zero-copy slice borrow of R's data pointer, if it is one.
+///
+/// `Vec<T>` / `Box<[T]>` copy the R vector and never alias R's buffer, so they
+/// are not classified. `match_arg` + `several_ok` `&mut [T]` params get their
+/// own owned `Vec<T>` storage and are excluded by the caller, not here.
+fn slice_borrow_kind(ty: &syn::Type) -> Option<SliceBorrow> {
+    match ty {
+        // &[T] / &mut [T]
+        syn::Type::Reference(r) if matches!(r.elem.as_ref(), syn::Type::Slice(_)) => {
+            Some(if r.mutability.is_some() {
+                SliceBorrow::Mut
+            } else {
+                SliceBorrow::Shared
+            })
+        }
+        // Option<&[T]> / Option<&mut [T]>
+        syn::Type::Path(tp) => {
+            let seg = tp.path.segments.last()?;
+            if seg.ident != "Option" {
+                return None;
+            }
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                return None;
+            };
+            args.args.iter().find_map(|a| match a {
+                syn::GenericArgument::Type(inner) => slice_borrow_kind(inner),
+                _ => None,
+            })
+        }
+        _ => None,
+    }
+}
+
 /// Thread execution strategy for C wrappers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadStrategy {
@@ -383,6 +431,69 @@ impl CWrapperContext {
         (all_pre, all_in)
     }
 
+    /// Emit a debug-only guard against aliasing zero-copy slice arguments (#1104).
+    ///
+    /// `impl TryFromSexp for &mut [T]` (and `Option<&mut [T]>`) hands out a
+    /// mutable slice over R's data pointer without copying, and `&[T]` /
+    /// `Option<&[T]>` hand out a shared one. When R binds the same vector to two
+    /// such parameters (`f(x, x)`), the wrapper would produce two aliasing slices
+    /// over one buffer. That is undefined behavior whenever at least one of the
+    /// two borrows is mutable — two mutable slices, or one mutable and one shared
+    /// (`&mut [T]` + `&[T]`). Two shared borrows do not conflict and are allowed.
+    ///
+    /// Since the wrapper knows the parameter shapes, we compare the raw SEXP
+    /// identities pairwise before any conversion and panic (converted to an R
+    /// error by the surrounding unwind guard) if an offending pair shares a SEXP,
+    /// naming both parameters. Comparing SEXP identity (not the data pointer) is
+    /// deliberate: two *distinct* empty vectors share R's `0x1` sentinel data
+    /// pointer but are different SEXPs, so identity avoids a false positive there.
+    ///
+    /// `debug_assert!` compiles to nothing in release builds, so this is a
+    /// zero-cost debugging aid. `match_arg` + `several_ok` `&mut [T]` params are
+    /// excluded: they get their own owned `Vec<T>` storage and never alias R.
+    fn build_alias_guard(&self, sexp_idents: &[syn::Ident]) -> TokenStream {
+        // Collect (sexp_ident, param_name, borrow_kind) for every slice-family
+        // parameter that borrows R's data pointer directly.
+        let mut slice_params: Vec<(&syn::Ident, String, SliceBorrow)> = Vec::new();
+        for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents.iter()) {
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                let param_name = pat_ident.ident.to_string();
+                if self.match_arg_several_ok_params.contains(&param_name) {
+                    continue;
+                }
+                if let Some(kind) = slice_borrow_kind(pt.ty.as_ref()) {
+                    slice_params.push((sexp_ident, param_name, kind));
+                }
+            }
+        }
+
+        let mut checks = Vec::new();
+        for i in 0..slice_params.len() {
+            for j in (i + 1)..slice_params.len() {
+                let (id_a, name_a, kind_a) = &slice_params[i];
+                let (id_b, name_b, kind_b) = &slice_params[j];
+                // Two shared `&[T]` reads over one buffer are sound; only a pair
+                // where at least one borrow is mutable is undefined behavior.
+                if *kind_a != SliceBorrow::Mut && *kind_b != SliceBorrow::Mut {
+                    continue;
+                }
+                let msg = format!(
+                    "aliasing slice arguments: parameters `{name_a}` and `{name_b}` are bound to \
+                     the same R object, and at least one borrows it mutably (`&mut [T]`), so they \
+                     would produce aliasing slices over one vector (undefined behavior). Pass \
+                     distinct vectors."
+                );
+                checks.push(quote! {
+                    ::core::debug_assert!(#id_a != #id_b, #msg);
+                });
+            }
+        }
+
+        quote! { #(#checks)* }
+    }
+
     /// Generates an `extern "C-unwind"` wrapper that runs entirely on the R main thread.
     ///
     /// The wrapper body is enclosed in `with_r_unwind_protect`, which catches both Rust
@@ -395,6 +506,7 @@ impl CWrapperContext {
         let generics = &self.generics;
         let (c_params, _, sexp_idents) = self.build_c_params();
         let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
+        let alias_guard = self.build_alias_guard(&sexp_idents);
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
@@ -435,6 +547,7 @@ impl CWrapperContext {
                     let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                         #unwind_protect_fn(
                             || {
+                                #alias_guard
                                 #pre_call_checks
                                 #(#pre_call)*
                                 #(#conversion_stmts)*
@@ -461,6 +574,7 @@ impl CWrapperContext {
                 #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                     #unwind_protect_fn(
                         || {
+                            #alias_guard
                             #pre_call_checks
                             #(#pre_call)*
                             #(#conversion_stmts)*
@@ -490,6 +604,7 @@ impl CWrapperContext {
         let generics = &self.generics;
         let (c_params, _, sexp_idents) = self.build_c_params();
         let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
+        let alias_guard = self.build_alias_guard(&sexp_idents);
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
@@ -550,6 +665,7 @@ impl CWrapperContext {
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                 #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    #alias_guard
                     #pre_call_checks
                     #(#pre_call)*
                     #(#pre_closure_stmts)*
