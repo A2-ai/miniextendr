@@ -138,14 +138,24 @@ functions.
 
 ### Step 3: Build and install
 
-For local development:
+For a standalone package, use the single command `use_miniextendr()` already
+told you to run next:
 
-```bash
-bash ./configure        # generates Makevars and .cargo/config.toml
-R CMD INSTALL .         # compiles Rust, generates R wrappers, installs
+```r
+minirextendr::miniextendr_build()
 ```
 
-Or, if you are working inside the miniextendr monorepo:
+This runs `autoconf` + `./configure`, compiles Rust, generates the R
+wrappers, installs the package, and regenerates `NAMESPACE`/`man/` via
+roxygen2 — and it sets `MINIEXTENDR_FORCE_WRAPPER_GEN` so wrapper generation
+happens even if the package has been flipped into offline tarball mode (see
+the pitfall below). **Do not** substitute a bare `R CMD INSTALL .` /
+`devtools::install()` / `devtools::document()` for this — those skip the
+`MINIEXTENDR_FORCE_WRAPPER_GEN` override and can silently install a package
+with an empty namespace.
+
+If you are working inside the miniextendr monorepo instead, use the maintainer
+recipes:
 
 ```bash
 just configure          # wraps bash ./configure with workspace settings
@@ -153,13 +163,19 @@ just rcmdinstall        # R CMD INSTALL with correct flags
 just force-document     # run roxygen2 to regenerate NAMESPACE and man/
 ```
 
-The `just` recipes are for maintainers of this repo. If you are scaffolding
-your own separate R package, use plain `bash ./configure && R CMD INSTALL .`.
+The manual equivalent (useful for understanding what's happening, or when
+`minirextendr` isn't installed) is `bash ./configure && R CMD INSTALL .` —
+always `bash ./configure`, not `./configure`: the script uses `#!/bin/sh` as
+its shebang, and `AC_CONFIG_COMMANDS` passthrough produces spurious errors
+under that shell.
 
-Important: always use `bash ./configure`, not `./configure`. The script uses
-`#!/bin/sh` as its shebang, and `AC_CONFIG_COMMANDS` passthrough produces
-spurious errors under that shell. Invoking with explicit `bash` avoids the
-problem on every platform.
+**Pitfall — configure before `git init`**: if you scaffold a package and run
+`configure`/`miniextendr_build()` before ever running `git init`, the
+"no `.git` ancestor" auto-vendor self-repair fires and silently flips the
+package into CRAN-style offline tarball mode (you'll see `configure: install
+mode = tarball install (offline, vendored)` with no further explanation).
+This is otherwise harmless, but avoid the confusion by running `git init`
+right after `use_miniextendr()`, before the first `configure`/build.
 
 ### Step 4: Call from R and iterate
 
@@ -174,10 +190,23 @@ add_integers(3L, 4L)
 The iteration loop for Rust changes is:
 
 1. Edit `.rs` source files.
-2. `bash ./configure && R CMD INSTALL .` (or `just configure && just rcmdinstall`).
-3. If you added or removed `#[miniextendr]` functions, also regenerate wrappers:
-   in the monorepo run `just force-document`; in a standalone package run
-   `Rscript -e 'devtools::document()'` after install.
+2. `minirextendr::miniextendr_build()` (or `just configure && just rcmdinstall
+   && just force-document` in the monorepo).
+3. **Adding, removing, or renaming a `#[miniextendr]` item** (function, class,
+   trait impl — anything that changes the *set* of exported names) hits a
+   chicken-and-egg ordering: the package is installed *before* roxygen2 rewrites
+   `NAMESPACE` from the freshly generated `R/miniextendr-wrappers.R`, so the
+   installed image lags the on-disk `NAMESPACE` by one build and the new export
+   isn't callable yet (`could not find function "..."`).
+   - `minirextendr::miniextendr_build()` **handles this for you in a single
+     call**: it snapshots `NAMESPACE` before and after `document()` and, if the
+     export set changed, reinstalls once so the installed image matches. No
+     second pass needed.
+   - The monorepo raw recipes do *not* self-heal — after `just rcmdinstall &&
+     just force-document` you must run `just rcmdinstall` once more so the new
+     export becomes runtime-callable.
+   Pure signature/body edits to *existing* exports need neither — only changes
+   to the set of exported names do.
 4. Restart R (or reload the package) and test.
 
 Generated files (`R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must be

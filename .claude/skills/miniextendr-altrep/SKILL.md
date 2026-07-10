@@ -131,6 +131,11 @@ pub struct ConstantIntVector {
 }
 ```
 
+The prelude re-exports the full ALTREP surface (#1230): the seven per-family
+derives (`AltrepInteger`/`Real`/`Logical`/`Raw`/`String`/`Complex`/`List`),
+the `AltrepLen`/`Alt*Data` traits, and `AltrepExtract`/`RegisterAltrep` —
+so `use miniextendr_api::prelude::*;` alone is enough.
+
 The derive emits:
 - `impl AltrepLen for ConstantIntVector` reading `self.length`.
 - `impl AltIntegerData for ConstantIntVector` returning `self.value` for every index.
