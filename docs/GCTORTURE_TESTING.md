@@ -137,7 +137,29 @@ For a tighter feedback loop while bisecting:
 - Pool variant for any-order release: `miniextendr-api/src/protect_pool.rs`
   (`ProtectPool` — VECSXP-backed, generational keys).
 
-## Adding to CI
+## How CI runs the gctorture tests (per-PR)
+
+The gctorture-heavy testthat files (`test-gc-stress-fixtures.R`,
+`test-externalptr-self-root.R`, `test-iter-to-dataframe.R`,
+`test-dataframe-deserialize.R`) are ~31 of the suite's ~34 minutes, so CI runs
+them **exactly once per PR**, in the sharded `r-stress-tests` job, instead of
+inside every job that happens to execute the suite. Two env vars, both handled
+by `rpkg/tests/testthat/helper-gc-stress.R`, orchestrate this:
+
+- `MINIEXTENDR_SKIP_STRESS=1` — skips the torture blocks (cheap structure /
+  value assertions in the same files keep running). Set by the `R CMD check`
+  legs, the CRAN-like check, and the `r-tests` job (including its heap-check
+  rounds). The helper also calls `skip_on_cran()`: a half-hour suite is far
+  beyond real CRAN's check budget. Note `skip_on_cran()` alone can't gate CI —
+  r-lib's setup actions export `NOT_CRAN=true` into every job.
+- `MINIEXTENDR_STRESS_SHARD=k/n` — splits the dynamic no-arg fixture sweep in
+  `test-gc-stress-fixtures.R` across the parallel `r-stress-tests` shards by
+  fixture index. Unset locally, so `just devtools-test` always runs everything.
+
+Per-PR coverage is unchanged by this layout — same fixtures, same iteration
+counts, run once instead of five times.
+
+## Adding to CI (nightly deep sweep)
 
 A nightly `gctorture nightly` job invokes the full-suite recipe at `step = 100` on the
 Linux R-release runner, catching this class of bug before it reaches a release. It is

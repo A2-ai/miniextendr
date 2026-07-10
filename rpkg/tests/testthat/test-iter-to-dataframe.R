@@ -17,6 +17,7 @@ test_that("gc_stress_iter_to_dataframe returns a valid data.frame", {
 })
 
 test_that("gc_stress_iter_to_dataframe survives gctorture(TRUE)", {
+  skip_gc_stress_if_disabled()
   skip_if_not(
     exists("gc_stress_iter_to_dataframe", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_iter_to_dataframe not compiled (serde feature missing)"
@@ -49,6 +50,7 @@ test_that("gc_stress_builder_with_schema returns a valid data.frame", {
 })
 
 test_that("gc_stress_builder_with_schema survives gctorture(TRUE)", {
+  skip_gc_stress_if_disabled()
   skip_if_not(
     exists("gc_stress_builder_with_schema", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_builder_with_schema not compiled (serde feature missing)"
@@ -78,6 +80,7 @@ test_that("gc_stress_builder_grow_schema returns a valid data.frame", {
 })
 
 test_that("gc_stress_builder_grow_schema survives gctorture(TRUE)", {
+  skip_gc_stress_if_disabled()
   skip_if_not(
     exists("gc_stress_builder_grow_schema", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_builder_grow_schema not compiled (serde feature missing)"

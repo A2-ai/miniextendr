@@ -20,6 +20,7 @@ test_that("naive Vec<ExternalPtr> construction runs without corruption", {
 })
 
 test_that("naive Vec<ExternalPtr> construction survives gctorture", {
+  skip_gc_stress_if_disabled()
   # The real coverage is the gctorture sweep over no-arg exports (see
   # docs/GCTORTURE_TESTING.md), but a few torture iterations here give CI a
   # direct regression guard. The fixture is small, so this stays cheap.
@@ -35,6 +36,7 @@ test_that("collect_into_r_list bulk build runs without corruption", {
 })
 
 test_that("collect_into_r_list bulk build survives gctorture", {
+  skip_gc_stress_if_disabled()
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
   for (i in seq_len(3)) {

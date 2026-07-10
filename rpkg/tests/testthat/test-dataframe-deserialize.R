@@ -18,6 +18,7 @@ test_that("gc_stress_dataframe_to_vec — returns expected row count", {
 })
 
 test_that("gc_stress_dataframe_to_vec — survives gctorture(TRUE)", {
+  skip_gc_stress_if_disabled()
   skip_if_not(
     exists("gc_stress_dataframe_to_vec", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_dataframe_to_vec not compiled (serde feature missing)"
@@ -43,6 +44,7 @@ test_that("gc_stress_dataframe_to_vec_nested — returns expected row count", {
 })
 
 test_that("gc_stress_dataframe_to_vec_nested — survives gctorture(TRUE)", {
+  skip_gc_stress_if_disabled()
   skip_if_not(
     exists("gc_stress_dataframe_to_vec_nested", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_dataframe_to_vec_nested not compiled (serde feature missing)"
@@ -69,6 +71,7 @@ test_that("gc_stress_with_dataframe_rows — returns expected sum", {
 })
 
 test_that("gc_stress_with_dataframe_rows — survives gctorture(TRUE)", {
+  skip_gc_stress_if_disabled()
   skip_if_not(
     exists("gc_stress_with_dataframe_rows", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_with_dataframe_rows not compiled (serde feature missing)"
@@ -96,6 +99,7 @@ test_that("gc_stress_factor_labels — round-trips factor column to labels", {
 })
 
 test_that("gc_stress_factor_labels — survives gctorture(TRUE)", {
+  skip_gc_stress_if_disabled()
   skip_if_not(
     exists("gc_stress_factor_labels", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_factor_labels not compiled (serde feature missing)"

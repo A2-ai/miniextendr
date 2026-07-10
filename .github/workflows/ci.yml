@@ -20,7 +20,11 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Only PRs cancel their superseded runs. Main-push runs queue instead:
+  # with cancel-on-main, every merge cancelled the previous merge's run, so
+  # on busy days the main-tip guard (heap-check, devel/oldrel legs) never
+  # actually completed (observed 2026-07-10: all recent main runs cancelled).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -193,6 +197,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.r == 'true'
+    env:
+      # wrappers-sync-check does a full source-mode `R CMD INSTALL` (Rust
+      # compile) — without sccache it was the job's dominant cost (~13 min
+      # cold vs ~5 min warm in the identically-shaped r-tests job).
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -208,12 +218,22 @@ jobs:
           use-public-rspm: true
 
       - name: Install autoconf
+        # ubuntu-latest images ship autoconf; the apt path is only a fallback
+        # for image changes (saves ~30-60 s of apt-get update per job).
         run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
+          command -v autoconf >/dev/null || { sudo apt-get update && sudo apt-get install -y autoconf; }
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: sync-checks
+          cache-on-failure: true
 
       - name: Set up cargo-revendor (install only)
         uses: ./.github/actions/setup-vendor
@@ -513,18 +533,25 @@ jobs:
     if: needs.changes.outputs.r == 'true'
     strategy:
       fail-fast: false
+      # PRs check on R release only. devel (advisory — continue-on-error) and
+      # oldrel-1 rarely catch anything release doesn't on a per-PR basis but
+      # cost ~2x45 min of runners per push; they still run on push-to-main,
+      # the weekly schedule, and workflow_dispatch, so a genuine devel/oldrel
+      # breakage surfaces within one merge.
       matrix:
-        include:
-          - r: release
-          - r: devel
-            allow_failure: true # R-devel may break for upstream reasons
-          - r: oldrel-1
+        include: ${{ github.event_name == 'pull_request'
+          && fromJSON('[{"r":"release"}]')
+          || fromJSON('[{"r":"release"},{"r":"devel","allow_failure":true},{"r":"oldrel-1"}]') }}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
+      # The gctorture-heavy test files (~31 of the suite's ~34 min) run once
+      # per PR in the dedicated r-stress-tests job — not in every check leg.
+      # See rpkg/tests/testthat/helper-gc-stress.R.
+      MINIEXTENDR_SKIP_STRESS: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -548,9 +575,10 @@ jobs:
           needs: check
 
       - name: Install autoconf
+        # ubuntu-latest images ship autoconf; the apt path is only a fallback
+        # for image changes (saves ~30-60 s of apt-get update per job).
         run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
+          command -v autoconf >/dev/null || { sudo apt-get update && sudo apt-get install -y autoconf; }
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -926,13 +954,12 @@ jobs:
   r-tests:
     name: R tests / Linux
     runs-on: ubuntu-latest
-    # This job bundles unit tests + the 3-round randomized gctorture heap-check
-    # + the Valgrind ALTREP pass; the total runs ~47 min and outgrew the prior
-    # 45-min cap (itself a 30->45 bump in #732), so the tip-of-main run was
-    # being cancelled by timeout. Use the 90 min the other heavy jobs here use.
-    # If it overruns again, split the heap-check/Valgrind into their own job(s)
-    # rather than bumping a third time.
-    timeout-minutes: 90
+    # Fast source-mode leg: full suite minus the gctorture-heavy files (those
+    # run once per PR in r-stress-tests below), plus the heap-check rounds
+    # (main/label) and the Valgrind ALTREP pass. Before the stress split this
+    # job bundled everything and had outgrown even a 90-min cap on main pushes
+    # (suite 34 min + 3 heap-check rounds = ~140 min -> guaranteed timeout).
+    timeout-minutes: 60
     needs: changes
     if: needs.changes.outputs.r == 'true'
 
@@ -940,6 +967,9 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
+      # Stress files run in r-stress-tests; this also keeps the 3x heap-check
+      # rounds below within the job budget (they re-run the whole suite).
+      MINIEXTENDR_SKIP_STRESS: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -984,11 +1014,14 @@ jobs:
 
       - name: Run tests with heap checking (3 rounds, randomized order)
         # Heap checking (glibc MALLOC_CHECK_, 3 randomized rounds) is the
-        # GC-discipline guard, but it runs ~30+ min and reliably overruns the
-        # 45-min job budget (bumped 30 -> 45 in #732 and still cancelling).
-        # Gate it on PRs behind the `heap-check` label so routine PRs stay fast;
-        # still run it unconditionally on push-to-main, the weekly schedule, and
-        # manual dispatch so merged code keeps its GC safety net.
+        # malloc-discipline guard. Gate it on PRs behind the `heap-check` label
+        # so routine PRs stay fast; still run it unconditionally on
+        # push-to-main, the weekly schedule, and manual dispatch so merged code
+        # keeps its safety net. The rounds inherit MINIEXTENDR_SKIP_STRESS
+        # (~5 min each, not ~35): heap-check hunts malloc/free corruption
+        # across the whole suite, while the gctorture files have their own
+        # dedicated job — running torture under MALLOC_CHECK_ three extra
+        # times is what used to push this job past any timeout.
         if: >-
           github.event_name != 'pull_request' ||
           contains(github.event.pull_request.labels.*.name, 'heap-check')
@@ -1024,6 +1057,83 @@ jobs:
           else
             echo "Valgrind not available, skipping"
           fi
+
+  # ===========================================================================
+  # R Package: GC-stress tests (gctorture) — sharded
+  # ===========================================================================
+  # The single place the gctorture-heavy test files run per PR (every other
+  # suite-running job sets MINIEXTENDR_SKIP_STRESS=1 — they were all running
+  # the same ~31 min of torture, five times per push). The dominant cost is
+  # the dynamic no-arg fixture sweep in test-gc-stress-fixtures.R; it splits
+  # across the shards by fixture index (MINIEXTENDR_STRESS_SHARD=k/n, see
+  # helper-gc-stress.R), and the other stress files are distributed via the
+  # testthat filter so the shards stay balanced. Per-PR coverage is unchanged:
+  # same fixtures, same iteration counts, run once instead of five times. The
+  # nightly gctorture-nightly.yml step=100 full-suite sweep remains the deep net.
+  r-stress-tests:
+    name: R GC-stress tests / shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Shard 1: sweep half 1 + the ExternalPtr self-root file.
+          - shard: "1/2"
+            filter: "gc-stress-fixtures|externalptr-self-root"
+          # Shard 2: sweep half 2 + the two dataframe stress files.
+          - shard: "2/2"
+            filter: "gc-stress-fixtures|iter-to-dataframe|dataframe-deserialize"
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+      MINIEXTENDR_STRESS_SHARD: ${{ matrix.shard }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::testthat
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          # Same source-mode build as r-tests — share its cache rather than
+          # keeping per-shard copies of an identical target dir.
+          shared-key: r-tests
+          cache-on-failure: true
+
+      - name: Install package (source mode)
+        # Same source-mode install as r-tests: no vendor tarball, configure.ac
+        # detects source install and resolves the workspace via path overrides.
+        run: R CMD INSTALL rpkg
+
+      - name: Run GC-stress tests
+        working-directory: rpkg
+        shell: bash
+        run: Rscript -e 'testthat::test_local(filter = "${{ matrix.filter }}")'
 
   # ===========================================================================
   # Feature runtime legs (scheduled only)
@@ -1097,7 +1207,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1188,9 +1298,10 @@ jobs:
           needs: check
 
       - name: Install autoconf
+        # ubuntu-latest images ship autoconf; the apt path is only a fallback
+        # for image changes (saves ~30-60 s of apt-get update per job).
         run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
+          command -v autoconf >/dev/null || { sudo apt-get update && sudo apt-get install -y autoconf; }
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -1251,9 +1362,10 @@ jobs:
           needs: check
 
       - name: Install autoconf
+        # ubuntu-latest images ship autoconf; the apt path is only a fallback
+        # for image changes (saves ~30-60 s of apt-get update per job).
         run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
+          command -v autoconf >/dev/null || { sudo apt-get update && sudo apt-get install -y autoconf; }
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -1296,6 +1408,12 @@ jobs:
       # inst/vendor.tar.xz (produced by `just vendor` below). No NOT_CRAN needed.
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
+      # Skip the gctorture files here for CRAN realism as much as speed: their
+      # helper also calls skip_on_cran(), because a half-hour test suite would
+      # be rejected by real CRAN. The explicit env var is still needed —
+      # r-lib's setup actions export NOT_CRAN=true into every job, so
+      # skip_on_cran() alone never fires in CI. See helper-gc-stress.R.
+      MINIEXTENDR_SKIP_STRESS: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -1319,9 +1437,10 @@ jobs:
           needs: check
 
       - name: Install autoconf
+        # ubuntu-latest images ship autoconf; the apt path is only a fallback
+        # for image changes (saves ~30-60 s of apt-get update per job).
         run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
+          command -v autoconf >/dev/null || { sudo apt-get update && sudo apt-get install -y autoconf; }
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -1514,9 +1633,10 @@ jobs:
           needs: check
 
       - name: Install autoconf
+        # ubuntu-latest images ship autoconf; the apt path is only a fallback
+        # for image changes (saves ~30-60 s of apt-get update per job).
         run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
+          command -v autoconf >/dev/null || { sudo apt-get update && sudo apt-get install -y autoconf; }
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -1556,6 +1676,7 @@ jobs:
       # - r-check-macos   # non-gating: runs only on workflow_dispatch + weekly cron, see #95
       # - r-check-windows # DISABLED — re-enable when Windows job is uncommented above
       - r-tests
+      - r-stress-tests
       - cross-package-tests
       - minirextendr
       - cran-check
@@ -1577,6 +1698,7 @@ jobs:
             # "${{ needs.r-check-macos.result }}"   # non-gating, see #95
             # "${{ needs.r-check-windows.result }}" # DISABLED
             "${{ needs.r-tests.result }}"
+            "${{ needs.r-stress-tests.result }}"
             "${{ needs.cross-package-tests.result }}"
             "${{ needs.minirextendr.result }}"
             "${{ needs.cran-check.result }}"

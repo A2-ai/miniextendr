@@ -8,6 +8,7 @@
 # region: NamedDataFrameListBuilder -------------------------------------------
 
 test_that("gc_stress_named_df_list_builder returns a valid named list under gctorture", {
+  skip_gc_stress_if_disabled()
   # Load the package first, then enable gctorture — see docs/GCTORTURE_TESTING.md.
   # Flip gctorture on for the loop, off when done regardless of failure.
   gctorture(TRUE)
@@ -57,6 +58,7 @@ test_that("str_borrow_len round-trips a zero-copy &str argument", {
 })
 
 test_that("gc_stress_str_borrow keeps zero-copy &str views intact under gctorture", {
+  skip_gc_stress_if_disabled()
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
 
@@ -85,6 +87,7 @@ test_that("gc_stress_str_borrow keeps zero-copy &str views intact under gctortur
 # sweep below does not enumerate them — exercise them explicitly, with the
 # structure assertions the sweep can't make.
 test_that("List::from_values / from_pairs string fixtures survive gctorture", {
+  skip_gc_stress_if_disabled()
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
 
@@ -111,6 +114,7 @@ test_that("List::from_values / from_pairs string fixtures survive gctorture", {
 # compiled, they are not in the namespace. Iterations stay low (5) because
 # this runs in PR CI — nightly's gctorture2 sweep amplifies it.
 test_that("every no-arg gc_stress_* fixture survives gctorture", {
+  skip_gc_stress_if_disabled()
   ns <- getNamespace("miniextendr")
   fixtures <- ls(ns, pattern = "^gc_stress_")
   fixtures <- Filter(function(f) length(formals(get(f, ns))) == 0L, fixtures)
@@ -118,6 +122,10 @@ test_that("every no-arg gc_stress_* fixture survives gctorture", {
   # Rf_error longjmp path; test-worker-longjmp.R expect_error()s it). Every
   # other fixture's contract is an error-free return.
   fixtures <- setdiff(fixtures, "gc_stress_with_r_thread_stop")
+  # CI's r-stress-tests job splits this sweep across parallel shards via
+  # MINIEXTENDR_STRESS_SHARD=k/n (helper-gc-stress.R); locally the env var
+  # is unset and the full fixture list runs.
+  fixtures <- gc_stress_shard_subset(fixtures)
   expect_gt(length(fixtures), 0L)
 
   gctorture(TRUE)
@@ -154,6 +162,7 @@ test_that("every no-arg gc_stress_* fixture survives gctorture", {
 # region: expression RCall builder (#430) -------------------------------------
 
 test_that("gc_stress_expression_call survives gctorture and returns the right value", {
+  skip_gc_stress_if_disabled()
   # Load the package first, then enable gctorture — see docs/GCTORTURE_TESTING.md.
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
