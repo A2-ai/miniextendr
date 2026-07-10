@@ -73,9 +73,10 @@ macro_rules! reject_non_struct {
 /// recursively flattened into prefixed columns (`parent_child` naming).
 ///
 /// This is the serde column path's `Rust → R` entry point. It produces the same
-/// [`DataFrame`] the rest of the unified interface uses
-/// (the same type returned by [`IntoDataFrame`](crate::dataframe::IntoDataFrame)), so the
-/// result supports post-assembly editing through [`DataFrame`]'s own methods:
+/// rooted [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) the rest of the
+/// unified interface uses (the same type returned by
+/// [`IntoDataFrame`](crate::dataframe::IntoDataFrame)), so the result supports
+/// post-assembly editing — every link of the chain is GC-rooted (#1247):
 ///
 /// ```ignore
 /// vec_to_dataframe(&rows)?
@@ -3347,16 +3348,15 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     unsafe { DataFrame::from_built_sexp(sexp) }
                 } else if tag_field.is_some() {
                     let refs: Vec<&T> = indices.iter().map(|&i| &rows[i]).collect();
-                    // `built` owns the frame's root across `drop`'s allocation;
-                    // it drops (alloc-free) at the end of this block, and the
-                    // resulting view is re-rooted in `scope` immediately below.
                     let built = vec_to_dataframe(&refs)?;
                     if let Some(tf) = tag_field {
-                        // Deref to the `DataFrame` view first: `BuiltDataFrame`
-                        // implements `Drop`, so `built.drop(tf)` would resolve to
-                        // the destructor (E0040). `(*built)` is a `DataFrame`
-                        // (no `Drop`), so `.drop` binds to `DataFrame::drop`.
-                        (*built).drop(tf)
+                        // `drop` (the inherent `BuiltDataFrame` forward, #1247)
+                        // consumes `built` and returns a rooted handle for the
+                        // edited frame; deref to the view. The temporary
+                        // handle's root holds until the end of this `let df`
+                        // statement — `scope.protect_raw` below re-roots the
+                        // view before anything else allocates.
+                        *built.drop(tf)
                     } else {
                         *built
                     }
@@ -3366,9 +3366,10 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     *vec_to_dataframe(&wrapped)?
                 };
 
-                // SAFETY: R main thread; `df` is a freshly-built, unrooted
-                // data.frame view. Root it before the tag-column allocations below
-                // and across the remaining loop iterations.
+                // SAFETY: R main thread; `df`'s producing handle releases its
+                // root at the end of the statement above (alloc-free). Root the
+                // view in `scope` before the tag-column allocations below and
+                // across the remaining loop iterations.
                 unsafe { scope.protect_raw(df.as_sexp()) };
 
                 let df = if let Some(col_name) = tag_column.as_deref() {
@@ -3378,14 +3379,15 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                     let tag_protect = unsafe {
                         crate::OwnedProtect::new(make_strsxp_repeat(name, indices.len()))
                     };
+                    // `prepend_column` returns a rooted handle (#1247). Re-root
+                    // the view in `scope` for the remaining iterations (the
+                    // pre-tag root above now covers a superseded object; one
+                    // wasted slot per partition), then let the handle's own
+                    // root release at end of block — no allocation in between.
                     let out = df.prepend_column(col_name, *tag_protect);
                     drop(tag_protect);
-                    // SAFETY: R main thread; `prepend_column` rebuilt the
-                    // data.frame — root the new SEXP for the remaining
-                    // iterations (the pre-tag root above now covers a
-                    // superseded object; one wasted slot per partition).
                     unsafe { scope.protect_raw(out.as_sexp()) };
-                    out
+                    *out
                 } else {
                     df
                 };

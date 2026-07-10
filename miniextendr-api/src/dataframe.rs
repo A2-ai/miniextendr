@@ -6,6 +6,8 @@
 //! - **build** (Rust → R): [`IntoDataFrame::into_dataframe`] / `into_dataframe_par` (`feature = "rayon"`),
 //! - **read** (R → Rust): [`DataFrame::column`] / [`FromDataFrame::from_dataframe`],
 //! - **edit** (post-assembly): [`DataFrame::rename`] / [`DataFrame::drop`] / [`DataFrame::select`] / …
+//!   — the new-frame producers return an owned, GC-rooted [`BuiltDataFrame`] (#1247),
+//!   so constructor → edit chains stay rooted at every link.
 //!
 //! The trait family mirrors the crate's existing [`IntoR`] /
 //! [`TryFromSexp`] pair, specialised to the data-frame SEXP:
@@ -302,6 +304,12 @@ impl DataFrame {
     // region: Post-assembly editing (absorbed from the old serde columnar assembler)
 
     /// Rename a column. No-op if `from` doesn't match any column name.
+    ///
+    /// In-place edit of the `names` attribute — returns the **same** frame (and
+    /// therefore inherits whatever root the input already had), unlike the
+    /// new-frame producers ([`drop`](Self::drop) and friends), which return a
+    /// rooted [`BuiltDataFrame`]. On a `BuiltDataFrame` receiver the inherent
+    /// forward ([`BuiltDataFrame::rename`]) keeps the handle instead.
     pub fn rename(self, from: &str, to: &str) -> Self {
         unsafe {
             // Root `self.sexp` so its `names` attribute survives the
@@ -323,6 +331,9 @@ impl DataFrame {
     }
 
     /// Strip a prefix from all column names that start with it.
+    ///
+    /// In-place edit of the `names` attribute — returns the **same** frame; see
+    /// [`rename`](Self::rename)'s rooting note.
     pub fn strip_prefix(self, prefix: &str) -> Self {
         unsafe {
             // Root `self.sexp` so its `names` attribute survives the
@@ -347,21 +358,26 @@ impl DataFrame {
     ///
     /// # Rooting
     ///
-    /// Returns an **unrooted** view of a newly-built frame — a source
-    /// [`BuiltDataFrame`]'s root does not transfer to it (split-types residual,
-    /// #1247). Root the result (hold it under a
-    /// [`ProtectScope`](crate::ProtectScope), or re-adopt it with
-    /// [`BuiltDataFrame::adopt`]) before the next R allocation.
-    pub fn drop(self, col: &str) -> Self {
+    /// Returns an owned, GC-rooted [`BuiltDataFrame`] (#1247): the result frame
+    /// is rooted before this method returns, so holding it across R allocations
+    /// is safe by construction. The no-op path re-roots the input frame (each
+    /// `BuiltDataFrame` releases exactly its own root — `R_PreserveObject`
+    /// entries stack, so re-rooting an already-rooted SEXP is sound).
+    ///
+    /// The input view must be reachable when calling (the usual [`DataFrame`]
+    /// view contract: an R `.Call` argument frame, a
+    /// [`ProtectScope`](crate::ProtectScope), or a live [`BuiltDataFrame`]).
+    #[must_use]
+    pub fn drop(self, col: &str) -> BuiltDataFrame {
         unsafe {
             let names_sexp = self.sexp.get_names();
             if names_sexp == SEXP::nil() {
-                return self;
+                return BuiltDataFrame::adopt(self);
             }
             let ncol = names_sexp.xlength();
             let drop_idx = (0..ncol).find(|&i| col_name(names_sexp, i) == col);
             let Some(drop_idx) = drop_idx else {
-                return self;
+                return BuiltDataFrame::adopt(self);
             };
 
             let new_ncol = ncol - 1;
@@ -381,7 +397,10 @@ impl DataFrame {
             new_list.set_names(*new_names);
             copy_df_attrs(self.sexp, *new_list);
 
-            DataFrame { sexp: *new_list }
+            // Root the new frame before the OwnedProtect guards drop:
+            // `adopt_sexp` preserves first (protecting `new_list` across its own
+            // cons-cell allocation), the guards UNPROTECT after — no gap.
+            BuiltDataFrame::adopt_sexp(*new_list)
         }
     }
 
@@ -389,13 +408,14 @@ impl DataFrame {
     ///
     /// # Rooting
     ///
-    /// Returns an **unrooted** view of a newly-built frame — see
-    /// [`drop`](Self::drop)'s rooting note (split-types residual, #1247).
-    pub fn select(self, cols: &[&str]) -> Self {
+    /// Returns an owned, GC-rooted [`BuiltDataFrame`] — see
+    /// [`drop`](Self::drop)'s rooting note (#1247).
+    #[must_use]
+    pub fn select(self, cols: &[&str]) -> BuiltDataFrame {
         unsafe {
             let names_sexp = self.sexp.get_names();
             if names_sexp == SEXP::nil() {
-                return self;
+                return BuiltDataFrame::adopt(self);
             }
             let ncol = names_sexp.xlength();
 
@@ -417,7 +437,8 @@ impl DataFrame {
             new_list.set_names(*new_names);
             copy_df_attrs(self.sexp, *new_list);
 
-            DataFrame { sexp: *new_list }
+            // Root before the guards drop (see `drop` for the ordering argument).
+            BuiltDataFrame::adopt_sexp(*new_list)
         }
     }
 
@@ -434,9 +455,10 @@ impl DataFrame {
     ///
     /// # Rooting
     ///
-    /// The returned frame is **unrooted** — see [`drop`](Self::drop)'s rooting
-    /// note (split-types residual, #1247).
-    pub fn select_rows(&self, idx: &[usize]) -> Self {
+    /// Returns an owned, GC-rooted [`BuiltDataFrame`] — see
+    /// [`drop`](Self::drop)'s rooting note (#1247).
+    #[must_use]
+    pub fn select_rows(&self, idx: &[usize]) -> BuiltDataFrame {
         use crate::SexpExt as _;
 
         unsafe {
@@ -492,7 +514,8 @@ impl DataFrame {
             // Copy the data.frame class attribute.
             new_list.set_class(self.sexp.get_class());
 
-            DataFrame { sexp: *new_list }
+            // Root before the guards drop (see `drop` for the ordering argument).
+            BuiltDataFrame::adopt_sexp(*new_list)
         }
     }
 
@@ -500,12 +523,19 @@ impl DataFrame {
     ///
     /// # Rooting
     ///
-    /// Returns an **unrooted** view of a newly-built frame — see
-    /// [`drop`](Self::drop)'s rooting note (split-types residual, #1247).
-    pub fn prepend_column(self, name: &str, column: SEXP) -> Self {
+    /// Returns an owned, GC-rooted [`BuiltDataFrame`] — see
+    /// [`drop`](Self::drop)'s rooting note (#1247). `column` must be kept
+    /// reachable by the caller (e.g. under an
+    /// [`OwnedProtect`](crate::OwnedProtect)) across this call — the new frame
+    /// is allocated before `column` is stored into it.
+    #[must_use]
+    pub fn prepend_column(self, name: &str, column: SEXP) -> BuiltDataFrame {
+        // `drop` returns a rooted handle, so the intermediate frame survives the
+        // allocations below (pre-#1247 this was an unrooted view — a latent UAF
+        // window inside this very method).
         let cleaned = self.drop(name);
         unsafe {
-            let names_sexp = cleaned.sexp.get_names();
+            let names_sexp = cleaned.as_sexp().get_names();
             let ncol = if names_sexp == SEXP::nil() {
                 0
             } else {
@@ -520,14 +550,16 @@ impl DataFrame {
             new_names.set_string_elt(0, SEXP::charsxp(name));
 
             for i in 0..ncol {
-                new_list.set_vector_elt(i + 1, cleaned.sexp.vector_elt(i));
+                new_list.set_vector_elt(i + 1, cleaned.as_sexp().vector_elt(i));
                 new_names.set_string_elt(i + 1, names_sexp.string_elt(i));
             }
 
             new_list.set_names(*new_names);
-            copy_df_attrs(cleaned.sexp, *new_list);
+            copy_df_attrs(cleaned.as_sexp(), *new_list);
 
-            DataFrame { sexp: *new_list }
+            // Root before the guards (and `cleaned`) drop — see `drop` for the
+            // ordering argument.
+            BuiltDataFrame::adopt_sexp(*new_list)
         }
     }
 
@@ -535,21 +567,26 @@ impl DataFrame {
     ///
     /// # Rooting
     ///
-    /// The **append** path (column not present) returns an **unrooted** view of a
-    /// newly-built frame — see [`drop`](Self::drop)'s rooting note (split-types
-    /// residual, #1247). The in-place replace path returns the same (already
-    /// rooted) frame it received.
-    pub fn with_column(self, name: &str, column: SEXP) -> Self {
+    /// Both paths return an owned, GC-rooted [`BuiltDataFrame`] (#1247) — the
+    /// in-place replace path re-roots the same frame it received (sound:
+    /// `R_PreserveObject` entries stack; this handle releases exactly one).
+    /// `column` must be kept reachable by the caller across this call — the
+    /// append path allocates the new frame before `column` is stored into it.
+    #[must_use]
+    pub fn with_column(self, name: &str, column: SEXP) -> BuiltDataFrame {
         unsafe {
             let names_sexp = self.sexp.get_names();
             if names_sexp == SEXP::nil() {
-                return self;
+                return BuiltDataFrame::adopt(self);
             }
             let ncol = names_sexp.xlength();
             for i in 0..ncol {
                 if col_name(names_sexp, i) == name {
+                    // set_vector_elt does not allocate; `column` is reachable
+                    // from the (caller-rooted) frame before `adopt` allocates
+                    // its cons cell.
                     self.sexp.set_vector_elt(i, column);
-                    return self;
+                    return BuiltDataFrame::adopt(self);
                 }
             }
 
@@ -567,7 +604,8 @@ impl DataFrame {
             new_list.set_names(*new_names);
             copy_df_attrs(self.sexp, *new_list);
 
-            DataFrame { sexp: *new_list }
+            // Root before the guards drop (see `drop` for the ordering argument).
+            BuiltDataFrame::adopt_sexp(*new_list)
         }
     }
     // endregion
@@ -670,13 +708,22 @@ impl IntoR for DataFrame {
 /// Not `Copy`/`Clone` (each root is released exactly once) and not `Send`
 /// (R's precious list is R-main-thread state).
 ///
-/// # Residual (the split-types trade-off, #1128 option 2)
+/// # Editing (chains stay rooted, #1247)
 ///
-/// The cheap view can still be *smuggled* across allocations — e.g. the editing
-/// methods ([`DataFrame::drop`], [`DataFrame::select`], …) build a new frame and
-/// return an unrooted `DataFrame`, and dereferencing then dropping a
-/// `BuiltDataFrame` yields a dangling view. Those are opt-in footguns, not the
-/// common constructor-return path this type makes safe.
+/// The new-frame editing methods ([`DataFrame::drop`], [`DataFrame::select`],
+/// [`DataFrame::select_rows`], [`DataFrame::prepend_column`],
+/// [`DataFrame::with_column`]) also return `BuiltDataFrame`, and this type
+/// carries inherent forwards for the whole editing set, so
+/// `rows.into_dataframe()?.drop("x").select(&["y"])` is rooted at every link.
+/// (The `drop` forward is load-bearing: without it, method resolution on a
+/// `BuiltDataFrame` receiver finds `Drop::drop` — E0040.)
+///
+/// # Residual
+///
+/// The cheap view can still be *smuggled* across allocations by hand:
+/// dereferencing (`*built`) copies out an unrooted `DataFrame` view that
+/// dangles once the handle drops. That is an opt-in footgun, not the
+/// constructor/editing path this type makes safe.
 pub struct BuiltDataFrame {
     view: DataFrame,
     /// `!Send + !Sync`: rooting/unrooting mutates R's global precious list,
@@ -707,13 +754,16 @@ impl BuiltDataFrame {
         }
     }
 
-    /// Root a freshly-built [`DataFrame`] view, taking ownership of the root.
+    /// Root a [`DataFrame`] view, taking ownership of a fresh root.
+    ///
+    /// Rooting an already-rooted frame is sound: `R_PreserveObject` entries
+    /// stack (the precious list is a cons list, duplicates allowed), and each
+    /// `BuiltDataFrame` releases exactly the one entry it added.
     ///
     /// # Safety
     ///
-    /// Must run on the R main thread. `df` must wrap a Rust-built frame not
-    /// already owned by another `BuiltDataFrame` (otherwise the root is released
-    /// twice).
+    /// Must run on the R main thread. `df` must wrap a well-formed, still-live
+    /// `data.frame` VECSXP (reachable at the moment of the call).
     #[inline]
     pub unsafe fn adopt(df: DataFrame) -> Self {
         // SAFETY: as documented on this fn.
@@ -740,6 +790,73 @@ impl BuiltDataFrame {
         std::mem::forget(self);
         sexp
     }
+
+    // region: editing forwards (#1247) — keep chains rooted at every link
+    //
+    // These consume the handle (`self` stays alive until the tail expression
+    // has produced — and rooted — the result, so the input frame is reachable
+    // throughout the edit; its root is then released with no allocation in
+    // between). Plain `Deref` would instead copy out the view and, for `drop`,
+    // resolve to `Drop::drop` (E0040) — an inherent method shadows the trait.
+
+    /// Remove a column by name — see [`DataFrame::drop`].
+    ///
+    /// Inherent forward: consumes this handle and returns the rooted result.
+    /// (Also shadows `Drop::drop`, which method resolution would otherwise
+    /// select — E0040.)
+    #[must_use]
+    pub fn drop(self, col: &str) -> BuiltDataFrame {
+        (*self).drop(col)
+    }
+
+    /// Keep only the named columns — see [`DataFrame::select`].
+    #[must_use]
+    pub fn select(self, cols: &[&str]) -> BuiltDataFrame {
+        (*self).select(cols)
+    }
+
+    /// Keep only the given rows — see [`DataFrame::select_rows`].
+    #[must_use]
+    pub fn select_rows(&self, idx: &[usize]) -> BuiltDataFrame {
+        (**self).select_rows(idx)
+    }
+
+    /// Insert a column at index 0 — see [`DataFrame::prepend_column`].
+    ///
+    /// `column` must be kept reachable by the caller across this call.
+    #[must_use]
+    pub fn prepend_column(self, name: &str, column: SEXP) -> BuiltDataFrame {
+        (*self).prepend_column(name, column)
+    }
+
+    /// Upsert a column — see [`DataFrame::with_column`].
+    ///
+    /// `column` must be kept reachable by the caller across this call.
+    #[must_use]
+    pub fn with_column(self, name: &str, column: SEXP) -> BuiltDataFrame {
+        (*self).with_column(name, column)
+    }
+
+    /// Rename a column — see [`DataFrame::rename`].
+    ///
+    /// In-place edit of the same frame: this handle (and its root) carries
+    /// straight through.
+    #[must_use]
+    pub fn rename(self, from: &str, to: &str) -> BuiltDataFrame {
+        let _ = (*self).rename(from, to);
+        self
+    }
+
+    /// Strip a prefix from column names — see [`DataFrame::strip_prefix`].
+    ///
+    /// In-place edit of the same frame: this handle (and its root) carries
+    /// straight through.
+    #[must_use]
+    pub fn strip_prefix(self, prefix: &str) -> BuiltDataFrame {
+        let _ = (*self).strip_prefix(prefix);
+        self
+    }
+    // endregion
 }
 
 impl std::ops::Deref for BuiltDataFrame {

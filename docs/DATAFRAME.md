@@ -52,10 +52,10 @@ fn round_trip(df: DataFrame) -> DataFrame {
 
 ## The owned `DataFrame` type
 
-`DataFrame` wraps a validated `data.frame` SEXP. Beyond the conversion verbs, it offers read accessors and cheap column-level transforms (each consuming `self` and returning a new `DataFrame`):
+`DataFrame` wraps a validated `data.frame` SEXP. Beyond the conversion verbs, it offers read accessors and cheap column-level transforms. The new-frame producers (`drop`, `select`, `select_rows`, `prepend_column`, `with_column`) return an owned, GC-rooted `BuiltDataFrame` — the same handle type every Rust-side constructor returns — so constructor → edit chains are rooted at every link and safe to hold across R allocations (#1247). `rename` / `strip_prefix` edit the `names` attribute in place and return the same frame (on a `BuiltDataFrame` receiver they carry the handle through, keeping the chain rooted).
 
 ```rust
-let df: DataFrame = rows.into_dataframe()?;
+let df: BuiltDataFrame = rows.into_dataframe()?;
 
 df.nrow();                       // row count
 df.ncol();                       // column count
@@ -66,9 +66,9 @@ let values: Vec<f64> = df.column("value").unwrap();   // typed column accessor
 let raw: SEXP = df.column_raw("sensor").unwrap();      // untyped column SEXP
 
 let df = df
-    .rename("value", "reading")  // rename a column
+    .rename("value", "reading")  // rename a column (in place)
     .drop("time")                // remove a column
-    .select(&["sensor", "reading"]); // keep/reorder a subset
+    .select(&["sensor", "reading"]); // keep/reorder a subset — still a rooted BuiltDataFrame
 ```
 
 Use `DataFrame::from_sexp(sexp)` to validate an arbitrary SEXP, and `as_sexp()` / `as_list()` to drop down to the raw representation when you need it.

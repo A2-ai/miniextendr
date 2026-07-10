@@ -544,9 +544,10 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
 /// under GC pressure.
 ///
 /// `GroupedDataFrame` holds the source frame's SEXP across the per-group
-/// `select_rows` allocations, and each yielded sub-frame is unprotected until
-/// the `NamedDataFrameListBuilder` push roots it — the two SEXP-across-
-/// allocations paths this fixture drives. Synthesizes a 60-row frame with a
+/// `select_rows` allocations, and each yielded sub-frame is a rooted
+/// `BuiltDataFrame` (#1247) whose root must hold until the
+/// `NamedDataFrameListBuilder` push re-roots the view — the two
+/// SEXP-across-allocations paths this fixture drives. Synthesizes a 60-row frame with a
 /// character key (incl. NAs) internally.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
@@ -573,7 +574,9 @@ pub fn gc_stress_group_by() -> SEXP {
         .expect("gc_stress_group_by: group_by failed");
     let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        out = out.push(key.label(), sub);
+        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
+        // push, which protects it in the builder's scope before `sub` drops.
+        out = out.push(key.label(), *sub);
     }
     out.build().into_sexp()
 }
@@ -1025,6 +1028,144 @@ pub fn gc_stress_built_dataframe() {
         Some("row_0"),
         "label[0] corrupted under GC"
     );
+}
+
+/// Exercise the #1247 constructor → edit chains: every new-frame editing
+/// method (`drop` / `select` / `select_rows` / `prepend_column` /
+/// `with_column`) returns an owned, GC-rooted
+/// [`BuiltDataFrame`](miniextendr_api::dataframe::BuiltDataFrame), and the
+/// `BuiltDataFrame` inherent forwards keep chains rooted at every link.
+///
+/// This is the exact UAF scenario the issue names: pre-#1247,
+/// `create(...).drop("y")` dropped the constructor's temporary handle at the
+/// end of the statement (releasing the ORIGINAL frame's root) while the NEW
+/// frame from `.drop()` was never rooted — the allocation burst below would
+/// reap it under `gctorture(TRUE)`, and the reads would panic ("DataFrame
+/// always carries a names attribute") or return corrupt values.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_edit_chain() {
+    use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame};
+
+    const N: usize = 24;
+
+    // Constructor: a rooted BuiltDataFrame with columns x (double),
+    // y (double), label (character).
+    let build = || -> BuiltDataFrame {
+        DataFrame::builder(N)
+            .column::<f64>("x", |chunk, off| {
+                for (i, v) in chunk.iter_mut().enumerate() {
+                    *v = (off + i) as f64;
+                }
+            })
+            .column::<f64>("y", |chunk, off| {
+                for (i, v) in chunk.iter_mut().enumerate() {
+                    *v = (off + i) as f64 * 10.0;
+                }
+            })
+            .column_str("label", |i| Some(format!("row{i}")))
+            .build()
+    };
+
+    // Force a burst of R allocations. Under gctorture(TRUE) every allocation
+    // is a full GC — any unrooted frame produced above is reclaimed here.
+    let churn = || {
+        for i in 0..32i32 {
+            let v: Vec<f64> = (0..64).map(|j| f64::from(i + j)).collect();
+            let _ = v.into_sexp();
+            let s: Vec<Option<String>> = (0..8).map(|j| Some(format!("c{i}_{j}"))).collect();
+            let _ = s.into_sexp();
+        }
+    };
+
+    // drop: constructor → edit, allocate, then read.
+    let dropped = build().drop("y");
+    churn();
+    assert_eq!(
+        dropped.names(),
+        vec!["x", "label"],
+        "drop: names corrupted under GC"
+    );
+    assert_eq!(dropped.nrow(), N, "drop: nrow corrupted under GC");
+
+    // select: reorder + subset.
+    let selected = build().select(&["label", "x"]);
+    churn();
+    assert_eq!(
+        selected.names(),
+        vec!["label", "x"],
+        "select: names corrupted under GC"
+    );
+
+    // select_rows (&self forward): keep the even rows.
+    let idx: Vec<usize> = (0..N).step_by(2).collect();
+    let dense = build().select_rows(&idx);
+    churn();
+    assert_eq!(dense.nrow(), idx.len(), "select_rows: nrow corrupted under GC");
+    let xs: Vec<f64> = dense.column("x").expect("select_rows: x column reclaimed");
+    assert_eq!(xs[1], 2.0, "select_rows: values corrupted under GC");
+
+    // with_column (append) → rename (in-place) → drop, one chain: every
+    // intermediate link is a rooted handle.
+    // SAFETY: R main thread (this fn builds SEXPs throughout). `with_column`'s
+    // caller contract: the column SEXP must stay reachable across the call.
+    let newcol = unsafe {
+        OwnedProtect::new(
+            (0..N)
+                .map(|i| i32::try_from(i * 2).expect("index exceeds i32"))
+                .collect::<Vec<i32>>()
+                .into_sexp(),
+        )
+    };
+    let chained = build().with_column("doubled", *newcol).rename("label", "tag").drop("y");
+    drop(newcol);
+    churn();
+    assert_eq!(
+        chained.names(),
+        vec!["x", "tag", "doubled"],
+        "with_column/rename/drop chain: names corrupted under GC"
+    );
+    let doubled: Vec<i32> = chained
+        .column("doubled")
+        .expect("chain: doubled column reclaimed");
+    assert_eq!(doubled[3], 6, "chain: appended values corrupted under GC");
+
+    // prepend_column, then strip_prefix (in-place forward).
+    // SAFETY: as above — root the column across the call.
+    let idcol = unsafe {
+        OwnedProtect::new(
+            (0..N)
+                .map(|i| i32::try_from(i).expect("index exceeds i32"))
+                .collect::<Vec<i32>>()
+                .into_sexp(),
+        )
+    };
+    let prepended = chained.prepend_column("pfx_id", *idcol).strip_prefix("pfx_");
+    drop(idcol);
+    churn();
+    assert_eq!(
+        prepended.names(),
+        vec!["id", "x", "tag", "doubled"],
+        "prepend_column/strip_prefix: names corrupted under GC"
+    );
+
+    // with_column (in-place replace path): re-roots the same frame.
+    // SAFETY: as above — root the column across the call.
+    let replcol = unsafe {
+        OwnedProtect::new(
+            (0..N)
+                .map(|i| -(f64::from(u32::try_from(i).expect("index exceeds u32"))))
+                .collect::<Vec<f64>>()
+                .into_sexp(),
+        )
+    };
+    let replaced = prepended.with_column("x", *replcol);
+    drop(replcol);
+    churn();
+    let xs: Vec<f64> = replaced.column("x").expect("replace: x column reclaimed");
+    assert_eq!(xs[2], -2.0, "replace: values corrupted under GC");
+    assert_eq!(replaced.nrow(), N, "replace: nrow corrupted under GC");
 }
 
 // endregion

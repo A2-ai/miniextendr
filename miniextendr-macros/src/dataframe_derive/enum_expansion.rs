@@ -2908,33 +2908,18 @@ fn build_enum_reader(
                                     #base, __prefix
                                 ));
                             }
-                            let __sub_full = __view.select(&__sel);
-                            // Protect the sub-frame across strip_prefix + select_rows + recursive read.
-                            let __guard_full = unsafe {
-                                ::miniextendr_api::OwnedProtect::new(__sub_full.as_sexp())
-                            };
-                            let __sub_stripped = ::miniextendr_api::dataframe::DataFrame::from_sexp(
-                                __guard_full.get()
-                            )
-                            .map_err(|e| e.to_string())?
-                            .strip_prefix(__prefix);
-                            // Densify: only pass the present rows to the inner reader.
-                            let __guard_stripped = unsafe {
-                                ::miniextendr_api::OwnedProtect::new(__sub_stripped.as_sexp())
-                            };
-                            let __sub_dense = ::miniextendr_api::dataframe::DataFrame::from_sexp(
-                                __guard_stripped.get()
-                            )
-                            .map_err(|e| e.to_string())?
-                            .select_rows(&__present_indices);
-                            let __guard_dense = unsafe {
-                                ::miniextendr_api::OwnedProtect::new(__sub_dense.as_sexp())
-                            };
-                            let __sub_for_read = ::miniextendr_api::dataframe::DataFrame::from_sexp(
-                                __guard_dense.get()
-                            )
-                            .map_err(|e| e.to_string())?;
-                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub_for_read) {
+                            // Each edit returns an owned, GC-rooted `BuiltDataFrame`
+                            // (#1247): `select` roots the sub-frame, `strip_prefix`
+                            // (inherent forward) carries the handle through its
+                            // CHARSXP allocations, and `select_rows` roots the
+                            // densified frame before the borrowed handle's root
+                            // releases — every intermediate frame is rooted across
+                            // the next step's allocations and the recursive read.
+                            let __sub_dense = __view
+                                .select(&__sel)
+                                .strip_prefix(__prefix)
+                                .select_rows(&__present_indices);
+                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub_dense) {
                                 ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
                                 ::core::option::Option::Some(::core::result::Result::Err(__e)) => {
                                     return ::core::result::Result::Err(::std::format!(
@@ -2947,9 +2932,6 @@ fn build_enum_reader(
                                     ));
                                 }
                             };
-                            drop(__guard_dense);
-                            drop(__guard_stripped);
-                            drop(__guard_full);
                             __out
                         };
 

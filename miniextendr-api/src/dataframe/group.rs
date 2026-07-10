@@ -19,7 +19,8 @@
 //!    for (key, rows) in grouped.iter() { /* key: &GroupKey, rows: &[usize] */ }
 //!    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
 //!    for (key, sub) in grouped.frames() {
-//!        out = out.push(key.label(), sub);
+//!        // `sub` is a rooted `BuiltDataFrame`; deref to the view for push.
+//!        out = out.push(key.label(), *sub);
 //!    }
 //!    ```
 //!
@@ -156,13 +157,15 @@ impl GroupedDataFrame {
     }
 
     /// Iterate `(key, sub-frame)` pairs, materialising each group as its own
-    /// [`DataFrame`] via [`DataFrame::select_rows`].
+    /// frame via [`DataFrame::select_rows`].
     ///
-    /// Main thread only. Each yielded frame is **unprotected** — root it
-    /// before the next iteration allocates (e.g. push it straight into a
-    /// [`NamedDataFrameListBuilder`](crate::dataframe::NamedDataFrameListBuilder),
-    /// which protects on push) or convert it to Rust data immediately.
-    pub fn frames(&self) -> impl Iterator<Item = (&GroupKey, DataFrame)> {
+    /// Main thread only. Each yielded frame is an owned, GC-rooted
+    /// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) (#1247) — safe to
+    /// hold across later iterations' allocations. Deref (`*sub`) to pass the
+    /// view where a [`DataFrame`] is expected, e.g. to
+    /// [`NamedDataFrameListBuilder::push`](crate::dataframe::NamedDataFrameListBuilder::push)
+    /// (which protects on push, so the handle may drop right after).
+    pub fn frames(&self) -> impl Iterator<Item = (&GroupKey, crate::dataframe::BuiltDataFrame)> {
         self.groups
             .iter()
             .map(|(k, idx)| (k, self.source.select_rows(idx)))

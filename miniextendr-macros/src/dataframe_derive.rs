@@ -2517,16 +2517,12 @@ fn derive_struct_dataframe(
                                     #base, __prefix
                                 ));
                             }
-                            // `select` builds a fresh list (shared column SEXPs, a
-                            // fresh names vector); protect it across the CHARSXP
-                            // allocations in `strip_prefix` and the recursive read.
-                            let __sub_df = __view.select(&__sel);
-                            let __guard = unsafe {
-                                ::miniextendr_api::OwnedProtect::new(__sub_df.as_sexp())
-                            };
-                            let __sub = ::miniextendr_api::dataframe::DataFrame::from_sexp(__guard.get())
-                                .map_err(|e| e.to_string())?
-                                .strip_prefix(__prefix);
+                            // `select` returns an owned, GC-rooted `BuiltDataFrame`
+                            // (#1247); `strip_prefix` (inherent forward) edits the
+                            // same frame in place and carries the handle through, so
+                            // the sub-frame stays rooted across the CHARSXP
+                            // allocations and the recursive read below.
+                            let __sub = __view.select(&__sel).strip_prefix(__prefix);
                             let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub) {
                                 ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
                                 ::core::option::Option::Some(::core::result::Result::Err(__e)) => {
@@ -2540,7 +2536,6 @@ fn derive_struct_dataframe(
                                     ));
                                 }
                             };
-                            drop(__guard);
                             __out
                         };
                         if #vec_var.len() != __nrow {
