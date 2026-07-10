@@ -324,7 +324,7 @@ print.miniextendr_cargo_features <- function(x, ...) {
       feat_str <- if (length(dep$features) > 0) {
         paste0(" [", paste(dep$features, collapse = ", "), "]")
       } else ""
-      cli::cli_li("{.val {name}} {dep$req}{feat_str}")
+      cli::cli_li("{.val {name}} {dep$version}{feat_str}")
     }
   }
 
@@ -349,13 +349,58 @@ print.miniextendr_cargo_features <- function(x, ...) {
 
 #' Parse cargo metadata JSON to extract features and optional deps
 #'
-#' Minimal JSON parser using regex — handles the specific structure of
-#' `cargo metadata --no-deps` output without requiring jsonlite.
+#' Dispatcher: uses [jsonlite::fromJSON()] when the package is available
+#' (the common case in a dev environment — jsonlite is transitively present
+#' almost everywhere), otherwise falls back to the dependency-free regex
+#' parser. Both paths return the same shape. This runs maintainer-side only
+#' (via [list_cargo_features()]); it is NOT part of the configure-time
+#' feature detection, which stays base-R.
 #'
 #' @param json Raw JSON string from cargo metadata
 #' @return List with `features` and `optional_deps`
 #' @noRd
 parse_cargo_metadata_json <- function(json) {
+  if (requireNamespace("jsonlite", quietly = TRUE)) {
+    parse_cargo_metadata_jsonlite(json)
+  } else {
+    parse_cargo_metadata_regex(json)
+  }
+}
+
+#' Parse cargo metadata JSON via jsonlite (fast path)
+#'
+#' @param json Raw JSON string from cargo metadata
+#' @return List with `features` and `optional_deps`, matching
+#'   [parse_cargo_metadata_regex()]'s shape.
+#' @noRd
+parse_cargo_metadata_jsonlite <- function(json) {
+  pkg <- jsonlite::fromJSON(json, simplifyVector = FALSE)$packages[[1]]
+  features <- lapply(pkg$features, function(specs) as.character(unlist(specs)))
+  # An empty features object yields a *named* empty list from jsonlite; the
+  # regex fallback yields a plain one. Normalise so both paths are identical.
+  if (length(features) == 0L) features <- list()
+  optional_deps <- list()
+  for (dep in pkg$dependencies) {
+    if (isTRUE(dep$optional)) {
+      optional_deps[[dep$name]] <- list(
+        version = if (!is.null(dep$req)) dep$req else "*",
+        features = as.character(unlist(dep$features))
+      )
+    }
+  }
+  list(features = features, optional_deps = optional_deps)
+}
+
+#' Parse cargo metadata JSON to extract features and optional deps (regex)
+#'
+#' Minimal JSON parser using regex — handles the specific structure of
+#' `cargo metadata --no-deps` output without requiring jsonlite. Kept as the
+#' dependency-free fallback for [parse_cargo_metadata_json()].
+#'
+#' @param json Raw JSON string from cargo metadata
+#' @return List with `features` and `optional_deps`
+#' @noRd
+parse_cargo_metadata_regex <- function(json) {
   # Extract the first package's features object:
   #   "features": { "name": ["spec1", "spec2"], ... }
   features <- list()

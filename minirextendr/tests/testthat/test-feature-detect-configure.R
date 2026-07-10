@@ -434,42 +434,120 @@ test_that("add_feature_rule with optional_dep string uses it as dep spec", {
 
 # =============================================================================
 # parse_cargo_metadata_json tests
+#
+# The public helper `parse_cargo_metadata_json()` dispatches to jsonlite when
+# available, else to the dependency-free regex parser. The cases below pin the
+# expected shape against the regex fallback directly (`parse_cargo_metadata_regex`),
+# so they run without jsonlite. A parallel block re-runs each case through the
+# jsonlite fast path (skipped when jsonlite is absent) to prove the two paths
+# agree, plus a dispatcher test.
 # =============================================================================
 
-test_that("parse_cargo_metadata_json extracts features", {
-  json <- '{"packages":[{"features":{"default":[],"rayon":["miniextendr-api/rayon"],"serde":["miniextendr-api/serde","dep:serde"]},"dependencies":[]}]}'
-  result <- minirextendr:::parse_cargo_metadata_json(json)
+# Shared fixtures for both parser paths.
+cargo_metadata_cases <- list(
+  features = '{"packages":[{"features":{"default":[],"rayon":["miniextendr-api/rayon"],"serde":["miniextendr-api/serde","dep:serde"]},"dependencies":[]}]}',
+  optional_deps = '{"packages":[{"features":{},"dependencies":[{"name":"serde","req":"^1","optional":true,"features":["derive"]},{"name":"miniextendr-api","req":"*","optional":false,"features":[]}]}]}',
+  empty = '{"packages":[{"features":{},"dependencies":[]}]}',
+  multiple = '{"packages":[{"features":{"bitflags":["dep:bitflags"],"time":["dep:time"]},"dependencies":[{"name":"bitflags","req":"^2","optional":true,"features":[]},{"name":"time","req":"^0.3","optional":true,"features":["macros","formatting"]},{"name":"core-dep","req":"*","optional":false,"features":[]}]}]}'
+)
 
+# expect_* assertions shared by both parser paths, given a parsed result.
+check_features_case <- function(result) {
   expect_equal(result$features$default, character())
   expect_equal(result$features$rayon, "miniextendr-api/rayon")
   expect_equal(result$features$serde, c("miniextendr-api/serde", "dep:serde"))
   expect_equal(length(result$optional_deps), 0)
-})
-
-test_that("parse_cargo_metadata_json extracts optional deps", {
-  json <- '{"packages":[{"features":{},"dependencies":[{"name":"serde","req":"^1","optional":true,"features":["derive"]},{"name":"miniextendr-api","req":"*","optional":false,"features":[]}]}]}'
-  result <- minirextendr:::parse_cargo_metadata_json(json)
-
+}
+check_optional_deps_case <- function(result) {
   expect_equal(length(result$optional_deps), 1)
   expect_equal(result$optional_deps$serde$version, "^1")
   expect_equal(result$optional_deps$serde$features, "derive")
-})
-
-test_that("parse_cargo_metadata_json handles empty features and deps", {
-  json <- '{"packages":[{"features":{},"dependencies":[]}]}'
-  result <- minirextendr:::parse_cargo_metadata_json(json)
-
+}
+check_empty_case <- function(result) {
   expect_equal(length(result$features), 0)
   expect_equal(length(result$optional_deps), 0)
-})
-
-test_that("parse_cargo_metadata_json handles multiple optional deps", {
-  json <- '{"packages":[{"features":{"bitflags":["dep:bitflags"],"time":["dep:time"]},"dependencies":[{"name":"bitflags","req":"^2","optional":true,"features":[]},{"name":"time","req":"^0.3","optional":true,"features":["macros","formatting"]},{"name":"core-dep","req":"*","optional":false,"features":[]}]}]}'
-  result <- minirextendr:::parse_cargo_metadata_json(json)
-
+}
+check_multiple_case <- function(result) {
   expect_equal(length(result$optional_deps), 2)
   expect_equal(result$optional_deps$bitflags$version, "^2")
   expect_equal(result$optional_deps$bitflags$features, character())
   expect_equal(result$optional_deps$time$version, "^0.3")
   expect_equal(result$optional_deps$time$features, c("macros", "formatting"))
+}
+
+# --- regex fallback path (no jsonlite required) ------------------------------
+
+test_that("parse_cargo_metadata_regex extracts features", {
+  check_features_case(minirextendr:::parse_cargo_metadata_regex(cargo_metadata_cases$features))
+})
+
+test_that("parse_cargo_metadata_regex extracts optional deps", {
+  check_optional_deps_case(minirextendr:::parse_cargo_metadata_regex(cargo_metadata_cases$optional_deps))
+})
+
+test_that("parse_cargo_metadata_regex handles empty features and deps", {
+  check_empty_case(minirextendr:::parse_cargo_metadata_regex(cargo_metadata_cases$empty))
+})
+
+test_that("parse_cargo_metadata_regex handles multiple optional deps", {
+  check_multiple_case(minirextendr:::parse_cargo_metadata_regex(cargo_metadata_cases$multiple))
+})
+
+# --- jsonlite fast path (skipped when jsonlite absent) -----------------------
+
+test_that("parse_cargo_metadata_jsonlite extracts features", {
+  skip_if_not_installed("jsonlite")
+  check_features_case(minirextendr:::parse_cargo_metadata_jsonlite(cargo_metadata_cases$features))
+})
+
+test_that("parse_cargo_metadata_jsonlite extracts optional deps", {
+  skip_if_not_installed("jsonlite")
+  check_optional_deps_case(minirextendr:::parse_cargo_metadata_jsonlite(cargo_metadata_cases$optional_deps))
+})
+
+test_that("parse_cargo_metadata_jsonlite handles empty features and deps", {
+  skip_if_not_installed("jsonlite")
+  check_empty_case(minirextendr:::parse_cargo_metadata_jsonlite(cargo_metadata_cases$empty))
+})
+
+test_that("parse_cargo_metadata_jsonlite handles multiple optional deps", {
+  skip_if_not_installed("jsonlite")
+  check_multiple_case(minirextendr:::parse_cargo_metadata_jsonlite(cargo_metadata_cases$multiple))
+})
+
+test_that("both parser paths agree on identical input", {
+  skip_if_not_installed("jsonlite")
+  for (json in cargo_metadata_cases) {
+    expect_equal(
+      minirextendr:::parse_cargo_metadata_jsonlite(json),
+      minirextendr:::parse_cargo_metadata_regex(json)
+    )
+  }
+})
+
+test_that("parse_cargo_metadata_json dispatcher returns the correct shape", {
+  # With jsonlite present in the test env, the dispatcher takes the fast path;
+  # either way it must return the documented shape.
+  check_features_case(minirextendr:::parse_cargo_metadata_json(cargo_metadata_cases$features))
+  check_multiple_case(minirextendr:::parse_cargo_metadata_json(cargo_metadata_cases$multiple))
+})
+
+test_that("print.miniextendr_cargo_features shows each optional dep's version", {
+  # Regression: the parser stores the version requirement under `version`, so
+  # the print method must read `dep$version`. Reading a non-existent field
+  # (e.g. `dep$req`) silently drops the version from the bullet.
+  x <- structure(
+    list(
+      features = list(default = character(), rayon = "miniextendr-api/rayon"),
+      optional_deps = list(
+        serde = list(version = "^1.0", features = "derive"),
+        log = list(version = "*", features = character())
+      ),
+      without_rules = character()
+    ),
+    class = "miniextendr_cargo_features"
+  )
+  out <- cli::cli_fmt(print(x))
+  expect_true(any(grepl("serde", out) & grepl("\\^1\\.0", out)))
+  expect_true(any(grepl("\\blog\\b", out) & grepl("\\*", out)))
 })
