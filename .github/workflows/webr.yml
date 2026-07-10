@@ -8,6 +8,10 @@ on:
       - 'miniextendr-engine/**'
       - 'miniextendr-lint/**'
       - 'rpkg/**'
+      # The scaffold leg (#1259) builds a freshly scaffolded end-user package
+      # from minirextendr's templates, so template/scaffolder changes must
+      # trigger this workflow too.
+      - 'minirextendr/**'
       - 'tests/cross-package/**'
       - 'tests/webr-node-smoke/**'
       - 'tests/webr-smoke.sh'
@@ -24,6 +28,7 @@ on:
       - 'miniextendr-engine/**'
       - 'miniextendr-lint/**'
       - 'rpkg/**'
+      - 'minirextendr/**'
       - 'tests/cross-package/**'
       - 'tests/webr-node-smoke/**'
       - 'tests/webr-smoke.sh'
@@ -134,12 +139,15 @@ jobs:
 
   # ── Tier 2 + 3: full wasm32 R CMD INSTALL + Node smoke ──────────────────
   # Closes #491 (tier 2) and #492 (tier 3 — Node + webR runtime smoke).
-  # Runs as a single job because all three phases share the same container,
-  # filesystem state, and `/tmp/wasm-lib/miniextendr` artifact:
+  # Runs as a single job because all phases share the same container,
+  # filesystem state, and `/tmp/wasm-lib/*` artifacts:
   #   - Phase 1: native install → regenerates wasm_registry.rs via cdylib pass.
   #   - Phase 2: CC=emcc wasm install via webr-vars.mk → /tmp/wasm-lib/miniextendr.
+  #   - Scaffold leg (#1259): the same native→wasm two-step on a package
+  #     freshly scaffolded from minirextendr's templates → /tmp/wasm-lib/mxsmoke.
   #   - Phase 3: Node + webR session NODEFS-mounts /tmp/wasm-lib, installs
-  #              Imports from repo.r-wasm.org, drives library(miniextendr).
+  #              Imports from repo.r-wasm.org, drives library(miniextendr)
+  #              and library(mxsmoke).
   # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners have no Rosetta
   # and plenty of disk (the local arm64 dev path hits both limits). Phase 2
   # is also the empirical validator for the side-module RUSTFLAGS
@@ -280,6 +288,156 @@ jobs:
           # silently fell back to native compilation).
           file "$libdir/libs/"miniextendr.so | grep -qi "WebAssembly\|wasm"
 
+      # ── Scaffold leg (#1259): end-user scaffolded-package wasm path ─────────
+      # Everything above validates rpkg/ — the monorepo exemplar. End users get
+      # their build plumbing from minirextendr's templates
+      # (minirextendr/inst/templates/rpkg/), whose wasm branches in
+      # configure.ac / Makevars.in / build.rs were previously never built by
+      # any CI job — coverage transferred only indirectly via the locked
+      # rpkg→templates delta (patches/templates.patch). A template-only
+      # regression (e.g. through a templates-approve refresh) would have
+      # surfaced for end users, not in CI.
+      #
+      # These steps run the real end-user story: install minirextendr from
+      # this checkout, create_miniextendr_package() a fresh package (its
+      # stock lib.rs ships trivial #[miniextendr] fns add()/hello()), point
+      # its framework git deps at this checkout with use_local_miniextendr()
+      # (writes the .miniextendr-local marker; configure then emits the
+      # [patch."https://github.com/A2-ai/miniextendr"] block — the same
+      # mechanism rpkg's monorepo mode uses, so the leg validates the PR's
+      # code, not the published git sources), then repeat the native→wasm
+      # two-step install on the scaffold. The tier-3 session below loads the
+      # result alongside miniextendr (SMOKE_SCAFFOLD_PKG).
+      - name: Scaffold leg — install minirextendr + roxygen tooling
+        run: |
+          set -euo pipefail
+          # git: the git-init guard below (and usethis's git probing).
+          # libgit2: runtime dep of gert (usethis's git backend) — the P3M
+          # binary links the system lib. The apt lists from the first step's
+          # `apt-get update` are still on disk in this container.
+          apt-get install -y --no-install-recommends git libgit2-dev
+          # minirextendr's Imports are derived from its DESCRIPTION (same
+          # single-source-of-truth pattern as the miniextendr Imports step
+          # above). roxygen2/pkgload/pkgbuild drive the documented
+          # post-install document() pass that turns the scaffold's minimal
+          # NAMESPACE stub into the real one (useDynLib + exports) — without
+          # it the installed package loads no DLL.
+          /opt/webr/host/R-4.6.0/bin/Rscript -e '
+            # P3M only serves prebuilt noble binaries when the user agent
+            # carries the R version/platform; without it this dep tree (usethis
+            # + roxygen2 pull in stringi et al.) compiles from source for many
+            # extra minutes. Falls back to source transparently if P3M has no
+            # binary for this R version.
+            options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(),
+              paste(getRversion(), R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))
+            imports <- trimws(strsplit(read.dcf("minirextendr/DESCRIPTION")[1, "Imports"], ",")[[1]])
+            imports <- sub("\\s*\\(.*\\)$", "", imports)
+            imports <- setdiff(imports, rownames(installed.packages(priority = "base")))
+            pkgs <- union(imports, c("roxygen2", "pkgload", "pkgbuild"))
+            cat("Installing:", paste(pkgs, collapse = ", "), "\n")
+            install.packages(pkgs, dependencies = c("Depends", "Imports", "LinkingTo"),
+                             repos = "https://packagemanager.posit.co/cran/__linux__/noble/latest",
+                             lib = Sys.getenv("R_LIBS_USER"))
+            miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(miss)) stop("Unloadable after install: ", paste(miss, collapse = ", "))
+          '
+          /opt/webr/host/R-4.6.0/bin/R CMD INSTALL --no-test-load --library="$R_LIBS_USER" minirextendr
+
+      - name: Scaffold leg — create a fresh end-user package
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/scaffold && mkdir -p /tmp/scaffold
+          /opt/R/current/bin/Rscript -e '
+            minirextendr::create_miniextendr_package("/tmp/scaffold/mxsmoke", open = FALSE)
+            minirextendr::use_local_miniextendr(Sys.getenv("GITHUB_WORKSPACE"), path = "/tmp/scaffold/mxsmoke")
+          '
+          # Rename the template's stock fns before building: rpkg (loaded
+          # first in the tier-3 webR session) also exports an `add`
+          # (rpkg/src/rust/panic_tests.rs), and the generated C wrapper
+          # symbols are package-agnostic (`C_add`). Native dyn.load is
+          # RTLD_LOCAL so each package binds its own copy, but Emscripten
+          # side modules resolve exported function addresses through a
+          # shared GOT — the first-loaded module wins, and mxsmoke::add
+          # would dispatch into miniextendr's i32 add. Tracked as #1273;
+          # drop this rename once C symbols are package-unique.
+          sed -i 's/pub fn add(/pub fn mxsmoke_add(/; s/pub fn hello(/pub fn mxsmoke_hello(/' \
+            /tmp/scaffold/mxsmoke/src/rust/lib.rs
+          grep -q "pub fn mxsmoke_add" /tmp/scaffold/mxsmoke/src/rust/lib.rs
+          grep -q "pub fn mxsmoke_hello" /tmp/scaffold/mxsmoke/src/rust/lib.rs
+          # configure auto-vendors (flipping to tarball mode, which would
+          # freeze and build the *published* git sources instead of this
+          # checkout) only when the tree has no .git ancestor AND
+          # cargo-revendor is on PATH. The container ships no cargo-revendor
+          # today; git-init the scaffold so the guard holds even if that
+          # changes.
+          git init -q /tmp/scaffold/mxsmoke
+
+      - name: Scaffold leg — native install + roxygen pass (wrappers, wasm_registry.rs, NAMESPACE)
+        run: |
+          set -euo pipefail
+          # The container's default locale is C. miniextendr's package init
+          # asserts l10n_info()[["UTF-8"]] and refuses to dyn.load otherwise
+          # (miniextendr-api/src/encoding.rs). The wrapper-gen dyn.load inside
+          # R CMD INSTALL takes the minimal init path (MINIEXTENDR_WRAPPER_GEN=1)
+          # and never hits the check, but roxygenise's pkgload load_dll and the
+          # sanity library() below run the full init — so this step needs a
+          # UTF-8 locale. noble ships C.UTF-8 without locale-gen.
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8
+          ( cd /tmp/scaffold/mxsmoke && bash ./configure )
+          mkdir -p /tmp/scaffold-native-lib
+          # Install #1: the Makevars wrapper-gen pass writes
+          # R/mxsmoke-wrappers.R and src/rust/wasm_registry.rs (the wasm build
+          # hard-requires the latter — the template build.rs refuses a stub).
+          /opt/R/current/bin/R CMD INSTALL --no-test-load --library=/tmp/scaffold-native-lib /tmp/scaffold/mxsmoke
+          ch=$(grep 'content-hash:' /tmp/scaffold/mxsmoke/src/rust/wasm_registry.rs | awk '{print $NF}')
+          echo "scaffold wasm_registry content-hash=$ch"
+          test "$ch" != "0000000000000000"
+          test -s /tmp/scaffold/mxsmoke/R/mxsmoke-wrappers.R
+          # The scaffolded NAMESPACE is a minimal stub until the documented
+          # roxygen pass runs (miniextendr_build()'s document() step); without
+          # it the installed package loads no DLL and exports nothing. Run
+          # roxygen2 directly from a fresh session, then reinstall (cargo is
+          # warm — seconds) so the installed image matches the final NAMESPACE.
+          /opt/R/current/bin/Rscript -e 'roxygen2::roxygenise("/tmp/scaffold/mxsmoke")'
+          grep -q "useDynLib(mxsmoke" /tmp/scaffold/mxsmoke/NAMESPACE
+          /opt/R/current/bin/R CMD INSTALL --no-test-load --library=/tmp/scaffold-native-lib /tmp/scaffold/mxsmoke
+          # Native runtime sanity: the template's stock #[miniextendr] fns
+          # (renamed at scaffold time to dodge the webR symbol collision,
+          # see #1273 and the create step above).
+          /opt/R/current/bin/Rscript -e '
+            library(mxsmoke, lib.loc = "/tmp/scaffold-native-lib")
+            stopifnot(identical(mxsmoke::mxsmoke_add(2, 3), 5))
+            stopifnot(identical(mxsmoke::mxsmoke_hello("webR"), "Hello, webR!"))
+            cat("scaffold native runtime sanity OK\n")
+          '
+
+      - name: Scaffold leg — wasm32 R CMD INSTALL (template wasm branches)
+        run: |
+          set -euo pipefail
+          # Scrub the native objects so emcc recompiles .c → wasm .o (same
+          # stale-mtime trap as Phase 2). Install into the same /tmp/wasm-lib
+          # as Phase 2 so tier 3's existing NODEFS mount exposes both packages.
+          rm -f /tmp/scaffold/mxsmoke/src/*.o /tmp/scaffold/mxsmoke/src/*.so
+          ( cd /tmp/scaffold/mxsmoke && CC=emcc bash ./configure )
+          WASM_TOOLS=/opt/webr/tools \
+          R_SOURCE=/opt/webr/R/build/R-4.6.0 \
+          R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk \
+          /opt/webr/host/R-4.6.0/bin/R CMD INSTALL \
+              --library=/tmp/wasm-lib \
+              --no-docs --no-test-load --no-staged-install --no-byte-compile \
+              /tmp/scaffold/mxsmoke
+
+      - name: Scaffold leg — verify wasm side-module landed
+        run: |
+          set -euo pipefail
+          libdir=/tmp/wasm-lib/mxsmoke
+          test -d "$libdir"
+          ls -la "$libdir/libs/"
+          file "$libdir/libs/mxsmoke.so"
+          # Sanity: side-module must be wasm, not ELF (would mean the wasm
+          # pass silently fell back to native compilation).
+          file "$libdir/libs/mxsmoke.so" | grep -qi "WebAssembly\|wasm"
+
       # ── Tier 3 (#492): Node + webR runtime smoke ─────────────────────────────
       # Drives library(miniextendr) inside a webR Node session against the
       # wasm install Phase 2 just produced. The emcc link step alone is not
@@ -325,8 +483,14 @@ jobs:
           test -f /opt/webr/src/dist/R.wasm  # asset copy step ran
           ls -la /opt/webr/src/dist/
 
-      - name: Tier 3 — run Node + webR smoke (library(miniextendr))
+      - name: Tier 3 — run Node + webR smoke (library(miniextendr) + scaffold pkg)
         working-directory: tests/webr-node-smoke
+        env:
+          # Scaffold leg (#1259): also load the freshly scaffolded end-user
+          # package installed into /tmp/wasm-lib above and drive its stock
+          # template functions. Unset (e.g. in tests/webr-smoke.sh, which has
+          # no scaffold leg) the runner behaves exactly as before.
+          SMOKE_SCAFFOLD_PKG: mxsmoke
         run: |
           set -euo pipefail
           # Hard wall-clock cap: webR init + Imports install + library load

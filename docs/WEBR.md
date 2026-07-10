@@ -379,11 +379,11 @@ not installed locally. No `loadNamespace()`, no network.
 
 ## CI
 
-`.github/workflows/webr.yml` runs three tiers. **Tier 1** is `cargo check
---target wasm32-unknown-emscripten` for `miniextendr-api` plus the two
-cross-package stub crates (#493), on every PR matching the paths filter
+`.github/workflows/webr.yml` runs three tiers plus a scaffold leg. **Tier 1**
+is `cargo check --target wasm32-unknown-emscripten` for `miniextendr-api` plus
+the two cross-package stub crates (#493), on every PR matching the paths filter
 (`miniextendr-api/**`, `miniextendr-macros/**`, `miniextendr-engine/**`,
-`miniextendr-lint/**`, `rpkg/**`, `tests/cross-package/**`,
+`miniextendr-lint/**`, `rpkg/**`, `minirextendr/**`, `tests/cross-package/**`,
 `tests/webr-node-smoke/**`, `tests/webr-smoke.sh`, `Cargo.{toml,lock}`,
 `Dockerfile.webr`, `Dockerfile.webr-arm64`, `.github/workflows/webr.yml`).
 It catches cfg-gating regressions and macro-emission bugs that fail to
@@ -410,6 +410,29 @@ installs the package's Imports from `repo.r-wasm.org`, and drives
 `library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
 is what proves it *loads* in a real webR runtime.
 
+The same job also runs a **scaffold leg** (#1259): it installs minirextendr
+from the checkout, scaffolds a fresh end-user package with
+`create_miniextendr_package()`, points the scaffold's framework git deps at
+the checkout via `use_local_miniextendr()` (the `.miniextendr-local` marker →
+`[patch."https://github.com/A2-ai/miniextendr"]` in the generated
+`.cargo/config.toml`), and repeats the native→wasm two-step install on it —
+native `R CMD INSTALL` (wrapper-gen writes the scaffold's
+`wasm_registry.rs`), a `roxygen2::roxygenise()` pass + reinstall (the
+scaffolded `NAMESPACE` is a stub until the documented `document()` step
+runs), then the `CC=emcc` install into the same `/tmp/wasm-lib`. Tier 3 then
+loads the scaffolded package alongside miniextendr (`SMOKE_SCAFFOLD_PKG`) and
+calls the template's stock functions — renamed `mxsmoke_add()` /
+`mxsmoke_hello()` at scaffold time, because rpkg also exports an `add` and the
+generated `C_<fn>` wrapper symbols are package-agnostic: under Emscripten's
+shared-GOT side-module linking the first-loaded package's symbol wins and
+`mxsmoke::add` would dispatch into miniextendr's `add` (#1273; drop the rename
+when C symbols become package-unique). This is the only CI
+coverage of the **template** copies of the wasm branches in `configure.ac` /
+`Makevars.in` / `build.rs` (`minirextendr/inst/templates/rpkg/`) — before it,
+a template-only regression could only surface for end users. The monorepo
+template tree's copies are still CI-unbuilt (#1271); local smoke parity for
+the leg is #1270.
+
 ## See also
 
 - Issue #470 — umbrella tracking issue for webR/WASM support.
@@ -427,7 +450,8 @@ is what proves it *loads* in a real webR runtime.
   of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
   `webr.yml` tier-2/3 job step-for-step (Phase 2 → `/tmp/wasm-lib`, Phase 3 →
-  `make` the Node bundle, then run `smoke.mjs`). The default (amd64) image runs
+  `make` the Node bundle, then run `smoke.mjs`), except for the CI-only
+  scaffold leg (local parity tracked in #1270). The default (amd64) image runs
   under Rosetta on Apple Silicon; `WEBR_ARM64=1` selects the draft
   `Dockerfile.webr-arm64` native-arm64 path (#788).
 - `Dockerfile.webr-arm64` — draft native-arm64 dev image (#788): amd64 sysroot
