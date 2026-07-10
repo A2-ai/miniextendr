@@ -42,6 +42,14 @@ fn test_dots() {
 }
 
 #[test]
+fn test_trailing_dots_auto_detected() {
+    let inputs = parse_inputs("x: i32, dots: &Dots");
+    let builder = RArgumentBuilder::new(&inputs);
+    assert_eq!(builder.build_formals(), "x, ...");
+    assert_eq!(builder.build_call_args(), "x, list(...)");
+}
+
+#[test]
 fn test_named_dots() {
     // Note: In R, `...` cannot have a name/default in formals.
     // The named_dots is only used on Rust side. R always uses plain `...`

@@ -290,9 +290,19 @@ impl<'a> MethodContext<'a> {
             &method.method_attrs.per_param,
             &c_ident,
         );
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &effective_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
+        let mut arg_builder = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs);
+        if method.method_attrs.has_dots {
+            arg_builder = arg_builder.with_dots(
+                method
+                    .method_attrs
+                    .named_dots
+                    .as_ref()
+                    .map(|ident| ident.to_string()),
+            );
+        }
+        arg_builder = arg_builder.with_defaults(effective_defaults);
+        let params = arg_builder.build_formals();
+        let args = arg_builder.build_call_args();
         Self {
             method,
             c_ident,
@@ -379,8 +389,9 @@ impl<'a> MethodContext<'a> {
     /// When `include_dots` is false, omits `...` from the signature.
     /// This is used for strict generics that don't accept extra args.
     pub fn instance_formals_with_dots(&self, add_self_param: bool, include_dots: bool) -> String {
+        let include_dispatch_dots = include_dots && !self.method.has_dots;
         if add_self_param {
-            if include_dots {
+            if include_dispatch_dots {
                 if self.params.is_empty() {
                     "x, ...".to_string()
                 } else {
@@ -405,7 +416,11 @@ impl<'a> MethodContext<'a> {
     /// named `self` to mirror the property dispatch lambdas, rather than the
     /// `x` used by the S7 generic.
     pub fn instance_formals_with_receiver(&self, receiver: &str, include_dots: bool) -> String {
-        let tail = if include_dots { ", ..." } else { "" };
+        let tail = if include_dots && !self.method.has_dots {
+            ", ..."
+        } else {
+            ""
+        };
         if self.params.is_empty() {
             format!("{receiver}{tail}")
         } else {

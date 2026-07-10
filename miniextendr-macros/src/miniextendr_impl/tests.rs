@@ -51,6 +51,204 @@ fn parse_impl_with_label(
 }
 // endregion
 
+// region: Impl-method dots support
+
+#[test]
+fn impl_method_rewrites_raw_variadic_in_reemitted_impl() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl DotsThing {
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let method = &parsed.methods[0];
+
+    assert!(method.has_dots);
+    assert_eq!(
+        method.method_attrs.named_dots.as_ref().unwrap().to_string(),
+        "dots"
+    );
+    assert!(method.sig.variadic.is_none());
+
+    let syn::ImplItem::Fn(reemitted) = &parsed.original_impl.items[0] else {
+        panic!("expected reemitted method");
+    };
+    assert!(reemitted.sig.variadic.is_none());
+
+    let Some(syn::FnArg::Typed(last)) = reemitted.sig.inputs.last() else {
+        panic!("expected trailing dots arg");
+    };
+    let syn::Pat::Ident(pat_ident) = last.pat.as_ref() else {
+        panic!("expected dots ident");
+    };
+    assert_eq!(pat_ident.ident, "dots");
+    assert!(crate::miniextendr_fn::is_dots_type(last.ty.as_ref()));
+}
+
+#[test]
+fn r6_dots_constructor_and_method_emit_variadic_r_wrappers() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl R6DotsThing {
+            pub fn new(dots: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("initialize = function(..., .ptr = NULL)"));
+    assert!(wrapper.contains("collect = function(...)"));
+    assert!(wrapper.contains(".Call(C_R6DotsThing__new, .call = match.call(), list(...))"));
+    assert!(
+        wrapper.contains(
+            ".Call(C_R6DotsThing__collect, .call = match.call(), private$.ptr, list(...))"
+        )
+    );
+}
+
+#[test]
+fn s3_user_dots_suppress_duplicate_dispatch_dots() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl S3DotsThing {
+            pub fn new(dots: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("new_s3dotsthing <- function(...)"));
+    assert!(wrapper.contains("collect.S3DotsThing <- function(x, ...)"));
+    assert!(wrapper.contains(".Call(C_S3DotsThing__new, .call = match.call(), list(...))"));
+    assert!(wrapper.contains(".Call(C_S3DotsThing__collect, .call = match.call(), x, list(...))"));
+    assert!(!wrapper.contains("function(x, ..., ...)"));
+}
+
+#[test]
+fn s4_user_dots_emit_variadic_without_duplicate_dispatch_dots() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl S4DotsThing {
+            pub fn new(dots: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S4, item_impl);
+    let wrapper = generate_s4_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("S4DotsThing <- function(...)"));
+    assert!(
+        wrapper.contains("methods::setMethod(\"s4_collect\", \"S4DotsThing\", function(x, ...)")
+    );
+    assert!(wrapper.contains(".Call(C_S4DotsThing__new, .call = match.call(), list(...))"));
+    assert!(wrapper.contains(".Call(C_S4DotsThing__collect"));
+    assert!(wrapper.contains("list(...)"));
+    assert!(!wrapper.contains("function(x, ..., ...)"));
+}
+
+#[test]
+fn s7_user_dots_emit_variadic_without_duplicate_dispatch_dots() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl S7DotsThing {
+            pub fn new(dots: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("constructor = function(..., .ptr = NULL)"));
+    assert!(wrapper.contains("list(...)"));
+    // The S7 generic and per-class fast-path shortcut both carry a single `...`.
+    assert!(!wrapper.contains("function(x, ..., ...)"));
+    assert!(!wrapper.contains("function(self, ..., ...)"));
+}
+
+#[test]
+fn env_user_dots_emit_variadic_in_constructor_and_method() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl EnvDotsThing {
+            pub fn new(dots: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, dots: ...) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let wrapper = generate_env_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("EnvDotsThing$new <- function(...)"));
+    assert!(wrapper.contains("EnvDotsThing$collect <- function(...)"));
+    assert!(
+        wrapper.contains(".Call(C_EnvDotsThing__collect, .call = match.call(), self, list(...))")
+    );
+    assert!(!wrapper.contains("function(..., ...)"));
+}
+
+#[test]
+fn vctrs_user_dots_emit_variadic_in_constructor_and_static_helper() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl VctrsDotsThing {
+            pub fn new(x: f64, dots: ...) -> Vec<f64> {
+                unimplemented!()
+            }
+
+            pub fn combine(amounts: Vec<f64>, dots: ...) -> Vec<f64> {
+                unimplemented!()
+            }
+        }
+    };
+
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: Some(false),
+        ptype: None,
+        abbr: Some("vdt".to_string()),
+    };
+
+    let parsed = parse_impl_vctrs(vctrs_attrs, item_impl);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("new_vctrsdotsthing <- function(x, ...)"));
+    assert!(wrapper.contains("vctrsdotsthing_combine <- function(amounts, ...)"));
+    assert!(wrapper.contains(".Call(C_VctrsDotsThing__new, .call = match.call(), x, list(...))"));
+    assert!(wrapper.contains("list(...)"));
+    assert!(!wrapper.contains("function(amounts, ..., ...)"));
+}
+
+// endregion
+
 // region: Env class system tests
 
 #[test]

@@ -106,10 +106,12 @@ pub struct RArgumentBuilder<'a> {
 impl<'a> RArgumentBuilder<'a> {
     /// Create a new builder for the given function inputs.
     pub fn new(inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>) -> Self {
+        let named_dots = crate::miniextendr_fn::trailing_dots_ident(inputs)
+            .map(|ident| normalize_r_arg_ident(&ident).to_string());
         Self {
             inputs,
-            has_dots: false,
-            named_dots: None,
+            has_dots: named_dots.is_some(),
+            named_dots,
             skip_first: false,
             defaults: std::collections::HashMap::new(),
         }
