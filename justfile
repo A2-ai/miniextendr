@@ -1046,7 +1046,14 @@ user-skills-check:
     trap 'rm -rf "$tmp"' EXIT
     mkdir -p "$tmp/lib"
     R CMD INSTALL --no-multiarch --library="$tmp/lib" minirextendr >/dev/null 2>&1
-    R_LIBS="$tmp/lib" Rscript -e "minirextendr::create_miniextendr_package(file.path('$tmp', 'skillcheck.pkg'), open = FALSE)"
+    # Prepend the temp lib INSIDE the R session, not via R_LIBS: rv's
+    # .Rprofile activation replaces .libPaths() wholesale (activate.R uses
+    # `.libPaths(rv_lib, include.site = FALSE)`), which silently dropped an
+    # R_LIBS entry in any rv-activated checkout — the recipe then failed with
+    # "there is no package called 'minirextendr'". The prepend runs after
+    # .Rprofile, so it works both locally (rv lib supplies cli/fs/usethis)
+    # and in CI (no rv activation; default libs supply them).
+    Rscript -e ".libPaths(c('$tmp/lib', .libPaths())); minirextendr::create_miniextendr_package(file.path('$tmp', 'skillcheck.pkg'), open = FALSE)"
     bash scripts/skill-freshness-audit.sh --user-layout "$tmp/skillcheck.pkg"
 
 # Accept the current delta as approved by regenerating patches/templates.patch
