@@ -252,19 +252,54 @@ When `impl Trait for Type` is annotated with `#[miniextendr]`, it goes through
 `miniextendr-macros/src/miniextendr_impl_trait.rs`. The trait's C-callable shims
 are already declared by `#[miniextendr]` on the trait definition itself (in
 `miniextendr_trait.rs`). The impl block generates vtable registration in
-`MX_TRAIT_DISPATCH` and registers R-side dual calling wrappers at
-`RWrapperPriority::TraitImpl`.
+`MX_TRAIT_DISPATCH` and emits R-side trait wrappers at
+`RWrapperPriority::TraitImpl`. The wrapper shape is class-system-specific.
 
-Dual calling means a trait method is callable two ways from R:
+True dual calling — a trait method callable *both* as `Type$Trait$method(obj)`
+and as `obj$Trait$method()` — is available only for the Env class system. For Env:
 
 - `Type$Trait$method(obj)` — the class environment holds a nested environment for
-  the trait, with methods that accept the object as the first argument.
+  the trait, with methods that accept the object as their first argument.
 - `obj$Trait$method()` — via `$.Type` dispatch, the trait namespace environment is
-  found and `self` is bound.
+  found and `self` is bound. Instance methods are stamped with a
+  `.__mx_instance__` attribute so the dispatcher knows to prepend `self`.
 
 This mirrors the pattern from `miniextendr-macros/src/miniextendr_impl/env_class.rs`,
 where `local({ m <- method; bound[[name]] <<- function(...) m(self, ...) })` creates
 bound closures that avoid shared-variable capture in loops.
+
+The other five systems surface trait methods through their own dispatch
+conventions, not dual calling. Each system's R-visible name is owned by
+`trait_namespace_target` in
+`miniextendr-macros/src/miniextendr_impl_trait/method_context.rs` — one policy the
+five generators previously hand-rolled independently, unified by #1141 / #1219:
+
+- **R6**: `Type$Trait$method(obj)` — a class-scoped trait namespace on the
+  generator object (the R6 generator is itself an environment, so
+  `Type$Trait <- new.env()` attaches cleanly). Both instance and static methods
+  live here. This is single-form, *not* dual: R6 classes are defined
+  monolithically in one `R6Class()` call, so a trait method cannot be injected as
+  `obj$method()`. Before #1219, R6 trait methods were unqualified standalone
+  `r6_trait_<Trait>_<method>(obj)` functions; that name is now gone — the
+  class-scoped shape is collision-free by construction, closing #1115.
+- **S3 / Vctrs**: idiomatic S3 dispatch — an S3 generic plus a `method.Type`
+  method, called as `method(obj)`. Static methods and consts live in the
+  `Type$Trait$name` namespace.
+- **S4**: an S4 generic named `s4_trait_<Trait>_<method>`, registered via
+  `setGeneric` / `setMethod` and called as `s4_trait_<Trait>_<method>(obj)`.
+  Static methods and consts are flat, class-qualified `Type_Trait_method()`
+  functions (S4 objects intercept `$<-`, so `Type$Trait$` can't be assigned onto
+  them).
+- **S7**: an S7 generic named `s7_trait_<Trait>_<method>` (via `S7::new_generic`),
+  plus an optional per-method fast-path shortcut `Type_method(obj)` that bypasses
+  `S7::S7_dispatch()` (opt out with `#[miniextendr(s7(no_shortcut))]`). Static
+  methods and consts are assigned into a local env attached to the class via
+  `attr()`, so they stay reachable as `Type$Trait$name` (S7's `$` falls through to
+  attributes).
+
+`-> Self` / `Result<Self, E>` / `Option<Self>` trait methods re-wrap their return
+into a classed object of the implementing type on every system (via the shared
+`MethodReturnBuilder`, also from #1141) rather than leaking an unclassed pointer.
 
 ## Decision trees
 
@@ -303,9 +338,14 @@ The generated class is named after the Rust type by default. Override with
 1. Declare the trait with `#[miniextendr] pub trait MyTrait { ... }`. This
    generates the vtable, view struct, and shims in `miniextendr_trait.rs`.
 2. For each implementing type, add `#[miniextendr] impl MyTrait for MyType { ... }`.
-   This generates the vtable registration and R-side dual-calling wrappers.
-3. The trait methods appear both as `MyType$MyTrait$method(obj)` and via
-   `obj$MyTrait$method()`.
+   This generates the vtable registration and R-side trait wrappers.
+3. Only Env gets true dual calling (`MyType$MyTrait$method(obj)` **and**
+   `obj$MyTrait$method()`). The other systems surface the method through their own
+   dispatch conventions: R6 as `MyType$MyTrait$method(obj)` (a class-scoped
+   namespace, single-form); S3/Vctrs as an S3 generic (`method(obj)`); S4 as
+   `s4_trait_<MyTrait>_<method>(obj)`; S7 as `s7_trait_<MyTrait>_<method>(obj)`
+   (plus an optional `MyType_method(obj)` fast-path). See "Trait methods across
+   class systems" above for the full shape table.
 
 ### My constructor panics but R doesn't see an error — what went wrong?
 
@@ -341,7 +381,9 @@ later, unpredictably.
 - `miniextendr-macros/src/miniextendr_impl/vctrs_class.rs` — Vctrs generator:
   `generate_vctrs_r_wrapper`. `new_vctr`/`new_rcrd`/`new_list_of`, protocol boilerplate.
 - `miniextendr-macros/src/miniextendr_impl_trait.rs` — Trait impl codegen:
-  vtable registration, R-side dual-calling wrappers.
+  vtable registration and R-side trait wrappers; the per-class namespace shape is
+  owned by `miniextendr-macros/src/miniextendr_impl_trait/method_context.rs`
+  (`trait_namespace_target`).
 - `miniextendr-macros/src/r_class_formatter.rs` — Shared utilities: `ClassDocBuilder`,
   `MethodDocBuilder`, `MethodContext`, `emit_s3_generic_guard`, `should_export_from_tags`.
 - `miniextendr-macros/src/method_return_builder.rs` — `condition_check_lines`,
