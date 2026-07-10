@@ -77,19 +77,19 @@ Everything lives inside the `Dockerfile.webr` image (inherits
 `ghcr.io/r-wasm/webr` digest-pinned, layers `just`/`autoconf`/`cargo-limit`).
 amd64-only — Apple Silicon runs it under Rosetta, slow but works. For a
 native-arm64 alternative (no Rosetta), see "arm64-native dev image" below
-(`Dockerfile.webr-arm64`, #788 — currently a draft pending on-hardware
-validation).
+(`Dockerfile.webr-arm64`, #788 — currently a draft; on-hardware validation
+tracked in #1254).
 
 ```bash
 just docker-webr-build         # one-time image build (~5–10 min cold)
 just docker-webr-shell         # interactive shell, repo bind-mounted at /work
 just docker-webr-test          # cargo check miniextendr-api on wasm32 (fast)
 just docker-webr-smoke         # full smoke: build wasm side-module + load in
-                               # webR Node session + run testthat suite
+                               # webR Node session (canonical smoke.mjs runner)
 ```
 
 `just docker-webr-smoke` (`tests/webr-smoke.sh`) drives three phases inside
-the container, then prints a testthat pass/fail/skip summary:
+the container:
 
 1. **Native `R CMD INSTALL` of `rpkg`** against `/opt/R/current/bin/R` to run
    the wrapper-gen pass and regenerate `rpkg/src/rust/wasm_registry.rs`. The
