@@ -701,6 +701,9 @@ pub mod s4_helpers;
 
 pub mod backtrace;
 
+/// Shared truthiness parsing for boolean-ish environment-variable flags.
+pub(crate) mod env_flag;
+
 pub mod coerce;
 pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 

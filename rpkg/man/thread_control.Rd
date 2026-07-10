@@ -18,7 +18,7 @@ miniextendr_set_threads(n)
 \item{n}{Number of threads to request (positive integer).}
 }
 \description{
-Report the effective rayon thread count. Follows the precedence in \code{docs/RAYON.md} ("Controlling parallelism from R"): \code{MINIEXTENDR_NUM_THREADS} env > \code{RAYON_NUM_THREADS} env > CRAN \verb{_R_CHECK_LIMIT_CORES_} cap (2) > \code{available_parallelism()}. Builds the pool on first call, same as any other rayon entry point.
+Report the effective rayon thread count. Builds the pool on first call, same as any other rayon entry point; the thread-count precedence table is in \code{docs/RAYON.md} ("Controlling parallelism from R").
 
 Build the rayon thread pool with exactly \code{n} threads, immediately. Must be called before the first parallel operation — rayon's global pool cannot be resized once built, so this errors if any pool already exists (whether built by miniextendr or outside it).
 }

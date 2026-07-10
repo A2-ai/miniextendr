@@ -20,10 +20,9 @@ easy parallelization of Rust code.
 \details{
 Thread count is CRAN- and cgroup-aware by default: call
 \verb{miniextendr_api::optionals::parallel::ensure_pool()} at the top of your
-rayon-backed functions (the bundled \code{rayon_bridge} helpers already do this)
-to honor \code{MINIEXTENDR_NUM_THREADS} / \code{RAYON_NUM_THREADS} / CRAN's
-\verb{_R_CHECK_LIMIT_CORES_}. See \code{docs/RAYON.md} ("Controlling parallelism
-from R") for the precedence table.
+rayon-backed functions (the bundled \code{rayon_bridge} helpers already do this).
+See \code{docs/RAYON.md} ("Controlling parallelism from R") for the thread-count
+precedence table.
 }
 \examples{
 \dontrun{

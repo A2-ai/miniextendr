@@ -21,10 +21,11 @@ static INSTALLED: AtomicBool = AtomicBool::new(false);
 
 /// Register the miniextendr panic hook.
 ///
-/// If `MINIEXTENDR_BACKTRACE` is set to `true` or `1`, the default Rust
-/// panic hook runs (full traceback printed to stderr); otherwise the hook
-/// swallows the panic output silently so the R error (emitted by
-/// `panic_message_to_r_error`) is what users see.
+/// If `MINIEXTENDR_BACKTRACE` is truthy (`yes`/`true`/`1`/`on`, per
+/// [`crate::env_flag::parse_bool`]), the default Rust panic hook runs (full
+/// traceback printed to stderr); otherwise the hook swallows the panic output
+/// silently so the R error (emitted by `panic_message_to_r_error`) is what
+/// users see. Unrecognized values default to off.
 ///
 /// Idempotent within a DLL instance: the first call installs, subsequent
 /// calls are no-ops. If the DLL is unloaded and loaded again, the new
@@ -41,7 +42,8 @@ pub extern "C-unwind" fn miniextendr_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |x| {
         let show_traceback = std::env::var("MINIEXTENDR_BACKTRACE")
-            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+            .ok()
+            .and_then(|v| crate::env_flag::parse_bool(&v))
             .unwrap_or(false);
         if show_traceback {
             default_hook(x)

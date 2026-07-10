@@ -597,14 +597,24 @@ rule:
 |---|---|---|
 | 1 | `MINIEXTENDR_NUM_THREADS` env var | Explicit override — wins over everything |
 | 2 | `RAYON_NUM_THREADS` env var | Rayon's own convention, respected as-is |
-| 3 | `_R_CHECK_LIMIT_CORES_` env var (truthy) | Caps at `min(2, available_parallelism())` — CRAN's `--as-cran` policy sets this to `"TRUE"` |
-| 4 | (none of the above) | `std::thread::available_parallelism()` |
+| 3 | `RAYON_RS_NUM_CPUS` env var | Rayon's deprecated fallback, still honored (after `RAYON_NUM_THREADS`) |
+| 4 | `_R_CHECK_LIMIT_CORES_` env var (truthy) | Caps at `min(2, available_parallelism())` — CRAN's `--as-cran` policy sets this to `"TRUE"` |
+| 5 | (none of the above) | `std::thread::available_parallelism()` |
 
-`_R_CHECK_LIMIT_CORES_` truthiness follows R's own convention: unset, empty,
-or `"false"`/`"FALSE"` count as not-limited; anything else (including R's
-`"TRUE"`) caps at 2. Because rayon's global pool cannot be resized once
-built, this resolution happens exactly once per process — the first
+`_R_CHECK_LIMIT_CORES_` truthiness follows R's own `config_val_to_logical`
+convention: unset, empty, or `"no"`/`"false"`/`"0"`/`"off"` count as
+not-limited; `"yes"`/`"true"`/`"1"`/`"on"` (and, failing safe, any
+unrecognized value) cap at 2. Because rayon's global pool cannot be resized
+once built, this resolution happens exactly once per process — the first
 parallel call locks it in.
+
+The two `RAYON_*` vars are parsed exactly as `rayon-core` parses them
+(`usize::from_str`, no whitespace trimming), so a value rayon would reject we
+reject too. Two deliberate exceptions: (1) we treat `RAYON_NUM_THREADS=0` as
+*unset* — falling through to the `_R_CHECK_LIMIT_CORES_` cap — rather than
+rayon-core's "0 means use the default (all cores)", so a stray `0` can never
+bypass CRAN's core limit; (2) `MINIEXTENDR_NUM_THREADS`, being our own var, is
+lenient and trims surrounding whitespace.
 
 If your own code calls `rayon::ThreadPoolBuilder::build_global()` before any
 miniextendr rayon call, that wins outright: `ensure_pool()` sees the pool
