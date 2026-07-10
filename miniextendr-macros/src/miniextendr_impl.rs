@@ -597,6 +597,11 @@ pub struct MethodAttrs {
     pub has_dots: bool,
     /// User-provided dots binding, if one exists.
     pub named_dots: Option<syn::Ident>,
+    /// `typed_list!(...)` spec from `#[miniextendr(dots = typed_list!(...))]` on
+    /// this method, mirroring `MiniextendrFnAttrs.dots_spec`. When set, a
+    /// `dots_typed` binding is injected at the top of the method body. Per-method
+    /// (dots apply to an individual signature), not an impl-block-level option.
+    pub dots_spec: Option<proc_macro2::TokenStream>,
     /// Return `Result<T, E>` to R without unwrapping.
     pub unwrap_in_r: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
@@ -1723,9 +1728,23 @@ impl ParsedMethod {
                     method_attrs.noexport = true;
                 } else if meta.path.is_ident("internal") {
                     method_attrs.internal = true;
+                } else if meta.path.is_ident("dots") {
+                    // `dots = typed_list!(...)` — attribute sugar mirroring the
+                    // standalone-fn path (`miniextendr_fn.rs`): capture the
+                    // `typed_list!(...)` spec so a `dots_typed` binding can be
+                    // injected at the top of the method body in `from_impl_item`.
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let mac: syn::Macro = meta.input.parse()?;
+                    if !mac.path.is_ident("typed_list") {
+                        return Err(syn::Error::new_spanned(
+                            &mac.path,
+                            "dots expects `typed_list!(...)` macro",
+                        ));
+                    }
+                    method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit, noexport, internal"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit, noexport, internal, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -1841,6 +1860,23 @@ impl ParsedMethod {
         let named_dots = variadic_dots.named_dots.clone().or(explicit_dots);
         method_attrs.has_dots = has_dots;
         method_attrs.named_dots = named_dots.clone();
+
+        // `dots = typed_list!(...)` sugar: inject the `dots_typed` binding at the
+        // top of the method body, reusing the shared helper that the standalone-fn
+        // path uses. This mutates `item.block`, which is the same node re-emitted
+        // as `original_impl` (see `ParsedImpl::parse`), so it covers all six class
+        // systems by construction (they emit only R/C wrappers, not the Rust body).
+        if let Some(spec) = &method_attrs.dots_spec {
+            let dots_ident = named_dots.clone().ok_or_else(|| {
+                syn::Error::new(
+                    item.sig.ident.span(),
+                    "dots = typed_list!(...) requires the method to take a dots parameter \
+                     (a trailing `...` or `&Dots`)",
+                )
+            })?;
+            let stmt = crate::build_dots_validation_stmt(&dots_ident, spec);
+            item.block.stmts.insert(0, stmt);
+        }
 
         // match_arg / choices on impl methods: unlike standalone functions, Rust
         // doesn't accept `#[miniextendr(...)]` on method parameters inside an impl

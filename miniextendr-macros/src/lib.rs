@@ -390,7 +390,7 @@ fn validate_extern_signature(
 /// (`Missing { name: "x" }`) into the R-visible message instead of the
 /// human-phrased text (`missing required field: "x"`) that the direct
 /// `typed_list!` path already produces via `Display`. See audit A8.
-fn build_dots_validation_stmt(
+pub(crate) fn build_dots_validation_stmt(
     dots_param: &syn::Ident,
     spec_tokens: &proc_macro2::TokenStream,
 ) -> syn::Stmt {

@@ -29,3 +29,19 @@ test_that("S3 impl-block constructors and methods accept dots without duplicate 
 test_that("impl-block dots gc stress fixture is self-contained", {
   expect_equal(gc_stress_impl_dots_methods(), 42L)
 })
+
+test_that("dots = typed_list!(...) sugar validates dots on impl constructors and methods (hiccup #2)", {
+  obj <- ImplDotsSugar$new(2, scale = 3)
+  expect_equal(obj$scaled(bump = 4), (2 + 4) * 3)
+
+  # the sugar's typed_list! validation fires: a missing required dot errors
+  expect_error(ImplDotsSugar$new(2))
+  expect_error(obj$scaled())
+
+  expect_identical(names(formals(ImplDotsSugar$public_methods$initialize)), c("base", "...", ".ptr"))
+  expect_identical(names(formals(ImplDotsSugar$public_methods$scaled)), "...")
+})
+
+test_that("impl-block dots sugar gc stress fixture is self-contained", {
+  expect_equal(gc_stress_impl_dots_sugar(), (2 + 4) * 3)
+})
