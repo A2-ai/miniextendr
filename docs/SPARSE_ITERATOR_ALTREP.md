@@ -86,18 +86,21 @@ This example from `rpkg/src/rust/lib.rs` shows the full pattern for creating a s
 
 ### Step 1: Define a Wrapper Type
 
-The generic `SparseIterIntData<I>` needs a concrete iterator type. Use a boxed trait object for flexibility:
+The generic `SparseIterIntData<I>` needs a concrete iterator type. Use a boxed
+trait object for flexibility. The `#[derive(AltrepInteger)]` with
+`#[altrep(manual)]` registers the ALTREP class and leaves the data traits
+(`AltrepLen` + `AltIntegerData`) for you to implement by hand in the next step:
 
 ```rust
-use miniextendr_api::altrep_data::{
-    AltrepLen, AltIntegerData, SparseIterIntData,
-};
+use miniextendr_api::prelude::*;
+use miniextendr_api::altrep_data::SparseIterIntData;
 
 /// Type alias for boxed iterator producing i32
 type BoxedIntIter = Box<dyn Iterator<Item = i32>>;
 
 /// Wrapper for sparse integer iterator ALTREP
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(AltrepInteger)]
+#[altrep(class = "SparseIntIter", manual)]
 pub struct SparseIntIterData {
     inner: SparseIterIntData<BoxedIntIter>,
 }
@@ -127,15 +130,12 @@ impl AltIntegerData for SparseIntIterData {
 }
 ```
 
-### Step 3: Generate Low-Level Trait Impls and Create the ALTREP Class
+### Step 3: Registration Is Automatic
 
-```rust
-miniextendr_api::impl_altinteger_from_data!(SparseIntIterData);
-
-/// The ALTREP class wrapper
-#[miniextendr(class = "SparseIntIter")]
-pub struct SparseIntIterClass(pub SparseIntIterData);
-```
+The derive in Step 1 already emitted the low-level trait impls
+(`impl_altinteger_from_data!`), the `RegisterAltrep` impl, and the
+registration entry. There is no macro to call and no wrapper class struct to
+define — `#[miniextendr]` on a 1-field struct is removed.
 
 ### Step 4: Write the Constructor Function
 
@@ -148,11 +148,11 @@ pub fn sparse_iter_int(from: i32, to: i32) -> SEXP {
     let data = SparseIntIterData {
         inner: SparseIterIntData::from_iter(iter, len),
     };
-    SparseIntIterClass(data).into_sexp()
+    data.into_sexp()
 }
 ```
 
-Registration is automatic via `#[miniextendr]` -- no manual module declarations needed.
+Registration is automatic via the derive's registration entry -- no manual module declarations needed.
 
 ---
 
@@ -232,7 +232,8 @@ Real-valued sparse iterators work the same way, with `NaN` (displayed as `NA` in
 ```rust
 type BoxedRealIter = Box<dyn Iterator<Item = f64>>;
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(AltrepReal)]
+#[altrep(class = "SparseRealIter", manual)]
 pub struct SparseRealIterData {
     inner: SparseIterRealData<BoxedRealIter>,
 }
@@ -248,7 +249,7 @@ pub fn sparse_iter_real(from: f64, step: f64, length_out: i32) -> SEXP {
     let data = SparseRealIterData {
         inner: SparseIterRealData::from_iter(iter, len),
     };
-    SparseRealIterClass(data).into_sexp()
+    data.into_sexp()
 }
 ```
 

@@ -22,10 +22,10 @@ ALTREP allows you to create R vectors with custom internal representations. Inst
 Here's a minimal ALTREP example - a constant integer vector using the field-based derive (simplest approach):
 
 ```rust
-use miniextendr_api::{miniextendr, SEXP, IntoR};
+use miniextendr_api::prelude::*;
 
 // 1. Define your data type with derive - generates everything
-#[derive(miniextendr_api::AltrepInteger)]
+#[derive(AltrepInteger)]
 #[altrep(len = "len", elt = "value", class = "ConstantInt")]
 pub struct ConstantIntData {
     value: i32,
@@ -79,7 +79,7 @@ fn get_data() -> Vec<i32> {
 ### ALTREP Conversion (IntoRAltrep) - Zero-Copy
 
 ```rust
-use miniextendr_api::IntoRAltrep;
+use miniextendr_api::prelude::*;
 
 #[miniextendr]
 fn get_data() -> SEXP {
@@ -140,7 +140,7 @@ Is your data > 1000 elements?
 ### Examples
 
 ```rust
-use miniextendr_api::{miniextendr, IntoRAltrep, SEXP};
+use miniextendr_api::prelude::*;
 
 // Small data - copy is fine
 #[miniextendr]
@@ -353,9 +353,10 @@ pub fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
 For cases where you want lazy computation but also need to support `DATAPTR`:
 
 ```rust
+use miniextendr_api::prelude::*;
 use miniextendr_api::altrep_data::AltrepDataptr;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "LazyIntSeq")]
 pub struct LazyIntSeqData {
     start: i32,
@@ -417,7 +418,8 @@ impl AltrepSerialize for LazyIntSeqData {
     fn serialized_state(&self) -> SEXP {
         // Return a serializable representation (typically a simple vector)
         unsafe {
-            use miniextendr_api::sys::{Rf_allocVector, SET_INTEGER_ELT, SEXPTYPE};
+            use miniextendr_api::SEXPTYPE;
+            use miniextendr_api::sys::{Rf_allocVector, SET_INTEGER_ELT};
             let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
             SET_INTEGER_ELT(state, 0, self.start);
             SET_INTEGER_ELT(state, 1, self.step);
@@ -574,6 +576,13 @@ framework guarantees unique, so the collision is always in your own code.
 
 ## Mutable Vectors (Set_elt)
 
+> **Known drift (#1266)**: the data-trait `set_elt` shown in this section has
+> been removed — `AltStringData`/`AltListData` no longer have a `set_elt`
+> method and `impl_alt*_from_data!` has no `set_elt` option. Mutation currently
+> requires implementing the low-level `AltString`/`AltList` traits with
+> `HAS_SET_ELT = true`. The examples below do **not** compile against current
+> main; this section is pending a rewrite.
+
 String and List vectors can be made mutable by implementing the `set_elt()` method. This allows R code to modify elements in-place.
 
 **Important**: Only String and List types support `set_elt`. Numeric vectors (Integer, Real, Logical, Raw, Complex) cannot be mutated through ALTREP.
@@ -581,11 +590,10 @@ String and List vectors can be made mutable by implementing the `set_elt()` meth
 ### Mutable String Vectors
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltStringData};
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::*;
 use std::cell::RefCell;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "MutableString")]
 pub struct MutableStringData {
     strings: RefCell<Vec<Option<String>>>,
@@ -629,11 +637,10 @@ miniextendr_api::impl_altstring_from_data!(MutableStringData, set_elt);
 Lists are easier to make mutable since they already store SEXPs:
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltListData};
-use miniextendr_api::sys::SEXP;
+use miniextendr_api::prelude::*;
 use std::cell::RefCell;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "MutableList")]
 pub struct MutableListData {
     // SEXPs need to be protected from GC
@@ -732,10 +739,10 @@ pub fn static_ints() -> SEXP {
 ## Complex Numbers
 
 ```rust
-use miniextendr_api::sys::Rcomplex;
-use miniextendr_api::altrep_data::AltComplexData;
+use miniextendr_api::prelude::*;
+use miniextendr_api::Rcomplex;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "UnitCircle")]
 pub struct UnitCircleData {
     n: usize,  // Number of points on unit circle
@@ -767,9 +774,10 @@ pub fn unit_circle(n: i32) -> SEXP {
 Use the `Logical` enum for proper NA handling:
 
 ```rust
-use miniextendr_api::altrep_data::{AltLogicalData, Logical};
+use miniextendr_api::prelude::*;
+use miniextendr_api::altrep_data::Logical;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "LogicalVec")]
 pub struct LogicalVecData {
     data: Vec<Logical>,
@@ -812,9 +820,9 @@ miniextendr_api::impl_altlogical_from_data!(LogicalVecData);
 String ALTREPs return `Option<&str>` where `None` represents `NA`:
 
 ```rust
-use miniextendr_api::altrep_data::AltStringData;
+use miniextendr_api::prelude::*;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "StringVec")]
 pub struct StringVecData {
     data: Vec<Option<String>>,
@@ -842,9 +850,9 @@ miniextendr_api::impl_altstring_from_data!(StringVecData);
 ## Raw Vectors
 
 ```rust
-use miniextendr_api::altrep_data::AltRawData;
+use miniextendr_api::prelude::*;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "RepeatingRaw")]
 pub struct RepeatingRawData {
     pattern: Vec<u8>,
@@ -871,11 +879,10 @@ miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
 List vectors (R's `list` type / VECSXP) can contain any R objects. The `AltListData` trait allows you to create lists that compute or fetch elements on demand.
 
 ```rust
-use miniextendr_api::altrep_data::{AltrepLen, AltListData};
-use miniextendr_api::sys::SEXP;
-use miniextendr_api::{IntoR, Rf_ScalarInteger};
+use miniextendr_api::prelude::*;
+use miniextendr_api::sys::Rf_ScalarInteger;
 
-#[derive(miniextendr_api::Altrep)]
+#[derive(Altrep)]
 #[altrep(class = "IntegerSequenceList")]
 pub struct IntegerSequenceListData {
     n: usize,  // Number of elements in the list
@@ -1049,8 +1056,8 @@ R calls `extract_subset(x, indices, call)` when:
 ### Basic Example: Range Subsetting
 
 ```rust
+use miniextendr_api::prelude::*;
 use miniextendr_api::altrep_traits::AltVec;
-use miniextendr_api::sys::{SEXP, R_xlen_t};
 
 impl AltVec for RangeData {
     const HAS_EXTRACT_SUBSET: bool = true;
@@ -1082,7 +1089,7 @@ impl AltVec for ConstantIntData {
     const HAS_EXTRACT_SUBSET: bool = true;
 
     fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
-        use miniextendr_api::sys::{Rf_xlength, TYPEOF, SEXPTYPE};
+        use miniextendr_api::sys::Rf_xlength;
 
         let data = unsafe { altrep_data1_as::<ConstantIntData>(x) }?;
 
@@ -1136,7 +1143,8 @@ With `extract_subset`:
 
 ```rust
 fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
-    use miniextendr_api::sys::{TYPEOF, SEXPTYPE};
+    use miniextendr_api::SEXPTYPE;
+    use miniextendr_api::sys::TYPEOF;
 
     unsafe {
         match TYPEOF(indices) {

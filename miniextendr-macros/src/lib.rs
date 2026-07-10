@@ -718,8 +718,10 @@ fn build_match_arg_helpers(
 ///
 /// # ALTREP
 ///
-/// Apply `#[miniextendr(class = "...", base = "...")]` to a one-field
-/// wrapper struct. Registration is automatic.
+/// `#[miniextendr]` no longer generates ALTREP classes — `class`/`base`
+/// attributes on a one-field struct are a compile error. Use the per-family
+/// derives (`#[derive(AltrepInteger)]`, …) with `#[altrep(class = "...")]`
+/// instead; registration is automatic there.
 #[proc_macro_attribute]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,

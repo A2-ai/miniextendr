@@ -150,12 +150,11 @@ R tests are in `tests/testthat/test-native-sexp-altrep.R`.
 ## Example Usage
 
 ```rust
-use miniextendr_api::altrep::RegisterAltrep;
-use miniextendr_api::altrep_data::{AltIntegerData, AltrepDataptr, AltrepExtract, AltrepLen};
+use miniextendr_api::prelude::*;
+use miniextendr_api::altrep_data::AltrepDataptr;
 use miniextendr_api::altrep_traits::{AltInteger, AltVec, Altrep, AltrepGuard};
-use miniextendr_api::sys::{DATAPTR_RO, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE};
-use miniextendr_api::into_r::IntoR;
-use miniextendr_api::{impl_inferbase_integer, miniextendr};
+use miniextendr_api::sys::DATAPTR_RO;
+use miniextendr_api::{R_xlen_t, impl_inferbase_integer};
 
 pub struct MyNativeSexpAltrep;
 static mut MY_INSTANCE: MyNativeSexpAltrep = MyNativeSexpAltrep;

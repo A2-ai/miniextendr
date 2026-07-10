@@ -182,7 +182,9 @@ pub fn expand_struct_or_enum(
 /// Dispatches `#[miniextendr]` on a struct to the correct derive path.
 ///
 /// Decision logic:
-/// - 1-field struct with no explicit mode: ALTREP (backwards compatibility)
+/// - 1-field struct with ALTREP attrs (`class`/`base`): compile error with
+///   migration guidance (ALTREP via `#[miniextendr]` is removed — use the
+///   `#[derive(Altrep*)]` family)
 /// - Explicit `list` mode: `IntoList` + `TryFromList` + `PreferList`
 /// - Explicit `dataframe` mode: `IntoList` + `DataFrameRow` + companion `IntoR`
 /// - Default multi-field or explicit `externalptr`: `ExternalPtr`
