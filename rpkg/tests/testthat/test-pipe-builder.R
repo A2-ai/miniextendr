@@ -137,6 +137,27 @@ test_that("S7 builder build wraps a different returned class", {
   expect_equal(s7_cross_cells(s7_cross_build(plan, 2L, 3L)), 9L)
 })
 
+test_that("R6 method returning an S7 class wraps with the S7 constructor", {
+  # Mixed-system return: source method lives on an R6 class, target is S7.
+  # The write-time resolver keys off the returned class, so the wrapper must
+  # build the S7 object (not R6).
+  plan <- R6CrossPlan$new(3L)
+
+  board <- plan$build_s7(4L, 5L)
+  expect_true(S7::S7_inherits(board, S7CrossBoard))
+  expect_equal(s7_cross_cells(board), 23L)
+})
+
+test_that("S7 method returning an R6 class wraps with the R6 constructor", {
+  # Mixed-system return in the other direction: S7 source, R6 target.
+  plan <- S7CrossPlan(7L)
+
+  board <- s7_build_r6(plan, 4L, 5L)
+  expect_true(inherits(board, "R6CrossBoard"))
+  expect_equal(board$cells(), 20L)
+  expect_equal(board$signature(), "4x5@7")
+})
+
 test_that("EnvPipeBuilder chains via $ and preserves identity", {
   b <- EnvPipeBuilder$new()
   expect_equal(b$add(1L)$add(2L)$total(), 3L)

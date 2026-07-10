@@ -300,6 +300,19 @@ impl R6CrossPlan {
             seed: self.seed,
         }
     }
+
+    /// Materialize this plan into an `S7CrossBoard` (R6 source, S7 target).
+    ///
+    /// The write-time resolver keys off the *returned* class, so the emitted
+    /// wrapper uses S7's `S7CrossBoard(.ptr = .val)` constructor even though
+    /// the enclosing method lives on an R6 class.
+    /// @param width Board width.
+    /// @param height Board height.
+    pub fn build_s7(&self, width: i32, height: i32) -> S7CrossBoard {
+        S7CrossBoard {
+            cells: self.seed + (width * height),
+        }
+    }
 }
 
 /// Board materialized by `S7CrossPlan::s7_cross_build`.
@@ -344,6 +357,21 @@ impl S7CrossPlan {
     pub fn s7_cross_build(&self, width: i32, height: i32) -> S7CrossBoard {
         S7CrossBoard {
             cells: self.seed + (width * height),
+        }
+    }
+
+    /// Materialize this plan into an `R6CrossBoard` (S7 source, R6 target).
+    ///
+    /// Mirror of [`R6CrossPlan::build_s7`]: the returned class drives the
+    /// constructor choice, so this S7 method's wrapper builds the R6 target via
+    /// `R6CrossBoard$new(.ptr = .val)`.
+    /// @param width Board width.
+    /// @param height Board height.
+    pub fn s7_build_r6(&self, width: i32, height: i32) -> R6CrossBoard {
+        R6CrossBoard {
+            width,
+            height,
+            seed: self.seed,
         }
     }
 }

@@ -14,6 +14,7 @@ R6 builder fixture for cross-class return wrapping.
   \itemize{
     \item \href{#method-R6CrossPlan-initialize}{\code{R6CrossPlan$new()}}
     \item \href{#method-R6CrossPlan-build}{\code{R6CrossPlan$build()}}
+    \item \href{#method-R6CrossPlan-build_s7}{\code{R6CrossPlan$build_s7()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -44,6 +45,28 @@ R6 builder fixture for cross-class return wrapping.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$build(width, height)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{width}}{Board width.}
+      \item{\code{height}}{Board height.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6CrossPlan-build_s7"></a>}}
+\if{latex}{\out{\hypertarget{method-R6CrossPlan-build_s7}{}}}
+\subsection{\code{R6CrossPlan$build_s7()}}{
+  Materialize this plan into an \code{S7CrossBoard} (R6 source, S7 target).
+
+The write-time resolver keys off the \emph{returned} class, so the emitted wrapper uses S7's \code{S7CrossBoard(.ptr = .val)} constructor even though the enclosing method lives on an R6 class.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6CrossPlan$build_s7(width, height)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
