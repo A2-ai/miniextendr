@@ -63,7 +63,9 @@ pub fn group_by_frames(df: DataFrame, col: &str) -> SEXP {
     let grouped = df.group_by(col).unwrap_or_else(|e| panic!("{}", e));
     let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        out = out.push(key.label(), sub);
+        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
+        // push, which protects it in the builder's scope before `sub` drops.
+        out = out.push(key.label(), *sub);
     }
     out.build().into_sexp()
 }

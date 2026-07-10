@@ -191,7 +191,7 @@ pub fn test_columnar_skip_serializing_if() -> BuiltDataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_rename() -> DataFrame {
+pub fn test_columnar_rename() -> BuiltDataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -209,7 +209,7 @@ pub fn test_columnar_rename() -> DataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_rename_noop() -> DataFrame {
+pub fn test_columnar_rename_noop() -> BuiltDataFrame {
     let rows = vec![Inner { x: 1.0, y: 2.0 }];
     vec_to_dataframe(&rows)
         .expect("from_rows")
@@ -222,7 +222,7 @@ pub fn test_columnar_empty() -> BuiltDataFrame {
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_drop() -> DataFrame {
+pub fn test_columnar_drop() -> BuiltDataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -233,11 +233,14 @@ pub fn test_columnar_drop() -> DataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    (*vec_to_dataframe(&rows).expect("from_rows")).drop("point_y")
+    // `drop` is the inherent `BuiltDataFrame` forward (#1247): it consumes
+    // the constructor's handle and returns a rooted handle for the edited
+    // frame — no deref dance, every link rooted.
+    vec_to_dataframe(&rows).expect("from_rows").drop("point_y")
 }
 
 #[miniextendr(noexport)]
-pub fn test_columnar_select() -> DataFrame {
+pub fn test_columnar_select() -> BuiltDataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),
@@ -257,7 +260,7 @@ pub fn test_columnar_select() -> DataFrame {
 /// matching length.
 ///
 #[miniextendr(noexport)]
-pub fn test_columnar_with_column_replace() -> DataFrame {
+pub fn test_columnar_with_column_replace() -> BuiltDataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
     struct Row {
@@ -269,27 +272,39 @@ pub fn test_columnar_with_column_replace() -> DataFrame {
         Row { id: 2, value: 20.0 },
         Row { id: 3, value: 30.0 },
     ];
-    let replacement = vec!["a".to_string(), "b".to_string(), "c".to_string()].into_sexp();
-    vec_to_dataframe(&rows)
-        .expect("from_rows")
-        .with_column("id", replacement)
+    let df = vec_to_dataframe(&rows).expect("from_rows");
+    // Root the replacement column across `with_column`'s internal allocations
+    // (caller contract — see `DataFrame::with_column`).
+    // SAFETY: R main thread (this fn builds SEXPs throughout).
+    let replacement = unsafe {
+        miniextendr_api::OwnedProtect::new(
+            vec!["a".to_string(), "b".to_string(), "c".to_string()].into_sexp(),
+        )
+    };
+    df.with_column("id", *replacement)
 }
 
 /// with_column: append a new column when the name doesn't exist.
 ///
 #[miniextendr(noexport)]
-pub fn test_columnar_with_column_append() -> DataFrame {
+pub fn test_columnar_with_column_append() -> BuiltDataFrame {
     let rows = vec![Inner { x: 1.0, y: 2.0 }, Inner { x: 3.0, y: 4.0 }];
-    let new_col = vec!["first".to_string(), "second".to_string()].into_sexp();
-    vec_to_dataframe(&rows)
-        .expect("from_rows")
-        .with_column("label", new_col)
+    let df = vec_to_dataframe(&rows).expect("from_rows");
+    // Root the new column across `with_column`'s internal allocations
+    // (caller contract — see `DataFrame::with_column`).
+    // SAFETY: R main thread (this fn builds SEXPs throughout).
+    let new_col = unsafe {
+        miniextendr_api::OwnedProtect::new(
+            vec!["first".to_string(), "second".to_string()].into_sexp(),
+        )
+    };
+    df.with_column("label", *new_col)
 }
 
 /// strip_prefix: remove "point_" from column names.
 ///
 #[miniextendr(noexport)]
-pub fn test_columnar_strip_prefix() -> DataFrame {
+pub fn test_columnar_strip_prefix() -> BuiltDataFrame {
     let rows = vec![
         Outer {
             label: "a".into(),

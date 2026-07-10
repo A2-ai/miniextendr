@@ -50,10 +50,12 @@ metadata systems that inspect the column type before any values arrive), use
 `with_column` to inject a typed NA vector explicitly after assembly:
 
 ```rust
-use miniextendr_api::IntoR;
+use miniextendr_api::{IntoR, OwnedProtect};
 
-let na_integer = vec![Option::<i32>::None; nrow].into_sexp(); // INTSXP of NA_integer_
-df.with_column("stored_size", na_integer)
+// Root the fresh column across `with_column`'s internal allocations
+// (caller contract). INTSXP of NA_integer_.
+let na_integer = unsafe { OwnedProtect::new(vec![Option::<i32>::None; nrow].into_sexp()) };
+df.with_column("stored_size", *na_integer) // returns an owned, GC-rooted BuiltDataFrame
 ```
 
 This pattern is already described in the issue body for `stored_size: Option<u64>`.
