@@ -153,6 +153,7 @@ if test ! -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "false" \
    && command -v cargo-revendor >/dev/null 2>&1; then
   AC_MSG_NOTICE([auto-vendor: inst/vendor.tar.xz absent, running cargo-revendor])
+  AC_MSG_NOTICE([auto-vendor: no .git ancestor found — assuming CRAN-style/offline build context])
   mkdir -p "$abs_top_srcdir/inst"
   if (cd "$abs_top_srcdir" && cargo revendor \
         --manifest-path src/rust/Cargo.toml \

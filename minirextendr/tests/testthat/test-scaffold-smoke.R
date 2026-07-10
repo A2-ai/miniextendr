@@ -31,6 +31,12 @@ test_that("standalone scaffold can vendor for CRAN prep", {
     miniextendr_autoconf(path = pkg_path)
     miniextendr_configure(path = pkg_path)
   })
+  configure_log <- file.path(pkg_path, "config.log")
+  configure_output <- readLines(configure_log, warn = FALSE)
+  expect_true(
+    any(grepl("auto-vendor: no \\.git ancestor found", configure_output)),
+    info = "configure should explain that auto-vendor fired because no .git ancestor was found"
+  )
 
   # Vendor for CRAN
   suppressMessages({
