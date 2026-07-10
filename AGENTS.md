@@ -348,8 +348,10 @@ codex exec -m gpt-5.5 review "review these changes"
 ## Working a plan file end-to-end (worktree → PR)
 
 A plan file (`plans/*.md`) fully specifies one fix: the bug, the exact change,
-verification, and deliverable. To execute one in isolation, the rule is **one
-plan = one worktree = one PR**:
+verification, and deliverable — it is the execution spec for work being done
+*now* (deferred or forward-looking work still goes to a GitHub issue, never a new
+plan file — see the Reviews rule above). To execute one in isolation, the rule is
+**one plan = one worktree = one PR**:
 
 1. **R version** — `rig default 4.6 && R --version` (must read `4.6.x`, else rv
    enters safe mode and installs break). Re-check at the start of every fresh
