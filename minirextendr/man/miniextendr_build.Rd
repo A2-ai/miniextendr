@@ -29,7 +29,7 @@ The \verb{R/<pkg>-wrappers.R} file is generated \emph{during} install, and its r
 That creates a chicken-and-egg ordering: \code{document()} can only see the
 wrappers after install, but install collates \code{NAMESPACE} (the export set the
 installed image actually exposes) \emph{before} \code{document()} rewrites it. On a
-first build — or any build that adds or renames an exported function — the
+first build -- or any build that adds or renames an exported function -- the
 freshly-installed image therefore lags the on-disk \code{NAMESPACE} by one build,
 and \code{library(pkg)} exposes nothing new until the package is built a second
 time.
@@ -48,7 +48,7 @@ A brand-new package has no generated \verb{R/<pkg>-wrappers.R} yet. The wrappers
 are produced by the wrapper-gen pass during install, but a plain
 \code{devtools::install(build = TRUE)} cannot bootstrap them: its \verb{R CMD build}
 step runs \code{bootstrap.R}, which auto-vendors into \code{inst/vendor.tar.xz}, and
-that latch flips \code{./configure} into offline \emph{tarball} mode — which ships
+that latch flips \code{./configure} into offline \emph{tarball} mode -- which ships
 pre-generated wrappers and skips wrapper generation. With no wrappers to
 ship, the install either fails loudly ("tarball is missing pre-generated
 wrappers") or, worse, leaves the namespace empty.
@@ -60,7 +60,7 @@ first runs a bootstrap (clear any stale latch -> configure ->
 runs. The \code{MINIEXTENDR_FORCE_WRAPPER_GEN} override forces the
 wrapper-gen pass regardless of which install mode configure resolves to: in
 a non-git tree configure's self-repair branch may legitimately re-seal the
-latch (cargo-revendor on PATH), and that is fine — the FORCE override
+latch (cargo-revendor on PATH), and that is fine -- the FORCE override
 ensures wrapper generation proceeds. Once wrappers are present, the normal
 build path runs unchanged.
 }
