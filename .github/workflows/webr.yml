@@ -362,6 +362,14 @@ jobs:
       - name: Scaffold leg — native install + roxygen pass (wrappers, wasm_registry.rs, NAMESPACE)
         run: |
           set -euo pipefail
+          # The container's default locale is C. miniextendr's package init
+          # asserts l10n_info()[["UTF-8"]] and refuses to dyn.load otherwise
+          # (miniextendr-api/src/encoding.rs). The wrapper-gen dyn.load inside
+          # R CMD INSTALL takes the minimal init path (MINIEXTENDR_WRAPPER_GEN=1)
+          # and never hits the check, but roxygenise's pkgload load_dll and the
+          # sanity library() below run the full init — so this step needs a
+          # UTF-8 locale. noble ships C.UTF-8 without locale-gen.
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8
           ( cd /tmp/scaffold/mxsmoke && bash ./configure )
           mkdir -p /tmp/scaffold-native-lib
           # Install #1: the Makevars wrapper-gen pass writes
