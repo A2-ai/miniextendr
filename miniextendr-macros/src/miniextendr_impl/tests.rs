@@ -247,6 +247,96 @@ fn vctrs_user_dots_emit_variadic_in_constructor_and_static_helper() {
     assert!(!wrapper.contains("function(amounts, ..., ...)"));
 }
 
+#[test]
+fn impl_method_dots_sugar_injects_dots_typed_binding() {
+    // `#[miniextendr(dots = typed_list!(...))]` on an impl method should inject
+    // the `dots_typed` binding at the top of the re-emitted Rust body, exactly
+    // like the standalone-fn path. Because injection happens on the single
+    // `original_impl` node, this holds for all six class systems by
+    // construction, so one class system exercises the shared path.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl SugarDotsThing {
+            #[miniextendr(dots = typed_list!(scale => numeric()))]
+            pub fn scaled(&self, dots: ...) -> f64 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let syn::ImplItem::Fn(reemitted) = &parsed.original_impl.items[0] else {
+        panic!("expected reemitted method");
+    };
+    let first = reemitted
+        .block
+        .stmts
+        .first()
+        .expect("injected dots_typed statement");
+    let rendered = quote::quote!(#first).to_string();
+    assert!(
+        rendered.contains("dots_typed"),
+        "expected injected dots_typed binding, got: {rendered}"
+    );
+    assert!(
+        rendered.contains("typed_list"),
+        "expected typed_list spec in binding, got: {rendered}"
+    );
+}
+
+#[test]
+fn impl_method_dots_sugar_injects_binding_for_explicit_dots_param() {
+    // The sugar resolves its dots ident from `named_dots`, which covers both the
+    // rewritten `...` path and an explicit trailing `&Dots` parameter. Injection
+    // must land on the explicit-param method the same way.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl ExplicitSugarDots {
+            #[miniextendr(dots = typed_list!(scale => numeric()))]
+            pub fn scaled(&self, my_dots: &Dots) -> f64 {
+                unimplemented!()
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let syn::ImplItem::Fn(reemitted) = &parsed.original_impl.items[0] else {
+        panic!("expected reemitted method");
+    };
+    let first = reemitted
+        .block
+        .stmts
+        .first()
+        .expect("injected dots_typed statement");
+    let rendered = quote::quote!(#first).to_string();
+    assert!(
+        rendered.contains("dots_typed") && rendered.contains("my_dots"),
+        "expected dots_typed binding over `my_dots`, got: {rendered}"
+    );
+}
+
+#[test]
+fn impl_method_dots_sugar_without_dots_param_errors() {
+    // The sugar requires the method to actually take a dots parameter (a
+    // trailing `...` or `&Dots`); using it on a method with no dots parameter
+    // is a clear compile error rather than a silently-dropped attribute.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl NoDotsSugar {
+            #[miniextendr(dots = typed_list!(scale => numeric()))]
+            pub fn oops(&self, x: i32) -> i32 {
+                x
+            }
+        }
+    };
+
+    let attrs = default_impl_attrs(ClassSystem::R6);
+    let err = ParsedImpl::parse(attrs, item_impl)
+        .expect_err("dots sugar without a dots parameter must error");
+    assert!(
+        err.to_string()
+            .contains("requires the method to take a dots parameter"),
+        "unexpected error: {err}"
+    );
+}
+
 // endregion
 
 // region: Env class system tests
