@@ -82,6 +82,10 @@ pub enum ReturnStrategy {
     /// the appropriate class attribute or creates a new class object (e.g.,
     /// `R6Class$new(.ptr = result)` or `structure(result, class = "...")`).
     ReturnSelf,
+    /// The method returns a bare type name that may be another registered
+    /// ExternalPtr-backed class. The final decision is deferred to
+    /// `write_r_wrappers_to_file`, where the complete class registry is known.
+    ReturnOtherClass,
     /// The method is a `&mut self` method returning `()`. The wrapper calls the
     /// `.Call()` for its side effect and returns the receiver (`self`/`x`) for
     /// method chaining (e.g., `invisible(self)` for R6).
@@ -106,7 +110,10 @@ impl ReturnStrategy {
     ///   the native pipe (`obj |> set_a(1) |> set_b(2)`); the C wrapper hands
     ///   back the same ExternalPtr handle (see
     ///   [`crate::c_wrapper_builder::ReturnHandling::SelfHandle`]).
-    /// - All other methods use `Direct`
+    /// - Bare capitalized return types that are not known primitives/containers
+    ///   use `ReturnOtherClass`; write-time registry lookup wraps registered
+    ///   classes and leaves false positives unchanged.
+    /// - All other methods use `Direct`.
     pub fn for_method(method: &ParsedMethod) -> Self {
         // In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
         // `&mut self -> ()` mutators both return the receiver object.
@@ -116,6 +123,8 @@ impl ReturnStrategy {
             ReturnStrategy::ReturnSelf
         } else if is_self_ref_builder || is_unit_mutator {
             ReturnStrategy::ChainableMutation
+        } else if method.returns_other_class().is_some() {
+            ReturnStrategy::ReturnOtherClass
         } else {
             ReturnStrategy::Direct
         }
@@ -129,8 +138,9 @@ impl ReturnStrategy {
 /// [`MethodReturnBuilder::build_with_tails`]). The tail therefore always
 /// references `.val` directly.
 ///
-/// `class_name` is `""` for [`ReturnStrategy::ChainableMutation`] and
-/// [`ReturnStrategy::Direct`] — those tails should not use it.
+/// `class_name` is `""` for [`ReturnStrategy::ChainableMutation`],
+/// [`ReturnStrategy::ReturnOtherClass`], and [`ReturnStrategy::Direct`] — those
+/// tails should not use it.
 #[allow(clippy::type_complexity)]
 struct ReturnTails<'a> {
     /// Tail for [`ReturnStrategy::ReturnSelf`].
@@ -161,6 +171,10 @@ pub struct MethodReturnBuilder {
     /// R class name, required when `strategy` is `ReturnSelf` to construct
     /// the class wrapper (e.g., `"Counter"` for `Counter$new(.ptr = result)`).
     class_name: Option<String>,
+    /// Rust return type name, required when `strategy` is `ReturnOtherClass`.
+    /// The write-time resolver maps this Rust name to the registered target
+    /// class and constructor syntax, or falls back to the bare value on miss.
+    return_class: Option<String>,
     /// Variable name to return for `ChainableMutation` strategy (e.g., `"self"` for R6,
     /// `"x"` for S3). Defaults to `"self"` if not set.
     chain_var: Option<String>,
@@ -175,6 +189,7 @@ impl MethodReturnBuilder {
             call_expr,
             strategy: ReturnStrategy::Direct,
             class_name: None,
+            return_class: None,
             chain_var: None,
             indent: 2,
         }
@@ -192,6 +207,24 @@ impl MethodReturnBuilder {
         self
     }
 
+    /// Set the return class name (for cross-class ExternalPtr returns).
+    pub fn with_return_class(mut self, return_class: String) -> Self {
+        self.return_class = Some(return_class);
+        self
+    }
+
+    /// Attach the method's cross-class return name when this builder uses
+    /// [`ReturnStrategy::ReturnOtherClass`].
+    pub fn with_return_class_from_method(mut self, method: &ParsedMethod) -> Self {
+        if self.strategy == ReturnStrategy::ReturnOtherClass {
+            let return_class = method
+                .returns_other_class()
+                .expect("return_class required for ReturnOtherClass strategy");
+            self = self.with_return_class(return_class.to_string());
+        }
+        self
+    }
+
     /// Set the variable name to return for chaining (default: "self").
     pub fn with_chain_var(mut self, var: String) -> Self {
         self.chain_var = Some(var);
@@ -202,6 +235,14 @@ impl MethodReturnBuilder {
     pub fn with_indent(mut self, indent: usize) -> Self {
         self.indent = indent;
         self
+    }
+
+    fn return_other_class_expr(&self) -> String {
+        let return_class = self
+            .return_class
+            .as_ref()
+            .expect("return_class required for ReturnOtherClass strategy");
+        format!(".__MX_WRAP_RETURN_{return_class}__(.val)")
     }
 
     // region: Core shared build path
@@ -228,6 +269,9 @@ impl MethodReturnBuilder {
             }
             ReturnStrategy::ChainableMutation => {
                 lines.extend((tails.chain_tail)(&indent));
+            }
+            ReturnStrategy::ReturnOtherClass => {
+                lines.push(format!("{}{}", indent, self.return_other_class_expr()));
             }
             ReturnStrategy::Direct => {
                 lines.extend((tails.direct_tail)(&indent));
@@ -356,6 +400,7 @@ impl MethodReturnBuilder {
                 format!("{}(.ptr = .val)", class_name)
             }
             ReturnStrategy::ChainableMutation => "x".to_string(),
+            ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
             ReturnStrategy::Direct => ".val".to_string(),
         };
         condition_check_inline_block(&self.call_expr, &inner, "    ")
@@ -375,6 +420,7 @@ impl MethodReturnBuilder {
                 format!("methods::new(\"{}\", ptr = .val)", class_name)
             }
             ReturnStrategy::ChainableMutation => "x".to_string(),
+            ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
             ReturnStrategy::Direct => ".val".to_string(),
         };
         condition_check_inline_block(&self.call_expr, &inner, "    ")

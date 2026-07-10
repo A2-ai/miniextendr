@@ -236,6 +236,147 @@ impl S7PipeBuilder {
 }
 // endregion
 
+// region: Cross-class return builder fixtures
+//
+// Terminal builder methods that materialize a different ExternalPtr-backed
+// class should return a ready-to-use R wrapper, not a bare externalptr.
+
+/// Board materialized by `R6CrossPlan::build`.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6CrossBoard {
+    width: i32,
+    height: i32,
+    seed: i32,
+}
+
+/// R6 board target for cross-class builder returns.
+#[miniextendr(r6)]
+impl R6CrossBoard {
+    /// Create a board directly.
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param seed Seed carried from the plan.
+    pub fn new(width: i32, height: i32, seed: i32) -> Self {
+        R6CrossBoard {
+            width,
+            height,
+            seed,
+        }
+    }
+
+    /// Count the cells in the board.
+    pub fn cells(&self) -> i32 {
+        self.width * self.height
+    }
+
+    /// Summarize the board dimensions and seed.
+    pub fn signature(&self) -> String {
+        format!("{}x{}@{}", self.width, self.height, self.seed)
+    }
+}
+
+/// R6 builder whose terminal `build()` returns a different R6 class.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6CrossPlan {
+    seed: i32,
+}
+
+/// R6 builder fixture for cross-class return wrapping.
+#[miniextendr(r6)]
+impl R6CrossPlan {
+    /// Create a cross-class plan.
+    /// @param seed Seed to carry into built boards.
+    pub fn new(seed: i32) -> Self {
+        R6CrossPlan { seed }
+    }
+
+    /// Materialize this plan into an `R6CrossBoard`.
+    /// @param width Board width.
+    /// @param height Board height.
+    pub fn build(&self, width: i32, height: i32) -> R6CrossBoard {
+        R6CrossBoard {
+            width,
+            height,
+            seed: self.seed,
+        }
+    }
+
+    /// Materialize this plan into an `S7CrossBoard` (R6 source, S7 target).
+    ///
+    /// The write-time resolver keys off the *returned* class, so the emitted
+    /// wrapper uses S7's `S7CrossBoard(.ptr = .val)` constructor even though
+    /// the enclosing method lives on an R6 class.
+    /// @param width Board width.
+    /// @param height Board height.
+    pub fn build_s7(&self, width: i32, height: i32) -> S7CrossBoard {
+        S7CrossBoard {
+            cells: self.seed + (width * height),
+        }
+    }
+}
+
+/// Board materialized by `S7CrossPlan::s7_cross_build`.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7CrossBoard {
+    cells: i32,
+}
+
+/// S7 board target for cross-class builder returns.
+#[miniextendr(s7)]
+impl S7CrossBoard {
+    /// Create a board directly.
+    /// @param cells Number of cells.
+    pub fn new(cells: i32) -> Self {
+        S7CrossBoard { cells }
+    }
+
+    /// Count the cells in the board.
+    pub fn s7_cross_cells(&self) -> i32 {
+        self.cells
+    }
+}
+
+/// S7 builder whose terminal method returns a different S7 class.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7CrossPlan {
+    seed: i32,
+}
+
+/// S7 builder fixture for cross-class return wrapping.
+#[miniextendr(s7)]
+impl S7CrossPlan {
+    /// Create a cross-class plan.
+    /// @param seed Seed added to built board cells.
+    pub fn new(seed: i32) -> Self {
+        S7CrossPlan { seed }
+    }
+
+    /// Materialize this plan into an `S7CrossBoard`.
+    /// @param width Board width.
+    /// @param height Board height.
+    pub fn s7_cross_build(&self, width: i32, height: i32) -> S7CrossBoard {
+        S7CrossBoard {
+            cells: self.seed + (width * height),
+        }
+    }
+
+    /// Materialize this plan into an `R6CrossBoard` (S7 source, R6 target).
+    ///
+    /// Mirror of [`R6CrossPlan::build_s7`]: the returned class drives the
+    /// constructor choice, so this S7 method's wrapper builds the R6 target via
+    /// `R6CrossBoard$new(.ptr = .val)`.
+    /// @param width Board width.
+    /// @param height Board height.
+    pub fn s7_build_r6(&self, width: i32, height: i32) -> R6CrossBoard {
+        R6CrossBoard {
+            width,
+            height,
+            seed: self.seed,
+        }
+    }
+}
+// endregion
+
 // region: Env self-ref builder fixture
 //
 // Env classes share `ChainableMutation` semantics with R6: the method body

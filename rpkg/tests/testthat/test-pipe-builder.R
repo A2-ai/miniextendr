@@ -89,31 +89,73 @@ test_that("R6PipeBuilder chains via invisible(self) and preserves identity", {
 })
 
 test_that("S4PipeBuilder chains under |> and preserves identity", {
-  total <- S4PipeBuilder() |>
-    s4_add(1L) |>
-    s4_add(2L) |>
-    s4_total()
+  total <- miniextendr:::S4PipeBuilder() |>
+    miniextendr:::s4_add(1L) |>
+    miniextendr:::s4_add(2L) |>
+    miniextendr:::s4_total()
   expect_equal(total, 3L)
 
   # Identity: the self-ref step returns the same S4 object (same ExternalPtr).
-  b <- S4PipeBuilder()
-  stepped <- s4_add(b, 5L)
+  b <- miniextendr:::S4PipeBuilder()
+  stepped <- miniextendr:::s4_add(b, 5L)
   expect_identical(stepped, b)
-  expect_equal(s4_total(b), 5L)
+  expect_equal(miniextendr:::s4_total(b), 5L)
 })
 
 test_that("S7PipeBuilder chains under |> and preserves identity", {
-  total <- S7PipeBuilder() |>
-    s7_add(1L) |>
-    s7_add(2L) |>
-    s7_total()
+  total <- miniextendr:::S7PipeBuilder() |>
+    miniextendr:::s7_add(1L) |>
+    miniextendr:::s7_add(2L) |>
+    miniextendr:::s7_total()
   expect_equal(total, 3L)
 
   # Identity: the self-ref step returns the same S7 object (same ExternalPtr).
-  b <- S7PipeBuilder()
-  stepped <- s7_add(b, 5L)
+  b <- miniextendr:::S7PipeBuilder()
+  stepped <- miniextendr:::s7_add(b, 5L)
   expect_identical(stepped, b)
-  expect_equal(s7_total(b), 5L)
+  expect_equal(miniextendr:::s7_total(b), 5L)
+})
+
+test_that("R6 builder build() wraps a different returned class", {
+  plan <- R6CrossPlan$new(7L)
+
+  board <- plan$build(4L, 5L)
+  expect_true(inherits(board, "R6CrossBoard"))
+  expect_equal(board$cells(), 20L)
+  expect_equal(board$signature(), "4x5@7")
+
+  expect_equal(plan$build(2L, 3L)$cells(), 6L)
+})
+
+test_that("S7 builder build wraps a different returned class", {
+  plan <- S7CrossPlan(3L)
+
+  board <- s7_cross_build(plan, 4L, 5L)
+  expect_true(S7::S7_inherits(board, S7CrossBoard))
+  expect_equal(s7_cross_cells(board), 23L)
+
+  expect_equal(s7_cross_cells(s7_cross_build(plan, 2L, 3L)), 9L)
+})
+
+test_that("R6 method returning an S7 class wraps with the S7 constructor", {
+  # Mixed-system return: source method lives on an R6 class, target is S7.
+  # The write-time resolver keys off the returned class, so the wrapper must
+  # build the S7 object (not R6).
+  plan <- R6CrossPlan$new(3L)
+
+  board <- plan$build_s7(4L, 5L)
+  expect_true(S7::S7_inherits(board, S7CrossBoard))
+  expect_equal(s7_cross_cells(board), 23L)
+})
+
+test_that("S7 method returning an R6 class wraps with the R6 constructor", {
+  # Mixed-system return in the other direction: S7 source, R6 target.
+  plan <- S7CrossPlan(7L)
+
+  board <- s7_build_r6(plan, 4L, 5L)
+  expect_true(inherits(board, "R6CrossBoard"))
+  expect_equal(board$cells(), 20L)
+  expect_equal(board$signature(), "4x5@7")
 })
 
 test_that("EnvPipeBuilder chains via $ and preserves identity", {

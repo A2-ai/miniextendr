@@ -1113,6 +1113,100 @@ fn option_self_static_wraps_like_constructor() {
 }
 
 #[test]
+fn other_class_return_strategy_detects_bare_capitalized_type_only() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn build(&self) -> Board { unimplemented!() }
+            pub fn label(&self) -> String { unimplemented!() }
+            pub fn many(&self) -> Vec<Board> { unimplemented!() }
+            pub fn maybe(&self) -> Option<Board> { unimplemented!() }
+            pub fn count(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let build = parsed.methods.iter().find(|m| m.ident == "build").unwrap();
+    assert_eq!(build.returns_other_class().unwrap().to_string(), "Board");
+    assert_eq!(
+        crate::ReturnStrategy::for_method(build),
+        crate::ReturnStrategy::ReturnOtherClass
+    );
+
+    for name in ["label", "many", "maybe", "count"] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+        assert!(
+            method.returns_other_class().is_none(),
+            "{name} should not be treated as a cross-class return"
+        );
+        assert_eq!(
+            crate::ReturnStrategy::for_method(method),
+            crate::ReturnStrategy::Direct
+        );
+    }
+}
+
+#[test]
+fn r6_other_class_return_emits_write_time_marker() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn build(&self) -> Board { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    let body = wrapper
+        .split("build = function(")
+        .nth(1)
+        .expect("build R6 method")
+        .split("\n    }")
+        .next()
+        .expect("build method body");
+
+    assert!(
+        body.contains(".__MX_WRAP_RETURN_Board__(.val)"),
+        "R6 cross-class return should emit write-time wrap marker, got:\n{body}"
+    );
+    assert!(
+        !body.contains("Builder$new(.ptr = .val)"),
+        "cross-class returns must not wrap as the receiver class, got:\n{body}"
+    );
+}
+
+#[test]
+fn r6_class_without_constructor_still_has_ptr_initialize() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Landing {
+            pub fn value(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("initialize = function(.ptr = NULL)"),
+        "R6 classes without `new` need a .ptr initialize hatch, got:\n{wrapper}"
+    );
+}
+
+#[test]
+fn s7_class_without_constructor_still_has_ptr_constructor() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Landing {
+            pub fn value(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("constructor = function(.ptr = NULL)"),
+        "S7 classes without `new` need a .ptr constructor hatch, got:\n{wrapper}"
+    );
+}
+
+#[test]
 fn returns_unit_method_in_r6() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {

@@ -1329,6 +1329,77 @@ pub fn write_r_wrappers_to_file(path: &str) {
         content = result;
     }
 
+    // Resolve .__MX_WRAP_RETURN_<RustName>__(<expr>) placeholders emitted by
+    // class-method wrappers whose Rust return type may name a different
+    // ExternalPtr-backed class. Unlike CLASS_REF, an unresolved return wrapper
+    // is a quiet no-op: the syntactic macro-time heuristic intentionally allows
+    // false positives, and write time is where we know whether `<RustName>` is
+    // registered in this package.
+    {
+        use std::collections::HashMap;
+        let class_index: HashMap<&'static str, &ClassNameEntry> =
+            MX_CLASS_NAMES.iter().map(|e| (e.rust_type, e)).collect();
+
+        const PREFIX: &str = ".__MX_WRAP_RETURN_";
+        const ARG_OPEN: &str = "__(";
+        const ARG_CLOSE: char = ')';
+
+        let mut result = String::with_capacity(content.len());
+        let mut remaining = content.as_str();
+        while let Some(start) = remaining.find(PREFIX) {
+            result.push_str(&remaining[..start]);
+            let rest_from_prefix = &remaining[start..];
+            let marker_body = &rest_from_prefix[PREFIX.len()..];
+            if let Some(name_end) = marker_body.find(ARG_OPEN) {
+                let rust_name = &marker_body[..name_end];
+                let after_open = &marker_body[name_end + ARG_OPEN.len()..];
+                if let Some(expr_end) = after_open.find(ARG_CLOSE) {
+                    let expr = &after_open[..expr_end];
+                    remaining = &after_open[expr_end + ARG_CLOSE.len_utf8()..];
+                    match class_index.get(rust_name) {
+                        Some(entry) => match entry.class_system {
+                            "r6" => {
+                                result.push_str(&format!(
+                                    "{}$new(.ptr = {})",
+                                    entry.r_class_name, expr
+                                ));
+                            }
+                            "s7" => {
+                                result
+                                    .push_str(&format!("{}(.ptr = {})", entry.r_class_name, expr));
+                            }
+                            "s4" => {
+                                result.push_str(&format!(
+                                    "methods::new(\"{}\", ptr = {})",
+                                    entry.r_class_name, expr
+                                ));
+                            }
+                            _ => {
+                                result.push_str(&format!(
+                                    "structure({}, class = \"{}\")",
+                                    expr, entry.r_class_name
+                                ));
+                            }
+                        },
+                        None => result.push_str(expr),
+                    }
+                } else {
+                    // Malformed placeholder (no closing `)`) — emit as-is and stop scanning.
+                    result.push_str(PREFIX);
+                    remaining = marker_body;
+                    break;
+                }
+            } else {
+                // Malformed placeholder (no opening `__(`) — emit as-is and stop scanning.
+                result.push_str(PREFIX);
+                remaining = marker_body;
+                break;
+            }
+        }
+        result.push_str(remaining);
+        content = result;
+    }
+
     // Resolve .__MX_GENERIC_DOC__(...) markers into standalone Rd pages.
     //
     // Each package-owned S7/S4 generic-creation site emits one marker line:
@@ -1852,6 +1923,66 @@ mod tests {
         result
     }
 
+    /// Run the cross-class return wrapper resolver over `content` using
+    /// `entries` as the class registry.
+    fn resolve_return_wrappers(content: &str, entries: &[ClassNameEntry]) -> String {
+        use std::collections::HashMap;
+        let class_index: HashMap<&str, &ClassNameEntry> =
+            entries.iter().map(|e| (e.rust_type, e)).collect();
+
+        const PREFIX: &str = ".__MX_WRAP_RETURN_";
+        const ARG_OPEN: &str = "__(";
+
+        let mut result = String::with_capacity(content.len());
+        let mut remaining = content;
+        while let Some(start) = remaining.find(PREFIX) {
+            result.push_str(&remaining[..start]);
+            let rest_from_prefix = &remaining[start..];
+            let marker_body = &rest_from_prefix[PREFIX.len()..];
+            if let Some(name_end) = marker_body.find(ARG_OPEN) {
+                let rust_name = &marker_body[..name_end];
+                let after_open = &marker_body[name_end + ARG_OPEN.len()..];
+                if let Some(expr_end) = after_open.find(')') {
+                    let expr = &after_open[..expr_end];
+                    remaining = &after_open[expr_end + 1..];
+                    match class_index.get(rust_name) {
+                        Some(entry) => match entry.class_system {
+                            "r6" => result
+                                .push_str(&format!("{}$new(.ptr = {})", entry.r_class_name, expr)),
+                            "s7" => {
+                                result
+                                    .push_str(&format!("{}(.ptr = {})", entry.r_class_name, expr));
+                            }
+                            "s4" => {
+                                result.push_str(&format!(
+                                    "methods::new(\"{}\", ptr = {})",
+                                    entry.r_class_name, expr
+                                ));
+                            }
+                            _ => {
+                                result.push_str(&format!(
+                                    "structure({}, class = \"{}\")",
+                                    expr, entry.r_class_name
+                                ));
+                            }
+                        },
+                        None => result.push_str(expr),
+                    }
+                } else {
+                    result.push_str(PREFIX);
+                    remaining = marker_body;
+                    break;
+                }
+            } else {
+                result.push_str(PREFIX);
+                remaining = marker_body;
+                break;
+            }
+        }
+        result.push_str(remaining);
+        result
+    }
+
     #[test]
     fn test_class_ref_resolver_with_override() {
         // S7Shape is registered with r_class_name = "Shape" (override)
@@ -1997,6 +2128,73 @@ mod tests {
             "inherit = .__MX_CLASS_REF_Parent__, class = .__MX_CLASS_REF_OR_ANY_PropInner__";
         let output = resolve_class_refs(input, &entries);
         assert_eq!(output, "inherit = Parent, class = S7::class_any");
+    }
+
+    #[test]
+    fn return_wrapper_resolves_r6_constructor() {
+        let entries = [ClassNameEntry {
+            rust_type: "R6Board",
+            r_class_name: "R6Board",
+            class_system: "r6",
+        }];
+        let input = "return(.__MX_WRAP_RETURN_R6Board__(.val))";
+        let output = resolve_return_wrappers(input, &entries);
+        assert_eq!(output, "return(R6Board$new(.ptr = .val))");
+    }
+
+    #[test]
+    fn return_wrapper_resolves_s7_override_constructor() {
+        let entries = [ClassNameEntry {
+            rust_type: "S7Board",
+            r_class_name: "PrettyBoard",
+            class_system: "s7",
+        }];
+        let input = ".__MX_WRAP_RETURN_S7Board__(.val)";
+        let output = resolve_return_wrappers(input, &entries);
+        assert_eq!(output, "PrettyBoard(.ptr = .val)");
+    }
+
+    #[test]
+    fn return_wrapper_resolves_s4_constructor() {
+        let entries = [ClassNameEntry {
+            rust_type: "S4Board",
+            r_class_name: "S4Board",
+            class_system: "s4",
+        }];
+        let input = ".__MX_WRAP_RETURN_S4Board__(.val)";
+        let output = resolve_return_wrappers(input, &entries);
+        assert_eq!(output, "methods::new(\"S4Board\", ptr = .val)");
+    }
+
+    #[test]
+    fn return_wrapper_resolves_attribute_classes() {
+        let entries = [
+            ClassNameEntry {
+                rust_type: "S3Board",
+                r_class_name: "S3Board",
+                class_system: "s3",
+            },
+            ClassNameEntry {
+                rust_type: "EnvBoard",
+                r_class_name: "EnvBoard",
+                class_system: "env",
+            },
+        ];
+        let input =
+            "a <- .__MX_WRAP_RETURN_S3Board__(.val)\nb <- .__MX_WRAP_RETURN_EnvBoard__(.ptr)";
+        let output = resolve_return_wrappers(input, &entries);
+        assert_eq!(
+            output,
+            "a <- structure(.val, class = \"S3Board\")\nb <- structure(.ptr, class = \"EnvBoard\")"
+        );
+    }
+
+    #[test]
+    fn return_wrapper_unregistered_type_falls_back_to_value() {
+        let entries: [ClassNameEntry; 0] = [];
+        let input = ".__MX_WRAP_RETURN_JsonValue__(.val)";
+        let output = resolve_return_wrappers(input, &entries);
+        assert_eq!(output, ".val");
     }
 
     // region: normalize_source_locs unit tests (#528)
