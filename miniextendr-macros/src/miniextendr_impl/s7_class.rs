@@ -857,13 +857,102 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
             };
 
+            // Classify any existing binding of `generic_name` (#1114). A bare
+            // `exists(...)` check is wrong: if the name resolves to a *plain*
+            // base/stats closure (var, get, row, col, diag, reshape, ...),
+            // `S7::method(<closure>, ...) <-` errors at load ("generic is a
+            // function, but not an S3 generic function") and the package fails
+            // to install. Only create/reuse when the existing binding is
+            // something S7::method<- accepts as a generic: an S7 generic, a
+            // primitive, an S3 standard generic, or an S4 generic. Otherwise
+            // shadow it with a package-local S7 generic.
+            let dispatch_arg_names: Vec<String> =
+                if let Some(ref dispatch) = method_attrs.s7.dispatch {
+                    dispatch.split(',').map(|s| s.trim().to_string()).collect()
+                } else {
+                    vec!["x".to_string()]
+                };
+            // Fallback signature/forwarding args mirror the generic's formals so
+            // the class_any method S7 registers is signature-compatible.
+            let fallback_sig = {
+                let mut sig = dispatch_arg_names.join(", ");
+                if !method_attrs.s7.no_dots {
+                    if sig.is_empty() {
+                        sig.push_str("...");
+                    } else {
+                        sig.push_str(", ...");
+                    }
+                }
+                sig
+            };
+            let class_any_spec = if dispatch_arg_names.len() > 1 {
+                format!(
+                    "list({})",
+                    vec!["S7::class_any"; dispatch_arg_names.len()].join(", ")
+                )
+            } else {
+                "S7::class_any".to_string()
+            };
+
+            // Emit an `if (!base::exists(...))` / `else if ({classifier})` chain
+            // rather than a top-level `.mx_gen <- ...` assignment. The leading
+            // statement must NOT be an assignment: roxygen2 documents the first
+            // top-level binding after the doc block, and a `.mx_gen <- ...` there
+            // pollutes every S7 man page with a bogus \alias{.mx_gen}/\usage. The
+            // `.mx_gen` binding used by the classifier lives inside the braced
+            // `else if` condition, which roxygen2 does not descend into.
+            //
+            // `base::exists`/`base::get`: once we define a shadow generic named
+            // e.g. `get`, a bare `get(...)` in a later generic's classifier would
+            // route through our own generic. Qualify to stay robust.
             lines.push(format!(
-                "if (!exists(\"{generic_name}\", mode = \"function\")) {{"
+                "if (!base::exists(\"{generic_name}\", mode = \"function\")) {{"
             ));
+            lines.push(
+                "  # No existing binding; define a plain package-local S7 generic.".to_string(),
+            );
             lines.push(format!(
                 "  {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
             ));
+            lines.push(format!(
+                "}} else if ({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }}) {{"
+            ));
+            lines.push(format!(
+                "  # `{generic_name}` resolves to a plain (non-generic) function S7 cannot"
+            ));
+            lines.push(
+                "  # attach a method to. Define a package-local S7 generic that shadows it,"
+                    .to_string(),
+            );
+            lines.push(
+                "  # with a class_any fallback delegating to the masked function so ordinary"
+                    .to_string(),
+            );
+            lines.push(
+                "  # (non-S7) calls (e.g. var(1:10)) keep working. S4 generics also take this"
+                    .to_string(),
+            );
+            lines.push("  # path; the fallback preserves their dispatch.".to_string());
+            // `local()` gives the fallback closure its own environment holding an
+            // eagerly-assigned `.mx_masked` (assignment forces the value now — a
+            // function *argument* would stay an unforced promise and later see the
+            // reused `.mx_gen`, which is why we don't pass it as one).
+            lines.push(format!("  {generic_name} <- local({{"));
+            lines.push(format!(
+                "    .mx_masked <- base::get(\"{generic_name}\", mode = \"function\")"
+            ));
+            lines.push(format!(
+                "    .mx_g <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
+            ));
+            lines.push(format!(
+                "    S7::method(.mx_g, {class_any_spec}) <- function({fallback_sig}) .mx_masked({fallback_sig})"
+            ));
+            lines.push("    .mx_g".to_string());
+            lines.push("  })".to_string());
             lines.push("}".to_string());
+            lines.push(
+                "# else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.".to_string(),
+            );
 
             // Define method
             let strategy = crate::ReturnStrategy::for_method(ctx.method);

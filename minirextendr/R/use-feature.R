@@ -158,6 +158,12 @@ use_r6 <- function(path = ".") {
 use_s7 <- function(path = ".") {
   with_project(path)
   add_import("S7", ">= 0.2.0")
+  # The generated S7 wrappers classify any existing binding of a method name
+  # before creating a generic (#1114): they call `utils::isS3stdGeneric()` and
+  # `methods::isGeneric()`. Declare both so `R CMD check` does not NOTE an
+  # undeclared `::` import for packages with base-name-colliding S7 methods.
+  add_import("methods")
+  add_import("utils")
 
   cli::cli_alert_info("Use {.code #[miniextendr(s7)]} on impl blocks for S7 classes")
   cli::cli_alert_info("See {.url https://rconsortium.github.io/S7/} for S7 documentation")

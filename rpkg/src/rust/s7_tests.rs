@@ -476,3 +476,43 @@ impl S7PropOuter {
     }
 }
 // endregion
+
+// region: S7NonGenericCollision — #1114 regression fixture
+
+/// S7 class whose method names deliberately collide with plain (non-generic)
+/// base/stats closures (`var`, `get`). Before #1114 an `#[miniextendr(s7)]`
+/// impl with these names failed `R CMD INSTALL`: the generated guard skipped
+/// `S7::new_generic` because the name already existed, then
+/// `S7::method(<plain closure>, ...) <-` errored at load. The usability
+/// classifier now shadows the base closure with a package-local S7 generic and
+/// registers a `class_any` fallback delegating to the masked function.
+///
+/// The generics are exported (not `internal`) so the collision + masking path
+/// is exercised on default-feature builds, not just the `s7-default` leg.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7NonGenericCollision {
+    values: Vec<f64>,
+}
+
+/// S7 class exercising the #1114 base-name-collision fix.
+/// @param values Numeric vector held by the gauge.
+#[miniextendr(s7)]
+impl S7NonGenericCollision {
+    /// @param values Numeric vector held by the gauge.
+    pub fn new(values: Vec<f64>) -> Self {
+        S7NonGenericCollision { values }
+    }
+
+    /// Collides with `stats::var`. Returns the *sum* (not the variance) so a
+    /// test can tell our dispatched method apart from the masked `stats::var`
+    /// fallback.
+    pub fn var(&self) -> f64 {
+        self.values.iter().sum()
+    }
+
+    /// Collides with `base::get`. Returns the first element.
+    pub fn get(&self) -> f64 {
+        self.values[0]
+    }
+}
+// endregion

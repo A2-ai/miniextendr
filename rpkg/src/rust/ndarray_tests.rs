@@ -23,9 +23,7 @@ pub struct NdVec(Array1<f64>);
 ///   out-of-bounds element instead (vectorized contract). `slice_1d` takes
 ///   1-based inclusive bounds (R's `x[start:end]` convention) and errors
 ///   unless `1 <= start <= end <= length`.
-// env pinned: method names collide with base R non-generics (var/get/row/col/
-// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
-#[miniextendr(env)]
+#[miniextendr]
 impl NdVec {
     fn new(data: Vec<f64>) -> Self {
         NdVec(Array1::from_vec(data))
@@ -160,9 +158,7 @@ pub struct NdMatrix(Array2<f64>);
 /// @details `get_2d`, `row`, and `col` take 1-based indices (R-idiomatic,
 ///   matching the rest of the package) and error on an out-of-bounds or
 ///   non-positive index.
-// env pinned: method names collide with base R non-generics (var/get/row/col/
-// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
-#[miniextendr(env)]
+#[miniextendr]
 impl NdMatrix {
     fn new(data: Array2<f64>) -> Self {
         NdMatrix(data)
@@ -308,9 +304,7 @@ pub struct NdArrayDyn(ArrayD<f64>);
 ///   `MARGIN` convention (1 = first dimension). `get_nd`, `reshape`,
 ///   `slice_nd`, and `axis_slice` error on an out-of-bounds/invalid argument
 ///   instead of silently yielding no value.
-// env pinned: method names collide with base R non-generics (var/get/row/col/
-// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
-#[miniextendr(env)]
+#[miniextendr]
 impl NdArrayDyn {
     fn new(shape: Vec<i32>, data: Vec<f64>) -> Self {
         let shape_usize: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
@@ -481,9 +475,7 @@ pub struct NdIntVec(Array1<i32>);
 ///   the rest of the package) and error on out-of-bounds or non-positive
 ///   indices. `slice_1d` takes 1-based inclusive bounds (R's `x[start:end]`
 ///   convention) and errors unless `1 <= start <= end <= length`.
-// env pinned: method names collide with base R non-generics (var/get/row/col/
-// diag/reshape), which the s7-default flip cannot register S7 methods on (#1114).
-#[miniextendr(env)]
+#[miniextendr]
 impl NdIntVec {
     fn new(data: Vec<i32>) -> Self {
         NdIntVec(Array1::from_vec(data))
