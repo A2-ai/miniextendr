@@ -324,7 +324,7 @@ print.miniextendr_cargo_features <- function(x, ...) {
       feat_str <- if (length(dep$features) > 0) {
         paste0(" [", paste(dep$features, collapse = ", "), "]")
       } else ""
-      cli::cli_li("{.val {name}} {dep$req}{feat_str}")
+      cli::cli_li("{.val {name}} {dep$version}{feat_str}")
     }
   }
 

@@ -531,3 +531,23 @@ test_that("parse_cargo_metadata_json dispatcher returns the correct shape", {
   check_features_case(minirextendr:::parse_cargo_metadata_json(cargo_metadata_cases$features))
   check_multiple_case(minirextendr:::parse_cargo_metadata_json(cargo_metadata_cases$multiple))
 })
+
+test_that("print.miniextendr_cargo_features shows each optional dep's version", {
+  # Regression: the parser stores the version requirement under `version`, so
+  # the print method must read `dep$version`. Reading a non-existent field
+  # (e.g. `dep$req`) silently drops the version from the bullet.
+  x <- structure(
+    list(
+      features = list(default = character(), rayon = "miniextendr-api/rayon"),
+      optional_deps = list(
+        serde = list(version = "^1.0", features = "derive"),
+        log = list(version = "*", features = character())
+      ),
+      without_rules = character()
+    ),
+    class = "miniextendr_cargo_features"
+  )
+  out <- cli::cli_fmt(print(x))
+  expect_true(any(grepl("serde", out) & grepl("\\^1\\.0", out)))
+  expect_true(any(grepl("\\blog\\b", out) & grepl("\\*", out)))
+})
