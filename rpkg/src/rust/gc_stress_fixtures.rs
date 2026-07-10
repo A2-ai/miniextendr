@@ -1102,7 +1102,11 @@ pub fn gc_stress_dataframe_edit_chain() {
     let idx: Vec<usize> = (0..N).step_by(2).collect();
     let dense = build().select_rows(&idx);
     churn();
-    assert_eq!(dense.nrow(), idx.len(), "select_rows: nrow corrupted under GC");
+    assert_eq!(
+        dense.nrow(),
+        idx.len(),
+        "select_rows: nrow corrupted under GC"
+    );
     let xs: Vec<f64> = dense.column("x").expect("select_rows: x column reclaimed");
     assert_eq!(xs[1], 2.0, "select_rows: values corrupted under GC");
 
@@ -1118,7 +1122,10 @@ pub fn gc_stress_dataframe_edit_chain() {
                 .into_sexp(),
         )
     };
-    let chained = build().with_column("doubled", *newcol).rename("label", "tag").drop("y");
+    let chained = build()
+        .with_column("doubled", *newcol)
+        .rename("label", "tag")
+        .drop("y");
     drop(newcol);
     churn();
     assert_eq!(
@@ -1141,7 +1148,9 @@ pub fn gc_stress_dataframe_edit_chain() {
                 .into_sexp(),
         )
     };
-    let prepended = chained.prepend_column("pfx_id", *idcol).strip_prefix("pfx_");
+    let prepended = chained
+        .prepend_column("pfx_id", *idcol)
+        .strip_prefix("pfx_");
     drop(idcol);
     churn();
     assert_eq!(
