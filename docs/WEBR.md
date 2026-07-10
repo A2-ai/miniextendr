@@ -421,7 +421,12 @@ native `R CMD INSTALL` (wrapper-gen writes the scaffold's
 scaffolded `NAMESPACE` is a stub until the documented `document()` step
 runs), then the `CC=emcc` install into the same `/tmp/wasm-lib`. Tier 3 then
 loads the scaffolded package alongside miniextendr (`SMOKE_SCAFFOLD_PKG`) and
-calls the template's stock `add()`/`hello()` functions. This is the only CI
+calls the template's stock functions — renamed `mxsmoke_add()` /
+`mxsmoke_hello()` at scaffold time, because rpkg also exports an `add` and the
+generated `C_<fn>` wrapper symbols are package-agnostic: under Emscripten's
+shared-GOT side-module linking the first-loaded package's symbol wins and
+`mxsmoke::add` would dispatch into miniextendr's `add` (#1273; drop the rename
+when C symbols become package-unique). This is the only CI
 coverage of the **template** copies of the wasm branches in `configure.ac` /
 `Makevars.in` / `build.rs` (`minirextendr/inst/templates/rpkg/`) — before it,
 a template-only regression could only surface for end users. The monorepo

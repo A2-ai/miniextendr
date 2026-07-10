@@ -165,13 +165,18 @@ async function main() {
   // template's stock functions — proof the templates' wasm branches produce a
   // side-module that not only links but dispatches into Rust in a real webR
   // runtime. The scaffold has no R-level Imports, so no extra installPackages
-  // round-trip is needed.
+  // round-trip is needed. The functions are the template's add()/hello(),
+  // renamed <pkg>_add()/<pkg>_hello() at scaffold time (webr.yml create step)
+  // because miniextendr (loaded above) also exports an `add` and the C
+  // wrapper symbols are package-agnostic — under Emscripten's shared-GOT
+  // side-module linking the first-loaded package's symbol wins (#1273).
   if (SCAFFOLD_PKG) {
     console.log(`[tier3] scaffold leg: library(${SCAFFOLD_PKG}) ...`);
     const scaffoldResult = await webR.evalR(`
       tryCatch({
         suppressPackageStartupMessages(library(${SCAFFOLD_PKG}))
-        paste(as.character(${SCAFFOLD_PKG}::add(2, 3)), ${SCAFFOLD_PKG}::hello("webR"), sep = " | ")
+        paste(as.character(${SCAFFOLD_PKG}::${SCAFFOLD_PKG}_add(2, 3)),
+              ${SCAFFOLD_PKG}::${SCAFFOLD_PKG}_hello("webR"), sep = " | ")
       }, error = function(e) paste0("ERROR: ", conditionMessage(e)))
     `);
     const scaffoldMsg = unwrapScalar(await scaffoldResult.toJs());
@@ -184,7 +189,7 @@ async function main() {
       return;
     }
     console.log(
-      `[tier3] OK: ${SCAFFOLD_PKG} loaded; add(2, 3) == 5 and hello("webR") returned the template greeting.`,
+      `[tier3] OK: ${SCAFFOLD_PKG} loaded; ${SCAFFOLD_PKG}_add(2, 3) == 5 and ${SCAFFOLD_PKG}_hello("webR") returned the template greeting.`,
     );
   }
 

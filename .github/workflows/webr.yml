@@ -351,6 +351,19 @@ jobs:
             minirextendr::create_miniextendr_package("/tmp/scaffold/mxsmoke", open = FALSE)
             minirextendr::use_local_miniextendr(Sys.getenv("GITHUB_WORKSPACE"), path = "/tmp/scaffold/mxsmoke")
           '
+          # Rename the template's stock fns before building: rpkg (loaded
+          # first in the tier-3 webR session) also exports an `add`
+          # (rpkg/src/rust/panic_tests.rs), and the generated C wrapper
+          # symbols are package-agnostic (`C_add`). Native dyn.load is
+          # RTLD_LOCAL so each package binds its own copy, but Emscripten
+          # side modules resolve exported function addresses through a
+          # shared GOT — the first-loaded module wins, and mxsmoke::add
+          # would dispatch into miniextendr's i32 add. Tracked as #1273;
+          # drop this rename once C symbols are package-unique.
+          sed -i 's/pub fn add(/pub fn mxsmoke_add(/; s/pub fn hello(/pub fn mxsmoke_hello(/' \
+            /tmp/scaffold/mxsmoke/src/rust/lib.rs
+          grep -q "pub fn mxsmoke_add" /tmp/scaffold/mxsmoke/src/rust/lib.rs
+          grep -q "pub fn mxsmoke_hello" /tmp/scaffold/mxsmoke/src/rust/lib.rs
           # configure auto-vendors (flipping to tarball mode, which would
           # freeze and build the *published* git sources instead of this
           # checkout) only when the tree has no .git ancestor AND
@@ -388,11 +401,13 @@ jobs:
           /opt/R/current/bin/Rscript -e 'roxygen2::roxygenise("/tmp/scaffold/mxsmoke")'
           grep -q "useDynLib(mxsmoke" /tmp/scaffold/mxsmoke/NAMESPACE
           /opt/R/current/bin/R CMD INSTALL --no-test-load --library=/tmp/scaffold-native-lib /tmp/scaffold/mxsmoke
-          # Native runtime sanity: the template's stock #[miniextendr] fns.
+          # Native runtime sanity: the template's stock #[miniextendr] fns
+          # (renamed at scaffold time to dodge the webR symbol collision,
+          # see #1273 and the create step above).
           /opt/R/current/bin/Rscript -e '
             library(mxsmoke, lib.loc = "/tmp/scaffold-native-lib")
-            stopifnot(identical(mxsmoke::add(2, 3), 5))
-            stopifnot(identical(mxsmoke::hello("webR"), "Hello, webR!"))
+            stopifnot(identical(mxsmoke::mxsmoke_add(2, 3), 5))
+            stopifnot(identical(mxsmoke::mxsmoke_hello("webR"), "Hello, webR!"))
             cat("scaffold native runtime sanity OK\n")
           '
 
