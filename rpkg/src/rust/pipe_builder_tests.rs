@@ -32,8 +32,6 @@ pub struct GreetingBuilder {
 ///
 /// The `builder_set_*` methods return `&mut Self`, so they compose under R's
 /// native pipe operator `|>` as free functions taking the object first.
-/// @param x A `GreetingBuilder` object.
-/// @param ... Additional arguments.
 #[allow(clippy::new_without_default)]
 #[miniextendr(s3)]
 impl GreetingBuilder {
@@ -94,8 +92,6 @@ pub struct PipeCounter {
 }
 
 /// Counter with pipe-friendly mutators returning `&mut Self`.
-/// @param x A `PipeCounter` object.
-/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl PipeCounter {
     /// Create a counter starting at the given value.
@@ -177,7 +173,6 @@ pub struct S4PipeBuilder {
 /// S4 builder with a `&mut self -> &mut Self` step and a terminal accessor.
 /// Chains under the native pipe as `b |> s4_add(1L) |> s4_add(2L) |> s4_total()`.
 /// @aliases s4_add,S4PipeBuilder-method s4_total,S4PipeBuilder-method
-/// @param x A `S4PipeBuilder` object.
 #[miniextendr(s4, internal)]
 impl S4PipeBuilder {
     /// Create a new builder starting at zero.
