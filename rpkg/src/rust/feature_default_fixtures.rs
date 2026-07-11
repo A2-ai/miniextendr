@@ -94,7 +94,6 @@ pub struct FdefaultProbe {
 }
 
 /// Class-system probe generated under the build's default class system.
-/// @param value Integer stored in the probe.
 #[miniextendr]
 impl FdefaultProbe {
     /// Creates a new probe holding `value`.
