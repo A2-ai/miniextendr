@@ -3,8 +3,12 @@
 #
 # Local smoke test: builds rpkg as a wasm32 side-module inside the
 # miniextendr-webr-dev container and loads it in a webR Node.js session
-# via the canonical runner tests/webr-node-smoke/smoke.mjs — library() +
-# packageVersion() only (testthat-under-wasm coverage is tracked in #1255).
+# via the canonical runner tests/webr-node-smoke/smoke.mjs. By default the
+# runner then finishes with an informational testthat pass (#1255): suite
+# counts are reported but test failures never gate — many tests legitimately
+# fail or skip under wasm (worker-thread / fork / subprocess assumptions).
+# Disable with SMOKE_TESTTHAT=0; only a harness error before the counts
+# line turns the gate red.
 #
 # Exit codes:
 #   0  — miniextendr loaded in the webR session
@@ -39,6 +43,9 @@
 #                     actually links against). Unset/default = the amd64 path
 #                     (Rosetta under Docker Desktop), unchanged.
 #   WEBR_SCAFFOLD=1   Same as --scaffold.
+#   SMOKE_TESTTHAT=0  Skip the informational testthat pass in Phase 3
+#                     (default: enabled, #1255). Test failures never gate
+#                     either way — the pass only reports counts.
 
 set -euo pipefail
 
@@ -490,11 +497,22 @@ phase_webr_session() {
     if [[ "$SCAFFOLD" == "1" ]]; then
         scaffold_pkg_env="mxsmoke"
     fi
+    # Informational testthat pass (#1255): defaults ON locally — a local run
+    # wants the information (SMOKE_TESTTHAT=0 disables; CI keeps per-PR
+    # tier-3 load-only and enables it on main-push/dispatch). The wall-clock
+    # cap grows 900 -> 2400 when enabled: ~10 min for the load smoke plus the
+    # runner's own 20-min in-session testthat budget. Test failures never
+    # gate; a cap hit or a harness error before the counts line does.
+    local smoke_testthat="${SMOKE_TESTTHAT:-1}"
+    local smoke_timeout=900
+    if [[ "$smoke_testthat" == "1" ]]; then
+        smoke_timeout=2400
+    fi
     docker_run "
         set -euo pipefail
         cd /work/tests/webr-node-smoke
-        timeout 900 node smoke.mjs
-    " -e "SMOKE_SCAFFOLD_PKG=${scaffold_pkg_env}"
+        timeout ${smoke_timeout} node smoke.mjs
+    " -e "SMOKE_SCAFFOLD_PKG=${scaffold_pkg_env}" -e "SMOKE_TESTTHAT=${smoke_testthat}"
 
     ok "webR session complete (library(miniextendr) loaded)."
 }
