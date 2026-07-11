@@ -3473,15 +3473,25 @@ pub fn expand_impl(
     // Build MX_CLASS_NAMES entry for cross-reference resolution.
     // r_class_name is the R-visible name (may differ from type_ident when
     // `class = "Override"` was set on the impl block).
+    //
+    // The static name folds the impl label in when present, mirroring
+    // `r_wrappers_const_ident`: keying on the type alone made two labeled
+    // impl blocks on one type collide with E0428 (#1242) — exactly the
+    // multi-block pattern MXL009 directs users toward. The duplicate entries
+    // this registers for one type are collapsed (identical) or rejected
+    // (conflicting `class = "..."` overrides) by `build_class_name_index` in
+    // miniextendr-api's registry. Unlabeled multi-blocks still collide — on
+    // `R_WRAPPERS_IMPL_<TYPE>` too — so no per-block counter is needed here.
     let r_class_name_str = parsed.class_name();
     let class_system_str = parsed.class_system.to_ident().to_string();
-    let class_names_const = syn::Ident::new(
-        &format!(
-            "__mx_class_name_entry_{}",
-            type_ident.to_string().to_lowercase()
-        ),
-        type_ident.span(),
-    );
+    let class_names_const = {
+        let type_lower = type_ident.to_string().to_lowercase();
+        let name = match parsed.label() {
+            Some(label) => format!("__mx_class_name_entry_{type_lower}_{label}"),
+            None => format!("__mx_class_name_entry_{type_lower}"),
+        };
+        syn::Ident::new(&name, type_ident.span())
+    };
 
     let expanded = quote! {
         // Original impl block with doc link to R wrapper
