@@ -162,6 +162,10 @@ these `just` recipes, `git status` shows the lock clean with no manual
 `just vendor`, which re-stamp tarball-shape. Raw `R CMD INSTALL` (no `just`)
 still drifts and relies on the pre-commit hook + `lock-shape-check` (#1052).
 
+The *committed* lock is gated remotely too: CI's Rust lint job runs
+`just lock-shape-check` on every rust-touching PR (#1222), so a path-shape
+lock that slips past the local hook turns CI red instead of landing on main.
+
 ## Recovering a drifted lock
 
 ```bash

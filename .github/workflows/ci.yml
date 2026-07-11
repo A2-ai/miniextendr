@@ -315,6 +315,19 @@ jobs:
       - name: Install just
         uses: taiki-e/install-action@just
 
+      # Committed-lock shape gate (#1222): the committed rpkg/src/rust/Cargo.lock
+      # must stay in tarball-shape (framework crates carry their canonical
+      # `source = "git+…"` lines — see docs/CARGO_LOCK_SHAPE.md). Local dev
+      # recipes auto-restore drift (`just cargo-lock-restore`), but nothing
+      # gated the *committed* file, and it silently drifted to path-shape on
+      # main for 20+ commits. Pure grep, no toolchain needed — runs first so
+      # a drifted lock fails fast.
+      - name: Lock shape (committed Cargo.lock)
+        id: lock_shape
+        continue-on-error: true
+        run: just lock-shape-check 2>&1 | tee "$RUNNER_TEMP/lock_shape.log"
+        shell: bash
+
       - name: Rustfmt
         id: rustfmt
         continue-on-error: true
@@ -386,6 +399,7 @@ jobs:
           set -uo pipefail
           failed=0
 
+          lock_shape="${{ steps.lock_shape.outcome }}"
           rustfmt="${{ steps.rustfmt.outcome }}"
           clippy_default="${{ steps.clippy_default.outcome }}"
           clippy_all="${{ steps.clippy_all.outcome }}"
@@ -393,6 +407,7 @@ jobs:
           clippy_revendor="${{ steps.clippy_revendor.outcome }}"
           doc_revendor="${{ steps.doc_revendor.outcome }}"
 
+          echo "lock_shape:       $lock_shape"
           echo "rustfmt:          $rustfmt"
           echo "clippy_default:   $clippy_default"
           echo "clippy_all:       $clippy_all"
@@ -415,6 +430,7 @@ jobs:
             fi
           }
 
+          dump_failed lock_shape       "$lock_shape"
           dump_failed rustfmt          "$rustfmt"
           dump_failed clippy_default   "$clippy_default"
           dump_failed clippy_all       "$clippy_all"
