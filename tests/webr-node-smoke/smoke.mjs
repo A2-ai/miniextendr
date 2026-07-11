@@ -35,6 +35,16 @@
 // loudly — we cannot prove the side-module is healthy without the deps that
 // its NAMESPACE pulls in. (A newly added Import must exist as a wasm binary
 // on repo.r-wasm.org; this runner surfaces that requirement automatically.)
+//
+// Opt-in testthat pass (#1255): when SMOKE_TESTTHAT=1, also NODEFS-mounts
+// rpkg/tests and runs the testthat suite against the already-loaded wasm
+// install (`load_package = "installed"` — no recompile, no pkgload::load_all,
+// just `library()` against what's already attached). This is *informational
+// only* — many rpkg tests assume fork/thread/worker semantics that don't hold
+// under webR's single-threaded, no-fork interpreter, so red counts here are
+// expected and never fail the gate. Only a harness-level error (testthat
+// itself won't install, the mount fails, R errors before producing counts)
+// sets a non-zero exit code. See docs/WEBR.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -51,8 +61,16 @@ const HOST_WASM_LIB = "/tmp/wasm-lib";
 // .github/workflows/webr.yml). Load it and drive the template's stock
 // #[miniextendr] functions (add/hello from
 // minirextendr/inst/templates/rpkg/lib.rs). Unset → behave exactly as before
-// (tests/webr-smoke.sh has no scaffold leg).
+// (e.g. tests/webr-smoke.sh without --scaffold).
 const SCAFFOLD_PKG = process.env.SMOKE_SCAFFOLD_PKG ?? "";
+
+// Informational testthat pass (#1255): opt-in via SMOKE_TESTTHAT=1. The local
+// smoke (tests/webr-smoke.sh) defaults it ON; CI keeps per-PR tier-3
+// load-only and enables it on main-push / workflow_dispatch. See the header
+// comment and informationalTestthat() below for the tolerate-and-report
+// semantics.
+const SMOKE_TESTTHAT = process.env.SMOKE_TESTTHAT === "1";
+const TESTS_MOUNT = "/rpkg-tests";
 
 // Base-R packages ship with webR itself — never install them from the repo.
 const R_BASE_PKGS = new Set([
@@ -193,7 +211,120 @@ async function main() {
     );
   }
 
+  // Informational testthat pass (#1255). Runs LAST among the R-driving
+  // steps: if the budget below abandons a wedged suite, the R worker is
+  // left mid-eval and unusable for further evalR calls — nothing after this
+  // point needs it (the top-level teardown's webR.close() terminates it).
+  if (SMOKE_TESTTHAT) {
+    let budgetTimer;
+    const budget = new Promise((resolve) => {
+      budgetTimer = setTimeout(() => resolve("budget"), TESTTHAT_BUDGET_MS);
+    });
+    const outcome = await Promise.race([
+      informationalTestthat().then(
+        () => "done",
+        (e) => {
+          console.error(
+            "[tier3][testthat] FAIL: harness error before counts:",
+            e && e.message ? e.message : e,
+          );
+          return "harness-error";
+        },
+      ),
+      budget,
+    ]);
+    clearTimeout(budgetTimer);
+    if (outcome === "harness-error") {
+      // Per the #1255 semantics: test FAILURES never gate, but the harness
+      // failing to produce a counts line at all is a smoke-infrastructure
+      // regression and must be visible as a red gate.
+      process.exitCode = 1;
+      return;
+    }
+    if (outcome === "budget") {
+      console.log(
+        `[tier3][testthat] ${TESTTHAT_BUDGET_MS / 60000}-min budget exceeded — abandoning the informational pass (not a gate: a suite wedged on a fork/subprocess attempt is a wasm incompatibility, not a harness error; the stuck R worker is torn down by webR.close()).`,
+      );
+    }
+  }
+
   console.log("[tier3] Tier-3 PASSED.");
+}
+
+// ── Informational testthat pass (#1255, opt-in via SMOKE_TESTTHAT=1) ────────
+// Restores the coverage dropped when the local and CI runners were unified
+// onto this script: run rpkg's testthat suite inside the webR session and
+// report counts. Tolerate-and-report by design — many tests legitimately
+// fail or skip under wasm (worker-thread / fork / subprocess assumptions),
+// so red counts NEVER touch the exit code. Only a harness error before the
+// counts line (testthat won't install, the mount fails, test_dir itself
+// errors) rejects, which main() converts into a red gate. The Promise.race
+// budget in main() keeps a wedged suite from eating the outer step timeout.
+const TESTTHAT_BUDGET_MS = 20 * 60 * 1000;
+
+async function informationalTestthat() {
+  // testthat is in rpkg's Suggests, not Imports, so it is not part of the
+  // HARD_IMPORTS install above. webr::install resolves Depends/Imports
+  // recursively, so testthat's own dependency tree comes along for free.
+  // Other Suggests (dplyr, ggplot2, ...) are deliberately NOT installed:
+  // tests guarded by skip_if_not_installed() skip, and anything else that
+  // fails on a missing Suggest is tolerated noise in an informational pass.
+  console.log("[tier3][testthat] Installing testthat from repo.r-wasm.org...");
+  await webR.installPackages(["testthat"], { mount: false, quiet: false });
+
+  // Mount rpkg/tests (not the whole source tree — the suite only needs the
+  // tests dir, and the package code itself comes from the wasm install
+  // already loaded above). NODEFS is read-write: failing snapshot tests may
+  // write _snaps/*.new files back into the checkout — untracked,
+  // informational diagnostics, safe to delete.
+  const testsDir = join(
+    dirname(fileURLToPath(import.meta.url)), "..", "..", "rpkg", "tests",
+  );
+  await webR.FS.mkdir(TESTS_MOUNT);
+  await webR.FS.mount("NODEFS", { root: testsDir }, TESTS_MOUNT);
+  console.log(
+    `[tier3][testthat] NODEFS-mounted ${testsDir} -> ${TESTS_MOUNT}; running test_dir (silent reporter)...`,
+  );
+
+  // - MINIEXTENDR_SKIP_STRESS: the gctorture files are ~94% of the suite's
+  //   native runtime and have their own dedicated CI job; under the (much
+  //   slower) wasm interpreter they are prohibitive. Same convention as
+  //   every non-stress CI job (see rpkg/tests/testthat/helper-gc-stress.R).
+  // - NOT_CRAN=true: mirrors test_local()'s local_assume_not_on_cran();
+  //   without it every skip_on_cran() guard (including the gc-stress
+  //   helper's) skips for the wrong reason and deflates the counts.
+  // - load_package = "installed": run against the wasm-installed package
+  //   already attached — never pkgload::load_all(), which would try to
+  //   compile Rust inside the webR session.
+  // - reporter = "silent" + stop_on_failure = FALSE: counts are the
+  //   contract; per-expectation output would be enormous and failures are
+  //   expected. The tryCatch turns a harness-level error into a sentinel
+  //   that we re-throw JS-side.
+  const res = await webR.evalR(`
+    tryCatch({
+      Sys.setenv(MINIEXTENDR_SKIP_STRESS = "1", NOT_CRAN = "true")
+      res <- testthat::test_dir(
+        "${TESTS_MOUNT}/testthat",
+        package = "miniextendr",
+        load_package = "installed",
+        reporter = "silent",
+        stop_on_failure = FALSE
+      )
+      df <- as.data.frame(res)
+      sprintf(
+        "COUNTS passed=%d failed=%d skipped=%d errors=%d warnings=%d",
+        sum(df$passed), sum(df$failed), sum(df$skipped),
+        sum(df$error), sum(df$warning)
+      )
+    }, error = function(e) paste0("HARNESS_ERROR: ", conditionMessage(e)))
+  `);
+  const line = unwrapScalar(await res.toJs());
+  if (typeof line !== "string" || !line.startsWith("COUNTS ")) {
+    throw new Error(String(line));
+  }
+  console.log(
+    `[tier3][testthat] ${line.slice("COUNTS ".length)} (informational — test failures do not gate)`,
+  );
 }
 
 // webR boots a dedicated worker (Node `worker_threads`) to host the R runtime.

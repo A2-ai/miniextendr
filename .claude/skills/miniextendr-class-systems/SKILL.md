@@ -482,6 +482,13 @@ later, unpredictably.
   to a hand-written sidecar wrapper causes "Incorrect number of arguments" at runtime.
   See the `miniextendr-macros` skill for details on the two codegen paths.
 
+- **Pointer-backed class objects look serializable but are not**: an R6/S7/env
+  object wrapping an `ExternalPtr` round-trips `saveRDS()`/`readRDS()` with its
+  class intact, then fails on the first method or accessor call ("expected
+  ExternalPtr<T>") — the pointer is dead in the new session. See the
+  serialization pitfall in the `miniextendr-externalptr` skill for the
+  closure-over-plain-data escape hatch.
+
 ## Related skills
 
 - `miniextendr-macros` — the full `#[miniextendr]` codegen pipeline: C wrapper

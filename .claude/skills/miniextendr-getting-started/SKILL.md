@@ -202,13 +202,24 @@ The iteration loop for Rust changes is:
    `NAMESPACE` from the freshly generated `R/miniextendr-wrappers.R`, so the
    installed image lags the on-disk `NAMESPACE` by one build and the new export
    isn't callable yet (`could not find function "..."`).
-   - `minirextendr::miniextendr_build()` **handles this for you in a single
-     call**: it snapshots `NAMESPACE` before and after `document()` and, if the
-     export set changed, reinstalls once so the installed image matches. No
-     second pass needed.
+   - `minirextendr::miniextendr_build()` **handles the additive case for you
+     in a single call**: it snapshots `NAMESPACE` before and after `document()`
+     and, if the export set changed, reinstalls once so the installed image
+     matches. No second pass needed.
    - The monorepo raw recipes do *not* self-heal — after `just rcmdinstall &&
      just force-document` you must run `just rcmdinstall` once more so the new
      export becomes runtime-callable.
+   - **Removing or renaming an export fails harder**
+     (A2-ai/miniextendr#1288): the first install validates the stale
+     `NAMESPACE` — now a *superset* of the regenerated wrappers — and aborts
+     with `undefined exports: <old_name>` *before* `document()` can reconcile
+     it. (The additive case self-heals because a subset `NAMESPACE` still
+     installs; closed #860 covered only that side.) The aborting install has
+     already regenerated `R/<pkg>-wrappers.R`, so recovery is: run
+     `devtools::document()` / `roxygen2::roxygenize()` directly — it loads via
+     `pkgload::load_all()`, which only *warns* on the mismatch — then install
+     again. Alternatively, reset `NAMESPACE` to the roxygen header plus the
+     `useDynLib` line before the first install.
    Pure signature/body edits to *existing* exports need neither — only changes
    to the set of exported names do.
 4. Restart R (or reload the package) and test.
@@ -314,6 +325,15 @@ For CRAN submission:
 - **Modules must be reachable from `lib.rs`**: if you add a new `.rs` file with
   `#[miniextendr]` functions, you must add `mod my_module;` to `lib.rs`.
   Functions in unreachable modules are silently excluded from registration.
+
+- **Tests stay green under a stale superset `NAMESPACE`**: after removing or
+  renaming an export, `pkgload::load_all()` — used by `devtools::document()`
+  and `testthat::test_local()` — only *warns* ("Objects listed as exports, but
+  not present in namespace"), while `R CMD INSTALL` / `library()` hard-fail on
+  the same mismatch. So the test suite can pass while `R CMD check` and fresh
+  installs break. If you removed or renamed a `#[miniextendr]` export, confirm
+  `NAMESPACE` was regenerated (see the dev-loop step above and
+  A2-ai/miniextendr#1288).
 
 - **`configure.ac` must not be called via `minirextendr::*`**: configure-time
   helpers belong in `tools/*.R` and are invoked via `Rscript tools/foo.R`. Do

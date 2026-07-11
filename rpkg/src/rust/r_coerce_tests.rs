@@ -29,8 +29,6 @@ pub struct RCoerceErrorTest {
 /// @title as.<class>() Coercion Test Type
 /// @name RCoerceTestData
 /// @description Test type for as.data.frame, as.list, and as.character methods
-/// @param x An object.
-/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl RCoerceTestData {
     /// Create a new test data object.
@@ -143,7 +141,6 @@ impl RCoerceTestData {
 
 /// @title as.<class>() Error Test Type
 /// @name RCoerceErrorTest
-/// @param is_empty Logical; if TRUE, triggers error on as.data.frame.
 #[miniextendr(s3)]
 impl RCoerceErrorTest {
     /// Create a new error test object.
