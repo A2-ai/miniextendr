@@ -899,7 +899,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 "  {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
             ));
             lines.push(format!(
-                "}} else if ({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }}) {{"
+                "}} else if (local({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }})) {{"
             ));
             lines.push(format!(
                 "  # `{generic_name}` resolves to a plain (non-generic) function S7 cannot"
