@@ -264,3 +264,136 @@ test-load after `document()` (i.e. the source-tree wrapper regen via
 other suites' expectations on `miniextendr_build()` warnings, or an
 open PR has started touching `minirextendr/R/workflow.R` — **stop, commit
 nothing further, and report back. Do not improvise.**
+
+---
+
+## Amendment (2026-07-11, post-escalation)
+
+The implementer hit the named escalation trigger: the e2e rename test fails
+identically at Step 3 AND the Step-5 retry (`undefined exports: add`), with
+`document()` leaving NAMESPACE unchanged. Root-caused; work items 1/2/3/5
+stand as implemented (10/10 unit passes, full suite `[ FAIL 0` pre-item-4).
+
+### Root cause (with evidence)
+
+The original plan's claim "Step 4 alone regenerates source wrappers.R and
+rewrites NAMESPACE" is **wrong for any package that has been through one
+`build = TRUE` install in the same `miniextendr_build()` call**:
+
+- Step 3's `devtools::install(build = TRUE)` → `pkgbuild::build()` runs the
+  scaffolded `bootstrap.R` **in the source tree**, which seals
+  `inst/vendor.tar.xz` there **by design** (bootstrap.R's own comment: the
+  vendor step "leaves inst/vendor.tar.xz in the (git-tracked) source dir on
+  purpose"; its only guard is `!file.exists("inst/vendor.tar.xz")` +
+  cargo-revendor on PATH — **no `.git` check**; the `.git`-walk guard
+  belongs to configure's auto-vendor, which is exactly why bootstrap.R
+  exists). Diag log `/tmp/1288-diag.log:438-486`: `Running bootstrap.R...`
+  → `bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor` with
+  paths inside the source scaffold.
+- `miniextendr_build()` already knows (the snapshot/restore trap,
+  workflow.R `:166-186` in the implementer's tree) — but the restore is
+  `on.exit`, i.e. **function exit**. During Steps 4/5 the source tree is
+  latched: Step 4's `compile_dll` re-runs `./configure` → `install mode =
+  tarball install` (log `:596`) → Makevars #1022 guard → `tarball install:
+  using pre-shipped R/<pkg>-wrappers.R (skipping wrapper-gen, #1022)`
+  (log `:642`) because `MINIEXTENDR_FORCE_WRAPPER_GEN` is scoped to
+  `install_pkg()` only. Wrappers stale → NAMESPACE unreconciled (log
+  `:647-655`: still `export(add)`) → mandatory Step-5 retry re-fails.
+- `--freeze` also rewrites `src/rust/Cargo.toml` (path-dep siblings →
+  `vendor/`) and tarball-mode `.cargo/config.toml` points at vendored
+  sources, so the mid-build window compiles against a vendor snapshot —
+  wrong beyond NAMESPACE (arbitrarily stale if the latch was pre-existing).
+
+**Two-bug verdict.** This is a distinct, pre-existing defect — filed as
+**#1294** — that breaks the #860 self-heal for EVERY post-first-build
+export change (additive too: second-build add → Step 4 skips regen →
+NAMESPACE unchanged → Step 5 skipped → unexported install, the exact #860
+symptom back). The additive #898 e2e only passes because its export is
+added *before the first build*, so `bootstrap_fresh_wrappers()`
+(`build = FALSE`, in-place, latch-free source mode) finalises everything
+before Step 3; Steps 4/5 are fixpoints there. Both bugs must be fixed in
+THIS PR (the #1288 e2e cannot pass otherwise); PR body carries
+`Fixes #1288` and `Fixes #1294`.
+
+### Amended design (decision)
+
+**Restore the dev source tree immediately after Step 3, not only on exit.**
+
+- New local closure inside `miniextendr_build()` (e.g.
+  `restore_dev_tree()`), wrapping the existing restore body (`:180-184`):
+  write back `snap_manifest`/`snap_lock`, delete `vendor_tarball` iff
+  `!tarball_preexisting && fs::file_exists(...)`. `on.exit` calls the same
+  closure (unchanged backstop; idempotent).
+- Call it **unconditionally right after the `if (install) { ... }` block
+  closes** (before the Step-4 header) — a no-op when nothing was sealed
+  (`install = FALSE`, no devtools, bootstrap-only). With the latch gone,
+  Step 4's `compile_dll` configure re-resolves **source mode**, rewrites
+  `.cargo/config.toml` itself, and wrapper regen runs unconditionally (the
+  #1022 skip is tarball-only) against the un-frozen manifest. Step 5's
+  install then re-runs bootstrap.R, which re-vendors (one extra
+  cargo-revendor per export-changing build, seconds — log shows 10 crates
+  / 1.2 MB) and reseals for the staging tarball; `on.exit` cleans at exit.
+- **Do NOT touch `vendor/` or `.cargo/` in the mid-build restore**:
+  configure owns `.cargo/config.toml` (bootstrap's pre-vendor configure
+  left it source-mode anyway, log `:441`), and `vendor/` may be
+  user-provisioned (the e2e's manual `cargo vendor` for offline crates.io
+  deps depends on it).
+- **Never delete a pre-existing tarball mid-build** (unchanged semantics).
+  Instead, when `tarball_preexisting` is TRUE at entry, emit a `cli_warn`
+  up front: dev-loop self-heal is structurally disabled in a latched tree;
+  delete `inst/vendor.tar.xz` (or run `minirextendr_doctor()`, which
+  already detects the stale latch) to resume source-mode dev.
+- **Rejected: holding `MINIEXTENDR_FORCE_WRAPPER_GEN=1` through Step 4.**
+  It would regenerate wrappers (and make the e2e pass) but leaves Step 4
+  compiling in tarball mode against the frozen manifest/vendor snapshot —
+  content-current for a same-build seal, silently stale for a leaked one —
+  and keeps the tree latched for the whole build. Symptom patch, not the
+  class fix. Keep FORCE scoped to `install_pkg()` as today.
+- **No framework-side change** (bootstrap.R/configure): sealing the source
+  tree is by design (the built tarball must carry `inst/vendor.tar.xz`;
+  see the #1029 leaked-tarball guard). The defect is `miniextendr_build()`
+  not isolating Steps 4/5 from that documented side effect — the trap
+  exists, only its granularity was wrong.
+
+### Amended work items (flat; 1/2/3/5 stand as implemented)
+
+7. `workflow.R`: extract the restore body into the local closure; `on.exit`
+   delegates to it; explicit call after the `if (install)` block (before
+   Step 4). Add the `tarball_preexisting` entry warning.
+8. Unit test (append to `test-workflow-selfheal.R`, mock pattern as items
+   3a-3c): mocked `devtools::install` **simulates bootstrap.R's side
+   effect** (creates `inst/vendor.tar.xz` + mutates `src/rust/Cargo.toml`
+   in the tmp pkg root); mocked `devtools::document` asserts, at
+   document-time, that the latch is gone and the manifest matches the
+   entry snapshot. Second case: pre-seeded `inst/vendor.tar.xz` before the
+   call → still present at document-time (not deleted mid-build) and the
+   new entry warning fired.
+9. e2e (work item 4, unchanged scenario) gains two assertions per build:
+   `inst/vendor.tar.xz` absent after `miniextendr_build()` returns, and
+   `src/rust/Cargo.toml` byte-identical to its pre-build snapshot. Note in
+   the test comment: `add_renamed %in% exports` after build 2 IS the
+   additive-second-build regression pin for #1294 — no separate additive
+   e2e needed.
+10. Roxygen: one short paragraph in the miniextendr_build docs (beside the
+    implemented "Removal/rename self-heal" section) documenting the
+    mid-build restore + the latched-tree warning; regen
+    `man/miniextendr_build.Rd`.
+11. PR body: `Fixes #1288` + `Fixes #1294`; keep the wrinkle-2 refutation.
+
+### Amended done criteria
+
+As before, PLUS: the rename e2e passes (single second-build pass exports
+`add_renamed`, drops `add`); its latch/manifest assertions pass; unit items
+3 + 8 green; full `just minirextendr-test` `[ FAIL 0`; `Fixes #1288` and
+`Fixes #1294` in the PR.
+
+### Amended escalation triggers
+
+If reality diverges — the e2e STILL fails after the mid-build restore
+(would mean a third latch writer or a non-latch mode flip: capture
+configure's `install mode` lines and stop); Step 5's install breaks
+because bootstrap.R's re-vendor fails on the restored tree; the restore
+demonstrably discards a legitimate same-build `Cargo.lock` update that the
+existing exit-time restore did not (behavior must match on.exit semantics,
+only earlier); or the entry warning breaks other suites — **stop, commit
+nothing further, and report back. Do not improvise.**
