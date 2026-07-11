@@ -1352,6 +1352,18 @@ jobs:
           just build-all
           just test-all
 
+      # Wrappers sync gate (#1218): unlike rpkg's (gitignored) wrappers.R,
+      # producer.pkg/consumer.pkg wrappers.R are TRACKED generated files, and
+      # `just build-all` above regenerates them in-tree. If macro codegen
+      # changed without the committed snapshots being regenerated, the diff is
+      # non-empty here — the cross-package analogue of `wrappers-sync-check`.
+      - name: Check committed wrappers.R in sync
+        run: |
+          git diff --exit-code -- \
+            tests/cross-package/producer.pkg/R/producer.pkg-wrappers.R \
+            tests/cross-package/consumer.pkg/R/consumer.pkg-wrappers.R \
+          || { echo "::error::cross-package wrappers.R drifted from codegen — run 'just cross-install' and commit the regenerated files (#1218)"; exit 1; }
+
   # ===========================================================================
   # minirextendr (scaffolding helper package)
   # ===========================================================================
