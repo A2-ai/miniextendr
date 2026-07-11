@@ -89,7 +89,8 @@ just docker-webr-smoke         # full smoke: build wasm side-module + load in
 ```
 
 `just docker-webr-smoke` (`tests/webr-smoke.sh`) drives three phases inside
-the container:
+the container, plus an optional fourth (`--scaffold` / `WEBR_SCAFFOLD=1`,
+#1270 — off by default, see below):
 
 1. **Native `R CMD INSTALL` of `rpkg`** against `/opt/R/current/bin/R` to run
    the wrapper-gen pass and regenerate `rpkg/src/rust/wasm_registry.rs`. The
@@ -114,6 +115,16 @@ the container:
    testthat suite — that coverage was dropped when the local and CI runners
    were unified onto `smoke.mjs`; restoring an informational testthat pass
    is tracked in #1255.
+
+Pass `--scaffold` (or set `WEBR_SCAFFOLD=1`) to add a local-parity
+reproduction of CI's scaffold leg (#1259) between phases 2 and 3: installs
+minirextendr from the checkout, scaffolds a fresh end-user package
+(`mxsmoke`) with `create_miniextendr_package()`, points its framework git
+deps at the checkout via `use_local_miniextendr()`, and repeats the native →
+wasm two-step install on it into the same `/tmp/wasm-lib` phase 2 uses —
+phase 3 then also loads `mxsmoke` alongside `miniextendr`. This is the local
+reproduction of a scaffold-leg CI failure without hand-driving the
+container; without the flag, behavior is unchanged. Closes #1270.
 
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
 wasm32 build). Subsequent runs reuse the docker image and most cargo
@@ -431,7 +442,7 @@ coverage of the **template** copies of the wasm branches in `configure.ac` /
 `Makevars.in` / `build.rs` (`minirextendr/inst/templates/rpkg/`) — before it,
 a template-only regression could only surface for end users. The monorepo
 template tree's copies are still CI-unbuilt (#1271); local smoke parity for
-the leg is #1270.
+the leg is `tests/webr-smoke.sh --scaffold` (#1270, above).
 
 ## See also
 
@@ -450,10 +461,11 @@ the leg is #1270.
   of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
   `webr.yml` tier-2/3 job step-for-step (Phase 2 → `/tmp/wasm-lib`, Phase 3 →
-  `make` the Node bundle, then run `smoke.mjs`), except for the CI-only
-  scaffold leg (local parity tracked in #1270). The default (amd64) image runs
-  under Rosetta on Apple Silicon; `WEBR_ARM64=1` selects the draft
-  `Dockerfile.webr-arm64` native-arm64 path (#788).
+  `make` the Node bundle, then run `smoke.mjs`), including the CI-only
+  scaffold leg behind `--scaffold` / `WEBR_SCAFFOLD=1` (#1270 — off by
+  default). The default (amd64) image runs under Rosetta on Apple Silicon;
+  `WEBR_ARM64=1` selects the draft `Dockerfile.webr-arm64` native-arm64 path
+  (#788).
 - `Dockerfile.webr-arm64` — draft native-arm64 dev image (#788): amd64 sysroot
   donor + `emscripten/emsdk:4.0.8-arm64` + native arm64 Rust/R. See
   "arm64-native dev image" above for the validation checklist.

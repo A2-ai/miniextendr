@@ -2,9 +2,9 @@
 # (docs/FEATURE_DEFAULTS.md) and their no_* opt-outs, driven by the fixtures in
 # src/rust/feature_default_fixtures.rs. On a default build every pair behaves
 # identically; the scheduled feature-legs CI job (.github/workflows/ci.yml)
-# rebuilds with worker-default / strict-default / coerce-default / r6-default /
-# s7-default flipped on and re-runs this file, which is the only runtime
-# coverage those features have (audit A5/A10).
+# rebuilds with worker-default / strict-default / coerce-default / fast-default /
+# r6-default / s7-default flipped on and re-runs this file, which is the only
+# runtime coverage those features have (audit A5/A10).
 
 test_that("worker-default routes bare functions to the worker thread", {
   bare <- fdefault_worker_thread_name()
@@ -59,6 +59,27 @@ test_that("coerce-default converts bool params from R integers", {
     expect_true(fdefault_coerce_flag(TRUE))
     expect_true(fdefault_no_coerce_flag(TRUE))
     expect_error(fdefault_coerce_flag(1L))
+  }
+})
+
+test_that("fast-default drops preconditions for bare fns, no_fast restores them", {
+  fast_on <- miniextendr_has_feature("fast-default")
+  if (fast_on) {
+    # stopifnot is gone under fast-default; TryFromSexp still rejects bad
+    # input, but the error now comes from Rust conversion (rust_error).
+    e <- tryCatch(fdefault_fast_bare_i32("nope"), error = function(e) e)
+    expect_s3_class(e, "rust_error")
+    # no_fast opts back out: preconditions restored, so the error is the
+    # R-side stopifnot-shaped error, NOT a rust_error.
+    e2 <- tryCatch(fdefault_no_fast_i32("nope"), error = function(e) e)
+    expect_false(inherits(e2, "rust_error"))
+    expect_match(conditionMessage(e2), "must be numeric, logical, or raw")
+  } else {
+    # Every default build: preconditions are on, bare fn raises the
+    # stopifnot-shaped error, not a rust_error.
+    e <- tryCatch(fdefault_fast_bare_i32("nope"), error = function(e) e)
+    expect_false(inherits(e, "rust_error"))
+    expect_match(conditionMessage(e), "must be numeric, logical, or raw")
   }
 })
 

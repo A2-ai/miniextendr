@@ -55,6 +55,16 @@ site/                 # Zola docs → GitHub Pages
 background/           # Reference docs (gitignored)
 ```
 
+Every directory that has a `CLAUDE.md` has a sibling `AGENTS.md`: each
+**subdirectory** one is a one-line `@CLAUDE.md` import (codex's include
+mechanism), so it inherits that `CLAUDE.md` verbatim with no drift — when a new
+`CLAUDE.md` is added, drop a matching `@CLAUDE.md` `AGENTS.md` beside it. This
+**root** `AGENTS.md` is a hand-kept mirror of the root `CLAUDE.md`, not an
+import: a project-wide rule changed there must be mirrored here by hand. CI
+enforces the structural invariant (sibling presence, no orphans, the
+`@CLAUDE.md` import line) via `just agents-md-check` (Sync Checks job); prose
+parity of this root mirror stays hand-maintained.
+
 ## Build Commands
 
 ```bash
@@ -329,6 +339,14 @@ the same pass — source wins, fix the SKILL.md). It flags, per skill: missing
 cited paths (BLOCKING, exits non-zero so it can gate CI), symbols that grep
 finds nowhere in the repo (WARN), and out-of-range `file.rs:NNN` line cites
 (WARN). The script's header documents its known false-positive modes.
+
+The same quarterly pass also rebases two upstream release pins (folded from
+#596): the `r-universe-org/macos-libs` `cranlibs-everything.tar.xz` date
+pinned in `minirextendr/inst/templates/r-release.yml` (Gotcha 6) and
+`docs/RELEASE_WORKFLOW.md`, and the r-windows rtools release number in
+`docs/CRAN_COMPATIBILITY.md`'s Layer 3 table. Also force-rebase both before
+any release tag, and smoke-test a bumped tarball URL via a real CI run
+(download + extract paths drift upstream).
 
 ## Reviews
 

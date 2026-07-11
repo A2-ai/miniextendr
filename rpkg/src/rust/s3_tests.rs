@@ -43,3 +43,73 @@ impl S3Counter {
         S3Counter { value: 0 }
     }
 }
+
+// region: S3NonGenericCollision — #1248 regression fixture
+
+/// S3 class whose method name deliberately collides with the plain
+/// (non-generic) `stats::var` closure. Before #1248 an `#[miniextendr(s3)]`
+/// impl with this name installed cleanly but silently never dispatched: the
+/// generic guard's bare `exists()` check saw `var` already bound to
+/// `stats::var` and never created the `UseMethod` dispatcher, so `var(obj)`
+/// kept resolving to `stats::var` instead of the registered
+/// `var.S3NonGenericCollision` method. The usability classifier now shadows
+/// the base closure with a package-local `UseMethod` generic and registers a
+/// default method delegating to the masked `stats::var` via
+/// `base::registerS3method()` (methods-table-only — no `var.default`
+/// namespace binding), so ordinary (non-dispatching) calls like `var(1:10)`
+/// keep working.
+///
+/// Mirrors the S7 `S7NonGenericCollision` fixture (#1114,
+/// `rpkg/src/rust/s7_tests.rs`).
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S3NonGenericCollision {
+    values: Vec<f64>,
+}
+
+/// S3 class exercising the #1248 base-name-collision fix.
+/// @param values Numeric vector held by the gauge.
+#[miniextendr(s3)]
+impl S3NonGenericCollision {
+    /// @param values Numeric vector held by the gauge.
+    pub fn new(values: Vec<f64>) -> Self {
+        S3NonGenericCollision { values }
+    }
+
+    /// Collides with `stats::var`. Returns the *sum* (not the variance) so a
+    /// test can tell our dispatched method apart from the masked
+    /// `stats::var` fallback.
+    pub fn var(&self) -> f64 {
+        self.values.iter().sum()
+    }
+}
+
+/// A second S3 class also defining `var`, to pin the reuse path: once the
+/// first class's method shadows `stats::var` with a package-local
+/// `UseMethod` generic, this class's guard must classify that generic as
+/// already-usable (`isS3stdGeneric`) and reuse it as-is — not re-shadow it
+/// (which would silently drop the first class's registered default
+/// delegation).
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S3NonGenericCollisionSecond {
+    values: Vec<f64>,
+}
+
+/// Second S3 class sharing the shadowed `var` generic with
+/// [`S3NonGenericCollision`].
+/// @param values Numeric vector held by the gauge.
+#[miniextendr(s3)]
+impl S3NonGenericCollisionSecond {
+    /// @param values Numeric vector held by the gauge.
+    pub fn new(values: Vec<f64>) -> Self {
+        S3NonGenericCollisionSecond { values }
+    }
+
+    /// Collides with `stats::var`, same as [`S3NonGenericCollision::var`].
+    /// Returns the *product* (not the variance) so a test can distinguish
+    /// dispatch to this class from the sibling class and from the masked
+    /// `stats::var` fallback.
+    pub fn var(&self) -> f64 {
+        self.values.iter().product()
+    }
+}
+// endregion

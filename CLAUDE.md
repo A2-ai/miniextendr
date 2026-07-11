@@ -45,7 +45,10 @@ one-line `@CLAUDE.md` import (codex's include mechanism), so it inherits that
 `CLAUDE.md` verbatim with no drift — when you add a new `CLAUDE.md`, drop a matching
 `@CLAUDE.md` `AGENTS.md` beside it. The **root** `AGENTS.md` is a hand-kept mirror,
 not an import: it shares most content with this file, so if you change a
-project-wide rule here, mirror it there.
+project-wide rule here, mirror it there. CI enforces the structural invariant
+(sibling presence, no orphans, the `@CLAUDE.md` import line) via
+`just agents-md-check` (Sync Checks job); prose parity of the root mirror stays
+hand-maintained.
 
 ## Principles
 
@@ -534,6 +537,14 @@ finds nowhere in the repo (WARN), and out-of-range `file.rs:NNN` line cites
 gitignored artifacts, scaffolded-package layout paths). CLAUDE.md ↔ skill
 contradictions are not auto-detected — eyeball any skill that restates a
 CLAUDE.md fact when triaging.
+
+The same quarterly pass also rebases two upstream release pins (folded from
+#596): the `r-universe-org/macos-libs` `cranlibs-everything.tar.xz` date
+pinned in `minirextendr/inst/templates/r-release.yml` (Gotcha 6) and
+`docs/RELEASE_WORKFLOW.md`, and the r-windows rtools release number in
+`docs/CRAN_COMPATIBILITY.md`'s Layer 3 table. Also force-rebase both before
+any release tag, and smoke-test a bumped tarball URL via a real CI run
+(download + extract paths drift upstream).
 
 ### Reviews
 

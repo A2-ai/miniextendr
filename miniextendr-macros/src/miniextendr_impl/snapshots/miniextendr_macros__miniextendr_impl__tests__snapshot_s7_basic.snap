@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 2998
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Counter S7 Class
@@ -41,7 +42,7 @@ Counter <- S7::new_class("Counter",
 if (!base::exists("get", mode = "function")) {
   # No existing binding; define a plain package-local S7 generic.
   get <- S7::new_generic("get", "x", function(x, ...) S7::S7_dispatch())
-} else if ({ .mx_gen <- base::get("get", mode = "function"); !(inherits(.mx_gen, "S7_generic") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("get")) }) {
+} else if (local({ .mx_gen <- base::get("get", mode = "function"); !(inherits(.mx_gen, "S7_generic") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("get")) })) {
   # `get` resolves to a plain (non-generic) function S7 cannot
   # attach a method to. Define a package-local S7 generic that shadows it,
   # with a class_any fallback delegating to the masked function so ordinary
@@ -90,7 +91,7 @@ Counter_get <- function(self, ...) {
 if (!base::exists("increment", mode = "function")) {
   # No existing binding; define a plain package-local S7 generic.
   increment <- S7::new_generic("increment", "x", function(x, ...) S7::S7_dispatch())
-} else if ({ .mx_gen <- base::get("increment", mode = "function"); !(inherits(.mx_gen, "S7_generic") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("increment")) }) {
+} else if (local({ .mx_gen <- base::get("increment", mode = "function"); !(inherits(.mx_gen, "S7_generic") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("increment")) })) {
   # `increment` resolves to a plain (non-generic) function S7 cannot
   # attach a method to. Define a package-local S7 generic that shadows it,
   # with a class_any fallback delegating to the masked function so ordinary
