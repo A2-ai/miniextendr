@@ -954,10 +954,12 @@ fn s7_wrapper_full_snapshot() {
     // Verify S7 generics use the usability classifier (#1114): a plain base
     // closure like `get` must not be treated as a usable generic. The leading
     // statement is an `if (!base::exists(...))` (never a top-level assignment,
-    // which roxygen2 would document), with the classifier in the `else if`.
+    // which roxygen2 would document), with the classifier in the `else if`,
+    // wrapped in `local()` so `.mx_gen` doesn't leak into the namespace
+    // (#1261 item 1).
     assert!(wrapper.contains("if (!base::exists(\"get\", mode = \"function\")) {"));
     assert!(wrapper.contains(
-        "} else if ({ .mx_gen <- base::get(\"get\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"get\")) }) {"
+        "} else if (local({ .mx_gen <- base::get(\"get\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"get\")) })) {"
     ));
     assert!(
         wrapper.contains(
@@ -974,7 +976,7 @@ fn s7_wrapper_full_snapshot() {
     );
     assert!(wrapper.contains("if (!base::exists(\"increment\", mode = \"function\")) {"));
     assert!(wrapper.contains(
-        "} else if ({ .mx_gen <- base::get(\"increment\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"increment\")) }) {"
+        "} else if (local({ .mx_gen <- base::get(\"increment\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"increment\")) })) {"
     ));
     assert!(wrapper.contains(
         "  increment <- S7::new_generic(\"increment\", \"x\", function(x, ...) S7::S7_dispatch())"
@@ -1407,7 +1409,6 @@ fn other_class_return_strategy_detects_bare_capitalized_type_only() {
             pub fn build(&self) -> Board { unimplemented!() }
             pub fn label(&self) -> String { unimplemented!() }
             pub fn many(&self) -> Vec<Board> { unimplemented!() }
-            pub fn maybe(&self) -> Option<Board> { unimplemented!() }
             pub fn count(&self) -> i32 { unimplemented!() }
         }
     };
@@ -1420,12 +1421,76 @@ fn other_class_return_strategy_detects_bare_capitalized_type_only() {
         crate::ReturnStrategy::ReturnOtherClass
     );
 
-    for name in ["label", "many", "maybe", "count"] {
+    for name in ["label", "many", "count"] {
         let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
         assert!(
             method.returns_other_class().is_none(),
             "{name} should not be treated as a cross-class return"
         );
+        assert_eq!(
+            crate::ReturnStrategy::for_method(method),
+            crate::ReturnStrategy::Direct
+        );
+    }
+}
+
+#[test]
+fn other_class_return_strategy_detects_option_and_result_containers() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn maybe(&self) -> Option<Board> { unimplemented!() }
+            pub fn checked(&self) -> Result<Board, String> { unimplemented!() }
+            pub fn null_on_err(&self) -> Result<Board, ()> { unimplemented!() }
+            pub fn maybe_self(&self) -> Option<Self> { unimplemented!() }
+            pub fn maybe_scalar(&self) -> Option<i32> { unimplemented!() }
+            pub fn many(&self) -> Vec<Board> { unimplemented!() }
+            pub fn maybe_many(&self) -> Option<Vec<Board>> { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+
+    for name in ["maybe", "checked"] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+        assert_eq!(
+            method.returns_other_class().unwrap().to_string(),
+            "Board",
+            "{name} should resolve the Ok/Some type argument as the cross-class target"
+        );
+        assert_eq!(
+            crate::ReturnStrategy::for_method(method),
+            crate::ReturnStrategy::ReturnOtherClass
+        );
+    }
+
+    for name in [
+        "null_on_err",
+        "maybe_self",
+        "maybe_scalar",
+        "many",
+        "maybe_many",
+    ] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+        assert!(
+            method.returns_other_class().is_none(),
+            "{name} should not be treated as a cross-class return"
+        );
+    }
+
+    // `Option<Self>` still takes the `ReturnSelf` strategy (checked before
+    // `returns_other_class` in `ReturnStrategy::for_method`).
+    let maybe_self = parsed
+        .methods
+        .iter()
+        .find(|m| m.ident == "maybe_self")
+        .unwrap();
+    assert_eq!(
+        crate::ReturnStrategy::for_method(maybe_self),
+        crate::ReturnStrategy::ReturnSelf
+    );
+
+    for name in ["null_on_err", "maybe_scalar", "many", "maybe_many"] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
         assert_eq!(
             crate::ReturnStrategy::for_method(method),
             crate::ReturnStrategy::Direct

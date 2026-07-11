@@ -77,12 +77,15 @@ fn int_range(from: i32, to: i32) -> SEXP {
 pub struct MyData { value: i32, len: usize }
 ```
 
-## Minimal Example: Manual Traits (3 steps)
+## Minimal Example: Manual Data Traits (2 steps)
 
 ```rust
-// 1. Define data struct with registration derive
-#[derive(miniextendr_api::Altrep)]
-#[altrep(class = "MyClass")]
+// 1. Define the data struct with a per-family derive, opting out of the
+//    auto-generated AltrepLen/Alt*Data (you write those yourself). The
+//    derive still auto-emits the low-level bridge — no explicit
+//    `impl_alt*_from_data!` call needed.
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(manual, class = "MyClass")]
 pub struct MyData { value: i32, len: usize }
 
 // 2. Implement required traits
@@ -93,22 +96,19 @@ impl AltrepLen for MyData {
 impl AltIntegerData for MyData {
     fn elt(&self, _i: usize) -> i32 { self.value }
 }
-
-// 3. Generate low-level traits
-miniextendr_api::impl_altinteger_from_data!(MyData);
 ```
 
 In both cases, use `MyData { value: 42, len: 100 }.into_sexp()` to create the ALTREP vector.
 
 ## Optional Methods
 
-| Feature | Trait Method | Macro Option | When to Use |
+| Feature | Trait Method | Derive Key | When to Use |
 |---------|--------------|--------------|-------------|
 | **Bulk access** | `get_region()` | - | Faster than looping `elt()` |
 | **Dataptr** | `AltrepDataptr<T>` | `dataptr` | Data in contiguous memory |
 | **Serialization** | `AltrepSerialize` | `serialize` | Save/load support needed |
-| **Subsetting** | `extract_subset()` | `subset` | O(1) subset possible |
-| **Mutation** | `set_elt()` | `set_elt` | Mutable String/List |
+| **Subsetting** | `AltrepExtractSubset::extract_subset()` | `subset` | O(1) subset possible (integer/complex only) |
+| **Mutation** | low-level `AltString`/`AltList::set_elt()` | none — `manual, no_lowlevel` + hand-written low-level traits | Mutable String/List (see [ALTREP.md § Mutable Vectors](ALTREP.md#mutable-vectors-set_elt)) |
 | **NA hint** | `no_na()` | - | Enables optimizations |
 | **Sorted hint** | `is_sorted()` | - | Enables optimizations |
 | **Sum** | `sum()` | - | O(1) computation possible |
@@ -130,7 +130,28 @@ pub struct MyType { value_field: i32, len_field: usize }
 pub struct MyType2 { data: Vec<i32>, len: usize }
 ```
 
-### Manual traits macro syntax
+### Manual data traits (generates everything except AltrepLen/Alt*Data)
+
+```rust
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(manual, class = "ClassName")]
+pub struct MyType { value: i32, len: usize }
+// ... then `impl AltrepLen` + `impl AltIntegerData` by hand.
+
+// Same `dataptr` / `serialize` / `subset` options apply:
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(manual, dataptr, serialize, class = "ClassName")]
+pub struct MyType2 { /* ... */ }
+```
+
+## The `impl_alt*_from_data!` Macros (escape hatch)
+
+Every derive form above auto-calls the matching macro for you — you do not
+write these calls in normal code. They exist as the escape hatch for
+`#[altrep(no_lowlevel)]`, when you write the low-level `Altrep`/`AltVec`/
+`Alt*` traits by hand and still want the macro for one family, or you're
+integrating a type that never goes through a derive at all (built-in types
+inside miniextendr-api itself work this way).
 
 ```rust
 // Basic (elt only)
@@ -147,7 +168,7 @@ impl_altinteger_from_data!(MyType, dataptr, serialize);
 impl_altinteger_from_data!(MyType, subset, serialize);
 ```
 
-## Available Macros
+Available macros, one per family:
 
 - `impl_altinteger_from_data!()` - Integer vectors
 - `impl_altreal_from_data!()` - Real (numeric) vectors
@@ -224,11 +245,11 @@ Do you have data in memory?
 ## Debugging Checklist
 
 - [ ] Function is `pub`?
-- [ ] Data struct has `#[derive(AltrepInteger)]` (or `#[derive(Altrep)]` for manual pattern)?
+- [ ] Data struct has a per-family derive (`#[derive(AltrepInteger)]` etc.), with `#[altrep(manual)]` added if you're on the manual data-traits pattern?
 - [ ] `#[altrep(class = "...")]` attribute present?
-- [ ] For manual pattern: `impl AltrepLen` provided?
-- [ ] For manual pattern: `impl Alt*Data` provided?
-- [ ] For manual pattern: used correct `impl_alt*_from_data!` macro?
+- [ ] For the manual pattern: `impl AltrepLen` provided?
+- [ ] For the manual pattern: `impl Alt*Data` provided?
+- [ ] For the `no_lowlevel` escape hatch only: called the matching `impl_alt*_from_data!` macro yourself?
 - [ ] Ran `devtools::document()`?
 - [ ] Reinstalled package?
 
@@ -244,7 +265,7 @@ Do you have data in memory?
 
 ## Safety Checklist
 
-- [ ] ALTREP derive (`#[derive(Altrep)]` or `#[derive(AltrepInteger)]` etc.) on data struct
+- [ ] ALTREP derive (`#[derive(AltrepInteger)]` etc., or the generic `#[derive(Altrep)]`) on data struct
 - [ ] No raw pointers outliving their source
 - [ ] `RefCell` (not Mutex) for interior mutability
 - [ ] Returned pointers valid for object lifetime

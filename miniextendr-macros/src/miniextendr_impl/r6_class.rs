@@ -184,11 +184,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             if param_name == ".ptr" {
                 continue;
             }
-            let already_documented = ctx
-                .method
-                .doc_tags
-                .iter()
-                .any(|t| t.starts_with(&format!("@param {}", param_name)));
+            let already_documented =
+                crate::roxygen::param_documented(&ctx.method.doc_tags, param_name);
             if !already_documented {
                 // Param covered by class-level @param → roxygen2 inherits; emit nothing.
                 if class_param_names.contains(param_name) {
@@ -296,11 +293,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let r_method_name = ctx.method.r_method_name();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
             let param_name = param.split('=').next().unwrap_or(param).trim();
-            let already_documented = ctx
-                .method
-                .doc_tags
-                .iter()
-                .any(|t| t.starts_with(&format!("@param {}", param_name)));
+            let already_documented =
+                crate::roxygen::param_documented(&ctx.method.doc_tags, param_name);
             if !already_documented {
                 // Param covered by class-level @param → roxygen2 inherits; emit nothing.
                 if class_param_names.contains(param_name) {

@@ -2113,6 +2113,9 @@ pub fn miniextendr_enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "coerce-default") {
         features.push("coerce-default");
     }
+    if cfg!(feature = "fast-default") {
+        features.push("fast-default");
+    }
     if cfg!(feature = "r6-default") {
         features.push("r6-default");
     }
