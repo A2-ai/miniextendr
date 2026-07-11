@@ -55,6 +55,16 @@ site/                 # Zola docs → GitHub Pages
 background/           # Reference docs (gitignored)
 ```
 
+Every directory that has a `CLAUDE.md` has a sibling `AGENTS.md`: each
+**subdirectory** one is a one-line `@CLAUDE.md` import (codex's include
+mechanism), so it inherits that `CLAUDE.md` verbatim with no drift — when a new
+`CLAUDE.md` is added, drop a matching `@CLAUDE.md` `AGENTS.md` beside it. This
+**root** `AGENTS.md` is a hand-kept mirror of the root `CLAUDE.md`, not an
+import: a project-wide rule changed there must be mirrored here by hand. CI
+enforces the structural invariant (sibling presence, no orphans, the
+`@CLAUDE.md` import line) via `just agents-md-check` (Sync Checks job); prose
+parity of this root mirror stays hand-maintained.
+
 ## Build Commands
 
 ```bash

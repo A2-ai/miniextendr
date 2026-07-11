@@ -264,6 +264,9 @@ jobs:
       - name: Check templates sync
         run: just templates-check
 
+      - name: AGENTS.md sibling check
+        run: just agents-md-check
+
       - name: Check end-user Claude skills vs scaffold layout
         run: just user-skills-check
 
