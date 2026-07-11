@@ -8,7 +8,22 @@ Scope: one of #1261's four `R CMD check` WARNINGs — `checking compiled code`:
 point may be removed soon"). Items 1/2/4 are handled by other PRs
 (`plans/2026-07-11-issue-1248-s3-nongeneric-collision.md`,
 `plans/2026-07-11-issue-1261-items-2-4-rd-dedup-int-literal.md`). Do NOT
-touch them here.
+re-fix them here.
+
+**AMENDED 2026-07-11 (maintainer decision review): this PR is the #1261
+CLOSER.** The R-floor bump to 4.5 is APPROVED (veto window closed). Beyond
+item 3, this PR also carries: (a) the two additional pre-existing doc
+WARNINGs inventoried on #1261 (comment 4945939625) — `ImplDotsS3.Rd`
+undocumented `seed` argument + undocumented `impl_dots_s3_*` objects — see
+new work item 9; (b) the CI `error-on` flip from `'"error"'` to
+`'"warning"'` so future WARNING regressions gate PRs — see new work item 10;
+(c) `Fixes #1261` in the PR body (supersedes the "partial" instruction in
+work item 8).
+
+**Precondition**: dispatch only after the items-2+4 PR (branch
+`fix/1261-rd-arg-dedup-int-literal`) and item 1 (PR #1278, merged) are on
+main. First step on checkout: `git merge origin/main` (do not rebase), so
+the check-log baseline already lacks the other WARNINGs.
 
 ## Facts (verified)
 
@@ -82,9 +97,38 @@ touch them here.
    (existing testthat coverage from audit A9 — R6/S4/S7/Env handle args to
    `ExternalPtr<T>` params) are the regression surface; they must stay green.
 8. Confirm in the `just r-cmd-check` log: the `checking compiled code`
-   WARNING about `Rf_findVarInFrame` is GONE. The log will still show the
-   other #1261 WARNINGs not yet merged — expected; reference their PRs in
-   the PR body. PR body references #1261 (partial — do NOT `Fixes #1261`).
+   WARNING about `Rf_findVarInFrame` is GONE — and, with items 9+10 below
+   and the merged prerequisites, the check should report **zero WARNINGs**.
+   If any WARNING remains that is not explained by this plan, stop and
+   report per the escalation rule. PR body: `Fixes #1261` (this is the
+   closer — amended from the original "partial" instruction).
+9. **Doc WARNINGs (amendment)**: fix the two pre-existing documentation
+   WARNINGs in `rpkg/src/rust/impl_dots_tests.rs`:
+   - `ImplDotsS3.Rd`: undocumented `seed` argument. The `@param seed` line
+     currently sits ONLY on the struct doc (`impl_dots_tests.rs:44-46`);
+     the `#[miniextendr(s3)] impl ImplDotsS3` block (`:53`) has no doc
+     comment and `new` (`:55-56`) documents neither param. Mirror the
+     doc-comment layout of the `S3NonGenericCollision` fixture in
+     `rpkg/src/rust/s3_tests.rs` (the reference S3 fixture pattern): impl
+     block gets a description + `@param seed Integer base value.` +
+     `@param ... Additional constructor arguments counted by Rust.`, and
+     `new`'s doc gets the same `@param` lines.
+   - Undocumented `impl_dots_s3_*` objects: give the two methods
+     (`impl_dots_s3_ctor_dots` `:63-64`, `impl_dots_s3_add_with_dots`
+     `:68-71`) roxygen matching how `s3_tests.rs` methods document theirs
+     (real descriptions — never `@noRd`/`@keywords internal` silencers, per
+     the "roxygen warnings are bugs to fix" principle).
+   - Regen loop, then verify BOTH WARNING lines are gone from the check
+     log. If either persists after mirroring the reference pattern, stop
+     and report per the escalation rule (the emission path may differ for
+     dots-taking methods — that would need a macro-side look, not fixture
+     hacks).
+10. **CI flip (amendment)**: in `.github/workflows/ci.yml`, change
+    `error-on: '"error"'` to `error-on: '"warning"'` at the three ACTIVE
+    sites (lines 628, 774, 1421 as of main @ 6de43e9b; line ~930 is inside
+    a commented-out block — leave it). Do not touch anything else in the
+    workflow. Note: if another PR has moved these lines, locate them by
+    grepping `error-on` — three active occurrences expected.
 
 ## Exact commands (worktree)
 
@@ -107,23 +151,28 @@ locally — #1239).
 
 ## Must NOT touch
 
-- `error_value.rs` or any PROTECT-sensitive file — this change is confined to
-  `sys.rs`, `externalptr.rs`, `docs/NONAPI.md`, `rpkg/DESCRIPTION`.
-- The other three #1261 items. Do not flip CI `error-on:` — that's the
-  maintainer's close-out after all four items land.
+- `error_value.rs` or any PROTECT-sensitive file — this change is confined
+  to `sys.rs`, `externalptr.rs`, `docs/NONAPI.md`, `rpkg/DESCRIPTION`,
+  `rpkg/src/rust/impl_dots_tests.rs` (item 9), and the three `error-on`
+  lines in `.github/workflows/ci.yml` (item 10).
+- The other three #1261 items land via their own PRs — do not re-fix them;
+  merge origin/main instead (see precondition).
 - No `nonapi` feature-gating of the deleted declarations — delete outright.
-- Generated files (`wrappers.R`, `wasm_registry.rs`); `NAMESPACE`/`man`
-  expected unchanged (no wrapper-visible change).
+- Generated files (`wrappers.R`, `wasm_registry.rs`). `NAMESPACE`/`man` WILL
+  change for item 9 (`ImplDotsS3.Rd` etc.) — commit those regenerated files;
+  the item-3 FFI change itself has no wrapper-visible effect.
 
 ## Done criteria
 
 - Default build contains no `Rf_findVarInFrame` reference; `R CMD check`
-  compiled-code WARNING gone; A9 handle-unwrapping tests green; suites +
-  three clippy legs green; `Depends: R (>= 4.5)` committed with the change.
+  reports ZERO WARNINGs (compiled-code + both doc WARNINGs gone, prereq PRs
+  merged in); A9 handle-unwrapping tests green; suites + three clippy legs
+  green; `Depends: R (>= 4.5)` committed with the change; `error-on`
+  flipped at the three active sites; PR body `Fixes #1261`.
 
 ## Escalation rule
 
 If reality diverges from this plan — an anchor doesn't match, a caller of the
-deleted declarations exists, the maintainer has vetoed the R-floor bump, a
-test fails unexpectedly — **stop, commit nothing further, and report back.
+deleted declarations exists, a WARNING remains that the plan doesn't explain,
+a test fails unexpectedly — **stop, commit nothing further, and report back.
 Do not improvise.**
