@@ -754,6 +754,70 @@ fn strip_method_tags_disambiguates_warning_consts_per_block() {
     assert_ne!(a, b);
 }
 
+#[test]
+fn strip_method_tags_activates_use_const_referencing_warn_ident() {
+    // #1206: an unused `#[deprecated]` const warns nowhere — it's dead code
+    // implying a feature. A sibling USE const whose initializer reads the
+    // WARN const's value makes rustc's `deprecated` lint actually fire at the
+    // impl-block span, turning the silent no-op into a real compile warning
+    // that points the user at the misplaced tag.
+    let tags: Vec<String> = vec!["@param x an input".to_string()];
+    let span = proc_macro2::Span::call_site();
+
+    let (_, warnings) = strip_method_tags(&tags, "MyType", 0, span);
+    let s = warnings.to_string();
+
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"),
+        "WARN const missing: {s}"
+    );
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE_MyType_0_0"),
+        "USE const missing: {s}"
+    );
+    // The USE const's initializer must read the WARN const by name, so
+    // referencing it trips rustc's `deprecated` lint on the WARN const.
+    assert!(
+        s.contains(
+            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE_MyType_0_0 : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"
+        ),
+        "USE const must initialize from the WARN const's value: {s}"
+    );
+    // Both consts carry `non_upper_case_globals` (names embed mixed-case type
+    // names) alongside `dead_code`.
+    assert!(
+        s.matches("non_upper_case_globals").count() >= 2,
+        "expected non_upper_case_globals on both consts: {s}"
+    );
+}
+
+#[test]
+fn strip_method_tags_r6_activates_use_const_for_stripped_tags() {
+    // Same activation for the R6 variant, exercised on a tag R6 still strips
+    // (`@return` — unlike `@param`, which R6 intentionally keeps).
+    let tags: Vec<String> = vec!["@return something".to_string()];
+    let span = proc_macro2::Span::call_site();
+
+    let (kept, warnings) = strip_method_tags_r6(&tags, "MyR6Type", 0, span);
+    assert!(kept.is_empty(), "@return must still be stripped for R6");
+
+    let s = warnings.to_string();
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyR6Type_0_0"),
+        "WARN const missing: {s}"
+    );
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE_MyR6Type_0_0"),
+        "USE const missing: {s}"
+    );
+    assert!(
+        s.contains(
+            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE_MyR6Type_0_0 : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyR6Type_0_0"
+        ),
+        "USE const must initialize from the WARN const's value: {s}"
+    );
+}
+
 // endregion
 
 #[test]
