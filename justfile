@@ -1129,6 +1129,10 @@ templates-check:
 
     diff -ruN "$tmp" "$tmp2"
 
+# Check the CLAUDE.md <-> AGENTS.md sibling invariant (exits nonzero on violation)
+agents-md-check:
+    bash scripts/agents-md-check.sh
+
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)
 # ==============================================================================

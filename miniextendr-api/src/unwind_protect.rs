@@ -208,12 +208,25 @@ pub(crate) fn get_continuation_token() -> SEXP {
     })
 }
 
+/// Panic payload whose message is already final (location folded, or
+/// deliberately location-free): downstream folds must use it verbatim and
+/// must NOT append the current thread's recorded panic location (#1245).
+///
+/// Produced by `worker::route_to_main_thread`'s re-panic when a `with_r_thread`
+/// closure panics on the main thread: the main-thread stringify point already
+/// folded the *true* origin location into the message before it crossed back
+/// to the worker, so the worker's own re-panic (needed to unwind out of
+/// `run_on_worker`) must carry that message forward untouched rather than
+/// re-fold its own relay call site on top.
+pub(crate) struct PreLocatedPanic(pub(crate) String);
+
 /// Extract a message from a panic payload.
 ///
-/// Handles `&str`, `String`, and `&String` payloads consistently. The borrowed
-/// variants are returned as `Cow::Borrowed`, so the common `panic!("literal")`
-/// case avoids the heap allocation that a `String` return would force.
-/// Unrecognised payload types fall back to a `Cow::Borrowed` static string.
+/// Handles `&str`, `String`, `&String`, and [`PreLocatedPanic`] payloads
+/// consistently. The borrowed variants are returned as `Cow::Borrowed`, so the
+/// common `panic!("literal")` case avoids the heap allocation that a `String`
+/// return would force. Unrecognised payload types fall back to a
+/// `Cow::Borrowed` static string.
 ///
 /// Call `.into_owned()` (or `.to_string()`) at sites that need an owned
 /// `String`.
@@ -224,6 +237,8 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
         Cow::Borrowed(s.as_str())
     } else if let Some(s) = payload.downcast_ref::<&String>() {
         Cow::Borrowed(s.as_str())
+    } else if let Some(pre) = payload.downcast_ref::<PreLocatedPanic>() {
+        Cow::Borrowed(pre.0.as_str())
     } else {
         Cow::Borrowed("unknown panic")
     }
