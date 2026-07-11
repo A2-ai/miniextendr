@@ -38,10 +38,6 @@ fast_i32_no_call_attribution(x)
 \item{x}{Input value.}
 
 \item{a, b, c}{Numeric scalars.}
-
-\item{b}{(no documentation available)}
-
-\item{c}{(no documentation available)}
 }
 \description{
 Identity (i32) with \code{fast} — bundle of \code{no_preconditions} + \code{no_call_attribution}. Largest single-fn perf win.
