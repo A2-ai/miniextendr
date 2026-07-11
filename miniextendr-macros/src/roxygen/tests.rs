@@ -797,3 +797,60 @@ fn test_normalize_for_comparison() {
     );
 }
 // endregion
+
+// region: comma-list @param dedup (duplicated \argument Rd entries, #1261 item 2)
+
+#[test]
+fn extract_param_names_splits_comma_list() {
+    // A single `@param a,b,c desc` tag documents three names, not one.
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    let names = extract_param_names(&tags);
+    assert_eq!(names.len(), 3);
+    assert!(names.contains("a"));
+    assert!(names.contains("b"));
+    assert!(names.contains("c"));
+}
+
+#[test]
+fn extract_param_names_single_name_unaffected() {
+    let tags = vec!["@param x Input value.".to_string()];
+    let names = extract_param_names(&tags);
+    assert_eq!(names.len(), 1);
+    assert!(names.contains("x"));
+}
+
+#[test]
+fn param_documented_true_for_every_name_in_comma_list() {
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    assert!(param_documented(&tags, "a"));
+    assert!(param_documented(&tags, "b"));
+    assert!(param_documented(&tags, "c"));
+}
+
+#[test]
+fn param_documented_false_for_undocumented_name() {
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    assert!(!param_documented(&tags, "d"));
+}
+
+#[test]
+fn param_documented_no_prefix_false_positive() {
+    // The old `starts_with(&format!("@param {name}"))` check would wrongly
+    // treat "@param x2 desc" as documenting "x" too, since "@param x2 desc"
+    // starts with "@param x". Exact comma-split membership must not repeat
+    // that false positive.
+    let tags = vec!["@param x2 Second input.".to_string()];
+    assert!(!param_documented(&tags, "x"));
+    assert!(param_documented(&tags, "x2"));
+}
+
+#[test]
+fn find_param_tag_returns_the_comma_list_tag_for_any_covered_name() {
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    assert_eq!(
+        find_param_tag(&tags, "b"),
+        Some(&"@param a,b,c Numeric scalars.".to_string())
+    );
+    assert_eq!(find_param_tag(&tags, "d"), None);
+}
+// endregion

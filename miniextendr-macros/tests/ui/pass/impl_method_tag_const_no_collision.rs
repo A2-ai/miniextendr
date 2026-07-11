@@ -9,9 +9,11 @@
 //! The per-block disambiguator (`next_impl_tag_block_id`) makes the names
 //! unique, so this compiles.
 //!
-//! (Two *inherent* impl blocks on one type is not a valid reproduction: they
-//! also collide on the per-type `__mx_class_name_entry_<type>` static, which is
-//! unrelated to the tag-const bug. Inherent + trait is the real-world case.)
+//! (Two *unlabeled* inherent impl blocks on one type is not a valid
+//! reproduction: they also collide on `R_WRAPPERS_IMPL_<TYPE>`, which is
+//! unrelated to the tag-const bug. Two *labeled* inherent blocks compile
+//! since #1242 — see `impl_labeled_blocks_class_name_no_collision.rs`.
+//! Inherent + trait is the real-world case exercised here.)
 
 #![allow(dead_code)]
 

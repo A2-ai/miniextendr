@@ -1191,9 +1191,7 @@ pub fn miniextendr(
         }
         let rust_name = pat_ident.ident.to_string();
         let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-        let already_documented = roxygen_tags
-            .iter()
-            .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
+        let already_documented = crate::roxygen::param_documented(&roxygen_tags, &r_name);
         if already_documented {
             continue;
         }
