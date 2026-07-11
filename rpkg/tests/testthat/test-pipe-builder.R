@@ -158,6 +158,64 @@ test_that("S7 method returning an R6 class wraps with the R6 constructor", {
   expect_equal(board$signature(), "4x5@7")
 })
 
+test_that("R6 builder try_build() wraps a usable classed object on Some", {
+  plan <- R6CrossPlan$new(7L)
+
+  board <- plan$try_build(4L, 5L, FALSE)
+  expect_s3_class(board, "R6CrossBoard")
+  expect_equal(board$cells(), 20L)
+  expect_equal(board$signature(), "4x5@7")
+})
+
+test_that("R6 builder try_build() raises a rust_error on None", {
+  plan <- R6CrossPlan$new(7L)
+
+  expect_error(
+    plan$try_build(4L, 5L, TRUE),
+    class = "rust_error"
+  )
+})
+
+test_that("R6 builder checked_build() wraps a usable classed object on Ok", {
+  plan <- R6CrossPlan$new(3L)
+
+  board <- plan$checked_build(2L, 3L, FALSE)
+  expect_s3_class(board, "R6CrossBoard")
+  expect_equal(board$cells(), 6L)
+  expect_equal(board$signature(), "2x3@3")
+})
+
+test_that("R6 builder checked_build() raises with the fixture's message on Err", {
+  plan <- R6CrossPlan$new(3L)
+
+  expect_error(
+    plan$checked_build(2L, 3L, TRUE),
+    "checked_build failed for seed 3",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+})
+
+test_that("S7 method returning an Option<R6 class> wraps with the R6 constructor", {
+  # Mixed-system container return: proves the target-keyed resolver on the
+  # Option<Class> path even though this method lives on an S7 class.
+  plan <- S7CrossPlan(7L)
+
+  board <- s7_try_build_r6(plan, 4L, 5L, FALSE)
+  expect_s3_class(board, "R6CrossBoard")
+  expect_equal(board$cells(), 20L)
+  expect_equal(board$signature(), "4x5@7")
+})
+
+test_that("S7 method returning an Option<R6 class> raises a rust_error on None", {
+  plan <- S7CrossPlan(7L)
+
+  expect_error(
+    s7_try_build_r6(plan, 4L, 5L, TRUE),
+    class = "rust_error"
+  )
+})
+
 test_that("EnvPipeBuilder chains via $ and preserves identity", {
   b <- EnvPipeBuilder$new()
   expect_equal(b$add(1L)$add(2L)$total(), 3L)
