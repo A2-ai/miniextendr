@@ -954,10 +954,12 @@ fn s7_wrapper_full_snapshot() {
     // Verify S7 generics use the usability classifier (#1114): a plain base
     // closure like `get` must not be treated as a usable generic. The leading
     // statement is an `if (!base::exists(...))` (never a top-level assignment,
-    // which roxygen2 would document), with the classifier in the `else if`.
+    // which roxygen2 would document), with the classifier in the `else if`,
+    // wrapped in `local()` so `.mx_gen` doesn't leak into the namespace
+    // (#1261 item 1).
     assert!(wrapper.contains("if (!base::exists(\"get\", mode = \"function\")) {"));
     assert!(wrapper.contains(
-        "} else if ({ .mx_gen <- base::get(\"get\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"get\")) }) {"
+        "} else if (local({ .mx_gen <- base::get(\"get\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"get\")) })) {"
     ));
     assert!(
         wrapper.contains(
@@ -974,7 +976,7 @@ fn s7_wrapper_full_snapshot() {
     );
     assert!(wrapper.contains("if (!base::exists(\"increment\", mode = \"function\")) {"));
     assert!(wrapper.contains(
-        "} else if ({ .mx_gen <- base::get(\"increment\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"increment\")) }) {"
+        "} else if (local({ .mx_gen <- base::get(\"increment\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"increment\")) })) {"
     ));
     assert!(wrapper.contains(
         "  increment <- S7::new_generic(\"increment\", \"x\", function(x, ...) S7::S7_dispatch())"

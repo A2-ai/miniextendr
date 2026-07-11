@@ -535,6 +535,14 @@ gitignored artifacts, scaffolded-package layout paths). CLAUDE.md ↔ skill
 contradictions are not auto-detected — eyeball any skill that restates a
 CLAUDE.md fact when triaging.
 
+The same quarterly pass also rebases two upstream release pins (folded from
+#596): the `r-universe-org/macos-libs` `cranlibs-everything.tar.xz` date
+pinned in `minirextendr/inst/templates/r-release.yml` (Gotcha 6) and
+`docs/RELEASE_WORKFLOW.md`, and the r-windows rtools release number in
+`docs/CRAN_COMPATIBILITY.md`'s Layer 3 table. Also force-rebase both before
+any release tag, and smoke-test a bumped tarball URL via a real CI run
+(download + extract paths drift upstream).
+
 ### Reviews
 
 - **Reviews** (`reviews/*.md`): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.
