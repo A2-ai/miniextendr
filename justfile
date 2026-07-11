@@ -1451,8 +1451,9 @@ docker-webr-test: docker-webr-build
 # Run the webR/wasm32 smoke test for rpkg.
 # Builds rpkg as a wasm32 side-module inside the dev container and loads it
 # in a webR Node session via the canonical runner
-# tests/webr-node-smoke/smoke.mjs (library() + packageVersion() only;
-# testthat-under-wasm coverage is tracked in #1255).
+# tests/webr-node-smoke/smoke.mjs, plus an informational testthat pass
+# (#1255; counts reported, test failures never gate — disable with
+# SMOKE_TESTTHAT=0).
 docker-webr-smoke *args: docker-webr-build
     bash tests/webr-smoke.sh {{args}}
 
