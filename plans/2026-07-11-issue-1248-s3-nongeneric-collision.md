@@ -72,6 +72,31 @@ Decisions baked into that shape, in order of how much they can bite:
    the generic's defining environment, and `name.default` sits beside the
    generic in the package namespace. Pin this with a from-outside-the-package
    testthat call (see Tests) rather than trusting the prose.
+
+   **Amended 2026-07-11 (post-escalation):** the "roxygen2 cannot introspect"
+   claim holds only for the static block-attachment pass. roxygen2 ALSO runs a
+   dynamic namespace scan (`warn_missing_s3_exports`): it walks the *loaded*
+   namespace's bindings, and since our shadow branch executes at source time
+   and binds a real `var` generic, a literal `name.default` binding is
+   method-shaped against a real generic and gets flagged ("S3 method
+   `var.default` needs @export or @exportS3Method tag") no matter how
+   syntactically nested its definition was. Resolution: the delegate must not
+   be a namespace binding at all — it is registered into the namespace's S3
+   methods table (`.__S3MethodsTable__.`) via `base::registerS3method()`
+   (base R's documented conditional-registration mechanism), which the
+   dynamic scan never inspects. Shape: bind `.mx_shadow_default` (captures
+   the masked closure BEFORE the generic rebind — same recursion reasoning as
+   point 1), bind the generic at the branch top level (its closure env must
+   be the namespace: `registerS3method` registers into
+   `environment(genfun)`'s table), call
+   `base::registerS3method("name", "default", .mx_shadow_default, envir = base::environment())`
+   AFTER the generic is bound (so it resolves OUR generic, not the masked
+   closure), then `base::rm(.mx_shadow_default)` so zero helper bindings
+   remain. Verified empirically on R 4.6.0 that the install-time table entry
+   survives `R CMD INSTALL`'s lazyload DB round-trip into fresh sessions
+   (the serialized `.__S3MethodsTable__.` binding is restored over the fresh
+   table `makeNamespace` creates, then NAMESPACE-directive methods are added
+   to it).
 3. **The classifier is wrapped in `local({...})`** — this is the correction to
    the #1114 pattern. S7's `else if ({ .mx_gen <- ... })` evaluates the braced
    block in the namespace env at source time, leaving a stray `.mx_gen`
