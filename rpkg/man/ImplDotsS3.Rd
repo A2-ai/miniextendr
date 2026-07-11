@@ -27,6 +27,8 @@ new_impldotss3(seed, ...)
 ImplDotsS3
 }
 \arguments{
+\item{seed}{Integer base value.}
+
 \item{...}{Additional arguments.}
 
 \item{x}{An object.}
@@ -34,6 +36,8 @@ ImplDotsS3
 \item{value}{Integer value to add.}
 }
 \description{
+S3 class exercising dots in both the constructor and an instance method.
+
 Create an S3 dots fixture.
 
 S3 generic for \code{impl_dots_s3_ctor_dots}

@@ -628,7 +628,7 @@ jobs:
         with:
           working-directory: rpkg
           args: 'c("--no-manual", "--as-cran")'
-          error-on: '"error"'
+          error-on: '"warning"'
           check-dir: '"check"'
 
       - name: Print failed tests
@@ -774,7 +774,7 @@ jobs:
         with:
           working-directory: rpkg
           args: 'c("--no-manual", "--as-cran")'
-          error-on: '"error"'
+          error-on: '"warning"'
           check-dir: '"check"'
           # No NOT_CRAN — configure.ac detects tarball install from inst/vendor.tar.xz
 
@@ -1433,7 +1433,7 @@ jobs:
         with:
           working-directory: minirextendr
           args: 'c("--no-manual", "--as-cran")'
-          error-on: '"error"'
+          error-on: '"warning"'
           check-dir: '"check"'
 
       - name: Upload check results
