@@ -100,10 +100,10 @@ in a single invocation. No manual `./configure` or two-pass install needed.
 For fine-grained control or when not using devtools:
 
 ```r
-miniextendr_autoconf(path = "mypackage")   # autoconf → generate configure
-miniextendr_configure(path = "mypackage")  # ./configure → generate Makevars
-miniextendr_build(path = "mypackage")      # R CMD INSTALL
-miniextendr_document(path = "mypackage")   # devtools::document (regenerate wrappers)
+miniextendr_autoconf(path = "mypackage")     # autoconf → generate configure
+miniextendr_configure(path = "mypackage")    # ./configure → generate Makevars
+miniextendr_build(path = "mypackage")        # R CMD INSTALL
+devtools::document("mypackage")              # regenerate NAMESPACE + man from wrappers
 ```
 
 ### One-Shot Sync
@@ -472,7 +472,7 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | Category | Functions |
 |----------|-----------|
 | **Project creation** | `create_miniextendr_package`, `create_miniextendr_monorepo` |
-| **Build workflow** | `miniextendr_autoconf`, `miniextendr_configure`, `miniextendr_build`, `miniextendr_document`, `miniextendr_sync` |
+| **Build workflow** | `miniextendr_autoconf`, `miniextendr_configure`, `miniextendr_build`, `miniextendr_sync` |
 | **Inline compilation** | `rust_source`, `rust_function`, `rust_source_clean` |
 | **Cargo wrappers** | `cargo_add`, `cargo_rm`, `cargo_build`, `cargo_check`, `cargo_test`, `cargo_clippy`, `cargo_fmt`, `cargo_doc`, `cargo_search`, `cargo_deps`, `cargo_update`, `cargo_init`, `cargo_new` |
 | **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s3`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_vendor_lib` |

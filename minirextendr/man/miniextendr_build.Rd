@@ -42,6 +42,49 @@ the wrappers and \code{NAMESPACE} are already in their final form, so a repeat
 \code{document()} would be a fixpoint and no further install is needed.
 }
 
+\section{Removal/rename self-heal}{
+
+The addition case above assumes the install step succeeds. It doesn't when
+an exported \verb{#[miniextendr]} function is \emph{removed or renamed}: the on-disk
+\code{NAMESPACE} is then a superset of the freshly regenerated wrappers, and
+\verb{R CMD INSTALL}'s test-load aborts with \verb{undefined exports: <old_name>}
+before \code{document()} gets a chance to drop the stale entry (#1288).
+
+To self-heal this, the install step's failure is caught and deferred (with
+a loud warning) rather than propagated immediately. \code{document()} still
+runs and reconciles \code{NAMESPACE} down to the new export set --
+\code{pkgload}'s \code{setup_ns_exports()} only warns on a \code{NAMESPACE} superset and
+proceeds, so \code{document()} survives it even though the installed image
+can't. The reinstall is then made \strong{mandatory} whenever the install step
+was deferred, even if \code{document()} left \code{NAMESPACE} textually unchanged --
+a digest-only check would otherwise skip the reinstall and leave the
+broken image in place. No error classification is performed: any Step 3
+failure is deferred and retried once, because a genuinely broken build
+re-fails identically at the mandatory retry (or earlier, since
+\code{document()}'s \code{pkgload::load_all(compile = NA)} recompiles the crate
+too) and errors loudly there. The invariant holds regardless:
+\code{miniextendr_build(install = TRUE)} returns \code{TRUE} only if the last
+install attempt succeeded with test-load.
+}
+
+\section{Mid-build source-tree restore}{
+
+The install step's \verb{R CMD build} runs the scaffolded \code{bootstrap.R} in the
+source tree, sealing \code{inst/vendor.tar.xz} there by design (the built
+tarball must carry it). Left in place, that latch would flip the rest of
+the build into tarball mode -- where wrapper regeneration is skipped -- so
+\code{document()} would reconcile \code{NAMESPACE} against stale wrappers and both
+self-heal paths above would break for any post-first-build export change
+(#1294). \code{miniextendr_build()} therefore restores the dev source tree
+(manifest/lockfile snapshot written back; a newly-sealed
+\code{inst/vendor.tar.xz} deleted) immediately after the install step, not
+only on exit. A latch that existed \emph{before} the build is never deleted --
+instead a warning is emitted up front, because a latched tree builds in
+tarball mode throughout and the dev-loop self-heal is structurally
+disabled; delete \code{inst/vendor.tar.xz} (or run \code{minirextendr_doctor()}) to
+resume source-mode development.
+}
+
 \section{Fresh-package bootstrap}{
 
 A brand-new package has no generated \verb{R/<pkg>-wrappers.R} yet. The wrappers
