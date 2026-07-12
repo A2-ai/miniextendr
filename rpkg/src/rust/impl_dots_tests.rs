@@ -49,8 +49,6 @@ pub struct ImplDotsS3 {
 }
 
 /// S3 class exercising dots in both the constructor and an instance method.
-/// @param seed Integer base value.
-/// @param ... Additional constructor arguments counted by Rust.
 #[miniextendr(s3)]
 impl ImplDotsS3 {
     /// Create an S3 dots fixture.
