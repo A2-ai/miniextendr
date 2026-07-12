@@ -21,9 +21,13 @@ block — whichever lands second rebases (trivial adjacent-row conflict).
 ## Work items (flat order)
 
 1. **Sweep** (own commit, mechanical): inventory bare impl-block attributes:
-   `rg -U -n '#\[miniextendr\]\s*\nimpl ' rpkg/src/rust/` (expect ≈52 per the
-   issue; the count validates the pattern — if you find <40 or >70, stop and
-   report). For each hit, rewrite `#[miniextendr]` → `#[miniextendr(env)]`,
+   `rg -U -n '#\[miniextendr\]\s*\nimpl ' rpkg/src/rust/` (expect exactly 32
+   — verified stable at plan-anchor 17f634d8 and main a88db764 on 2026-07-12;
+   the issue's ≈52 was a miscount, and cross-package's 13 out-of-scope bare
+   blocks don't close the gap either. Historical note: the plan originally
+   said ≈52 with a <40/>70 escalation band; the first implementation pass
+   correctly stopped on finding 32 and the count was re-verified from the
+   main session). For each hit, rewrite `#[miniextendr]` → `#[miniextendr(env)]`,
    EXCEPT the class-system probe region in
    `rpkg/src/rust/feature_default_fixtures.rs:69-94` (its bareness is the
    probe — leave it, add a comment `// deliberately bare: flips under
