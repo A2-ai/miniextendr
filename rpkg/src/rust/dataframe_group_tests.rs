@@ -119,6 +119,46 @@ pub fn group_by_frames(df: DataFrame, col: &str) -> SEXP {
 }
 // endregion
 
+// region: grouped_df metadata-ingest fixtures (group_by_metadata)
+
+/// Group-key labels in dplyr's group order, read from a `grouped_df`'s
+/// `groups` attribute (no recomputation). Multi-column keys are `.`-joined.
+/// @param df A dplyr `grouped_df` (or any frame carrying a `groups` attribute).
+#[miniextendr]
+pub fn group_metadata_keys(df: DataFrame) -> Vec<String> {
+    let grouped = df.group_by_metadata().unwrap_or_else(|e| panic!("{}", e));
+    grouped.iter().map(|(k, _)| k.label()).collect()
+}
+
+/// Per-group sizes in dplyr's group order, read from a `grouped_df`'s `groups`
+/// attribute. Empty (`.drop = FALSE`) groups appear as `0`.
+/// @param df A dplyr `grouped_df` (or any frame carrying a `groups` attribute).
+#[miniextendr]
+pub fn group_metadata_sizes(df: DataFrame) -> Vec<i32> {
+    let grouped = df.group_by_metadata().unwrap_or_else(|e| panic!("{}", e));
+    grouped
+        .iter()
+        .map(|(_, idx)| i32::try_from(idx.len()).expect("group size exceeds i32"))
+        .collect()
+}
+
+/// Named list of per-group sub-frames materialised from a `grouped_df`'s
+/// `groups` metadata — exercises the 1-based→0-based `.rows` conversion by row
+/// content (each sub-frame holds exactly the caller's grouped rows).
+/// @param df A dplyr `grouped_df` (or any frame carrying a `groups` attribute).
+#[miniextendr]
+pub fn group_metadata_frames(df: DataFrame) -> SEXP {
+    let grouped = df.group_by_metadata().unwrap_or_else(|e| panic!("{}", e));
+    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    for (key, sub) in grouped.frames() {
+        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
+        // push, which protects it in the builder's scope before `sub` drops.
+        out = out.push(key.label(), *sub);
+    }
+    out.build().into_sexp()
+}
+// endregion
+
 // region: typed-extraction fixture (extract::<Row>)
 
 /// One typed extraction + move-partition: per-group sum and count of `v`,
