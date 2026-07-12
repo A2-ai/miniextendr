@@ -540,7 +540,7 @@ grouped (a `grouped_df`), `group_by_metadata()` reads that existing grouping —
 // df arrived as dplyr::group_by(data, site, day)
 let grouped = df.group_by_metadata()?;
 for (key, sub) in grouped.frames() {
-    out = out.push(key.label(), sub); // one entry per dplyr group, in dplyr order
+    out = out.push(key.label(), *sub); // one entry per dplyr group, in dplyr order
 }
 ```
 
@@ -561,6 +561,11 @@ grouping use `group_by` / `group_by_multi`. Other errors: `MissingGroupRows`
 (the `groups` frame lacks a `.rows` column), `BadGroupRows` (a `.rows` element
 is not an integer/integerish vector), and `GroupIndexOutOfRange` (a `.rows`
 index is `< 1` or `> nrow`).
+
+Degenerate edge: a `groups` frame with **zero** key columns (e.g. a dplyr
+`rowwise_df`, whose `groups` frame is just `.rows`) yields empty-`Tuple` keys
+with empty labels — that shape is outside the documented `grouped_df` scope, so
+don't pass rowwise frames here.
 
 ## Parallel fast paths (`feature = "rayon"`)
 
