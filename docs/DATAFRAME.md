@@ -513,9 +513,13 @@ for (key, sub) in grouped.frames() {
 }
 ```
 
-Non-NA groups match `split(df, interaction(a, b, …, drop = TRUE))` **exactly** —
-the first column varies fastest (R `interaction()`'s default, `lex.order =
-FALSE`), each column ordered as `group_by` would order it alone. Labels join
+Non-NA groups match `split(df, interaction(a, b, …, drop = TRUE))` — the first
+column varies fastest (R `interaction()`'s default, `lex.order = FALSE`), each
+column ordered as `group_by` would order it alone. For character keys the match
+is exact for keys whose byte order coincides with the session's collation —
+always true in the C locale; single-case ASCII in practice (`en_US.UTF-8`
+collates `a A b B` where byte order gives `A B a b`). This is inherited from
+`group_by`'s byte-order sort for character keys (see above). Labels join
 element labels with `.` (interaction's default separator).
 
 **NA extends the single-column convention.** `interaction()` maps any row with

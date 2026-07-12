@@ -40,8 +40,11 @@
 //!
 //! [`DataFrame::group_by_multi`] groups on several columns at once, keying by a
 //! [`GroupKey::Tuple`] of the per-column scalar keys. Non-NA groups match
-//! `split(df, interaction(col1, col2, …, drop = TRUE))` exactly (the first column
-//! varies fastest, R `interaction()`'s default). Extending the single-column
+//! `split(df, interaction(col1, col2, …, drop = TRUE))` (the first column varies
+//! fastest, R `interaction()`'s default) — exactly, for keys whose byte order
+//! coincides with the session's collation (always true in the C locale;
+//! single-case ASCII in practice — the character-key byte-order choice above
+//! applies per column). Extending the single-column
 //! NA convention, any tuple with an NA in *any* component forms its own trailing
 //! group (first-encounter order) instead of being dropped as `interaction()` +
 //! `split()` would.
@@ -292,11 +295,16 @@ impl DataFrame {
     ///
     /// # Order
     ///
-    /// Non-NA groups match `split(df, interaction(col1, col2, …, drop = TRUE))`
-    /// exactly: the **first** column varies fastest (R `interaction()`'s default,
+    /// Non-NA groups match `split(df, interaction(col1, col2, …, drop = TRUE))`:
+    /// the **first** column varies fastest (R `interaction()`'s default,
     /// `lex.order = FALSE`), each column ordered as [`group_by`](Self::group_by)
     /// would order it alone (factor level order, byte-sorted characters, numeric
-    /// integers, `FALSE` then `TRUE`).
+    /// integers, `FALSE` then `TRUE`). For character keys the match is exact for
+    /// keys whose byte order coincides with the session's collation — always
+    /// true in the C locale; single-case ASCII in practice (e.g. `en_US.UTF-8`
+    /// collates `a A b B` where byte order gives `A B a b`). This is inherited
+    /// from [`group_by`](Self::group_by)'s byte-order choice for character keys
+    /// — see the group-order note in the [module docs](self).
     ///
     /// # NA
     ///
