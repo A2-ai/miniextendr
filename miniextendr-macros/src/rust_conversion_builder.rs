@@ -555,7 +555,14 @@ impl RustConversionBuilder {
                                 if __errors.is_empty() {
                                     __coerced
                                 } else {
-                                    let __batched = __errors.into_error(#container_label);
+                                    // `into_error` always yields `SexpError::InvalidValue`; take its
+                                    // inner message directly so the outer format doesn't double the
+                                    // "invalid value: " prefix that `SexpError`'s Display would add
+                                    // (mirrors `collect_coerced`'s per-element unwrap in from_r.rs).
+                                    let __batched = match __errors.into_error(#container_label) {
+                                        ::miniextendr_api::from_r::SexpError::InvalidValue(__m) => __m,
+                                        __other => ::std::string::ToString::to_string(&__other),
+                                    };
                                     // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
                                     return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                                         &format!("{}: {__batched}", #error_msg_coerce),
