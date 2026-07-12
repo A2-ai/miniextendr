@@ -32,8 +32,6 @@ pub struct GreetingBuilder {
 ///
 /// The `builder_set_*` methods return `&mut Self`, so they compose under R's
 /// native pipe operator `|>` as free functions taking the object first.
-/// @param x A `GreetingBuilder` object.
-/// @param ... Additional arguments.
 #[allow(clippy::new_without_default)]
 #[miniextendr(s3)]
 impl GreetingBuilder {
@@ -94,8 +92,6 @@ pub struct PipeCounter {
 }
 
 /// Counter with pipe-friendly mutators returning `&mut Self`.
-/// @param x A `PipeCounter` object.
-/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl PipeCounter {
     /// Create a counter starting at the given value.
@@ -177,7 +173,6 @@ pub struct S4PipeBuilder {
 /// S4 builder with a `&mut self -> &mut Self` step and a terminal accessor.
 /// Chains under the native pipe as `b |> s4_add(1L) |> s4_add(2L) |> s4_total()`.
 /// @aliases s4_add,S4PipeBuilder-method s4_total,S4PipeBuilder-method
-/// @param x A `S4PipeBuilder` object.
 #[miniextendr(s4, internal)]
 impl S4PipeBuilder {
     /// Create a new builder starting at zero.
@@ -313,6 +308,51 @@ impl R6CrossPlan {
             cells: self.seed + (width * height),
         }
     }
+
+    /// Materialize this plan into an `R6CrossBoard`, or `None` when `fail` is set.
+    ///
+    /// Exercises the `Option<Class>` cross-class return path: the C wrapper
+    /// already unwraps `Option<T>` and raises on `None`
+    /// (`ReturnHandling::OptionIntoRUnwrap`), so on `Some` the successful
+    /// `.val` is a bare pointer wrapped with `R6CrossBoard`'s constructor,
+    /// identical to the bare-class `build()` above.
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param fail When true, returns `None` instead of a board.
+    pub fn try_build(&self, width: i32, height: i32, fail: bool) -> Option<R6CrossBoard> {
+        if fail {
+            return None;
+        }
+        Some(R6CrossBoard {
+            width,
+            height,
+            seed: self.seed,
+        })
+    }
+
+    /// Materialize this plan into an `R6CrossBoard`, or an `Err` message when
+    /// `fail` is set.
+    ///
+    /// Exercises the `Result<Class, E>` cross-class return path
+    /// (`ReturnHandling::ResultIntoR`).
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param fail When true, returns an `Err` instead of a board.
+    pub fn checked_build(
+        &self,
+        width: i32,
+        height: i32,
+        fail: bool,
+    ) -> Result<R6CrossBoard, String> {
+        if fail {
+            return Err(format!("checked_build failed for seed {}", self.seed));
+        }
+        Ok(R6CrossBoard {
+            width,
+            height,
+            seed: self.seed,
+        })
+    }
 }
 
 /// Board materialized by `S7CrossPlan::s7_cross_build`.
@@ -373,6 +413,27 @@ impl S7CrossPlan {
             height,
             seed: self.seed,
         }
+    }
+
+    /// Materialize this plan into an `R6CrossBoard` (S7 source, R6 target),
+    /// or `None` when `fail` is set.
+    ///
+    /// Mixed-system container return: proves the target-keyed resolver picks
+    /// the R6 constructor for the `Some` arm even though this method lives on
+    /// an S7 class, mirroring [`Self::s7_build_r6`] but through the
+    /// `Option<Class>` cross-class return path.
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param fail When true, returns `None` instead of a board.
+    pub fn s7_try_build_r6(&self, width: i32, height: i32, fail: bool) -> Option<R6CrossBoard> {
+        if fail {
+            return None;
+        }
+        Some(R6CrossBoard {
+            width,
+            height,
+            seed: self.seed,
+        })
     }
 }
 // endregion

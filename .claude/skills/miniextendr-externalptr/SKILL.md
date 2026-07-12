@@ -233,6 +233,10 @@ Returning Rust data to R where R needs to inspect, modify, or serialize it:
 - Consider `#[derive(IntoList)]` (converts to a named R list) or
   `miniextendr-serde` (via serde Serialize/Deserialize).
 
+If the object must survive `saveRDS()`/`readRDS()` or a session restart:
+- An `ExternalPtr` cannot (see the pitfall below). Return plain data, a serde
+  list, or an R closure that captures plain R data instead.
+
 If the data is array-like and benefits from lazy evaluation:
 - Consider ALTREP (`miniextendr-altrep` skill).
 
@@ -311,6 +315,17 @@ receive it:
   a vector or use it in vectorized operations. This is an R limitation, not a
   miniextendr limitation. If you need R-vectorized behavior over Rust data,
   use ALTREP.
+
+- **ExternalPtr does not survive `saveRDS()` / session restarts**: the pointer
+  address cannot be serialized, so a round-tripped object keeps its R class
+  but its pointer is dead — every subsequent access fails the `Any::downcast`
+  with an "expected ExternalPtr<T>" error. This is inherent to `EXTPTRSXP`,
+  not a miniextendr bug, and it is easy to miss because `readRDS()` itself
+  succeeds. If users need a persistable interface, expose a base-R-style
+  closure that captures plain R data (which serializes fine and can rebuild
+  the pointer-backed object lazily), or provide getters for the plain data so
+  the object can be reconstructed after reload. At minimum, document the
+  limitation on the constructor.
 
 - **Cross-package type safety requires the same crate version**: the `TypeId`
   in `Any::downcast` is per-compilation. Two separate compilations of the same

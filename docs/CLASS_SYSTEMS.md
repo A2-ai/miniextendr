@@ -372,6 +372,25 @@ greet(p)         # "Hello, I'm Alice!"
 tibble::tibble(person = list(p))
 ```
 
+### Base non-generic collisions
+
+A method name whose only existing binding is a **plain (non-generic) base or
+stats closure** — `var`, `get`, `row`, `col`, `diag`, `reshape`, … — is
+classified and shadowed automatically (#1248): the generated code checks
+`utils::isS3stdGeneric()` / `methods::isGeneric()` / `is.primitive()` on the
+existing binding, and if none apply, defines a package-local `UseMethod`
+generic in its place. Ordinary (non-dispatching) calls to the masked
+function, e.g. `var(1:10)`, keep working — a default method wrapping the
+original closure is registered via `base::registerS3method()`, so it lives
+only in the namespace's S3 methods table (never as a `name.default`
+namespace binding, which would trip roxygen2's dynamic S3-export scan).
+This mirrors the S7 class system's #1114 classifier.
+
+`utils::isS3stdGeneric()` / `methods::isGeneric()` are called unconditionally
+by every generated S3 (and vctrs) generic guard, so packages using the S3 or
+vctrs class systems must import `methods` and `utils`:
+`minirextendr::use_s3()` (or `use_vctrs()`) declares both.
+
 ### When to Use
 
 - Tidyverse integration

@@ -60,8 +60,6 @@ impl FromStr for Point {
 }
 
 /// Point inherent methods: constructor and field accessors.
-/// @param x Integer x-coordinate.
-/// @param y Integer y-coordinate.
 #[miniextendr(env)]
 impl Point {
     fn new(x: i32, y: i32) -> Self {
@@ -119,7 +117,6 @@ impl miniextendr_api::adapter_traits::ROrd for Point {}
 pub struct MyFloat(f64);
 
 /// MyFloat inherent methods: constructor and accessor.
-/// @param value Numeric value for the float wrapper.
 #[miniextendr(env)]
 impl MyFloat {
     fn new(value: f64) -> Self {
@@ -299,7 +296,6 @@ impl IntVecIter {
 pub struct GrowableVec(RefCell<Vec<i32>>);
 
 /// RExtend trait implementation for GrowableVec (append integers to a growable buffer).
-/// @param items Integer vector of items to append.
 #[miniextendr(env)]
 impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec {
     fn extend_from_vec(&self, items: Vec<i32>) {
@@ -346,7 +342,6 @@ pub struct IntSet(HashSet<i32>);
 
 // RFromIter: static factory method (IntSet doesn't impl FromIterator directly)
 /// RFromIter trait implementation for IntSet (construct a set from integer vector).
-/// @param items Integer vector of elements to insert.
 #[miniextendr(env)]
 impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet {
     fn from_vec(items: Vec<i32>) -> Self {
@@ -413,7 +408,6 @@ impl miniextendr_api::adapter_traits::RMakeIter<i32, IterableVecIter> for Iterab
 }
 
 /// IterableVec inherent methods: constructor, length, and conversion.
-/// @param data Integer vector of elements.
 #[miniextendr(env)]
 impl IterableVec {
     fn new(data: Vec<i32>) -> Self {

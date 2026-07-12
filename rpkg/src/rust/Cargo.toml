@@ -65,6 +65,7 @@ growth-debug = ["miniextendr-api/growth-debug"]
 # Project-wide defaults for #[miniextendr] options
 strict-default = ["miniextendr-api/strict-default"]
 coerce-default = ["miniextendr-api/coerce-default"]
+fast-default = ["miniextendr-api/fast-default"]
 r6-default = ["miniextendr-api/r6-default"]
 s7-default = ["miniextendr-api/s7-default"]
 worker-thread = ["miniextendr-api/worker-thread"]

@@ -36,11 +36,6 @@ pub struct SharedData {
 /// @title SharedData (Env-style)
 /// @name SharedData
 /// @description A point with label using Env-style class system.
-/// @examples
-/// p <- SharedData$create(1.0, 2.0, "origin")
-/// p$get_x()
-/// p$get_y()
-/// p$get_label()
 #[miniextendr]
 impl SharedData {
     /// Create a new SharedData
@@ -74,11 +69,6 @@ pub struct EnvPoint {
 /// @title EnvPoint (Env-style)
 /// @name EnvPoint
 /// @description A 2D point using the default Env-style class system.
-/// @examples
-/// p <- EnvPoint$new(3.0, 4.0)
-/// p$x()
-/// p$y()
-/// p$distance_from_origin()
 #[miniextendr]
 impl EnvPoint {
     /// Create a new point
@@ -121,11 +111,6 @@ pub struct R6Point {
 /// @title R6Point (R6-style)
 /// @name R6Point
 /// @description A 2D point using R6-style class system.
-/// @examples
-/// p <- R6Point$new(3.0, 4.0)
-/// p$x()
-/// p$y()
-/// p$distance_from_origin()
 #[miniextendr(r6)]
 impl R6Point {
     /// Create a new point
@@ -173,11 +158,6 @@ pub struct S3Point {
 /// @name S3Point
 /// @description A 2D point using S3-style class system.
 /// @aliases new_s3point s3point_x s3point_y s3point_distance
-/// @examples
-/// p <- new_s3point(3.0, 4.0)
-/// s3point_x(p)
-/// s3point_y(p)
-/// s3point_distance(p)
 #[miniextendr(s3)]
 impl S3Point {
     /// Create a new point
@@ -221,11 +201,6 @@ pub struct S4Point {
 /// @name S4Point
 /// @description A 2D point using S4-style class system.
 /// @aliases S4Point s4point_x s4point_y s4point_distance
-/// @examples
-/// p <- S4Point(3.0, 4.0)
-/// s4point_x(p)
-/// s4point_y(p)
-/// s4point_distance(p)
 #[miniextendr(s4)]
 impl S4Point {
     /// Create a new point
@@ -269,11 +244,6 @@ pub struct S7Point {
 /// @name S7Point
 /// @description A 2D point using S7-style class system.
 /// @aliases S7Point s7point_x s7point_y s7point_distance
-/// @examples
-/// p <- S7Point(3.0, 4.0)
-/// s7point_x(p)
-/// s7point_y(p)
-/// s7point_distance(p)
 #[miniextendr(s7)]
 impl S7Point {
     /// Create a new point

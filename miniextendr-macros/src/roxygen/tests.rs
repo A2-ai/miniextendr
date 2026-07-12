@@ -754,6 +754,70 @@ fn strip_method_tags_disambiguates_warning_consts_per_block() {
     assert_ne!(a, b);
 }
 
+#[test]
+fn strip_method_tags_activates_use_const_referencing_warn_ident() {
+    // #1206: an unused `#[deprecated]` const warns nowhere — it's dead code
+    // implying a feature. A sibling USE const whose initializer reads the
+    // WARN const's value makes rustc's `deprecated` lint actually fire at the
+    // impl-block span, turning the silent no-op into a real compile warning
+    // that points the user at the misplaced tag.
+    let tags: Vec<String> = vec!["@param x an input".to_string()];
+    let span = proc_macro2::Span::call_site();
+
+    let (_, warnings) = strip_method_tags(&tags, "MyType", 0, span);
+    let s = warnings.to_string();
+
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"),
+        "WARN const missing: {s}"
+    );
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE_MyType_0_0"),
+        "USE const missing: {s}"
+    );
+    // The USE const's initializer must read the WARN const by name, so
+    // referencing it trips rustc's `deprecated` lint on the WARN const.
+    assert!(
+        s.contains(
+            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE_MyType_0_0 : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"
+        ),
+        "USE const must initialize from the WARN const's value: {s}"
+    );
+    // Both consts carry `non_upper_case_globals` (names embed mixed-case type
+    // names) alongside `dead_code`.
+    assert!(
+        s.matches("non_upper_case_globals").count() >= 2,
+        "expected non_upper_case_globals on both consts: {s}"
+    );
+}
+
+#[test]
+fn strip_method_tags_r6_activates_use_const_for_stripped_tags() {
+    // Same activation for the R6 variant, exercised on a tag R6 still strips
+    // (`@return` — unlike `@param`, which R6 intentionally keeps).
+    let tags: Vec<String> = vec!["@return something".to_string()];
+    let span = proc_macro2::Span::call_site();
+
+    let (kept, warnings) = strip_method_tags_r6(&tags, "MyR6Type", 0, span);
+    assert!(kept.is_empty(), "@return must still be stripped for R6");
+
+    let s = warnings.to_string();
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyR6Type_0_0"),
+        "WARN const missing: {s}"
+    );
+    assert!(
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE_MyR6Type_0_0"),
+        "USE const missing: {s}"
+    );
+    assert!(
+        s.contains(
+            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE_MyR6Type_0_0 : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyR6Type_0_0"
+        ),
+        "USE const must initialize from the WARN const's value: {s}"
+    );
+}
+
 // endregion
 
 #[test]
@@ -795,5 +859,62 @@ fn test_normalize_for_comparison() {
         normalize_for_comparison("  Hello    World.  "),
         "hello world"
     );
+}
+// endregion
+
+// region: comma-list @param dedup (duplicated \argument Rd entries, #1261 item 2)
+
+#[test]
+fn extract_param_names_splits_comma_list() {
+    // A single `@param a,b,c desc` tag documents three names, not one.
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    let names = extract_param_names(&tags);
+    assert_eq!(names.len(), 3);
+    assert!(names.contains("a"));
+    assert!(names.contains("b"));
+    assert!(names.contains("c"));
+}
+
+#[test]
+fn extract_param_names_single_name_unaffected() {
+    let tags = vec!["@param x Input value.".to_string()];
+    let names = extract_param_names(&tags);
+    assert_eq!(names.len(), 1);
+    assert!(names.contains("x"));
+}
+
+#[test]
+fn param_documented_true_for_every_name_in_comma_list() {
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    assert!(param_documented(&tags, "a"));
+    assert!(param_documented(&tags, "b"));
+    assert!(param_documented(&tags, "c"));
+}
+
+#[test]
+fn param_documented_false_for_undocumented_name() {
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    assert!(!param_documented(&tags, "d"));
+}
+
+#[test]
+fn param_documented_no_prefix_false_positive() {
+    // The old `starts_with(&format!("@param {name}"))` check would wrongly
+    // treat "@param x2 desc" as documenting "x" too, since "@param x2 desc"
+    // starts with "@param x". Exact comma-split membership must not repeat
+    // that false positive.
+    let tags = vec!["@param x2 Second input.".to_string()];
+    assert!(!param_documented(&tags, "x"));
+    assert!(param_documented(&tags, "x2"));
+}
+
+#[test]
+fn find_param_tag_returns_the_comma_list_tag_for_any_covered_name() {
+    let tags = vec!["@param a,b,c Numeric scalars.".to_string()];
+    assert_eq!(
+        find_param_tag(&tags, "b"),
+        Some(&"@param a,b,c Numeric scalars.".to_string())
+    );
+    assert_eq!(find_param_tag(&tags, "d"), None);
 }
 // endregion

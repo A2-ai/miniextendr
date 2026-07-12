@@ -163,7 +163,10 @@ jobs:
   webr-install:
     name: wasm32 R CMD INSTALL (tier 2)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Main-push/dispatch runs get extra headroom for the informational
+    # testthat pass in tier 3 (#1255, up to 40 min at the step cap);
+    # per-PR runs keep the historical 90.
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 90 || 120 }}
     container:
       # Pulled from the mirror at ghcr.io/a2-ai/webr-mirror (closes #496),
       # which `.github/workflows/mirror-webr.yml` keeps digest-aligned with
@@ -488,13 +491,24 @@ jobs:
         env:
           # Scaffold leg (#1259): also load the freshly scaffolded end-user
           # package installed into /tmp/wasm-lib above and drive its stock
-          # template functions. Unset (e.g. in tests/webr-smoke.sh, which has
-          # no scaffold leg) the runner behaves exactly as before.
+          # template functions. Unset (e.g. in tests/webr-smoke.sh without
+          # --scaffold) the runner behaves exactly as before.
           SMOKE_SCAFFOLD_PKG: mxsmoke
+          # Informational testthat pass (#1255): on main-push and
+          # workflow_dispatch only, run rpkg's testthat suite inside the webR
+          # session and report counts. Per-PR runs stay load-only — wall time
+          # gates PRs; the counts are informational and main-push visibility
+          # is enough to catch a wasm-runtime-behavior regression. Test
+          # failures never gate (many legitimately fail under wasm); only a
+          # harness error before the counts line turns the step red.
+          SMOKE_TESTTHAT: ${{ github.event_name != 'pull_request' && '1' || '' }}
         run: |
           set -euo pipefail
           # Hard wall-clock cap: webR init + Imports install + library load
-          # should take well under 10 min on a clean runner. If we ever hit
-          # 15 min the runner has wedged on something — fail visibly rather
-          # than burning the 90-min job timeout.
-          timeout 900 node smoke.mjs
+          # should take well under 10 min on a clean runner; the testthat
+          # pass (when enabled) adds its own 20-min in-runner budget, so its
+          # cap is 900 + that budget + slack. If we ever hit the cap the
+          # runner has wedged on something — fail visibly rather than
+          # burning the job timeout.
+          if [ "${SMOKE_TESTTHAT:-}" = "1" ]; then cap=2400; else cap=900; fi
+          timeout "$cap" node smoke.mjs
