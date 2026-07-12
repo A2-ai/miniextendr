@@ -339,11 +339,15 @@ impl DataFrame {
         }
 
         // Bucket rows into tuple keys, preserving first-encounter order.
-        let nrow = per_row[0].len();
         let mut index: HashMap<GroupKey, usize> = HashMap::new();
         let mut buckets: Vec<(GroupKey, Vec<usize>)> = Vec::new();
-        for row in 0..nrow {
-            let key = GroupKey::Tuple((0..cols.len()).map(|c| per_row[c][row].clone()).collect());
+        for (row, first) in per_row[0].iter().enumerate() {
+            let mut elems = Vec::with_capacity(cols.len());
+            elems.push(first.clone());
+            for col in &per_row[1..] {
+                elems.push(col[row].clone());
+            }
+            let key = GroupKey::Tuple(elems);
             match index.get(&key) {
                 Some(&pos) => buckets[pos].1.push(row),
                 None => {
