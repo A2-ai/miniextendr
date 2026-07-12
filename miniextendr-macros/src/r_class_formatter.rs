@@ -43,20 +43,81 @@ pub(crate) fn should_export_from_tags(tags: &[String], noexport: bool) -> bool {
 /// Emit the conditional S3 generic guard for a given generic name.
 ///
 /// Returns an R code string (to be pushed onto a `lines: Vec<String>` with
-/// `lines.push(emit_s3_generic_guard(name))`) that creates the generic only
-/// when it doesn't already exist as a function:
+/// `lines.push(emit_s3_generic_guard(name))`) that creates the generic when
+/// it doesn't already exist as a function, and — mirroring the S7 classifier
+/// (#1114, `s7_class.rs:880-935`) — shadows any existing binding that
+/// `UseMethod` dispatch would never consult:
 ///
 /// ```r
-/// if (!exists("name", mode = "function")) {
+/// if (!base::exists("name", mode = "function")) {
 ///   name <- function(x, ...) UseMethod("name")
+/// } else if (local({ .mx_gen <- base::get("name", mode = "function"); !(is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("name") || inherits(.mx_gen, "S7_generic")) })) {
+///   .mx_shadow_default <- local({
+///     .mx_masked <- base::get("name", mode = "function")
+///     function(x, ...) .mx_masked(x, ...)
+///   })
+///   name <- function(x, ...) UseMethod("name")
+///   base::registerS3method("name", "default", .mx_shadow_default, envir = base::environment())
+///   base::rm(.mx_shadow_default)
 /// }
+/// # else: existing usable generic (primitive/S3/S4/S7) — reuse as-is.
 /// ```
+///
+/// `name` resolving to a **plain non-generic closure** (`var`, `get`, `row`,
+/// `col`, `diag`, `reshape`, …) is the #1248 bug: a bare `exists()` check
+/// sees the name is bound and never installs the `UseMethod` dispatcher, so
+/// the generated `name.Class` method is registered but silently never fires.
+/// The classifier shadows such bindings with a package-local generic and
+/// delegates the `default` method back to the masked closure, so ordinary
+/// (non-dispatching) calls like `var(1:10)` keep working. S3 generic formals
+/// are always `function(x, ...)`, so the delegation works positionally even
+/// when the masked closure's first argument has a different name (e.g.
+/// `reshape`'s is `data`) — S3 doesn't need S7's `dispatch_args`-mirroring
+/// `fallback_sig` machinery.
+///
+/// The delegating default method is registered via `base::registerS3method()`
+/// so it lives ONLY in the namespace's S3 methods table
+/// (`.__S3MethodsTable__.`), never as a `name.default` namespace binding:
+///
+/// - a literal `name.default` binding trips roxygen2's dynamic S3 scan
+///   (`warn_missing_s3_exports` walks the loaded namespace's bindings and
+///   flags any method-shaped function not covered by an
+///   `@export`/`@exportS3Method` block);
+/// - a static NAMESPACE `S3method(name, default)` directive would break
+///   package load whenever the shadow branch doesn't fire (e.g. for a real
+///   generic like `print`, where no `name.default` of ours exists — and we
+///   must never touch `print.default`).
+///
+/// Ordering inside the branch is load-bearing: `.mx_shadow_default` captures
+/// the masked closure BEFORE `name` is rebound (once `name` is the generic,
+/// `base::get("name")` would find our own generic → infinite recursion; the
+/// assignment inside `local()` forces the value now — a function *argument*
+/// would stay an unforced promise). The generic is bound at the branch top
+/// level (not inside `local()`) so its closure environment is the package
+/// namespace — `registerS3method` resolves the generic via
+/// `get(genname, envir)`, takes `environment(genfun)` as the defining env,
+/// and registers into THAT env's `.__S3MethodsTable__.`; the generic's env
+/// must be the namespace for the table to be the namespace's.
+/// `registerS3method` is called AFTER the generic is bound so it finds our
+/// generic (not the masked closure, whose home namespace would otherwise
+/// receive the registration). `base::rm` then drops the helper so the
+/// namespace ends with zero helper bindings.
+///
+/// The classifier condition is wrapped in `local({...})` so `.mx_gen` doesn't
+/// leak into the package namespace (the braced `else if` in the mirrored S7
+/// pattern evaluates at source time in the namespace env — see the
+/// corresponding fix at `s7_class.rs:902`, #1261 item 1).
+///
+/// Everything is `base::`-qualified (`exists`/`get`/`registerS3method`/
+/// `environment`/`rm`): once we define a shadow generic named e.g. `get`, a
+/// bare `get(...)` in a later generic's classifier would route through our
+/// own generic instead of the real `base::get`.
 ///
 /// Use this for S3/vctrs class generators and trait-ABI wrappers. Do **not**
 /// use for S7 generics — those use `S7::new_generic()` / `S7::new_external_generic()`.
 pub(crate) fn emit_s3_generic_guard(name: &str) -> String {
     format!(
-        "if (!exists(\"{name}\", mode = \"function\")) {{\n  {name} <- function(x, ...) UseMethod(\"{name}\")\n}}"
+        "if (!base::exists(\"{name}\", mode = \"function\")) {{\n  {name} <- function(x, ...) UseMethod(\"{name}\")\n}} else if (local({{ .mx_gen <- base::get(\"{name}\", mode = \"function\"); !(is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{name}\") || inherits(.mx_gen, \"S7_generic\")) }})) {{\n  # `{name}` is a plain closure that UseMethod dispatch will never consult.\n  # Shadow it with a package-local generic. The default method delegating to\n  # the masked closure is registered via registerS3method() so it lives ONLY\n  # in the namespace's S3 methods table: a literal `{name}.default` binding\n  # would trip roxygen2's dynamic S3 scan (warn_missing_s3_exports), and a\n  # static NAMESPACE S3method({name}, default) would break package load\n  # whenever this branch does not fire.\n  .mx_shadow_default <- local({{\n    .mx_masked <- base::get(\"{name}\", mode = \"function\")\n    function(x, ...) .mx_masked(x, ...)\n  }})\n  {name} <- function(x, ...) UseMethod(\"{name}\")\n  base::registerS3method(\"{name}\", \"default\", .mx_shadow_default, envir = base::environment())\n  base::rm(.mx_shadow_default)\n}}\n# else: existing usable generic (primitive/S3/S4/S7) — reuse as-is."
     )
 }
 
@@ -884,10 +945,8 @@ impl<'a> MethodDocBuilder<'a> {
                 if param_name == ".ptr" || param_name == "..." || param_name == "self" {
                     continue;
                 }
-                let already_documented = self
-                    .doc_tags
-                    .iter()
-                    .any(|t| t.starts_with(&format!("@param {}", param_name)));
+                let already_documented =
+                    crate::roxygen::param_documented(self.doc_tags, param_name);
                 if !already_documented {
                     // match_arg'd params get a placeholder the cdylib write-pass
                     // replaces with the rendered choice description (#210).

@@ -17,13 +17,13 @@ cross-package wasm stubs (#493), side-module `RUSTFLAGS`
 base-image mirror (#496), the redundant `-C relocation-model=pic` flag
 dropped (#745), the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
 release (#755), dependency guidance (#752 — see "Dependencies and webR"
-below), and the compiled-imports lint (#925,
-`minirextendr::miniextendr_webr_import_lint()`). Open follow-ups: #495
-(cross-crate trait dispatch), #1254 (on-hardware validation of the
-arm64-native dev image — first cut landed as `Dockerfile.webr-arm64` via
-#788 / PR #916; see "arm64-native dev image" below), #747 (drop mirror creds
-once the GHCR package is public), #1255 (testthat-under-wasm coverage,
-dropped when the smoke runners were unified).
+below), the compiled-imports lint (#925,
+`minirextendr::miniextendr_webr_import_lint()`), and the informational
+testthat-under-wasm pass (#1255, `SMOKE_TESTTHAT=1` — see "Building locally"
+below). Open follow-ups: #495 (cross-crate trait dispatch), #1254
+(on-hardware validation of the arm64-native dev image — first cut landed as
+`Dockerfile.webr-arm64` via #788 / PR #916; see "arm64-native dev image"
+below), #747 (drop mirror creds once the GHCR package is public).
 
 ## Target
 
@@ -89,7 +89,8 @@ just docker-webr-smoke         # full smoke: build wasm side-module + load in
 ```
 
 `just docker-webr-smoke` (`tests/webr-smoke.sh`) drives three phases inside
-the container:
+the container, plus an optional fourth (`--scaffold` / `WEBR_SCAFFOLD=1`,
+#1270 — off by default, see below):
 
 1. **Native `R CMD INSTALL` of `rpkg`** against `/opt/R/current/bin/R` to run
    the wrapper-gen pass and regenerate `rpkg/src/rust/wasm_registry.rs`. The
@@ -110,10 +111,27 @@ the container:
    tier 3 uses), which imports `file:///opt/webr/src/dist/webr.mjs` (see
    "Running a webR session in Node" below), NODEFS-mounts the wasm R lib
    tree, installs the hard Imports from repo.r-wasm.org, and drives
-   `library(miniextendr)` + `packageVersion()`. It does **not** run the
-   testthat suite — that coverage was dropped when the local and CI runners
-   were unified onto `smoke.mjs`; restoring an informational testthat pass
-   is tracked in #1255.
+   `library(miniextendr)` + `packageVersion()`. With `SMOKE_TESTTHAT=1`
+   (the local-smoke default; disable with `SMOKE_TESTTHAT=0`) it then runs
+   an **informational testthat pass** (#1255): the runner installs testthat
+   from `repo.r-wasm.org`, NODEFS-mounts `rpkg/tests`, and runs the suite
+   against the wasm install (`load_package = "installed"`, with
+   `MINIEXTENDR_SKIP_STRESS=1` so the gctorture files — which have their own
+   CI job — don't run under the much slower interpreter). Suite counts are
+   reported but test failures never gate: many tests legitimately fail or
+   skip under wasm (worker-thread / fork / subprocess assumptions). Only a
+   harness error before the counts line turns the gate red, and a 20-minute
+   in-runner budget abandons (without failing) a wedged suite.
+
+Pass `--scaffold` (or set `WEBR_SCAFFOLD=1`) to add a local-parity
+reproduction of CI's scaffold leg (#1259) between phases 2 and 3: installs
+minirextendr from the checkout, scaffolds a fresh end-user package
+(`mxsmoke`) with `create_miniextendr_package()`, points its framework git
+deps at the checkout via `use_local_miniextendr()`, and repeats the native →
+wasm two-step install on it into the same `/tmp/wasm-lib` phase 2 uses —
+phase 3 then also loads `mxsmoke` alongside `miniextendr`. This is the local
+reproduction of a scaffold-leg CI failure without hand-driving the
+container; without the flag, behavior is unchanged. Closes #1270.
 
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
 wasm32 build). Subsequent runs reuse the docker image and most cargo
@@ -408,7 +426,10 @@ install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
 (`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
 installs the package's Imports from `repo.r-wasm.org`, and drives
 `library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
-is what proves it *loads* in a real webR runtime.
+is what proves it *loads* in a real webR runtime. On main-push and
+`workflow_dispatch` runs (not per-PR — wall time gates PRs) tier 3 also
+runs the informational testthat pass (#1255, `SMOKE_TESTTHAT=1`, never
+gating on test failures — see "Building locally" above).
 
 The same job also runs a **scaffold leg** (#1259): it installs minirextendr
 from the checkout, scaffolds a fresh end-user package with
@@ -431,7 +452,7 @@ coverage of the **template** copies of the wasm branches in `configure.ac` /
 `Makevars.in` / `build.rs` (`minirextendr/inst/templates/rpkg/`) — before it,
 a template-only regression could only surface for end users. The monorepo
 template tree's copies are still CI-unbuilt (#1271); local smoke parity for
-the leg is #1270.
+the leg is `tests/webr-smoke.sh --scaffold` (#1270, above).
 
 ## See also
 
@@ -441,8 +462,8 @@ the leg is #1270.
   (`miniextendr_webr_import_lint()`, shipped);
   #788 — arm64-native dev image (first cut: `Dockerfile.webr-arm64` + the
   `docker-webr-arm64-*` just recipes + the `WEBR_ARM64=1` smoke path;
-  on-hardware validation tracked in #1254); #1255 — testthat-under-wasm
-  coverage (dropped when the smoke runners were unified).
+  on-hardware validation tracked in #1254); #1255 — the informational
+  testthat-under-wasm pass (`SMOKE_TESTTHAT=1`, shipped).
 - Issues #491 / #744 — the base-package variant of the host-R-loads-a-wasm-
   object failure, solved via the install-to-temp-lib pattern (the dependency
   guidance above is the consumer-package-imports variant of the same failure).
@@ -450,10 +471,11 @@ the leg is #1270.
   of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
   `webr.yml` tier-2/3 job step-for-step (Phase 2 → `/tmp/wasm-lib`, Phase 3 →
-  `make` the Node bundle, then run `smoke.mjs`), except for the CI-only
-  scaffold leg (local parity tracked in #1270). The default (amd64) image runs
-  under Rosetta on Apple Silicon; `WEBR_ARM64=1` selects the draft
-  `Dockerfile.webr-arm64` native-arm64 path (#788).
+  `make` the Node bundle, then run `smoke.mjs`), including the CI-only
+  scaffold leg behind `--scaffold` / `WEBR_SCAFFOLD=1` (#1270 — off by
+  default). The default (amd64) image runs under Rosetta on Apple Silicon;
+  `WEBR_ARM64=1` selects the draft `Dockerfile.webr-arm64` native-arm64 path
+  (#788).
 - `Dockerfile.webr-arm64` — draft native-arm64 dev image (#788): amd64 sysroot
   donor + `emscripten/emsdk:4.0.8-arm64` + native arm64 Rust/R. See
   "arm64-native dev image" above for the validation checklist.

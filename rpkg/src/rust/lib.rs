@@ -239,6 +239,7 @@ mod num_traits_adapter_tests;
 mod option_self_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
+#[cfg(feature = "worker-thread")]
 mod panic_location_tests;
 mod panic_telemetry_tests;
 mod panic_tests;
@@ -2112,6 +2113,9 @@ pub fn miniextendr_enabled_features() -> Vec<&'static str> {
     }
     if cfg!(feature = "coerce-default") {
         features.push("coerce-default");
+    }
+    if cfg!(feature = "fast-default") {
+        features.push("fast-default");
     }
     if cfg!(feature = "r6-default") {
         features.push("r6-default");

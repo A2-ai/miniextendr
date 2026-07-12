@@ -495,7 +495,6 @@ pub struct S7NonGenericCollision {
 }
 
 /// S7 class exercising the #1114 base-name-collision fix.
-/// @param values Numeric vector held by the gauge.
 #[miniextendr(s7)]
 impl S7NonGenericCollision {
     /// @param values Numeric vector held by the gauge.

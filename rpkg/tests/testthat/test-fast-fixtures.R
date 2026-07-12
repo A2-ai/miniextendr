@@ -57,7 +57,7 @@ test_that("no_call_attribution: error$call falls back to sys.call()", {
 })
 
 test_that("default wrapper's error$call uses match.call() (named args)", {
-  e <- tryCatch(fast_i32_default(x = -2147483648L - 1),
+  e <- tryCatch(fast_i32_default(x = -2147483649),
                 error = function(e) e)
   # The min-int sentinel is NA_integer_ in R; this triggers the
   # length-1 / numeric check downstream of stopifnot. Just verify the

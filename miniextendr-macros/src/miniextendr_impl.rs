@@ -2215,6 +2215,24 @@ impl ParsedMethod {
     /// common containers. The write-time wrapper resolver checks the complete
     /// class registry, so an unregistered capitalized type falls back to the
     /// direct `.val` return.
+    ///
+    /// Three shapes are recognized:
+    /// - A bare capitalized path, e.g. `-> Board`.
+    /// - `Option<T>` where `T` is a bare capitalized path. The C wrapper
+    ///   already unwraps this and raises on `None`
+    ///   (`ReturnHandling::OptionIntoRUnwrap`), so the successful `.val` is a
+    ///   bare pointer — identical to the bare-class case on the R side.
+    /// - `Result<T, E>` where `T` is a bare capitalized path and `E` is not
+    ///   `()`. `Result<T, ()>` is excluded: the unit-error sentinel maps to
+    ///   `ReturnHandling::ResultNullOnErr`, where `.val` can be `NULL` on
+    ///   `Ok`, and wrapping `NULL` in a class constructor would break.
+    ///
+    /// `Option<Self>` / `Result<Self, _>` are excluded here too (the inner
+    /// ident is `Self`) — `ReturnStrategy::for_method` checks
+    /// `returns_result_self()` / `returns_option_self()` before this method,
+    /// so those already take the `ReturnSelf` path regardless.
+    /// Nested containers (`Vec<T>`, `Option<Vec<T>>`, …) are not recognized:
+    /// the inner type must be a bare path with no path arguments of its own.
     pub fn returns_other_class(&self) -> Option<syn::Ident> {
         let syn::ReturnType::Type(_, ty) = &self.sig.output else {
             return None;
@@ -2223,11 +2241,32 @@ impl ParsedMethod {
             return None;
         };
         let seg = p.path.segments.last()?;
-        if !matches!(seg.arguments, syn::PathArguments::None) {
-            return None;
-        }
 
-        let name = seg.ident.to_string();
+        match &seg.arguments {
+            syn::PathArguments::None => Self::class_ident_from_ident(&seg.ident),
+            syn::PathArguments::AngleBracketed(_) if seg.ident == "Option" => {
+                Self::inner_class_ident(crate::first_type_argument(seg)?)
+            }
+            syn::PathArguments::AngleBracketed(_) if seg.ident == "Result" => {
+                // `Result<T, ()>` is a deliberate NULL-on-Err sentinel
+                // (`ResultNullOnErr`) rather than a fallible constructor —
+                // `.val` may be `NULL`, which a class constructor can't wrap.
+                let err_is_unit = crate::second_type_argument(seg)
+                    .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+                if err_is_unit {
+                    return None;
+                }
+                Self::inner_class_ident(crate::first_type_argument(seg)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// Shared name filter for [`returns_other_class`](Self::returns_other_class):
+    /// rejects `Self`, builtin scalar/string names, and known container names;
+    /// accepts only idents starting with an ASCII-uppercase letter.
+    fn class_ident_from_ident(ident: &syn::Ident) -> Option<syn::Ident> {
+        let name = ident.to_string();
         if name == "Self"
             || is_builtin_return_type_name(&name)
             || is_known_return_container_name(&name)
@@ -2238,7 +2277,23 @@ impl ParsedMethod {
         name.chars()
             .next()
             .is_some_and(|c| c.is_ascii_uppercase())
-            .then(|| seg.ident.clone())
+            .then(|| ident.clone())
+    }
+
+    /// Applies [`class_ident_from_ident`](Self::class_ident_from_ident) to a
+    /// container's inner type argument (e.g. the `T` in `Option<T>`). Only a
+    /// bare `syn::Type::Path` with no path arguments of its own qualifies —
+    /// this is what excludes nested containers like `Option<Vec<T>>`, whose
+    /// inner `Vec<T>` carries `PathArguments::AngleBracketed`.
+    fn inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
+        let syn::Type::Path(p) = ty else {
+            return None;
+        };
+        let seg = p.path.segments.last()?;
+        if !matches!(seg.arguments, syn::PathArguments::None) {
+            return None;
+        }
+        Self::class_ident_from_ident(&seg.ident)
     }
 
     /// Returns true if this method returns a reference to `Self` (`&Self` or
@@ -3208,7 +3263,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_return_class_from_method(method);
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());
@@ -3473,15 +3529,25 @@ pub fn expand_impl(
     // Build MX_CLASS_NAMES entry for cross-reference resolution.
     // r_class_name is the R-visible name (may differ from type_ident when
     // `class = "Override"` was set on the impl block).
+    //
+    // The static name folds the impl label in when present, mirroring
+    // `r_wrappers_const_ident`: keying on the type alone made two labeled
+    // impl blocks on one type collide with E0428 (#1242) — exactly the
+    // multi-block pattern MXL009 directs users toward. The duplicate entries
+    // this registers for one type are collapsed (identical) or rejected
+    // (conflicting `class = "..."` overrides) by `build_class_name_index` in
+    // miniextendr-api's registry. Unlabeled multi-blocks still collide — on
+    // `R_WRAPPERS_IMPL_<TYPE>` too — so no per-block counter is needed here.
     let r_class_name_str = parsed.class_name();
     let class_system_str = parsed.class_system.to_ident().to_string();
-    let class_names_const = syn::Ident::new(
-        &format!(
-            "__mx_class_name_entry_{}",
-            type_ident.to_string().to_lowercase()
-        ),
-        type_ident.span(),
-    );
+    let class_names_const = {
+        let type_lower = type_ident.to_string().to_lowercase();
+        let name = match parsed.label() {
+            Some(label) => format!("__mx_class_name_entry_{type_lower}_{label}"),
+            None => format!("__mx_class_name_entry_{type_lower}"),
+        };
+        syn::Ident::new(&name, type_ident.span())
+    };
 
     let expanded = quote! {
         // Original impl block with doc link to R wrapper
