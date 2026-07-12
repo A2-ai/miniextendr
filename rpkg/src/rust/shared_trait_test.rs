@@ -66,7 +66,7 @@ pub struct SharedSimpleCounter {
 
 // Bare (default class system): the inherent + trait impls flip together, so a
 // feature-default leg gets a consistent class system for both.
-#[miniextendr]
+#[miniextendr(env)]
 impl SharedSimpleCounter {
     fn new(initial: i32) -> Self {
         Self { value: initial }
@@ -82,7 +82,7 @@ impl SharedSimpleCounter {
 // flip to r6 under r6-default. (The `Type$Trait$method(x)` call form these
 // tests use works under env and r6; test-shared-trait.R runs in the default
 // env build only.)
-#[miniextendr]
+#[miniextendr(env)]
 impl SharedCounter for SharedSimpleCounter {
     fn value(&self) -> i32 {
         self.value
@@ -110,7 +110,7 @@ pub struct AtomicCounter {
 }
 
 // Bare (default class system): flips together with its trait impl below.
-#[miniextendr]
+#[miniextendr(env)]
 impl AtomicCounter {
     fn new_atomic(initial: i32) -> Self {
         Self {
@@ -121,7 +121,7 @@ impl AtomicCounter {
 
 // Bare: see SharedSimpleCounter above — class-scoped r6 wrappers (#1115 fix)
 // mean this and SharedSimpleCounter no longer collide under r6-default.
-#[miniextendr]
+#[miniextendr(env)]
 impl SharedCounter for AtomicCounter {
     fn value(&self) -> i32 {
         self.value.load(Ordering::SeqCst)

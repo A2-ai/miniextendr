@@ -87,7 +87,7 @@ pub struct RngSampler {
     seed_hint: i32,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl RngSampler {
     /// Create a new RngSampler.
     fn new(seed_hint: i32) -> Self {

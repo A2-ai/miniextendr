@@ -26,7 +26,7 @@ pub struct SerdeRPoint {
     pub y: f64,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl SerdeRPoint {
     pub fn new(x: f64, y: f64) -> Self {
         SerdeRPoint { x, y }
@@ -53,7 +53,7 @@ pub struct SerdeRPoint3D {
     pub label: Option<String>,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl SerdeRPoint3D {
     pub fn new(x: f64, y: f64, z: f64, label: Option<String>) -> Self {
         SerdeRPoint3D { x, y, z, label }
@@ -80,7 +80,7 @@ pub struct Rectangle {
     pub fill_color: Option<String>,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl Rectangle {
     pub fn new(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
         Rectangle {
@@ -135,7 +135,7 @@ pub struct Level3 {
     pub flag: bool,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl DeepNest {
     pub fn new() -> Self {
         DeepNest {
@@ -175,7 +175,7 @@ pub struct Collections {
     pub points: Vec<SerdeRPoint>,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl Collections {
     pub fn new() -> Self {
         Collections {
@@ -221,7 +221,7 @@ pub struct Maps {
     pub metadata: HashMap<String, String>,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl Maps {
     pub fn new() -> Self {
         let mut string_to_int = HashMap::new();
@@ -283,7 +283,7 @@ pub struct WithEnums {
     pub optional_status: Option<Status>,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl WithEnums {
     pub fn new_circle(radius: f64) -> Self {
         WithEnums {
@@ -324,7 +324,7 @@ pub struct WithOptionals {
     pub optional_bool: Option<bool>,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl WithOptionals {
     pub fn all_present() -> Self {
         WithOptionals {
