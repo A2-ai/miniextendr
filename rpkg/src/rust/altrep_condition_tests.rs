@@ -278,3 +278,63 @@ pub fn altrep_condition_on_elt(n: i32, message: &str) -> SEXP {
 }
 
 // endregion
+
+// region: DataErrorAltrep — error!(data = ...) from elt(), guard = RUnwind (issue #996 path 2)
+//
+// `with_r_unwind_protect_sourced` (the ALTREP `RUnwind` guard path) routes
+// `RCondition::Error` through `raise_rust_condition_via_stop`, which builds
+// `stop(structure(list(message = ..., call = ...), class = ...))` directly —
+// there is no R wrapper here to splice `.val$data` the way
+// `.miniextendr_raise_condition` does for the primary transport. Before
+// #996 path 2, this dropped the `data =` fields entirely: class layering and
+// message survived, `e$field_a` did not. `raise_rust_condition_via_stop` now
+// takes an optional `ConditionData` and splices it into the condition list.
+
+/// ALTREP integer that raises `error!(data = ...)` on element access.
+#[derive(AltrepInteger)]
+#[altrep(class = "DataErrorAltrep", manual)]
+pub struct DataErrorAltrepData {
+    pub len: usize,
+    pub field_a: i32,
+    pub message: String,
+}
+
+impl AltrepLen for DataErrorAltrepData {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl AltIntegerData for DataErrorAltrepData {
+    fn elt(&self, _i: usize) -> i32 {
+        miniextendr_api::error!(
+            class = "altrep_data_error",
+            data = ("field_a", self.field_a),
+            "{}",
+            self.message
+        );
+    }
+}
+
+/// Create an ALTREP integer that raises `error!(data = ...)` on element access.
+///
+/// Regression fixture for issue #996 path 2: structured `data =` fields must
+/// survive the ALTREP `RUnwind` degradation path
+/// (`raise_rust_condition_via_stop`), not just the message and class.
+///
+/// @param n Length of the vector.
+/// @param field_a Integer value carried in the `field_a` data field.
+/// @param message Error message.
+/// @return An ALTREP integer vector.
+/// @export
+#[miniextendr]
+pub fn altrep_data_error_on_elt(n: i32, field_a: i32, message: &str) -> SEXP {
+    let data = DataErrorAltrepData {
+        len: n.max(0) as usize,
+        field_a,
+        message: message.to_string(),
+    };
+    data.into_sexp()
+}
+
+// endregion
