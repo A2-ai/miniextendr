@@ -242,9 +242,11 @@ to inspect a tagged SEXP. Two different mechanisms cover the two contexts:
   crossed a package boundary (see #996 path-1).
 
 - **ALTREP `r_unwind` callbacks**: the guard raises the R condition by
-  evaluating `stop(structure(list(message, call), class = c(...)))` directly
-  (no R wrapper required). `tryCatch(rust_error = h, ...)` matches; user
-  classes match before `rust_error`.
+  evaluating `stop(structure(list(message, call, ...), class = c(...)))`
+  directly (no R wrapper required). `tryCatch(rust_error = h, ...)` matches;
+  user classes match before `rust_error`. Structured `data =` fields are
+  spliced into the condition list after `message`/`call`, so `e$field_name`
+  works from ALTREP-raised errors too (see #996 path-2).
 
 ### Remaining limitations
 
