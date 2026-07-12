@@ -35,8 +35,18 @@
 //!   (`addNA(f)`) also surfaces as [`GroupKey::Na`].
 //! - **Double key columns are an error**: grouping on floating point is a
 //!   footgun — `cut()` or `factor()` the column first.
+//!
+//! # Composite keys (`group_by_multi`)
+//!
+//! [`DataFrame::group_by_multi`] groups on several columns at once, keying by a
+//! [`GroupKey::Tuple`] of the per-column scalar keys. Non-NA groups match
+//! `split(df, interaction(col1, col2, …, drop = TRUE))` exactly (the first column
+//! varies fastest, R `interaction()`'s default). Extending the single-column
+//! NA convention, any tuple with an NA in *any* component forms its own trailing
+//! group (first-encounter order) instead of being dropped as `interaction()` +
+//! `split()` would.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::{DataFrame, DataFrameError, FromDataFrame};
 use crate::{SEXP, SEXPTYPE, SexpExt};
@@ -63,7 +73,8 @@ where
 
 // region: GroupKey
 
-/// The key of one group produced by [`DataFrame::group_by`].
+/// The key of one group produced by [`DataFrame::group_by`] or
+/// [`DataFrame::group_by_multi`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GroupKey {
     /// A character or factor-level key.
@@ -74,11 +85,18 @@ pub enum GroupKey {
     Bool(bool),
     /// The NA-keyed group (always ordered last).
     Na,
+    /// A composite key from [`DataFrame::group_by_multi`] — one scalar element
+    /// per grouping column, in column order. Elements are always scalar
+    /// ([`Str`](Self::Str)/[`Int`](Self::Int)/[`Bool`](Self::Bool)/[`Na`](Self::Na));
+    /// tuples never nest (enforced by a `debug_assert!` in [`label`](Self::label)).
+    Tuple(Vec<GroupKey>),
 }
 
 impl GroupKey {
     /// R-facing label for this key — suitable as a name in a result list
-    /// (matches how R prints the value: `TRUE`/`FALSE`, `NA`, digits).
+    /// (matches how R prints the value: `TRUE`/`FALSE`, `NA`, digits). Composite
+    /// [`Tuple`](Self::Tuple) keys join their element labels with `"."`, matching
+    /// R `interaction()`'s default separator.
     pub fn label(&self) -> String {
         match self {
             GroupKey::Str(s) => s.clone(),
@@ -86,6 +104,16 @@ impl GroupKey {
             GroupKey::Bool(true) => "TRUE".to_string(),
             GroupKey::Bool(false) => "FALSE".to_string(),
             GroupKey::Na => "NA".to_string(),
+            GroupKey::Tuple(keys) => {
+                debug_assert!(
+                    keys.iter().all(|k| !matches!(k, GroupKey::Tuple(_))),
+                    "tuple keys never nest — elements come from scalar columns"
+                );
+                keys.iter()
+                    .map(GroupKey::label)
+                    .collect::<Vec<_>>()
+                    .join(".")
+            }
         }
     }
 }
@@ -98,6 +126,15 @@ impl std::fmt::Display for GroupKey {
             GroupKey::Bool(true) => f.write_str("TRUE"),
             GroupKey::Bool(false) => f.write_str("FALSE"),
             GroupKey::Na => f.write_str("NA"),
+            GroupKey::Tuple(keys) => {
+                for (i, key) in keys.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(".")?;
+                    }
+                    write!(f, "{}", key)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -135,6 +172,18 @@ impl Drop for GroupedDataFrame {
 }
 
 impl GroupedDataFrame {
+    /// Root `source` on R's precious list and pair it with precomputed groups.
+    ///
+    /// `R_PreserveObject` conses onto the precious list — an allocation that can
+    /// itself GC — so PROTECT `source` across the call. Released on `Drop`.
+    fn new(source: DataFrame, groups: Vec<(GroupKey, Vec<usize>)>) -> Self {
+        unsafe {
+            let _guard = crate::OwnedProtect::new(source.sexp);
+            crate::sys::R_PreserveObject(source.sexp);
+        }
+        GroupedDataFrame { source, groups }
+    }
+
     /// Number of groups (empty factor levels included).
     pub fn len(&self) -> usize {
         self.groups.len()
@@ -229,17 +278,191 @@ impl DataFrame {
             }
         };
         // Root the source for the GroupedDataFrame's lifetime (see its GC
-        // rooting docs). R_PreserveObject conses onto the precious list —
-        // an allocation that can itself GC — so PROTECT across the call.
-        unsafe {
-            let _guard = crate::OwnedProtect::new(self.sexp);
-            crate::sys::R_PreserveObject(self.sexp);
-        }
-        Ok(GroupedDataFrame {
-            source: *self,
-            groups,
-        })
+        // rooting docs).
+        Ok(GroupedDataFrame::new(*self, groups))
     }
+
+    /// Partition this frame's rows by a composite key over several columns —
+    /// the multi-column analogue of [`group_by`](Self::group_by).
+    ///
+    /// Each supported column contributes one scalar key per row (factor level,
+    /// character, integer, or logical — same rules and errors as
+    /// [`group_by`](Self::group_by)); the per-row keys are zipped into a
+    /// [`GroupKey::Tuple`] in column order.
+    ///
+    /// # Order
+    ///
+    /// Non-NA groups match `split(df, interaction(col1, col2, …, drop = TRUE))`
+    /// exactly: the **first** column varies fastest (R `interaction()`'s default,
+    /// `lex.order = FALSE`), each column ordered as [`group_by`](Self::group_by)
+    /// would order it alone (factor level order, byte-sorted characters, numeric
+    /// integers, `FALSE` then `TRUE`).
+    ///
+    /// # NA
+    ///
+    /// `interaction()` maps any row with an NA in *any* component to NA and
+    /// `split()` drops it. This method instead keeps such rows: every distinct
+    /// NA-containing tuple forms its own group, all ordered **after** the non-NA
+    /// groups, in first-encounter row order. This extends the single-column
+    /// NA-last convention (see the [module docs](self)).
+    ///
+    /// # Slice
+    ///
+    /// An empty slice is an error. A single-column slice delegates to
+    /// [`group_by`](Self::group_by) and yields **scalar** keys (not 1-tuples), so
+    /// callers never have to special-case one-element tuples.
+    pub fn group_by_multi(&self, cols: &[&str]) -> Result<GroupedDataFrame, DataFrameError> {
+        if cols.is_empty() {
+            return Err(DataFrameError::EmptyGroupColumns);
+        }
+        // A single column is the scalar path — identical keys/order to group_by.
+        if let [col] = cols {
+            return self.group_by(col);
+        }
+
+        // One pass per column: per-row keys (build the tuples) plus the
+        // column's group order (assign each non-NA key an ordinal for sorting).
+        let mut per_row: Vec<Vec<GroupKey>> = Vec::with_capacity(cols.len());
+        let mut ordinals: Vec<HashMap<GroupKey, usize>> = Vec::with_capacity(cols.len());
+        for &col in cols {
+            let column = self
+                .column_raw(col)
+                .ok_or_else(|| DataFrameError::NoSuchColumn(col.to_string()))?;
+            per_row.push(column_keys(column, col)?);
+            ordinals.push(
+                column_level_order(column)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ord, key)| (key, ord))
+                    .collect(),
+            );
+        }
+
+        // Bucket rows into tuple keys, preserving first-encounter order.
+        let nrow = per_row[0].len();
+        let mut index: HashMap<GroupKey, usize> = HashMap::new();
+        let mut buckets: Vec<(GroupKey, Vec<usize>)> = Vec::new();
+        for row in 0..nrow {
+            let key = GroupKey::Tuple((0..cols.len()).map(|c| per_row[c][row].clone()).collect());
+            match index.get(&key) {
+                Some(&pos) => buckets[pos].1.push(row),
+                None => {
+                    index.insert(key.clone(), buckets.len());
+                    buckets.push((key, vec![row]));
+                }
+            }
+        }
+
+        // Non-NA tuples order by interaction() convention (first column varies
+        // fastest → last column is the most-significant sort key). NA-containing
+        // tuples trail, in first-encounter order (already the bucket order).
+        let is_na_tuple = |k: &GroupKey| matches!(k, GroupKey::Tuple(elems) if elems.iter().any(|e| matches!(e, GroupKey::Na)));
+        let (mut non_na, na_tuples): (Vec<_>, Vec<_>) =
+            buckets.into_iter().partition(|(k, _)| !is_na_tuple(k));
+        non_na.sort_by_key(|(k, _)| {
+            let GroupKey::Tuple(elems) = k else {
+                unreachable!("group_by_multi buckets are always tuples")
+            };
+            let mut ord: Vec<usize> = elems
+                .iter()
+                .enumerate()
+                .map(|(c, e)| ordinals[c][e])
+                .collect();
+            ord.reverse();
+            ord
+        });
+        non_na.extend(na_tuples);
+
+        Ok(GroupedDataFrame::new(*self, non_na))
+    }
+}
+
+/// Per-row group key for one supported key column, in row order. NA cells — and
+/// factor NA codes / `addNA()` levels — become [`GroupKey::Na`]. Dispatches on
+/// SEXPTYPE exactly as [`DataFrame::group_by`], surfacing the same
+/// unsupported-type error.
+fn column_keys(column: SEXP, col: &str) -> Result<Vec<GroupKey>, DataFrameError> {
+    if column.is_factor() {
+        // SAFETY: factor columns are INTSXP; as_slice handles empty vectors.
+        let codes: &[i32] = unsafe { column.as_slice() };
+        let levels = column.get_levels();
+        return Ok(codes
+            .iter()
+            .map(|&code| {
+                if code == i32::MIN {
+                    GroupKey::Na
+                } else {
+                    match levels.string_elt_str((code - 1) as isize) {
+                        Some(label) => GroupKey::Str(label.to_string()),
+                        None => GroupKey::Na, // addNA() level
+                    }
+                }
+            })
+            .collect());
+    }
+    match column.type_of() {
+        SEXPTYPE::STRSXP => {
+            let n = column.len() as isize;
+            Ok((0..n)
+                .map(|i| match column.string_elt_str(i) {
+                    Some(s) => GroupKey::Str(s.to_string()),
+                    None => GroupKey::Na,
+                })
+                .collect())
+        }
+        SEXPTYPE::INTSXP => {
+            // SAFETY: INTSXP column; as_slice handles empty vectors.
+            let values: &[i32] = unsafe { column.as_slice() };
+            Ok(values
+                .iter()
+                .map(|&v| {
+                    if v == i32::MIN {
+                        GroupKey::Na
+                    } else {
+                        GroupKey::Int(v)
+                    }
+                })
+                .collect())
+        }
+        SEXPTYPE::LGLSXP => {
+            let n = column.len() as isize;
+            Ok((0..n)
+                .map(|i| match column.logical_elt(i) {
+                    0 => GroupKey::Bool(false),
+                    v if v == i32::MIN => GroupKey::Na,
+                    _ => GroupKey::Bool(true),
+                })
+                .collect())
+        }
+        other => Err(DataFrameError::UnsupportedGroupColumn {
+            column: col.to_string(),
+            type_of: format!("{:?}", other),
+        }),
+    }
+}
+
+/// Distinct non-NA keys of one column in single-column group order (factor level
+/// order incl. empty levels; byte-sorted characters; numeric integers; `FALSE`
+/// then `TRUE`). NA is excluded — `interaction()` drops NA rows and NA-containing
+/// tuples are ordered separately. Reuses the single-column bucketers so the
+/// per-column order stays byte-identical to [`DataFrame::group_by`]. Only reached
+/// for supported columns ([`column_keys`] rejects the rest first).
+fn column_level_order(column: SEXP) -> Vec<GroupKey> {
+    let groups = if column.is_factor() {
+        factor_groups(column)
+    } else {
+        match column.type_of() {
+            SEXPTYPE::STRSXP => character_groups(column),
+            SEXPTYPE::INTSXP => integer_groups(column),
+            SEXPTYPE::LGLSXP => logical_groups(column),
+            _ => Vec::new(),
+        }
+    };
+    groups
+        .into_iter()
+        .map(|(k, _)| k)
+        .filter(|k| !matches!(k, GroupKey::Na))
+        .collect()
 }
 
 /// Factor fast path: levels are the keys (level order, empty levels kept).
@@ -375,5 +598,17 @@ mod tests {
         assert_eq!(GroupKey::Bool(false).label(), "FALSE");
         assert_eq!(GroupKey::Na.label(), "NA");
         assert_eq!(GroupKey::Na.to_string(), "NA");
+    }
+
+    #[test]
+    fn tuple_key_labels_join_with_dot() {
+        let key = GroupKey::Tuple(vec![
+            GroupKey::Str("a".into()),
+            GroupKey::Int(2),
+            GroupKey::Bool(true),
+            GroupKey::Na,
+        ]);
+        assert_eq!(key.label(), "a.2.TRUE.NA");
+        assert_eq!(key.to_string(), "a.2.TRUE.NA");
     }
 }

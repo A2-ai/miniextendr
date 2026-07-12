@@ -500,6 +500,31 @@ columns error** — grouping on floating point is a footgun; `cut()` or
 **NA keys form one group, ordered last.** This deliberately deviates from R's
 `split()`, which silently drops NA-keyed rows.
 
+### Composite keys: `DataFrame::group_by_multi`
+
+`group_by_multi(&["a", "b"])` groups on several columns at once, keying each
+group by a `GroupKey::Tuple` of the per-column scalar keys (same supported types
+and errors as `group_by`):
+
+```rust
+let grouped = df.group_by_multi(&["site", "day"])?;
+for (key, sub) in grouped.frames() {
+    out = out.push(key.label(), sub); // label(): "site.day", "." separator
+}
+```
+
+Non-NA groups match `split(df, interaction(a, b, …, drop = TRUE))` **exactly** —
+the first column varies fastest (R `interaction()`'s default, `lex.order =
+FALSE`), each column ordered as `group_by` would order it alone. Labels join
+element labels with `.` (interaction's default separator).
+
+**NA extends the single-column convention.** `interaction()` maps any row with
+an NA in *any* component to NA and `split()` drops it; `group_by_multi` instead
+keeps such rows, forming one trailing group per distinct NA-containing tuple, in
+first-encounter row order. An **empty** column slice is an error; a
+**single-column** slice delegates to `group_by` and yields scalar keys (never
+1-tuples), so downstream matches on `GroupKey` never have to special-case them.
+
 ## Parallel fast paths (`feature = "rayon"`)
 
 Explicit `_par` variants produce the **same** `DataFrame` / `Vec<Row>` as the sequential verbs — parallelism is an opt-in method, not a hidden threshold:
