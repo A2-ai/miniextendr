@@ -52,6 +52,54 @@ pub fn group_by_sizes(df: DataFrame, col: &str) -> Vec<i32> {
 }
 // endregion
 
+// region: multi-column index-level fixtures (composite-key group order, sizes)
+
+/// Composite group-key labels (`.`-joined) in group order, for multiple key
+/// columns. Mirrors [`group_by_keys`] for `DataFrame::group_by_multi`.
+/// @param df A data.frame.
+/// @param cols The key column names.
+#[miniextendr]
+pub fn group_by_multi_keys(df: DataFrame, cols: Vec<String>) -> Vec<String> {
+    let refs: Vec<&str> = cols.iter().map(String::as_str).collect();
+    let grouped = df.group_by_multi(&refs).unwrap_or_else(|e| panic!("{}", e));
+    grouped.iter().map(|(k, _)| k.label()).collect()
+}
+
+/// Composite-key group sizes in group order.
+/// @param df A data.frame.
+/// @param cols The key column names.
+#[miniextendr]
+pub fn group_by_multi_sizes(df: DataFrame, cols: Vec<String>) -> Vec<i32> {
+    let refs: Vec<&str> = cols.iter().map(String::as_str).collect();
+    let grouped = df.group_by_multi(&refs).unwrap_or_else(|e| panic!("{}", e));
+    grouped
+        .iter()
+        .map(|(_, idx)| i32::try_from(idx.len()).expect("group size exceeds i32"))
+        .collect()
+}
+// endregion
+
+// region: multi-column frame-level fixture (the split(interaction()) analogue)
+
+/// Named list of per-group sub-frames keyed by a composite `interaction()`-style
+/// key — the `split(df, interaction(...))` analogue (except NA-containing tuples
+/// form trailing groups instead of being dropped). Mirrors [`group_by_frames`].
+/// @param df A data.frame.
+/// @param cols The key column names.
+#[miniextendr]
+pub fn group_by_multi_frames(df: DataFrame, cols: Vec<String>) -> SEXP {
+    let refs: Vec<&str> = cols.iter().map(String::as_str).collect();
+    let grouped = df.group_by_multi(&refs).unwrap_or_else(|e| panic!("{}", e));
+    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    for (key, sub) in grouped.frames() {
+        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
+        // push, which protects it in the builder's scope before `sub` drops.
+        out = out.push(key.label(), *sub);
+    }
+    out.build().into_sexp()
+}
+// endregion
+
 // region: frame-level fixture (the split() analogue)
 
 /// Named list of per-group sub-frames — the `split()` analogue (except NA
