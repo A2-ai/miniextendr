@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 3136
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title WithDefaults S7 Class
@@ -15,7 +16,7 @@ expression: generate_s7_r_wrapper(&parsed)
 WithDefaults <- S7::new_class("WithDefaults",
   properties = list(
     .ptr = S7::class_any,
-    name = S7::new_property(class = S7::class_character, getter = function(self) .Call(C_WithDefaults__name, .call = NULL, self@.ptr))
+    name = S7::new_property(class = S7::class_character, getter = function(self) .Call(C_miniextendr_macros_WithDefaults__name, .call = NULL, self@.ptr))
   ),
   constructor = function(name, scale, mode, .ptr = NULL) {
     if (is.null(.ptr)) {
@@ -31,7 +32,7 @@ WithDefaults <- S7::new_class("WithDefaults",
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
-      .val <- .Call(C_WithDefaults__new, .call = match.call(), name, scale, mode)
+      .val <- .Call(C_miniextendr_macros_WithDefaults__new, .call = match.call(), name, scale, mode)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       S7::new_object(S7::S7_object(), .ptr = .val)
     }

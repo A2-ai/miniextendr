@@ -74,7 +74,7 @@ R6Point <- R6::R6Class("R6Point",
       if (!is.null(.ptr)) {
         private$.ptr <- .ptr
       } else {
-        .val <- .Call(C_R6Point__new, .call = match.call(), x, y)
+        .val <- .Call(C_producer_pkg_R6Point__new, .call = match.call(), x, y)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
@@ -82,21 +82,21 @@ R6Point <- R6::R6Class("R6Point",
     # R6Point::x (124:12)
     #' @description Get x coordinate
     x = function() {
-      .val <- .Call(C_R6Point__x, .call = match.call(), private$.ptr)
+      .val <- .Call(C_producer_pkg_R6Point__x, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
     # R6Point::y (129:12)
     #' @description Get y coordinate
     y = function() {
-      .val <- .Call(C_R6Point__y, .call = match.call(), private$.ptr)
+      .val <- .Call(C_producer_pkg_R6Point__y, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
     # R6Point::distance_from_origin (134:12)
     #' @description Calculate distance from origin
     distance_from_origin = function() {
-      .val <- .Call(C_R6Point__distance_from_origin, .call = match.call(), private$.ptr)
+      .val <- .Call(C_producer_pkg_R6Point__distance_from_origin, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
@@ -111,7 +111,7 @@ R6Point <- R6::R6Class("R6Point",
         "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
         "'dy' must have length 1" = length(dy) == 1L
       )
-      .val <- .Call(C_R6Point__add, .call = match.call(), private$.ptr, dx, dy)
+      .val <- .Call(C_producer_pkg_R6Point__add, .call = match.call(), private$.ptr, dx, dy)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       invisible(self)
     }
@@ -141,7 +141,7 @@ new_s3point <- function(x, y) {
     "'y' must be numeric, logical, or raw" = is.numeric(y) || is.logical(y) || is.raw(y),
     "'y' must have length 1" = length(y) == 1L
   )
-  .val <- .Call(C_S3Point__new, .call = match.call(), x, y)
+  .val <- .Call(C_producer_pkg_S3Point__new, .call = match.call(), x, y)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   structure(.val, class = "S3Point")
 }
@@ -184,7 +184,7 @@ if (!base::exists("s3point_x", mode = "function")) {
 #' @param ... Additional arguments.
 #' @export
 s3point_x.S3Point <- function(x, ...) {
-  .val <- .Call(C_S3Point__s3point_x, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_S3Point__s3point_x, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -227,7 +227,7 @@ if (!base::exists("s3point_y", mode = "function")) {
 #' @param ... Additional arguments.
 #' @export
 s3point_y.S3Point <- function(x, ...) {
-  .val <- .Call(C_S3Point__s3point_y, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_S3Point__s3point_y, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -270,7 +270,7 @@ if (!base::exists("s3point_distance", mode = "function")) {
 #' @param ... Additional arguments.
 #' @export
 s3point_distance.S3Point <- function(x, ...) {
-  .val <- .Call(C_S3Point__s3point_distance, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_S3Point__s3point_distance, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -321,7 +321,7 @@ s3point_add.S3Point <- function(x, dx, dy, ...) {
     "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
     "'dy' must have length 1" = length(dy) == 1L
   )
-  .val <- .Call(C_S3Point__s3point_add, .call = match.call(), x, dx, dy)
+  .val <- .Call(C_producer_pkg_S3Point__s3point_add, .call = match.call(), x, dx, dy)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   x
 }
@@ -358,7 +358,7 @@ S4Point <- function(x, y) {
     "'y' must be numeric, logical, or raw" = is.numeric(y) || is.logical(y) || is.raw(y),
     "'y' must have length 1" = length(y) == 1L
   )
-  .val <- .Call(C_S4Point__new, .call = match.call(), x, y)
+  .val <- .Call(C_producer_pkg_S4Point__new, .call = match.call(), x, y)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   methods::new("S4Point", ptr = .val)
 }
@@ -385,7 +385,7 @@ NULL
 if (!exists("s4_x", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_x", function(x, ...) standardGeneric("s4_x"))
 #' @exportMethod s4_x
 methods::setMethod("s4_x", "S4Point", function(x, ...) {
-  .val <- .Call(C_S4Point__x, .call = match.call(), x@ptr)
+  .val <- .Call(C_producer_pkg_S4Point__x, .call = match.call(), x@ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 })
@@ -412,7 +412,7 @@ NULL
 if (!exists("s4_y", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_y", function(x, ...) standardGeneric("s4_y"))
 #' @exportMethod s4_y
 methods::setMethod("s4_y", "S4Point", function(x, ...) {
-  .val <- .Call(C_S4Point__y, .call = match.call(), x@ptr)
+  .val <- .Call(C_producer_pkg_S4Point__y, .call = match.call(), x@ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 })
@@ -439,7 +439,7 @@ NULL
 if (!exists("s4_distance", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_distance", function(x, ...) standardGeneric("s4_distance"))
 #' @exportMethod s4_distance
 methods::setMethod("s4_distance", "S4Point", function(x, ...) {
-  .val <- .Call(C_S4Point__distance, .call = match.call(), x@ptr)
+  .val <- .Call(C_producer_pkg_S4Point__distance, .call = match.call(), x@ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 })
@@ -472,7 +472,7 @@ methods::setMethod("s4_add", "S4Point", function(x, dx, dy, ...) {
     "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
     "'dy' must have length 1" = length(dy) == 1L
   )
-  .val <- .Call(C_S4Point__add, .call = match.call(), x@ptr, dx, dy)
+  .val <- .Call(C_producer_pkg_S4Point__add, .call = match.call(), x@ptr, dx, dy)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   x
 })
@@ -505,7 +505,7 @@ S7Point <- S7::new_class("S7Point",
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
-      .val <- .Call(C_S7Point__new, .call = match.call(), x, y)
+      .val <- .Call(C_producer_pkg_S7Point__new, .call = match.call(), x, y)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       S7::new_object(S7::S7_object(), .ptr = .val)
     }
@@ -550,7 +550,7 @@ if (!base::exists("s7point_x", mode = "function")) {
 }
 # else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.
 S7::method(s7point_x, S7Point) <- function(x, ...) {
-  .val <- .Call(C_S7Point__s7point_x, .call = match.call(), x@.ptr)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_x, .call = match.call(), x@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -569,7 +569,7 @@ S7::method(s7point_x, S7Point) <- function(x, ...) {
 #' @source Generated by miniextendr from `S7Point::s7point_x`
 #' @export S7Point_s7point_x
 S7Point_s7point_x <- function(self, ...) {
-  .val <- .Call(C_S7Point__s7point_x, .call = match.call(), self@.ptr)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_x, .call = match.call(), self@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -612,7 +612,7 @@ if (!base::exists("s7point_y", mode = "function")) {
 }
 # else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.
 S7::method(s7point_y, S7Point) <- function(x, ...) {
-  .val <- .Call(C_S7Point__s7point_y, .call = match.call(), x@.ptr)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_y, .call = match.call(), x@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -631,7 +631,7 @@ S7::method(s7point_y, S7Point) <- function(x, ...) {
 #' @source Generated by miniextendr from `S7Point::s7point_y`
 #' @export S7Point_s7point_y
 S7Point_s7point_y <- function(self, ...) {
-  .val <- .Call(C_S7Point__s7point_y, .call = match.call(), self@.ptr)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_y, .call = match.call(), self@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -674,7 +674,7 @@ if (!base::exists("s7point_distance", mode = "function")) {
 }
 # else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.
 S7::method(s7point_distance, S7Point) <- function(x, ...) {
-  .val <- .Call(C_S7Point__s7point_distance, .call = match.call(), x@.ptr)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_distance, .call = match.call(), x@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -693,7 +693,7 @@ S7::method(s7point_distance, S7Point) <- function(x, ...) {
 #' @source Generated by miniextendr from `S7Point::s7point_distance`
 #' @export S7Point_s7point_distance
 S7Point_s7point_distance <- function(self, ...) {
-  .val <- .Call(C_S7Point__s7point_distance, .call = match.call(), self@.ptr)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_distance, .call = match.call(), self@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -742,7 +742,7 @@ S7::method(s7point_add, S7Point) <- function(x, dx, dy, ...) {
     "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
     "'dy' must have length 1" = length(dy) == 1L
   )
-  .val <- .Call(C_S7Point__s7point_add, .call = match.call(), x@.ptr, dx, dy)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_add, .call = match.call(), x@.ptr, dx, dy)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   x
 }
@@ -769,7 +769,7 @@ S7Point_s7point_add <- function(self, dx, dy, ...) {
     "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
     "'dy' must have length 1" = length(dy) == 1L
   )
-  .val <- .Call(C_S7Point__s7point_add, .call = match.call(), self@.ptr, dx, dy)
+  .val <- .Call(C_producer_pkg_S7Point__s7point_add, .call = match.call(), self@.ptr, dx, dy)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self
 }
@@ -795,7 +795,7 @@ EnvPoint$new <- function(x, y) {
     "'y' must be numeric, logical, or raw" = is.numeric(y) || is.logical(y) || is.raw(y),
     "'y' must have length 1" = length(y) == 1L
   )
-  .val <- .Call(C_EnvPoint__new, .call = match.call(), x, y)
+  .val <- .Call(C_producer_pkg_EnvPoint__new, .call = match.call(), x, y)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self <- .val
   class(self) <- "EnvPoint"
@@ -808,7 +808,7 @@ EnvPoint$new <- function(x, y) {
 #' @rdname EnvPoint
 #' @source Generated by miniextendr from `EnvPoint::x`
 EnvPoint$x <- function() {
-  .val <- .Call(C_EnvPoint__x, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_EnvPoint__x, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -819,7 +819,7 @@ EnvPoint$x <- function() {
 #' @rdname EnvPoint
 #' @source Generated by miniextendr from `EnvPoint::y`
 EnvPoint$y <- function() {
-  .val <- .Call(C_EnvPoint__y, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_EnvPoint__y, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -830,7 +830,7 @@ EnvPoint$y <- function() {
 #' @rdname EnvPoint
 #' @source Generated by miniextendr from `EnvPoint::distance_from_origin`
 EnvPoint$distance_from_origin <- function() {
-  .val <- .Call(C_EnvPoint__distance_from_origin, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_EnvPoint__distance_from_origin, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -847,7 +847,7 @@ EnvPoint$add <- function(dx, dy) {
     "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
     "'dy' must have length 1" = length(dy) == 1L
   )
-  .val <- .Call(C_EnvPoint__add, .call = match.call(), self, dx, dy)
+  .val <- .Call(C_producer_pkg_EnvPoint__add, .call = match.call(), self, dx, dy)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self
 }
@@ -916,7 +916,7 @@ SharedData <- new.env(parent = emptyenv())
 #' @rdname SharedData
 #' @source Generated by miniextendr from `SharedData::get_x`
 SharedData$get_x <- function() {
-  .val <- .Call(C_SharedData__get_x, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_SharedData__get_x, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -927,7 +927,7 @@ SharedData$get_x <- function() {
 #' @rdname SharedData
 #' @source Generated by miniextendr from `SharedData::get_y`
 SharedData$get_y <- function() {
-  .val <- .Call(C_SharedData__get_y, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_SharedData__get_y, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -938,7 +938,7 @@ SharedData$get_y <- function() {
 #' @rdname SharedData
 #' @source Generated by miniextendr from `SharedData::get_label`
 SharedData$get_label <- function() {
-  .val <- .Call(C_SharedData__get_label, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_SharedData__get_label, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -957,7 +957,7 @@ SharedData$create <- function(x, y, label) {
     "'label' must be character" = is.character(label),
     "'label' must have length 1" = length(label) == 1L
   )
-  .val <- .Call(C_SharedData__create, .call = match.call(), x, y, label)
+  .val <- .Call(C_producer_pkg_SharedData__create, .call = match.call(), x, y, label)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   class(.val) <- "SharedData"
   .val
@@ -1026,7 +1026,7 @@ SimpleCounter <- new.env(parent = emptyenv())
 #' @rdname SimpleCounter
 #' @source Generated by miniextendr from `SimpleCounter::get_value`
 SimpleCounter$get_value <- function() {
-  .val <- .Call(C_SimpleCounter__get_value, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_SimpleCounter__get_value, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1094,7 +1094,7 @@ StatefulCounter <- new.env(parent = emptyenv())
 #' @rdname StatefulCounter
 #' @source Generated by miniextendr from `StatefulCounter::get_value`
 StatefulCounter$get_value <- function() {
-  .val <- .Call(C_StatefulCounter__get_value, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_StatefulCounter__get_value, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1105,7 +1105,7 @@ StatefulCounter$get_value <- function() {
 #' @rdname StatefulCounter
 #' @source Generated by miniextendr from `StatefulCounter::history_len`
 StatefulCounter$history_len <- function() {
-  .val <- .Call(C_StatefulCounter__history_len, .call = match.call(), self)
+  .val <- .Call(C_producer_pkg_StatefulCounter__history_len, .call = match.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1167,7 +1167,7 @@ StatefulCounter$history_len <- function() {
 #' @export
 #' @source Generated by miniextendr from Rust fn `get_r_class`
 get_r_class <- function(x) {
-  .val <- .Call(C_get_r_class, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_get_r_class, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1184,7 +1184,7 @@ new_counter <- function(initial) {
     "'initial' must be numeric, logical, or raw" = is.numeric(initial) || is.logical(initial) || is.raw(initial),
     "'initial' must have length 1" = length(initial) == 1L
   )
-  .val <- .Call(C_new_counter, .call = match.call(), initial)
+  .val <- .Call(C_producer_pkg_new_counter, .call = match.call(), initial)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1200,7 +1200,7 @@ new_counter <- function(initial) {
 #' @source Generated by miniextendr from Rust fn `new_temperature`
 new_temperature <- function(x) {
   stopifnot("'x' must be numeric, logical, or raw" = is.numeric(x) || is.logical(x) || is.raw(x))
-  .val <- .Call(C_new_temperature, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_new_temperature, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1213,7 +1213,7 @@ new_temperature <- function(x) {
 #' @export
 #' @source Generated by miniextendr from Rust fn `counter_get_value`
 counter_get_value <- function(counter_sexp) {
-  .val <- .Call(C_counter_get_value, .call = match.call(), counter_sexp)
+  .val <- .Call(C_producer_pkg_counter_get_value, .call = match.call(), counter_sexp)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1224,7 +1224,7 @@ counter_get_value <- function(counter_sexp) {
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_tag_counter`
 debug_tag_counter <- function() {
-  .val <- .Call(C_debug_tag_counter, .call = match.call())
+  .val <- .Call(C_producer_pkg_debug_tag_counter, .call = match.call())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1235,7 +1235,7 @@ debug_tag_counter <- function() {
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_tag_resettable`
 debug_tag_resettable <- function() {
-  .val <- .Call(C_debug_tag_resettable, .call = match.call())
+  .val <- .Call(C_producer_pkg_debug_tag_resettable, .call = match.call())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1251,7 +1251,7 @@ debug_tag_resettable <- function() {
 #' @source Generated by miniextendr from Rust fn `new_oven_temperature`
 new_oven_temperature <- function(x) {
   stopifnot("'x' must be numeric, logical, or raw" = is.numeric(x) || is.logical(x) || is.raw(x))
-  .val <- .Call(C_new_oven_temperature, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_new_oven_temperature, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1268,7 +1268,7 @@ new_stateful_counter <- function(initial) {
     "'initial' must be numeric, logical, or raw" = is.numeric(initial) || is.logical(initial) || is.raw(initial),
     "'initial' must have length 1" = length(initial) == 1L
   )
-  .val <- .Call(C_new_stateful_counter, .call = match.call(), initial)
+  .val <- .Call(C_producer_pkg_new_stateful_counter, .call = match.call(), initial)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1279,7 +1279,7 @@ new_stateful_counter <- function(initial) {
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_shared_data_type_name`
 debug_shared_data_type_name <- function() {
-  .val <- .Call(C_debug_shared_data_type_name, .call = match.call())
+  .val <- .Call(C_producer_pkg_debug_shared_data_type_name, .call = match.call())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1293,7 +1293,7 @@ SimpleCounter$Counter <- new.env(parent = emptyenv())
 #' @name SimpleCounter$Counter$value
 #' @rdname SimpleCounter
 SimpleCounter$Counter$value <- function(x) {
-  .val <- .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__value, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1302,7 +1302,7 @@ attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
 #' @name SimpleCounter$Counter$increment
 #' @rdname SimpleCounter
 SimpleCounter$Counter$increment <- function(x) {
-  .val <- .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__increment, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1316,7 +1316,7 @@ SimpleCounter$Counter$add <- function(x, n) {
     "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
     "'n' must have length 1" = length(n) == 1L
   )
-  .val <- .Call(C_SimpleCounter__Counter__add, .call = match.call(), x, n)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__add, .call = match.call(), x, n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1326,7 +1326,7 @@ attr(SimpleCounter$Counter$add, ".__mx_instance__") <- TRUE
 #' @name SimpleCounter$Counter$panic_plain
 #' @rdname SimpleCounter
 SimpleCounter$Counter$panic_plain <- function(x) {
-  .val <- .Call(C_SimpleCounter__Counter__panic_plain, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__panic_plain, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1340,7 +1340,7 @@ SimpleCounter$Counter$error_with_class <- function(x, class_name) {
     "'class_name' must be character" = is.character(class_name),
     "'class_name' must have length 1" = length(class_name) == 1L
   )
-  .val <- .Call(C_SimpleCounter__Counter__error_with_class, .call = match.call(), x, class_name)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__error_with_class, .call = match.call(), x, class_name)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1354,7 +1354,7 @@ SimpleCounter$Counter$raise_error <- function(x, msg) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_SimpleCounter__Counter__raise_error, .call = match.call(), x, msg)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__raise_error, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1368,7 +1368,7 @@ SimpleCounter$Counter$raise_warning <- function(x, msg) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_SimpleCounter__Counter__raise_warning, .call = match.call(), x, msg)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__raise_warning, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1382,7 +1382,7 @@ SimpleCounter$Counter$raise_message <- function(x, msg) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_SimpleCounter__Counter__raise_message, .call = match.call(), x, msg)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__raise_message, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1398,7 +1398,7 @@ SimpleCounter$Counter$raise_condition_classed <- function(x, class_name, msg) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_SimpleCounter__Counter__raise_condition_classed, .call = match.call(), x, class_name, msg)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__raise_condition_classed, .call = match.call(), x, class_name, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1408,7 +1408,7 @@ attr(SimpleCounter$Counter$raise_condition_classed, ".__mx_instance__") <- TRUE
 #' @name SimpleCounter$Counter$raise_error_with_data
 #' @rdname SimpleCounter
 SimpleCounter$Counter$raise_error_with_data <- function(x) {
-  .val <- .Call(C_SimpleCounter__Counter__raise_error_with_data, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Counter__raise_error_with_data, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1424,7 +1424,7 @@ StatefulCounter$Counter <- new.env(parent = emptyenv())
 #' @name StatefulCounter$Counter$value
 #' @rdname StatefulCounter
 StatefulCounter$Counter$value <- function(x) {
-  .val <- .Call(C_StatefulCounter__Counter__value, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__value, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1433,7 +1433,7 @@ attr(StatefulCounter$Counter$value, ".__mx_instance__") <- TRUE
 #' @name StatefulCounter$Counter$increment
 #' @rdname StatefulCounter
 StatefulCounter$Counter$increment <- function(x) {
-  .val <- .Call(C_StatefulCounter__Counter__increment, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__increment, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1447,7 +1447,7 @@ StatefulCounter$Counter$add <- function(x, n) {
     "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
     "'n' must have length 1" = length(n) == 1L
   )
-  .val <- .Call(C_StatefulCounter__Counter__add, .call = match.call(), x, n)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__add, .call = match.call(), x, n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1457,7 +1457,7 @@ attr(StatefulCounter$Counter$add, ".__mx_instance__") <- TRUE
 #' @name StatefulCounter$Counter$panic_plain
 #' @rdname StatefulCounter
 StatefulCounter$Counter$panic_plain <- function(x) {
-  .val <- .Call(C_StatefulCounter__Counter__panic_plain, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__panic_plain, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1471,7 +1471,7 @@ StatefulCounter$Counter$error_with_class <- function(x, class_name) {
     "'class_name' must be character" = is.character(class_name),
     "'class_name' must have length 1" = length(class_name) == 1L
   )
-  .val <- .Call(C_StatefulCounter__Counter__error_with_class, .call = match.call(), x, class_name)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__error_with_class, .call = match.call(), x, class_name)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1485,7 +1485,7 @@ StatefulCounter$Counter$raise_error <- function(x, msg) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_StatefulCounter__Counter__raise_error, .call = match.call(), x, msg)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__raise_error, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1499,7 +1499,7 @@ StatefulCounter$Counter$raise_warning <- function(x, msg) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_StatefulCounter__Counter__raise_warning, .call = match.call(), x, msg)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__raise_warning, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1513,7 +1513,7 @@ StatefulCounter$Counter$raise_message <- function(x, msg) {
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_StatefulCounter__Counter__raise_message, .call = match.call(), x, msg)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__raise_message, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1529,7 +1529,7 @@ StatefulCounter$Counter$raise_condition_classed <- function(x, class_name, msg) 
     "'msg' must be character" = is.character(msg),
     "'msg' must have length 1" = length(msg) == 1L
   )
-  .val <- .Call(C_StatefulCounter__Counter__raise_condition_classed, .call = match.call(), x, class_name, msg)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__raise_condition_classed, .call = match.call(), x, class_name, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1539,7 +1539,7 @@ attr(StatefulCounter$Counter$raise_condition_classed, ".__mx_instance__") <- TRU
 #' @name StatefulCounter$Counter$raise_error_with_data
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_error_with_data <- function(x) {
-  .val <- .Call(C_StatefulCounter__Counter__raise_error_with_data, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Counter__raise_error_with_data, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1555,7 +1555,7 @@ SimpleCounter$Resettable <- new.env(parent = emptyenv())
 #' @name SimpleCounter$Resettable$reset
 #' @rdname SimpleCounter
 SimpleCounter$Resettable$reset <- function(x) {
-  .val <- .Call(C_SimpleCounter__Resettable__reset, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Resettable__reset, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1565,7 +1565,7 @@ attr(SimpleCounter$Resettable$reset, ".__mx_instance__") <- TRUE
 #' @name SimpleCounter$Resettable$is_default
 #' @rdname SimpleCounter
 SimpleCounter$Resettable$is_default <- function(x) {
-  .val <- .Call(C_SimpleCounter__Resettable__is_default, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_SimpleCounter__Resettable__is_default, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -1580,7 +1580,7 @@ StatefulCounter$Resettable <- new.env(parent = emptyenv())
 #' @name StatefulCounter$Resettable$reset
 #' @rdname StatefulCounter
 StatefulCounter$Resettable$reset <- function(x) {
-  .val <- .Call(C_StatefulCounter__Resettable__reset, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Resettable__reset, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
   invisible(x)
@@ -1590,7 +1590,7 @@ attr(StatefulCounter$Resettable$reset, ".__mx_instance__") <- TRUE
 #' @name StatefulCounter$Resettable$is_default
 #' @rdname StatefulCounter
 StatefulCounter$Resettable$is_default <- function(x) {
-  .val <- .Call(C_StatefulCounter__Resettable__is_default, .call = match.call(), x)
+  .val <- .Call(C_producer_pkg_StatefulCounter__Resettable__is_default, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

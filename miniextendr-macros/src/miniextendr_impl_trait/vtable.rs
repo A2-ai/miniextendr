@@ -18,7 +18,7 @@ use crate::miniextendr_impl::ClassSystem;
 /// `impl Trait for Type { ... }` block, it produces:
 ///
 /// - The cleaned original impl block (with `#[miniextendr]` attrs stripped from methods)
-/// - A `static __VTABLE_{TRAIT}_FOR_{TYPE}: {Trait}VTable` constant
+/// - A `static __VTABLE_{CRATE}_{TRAIT}_FOR_{TYPE}: {Trait}VTable` constant
 /// - C wrapper functions and `R_CallMethodDef` entries for each method and const
 /// - R wrapper code string (class-system specific)
 /// - Two `const` items: `{TYPE}_{TRAIT}_CALL_DEFS` and `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
@@ -92,8 +92,10 @@ pub(super) fn generate_vtable_static(
     let trait_name_upper = trait_name.to_string().to_uppercase();
     let trait_name_lower = trait_name.to_string().to_lowercase();
 
-    // Generate names
-    let vtable_static_name = format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_name_str);
+    // Generate names (crate-prefixed vtable static — #1273 — routed through the
+    // shared naming.rs helper so this can't drift from the other two
+    // reconstruction sites in `miniextendr_impl_trait.rs`)
+    let vtable_static_name = crate::naming::vtable_static_ident(&trait_name_upper, &type_name_str);
     let vtable_type_name = format_ident!("{}VTable", trait_name);
 
     // Build path to vtable builder function
@@ -250,8 +252,7 @@ pub(super) fn generate_vtable_static(
             .filter(|m| m.has_self)
             .map(|m| {
                 let name = &m.ident;
-                let shim_name =
-                    format_ident!("__vtshim_{}__{}__{}", type_ident, trait_name, m.ident);
+                let shim_name = crate::naming::vtshim_ident(&type_ident, trait_name, &m.ident);
                 quote::quote! { #name: #shim_name }
             })
             .collect();
@@ -355,7 +356,8 @@ pub(super) fn generate_vtable_static(
 /// generate fully monomorphized shims at the impl site where `T` is known (e.g., `T = i32`).
 ///
 /// Each instance method gets a concrete `unsafe extern "C"` shim named
-/// `__vtshim_{Type}__{Trait}__{method}` that:
+/// `__vtshim_{crate}_{Type}__{Trait}__{method}` (crate-prefixed for webR
+/// cross-package symbol uniqueness — #1273) that:
 /// 1. Checks argument arity
 /// 2. Wraps everything in `with_r_unwind_protect`
 /// 3. Extracts SEXP arguments to concrete Rust types
@@ -378,7 +380,7 @@ fn generate_concrete_vtable_shims(
         }
 
         let method_ident = &method.ident;
-        let shim_name = format_ident!("__vtshim_{}__{}__{}", type_ident, trait_name, method_ident);
+        let shim_name = crate::naming::vtshim_ident(type_ident, trait_name, method_ident);
 
         // Count non-self parameters
         let param_count = method

@@ -146,7 +146,7 @@ do not have the `__miniextendr_call` slot:
 The R-side wrappers for sidecar accessors are generated as standalone
 `Type_get_field()` / `Type_set_field()` functions (environment class system
 default) or as active bindings (R6) or property accessors (S7). These wrappers
-call `.Call(C_Type_get_field, self$.ptr)` directly — they do not pass a `.call`
+call `.Call(C_mypkg__mx_rdata_get_Type_field, self$.ptr)` directly (C symbols are crate-prefixed since #1273) — they do not pass a `.call`
 argument.
 
 Adding `.call = match.call()` to a sidecar R wrapper causes an "Incorrect

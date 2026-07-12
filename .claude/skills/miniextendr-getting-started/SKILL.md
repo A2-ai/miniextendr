@@ -66,7 +66,7 @@ Placing `#[miniextendr]` on a `pub fn` does three things automatically:
 2. Emits an entry into the `MX_CALL_DEFS` distributed_slice so the C wrapper
    is registered with R at package load time via `R_init_<pkg>`.
 3. Emits an entry into the `MX_R_WRAPPERS` distributed_slice so that a
-   corresponding `.Call(C_my_fn, ...)` R wrapper is generated into
+   corresponding `.Call(C_<crate>_my_fn, ...)` R wrapper is generated into
    `R/miniextendr-wrappers.R` at build time.
 
 You write plain Rust. The macro handles all the FFI plumbing.

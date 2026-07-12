@@ -37,4 +37,14 @@ EnvPoint
 }
 \description{
 A 2D point using the default Env-style class system.
+
+Create a new point
+
+Get x coordinate
+
+Get y coordinate
+
+Calculate distance from origin
+
+Add another point's coordinates
 }

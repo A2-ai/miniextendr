@@ -49,15 +49,16 @@ impl Person {
 }
 ```
 
-This generates R S3 methods:
+This generates R S3 methods (`.Call()` symbols are prefixed with your crate's
+name — `mypkg` here — for webR cross-package uniqueness, see `docs/WEBR.md`):
 
 ```r
 as.data.frame.Person <- function(x, ...) {
-    .Call(C_Person__as_data_frame, .call = match.call(), x)
+    .Call(C_mypkg_Person__as_data_frame, .call = match.call(), x)
 }
 
 as.character.Person <- function(x, ...) {
-    .Call(C_Person__as_character, .call = match.call(), x)
+    .Call(C_mypkg_Person__as_character, .call = match.call(), x)
 }
 ```
 

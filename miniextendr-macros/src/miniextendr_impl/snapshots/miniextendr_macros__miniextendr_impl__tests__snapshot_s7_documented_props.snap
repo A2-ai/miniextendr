@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 3156
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Documented S7 Class
@@ -13,13 +14,13 @@ expression: generate_s7_r_wrapper(&parsed)
 Documented <- S7::new_class("Documented",
   properties = list(
     .ptr = S7::class_any,
-    count = S7::new_property(class = S7::class_integer, getter = function(self) .Call(C_Documented__count, .call = NULL, self@.ptr), setter = function(self, value) { .Call(C_Documented__count, .call = NULL, self@.ptr); self })
+    count = S7::new_property(class = S7::class_integer, getter = function(self) .Call(C_miniextendr_macros_Documented__count, .call = NULL, self@.ptr), setter = function(self, value) { .Call(C_miniextendr_macros_Documented__count, .call = NULL, self@.ptr); self })
   ),
   constructor = function(.ptr = NULL) {
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
-      .val <- .Call(C_Documented__new, .call = match.call())
+      .val <- .Call(C_miniextendr_macros_Documented__new, .call = match.call())
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       S7::new_object(S7::S7_object(), .ptr = .val)
     }

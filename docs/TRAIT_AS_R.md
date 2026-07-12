@@ -365,7 +365,7 @@ double_counter(c)      # 12
 
 ### How It Works
 
-1. **Producer** generates `.Call` wrappers for trait methods (`C_SimpleCounter__Counter__value`, etc.)
+1. **Producer** generates `.Call` wrappers for trait methods (`C_<crate>_SimpleCounter__Counter__value`, etc. — C symbols are crate-prefixed for webR cross-package uniqueness, see `docs/WEBR.md`)
 2. **Producer** registers these in `R_init_producer_miniextendr`
 3. **Consumer** imports `producer`, ensuring the DLL is loaded
 4. **Consumer** calls trait methods via the `$Trait$method` syntax
