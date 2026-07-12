@@ -1120,8 +1120,14 @@ macro_rules! __impl_altstring_methods {
                         $crate::sys::Rf_unprotect_unchecked(1);
                     }
 
-                    // Check cache: non-NA means already materialized
-                    let cached = $crate::SexpExt::string_elt(&data2, i);
+                    // Check cache: non-NA means already materialized.
+                    //
+                    // Must use the clamped `idx`, not the raw `i` — `data2` is a
+                    // plain (non-ALTREP) STRSXP, so `string_elt`/`set_string_elt`
+                    // go through R's own bounds-checked STRING_ELT/SET_STRING_ELT
+                    // and would themselves error on a negative index instead of
+                    // falling through to the clamp below (#1190).
+                    let cached = $crate::SexpExt::string_elt(&data2, idx as $crate::R_xlen_t);
                     if cached != $crate::SEXP::na_string() {
                         return cached;
                     }
@@ -1131,7 +1137,7 @@ macro_rules! __impl_altstring_methods {
                     match <$ty as $crate::altrep_data::AltStringData>::elt(data, idx) {
                         Some(s) => {
                             let charsxp = $crate::altrep_impl::checked_mkchar(s);
-                            $crate::SexpExt::set_string_elt(&data2, i, charsxp);
+                            $crate::SexpExt::set_string_elt(&data2, idx as $crate::R_xlen_t, charsxp);
                             charsxp
                         }
                         None => $crate::SEXP::na_string(),

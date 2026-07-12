@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 3117
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Mixed S7 Class
@@ -15,7 +16,7 @@ expression: generate_s7_r_wrapper(&parsed)
 Mixed <- S7::new_class("Mixed",
   properties = c(list(
     .ptr = S7::class_any,
-    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_Mixed__length, .call = NULL, self@.ptr))
+    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_miniextendr_macros_Mixed__length, .call = NULL, self@.ptr))
   ), .rdata_properties_Mixed),
   constructor = function(x, .ptr = NULL) {
     if (is.null(.ptr)) {
@@ -27,7 +28,7 @@ Mixed <- S7::new_class("Mixed",
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
-      .val <- .Call(C_Mixed__new, .call = match.call(), x)
+      .val <- .Call(C_miniextendr_macros_Mixed__new, .call = match.call(), x)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       S7::new_object(S7::S7_object(), .ptr = .val)
     }

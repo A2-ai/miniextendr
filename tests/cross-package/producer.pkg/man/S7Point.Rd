@@ -57,6 +57,8 @@ S7Point_s7point_add(self, dx, dy, ...)
 
 \item{self}{A \code{S7Point} object.}
 
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
 \item{dx}{(undocumented)}
 
 \item{dy}{(undocumented)}
@@ -64,11 +66,7 @@ S7Point_s7point_add(self, dx, dy, ...)
 \description{
 A 2D point using S7-style class system.
 
-Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
-(the class walk + method-table lookup). Use in hot loops where the
-per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
-will \emph{not} be honoured. Use the generic when subclassing is possible.
+Get x coordinate
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -76,11 +74,23 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch — a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
+Get y coordinate
+
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch — a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Calculate distance from origin
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch — a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Add to coordinates
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

@@ -426,18 +426,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     continue;
                 }
                 // Check if already documented at the class level (impl block doc_tags)
-                let in_class_docs = class_doc_tags
-                    .iter()
-                    .any(|t| t.starts_with(&format!("@param {}", param_name)));
+                let in_class_docs = crate::roxygen::param_documented(class_doc_tags, param_name);
                 if in_class_docs {
                     continue; // Already emitted by ClassDocBuilder
                 }
                 // Check if documented in the constructor method's doc_tags
-                let ctor_tag = ctx
-                    .method
-                    .doc_tags
-                    .iter()
-                    .find(|t| t.starts_with(&format!("@param {}", param_name)));
+                let ctor_tag = crate::roxygen::find_param_tag(&ctx.method.doc_tags, param_name);
                 if let Some(tag) = ctor_tag {
                     lines.push(format!("#' {}", tag));
                 } else if let Some(placeholder) = mx_doc.get(param_name) {
@@ -899,7 +893,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 "  {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
             ));
             lines.push(format!(
-                "}} else if ({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }}) {{"
+                "}} else if (local({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }})) {{"
             ));
             lines.push(format!(
                 "  # `{generic_name}` resolves to a plain (non-generic) function S7 cannot"

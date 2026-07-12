@@ -37,7 +37,7 @@
 //! │  1. Parse: syn::ItemFn → MiniextendrFunctionParsed                       │
 //! │  2. Analyze return type (Result<T>, Option<T>, raw SEXP, etc.)           │
 //! │  3. Generate:                                                            │
-//! │     ├── C wrapper: extern "C-unwind" fn C_<name>(call: SEXP, ...) → SEXP │
+//! │     ├── C wrapper: extern "C-unwind" fn C_<crate>_<name>(...) → SEXP     │
 //! │     ├── R wrapper: const R_WRAPPER_<NAME>: &str = "..."                  │
 //! │     └── Registration: const call_method_def_<name>: R_CallMethodDef      │
 //! │  4. Original function preserved (with added attributes)                  │
@@ -76,7 +76,7 @@
 //! │                                                                          │
 //! │  1. Parse: syn::ItemImpl (trait impl)                                    │
 //! │  2. Generate:                                                            │
-//! │     ├── Vtable instance: static __VTABLE_<TRAIT>_FOR_<TYPE>: ...         │
+//! │     ├── Vtable instance: static __VTABLE_<CRATE>_<TRAIT>_FOR_<TYPE>     │
 //! │     ├── Wrapper struct: struct __MxWrapper<Type> { erased, data }        │
 //! │     ├── Query function: fn __mx_query_<type>(tag) → vtable ptr           │
 //! │     └── Base vtable: static __MX_BASE_VTABLE_<TYPE>: ...                 │
@@ -103,13 +103,16 @@
 //!
 //! ### Generated Symbol Naming
 //!
-//! For a function `my_func`:
-//! - C wrapper: `C_my_func`
+//! Every `#[no_mangle]` symbol is prefixed with the consuming crate's name
+//! (from `CARGO_CRATE_NAME`) so two packages loaded into one webR session
+//! can't collide on a C symbol (#1273; helpers in `naming.rs`). For a
+//! function `my_func` in a crate `mypkg`:
+//! - C wrapper: `C_mypkg_my_func`
 //! - R wrapper const: `R_WRAPPER_MY_FUNC`
 //! - Registration: `call_method_def_my_func`
 //!
-//! For a type `MyType` with trait `Counter`:
-//! - Vtable: `__VTABLE_COUNTER_FOR_MYTYPE`
+//! For a type `MyType` with trait `Counter` in a crate `mypkg`:
+//! - Vtable: `__VTABLE_MYPKG_COUNTER_FOR_MYTYPE`
 //! - Wrapper: `__MxWrapperMyType`
 //! - Query: `__mx_query_mytype`
 //!
@@ -483,7 +486,7 @@ fn build_match_arg_helpers(
 /// fn add(a: i32, b: i32) -> i32 { a + b }
 /// ```
 ///
-/// This produces a C wrapper `C_add` and an R wrapper `add()`.
+/// This produces a C wrapper `C_<crate>_add` and an R wrapper `add()`.
 /// Registration is automatic via linkme distributed slices.
 ///
 /// ## `extern "C-unwind"`
@@ -1191,9 +1194,7 @@ pub fn miniextendr(
         }
         let rust_name = pat_ident.ident.to_string();
         let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-        let already_documented = roxygen_tags
-            .iter()
-            .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
+        let already_documented = crate::roxygen::param_documented(&roxygen_tags, &r_name);
         if already_documented {
             continue;
         }

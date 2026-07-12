@@ -77,6 +77,18 @@ pub fn panic_location_worker_nested() -> i32 {
     plain_boom()
 }
 
+/// Panic inside a `with_r_thread` closure invoked from the WORKER thread
+/// (#1245 Gap 1). The closure panics on the MAIN thread (where
+/// `with_r_thread` routes it), then the worker re-panics to unwind out of
+/// `run_on_worker` — the R error must carry the location of THIS file's
+/// `panic!`, never `worker.rs` (the worker's own relay call site).
+///
+/// @export
+#[miniextendr(worker)]
+pub fn panic_location_worker_with_r_thread() -> i32 {
+    miniextendr_api::with_r_thread(|| -> i32 { panic!("boom-with-r-thread") })
+}
+
 // endregion
 
 // region: regression guards (typed branches must stay location-free)

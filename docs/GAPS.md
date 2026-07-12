@@ -85,7 +85,7 @@ pub fn my_func(..., x: i32) { }
 The generated R wrapper:
 ```r
 my_func <- function(x, ...) {
-    .Call(C_my_func, .call = match.call(), x, list(...))
+    .Call(C_mypkg_my_func, .call = match.call(), x, list(...))
 }
 ```
 

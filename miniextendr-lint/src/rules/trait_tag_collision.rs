@@ -1,13 +1,23 @@
 //! MXL303: trait-impl vtable-symbol collision detection.
 //!
 //! Each `#[miniextendr] impl Trait for Type` emits a vtable static named
-//! `__VTABLE_{TRAIT}_FOR_{TYPE}` (see
-//! `miniextendr-macros/src/miniextendr_impl_trait/vtable.rs`), where the trait
-//! name is `trait_ident.to_uppercase()` and the type name is the last path
-//! segment uppercased (`type_to_uppercase_name`). The static is emitted with
-//! `#[unsafe(no_mangle)]`, so two impls whose `(TRAIT, TYPE)` pair collapses to
-//! the same uppercased symbol produce **duplicate `no_mangle` symbols** — a hard
-//! linker failure whose message is divorced from the source.
+//! `__VTABLE_{CRATE}_{TRAIT}_FOR_{TYPE}` (see
+//! `miniextendr-macros/src/naming.rs::vtable_static_ident`, called from
+//! `miniextendr-macros/src/miniextendr_impl_trait/vtable.rs`), where `{CRATE}`
+//! is the consuming crate's uppercased name (#1273 webR cross-package symbol
+//! uniqueness), the trait name is `trait_ident.to_uppercase()`, and the type
+//! name is the last path segment uppercased (`type_to_uppercase_name`). The
+//! static is emitted with `#[unsafe(no_mangle)]`, so two impls whose
+//! `(TRAIT, TYPE)` pair collapses to the same uppercased symbol produce
+//! **duplicate `no_mangle` symbols** — a hard linker failure whose message is
+//! divorced from the source.
+//!
+//! The lint compares symbols *within one crate*, where the crate prefix is a
+//! constant — so the comparison here uses the crate-invariant
+//! `__VTABLE_{TRAIT}_FOR_{TYPE}` suffix rather than reconstructing the prefix
+//! (the lint runs from the user crate's `build.rs`, which has no
+//! `CARGO_CRATE_NAME` for the crate being linted anyway). Verdicts are
+//! identical either way.
 //!
 //! Rust's coherence rules already forbid the *same* trait implemented twice for
 //! the *same* type, so the only way two distinct impls collide is via the
@@ -101,13 +111,18 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
     }
 }
 
-/// Reconstruct the vtable static symbol the macro emits for `impl Trait for Type`.
+/// Reconstruct the crate-invariant suffix of the vtable static symbol the
+/// macro emits for `impl Trait for Type`.
 ///
-/// Mirrors `miniextendr-macros/src/miniextendr_impl_trait/vtable.rs`:
-/// `__VTABLE_{trait.to_uppercase()}_FOR_{type.to_uppercase()}` for the
-/// non-generic path. The lint only sees the bare type ident (no generic args),
-/// so it folds case the same way the macro's `type_to_uppercase_name` does for
-/// plain (non-generic) types.
+/// Mirrors `miniextendr-macros/src/naming.rs::vtable_static_ident` minus the
+/// crate prefix: the emitted symbol is
+/// `__VTABLE_{CRATE}_{trait.to_uppercase()}_FOR_{type.to_uppercase()}` (#1273),
+/// but within one crate the `{CRATE}` prefix is constant, so comparing the
+/// unprefixed suffix yields identical collision verdicts without needing
+/// `CARGO_CRATE_NAME` (which the linting `build.rs` doesn't have for the
+/// crate being linted). The lint only sees the bare type ident (no generic
+/// args), so it folds case the same way the macro's `type_to_uppercase_name`
+/// does for plain (non-generic) types.
 fn vtable_symbol(trait_name: &str, type_name: &str) -> String {
     format!(
         "__VTABLE_{}_FOR_{}",
