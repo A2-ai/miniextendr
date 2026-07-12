@@ -48,6 +48,7 @@
 //! ```
 
 use crate::coerce::{CoerceError, TryCoerce};
+use crate::from_r::BATCHED_ERROR_CAP;
 use crate::into_r::IntoR;
 use crate::{RLogical, SEXP};
 use std::fmt;
@@ -105,6 +106,17 @@ pub enum StorageCoerceError {
     InvalidUtf8 {
         /// Failing element index for vector conversions.
         index: Option<usize>,
+    },
+    /// Aggregated per-element failures from a vector conversion (#1097).
+    /// `listed` holds at most the first `BATCHED_ERROR_CAP` element errors
+    /// (each with `index` set); `total` counts all failures.
+    Batched {
+        /// The vector/slice type that failed to convert, e.g. `"Vec<i64>"`.
+        container: &'static str,
+        /// The first `BATCHED_ERROR_CAP` per-element failures.
+        listed: Vec<StorageCoerceError>,
+        /// Total number of failing elements (`>= listed.len()`).
+        total: usize,
     },
 }
 
@@ -168,6 +180,23 @@ impl fmt::Display for StorageCoerceError {
                     write!(f, "invalid UTF-8")
                 }
             }
+            StorageCoerceError::Batched {
+                container,
+                listed,
+                total,
+            } => {
+                write!(f, "{} conversion failed: ", container)?;
+                for (i, e) in listed.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{}", e)?;
+                }
+                if *total > listed.len() {
+                    write!(f, "; and {} more", total - listed.len())?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -203,6 +232,9 @@ impl StorageCoerceError {
             StorageCoerceError::InvalidUtf8 { .. } => {
                 StorageCoerceError::InvalidUtf8 { index: Some(idx) }
             }
+            // Batched errors already carry per-element indices on their
+            // `listed` entries — indexing the aggregate itself is a no-op.
+            batched @ StorageCoerceError::Batched { .. } => batched,
             other => other,
         }
     }
@@ -592,10 +624,25 @@ macro_rules! impl_vec_into_r_as {
         impl IntoRAs<$target> for Vec<$from> {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
+                let mut listed: Vec<StorageCoerceError> = Vec::new();
+                let mut total = 0usize;
                 for (i, val) in self.into_iter().enumerate() {
-                    let v: $target = try_coerce_scalar(val, $from_name, $target_name)
-                        .map_err(|e| e.at_index(i))?;
-                    result.push(v);
+                    match try_coerce_scalar::<$from, $target>(val, $from_name, $target_name) {
+                        Ok(v) => result.push(v),
+                        Err(e) => {
+                            if listed.len() < BATCHED_ERROR_CAP {
+                                listed.push(e.at_index(i));
+                            }
+                            total += 1;
+                        }
+                    }
+                }
+                if total > 0 {
+                    return Err(StorageCoerceError::Batched {
+                        container: concat!("Vec<", $from_name, ">"),
+                        listed,
+                        total,
+                    });
                 }
                 Ok(result.into_sexp())
             }
@@ -604,10 +651,25 @@ macro_rules! impl_vec_into_r_as {
         impl IntoRAs<$target> for &[$from] {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
+                let mut listed: Vec<StorageCoerceError> = Vec::new();
+                let mut total = 0usize;
                 for (i, &val) in self.iter().enumerate() {
-                    let v: $target = try_coerce_scalar(val, $from_name, $target_name)
-                        .map_err(|e| e.at_index(i))?;
-                    result.push(v);
+                    match try_coerce_scalar::<$from, $target>(val, $from_name, $target_name) {
+                        Ok(v) => result.push(v),
+                        Err(e) => {
+                            if listed.len() < BATCHED_ERROR_CAP {
+                                listed.push(e.at_index(i));
+                            }
+                            total += 1;
+                        }
+                    }
+                }
+                if total > 0 {
+                    return Err(StorageCoerceError::Batched {
+                        container: concat!("&[", $from_name, "]"),
+                        listed,
+                        total,
+                    });
                 }
                 Ok(result.into_sexp())
             }
@@ -663,13 +725,25 @@ impl IntoRAs<i32> for &[bool] {
 // Identity - but check for finite values
 impl IntoRAs<f64> for Vec<f64> {
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
+        let mut listed: Vec<StorageCoerceError> = Vec::new();
+        let mut total = 0usize;
         for (i, &val) in self.iter().enumerate() {
             if !val.is_finite() {
-                return Err(StorageCoerceError::NonFinite {
-                    to: "f64",
-                    index: Some(i),
-                });
+                if listed.len() < BATCHED_ERROR_CAP {
+                    listed.push(StorageCoerceError::NonFinite {
+                        to: "f64",
+                        index: Some(i),
+                    });
+                }
+                total += 1;
             }
+        }
+        if total > 0 {
+            return Err(StorageCoerceError::Batched {
+                container: "Vec<f64>",
+                listed,
+                total,
+            });
         }
         Ok(self.into_sexp())
     }
@@ -677,13 +751,25 @@ impl IntoRAs<f64> for Vec<f64> {
 
 impl IntoRAs<f64> for &[f64] {
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
+        let mut listed: Vec<StorageCoerceError> = Vec::new();
+        let mut total = 0usize;
         for (i, &val) in self.iter().enumerate() {
             if !val.is_finite() {
-                return Err(StorageCoerceError::NonFinite {
-                    to: "f64",
-                    index: Some(i),
-                });
+                if listed.len() < BATCHED_ERROR_CAP {
+                    listed.push(StorageCoerceError::NonFinite {
+                        to: "f64",
+                        index: Some(i),
+                    });
+                }
+                total += 1;
             }
+        }
+        if total > 0 {
+            return Err(StorageCoerceError::Batched {
+                container: "&[f64]",
+                listed,
+                total,
+            });
         }
         Ok(self.into_sexp())
     }
@@ -693,14 +779,27 @@ impl IntoRAs<f64> for &[f64] {
 impl IntoRAs<f64> for Vec<f32> {
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
         let mut result = Vec::with_capacity(self.len());
+        let mut listed: Vec<StorageCoerceError> = Vec::new();
+        let mut total = 0usize;
         for (i, val) in self.into_iter().enumerate() {
             if !val.is_finite() {
-                return Err(StorageCoerceError::NonFinite {
-                    to: "f64",
-                    index: Some(i),
-                });
+                if listed.len() < BATCHED_ERROR_CAP {
+                    listed.push(StorageCoerceError::NonFinite {
+                        to: "f64",
+                        index: Some(i),
+                    });
+                }
+                total += 1;
+            } else {
+                result.push(val as f64);
             }
-            result.push(val as f64);
+        }
+        if total > 0 {
+            return Err(StorageCoerceError::Batched {
+                container: "Vec<f32>",
+                listed,
+                total,
+            });
         }
         Ok(result.into_sexp())
     }
@@ -709,14 +808,27 @@ impl IntoRAs<f64> for Vec<f32> {
 impl IntoRAs<f64> for &[f32] {
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
         let mut result = Vec::with_capacity(self.len());
+        let mut listed: Vec<StorageCoerceError> = Vec::new();
+        let mut total = 0usize;
         for (i, &val) in self.iter().enumerate() {
             if !val.is_finite() {
-                return Err(StorageCoerceError::NonFinite {
-                    to: "f64",
-                    index: Some(i),
-                });
+                if listed.len() < BATCHED_ERROR_CAP {
+                    listed.push(StorageCoerceError::NonFinite {
+                        to: "f64",
+                        index: Some(i),
+                    });
+                }
+                total += 1;
+            } else {
+                result.push(val as f64);
             }
-            result.push(val as f64);
+        }
+        if total > 0 {
+            return Err(StorageCoerceError::Batched {
+                container: "&[f32]",
+                listed,
+                total,
+            });
         }
         Ok(result.into_sexp())
     }
@@ -753,14 +865,27 @@ impl_vec_into_r_as_f64_infallible!(u32);
 impl IntoRAs<f64> for Vec<i32> {
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
         let mut result = Vec::with_capacity(self.len());
+        let mut listed: Vec<StorageCoerceError> = Vec::new();
+        let mut total = 0usize;
         for (i, val) in self.into_iter().enumerate() {
             if val == crate::altrep_traits::NA_INTEGER {
-                return Err(StorageCoerceError::MissingValue {
-                    to: "f64",
-                    index: Some(i),
-                });
+                if listed.len() < BATCHED_ERROR_CAP {
+                    listed.push(StorageCoerceError::MissingValue {
+                        to: "f64",
+                        index: Some(i),
+                    });
+                }
+                total += 1;
+            } else {
+                result.push(val as f64);
             }
-            result.push(val as f64);
+        }
+        if total > 0 {
+            return Err(StorageCoerceError::Batched {
+                container: "Vec<i32>",
+                listed,
+                total,
+            });
         }
         Ok(result.into_sexp())
     }
@@ -769,14 +894,27 @@ impl IntoRAs<f64> for Vec<i32> {
 impl IntoRAs<f64> for &[i32] {
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
         let mut result = Vec::with_capacity(self.len());
+        let mut listed: Vec<StorageCoerceError> = Vec::new();
+        let mut total = 0usize;
         for (i, &val) in self.iter().enumerate() {
             if val == crate::altrep_traits::NA_INTEGER {
-                return Err(StorageCoerceError::MissingValue {
-                    to: "f64",
-                    index: Some(i),
-                });
+                if listed.len() < BATCHED_ERROR_CAP {
+                    listed.push(StorageCoerceError::MissingValue {
+                        to: "f64",
+                        index: Some(i),
+                    });
+                }
+                total += 1;
+            } else {
+                result.push(val as f64);
             }
-            result.push(val as f64);
+        }
+        if total > 0 {
+            return Err(StorageCoerceError::Batched {
+                container: "&[i32]",
+                listed,
+                total,
+            });
         }
         Ok(result.into_sexp())
     }
@@ -993,6 +1131,74 @@ mod tests {
         // Vecs -> String
         _assert_into_r_as::<Vec<String>, String>();
         _assert_into_r_as::<Vec<f64>, String>();
+    }
+
+    // Batched-error tests (#1097). These only exercise the failure path
+    // (`into_sexp()` is never reached), so they don't need `with_r_thread` —
+    // unlike the success-path integration tests in `conversion_coverage.rs`.
+
+    /// Failures at indices 3, 17, 42 must all be listed in one `Batched`
+    /// error's `Display` string, not just the first one.
+    #[test]
+    fn batched_vec_i64_to_i32_lists_all_failing_indices() {
+        let mut v = vec![0i64; 43];
+        for &i in &[3usize, 17, 42] {
+            v[i] = i64::MAX;
+        }
+        let result = IntoRAs::<i32>::into_r_as(v);
+        match result {
+            Err(StorageCoerceError::Batched {
+                container,
+                listed,
+                total,
+            }) => {
+                assert_eq!(container, "Vec<i64>");
+                assert_eq!(total, 3);
+                assert_eq!(listed.len(), 3);
+                let display = StorageCoerceError::Batched {
+                    container,
+                    listed,
+                    total,
+                }
+                .to_string();
+                assert!(display.contains("index 3"), "{display}");
+                assert!(display.contains("index 17"), "{display}");
+                assert!(display.contains("index 42"), "{display}");
+            }
+            other => panic!("expected Batched, got {other:?}"),
+        }
+    }
+
+    /// A 15-failure input lists only the first `BATCHED_ERROR_CAP` (10) and
+    /// summarizes the rest as `"and 5 more"`.
+    #[test]
+    fn batched_vec_i64_to_i32_caps_listed_and_summarizes_rest() {
+        let v = vec![i64::MAX; 15];
+        let result = IntoRAs::<i32>::into_r_as(v);
+        match result {
+            Err(e @ StorageCoerceError::Batched { .. }) => {
+                if let StorageCoerceError::Batched { listed, total, .. } = &e {
+                    assert_eq!(*total, 15);
+                    assert_eq!(listed.len(), BATCHED_ERROR_CAP);
+                }
+                let display = e.to_string();
+                assert!(display.contains("and 5 more"), "{display}");
+            }
+            other => panic!("expected Batched, got {other:?}"),
+        }
+    }
+
+    /// Scalar conversion failures must keep the plain (non-`Batched`) shape
+    /// and Display grammar — only vector conversions batch.
+    #[test]
+    fn scalar_failure_display_unchanged() {
+        let result = IntoRAs::<i32>::into_r_as(i64::MAX);
+        match result {
+            Err(e @ StorageCoerceError::OutOfRange { .. }) => {
+                assert_eq!(e.to_string(), "value out of range for i64 → i32");
+            }
+            other => panic!("expected scalar OutOfRange, got {other:?}"),
+        }
     }
 }
 // endregion
