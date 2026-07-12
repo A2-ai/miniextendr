@@ -60,11 +60,18 @@ test_that("rng_with_interrupt works (main thread + RNG)", {
 })
 
 test_that("rng_worker_uniform works (explicit worker + RNG)", {
-  # rng_worker_uniform requires the worker-default feature
+  # rng_worker_uniform requires the worker-thread feature. Probe the DLL's
+  # registration table directly: package_init locks symbols
+  # (R_forceSymbols), so the PACKAGE-string form of getNativeSymbolInfo
+  # always errors and had silently skipped this test since its addition.
+  # C symbols are crate-prefixed since #1273 (C_miniextendr_...).
   skip_if_not(
-    !is.null(tryCatch(getNativeSymbolInfo("C_rng_worker_uniform", "miniextendr"),
-                       error = function(e) NULL)),
-    "worker-default feature not enabled"
+    !is.null(tryCatch(
+      getNativeSymbolInfo("C_miniextendr_rng_worker_uniform",
+                          getLoadedDLLs()[["miniextendr"]]),
+      error = function(e) NULL
+    )),
+    "worker-thread feature not enabled"
   )
   set.seed(42)
   result1 <- rng_worker_uniform(5L)

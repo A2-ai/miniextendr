@@ -488,9 +488,40 @@ mod worker_channel {
                 Ok(boxed) => *boxed
                     .downcast::<R>()
                     .expect("type mismatch in `with_r_thread` response"),
-                Err(panic_msg) => panic!("panic in `with_r_thread`: {}", panic_msg),
+                Err(panic_msg) => {
+                    // `panic_msg` is already final: the main-thread stringify
+                    // point in `dispatch_to_worker` (below) folded the *true*
+                    // origin location into it before sending it back over the
+                    // channel. Re-panicking here (needed to unwind out of
+                    // `run_on_worker`) must NOT let this thread's panic hook
+                    // fold ITS OWN call site (this line, in `worker.rs`) on
+                    // top — wrap in `PreLocatedPanic` so the catch in
+                    // `dispatch_to_worker` uses the message verbatim (#1245).
+                    std::panic::panic_any(crate::unwind_protect::PreLocatedPanic(format!(
+                        "panic in `with_r_thread`: {panic_msg}"
+                    )))
+                }
             }
         })
+    }
+
+    /// Stringify a caught panic payload for cross-thread transport, folding in
+    /// the *current* thread's recorded panic location for generic panics.
+    ///
+    /// User conditions (`error!`/`warning!`/`message!`/`condition!`) travel as
+    /// `RCondition` payloads and must stay location-free — stringified
+    /// verbatim. Genuine generic panics get the `(at file:line)` suffix via
+    /// [`crate::unwind_protect::panic_message_with_location`], which reads the
+    /// current thread's take-once slot — correct only because every call site
+    /// below runs on the same thread whose hook caught this exact panic
+    /// (main thread for both uses in `dispatch_to_worker`'s main-thread event
+    /// loop, #1245).
+    fn fold_panic_message(payload: &(dyn Any + Send)) -> String {
+        if payload.is::<crate::condition::RCondition>() {
+            crate::unwind_protect::panic_payload_to_string(payload).into_owned()
+        } else {
+            crate::unwind_protect::panic_message_with_location(payload)
+        }
     }
 
     /// Dispatch a closure to the worker thread.
@@ -599,10 +630,25 @@ mod worker_channel {
                     // conditions (error!/warning!/message!/condition!) travel as
                     // `RCondition` payloads and must stay location-free — mirror
                     // the main-thread RCondition branch by stringifying verbatim.
-                    let msg = if payload.is::<crate::condition::RCondition>() {
-                        crate::unwind_protect::panic_payload_to_string(&*payload).into_owned()
+                    //
+                    // `PreLocatedPanic` is a THIRD case (#1245): the re-panic in
+                    // `route_to_main_thread` (a `with_r_thread` closure that
+                    // panicked on the MAIN thread, relayed back here) already
+                    // carries a final, correctly-folded message from the true
+                    // origin. This thread's panic hook still fired for the
+                    // `panic_any` relay call itself, though, and recorded ITS
+                    // OWN call site (in `worker.rs`, not the user's) into this
+                    // thread's take-once slot — stale. Use the payload's
+                    // message verbatim and drain-and-discard that stale slot so
+                    // it can't leak into a later, unrelated fold on this same
+                    // (reused) worker thread.
+                    let msg = if let Some(pre) =
+                        payload.downcast_ref::<crate::unwind_protect::PreLocatedPanic>()
+                    {
+                        let _ = crate::backtrace::take_last_panic_location();
+                        pre.0.clone()
                     } else {
-                        crate::unwind_protect::panic_message_with_location(&*payload)
+                        fold_panic_message(&*payload)
                     };
                     Err(msg)
                 }
@@ -711,8 +757,10 @@ mod worker_channel {
                             Ok(_) => {
                                 // Check if trampoline caught a panic
                                 if let Some(payload) = data.panic_payload.take() {
-                                    Err(crate::unwind_protect::panic_payload_to_string(&*payload)
-                                        .into_owned())
+                                    // This IS the real panic origin thread (main) —
+                                    // fold its location in now (#1245), before the
+                                    // message crosses back to the worker.
+                                    Err(fold_panic_message(&*payload))
                                 } else {
                                     // Normal completion - return the result
                                     Ok(data
@@ -727,9 +775,10 @@ mod worker_channel {
                                     drop(data);
                                     sys::R_ContinueUnwind(token);
                                 }
-                                // Rust panic - return as error response
-                                Err(crate::unwind_protect::panic_payload_to_string(&*payload)
-                                    .into_owned())
+                                // Rust panic - return as error response. Also
+                                // the real origin thread (main) — fold its
+                                // location in now (#1245).
+                                Err(fold_panic_message(&*payload))
                             }
                         }
                     };

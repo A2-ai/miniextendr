@@ -252,6 +252,16 @@ Avoid strict mode when:
   Scalar `Option<i32>` produces `NA_integer_`. The distinction matters for
   downstream R code that uses `is.null()` vs `is.na()`.
 
+- **R arrays are column-major; conversion never reorders them**: a `Vec<f64>`
+  or `&[f64]` received from an R `matrix`/`array` is the flat column-major
+  (Fortran-order) buffer as R stores it — `dim` is just an attribute, and
+  `TryFromSexp` does not permute data. Rust numeric crates typically expect
+  row-major / C-order flat buffers, so a wrapper must transpose explicitly.
+  Cheapest is on the R side before the `.Call`:
+  `as.double(aperm(x, rev(seq_along(dim(x)))))`, and the inverse on return:
+  `aperm(array(v, rev(dims)), rev(seq_along(dims)))`. For 1-D vectors the two
+  orders coincide and no transform is needed.
+
 ## Related skills
 
 - `miniextendr-getting-started` — how to write and register a first function.

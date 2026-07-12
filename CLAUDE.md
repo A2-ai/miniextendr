@@ -45,7 +45,10 @@ one-line `@CLAUDE.md` import (codex's include mechanism), so it inherits that
 `CLAUDE.md` verbatim with no drift — when you add a new `CLAUDE.md`, drop a matching
 `@CLAUDE.md` `AGENTS.md` beside it. The **root** `AGENTS.md` is a hand-kept mirror,
 not an import: it shares most content with this file, so if you change a
-project-wide rule here, mirror it there.
+project-wide rule here, mirror it there. CI enforces the structural invariant
+(sibling presence, no orphans, the `@CLAUDE.md` import line) via
+`just agents-md-check` (Sync Checks job); prose parity of the root mirror stays
+hand-maintained.
 
 ## Principles
 

@@ -277,3 +277,29 @@ pub fn demo_error_data_keyed(value: i32, code: i32) {
 }
 
 // endregion
+
+// region: NA-scalar regression pin (issue #1103)
+
+/// Raise a classed error whose scalar `count` field is `NA_integer_`.
+///
+/// Regression pin for issue #1103: the field is *present* on the condition
+/// object with value `NA`, not silently dropped. #1103 described this as a
+/// limitation of the old `ConditionDataValue` type (no `Option`-bearing
+/// variants); that type no longer exists — `ConditionData` is
+/// `Vec<(String, RValue)>` and `RValue`'s scalar variants are `Option`-aware
+/// (`Vec<Option<i32>>` etc.), so `None` already round-trips as `NA` rather
+/// than being dropped. This fixture pins that behaviour directly against the
+/// issue's own example shape (`data = ("count", <NA integer>)`).
+///
+/// @export
+#[miniextendr]
+pub fn demo_error_data_na_scalar() {
+    let count: Option<i32> = None;
+    miniextendr_api::error!(
+        class = "na_scalar_error",
+        data = ("count", count),
+        "count is NA"
+    );
+}
+
+// endregion

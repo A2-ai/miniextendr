@@ -17,13 +17,13 @@ cross-package wasm stubs (#493), side-module `RUSTFLAGS`
 base-image mirror (#496), the redundant `-C relocation-model=pic` flag
 dropped (#745), the base-image pin bumped to a tagged webR v0.6.0 / R 4.6.0
 release (#755), dependency guidance (#752 — see "Dependencies and webR"
-below), and the compiled-imports lint (#925,
-`minirextendr::miniextendr_webr_import_lint()`). Open follow-ups: #495
-(cross-crate trait dispatch), #1254 (on-hardware validation of the
-arm64-native dev image — first cut landed as `Dockerfile.webr-arm64` via
-#788 / PR #916; see "arm64-native dev image" below), #747 (drop mirror creds
-once the GHCR package is public), #1255 (testthat-under-wasm coverage,
-dropped when the smoke runners were unified).
+below), the compiled-imports lint (#925,
+`minirextendr::miniextendr_webr_import_lint()`), and the informational
+testthat-under-wasm pass (#1255, `SMOKE_TESTTHAT=1` — see "Building locally"
+below). Open follow-ups: #495 (cross-crate trait dispatch), #1254
+(on-hardware validation of the arm64-native dev image — first cut landed as
+`Dockerfile.webr-arm64` via #788 / PR #916; see "arm64-native dev image"
+below), #747 (drop mirror creds once the GHCR package is public).
 
 ## Target
 
@@ -89,7 +89,8 @@ just docker-webr-smoke         # full smoke: build wasm side-module + load in
 ```
 
 `just docker-webr-smoke` (`tests/webr-smoke.sh`) drives three phases inside
-the container:
+the container, plus an optional fourth (`--scaffold` / `WEBR_SCAFFOLD=1`,
+#1270 — off by default, see below):
 
 1. **Native `R CMD INSTALL` of `rpkg`** against `/opt/R/current/bin/R` to run
    the wrapper-gen pass and regenerate `rpkg/src/rust/wasm_registry.rs`. The
@@ -110,10 +111,29 @@ the container:
    tier 3 uses), which imports `file:///opt/webr/src/dist/webr.mjs` (see
    "Running a webR session in Node" below), NODEFS-mounts the wasm R lib
    tree, installs the hard Imports from repo.r-wasm.org, and drives
-   `library(miniextendr)` + `packageVersion()`. It does **not** run the
-   testthat suite — that coverage was dropped when the local and CI runners
-   were unified onto `smoke.mjs`; restoring an informational testthat pass
-   is tracked in #1255.
+   `library(miniextendr)` + `packageVersion()`. With `SMOKE_TESTTHAT=1`
+   (the local-smoke default; disable with `SMOKE_TESTTHAT=0`) it then runs
+   an **informational testthat pass** (#1255): the runner installs testthat
+   from `repo.r-wasm.org`, NODEFS-mounts `rpkg/tests`, and runs the suite
+   against the wasm install (`load_package = "installed"`, with
+   `MINIEXTENDR_SKIP_STRESS=1` so the gctorture files — which have their own
+   CI job — don't run under the much slower interpreter). Suite counts are
+   reported but test failures never gate: many tests legitimately fail or
+   skip under wasm (worker-thread / fork / subprocess assumptions). Only a
+   harness error before the counts line turns the gate red, and a 20-minute
+   in-runner budget abandons (without failing) a wedged suite.
+
+Pass `--scaffold` (or set `WEBR_SCAFFOLD=1`) to add a local-parity
+reproduction of CI's scaffold legs (#1259 standalone + #1271 monorepo)
+between phases 2 and 3: installs minirextendr from the checkout, scaffolds a
+fresh end-user package (`mxsmoke`) with `create_miniextendr_package()` **and**
+a fresh monorepo (`mxmono`) with `create_miniextendr_monorepo()`, points
+their framework git deps at the checkout via `use_local_miniextendr()`, and
+repeats the native → wasm two-step install on each into the same
+`/tmp/wasm-lib` phase 2 uses — phase 3 then also loads `mxsmoke` + `mxmono`
+alongside `miniextendr` (comma-separated `SMOKE_SCAFFOLD_PKG`). This is the
+local reproduction of a scaffold-leg CI failure without hand-driving the
+container; without the flag, behavior is unchanged. Closes #1270.
 
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
 wasm32 build). Subsequent runs reuse the docker image and most cargo
@@ -237,6 +257,28 @@ be exported during the wasm install — `webr-vars.mk` references both.
 
 ## Other webR build constraints
 
+- **Macro-emitted C symbols are crate-prefixed (#1273).** Native `dyn.load`
+  uses `RTLD_LOCAL`, so identical symbol names across package `.so`s never
+  meet — but webR loads each package as an Emscripten SIDE_MODULE sharing one
+  GOT, where the **first-loaded** module's definition of an exported name wins
+  for every later module. Two packages both exporting `C_add` meant the second
+  package's `R_registerRoutines` table captured function pointers into the
+  first package's code (observed in the #1259 scaffold leg). Every
+  `#[miniextendr]`-generated `#[no_mangle]` symbol therefore carries the
+  consuming crate's name: `C_<crate>_<fn>`, `C_<crate>_<Type>__<method>`,
+  `__mx_altrep_reg_<crate>_<Ident>`, `__VTABLE_<CRATE>_..._FOR_...`, etc.
+  (single source of truth: `miniextendr-macros/src/naming.rs`). Registration
+  name and linker symbol stay identical, so the generated `wasm_registry.rs`
+  keeps reconstructing its `extern` declarations from `R_CallMethodDef.name`.
+  **Hand-written `extern "C-unwind"` fns, `#[export_name = "..."]`, and
+  `c_symbol = "..."` overrides pass through verbatim** — if you use them, you
+  own their cross-package uniqueness on webR (prefix them with your package
+  name). Two R packages whose *crates* share a name still collide, but that
+  requires a deliberate `[lib] name` mismatch — the scaffold derives crate
+  name from package name, and R refuses to load two same-named packages
+  anyway. (miniextendr-api's own `#[no_mangle]` exports are byte-identical
+  across packages and remain a theoretical interposition surface — tracked
+  separately in #1310.)
 - **`linkme` does not support `wasm32-*` targets.** `linkme-impl` emits a
   `unsupported_platform` compile error for any `target_os` outside its
   whitelist. miniextendr leans on `linkme::distributed_slice` for runtime
@@ -379,7 +421,9 @@ not installed locally. No `loadNamespace()`, no network.
 
 ## CI
 
-`.github/workflows/webr.yml` runs three tiers plus a scaffold leg. **Tier 1**
+`.github/workflows/webr.yml` runs three tiers plus two scaffold legs (#1259
+standalone, #1271 monorepo) and a per-PR monorepo-template wasm check
+(`monorepo-wasm-check`, see below). **Tier 1**
 is `cargo check --target wasm32-unknown-emscripten` for `miniextendr-api` plus
 the two cross-package stub crates (#493), on every PR matching the paths filter
 (`miniextendr-api/**`, `miniextendr-macros/**`, `miniextendr-engine/**`,
@@ -408,7 +452,10 @@ install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
 (`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
 installs the package's Imports from `repo.r-wasm.org`, and drives
 `library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
-is what proves it *loads* in a real webR runtime.
+is what proves it *loads* in a real webR runtime. On main-push and
+`workflow_dispatch` runs (not per-PR — wall time gates PRs) tier 3 also
+runs the informational testthat pass (#1255, `SMOKE_TESTTHAT=1`, never
+gating on test failures — see "Building locally" above).
 
 The same job also runs a **scaffold leg** (#1259): it installs minirextendr
 from the checkout, scaffolds a fresh end-user package with
@@ -421,17 +468,35 @@ native `R CMD INSTALL` (wrapper-gen writes the scaffold's
 scaffolded `NAMESPACE` is a stub until the documented `document()` step
 runs), then the `CC=emcc` install into the same `/tmp/wasm-lib`. Tier 3 then
 loads the scaffolded package alongside miniextendr (`SMOKE_SCAFFOLD_PKG`) and
-calls the template's stock functions — renamed `mxsmoke_add()` /
-`mxsmoke_hello()` at scaffold time, because rpkg also exports an `add` and the
-generated `C_<fn>` wrapper symbols are package-agnostic: under Emscripten's
-shared-GOT side-module linking the first-loaded package's symbol wins and
-`mxsmoke::add` would dispatch into miniextendr's `add` (#1273; drop the rename
-when C symbols become package-unique). This is the only CI
+calls the template's stock functions `add()` / `hello()`. rpkg also exports an
+`add`, and that collision is now **intentional coverage**: since #1273 the
+generated wrapper symbols are crate-prefixed (`C_mxsmoke_add` vs
+`C_miniextendr_add`), so both packages loaded into one shared-GOT webR session
+must dispatch to their own implementations — `mxsmoke::add(2, 3)` returns `5`
+via mxsmoke's own f64 path while miniextendr's i32 `add` keeps working. Before
+#1273 the leg had to rename the scaffold's stock fns to dodge the first-loaded
+module's symbol winning the GOT. This is the only CI
 coverage of the **template** copies of the wasm branches in `configure.ac` /
 `Makevars.in` / `build.rs` (`minirextendr/inst/templates/rpkg/`) — before it,
-a template-only regression could only surface for end users. The monorepo
-template tree's copies are still CI-unbuilt (#1271); local smoke parity for
-the leg is #1270.
+a template-only regression could only surface for end users.
+
+The **monorepo template** tree (`minirextendr/inst/templates/monorepo/rpkg/`)
+carries its own copies of the same wasm branches and gets two-tier coverage
+(#1271). Per-PR, the cheap `monorepo-wasm-check` job scaffolds a fresh
+monorepo with `create_miniextendr_monorepo()`, runs one native
+`R CMD INSTALL` (to regenerate `wasm_registry.rs` — the wasm build hard-fails
+on a missing/stub copy), then `cargo check --target wasm32-unknown-emscripten`
+on the scaffolded rpkg crate: no emcc link, no webR container, but it covers
+the template `build.rs`/cfg-gating drift class. On main-push and
+`workflow_dispatch`, the `webr-install` job additionally runs the full
+**monorepo scaffold leg**: the same native → roxygenise → native → `CC=emcc`
+sequence on the monorepo scaffold (`mxmono` — its stock `add()`/`hello()` are
+kept as-is, extending the intentional #1273 collision to a third package with
+a crate name, `mxmono-core`, that differs from the package name, so the leg
+also proves the prefix is the *crate* name: `C_mxmono_core_add`), installed
+into the same `/tmp/wasm-lib`; tier 3 then loads it alongside `miniextendr`
+and `mxsmoke` (`SMOKE_SCAFFOLD_PKG` is a comma-separated list). Local smoke parity for
+both legs is `tests/webr-smoke.sh --scaffold` (#1270, above).
 
 ## See also
 
@@ -441,8 +506,8 @@ the leg is #1270.
   (`miniextendr_webr_import_lint()`, shipped);
   #788 — arm64-native dev image (first cut: `Dockerfile.webr-arm64` + the
   `docker-webr-arm64-*` just recipes + the `WEBR_ARM64=1` smoke path;
-  on-hardware validation tracked in #1254); #1255 — testthat-under-wasm
-  coverage (dropped when the smoke runners were unified).
+  on-hardware validation tracked in #1254); #1255 — the informational
+  testthat-under-wasm pass (`SMOKE_TESTTHAT=1`, shipped).
 - Issues #491 / #744 — the base-package variant of the host-R-loads-a-wasm-
   object failure, solved via the install-to-temp-lib pattern (the dependency
   guidance above is the consumer-package-imports variant of the same failure).
@@ -450,10 +515,11 @@ the leg is #1270.
   of truth for the runtime smoke; `tests/webr-smoke.sh` Phase 3 invokes it).
 - `tests/webr-smoke.sh` — the local end-to-end smoke runner. Mirrors the green
   `webr.yml` tier-2/3 job step-for-step (Phase 2 → `/tmp/wasm-lib`, Phase 3 →
-  `make` the Node bundle, then run `smoke.mjs`), except for the CI-only
-  scaffold leg (local parity tracked in #1270). The default (amd64) image runs
-  under Rosetta on Apple Silicon; `WEBR_ARM64=1` selects the draft
-  `Dockerfile.webr-arm64` native-arm64 path (#788).
+  `make` the Node bundle, then run `smoke.mjs`), including the CI-only
+  scaffold leg behind `--scaffold` / `WEBR_SCAFFOLD=1` (#1270 — off by
+  default). The default (amd64) image runs under Rosetta on Apple Silicon;
+  `WEBR_ARM64=1` selects the draft `Dockerfile.webr-arm64` native-arm64 path
+  (#788).
 - `Dockerfile.webr-arm64` — draft native-arm64 dev image (#788): amd64 sysroot
   donor + `emscripten/emsdk:4.0.8-arm64` + native arm64 Rust/R. See
   "arm64-native dev image" above for the validation checklist.

@@ -53,7 +53,7 @@
 //! │                              OUTPUTS                                    │
 //! │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐ │
 //! │  │ C wrapper fns   │  │ R wrapper code  │  │  R_CallMethodDef       │ │
-//! │  │ C_Type__method  │  │ (as const str)  │  │  registration entries  │ │
+//! │  │ C_*_Type__method│  │ (as const str)  │  │  registration entries  │ │
 //! │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘ │
 //! └─────────────────────────────────────────────────────────────────────────┘
 //! ```
@@ -108,7 +108,7 @@
 //! ```
 //!
 //! Generates:
-//! - C wrappers: `C_Counter__new`, `C_Counter__get`, `C_Counter__increment`
+//! - C wrappers: `C_<crate>_Counter__new`, `C_<crate>_Counter__get`, `C_<crate>_Counter__increment`
 //! - R6Class with `initialize`, `get`, `increment` methods
 //! - Registration entries for R's `.Call()` interface
 
@@ -777,7 +777,7 @@ pub struct ImplAttrs {
     ///
     /// When a type has multiple `#[miniextendr]` impl blocks, each must have a
     /// distinct label. The label is used in:
-    /// - Generated wrapper names (e.g., `C_Type_label__method`)
+    /// - Generated wrapper names (e.g., `C_<crate>_Type_label_method`)
     /// - Module registration (e.g., `impl Type as "label"`)
     ///
     /// Single impl blocks don't require labels.
@@ -2120,13 +2120,10 @@ impl ParsedMethod {
 
     /// C wrapper identifier for this method.
     ///
-    /// Format: `C_{Type}__{method}` or `C_{Type}_{label}__{method}` if labeled.
+    /// Format: `C_{crate}_{Type}__{method}` or `C_{crate}_{Type}_{label}__{method}`
+    /// if labeled — crate-prefixed for webR cross-package symbol uniqueness (#1273).
     pub fn c_wrapper_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
-        if let Some(label) = label {
-            format_ident!("C_{}_{}_{}", type_ident, label, self.ident)
-        } else {
-            format_ident!("C_{}__{}", type_ident, self.ident)
-        }
+        crate::naming::impl_method_c_wrapper_ident(type_ident, label, &self.ident)
     }
 
     /// Generate lifecycle prelude R code for this method, if lifecycle is specified.
@@ -2215,6 +2212,24 @@ impl ParsedMethod {
     /// common containers. The write-time wrapper resolver checks the complete
     /// class registry, so an unregistered capitalized type falls back to the
     /// direct `.val` return.
+    ///
+    /// Three shapes are recognized:
+    /// - A bare capitalized path, e.g. `-> Board`.
+    /// - `Option<T>` where `T` is a bare capitalized path. The C wrapper
+    ///   already unwraps this and raises on `None`
+    ///   (`ReturnHandling::OptionIntoRUnwrap`), so the successful `.val` is a
+    ///   bare pointer — identical to the bare-class case on the R side.
+    /// - `Result<T, E>` where `T` is a bare capitalized path and `E` is not
+    ///   `()`. `Result<T, ()>` is excluded: the unit-error sentinel maps to
+    ///   `ReturnHandling::ResultNullOnErr`, where `.val` can be `NULL` on
+    ///   `Ok`, and wrapping `NULL` in a class constructor would break.
+    ///
+    /// `Option<Self>` / `Result<Self, _>` are excluded here too (the inner
+    /// ident is `Self`) — `ReturnStrategy::for_method` checks
+    /// `returns_result_self()` / `returns_option_self()` before this method,
+    /// so those already take the `ReturnSelf` path regardless.
+    /// Nested containers (`Vec<T>`, `Option<Vec<T>>`, …) are not recognized:
+    /// the inner type must be a bare path with no path arguments of its own.
     pub fn returns_other_class(&self) -> Option<syn::Ident> {
         let syn::ReturnType::Type(_, ty) = &self.sig.output else {
             return None;
@@ -2223,11 +2238,32 @@ impl ParsedMethod {
             return None;
         };
         let seg = p.path.segments.last()?;
-        if !matches!(seg.arguments, syn::PathArguments::None) {
-            return None;
-        }
 
-        let name = seg.ident.to_string();
+        match &seg.arguments {
+            syn::PathArguments::None => Self::class_ident_from_ident(&seg.ident),
+            syn::PathArguments::AngleBracketed(_) if seg.ident == "Option" => {
+                Self::inner_class_ident(crate::first_type_argument(seg)?)
+            }
+            syn::PathArguments::AngleBracketed(_) if seg.ident == "Result" => {
+                // `Result<T, ()>` is a deliberate NULL-on-Err sentinel
+                // (`ResultNullOnErr`) rather than a fallible constructor —
+                // `.val` may be `NULL`, which a class constructor can't wrap.
+                let err_is_unit = crate::second_type_argument(seg)
+                    .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+                if err_is_unit {
+                    return None;
+                }
+                Self::inner_class_ident(crate::first_type_argument(seg)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// Shared name filter for [`returns_other_class`](Self::returns_other_class):
+    /// rejects `Self`, builtin scalar/string names, and known container names;
+    /// accepts only idents starting with an ASCII-uppercase letter.
+    fn class_ident_from_ident(ident: &syn::Ident) -> Option<syn::Ident> {
+        let name = ident.to_string();
         if name == "Self"
             || is_builtin_return_type_name(&name)
             || is_known_return_container_name(&name)
@@ -2238,7 +2274,23 @@ impl ParsedMethod {
         name.chars()
             .next()
             .is_some_and(|c| c.is_ascii_uppercase())
-            .then(|| seg.ident.clone())
+            .then(|| ident.clone())
+    }
+
+    /// Applies [`class_ident_from_ident`](Self::class_ident_from_ident) to a
+    /// container's inner type argument (e.g. the `T` in `Option<T>`). Only a
+    /// bare `syn::Type::Path` with no path arguments of its own qualifies —
+    /// this is what excludes nested containers like `Option<Vec<T>>`, whose
+    /// inner `Vec<T>` carries `PathArguments::AngleBracketed`.
+    fn inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
+        let syn::Type::Path(p) = ty else {
+            return None;
+        };
+        let seg = p.path.segments.last()?;
+        if !matches!(seg.arguments, syn::PathArguments::None) {
+            return None;
+        }
+        Self::class_ident_from_ident(&seg.ident)
     }
 
     /// Returns true if this method returns a reference to `Self` (`&Self` or
@@ -2670,7 +2722,7 @@ impl ParsedImpl {
 
 /// Generate a C-callable wrapper function for a single method in an impl block.
 ///
-/// Produces a `#[no_mangle] extern "C"` function named `C_{Type}__{method}` that:
+/// Produces a `#[no_mangle] extern "C"` function named `C_{crate}_{Type}__{method}` that:
 /// 1. Accepts SEXP arguments (including `self_sexp` for instance methods)
 /// 2. Extracts `&self` / `&mut self` from an `ErasedExternalPtr` for instance methods
 /// 3. Converts SEXP arguments to Rust types
@@ -3208,7 +3260,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_return_class_from_method(method);
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());

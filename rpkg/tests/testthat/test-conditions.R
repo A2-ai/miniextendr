@@ -322,3 +322,22 @@ test_that("gc_stress_condition_data drives the richer payload path without error
 })
 
 # endregion
+
+# region: NA-scalar regression pin (issue #1103)
+#
+# #1103 described a v1 limitation of the old `ConditionDataValue` type (no
+# `Option`-bearing variants): an NA field in `data = (...)` would be silently
+# dropped rather than round-tripped as `NA`. That type was folded into
+# `RValue` (#995 / #1044, #1050 / #1051) before #1103 was ever acted on;
+# `RValue`'s scalar variants are `Option`-aware, so this was already fixed by
+# the time the issue was filed. This test pins the issue's own example shape
+# directly: `e$count` must be present and `NA`, not absent.
+
+test_that("issue #1103: NA scalar field is present as NA, not dropped", {
+  e <- tryCatch(demo_error_data_na_scalar(), na_scalar_error = function(e) e)
+  expect_true(inherits(e, "na_scalar_error"))
+  expect_true("count" %in% names(e))
+  expect_identical(e$count, NA_integer_)
+})
+
+# endregion

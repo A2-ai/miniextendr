@@ -8,6 +8,7 @@
 #   altrep_panic_on_elt(n, message)        — PanickingAltrep
 #   altrep_classed_error_on_elt(n, error_class, message)  — ClassedErrorAltrep
 #   altrep_panic_at_index(n, panic_at)     — LoopStressAltrep
+#   altrep_data_error_on_elt(n, field_a, message) — DataErrorAltrep (issue #996 path 2)
 
 test_that("PanickingAltrep: plain panic produces rust_error condition", {
   x <- altrep_panic_on_elt(5L, "deliberate panic in elt")
@@ -178,3 +179,38 @@ test_that("LoopStressAltrep: many sequential panics do not corrupt state", {
     expect_equal(result, "caught")
   }
 })
+
+# region: structured data survives ALTREP or_raise degradation (issue #996 path 2)
+#
+# `raise_rust_condition_via_stop` (the ALTREP RUnwind guard's raising path)
+# used to build `stop(structure(list(message = ..., call = ...), class =
+# ...))` with no `data` slot at all — class layering and message survived an
+# `error!(data = ...)` raised from an ALTREP callback, but the data fields
+# were silently dropped. `altrep_data_error_on_elt` (DataErrorAltrep) pins the
+# fix: the field must be readable as `e$field_a`.
+
+test_that("issue #996 path 2: structured data survives ALTREP or_raise degradation", {
+  x <- altrep_data_error_on_elt(5L, 42L, "data bearing altrep error")
+
+  e <- tryCatch(
+    x[1L],
+    altrep_data_error = function(e) e,
+    error = function(e) stop(paste("wrong class:", conditionMessage(e)))
+  )
+
+  expect_true(inherits(e, "altrep_data_error"))
+  expect_true(inherits(e, "rust_error"))
+  expect_equal(conditionMessage(e), "data bearing altrep error")
+  expect_equal(e$field_a, 42L)
+})
+
+test_that("issue #996 path 2: message/call are unaffected by the spliced data field", {
+  x <- altrep_data_error_on_elt(3L, 99L, "another message")
+
+  e <- tryCatch(x[1L], altrep_data_error = function(e) e)
+
+  expect_equal(conditionMessage(e), "another message")
+  expect_equal(e$field_a, 99L)
+})
+
+# endregion

@@ -171,7 +171,7 @@ The generated R wrapper shows the choice list directly as the formal default:
 run <- function(mode = c("Fast", "Safe", "Debug")) {
   mode <- if (is.factor(mode)) as.character(mode) else mode
   mode <- base::match.arg(mode)
-  .Call(C_run, mode)
+  .Call(C_mypkg_run, mode)
 }
 ```
 

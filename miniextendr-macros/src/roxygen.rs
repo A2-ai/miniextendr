@@ -721,18 +721,23 @@ pub(crate) fn strip_method_tags(
             type_name,
             tag.trim()
         );
-        let ident = quote::format_ident!(
-            "_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}_{}_{}",
+        let suffix = format!(
+            "{}_{}_{}",
             type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
             block_id,
             warning_id
         );
+        let ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}", suffix);
+        let use_ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_USE_{}", suffix);
         warning_id += 1;
         warnings.extend(quote_spanned! { span =>
             #[deprecated(note = #msg)]
             #[doc(hidden)]
-            #[allow(dead_code)]
+            #[allow(dead_code, non_upper_case_globals)]
             const #ident: () = ();
+            #[doc(hidden)]
+            #[allow(dead_code, non_upper_case_globals)]
+            const #use_ident: () = #ident;
         });
     }
 
@@ -893,18 +898,23 @@ pub(crate) fn strip_method_tags_r6(
             type_name,
             tag.trim()
         );
-        let ident = quote::format_ident!(
-            "_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}_{}_{}",
+        let suffix = format!(
+            "{}_{}_{}",
             type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
             block_id,
             warning_id
         );
+        let ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}", suffix);
+        let use_ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_USE_{}", suffix);
         warning_id += 1;
         warnings.extend(quote_spanned! { span =>
             #[deprecated(note = #msg)]
             #[doc(hidden)]
-            #[allow(dead_code)]
+            #[allow(dead_code, non_upper_case_globals)]
             const #ident: () = ();
+            #[doc(hidden)]
+            #[allow(dead_code, non_upper_case_globals)]
+            const #use_ident: () = #ident;
         });
     }
 

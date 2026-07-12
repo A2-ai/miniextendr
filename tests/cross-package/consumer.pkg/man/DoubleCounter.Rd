@@ -37,7 +37,5 @@ DoubleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-DoubleCounter  Class
-
 Get the current value (inherent method)
 }

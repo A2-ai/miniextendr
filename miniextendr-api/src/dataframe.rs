@@ -73,6 +73,8 @@ pub enum DataFrameError {
     UnnamedColumns,
     /// [`DataFrame::group_by`] referenced a column name that does not exist.
     NoSuchColumn(String),
+    /// [`DataFrame::group_by_multi`] was called with an empty column slice.
+    EmptyGroupColumns,
     /// [`DataFrame::group_by`] on a column type with no sane grouping
     /// semantics (doubles, list-columns, …).
     UnsupportedGroupColumn {
@@ -109,6 +111,9 @@ impl std::fmt::Display for DataFrameError {
             }
             DataFrameError::NoSuchColumn(name) => {
                 write!(f, "no such column: {:?}", name)
+            }
+            DataFrameError::EmptyGroupColumns => {
+                write!(f, "group_by_multi requires at least one column")
             }
             DataFrameError::UnsupportedGroupColumn { column, type_of } => write!(
                 f,

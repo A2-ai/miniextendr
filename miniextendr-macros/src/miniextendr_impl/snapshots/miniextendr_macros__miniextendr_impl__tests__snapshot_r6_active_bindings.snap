@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 2543
+assertion_line: 3009
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Temperature R6 Class
@@ -25,7 +25,7 @@ Temperature <- R6::R6Class("Temperature",
       if (!is.null(.ptr)) {
         private$.ptr <- .ptr
       } else {
-        .val <- .Call(C_Temperature__new, .call = match.call(), celsius)
+        .val <- .Call(C_miniextendr_macros_Temperature__new, .call = match.call(), celsius)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
@@ -38,7 +38,7 @@ Temperature <- R6::R6Class("Temperature",
         "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
         "'value' must have length 1" = length(value) == 1L
       )
-      .val <- .Call(C_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
+      .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       invisible(self)
     }
@@ -50,7 +50,7 @@ Temperature <- R6::R6Class("Temperature",
     #' @field celsius Temperature in Celsius.
     celsius = function(value) {
       if (missing(value)) {
-        .val <- .Call(C_Temperature__celsius, .call = match.call(), private$.ptr)
+        .val <- .Call(C_miniextendr_macros_Temperature__celsius, .call = match.call(), private$.ptr)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         .val
       } else {
@@ -58,14 +58,14 @@ Temperature <- R6::R6Class("Temperature",
           "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
           "'value' must have length 1" = length(value) == 1L
         )
-        .val <- .Call(C_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
+        .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         invisible(self)
       }
     },
     #' @field fahrenheit Temperature in Fahrenheit (read-only).
     fahrenheit = function() {
-      .val <- .Call(C_Temperature__fahrenheit, .call = match.call(), private$.ptr)
+      .val <- .Call(C_miniextendr_macros_Temperature__fahrenheit, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     }

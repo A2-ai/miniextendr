@@ -1986,7 +1986,11 @@ macro_rules! impl_vec_option_try_from_sexp_list {
 
 /// Cap on the number of per-element failures listed in a batched vector
 /// conversion error; the remainder is summarized as `"and N more"`.
-const BATCHED_ERROR_CAP: usize = 10;
+///
+/// `pub(crate)` (rather than file-private) so [`crate::into_r_as`]'s
+/// `StorageCoerceError::Batched` (#1097) shares the exact same cap instead of
+/// drifting from the inbound [`BatchedErrors`] path.
+pub(crate) const BATCHED_ERROR_CAP: usize = 10;
 
 /// Bounded accumulator that folds indexed per-element conversion failures into
 /// one batched [`SexpError::InvalidValue`].
