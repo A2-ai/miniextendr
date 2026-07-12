@@ -483,7 +483,7 @@ for (key, rows) in grouped.iter() { /* key: &GroupKey, rows: &[usize] */ }
 // per-group sub-frames — root each one as you go (push protects it)
 let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
 for (key, sub) in grouped.frames() {
-    out = out.push(key.label(), sub);
+    out = out.push(key.label(), *sub);
 }
 let named_list_of_frames = out.build();
 
@@ -509,7 +509,7 @@ and errors as `group_by`):
 ```rust
 let grouped = df.group_by_multi(&["site", "day"])?;
 for (key, sub) in grouped.frames() {
-    out = out.push(key.label(), sub); // label(): "site.day", "." separator
+    out = out.push(key.label(), *sub); // label(): "site.day", "." separator
 }
 ```
 
