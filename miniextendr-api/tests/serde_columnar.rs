@@ -1121,4 +1121,44 @@ fn flatten_enum_reader_unknown_variant_errors() {
     });
 }
 
+/// Tuple variant round-trips: payload lands as `<field>__0` / `<field>__1`
+/// (the writer's `_N` convention under the field prefix) and the
+/// `EnumTupleSeqAccess` reader reassembles it; the unit-variant row leaves the
+/// tuple columns NA and reads back untouched.
+#[test]
+fn flatten_enum_reader_tuple_variant_roundtrip() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Measure {
+        Empty,
+        Pair(f64, f64),
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        m: Measure,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                m: Measure::Pair(1.5, -2.0),
+            },
+            Row {
+                id: 2,
+                m: Measure::Empty,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["m"]).unwrap();
+        let sexp = df.as_sexp();
+        // Pin the writer's tuple-payload column names before reading back.
+        let names = col_names(&sexp);
+        assert!(names.contains(&"m_variant".to_string()), "{names:?}");
+        assert!(names.contains(&"m__0".to_string()), "{names:?}");
+        assert!(names.contains(&"m__1".to_string()), "{names:?}");
+        let round: Vec<Row> = dataframe_to_vec(sexp).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
 // endregion

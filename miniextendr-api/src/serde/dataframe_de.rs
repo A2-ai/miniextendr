@@ -97,6 +97,17 @@ use serde::de::{
 ///    whose name contains `_` are interpreted as nested-struct paths; rename
 ///    the R column if you need a flat string-typed field with an underscore.
 ///    `#[serde(flatten)]` is not supported.
+/// 2. **`Option<nested struct>` vs the enum tag-column heuristic**
+///    ([#1320](https://github.com/A2-ai/miniextendr/issues/1320)). To read
+///    `Option<Enum>` `None` rows back (NA tag column), the reader treats a
+///    missing bare column plus an NA character/factor cell in the would-be
+///    tag column (`<field>_variant` by default) as `None`. If an
+///    `Option<NestedStruct>` field's flattened columns include one matching
+///    that name — i.e. the struct has a sub-field literally named `variant` —
+///    an NA in that cell makes the *whole struct* read back as `None`,
+///    silently dropping the other sub-fields. Rename the sub-field, or point
+///    the tag lookup at an unused column name via
+///    [`dataframe_to_vec_with_enum_tags`].
 pub fn dataframe_to_vec<T>(sexp: SEXP) -> Result<Vec<T>, RSerdeError>
 where
     T: for<'de> serde::Deserialize<'de>,
@@ -207,6 +218,14 @@ where
 ///
 /// Same as [`dataframe_to_vec`], plus the enum-tag errors described on
 /// [`dataframe_to_vec_collated`].
+///
+/// # Limitations
+///
+/// Same as [`dataframe_to_vec`] — including the `Option<nested struct>`
+/// tag-column collision
+/// ([#1320](https://github.com/A2-ai/miniextendr/issues/1320)). The `tags`
+/// mapping here is also the workaround: point the affected field's tag at an
+/// unused column name so the `None` heuristic never fires for it.
 ///
 /// # Example
 ///
@@ -785,7 +804,10 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
         //
         // For `Option<NestedStruct>` there is no such signal — the writer
         // never emits a per-row presence flag — so it stays `Some(...)`
-        // (documented limitation; see the type-level docs).
+        // (documented limitation; see the type-level docs). Corollary (#1320):
+        // a nested struct with a sub-field literally named `variant` collides
+        // with the tag-column name and an NA cell there reads the whole struct
+        // as `None` — serde exposes no inner-type info here to disambiguate.
         let tag_col_name = self.tag_column_name();
         if let Some(tag_col) = self.view.column_raw(&tag_col_name)
             && is_variant_tag_column(tag_col)
