@@ -63,7 +63,7 @@
 
 pub use tinyvec::{Array, ArrayVec, TinyVec};
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::from_r::{BatchedErrors, SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 
@@ -285,20 +285,31 @@ where
 use crate::coerce::{Coerced, TryCoerce};
 
 /// Helper to coerce a slice element-wise into a container.
-fn coerce_slice_to_vec<R, T>(slice: &[R]) -> Result<Vec<Coerced<T, R>>, SexpError>
+///
+/// Walks the whole slice, accumulating every per-element coercion failure
+/// into one batched [`SexpError::InvalidValue`] via [`BatchedErrors`] (same
+/// grammar/cap as the runtime `Vec<T>` coercion path in `from_r.rs`, #1192)
+/// instead of bailing on the first `Err`. Uses `{e}` (Display) per element,
+/// matching every other coercion site — this one used to be the crate's last
+/// holdout on `{e:?}` (Debug).
+fn coerce_slice_to_vec<R, T>(slice: &[R], container: &str) -> Result<Vec<Coerced<T, R>>, SexpError>
 where
     R: Copy + TryCoerce<T>,
-    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    <R as TryCoerce<T>>::Error: std::fmt::Display,
 {
-    slice
-        .iter()
-        .copied()
-        .map(|v| {
-            v.try_coerce()
-                .map(Coerced::new)
-                .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
-        })
-        .collect()
+    let mut result = Vec::with_capacity(slice.len());
+    let mut errors = BatchedErrors::default();
+    for (i, v) in slice.iter().copied().enumerate() {
+        match v.try_coerce() {
+            Ok(x) => result.push(Coerced::new(x)),
+            Err(e) => errors.push(|| format!("invalid value at index {i}: {e}")),
+        }
+    }
+    if errors.is_empty() {
+        Ok(result)
+    } else {
+        Err(errors.into_error(container))
+    }
 }
 
 /// TryFromSexp for `TinyVec<[Coerced<T, R>; N]>` - reads R native type and coerces.
@@ -306,7 +317,7 @@ impl<T, R, const N: usize> TryFromSexp for TinyVec<[Coerced<T, R>; N]>
 where
     R: RNativeType + Copy + TryCoerce<T>,
     T: Copy,
-    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    <R as TryCoerce<T>>::Error: std::fmt::Display,
     [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
 {
     type Error = SexpError;
@@ -321,7 +332,7 @@ where
             .into());
         }
         let slice: &[R] = unsafe { sexp.as_slice() };
-        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice)?;
+        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice, "TinyVec")?;
         let mut tv = TinyVec::new();
         for item in data {
             tv.push(item);
@@ -340,7 +351,7 @@ impl<T, R, const N: usize> TryFromSexp for ArrayVec<[Coerced<T, R>; N]>
 where
     R: RNativeType + Copy + TryCoerce<T>,
     T: Copy,
-    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    <R as TryCoerce<T>>::Error: std::fmt::Display,
     [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
 {
     type Error = SexpError;
@@ -362,7 +373,7 @@ where
                 N
             )));
         }
-        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice)?;
+        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice, "TinyVec")?;
         let mut av = ArrayVec::new();
         for item in data {
             av.push(item);
@@ -447,6 +458,45 @@ mod tests {
         av.push(3);
         assert_eq!(av.len(), 3);
         // Cannot push more - would panic
+    }
+
+    /// Two failing elements (i32 values that don't fit in i8) are both
+    /// reported by index in one batched error, not just the first.
+    #[test]
+    fn coerce_slice_to_vec_batches_all_failing_indices() {
+        let slice = [1i32, 999, 2, 999];
+        let err = coerce_slice_to_vec::<i32, i8>(&slice, "TinyVec").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("TinyVec conversion failed"), "got: {msg}");
+        assert!(msg.contains("invalid value at index 1"), "got: {msg}");
+        assert!(msg.contains("invalid value at index 3"), "got: {msg}");
+        // index 0 and 2 (the valid elements) must not appear.
+        assert!(!msg.contains("at index 0"), "got: {msg}");
+        assert!(!msg.contains("at index 2"), "got: {msg}");
+    }
+
+    /// The all-valid happy path succeeds (no false batching).
+    #[test]
+    fn coerce_slice_to_vec_happy_path_ok() {
+        let slice = [1i32, 2, 3];
+        let out = coerce_slice_to_vec::<i32, i8>(&slice, "TinyVec").unwrap();
+        assert_eq!(
+            out.into_iter().map(|c| *c).collect::<Vec<_>>(),
+            vec![1i8, 2, 3]
+        );
+    }
+
+    /// More than 10 failures are capped: the first 10 indices are listed and
+    /// the remainder is summarized as "and N more".
+    #[test]
+    fn coerce_slice_to_vec_batch_caps_at_ten_and_summarizes_rest() {
+        let slice = [999i32; 15];
+        let err = coerce_slice_to_vec::<i32, i8>(&slice, "TinyVec").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid value at index 0"), "got: {msg}");
+        assert!(msg.contains("invalid value at index 9"), "got: {msg}");
+        assert!(!msg.contains("at index 10"), "got: {msg}");
+        assert!(msg.contains("and 5 more"), "got: {msg}");
     }
 }
 // endregion
