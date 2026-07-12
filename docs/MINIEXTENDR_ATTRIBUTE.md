@@ -505,13 +505,6 @@ counterparts — not a lightweight ExternalPtr-plus-marker combination. Only
 ExternalPtr plus a marker derive. See `expand_struct` in
 `miniextendr-macros/src/struct_enum_dispatch.rs` for the resolution logic.
 
-> **Warning**: struct-level `prefer = "native"` currently fails to compile
-> (unconditional E0119 — the ExternalPtr derive's `IntoExternalPtr` marker
-> enables the blanket `IntoR`, which collides with the `PreferRNativeType`
-> derive's concrete `IntoR`; see #1283). The row below documents the intended
-> derive set. Function-level `#[miniextendr(prefer = "native")]` works and is
-> the tested path (`rpkg/src/rust/convert_pref_tests.rs`).
-
 | Syntax | Result |
 |--------|--------|
 | `#[miniextendr]` (no mode attr) | ExternalPtr |
@@ -521,7 +514,13 @@ ExternalPtr plus a marker derive. See `expand_struct` in
 | `#[miniextendr(prefer = "list")]` | Same as `#[miniextendr(list)]` — full list mode (`IntoList` + `TryFromList` + `PreferList`), not just a marker |
 | `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`IntoList` + `DataFrameRow` + companion type), not just a marker |
 | `#[miniextendr(prefer = "externalptr")]` | ExternalPtr (explicit; identical to the no-mode-attr default) |
-| `#[miniextendr(prefer = "native")]` | `ExternalPtr` + `PreferRNativeType` marker (the only `prefer` value that stays marker-only) — intended; currently broken at the struct level, see #1283 |
+| `#[miniextendr(prefer = "native")]` | `ExternalPtr` + `PreferRNativeType` marker (the only `prefer` value that stays marker-only) |
+
+To keep the `PreferRNativeType` derive's concrete `IntoR` (which routes through
+`AsRNative`) from colliding with the blanket `impl<T: IntoExternalPtr> IntoR`
+(E0119, #1283), a struct-level `prefer = "native"` type deliberately does **not**
+implement `IntoExternalPtr`. As a result the `AsExternalPtr` call-site wrapper
+does not apply to such a type — its default `IntoR` is the native representation.
 
 #### List Mode
 
