@@ -396,16 +396,14 @@ minirextendr::create_miniextendr_package(Sys.getenv("SCAFFOLD_PKG_DIR"), open = 
 minirextendr::use_local_miniextendr("/work", path = Sys.getenv("SCAFFOLD_PKG_DIR"))
 RSCRIPT
         "$R_NATIVE_RSCRIPT" /tmp/scaffold-step2.R
-        # rpkg (loaded first in the tier-3 webR session) also exports an
-        # add, and the generated C wrapper symbols are package-agnostic
-        # (C_add). Emscripten side-modules resolve exported function
-        # addresses through a shared GOT — the first-loaded module wins, so
-        # mxsmoke add would dispatch into the rpkg-exported i32 add. Tracked
-        # as #1273; drop this rename once C symbols are package-unique.
-        sed -i "s/pub fn add(/pub fn mxsmoke_add(/; s/pub fn hello(/pub fn mxsmoke_hello(/" \
-            "$SCAFFOLD_PKG_DIR/src/rust/lib.rs"
-        grep -q "pub fn mxsmoke_add" "$SCAFFOLD_PKG_DIR/src/rust/lib.rs"
-        grep -q "pub fn mxsmoke_hello" "$SCAFFOLD_PKG_DIR/src/rust/lib.rs"
+        # The template stock fns are kept as-is (NB: this whole phase body
+        # is a single-quoted docker_run argument — no apostrophes in
+        # comments here). rpkg (loaded first in the tier-3 webR session)
+        # also exports an add — an *intentional* name collision: since
+        # #1273 the generated C wrapper symbols are crate-prefixed
+        # (C_mxsmoke_add vs C_miniextendr_add), so both packages sharing
+        # one Emscripten side-module GOT must dispatch to their own
+        # implementations. Phase 3 asserts exactly that.
         # configure auto-vendors (tarball mode, freezing published git
         # sources instead of this checkout) only when the tree has no .git
         # ancestor AND cargo-revendor is on PATH. This image ships no
@@ -433,8 +431,8 @@ RSCRIPT
         "$R_NATIVE_EXE" CMD INSTALL --no-test-load --library="$SCAFFOLD_NATIVE_LIB" "$SCAFFOLD_PKG_DIR"
         cat > /tmp/scaffold-step4.R <<\RSCRIPT
 library(mxsmoke, lib.loc = Sys.getenv("SCAFFOLD_NATIVE_LIB"))
-stopifnot(identical(mxsmoke::mxsmoke_add(2, 3), 5))
-stopifnot(identical(mxsmoke::mxsmoke_hello("webR"), "Hello, webR!"))
+stopifnot(identical(mxsmoke::add(2, 3), 5))
+stopifnot(identical(mxsmoke::hello("webR"), "Hello, webR!"))
 cat("scaffold native runtime sanity OK\n")
 RSCRIPT
         "$R_NATIVE_RSCRIPT" /tmp/scaffold-step4.R
@@ -477,15 +475,15 @@ minirextendr::create_miniextendr_monorepo(Sys.getenv("MONO_ROOT_DIR"),
 minirextendr::use_local_miniextendr("/work", path = Sys.getenv("MONO_PKG_DIR"))
 RSCRIPT
         "$R_NATIVE_RSCRIPT" /tmp/scaffold-step5.R
-        # Same shared-GOT symbol-collision workaround as mxsmoke above:
+        # The template stock fns are kept as-is, same as mxsmoke above:
         # the monorepo rpkg template ships the same stock add/hello, and
-        # rpkg + mxsmoke are loaded first in the tier-3 webR session.
-        # Tracked as #1273; drop this rename once C symbols are
-        # package-unique.
-        sed -i "s/pub fn add(/pub fn mxmono_add(/; s/pub fn hello(/pub fn mxmono_hello(/" \
-            "$MONO_PKG_DIR/src/rust/lib.rs"
-        grep -q "pub fn mxmono_add" "$MONO_PKG_DIR/src/rust/lib.rs"
-        grep -q "pub fn mxmono_hello" "$MONO_PKG_DIR/src/rust/lib.rs"
+        # rpkg + mxsmoke are loaded first in the tier-3 webR session — an
+        # *intentional* name collision: since #1273 the generated C wrapper
+        # symbols are crate-prefixed (C_mxmono_core_add here — the prefix
+        # is the CRATE name, mxmono-core per the create step above — vs
+        # C_mxsmoke_add / C_miniextendr_add), so all three packages sharing
+        # one Emscripten side-module GOT must dispatch to their own
+        # implementations. Phase 3 asserts exactly that.
         # Auto-vendor guard: unlike create_miniextendr_package() (which
         # needs the explicit git init above for mxsmoke), the monorepo
         # scaffolder git-inits the workspace root itself
@@ -513,8 +511,8 @@ RSCRIPT
         "$R_NATIVE_EXE" CMD INSTALL --no-test-load --library="$MONO_NATIVE_LIB" "$MONO_PKG_DIR"
         cat > /tmp/scaffold-step7.R <<\RSCRIPT
 library(mxmono, lib.loc = Sys.getenv("MONO_NATIVE_LIB"))
-stopifnot(identical(mxmono::mxmono_add(2, 3), 5))
-stopifnot(identical(mxmono::mxmono_hello("webR"), "Hello, webR!"))
+stopifnot(identical(mxmono::add(2, 3), 5))
+stopifnot(identical(mxmono::hello("webR"), "Hello, webR!"))
 cat("monorepo scaffold native runtime sanity OK\n")
 RSCRIPT
         "$R_NATIVE_RSCRIPT" /tmp/scaffold-step7.R

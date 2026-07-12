@@ -90,12 +90,17 @@ impl Counter {
 
 ### Generated R Code
 
+The `.Call()` symbols are prefixed with your crate's name (`mypkg` in these
+examples) so that two packages loaded into the same webR session can never
+collide on a C symbol (see `docs/WEBR.md`). The prefix is invisible to package
+users — R-facing function and class names are unchanged.
+
 ```r
 Counter <- local({
     e <- new.env(parent = emptyenv())
 
     e$new <- function(initial) {
-        ptr <- .Call(C_Counter__new, initial)
+        ptr <- .Call(C_mypkg_Counter__new, initial)
         structure(
             list(.ptr = ptr),
             class = "Counter"
@@ -103,11 +108,11 @@ Counter <- local({
     }
 
     e$value <- function(x) {
-        .Call(C_Counter__value, x$.ptr)
+        .Call(C_mypkg_Counter__value, x$.ptr)
     }
 
     e$inc <- function(x) {
-        .Call(C_Counter__inc, x$.ptr)
+        .Call(C_mypkg_Counter__inc, x$.ptr)
         invisible(x)
     }
 
@@ -187,25 +192,25 @@ Rectangle <- R6::R6Class("Rectangle",
             if (!is.null(.ptr)) {
                 private$.ptr <- .ptr
             } else {
-                private$.ptr <- .Call(C_Rectangle__new, width, height)
+                private$.ptr <- .Call(C_mypkg_Rectangle__new, width, height)
             }
         },
         get_width = function() {
-            .Call(C_Rectangle__get_width, private$.ptr)
+            .Call(C_mypkg_Rectangle__get_width, private$.ptr)
         },
         set_width = function(width) {
-            .Call(C_Rectangle__set_width, private$.ptr, width)
+            .Call(C_mypkg_Rectangle__set_width, private$.ptr, width)
         }
     ),
     private = list(
         .ptr = NULL,
         validate = function() {
-            .Call(C_Rectangle__validate, private$.ptr)
+            .Call(C_mypkg_Rectangle__validate, private$.ptr)
         }
     ),
     active = list(
         area = function() {
-            .Call(C_Rectangle__area, private$.ptr)
+            .Call(C_mypkg_Rectangle__area, private$.ptr)
         }
     ),
     lock_objects = TRUE,
@@ -215,7 +220,7 @@ Rectangle <- R6::R6Class("Rectangle",
 
 # Static method
 Rectangle$square <- function(size) {
-    Rectangle$new(.ptr = .Call(C_Rectangle__square, size))
+    Rectangle$new(.ptr = .Call(C_mypkg_Rectangle__square, size))
 }
 ```
 
@@ -336,19 +341,19 @@ impl Person {
 ```r
 #' @export
 new_person <- function(name, age) {
-    ptr <- .Call(C_Person__new, name, age)
+    ptr <- .Call(C_mypkg_Person__new, name, age)
     structure(ptr, class = "Person")
 }
 
 #' @export
 print.Person <- function(x, ...) {
-    .Call(C_Person__show, x)
+    .Call(C_mypkg_Person__show, x)
     invisible(x)
 }
 
 #' @export
 format.Person <- function(x, ...) {
-    .Call(C_Person__fmt, x)
+    .Call(C_mypkg_Person__fmt, x)
 }
 
 #' @export
@@ -356,7 +361,7 @@ greet <- function(x, ...) UseMethod("greet")
 
 #' @export
 greet.Person <- function(x, ...) {
-    .Call(C_Person__greet, x)
+    .Call(C_mypkg_Person__greet, x)
 }
 ```
 
@@ -441,22 +446,22 @@ setClass("Gene", contains = "externalptr")
 
 #' @export
 Gene <- function(symbol, chromosome) {
-    ptr <- .Call(C_Gene__new, symbol, chromosome)
+    ptr <- .Call(C_mypkg_Gene__new, symbol, chromosome)
     new("Gene", ptr)
 }
 
 setGeneric("symbol", function(object) standardGeneric("symbol"))
 setMethod("symbol", "Gene", function(object) {
-    .Call(C_Gene__symbol, object)
+    .Call(C_mypkg_Gene__symbol, object)
 })
 
 setGeneric("chromosome", function(object) standardGeneric("chromosome"))
 setMethod("chromosome", "Gene", function(object) {
-    .Call(C_Gene__chromosome, object)
+    .Call(C_mypkg_Gene__chromosome, object)
 })
 
 setMethod("show", "Gene", function(object) {
-    .Call(C_Gene__display, object)
+    .Call(C_mypkg_Gene__display, object)
 })
 ```
 
@@ -528,25 +533,25 @@ Point <- S7::new_class("Point",
             S7::new_object(S7::S7_object(), .ptr = .ptr)
         } else {
             S7::new_object(S7::S7_object(),
-                .ptr = .Call(C_Point__new, x, y))
+                .ptr = .Call(C_mypkg_Point__new, x, y))
         }
     }
 )
 
 S7::method(x, Point) <- function(x) {
-    .Call(C_Point__x, x@.ptr)
+    .Call(C_mypkg_Point__x, x@.ptr)
 }
 
 S7::method(y, Point) <- function(x) {
-    .Call(C_Point__y, x@.ptr)
+    .Call(C_mypkg_Point__y, x@.ptr)
 }
 
 S7::method(distance, Point) <- function(x, other) {
-    .Call(C_Point__distance, x@.ptr, other@.ptr)
+    .Call(C_mypkg_Point__distance, x@.ptr, other@.ptr)
 }
 
 S7::method(print, Point) <- function(x, ...) {
-    .Call(C_Point__show, x@.ptr)
+    .Call(C_mypkg_Point__show, x@.ptr)
     invisible(x)
 }
 ```
@@ -658,12 +663,12 @@ Range <- S7::new_class("Range",
     properties = list(
         .ptr = S7::class_any,
         length = S7::new_property(
-            getter = function(self) .Call(C_Range__length, self@.ptr)
+            getter = function(self) .Call(C_mypkg_Range__length, self@.ptr)
         ),
         midpoint = S7::new_property(
-            getter = function(self) .Call(C_Range__get_midpoint, self@.ptr),
+            getter = function(self) .Call(C_mypkg_Range__get_midpoint, self@.ptr),
             setter = function(self, value) {
-                .Call(C_Range__set_midpoint, self@.ptr, value)
+                .Call(C_mypkg_Range__set_midpoint, self@.ptr, value)
                 self
             }
         )
@@ -672,7 +677,7 @@ Range <- S7::new_class("Range",
 )
 
 # Regular method as S7 generic
-S7::method(start, Range) <- function(x, ...) .Call(C_Range__start, x@.ptr)
+S7::method(start, Range) <- function(x, ...) .Call(C_mypkg_Range__start, x@.ptr)
 ```
 
 #### Usage

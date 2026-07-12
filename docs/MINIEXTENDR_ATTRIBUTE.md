@@ -27,8 +27,8 @@ pub fn greet(name: String) -> String {
 ```
 
 Generates:
-- C wrapper (`C_greet`) handling SEXP conversion
-- R wrapper (`greet <- function(name) { .Call(C_greet, name) }`)
+- C wrapper (`C_mypkg_greet` — prefixed with your crate's name for webR cross-package uniqueness, see `docs/WEBR.md`) handling SEXP conversion
+- R wrapper (`greet <- function(name) { .Call(C_mypkg_greet, name) }`)
 - `pub` functions get `@export`; non-pub get `@noRd`
 - Each function's roxygen gets an auto-generated `@rdname <file-stem>`
   derived from `file!()`. Functions defined in `zero_copy_tests.rs`
@@ -152,7 +152,7 @@ fn_name <- function(formals) {
   on.exit(...)         # r_on_exit
   # missing defaults, lifecycle, stopifnot, match.arg
   # r_post_checks code
-  .Call(C_fn_name, ...)
+  .Call(C_mypkg_fn_name, ...)
 }
 ```
 

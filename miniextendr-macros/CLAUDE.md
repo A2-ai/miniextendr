@@ -8,7 +8,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 
 ## Layout
 - `lib.rs` — proc-macro entrypoints + the `MiniextendrFnAttrs` / `ImplAttrs` / `ParsedImpl` destructuring. **Add a field here → update all 6 class generators.**
-- `naming.rs` — canonical name derivations (R wrapper names, `__miniextendr_*` mangling, class symbols). Single source of truth.
+- `naming.rs` — canonical name derivations (R wrapper names, `__miniextendr_*` mangling, class symbols). Single source of truth. All macro-emitted `#[no_mangle]` C symbols are crate-prefixed here (`C_<crate>_<fn>`, `C_<crate>_<Type>__<method>`, `__VTABLE_<CRATE>_…`, `__vtshim_<crate>_…`, `__mx_altrep_reg_<crate>_…`) for webR cross-package uniqueness (#1273) — never reconstruct these shapes inline; call the helpers.
 - `miniextendr_fn.rs` — `#[miniextendr]` on bare fns. Tagged-condition transport is the only mode; `unwrap_in_r` is orthogonal.
 - `miniextendr_impl.rs` (+ `miniextendr_impl/`) — inherent impl methods. Same transport. Class-system dispatch (R6/S3/S4/S7/Env/Vctrs).
 - `miniextendr_impl_trait.rs` (+ `miniextendr_impl_trait/`) — trait-impl method codegen, ABI-compatible.

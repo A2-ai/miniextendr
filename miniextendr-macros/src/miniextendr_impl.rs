@@ -53,7 +53,7 @@
 //! │                              OUTPUTS                                    │
 //! │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐ │
 //! │  │ C wrapper fns   │  │ R wrapper code  │  │  R_CallMethodDef       │ │
-//! │  │ C_Type__method  │  │ (as const str)  │  │  registration entries  │ │
+//! │  │ C_*_Type__method│  │ (as const str)  │  │  registration entries  │ │
 //! │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘ │
 //! └─────────────────────────────────────────────────────────────────────────┘
 //! ```
@@ -108,7 +108,7 @@
 //! ```
 //!
 //! Generates:
-//! - C wrappers: `C_Counter__new`, `C_Counter__get`, `C_Counter__increment`
+//! - C wrappers: `C_<crate>_Counter__new`, `C_<crate>_Counter__get`, `C_<crate>_Counter__increment`
 //! - R6Class with `initialize`, `get`, `increment` methods
 //! - Registration entries for R's `.Call()` interface
 
@@ -777,7 +777,7 @@ pub struct ImplAttrs {
     ///
     /// When a type has multiple `#[miniextendr]` impl blocks, each must have a
     /// distinct label. The label is used in:
-    /// - Generated wrapper names (e.g., `C_Type_label__method`)
+    /// - Generated wrapper names (e.g., `C_<crate>_Type_label_method`)
     /// - Module registration (e.g., `impl Type as "label"`)
     ///
     /// Single impl blocks don't require labels.
@@ -2120,13 +2120,10 @@ impl ParsedMethod {
 
     /// C wrapper identifier for this method.
     ///
-    /// Format: `C_{Type}__{method}` or `C_{Type}_{label}__{method}` if labeled.
+    /// Format: `C_{crate}_{Type}__{method}` or `C_{crate}_{Type}_{label}__{method}`
+    /// if labeled — crate-prefixed for webR cross-package symbol uniqueness (#1273).
     pub fn c_wrapper_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
-        if let Some(label) = label {
-            format_ident!("C_{}_{}_{}", type_ident, label, self.ident)
-        } else {
-            format_ident!("C_{}__{}", type_ident, self.ident)
-        }
+        crate::naming::impl_method_c_wrapper_ident(type_ident, label, &self.ident)
     }
 
     /// Generate lifecycle prelude R code for this method, if lifecycle is specified.
@@ -2725,7 +2722,7 @@ impl ParsedImpl {
 
 /// Generate a C-callable wrapper function for a single method in an impl block.
 ///
-/// Produces a `#[no_mangle] extern "C"` function named `C_{Type}__{method}` that:
+/// Produces a `#[no_mangle] extern "C"` function named `C_{crate}_{Type}__{method}` that:
 /// 1. Accepts SEXP arguments (including `self_sexp` for instance methods)
 /// 2. Extracts `&self` / `&mut self` from an `ErasedExternalPtr` for instance methods
 /// 3. Converts SEXP arguments to Rust types

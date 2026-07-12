@@ -107,10 +107,14 @@ fn r6_dots_constructor_and_method_emit_variadic_r_wrappers() {
 
     assert!(wrapper.contains("initialize = function(..., .ptr = NULL)"));
     assert!(wrapper.contains("collect = function(...)"));
-    assert!(wrapper.contains(".Call(C_R6DotsThing__new, .call = match.call(), list(...))"));
     assert!(
         wrapper.contains(
-            ".Call(C_R6DotsThing__collect, .call = match.call(), private$.ptr, list(...))"
+            ".Call(C_miniextendr_macros_R6DotsThing__new, .call = match.call(), list(...))"
+        )
+    );
+    assert!(
+        wrapper.contains(
+            ".Call(C_miniextendr_macros_R6DotsThing__collect, .call = match.call(), private$.ptr, list(...))"
         )
     );
 }
@@ -134,8 +138,14 @@ fn s3_user_dots_suppress_duplicate_dispatch_dots() {
 
     assert!(wrapper.contains("new_s3dotsthing <- function(...)"));
     assert!(wrapper.contains("collect.S3DotsThing <- function(x, ...)"));
-    assert!(wrapper.contains(".Call(C_S3DotsThing__new, .call = match.call(), list(...))"));
-    assert!(wrapper.contains(".Call(C_S3DotsThing__collect, .call = match.call(), x, list(...))"));
+    assert!(
+        wrapper.contains(
+            ".Call(C_miniextendr_macros_S3DotsThing__new, .call = match.call(), list(...))"
+        )
+    );
+    assert!(wrapper.contains(
+        ".Call(C_miniextendr_macros_S3DotsThing__collect, .call = match.call(), x, list(...))"
+    ));
     assert!(!wrapper.contains("function(x, ..., ...)"));
 }
 
@@ -160,8 +170,12 @@ fn s4_user_dots_emit_variadic_without_duplicate_dispatch_dots() {
     assert!(
         wrapper.contains("methods::setMethod(\"s4_collect\", \"S4DotsThing\", function(x, ...)")
     );
-    assert!(wrapper.contains(".Call(C_S4DotsThing__new, .call = match.call(), list(...))"));
-    assert!(wrapper.contains(".Call(C_S4DotsThing__collect"));
+    assert!(
+        wrapper.contains(
+            ".Call(C_miniextendr_macros_S4DotsThing__new, .call = match.call(), list(...))"
+        )
+    );
+    assert!(wrapper.contains(".Call(C_miniextendr_macros_S4DotsThing__collect"));
     assert!(wrapper.contains("list(...)"));
     assert!(!wrapper.contains("function(x, ..., ...)"));
 }
@@ -209,9 +223,9 @@ fn env_user_dots_emit_variadic_in_constructor_and_method() {
 
     assert!(wrapper.contains("EnvDotsThing$new <- function(...)"));
     assert!(wrapper.contains("EnvDotsThing$collect <- function(...)"));
-    assert!(
-        wrapper.contains(".Call(C_EnvDotsThing__collect, .call = match.call(), self, list(...))")
-    );
+    assert!(wrapper.contains(
+        ".Call(C_miniextendr_macros_EnvDotsThing__collect, .call = match.call(), self, list(...))"
+    ));
     assert!(!wrapper.contains("function(..., ...)"));
 }
 
@@ -242,7 +256,9 @@ fn vctrs_user_dots_emit_variadic_in_constructor_and_static_helper() {
 
     assert!(wrapper.contains("new_vctrsdotsthing <- function(x, ...)"));
     assert!(wrapper.contains("vctrsdotsthing_combine <- function(amounts, ...)"));
-    assert!(wrapper.contains(".Call(C_VctrsDotsThing__new, .call = match.call(), x, list(...))"));
+    assert!(wrapper.contains(
+        ".Call(C_miniextendr_macros_VctrsDotsThing__new, .call = match.call(), x, list(...))"
+    ));
     assert!(wrapper.contains("list(...)"));
     assert!(!wrapper.contains("function(amounts, ..., ...)"));
 }
@@ -387,20 +403,30 @@ fn env_wrapper_full_snapshot() {
 
     // Verify constructor
     assert!(wrapper.contains("Counter$new <- function(value)"));
-    assert!(wrapper.contains(".Call(C_Counter__new"));
+    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__new"));
     assert!(wrapper.contains("class(self) <- \"Counter\""));
 
     // Verify instance methods
     assert!(wrapper.contains("Counter$get <- function()"));
     assert!(wrapper.contains("Counter$increment <- function()"));
     assert!(wrapper.contains("Counter$add <- function(n)"));
-    assert!(wrapper.contains(".Call(C_Counter__get, .call = match.call(), self)"));
-    assert!(wrapper.contains(".Call(C_Counter__increment, .call = match.call(), self)"));
-    assert!(wrapper.contains(".Call(C_Counter__add, .call = match.call(), self, n)"));
+    assert!(
+        wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = match.call(), self)")
+    );
+    assert!(
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__increment, .call = match.call(), self)")
+    );
+    assert!(
+        wrapper.contains(".Call(C_miniextendr_macros_Counter__add, .call = match.call(), self, n)")
+    );
 
     // Verify static methods
     assert!(wrapper.contains("Counter$from_string <- function(s)"));
-    assert!(wrapper.contains(".Call(C_Counter__from_string, .call = match.call(), s)"));
+    assert!(
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__from_string, .call = match.call(), s)")
+    );
 
     // Verify $ dispatch
     assert!(wrapper.contains("`$.Counter` <- function(self, name)"));
@@ -450,14 +476,20 @@ fn r6_wrapper_full_snapshot() {
     assert!(wrapper.contains("initialize = function(value, .ptr = NULL)"));
     assert!(wrapper.contains("if (!is.null(.ptr))"));
     assert!(wrapper.contains("private$.ptr <- .ptr"));
-    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains(".val <- .Call(C_miniextendr_macros_Counter__new"));
     assert!(wrapper.contains("private$.ptr <- .val"));
 
     // Verify public instance methods
     assert!(wrapper.contains("get = function()"));
     assert!(wrapper.contains("increment = function()"));
-    assert!(wrapper.contains(".Call(C_Counter__get, .call = match.call(), private$.ptr)"));
-    assert!(wrapper.contains(".Call(C_Counter__increment, .call = match.call(), private$.ptr)"));
+    assert!(
+        wrapper.contains(
+            ".Call(C_miniextendr_macros_Counter__get, .call = match.call(), private$.ptr)"
+        )
+    );
+    assert!(wrapper.contains(
+        ".Call(C_miniextendr_macros_Counter__increment, .call = match.call(), private$.ptr)"
+    ));
 
     // Verify private list
     assert!(wrapper.contains("private = list("));
@@ -470,7 +502,10 @@ fn r6_wrapper_full_snapshot() {
 
     // Verify static methods as separate functions
     assert!(wrapper.contains("Counter$from_value <- function(v)"));
-    assert!(wrapper.contains(".Call(C_Counter__from_value, .call = match.call(), v)"));
+    assert!(
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__from_value, .call = match.call(), v)")
+    );
 }
 
 #[test]
@@ -722,7 +757,7 @@ fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
     // Setter branch: `.Call()` result must be captured and guarded so a
     // transported Rust condition re-raises instead of being discarded.
     assert!(
-        wrapper.contains("        .val <- .Call(C_Temperature__set_celsius"),
+        wrapper.contains("        .val <- .Call(C_miniextendr_macros_Temperature__set_celsius"),
         "setter branch must capture the .Call result in .val\n{}",
         wrapper
     );
@@ -730,7 +765,7 @@ fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
     // Getter branch of the combined binding gets the same guard as the
     // getter-only active-binding path.
     assert!(
-        wrapper.contains("        .val <- .Call(C_Temperature__celsius"),
+        wrapper.contains("        .val <- .Call(C_miniextendr_macros_Temperature__celsius"),
         "getter branch must capture the .Call result in .val\n{}",
         wrapper
     );
@@ -755,7 +790,7 @@ fn s3_wrapper_full_snapshot() {
 
     // Verify constructor (lowercase convention)
     assert!(wrapper.contains("new_counter <- function(value)"));
-    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains(".val <- .Call(C_miniextendr_macros_Counter__new"));
     assert!(wrapper.contains("structure(.val, class = \"Counter\")"));
 
     // Verify S3 generics are created
@@ -765,11 +800,13 @@ fn s3_wrapper_full_snapshot() {
     // Verify S3 methods
     assert!(wrapper.contains("#' @method get Counter"));
     assert!(wrapper.contains("get.Counter <- function(x, ...)"));
-    assert!(wrapper.contains(".Call(C_Counter__get, .call = match.call(), x)"));
+    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = match.call(), x)"));
 
     assert!(wrapper.contains("#' @method increment Counter"));
     assert!(wrapper.contains("increment.Counter <- function(x, ...)"));
-    assert!(wrapper.contains(".Call(C_Counter__increment, .call = match.call(), x)"));
+    assert!(
+        wrapper.contains(".Call(C_miniextendr_macros_Counter__increment, .call = match.call(), x)")
+    );
 
     // Verify static methods with prefix
     assert!(wrapper.contains("counter_zero <- function()"));
@@ -872,7 +909,7 @@ fn s4_wrapper_full_snapshot() {
 
     // Verify constructor
     assert!(wrapper.contains("Counter <- function(value)"));
-    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains(".val <- .Call(C_miniextendr_macros_Counter__new"));
     assert!(wrapper.contains("methods::new(\"Counter\", ptr = .val)"));
 
     // Verify S4 generics: guarded by a namespace-local exists() check. A bare
@@ -948,7 +985,7 @@ fn s7_wrapper_full_snapshot() {
     assert!(wrapper.contains("constructor = function(value, .ptr = NULL)"));
     assert!(wrapper.contains("if (!is.null(.ptr))"));
     assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .ptr)"));
-    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains(".val <- .Call(C_miniextendr_macros_Counter__new"));
     assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .val)"));
 
     // Verify S7 generics use the usability classifier (#1114): a plain base
@@ -985,8 +1022,14 @@ fn s7_wrapper_full_snapshot() {
     // Verify S7 method definitions
     assert!(wrapper.contains("S7::method(get, Counter) <- function(x, ...)"));
     assert!(wrapper.contains("S7::method(increment, Counter) <- function(x, ...)"));
-    assert!(wrapper.contains(".Call(C_Counter__get, .call = match.call(), x@.ptr)"));
-    assert!(wrapper.contains(".Call(C_Counter__increment, .call = match.call(), x@.ptr)"));
+    assert!(
+        wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = match.call(), x@.ptr)")
+    );
+    assert!(
+        wrapper.contains(
+            ".Call(C_miniextendr_macros_Counter__increment, .call = match.call(), x@.ptr)"
+        )
+    );
 
     // Verify static methods
     assert!(wrapper.contains("Counter_from_parts <- function(a, b)"));
@@ -1116,8 +1159,8 @@ fn label_affects_c_wrapper_names() {
     let wrapper = generate_env_r_wrapper(&parsed);
 
     // C wrapper names should include label
-    assert!(wrapper.contains("C_Counter_basic_new"));
-    assert!(wrapper.contains("C_Counter_basic_get"));
+    assert!(wrapper.contains("C_miniextendr_macros_Counter_basic_new"));
+    assert!(wrapper.contains("C_miniextendr_macros_Counter_basic_get"));
 }
 // endregion
 
@@ -1675,7 +1718,7 @@ fn vctrs_wrapper_vctr_full_snapshot() {
 
     // Verify constructor (vctrs convention: new_<class>)
     assert!(wrapper.contains("new_percent <- function(x)"));
-    assert!(wrapper.contains(".val <- .Call(C_Percent__new"));
+    assert!(wrapper.contains(".val <- .Call(C_miniextendr_macros_Percent__new"));
     assert!(wrapper.contains("data <- .val"));
     assert!(
         wrapper.contains("vctrs::new_vctr(data, class = \"Percent\", inherit_base_type = FALSE)")
@@ -2396,7 +2439,7 @@ fn s7_property_validator() {
         wrapper
     );
     assert!(
-        wrapper.contains("C_Score__validate_score"),
+        wrapper.contains("C_miniextendr_macros_Score__validate_score"),
         "Expected validator C function call, got:\n{}",
         wrapper
     );

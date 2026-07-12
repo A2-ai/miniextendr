@@ -92,12 +92,12 @@ one worked fixture per class system, and
 
 ### Constructor generation and error checking
 
-For every class system, the constructor calls `.Call(C_Type__new, ...)` and
+For every class system, the constructor calls `.Call(C_<crate>_Type__new, ...)` (C symbols are crate-prefixed since #1273) and
 **must** validate the returned value. All six class generators wire through
 `condition_check_lines()` from `miniextendr-macros/src/method_return_builder.rs`:
 
 ```r
-.val <- .Call(C_Type__new, ...)
+.val <- .Call(C_mypkg_Type__new, ...)
 if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__")))
   return(.miniextendr_raise_condition(.val, sys.call()))
 ```
@@ -168,9 +168,9 @@ File: `miniextendr-macros/src/miniextendr_impl/r6_class.rs`
 
 R6 generates an `R6::R6Class(...)` definition with:
 
-- `initialize`: calls `C_Type__new`, error-checks, stores result in `private$.ptr`.
+- `initialize`: calls `C_<crate>_Type__new`, error-checks, stores result in `private$.ptr`.
 - Public methods: one R function per `&self`/`&mut self` method, calling
-  `.Call(C_Type__method, private$.ptr, ...)`.
+  `.Call(C_<crate>_Type__method, private$.ptr, ...)`.
 - Private methods: methods marked `#[miniextendr(r6(private))]`.
 - Active bindings: getter/setter properties via `#[miniextendr(r6(prop = "name"))]`.
 - Finalizer: optional destructor called on GC via `#[miniextendr(r6(finalize))]`.
@@ -219,7 +219,7 @@ S4 generates:
 
 - Class definition: `methods::setClass("<class>", slots = c(ptr = "externalptr"))`.
   The Rust struct is held in a single `ptr` slot.
-- Constructor: `<Class>(...)` that calls `C_Type__new`, error-checks, and wraps
+- Constructor: `<Class>(...)` that calls `C_<crate>_Type__new`, error-checks, and wraps
   with `methods::new("<class>", ptr = .val)`.
 - Generics: `methods::setGeneric(...)` for each instance method (idempotent,
   always emitted).
@@ -400,7 +400,7 @@ R object. All six generators do this via `condition_check_lines()`. If you are
 manually writing constructor wrappers (rare), you must include the guard:
 
 ```r
-.val <- .Call(C_Type__new, ...)
+.val <- .Call(C_mypkg_Type__new, ...)
 if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__")))
   return(.miniextendr_raise_condition(.val, sys.call()))
 ```

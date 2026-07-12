@@ -257,6 +257,28 @@ be exported during the wasm install — `webr-vars.mk` references both.
 
 ## Other webR build constraints
 
+- **Macro-emitted C symbols are crate-prefixed (#1273).** Native `dyn.load`
+  uses `RTLD_LOCAL`, so identical symbol names across package `.so`s never
+  meet — but webR loads each package as an Emscripten SIDE_MODULE sharing one
+  GOT, where the **first-loaded** module's definition of an exported name wins
+  for every later module. Two packages both exporting `C_add` meant the second
+  package's `R_registerRoutines` table captured function pointers into the
+  first package's code (observed in the #1259 scaffold leg). Every
+  `#[miniextendr]`-generated `#[no_mangle]` symbol therefore carries the
+  consuming crate's name: `C_<crate>_<fn>`, `C_<crate>_<Type>__<method>`,
+  `__mx_altrep_reg_<crate>_<Ident>`, `__VTABLE_<CRATE>_..._FOR_...`, etc.
+  (single source of truth: `miniextendr-macros/src/naming.rs`). Registration
+  name and linker symbol stay identical, so the generated `wasm_registry.rs`
+  keeps reconstructing its `extern` declarations from `R_CallMethodDef.name`.
+  **Hand-written `extern "C-unwind"` fns, `#[export_name = "..."]`, and
+  `c_symbol = "..."` overrides pass through verbatim** — if you use them, you
+  own their cross-package uniqueness on webR (prefix them with your package
+  name). Two R packages whose *crates* share a name still collide, but that
+  requires a deliberate `[lib] name` mismatch — the scaffold derives crate
+  name from package name, and R refuses to load two same-named packages
+  anyway. (miniextendr-api's own `#[no_mangle]` exports are byte-identical
+  across packages and remain a theoretical interposition surface — tracked
+  separately in #1310.)
 - **`linkme` does not support `wasm32-*` targets.** `linkme-impl` emits a
   `unsupported_platform` compile error for any `target_os` outside its
   whitelist. miniextendr leans on `linkme::distributed_slice` for runtime
@@ -446,12 +468,14 @@ native `R CMD INSTALL` (wrapper-gen writes the scaffold's
 scaffolded `NAMESPACE` is a stub until the documented `document()` step
 runs), then the `CC=emcc` install into the same `/tmp/wasm-lib`. Tier 3 then
 loads the scaffolded package alongside miniextendr (`SMOKE_SCAFFOLD_PKG`) and
-calls the template's stock functions — renamed `mxsmoke_add()` /
-`mxsmoke_hello()` at scaffold time, because rpkg also exports an `add` and the
-generated `C_<fn>` wrapper symbols are package-agnostic: under Emscripten's
-shared-GOT side-module linking the first-loaded package's symbol wins and
-`mxsmoke::add` would dispatch into miniextendr's `add` (#1273; drop the rename
-when C symbols become package-unique). This is the only CI
+calls the template's stock functions `add()` / `hello()`. rpkg also exports an
+`add`, and that collision is now **intentional coverage**: since #1273 the
+generated wrapper symbols are crate-prefixed (`C_mxsmoke_add` vs
+`C_miniextendr_add`), so both packages loaded into one shared-GOT webR session
+must dispatch to their own implementations — `mxsmoke::add(2, 3)` returns `5`
+via mxsmoke's own f64 path while miniextendr's i32 `add` keeps working. Before
+#1273 the leg had to rename the scaffold's stock fns to dodge the first-loaded
+module's symbol winning the GOT. This is the only CI
 coverage of the **template** copies of the wasm branches in `configure.ac` /
 `Makevars.in` / `build.rs` (`minirextendr/inst/templates/rpkg/`) — before it,
 a template-only regression could only surface for end users.
@@ -466,10 +490,12 @@ on the scaffolded rpkg crate: no emcc link, no webR container, but it covers
 the template `build.rs`/cfg-gating drift class. On main-push and
 `workflow_dispatch`, the `webr-install` job additionally runs the full
 **monorepo scaffold leg**: the same native → roxygenise → native → `CC=emcc`
-sequence on the monorepo scaffold (`mxmono`, with the same #1273 rename
-workaround — `mxmono_add()` / `mxmono_hello()`), installed into the same
-`/tmp/wasm-lib`; tier 3 then loads it alongside `miniextendr` and `mxsmoke`
-(`SMOKE_SCAFFOLD_PKG` is a comma-separated list). Local smoke parity for
+sequence on the monorepo scaffold (`mxmono` — its stock `add()`/`hello()` are
+kept as-is, extending the intentional #1273 collision to a third package with
+a crate name, `mxmono-core`, that differs from the package name, so the leg
+also proves the prefix is the *crate* name: `C_mxmono_core_add`), installed
+into the same `/tmp/wasm-lib`; tier 3 then loads it alongside `miniextendr`
+and `mxsmoke` (`SMOKE_SCAFFOLD_PKG` is a comma-separated list). Local smoke parity for
 both legs is `tests/webr-smoke.sh --scaffold` (#1270, above).
 
 ## See also

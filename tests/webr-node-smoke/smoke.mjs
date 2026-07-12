@@ -60,9 +60,9 @@ const HOST_WASM_LIB = "/tmp/wasm-lib";
 // HOST_WASM_LIB alongside miniextendr (see the "Scaffold leg" /
 // "Monorepo scaffold leg" steps in .github/workflows/webr.yml). Load each and
 // drive the template's stock #[miniextendr] functions (add/hello — identical
-// in the standalone rpkg and monorepo rpkg templates, renamed
-// <pkg>_add/<pkg>_hello at scaffold time, see the #1273 note at the loop
-// below). Comma-separated list (#1271) so the monorepo-template package rides
+// in the standalone rpkg and monorepo rpkg templates, kept as-is: their name
+// collision with miniextendr's add is intentional, see the #1273 note at the
+// loop below). Comma-separated list (#1271) so the monorepo-template package rides
 // alongside the standalone one, e.g. SMOKE_SCAFFOLD_PKG=mxsmoke,mxmono.
 // Unset/empty → behave exactly as before (e.g. tests/webr-smoke.sh without
 // --scaffold).
@@ -191,25 +191,30 @@ async function main() {
   // produce a side-module that not only links but dispatches into Rust in a
   // real webR runtime. The scaffolds have no R-level Imports, so no extra
   // installPackages round-trip is needed. The functions are the template's
-  // add()/hello() (byte-identical in the standalone and monorepo rpkg
-  // templates), renamed <pkg>_add()/<pkg>_hello() at scaffold time (webr.yml
-  // create steps) because miniextendr (loaded above) also exports an `add`
-  // and the C wrapper symbols are package-agnostic — under Emscripten's
-  // shared-GOT side-module linking the first-loaded package's symbol wins
-  // (#1273). Loading the packages sequentially in ONE session is deliberate:
-  // it is exactly the multi-package shared-GOT scenario #1273 describes, so
-  // per-package unique symbols are load-bearing here.
+  // stock add()/hello() (byte-identical in the standalone and monorepo rpkg
+  // templates), *intentionally* colliding by name with miniextendr's add
+  // (loaded above) and with each other: since #1273 the generated C wrapper
+  // symbols are crate-prefixed (C_mxsmoke_add / C_mxmono_core_add — the
+  // prefix is the CRATE name, and the monorepo scaffold's crate is
+  // mxmono-core — vs C_miniextendr_add), so even under Emscripten's
+  // shared-GOT side-module
+  // linking each package must dispatch into its own implementation —
+  // asserted here in both directions (each scaffold's f64 add AND rpkg's i32
+  // add). Loading the packages sequentially in ONE session is deliberate: it
+  // is exactly the multi-package shared-GOT scenario #1273 describes, so
+  // per-crate unique symbols are load-bearing here.
   for (const pkg of SCAFFOLD_PKGS) {
     console.log(`[tier3] scaffold leg: library(${pkg}) ...`);
     const scaffoldResult = await webR.evalR(`
       tryCatch({
         suppressPackageStartupMessages(library(${pkg}))
-        paste(as.character(${pkg}::${pkg}_add(2, 3)),
-              ${pkg}::${pkg}_hello("webR"), sep = " | ")
+        paste(as.character(${pkg}::add(2, 3)),
+              ${pkg}::hello("webR"),
+              as.character(miniextendr::add(2L, 3L)), sep = " | ")
       }, error = function(e) paste0("ERROR: ", conditionMessage(e)))
     `);
     const scaffoldMsg = unwrapScalar(await scaffoldResult.toJs());
-    if (scaffoldMsg !== "5 | Hello, webR!") {
+    if (scaffoldMsg !== "5 | Hello, webR! | 5") {
       console.error(
         `[tier3] FAIL: scaffold package ${pkg} smoke returned:`,
         scaffoldMsg,
@@ -218,7 +223,7 @@ async function main() {
       return;
     }
     console.log(
-      `[tier3] OK: ${pkg} loaded; ${pkg}_add(2, 3) == 5 and ${pkg}_hello("webR") returned the template greeting.`,
+      `[tier3] OK: ${pkg} loaded; add(2, 3) == 5 via its own f64 path, hello("webR") returned the template greeting, and miniextendr::add(2L, 3L) still hits rpkg's i32 add (#1273 cross-package symbol isolation).`,
     );
   }
 

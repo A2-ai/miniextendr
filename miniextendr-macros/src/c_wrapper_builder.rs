@@ -182,7 +182,7 @@ pub enum ReturnHandling {
 pub struct CWrapperContext {
     /// Identifier of the original Rust function or method being wrapped.
     pub fn_ident: syn::Ident,
-    /// Identifier for the generated C wrapper (e.g., `C_foo` or `C_Type__method`).
+    /// Identifier for the generated C wrapper (e.g., `C_<crate>_foo` or `C_<crate>_Type__method`).
     pub c_ident: syn::Ident,
     /// Identifier of the `R_WRAPPER_*` or `R_WRAPPERS_IMPL_*` const that holds the
     /// generated R wrapper code string. Used for rustdoc cross-references.

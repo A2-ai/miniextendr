@@ -55,11 +55,21 @@ S3Point
 \description{
 A 2D point using S3-style class system.
 
+Create a new point
+
 S3 generic for \code{s3point_x}
+
+Get x coordinate
 
 S3 generic for \code{s3point_y}
 
+Get y coordinate
+
 S3 generic for \code{s3point_distance}
 
+Calculate distance from origin
+
 S3 generic for \code{s3point_add}
+
+Add to coordinates
 }
