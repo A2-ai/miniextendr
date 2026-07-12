@@ -373,7 +373,7 @@ where
                 N
             )));
         }
-        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice, "TinyVec")?;
+        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice, "ArrayVec")?;
         let mut av = ArrayVec::new();
         for item in data {
             av.push(item);

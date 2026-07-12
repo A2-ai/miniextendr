@@ -649,5 +649,20 @@ mod tests {
         assert!(msg.contains("invalid value at index 1: i64 value"), "{msg}");
         assert!(msg.contains("invalid value at index 3: i64 value"), "{msg}");
     }
+
+    #[test]
+    fn vec_option_u64_batches_multiple_out_of_range_indices() {
+        let bad = i32::MAX as u64 + 1;
+        let result = std::panic::catch_unwind(|| {
+            checked_vec_option_u64_into_sexp(vec![Some(0), Some(bad), None, Some(bad)])
+        });
+        let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
+        assert!(
+            msg.starts_with("strict conversion failed: Vec<Option<u64>> conversion failed:"),
+            "{msg}"
+        );
+        assert!(msg.contains("invalid value at index 1: u64 value"), "{msg}");
+        assert!(msg.contains("invalid value at index 3: u64 value"), "{msg}");
+    }
 }
 // endregion
