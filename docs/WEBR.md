@@ -124,13 +124,15 @@ the container, plus an optional fourth (`--scaffold` / `WEBR_SCAFFOLD=1`,
    in-runner budget abandons (without failing) a wedged suite.
 
 Pass `--scaffold` (or set `WEBR_SCAFFOLD=1`) to add a local-parity
-reproduction of CI's scaffold leg (#1259) between phases 2 and 3: installs
-minirextendr from the checkout, scaffolds a fresh end-user package
-(`mxsmoke`) with `create_miniextendr_package()`, points its framework git
-deps at the checkout via `use_local_miniextendr()`, and repeats the native →
-wasm two-step install on it into the same `/tmp/wasm-lib` phase 2 uses —
-phase 3 then also loads `mxsmoke` alongside `miniextendr`. This is the local
-reproduction of a scaffold-leg CI failure without hand-driving the
+reproduction of CI's scaffold legs (#1259 standalone + #1271 monorepo)
+between phases 2 and 3: installs minirextendr from the checkout, scaffolds a
+fresh end-user package (`mxsmoke`) with `create_miniextendr_package()` **and**
+a fresh monorepo (`mxmono`) with `create_miniextendr_monorepo()`, points
+their framework git deps at the checkout via `use_local_miniextendr()`, and
+repeats the native → wasm two-step install on each into the same
+`/tmp/wasm-lib` phase 2 uses — phase 3 then also loads `mxsmoke` + `mxmono`
+alongside `miniextendr` (comma-separated `SMOKE_SCAFFOLD_PKG`). This is the
+local reproduction of a scaffold-leg CI failure without hand-driving the
 container; without the flag, behavior is unchanged. Closes #1270.
 
 First cold run is **1–2 hours** on Apple Silicon (Rosetta amd64 + cargo
@@ -397,7 +399,9 @@ not installed locally. No `loadNamespace()`, no network.
 
 ## CI
 
-`.github/workflows/webr.yml` runs three tiers plus a scaffold leg. **Tier 1**
+`.github/workflows/webr.yml` runs three tiers plus two scaffold legs (#1259
+standalone, #1271 monorepo) and a per-PR monorepo-template wasm check
+(`monorepo-wasm-check`, see below). **Tier 1**
 is `cargo check --target wasm32-unknown-emscripten` for `miniextendr-api` plus
 the two cross-package stub crates (#493), on every PR matching the paths filter
 (`miniextendr-api/**`, `miniextendr-macros/**`, `miniextendr-engine/**`,
@@ -450,9 +454,23 @@ shared-GOT side-module linking the first-loaded package's symbol wins and
 when C symbols become package-unique). This is the only CI
 coverage of the **template** copies of the wasm branches in `configure.ac` /
 `Makevars.in` / `build.rs` (`minirextendr/inst/templates/rpkg/`) — before it,
-a template-only regression could only surface for end users. The monorepo
-template tree's copies are still CI-unbuilt (#1271); local smoke parity for
-the leg is `tests/webr-smoke.sh --scaffold` (#1270, above).
+a template-only regression could only surface for end users.
+
+The **monorepo template** tree (`minirextendr/inst/templates/monorepo/rpkg/`)
+carries its own copies of the same wasm branches and gets two-tier coverage
+(#1271). Per-PR, the cheap `monorepo-wasm-check` job scaffolds a fresh
+monorepo with `create_miniextendr_monorepo()`, runs one native
+`R CMD INSTALL` (to regenerate `wasm_registry.rs` — the wasm build hard-fails
+on a missing/stub copy), then `cargo check --target wasm32-unknown-emscripten`
+on the scaffolded rpkg crate: no emcc link, no webR container, but it covers
+the template `build.rs`/cfg-gating drift class. On main-push and
+`workflow_dispatch`, the `webr-install` job additionally runs the full
+**monorepo scaffold leg**: the same native → roxygenise → native → `CC=emcc`
+sequence on the monorepo scaffold (`mxmono`, with the same #1273 rename
+workaround — `mxmono_add()` / `mxmono_hello()`), installed into the same
+`/tmp/wasm-lib`; tier 3 then loads it alongside `miniextendr` and `mxsmoke`
+(`SMOKE_SCAFFOLD_PKG` is a comma-separated list). Local smoke parity for
+both legs is `tests/webr-smoke.sh --scaffold` (#1270, above).
 
 ## See also
 

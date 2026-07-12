@@ -135,7 +135,106 @@ jobs:
       # webR container which has real R, so the full rpkg install path is
       # exercised there instead. (The crates checked above need no R on
       # wasm32 — build.rs skips link_to_r() when CARGO_CFG_TARGET_ARCH is
-      # wasm32, #482.)
+      # wasm32, #482.) The monorepo-template job below DOES install R — its
+      # scaffolded package needs one native R CMD INSTALL pass to regenerate
+      # wasm_registry.rs before the wasm32 cargo check can run.
+
+  # ── Monorepo-template wasm coverage (#1271) ─────────────────────────────
+  # The tier-2/3 scaffold leg further down builds only the STANDALONE
+  # template (minirextendr/inst/templates/rpkg/, via create_miniextendr_package()).
+  # The MONOREPO template (minirextendr/inst/templates/monorepo/rpkg/, via
+  # create_miniextendr_monorepo()) carries its own configure.ac / Makevars.in /
+  # build.rs copies whose wasm branches were previously never built by any CI
+  # job — lockstep with the standalone tree held only by review + `just
+  # templates-check` against patches/templates.patch. This is the issue's
+  # "cheaper interim": scaffold a fresh monorepo package on every PR and
+  # `cargo check --target wasm32-unknown-emscripten` its rpkg crate — no emcc
+  # link, no wasm R CMD INSTALL, no webR container. A single native R CMD
+  # INSTALL pass is still required first: wasm32 build.rs hard-requires
+  # src/rust/wasm_registry.rs, which only a host cdylib pass produces (#482);
+  # that pass uses the ordinary system cc, not emcc, so this job stays cheap
+  # relative to the tier-2/3 leg. The full monorepo wasm leg (native →
+  # roxygenise → native → CC=emcc → tier-3 load) is gated to main-push /
+  # workflow_dispatch inside the webr-install job below instead (#1271 sketch).
+  monorepo-wasm-check:
+    name: monorepo-template wasm32 check
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-emscripten
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: monorepo-wasm-check
+          cache-on-failure: true
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies (minirextendr)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: minirextendr
+          # Hard deps only (cli, fs, usethis + their trees): this job only
+          # scaffolds + installs — no roxygenise, no testthat, so Suggests
+          # (roxygen2, pkgload, devtools, ...) would be dead weight here.
+          dependencies: '"hard"'
+
+      - name: Install autoconf
+        # ubuntu-latest images ship autoconf; the apt path is only a fallback
+        # for image changes (saves ~30-60 s of apt-get update per job).
+        run: |
+          command -v autoconf >/dev/null || { sudo apt-get update && sudo apt-get install -y autoconf; }
+
+      - name: Install minirextendr (this checkout)
+        run: R CMD INSTALL --no-test-load minirextendr
+
+      - name: Scaffold a monorepo package (create_miniextendr_monorepo)
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mono-check && mkdir -p /tmp/mono-check
+          Rscript -e '
+            root <- "/tmp/mono-check/monorepo"
+            minirextendr::create_miniextendr_monorepo(root, package = "mxmono",
+              crate_name = "mxmono-core", open = FALSE)
+            minirextendr::use_local_miniextendr(Sys.getenv("GITHUB_WORKSPACE"),
+              path = file.path(root, "mxmono"))
+          '
+          # Auto-vendor guard (same trap as the standalone scaffold leg in the
+          # webr-install job): configure flips to tarball mode — silently
+          # building the published git sources instead of this checkout — when
+          # the tree has no .git ancestor AND cargo-revendor is on PATH.
+          # Unlike create_miniextendr_package(), the monorepo scaffolder
+          # git-inits the workspace root itself (usethis::use_git()), so the
+          # rpkg subdir already has a .git ancestor — assert it so a scaffolder
+          # regression can't silently change install mode.
+          test -d /tmp/mono-check/monorepo/.git
+
+      - name: Native R CMD INSTALL (regenerate wasm_registry.rs)
+        run: |
+          set -euo pipefail
+          ( cd /tmp/mono-check/monorepo/mxmono && bash ./configure )
+          mkdir -p /tmp/mono-check-native-lib
+          R CMD INSTALL --no-test-load --library=/tmp/mono-check-native-lib \
+              /tmp/mono-check/monorepo/mxmono
+          ch=$(grep 'content-hash:' /tmp/mono-check/monorepo/mxmono/src/rust/wasm_registry.rs | awk '{print $NF}')
+          echo "monorepo scaffold wasm_registry content-hash=$ch"
+          test "$ch" != "0000000000000000"
+
+      - name: cargo check (monorepo scaffold rpkg crate, wasm32)
+        run: |
+          set -euo pipefail
+          cd /tmp/mono-check/monorepo/mxmono/src/rust
+          cargo check --target wasm32-unknown-emscripten
 
   # ── Tier 2 + 3: full wasm32 R CMD INSTALL + Node smoke ──────────────────
   # Closes #491 (tier 2) and #492 (tier 3 — Node + webR runtime smoke).
@@ -145,9 +244,14 @@ jobs:
   #   - Phase 2: CC=emcc wasm install via webr-vars.mk → /tmp/wasm-lib/miniextendr.
   #   - Scaffold leg (#1259): the same native→wasm two-step on a package
   #     freshly scaffolded from minirextendr's templates → /tmp/wasm-lib/mxsmoke.
+  #   - Monorepo scaffold leg (#1271, main-push/workflow_dispatch only): the
+  #     same native→wasm two-step on a package scaffolded from the MONOREPO
+  #     template → /tmp/wasm-lib/mxmono. The cheap per-PR variant (a plain
+  #     wasm32 cargo check of a scaffolded monorepo crate, no emcc) runs in
+  #     the separate monorepo-wasm-check job above on every PR instead.
   #   - Phase 3: Node + webR session NODEFS-mounts /tmp/wasm-lib, installs
-  #              Imports from repo.r-wasm.org, drives library(miniextendr)
-  #              and library(mxsmoke).
+  #              Imports from repo.r-wasm.org, drives library(miniextendr),
+  #              library(mxsmoke), and (main-push/dispatch) library(mxmono).
   # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners have no Rosetta
   # and plenty of disk (the local arm64 dev path hits both limits). Phase 2
   # is also the empirical validator for the side-module RUSTFLAGS
@@ -164,9 +268,10 @@ jobs:
     name: wasm32 R CMD INSTALL (tier 2)
     runs-on: ubuntu-latest
     # Main-push/dispatch runs get extra headroom for the informational
-    # testthat pass in tier 3 (#1255, up to 40 min at the step cap);
-    # per-PR runs keep the historical 90.
-    timeout-minutes: ${{ github.event_name == 'pull_request' && 90 || 120 }}
+    # testthat pass in tier 3 (#1255, up to 40 min at the step cap) plus the
+    # monorepo scaffold leg (#1271, two extra compiles of a minimal crate —
+    # one native, one wasm+build-std); per-PR runs keep the historical 90.
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 90 || 150 }}
     container:
       # Pulled from the mirror at ghcr.io/a2-ai/webr-mirror (closes #496),
       # which `.github/workflows/mirror-webr.yml` keeps digest-aligned with
@@ -441,6 +546,95 @@ jobs:
           # pass silently fell back to native compilation).
           file "$libdir/libs/mxsmoke.so" | grep -qi "WebAssembly\|wasm"
 
+      # ── Monorepo scaffold leg (#1271): full native → wasm variant ────────────
+      # The cheap per-PR `monorepo-wasm-check` job (see cargo-check further up)
+      # only cargo-checks a scaffolded monorepo rpkg crate on wasm32. This is
+      # the full leg from the issue sketch: scaffold via
+      # create_miniextendr_monorepo(), use_local_miniextendr() on the rpkg
+      # subdir, then repeat the SAME native → roxygenise → native → CC=emcc
+      # sequence as the standalone mxsmoke leg above, and load the result in
+      # tier 3 alongside miniextendr and mxsmoke. Gated to main-push /
+      # workflow_dispatch — it roughly doubles the scaffold leg's wall time
+      # (two extra compiles of a minimal crate) and PR latency isn't worth
+      # that for a leg the cheap wasm32-check job already covers structurally.
+      # Reuses the minirextendr + roxygen tooling already installed into
+      # R_LIBS_USER by the mxsmoke "install minirextendr + roxygen tooling"
+      # step above — no need to reinstall.
+      - name: Monorepo scaffold leg — create a fresh end-user monorepo
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/scaffold-mono && mkdir -p /tmp/scaffold-mono
+          /opt/R/current/bin/Rscript -e '
+            minirextendr::create_miniextendr_monorepo("/tmp/scaffold-mono/monorepo",
+              package = "mxmono", crate_name = "mxmono-core", open = FALSE)
+            minirextendr::use_local_miniextendr(Sys.getenv("GITHUB_WORKSPACE"),
+              path = "/tmp/scaffold-mono/monorepo/mxmono")
+          '
+          # rpkg (loaded first in tier 3) and mxsmoke both export an add /
+          # hello, and Emscripten side-modules resolve exported function
+          # addresses through a shared GOT — first-loaded module wins, so
+          # mxmono::add would silently dispatch into another package's add
+          # under load in the same webR session. Tracked as #1273; drop this
+          # rename (and mxsmoke's, see the create step above) once C symbols
+          # are package-unique.
+          sed -i 's/pub fn add(/pub fn mxmono_add(/; s/pub fn hello(/pub fn mxmono_hello(/' \
+            /tmp/scaffold-mono/monorepo/mxmono/src/rust/lib.rs
+          grep -q "pub fn mxmono_add" /tmp/scaffold-mono/monorepo/mxmono/src/rust/lib.rs
+          grep -q "pub fn mxmono_hello" /tmp/scaffold-mono/monorepo/mxmono/src/rust/lib.rs
+          # Auto-vendor guard: unlike create_miniextendr_package() (which
+          # needs the explicit `git init` above for mxsmoke), the monorepo
+          # scaffolder git-inits the workspace root itself, giving the rpkg
+          # subdir a .git ancestor. Assert it so a scaffolder regression
+          # can't silently flip configure into tarball mode.
+          test -d /tmp/scaffold-mono/monorepo/.git
+
+      - name: Monorepo scaffold leg — native install + roxygen pass (wrappers, wasm_registry.rs, NAMESPACE)
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8
+          ( cd /tmp/scaffold-mono/monorepo/mxmono && bash ./configure )
+          mkdir -p /tmp/scaffold-mono-native-lib
+          /opt/R/current/bin/R CMD INSTALL --no-test-load --library=/tmp/scaffold-mono-native-lib /tmp/scaffold-mono/monorepo/mxmono
+          ch=$(grep 'content-hash:' /tmp/scaffold-mono/monorepo/mxmono/src/rust/wasm_registry.rs | awk '{print $NF}')
+          echo "monorepo scaffold wasm_registry content-hash=$ch"
+          test "$ch" != "0000000000000000"
+          test -s /tmp/scaffold-mono/monorepo/mxmono/R/mxmono-wrappers.R
+          /opt/R/current/bin/Rscript -e 'roxygen2::roxygenise("/tmp/scaffold-mono/monorepo/mxmono")'
+          grep -q "useDynLib(mxmono" /tmp/scaffold-mono/monorepo/mxmono/NAMESPACE
+          /opt/R/current/bin/R CMD INSTALL --no-test-load --library=/tmp/scaffold-mono-native-lib /tmp/scaffold-mono/monorepo/mxmono
+          /opt/R/current/bin/Rscript -e '
+            library(mxmono, lib.loc = "/tmp/scaffold-mono-native-lib")
+            stopifnot(identical(mxmono::mxmono_add(2, 3), 5))
+            stopifnot(identical(mxmono::mxmono_hello("webR"), "Hello, webR!"))
+            cat("monorepo scaffold native runtime sanity OK\n")
+          '
+
+      - name: Monorepo scaffold leg — wasm32 R CMD INSTALL (monorepo template wasm branches)
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          rm -f /tmp/scaffold-mono/monorepo/mxmono/src/*.o /tmp/scaffold-mono/monorepo/mxmono/src/*.so
+          ( cd /tmp/scaffold-mono/monorepo/mxmono && CC=emcc bash ./configure )
+          WASM_TOOLS=/opt/webr/tools \
+          R_SOURCE=/opt/webr/R/build/R-4.6.0 \
+          R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk \
+          /opt/webr/host/R-4.6.0/bin/R CMD INSTALL \
+              --library=/tmp/wasm-lib \
+              --no-docs --no-test-load --no-staged-install --no-byte-compile \
+              /tmp/scaffold-mono/monorepo/mxmono
+
+      - name: Monorepo scaffold leg — verify wasm side-module landed
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          libdir=/tmp/wasm-lib/mxmono
+          test -d "$libdir"
+          ls -la "$libdir/libs/"
+          file "$libdir/libs/mxmono.so"
+          file "$libdir/libs/mxmono.so" | grep -qi "WebAssembly\|wasm"
+
       # ── Tier 3 (#492): Node + webR runtime smoke ─────────────────────────────
       # Drives library(miniextendr) inside a webR Node session against the
       # wasm install Phase 2 just produced. The emcc link step alone is not
@@ -490,10 +684,14 @@ jobs:
         working-directory: tests/webr-node-smoke
         env:
           # Scaffold leg (#1259): also load the freshly scaffolded end-user
-          # package installed into /tmp/wasm-lib above and drive its stock
-          # template functions. Unset (e.g. in tests/webr-smoke.sh without
-          # --scaffold) the runner behaves exactly as before.
-          SMOKE_SCAFFOLD_PKG: mxsmoke
+          # package(s) installed into /tmp/wasm-lib above and drive their
+          # stock template functions. Comma-separated list (#1271) — smoke.mjs
+          # splits and loads each in turn. mxsmoke (standalone template) runs
+          # on every PR; mxmono (monorepo template) is added only on main-push
+          # / workflow_dispatch, matching the "Monorepo scaffold leg" steps
+          # above which only run there. Unset (e.g. in tests/webr-smoke.sh
+          # without --scaffold) the runner behaves exactly as before.
+          SMOKE_SCAFFOLD_PKG: ${{ github.event_name != 'pull_request' && 'mxsmoke,mxmono' || 'mxsmoke' }}
           # Informational testthat pass (#1255): on main-push and
           # workflow_dispatch only, run rpkg's testthat suite inside the webR
           # session and report counts. Per-PR runs stay load-only — wall time

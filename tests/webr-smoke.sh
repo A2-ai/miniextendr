@@ -22,14 +22,17 @@
 #   --no-cache        Pass --no-cache to docker build (implies --rebuild-image).
 #   --keep            Don't clean up /tmp/webr-smoke inside the container on exit.
 #   --scaffold        Add the scaffold-leg phase (#1270), reproducing the CI
-#                     scaffold leg (#1259) locally: installs minirextendr from
-#                     this checkout, scaffolds a fresh end-user package
-#                     (mxsmoke) via create_miniextendr_package(), points its
+#                     scaffold legs (#1259 standalone, #1271 monorepo) locally:
+#                     installs minirextendr from this checkout, scaffolds a
+#                     fresh end-user package (mxsmoke) via
+#                     create_miniextendr_package() AND a fresh monorepo
+#                     (mxmono) via create_miniextendr_monorepo(), points their
 #                     framework git deps at this checkout with
 #                     use_local_miniextendr(), and repeats the native -> wasm
-#                     two-step install on it into the same /tmp/wasm-lib Phase
-#                     2 uses. Phase 3 then also loads mxsmoke. Off by default —
-#                     without this flag, behavior is byte-identical to today.
+#                     two-step install on each into the same /tmp/wasm-lib
+#                     Phase 2 uses. Phase 3 then also loads mxsmoke + mxmono.
+#                     Off by default — without this flag, behavior is
+#                     byte-identical to today.
 #   -h, --help        Show this help text and exit.
 #
 # Environment:
@@ -95,6 +98,16 @@ SCAFFOLD_DIR="/tmp/scaffold"
 SCAFFOLD_PKG_DIR="${SCAFFOLD_DIR}/${SCAFFOLD_PKG_NAME}"
 SCAFFOLD_NATIVE_LIB="/tmp/scaffold-native-lib"
 SCAFFOLD_R_LIBS="/tmp/r-shared-lib"
+
+# ── Monorepo scaffold leg (#1271) constants ─────────────────────────────────
+# Local parity with the CI "Monorepo scaffold leg" steps (main-push/dispatch
+# only in CI; locally it rides along whenever --scaffold is given — a local
+# run wants the coverage). Paths match the CI steps 1:1.
+MONO_PKG_NAME="mxmono"
+MONO_DIR="/tmp/scaffold-mono"
+MONO_ROOT_DIR="${MONO_DIR}/monorepo"
+MONO_PKG_DIR="${MONO_ROOT_DIR}/${MONO_PKG_NAME}"
+MONO_NATIVE_LIB="/tmp/scaffold-mono-native-lib"
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -187,13 +200,13 @@ cleanup() {
         log "Removing ${SMOKE_TMP} inside container..."
         docker_run "rm -rf ${SMOKE_TMP}" 2>/dev/null || true
         if [[ "$SCAFFOLD" == "1" ]]; then
-            log "Removing scaffold dir + temp libs inside container..."
-            docker_run "rm -rf ${SCAFFOLD_DIR} ${SCAFFOLD_NATIVE_LIB} ${SCAFFOLD_R_LIBS}" 2>/dev/null || true
+            log "Removing scaffold dirs + temp libs inside container..."
+            docker_run "rm -rf ${SCAFFOLD_DIR} ${SCAFFOLD_NATIVE_LIB} ${SCAFFOLD_R_LIBS} ${MONO_DIR} ${MONO_NATIVE_LIB}" 2>/dev/null || true
         fi
     else
         log "--keep set: leaving ${SMOKE_TMP} inside container for inspection."
         if [[ "$SCAFFOLD" == "1" ]]; then
-            log "--keep set: leaving scaffold dir + temp libs inside container for inspection."
+            log "--keep set: leaving scaffold dirs + temp libs inside container for inspection."
         fi
     fi
 }
@@ -318,15 +331,19 @@ phase_wasm_build() {
 }
 
 # ── Phase Scaffold (#1270): end-user scaffolded-package wasm path ───────────
-# Local parity with the CI scaffold leg (#1259, .github/workflows/webr.yml):
-# installs minirextendr from this checkout, scaffolds a fresh end-user
-# package (mxsmoke) via create_miniextendr_package(), points its framework
-# git deps at this checkout with use_local_miniextendr() (the same
+# Local parity with the CI scaffold legs (#1259 standalone + #1271 monorepo,
+# .github/workflows/webr.yml): installs minirextendr from this checkout,
+# scaffolds a fresh end-user package (mxsmoke) via
+# create_miniextendr_package() AND a fresh monorepo (mxmono) via
+# create_miniextendr_monorepo(), points their framework git deps at this
+# checkout with use_local_miniextendr() (the same
 # [patch."https://github.com/A2-ai/miniextendr"] mechanism rpkg's monorepo
 # mode uses, so this validates the checkout's code, not published git
-# sources), then repeats the native -> wasm two-step install on it into the
-# SAME /tmp/wasm-lib Phase 2 uses (so Phase 3's NODEFS mount exposes both
-# packages). Gated behind --scaffold / WEBR_SCAFFOLD=1 — main() only calls
+# sources), then repeats the native -> wasm two-step install on each into the
+# SAME /tmp/wasm-lib Phase 2 uses (so Phase 3's NODEFS mount exposes all
+# packages). In CI the monorepo leg is gated to main-push/dispatch (PR wall
+# time); locally it always rides along with --scaffold — a local run wants
+# the coverage. Gated behind --scaffold / WEBR_SCAFFOLD=1 — main() only calls
 # this when $SCAFFOLD == 1; without the flag this phase never runs and
 # behavior is byte-identical to today.
 #
@@ -341,9 +358,9 @@ phase_wasm_build() {
 # literals (which contain unescaped double quotes and regex `$`/`\` chars)
 # inside this file's bash double-quoting.
 phase_scaffold() {
-    step "Phase Scaffold: end-user scaffolded-package wasm path (#1270)"
+    step "Phase Scaffold: end-user scaffolded-package wasm path (#1270 standalone, #1271 monorepo)"
 
-    log "Installing minirextendr + roxygen tooling, scaffolding mxsmoke, and building native + wasm..."
+    log "Installing minirextendr + roxygen tooling, scaffolding mxsmoke + mxmono, and building native + wasm..."
     docker_run '
         set -euo pipefail
 
@@ -443,6 +460,83 @@ RSCRIPT
         ls -la "$libdir/libs/"
         file "$libdir/libs/mxsmoke.so"
         file "$libdir/libs/mxsmoke.so" | grep -qi "WebAssembly\|wasm"
+
+        # ── Monorepo scaffold leg (#1271) ───────────────────────────────
+        # Same native -> roxygenise -> native -> CC=emcc sequence on a
+        # package scaffolded from the MONOREPO template
+        # (create_miniextendr_monorepo()), mirroring the CI "Monorepo
+        # scaffold leg" steps. Runs in this same container so it reuses
+        # the tooling installed above (same R_LIBS_USER) and lands in the
+        # SAME /tmp/wasm-lib.
+
+        # Monorepo scaffold leg — create a fresh end-user monorepo.
+        rm -rf "$MONO_DIR" && mkdir -p "$MONO_DIR"
+        cat > /tmp/scaffold-step5.R <<\RSCRIPT
+minirextendr::create_miniextendr_monorepo(Sys.getenv("MONO_ROOT_DIR"),
+  package = "mxmono", crate_name = "mxmono-core", open = FALSE)
+minirextendr::use_local_miniextendr("/work", path = Sys.getenv("MONO_PKG_DIR"))
+RSCRIPT
+        "$R_NATIVE_RSCRIPT" /tmp/scaffold-step5.R
+        # Same shared-GOT symbol-collision workaround as mxsmoke above:
+        # the monorepo rpkg template ships the same stock add/hello, and
+        # rpkg + mxsmoke are loaded first in the tier-3 webR session.
+        # Tracked as #1273; drop this rename once C symbols are
+        # package-unique.
+        sed -i "s/pub fn add(/pub fn mxmono_add(/; s/pub fn hello(/pub fn mxmono_hello(/" \
+            "$MONO_PKG_DIR/src/rust/lib.rs"
+        grep -q "pub fn mxmono_add" "$MONO_PKG_DIR/src/rust/lib.rs"
+        grep -q "pub fn mxmono_hello" "$MONO_PKG_DIR/src/rust/lib.rs"
+        # Auto-vendor guard: unlike create_miniextendr_package() (which
+        # needs the explicit git init above for mxsmoke), the monorepo
+        # scaffolder git-inits the workspace root itself
+        # (usethis::use_git()), so the rpkg subdir already has a .git
+        # ancestor — assert it so a scaffolder regression cannot silently
+        # flip configure into tarball mode.
+        test -d "$MONO_ROOT_DIR/.git"
+
+        # Monorepo scaffold leg — native install + roxygen pass (wrappers,
+        # wasm_registry.rs, NAMESPACE). LANG/LC_ALL=C.UTF-8 are still
+        # exported from the mxsmoke leg above.
+        ( cd "$MONO_PKG_DIR" && bash ./configure )
+        mkdir -p "$MONO_NATIVE_LIB"
+        "$R_NATIVE_EXE" CMD INSTALL --no-test-load --library="$MONO_NATIVE_LIB" "$MONO_PKG_DIR"
+        ch="$(grep "content-hash:" "$MONO_PKG_DIR/src/rust/wasm_registry.rs")"
+        ch="${ch##* }"
+        echo "monorepo scaffold wasm_registry content-hash=$ch"
+        test "$ch" != "0000000000000000"
+        test -s "$MONO_PKG_DIR/R/mxmono-wrappers.R"
+        cat > /tmp/scaffold-step6.R <<\RSCRIPT
+roxygen2::roxygenise(Sys.getenv("MONO_PKG_DIR"))
+RSCRIPT
+        "$R_NATIVE_RSCRIPT" /tmp/scaffold-step6.R
+        grep -q "useDynLib(mxmono" "$MONO_PKG_DIR/NAMESPACE"
+        "$R_NATIVE_EXE" CMD INSTALL --no-test-load --library="$MONO_NATIVE_LIB" "$MONO_PKG_DIR"
+        cat > /tmp/scaffold-step7.R <<\RSCRIPT
+library(mxmono, lib.loc = Sys.getenv("MONO_NATIVE_LIB"))
+stopifnot(identical(mxmono::mxmono_add(2, 3), 5))
+stopifnot(identical(mxmono::mxmono_hello("webR"), "Hello, webR!"))
+cat("monorepo scaffold native runtime sanity OK\n")
+RSCRIPT
+        "$R_NATIVE_RSCRIPT" /tmp/scaffold-step7.R
+
+        # Monorepo scaffold leg — wasm32 R CMD INSTALL (monorepo template
+        # wasm branches), into the SAME /tmp/wasm-lib.
+        rm -f "$MONO_PKG_DIR"/src/*.o "$MONO_PKG_DIR"/src/*.so
+        ( cd "$MONO_PKG_DIR" && CC=emcc bash ./configure )
+        WASM_TOOLS="$WASM_TOOLS" \
+        R_SOURCE="$R_SOURCE" \
+        R_MAKEVARS_USER="$WEBR_VARS_MK" \
+        "$R_HOST_EXE" CMD INSTALL \
+            --library=/tmp/wasm-lib \
+            --no-docs --no-test-load --no-staged-install --no-byte-compile \
+            "$MONO_PKG_DIR"
+
+        # Monorepo scaffold leg — verify wasm side-module landed.
+        libdir="/tmp/wasm-lib/mxmono"
+        test -d "$libdir"
+        ls -la "$libdir/libs/"
+        file "$libdir/libs/mxmono.so"
+        file "$libdir/libs/mxmono.so" | grep -qi "WebAssembly\|wasm"
     ' \
         -e "R_HOST_EXE=${R_HOST_EXE}" \
         -e "R_NATIVE_EXE=${R_NATIVE_EXE}" \
@@ -452,11 +546,15 @@ RSCRIPT
         -e "SCAFFOLD_PKG_DIR=${SCAFFOLD_PKG_DIR}" \
         -e "SCAFFOLD_NATIVE_LIB=${SCAFFOLD_NATIVE_LIB}" \
         -e "SCAFFOLD_R_LIBS=${SCAFFOLD_R_LIBS}" \
+        -e "MONO_DIR=${MONO_DIR}" \
+        -e "MONO_ROOT_DIR=${MONO_ROOT_DIR}" \
+        -e "MONO_PKG_DIR=${MONO_PKG_DIR}" \
+        -e "MONO_NATIVE_LIB=${MONO_NATIVE_LIB}" \
         -e "WASM_TOOLS=${WASM_TOOLS}" \
         -e "R_SOURCE=${R_SOURCE}" \
         -e "WEBR_VARS_MK=${WEBR_VARS_MK}"
 
-    ok "mxsmoke scaffold installed + wasm32 side-module built at /tmp/wasm-lib/mxsmoke"
+    ok "mxsmoke + mxmono scaffolds installed + wasm32 side-modules built at /tmp/wasm-lib/{mxsmoke,mxmono}"
 }
 
 # ── Phase 3: webR Node.js session ───────────────────────────────────────────
@@ -488,14 +586,15 @@ phase_webr_session() {
     "
 
     log "Running canonical Node smoke runner (tests/webr-node-smoke/smoke.mjs)..."
-    # Scaffold leg (#1270): when phase_scaffold ran, also load mxsmoke from
-    # the same /tmp/wasm-lib. SMOKE_SCAFFOLD_PKG is always passed (empty
-    # string when --scaffold wasn't given) — smoke.mjs's `?? ""` fallback
-    # treats "" the same as unset, so this is byte-identical to today
-    # without the flag.
+    # Scaffold leg (#1270, #1271): when phase_scaffold ran, also load mxsmoke
+    # (standalone template) and mxmono (monorepo template) from the same
+    # /tmp/wasm-lib — comma-separated list, split by smoke.mjs.
+    # SMOKE_SCAFFOLD_PKG is always passed (empty string when --scaffold
+    # wasn't given) — smoke.mjs filters out empty entries, so this is
+    # byte-identical to today without the flag.
     local scaffold_pkg_env=""
     if [[ "$SCAFFOLD" == "1" ]]; then
-        scaffold_pkg_env="mxsmoke"
+        scaffold_pkg_env="${SCAFFOLD_PKG_NAME},${MONO_PKG_NAME}"
     fi
     # Informational testthat pass (#1255): defaults ON locally — a local run
     # wants the information (SMOKE_TESTTHAT=0 disables; CI keeps per-PR
@@ -530,7 +629,7 @@ main() {
         printf "Arch:     amd64 (Rosetta on Apple Silicon)\n"
     fi
     if [[ "$SCAFFOLD" == "1" ]]; then
-        printf "Scaffold: yes (%s, #1270)\n" "${SCAFFOLD_PKG_NAME}"
+        printf "Scaffold: yes (%s #1270 + %s monorepo #1271)\n" "${SCAFFOLD_PKG_NAME}" "${MONO_PKG_NAME}"
     else
         printf "Scaffold: no\n"
     fi

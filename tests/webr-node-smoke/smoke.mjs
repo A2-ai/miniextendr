@@ -55,14 +55,21 @@ import { WebR } from "file:///opt/webr/src/dist/webr.mjs";
 const WASM_LIB_MOUNT = "/wasm-rlib";
 const HOST_WASM_LIB = "/tmp/wasm-lib";
 
-// Scaffold leg (#1259): when set, an end-user package freshly scaffolded from
-// minirextendr's templates has been wasm-installed into HOST_WASM_LIB
-// alongside miniextendr (see the "Scaffold leg" steps in
-// .github/workflows/webr.yml). Load it and drive the template's stock
-// #[miniextendr] functions (add/hello from
-// minirextendr/inst/templates/rpkg/lib.rs). Unset → behave exactly as before
-// (e.g. tests/webr-smoke.sh without --scaffold).
-const SCAFFOLD_PKG = process.env.SMOKE_SCAFFOLD_PKG ?? "";
+// Scaffold leg (#1259, #1271): when set, end-user package(s) freshly
+// scaffolded from minirextendr's templates have been wasm-installed into
+// HOST_WASM_LIB alongside miniextendr (see the "Scaffold leg" /
+// "Monorepo scaffold leg" steps in .github/workflows/webr.yml). Load each and
+// drive the template's stock #[miniextendr] functions (add/hello — identical
+// in the standalone rpkg and monorepo rpkg templates, renamed
+// <pkg>_add/<pkg>_hello at scaffold time, see the #1273 note at the loop
+// below). Comma-separated list (#1271) so the monorepo-template package rides
+// alongside the standalone one, e.g. SMOKE_SCAFFOLD_PKG=mxsmoke,mxmono.
+// Unset/empty → behave exactly as before (e.g. tests/webr-smoke.sh without
+// --scaffold).
+const SCAFFOLD_PKGS = (process.env.SMOKE_SCAFFOLD_PKG ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
 
 // Informational testthat pass (#1255): opt-in via SMOKE_TESTTHAT=1. The local
 // smoke (tests/webr-smoke.sh) defaults it ON; CI keeps per-PR tier-3
@@ -179,35 +186,39 @@ async function main() {
   const version = unwrapScalar(await versionResult.toJs());
   console.log(`[tier3] miniextendr version: ${version}`);
 
-  // Scaffold leg (#1259): load the scaffolded end-user package and call the
-  // template's stock functions — proof the templates' wasm branches produce a
-  // side-module that not only links but dispatches into Rust in a real webR
-  // runtime. The scaffold has no R-level Imports, so no extra installPackages
-  // round-trip is needed. The functions are the template's add()/hello(),
-  // renamed <pkg>_add()/<pkg>_hello() at scaffold time (webr.yml create step)
-  // because miniextendr (loaded above) also exports an `add` and the C
-  // wrapper symbols are package-agnostic — under Emscripten's shared-GOT
-  // side-module linking the first-loaded package's symbol wins (#1273).
-  if (SCAFFOLD_PKG) {
-    console.log(`[tier3] scaffold leg: library(${SCAFFOLD_PKG}) ...`);
+  // Scaffold leg (#1259, #1271): load each scaffolded end-user package and
+  // call the template's stock functions — proof the templates' wasm branches
+  // produce a side-module that not only links but dispatches into Rust in a
+  // real webR runtime. The scaffolds have no R-level Imports, so no extra
+  // installPackages round-trip is needed. The functions are the template's
+  // add()/hello() (byte-identical in the standalone and monorepo rpkg
+  // templates), renamed <pkg>_add()/<pkg>_hello() at scaffold time (webr.yml
+  // create steps) because miniextendr (loaded above) also exports an `add`
+  // and the C wrapper symbols are package-agnostic — under Emscripten's
+  // shared-GOT side-module linking the first-loaded package's symbol wins
+  // (#1273). Loading the packages sequentially in ONE session is deliberate:
+  // it is exactly the multi-package shared-GOT scenario #1273 describes, so
+  // per-package unique symbols are load-bearing here.
+  for (const pkg of SCAFFOLD_PKGS) {
+    console.log(`[tier3] scaffold leg: library(${pkg}) ...`);
     const scaffoldResult = await webR.evalR(`
       tryCatch({
-        suppressPackageStartupMessages(library(${SCAFFOLD_PKG}))
-        paste(as.character(${SCAFFOLD_PKG}::${SCAFFOLD_PKG}_add(2, 3)),
-              ${SCAFFOLD_PKG}::${SCAFFOLD_PKG}_hello("webR"), sep = " | ")
+        suppressPackageStartupMessages(library(${pkg}))
+        paste(as.character(${pkg}::${pkg}_add(2, 3)),
+              ${pkg}::${pkg}_hello("webR"), sep = " | ")
       }, error = function(e) paste0("ERROR: ", conditionMessage(e)))
     `);
     const scaffoldMsg = unwrapScalar(await scaffoldResult.toJs());
     if (scaffoldMsg !== "5 | Hello, webR!") {
       console.error(
-        `[tier3] FAIL: scaffold package ${SCAFFOLD_PKG} smoke returned:`,
+        `[tier3] FAIL: scaffold package ${pkg} smoke returned:`,
         scaffoldMsg,
       );
       process.exitCode = 1;
       return;
     }
     console.log(
-      `[tier3] OK: ${SCAFFOLD_PKG} loaded; ${SCAFFOLD_PKG}_add(2, 3) == 5 and ${SCAFFOLD_PKG}_hello("webR") returned the template greeting.`,
+      `[tier3] OK: ${pkg} loaded; ${pkg}_add(2, 3) == 5 and ${pkg}_hello("webR") returned the template greeting.`,
     );
   }
 
