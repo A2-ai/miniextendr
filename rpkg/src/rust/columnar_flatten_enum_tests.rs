@@ -6,15 +6,15 @@
 //! package's exports exercises the SEXP-storage path (the columnar generic
 //! buffers + the prefixed map emission) automatically.
 
-use crate::serde::Serialize;
-use miniextendr_api::dataframe::BuiltDataFrame;
+use crate::serde::{Deserialize, Serialize};
+use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame};
 use miniextendr_api::miniextendr;
-use miniextendr_api::serde::vec_to_dataframe_flatten_enums;
+use miniextendr_api::serde::{dataframe_to_vec, vec_to_dataframe_flatten_enums};
 
 // region: Test types
 
 /// Externally-tagged data enum: two struct variants with disjoint payloads.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(crate = "crate::serde")]
 enum Action {
     Add { file: f64, weight: f64 },
@@ -22,7 +22,7 @@ enum Action {
 }
 
 /// Row carrying a scalar plus a nested enum field.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(crate = "crate::serde")]
 struct AuditRow {
     id: i32,
@@ -123,6 +123,20 @@ pub fn flatten_enum_option_none_fixture() -> BuiltDataFrame {
         },
     ];
     vec_to_dataframe_flatten_enums(&rows, &["action"]).expect("flatten option none")
+}
+
+/// Reverse of [`flatten_enum_field_fixture`] (#1060): read a flattened-enum
+/// data.frame back into `Vec<AuditRow>` via `dataframe_to_vec`, then
+/// re-serialize it. A correct round trip returns an identical frame — the
+/// R-facing proof that the split/flattened enum reader is symmetric with the
+/// writer.
+/// @param df A data.frame in `flatten_enum_field_fixture()`'s shape (`id`,
+///   `user`, `action_variant`, `action_file`, `action_weight`, `action_path`).
+#[miniextendr]
+pub fn flatten_enum_field_roundtrip(df: DataFrame) -> BuiltDataFrame {
+    let rows: Vec<AuditRow> =
+        dataframe_to_vec(df.as_sexp()).expect("read flattened enum data.frame back to Vec<T>");
+    vec_to_dataframe_flatten_enums(&rows, &["action"]).expect("re-flatten enum field")
 }
 
 // endregion

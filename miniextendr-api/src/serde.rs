@@ -243,12 +243,13 @@ pub use columnar::{
     DataFrameShape, DispatchNames, ResultShape, RootedSentinel, SerdeRowBuilder, SplitResults,
     SplitShape, TypeSpec, dispatch_to_dataframes, hashmap_to_dataframe, iter_to_dataframe,
     map_to_dataframe, result_to_dataframe, vec_to_dataframe, vec_to_dataframe_flatten_enums,
-    vec_to_dataframe_split,
+    vec_to_dataframe_flatten_enums_with_tags, vec_to_dataframe_split,
 };
 #[cfg(feature = "rayon")]
 pub use columnar::{par_iter_to_dataframe, par_iter_to_dataframe_growing};
 pub use dataframe_de::{
-    BorrowedRows, SerdeRows, dataframe_to_vec, dataframe_to_vec_borrowed, with_dataframe_rows,
+    BorrowedRows, SerdeRows, dataframe_to_vec, dataframe_to_vec_borrowed,
+    dataframe_to_vec_collated, dataframe_to_vec_with_enum_tags, with_dataframe_rows,
 };
 pub use de::RDeserializer;
 pub use error::RSerdeError;

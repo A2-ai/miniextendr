@@ -11,10 +11,12 @@ use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::into_r::IntoR as _;
 use miniextendr_api::prelude::SexpExt as _;
 use miniextendr_api::serde::{
-    DataFrameShape, ResultShape, SplitResults, SplitShape, hashmap_to_dataframe, map_to_dataframe,
-    result_to_dataframe, vec_to_dataframe, vec_to_dataframe_flatten_enums, vec_to_dataframe_split,
+    DataFrameShape, RSerdeError, ResultShape, SplitResults, SplitShape, dataframe_to_vec,
+    dataframe_to_vec_collated, dataframe_to_vec_with_enum_tags, hashmap_to_dataframe,
+    map_to_dataframe, result_to_dataframe, vec_to_dataframe, vec_to_dataframe_flatten_enums,
+    vec_to_dataframe_flatten_enums_with_tags, vec_to_dataframe_split,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // region: NamedDataFrameListBuilder
 
@@ -790,6 +792,332 @@ fn flatten_enum_field_internally_tagged_no_synthetic_variant() {
         let file = col(&sexp, "action_file");
         assert_eq!(file.real_elt(0), 2.0);
         assert!(file.real_elt(1).is_nan(), "Reset row file should be NA");
+    });
+}
+
+// endregion
+
+// region: split/flattened enum reader round-trip (#1060 + #1061)
+
+/// Nested enum field round-trip: unit + struct variants across rows, asserting
+/// full `Vec<T>` equality after write → read.
+#[test]
+fn flatten_enum_reader_struct_and_unit_variants_roundtrip() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Action {
+        Reset,
+        Add { file: f64, weight: f64 },
+        Init { path: String },
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct AuditRow {
+        id: i32,
+        action: Action,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            AuditRow {
+                id: 1,
+                action: Action::Add {
+                    file: 10.0,
+                    weight: 2.5,
+                },
+            },
+            AuditRow {
+                id: 2,
+                action: Action::Init {
+                    path: "/tmp".into(),
+                },
+            },
+            AuditRow {
+                id: 3,
+                action: Action::Reset,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let sexp = df.as_sexp();
+        // The default reader (no config) reads flattened enum fields via the
+        // `<field>_variant` convention.
+        let round: Vec<AuditRow> = dataframe_to_vec(sexp).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// Newtype variant wrapping a struct round-trips (its inner fields flatten
+/// under the prefix).
+#[test]
+fn flatten_enum_reader_newtype_variant_roundtrip() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Coords {
+        x: f64,
+        y: f64,
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Shape {
+        Empty,
+        Point(Coords),
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        shape: Shape,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                shape: Shape::Point(Coords { x: 1.0, y: 2.0 }),
+            },
+            Row {
+                id: 2,
+                shape: Shape::Empty,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["shape"]).unwrap();
+        let round: Vec<Row> = dataframe_to_vec(df.as_sexp()).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// `Option`-bearing payload field with a `None` row round-trips (the payload
+/// cell is NA, read back as `None`).
+#[test]
+fn flatten_enum_reader_option_payload_field_roundtrip() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Action {
+        Go { steps: Option<f64>, label: String },
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        action: Action,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                action: Action::Go {
+                    steps: Some(3.0),
+                    label: "a".into(),
+                },
+            },
+            Row {
+                id: 2,
+                action: Action::Go {
+                    steps: None,
+                    label: "b".into(),
+                },
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let round: Vec<Row> = dataframe_to_vec(df.as_sexp()).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// `Option<Enum>` field with a `None` row: the NA tag column reads back as
+/// `None`; a present row reads back as `Some(variant)`.
+#[test]
+fn flatten_enum_reader_option_enum_none_roundtrip() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Action {
+        Go { steps: f64 },
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        action: Option<Action>,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                action: Some(Action::Go { steps: 3.0 }),
+            },
+            Row {
+                id: 2,
+                action: None,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let round: Vec<Row> = dataframe_to_vec(df.as_sexp()).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// Top-level Collated frame round-trips: the whole row is an enum, tag column
+/// named by the caller (symmetric with `SplitShape::Collated { column }`).
+#[test]
+fn collated_reader_roundtrip() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Event {
+        Login { user: String },
+        Logout,
+        Click { x: f64, y: f64 },
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Event::Login { user: "a".into() },
+            Event::Logout,
+            Event::Click { x: 1.0, y: 2.0 },
+        ];
+        let shape = vec_to_dataframe_split(
+            &rows,
+            SplitShape::Collated {
+                column: "kind".into(),
+            },
+        )
+        .unwrap();
+        let DataFrameShape::Bare(ref df) = shape else {
+            panic!("Collated shape must be Bare, got a different shape");
+        };
+        let round: Vec<Event> = dataframe_to_vec_collated(df.as_sexp(), "kind").unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// Custom tag-column names round-trip on both the writer and reader
+/// (#1061): the tag column is `state_tag`, payload columns stay `state_<sub>`.
+#[test]
+fn flatten_enum_reader_custom_tag_name_roundtrip() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum State {
+        On,
+        Off { reason: String },
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        state: State,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                state: State::On,
+            },
+            Row {
+                id: 2,
+                state: State::Off {
+                    reason: "boom".into(),
+                },
+            },
+        ];
+        let tags = [("state", "state_tag")];
+        let df = vec_to_dataframe_flatten_enums_with_tags(&rows, &["state"], &tags).unwrap();
+        let sexp = df.as_sexp();
+        // Writer emitted the custom tag column, not the default.
+        let names = col_names(&sexp);
+        assert!(
+            names.contains(&"state_tag".to_string()),
+            "custom tag column present, got {names:?}"
+        );
+        assert!(
+            !names.contains(&"state_variant".to_string()),
+            "default tag column must NOT be emitted, got {names:?}"
+        );
+        // Reader honours the same mapping.
+        let round: Vec<Row> = dataframe_to_vec_with_enum_tags(sexp, &tags).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// Reading with a tag mapping that names a non-existent column errors, naming
+/// the expected column.
+#[test]
+fn flatten_enum_reader_missing_tag_column_errors() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Action {
+        Add { file: f64 },
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        action: Action,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![Row {
+            id: 1,
+            action: Action::Add { file: 2.0 },
+        }];
+        // Writer used the default `action_variant`; reader asks for `action_tag`.
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        let err = dataframe_to_vec_with_enum_tags::<Row>(df.as_sexp(), &[("action", "action_tag")])
+            .unwrap_err();
+        let RSerdeError::Message(msg) = err else {
+            panic!("expected a Message error, got {err:?}");
+        };
+        assert!(
+            msg.contains("action_tag"),
+            "error must name the expected tag column, got: {msg}"
+        );
+    });
+}
+
+/// An unknown variant string in the tag cell surfaces serde's standard
+/// `unknown variant` error listing the known variants.
+#[test]
+fn flatten_enum_reader_unknown_variant_errors() {
+    #[derive(Serialize)]
+    enum Wide {
+        Add { file: f64 },
+        Bogus { file: f64 },
+    }
+    #[derive(Serialize)]
+    struct WideRow {
+        id: i32,
+        action: Wide,
+    }
+    // `Narrow` knows only `Add`. It also derives Serialize + PartialEq so the
+    // test can prove a positive round-trip first (which reads the fields) and
+    // then hit the unknown-variant error on the wider frame.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Narrow {
+        Add { file: f64 },
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct NarrowRow {
+        id: i32,
+        action: Narrow,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        // Positive control: an all-`Add` frame round-trips as `NarrowRow`.
+        let narrow = vec![NarrowRow {
+            id: 1,
+            action: Narrow::Add { file: 1.0 },
+        }];
+        let ndf = vec_to_dataframe_flatten_enums(&narrow, &["action"]).unwrap();
+        let round: Vec<NarrowRow> = dataframe_to_vec(ndf.as_sexp()).unwrap();
+        assert_eq!(round, narrow);
+
+        // A frame carrying the unknown `Bogus` variant fails on that row.
+        let wide = vec![
+            WideRow {
+                id: 1,
+                action: Wide::Add { file: 1.0 },
+            },
+            WideRow {
+                id: 2,
+                action: Wide::Bogus { file: 2.0 },
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&wide, &["action"]).unwrap();
+        let err = dataframe_to_vec::<NarrowRow>(df.as_sexp()).unwrap_err();
+        let RSerdeError::Message(msg) = err else {
+            panic!("expected a Message error, got {err:?}");
+        };
+        assert!(
+            msg.contains("Bogus") || msg.to_lowercase().contains("unknown variant"),
+            "error must flag the unknown variant, got: {msg}"
+        );
     });
 }
 

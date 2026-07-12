@@ -547,8 +547,20 @@ fn echo_reading(x: SEXP) -> Result<AsSerialize<satellite::Reading>, String> {
 | nested struct → flattened columns | `vec_to_dataframe` (`site_lat`, `site_lon`) |
 | `Option<T>` → `NA` (round-trips) | any serde path |
 | `enum` → tagged list / per-variant `data.frame` | `vec_to_dataframe_split`, `result_to_dataframe` |
+| nested `enum` field → `<field>_variant` tag + `<field>_<sub>` columns | `vec_to_dataframe_flatten_enums`, `…_with_tags` (custom tag name) |
 | `HashMap`/`BTreeMap` → named list / `data.frame` | `map_to_dataframe`, `hashmap_to_dataframe` |
 | `data.frame` → `Vec<struct>` | `dataframe_to_vec` / `SerdeRows` |
+| collated / flattened enum `data.frame` → `Vec<enum>` (round-trips both split and flattened shapes) | `dataframe_to_vec_collated` (top-level), `dataframe_to_vec` / `dataframe_to_vec_with_enum_tags` (nested fields) |
+
+The split/flattened enum shapes are **bidirectional**: every writer shape above
+reads back to `Vec<T>`. Nested enum fields written by `vec_to_dataframe_flatten_enums`
+read back via plain `dataframe_to_vec` (default `<field>_variant` tag). A
+top-level `SplitShape::Collated { column }` frame reads back via
+`dataframe_to_vec_collated(sexp, column)`. When the writer used custom tag-column
+names (`vec_to_dataframe_flatten_enums_with_tags(rows, fields, &[(field, tag)])`),
+pass the **same** mapping to `dataframe_to_vec_with_enum_tags(sexp, &[(field, tag)])`
+so the reader finds each field's tag column. Unknown variant strings and missing
+tag columns surface a clear `RSerdeError`.
 
 ### What serde alone cannot give you
 

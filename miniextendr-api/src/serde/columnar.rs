@@ -73,7 +73,7 @@ macro_rules! reject_non_struct {
 /// recursively flattened into prefixed columns (`parent_child` naming).
 ///
 /// This is the serde column path's `Rust → R` entry point. It produces the same
-/// rooted [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) the rest of the
+/// rooted [`BuiltDataFrame`] the rest of the
 /// unified interface uses (the same type returned by
 /// [`IntoDataFrame`](crate::dataframe::IntoDataFrame)), so the result supports
 /// post-assembly editing — every link of the chain is GC-rooted (#1247):
@@ -3135,7 +3135,7 @@ pub enum SplitShape {
 /// # GC discipline (rooted by construction, #1265)
 ///
 /// Every frame inside the shape is an owned, GC-rooted
-/// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame), and the
+/// [`BuiltDataFrame`], and the
 /// [`SplitResults::None`] sentinel carries its own [`RootedSentinel`]
 /// root — so holding a `DataFrameShape` across R allocations is safe by
 /// construction; there is no convert-immediately contract. The
@@ -3198,7 +3198,7 @@ pub enum SplitResults {
 ///
 /// The sentinel is an arbitrary caller-supplied R value (`NULL`, `NA`,
 /// `FALSE`, a zero-row data.frame, …), so it cannot ride in a
-/// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame); this is the same
+/// [`BuiltDataFrame`]; this is the same
 /// RAII pattern (`R_PreserveObject` on construction, `R_ReleaseObject` on
 /// drop, `!Send`) for one bare SEXP. It exists so every leg of
 /// [`DataFrameShape`] is rooted by construction (#1265).
@@ -3900,8 +3900,6 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 ///
 /// # Limitations
 ///
-/// - **Serialize-only.** Like the top-level collated path, there is no
-///   `R → Rust` reader for the flattened layout (see #1056 follow-up).
 /// - **Externally-tagged / untagged data enums** are the intended target. If a
 ///   targeted field holds an *internally-tagged* enum (`#[serde(tag = "kind")]`),
 ///   its implicit tag arrives as an ordinary field and becomes a normal
@@ -3938,25 +3936,64 @@ impl<M: ser::SerializeMap> ser::SerializeTupleVariant for ForwardingMapEmitter<'
 /// let df = vec_to_dataframe_flatten_enums(&rows, &["action"])?;
 /// // Columns: id, action_variant, action_file, action_path
 /// ```
+///
+/// # Reading back
+///
+/// The layout round-trips to `Vec<T>` via
+/// [`dataframe_to_vec`](crate::serde::dataframe_to_vec) (default tag names) —
+/// or [`dataframe_to_vec_with_enum_tags`](crate::serde::dataframe_to_vec_with_enum_tags)
+/// when custom tag names were used (#1060).
 pub fn vec_to_dataframe_flatten_enums<T: Serialize>(
     rows: &[T],
     flatten_enum_fields: &[&str],
+) -> Result<BuiltDataFrame, RSerdeError> {
+    vec_to_dataframe_flatten_enums_with_tags(rows, flatten_enum_fields, &[])
+}
+
+/// Like [`vec_to_dataframe_flatten_enums`], but lets the caller name each
+/// field's variant-tag column (#1061).
+///
+/// `tags` maps a flattened field to the tag-column name to emit for it
+/// (`field → column`); fields in `flatten_enum_fields` but absent from `tags`
+/// keep the default `<field>_variant`. This mirrors the top-level
+/// [`SplitShape::Collated { column }`](SplitShape), which already lets the
+/// caller name its tag column.
+///
+/// The payload columns are unaffected — they stay `<field>_<subfield>`
+/// regardless of the tag name. Read back with
+/// [`dataframe_to_vec_with_enum_tags`](crate::serde::dataframe_to_vec_with_enum_tags),
+/// passing the same mapping.
+///
+/// # Example
+///
+/// ```ignore
+/// // `state` gets a `state_tag` column instead of `state_variant`.
+/// let df = vec_to_dataframe_flatten_enums_with_tags(&rows, &["state"], &[("state", "state_tag")])?;
+/// // Columns: id, state_tag, state_<payload…>
+/// ```
+pub fn vec_to_dataframe_flatten_enums_with_tags<T: Serialize>(
+    rows: &[T],
+    flatten_enum_fields: &[&str],
+    tags: &[(&str, &str)],
 ) -> Result<BuiltDataFrame, RSerdeError> {
     let wrapped: Vec<FlattenEnumFieldsRow<'_, T>> = rows
         .iter()
         .map(|row| FlattenEnumFieldsRow {
             inner: row,
             fields: flatten_enum_fields,
+            tags,
         })
         .collect();
     vec_to_dataframe(&wrapped)
 }
 
 /// Adapter that re-serializes a row as a serde map, flattening each enum field
-/// named in `fields` into a `<field>_variant` tag plus prefixed payload columns.
+/// named in `fields` into a `<field>_variant` (or [`tags`]-overridden) tag plus
+/// prefixed payload columns.
 struct FlattenEnumFieldsRow<'a, T> {
     inner: &'a T,
     fields: &'a [&'a str],
+    tags: &'a [(&'a str, &'a str)],
 }
 
 impl<T: Serialize> Serialize for FlattenEnumFieldsRow<'_, T> {
@@ -3968,9 +4005,19 @@ impl<T: Serialize> Serialize for FlattenEnumFieldsRow<'_, T> {
         self.inner.serialize(FieldSelectingForwarder {
             map: &mut map,
             fields: self.fields,
+            tags: self.tags,
         })?;
         map.end()
     }
+}
+
+/// Resolve the tag-column name for `field`: the `tags` override if present,
+/// else the default `<field>_variant`.
+fn resolve_tag_column(field: &str, tags: &[(&str, &str)]) -> String {
+    tags.iter()
+        .find(|(f, _)| *f == field)
+        .map(|(_, t)| (*t).to_owned())
+        .unwrap_or_else(|| format!("{field}_variant"))
 }
 
 /// Drives the inner row's `serialize_struct`/`serialize_map` and re-emits each
@@ -3979,6 +4026,7 @@ impl<T: Serialize> Serialize for FlattenEnumFieldsRow<'_, T> {
 struct FieldSelectingForwarder<'m, M: ser::SerializeMap> {
     map: &'m mut M,
     fields: &'m [&'m str],
+    tags: &'m [(&'m str, &'m str)],
 }
 
 impl<'m, M: ser::SerializeMap> ser::Serializer for FieldSelectingForwarder<'m, M> {
@@ -4000,6 +4048,7 @@ impl<'m, M: ser::SerializeMap> ser::Serializer for FieldSelectingForwarder<'m, M
         Ok(SelectingMapEmitter {
             map: self.map,
             fields: self.fields,
+            tags: self.tags,
             pending_key: None,
         })
     }
@@ -4008,6 +4057,7 @@ impl<'m, M: ser::SerializeMap> ser::Serializer for FieldSelectingForwarder<'m, M
         Ok(SelectingMapEmitter {
             map: self.map,
             fields: self.fields,
+            tags: self.tags,
             pending_key: None,
         })
     }
@@ -4135,6 +4185,7 @@ fn top_level_struct_error<E: ser::Error>() -> E {
 struct SelectingMapEmitter<'m, M: ser::SerializeMap> {
     map: &'m mut M,
     fields: &'m [&'m str],
+    tags: &'m [(&'m str, &'m str)],
     /// For the map path: the most recent key awaiting its value.
     pending_key: Option<String>,
 }
@@ -4142,7 +4193,8 @@ struct SelectingMapEmitter<'m, M: ser::SerializeMap> {
 impl<M: ser::SerializeMap> SelectingMapEmitter<'_, M> {
     fn route<V: ?Sized + Serialize>(&mut self, key: &str, value: &V) -> Result<(), M::Error> {
         if self.fields.contains(&key) {
-            flatten_enum_field(self.map, key, value)
+            let tag_column = resolve_tag_column(key, self.tags);
+            flatten_enum_field(self.map, key, value, &tag_column)
         } else {
             self.map.serialize_entry(key, value)
         }
@@ -4219,6 +4271,7 @@ fn flatten_enum_field<M: ser::SerializeMap, V: ?Sized + Serialize>(
     map: &mut M,
     field: &str,
     value: &V,
+    tag_column: &str,
 ) -> Result<(), M::Error> {
     // Classify the value in a single pass. An externally-tagged / untagged enum
     // yields a variant `name` (and no `tag_field`); an internally-tagged enum —
@@ -4245,12 +4298,13 @@ fn flatten_enum_field<M: ser::SerializeMap, V: ?Sized + Serialize>(
         }
     };
 
-    // Synthesize the `<field>_variant` tag only for externally-tagged / untagged
-    // enums. For an internally-tagged enum (`tag_field` is `Some`) the tag
-    // already rides along inside the payload and lands as `<field>_<tagfield>`,
-    // so a synthetic `<field>_variant` would just duplicate it.
+    // Synthesize the tag column (`<field>_variant` by default, or a caller
+    // override) only for externally-tagged / untagged enums. For an
+    // internally-tagged enum (`tag_field` is `Some`) the tag already rides
+    // along inside the payload and lands as `<field>_<tagfield>`, so a
+    // synthetic tag column would just duplicate it.
     if ext.tag_field.is_none() {
-        map.serialize_entry(&format!("{field}_variant"), &name)?;
+        map.serialize_entry(tag_column, &name)?;
     }
 
     if ext.is_unit {
@@ -4430,7 +4484,7 @@ pub enum ResultShape<S> {
 ///
 /// The returned [`DataFrameShape`] is rooted by construction (#1265):
 /// every partition rides in an owned, GC-rooted
-/// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) handle and the
+/// [`BuiltDataFrame`] handle and the
 /// empty-`Ok` sentinel carries its own [`RootedSentinel`] root, so the
 /// shape is safe to hold across R allocations. The [`crate::IntoR`]
 /// conversion consumes the handles.
