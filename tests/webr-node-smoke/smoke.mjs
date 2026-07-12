@@ -35,6 +35,16 @@
 // loudly — we cannot prove the side-module is healthy without the deps that
 // its NAMESPACE pulls in. (A newly added Import must exist as a wasm binary
 // on repo.r-wasm.org; this runner surfaces that requirement automatically.)
+//
+// Opt-in testthat pass (#1255): when SMOKE_TESTTHAT=1, also NODEFS-mounts
+// rpkg/tests and runs the testthat suite against the already-loaded wasm
+// install (`load_package = "installed"` — no recompile, no pkgload::load_all,
+// just `library()` against what's already attached). This is *informational
+// only* — many rpkg tests assume fork/thread/worker semantics that don't hold
+// under webR's single-threaded, no-fork interpreter, so red counts here are
+// expected and never fail the gate. Only a harness-level error (testthat
+// itself won't install, the mount fails, R errors before producing counts)
+// sets a non-zero exit code. See docs/WEBR.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -45,14 +55,29 @@ import { WebR } from "file:///opt/webr/src/dist/webr.mjs";
 const WASM_LIB_MOUNT = "/wasm-rlib";
 const HOST_WASM_LIB = "/tmp/wasm-lib";
 
-// Scaffold leg (#1259): when set, an end-user package freshly scaffolded from
-// minirextendr's templates has been wasm-installed into HOST_WASM_LIB
-// alongside miniextendr (see the "Scaffold leg" steps in
-// .github/workflows/webr.yml). Load it and drive the template's stock
-// #[miniextendr] functions (add/hello from
-// minirextendr/inst/templates/rpkg/lib.rs). Unset → behave exactly as before
-// (tests/webr-smoke.sh has no scaffold leg).
-const SCAFFOLD_PKG = process.env.SMOKE_SCAFFOLD_PKG ?? "";
+// Scaffold leg (#1259, #1271): when set, end-user package(s) freshly
+// scaffolded from minirextendr's templates have been wasm-installed into
+// HOST_WASM_LIB alongside miniextendr (see the "Scaffold leg" /
+// "Monorepo scaffold leg" steps in .github/workflows/webr.yml). Load each and
+// drive the template's stock #[miniextendr] functions (add/hello — identical
+// in the standalone rpkg and monorepo rpkg templates, kept as-is: their name
+// collision with miniextendr's add is intentional, see the #1273 note at the
+// loop below). Comma-separated list (#1271) so the monorepo-template package rides
+// alongside the standalone one, e.g. SMOKE_SCAFFOLD_PKG=mxsmoke,mxmono.
+// Unset/empty → behave exactly as before (e.g. tests/webr-smoke.sh without
+// --scaffold).
+const SCAFFOLD_PKGS = (process.env.SMOKE_SCAFFOLD_PKG ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
+
+// Informational testthat pass (#1255): opt-in via SMOKE_TESTTHAT=1. The local
+// smoke (tests/webr-smoke.sh) defaults it ON; CI keeps per-PR tier-3
+// load-only and enables it on main-push / workflow_dispatch. See the header
+// comment and informationalTestthat() below for the tolerate-and-report
+// semantics.
+const SMOKE_TESTTHAT = process.env.SMOKE_TESTTHAT === "1";
+const TESTS_MOUNT = "/rpkg-tests";
 
 // Base-R packages ship with webR itself — never install them from the repo.
 const R_BASE_PKGS = new Set([
@@ -161,39 +186,161 @@ async function main() {
   const version = unwrapScalar(await versionResult.toJs());
   console.log(`[tier3] miniextendr version: ${version}`);
 
-  // Scaffold leg (#1259): load the scaffolded end-user package and call the
-  // template's stock functions — proof the templates' wasm branches produce a
-  // side-module that not only links but dispatches into Rust in a real webR
-  // runtime. The scaffold has no R-level Imports, so no extra installPackages
-  // round-trip is needed. The functions are the template's add()/hello(),
-  // renamed <pkg>_add()/<pkg>_hello() at scaffold time (webr.yml create step)
-  // because miniextendr (loaded above) also exports an `add` and the C
-  // wrapper symbols are package-agnostic — under Emscripten's shared-GOT
-  // side-module linking the first-loaded package's symbol wins (#1273).
-  if (SCAFFOLD_PKG) {
-    console.log(`[tier3] scaffold leg: library(${SCAFFOLD_PKG}) ...`);
+  // Scaffold leg (#1259, #1271): load each scaffolded end-user package and
+  // call the template's stock functions — proof the templates' wasm branches
+  // produce a side-module that not only links but dispatches into Rust in a
+  // real webR runtime. The scaffolds have no R-level Imports, so no extra
+  // installPackages round-trip is needed. The functions are the template's
+  // stock add()/hello() (byte-identical in the standalone and monorepo rpkg
+  // templates), *intentionally* colliding by name with miniextendr's add
+  // (loaded above) and with each other: since #1273 the generated C wrapper
+  // symbols are crate-prefixed (C_mxsmoke_add / C_mxmono_core_add — the
+  // prefix is the CRATE name, and the monorepo scaffold's crate is
+  // mxmono-core — vs C_miniextendr_add), so even under Emscripten's
+  // shared-GOT side-module
+  // linking each package must dispatch into its own implementation —
+  // asserted here in both directions (each scaffold's f64 add AND rpkg's i32
+  // add). Loading the packages sequentially in ONE session is deliberate: it
+  // is exactly the multi-package shared-GOT scenario #1273 describes, so
+  // per-crate unique symbols are load-bearing here.
+  for (const pkg of SCAFFOLD_PKGS) {
+    console.log(`[tier3] scaffold leg: library(${pkg}) ...`);
     const scaffoldResult = await webR.evalR(`
       tryCatch({
-        suppressPackageStartupMessages(library(${SCAFFOLD_PKG}))
-        paste(as.character(${SCAFFOLD_PKG}::${SCAFFOLD_PKG}_add(2, 3)),
-              ${SCAFFOLD_PKG}::${SCAFFOLD_PKG}_hello("webR"), sep = " | ")
+        suppressPackageStartupMessages(library(${pkg}))
+        paste(as.character(${pkg}::add(2, 3)),
+              ${pkg}::hello("webR"),
+              as.character(miniextendr::add(2L, 3L)), sep = " | ")
       }, error = function(e) paste0("ERROR: ", conditionMessage(e)))
     `);
     const scaffoldMsg = unwrapScalar(await scaffoldResult.toJs());
-    if (scaffoldMsg !== "5 | Hello, webR!") {
+    if (scaffoldMsg !== "5 | Hello, webR! | 5") {
       console.error(
-        `[tier3] FAIL: scaffold package ${SCAFFOLD_PKG} smoke returned:`,
+        `[tier3] FAIL: scaffold package ${pkg} smoke returned:`,
         scaffoldMsg,
       );
       process.exitCode = 1;
       return;
     }
     console.log(
-      `[tier3] OK: ${SCAFFOLD_PKG} loaded; ${SCAFFOLD_PKG}_add(2, 3) == 5 and ${SCAFFOLD_PKG}_hello("webR") returned the template greeting.`,
+      `[tier3] OK: ${pkg} loaded; add(2, 3) == 5 via its own f64 path, hello("webR") returned the template greeting, and miniextendr::add(2L, 3L) still hits rpkg's i32 add (#1273 cross-package symbol isolation).`,
     );
   }
 
+  // Informational testthat pass (#1255). Runs LAST among the R-driving
+  // steps: if the budget below abandons a wedged suite, the R worker is
+  // left mid-eval and unusable for further evalR calls — nothing after this
+  // point needs it (the top-level teardown's webR.close() terminates it).
+  if (SMOKE_TESTTHAT) {
+    let budgetTimer;
+    const budget = new Promise((resolve) => {
+      budgetTimer = setTimeout(() => resolve("budget"), TESTTHAT_BUDGET_MS);
+    });
+    const outcome = await Promise.race([
+      informationalTestthat().then(
+        () => "done",
+        (e) => {
+          console.error(
+            "[tier3][testthat] FAIL: harness error before counts:",
+            e && e.message ? e.message : e,
+          );
+          return "harness-error";
+        },
+      ),
+      budget,
+    ]);
+    clearTimeout(budgetTimer);
+    if (outcome === "harness-error") {
+      // Per the #1255 semantics: test FAILURES never gate, but the harness
+      // failing to produce a counts line at all is a smoke-infrastructure
+      // regression and must be visible as a red gate.
+      process.exitCode = 1;
+      return;
+    }
+    if (outcome === "budget") {
+      console.log(
+        `[tier3][testthat] ${TESTTHAT_BUDGET_MS / 60000}-min budget exceeded — abandoning the informational pass (not a gate: a suite wedged on a fork/subprocess attempt is a wasm incompatibility, not a harness error; the stuck R worker is torn down by webR.close()).`,
+      );
+    }
+  }
+
   console.log("[tier3] Tier-3 PASSED.");
+}
+
+// ── Informational testthat pass (#1255, opt-in via SMOKE_TESTTHAT=1) ────────
+// Restores the coverage dropped when the local and CI runners were unified
+// onto this script: run rpkg's testthat suite inside the webR session and
+// report counts. Tolerate-and-report by design — many tests legitimately
+// fail or skip under wasm (worker-thread / fork / subprocess assumptions),
+// so red counts NEVER touch the exit code. Only a harness error before the
+// counts line (testthat won't install, the mount fails, test_dir itself
+// errors) rejects, which main() converts into a red gate. The Promise.race
+// budget in main() keeps a wedged suite from eating the outer step timeout.
+const TESTTHAT_BUDGET_MS = 20 * 60 * 1000;
+
+async function informationalTestthat() {
+  // testthat is in rpkg's Suggests, not Imports, so it is not part of the
+  // HARD_IMPORTS install above. webr::install resolves Depends/Imports
+  // recursively, so testthat's own dependency tree comes along for free.
+  // Other Suggests (dplyr, ggplot2, ...) are deliberately NOT installed:
+  // tests guarded by skip_if_not_installed() skip, and anything else that
+  // fails on a missing Suggest is tolerated noise in an informational pass.
+  console.log("[tier3][testthat] Installing testthat from repo.r-wasm.org...");
+  await webR.installPackages(["testthat"], { mount: false, quiet: false });
+
+  // Mount rpkg/tests (not the whole source tree — the suite only needs the
+  // tests dir, and the package code itself comes from the wasm install
+  // already loaded above). NODEFS is read-write: failing snapshot tests may
+  // write _snaps/*.new files back into the checkout — untracked,
+  // informational diagnostics, safe to delete.
+  const testsDir = join(
+    dirname(fileURLToPath(import.meta.url)), "..", "..", "rpkg", "tests",
+  );
+  await webR.FS.mkdir(TESTS_MOUNT);
+  await webR.FS.mount("NODEFS", { root: testsDir }, TESTS_MOUNT);
+  console.log(
+    `[tier3][testthat] NODEFS-mounted ${testsDir} -> ${TESTS_MOUNT}; running test_dir (silent reporter)...`,
+  );
+
+  // - MINIEXTENDR_SKIP_STRESS: the gctorture files are ~94% of the suite's
+  //   native runtime and have their own dedicated CI job; under the (much
+  //   slower) wasm interpreter they are prohibitive. Same convention as
+  //   every non-stress CI job (see rpkg/tests/testthat/helper-gc-stress.R).
+  // - NOT_CRAN=true: mirrors test_local()'s local_assume_not_on_cran();
+  //   without it every skip_on_cran() guard (including the gc-stress
+  //   helper's) skips for the wrong reason and deflates the counts.
+  // - load_package = "installed": run against the wasm-installed package
+  //   already attached — never pkgload::load_all(), which would try to
+  //   compile Rust inside the webR session.
+  // - reporter = "silent" + stop_on_failure = FALSE: counts are the
+  //   contract; per-expectation output would be enormous and failures are
+  //   expected. The tryCatch turns a harness-level error into a sentinel
+  //   that we re-throw JS-side.
+  const res = await webR.evalR(`
+    tryCatch({
+      Sys.setenv(MINIEXTENDR_SKIP_STRESS = "1", NOT_CRAN = "true")
+      res <- testthat::test_dir(
+        "${TESTS_MOUNT}/testthat",
+        package = "miniextendr",
+        load_package = "installed",
+        reporter = "silent",
+        stop_on_failure = FALSE
+      )
+      df <- as.data.frame(res)
+      sprintf(
+        "COUNTS passed=%d failed=%d skipped=%d errors=%d warnings=%d",
+        sum(df$passed), sum(df$failed), sum(df$skipped),
+        sum(df$error), sum(df$warning)
+      )
+    }, error = function(e) paste0("HARNESS_ERROR: ", conditionMessage(e)))
+  `);
+  const line = unwrapScalar(await res.toJs());
+  if (typeof line !== "string" || !line.startsWith("COUNTS ")) {
+    throw new Error(String(line));
+  }
+  console.log(
+    `[tier3][testthat] ${line.slice("COUNTS ".length)} (informational — test failures do not gate)`,
+  );
 }
 
 // webR boots a dedicated worker (Node `worker_threads`) to host the R runtime.

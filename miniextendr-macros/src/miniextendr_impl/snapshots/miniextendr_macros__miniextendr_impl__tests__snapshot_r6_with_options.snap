@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 2982
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Child R6 Class
@@ -17,7 +18,7 @@ Child <- R6::R6Class("Child", inherit = .__MX_CLASS_REF_ParentClass__,
       if (!is.null(.ptr)) {
         private$.ptr <- .ptr
       } else {
-        .val <- .Call(C_Child__new, .call = match.call())
+        .val <- .Call(C_miniextendr_macros_Child__new, .call = match.call())
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
@@ -25,7 +26,7 @@ Child <- R6::R6Class("Child", inherit = .__MX_CLASS_REF_ParentClass__,
     # Child::greet (1:1)
     #' @description Method `greet`.
     greet = function() {
-      .val <- .Call(C_Child__greet, .call = match.call(), private$.ptr)
+      .val <- .Call(C_miniextendr_macros_Child__greet, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     }

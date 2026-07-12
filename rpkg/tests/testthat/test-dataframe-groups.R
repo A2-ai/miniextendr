@@ -138,3 +138,123 @@ test_that("gc_stress_group_by smoke-runs and returns the expected partitions", {
   expect_identical(names(out), c("a", "b", "c", "NA"))
   expect_identical(sum(vapply(out, nrow, integer(1))), 60L)
 })
+
+# --- group_by_multi: composite keys ------------------------------------------
+#
+# Parity target for non-NA groups: split(df, interaction(..., drop = TRUE)).
+# The R output IS the spec — these tests compute the reference from base R
+# rather than hard-coding it. Documented deviation: NA-containing tuples form
+# trailing per-tuple groups (first-encounter order) instead of being dropped.
+
+test_that("group_by_multi_frames matches split(interaction()) on two character keys", {
+  df <- data.frame(
+    a = c("x", "y", "x", "y", "x"),
+    b = c("p", "p", "q", "q", "p"),
+    v = 1:5,
+    stringsAsFactors = FALSE
+  )
+  ours <- group_by_multi_frames(df, c("a", "b"))
+  ref <- reset_rownames(split(df, interaction(df$a, df$b, drop = TRUE)))
+
+  expect_identical(names(ours), names(ref)) # first column varies fastest
+  expect_identical(reset_rownames(ours), ref)
+})
+
+test_that("group_by_multi honours factor level order (not label order)", {
+  df <- data.frame(
+    a = factor(c("lo", "hi", "lo", "hi"), levels = c("lo", "hi")),
+    b = factor(c("A", "A", "B", "B"), levels = c("B", "A")),
+    v = 1:4
+  )
+  ours <- group_by_multi_frames(df, c("a", "b"))
+  ref <- reset_rownames(split(df, interaction(df$a, df$b, drop = TRUE)))
+
+  expect_identical(names(ours), names(ref)) # lo.B, hi.B, lo.A, hi.A
+  expect_identical(reset_rownames(ours), ref)
+})
+
+test_that("group_by_multi matches split(interaction()) on integer x character keys", {
+  df <- data.frame(
+    a = c(10L, 2L, 10L, 2L, -1L),
+    b = c("z", "z", "y", "y", "z"),
+    v = 1:5,
+    stringsAsFactors = FALSE
+  )
+  ours <- group_by_multi_frames(df, c("a", "b"))
+  ref <- reset_rownames(split(df, interaction(df$a, df$b, drop = TRUE)))
+
+  expect_identical(names(ours), names(ref)) # 2.y, 10.y, -1.z, 2.z, 10.z
+  expect_identical(reset_rownames(ours), ref)
+})
+
+test_that("group_by_multi matches split(interaction()) on three keys", {
+  df <- data.frame(
+    a = c("x", "x", "y", "y", "x", "y"),
+    b = c(TRUE, FALSE, TRUE, FALSE, TRUE, TRUE),
+    c = c(1L, 1L, 2L, 2L, 2L, 1L),
+    v = 1:6,
+    stringsAsFactors = FALSE
+  )
+  ours <- group_by_multi_frames(df, c("a", "b", "c"))
+  ref <- reset_rownames(split(df, interaction(df$a, df$b, df$c, drop = TRUE)))
+
+  expect_identical(names(ours), names(ref))
+  expect_identical(reset_rownames(ours), ref)
+})
+
+test_that("group_by_multi keys/sizes report labels joined with '.' in group order", {
+  df <- data.frame(
+    a = c("x", "y", "x", "y", "x"),
+    b = c("p", "p", "q", "q", "p"),
+    v = 1:5,
+    stringsAsFactors = FALSE
+  )
+  expect_identical(group_by_multi_keys(df, c("a", "b")), c("x.p", "y.p", "x.q", "y.q"))
+  expect_identical(group_by_multi_sizes(df, c("a", "b")), c(2L, 1L, 1L, 1L))
+})
+
+test_that("NA-containing tuples form trailing per-tuple groups (first-encounter order)", {
+  df <- data.frame(
+    a = c("x", NA, "y", "x", NA),
+    b = c("p", "p", NA, "q", NA),
+    v = 1:5,
+    stringsAsFactors = FALSE
+  )
+  ours <- group_by_multi_frames(df, c("a", "b"))
+  ref <- reset_rownames(split(df, interaction(df$a, df$b, drop = TRUE)))
+
+  # non-NA subset matches split(interaction()); split() drops the NA rows
+  expect_identical(reset_rownames(ours[names(ref)]), ref)
+
+  na_names <- setdiff(names(ours), names(ref))
+  expect_identical(na_names, c("NA.p", "y.NA", "NA.NA")) # first-encounter order
+  # ...and they trail the non-NA groups
+  expect_identical(tail(names(ours), length(na_names)), na_names)
+  expect_identical(ours[["NA.p"]]$v, 2L)
+  expect_identical(ours[["y.NA"]]$v, 3L)
+  expect_identical(ours[["NA.NA"]]$v, 5L)
+})
+
+test_that("single-column slice delegates to the scalar group_by path (no 1-tuples)", {
+  df <- data.frame(g = c("b", "a", "b"), v = 1:3)
+  expect_identical(group_by_multi_keys(df, "g"), group_by_keys(df, "g"))
+  expect_identical(group_by_multi_sizes(df, "g"), group_by_sizes(df, "g"))
+  # scalar keys, not "a"/"b" wrapped as 1-tuples
+  expect_identical(group_by_multi_keys(df, "g"), c("a", "b"))
+})
+
+test_that("group_by_multi validates its column slice and unsupported types", {
+  df <- data.frame(a = c("x", "y"), b = 1:2, d = c(1.5, 2.5))
+  expect_error(group_by_multi_keys(df, character(0)), "at least one column")
+  expect_error(group_by_multi_keys(df, c("a", "nope")), "no such column")
+  expect_error(group_by_multi_keys(df, c("a", "d")), "cannot group by column")
+})
+
+test_that("gc_stress_group_by_multi smoke-runs and preserves all rows", {
+  out <- miniextendr:::gc_stress_group_by_multi()
+  expect_identical(sum(vapply(out, nrow, integer(1))), 60L)
+  # NA-containing tuples (g == NA) trail the non-NA groups
+  na_names <- grep("^NA[.]|[.]NA$", names(out), value = TRUE)
+  expect_true(length(na_names) > 0)
+  expect_identical(tail(names(out), length(na_names)), na_names)
+})

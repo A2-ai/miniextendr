@@ -35,7 +35,7 @@ Generated R wrappers (excerpted from `rpkg/R/miniextendr-wrappers.R`):
 ```r
 call_attr_with <- function(left, right) {
   # ... preconditions ...
-  .val <- .Call(C_call_attr_with, .call = match.call(), left, right)
+  .val <- .Call(C_miniextendr_call_attr_with, .call = match.call(), left, right)
   # ... tagged-condition demux ...
 }
 
@@ -107,7 +107,7 @@ miniextendr:::unsafe_C_call_attr_without(x, x + 1L)
 R user calls:  call_attr_with(1L, 2L)
                        │
                        ▼
-R wrapper:     .Call(C_call_attr_with, .call = match.call(), left, right)
+R wrapper:     .Call(C_miniextendr_call_attr_with, .call = match.call(), left, right)
                        │
                        ▼
 C wrapper:     extern "C-unwind" fn(__miniextendr_call: SEXP, left: SEXP, right: SEXP)
@@ -149,11 +149,11 @@ Five lambda dispatch sites cannot use `match.call()` because the lambda is invok
 
 The five sites are:
 
-1. **R6 finalizer** — `finalize = function() .Call(C_Type__finalize, .call = NULL, private$.ptr)`
-2. **R6 `deep_clone`** — `deep_clone = function(name, value) .Call(C_Type__deep_clone, .call = NULL, private$.ptr, name, value)`
-3. **S7 property validator** — `validator = function(value) .Call(C_Type__validate_prop, .call = NULL, value)`
-4. **S7 property getter** — `getter = function(self) .Call(C_Type__get_prop, .call = NULL, self@.ptr)`
-5. **S7 property setter** — `setter = function(self, value) { .Call(C_Type__set_prop, .call = NULL, self@.ptr, value); self }`
+1. **R6 finalizer** — `finalize = function() .Call(C_mypkg_Type__finalize, .call = NULL, private$.ptr)`
+2. **R6 `deep_clone`** — `deep_clone = function(name, value) .Call(C_mypkg_Type__deep_clone, .call = NULL, private$.ptr, name, value)`
+3. **S7 property validator** — `validator = function(value) .Call(C_mypkg_Type__validate_prop, .call = NULL, value)`
+4. **S7 property getter** — `getter = function(self) .Call(C_mypkg_Type__get_prop, .call = NULL, self@.ptr)`
+5. **S7 property setter** — `setter = function(self, value) { .Call(C_mypkg_Type__set_prop, .call = NULL, self@.ptr, value); self }`
 
 This is implemented via `DotCallBuilder::null_call_attribution()` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_condition_value` stores it and the R-side `%||% sys.call()` recovers the user's frame.
 

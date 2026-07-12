@@ -36,7 +36,5 @@ SimpleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-SimpleCounter  Class
-
 Get current value (inherent method)
 }

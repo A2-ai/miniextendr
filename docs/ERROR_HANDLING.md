@@ -346,7 +346,7 @@ The generated R wrapper checks the return value:
 
 ```r
 my_function <- function(x) {
-  .val <- .Call(C_my_function, x, .call = match.call())
+  .val <- .Call(C_mypkg_my_function, x, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),

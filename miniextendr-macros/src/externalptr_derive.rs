@@ -125,7 +125,7 @@
 //!     trait_tag: mx_tag,
 //! ) -> *const c_void {
 //!     if trait_tag == TAG_COUNTER {
-//!         return std::ptr::from_ref(&__VTABLE_COUNTER_FOR_MYCOUNTER).cast::<c_void>();
+//!         return std::ptr::from_ref(&__VTABLE_MYPKG_COUNTER_FOR_MYCOUNTER).cast::<c_void>();
 //!     }
 //!     std::ptr::null()
 //! }
@@ -801,8 +801,10 @@ fn generate_class_integration_r_code(
             ));
             for slot in pub_slots {
                 let field = slot.name.to_string();
-                let getter_c = format!("C__mx_rdata_get_{}_{}", type_name, field);
-                let setter_c = format!("C__mx_rdata_set_{}_{}", type_name, field);
+                // Must match the sidecar accessor's actual C symbol exactly (#1273
+                // crate-prefixing) — routed through the shared naming.rs helpers.
+                let getter_c = crate::naming::sidecar_getter_c_name(type_name, &field);
+                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &field);
                 code.push_str(&format!(
                     "  cls$set(\"active\", \"{field}\", function(value) {{\n\
                      \x20   if (missing(value)) {{\n\
@@ -839,8 +841,10 @@ fn generate_class_integration_r_code(
             ));
             for (i, slot) in pub_slots.iter().enumerate() {
                 let field = slot.name.to_string();
-                let getter_c = format!("C__mx_rdata_get_{}_{}", type_name, field);
-                let setter_c = format!("C__mx_rdata_set_{}_{}", type_name, field);
+                // Must match the sidecar accessor's actual C symbol exactly (#1273
+                // crate-prefixing) — routed through the shared naming.rs helpers.
+                let getter_c = crate::naming::sidecar_getter_c_name(type_name, &field);
+                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &field);
                 let comma = if i < pub_slots.len() - 1 { "," } else { "" };
                 code.push_str(&format!(
                     "    {field} = S7::new_property(\n\
@@ -874,8 +878,8 @@ fn generate_class_integration_r_code(
 /// Generate sidecar accessor constants and `extern "C-unwind"` functions.
 ///
 /// For each public `#[r_data]` field, generates:
-/// - A getter FFI function (`C__mx_rdata_get_Type_field`)
-/// - A setter FFI function (`C__mx_rdata_set_Type_field`)
+/// - A getter FFI function (`C_<crate>__mx_rdata_get_Type_field`)
+/// - A setter FFI function (`C_<crate>__mx_rdata_set_Type_field`)
 /// - `R_CallMethodDef` entries for routine registration
 /// - R wrapper function code (roxygen-documented)
 /// - Class-integration code for R6 / S7 (active bindings / properties)
@@ -935,9 +939,10 @@ NULL
         let field_name_str = field_name.to_string();
         let prot_index = PROT_BASE_LEN + slot.index;
 
-        // C function names
-        let getter_c_name = format!("C__mx_rdata_get_{}_{}", name_str, field_name_str);
-        let setter_c_name = format!("C__mx_rdata_set_{}_{}", name_str, field_name_str);
+        // C function names (crate-prefixed for webR cross-package symbol
+        // uniqueness — #1273, routed through the shared naming.rs helpers)
+        let getter_c_name = crate::naming::sidecar_getter_c_name(&name_str, &field_name_str);
+        let setter_c_name = crate::naming::sidecar_setter_c_name(&name_str, &field_name_str);
         let getter_fn_name = Ident::new(&getter_c_name, Span::call_site());
         let setter_fn_name = Ident::new(&setter_c_name, Span::call_site());
         let source_location_doc = crate::source_location_doc(field_name.span());

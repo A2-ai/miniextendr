@@ -116,7 +116,43 @@ use_vctrs <- function(path = ".") {
   # Add R package dependency
   add_import("vctrs", ">= 0.6.0")
 
+  # The generated vctrs S3 generics classify any existing binding of a method
+  # name before creating/reusing a generic (#1248, shares emit_s3_generic_guard
+  # with use_s3()): they call `utils::isS3stdGeneric()` and `methods::isGeneric()`.
+  # Declare both so `R CMD check` does not NOTE an undeclared `::` import for
+  # packages with base-name-colliding vctrs methods.
+  add_import("methods")
+  add_import("utils")
+
   cli::cli_alert_info("See {.url https://vctrs.r-lib.org/} for vctrs documentation")
+
+  invisible(TRUE)
+}
+
+#' Enable S3 class system support
+#'
+#' Adds the dependencies needed for `#[miniextendr(s3)]` impl blocks.
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @return Invisibly returns TRUE
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' use_s3()
+#' }
+use_s3 <- function(path = ".") {
+  with_project(path)
+  # The generated S3 generics classify any existing binding of a method name
+  # before creating/reusing a generic (#1248): they call
+  # `utils::isS3stdGeneric()` and `methods::isGeneric()` to detect a base
+  # non-generic (e.g. `var`, `get`, `diag`) and shadow it with a
+  # package-local generic. Declare both so `R CMD check` does not NOTE an
+  # undeclared `::` import for packages with base-name-colliding S3 methods.
+  add_import("methods")
+  add_import("utils")
+
+  cli::cli_alert_info("Use {.code #[miniextendr(s3)]} on impl blocks for S3 classes")
 
   invisible(TRUE)
 }

@@ -107,6 +107,45 @@ miniextendr_configure <- function(path = ".") {
 #' the wrappers and `NAMESPACE` are already in their final form, so a repeat
 #' `document()` would be a fixpoint and no further install is needed.
 #'
+#' @section Removal/rename self-heal:
+#' The addition case above assumes the install step succeeds. It doesn't when
+#' an exported `#[miniextendr]` function is *removed or renamed*: the on-disk
+#' `NAMESPACE` is then a superset of the freshly regenerated wrappers, and
+#' `R CMD INSTALL`'s test-load aborts with `undefined exports: <old_name>`
+#' before `document()` gets a chance to drop the stale entry (#1288).
+#'
+#' To self-heal this, the install step's failure is caught and deferred (with
+#' a loud warning) rather than propagated immediately. `document()` still
+#' runs and reconciles `NAMESPACE` down to the new export set --
+#' `pkgload`'s `setup_ns_exports()` only warns on a `NAMESPACE` superset and
+#' proceeds, so `document()` survives it even though the installed image
+#' can't. The reinstall is then made **mandatory** whenever the install step
+#' was deferred, even if `document()` left `NAMESPACE` textually unchanged --
+#' a digest-only check would otherwise skip the reinstall and leave the
+#' broken image in place. No error classification is performed: any Step 3
+#' failure is deferred and retried once, because a genuinely broken build
+#' re-fails identically at the mandatory retry (or earlier, since
+#' `document()`'s `pkgload::load_all(compile = NA)` recompiles the crate
+#' too) and errors loudly there. The invariant holds regardless:
+#' `miniextendr_build(install = TRUE)` returns `TRUE` only if the last
+#' install attempt succeeded with test-load.
+#'
+#' @section Mid-build source-tree restore:
+#' The install step's `R CMD build` runs the scaffolded `bootstrap.R` in the
+#' source tree, sealing `inst/vendor.tar.xz` there by design (the built
+#' tarball must carry it). Left in place, that latch would flip the rest of
+#' the build into tarball mode -- where wrapper regeneration is skipped -- so
+#' `document()` would reconcile `NAMESPACE` against stale wrappers and both
+#' self-heal paths above would break for any post-first-build export change
+#' (#1294). `miniextendr_build()` therefore restores the dev source tree
+#' (manifest/lockfile snapshot written back; a newly-sealed
+#' `inst/vendor.tar.xz` deleted) immediately after the install step, not
+#' only on exit. A latch that existed *before* the build is never deleted --
+#' instead a warning is emitted up front, because a latched tree builds in
+#' tarball mode throughout and the dev-loop self-heal is structurally
+#' disabled; delete `inst/vendor.tar.xz` (or run `minirextendr_doctor()`) to
+#' resume source-mode development.
+#'
 #' @section Fresh-package bootstrap:
 #' A brand-new package has no generated `R/<pkg>-wrappers.R` yet. The wrappers
 #' are produced by the wrapper-gen pass during install, but a plain
@@ -146,27 +185,60 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   # to `vendor/my-core`) and leaves inst/vendor.tar.xz behind -- flipping the tree
   # into tarball mode and stranding the next source-mode build. The dev loop must
   # leave a clean source tree, so snapshot the manifest/lock + tarball presence
-  # now and restore on exit (mirrors the `just cran-prep` trap, git-independent).
+  # now and restore (mirrors the `just cran-prep` trap, git-independent).
+  #
+  # #1294: the restore must ALSO run mid-build, right after Step 3 -- not only
+  # at function exit. bootstrap.R seals the latch into the SOURCE tree by
+  # design (the built tarball must carry inst/vendor.tar.xz), so after a
+  # build = TRUE install Steps 4/5 would otherwise run latched in tarball
+  # mode: Step 4's compile_dll re-runs ./configure, which resolves tarball
+  # mode and SKIPS wrapper regeneration (the Makevars #1022 guard), leaving
+  # wrappers.R stale and NAMESPACE unreconciled -- breaking both the additive
+  # (#860) and the removal/rename (#1288) self-heal for any post-first-build
+  # export change. Hence the restore body lives in a local closure, called
+  # both inline after the install block and from on.exit (idempotent
+  # backstop). It never touches vendor/ or .cargo/: configure owns
+  # .cargo/config.toml, and vendor/ may be user-provisioned (offline
+  # crates.io deps).
   rust_manifest <- fs::path(pkg_path, "src", "rust", "Cargo.toml")
   rust_lock <- fs::path(pkg_path, "src", "rust", "Cargo.lock")
   vendor_tarball <- fs::path(pkg_path, "inst", "vendor.tar.xz")
   snap_manifest <- if (fs::file_exists(rust_manifest)) readLines(rust_manifest, warn = FALSE) else NULL
   snap_lock <- if (fs::file_exists(rust_lock)) readLines(rust_lock, warn = FALSE) else NULL
   tarball_preexisting <- fs::file_exists(vendor_tarball)
-  on.exit(
-    {
-      if (!is.null(snap_manifest)) writeLines(snap_manifest, rust_manifest)
-      if (!is.null(snap_lock)) writeLines(snap_lock, rust_lock)
-      if (!tarball_preexisting && fs::file_exists(vendor_tarball)) fs::file_delete(vendor_tarball)
-    },
-    add = TRUE
-  )
+  if (tarball_preexisting) {
+    # A pre-existing latch is never deleted mid-build (it may be a deliberate
+    # release-prep artifact) -- but with it in place every step runs in
+    # tarball mode and the #1022 guard skips wrapper regeneration, so export
+    # changes never reach NAMESPACE: dev-loop self-heal is structurally
+    # disabled in a latched tree. Warn loudly up front.
+    cli::cli_warn(c(
+      "Pre-existing {.path inst/vendor.tar.xz} latch: this tree builds in tarball mode.",
+      "i" = "Tarball mode skips wrapper regeneration, so export changes will not \\
+             reach {.path NAMESPACE} (dev-loop self-heal is disabled).",
+      "i" = "Delete {.path inst/vendor.tar.xz} (or run {.code minirextendr_doctor()}, \\
+             which detects the stale latch) to resume source-mode development."
+    ))
+  }
+  restore_dev_tree <- function() {
+    if (!is.null(snap_manifest)) writeLines(snap_manifest, rust_manifest)
+    if (!is.null(snap_lock)) writeLines(snap_lock, rust_lock)
+    if (!tarball_preexisting && fs::file_exists(vendor_tarball)) fs::file_delete(vendor_tarball)
+    invisible(TRUE)
+  }
+  on.exit(restore_dev_tree(), add = TRUE)
 
   cli::cli_h2("Step 1: autoconf")
   miniextendr_autoconf()
 
   cli::cli_h2("Step 2: configure")
   miniextendr_configure()
+
+  # Deferred Step-3 install failure (removal/rename case, #1288). Initialised
+  # before the `if (install)` block so the Step-5 condition below can read it
+  # even when install = FALSE or devtools is unavailable (both leave it NULL,
+  # so Step 5's retry never fires in those paths).
+  step3_error <- NULL
 
   if (install) {
     if (!has_devtools) {
@@ -187,10 +259,48 @@ miniextendr_build <- function(path = ".", install = TRUE) {
       }
 
       cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
-      install_pkg(pkg_path)
-      cli::cli_alert_success("Installed package")
+      # Removal/rename case (#1288): if an exported #[miniextendr] function was
+      # removed or renamed since the last build, the on-disk NAMESPACE is a
+      # superset of the freshly regenerated wrappers, and R CMD INSTALL's
+      # test-load aborts with "undefined exports: <old_name>" -- before
+      # document() gets a chance to drop the stale entry. Defer any Step-3
+      # failure (no error classification: the message shape is version-fragile
+      # and unconditional deferral is safe -- see roxygen section below) and
+      # let Step 4's document() reconcile NAMESPACE, then force a Step-5 retry.
+      tryCatch(
+        {
+          install_pkg(pkg_path)
+          cli::cli_alert_success("Installed package")
+        },
+        error = function(e) step3_error <<- e
+      )
+      if (!is.null(step3_error)) {
+        cli::cli_warn(c(
+          "Install failed before NAMESPACE reconciliation; deferring.",
+          "i" = "Expected when an exported #[miniextendr] function was removed or \\
+                 renamed: the stale NAMESPACE still lists the old export and \\
+                 R CMD INSTALL's load test aborts with 'undefined exports' (#1288).",
+          "i" = "Continuing to the document step, then retrying the install once.",
+          "x" = conditionMessage(step3_error)
+        ))
+      }
     }
   }
+
+  # #1294: restore the dev source tree NOW, before Step 4 -- Step 3's
+  # build = TRUE install ran bootstrap.R in the source tree, sealing
+  # inst/vendor.tar.xz there. With the latch still present, Step 4's
+  # compile_dll configure would resolve tarball mode and skip wrapper
+  # regeneration (the #1022 guard), so document() would reconcile NAMESPACE
+  # against STALE wrappers and both self-heal paths (#860 additive, #1288
+  # removal/rename) would break for post-first-build export changes. With
+  # the latch gone, configure re-resolves source mode, rewrites
+  # .cargo/config.toml itself, and wrapper regen runs against the un-frozen
+  # manifest. Step 5's install re-runs bootstrap.R (one extra cargo-revendor
+  # per export-changing build); the on.exit backstop cleans up at exit.
+  # No-op when nothing was sealed (install = FALSE, no devtools,
+  # bootstrap-only) and never deletes a pre-existing latch.
+  restore_dev_tree()
 
   cli::cli_h2("Step 4: roxygen2 (update NAMESPACE + man pages)")
   if (!has_devtools) {
@@ -211,12 +321,32 @@ miniextendr_build <- function(path = ".", install = TRUE) {
     # so library(pkg) exposes the new exports in a single miniextendr_build()
     # pass. The reinstall is bounded to one pass: after it the wrappers and
     # NAMESPACE are already final, so re-running document() would be a fixpoint.
-    if (install && has_devtools && !identical(namespace_before, namespace_after)) {
-      cli::cli_h2("Step 5: reinstall (NAMESPACE exports changed)")
-      cli::cli_alert_info(
-        "{.code document()} changed {.path NAMESPACE}; reinstalling so the \\
-         installed image exports the new wrappers."
-      )
+    #
+    # #1288: the same reinstall is also forced whenever Step 3 was deferred
+    # (step3_error set), even if document() left NAMESPACE textually unchanged.
+    # That covers the removal/rename case: Step 3 failed because the on-disk
+    # NAMESPACE was a superset of the regenerated wrappers (stale export from a
+    # removed/renamed #[miniextendr] fn); document() reconciles NAMESPACE down
+    # to the new export set (pkgload's setup_ns_exports only warns on the
+    # superset, so document() itself survives it), but the *installed* image is
+    # still the broken one from before Step 3's failure -- so a digest-only
+    # check would wrongly skip Step 5 here. Making the retry mandatory on any
+    # deferral keeps the invariant: miniextendr_build(install = TRUE) returns
+    # TRUE only if the last install attempt succeeded with test-load.
+    if (install && has_devtools && (!identical(namespace_before, namespace_after) || !is.null(step3_error))) {
+      if (!is.null(step3_error)) {
+        cli::cli_h2("Step 5: reinstall (retrying install after NAMESPACE reconciliation)")
+        cli::cli_alert_info(
+          "Step 3's install was deferred; retrying now that {.code document()} has \\
+           reconciled {.path NAMESPACE} against the regenerated wrappers."
+        )
+      } else {
+        cli::cli_h2("Step 5: reinstall (NAMESPACE exports changed)")
+        cli::cli_alert_info(
+          "{.code document()} changed {.path NAMESPACE}; reinstalling so the \\
+           installed image exports the new wrappers."
+        )
+      }
       install_pkg(pkg_path)
       cli::cli_alert_success("Reinstalled against updated NAMESPACE")
     }
@@ -345,18 +475,41 @@ bootstrap_fresh_wrappers <- function(pkg_path) {
     add = TRUE
   )
 
+  # Removal/rename case (#1288), mature-package flavour: reachable when a
+  # package's wrappers.R was deleted (e.g. `just clean`) while NAMESPACE still
+  # retains exports of a since-removed/renamed fn. Defer this first install's
+  # failure the same way Step 3 above does -- but the discriminator here is
+  # wrappers_file_exists(), not a bounded retry count: the Makevars `** libs`
+  # target writes wrappers in-place *before* R CMD INSTALL's test-load runs,
+  # so a test-load-only failure still leaves wrappers on disk (defer + warn;
+  # document() + the second install below heal it). If wrappers are still
+  # absent, the failure was real (e.g. a genuine compile error) -- re-raise
+  # with the original wording and the captured message.
+  bootstrap_error <- NULL
   tryCatch(
     # reload = FALSE: see install_pkg() -- avoid loading the .rdb-backed namespace
     # that the document()+reinstall below would then corrupt for pkgload (#1000).
     devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
                       reload = FALSE),
-    error = function(e) {
+    error = function(e) bootstrap_error <<- e
+  )
+
+  if (!is.null(bootstrap_error)) {
+    if (wrappers_file_exists(pkg_path)) {
+      cli::cli_warn(c(
+        "Bootstrap install failed before NAMESPACE reconciliation; deferring.",
+        "i" = "Expected when NAMESPACE still lists an export removed or renamed \\
+               since the wrappers file was last generated (#1288).",
+        "i" = "Continuing to the document step, then retrying the install once.",
+        "x" = conditionMessage(bootstrap_error)
+      ))
+    } else {
       cli::cli_abort(c(
         "Bootstrap install failed",
-        "i" = conditionMessage(e)
+        "i" = conditionMessage(bootstrap_error)
       ))
     }
-  )
+  }
 
   if (!wrappers_file_exists(pkg_path)) {
     cli::cli_abort(c(

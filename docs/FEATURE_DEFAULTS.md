@@ -49,6 +49,14 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
 | `worker-default` | Force worker thread execution (implies `worker-thread`) | fns + methods | `no_worker` |
 
+All six `*-default` features above are denylisted from rpkg's auto-detected
+default build (`rpkg/tools/detect-features.R`) — enabling any of them flips
+codegen semantics crate-wide, so no PR-gating job ever builds or runs the R
+wrappers they generate. Their only runtime coverage is the scheduled
+`feature-legs` job in `.github/workflows/ci.yml` (weekly + `workflow_dispatch`),
+which rebuilds rpkg with one feature bundle on top of the detected base set and
+re-runs `tests/testthat/test-feature-defaults.R` against it.
+
 ### Hardcoded Defaults (No Longer Feature-Controlled)
 
 The following were previously opt-in features but are now **always enabled by default**:

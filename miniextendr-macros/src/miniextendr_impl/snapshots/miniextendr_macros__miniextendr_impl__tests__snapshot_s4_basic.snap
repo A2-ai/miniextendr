@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 3049
 expression: generate_s4_r_wrapper(&parsed)
 ---
 #' @title Counter S4 Class
@@ -21,7 +22,7 @@ Counter <- function(value) {
     "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
     "'value' must have length 1" = length(value) == 1L
   )
-  .val <- .Call(C_Counter__new, .call = match.call(), value)
+  .val <- .Call(C_miniextendr_macros_Counter__new, .call = match.call(), value)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   methods::new("Counter", ptr = .val)
 }
@@ -35,7 +36,7 @@ Counter <- function(value) {
 if (!exists("s4_get", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_get", function(x, ...) standardGeneric("s4_get"))
 #' @exportMethod s4_get
 methods::setMethod("s4_get", "Counter", function(x, ...) {
-  .val <- .Call(C_Counter__get, .call = match.call(), x@ptr)
+  .val <- .Call(C_miniextendr_macros_Counter__get, .call = match.call(), x@ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 })
@@ -49,7 +50,7 @@ methods::setMethod("s4_get", "Counter", function(x, ...) {
 if (!exists("s4_increment", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_increment", function(x, ...) standardGeneric("s4_increment"))
 #' @exportMethod s4_increment
 methods::setMethod("s4_increment", "Counter", function(x, ...) {
-  .val <- .Call(C_Counter__increment, .call = match.call(), x@ptr)
+  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = match.call(), x@ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   x
 })

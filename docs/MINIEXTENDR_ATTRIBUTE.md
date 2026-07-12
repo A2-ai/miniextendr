@@ -27,8 +27,8 @@ pub fn greet(name: String) -> String {
 ```
 
 Generates:
-- C wrapper (`C_greet`) handling SEXP conversion
-- R wrapper (`greet <- function(name) { .Call(C_greet, name) }`)
+- C wrapper (`C_mypkg_greet` — prefixed with your crate's name for webR cross-package uniqueness, see `docs/WEBR.md`) handling SEXP conversion
+- R wrapper (`greet <- function(name) { .Call(C_mypkg_greet, name) }`)
 - `pub` functions get `@export`; non-pub get `@noRd`
 - Each function's roxygen gets an auto-generated `@rdname <file-stem>`
   derived from `file!()`. Functions defined in `zero_copy_tests.rs`
@@ -152,7 +152,7 @@ fn_name <- function(formals) {
   on.exit(...)         # r_on_exit
   # missing defaults, lifecycle, stopifnot, match.arg
   # r_post_checks code
-  .Call(C_fn_name, ...)
+  .Call(C_mypkg_fn_name, ...)
 }
 ```
 
@@ -497,16 +497,31 @@ pub struct Wrapper(Vec<i32>);   // List conversion instead of ExternalPtr
 
 ### Struct Mode Overrides
 
+`prefer = "..."` is not always marker-only. When no explicit mode attribute
+(`list` / `dataframe` / `externalptr`) is also present, `prefer = "list"` and
+`prefer = "dataframe"` resolve to the **same full mode** as their explicit
+counterparts — not a lightweight ExternalPtr-plus-marker combination. Only
+`prefer = "native"` has no explicit-mode counterpart, so it stays
+ExternalPtr plus a marker derive. See `expand_struct` in
+`miniextendr-macros/src/struct_enum_dispatch.rs` for the resolution logic.
+
+> **Warning**: struct-level `prefer = "native"` currently fails to compile
+> (unconditional E0119 — the ExternalPtr derive's `IntoExternalPtr` marker
+> enables the blanket `IntoR`, which collides with the `PreferRNativeType`
+> derive's concrete `IntoR`; see #1283). The row below documents the intended
+> derive set. Function-level `#[miniextendr(prefer = "native")]` works and is
+> the tested path (`rpkg/src/rust/convert_pref_tests.rs`).
+
 | Syntax | Result |
 |--------|--------|
 | `#[miniextendr]` (no mode attr) | ExternalPtr |
 | `#[miniextendr(list)]` | `IntoList` + `TryFromList` + `PreferList` |
 | `#[miniextendr(dataframe)]` | `IntoList` + `DataFrameRow` + companion type |
 | `#[miniextendr(externalptr)]` | `ExternalPtr` + `TypedExternal` |
-| `#[miniextendr(prefer = "list")]` | ExternalPtr + `PreferList` marker |
-| `#[miniextendr(prefer = "dataframe")]` | ExternalPtr + `PreferDataFrame` marker |
-| `#[miniextendr(prefer = "externalptr")]` | ExternalPtr (explicit) |
-| `#[miniextendr(prefer = "native")]` | ExternalPtr + `PreferRNativeType` marker |
+| `#[miniextendr(prefer = "list")]` | Same as `#[miniextendr(list)]` — full list mode (`IntoList` + `TryFromList` + `PreferList`), not just a marker |
+| `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`IntoList` + `DataFrameRow` + companion type), not just a marker |
+| `#[miniextendr(prefer = "externalptr")]` | ExternalPtr (explicit; identical to the no-mode-attr default) |
+| `#[miniextendr(prefer = "native")]` | `ExternalPtr` + `PreferRNativeType` marker (the only `prefer` value that stays marker-only) — intended; currently broken at the struct level, see #1283 |
 
 #### List Mode
 

@@ -58,6 +58,7 @@ These functions are NOT in the non-API list and are safe:
 | `STRING_ELT` | API (safe) |
 | `R_CHAR` | API (safe) |
 | `TYPEOF` | API (safe) |
+| `R_getVarEx` | API (safe, R >= 4.5.0) — single-frame/inherited variable lookup with an `ifnotfound` default; replaces the now-removed `Rf_findVarInFrame` |
 
 ## Full Non-API List (R 4.5.x trunk)
 
@@ -136,7 +137,7 @@ These functions are NOT in the non-API list and are safe:
 - `INTEGER0`, `LOGICAL0`, `RAW0`, `REAL0`, `COMPLEX0`
 - `LEVELS`, `FRAME`, `HASHTAB`, `ENVFLAGS`, `RDEBUG`, `SET_RDEBUG`
 - `STRING_PTR`, `VECTOR_PTR`, `DATAPTR`, `STDVEC_DATAPTR`
-- `SET_FORMALS`, `SET_BODY`, `SET_CLOENV`, `Rf_findVarInFrame3`
+- `SET_FORMALS`, `SET_BODY`, `SET_CLOENV`
 - `PRCODE`, `PRENV`, `PRVALUE`, `R_nchar`
 - `Rf_NonNullStringMatch`, `TRUELENGTH`, `XLENGTH_EX`
 - `XTRUELENGTH`, `Rf_gsetVar`

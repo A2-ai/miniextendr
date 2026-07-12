@@ -1747,6 +1747,10 @@ fn into_r_as_scalar_i64_to_i32_too_large_errors() {
 /// Vec<i32> IntoRAs<f64> — NA_integer_ (i32::MIN) sentinel must surface
 /// MissingValue rather than silently widening to the finite -2147483648.0.
 /// Parallels `into_r_as_vec_f64_nan_to_i32_errors` on the NonFinite path.
+///
+/// Vector conversions now batch element failures (#1097): a single failure
+/// still comes back wrapped in `StorageCoerceError::Batched` (one listed
+/// entry, `total == 1`) rather than the bare `MissingValue`.
 #[test]
 fn into_r_as_vec_i32_na_to_f64_missing_value_errors() {
     use miniextendr_api::into_r_as::StorageCoerceError;
@@ -1755,13 +1759,20 @@ fn into_r_as_vec_i32_na_to_f64_missing_value_errors() {
         let result = IntoRAs::<f64>::into_r_as(v);
         assert!(
             matches!(
-                result,
-                Err(StorageCoerceError::MissingValue {
-                    to: "f64",
-                    index: Some(1)
-                })
+                &result,
+                Err(StorageCoerceError::Batched {
+                    container: "Vec<i32>",
+                    listed,
+                    total: 1,
+                }) if matches!(
+                    listed.as_slice(),
+                    [StorageCoerceError::MissingValue {
+                        to: "f64",
+                        index: Some(1)
+                    }]
+                )
             ),
-            "NA_integer_ in Vec<i32> must error as MissingValue at index 1, got {result:?}"
+            "NA_integer_ in Vec<i32> must batch as MissingValue at index 1, got {result:?}"
         );
     });
 }

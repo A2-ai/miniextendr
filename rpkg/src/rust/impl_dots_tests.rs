@@ -42,17 +42,20 @@ impl ImplDotsR6 {
 }
 
 /// S3 class whose constructor and instance method accept dots.
-/// @param seed Integer base value.
-/// @param ... Additional constructor arguments counted by Rust.
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct ImplDotsS3 {
     seed: i32,
     ctor_dots: i32,
 }
 
+/// S3 class exercising dots in both the constructor and an instance method.
+/// @param seed Integer base value.
+/// @param ... Additional constructor arguments counted by Rust.
 #[miniextendr(s3)]
 impl ImplDotsS3 {
     /// Create an S3 dots fixture.
+    /// @param seed Integer base value.
+    /// @param ... Additional constructor arguments counted by Rust.
     pub fn new(seed: i32, dots: ...) -> Self {
         Self {
             seed,

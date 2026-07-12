@@ -286,8 +286,8 @@ unsafe extern "C-unwind" {
     /// Encapsulated by SEXP::missing_arg()
     pub static R_MissingArg: SEXP;
 
-    /// Sentinel returned by `Rf_findVarInFrame`/`Rf_findVarInFrame3` when the
-    /// symbol has no binding in the searched frame(s).
+    /// Sentinel returned by `R_getVarEx` (via its `ifnotfound` argument) when
+    /// the symbol has no binding in the searched frame(s).
     pub static R_UnboundValue: SEXP;
 
     // Issue #112 cat. 10: kept pub(crate) — single-caller utilities; wrapping adds no value
@@ -897,12 +897,13 @@ unsafe extern "C-unwind" {
     pub(crate) fn Rf_GetColNames(dimnames: SEXP) -> SEXP;
 
     // Environment operations
-    #[doc(alias = "findVar")]
-    pub fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
-    #[doc(alias = "findVarInFrame")]
-    pub fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
-    #[doc(alias = "findVarInFrame3")]
-    pub fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
+    /// Single-frame (`inherits = FALSE`) or inherited variable lookup with an
+    /// `ifnotfound` default — the API-blessed replacement for
+    /// `Rf_findVarInFrame` (R-exts; added in R 4.5.0, hence
+    /// `Depends: R (>= 4.5)`). **Longjmps** if `rho` is not an environment or
+    /// the binding is `R_MissingArg`; forces promises.
+    #[doc(alias = "getVarEx")]
+    pub fn R_getVarEx(sym: SEXP, rho: SEXP, inherits: Rboolean, ifnotfound: SEXP) -> SEXP;
     #[doc(alias = "defineVar")]
     pub fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "setVar")]

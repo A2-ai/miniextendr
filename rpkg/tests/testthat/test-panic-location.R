@@ -40,6 +40,17 @@ test_that("worker-thread nested panic points at the plain helper's panic!", {
   expect_match(msg, loc_re)
 })
 
+test_that("panic inside with_r_thread (from a worker job) surfaces the ORIGIN location, not worker.rs (#1245)", {
+  msg <- cond_msg(panic_location_worker_with_r_thread())
+  expect_match(msg, "panic in `with_r_thread`: boom-with-r-thread", fixed = TRUE)
+  expect_false(grepl("worker.rs", msg, fixed = TRUE))
+  # Path hygiene (#1211): the folded location is the bare crate-relative
+  # fixture filename, same regex as the direct/nested cases above — not
+  # `worker.rs` (the worker's own re-panic relay site) and not an absolute
+  # build-machine path.
+  expect_match(msg, loc_re)
+})
+
 # Regression guards: the typed branches (error!/warning!/message!/condition!,
 # Result::Err, Option::None) are untouched by the location feature and must
 # carry NO `(at …)` suffix.

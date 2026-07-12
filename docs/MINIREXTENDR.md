@@ -100,10 +100,10 @@ in a single invocation. No manual `./configure` or two-pass install needed.
 For fine-grained control or when not using devtools:
 
 ```r
-miniextendr_autoconf(path = "mypackage")   # autoconf → generate configure
-miniextendr_configure(path = "mypackage")  # ./configure → generate Makevars
-miniextendr_build(path = "mypackage")      # R CMD INSTALL
-miniextendr_document(path = "mypackage")   # devtools::document (regenerate wrappers)
+miniextendr_autoconf(path = "mypackage")     # autoconf → generate configure
+miniextendr_configure(path = "mypackage")    # ./configure → generate Makevars
+miniextendr_build(path = "mypackage")        # R CMD INSTALL
+devtools::document("mypackage")              # regenerate NAMESPACE + man from wrappers
 ```
 
 ### One-Shot Sync
@@ -207,6 +207,7 @@ use_rayon()             # Parallel iteration
 use_serde()             # Serde-based R ↔ Rust serialization
 use_vctrs()             # vctrs integration
 use_r6()                # R6 class system
+use_s3()                # S3 class system
 use_s4()                # S4 class system
 use_s7()                # S7 class system
 use_feature_detection() # Conditional compilation via feature flags
@@ -471,10 +472,10 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | Category | Functions |
 |----------|-----------|
 | **Project creation** | `create_miniextendr_package`, `create_miniextendr_monorepo` |
-| **Build workflow** | `miniextendr_autoconf`, `miniextendr_configure`, `miniextendr_build`, `miniextendr_document`, `miniextendr_sync` |
+| **Build workflow** | `miniextendr_autoconf`, `miniextendr_configure`, `miniextendr_build`, `miniextendr_sync` |
 | **Inline compilation** | `rust_source`, `rust_function`, `rust_source_clean` |
 | **Cargo wrappers** | `cargo_add`, `cargo_rm`, `cargo_build`, `cargo_check`, `cargo_test`, `cargo_clippy`, `cargo_fmt`, `cargo_doc`, `cargo_search`, `cargo_deps`, `cargo_update`, `cargo_init`, `cargo_new` |
-| **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_vendor_lib` |
+| **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s3`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_vendor_lib` |
 | **Native R package FFI** | `use_native_package`, `check_native_package` (see [NATIVE_R_PACKAGES.md](NATIVE_R_PACKAGES.md)) |
 | **Git hooks** | `use_miniextendr_git_hooks` (pre-commit + post-merge reminders) |
 | **Vendoring** | `vendor_miniextendr`, `vendor_crates_io`, `vendor_sync`, `miniextendr_vendor`, `miniextendr_available_versions` |

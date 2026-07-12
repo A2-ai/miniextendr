@@ -169,8 +169,8 @@ use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
-    R_RegisterCFinalizerEx_unchecked, R_UnboundValue, Rf_allocVector, Rf_allocVector_unchecked,
-    Rf_findVarInFrame, Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked,
+    R_RegisterCFinalizerEx_unchecked, R_UnboundValue, R_getVarEx, Rf_allocVector,
+    Rf_allocVector_unchecked, Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked,
     Rf_unprotect, Rf_unprotect_unchecked,
 };
 use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
@@ -338,11 +338,16 @@ impl TypedExternal for () {
 // region: Class-handle unwrapping (audit A9)
 
 /// Look up a variable bound directly in a single environment frame (no search
-/// of enclosing frames — this is `Rf_findVarInFrame`, not `Rf_findVar`).
+/// of enclosing frames — `R_getVarEx` with `inherits = FALSE`, the API-blessed
+/// replacement for the removed `Rf_findVarInFrame`).
 ///
 /// Returns `None` if `env` is not itself an environment, or if `name` has no
 /// binding in it. Active bindings are forced transparently by R, same as any
-/// other variable read.
+/// other variable read. Note: `R_getVarEx` longjmps (raises an R error) if
+/// the binding turns out to be `R_MissingArg` — pathological for the
+/// `.ptr`/`.__enclos_env__`/`private` handle lookups this function serves,
+/// and acceptable here since callers run under the framework's unwind
+/// protection.
 ///
 /// # Safety
 ///
@@ -353,7 +358,7 @@ unsafe fn env_binding(env: SEXP, name: &std::ffi::CStr) -> Option<SEXP> {
             return None;
         }
         let sym = Rf_install(name.as_ptr());
-        let val = Rf_findVarInFrame(env, sym);
+        let val = R_getVarEx(sym, env, Rboolean::FALSE, R_UnboundValue);
         if ptr::addr_eq(val.0, R_UnboundValue.0) {
             None
         } else {
