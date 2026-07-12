@@ -1188,6 +1188,35 @@ mod tests {
         }
     }
 
+    /// The `&[T]` slice arms carry their own container label (`"&[i64]"`,
+    /// not `"Vec<i64>"`) and batch failures the same way as the `Vec` arms.
+    #[test]
+    fn batched_slice_i64_to_i32_lists_all_failing_indices() {
+        let mut v = vec![0i64; 6];
+        v[1] = i64::MAX;
+        v[4] = i64::MIN;
+        let result = IntoRAs::<i32>::into_r_as(v.as_slice());
+        match result {
+            Err(e @ StorageCoerceError::Batched { .. }) => {
+                if let StorageCoerceError::Batched {
+                    container,
+                    listed,
+                    total,
+                } = &e
+                {
+                    assert_eq!(*container, "&[i64]");
+                    assert_eq!(*total, 2);
+                    assert_eq!(listed.len(), 2);
+                }
+                let display = e.to_string();
+                assert!(display.contains("&[i64] conversion failed"), "{display}");
+                assert!(display.contains("index 1"), "{display}");
+                assert!(display.contains("index 4"), "{display}");
+            }
+            other => panic!("expected Batched, got {other:?}"),
+        }
+    }
+
     /// Scalar conversion failures must keep the plain (non-`Batched`) shape
     /// and Display grammar — only vector conversions batch.
     #[test]
