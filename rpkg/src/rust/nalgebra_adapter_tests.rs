@@ -152,4 +152,27 @@ pub fn nalgebra_reshape(m: DMatrix<f64>, new_nrow: i32, new_ncol: i32) -> DMatri
     DMatrix::from_column_slice(new_nrow as usize, new_ncol as usize, &data)
 }
 
+/// Rotate a 2D point by an angle (radians), mirroring the upstream
+/// `transform_vector_point.rs` pattern of building a transform matrix and
+/// multiplying it by a point.
+/// @param angle Rotation angle in radians.
+/// @param px X coordinate of the point.
+/// @param py Y coordinate of the point.
+#[miniextendr]
+pub fn nalgebra_rotate_point_2d(angle: f64, px: f64, py: f64) -> Vec<f64> {
+    let rotation =
+        DMatrix::from_row_slice(2, 2, &[angle.cos(), -angle.sin(), angle.sin(), angle.cos()]);
+    let point = DVector::from_column_slice(&[px, py]);
+    let rotated = rotation * point;
+    rotated.data.into()
+}
+
+/// Build a uniform 2D scaling (diagonal) matrix, mirroring the upstream
+/// `transform_matrix4.rs` pattern of constructing a scale transform.
+/// @param factor Scale factor applied to both axes.
+#[miniextendr]
+pub fn nalgebra_scale_matrix(factor: f64) -> DMatrix<f64> {
+    DMatrix::from_diagonal(&DVector::from_vec(vec![factor, factor]))
+}
+
 // endregion
