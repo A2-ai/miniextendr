@@ -2076,7 +2076,10 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
-    externalptr_derive::derive_external_ptr(input)
+    // Standalone `#[derive(ExternalPtr)]` always emits the `IntoExternalPtr`
+    // marker (enabling the blanket `IntoR`); only the struct-level
+    // `prefer = "native"` dispatch path suppresses it (#1283).
+    externalptr_derive::derive_external_ptr(input, true)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

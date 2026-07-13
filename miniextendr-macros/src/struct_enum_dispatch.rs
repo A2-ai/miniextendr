@@ -188,7 +188,8 @@ pub fn expand_struct_or_enum(
 /// - Explicit `list` mode: `IntoList` + `TryFromList` + `PreferList`
 /// - Explicit `dataframe` mode: `IntoList` + `DataFrameRow` + companion `IntoR`
 /// - Default multi-field or explicit `externalptr`: `ExternalPtr`
-/// - `prefer = "native"`: `ExternalPtr` + `PreferRNative` marker
+/// - `prefer = "native"`: `ExternalPtr` (without the `IntoExternalPtr` marker,
+///   #1283) + `PreferRNativeType` marker
 fn expand_struct(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -309,7 +310,13 @@ fn expand_struct(
     // Default for multi-field or explicit externalptr: ExternalPtr
     // Also handles prefer = "native" (ExternalPtr + native preference marker)
     let result = (|| -> syn::Result<proc_macro2::TokenStream> {
-        let external_ptr = crate::externalptr_derive::derive_external_ptr(derive_input.clone())?;
+        // Suppress the `IntoExternalPtr` marker (and its blanket `IntoR`) for
+        // `prefer = "native"` so the concrete `AsRNative` `IntoR` from
+        // `derive_prefer_rnative` below is the type's sole `IntoR` (E0119, #1283).
+        let external_ptr = crate::externalptr_derive::derive_external_ptr(
+            derive_input.clone(),
+            attrs.prefer.as_deref() != Some("native"),
+        )?;
 
         // Apply native preference marker if specified
         let prefer = if attrs.prefer.as_deref() == Some("native") {

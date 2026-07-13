@@ -1199,11 +1199,18 @@ fn generate_into_external_ptr(input: &DeriveInput) -> TokenStream {
 /// 1. Parses `#[externalptr(...)]` attributes for class system selection.
 /// 2. Analyzes struct fields for `#[r_data]` sidecar slots.
 /// 3. Generates `TypedExternal` impl (type identity for `ExternalPtr<T>`).
-/// 4. Generates `IntoExternalPtr` marker impl (enables `IntoR` blanket impl).
+/// 4. Generates `IntoExternalPtr` marker impl (enables `IntoR` blanket impl) —
+///    suppressed when `emit_into_r_marker` is `false`, which the struct-level
+///    `#[miniextendr(prefer = "native")]` path uses so its concrete `AsRNative`
+///    `IntoR` does not collide with the blanket `IntoExternalPtr` `IntoR`
+///    (E0119, #1283).
 /// 5. Generates sidecar accessor FFI functions, registration constants, and R wrappers.
 ///
 /// Returns the combined token stream of all generated items.
-pub fn derive_external_ptr(input: DeriveInput) -> syn::Result<TokenStream> {
+pub fn derive_external_ptr(
+    input: DeriveInput,
+    emit_into_r_marker: bool,
+) -> syn::Result<TokenStream> {
     // Parse class system from #[externalptr(...)] attribute
     let class_system = parse_externalptr_attrs(&input)?;
 
@@ -1211,7 +1218,11 @@ pub fn derive_external_ptr(input: DeriveInput) -> syn::Result<TokenStream> {
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
     let typed_external = generate_typed_external(&input);
-    let into_external_ptr = generate_into_external_ptr(&input);
+    let into_external_ptr = if emit_into_r_marker {
+        generate_into_external_ptr(&input)
+    } else {
+        proc_macro2::TokenStream::new()
+    };
     let sidecar_accessors = generate_sidecar_accessors(&input, &sidecar_info)?;
     let erased_wrapper = generate_erased_wrapper(&input);
 

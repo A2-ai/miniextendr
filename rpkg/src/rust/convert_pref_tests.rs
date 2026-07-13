@@ -130,6 +130,24 @@ pub fn attr_prefer_native(x: i32) -> Hybrid {
     Hybrid(x)
 }
 
+// Struct-level prefer = "native" (#1283): the attribute on the STRUCT
+// (not the fn) selects the type's default IntoR = AsRNative routing.
+#[miniextendr(prefer = "native")]
+#[derive(Copy, Clone, Debug, miniextendr_api::RNativeType)]
+pub struct StructPreferNative(pub i32);
+
+#[miniextendr]
+/// @title Struct-level prefer = "native" returns the native R type
+/// @rdname convert_pref_tests
+/// @description Regression fixture for #1283: a struct carrying
+///   `#[miniextendr(prefer = "native")]` returned bare from a fn converts
+///   via `AsRNative` to a length-1 integer vector.
+/// @examples
+/// struct_prefer_native(3L)
+pub fn struct_prefer_native(x: i32) -> StructPreferNative {
+    StructPreferNative(x)
+}
+
 // Note: `#[miniextendr(prefer = "list")]` on a function returning `Option<T>` used to be
 // a silent no-op (auto-detection produces `OptionIntoR`, which passed through
 // `apply_return_pref` unchanged). It is now a hard compile error — see

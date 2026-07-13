@@ -34,6 +34,13 @@ test_that("prefer = 'native' attribute returns an integer scalar identical to ex
   expect_identical(result, hybrid_as_native(1L))
 })
 
+test_that("struct-level prefer = 'native' compiles and returns the native type (#1283)", {
+  result <- struct_prefer_native(3L)
+  expect_identical(typeof(result), "integer")
+  expect_identical(result, 3L)
+  expect_identical(result, hybrid_as_native(3L))
+})
+
 test_that("AsDataFrame wrapper forces a data.frame return", {
   df <- pref_rows_as_data_frame()
   expect_s3_class(df, "data.frame")
