@@ -218,7 +218,7 @@ to load cli's DLL when your package loads.
 
 Add native package include discovery:
 
-```m4
+```text
 dnl ---- Native R package include paths ----
 NATIVE_PKG_CPPFLAGS=""
 

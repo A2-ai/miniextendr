@@ -189,10 +189,10 @@ struct ColumnReg {
 ///
 /// Every native column SEXP is PROTECTed from allocation through insertion into
 /// the `VECSXP`; the `names` / `row.names` / class transients are likewise
-/// protected across each subsequent allocation. After
-/// [`build`][RDataFrameBuilder::build] returns, the resulting data.frame SEXP is
-/// unprotected and becomes the caller's responsibility (return it from a
-/// `#[miniextendr]` fn, or PROTECT it).
+/// protected across each subsequent allocation. Before those temporary guards
+/// drop, [`build`][RDataFrameBuilder::build] transfers the assembled frame into
+/// a GC-rooted [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame). The root is
+/// released when the handle is returned to R via `IntoR` or dropped in Rust.
 pub struct RDataFrameBuilder {
     nrow: usize,
     names: Vec<String>,

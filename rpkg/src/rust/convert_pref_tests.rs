@@ -134,7 +134,11 @@ pub fn attr_prefer_native(x: i32) -> Hybrid {
 // (not the fn) selects the type's default IntoR = AsRNative routing.
 #[miniextendr(prefer = "native")]
 #[derive(Copy, Clone, Debug, miniextendr_api::RNativeType)]
-pub struct StructPreferNative(pub i32);
+pub struct StructPreferNative(
+    // The layout-based RNativeType conversion consumes this field through the
+    // generated implementation, which dead-code analysis cannot observe.
+    #[allow(dead_code)] pub i32,
+);
 
 #[miniextendr]
 /// @title Struct-level prefer = "native" returns the native R type

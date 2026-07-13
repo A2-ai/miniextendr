@@ -498,7 +498,7 @@ during a session without restarting R.
 The hook replaces Rust's default panic hook with a wrapper that checks `MINIEXTENDR_BACKTRACE`
 on every panic:
 
-```default
+```text
 Panic occurs
   -> Custom hook runs
   -> Reads MINIEXTENDR_BACKTRACE env var
@@ -516,7 +516,7 @@ If the panic hook installation itself panics (e.g., `take_hook` fails), `Once` m
 state as poisoned. On the next call, the hook retries via `call_once_force` and prints a
 warning:
 
-```default
+```text
 warning: miniextendr panic hook is retrying after a previous failed attempt
 ```
 
@@ -576,7 +576,8 @@ needs_integer("abc")
 
 ### NA Handling
 
-Non-`Option` types reject NA values:
+NA-rejecting scalar types such as `i32` and `bool` report conversion errors;
+their `Option` forms preserve NA as `None`:
 
 ```rust
 #[miniextendr]
@@ -892,7 +893,9 @@ pub fn risky() -> Result<(), String> {
 ## Known Limitations
 
 - **Spawned-thread panics** cannot be cleanly propagated through `extern "C-unwind"` boundaries. Convert thread errors to `Result` instead of using `resume_unwind`. See [GAPS.md](GAPS.md#56-thread-panic-propagation-limitation).
-- **Thread safety debug assertions** for SEXP access only run in debug builds. Checked FFI wrappers provide runtime thread checks in all build modes. See [GAPS.md](GAPS.md#55-thread-safety-debug-assertions).
+- **Thread safety debug assertions** for direct SEXP access only run in debug
+  builds. Checked FFI wrappers route through `with_r_thread` in all build modes.
+  See [GAPS.md](GAPS.md#55-thread-safety-debug-assertions).
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 

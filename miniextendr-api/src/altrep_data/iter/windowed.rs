@@ -3,7 +3,8 @@
 //! Provides `WindowedIterState<I, T>` which keeps a sliding window of elements
 //! in memory, and data-adaptor types for the integer/real ALTREP families.
 //!
-//! See the [`super`](crate::altrep_data::iter) module docs for how to expose
+//! See the iterator-adaptor section in the [`altrep_data`](crate::altrep_data)
+//! module docs for how to expose
 //! these adaptors to R (wrap in a `#[derive(Altrep*)]` + `#[altrep(manual)]`
 //! struct).
 

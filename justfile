@@ -244,8 +244,10 @@ clippy *cargo_flags:
 [script("bash")]
 lint:
     set -euo pipefail
-    cd rpkg
-    output=$(cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
+    root="$(pwd)"
+    trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
+    cd "$root/rpkg/src/rust"
+    output=$(cargo check 2>&1) || {
         echo "$output"
         echo ""
         echo "::error::cargo check failed (see output above)"

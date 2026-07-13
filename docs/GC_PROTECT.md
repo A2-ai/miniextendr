@@ -73,7 +73,6 @@ let strvec = scope.alloc_strsxp(10);
 | `alloc_3d_array(ty, nrow, ncol, nface)` | `Rf_alloc3DArray` | 3-D array |
 | `alloc_lang(n)` | `Rf_allocLang` | Language object (LANGSXP) of length `n` |
 | `alloc_s4_object()` | `Rf_allocS4Object` | S4 object (S4SXP) |
-| `alloc_sexp(ty)` | `Rf_allocSExp` | Bare cons-cell node of the given type |
 | `mkchar(s)` | `Rf_mkCharLenCE(..., CE_UTF8)` | CHARSXP from `&str` (UTF-8) |
 | `mkchar_ce(s, enc)` | `Rf_mkCharLenCE` | CHARSXP from `&str` with specified encoding |
 | `mkchar_len_ce(bytes, enc)` | `Rf_mkCharLenCE` | CHARSXP from `&[u8]` with specified encoding |

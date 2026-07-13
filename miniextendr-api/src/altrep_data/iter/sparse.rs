@@ -3,7 +3,8 @@
 //! Provides `SparseIterState<I, T>` which uses `Iterator::nth()` to skip elements
 //! efficiently, and data-adaptor types for each ALTREP family.
 //!
-//! See the [`super`](crate::altrep_data::iter) module docs for how to expose
+//! See the iterator-adaptor section in the [`altrep_data`](crate::altrep_data)
+//! module docs for how to expose
 //! these adaptors to R (wrap in a `#[derive(Altrep*)]` + `#[altrep(manual)]`
 //! struct).
 

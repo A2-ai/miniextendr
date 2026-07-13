@@ -30,7 +30,7 @@ use crate::SEXP;
 /// # Registration
 ///
 /// ```rust,ignore
-/// use miniextendr_api::serde_r::RSerializeNative;
+/// use miniextendr_api::serde::RSerializeNative;
 /// use serde::Serialize;
 ///
 /// #[derive(Serialize, ExternalPtr)]
@@ -98,7 +98,7 @@ impl<T: serde::Serialize> RSerializeNative for T {
 /// # Registration
 ///
 /// ```rust,ignore
-/// use miniextendr_api::serde_r::RDeserializeNative;
+/// use miniextendr_api::serde::RDeserializeNative;
 /// use serde::Deserialize;
 ///
 /// #[derive(Deserialize, ExternalPtr)]
@@ -154,7 +154,7 @@ impl<T: for<'de> serde::Deserialize<'de>> RDeserializeNative for T {
 /// # Example
 ///
 /// ```rust,ignore
-/// use miniextendr_api::serde_r::to_r;
+/// use miniextendr_api::serde::to_r;
 ///
 /// let point = Point { x: 1.0, y: 2.0 };
 /// let sexp = to_r(&point)?;
@@ -168,7 +168,7 @@ pub fn to_r<T: serde::Serialize>(value: &T) -> Result<SEXP, RSerdeError> {
 /// # Example
 ///
 /// ```rust,ignore
-/// use miniextendr_api::serde_r::from_r;
+/// use miniextendr_api::serde::from_r;
 ///
 /// let point: Point = from_r(sexp)?;
 /// ```
@@ -180,7 +180,7 @@ pub fn from_r<T: for<'de> serde::Deserialize<'de>>(sexp: SEXP) -> Result<T, RSer
 
 use crate::into_r::IntoR;
 
-/// Wrapper that converts any `Serialize` type to R via serde_r.
+/// Wrapper that converts any `Serialize` type to native R data via serde.
 ///
 /// This is the serde analog to `AsList<T: IntoList>`. Use it when you want to
 /// return a `Serialize` type from a `#[miniextendr]` function and have it
@@ -189,7 +189,7 @@ use crate::into_r::IntoR;
 /// # Example
 ///
 /// ```rust,ignore
-/// use miniextendr_api::serde_r::AsSerialize;
+/// use miniextendr_api::serde::AsSerialize;
 /// use serde::Serialize;
 ///
 /// #[derive(Serialize)]
@@ -266,7 +266,7 @@ impl<T: serde::Serialize> IntoR for AsSerialize<T> {
         // Panic so the surrounding `with_r_unwind_protect` converts to a tagged
         // condition SEXP — direct `r_stop` would longjmp past the framework's
         // structured `rust_*` class layering.
-        Ok(to_r(&self.0).unwrap_or_else(|e| panic!("serde_r serialization failed: {}", e)))
+        Ok(to_r(&self.0).unwrap_or_else(|e| panic!("native serde serialization failed: {}", e)))
     }
 }
 // endregion

@@ -1,10 +1,12 @@
-# serde_r: Direct Rust-R Serialization
+# Native Rust-R serialization with serde
 
-The `serde_r` feature provides direct serialization between Rust types and native R objects without going through an intermediate format like JSON. This enables efficient, type-preserving conversions that respect R's native data structures.
+The `serde` feature provides direct serialization between Rust types and native
+R objects without an intermediate format such as JSON. The API lives in
+`miniextendr_api::serde` and preserves R's native data types.
 
 ## Overview
 
-| Feature | `serde` (JSON) | `serde_r` (Native) |
+| Feature | `serde_json` (JSON) | `serde` (native R) |
 |---------|----------------|-------------------|
 | Intermediate format | JSON string | None |
 | Type preservation | No (all numbers → f64) | Yes (i32 stays i32) |
@@ -17,10 +19,10 @@ The `serde_r` feature provides direct serialization between Rust types and nativ
 ```toml
 # Cargo.toml
 [dependencies]
-miniextendr-api = { version = "0.1", features = ["serde_r"] }
+miniextendr-api = { version = "0.1", features = ["serde"] }
 
 # Or for both JSON and native R serialization:
-miniextendr-api = { version = "0.1", features = ["serde_full"] }
+miniextendr-api = { version = "0.1", features = ["serde_json"] }
 ```
 
 ## Type Mappings
@@ -73,7 +75,7 @@ never silently coerced. An `Option<T>` field accepts *either* `NA` or `NULL`
 as `None`. This matches the macro `TryFromSexp` convention documented in
 [`CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md) (see its `Option<T>` table),
 so the two conversion layers now agree on what counts as "missing" on input.
-Output-side conventions remain per-layer and unchanged: `serde_r`'s `to_r()`
+Output-side conventions remain per-layer and unchanged: native serde's `to_r()`
 always serializes `None` to `NULL` (see the Serialization table above), while
 the macro's scalar `IntoR` serializes `None` to `NA`.
 
@@ -84,7 +86,7 @@ the macro's scalar `IntoR` serializes `None` to `NA`.
 ```rust
 use serde::{Serialize, Deserialize};
 use miniextendr_api::{miniextendr, ExternalPtr};
-use miniextendr_api::serde_r::{RSerializeNative, RDeserializeNative};
+use miniextendr_api::serde::{RDeserializeNative, RSerializeNative};
 
 #[derive(Serialize, Deserialize, Clone, ExternalPtr)]
 pub struct Point {
@@ -136,7 +138,9 @@ identical(original$x, restored$x)  # TRUE
 
 ## Smart Vec Dispatch
 
-One of the key features of `serde_r` is smart vector dispatch. When serializing `Vec<T>`, the serializer automatically chooses the most efficient R representation:
+One of the key features of the native serde bridge is smart vector dispatch.
+When serializing `Vec<T>`, the serializer automatically chooses the most
+efficient R representation:
 
 ```rust
 // Vec<i32> -> integer vector (atomic)
@@ -181,7 +185,7 @@ r1 <- Record$from_r(list(id = 1L, name = "test", value = 3.14))
 r2 <- Record$from_r(list(id = 2L, name = NULL, value = NULL))
 r3 <- Record$from_r(list(id = 3L, name = NA_character_, value = NA_real_))
 
-# Serialize back -- serde_r's output convention is always NULL for None,
+# Serialize back -- native serde's output convention is always NULL for None,
 # regardless of whether NA or NULL was the input.
 r2$to_r()
 # list(id = 2L, name = NULL, value = NULL)
@@ -196,7 +200,7 @@ Record$from_r(list(id = NA_integer_, name = "test", value = 3.14))
 
 ## Nested Structures
 
-`serde_r` handles arbitrarily nested structures:
+The native serde bridge handles arbitrarily nested structures:
 
 ```rust
 #[derive(Serialize, Deserialize)]
@@ -315,7 +319,7 @@ data$metadata$author   # "test"
 For one-off conversions without registering types:
 
 ```rust
-use miniextendr_api::serde_r::{to_r, from_r};
+use miniextendr_api::serde::{from_r, to_r};
 
 #[miniextendr]
 pub fn convert_to_r() -> SEXP {
@@ -338,8 +342,8 @@ are recursively flattened into prefixed columns (`point_x`, `point_y`);
 fills NA. `Option<Struct>` fills NA across all sub-columns when `None`.
 
 ```rust
-use miniextendr_api::serde_r::vec_to_dataframe;
-use miniextendr_api::dataframe::DataFrame;
+use miniextendr_api::dataframe::BuiltDataFrame;
+use miniextendr_api::serde::vec_to_dataframe;
 
 #[derive(Serialize)]
 struct Row {
@@ -350,7 +354,7 @@ struct Row {
 }
 
 #[miniextendr]
-pub fn rows_as_df(rows: Vec<Row>) -> DataFrame {
+pub fn rows_as_df(rows: Vec<Row>) -> BuiltDataFrame {
     vec_to_dataframe(&rows).unwrap()
         .rename("point_x", "x")
         .rename("point_y", "y")
@@ -358,17 +362,80 @@ pub fn rows_as_df(rows: Vec<Row>) -> DataFrame {
 }
 ```
 
-`DataFrame` implements `IntoR`, so return it directly from a `#[miniextendr]`
-function. No explicit `.build()` or `into_sexp()` call is needed. Builder
-methods (`rename`, `strip_prefix`, `drop`, `select`) are chainable and run
-before the SEXP reaches R.
+`BuiltDataFrame` implements `IntoR`, so return it directly from a
+`#[miniextendr]` function. No explicit `.build()` or `into_sexp()` call is
+needed. The handle keeps every constructor/editing chain GC-rooted until the
+SEXP is handed to R.
+
+### Streaming rows
+
+Use `iter_to_dataframe` for a one-pass iterator. Use `SerdeRowBuilder<T>` when
+rows arrive incrementally or the schema needs to be declared or allowed to
+grow:
+
+```rust
+use miniextendr_api::serde::{SerdeRowBuilder, TypeSpec};
+
+let mut builder = SerdeRowBuilder::<Row>::with_schema(
+    [
+        ("id", TypeSpec::Integer),
+        ("note", TypeSpec::Optional(Box::new(TypeSpec::Character))),
+    ],
+    None,
+).grow_schema();
+
+builder.push(row)?;
+let df: BuiltDataFrame = builder.finish()?;
+```
+
+`finish()` returns a rooted `BuiltDataFrame`, including for the empty
+0-row/0-column case.
+
+### Results and enum output shapes
+
+`result_to_dataframe` turns `&[Result<T, E>]` into a typed `DataFrameShape`:
+
+- `ResultShape::Auto` returns a bare data frame when every row is `Ok`, and a
+  `list(results = ..., error = ...)` when any row is `Err`.
+- `ResultShape::Split` always returns that two-slot list.
+- `ResultShape::Collated` returns one data frame with an `is_error` column and
+  the union of the `T` and `E` fields.
+
+```rust
+use miniextendr_api::serde::{DataFrameShape, ResultShape, result_to_dataframe};
+
+#[derive(serde::Serialize)]
+struct ErrorRow {
+    id: i32,
+    reason: String,
+}
+
+#[miniextendr]
+fn results_df(rows: Vec<Result<Row, ErrorRow>>) -> Result<DataFrameShape, String> {
+    result_to_dataframe(
+        &rows,
+        ResultShape::Auto { empty_ok_sentinel: () }, // NULL if every row is Err
+    )
+    .map_err(|error| error.to_string())
+}
+```
+
+Every frame inside `DataFrameShape` is a rooted `BuiltDataFrame`. When an
+all-error split uses a caller-supplied sentinel, the shape keeps it alive in a
+`RootedSentinel` until `IntoR` consumes the result. The shape is therefore safe
+to hold across intervening R allocations; it is not a convert-immediately view.
+
+For streaming `Result<T, E>` rows, `dispatch_to_dataframes` incrementally fills
+two serde builders and always returns `list(ok = <df>, err = <df>)`; customize
+the names with `DispatchNames`. For enums, `vec_to_dataframe_split` selects a
+per-variant list or collated frame via `SplitShape`.
 
 ## Error Handling
 
 Deserialization can fail for various reasons:
 
 ```rust
-use miniextendr_api::serde_r::from_r;
+use miniextendr_api::serde::from_r;
 
 #[miniextendr]
 pub fn safe_deserialize(sexp: SEXP) -> Result<Point, String> {
@@ -444,7 +511,7 @@ point <- Point$from_r(as.list(e))
 
 miniextendr also provides `#[derive(IntoList)]` for simpler struct-to-list conversion. Here's how they compare:
 
-| Feature | `IntoList` | `serde_r` |
+| Feature | `IntoList` | native serde |
 |---------|-----------|-----------|
 | Derive macro | Yes | Needs serde derives |
 | Deserialization | No (one-way) | Yes (bidirectional) |
@@ -454,7 +521,9 @@ miniextendr also provides `#[derive(IntoList)]` for simpler struct-to-list conve
 | Option/NA | No | Yes |
 | Nested structs | Yes | Yes |
 
-Use `IntoList` for simple one-way struct-to-list conversion. Use `serde_r` when you need full bidirectional serialization, enum support, or smart vector handling.
+Use `IntoList` for simple one-way struct-to-list conversion. Use native serde
+when you need full bidirectional serialization, enum support, or smart vector
+handling.
 
 ## Satellite crates: R interop for a serde-only crate
 
@@ -470,7 +539,7 @@ that already links miniextendr.
   │ #[derive(Serialize, │  path  │ + satellite (path dep)            │
   │   Deserialize)]     │◄───────│                                   │
   │ struct Reading {…}  │  dep   │ #[miniextendr]                    │
-  │                     │        │ fn readings_df() -> DataFrame {   │
+  │                     │        │ fn readings_df() -> BuiltDataFrame {
   │ NO miniextendr,     │        │   vec_to_dataframe(&readings())   │
   │ NO FFI, NO R        │        │ }   // the ONLY bridge code        │
   └────────────────────┘        └──────────────────────────────────┘
@@ -516,12 +585,12 @@ miniextendr's bridge functions require — no shared-trait wiring needed.
 
 ```rust
 use miniextendr_api::{miniextendr, SEXP};
-use miniextendr_api::dataframe::DataFrame;
+use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::serde::{AsSerialize, from_r, vec_to_dataframe};
 
 // Vec<struct> → columnar data.frame (nested structs flatten, Option → NA).
 #[miniextendr]
-fn readings_df() -> Result<DataFrame, String> {
+fn readings_df() -> Result<BuiltDataFrame, String> {
     vec_to_dataframe(&satellite::sample_readings()).map_err(|e| e.to_string())
 }
 
@@ -595,6 +664,6 @@ methods, and classes live in the package crate.
 You still write one `#[miniextendr]` free function per exported conversion —
 `extern "C"` exports can't be generic, so each must name the concrete satellite
 type. That function *is* the entire glue: name the type, call `vec_to_dataframe`
-/ `AsSerialize` / `from_r`. (A `TryFrom<&[T]> for DataFrame` sugar would let you
+/ `AsSerialize` / `from_r`. (A `TryFrom<&[T]> for BuiltDataFrame` sugar would let you
 write `rows.try_into()` inside the body, but you'd still need the named export,
 so it saves nothing for this pattern.)

@@ -18,6 +18,7 @@ framework.
 | Use lazy/compact vectors | [ALTREP](ALTREP.md) |
 | Understand the architecture | [Architecture](ARCHITECTURE.md) |
 | See what features exist | [Features](FEATURES.md) |
+| Look up the generated Rust API surface | [LLM-ready rustdoc digests](../rust-llm-docs/generated/README.md) |
 | Debug a problem | [Troubleshooting](TROUBLESHOOTING.md) |
 
 ## Documentation map
@@ -37,7 +38,9 @@ framework.
 - **[Architecture](ARCHITECTURE.md)** -- Crate structure, call flow, how Rust
   talks to R
 - **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp` / `IntoR`
-  system, `NamedList`
+  system, `NamedList`, `RValue`
+- **[Conditions](CONDITIONS.md)** -- Structured `error!`, `warning!`,
+  `message!`, and `condition!` signals with typed data payloads
 - **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`,
   `REnv` for calling R from Rust
 - **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`,
@@ -45,6 +48,8 @@ framework.
 - **[ExternalPtr](EXTERNALPTR.md)** -- Box-like owned pointer wrapping R's
   `EXTPTRSXP`
 - **[GC Protection](GC_PROTECT.md)** -- RAII-based protect/unprotect
+- **[Cached SEXPs](CACHED_SEXPS.md)** -- Safe session-lifetime caches for
+  symbols, strings, class vectors, and names
 - **[R Allocator](ALLOCATOR.md)** -- R-backed `GlobalAlloc` using `RAWSXP` plus
   preserve lists
 - **[FFI Guard & Panic Telemetry](FFI_GUARD.md)** -- Panic boundaries and
@@ -60,6 +65,12 @@ framework.
 
 - **[`#[miniextendr]` Attribute](MINIEXTENDR_ATTRIBUTE.md)** -- Complete
   reference for functions, impls, traits, structs, and enums
+- **[Visibility](VISIBILITY.md)** -- `pub`, `internal`, `noexport`, and R export
+  rules
+- **[Call Attribution](CALL_ATTRIBUTION.md)** -- How Rust-origin errors preserve
+  the R call
+- **[Track Caller](TRACK_CALLER.md)** -- Panic source locations and generated
+  wrapper behavior
 
 ### Class systems
 
@@ -72,7 +83,10 @@ framework.
 
 | Feature | Guide | What it does |
 |---|---|---|
-| ALTREP | [ALTREP](ALTREP.md), [Receiving ALTREP](ALTREP_SEXP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md), [Guards](ALTREP_GUARDS.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
+| ALTREP | [ALTREP](ALTREP.md), [Receiving ALTREP](ALTREP_SEXP.md), [Native SEXP-backed ALTREP](NATIVE_SEXP_ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md), [Guards](ALTREP_GUARDS.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
+| Arrow | [Arrow](ARROW.md) | Arrow arrays, R-backed buffers, and zero-copy recovery |
+| Jiff | [Jiff](JIFF.md) | Date/time conversion, adapters, ALTREP, and vctrs records |
+| OpenMP | [OpenMP](OPENMP.md) | Native dependency and R package build integration |
 | Enums & Factors | [Enums & Factors](ENUMS_AND_FACTORS.md) | `RFactor`, `MatchArg`, `FactorVec` |
 | Connections | [Connections](CONNECTIONS.md) | Custom R connections from Rust |
 | Progress bars | [Progress](PROGRESS.md) | indicatif progress bars routed through the R console |
@@ -80,7 +94,7 @@ framework.
 | vctrs | [Vctrs](VCTRS.md) | vctrs integration with `#[derive(Vctrs)]` |
 | `serde` | [Serde](SERDE_R.md) | Native Rust <-> R serialization |
 | `serde_json` | [Serde](SERDE_R.md) | JSON-based serialization helpers |
-| DataFrames | [DataFrames](DATAFRAME.md) | `#[derive(DataFrameRow)]` plus columnar / serde helpers |
+| DataFrames | [DataFrames](DATAFRAME.md), [Interface](DATAFRAME_INTERFACE.md), [All-None columns](COLUMNAR_OPTION_NONE.md) | `DataFrame` views, rooted `BuiltDataFrame` handles, row derives, and serde helpers |
 | Dots | [Dots](DOTS_TYPED_LIST.md) | R's `...` args plus `typed_list!` validation |
 | Adapters | [Adapter Traits](ADAPTER_TRAITS.md), [Cookbook](ADAPTER_COOKBOOK.md) | Export external crate traits to R |
 | Lifecycle | [Lifecycle](LIFECYCLE.md) | Deprecation badges and runtime warnings |
@@ -109,6 +123,14 @@ framework.
   helpers
 - **[Entrypoint](ENTRYPOINT.md)** -- R package entry point (`R_init_*`)
 - **[CRAN Compatibility](CRAN_COMPATIBILITY.md)** -- Source vs tarball install modes, vendoring, and the maintainer release flow
+- **[Cargo.lock Shape](CARGO_LOCK_SHAPE.md)** -- Why the committed R-package
+  lockfile uses tarball dependency resolution
+- **[DESCRIPTION Fields](DESCRIPTION_FIELDS.md)** -- R package metadata and
+  generated dependency fields
+- **[Release Workflow](RELEASE_WORKFLOW.md)** -- Release checklist and CI
+  release mechanics
+- **[Releasing](RELEASING.md)** -- Installation and vendored-tarball release
+  modes
 - **[Linking](LINKING.md)** -- Shared library linking strategy
 - **[Environment Variables](ENVIRONMENT_VARIABLES.md)** -- Env vars affecting
   build/configure/lint
@@ -125,7 +147,7 @@ framework.
 - **[Conversion Matrix](CONVERSION_MATRIX.md)** -- R type x Rust type behavior
   reference
 - **[Coercion](COERCE.md)** -- Automatic type coercion
-- **[as.class() Methods](AS_COERCE.md)** -- `as.<class>()` coercion methods
+- **[as.class() Methods](R_COERCE.md)** -- `as.<class>()` coercion methods
 - **[Extending](EXTENDING_MINIEXTENDR.md)** -- Adding custom types to
   miniextendr
 - **[Orphan Rule Challenges](ORPHAN_RULE_CHALLENGES.md)** -- Design notes on
@@ -134,6 +156,8 @@ framework.
 ### Testing and debugging
 
 - **[Smoke Tests](SMOKE_TEST.md)** -- Quick/standard/demanding test lanes
+- **[GC Torture Testing](GCTORTURE_TESTING.md)** -- Stress-testing protection
+  and rooting invariants
 - **[Troubleshooting](TROUBLESHOOTING.md)** -- Common issues and solutions
 - **[Macro Errors](MACRO_ERRORS.md)** -- All MXL error codes explained
 - **[Sparse Iterator ALTREP](SPARSE_ITERATOR_ALTREP.md)** -- Sparse-cache
@@ -150,8 +174,9 @@ framework.
 
 ### Project status
 
-- **[Known Gaps](GAPS.md)** -- What's missing, what's broken, and why
-- **[Feature Backlog](FEATURE_BACKLOG.md)** -- Proposed features and sequencing
+- **[Known Gaps](GAPS.md)** -- Current limitations and behavioral contracts
+- **[Archived Feature Backlog](archive/FEATURE_BACKLOG.md)** -- Completed history;
+  remaining work is linked to GitHub issues
 - **[Maintainer Guide](MAINTAINER.md)** -- Release process and maintenance
   tasks
 

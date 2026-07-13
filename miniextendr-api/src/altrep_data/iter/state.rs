@@ -6,7 +6,8 @@
 //! string/list/complex adaptors (`IterStringData`, `IterListData`,
 //! `IterComplexData`) live in `super::coerce`.
 //!
-//! See the [`super`](crate::altrep_data::iter) module docs for how to expose
+//! See the iterator-adaptor section in the [`altrep_data`](crate::altrep_data)
+//! module docs for how to expose
 //! these adaptors to R: they implement only the data-level traits
 //! ([`AltrepLen`] + `Alt*Data`) and must be wrapped in a concrete
 //! `#[derive(Altrep*)]` + `#[altrep(manual)]` struct to back a live ALTREP

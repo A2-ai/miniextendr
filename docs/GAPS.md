@@ -1,6 +1,8 @@
 # miniextendr: Known Gaps and Limitations
 
-This document catalogs known gaps, limitations, and undocumented behaviors in miniextendr. It serves as both user documentation and a roadmap for future improvements.
+This document catalogs current limitations and behavioral contracts in
+miniextendr. Resolved entries remain as compact implementation history; future
+work is tracked in GitHub issues rather than in this document.
 
 ---
 
@@ -10,8 +12,8 @@ This document catalogs known gaps, limitations, and undocumented behaviors in mi
 2. [Type Conversion Gaps](#2-type-conversion-gaps)
 3. [Class System Gaps](#3-class-system-gaps)
 4. [Incomplete Features](#4-incomplete-features)
-5. [Undocumented Behavior](#5-undocumented-behavior)
-6. [Testing Gaps](#6-testing-gaps)
+5. [Behavioral Contracts](#5-behavioral-contracts)
+6. [Testing Coverage](#6-testing-coverage)
 7. [Documentation Status](#7-documentation-status)
 
 ---
@@ -93,7 +95,7 @@ See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) for the full dots guide, including 
 
 ---
 
-### 1.3 Feature-Gated Modules
+### 1.3 Feature-Gated Module Entries
 
 **Status:** By design
 **Impact:** Low
@@ -143,34 +145,28 @@ See `rpkg/src/rust/doc_attr_tests.rs` for test coverage.
 
 ## 2. Type Conversion Gaps
 
-### 2.1 Mutable Slice Parameters Rejected at Compile Time
+### ~~2.1 Mutable Slice Parameters Rejected at Compile Time~~ RESOLVED
 
-**Status:** Enforced (compile error)
-**Impact:** Medium
-**Location:** `miniextendr-macros/src/rust_conversion_builder.rs` (rejection)
+**Status:** Supported for R-native vector element types
+**Location:** `miniextendr-api/src/from_r.rs`
 
-**Contract:** `&mut [T]` at the `#[miniextendr]` boundary is rejected with a compile error because R's GC can invalidate the slice pointer mid-use. Use `Vec<T>` instead (copies data on input via `TryFromSexp`, copies back on output via `IntoR`).
+`&mut [T]` parameters borrow R's vector storage directly and mutate it in place.
+Because R may pass the same SEXP to more than one argument, callers must not
+alias a mutable slice with another mutable or shared slice parameter. Generated
+wrappers detect this in debug builds; it remains a caller contract in release
+builds.
 
 ```rust
-// Accept immutable slice, return modified copy
 #[miniextendr]
-pub fn modify_vec(data: &[i32]) -> Vec<i32> {
-    let mut result = data.to_vec();
-    result[0] = 42;
-    result
+pub fn modify_in_place(data: &mut [i32]) {
+    data[0] = 42;
 }
 
-// Accept owned Vec (copies data)
+// For owned-copy semantics, accept and return Vec<T> instead.
 #[miniextendr]
-pub fn modify_vec_owned(mut data: Vec<i32>) -> Vec<i32> {
+pub fn modify_copy(mut data: Vec<i32>) -> Vec<i32> {
     data[0] = 42;
     data
-}
-
-// For mutable state, use ExternalPtr
-#[miniextendr]
-pub fn modify_state(state: &mut MyState) {
-    state.value = 42;
 }
 ```
 
@@ -183,6 +179,7 @@ See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) for slice lifetime details and [S
 **Status:** Not implemented
 **Impact:** Low
 **Location:** `miniextendr-api/src/into_r.rs`
+**Tracking:** [#1348](https://github.com/A2-ai/miniextendr/issues/1348)
 
 `ndarray::Array<String, Ix2>` and similar string arrays are not directly convertible.
 
@@ -385,11 +382,6 @@ The connections API wraps R's internal connection system but is marked unstable 
 - `std::io` adapters (`IoRead`, `IoWrite`, `IoReadWrite`, etc.)
 - `RConnectionIo` builder with capability detection
 
-**What's missing:**
-- No wide character support
-- Limited binary mode handling
-- No statistics/introspection
-
 **Safety mechanism:**
 ```rust
 // Runtime version check - will panic if R's connection ABI changed
@@ -512,7 +504,7 @@ Implementing promise accessors would only be useful for manipulating promises pa
 
 ---
 
-## 5. Undocumented Behavior
+## 5. Behavioral Contracts
 
 ### 5.1 Coercion Precedence
 
@@ -583,7 +575,7 @@ See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#na-value-representation) for the f
 
 ### 5.3 SEXP Lifetime Assumptions
 
-**Location:** `miniextendr-api/src/ffi.rs:215-228`
+**Location:** `miniextendr-api/src/sexp_ext.rs`
 
 **Contract:** SEXP lifetimes are tied to R's GC protection, not Rust's borrow checker. miniextendr uses `'static` as a convenience but the actual lifetime is the protection scope.
 
@@ -599,17 +591,18 @@ unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T];
 
 | Pattern | Safe? | Notes |
 |---------|-------|-------|
-| Return SEXP from `.Call` | Yes | R receives and protects it |
-| Store in `ExternalPtr` | Yes | R owns and GC's it |
-| Store in `Preserve` wrapper | Yes | Added to preserve list |
+| Return SEXP immediately from `.Call` | Yes | R receives it before another allocation can collect it |
+| Store in an `ExternalPtr`'s protected slot | Yes | R traces the slot while the external pointer is reachable |
+| Store in `BuiltDataFrame` / `RootedSentinel` | Yes | The handle pairs `R_PreserveObject` with `Drop` |
+| Store in `ProtectPool` | Yes | The preserved VECSXP traces occupied slots across calls |
 | Store raw SEXP in Rust struct | **No** | Can be GC'd without warning |
-| Store in `OwnedProtect` | Yes | Protected for duration |
+| Store in `OwnedProtect` | Yes | Valid only while the guard and its PROTECT-stack order remain in scope |
 
-**String lifetime exception:**
-```rust
-// CHARSXP strings are interned - truly 'static for session
-unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str
-```
+There is no general string-lifetime exception: a borrowed `&str` points into a
+CHARSXP and is valid only while that CHARSXP remains reachable. At a generated
+`.Call` boundary, keep the borrow within the call. Only CHARSXPs deliberately
+made permanent through symbols, as described in [CACHED_SEXPS.md](CACHED_SEXPS.md),
+can be treated as session-long values.
 
 **Recommended pattern:** Use `OwnedProtect` or `ProtectScope` for RAII-based SEXP protection. Never store raw SEXPs in long-lived Rust structures without protection.
 
@@ -668,9 +661,16 @@ fn assert_main_thread() { ... }
 
 **Implication:** Release builds could have SEXP-access thread safety violations that go undetected. Standalone `#[miniextendr]` functions taking `SEXP`/`RArray` parameters run on the main thread by default (they are `!Send`), so they avoid this class of violation without any explicit attribute.
 
-**Runtime thread checks (always active):** The checked FFI wrappers (`Rf_error`, `Rprintf`, etc.) check `is_r_main_thread()` at runtime in all build modes and panic with a clear message like "Rf_error called from non-main thread".
+**Checked FFI routing (always active):** The checked FFI wrappers route through
+`with_r_thread`. Calls on R's main thread execute inline; calls from the managed
+worker route back to the main thread; off-thread calls without `worker-thread`
+panic rather than touching R. The `*_unchecked` variants skip this routing and
+retain a caller-enforced main-thread precondition.
 
-**Recommended pattern:** Rely on the worker thread model for safe R API access. For explicit thread control, use `spawn_with_r()` or `StackCheckGuard`.
+**Recommended pattern:** Use checked FFI by default and wrap a group of R calls
+in `with_r_thread` when worker code needs a single main-thread critical section.
+Use `*_unchecked` only inside contexts the MXL301 lint recognizes as already
+main-thread-safe.
 
 See [THREADS.md](THREADS.md) for the thread safety model, [SAFETY.md](SAFETY.md) for invariants, and [ERROR_HANDLING.md](ERROR_HANDLING.md#thread-safety) for thread-related error patterns.
 
@@ -681,6 +681,7 @@ See [THREADS.md](THREADS.md) for the thread safety model, [SAFETY.md](SAFETY.md)
 **Status:** Known limitation
 **Impact:** Low (edge case)
 **Location:** `rpkg/src/rust/panic_tests.rs`
+**Tracking:** [#1349](https://github.com/A2-ai/miniextendr/issues/1349)
 
 Panics from spawned threads cannot be cleanly propagated through `extern "C-unwind"` functions.
 
@@ -725,11 +726,11 @@ See [ERROR_HANDLING.md](ERROR_HANDLING.md) for the full error handling model and
 
 ---
 
-## 6. Testing Gaps
+## 6. Testing Coverage
 
 ### ~~6.1 No Property-Based Testing~~ RESOLVED
 
-**Status:** Implemented (24 tests)
+**Status:** Implemented
 **Location:** `miniextendr-api/tests/roundtrip_properties.rs`
 
 Property-based roundtrip tests using `proptest` verify `val → SEXP → val` preservation for:
@@ -740,13 +741,13 @@ Property-based roundtrip tests using `proptest` verify `val → SEXP → val` pr
 - i64 safe-range ([-2^53, 2^53])
 - Edge cases: i32 boundaries, f64 special values, empty vectors, all-NA vectors, unicode strings
 
-Run with: `cargo test -p miniextendr-api --test roundtrip_properties`
+These run as part of `just test`.
 
 ---
 
 ### ~~6.2 Trybuild Tests Not Utilized~~ RESOLVED
 
-**Status:** Already implemented (23 tests)
+**Status:** Implemented
 **Location:** `miniextendr-macros/tests/ui/`
 
 The trybuild test suite contains 23 compile-fail tests covering:
@@ -757,18 +758,19 @@ The trybuild test suite contains 23 compile-fail tests covering:
 - Derive macro errors (RNativeType on enum, etc.)
 - Trait definition errors (async methods, generic methods, etc.)
 
-Run with: `cargo test --test ui -p miniextendr-macros`
+These run as part of `just test`.
 
 ---
 
-### 6.3 Snapshot Testing
+### ~~6.3 Snapshot Testing~~ COVERED BY REGENERATION
 
-**Status:** Not implemented
-**Impact:** Low
+**Status:** Exact generated-output checks are implemented
 
-`miniextendr-macros/tests/snapshots.rs` does not exist. R wrapper output is tested
-indirectly via trybuild UI tests (6.2) and R-level integration tests, but there are
-no inline snapshot tests for generated R code.
+Generated R wrappers do not use an `insta`-style snapshot harness. Instead,
+`just wrappers-sync-check` regenerates the wrappers and fails on drift in the
+tracked `NAMESPACE` and `man/*.Rd` outputs; R integration tests exercise the
+installed wrappers. That checks the actual shipped artifacts, so the absence of
+a separate inline snapshot file is not a testing gap.
 
 ---
 

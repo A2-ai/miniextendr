@@ -203,6 +203,7 @@
 //! | `worker-default` | Default to worker thread dispatch (implies `worker-thread`) |
 //! | `strict-default` | Default to strict mode for lossy integer conversions |
 //! | `coerce-default` | Default to coerce mode for type conversions |
+//! | `fast-default` | Default to fast wrappers and unchecked conversion paths |
 //!
 //! ### Development / Diagnostics
 //!
@@ -211,6 +212,10 @@
 //! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 //! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
+//! | `full-integrations` | Every optional dependency integration (maintenance aggregate) |
+//! | `full-codegen` | Codegen/runtime selectors using `r6-default` (maintenance aggregate) |
+//! | `full-codegen-s7` | Codegen/runtime selectors using `s7-default` (maintenance aggregate) |
+//! | `full` | Integrations + `full-codegen` + diagnostics for local checks |
 // Re-export linkme for use by generated code (distributed_slice entries)
 #[doc(hidden)]
 pub use linkme;

@@ -1,6 +1,6 @@
 # Trait impl inventory
 
-Source: `/Users/elea/Documents/GitHub/mx-rust-llm-docs-refresh/cargo-revendor/target/doc/cargo_revendor.json`
+Source: `cargo-revendor/target/doc/cargo_revendor.json`
 
 Traits with impls: 28
 

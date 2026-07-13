@@ -963,7 +963,8 @@ impl Default for DispatchNames {
 ///    Composes with [`with_schema`](Self::with_schema) to start from a
 ///    declared partial schema.
 ///
-/// Call [`finish`](Self::finish) to produce the [`DataFrame`](crate::dataframe::DataFrame).
+/// Call [`finish`](Self::finish) to produce a rooted
+/// [`BuiltDataFrame`].
 ///
 /// Use [`iter_to_dataframe`] when an iterator suffices; reach for this when
 /// you need explicit control over push points (conditional skipping,

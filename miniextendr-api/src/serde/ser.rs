@@ -29,7 +29,7 @@ use serde::ser::{self, Serialize};
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::serde_r::RSerializer;
+/// use miniextendr_api::serde::RSerializer;
 /// use serde::Serialize;
 ///
 /// #[derive(Serialize)]

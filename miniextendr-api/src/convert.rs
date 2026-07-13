@@ -129,7 +129,7 @@ impl<T: IntoList> IntoR for AsList<T> {
 // now lives in `crate::dataframe::ColumnSource` (an internal `#[doc(hidden)]` trait that the
 // enum-flatten codegen and the new public `dataframe::IntoDataFrame` both delegate to). The
 // public verb surface is `dataframe::{IntoDataFrame, FromDataFrame}` (returning
-// `Result<DataFrame, DataFrameError>`), which mirrors `IntoR` / `TryFromSexp`.
+// `Result<BuiltDataFrame, DataFrameError>`), which mirrors `IntoR` / `TryFromSexp`.
 pub use crate::dataframe::ColumnSource;
 
 // region: Column gather/scatter helpers

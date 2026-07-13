@@ -205,10 +205,10 @@ pub fn with_rng<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    // SAFETY: `RngGuard::new()` requires the R main thread. Assert it in debug
-    // builds so misuse from a worker/background thread is caught early rather
-    // than silently corrupting R's RNG state (#1096).
-    debug_assert!(
+    // SAFETY: `RngGuard::new()` requires the R main thread. Keep this check in
+    // release builds: otherwise this safe wrapper could invoke R's RNG API from
+    // a background thread and trigger undefined behaviour (#1096).
+    assert!(
         crate::worker::is_r_main_thread(),
         "with_rng must run on R's main thread"
     );

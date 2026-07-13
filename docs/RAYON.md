@@ -197,9 +197,10 @@ Same as above but return `RMatrix<T>` / `RArray<T, NDIM>` instead of raw SEXP.
 
 ### Data Frame
 
-#### `RDataFrameBuilder`: heterogeneous parallel column fill
+#### `DataFrame::builder`: heterogeneous parallel column fill
 
-`with_r_matrix` fills a *homogeneous* matrix. `RDataFrameBuilder` is its
+`with_r_matrix` fills a *homogeneous* matrix. `DataFrame::builder` returns an
+`RDataFrameBuilder`, its
 heterogeneous-column analogue: you declare a set of typed columns — each with
 its own element type and fill closure — and the builder allocates every column
 serially on the R thread, fills them all in **one flat parallel pass**, then
@@ -227,9 +228,9 @@ column-granular scheduler (which keeps only 3 of 14 cores busy), with far
 tighter tail latency — see `miniextendr-bench/benches/rayon.rs`.
 
 ```rust
-use miniextendr_api::rayon_bridge::RDataFrameBuilder;
+use miniextendr_api::DataFrame;
 
-let df: SEXP = RDataFrameBuilder::new(1000)
+let df = DataFrame::builder(1000)
     // Native column: closure receives (chunk, offset), exactly like with_r_vec.
     .column::<f64>("x", |chunk: &mut [f64], offset: usize| {
         for (i, slot) in chunk.iter_mut().enumerate() {
@@ -258,8 +259,10 @@ let df: SEXP = RDataFrameBuilder::new(1000)
 The builder owns the PROTECT discipline internally: every column SEXP is kept
 protected from the moment it is built until it is rooted in the parent
 `VECSXP`, and the `names` / `row.names` transients are protected across each
-allocation. The returned SEXP is unprotected and becomes the caller's
-responsibility (return it from a `#[miniextendr]` fn, or PROTECT it).
+allocation. Before those temporary protects are released, `build()` transfers
+the frame into a GC-rooted `BuiltDataFrame`. Return that handle directly from a
+`#[miniextendr]` function, or keep it alive while reading or editing the frame
+in Rust.
 
 ### Reduction
 
@@ -405,6 +408,8 @@ fn generate_sequence(n: i32) -> SEXP {
 **Performance:** Same as `.collect_r()`: zero copy, deterministic chunks
 
 ```rust
+use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
+
 // par_map: one-liner for element-wise transforms
 #[miniextendr]
 fn parallel_sqrt(x: &[f64]) -> SEXP {
@@ -413,10 +418,11 @@ fn parallel_sqrt(x: &[f64]) -> SEXP {
 
 // with_r_vec: access to chunk offset for per-chunk state
 #[miniextendr]
-fn generate_random(n: i32, seed: i64) -> SEXP {
-    with_r_vec(n as usize, |chunk: &mut [f64], offset| {
-        let mut rng = ChaChaRng::seed_from_u64(seed as u64 + offset as u64);
-        for slot in chunk.iter_mut() { *slot = rng.gen(); }
+fn generate_random(n: usize, seed: u64) -> SEXP {
+    with_r_vec(n, move |chunk: &mut [f64], offset| {
+        let offset = u64::try_from(offset).expect("R vector offset fits u64");
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(offset));
+        for slot in chunk.iter_mut() { *slot = rng.random(); }
     })
 }
 ```
@@ -477,17 +483,16 @@ always gets the same seed, producing the same random values in those positions.
 ### Pattern: Seed-per-chunk
 
 ```rust
-use rand::SeedableRng;
-use rand_chacha::ChaChaRng;
-use rand::Rng;
+use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
 
 #[miniextendr]
-fn reproducible_random(len: i32, seed: i64) -> SEXP {
-    with_r_vec(len as usize, |chunk: &mut [f64], offset| {
+fn reproducible_random(len: usize, seed: u64) -> SEXP {
+    with_r_vec(len, move |chunk: &mut [f64], offset| {
         // Deterministic seed derived from base seed + chunk offset
-        let mut rng = ChaChaRng::seed_from_u64(seed as u64 + offset as u64);
+        let offset = u64::try_from(offset).expect("R vector offset fits u64");
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(offset));
         for slot in chunk.iter_mut() {
-            *slot = rng.gen();
+            *slot = rng.random();
         }
     })
 }
@@ -535,8 +540,8 @@ built.)
 
 ### Do NOT Use R's RNG in Parallel
 
-R's RNG (`RRng`, `Rf_runif`, etc.) calls R APIs, which **panic** on Rayon threads.
-Use a Rust RNG crate (`rand`, `rand_chacha`) instead:
+R's RNG (`RRng`, `unif_rand`, etc.) calls R APIs, which **panic** on Rayon
+threads. Use a pure Rust RNG instead:
 
 ```rust
 // WRONG: R's RNG calls R APIs - panics in parallel
@@ -547,8 +552,9 @@ with_r_vec(len, |chunk, _| {
 
 // CORRECT: Rust RNG is thread-safe
 with_r_vec(len, |chunk, offset| {
-    let mut rng = ChaChaRng::seed_from_u64(seed + offset as u64);
-    for slot in chunk { *slot = rng.gen(); }
+    let offset = u64::try_from(offset).expect("R vector offset fits u64");
+    let mut rng = StdRng::seed_from_u64(seed.wrapping_add(offset));
+    for slot in chunk { *slot = rng.random(); }
 });
 ```
 

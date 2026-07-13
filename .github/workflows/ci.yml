@@ -295,6 +295,20 @@ jobs:
       - name: AGENTS.md sibling check
         run: just agents-md-check
 
+      - name: Check docs index coverage
+        shell: bash
+        run: |
+          missing=0
+          for doc in docs/*.md; do
+            name=${doc##*/}
+            [ "$name" = README.md ] && continue
+            if ! grep -Fq "$name" docs/README.md; then
+              echo "::error file=docs/README.md::missing index entry for $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
       - name: Check end-user Claude skills vs scaffold layout
         run: just user-skills-check
 

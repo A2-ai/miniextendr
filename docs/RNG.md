@@ -114,7 +114,8 @@ use miniextendr_api::rng::RngGuard;
 use miniextendr_api::sys::unif_rand;
 
 fn generate_random() -> f64 {
-    let _guard = RngGuard::new();
+    // SAFETY: this helper is called on R's main thread.
+    let _guard = unsafe { RngGuard::new() };
     unsafe { unif_rand() }
     // PutRNGstate() called automatically when _guard drops
 }
@@ -132,6 +133,11 @@ let values = with_rng(|| {
     (0..10).map(|_| unsafe { unif_rand() }).collect::<Vec<_>>()
 });
 ```
+
+`RngGuard::new()` is `unsafe` because only the caller can prove it is running
+on R's main thread. `with_rng` performs that check at runtime and panics when
+called elsewhere. Both forms still rely on Rust destructors, so neither is a
+replacement for `#[miniextendr(rng)]` at an R-facing boundary.
 
 ### When to Use Manual vs Attribute
 
@@ -171,6 +177,42 @@ pub fn rng_demo() -> Vec<f64> {
 }
 ```
 
+## `rand` integration (`feature = "rand"`)
+
+Enable `rand` when downstream Rust code expects a `rand` RNG, or when you want
+typed access to R's native distributions without calling the raw FFI yourself:
+
+```toml
+[dependencies]
+miniextendr-api = { version = "0.1", features = ["rand"] }
+```
+
+`RRng` draws from R's RNG, so `set.seed()` remains reproducible. It still needs
+an initialized RNG scope:
+
+```rust
+use miniextendr_api::{RDistributions, RRng};
+use miniextendr_api::rand::RngExt;
+
+#[miniextendr(rng)]
+pub fn rand_sample(n: i32) -> Vec<f64> {
+    let mut rng = RRng::new();
+    (0..n)
+        .map(|_| rng.random::<f64>())
+        .chain([rng.standard_normal(), rng.standard_exp()])
+        .collect()
+}
+```
+
+`RRng` supplies the generic `rand` interface; `RDistributions` calls R's
+`norm_rand`, `exp_rand`, `R_unif_index`, and `unif_rand` implementations
+directly. For large batches under `worker-thread`, generate the random values
+together: each individual R RNG call must cross back to the R thread.
+
+The same feature exposes `RRngOps` and `RDistributionOps` for exporting custom
+RNG and distribution objects through the trait ABI. `rand_distr` additionally
+re-exports the `rand_distr` crate for its probability distributions.
+
 ## Combining with Other Attributes
 
 `rng` composes with other `#[miniextendr]` options:
@@ -209,21 +251,20 @@ Summary:
 ## Parallel Code (Rayon)
 
 R's RNG is **not thread-safe**. Calling `unif_rand()` and friends from Rayon
-threads will panic. For parallel random number generation, use a Rust RNG crate
-(`rand`, `rand_chacha`) with deterministic per-chunk seeding:
+threads will panic. For parallel random number generation, use a Rust RNG with
+deterministic per-chunk seeding:
 
 ```rust
-use rand::SeedableRng;
-use rand_chacha::ChaChaRng;
-use rand::Rng;
+use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
 use miniextendr_api::rayon_bridge::with_r_vec;
 
 #[miniextendr]
-fn parallel_random(len: i32, seed: i64) -> SEXP {
-    with_r_vec(len as usize, |chunk: &mut [f64], offset| {
-        let mut rng = ChaChaRng::seed_from_u64(seed as u64 + offset as u64);
+fn parallel_random(len: usize, seed: u64) -> SEXP {
+    with_r_vec(len, move |chunk: &mut [f64], offset| {
+        let offset = u64::try_from(offset).expect("R vector offset fits u64");
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(offset));
         for slot in chunk.iter_mut() {
-            *slot = rng.gen();
+            *slot = rng.random();
         }
     })
 }

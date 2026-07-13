@@ -84,7 +84,7 @@ not the default.
 
 - [STRICT_MODE.md](STRICT_MODE.md) — the strict-vs-lax conversion story
 - [CONVERSION_MATRIX.md](CONVERSION_MATRIX.md) — full R × Rust type behavior
-- [COERCE.md](COERCE.md) / [AS_COERCE.md](AS_COERCE.md) — coercion paths
+- [COERCE.md](COERCE.md) / [R_COERCE.md](R_COERCE.md) — coercion paths
 - [PREFER_DERIVES.md](PREFER_DERIVES.md) — derive-selector attribute
 - [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) — class system decision tree + flowchart
 - [ALTREP.md](ALTREP.md) — ALTREP field-derive vs manual flowchart

@@ -120,7 +120,7 @@ tryCatch(
 # [1] 100
 ```
 
-#### Supported `data` value types (v1)
+#### Supported `data` value types
 
 | Rust value | R field type |
 |---|---|
@@ -132,20 +132,26 @@ tryCatch(
 | `Vec<f64>` | `double(n)` |
 | `Vec<bool>` | `logical(n)` |
 | `Vec<String>` / `Vec<&str>` | `character(n)` |
+| `Option<T>` / `Vec<Option<T>>` for the scalar families above | typed `NA` |
+| `i64` / `u32` | integer when it fits; otherwise double |
+| `RValue::Null` | `NULL` |
+| `RValue::Complex`, `RValue::Raw` | complex / raw vector |
+| `RValue::List` | recursively nested, optionally named list |
 
-Anything outside this set is not supported in v1 — stringify at the call site
-(`format!("{x:?}")`) or attach the individual scalar fields you need.
+`RValue` is the owned, `Send`, R-native value tree used by the condition
+transport. Build it directly for nested or heterogeneous values, or use
+`RValue::debug(value)` to attach an eager `Debug` rendering when no native R
+mapping is appropriate.
 
 #### Worker-thread note
 
 The payload travels through `panic_any`, which requires `Send` — and the macro
-may fire on the worker thread, where a live `SEXP` is illegal to carry. That is
-why `data` values are restricted to a Send-safe owned enum
-(`ConditionDataValue`) built at the call site; the actual R objects are
-materialised on R's main thread at the unwind boundary
-(`make_rust_condition_value_with_data`). Consequence: `data = ...` works
-identically from worker-thread and main-thread code, but arbitrary `IntoR`
-values cannot ride along (they would have to be converted off the main thread).
+may fire on the worker thread, where a live `SEXP` is illegal to carry. Each
+field is therefore converted at the call site into `RValue`, and a multi-field
+payload becomes `ConditionData` (`Vec<(String, RValue)>`). The actual R objects
+are materialised on R's main thread at the unwind boundary. Consequently,
+`data = ...` works identically from worker-thread and main-thread code, but a
+live `SEXP` or arbitrary `IntoR` value cannot ride along.
 
 Reserved names: fields named `message`, `call`, or `kind` would override the
 condition's own slots (the R helper splices via `utils::modifyList`) — avoid

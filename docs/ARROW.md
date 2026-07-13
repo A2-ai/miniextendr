@@ -404,3 +404,7 @@ Need data frames?
 ├── As Arrow → RecordBatch             (primitive cols zero-copy both ways)
 └── As Arrow (string cols too) → use RStringArray per column
 ```
+
+The `'static` lifetimes above are API-level convenience types, not GC roots.
+The borrows remain valid only while the source SEXP/CHARSXP is reachable;
+normally keep them inside the generated `.Call` frame or use a rooted wrapper.

@@ -205,6 +205,7 @@ calls from other threads. R is still not thread-safe; serialize all R API use.
 | `worker-default` | Default to worker thread dispatch (implies `worker-thread`) |
 | `strict-default` | Default to strict mode for lossy integer conversions |
 | `coerce-default` | Default to coerce mode for type conversions |
+| `fast-default` | Default to fast wrappers and unchecked conversion paths |
 
 ### Development / Diagnostics
 
@@ -213,6 +214,10 @@ calls from other threads. R is still not thread-safe; serialize all R API use.
 | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
 | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
 | `growth-debug` | Track and report collection growth events (zero-cost when off) |
+| `full-integrations` | Every optional dependency integration (maintenance aggregate) |
+| `full-codegen` | Codegen/runtime selectors using `r6-default` (maintenance aggregate) |
+| `full-codegen-s7` | Codegen/runtime selectors using `s7-default` (maintenance aggregate) |
+| `full` | Integrations + `full-codegen` + diagnostics for local checks |
 
 ---
 
@@ -1104,10 +1109,11 @@ the conversion control-surface analysis (`analysis/conversion-control-surface-20
 
 `pub mod dataframe;`
 
-The unified owned R `data.frame` type and its conversion traits.
+R `data.frame` views, rooted Rust-built handles, and conversion traits.
 
-[`DataFrame`] is **the** data-frame type: a single owned wrapper around a built
-`data.frame` SEXP that serves every direction —
+[`DataFrame`] is a cheap `Copy` view over a validated `data.frame` SEXP;
+[`BuiltDataFrame`] is the owned, GC-rooted handle returned by every
+Rust-side constructor. Together they serve every direction:
 
 - **build** (Rust → R): [`IntoDataFrame::into_dataframe`] / `into_dataframe_par` (`feature = "rayon"`),
 - **read** (R → Rust): [`DataFrame::column`] / [`FromDataFrame::from_dataframe`],
@@ -1129,9 +1135,9 @@ let df = rows.into_dataframe_par()?;      // parallel (feature = "rayon")
 let rows: Vec<Row> = Vec::<Row>::from_dataframe(&df)?;
 ```
 
-`DataFrame` implements both `IntoR` and `TryFromSexp`, so it slots into
-`#[miniextendr]` function codegen with no special-casing — return it directly or accept
-it as an argument.
+`DataFrame` implements `TryFromSexp` and `IntoR`, so caller-rooted views slot
+into `#[miniextendr]` argument and return conversion. `BuiltDataFrame` also
+implements `IntoR`; return rooted Rust-side constructor results directly.
 
 #### One error contract
 
@@ -3839,9 +3845,12 @@ with_r_matrix(100, 50, |col: &mut [f64], col_idx: usize| {
 This makes parallel RNG reproducible — seed per-chunk from `offset`:
 
 ```ignore
+use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
+
 with_r_vec(len, |chunk, offset| {
-    let mut rng = ChaChaRng::seed_from_u64(base_seed + offset as u64);
-    for slot in chunk { *slot = rng.gen(); }
+    let offset = u64::try_from(offset).expect("R vector offset fits u64");
+    let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(offset));
+    for slot in chunk { *slot = rng.random(); }
 });
 ```
 
@@ -3911,11 +3920,14 @@ data.par_iter().map(|x| {
 Rayon threads. For parallel RNG, use chunk-based seeding for reproducibility:
 
 ```ignore
+use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
+
 // REPRODUCIBLE: Each chunk gets a deterministic seed from its offset
 with_r_vec(len, |chunk, offset| {
-    let mut rng = ChaChaRng::seed_from_u64(base_seed + offset as u64);
+    let offset = u64::try_from(offset).expect("R vector offset fits u64");
+    let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(offset));
     for slot in chunk {
-        *slot = rng.gen();
+        *slot = rng.random();
     }
 });
 
@@ -12572,11 +12584,12 @@ Upsert a column — see [`DataFrame::with_column`].
 pub struct DataFrame
 ```
 
-An owned, validated R `data.frame`. **The** data-frame type.
+A cheap `Copy` view over a validated R `data.frame`.
 
-Wraps a built VECSXP carrying the `data.frame` class + `row.names`. A single coherent
-type for building (Rust → R), reading (R → Rust), and post-assembly editing — replacing
-the historical row-buffer / built-SEXP / read-wrapper trio with one coherent type.
+The view carries no GC root. It is sound while an R `.Call` argument frame,
+a [`ProtectScope`](crate::ProtectScope), or an owning [`BuiltDataFrame`]
+keeps the SEXP reachable. Rust-side constructors never return this bare
+view; they return `BuiltDataFrame`.
 
 #### Building
 
@@ -12620,7 +12633,7 @@ Get the underlying SEXP.
 fn builder(nrow: usize) -> crate::dataframe_builder::RDataFrameBuilder
 ```
 
-Start a closure-per-column builder yielding a [`DataFrame`].
+Start a closure-per-column builder yielding a rooted [`BuiltDataFrame`].
 
 The heterogeneous-column analogue of `with_r_matrix`: each column buffer is R memory
 filled by a per-column closure. Available regardless of the `rayon` feature (#1055);
@@ -12983,7 +12996,7 @@ without per-result `OwnedProtect` bookkeeping.
 #### Why this is distinct from [`DataFrame::builder`]
 
 [`DataFrame::builder`](crate::dataframe::DataFrame::builder) and the serde
-`SerdeRowBuilder` both produce a *single* [`DataFrame`]. This builder
+`SerdeRowBuilder` both produce a single rooted [`BuiltDataFrame`]. This builder
 produces a different shape — a named *list of* data.frames, e.g.
 `list(results = df, error = df)` — so it deliberately keeps its own name
 rather than folding into the `DataFrame::builder` vocabulary. Its inputs
@@ -13266,10 +13279,10 @@ base pointers (`ColPtr`, `Send + Sync`).
 
 Every native column SEXP is PROTECTed from allocation through insertion into
 the `VECSXP`; the `names` / `row.names` / class transients are likewise
-protected across each subsequent allocation. After
-[`build`][RDataFrameBuilder::build] returns, the resulting data.frame SEXP is
-unprotected and becomes the caller's responsibility (return it from a
-`#[miniextendr]` fn, or PROTECT it).
+protected across each subsequent allocation. Before those temporary guards
+drop, [`build`][RDataFrameBuilder::build] transfers the assembled frame into
+a GC-rooted [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame). The root is
+released when the handle is returned to R via `IntoR` or dropped in Rust.
 
 **Inherent associated items:**
 
@@ -20337,7 +20350,8 @@ Three schema modes:
    Composes with [`with_schema`](Self::with_schema) to start from a
    declared partial schema.
 
-Call [`finish`](Self::finish) to produce the [`DataFrame`](crate::dataframe::DataFrame).
+Call [`finish`](Self::finish) to produce a rooted
+[`BuiltDataFrame`].
 
 Use [`iter_to_dataframe`] when an iterator suffices; reach for this when
 you need explicit control over push points (conditional skipping,
@@ -20553,7 +20567,7 @@ Deserializer that converts R SEXP to Rust values.
 #### Example
 
 ```ignore
-use miniextendr_api::serde_r::RDeserializer;
+use miniextendr_api::serde::RDeserializer;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -20704,7 +20718,7 @@ Serializer that converts Rust values directly to R SEXP.
 #### Example
 
 ```ignore
-use miniextendr_api::serde_r::RSerializer;
+use miniextendr_api::serde::RSerializer;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -20766,7 +20780,7 @@ Serializer for tuple variants: `Enum::Variant(a, b)` -> `list(Variant = list(a, 
 pub struct AsSerialize<T: serde::Serialize>
 ```
 
-Wrapper that converts any `Serialize` type to R via serde_r.
+Wrapper that converts any `Serialize` type to native R data via serde.
 
 This is the serde analog to `AsList<T: IntoList>`. Use it when you want to
 return a `Serialize` type from a `#[miniextendr]` function and have it
@@ -20775,7 +20789,7 @@ automatically converted to an R list.
 #### Example
 
 ```rust,ignore
-use miniextendr_api::serde_r::AsSerialize;
+use miniextendr_api::serde::AsSerialize;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -26257,7 +26271,7 @@ path. Call it on your data: `rows.into_dataframe()?`.
 #### Parallel fast path
 
 `into_dataframe_par` (present only with
-`feature = "rayon"`) produces the **same** [`DataFrame`] as
+`feature = "rayon"`) produces the **same** [`BuiltDataFrame`] as
 [`into_dataframe`](IntoDataFrame::into_dataframe). It defaults to the sequential path, so
 every implementor gets a correct `_par` for free; `#[derive(DataFrameRow)]` row types
 override it with a genuinely parallel column fill (the #777 flattened `(column,row-range)`
@@ -29588,7 +29602,7 @@ without going through an intermediate format like JSON.
 #### Registration
 
 ```rust,ignore
-use miniextendr_api::serde_r::RDeserializeNative;
+use miniextendr_api::serde::RDeserializeNative;
 use serde::Deserialize;
 
 #[derive(Deserialize, ExternalPtr)]
@@ -29643,7 +29657,7 @@ without going through an intermediate format like JSON.
 #### Registration
 
 ```rust,ignore
-use miniextendr_api::serde_r::RSerializeNative;
+use miniextendr_api::serde::RSerializeNative;
 use serde::Serialize;
 
 #[derive(Serialize, ExternalPtr)]
@@ -32589,9 +32603,8 @@ function.
 fn pool_is_built() -> bool
 ```
 
-Whether the pool size has been locked in — by [`ensure_pool`] or a
-successful [`set_threads`]. The global pool is fixed at that point —
-rayon cannot resize it.
+Whether the pool size has been locked in — by [`ensure_pool`] or a successful
+[`set_threads`]. The global pool is fixed at that point — rayon cannot resize it.
 
 ### `optionals::parallel::set_threads`
 
@@ -32915,6 +32928,8 @@ vector length and thread count, making parallel RNG reproducible.
 #### Example
 
 ```ignore
+use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
+
 // Fill with sqrt(index) — framework handles parallelism
 with_r_vec(1000, |chunk: &mut [f64], offset: usize| {
     for (i, slot) in chunk.iter_mut().enumerate() {
@@ -32924,8 +32939,9 @@ with_r_vec(1000, |chunk: &mut [f64], offset: usize| {
 
 // Reproducible parallel RNG (seed from offset)
 with_r_vec(1000, |chunk: &mut [f64], offset| {
-    let mut rng = ChaChaRng::seed_from_u64(42 + offset as u64);
-    for slot in chunk { *slot = rng.gen(); }
+    let offset = u64::try_from(offset).expect("R vector offset fits u64");
+    let mut rng = StdRng::seed_from_u64(42_u64.wrapping_add(offset));
+    for slot in chunk { *slot = rng.random(); }
 });
 ```
 
@@ -34561,7 +34577,7 @@ Convenience function to deserialize from R.
 #### Example
 
 ```rust,ignore
-use miniextendr_api::serde_r::from_r;
+use miniextendr_api::serde::from_r;
 
 let point: Point = from_r(sexp)?;
 ```
@@ -34577,7 +34593,7 @@ Convenience function to serialize a value to R.
 #### Example
 
 ```rust,ignore
-use miniextendr_api::serde_r::to_r;
+use miniextendr_api::serde::to_r;
 
 let point = Point { x: 1.0, y: 2.0 };
 let sexp = to_r(&point)?;

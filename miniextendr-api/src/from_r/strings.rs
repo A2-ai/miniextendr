@@ -13,9 +13,8 @@
 //! when the data only needs to live for the `.Call` — borrowed strings point
 //! straight into R's CHARSXP pool with no allocation. Use `Option<String>`
 //! / `Vec<Option<String>>` when callers may pass `NA_character_`; the plain
-//! `String` impl rejects NA with [`SexpNaError`](crate::from_r::SexpNaError).
-//! Failure mode of binding plain `String` to a column that contains `NA`:
-//! every NA element surfaces as a hard error instead of `None`.
+//! `String` / `Vec<String>` impls map NA to `""`, which is lossy. The optional
+//! forms preserve the distinction as `None`.
 //!
 //! UTF-8 validity is guaranteed by `miniextendr_assert_utf8_locale()` at
 //! package init — these impls skip per-string validation. Outbound
@@ -30,7 +29,8 @@ use crate::{SEXP, SEXPTYPE, SexpExt};
 /// Convert R character vector (STRSXP) to Rust &str.
 ///
 /// Extracts the first element of the character vector and returns it as a UTF-8 string.
-/// The returned string has static lifetime because it points to R's internal string pool.
+/// The Rust type uses a static lifetime for API convenience, but the borrow is
+/// only valid while the source CHARSXP remains reachable.
 ///
 /// # NA Handling
 ///

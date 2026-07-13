@@ -97,7 +97,7 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<f64>` / `&[f64]` | REALSXP only | Direct memcpy |
 | `Vec<u8>` / `&[u8]` | RAWSXP only | Direct memcpy |
 | `Vec<bool>` | LGLSXP only | Each logical->bool; NA causes error |
-| `Vec<String>` | STRSXP only | Each CHARSXP->String; NA causes error |
+| `Vec<String>` | STRSXP only | Each CHARSXP->String; NA becomes `""` (lossy) |
 | `Vec<Option<i32>>` | INTSXP only | NA_integer_ -> None |
 | `Vec<Option<f64>>` | REALSXP only | NA_real_ -> None |
 | `Vec<Option<bool>>` | LGLSXP only | NA_logical -> None |
