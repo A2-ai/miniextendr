@@ -1049,7 +1049,7 @@ pub mod vctrs_support {
     use crate::vctrs::new_rcrd;
 
     /// Helper: allocate an INTSXP column of length `n`, fill it, and return an
-    /// [`OwnedProtect`] guard that keeps the SEXP protected until the caller
+    /// `OwnedProtect` guard that keeps the SEXP protected until the caller
     /// drops it.  The caller **must** hold every guard alive until after
     /// `List::from_raw_values` returns, because `from_raw_values` calls
     /// `Rf_allocVector(VECSXP, …)` which can trigger GC.

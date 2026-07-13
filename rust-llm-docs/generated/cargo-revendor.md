@@ -38,29 +38,41 @@ flag reference.
 
 ### `Verbosity`
 
+```rust
+pub struct Verbosity
+```
+
 Verbosity level (0=quiet, 1=-v, 2=-vv, 3=-vvv)
 
-**Methods:**
+**Fields:**
+
+- `0`: `u8`
+
+**Inherent associated items:**
 
 #### `debug`
 
 ```rust
-debug(self: Self) -> bool
+fn debug(self: Self) -> bool
 ```
 
 #### `info`
 
 ```rust
-info(self: Self) -> bool
+fn info(self: Self) -> bool
 ```
 
 #### `trace`
 
 ```rust
-trace(self: Self) -> bool
+fn trace(self: Self) -> bool
 ```
 
 ### `manifest_guard::ManifestGuard`
+
+```rust
+pub struct ManifestGuard
+```
 
 Snapshot + auto-restore of a single file.
 
@@ -71,12 +83,12 @@ unwind or early `?` return.
 Use `finish()` to dismiss the guard when the mutation is intentional and
 should persist (rare — typical cargo-revendor usage is always transient).
 
-**Methods:**
+**Inherent associated items:**
 
 #### `finish`
 
 ```rust
-finish(self: Self)
+fn finish(self: Self)
 ```
 
 Dismiss the guard so Drop does nothing. Use when the mutation is
@@ -86,13 +98,17 @@ the option is here for future callers).
 #### `snapshot`
 
 ```rust
-snapshot(path: &Path) -> Result<Self>
+fn snapshot(path: &Path) -> Result<Self>
 ```
 
 Capture the file's current bytes. The guard arms immediately — any
 subsequent mutation to the file will be reverted on drop.
 
 ### `metadata::LocalPackage`
+
+```rust
+pub struct LocalPackage
+```
 
 A local (path-based) package discovered in the dependency tree
 
@@ -105,6 +121,10 @@ A local (path-based) package discovered in the dependency tree
 
 ### `strip::StripConfig`
 
+```rust
+pub struct StripConfig
+```
+
 Configuration for what to strip from vendored crates
 
 **Fields:**
@@ -116,12 +136,12 @@ Configuration for what to strip from vendored crates
 - `toml_only`: `bool`
   - Strip TOML sections only — leave source-related directories
 
-**Methods:**
+**Inherent associated items:**
 
 #### `all`
 
 ```rust
-all() -> Self
+fn all() -> Self
 ```
 
 Strip everything (directories and TOML sections)
@@ -129,7 +149,7 @@ Strip everything (directories and TOML sections)
 #### `any`
 
 ```rust
-any(self: &Self) -> bool
+fn any(self: &Self) -> bool
 ```
 
 Whether any stripping is enabled
@@ -137,13 +157,17 @@ Whether any stripping is enabled
 #### `toml_only`
 
 ```rust
-toml_only() -> Self
+fn toml_only() -> Self
 ```
 
 Strip TOML sections for all source-target categories without
 deleting `tests/` / `benches/` / `examples/` directories. See #330.
 
 ### `verify::LockPackage`
+
+```rust
+pub struct LockPackage
+```
 
 One `[[package]]` entry from a Cargo.lock.
 
@@ -161,7 +185,7 @@ One `[[package]]` entry from a Cargo.lock.
 ### `cache::is_cached`
 
 ```rust
-is_cached(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<bool>
+fn is_cached(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<bool>
 ```
 
 Check whether `vendor_dir` is up to date relative to `lockfile` plus the
@@ -172,7 +196,7 @@ and `Cargo.toml` are hashed into the key.
 ### `cache::is_cached_external`
 
 ```rust
-is_cached_external(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path) -> anyhow::Result<bool>
+fn is_cached_external(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path) -> anyhow::Result<bool>
 ```
 
 Check whether the external deps are up to date relative to `lockfile` and
@@ -182,7 +206,7 @@ change external deps.
 ### `cache::is_cached_local`
 
 ```rust
-is_cached_local(vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<bool>
+fn is_cached_local(vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<bool>
 ```
 
 Check whether the local crates are up to date relative to their source
@@ -192,7 +216,7 @@ the local crate packaging output.
 ### `cache::save_cache`
 
 ```rust
-save_cache(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<()>
+fn save_cache(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<()>
 ```
 
 Save the current hash to the cache file.
@@ -200,7 +224,7 @@ Save the current hash to the cache file.
 ### `cache::save_cache_external`
 
 ```rust
-save_cache_external(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path) -> anyhow::Result<()>
+fn save_cache_external(lockfile: &std::path::Path, sync_manifests: &[std::path::PathBuf], vendor_dir: &std::path::Path) -> anyhow::Result<()>
 ```
 
 Save the external-only cache file.
@@ -208,7 +232,7 @@ Save the external-only cache file.
 ### `cache::save_cache_local`
 
 ```rust
-save_cache_local(vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<()>
+fn save_cache_local(vendor_dir: &std::path::Path, local_crate_paths: &[std::path::PathBuf]) -> anyhow::Result<()>
 ```
 
 Save the local-only cache file.
@@ -216,7 +240,7 @@ Save the local-only cache file.
 ### `checksum::recompute_cargo_checksum_json`
 
 ```rust
-recompute_cargo_checksum_json(crate_dir: &std::path::Path) -> anyhow::Result<()>
+fn recompute_cargo_checksum_json(crate_dir: &std::path::Path) -> anyhow::Result<()>
 ```
 
 Recompute `.cargo-checksum.json` for a single vendored crate directory.
@@ -232,7 +256,7 @@ required by cargo's directory source format.
 ### `checksum::recompute_checksums`
 
 ```rust
-recompute_checksums(vendor_dir: &std::path::Path) -> anyhow::Result<()>
+fn recompute_checksums(vendor_dir: &std::path::Path) -> anyhow::Result<()>
 ```
 
 Recompute `.cargo-checksum.json` for every crate directory in `vendor_dir`.
@@ -249,7 +273,7 @@ integrity (via the `files` map).
 ### `find_workspace_root`
 
 ```rust
-find_workspace_root(dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf>
+fn find_workspace_root(dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf>
 ```
 
 Find workspace root by walking up from a directory
@@ -257,7 +281,7 @@ Find workspace root by walking up from a directory
 ### `metadata::check_duplicate_sources`
 
 ```rust
-check_duplicate_sources(meta: &cargo_metadata::Metadata) -> anyhow::Result<()>
+fn check_duplicate_sources(meta: &cargo_metadata::Metadata) -> anyhow::Result<()>
 ```
 
 Error out when two different sources resolve to the same (name, version).
@@ -276,7 +300,7 @@ DIFFERENT sources for the same (name, version) key are errors.
 ### `metadata::discover_from_patch_config`
 
 ```rust
-discover_from_patch_config(manifest_path: &std::path::Path) -> anyhow::Result<Vec<LocalPackage>>
+fn discover_from_patch_config(manifest_path: &std::path::Path) -> anyhow::Result<Vec<LocalPackage>>
 ```
 
 Discover local package overrides from `[patch."<url>"]` tables in
@@ -302,7 +326,7 @@ and position so the caller can report it loudly.
 ### `metadata::discover_patch_url_map`
 
 ```rust
-discover_patch_url_map(manifest_path: &std::path::Path) -> anyhow::Result<std::collections::BTreeMap<String, String>>
+fn discover_patch_url_map(manifest_path: &std::path::Path) -> anyhow::Result<std::collections::BTreeMap<String, String>>
 ```
 
 Map each `[patch."<url>"]` crate to the git URL it is patched from.
@@ -327,7 +351,7 @@ must not be stamped.
 ### `metadata::discover_workspace_members`
 
 ```rust
-discover_workspace_members(workspace_root: &std::path::Path) -> anyhow::Result<Vec<LocalPackage>>
+fn discover_workspace_members(workspace_root: &std::path::Path) -> anyhow::Result<Vec<LocalPackage>>
 ```
 
 Discover all workspace members from a workspace root Cargo.toml
@@ -335,7 +359,7 @@ Discover all workspace members from a workspace root Cargo.toml
 ### `metadata::load_metadata`
 
 ```rust
-load_metadata(manifest_path: &std::path::Path) -> anyhow::Result<cargo_metadata::Metadata>
+fn load_metadata(manifest_path: &std::path::Path) -> anyhow::Result<cargo_metadata::Metadata>
 ```
 
 Load cargo metadata for the given manifest.
@@ -352,7 +376,7 @@ process CWD (the repo root for `just vendor`) and never find the patch.
 ### `metadata::partition_packages`
 
 ```rust
-partition_packages(meta: &cargo_metadata::Metadata, target_manifest: &std::path::Path, git_overrides: &[LocalPackage]) -> anyhow::Result<(Vec<LocalPackage>, Vec<String>)>
+fn partition_packages(meta: &cargo_metadata::Metadata, target_manifest: &std::path::Path, git_overrides: &[LocalPackage]) -> anyhow::Result<(Vec<LocalPackage>, Vec<String>)>
 ```
 
 Partition packages into local (path deps) and external (registry/git)
@@ -376,7 +400,7 @@ silently vendoring the wrong source would produce broken builds.
 ### `package::package_local_crates`
 
 ```rust
-package_local_crates(local_pkgs: &[crate::metadata::LocalPackage], all_patch_pkgs: &[crate::metadata::LocalPackage], _target_manifest: &std::path::Path, staging_dir: &std::path::Path, allow_dirty: bool, v: crate::Verbosity) -> anyhow::Result<Vec<(String, std::path::PathBuf)>>
+fn package_local_crates(local_pkgs: &[crate::metadata::LocalPackage], all_patch_pkgs: &[crate::metadata::LocalPackage], _target_manifest: &std::path::Path, staging_dir: &std::path::Path, allow_dirty: bool, v: crate::Verbosity) -> anyhow::Result<Vec<(String, std::path::PathBuf)>>
 ```
 
 Package each local crate, returning (name, crate_archive_path) pairs
@@ -387,7 +411,7 @@ Package each local crate, returning (name, crate_archive_path) pairs
 ### `path_to_toml`
 
 ```rust
-path_to_toml(path: &std::path::Path) -> String
+fn path_to_toml(path: &std::path::Path) -> String
 ```
 
 Convert a path to a TOML-safe string (forward slashes, no \\?\ prefix)
@@ -395,7 +419,7 @@ Convert a path to a TOML-safe string (forward slashes, no \\?\ prefix)
 ### `strip::prune_dangling_feature_refs`
 
 ```rust
-prune_dangling_feature_refs(content: &str, removed_deps: &[String]) -> String
+fn prune_dangling_feature_refs(content: &str, removed_deps: &[String]) -> String
 ```
 
 Remove feature array entries that reference removed dependencies.
@@ -417,7 +441,7 @@ If a feature's array becomes empty after pruning, it is kept as `[]`
 ### `strip::strip_vendor_dir`
 
 ```rust
-strip_vendor_dir(vendor_dir: &std::path::Path, config: &StripConfig, v: crate::Verbosity) -> anyhow::Result<Vec<String>>
+fn strip_vendor_dir(vendor_dir: &std::path::Path, config: &StripConfig, v: crate::Verbosity) -> anyhow::Result<Vec<String>>
 ```
 
 Strip all vendored crates in a vendor directory.
@@ -426,7 +450,7 @@ Returns list of stripped items for reporting.
 ### `vendor::compress_vendor`
 
 ```rust
-compress_vendor(vendor_dir: &std::path::Path, tarball_path: &std::path::Path, blank_md: bool, v: crate::Verbosity) -> anyhow::Result<()>
+fn compress_vendor(vendor_dir: &std::path::Path, tarball_path: &std::path::Path, blank_md: bool, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Compress vendor/ into a .tar.xz tarball
@@ -434,7 +458,7 @@ Compress vendor/ into a .tar.xz tarball
 ### `vendor::copy_lock_to_vendor`
 
 ```rust
-copy_lock_to_vendor(lockfile: &std::path::Path, vendor_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
+fn copy_lock_to_vendor(lockfile: &std::path::Path, vendor_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Copy `Cargo.lock` to the vendor directory for use by `--freeze` /
@@ -447,7 +471,7 @@ so the lock no longer needs to be stripped before copying.
 ### `vendor::extract_crate_archive`
 
 ```rust
-extract_crate_archive(crate_path: &std::path::Path, vendor_dir: &std::path::Path, pkg_name: &str, pkg_version: Option<&str>, v: crate::Verbosity) -> anyhow::Result<()>
+fn extract_crate_archive(crate_path: &std::path::Path, vendor_dir: &std::path::Path, pkg_name: &str, pkg_version: Option<&str>, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Extract a .crate archive OR copy a directory into the vendor directory.
@@ -461,22 +485,26 @@ single-version by construction, so the #214 flat-slot non-determinism
 ### `vendor::freeze_manifest`
 
 ```rust
-freeze_manifest(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, local_pkgs: &[crate::metadata::LocalPackage], versioned_dirs: bool, strict: bool, v: crate::Verbosity) -> anyhow::Result<()>
+fn freeze_manifest(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, local_pkgs: &[crate::metadata::LocalPackage], versioned_dirs: bool, strict: bool, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
-Freeze: rewrite Cargo.toml so all sources resolve from vendor/.
+Freeze: rewrite Cargo.toml so sources resolve from vendor/.
 
-1. Rewrites git deps to vendor/ path deps
+1. Rewrites manifest-declared `path =` deps to vendor/ path deps. Deps
+   declared `git =` are left untouched (external by declaration, even if a
+   `[patch]` resolves them to a local crate during vendoring) and resolve
+   offline via source replacement.
 2. Strips all `[patch.*]` sections (they reference sources outside vendor/)
-3. Adds `[patch.crates-io]` with vendor paths for transitive local deps
+3. Adds `[patch.crates-io]` with vendor paths for the frozen path deps
 
-After freezing, the manifest is self-contained: `cargo build --offline`
-works with only the vendor directory, no network or workspace context.
+After freezing, the manifest resolves from vendor/ for its path deps;
+remaining git deps resolve via vendor/.cargo-config.toml source replacement.
+`cargo build --offline` then works with only the vendor directory.
 
 ### `vendor::generate_cargo_config`
 
 ```rust
-generate_cargo_config(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, _local_pkgs: &[crate::metadata::LocalPackage]) -> anyhow::Result<String>
+fn generate_cargo_config(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, _local_pkgs: &[crate::metadata::LocalPackage]) -> anyhow::Result<String>
 ```
 
 Generate a .cargo/config.toml for source replacement.
@@ -487,7 +515,7 @@ Returns the config content as a string. Also writes it to
 ### `vendor::regenerate_lockfile`
 
 ```rust
-regenerate_lockfile(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
+fn regenerate_lockfile(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Regenerate Cargo.lock from vendored sources (freeze-consistent copy).
@@ -503,7 +531,7 @@ subsequent `cargo vendor` run).
 ### `vendor::resolve_framework_rev`
 
 ```rust
-resolve_framework_rev(candidate_paths: &[std::path::PathBuf], v: crate::Verbosity) -> String
+fn resolve_framework_rev(candidate_paths: &[std::path::PathBuf], v: crate::Verbosity) -> String
 ```
 
 Resolve the commit sha to stamp as framework-crate provenance in Cargo.lock.
@@ -516,7 +544,7 @@ keys on the URL, never the commit — so a placeholder still builds offline.
 ### `vendor::resolve_workspace_inheritance`
 
 ```rust
-resolve_workspace_inheritance(vendor_crate_dir: &std::path::Path, original_crate_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
+fn resolve_workspace_inheritance(vendor_crate_dir: &std::path::Path, original_crate_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Resolve `*.workspace = true` fields in a directly-copied crate's Cargo.toml
@@ -529,7 +557,7 @@ outside the workspace. This function reads the workspace root's
 ### `vendor::rewrite_local_path_deps`
 
 ```rust
-rewrite_local_path_deps(vendor_dir: &std::path::Path, local_pkgs: &[crate::metadata::LocalPackage], v: crate::Verbosity) -> anyhow::Result<()>
+fn rewrite_local_path_deps(vendor_dir: &std::path::Path, local_pkgs: &[crate::metadata::LocalPackage], v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Rewrite inter-crate path dependencies so local crates reference each other
@@ -540,7 +568,7 @@ doesn't apply.
 ### `vendor::run_cargo_vendor`
 
 ```rust
-run_cargo_vendor(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, local_pkgs: &[crate::metadata::LocalPackage], sync_manifests: &[std::path::PathBuf], versioned_dirs: bool, v: crate::Verbosity) -> anyhow::Result<()>
+fn run_cargo_vendor(manifest_path: &std::path::Path, vendor_dir: &std::path::Path, local_pkgs: &[crate::metadata::LocalPackage], sync_manifests: &[std::path::PathBuf], versioned_dirs: bool, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Run `cargo vendor` for external (registry/git) dependencies.
@@ -555,7 +583,7 @@ separate dirs.
 ### `vendor::stamp_framework_git_sources`
 
 ```rust
-stamp_framework_git_sources(lockfile: &std::path::Path, patch_url_map: &std::collections::BTreeMap<String, String>, rev: &str, v: crate::Verbosity) -> anyhow::Result<usize>
+fn stamp_framework_git_sources(lockfile: &std::path::Path, patch_url_map: &std::collections::BTreeMap<String, String>, rev: &str, v: crate::Verbosity) -> anyhow::Result<usize>
 ```
 
 Stamp `source = "git+<url>#<rev>"` onto the framework crates' `[[package]]`
@@ -580,7 +608,7 @@ of `[[package]]` entries stamped.
 ### `vendor::strip_vendor_path_deps`
 
 ```rust
-strip_vendor_path_deps(vendor_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
+fn strip_vendor_path_deps(vendor_dir: &std::path::Path, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Strip relative path dependencies (`path = "../..."`) from all vendored crate manifests.
@@ -598,7 +626,7 @@ for local/workspace crates only.
 ### `verify::parse_lockfile`
 
 ```rust
-parse_lockfile(lockfile: &std::path::Path) -> anyhow::Result<Vec<LockPackage>>
+fn parse_lockfile(lockfile: &std::path::Path) -> anyhow::Result<Vec<LockPackage>>
 ```
 
 Parse a Cargo.lock into its `[[package]]` entries.
@@ -606,7 +634,7 @@ Parse a Cargo.lock into its `[[package]]` entries.
 ### `verify::verify_lock_matches_vendor`
 
 ```rust
-verify_lock_matches_vendor(lockfile: &std::path::Path, vendor_dir: &std::path::Path) -> anyhow::Result<()>
+fn verify_lock_matches_vendor(lockfile: &std::path::Path, vendor_dir: &std::path::Path) -> anyhow::Result<()>
 ```
 
 Assert that every foreign-source package in `lockfile` has a corresponding
@@ -618,7 +646,7 @@ being vendored *from*, not *into*.
 ### `verify::verify_tarball_matches_vendor`
 
 ```rust
-verify_tarball_matches_vendor(tarball: &std::path::Path, vendor_dir: &std::path::Path) -> anyhow::Result<()>
+fn verify_tarball_matches_vendor(tarball: &std::path::Path, vendor_dir: &std::path::Path) -> anyhow::Result<()>
 ```
 
 Assert that extracting `tarball` yields the same files with the same
@@ -630,8 +658,20 @@ Uses byte-level hashing so drift in a single vendored `.rs` is caught.
 
 ## Constants
 
-### `cache::CACHE_FILE: &str`
+### `cache::CACHE_FILE`
 
-### `cache::CACHE_FILE_EXTERNAL: &str`
+```rust
+pub const CACHE_FILE: &str = ".revendor-cache";
+```
 
-### `cache::CACHE_FILE_LOCAL: &str`
+### `cache::CACHE_FILE_EXTERNAL`
+
+```rust
+pub const CACHE_FILE_EXTERNAL: &str = ".revendor-cache-external";
+```
+
+### `cache::CACHE_FILE_LOCAL`
+
+```rust
+pub const CACHE_FILE_LOCAL: &str = ".revendor-cache-local";
+```

@@ -42,7 +42,7 @@ use crate::{SEXP, SEXPTYPE, SexpExt};
 /// invalid value at index <i>: ...; and N more"` grammar (#1192/#1097), but
 /// extracts the inner message directly rather than going through
 /// `SexpError`'s `Display` impl — that impl wraps every variant as `"invalid
-/// value: {msg}"`, which would read as a doubled "invalid value: Vec<i64>
+/// value: {msg}"`, which would read as a doubled "invalid value: `Vec<i64>`
 /// conversion failed: invalid value at index 0: ..." in a panic message.
 fn panic_strict_vec_batched(container: &str, errors: BatchedErrors) -> ! {
     let SexpError::InvalidValue(msg) = errors.into_error(container) else {
@@ -102,7 +102,7 @@ pub fn checked_into_sexp_usize(val: usize) -> SEXP {
 /// Convert `Vec<i64>` to R integer vector, panicking if any element is outside i32 range.
 ///
 /// Walks the whole vector, batching every out-of-range element into one
-/// panic instead of aborting at the first — see [`panic_strict_vec_batched`].
+/// panic instead of aborting at the first — see `panic_strict_vec_batched`.
 pub fn checked_vec_i64_into_sexp(val: Vec<i64>) -> SEXP {
     let mut coerced: Vec<i32> = Vec::with_capacity(val.len());
     let mut errors = BatchedErrors::default();
@@ -129,7 +129,7 @@ pub fn checked_vec_i64_into_sexp(val: Vec<i64>) -> SEXP {
 /// Convert `Vec<u64>` to R integer vector, panicking if any element > i32::MAX.
 ///
 /// Walks the whole vector, batching every out-of-range element into one
-/// panic instead of aborting at the first — see [`panic_strict_vec_batched`].
+/// panic instead of aborting at the first — see `panic_strict_vec_batched`.
 pub fn checked_vec_u64_into_sexp(val: Vec<u64>) -> SEXP {
     let mut coerced: Vec<i32> = Vec::with_capacity(val.len());
     let mut errors = BatchedErrors::default();
@@ -166,7 +166,7 @@ pub fn checked_vec_usize_into_sexp(val: Vec<usize>) -> SEXP {
 /// Panics if any `Some(x)` value is outside i32 range. `None` becomes
 /// `NA_INTEGER`. Walks the whole vector, batching every out-of-range `Some`
 /// into one panic instead of aborting at the first — see
-/// [`panic_strict_vec_batched`].
+/// `panic_strict_vec_batched`.
 pub fn checked_vec_option_i64_into_sexp(val: Vec<Option<i64>>) -> SEXP {
     let mut coerced: Vec<Option<i32>> = Vec::with_capacity(val.len());
     let mut errors = BatchedErrors::default();
@@ -198,7 +198,7 @@ pub fn checked_vec_option_i64_into_sexp(val: Vec<Option<i64>>) -> SEXP {
 /// Convert `Vec<Option<u64>>` to R integer vector in strict mode.
 ///
 /// Walks the whole vector, batching every out-of-range `Some` into one
-/// panic instead of aborting at the first — see [`panic_strict_vec_batched`].
+/// panic instead of aborting at the first — see `panic_strict_vec_batched`.
 pub fn checked_vec_option_u64_into_sexp(val: Vec<Option<u64>>) -> SEXP {
     let mut coerced: Vec<Option<i32>> = Vec::with_capacity(val.len());
     let mut errors = BatchedErrors::default();

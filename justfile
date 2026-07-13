@@ -56,6 +56,8 @@
 #     just site-docs           - Regenerate site/content/manual/ from docs/
 #     just site-build          - Build Zola site (run site-docs first for doc changes)
 #     just site-serve          - Local preview server (run site-docs first for doc changes)
+#     just llm-docs            - Regenerate LLM-ready Rust API docs
+#     just llm-docs-check      - Test renderer and verify committed LLM docs are current
 #     just bump-version <v>    - Bump version across all Cargo.toml + DESCRIPTION files
 #
 #   Vendor sync:
@@ -264,7 +266,7 @@ doc-check *cargo_flags: configure-all
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo doc --no-deps --document-private-items --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
     @just cargo-lock-restore
 
@@ -274,7 +276,7 @@ doc *cargo_flags: configure-all
     cargo doc --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo doc --document-private-items --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
     @just cargo-lock-restore
     if command -v open >/dev/null 2>&1; then \
@@ -1388,6 +1390,18 @@ bindgen-corpus-remove-packages:
     echo "Run 'rv sync' to clean the library."
 
 # ── Documentation site ──────────────────────────────────────────────────────
+
+# Regenerate the committed, LLM-ready Rust API corpus from rustdoc JSON.
+llm-docs:
+    bash rust-llm-docs/generate-miniextendr-docs.sh
+
+# Test the renderer, regenerate the corpus, and fail if committed output drifted.
+[script("bash")]
+llm-docs-check:
+    set -euo pipefail
+    python3 -m unittest discover -s rust-llm-docs -p 'test_*.py'
+    just llm-docs
+    git diff --exit-code -- rust-llm-docs/generated
 
 # Regenerate site/content/manual/ from docs/.
 # Run before site-build or site-serve when previewing doc changes locally.

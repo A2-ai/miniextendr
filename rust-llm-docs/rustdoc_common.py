@@ -23,6 +23,223 @@ def format_const_arg(const: Any) -> str:
     return str(const)
 
 
+def format_term(term: Any, index: dict) -> str:
+    """Render a rustdoc ``Term`` (a type or constant)."""
+    if not isinstance(term, dict):
+        return str(term)
+    if "type" in term:
+        return format_type(term["type"], index)
+    if "constant" in term:
+        return format_const_arg(term["constant"])
+    raise ValueError(f"unsupported rustdoc term shape: {sorted(term)}")
+
+
+def format_generic_param(param: dict, index: dict) -> str:
+    """Render one generic parameter definition."""
+    name = param.get("name", "?")
+    kind = param.get("kind", {})
+
+    if "lifetime" in kind:
+        outlives = kind["lifetime"].get("outlives", []) or []
+        return f"{name}: {' + '.join(outlives)}" if outlives else name
+
+    if "type" in kind:
+        info = kind["type"]
+        if info.get("is_synthetic", False):
+            return ""
+        bounds = [format_generic_bound(bound, index) for bound in info.get("bounds", [])]
+        rendered = name
+        if bounds:
+            rendered += f": {' + '.join(bounds)}"
+        if info.get("default") is not None:
+            rendered += f" = {format_type(info['default'], index)}"
+        return rendered
+
+    if "const" in kind:
+        info = kind["const"]
+        rendered = f"const {name}: {format_type(info.get('type'), index)}"
+        if info.get("default") is not None:
+            rendered += f" = {info['default']}"
+        return rendered
+
+    return name
+
+
+def format_generic_bound(bound: Any, index: dict) -> str:
+    """Render a trait, lifetime, or precise-capturing bound."""
+    if not isinstance(bound, dict):
+        return str(bound)
+
+    if "trait_bound" in bound:
+        info = bound["trait_bound"]
+        rendered = format_path(info.get("trait", {}), index)
+        params = [
+            format_generic_param(param, index)
+            for param in info.get("generic_params", []) or []
+        ]
+        params = [param for param in params if param]
+        if params:
+            rendered = f"for<{', '.join(params)}> {rendered}"
+        modifier = info.get("modifier", "none")
+        if modifier == "maybe":
+            rendered = f"?{rendered}"
+        elif modifier == "maybe_const":
+            rendered = f"~const {rendered}"
+        return rendered
+
+    if "outlives" in bound:
+        return bound["outlives"]
+
+    if "use" in bound:
+        args = []
+        for arg in bound["use"]:
+            if "lifetime" in arg:
+                args.append(arg["lifetime"])
+            elif "param" in arg:
+                args.append(arg["param"])
+        return f"use<{', '.join(args)}>"
+
+    raise ValueError(f"unsupported rustdoc generic bound: {sorted(bound)}")
+
+
+def format_generic_args(args: Any, index: dict) -> str:
+    """Render angle-bracketed, parenthesized, or return-type generic args."""
+    if not args:
+        return ""
+
+    if "angle_bracketed" in args:
+        info = args["angle_bracketed"]
+        rendered = []
+        for arg in info.get("args", []) or []:
+            if "type" in arg:
+                rendered.append(format_type(arg["type"], index))
+            elif "lifetime" in arg:
+                rendered.append(arg["lifetime"])
+            elif "const" in arg:
+                rendered.append(format_const_arg(arg["const"]))
+            elif "infer" in arg:
+                rendered.append("_")
+
+        for constraint in info.get("constraints", []) or []:
+            name = constraint.get("name", "?")
+            name += format_generic_args(constraint.get("args"), index)
+            binding = constraint.get("binding", {})
+            if "equality" in binding:
+                rendered.append(f"{name} = {format_term(binding['equality'], index)}")
+            elif "constraint" in binding:
+                bounds = [
+                    format_generic_bound(bound, index)
+                    for bound in binding["constraint"]
+                ]
+                rendered.append(f"{name}: {' + '.join(bounds)}")
+        return f"<{', '.join(rendered)}>" if rendered else ""
+
+    if "parenthesized" in args:
+        info = args["parenthesized"]
+        inputs = ", ".join(format_type(ty, index) for ty in info.get("inputs", []))
+        rendered = f"({inputs})"
+        if info.get("output") is not None:
+            rendered += f" -> {format_type(info['output'], index)}"
+        return rendered
+
+    if "return_type_notation" in args:
+        return "(..)"
+
+    raise ValueError(f"unsupported rustdoc generic args: {sorted(args)}")
+
+
+def format_path(path: Any, index: dict) -> str:
+    """Render a rustdoc path with its generic arguments."""
+    if not isinstance(path, dict):
+        return str(path)
+    name = path.get("path", path.get("name", "Unknown"))
+    return f"{name}{format_generic_args(path.get('args'), index)}"
+
+
+def format_where_predicate(predicate: dict, index: dict) -> str:
+    """Render one ``where`` predicate."""
+    if "bound_predicate" in predicate:
+        info = predicate["bound_predicate"]
+        params = [
+            format_generic_param(param, index)
+            for param in info.get("generic_params", []) or []
+        ]
+        params = [param for param in params if param]
+        prefix = f"for<{', '.join(params)}> " if params else ""
+        bounds = " + ".join(
+            format_generic_bound(bound, index) for bound in info.get("bounds", [])
+        )
+        return f"{prefix}{format_type(info.get('type'), index)}: {bounds}"
+
+    if "lifetime_predicate" in predicate:
+        info = predicate["lifetime_predicate"]
+        return f"{info.get('lifetime', '?')}: {' + '.join(info.get('outlives', []))}"
+
+    if "eq_predicate" in predicate:
+        info = predicate["eq_predicate"]
+        return (
+            f"{format_type(info.get('lhs'), index)} = "
+            f"{format_term(info.get('rhs'), index)}"
+        )
+
+    raise ValueError(f"unsupported rustdoc where predicate: {sorted(predicate)}")
+
+
+def format_generics(generics: dict, index: dict) -> tuple[str, str]:
+    """Return rendered ``(<params>, where-clause)`` fragments."""
+    params = [
+        format_generic_param(param, index)
+        for param in generics.get("params", []) or []
+    ]
+    params = [param for param in params if param]
+    params_text = f"<{', '.join(params)}>" if params else ""
+
+    predicates = [
+        format_where_predicate(predicate, index)
+        for predicate in generics.get("where_predicates", []) or []
+    ]
+    where_text = f" where {', '.join(predicates)}" if predicates else ""
+    return params_text, where_text
+
+
+def format_abi(abi: Any) -> str:
+    """Render a rustdoc ABI value as an ``extern`` qualifier."""
+    if not abi or abi == "Rust":
+        return ""
+    if isinstance(abi, str):
+        return f'extern "{abi}" '
+    if not isinstance(abi, dict) or not abi:
+        return ""
+
+    name, value = next(iter(abi.items()))
+    spelling = {
+        "C": "C",
+        "Cdecl": "cdecl",
+        "Stdcall": "stdcall",
+        "Fastcall": "fastcall",
+        "Aapcs": "aapcs",
+        "Win64": "win64",
+        "SysV64": "sysv64",
+        "System": "system",
+    }.get(name, value if name == "Other" and isinstance(value, str) else name)
+    if isinstance(value, dict) and value.get("unwind"):
+        spelling += "-unwind"
+    return f'extern "{spelling}" '
+
+
+def format_function_header(header: dict) -> str:
+    """Render qualifiers that precede ``fn``."""
+    parts = []
+    if header.get("is_const"):
+        parts.append("const ")
+    if header.get("is_async"):
+        parts.append("async ")
+    if header.get("is_unsafe"):
+        parts.append("unsafe ")
+    parts.append(format_abi(header.get("abi")))
+    return "".join(parts)
+
+
 def demote_headings(docs: str, base_level: int) -> str:
     """Shift markdown headings inside a doc string below ``base_level``.
 
@@ -70,8 +287,7 @@ def format_type(ty: Any, index: dict) -> str:
     """
     Recursively format a rustdoc JSON type into a readable string.
 
-    Handles: primitive, generic, resolved_path, borrowed_ref, impl_trait,
-    tuple, slice, array, raw_pointer, qualified_path, dyn_trait, fn_pointer
+    Handles every ``Type`` variant in rustdoc JSON format 57.
     """
     if ty is None:
         return "()"
@@ -92,23 +308,7 @@ def format_type(ty: Any, index: dict) -> str:
 
     # Resolved path (named types like String, Vec<T>, Result<T, E>)
     if "resolved_path" in ty:
-        rp = ty["resolved_path"]
-        name = rp.get("path", rp.get("name", "Unknown"))
-        args = rp.get("args")
-        if args and "angle_bracketed" in args:
-            ab = args["angle_bracketed"]
-            type_args = []
-            for arg in ab.get("args", []):
-                if "type" in arg:
-                    type_args.append(format_type(arg["type"], index))
-                elif "lifetime" in arg:
-                    # rustdoc JSON lifetimes already carry the leading tick
-                    type_args.append(arg["lifetime"])
-                elif "const" in arg:
-                    type_args.append(format_const_arg(arg["const"]))
-            if type_args:
-                return f"{name}<{', '.join(type_args)}>"
-        return name
+        return format_path(ty["resolved_path"], index)
 
     # Borrowed reference (&T, &mut T, &'a T)
     if "borrowed_ref" in ty:
@@ -128,24 +328,8 @@ def format_type(ty: Any, index: dict) -> str:
 
     # impl Trait
     if "impl_trait" in ty:
-        bounds = ty["impl_trait"]
-        bound_strs = []
-        for bound in bounds:
-            if "trait_bound" in bound:
-                tb = bound["trait_bound"]
-                trait = tb.get("trait", {})
-                trait_name = trait.get("path", "Unknown")
-                args = trait.get("args")
-                if args and "angle_bracketed" in args:
-                    ab = args["angle_bracketed"]
-                    type_args = []
-                    for arg in ab.get("args", []):
-                        if "type" in arg:
-                            type_args.append(format_type(arg["type"], index))
-                    if type_args:
-                        trait_name = f"{trait_name}<{', '.join(type_args)}>"
-                bound_strs.append(trait_name)
-        return f"impl {' + '.join(bound_strs)}"
+        bounds = [format_generic_bound(bound, index) for bound in ty["impl_trait"]]
+        return f"impl {' + '.join(bounds)}"
 
     # Tuple types ((A, B, C))
     if "tuple" in ty:
@@ -153,6 +337,8 @@ def format_type(ty: Any, index: dict) -> str:
         if not elements:
             return "()"
         formatted = [format_type(e, index) for e in elements]
+        if len(formatted) == 1:
+            return f"({formatted[0]},)"
         return f"({', '.join(formatted)})"
 
     # Slice types ([T])
@@ -167,6 +353,17 @@ def format_type(ty: Any, index: dict) -> str:
         length = arr.get("len", "N")
         return f"[{inner}; {length}]"
 
+    # Pattern type (unstable, e.g. `u32 is 1..`)
+    if "pat" in ty:
+        pat = ty["pat"]
+        base = format_type(pat.get("type"), index)
+        pattern = pat.get("__pat_unstable_do_not_use", "_")
+        return f"{base} is {pattern}"
+
+    # Inferred type (`_`)
+    if "infer" in ty:
+        return "_"
+
     # Raw pointer (*const T, *mut T)
     if "raw_pointer" in ty:
         rp = ty["raw_pointer"]
@@ -179,12 +376,13 @@ def format_type(ty: Any, index: dict) -> str:
     if "qualified_path" in ty:
         qp = ty["qualified_path"]
         name = qp.get("name", "Unknown")
+        args = format_generic_args(qp.get("args"), index)
         self_type = format_type(qp.get("self_type"), index)
         trait_info = qp.get("trait")
         if trait_info:
-            trait_name = trait_info.get("path", "Trait")
-            return f"<{self_type} as {trait_name}>::{name}"
-        return f"{self_type}::{name}"
+            trait_name = format_path(trait_info, index)
+            return f"<{self_type} as {trait_name}>::{name}{args}"
+        return f"{self_type}::{name}{args}"
 
     # dyn Trait
     if "dyn_trait" in ty:
@@ -198,7 +396,14 @@ def format_type(ty: Any, index: dict) -> str:
             # (the bug that rendered `Box<dyn CustomOp1>` as `Box<dyn >`).
             tb = poly.get("trait_bound", poly)
             trait_info = tb.get("trait", {})
-            path = trait_info.get("path")
+            path = format_path(trait_info, index)
+            params = [
+                format_generic_param(param, index)
+                for param in tb.get("generic_params", []) or []
+            ]
+            params = [param for param in params if param]
+            if params:
+                path = f"for<{', '.join(params)}> {path}"
             if path:
                 bound_strs.append(path)
         lifetime = dt.get("lifetime")
@@ -208,24 +413,30 @@ def format_type(ty: Any, index: dict) -> str:
             result += f" + {lifetime}"
         return result
 
-    # Function pointer (fn(A, B) -> C)
-    if "fn_pointer" in ty:
-        fp = ty["fn_pointer"]
+    # Function pointer (fn(A, B) -> C). Format 57 calls this
+    # `function_pointer`; accept the older `fn_pointer` spelling as well.
+    if "function_pointer" in ty or "fn_pointer" in ty:
+        fp = ty.get("function_pointer", ty.get("fn_pointer"))
         sig = fp.get("sig", {})
         inputs = sig.get("inputs", [])
         output = sig.get("output")
 
-        param_strs = []
-        for name, param_type in inputs:
-            param_strs.append(format_type(param_type, index))
+        params = [
+            format_generic_param(param, index)
+            for param in fp.get("generic_params", []) or []
+        ]
+        params = [param for param in params if param]
+        prefix = f"for<{', '.join(params)}> " if params else ""
+        param_strs = [format_type(param_type, index) for _, param_type in inputs]
+        if sig.get("is_c_variadic"):
+            param_strs.append("...")
 
-        result = f"fn({', '.join(param_strs)})"
+        result = f"{prefix}{format_function_header(fp.get('header', {}))}fn({', '.join(param_strs)})"
         if output:
             result += f" -> {format_type(output, index)}"
         return result
 
-    # Fallback for unknown types
-    return str(ty)
+    raise ValueError(f"unsupported rustdoc type shape: {sorted(ty)}")
 
 
 def format_function_signature(func: dict, index: dict, name: str = "") -> str:
@@ -234,26 +445,11 @@ def format_function_signature(func: dict, index: dict, name: str = "") -> str:
     header = func.get("header", {})
     generics = func.get("generics", {})
 
-    parts = []
-
-    # Async/const/unsafe modifiers
-    if header.get("is_async"):
-        parts.append("async ")
-    if header.get("is_const"):
-        parts.append("const ")
-    if header.get("is_unsafe"):
-        parts.append("unsafe ")
-
-    parts.append(name if name else "fn")
-
-    # Generic parameters
-    params = generics.get("params", [])
-    type_params = []
-    for param in params:
-        if not param.get("kind", {}).get("type", {}).get("is_synthetic", False):
-            type_params.append(param.get("name", "?"))
-    if type_params:
-        parts.append(f"<{', '.join(type_params)}>")
+    params, where_clause = format_generics(generics, index)
+    parts = [format_function_header(header), "fn"]
+    if name:
+        parts.append(f" {name}")
+    parts.append(params)
 
     # Input parameters
     inputs = sig.get("inputs", [])
@@ -261,6 +457,8 @@ def format_function_signature(func: dict, index: dict, name: str = "") -> str:
     for name, param_type in inputs:
         formatted_type = format_type(param_type, index)
         param_strs.append(f"{name}: {formatted_type}")
+    if sig.get("is_c_variadic"):
+        param_strs.append("...")
 
     parts.append(f"({', '.join(param_strs)})")
 
@@ -268,6 +466,8 @@ def format_function_signature(func: dict, index: dict, name: str = "") -> str:
     output = sig.get("output")
     if output:
         parts.append(f" -> {format_type(output, index)}")
+
+    parts.append(where_clause)
 
     return "".join(parts)
 

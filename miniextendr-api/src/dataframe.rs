@@ -743,7 +743,7 @@ impl IntoR for DataFrame {
 /// reused.
 ///
 /// `BuiltDataFrame` is the return type of every Rust-side constructor
-/// ([`IntoDataFrame::into_dataframe`], [`SerdeRowBuilder::finish`](crate::serde::SerdeRowBuilder::finish),
+/// ([`IntoDataFrame::into_dataframe`], `SerdeRowBuilder::finish`,
 /// [`DataFrame::builder`]`().build()`, the serde `*_to_dataframe` verbs,
 /// [`NamedList::as_data_frame`]). It roots the frame with `R_PreserveObject` on
 /// construction and releases it with `R_ReleaseObject` on drop, so holding it

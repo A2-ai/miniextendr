@@ -1,6 +1,6 @@
 # Trait impl inventory
 
-Source: `cargo-revendor/target/doc/cargo_revendor.json`
+Source: `/Users/elea/Documents/GitHub/mx-rust-llm-docs-refresh/cargo-revendor/target/doc/cargo_revendor.json`
 
 Traits with impls: 28
 
@@ -8,13 +8,13 @@ Traits with impls: 28
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `Same` | 9 | 0 |
 | `UnsafeUnpin` | 9 | 0 |
 | `Sync` | 9 | 0 |
 | `TryInto` | 9 | 0 |
+| `Any` | 9 | 0 |
+| `Same` | 9 | 0 |
 | `TryFrom` | 9 | 0 |
 | `Send` | 9 | 0 |
-| `Any` | 9 | 0 |
 | `From` | 9 | 0 |
 | `Freeze` | 9 | 0 |
 | `Into` | 9 | 0 |
@@ -33,15 +33,15 @@ Traits with impls: 28
 | `Args` | 1 | 1 |
 | `FromArgMatches` | 1 | 1 |
 | `CommandFactory` | 1 | 1 |
-| `Drop` | 1 | 1 |
 | `Serialize` | 1 | 1 |
 | `Parser` | 1 | 1 |
+| `Drop` | 1 | 1 |
 
 ## `Clone` — 5 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 1 | src/main.rs:258 |
+| `Mode` | `` | concrete | 1 | src/main.rs:261 |
 | `Verbosity` | `` | concrete | 1 | src/main.rs:55 |
 | `LocalPackage` | `` | concrete | 1 | src/metadata.rs:8 |
 | `StripConfig` | `` | concrete | 1 | src/strip.rs:8 |
@@ -60,20 +60,20 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 0 | src/main.rs:258 |
+| `Mode` | `` | concrete | 0 | src/main.rs:261 |
 | `Verbosity` | `` | concrete | 0 | src/main.rs:55 |
 
 ## `PartialEq` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 1 | src/main.rs:258 |
+| `Mode` | `` | concrete | 1 | src/main.rs:261 |
 
 ## `StructuralPartialEq` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 0 | src/main.rs:258 |
+| `Mode` | `` | concrete | 0 | src/main.rs:261 |
 
 ## `Args` — 1 impls
 
@@ -93,20 +93,20 @@ Traits with impls: 28
 |---|---|---|---|---|
 | `Cli` | `` | concrete | 2 | src/main.rs:70 |
 
-## `Drop` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `ManifestGuard` | `` | concrete | 1 | src/manifest_guard.rs:58 |
-
 ## `Serialize` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `JsonOutput` | `` | concrete | 1 | src/main.rs:381 |
+| `JsonOutput` | `` | concrete | 1 | src/main.rs:384 |
 
 ## `Parser` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `Cli` | `` | concrete | 0 | src/main.rs:70 |
+
+## `Drop` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `ManifestGuard` | `` | concrete | 1 | src/manifest_guard.rs:58 |

@@ -41,6 +41,7 @@ import requests
 import zstandard as zstd
 
 from rustdoc_common import format_type, format_function_signature
+from rustdoc_megadoc import generate_megadoc
 
 
 def get_rexport_note(item: dict) -> str:
@@ -1522,6 +1523,14 @@ def generate_docs(data: dict, output_dir: Path, include_rexports: bool = True):
     structs_dir.mkdir(parents=True, exist_ok=True)
     traits_dir.mkdir(parents=True, exist_ok=True)
 
+    # The hierarchical/split views below stay intentionally optimized for
+    # browsing types and traits. API.md is the lossless public-item view.
+    api_path = output_dir / "API.md"
+    api_path.write_text(
+        generate_megadoc(data, crate_only=True, include_reexports=include_rexports)
+    )
+    print(f"  Created: {api_path}")
+
     # Generate module documentation
     items = get_module_items(root_id, index)
     module_count = 0
@@ -1603,22 +1612,22 @@ def generate_docs(data: dict, output_dir: Path, include_rexports: bool = True):
         readme_lines.append("")
 
     # Add reference document links
-    if traits or structs or enums or functions:
-        readme_lines.append("## Reference Documents")
-        readme_lines.append("")
-        readme_lines.append("Quick-reference guides:")
-        readme_lines.append("")
-        if traits:
-            readme_lines.append(f"- **[Traits](TRAITS.md)** - {len(traits)} traits (consolidated reference)")
-            readme_lines.append(f"- **[traits/](traits/)** - Individual trait files")
-        if structs:
-            readme_lines.append(f"- **[Structs](STRUCTS.md)** - {len(structs)} structs (consolidated reference)")
-            readme_lines.append(f"- **[structs/](structs/)** - Individual struct files")
-        if enums:
-            readme_lines.append(f"- **[Enums](ENUMS.md)** - {len(enums)} enums (consolidated reference)")
-        if functions:
-            readme_lines.append(f"- **[Functions](FUNCTIONS.md)** - {len(functions)} functions")
-        readme_lines.append("")
+    readme_lines.append("## Reference Documents")
+    readme_lines.append("")
+    readme_lines.append("Quick-reference guides:")
+    readme_lines.append("")
+    readme_lines.append("- **[Complete API](API.md)** - All public rustdoc item kinds")
+    if traits:
+        readme_lines.append(f"- **[Traits](TRAITS.md)** - {len(traits)} traits (consolidated reference)")
+        readme_lines.append(f"- **[traits/](traits/)** - Individual trait files")
+    if structs:
+        readme_lines.append(f"- **[Structs](STRUCTS.md)** - {len(structs)} structs (consolidated reference)")
+        readme_lines.append(f"- **[structs/](structs/)** - Individual struct files")
+    if enums:
+        readme_lines.append(f"- **[Enums](ENUMS.md)** - {len(enums)} enums (consolidated reference)")
+    if functions:
+        readme_lines.append(f"- **[Functions](FUNCTIONS.md)** - {len(functions)} functions")
+    readme_lines.append("")
 
     # Add module index
     readme_lines.append("## Modules")
@@ -1641,7 +1650,8 @@ def generate_docs(data: dict, output_dir: Path, include_rexports: bool = True):
     print(f"  - {len(structs)} structs (STRUCTS.md + structs/*.md)")
     print(f"  - {len(enums)} enums (ENUMS.md)")
     print(f"  - {len(functions)} functions (FUNCTIONS.md)")
-    print(f"  - Reference documents: TRAITS.md, STRUCTS.md, ENUMS.md, FUNCTIONS.md")
+    print(f"  - Complete API: API.md")
+    print(f"  - Split references: TRAITS.md, STRUCTS.md, ENUMS.md, FUNCTIONS.md")
 
 
 def main():

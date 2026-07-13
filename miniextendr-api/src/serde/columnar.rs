@@ -586,7 +586,7 @@ where
 /// [`par_iter_to_dataframe_growing`].
 ///
 /// Mirrors [`ColumnFiller`] but operates on an owned `Vec<ColumnBuffer>` with no
-/// [`ProtectScope`] and rejects the `Generic` path — so it carries no R-side
+/// `ProtectScope` and rejects the `Generic` path — so it carries no R-side
 /// state and is safe to run on a rayon worker. `strict` carries
 /// [`ColumnFiller`]'s flag: the homogeneous path validates every row against
 /// the first-row schema (an unknown field errors); the growing path fills
@@ -1370,7 +1370,7 @@ enum SchemaMode {
 /// Two limitations vs. a fully-typed schema (apply to Union mode; SingleRow sees ≤1
 /// candidate per key so the lattice degenerates):
 ///
-/// - **Truly-all-None nested Option<Struct>**: when every row has `None` for an
+/// - **Truly-all-None nested `Option<Struct>`**: when every row has `None` for an
 ///   `Option<UserStruct>`, the probe never sees the inner struct's fields. The key lands
 ///   as `Scalar(Generic)` (no Compound ever seen), which the assembly-time all-None
 ///   downgrade converts to a single logical-NA column. Structurally unfixable without a
@@ -1975,7 +1975,7 @@ impl ColumnBuffer {
         Ok(())
     }
 
-    /// Push a value without a [`ProtectScope`]. Used by the parallel fill path
+    /// Push a value without a `ProtectScope`. Used by the parallel fill path
     /// ([`par_iter_to_dataframe`]), which runs off the R main thread where no
     /// protection scope exists and the R API must not be touched.
     ///
@@ -3501,7 +3501,7 @@ unsafe fn make_strsxp_repeat(value: &str, n: usize) -> SEXP {
 /// plain struct so schema discovery sees the fields directly. For
 /// internally-tagged enums the implicit tag field is captured but the
 /// caller is expected to suppress it by routing through
-/// [`SuppressFieldSerializer`] (we use the existing tag-drop on the
+/// `SuppressFieldSerializer` (we use the existing tag-drop on the
 /// resulting data.frame instead).
 struct TaggedVariantRow<'a, T> {
     tag_column: &'a str,
@@ -3988,7 +3988,7 @@ pub fn vec_to_dataframe_flatten_enums_with_tags<T: Serialize>(
 }
 
 /// Adapter that re-serializes a row as a serde map, flattening each enum field
-/// named in `fields` into a `<field>_variant` (or [`tags`]-overridden) tag plus
+/// named in `fields` into a `<field>_variant` (or `tags`-overridden) tag plus
 /// prefixed payload columns.
 struct FlattenEnumFieldsRow<'a, T> {
     inner: &'a T,

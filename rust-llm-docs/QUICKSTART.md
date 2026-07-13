@@ -3,8 +3,7 @@
 ## Installation
 
 ```bash
-# Clone the repository (if needed)
-git clone https://github.com/anthropics/rust-llm-docs.git
+# From the miniextendr repository
 cd rust-llm-docs
 
 # Install uv (one-time, see https://docs.astral.sh/uv/getting-started/)
@@ -32,7 +31,10 @@ uv run rustdoc_public.py hyper --version 1.0.0 --output-dir ./hyper-docs
 **Output Structure:**
 ```
 docs/
-├── README.md              # Crate overview + module index
+├── README.md              # Crate overview + indexes
+├── API.md                 # Complete public-item digest
+├── TRAITS.md / STRUCTS.md / ENUMS.md / FUNCTIONS.md
+├── structs/ and traits/   # Individual type/trait files
 └── modules/
     ├── routing.md         # Module docs + types + functions
     ├── extract.md
@@ -49,8 +51,8 @@ Generate a single comprehensive markdown file:
 RUSTC_BOOTSTRAP=1 RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo doc --no-deps
 
 # Then generate markdown
-python3 rustdoc_megadoc.py target/doc/<crate>/doc.json
-# Output: target/doc/<crate>/doc.json.md
+python3 rustdoc_megadoc.py target/doc/<crate>.json
+# Output: target/doc/<crate>.md
 ```
 
 Generate split documentation with separate files:
@@ -78,11 +80,14 @@ python3 rustdoc_split.py target/doc/<crate>/doc.json --output-dir ./docs
 - ✅ Preserves all narrative documentation
 - ✅ Inline type documentation (structs, enums, traits)
 - ✅ Compact markdown format optimized for LLMs
+- ✅ Complete public-item `API.md` plus browsable split references
 - ✅ ~100KB documentation for major crates
 
 ### rustdoc_megadoc.py (Local Crates)
 - ✅ Single comprehensive markdown file
-- ✅ Complete type and method documentation
+- ✅ Every public rustdoc item kind, including modules and re-exports
+- ✅ Full signatures with generics, bounds, ABI, variadics, and where clauses
+- ✅ Fails when rustdoc introduces an unaudited item kind
 - ✅ Easy to search and navigate
 
 ### rustdoc_split.py (Local Crates)
@@ -130,6 +135,11 @@ uv run rustdoc_public.py serde --version 1.0.0 --output-dir ./serde-1.0.0-docs
 - Examples from root module documentation
 - Links to all available modules
 
+### API.md
+- Every public item kind in one searchable file
+- Module-qualified headings and complete signatures
+- Nested fields, variants, inherent associated items, and trait members
+
 ### Module Files (modules/*.md)
 Each module file contains:
 - **Module path** and description
@@ -153,10 +163,11 @@ Structs use markdown tables for compact field documentation:
 ## Tips for LLM Consumption
 
 1. **Start with README.md** to understand the crate structure
-2. **Navigate by modules** - each module file is self-contained
-3. **Use module links** - jump directly to the module that interests you
-4. **Check struct/enum tables** - quickly see available fields
-5. **Review method lists** - understand the API surface at a glance
+2. **Use API.md** when completeness matters
+3. **Navigate by modules** - each module file is self-contained
+4. **Use module links** - jump directly to the module that interests you
+5. **Check struct/enum tables** - quickly see available fields
+6. **Review method lists** - understand the API surface at a glance
 
 ## Troubleshooting
 
@@ -187,7 +198,7 @@ pipx install uv
 ### Cache Location
 Downloaded JSON files are cached in `.cache/rustdoc/` by default. To clear:
 ```bash
-rm -rf .cache/rustdoc/
+trash .cache/rustdoc/
 ```
 
 ### Output Directory

@@ -97,7 +97,7 @@ pub enum REDir {
 }
 
 /// Enum with an `as_factor` nested unit enum. Columns: `_type`, `id` (i32),
-/// `dir` (factor<REDir>, Move only).
+/// `dir` (`factor<REDir>`, Move only).
 #[derive(Clone, Debug, PartialEq, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum REMove {

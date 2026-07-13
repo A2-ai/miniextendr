@@ -5,13 +5,13 @@
 //!
 //! - `#[derive(TryFromSexp)]` generates the R → Rust direction: a scalar
 //!   `TryFromSexp` impl that forwards to the inner type, plus a
-//!   [`FromRNewtype`](miniextendr_api::FromRNewtype) marker impl. The marker lets
+//!   `miniextendr_api::FromRNewtype` marker impl. The marker lets
 //!   the container blankets in `miniextendr_api::newtype` light up
 //!   `Vec<UserId>` / `Option<UserId>` / `Vec<Option<UserId>>` — see issue #844.
 //! - `#[derive(IntoR)]` generates the Rust → R direction: a scalar `IntoR` impl
 //!   that forwards to the inner type, plus
-//!   [`IntoRNewtype`](miniextendr_api::IntoRNewtype) (for `Option` /
-//!   `Vec<Option>`) and a concrete [`IntoRVecElement`](miniextendr_api::IntoRVecElement)
+//!   `miniextendr_api::IntoRNewtype` (for `Option` / `Vec<Option>`) and a
+//!   concrete `miniextendr_api::IntoRVecElement`
 //!   impl (for `Vec`).
 //!
 //! Direction is chosen by *which* derive you list — there are no attributes.

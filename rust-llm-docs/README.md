@@ -17,15 +17,18 @@ third-party Python dependencies for the *local-crate* path — only `requests` a
 
 ## generated/ — pre-built miniextendr docs
 
-`generated/` contains a committed snapshot of LLM-ready docs for every workspace
-crate. Use them directly in Claude Code or any other LLM context when you need
-full API coverage:
+`generated/` contains a committed snapshot of LLM-ready docs for every root
+workspace crate plus the standalone `cargo-revendor` utility. Use them directly
+in an LLM context when you need full public API coverage. The standalone
+R-package and cross-package fixture workspaces are test surfaces rather than
+framework API references.
 
 | File | Contents |
 |---|---|
 | `miniextendr-api.md` | Full API digest for `miniextendr-api` (broad feature set) |
 | `miniextendr-macros.md` | Proc-macro public API |
 | `miniextendr-engine.md` | Codegen engine public API |
+| `miniextendr-bench.md` | Benchmark harness public API |
 | `miniextendr-lint.md` | Lint rule public API |
 | `miniextendr-cli.md` | CLI helper public API |
 | `*-impl-inventory.md` | Every trait impl grouped by trait + span |
@@ -35,13 +38,16 @@ full API coverage:
 ### Regenerating
 
 ```bash
-bash rust-llm-docs/generate-miniextendr-docs.sh
+just llm-docs
 ```
 
 Requires a `rustc` with `RUSTC_BOOTSTRAP=1` support (stable is fine) and Python 3.
-The script runs `cargo doc --no-deps` for each crate then calls the Python scripts
-to render markdown into `generated/`. Commit the result alongside any macro/API
-changes that affect the public surface.
+The recipe runs `cargo doc --no-deps --document-private-items` for each crate,
+using `miniextendr-api`'s maintained `full` feature aggregate and all benchmark
+features, then renders markdown into `generated/`. Commit the result alongside
+any macro/API changes that affect the public surface. `just llm-docs-check`
+tests the renderer, regenerates the corpus, and fails if the committed snapshot
+drifts.
 
 ## Using the scripts for other crates
 
@@ -56,6 +62,9 @@ Downloads and generates docs in `docs/`. Requires `requests` and `zstandard`:
 ```bash
 pip install requests zstandard
 ```
+
+The generated `API.md` is the complete item-kind view. The additional split
+files are optimized indexes for structs, enums, traits, functions, and modules.
 
 #### Re-exports
 
@@ -88,7 +97,7 @@ python3 rustdoc_split.py target/doc/<crate>.json ./docs-out
 | Script | Purpose |
 |---|---|
 | `rustdoc_public.py` | Download and document public crates from docs.rs |
-| `rustdoc_megadoc.py` | Single comprehensive markdown file from rustdoc JSON |
+| `rustdoc_megadoc.py` | Complete public-item markdown from rustdoc JSON; fails on unknown schema kinds |
 | `rustdoc_split.py` | Split docs with one file per type |
 | `rustdoc_impl_inventory.py` | Impl inventory grouped by trait + span |
 | `rustdoc_manual_vs_macro.py` | Hand-rolled-vs-macro analysis |

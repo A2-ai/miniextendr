@@ -347,7 +347,7 @@ impl Counter for SimpleCounter {
     }
 
     /// Raise an error with structured data fields — tests ConditionData
-    /// round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
+    /// round-trip through from_tagged_sexp slot \[4\] (issue #996 path-1).
     fn raise_error_with_data(&self) {
         miniextendr_api::error!(
             class = "data_bearing_error",

@@ -24,9 +24,226 @@ Each diagnostic carries a stable `MXL###` code. See [`LintCode`] for the full ca
 
 ---
 
+## Modules
+
+### `crate_index`
+
+`pub mod crate_index;`
+
+Shared crate index built from a single parse pass over all source files.
+
+All lint rules operate on this index rather than re-parsing files.
+
+### `diagnostic`
+
+`pub mod diagnostic;`
+
+Structured diagnostic output for lint rules.
+
+### `helpers`
+
+`pub mod helpers;`
+
+Shared utility functions for lint rule implementations.
+
+### `lint_code`
+
+`pub mod lint_code;`
+
+Stable lint rule identifiers.
+
+Each rule has a code like `MXL008` that is grep-able and CI-friendly.
+
+### `rules`
+
+`pub mod rules;`
+
+Lint rule implementations.
+
+Each submodule contains one or more related lint checks. All rules operate
+on the shared [`CrateIndex`] and produce
+[`Diagnostic`] values.
+
+### `rules::export_attrs`
+
+`pub mod export_attrs;`
+
+Export attribute redundancy checks.
+
+- MXL203: `internal` + `noexport` redundancy.
+
+### `rules::ffi_unchecked`
+
+`pub mod ffi_unchecked;`
+
+`_unchecked` FFI call outside guard context.
+
+- MXL301: Warns on `sys::*_unchecked()` calls in user code.
+  These bypass main-thread routing and must only be called inside
+  `with_r_unwind_protect`, `with_r_thread`, or similar guard closures.
+
+### `rules::fn_visibility`
+
+`pub mod fn_visibility;`
+
+Function visibility checks.
+
+- MXL106: Non-pub function has `/// @export` (contradictory).
+
+### `rules::impl_validation`
+
+`pub mod impl_validation;`
+
+Impl block validation: class system compatibility and label uniqueness.
+
+- MXL008: Trait impl class system incompatible with inherent impl.
+- MXL009: Multiple impl blocks for one type without labels.
+- MXL010: Duplicate labels on impl blocks for one type.
+
+### `rules::r_reserved_params`
+
+`pub mod r_reserved_params;`
+
+R reserved-word parameter name check.
+
+- MXL110: A `#[miniextendr]` function or method has a parameter whose name
+  is an R reserved word. The proc macro forwards parameter names verbatim
+  into the generated R wrapper, so the wrapper will be syntactically invalid.
+
+### `rules::rf_error`
+
+`pub mod rf_error;`
+
+Direct `Rf_error`/`Rf_errorcall` usage lint.
+
+- MXL300: Warns on direct `Rf_error`/`Rf_errorcall` calls in user code.
+  These longjmp through Rust frames, bypassing destructors unless wrapped in
+  `R_UnwindProtect`. Prefer `panic!()` or `Err(...)` which produce structured
+  R condition objects via the tagged-condition transport.
+
+### `rules::s4_method_prefix`
+
+`pub mod s4_method_prefix;`
+
+MXL111: `s4_*` method name on `#[miniextendr(s4)]` impl.
+
+S4 codegen auto-prepends `s4_` to every instance method name when generating
+the R generic. A Rust method named `s4_foo` on an `#[miniextendr(s4)]` impl
+produces an R generic `s4_s4_foo`, making it unreachable via the expected
+`s4_foo(obj, ...)` call.
+
+### `rules::trait_tag_collision`
+
+`pub mod trait_tag_collision;`
+
+MXL303: trait-impl vtable-symbol collision detection.
+
+Each `#[miniextendr] impl Trait for Type` emits a vtable static named
+`__VTABLE_{CRATE}_{TRAIT}_FOR_{TYPE}` (see
+`miniextendr-macros/src/naming.rs::vtable_static_ident`, called from
+`miniextendr-macros/src/miniextendr_impl_trait/vtable.rs`), where `{CRATE}`
+is the consuming crate's uppercased name (#1273 webR cross-package symbol
+uniqueness), the trait name is `trait_ident.to_uppercase()`, and the type
+name is the last path segment uppercased (`type_to_uppercase_name`). The
+static is emitted with `#[unsafe(no_mangle)]`, so two impls whose
+`(TRAIT, TYPE)` pair collapses to the same uppercased symbol produce
+**duplicate `no_mangle` symbols** — a hard linker failure whose message is
+divorced from the source.
+
+The lint compares symbols *within one crate*, where the crate prefix is a
+constant — so the comparison here uses the crate-invariant
+`__VTABLE_{TRAIT}_FOR_{TYPE}` suffix rather than reconstructing the prefix
+(the lint runs from the user crate's `build.rs`, which has no
+`CARGO_CRATE_NAME` for the crate being linted anyway). Verdicts are
+identical either way.
+
+Rust's coherence rules already forbid the *same* trait implemented twice for
+the *same* type, so the only way two distinct impls collide is via the
+macro's **case-folding**: e.g. `impl Counter for Foo` and `impl counter for
+Foo`, or `impl Trait for Foo` and `impl Trait for foo`, all collapse to the
+same `__VTABLE_…` symbol. This rule catches that before the linker does.
+
+Scope: crate-wide. The two colliding impls may live in different files, so
+the check aggregates across the whole [`CrateIndex`] rather than per-file.
+
+Escape hatch: `// mxl::allow(MXL303)` on (or directly above) either impl
+line suppresses the diagnostic for that impl. `MINIEXTENDR_LINT=0` disables
+all rules.
+
+### `rules::vctrs_self_ctor`
+
+`pub mod vctrs_self_ctor;`
+
+MXL120: vctrs constructor returns `Self` / named type, or impl has an instance-method receiver.
+
+A `#[miniextendr(vctrs(...))]` impl has two hard invariants:
+
+1. **Constructor return type** — the constructor (`fn new` or a method tagged
+   `#[miniextendr(constructor)]`) must NOT return `Self`, `&Self`, `&mut Self`,
+   `Box<Self>`, the named impl type, `Result<Self, _>`, or `Result<NamedType, _>`.
+   The generated R wrapper passes the return value to `vctrs::new_vctr()` /
+   `new_rcrd()` / `new_list_of()`, which require a plain vector payload, not an
+   `ExternalPtr` (`EXTPTRSXP`).
+
+2. **Instance receivers** — no method may carry any form of `self` receiver
+   (`&self`, `&mut self`, `self`, `self: &ExternalPtr<Self>`, etc.).
+   A vctrs object is an S3-classed base vector; there is no Rust `Self` stored
+   inside the SEXP.  The C wrapper cannot reconstruct `Self` from a base vector,
+   so calling an instance method would panic at runtime.
+
+#### Mirror
+
+The same checks fire as proc-macro hard errors in
+`miniextendr-macros/src/miniextendr_impl.rs` (search `MXL120`).
+This lint is defence-in-depth: it catches the mistake during the
+build-time static-analysis pass (when the macro isn't being expanded,
+e.g. lint-only IDE runs, third-party tooling).
+Keep both implementations in sync: if the macro relaxes either check,
+update this rule too.
+
+### `rules::vec_into_sexp`
+
+`pub mod vec_into_sexp;`
+
+`into_sexp()` inside a `vec!`/array literal — use-after-free idiom.
+
+- MXL302: Warns on `into_sexp()` / `into_sexp_unchecked()` calls that appear as
+  elements *inside* a `vec!` or `&[...]` literal.
+
+  Each `into_sexp` allocates a fresh SEXP. When several occur in one literal
+  (`vec![(k, a.into_sexp()), (k, b.into_sexp())]`), nothing roots the earlier
+  elements until the whole `Vec` reaches `List::from_raw_pairs`, so building a
+  later element can trigger a GC that collects an earlier, still-unprotected one
+  — a use-after-free. This recurred enough (#307, the 2026-05-07 gctorture audit)
+  that the `IntoList` / `DataFrameRow` derives now wrap every element in
+  `__scope.protect_raw(...)`; this lint stops new hand-written sites from
+  reintroducing the raw form silently.
+
+---
+
+## Re-exports
+
+### `pub use crate_index::CrateIndex;`
+
+### `pub use lint_code::LintCode;`
+
+### `pub use diagnostic::Diagnostic;`
+
+### `pub use crate_index::LintItem;`
+
+### `pub use diagnostic::Severity;`
+
+### `pub use crate_index::LintKind;`
+
+---
+
 ## Structs
 
 ### `LintReport`
+
+```rust
+pub struct LintReport
+```
 
 Result of running the lint over a crate source tree.
 
@@ -41,14 +258,24 @@ Result of running the lint over a crate source tree.
 
 ### `crate_index::AttributedTraitImpl`
 
+```rust
+pub struct AttributedTraitImpl
+```
+
 **Fields:**
 
 - `type_name`: `String`
 - `trait_name`: `String`
 - `class_system`: `Option<String>`
 - `line`: `usize`
+- `suppressed_mxl303`: `bool`
+  - True when the impl carries a `// mxl::allow(MXL303)` escape-hatch comment
 
 ### `crate_index::CrateIndex`
+
+```rust
+pub struct CrateIndex
+```
 
 Shared parsed state for all lint rules.
 
@@ -59,17 +286,21 @@ Shared parsed state for all lint rules.
 - `file_data`: `std::collections::HashMap<std::path::PathBuf, FileData>`
   - Per-file parsed data.
 
-**Methods:**
+**Inherent associated items:**
 
 #### `build`
 
 ```rust
-build(root: &Path) -> Result<Self, String>
+fn build(root: &Path) -> Result<Self, String>
 ```
 
 Build the index from a crate root directory.
 
 ### `crate_index::FileData`
+
+```rust
+pub struct FileData
+```
 
 **Fields:**
 
@@ -96,14 +327,16 @@ Build the index from a crate root directory.
   - Lines containing direct Rf_error/Rf_errorcall calls: (function_name, line_number).
 - `ffi_unchecked_calls`: `Vec<(String, usize)>`
   - Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
+- `vec_into_sexp_calls`: `Vec<(String, usize)>`
+  - `into_sexp()` / `into_sexp_unchecked()` calls that appear *inside* a `vec!`/array
 - `fn_param_names`: `std::collections::HashMap<String, Vec<(String, usize)>>`
   - Maps fn/method name → list of (param_name, line) for params that are R reserved words.
-- `lifetime_param_items`: `Vec<(String, usize)>`
-  - `#[miniextendr]` functions or impl blocks that carry explicit lifetime params.
-- `interleaved_doc_attrs`: `Vec<(String, usize)>`
-  - `#[miniextendr]` items where a non-doc attribute interrupts a doc-comment stream.
 
 ### `crate_index::ImplMethodEntry`
+
+```rust
+pub struct ImplMethodEntry
+```
 
 Per-method data collected during the crate-index pass for impl-method lint rules.
 
@@ -121,6 +354,10 @@ Per-method data collected during the crate-index pass for impl-method lint rules
 
 ### `crate_index::LintItem`
 
+```rust
+pub struct LintItem
+```
+
 **Fields:**
 
 - `kind`: `LintKind`
@@ -128,21 +365,25 @@ Per-method data collected during the crate-index pass for impl-method lint rules
 - `label`: `Option<String>`
 - `line`: `usize`
 
-**Methods:**
+**Inherent associated items:**
 
 #### `new`
 
 ```rust
-new(kind: LintKind, name: String, line: usize) -> Self
+fn new(kind: LintKind, name: String, line: usize) -> Self
 ```
 
 #### `with_label`
 
 ```rust
-with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self
+fn with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self
 ```
 
 ### `diagnostic::Diagnostic`
+
+```rust
+pub struct Diagnostic
+```
 
 A single lint diagnostic with structured metadata.
 
@@ -161,12 +402,12 @@ A single lint diagnostic with structured metadata.
 - `help`: `Option<String>`
   - Optional fix guidance.
 
-**Methods:**
+**Inherent associated items:**
 
 #### `new`
 
 ```rust
-new(code: LintCode, path: impl Into<PathBuf>, line: usize, message: String) -> Self
+fn new(code: LintCode, path: impl Into<PathBuf>, line: usize, message: String) -> Self
 ```
 
 Create a new diagnostic with the rule's default severity.
@@ -174,7 +415,7 @@ Create a new diagnostic with the rule's default severity.
 #### `to_legacy_string`
 
 ```rust
-to_legacy_string(self: &Self) -> String
+fn to_legacy_string(self: &Self) -> String
 ```
 
 Format as a legacy error string (for backward-compatible `LintReport::errors`).
@@ -182,12 +423,16 @@ Format as a legacy error string (for backward-compatible `LintReport::errors`).
 #### `with_help`
 
 ```rust
-with_help(self: Self, help: impl Into<String>) -> Self
+fn with_help(self: Self, help: impl Into<String>) -> Self
 ```
 
 Attach a help message.
 
 ### `helpers::MiniextendrImplAttrs`
+
+```rust
+pub struct MiniextendrImplAttrs
+```
 
 Parsed miniextendr attribute information for an impl block.
 
@@ -210,6 +455,10 @@ Parsed miniextendr attribute information for an impl block.
 
 ### `crate_index::LintKind`
 
+```rust
+pub enum LintKind
+```
+
 **Variants:**
 
 - `Function`
@@ -219,6 +468,10 @@ Parsed miniextendr attribute information for an impl block.
 - `Vctrs`
 
 ### `crate_index::MethodReceiverKind`
+
+```rust
+pub enum MethodReceiverKind
+```
 
 Receiver kind for an impl method, mirroring `ReceiverKind` in `miniextendr-macros`.
 
@@ -242,12 +495,12 @@ Keep both in sync: if the macro relaxes one receiver kind, update this enum too.
 - `ExternalPtrValue`
   - `self: ExternalPtr<Self>`
 
-**Methods:**
+**Inherent associated items:**
 
 #### `is_instance`
 
 ```rust
-is_instance(self: Self) -> bool
+fn is_instance(self: Self) -> bool
 ```
 
 Returns true if this is an instance receiver (any form of `self`).
@@ -261,12 +514,16 @@ false-positive for a vctrs method with `#[miniextendr(constructor)]` that consum
 #### `spelling`
 
 ```rust
-spelling(self: Self) -> &'static str
+fn spelling(self: Self) -> &'static str
 ```
 
 Human-readable spelling used in diagnostic messages.
 
 ### `diagnostic::Severity`
+
+```rust
+pub enum Severity
+```
 
 Diagnostic severity level.
 
@@ -280,6 +537,10 @@ Diagnostic severity level.
   - CI-blocking in strict mode.
 
 ### `lint_code::LintCode`
+
+```rust
+pub enum LintCode
+```
 
 Stable lint rule identifier.
 
@@ -299,8 +560,6 @@ Display format is `MXL###`, derived directly from the variant name.
   - Parameter name is an R reserved word; codegen will produce invalid R syntax.
 - `MXL111`
   - `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends `s4_`.
-- `MXL112`
-  - Explicit lifetime parameter on `#[miniextendr]` fn or impl — use owned types instead.
 - `MXL120`
   - vctrs constructor returns `Self` / named type, or impl has an instance-method receiver.
 - `MXL203`
@@ -310,14 +569,16 @@ Display format is `MXL###`, derived directly from the variant name.
 - `MXL301`
   - `_unchecked` FFI call outside guard context.
 - `MXL302`
-  - Non-doc attribute interrupts a doc-comment stream on a `#[miniextendr]` item.
+  - `into_sexp()` call inside a `vec!`/array literal — unprotected SEXP across allocations (UAF).
+- `MXL303`
+  - Two `#[miniextendr]` trait impls collapse to the same vtable symbol
 
-**Methods:**
+**Inherent associated items:**
 
 #### `default_severity`
 
 ```rust
-default_severity(self: Self) -> super::diagnostic::Severity
+fn default_severity(self: Self) -> super::diagnostic::Severity
 ```
 
 Default severity for this rule.
@@ -329,7 +590,7 @@ Default severity for this rule.
 ### `build_script`
 
 ```rust
-build_script()
+fn build_script()
 ```
 
 Entry point for build.rs. Runs the lint and prints cargo directives.
@@ -340,7 +601,7 @@ Set to `0`, `false`, `no`, or `off` to disable.
 ### `helpers::extract_cfg_attrs`
 
 ```rust
-extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<String>
+fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<String>
 ```
 
 Extract `#[cfg(...)]` attributes as normalized token strings.
@@ -348,7 +609,7 @@ Extract `#[cfg(...)]` attributes as normalized token strings.
 ### `helpers::extract_path_attr`
 
 ```rust
-extract_path_attr(attrs: &[syn::Attribute]) -> Option<String>
+fn extract_path_attr(attrs: &[syn::Attribute]) -> Option<String>
 ```
 
 Extract `#[path = "..."]` attribute value from a module declaration.
@@ -356,7 +617,7 @@ Extract `#[path = "..."]` attribute value from a module declaration.
 ### `helpers::extract_roxygen_tags`
 
 ```rust
-extract_roxygen_tags(attrs: &[syn::Attribute]) -> Vec<String>
+fn extract_roxygen_tags(attrs: &[syn::Attribute]) -> Vec<String>
 ```
 
 Extract roxygen tags from doc-comment attributes.
@@ -364,45 +625,28 @@ Extract roxygen tags from doc-comment attributes.
 Looks through `/// ...` comments for patterns like `@export`, `@noRd`,
 `@keywords internal`, etc. Returns the tag names found.
 
-### `helpers::has_altrep_derive`
+### `helpers::has_derive`
 
 ```rust
-has_altrep_derive(attrs: &[syn::Attribute]) -> bool
+fn has_derive(attrs: &[syn::Attribute], name: &str) -> bool
 ```
 
-Returns true if the attribute list contains `#[derive(Altrep)]`
-or `#[derive(miniextendr_api::Altrep)]`.
-
-### `helpers::has_external_ptr_derive`
-
-```rust
-has_external_ptr_derive(attrs: &[syn::Attribute]) -> bool
-```
-
-Returns true if the attribute list contains `#[derive(ExternalPtr)]`
-or `#[derive(miniextendr_api::ExternalPtr)]`.
+Returns true if the attribute list contains `#[derive(name)]`
+or `#[derive(miniextendr_api::name)]` for the given derive `name`
+(e.g. `"ExternalPtr"`, `"Altrep"`, `"Vctrs"`).
 
 ### `helpers::has_miniextendr_attr`
 
 ```rust
-has_miniextendr_attr(attrs: &[syn::Attribute]) -> bool
+fn has_miniextendr_attr(attrs: &[syn::Attribute]) -> bool
 ```
 
 Returns true when the attribute list contains `#[miniextendr]`.
 
-### `helpers::has_vctrs_derive`
-
-```rust
-has_vctrs_derive(attrs: &[syn::Attribute]) -> bool
-```
-
-Returns true if the attribute list contains `#[derive(Vctrs)]`
-or `#[derive(miniextendr_api::Vctrs)]`.
-
 ### `helpers::impl_type_name`
 
 ```rust
-impl_type_name(ty: &syn::Type) -> Option<String>
+fn impl_type_name(ty: &syn::Type) -> Option<String>
 ```
 
 Extracts a displayable type name from an impl self type.
@@ -410,7 +654,7 @@ Extracts a displayable type name from an impl self type.
 ### `helpers::is_altrep_struct`
 
 ```rust
-is_altrep_struct(item: &syn::ItemStruct) -> bool
+fn is_altrep_struct(item: &syn::ItemStruct) -> bool
 ```
 
 Check if a struct with `#[miniextendr]` should be treated as ALTREP (needing `struct Name;` in module).
@@ -421,7 +665,7 @@ Multi-field structs, structs with explicit mode attrs, and enums don't need modu
 ### `helpers::parse_miniextendr_impl_attrs`
 
 ```rust
-parse_miniextendr_impl_attrs(attrs: &[syn::Attribute]) -> MiniextendrImplAttrs
+fn parse_miniextendr_impl_attrs(attrs: &[syn::Attribute]) -> MiniextendrImplAttrs
 ```
 
 Parse the #[miniextendr(...)] attribute to extract class system, label, and flags.
@@ -429,7 +673,7 @@ Parse the #[miniextendr(...)] attribute to extract class system, label, and flag
 ### `helpers::should_skip_dir`
 
 ```rust
-should_skip_dir(path: &std::path::Path) -> bool
+fn should_skip_dir(path: &std::path::Path) -> bool
 ```
 
 Returns whether a directory should be skipped during lint tree traversal.
@@ -437,65 +681,53 @@ Returns whether a directory should be skipped during lint tree traversal.
 ### `lint_enabled`
 
 ```rust
-lint_enabled(env_var: &str) -> Result<bool, String>
+fn lint_enabled(env_var: &str) -> Result<bool, String>
 ```
 
 Returns whether the lint should run based on the given env var.
 
 Defaults to `true` when the var is unset. Set to 0/false/no/off to disable.
 
-### `rules::doc_attr_interleave::check`
-
-```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
-```
-
 ### `rules::export_attrs::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `rules::ffi_unchecked::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `rules::fn_visibility::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `rules::impl_validation::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
-```
-
-### `rules::lifetime_param::check`
-
-```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `rules::r_reserved_params::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `rules::rf_error::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `rules::run_all_rules`
 
 ```rust
-run_all_rules(index: &crate::crate_index::CrateIndex) -> Vec<crate::diagnostic::Diagnostic>
+fn run_all_rules(index: &crate::crate_index::CrateIndex) -> Vec<crate::diagnostic::Diagnostic>
 ```
 
 Run all lint rules against the crate index, collecting diagnostics.
@@ -503,19 +735,31 @@ Run all lint rules against the crate index, collecting diagnostics.
 ### `rules::s4_method_prefix::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::trait_tag_collision::check`
+
+```rust
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `rules::vctrs_self_ctor::check`
 
 ```rust
-check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
+```
+
+### `rules::vec_into_sexp::check`
+
+```rust
+fn check(index: &crate::crate_index::CrateIndex, diagnostics: &mut Vec<crate::diagnostic::Diagnostic>)
 ```
 
 ### `run`
 
 ```rust
-run(root: impl AsRef<std::path::Path>) -> Result<LintReport, String>
+fn run(root: impl AsRef<std::path::Path>) -> Result<LintReport, String>
 ```
 
 Run the lint against the crate rooted at `root`.
