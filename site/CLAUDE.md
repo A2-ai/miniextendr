@@ -46,6 +46,10 @@ external URLs. Internal breakage means a cross-reference in `docs/`
 points at a file that no longer exists; fix in `docs/`, not the
 generated page. `site/config.toml` sets `[link_checker] internal_level =
 "error"`, so a broken internal anchor fails the check, not just warns.
+External URLs are `external_level = "warn"` — warn-only, NOT enforced in
+CI, because external hosts bot-block CI runners (e.g. lib.rs returns 403)
+and would make unrelated docs PRs flaky. External liveness is reviewed in
+the quarterly skill-freshness/docs audit instead.
 
 CI gates this on every PR that touches `docs/**`, `site/**`, or
 `scripts/docs-to-site.sh` (the `Docs Link Check` job in `ci.yml` — separate
