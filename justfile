@@ -60,6 +60,9 @@
 #     just llm-docs-check      - Test renderer and verify committed LLM docs are current
 #     just bump-version <v>    - Bump version across all Cargo.toml + DESCRIPTION files
 #
+#   Issue cache:
+#     just issues-refresh      - Refresh local ISSUES/ indexes and open-issue bodies
+#
 #   Vendor sync:
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
@@ -1181,6 +1184,11 @@ templates-check:
 # Check the CLAUDE.md <-> AGENTS.md sibling invariant (exits nonzero on violation)
 agents-md-check:
     bash scripts/agents-md-check.sh
+
+# Refresh the local, untracked GitHub issue cache. Pass an alternate output
+# directory when refreshing the main checkout from an agent worktree.
+issues-refresh output_dir="ISSUES":
+    bash scripts/refresh-issues-cache.sh "{{output_dir}}"
 
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)

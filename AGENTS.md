@@ -9,7 +9,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 - **No backwards compatibility**: unreleased project — remove deprecated code, don't shim around it.
 - **Simple over complex**: only make changes directly requested or clearly necessary. Trust the framework — no defensive error handling for internal invariants.
 - **Fix warnings you see**: no "known issues". Every warning, lint, or test failure gets fixed, even if pre-existing and unrelated. Leave the code cleaner than you found it.
-- **Deferred items = GitHub issues**: any scope cut, known limitation, or partial fix needs `gh issue create` referenced in the PR. No "out of scope" without a tracked issue.
+- **Deferred items = GitHub issues**: any scope cut, known limitation, or partial fix needs `gh issue create` referenced in the PR. No "out of scope" without a tracked issue. Before creating one, run `just issues-refresh`, read `ISSUES/_open-index.json` end-to-end, then search/read the relevant `ISSUES/issue-*.md` bodies and `ISSUES/_closed-index.json` for overlap.
 - **`just` is maintainer-only**: end-user packages must build via `configure.ac` / `tools/*.R` / standard R mechanisms. Never require `just` in scaffolded packages.
 - **`configure.ac` never mutates sources**: don't rewrite Cargo.toml / Cargo.lock / .rs during `./configure` — dirties VCS. Use `cargo revendor --freeze` at vendor time.
 - **`configure.ac` must not call `minirextendr::*`**: put helpers in `tools/` and invoke via `Rscript tools/foo.R`.
