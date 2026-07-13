@@ -6,7 +6,7 @@ ALTREP (Alternative Representations) is R's system for creating custom vector im
 - **[Quick Reference](ALTREP_QUICKREF.md)** - One-page cheat sheet
 - **[Receiving ALTREP from R](ALTREP_SEXP.md)** - How `SEXP` and `AltrepSexp` parameters handle ALTREP input
 - **[Practical Examples](ALTREP_EXAMPLES.md)** - Real-world use cases
-- **[Test Suite](../rpkg/tests/testthat/test-altrep*.R)** - Working examples
+- **[Test Suite](../rpkg/tests/testthat/)** - Working examples in `test-altrep*.R`
 
 ## What is ALTREP?
 
@@ -1075,7 +1075,17 @@ miniextendr_api::impl_altinteger_from_data!(MyType, subset);
 // mutually exclusive):
 miniextendr_api::impl_altinteger_from_data!(MyType, dataptr, serialize);
 miniextendr_api::impl_altinteger_from_data!(MyType, subset, serialize);
+
+// Generic types use the `_generic!` sibling. The first brace group declares
+// parameters; the second supplies the impl's where-clause.
+miniextendr_api::impl_altinteger_from_data_generic!(
+    {T} GenericInt<T> {T: Copy + Into<i32> + 'static}
+);
 ```
+
+Every family has a matching `_generic!` macro. Prefer the derive path for
+concrete types; use this explicit form when a low-level implementation itself
+must stay generic.
 
 | Option | What it does | Requires |
 |--------|--------------|----------|

@@ -11,7 +11,7 @@ This guide documents how miniextendr converts between R and Rust types, includin
 | `integer` (length 1) | `i32` | NA → panic |
 | `numeric` (length 1) | `f64` | NA preserved as `NA_REAL` |
 | `logical` (length 1) | `bool` | NA → panic |
-| `character` (length 1) | `String`, `&str` | NA → panic |
+| `character` (length 1) | `String`, `&str` | NA → `""` (lossy); use `Option` to preserve NA |
 | `raw` (length 1) | `u8` | No NA in raw |
 | `complex` (length 1) | `Rcomplex` | Has real/imag NA |
 
@@ -21,8 +21,8 @@ This guide documents how miniextendr converts between R and Rust types, includin
 |--------|-----------|-------|
 | `integer` | `Vec<i32>`, `&[i32]` | NA = `i32::MIN` |
 | `numeric` | `Vec<f64>`, `&[f64]` | NA = special bit pattern |
-| `logical` | `Vec<i32>` | TRUE=1, FALSE=0, NA=`i32::MIN` |
-| `character` | `Vec<String>` | NA → panic |
+| `logical` | `Vec<bool>` | NA → error; use `Vec<Option<bool>>` to preserve it |
+| `character` | `Vec<String>` | NA → `""` (lossy); use `Vec<Option<String>>` to preserve it |
 | `raw` | `Vec<u8>`, `&[u8]` | No NA |
 | `list` | Various | See Lists and Collections sections |
 
@@ -136,7 +136,9 @@ value.is_nan()  // Returns true for both NA and NaN
 
 R's `NA_character_` is a special `CHARSXP` pointer (`R_NaString`).
 
-miniextendr converts string NA to panic by default. Use `Option<String>` for NA-safe access:
+Plain `String` / `&str` conversion maps string NA to `""`, which loses the
+distinction between NA and an empty string. Use `Option<String>` for NA-safe
+access:
 
 ```rust
 #[miniextendr]
@@ -384,17 +386,23 @@ The slice has a `'static` lifetime annotation, but this is a **lie** for API con
 
 ## String Lifetimes
 
-R interns all strings (`CHARSXP`). When you get a `&str` from R:
+Borrowed strings point directly into a `CHARSXP`; they do not own or root the
+R object. When you get a `&str` from R:
 
 ```rust
 #[miniextendr]
 pub fn process_string(s: &str) -> String {
-    // s is valid for the entire R session (interned)
+    // s is valid for this .Call while the argument remains reachable
     s.to_uppercase()
 }
 ```
 
-The `&'static str` lifetime is actually correct here because R never garbage collects interned strings.
+The Rust type currently carries a `'static` lifetime for API convenience, but
+that lifetime is no more real than it is for borrowed numeric slices. R can
+garbage-collect a `CHARSXP` once it is unreachable. Use the borrow only within
+the `.Call`; copy to `String` before storing it. `NA_character_` becomes `""`
+on the plain borrowed/owned string paths, so use `Option<&str>` or
+`Option<String>` when NA must remain distinguishable from an empty string.
 
 ---
 
@@ -417,7 +425,10 @@ The Rust data is heap-allocated and owned by R:
 4. When SEXP is collected, Rust `Drop` runs
 5. Heap memory freed
 
-**Thread safety:** The pointer can be safely accessed from any thread, but R API calls must happen on the main thread.
+**Thread safety:** `ExternalPtr<T>` is `Send` when `T: Send`, allowing a
+sequential ownership handoff between worker and R threads. It is not `Sync` and
+must not be accessed concurrently. Operations that touch the SEXP or R's
+protection machinery are routed to the R thread.
 
 ---
 
@@ -443,15 +454,39 @@ pub fn list_length(x: List) -> i32 {
 
 ### Data Frames
 
-Data frames are lists with special attributes. Access columns:
+Accept a validated `DataFrame` view and use its typed column accessors:
 
 ```rust
 #[miniextendr]
-pub fn get_column(df: List, name: &str) -> Vec<f64> {
-    // df[name] returns the column
-    // Convert as needed
+pub fn get_column(df: DataFrame, name: &str) -> Result<Vec<f64>, String> {
+    df.column(name)
+        .ok_or_else(|| format!("missing or non-numeric column {name:?}"))
 }
 ```
+
+Rust-side constructors return `BuiltDataFrame`, a rooted owner that dereferences
+to `DataFrame` and implements `IntoR`. See [Data Frames](DATAFRAME.md) for the
+view/handle split and conversion traits.
+
+### Dynamic R-native values (`RValue`)
+
+`RValue` is an owned, `Send` value tree for dynamic base-R data. It covers
+`NULL`, logical/integer/double/complex/character/raw vectors, and recursive
+named or unnamed lists without carrying a live SEXP across threads:
+
+```rust
+use miniextendr_api::RValue;
+
+let payload = RValue::List(vec![
+    (Some("count".into()), RValue::from(3i32)),
+    (Some("labels".into()), RValue::from(vec!["a", "b"])),
+]);
+```
+
+It implements `TryFromSexp` and `IntoR`, preserves NA in its typed vector
+variants, and is the representation used by structured condition `data =`
+payloads. It deliberately does not model closures, environments, language
+objects, S4 objects, external pointers, or ALTREP internals.
 
 ### Matrices
 
@@ -527,8 +562,8 @@ Many additional types are available via Cargo features:
 | `ndarray` | `Array1`, `Array2`, etc. |
 | `nalgebra` | `Matrix`, `Vector`, etc. |
 | `indexmap` | `IndexMap`, `IndexSet` |
-| `serde` | JSON conversion |
-| `serde_r` | Native R serialization |
+| `serde` | Native R serialization |
+| `serde_json` | JSON string serialization (also enables `serde`) |
 
 Enable in `Cargo.toml`:
 
@@ -650,6 +685,15 @@ pub fn add_one_in_place(x: &mut [i32]) {
 > a correctness boundary; pass distinct vectors. If two arguments might reference
 > the same vector and either mutates it, take `Vec<T>` (copy-in/copy-out) for at
 > least one of them.
+>
+> The wrapper-level identity check compares only top-level parameter SEXPs. It
+> does not catch a vector reached through a list element aliasing a direct slice
+> parameter, such as `f(list(v), v)` when the first parameter is
+> `Vec<&mut [T]>`. The list conversion separately rejects duplicates within the
+> list, but there is no cross-site registry between nested and direct borrows.
+> Treat those arguments as potentially aliasing and copy at least one side;
+> [#1252](https://github.com/A2-ai/miniextendr/issues/1252) tracks the residual
+> risk.
 
 ---
 
@@ -665,7 +709,7 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds
 ## See Also
 
 - [COERCE.md](COERCE.md) -- Type coercion trait design
-- [AS_COERCE.md](AS_COERCE.md) -- `as.<class>()` coercion methods
+- [R_COERCE.md](R_COERCE.md) -- `as.<class>()` coercion methods
 - [CONVERSION_MATRIX.md](CONVERSION_MATRIX.md) -- R type x Rust type behavior reference
 - [FEATURES.md](FEATURES.md) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
 - [GC_PROTECT.md](GC_PROTECT.md) -- RAII-based GC protection for SEXP lifetimes

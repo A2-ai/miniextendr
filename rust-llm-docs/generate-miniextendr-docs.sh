@@ -48,8 +48,8 @@ gen() {
 # like gen() but for the cargo-revendor standalone workspace (separate target/)
 gen_revendor() {
   local json="$1" out="$2"
-  python3 "$HERE/rustdoc_megadoc.py"        "$ROOT/cargo-revendor/target/doc/${json}.json" "$GEN/${out}.md" >/dev/null
-  python3 "$HERE/rustdoc_impl_inventory.py" "$ROOT/cargo-revendor/target/doc/${json}.json" --out "$GEN/${out}-impl-inventory.md" >/dev/null
+  python3 "$HERE/rustdoc_megadoc.py"        "cargo-revendor/target/doc/${json}.json" "$GEN/${out}.md" >/dev/null
+  python3 "$HERE/rustdoc_impl_inventory.py" "cargo-revendor/target/doc/${json}.json" --out "$GEN/${out}-impl-inventory.md" >/dev/null
   echo "   ${out}.md + ${out}-impl-inventory.md"
 }
 

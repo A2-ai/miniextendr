@@ -21,9 +21,10 @@
 //! to the `unsafe extern "C-unwind"` blocks below:
 //!
 //! - **Checked** (default — e.g. `Rf_allocVector`, `Rf_protect`, `INTEGER`):
-//!   debug-asserts you're on R's main thread, routing through
-//!   [`crate::worker::with_r_thread`] when called from a worker thread. **Use
-//!   these by default.**
+//!   runs directly on R's main thread, routes through
+//!   [`crate::worker::with_r_thread`] from an active miniextendr worker
+//!   context, and panics for arbitrary off-main callers. **Use these by
+//!   default.**
 //! - **`*_unchecked`** (e.g. `Rf_allocVector_unchecked`): bypass the assertion
 //!   and the worker round-trip. Calling one off the R main thread is
 //!   undefined behaviour. They exist for three known-safe contexts:
@@ -1217,28 +1218,17 @@ pub mod nonapi_encoding {
 
 /// Non-API stack checking variables from `Rinterface.h`.
 ///
-/// R uses these to detect stack overflow. When calling R from a thread other
-/// than the main R thread, stack checking will fail because these values are
-/// set for the main thread's stack.
+/// R uses these to detect stack overflow. On a different thread the values do
+/// not describe the current stack, so a stack check can fail spuriously.
 ///
-/// # Usage
+/// # Not a package thread-safety mechanism
 ///
-/// To safely call R from a worker thread, disable stack checking:
-/// ```ignore
-/// #[cfg(feature = "nonapi")]
-/// unsafe {
-///     use miniextendr_api::sys::nonapi_stack::*;
-///     let saved = get_r_cstack_limit();
-///     set_r_cstack_limit(usize::MAX); // disable checking
-///     // ... call R APIs ...
-///     set_r_cstack_limit(saved); // restore
-/// }
-/// ```
-///
-/// Or use the higher-level [`StackCheckGuard`](crate::thread::StackCheckGuard) which handles this automatically.
-///
-/// Setting `R_CStackLimit` to `usize::MAX` (i.e., `-1` as `uintptr_t`) disables
-/// stack checking entirely.
+/// Setting `R_CStackLimit` to `usize::MAX` disables only R's stack-address
+/// check. It does not make the R API, GC, global state, or error signaling safe
+/// on a secondary thread. R packages must keep R API calls on the main thread
+/// and must not rewrite these globals for off-main calls. The higher-level
+/// [`StackCheckGuard`](crate::thread::StackCheckGuard) has the same limitation;
+/// removal or relocation of this surface is tracked in #1352.
 #[cfg(feature = "nonapi")]
 pub mod nonapi_stack {
     unsafe extern "C" {

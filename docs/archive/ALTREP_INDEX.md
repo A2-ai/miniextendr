@@ -1,6 +1,8 @@
-# ALTREP Documentation Index
+# Archived ALTREP Documentation Index
 
-Complete guide to ALTREP resources in miniextendr.
+Historical navigation snapshot. Use the active
+[`docs/README.md`](../README.md) and [`ALTREP.md`](../ALTREP.md) for current
+documentation.
 
 ---
 
@@ -30,16 +32,16 @@ ALTREP Documentation
 
 **New to ALTREP?** → Start here:
 
-1. **[ALTREP_QUICKREF.md](ALTREP_QUICKREF.md)** (5 min read)
+1. **[ALTREP_QUICKREF.md](../ALTREP_QUICKREF.md)** (5 min read)
    - See the 7 vector types
    - Minimal example
    - Decision trees
 
-2. **[ALTREP.md - Quick Start](ALTREP.md#quick-start)** (10 min read)
+2. **[ALTREP.md - Quick Start](../ALTREP.md#quick-start)** (10 min read)
    - Working constant integer example
    - Step-by-step explanation
 
-3. **[Test Suite](../rpkg/tests/testthat/test-altrep.R)** (examples)
+3. **[Test Suite](../../rpkg/tests/testthat/test-altrep.R)** (examples)
    - See it in action
    - Copy patterns
 

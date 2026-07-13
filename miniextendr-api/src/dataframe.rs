@@ -1,7 +1,8 @@
-//! The unified owned R `data.frame` type and its conversion traits.
+//! R `data.frame` views, rooted Rust-built handles, and conversion traits.
 //!
-//! [`DataFrame`] is **the** data-frame type: a single owned wrapper around a built
-//! `data.frame` SEXP that serves every direction —
+//! [`DataFrame`] is a cheap `Copy` view over a validated `data.frame` SEXP;
+//! [`BuiltDataFrame`] is the owned, GC-rooted handle returned by every
+//! Rust-side constructor. Together they serve every direction:
 //!
 //! - **build** (Rust → R): [`IntoDataFrame::into_dataframe`] / `into_dataframe_par` (`feature = "rayon"`),
 //! - **read** (R → Rust): [`DataFrame::column`] / [`FromDataFrame::from_dataframe`],
@@ -23,9 +24,9 @@
 //! let rows: Vec<Row> = Vec::<Row>::from_dataframe(&df)?;
 //! ```
 //!
-//! `DataFrame` implements both `IntoR` and `TryFromSexp`, so it slots into
-//! `#[miniextendr]` function codegen with no special-casing — return it directly or accept
-//! it as an argument.
+//! `DataFrame` implements `TryFromSexp` and `IntoR`, so caller-rooted views slot
+//! into `#[miniextendr]` argument and return conversion. `BuiltDataFrame` also
+//! implements `IntoR`; return rooted Rust-side constructor results directly.
 //!
 //! # One error contract
 //!
@@ -178,13 +179,14 @@ impl From<crate::serde::RSerdeError> for DataFrameError {
 }
 // endregion
 
-// region: DataFrame — the unified owned data.frame
+// region: DataFrame — cheap, unrooted data.frame view
 
-/// An owned, validated R `data.frame`. **The** data-frame type.
+/// A cheap `Copy` view over a validated R `data.frame`.
 ///
-/// Wraps a built VECSXP carrying the `data.frame` class + `row.names`. A single coherent
-/// type for building (Rust → R), reading (R → Rust), and post-assembly editing — replacing
-/// the historical row-buffer / built-SEXP / read-wrapper trio with one coherent type.
+/// The view carries no GC root. It is sound while an R `.Call` argument frame,
+/// a [`ProtectScope`](crate::ProtectScope), or an owning [`BuiltDataFrame`]
+/// keeps the SEXP reachable. Rust-side constructors never return this bare
+/// view; they return `BuiltDataFrame`.
 ///
 /// # Building
 ///
@@ -659,7 +661,7 @@ impl DataFrame {
 
     // region: builder (ex-RDataFrameBuilder, #768)
 
-    /// Start a closure-per-column builder yielding a [`DataFrame`].
+    /// Start a closure-per-column builder yielding a rooted [`BuiltDataFrame`].
     ///
     /// The heterogeneous-column analogue of `with_r_matrix`: each column buffer is R memory
     /// filled by a per-column closure. Available regardless of the `rayon` feature (#1055);
@@ -957,7 +959,7 @@ impl std::fmt::Debug for BuiltDataFrame {
 /// # Parallel fast path
 ///
 /// `into_dataframe_par` (present only with
-/// `feature = "rayon"`) produces the **same** [`DataFrame`] as
+/// `feature = "rayon"`) produces the **same** [`BuiltDataFrame`] as
 /// [`into_dataframe`](IntoDataFrame::into_dataframe). It defaults to the sequential path, so
 /// every implementor gets a correct `_par` for free; `#[derive(DataFrameRow)]` row types
 /// override it with a genuinely parallel column fill (the #777 flattened `(column,row-range)`
@@ -1055,7 +1057,7 @@ pub trait ColumnarFrame<Row>: Sized {
 /// Internal engine that turns a value into a `data.frame`-shaped [`List`].
 ///
 /// This was the historical public `convert::IntoDataFrame` (`-> List`). It is now an internal
-/// engine: the public [`IntoDataFrame`] (`-> Result<DataFrame, _>`) and the enum-flatten
+/// engine: the public [`IntoDataFrame`] (`-> Result<BuiltDataFrame, _>`) and the enum-flatten
 /// codegen both delegate to it. Not part of the public verb surface.
 #[doc(hidden)]
 pub trait ColumnSource {
@@ -1368,7 +1370,7 @@ impl List {
 /// # Why this is distinct from [`DataFrame::builder`]
 ///
 /// [`DataFrame::builder`](crate::dataframe::DataFrame::builder) and the serde
-/// `SerdeRowBuilder` both produce a *single* [`DataFrame`]. This builder
+/// `SerdeRowBuilder` both produce a single rooted [`BuiltDataFrame`]. This builder
 /// produces a different shape — a named *list of* data.frames, e.g.
 /// `list(results = df, error = df)` — so it deliberately keeps its own name
 /// rather than folding into the `DataFrame::builder` vocabulary. Its inputs

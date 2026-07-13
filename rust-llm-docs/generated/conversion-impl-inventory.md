@@ -25,7 +25,7 @@ Traits with impls: 9
 | `AltrepSexp` | `` | concrete | 3 | miniextendr-api/src/altrep_sexp.rs:282 |
 | `AsFromStr<T>` | `<T> +1wc` | concrete | 3 | miniextendr-api/src/convert.rs:1025 |
 | `AsFromStrVec<T>` | `<T> +1wc` | concrete | 3 | miniextendr-api/src/convert.rs:1067 |
-| `DataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:709 |
+| `DataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:711 |
 | `Factor<'a>` | `<'a>` | concrete | 2 | miniextendr-api/src/factor.rs:222 |
 | `FactorVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:517 |
 | `FactorOptionVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:570 |
@@ -529,8 +529,8 @@ Traits with impls: 9
 | `AsNamedVector<&[(K, V)]>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:757 |
 | `AsDisplay<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:964 |
 | `AsDisplayVec<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:991 |
-| `DataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:717 |
-| `BuiltDataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:925 |
+| `DataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:719 |
+| `BuiltDataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:927 |
 | `FactorVec<T>` | `<T>` | concrete | 4 | miniextendr-api/src/factor.rs:501 |
 | `FactorOptionVec<T>` | `<T>` | concrete | 4 | miniextendr-api/src/factor.rs:610 |
 | `BTreeSet<i8>` | `` | concrete | 4 | miniextendr-api/src/into_r.rs:1038 |
@@ -842,7 +842,7 @@ Traits with impls: 9
 | `RawSliceTagged<T>` | `<T>` | concrete | 2 | miniextendr-api/src/raw_conversions.rs:465 |
 | `RCow<'_, T>` | `<T>` | concrete | 5 | miniextendr-api/src/rcow.rs:193 |
 | `RValue` | `` | concrete | 4 | miniextendr-api/src/rvalue.rs:50 |
-| `DataFrameShape` | `` | concrete | 3 | miniextendr-api/src/serde/columnar.rs:3246 |
+| `DataFrameShape` | `` | concrete | 3 | miniextendr-api/src/serde/columnar.rs:3247 |
 | `AsJsonVec<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:131 |
 | `AsJson<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:34 |
 | `AsJsonPretty<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:58 |

@@ -499,7 +499,7 @@ fn build_match_arg_helpers(
 /// ## Variadics (`...`)
 ///
 /// Use `...` as the last argument. The Rust parameter becomes `_dots: &Dots`.
-/// Use `name @ ...` to give it a custom name (e.g., `args @ ...` → `args: &Dots`).
+/// Use `name: ...` to give it a custom name (e.g., `args: ...` → `args: &Dots`).
 ///
 /// ### Typed Dots Validation
 ///
@@ -1702,8 +1702,9 @@ fn return_handling_category_description(rh: &c_wrapper_builder::ReturnHandling) 
 /// non-variadic function**, a pair of entry points:
 ///
 /// - The original name (e.g. `Rf_allocVector`) — a safe Rust wrapper that
-///   debug-asserts the caller is on R's main thread, routing through
-///   `miniextendr_api::worker::with_r_thread` when called from a worker.
+///   runs directly on R's main thread, routes through
+///   `miniextendr_api::worker::with_r_thread` from an active miniextendr
+///   worker context, and panics for arbitrary off-main callers.
 /// - A `*_unchecked` sibling (`Rf_allocVector_unchecked`) — the raw
 ///   `extern "C-unwind"` declaration with no main-thread assertion and no
 ///   worker round-trip.
@@ -1721,10 +1722,9 @@ fn return_handling_category_description(rh: &c_wrapper_builder::ReturnHandling) 
 ///    are already where you needed to be.
 ///
 /// The build-time lint **MXL301** enforces this: calling `*_unchecked`
-/// outside one of those three contexts is a compile-time error. Outside
-/// the worker-thread feature gate, the checked variant collapses to a thin
-/// call and the two variants are observationally identical, but the lint
-/// still applies so the same code is correct under `--features worker-thread`.
+/// outside one of those three contexts is a compile-time error. Without the
+/// `worker-thread` feature, the checked variant still enforces the recorded
+/// main-thread contract; it simply has no worker route available.
 ///
 /// # Tradeoffs at a glance
 ///

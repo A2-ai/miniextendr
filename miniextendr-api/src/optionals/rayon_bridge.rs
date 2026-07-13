@@ -36,11 +36,11 @@
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌─────────────────────────┴─────────────────────────────────┐
-//! │               Worker Thread (run_on_worker)               │
+//! │ Entry context: R main (default) or selected worker body   │
 //! │  1. Setup: with_r_vec() allocates R vectors               │
 //! │  2. Parallel: spawn Rayon work                            │
 //! │  3. Cleanup: convert results to R                         │
-//! │  (can route R API calls to main thread via with_r_thread) │
+//! │  (worker path routes R API calls via with_r_thread)       │
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌───────────────────────────────────────────────────────────┐
@@ -81,9 +81,12 @@
 //! This makes parallel RNG reproducible — seed per-chunk from `offset`:
 //!
 //! ```ignore
+//! use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
+//!
 //! with_r_vec(len, |chunk, offset| {
-//!     let mut rng = ChaChaRng::seed_from_u64(base_seed + offset as u64);
-//!     for slot in chunk { *slot = rng.gen(); }
+//!     let offset = u64::try_from(offset).expect("R vector offset fits u64");
+//!     let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(offset));
+//!     for slot in chunk { *slot = rng.random(); }
 //! });
 //! ```
 //!
@@ -153,11 +156,14 @@
 //! Rayon threads. For parallel RNG, use chunk-based seeding for reproducibility:
 //!
 //! ```ignore
+//! use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
+//!
 //! // REPRODUCIBLE: Each chunk gets a deterministic seed from its offset
 //! with_r_vec(len, |chunk, offset| {
-//!     let mut rng = ChaChaRng::seed_from_u64(base_seed + offset as u64);
+//!     let offset = u64::try_from(offset).expect("R vector offset fits u64");
+//!     let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(offset));
 //!     for slot in chunk {
-//!         *slot = rng.gen();
+//!         *slot = rng.random();
 //!     }
 //! });
 //!
@@ -226,6 +232,8 @@ use rayon::prelude::*;
 /// # Example
 ///
 /// ```ignore
+/// use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
+///
 /// // Fill with sqrt(index) — framework handles parallelism
 /// with_r_vec(1000, |chunk: &mut [f64], offset: usize| {
 ///     for (i, slot) in chunk.iter_mut().enumerate() {
@@ -235,8 +243,9 @@ use rayon::prelude::*;
 ///
 /// // Reproducible parallel RNG (seed from offset)
 /// with_r_vec(1000, |chunk: &mut [f64], offset| {
-///     let mut rng = ChaChaRng::seed_from_u64(42 + offset as u64);
-///     for slot in chunk { *slot = rng.gen(); }
+///     let offset = u64::try_from(offset).expect("R vector offset fits u64");
+///     let mut rng = StdRng::seed_from_u64(42_u64.wrapping_add(offset));
+///     for slot in chunk { *slot = rng.random(); }
 /// });
 /// ```
 ///

@@ -137,8 +137,9 @@ const HEADER_ALIGN: usize = mem::align_of::<Header>();
 ///
 /// # Thread Safety
 ///
-/// This allocator is safe to use from any thread. R API calls are automatically
-/// routed to the main thread via `with_r_thread_or_inline`.
+/// This allocator is usable on R's main thread and from an active miniextendr
+/// worker context, where R API calls route through `with_r_thread_or_inline`.
+/// It panics on arbitrary spawned or Rayon threads.
 #[derive(Debug)]
 pub struct RAllocator;
 

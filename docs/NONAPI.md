@@ -19,9 +19,9 @@ Locations intentionally omit line numbers (they drift); use search on the symbol
 |----------|----------|--------------|-------|
 | `DATAPTR` | `miniextendr-api/src/ffi.rs` | `nonapi` | Mutable data pointer - prefer `DATAPTR_RO` or `DATAPTR_OR_NULL` |
 | `R_curErrorBuf` | `miniextendr-api/src/ffi.rs` | `nonapi` | Current error message buffer - used for better error messages from worker thread |
-| `R_CStackStart` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack top address - needed for thread safety |
-| `R_CStackLimit` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack limit - set to `usize::MAX` to disable checking |
-| `R_CStackDir` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack growth direction (-1 = down, 1 = up) |
+| `R_CStackStart` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Process-global stack top; package code must not rewrite it for secondary-thread R calls |
+| `R_CStackLimit` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Process-global stack limit; disabling it does not make R's API thread-safe |
+| `R_CStackDir` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Process-global stack growth direction (-1 = down, 1 = up) |
 | `ptr_R_WriteConsoleEx` | `miniextendr-api/src/progress.rs` | `indicatif` (implies `nonapi`) | R console hook used by indicatif TermLike backend |
 
 Note: `miniextendr-engine` is entirely non-API (uses Rembedded.h/Rinterface.h for embedding R) and is not tracked here.
@@ -36,8 +36,10 @@ that directly accesses `R_CStackLimit`. This code is **never part of the R packa
 3. The example R package (`rpkg/`) only vendors `miniextendr-api/src/` and `miniextendr-macros/src/`
 4. Test directories are excluded from vendoring
 
-This test utility exists because `cargo test` embeds R in a non-standard way (not via `R CMD`),
-and R's stack checking needs to be disabled to prevent false positives on worker threads.
+This test utility exists because `cargo test` embeds R in a non-standard way
+(not via `R CMD`). It is test-harness infrastructure, not permission for an R
+package to call R APIs from secondary threads. The package-facing helpers and
+fixtures that currently suggest otherwise are tracked for removal in #1352.
 
 ## API Functions (Safe to Use)
 

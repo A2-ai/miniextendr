@@ -113,9 +113,9 @@ impl_te_generic!(<T> std::sync::Mutex<T>, "Mutex");
 impl_te_generic!(<T> std::sync::RwLock<T>, "RwLock");
 impl_te_generic!(<T> std::sync::OnceLock<T>, "OnceLock");
 impl_te_generic!(<T> std::pin::Pin<T>, "Pin");
-// ManuallyDrop<T> shares T's type symbols, allowing ExternalPtr<ManuallyDrop<T>>
-// to interoperate with ExternalPtr<T>. This is safe because ManuallyDrop<T> is
-// #[repr(transparent)] and has identical memory layout to T.
+// ManuallyDrop<T> shares T's R-facing display/diagnostic symbols. Concrete
+// access still goes through Any::downcast, where ManuallyDrop<T> and T remain
+// distinct TypeIds despite their identical layouts.
 impl<T: TypedExternal> TypedExternal for std::mem::ManuallyDrop<T> {
     const TYPE_NAME: &'static str = T::TYPE_NAME;
     const TYPE_NAME_CSTR: &'static [u8] = T::TYPE_NAME_CSTR;

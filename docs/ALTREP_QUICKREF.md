@@ -166,7 +166,14 @@ impl_altinteger_from_data!(MyType, serialize);
 // Multiple options (canonical alphabetical order):
 impl_altinteger_from_data!(MyType, dataptr, serialize);
 impl_altinteger_from_data!(MyType, subset, serialize);
+
+// Generic implementation: {parameters} Type<...> {where-clause}
+impl_altinteger_from_data_generic!(
+    {T} GenericInt<T> {T: Copy + Into<i32> + 'static}
+);
 ```
+
+Each family also exports a matching `_generic!` sibling.
 
 Available macros, one per family:
 
@@ -306,4 +313,4 @@ Full guide: [Receiving ALTREP from R](ALTREP_SEXP.md)
 - **Receiving ALTREP**: [ALTREP_SEXP.md](ALTREP_SEXP.md)
 - **Practical examples**: [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md)
 - **Test suite**: [../rpkg/tests/testthat/test-altrep*.R](../rpkg/tests/testthat/)
-- **Reference**: [R Altrep.h](../background/r-source-tags-R-4-5-2/src/include/R_ext/Altrep.h)
+- **Reference**: [R's current `Altrep.h`](https://svn.r-project.org/R/trunk/src/include/R_ext/Altrep.h)

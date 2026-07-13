@@ -12,9 +12,9 @@ Only `default` features are enabled automatically.
 | **Core / R Integration** | | |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
-| `worker-thread` | Dedicated worker thread for Rust code execution | (none) |
+| `worker-thread` | Infrastructure for opt-in worker dispatch | (none) |
 | `connections` | Experimental custom R connection framework | (none) |
-| `indicatif` | Progress bars via R console | indicatif (implies `nonapi`) |
+| `indicatif` | Progress bars via R connections / console | indicatif (implies `connections`, `nonapi`) |
 | `vctrs` | vctrs C API + `#[derive(Vctrs)]` macro | (forwarded to miniextendr-macros) |
 | **Serialization** | | |
 | `serde` | Direct Rust-R serialization (`RSerializeNative`, `RDeserializeNative`) | serde |
@@ -68,6 +68,11 @@ Only `default` features are enabled automatically.
 | `log` | Routes Rust `log` macros (`info!`, `warn!`, `error!`) to R console | log |
 | **Diagnostics** | | |
 | `macro-coverage` | Macro expansion coverage module for auditing | (none) |
+| `growth-debug` | Collection-growth counters and reports | (none) |
+| **Project defaults** | | |
+| `strict-default`, `coerce-default`, `fast-default` | Default conversion/wrapper policies | (forwarded to miniextendr-macros) |
+| `r6-default`, `s7-default` | Default class system (mutually exclusive) | (forwarded to miniextendr-macros) |
+| `worker-default` | Default worker dispatch | `worker-thread` |
 
 ---
 
@@ -93,10 +98,15 @@ symbols may change between R versions and will cause `R CMD check` warnings.
 **What it unlocks:**
 - `DATAPTR` -- mutable data pointer (prefer `DATAPTR_RO` when possible)
 - `R_curErrorBuf` -- current R error message buffer
-- `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- stack checking controls
-- `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` -- thread safety utilities
+- `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- process-global stack-check controls
+- `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` --
+  legacy stack-configuration utilities; they do not make off-main R API calls safe
 
 See [NONAPI.md](NONAPI.md) for the full tracking list.
+
+R's API remains main-thread-only. Package code must not change these stack
+globals or use the helpers as a substitute for `with_r_thread`; removal or
+relocation of that public surface is tracked in #1352.
 
 ### `worker-thread`
 
@@ -1058,6 +1068,27 @@ Enables the `macro_coverage` module used for `cargo expand` auditing. This is a
 development/testing feature for verifying macro expansion coverage across all
 supported attribute combinations.
 
+### `growth-debug`
+
+Enables the `track_growth!` and `report_growth!` instrumentation used to find
+unexpected collection reallocations. Both macros are no-ops when the feature is
+disabled.
+
+### Aggregate features (maintainer use)
+
+The crate exposes four aggregates for CI and local maintenance:
+
+| Feature | Contents |
+|---|---|
+| `full-integrations` | Every optional dependency integration |
+| `full-codegen` | Runtime/codegen selectors using the `r6-default` side of the class-system mutex |
+| `full-codegen-s7` | The same selectors using `s7-default` instead |
+| `full` | `full-integrations` + `full-codegen` + diagnostic features |
+
+Package authors should enable the individual features they use. `full` is a
+local-check convenience, not a deployment recommendation, and cannot include
+both `r6-default` and `s7-default`.
+
 ---
 
 ## Project-Wide Default Features
@@ -1071,6 +1102,7 @@ See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
 |---------|--------|---------|
 | `strict-default` | Strict checked conversions for lossy types | `no_strict` |
 | `coerce-default` | Auto-coerce parameters | `no_coerce` |
+| `fast-default` | Remove R-side wrapper validation and prefer unchecked fast paths | `no_fast` |
 | `r6-default` | R6 class system for impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks | `env`, `r6`, etc. |
 | `worker-default` | Force worker thread execution (implies `worker-thread`) | `no_worker` |
@@ -1128,7 +1160,7 @@ Feature implications (automatically enabled):
 |---------|-------------|
 | `serde_json` | `serde` |
 | `rand_distr` | `rand` |
-| `indicatif` | `nonapi` |
+| `indicatif` | `connections`, `nonapi` |
 | `datafusion` | `arrow` |
 | `worker-default` | `worker-thread` |
 
@@ -1138,7 +1170,6 @@ Feature implications (automatically enabled):
 
 - **`connections` is experimental.** R reserves the right to change the connection ABI without backward compatibility. Always check `R_CONNECTIONS_VERSION`. See [GAPS.md](GAPS.md#41-r-connections-api-experimental).
 - **Feature-gated modules** require path-based module switching with `#[cfg]` on `mod` declarations. See [GAPS.md](GAPS.md#13-feature-gated-module-entries).
-- **vctrs cross-package export** works: a consumer package can construct and dispatch on a producer's vctrs type via R's S3 method registry plus an imported constructor (see [GAPS.md](GAPS.md) section 4.2). **vctrs inheritance** (`extends = "parent_type"`) is also implemented: a child type declares a parent, inherits its class vector + S3 fall-through, and coercion between child and parent resolves to the parent (the supertype).
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 
@@ -1148,4 +1179,4 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 
 - [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) -- How feature-gated types convert to/from R
 - [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features
-- [THREADS.md](THREADS.md) -- Thread utilities enabled by the `nonapi` feature
+- [THREADS.md](THREADS.md) -- Worker-thread routing and optional non-API stack controls

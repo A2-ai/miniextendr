@@ -1,14 +1,18 @@
 +++
 title = "Thread Safety"
 weight = 8
-description = "Calling R APIs from threads, worker thread pattern, and SEXP safety"
+description = "R's main-thread contract, opt-in worker dispatch, and SEXP safety"
 +++
 
-R's API is designed to be called from a single thread -- the main R thread. miniextendr provides safe abstractions for multi-threaded Rust code.
+R's API is designed to be called from a single thread -- the main R thread.
+miniextendr keeps R work there while allowing pure Rust computation elsewhere.
 
 ## The Problem
 
-When you spawn a new thread and try to call R functions, you get a segfault. R tracks the main thread's stack bounds and asserts calls come from within that range.
+R's stack-bound check is one immediate failure mode for off-main calls, but
+disabling it is not a solution: R's global state, garbage collector, and error
+signaling are also main-thread-only. Arbitrary spawned and Rayon threads must
+not call R.
 
 ## Default: Main Thread Execution
 
@@ -24,17 +28,21 @@ pub fn compute(x: &[f64]) -> f64 {
 
 ## Worker Thread (Opt-in)
 
-The `worker-thread` feature enables a dedicated worker thread:
+The `worker-thread` feature enables the dedicated-worker infrastructure:
 
 ```toml
 [dependencies]
 miniextendr-api = { features = ["worker-thread"] }
 ```
 
-With this feature:
-- User code runs on a dedicated worker thread
+Select worker execution per export with `#[miniextendr(worker)]`, or crate-wide
+with `worker-default`. Then:
+
+- The opted-in Rust body runs on the dedicated worker
 - R API calls are dispatched back to the main thread via `with_r_thread()`
 - Panics on the worker are caught and forwarded as R errors
+
+Enabling `worker-thread` alone does not change the proc-macro default.
 
 ## SEXP Safety
 
@@ -57,10 +65,14 @@ The `rayon` feature is available behind a feature flag. Rayon threads never call
 
 ## Thread Checking
 
-Debug builds include thread assertions via `#[r_ffi_checked]`. Every FFI call verifies it's on the main thread. Use `*_unchecked` variants when you're certain of thread safety (e.g., inside ALTREP callbacks):
+Checked `#[r_ffi_checked]` wrappers enforce the recorded main-thread contract
+in every build mode: they run directly on main, route from an active
+miniextendr worker context, and panic for arbitrary off-main callers. Use
+`*_unchecked` only when an enclosing context has already established the main
+thread, such as an ALTREP callback:
 
 ```rust
-// Debug-checked (default):
+// Checked/routed (default):
 Rf_allocVector(INTSXP, 10);
 
 // Unchecked (known-safe context):

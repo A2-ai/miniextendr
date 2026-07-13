@@ -3,14 +3,16 @@
 //! ## Why a worker thread at all?
 //!
 //! R's error handling uses `longjmp`, which skips Rust destructors and leaks
-//! resources. To contain that, `#[miniextendr]`-generated function bodies run
-//! on a separate Rust thread (the "worker"). R only longjmps on its own main
-//! thread, so Rust frames on the worker are unwind-safe.
+//! resources. Generated wrappers therefore establish a destructor-safe error
+//! boundary. The default boundary runs inline on R's main thread inside
+//! `R_UnwindProtect`; `#[miniextendr(worker)]` (or the `worker-default`
+//! feature) instead dispatches the Rust body to a dedicated worker.
 //!
-//! That split means **user code is off the R main thread** whenever the
-//! `worker-thread` cargo feature is enabled. Anything that calls R's C API
-//! (allocating `SEXP`s, walking attributes, accessing `INTEGER(x)`) must
-//! cross back to main via [`with_r_thread`].
+//! On the worker-dispatch path, **user code is off the R main thread**.
+//! Merely enabling the `worker-thread` infrastructure feature does not select
+//! that path. Anything in an opted-in worker body that calls R's C API
+//! (allocating `SEXP`s, walking attributes, accessing `INTEGER(x)`) must cross
+//! back to main via [`with_r_thread`].
 //!
 //! ## Public API
 //!
@@ -25,8 +27,9 @@
 //! ## Tradeoffs
 //!
 //! - **Default to checked FFI variants** (`Rf_allocVector`, `INTEGER`, …) so
-//!   the debug-assertion catches accidental off-thread calls.
-//! - **Inside a [`with_r_thread`] body, the assertion is redundant** — the
+//!   an active worker call routes correctly and an arbitrary off-thread call
+//!   fails instead of reaching R.
+//! - **Inside a [`with_r_thread`] body, the check is redundant** — the
 //!   `*_unchecked` variants in [`crate::sys`] are safe to call there
 //!   (recognised by the lint **MXL301**, alongside ALTREP callbacks and
 //!   [`crate::unwind_protect::with_r_unwind_protect`] bodies).
@@ -95,10 +98,13 @@ pub fn is_r_main_thread() -> bool {
 
 /// Execute a closure on R's main thread, returning the result.
 ///
-/// This function can be called from any thread:
+/// This function executes successfully in two contexts:
 /// - From the main thread: executes the closure directly (re-entrant)
 /// - From the worker thread (during `run_on_worker`): sends the work to
 ///   the main thread and blocks until completion
+///
+/// Calls from arbitrary spawned or Rayon threads panic; there is no active
+/// main-thread event loop to receive their work.
 ///
 /// The "main thread" the closure runs on is whichever thread called
 /// [`run_on_worker`]. Per the [`run_on_worker`] contract, that must be

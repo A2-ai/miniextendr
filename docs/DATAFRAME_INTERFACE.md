@@ -1,25 +1,29 @@
-# The unified DataFrame interface
+# The DataFrame interface
 
-miniextendr exposes one owned [`DataFrame`] type and two conversion traits that
-mirror the scalar/vector surface (`IntoR` / `TryFromSexp`):
+miniextendr exposes a cheap [`DataFrame`] view for reading R-owned frames and a
+rooted [`BuiltDataFrame`] handle for frames constructed on the Rust side. Two
+conversion traits mirror the scalar/vector surface (`IntoR` / `TryFromSexp`):
 
 | Trait | Method | Direction | Analogue |
 |---|---|---|---|
-| `IntoDataFrame` | `rows.into_dataframe()? -> DataFrame` | Rust → R | `IntoR` |
+| `IntoDataFrame` | `rows.into_dataframe()? -> BuiltDataFrame` | Rust → R | `IntoR` |
 | `FromDataFrame` | `Vec::<Row>::from_dataframe(&df)? -> Vec<Row>` | R → Rust | `TryFromSexp` |
 
 Both verbs live **on the data** (`Vec<Row>` / `&DataFrame`), not on a companion
 type. Errors are a single [`DataFrameError`]. There is one NA contract: missing
 cells round-trip as `Option<T>` fields.
 
-## The owned `DataFrame` type
+## View versus owned handle
 
-`DataFrame` wraps a validated `data.frame` SEXP. It implements `IntoR` (returns
-the backing SEXP) and `TryFromSexp` (validates the `data.frame` class), so it
-flows through `#[miniextendr]` signatures like any other type:
+`DataFrame` is a cheap `Copy` view over a validated `data.frame` SEXP; it does
+not root the object. It is the right argument type for a `#[miniextendr]`
+function because R's `.Call` frame keeps arguments reachable. Every Rust-side
+constructor instead returns `BuiltDataFrame`, which roots the frame with
+`R_PreserveObject` and releases that root on drop. The handle dereferences to
+`DataFrame` for reads and edits and implements `IntoR` for handoff to R:
 
 ```rust
-use miniextendr_api::dataframe::{DataFrame, FromDataFrame, IntoDataFrame};
+use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame, FromDataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
 
 #[derive(Clone, IntoList, DataFrameRow)]
@@ -27,7 +31,7 @@ pub struct Point { pub x: f64, pub y: f64, pub label: String }
 
 // Rust → R: build a data.frame from a row vector.
 #[miniextendr]
-fn make_points(df: DataFrame) -> DataFrame {
+fn make_points(df: DataFrame) -> BuiltDataFrame {
     let rows: Vec<Point> = Vec::<Point>::from_dataframe(&df).unwrap();   // R → Rust
     rows.into_dataframe().unwrap()                                       // Rust → R
 }
@@ -35,8 +39,9 @@ fn make_points(df: DataFrame) -> DataFrame {
 
 ## Parallel fast paths (`feature = "rayon"`)
 
-Explicit `_par` variants produce the **same** `DataFrame` / `Vec<Row>` as the
-sequential verbs — parallelism is an opt-in method, not a hidden threshold:
+Explicit `_par` variants produce the **same** rooted `BuiltDataFrame` /
+`Vec<Row>` as the sequential verbs — parallelism is an opt-in method, not a
+hidden threshold:
 
 ```rust
 let df   = rows.into_dataframe_par()?;          // #777 flattened (column,row-range) fill
@@ -46,10 +51,10 @@ let rows = Vec::<Point>::from_dataframe_par(&df)?; // #765 off-main-thread row a
 Dropping `_par` (building without the `rayon` feature) degrades cleanly to the
 sequential call — the verb name is stable across feature sets.
 
-## Builder for heterogeneous columns (`feature = "rayon"`)
+## Builder for heterogeneous columns
 
 When you are filling columns directly (not transposing a `Vec<Row>`), use the
-builder, which yields a `DataFrame`:
+builder, which yields a rooted `BuiltDataFrame`:
 
 ```rust
 let df = DataFrame::builder(nrow)
@@ -57,6 +62,10 @@ let df = DataFrame::builder(nrow)
     .column_str("label", |i| Some(format!("p{i}")))
     .build();
 ```
+
+The builder exists without optional features and fills each column serially.
+Enabling `rayon` changes the fill pass to parallel disjoint chunks without
+changing the API or result type.
 
 ## How `#[derive(DataFrameRow)]` wires this up
 
@@ -117,7 +126,7 @@ let rows = SerdeRows::<Row>::from_dataframe(&df)?.into_inner();
 
 | Was | Now |
 |---|---|
-| `DataFrameView`, `convert::DataFrame<T>` (duplicate `DataFrame` types) | one `DataFrame` |
+| `DataFrameView`, `convert::DataFrame<T>` (duplicate historical types) | `DataFrame` view + `BuiltDataFrame` owner |
 | `ToDataFrame<Companion>` return wrapper + `value.to_data_frame()` | `rows.into_dataframe()?` |
 | `convert::SerializeDataFrame<T>` / `AsSerializeRow<T>` | `serde::SerdeRows(rows).into_dataframe()?` |
 | `Row::try_from_dataframe(sexp)` (bare `String` error) | `Vec::<Row>::from_dataframe(&df)?` (`DataFrameError`) |
@@ -127,11 +136,11 @@ let rows = SerdeRows::<Row>::from_dataframe(&df)?.into_inner();
 The redundant public types above have been **removed** (#781) — there is no
 backwards-compat shim. The legacy companion methods (`to_dataframe`, `from_rows`,
 `try_from_dataframe`) remain as the internal engine the trait impls delegate to.
-The serde columnar assembler has been aligned with the façade (#783): the internal
-columnar newtype is now folded into `DataFrame` (all serde column helpers return
-`DataFrame` directly), and the streaming serde-row builder is now `SerdeRowBuilder`
-(paired with `SerdeRows`). Two builders remain distinct from
+The serde columnar assembler has been aligned with the façade (#783): there is
+no separate columnar frame type, and all serde column helpers return
+`BuiltDataFrame`. The streaming serde-row builder is `SerdeRowBuilder` (paired
+with `SerdeRows`). Two builders remain distinct from
 `DataFrame::builder`: `SerdeRowBuilder<T>` (serde feature) for incremental serde rows
-assembled into one `DataFrame`, and `NamedDataFrameListBuilder` (core, in
+assembled into one rooted frame, and `NamedDataFrameListBuilder` (core, in
 `dataframe` — no serde needed; also the output shape for `group_by(...).frames()`)
 for a named list of frames.

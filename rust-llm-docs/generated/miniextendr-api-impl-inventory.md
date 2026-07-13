@@ -231,7 +231,7 @@ Traits with impls: 215
 | `AltrepSexp` | `` | concrete | 3 | miniextendr-api/src/altrep_sexp.rs:282 |
 | `AsFromStr<T>` | `<T> +1wc` | concrete | 3 | miniextendr-api/src/convert.rs:1025 |
 | `AsFromStrVec<T>` | `<T> +1wc` | concrete | 3 | miniextendr-api/src/convert.rs:1067 |
-| `DataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:709 |
+| `DataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:711 |
 | `Factor<'a>` | `<'a>` | concrete | 2 | miniextendr-api/src/factor.rs:222 |
 | `FactorVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:517 |
 | `FactorOptionVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:570 |
@@ -733,7 +733,7 @@ Traits with impls: 215
 | `AsVctrs<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:534 |
 | `AsNamedList<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:606 |
 | `AsNamedVector<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:719 |
-| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:174 |
+| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:175 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1775 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1782 |
 | `FactorVec<T>` | `<T>` | concrete | 1 | miniextendr-api/src/factor.rs:482 |
@@ -784,10 +784,10 @@ Traits with impls: 215
 | `RValue` | `` | concrete | 1 | miniextendr-api/src/rvalue.rs:292 |
 | `RValue` | `` | concrete | 1 | miniextendr-api/src/rvalue.rs:301 |
 | `RValue` | `` | concrete | 1 | miniextendr-api/src/rvalue.rs:311 |
-| `CollatedResultRow<'a, T, E>` | `<'a, T, E>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4595 |
+| `CollatedResultRow<'a, T, E>` | `<'a, T, E>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4596 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:255 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:481 |
-| `*mut SEXPREC` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:488 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:482 |
+| `*mut SEXPREC` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:489 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:202 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:330 |
 | `bool` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:339 |
@@ -814,8 +814,8 @@ Traits with impls: 215
 | `AsNamedVector<&[(K, V)]>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:757 |
 | `AsDisplay<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:964 |
 | `AsDisplayVec<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:991 |
-| `DataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:717 |
-| `BuiltDataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:925 |
+| `DataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:719 |
+| `BuiltDataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:927 |
 | `FactorVec<T>` | `<T>` | concrete | 4 | miniextendr-api/src/factor.rs:501 |
 | `FactorOptionVec<T>` | `<T>` | concrete | 4 | miniextendr-api/src/factor.rs:610 |
 | `BTreeSet<i8>` | `` | concrete | 4 | miniextendr-api/src/into_r.rs:1038 |
@@ -1127,7 +1127,7 @@ Traits with impls: 215
 | `RawSliceTagged<T>` | `<T>` | concrete | 2 | miniextendr-api/src/raw_conversions.rs:465 |
 | `RCow<'_, T>` | `<T>` | concrete | 5 | miniextendr-api/src/rcow.rs:193 |
 | `RValue` | `` | concrete | 4 | miniextendr-api/src/rvalue.rs:50 |
-| `DataFrameShape` | `` | concrete | 3 | miniextendr-api/src/serde/columnar.rs:3246 |
+| `DataFrameShape` | `` | concrete | 3 | miniextendr-api/src/serde/columnar.rs:3247 |
 | `AsJsonVec<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:131 |
 | `AsJson<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:34 |
 | `AsJsonPretty<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:58 |
@@ -1200,8 +1200,8 @@ Traits with impls: 215
 | `SidecarPropEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:351 |
 | `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:371 |
 | `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:388 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:71 |
-| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1155 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:72 |
+| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1156 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:198 |
 
 ## `Send` — 10 impls
@@ -1215,8 +1215,8 @@ Traits with impls: 215
 | `RTerm` | `` | concrete | 0 | miniextendr-api/src/progress.rs:129 |
 | `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:372 |
 | `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:389 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:70 |
-| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1156 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:71 |
+| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1157 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:197 |
 
 ## `TypedExternal` — 181 impls
@@ -1590,7 +1590,7 @@ Traits with impls: 215
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `mx_tag` | `` | concrete | 1 | miniextendr-api/src/abi.rs:82 |
-| `RAllocator` | `` | concrete | 1 | miniextendr-api/src/allocator.rs:142 |
+| `RAllocator` | `` | concrete | 1 | miniextendr-api/src/allocator.rs:143 |
 | `RBase` | `` | concrete | 1 | miniextendr-api/src/altrep.rs:51 |
 | `Sortedness` | `` | concrete | 1 | miniextendr-api/src/altrep_data/core.rs:131 |
 | `Logical` | `` | concrete | 1 | miniextendr-api/src/altrep_data/core.rs:54 |
@@ -1616,9 +1616,9 @@ Traits with impls: 215
 | `AsNamedVector<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:716 |
 | `AsDisplay<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:961 |
 | `AsDisplayVec<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:988 |
-| `DataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:1443 |
-| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:52 |
-| `BuiltDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:939 |
+| `DataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:1445 |
+| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:53 |
+| `BuiltDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:941 |
 | `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:81 |
 | `Dots` | `` | concrete | 1 | miniextendr-api/src/dots.rs:42 |
 | `REncodingInfo` | `` | concrete | 1 | miniextendr-api/src/encoding.rs:23 |
@@ -1668,27 +1668,27 @@ Traits with impls: 215
 | `RawError` | `` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:69 |
 | `Entry` | `` | concrete | 1 | miniextendr-api/src/refcount_protect.rs:50 |
 | `RValue` | `` | concrete | 1 | miniextendr-api/src/rvalue.rs:28 |
-| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1295 |
-| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1361 |
+| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1296 |
+| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:818 |
 | `DispatchNames` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:937 |
 | `RSerdeError` | `` | concrete | 1 | miniextendr-api/src/serde/error.rs:12 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
 | `SEXPREC` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:25 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
 | `StrVec<'a>` | `<'a>` | concrete | 1 | miniextendr-api/src/strvec.rs:25 |
 | `ProtectedStrVec` | `` | concrete | 1 | miniextendr-api/src/strvec.rs:759 |
-| `DllInfo` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1088 |
-| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1116 |
-| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1141 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1503 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1527 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1547 |
-| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:970 |
+| `DllInfo` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1089 |
+| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1117 |
+| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1142 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
+| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:971 |
 | `RTxtProgressBar` | `` | concrete | 1 | miniextendr-api/src/txt_progress_bar.rs:56 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
 | `TypedListError` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:191 |
@@ -1732,8 +1732,8 @@ Traits with impls: 215
 | `AsNamedVector<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:716 |
 | `AsDisplay<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:961 |
 | `AsDisplayVec<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:988 |
-| `DataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:206 |
-| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:52 |
+| `DataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:208 |
+| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:53 |
 | `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:81 |
 | `ColPtr` | `` | concrete | 1 | miniextendr-api/src/dataframe_builder.rs:43 |
 | `REncodingInfo` | `` | concrete | 1 | miniextendr-api/src/encoding.rs:23 |
@@ -1780,26 +1780,26 @@ Traits with impls: 215
 | `Entry` | `` | concrete | 1 | miniextendr-api/src/refcount_protect.rs:50 |
 | `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
 | `RValue` | `` | concrete | 1 | miniextendr-api/src/rvalue.rs:28 |
-| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1295 |
-| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1361 |
+| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1296 |
+| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:818 |
 | `DispatchNames` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:937 |
 | `EnumReadConfig` | `` | concrete | 1 | miniextendr-api/src/serde/dataframe_de.rs:408 |
 | `RSerdeError` | `` | concrete | 1 | miniextendr-api/src/serde/error.rs:12 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
 | `cetype_t` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:353 |
 | `StrVec<'a>` | `<'a>` | concrete | 1 | miniextendr-api/src/strvec.rs:25 |
-| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1116 |
-| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1141 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1503 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1527 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1547 |
-| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:970 |
+| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1117 |
+| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1142 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
+| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:971 |
 | `R_altrep_class_t` | `` | concrete | 1 | miniextendr-api/src/sys/altrep.rs:187 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
 | `TypedListError` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:191 |
@@ -1953,25 +1953,25 @@ Traits with impls: 215
 | `&[bool]` | `` | concrete | 1 | miniextendr-api/src/altrep_data/builtins.rs:964 |
 | `&[String]` | `` | concrete | 1 | miniextendr-api/src/altrep_data/builtins.rs:967 |
 | `&[&str]` | `` | concrete | 1 | miniextendr-api/src/altrep_data/builtins.rs:975 |
-| `IterRealCoerceData<I, T>` | `<I, T> +2wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:150 |
-| `IterIntFromBoolData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:217 |
-| `IterStringData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:310 |
-| `IterListData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:391 |
-| `IterComplexData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:457 |
-| `IterIntCoerceData<I, T>` | `<I, T> +2wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:69 |
-| `SparseIterIntData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:211 |
-| `SparseIterRealData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:260 |
-| `SparseIterLogicalData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:303 |
-| `SparseIterRawData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:345 |
-| `SparseIterComplexData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:397 |
-| `IterIntData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:259 |
-| `IterRealData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:309 |
-| `IterLogicalData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:357 |
-| `IterRawData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:404 |
-| `WindowedIterIntData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/windowed.rs:258 |
-| `WindowedIterRealData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/windowed.rs:307 |
-| `StreamingIntData<F>` | `<F>` | concrete | 1 | miniextendr-api/src/altrep_data/stream.rs:180 |
-| `StreamingRealData<F>` | `<F>` | concrete | 1 | miniextendr-api/src/altrep_data/stream.rs:83 |
+| `IterRealCoerceData<I, T>` | `<I, T> +2wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:151 |
+| `IterIntFromBoolData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:218 |
+| `IterStringData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:311 |
+| `IterListData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:392 |
+| `IterComplexData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:458 |
+| `IterIntCoerceData<I, T>` | `<I, T> +2wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:70 |
+| `SparseIterIntData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:212 |
+| `SparseIterRealData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:261 |
+| `SparseIterLogicalData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:304 |
+| `SparseIterRawData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:346 |
+| `SparseIterComplexData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/sparse.rs:398 |
+| `IterIntData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:260 |
+| `IterRealData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:310 |
+| `IterLogicalData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:358 |
+| `IterRawData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/state.rs:405 |
+| `WindowedIterIntData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/windowed.rs:259 |
+| `WindowedIterRealData<I>` | `<I>` | concrete | 1 | miniextendr-api/src/altrep_data/iter/windowed.rs:308 |
+| `StreamingIntData<F>` | `<F>` | concrete | 1 | miniextendr-api/src/altrep_data/stream.rs:181 |
+| `StreamingRealData<F>` | `<F>` | concrete | 1 | miniextendr-api/src/altrep_data/stream.rs:84 |
 | `Float64Array` | `` | concrete | 1 | miniextendr-api/src/optionals/arrow_impl.rs:1599 |
 | `Int32Array` | `` | concrete | 1 | miniextendr-api/src/optionals/arrow_impl.rs:1605 |
 | `UInt8Array` | `` | concrete | 1 | miniextendr-api/src/optionals/arrow_impl.rs:1611 |
@@ -2010,7 +2010,7 @@ Traits with impls: 215
 | `AsExternalPtr<T>` | `<T>` | concrete | 0 | miniextendr-api/src/convert.rs:362 |
 | `AsRNative<T>` | `<T>` | concrete | 0 | miniextendr-api/src/convert.rs:414 |
 | `AsDisplay<T>` | `<T>` | concrete | 0 | miniextendr-api/src/convert.rs:961 |
-| `DataFrame` | `` | concrete | 0 | miniextendr-api/src/dataframe.rs:206 |
+| `DataFrame` | `` | concrete | 0 | miniextendr-api/src/dataframe.rs:208 |
 | `ColPtr` | `` | concrete | 0 | miniextendr-api/src/dataframe_builder.rs:43 |
 | `RSidecar` | `` | concrete | 0 | miniextendr-api/src/externalptr/altrep_helpers.rs:173 |
 | `GuardMode` | `` | concrete | 0 | miniextendr-api/src/ffi_guard.rs:48 |
@@ -2034,22 +2034,22 @@ Traits with impls: 215
 | `RawTagged<T>` | `<T>` | concrete | 0 | miniextendr-api/src/raw_conversions.rs:245 |
 | `Entry` | `` | concrete | 0 | miniextendr-api/src/refcount_protect.rs:50 |
 | `RWrapperPriority` | `` | concrete | 0 | miniextendr-api/src/registry.rs:209 |
-| `ColumnType` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1295 |
-| `SchemaMode` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1361 |
+| `ColumnType` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1296 |
+| `SchemaMode` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `AsSerialize<T>` | `<T>` | concrete | 0 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:35 |
 | `cetype_t` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:353 |
 | `StrVec<'a>` | `<'a>` | concrete | 0 | miniextendr-api/src/strvec.rs:25 |
-| `R_CMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1116 |
-| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1141 |
-| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1503 |
-| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1527 |
-| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1547 |
-| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:970 |
+| `R_CMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1117 |
+| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1142 |
+| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1537 |
+| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:971 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:187 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
 
@@ -2298,19 +2298,19 @@ Traits with impls: 215
 | `RawSliceTagged<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:265 |
 | `RawError` | `` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:69 |
 | `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
-| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1295 |
-| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1361 |
+| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1296 |
+| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:818 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1503 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1527 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1547 |
-| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:970 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
+| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:971 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
 | `VctrsBuildError` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
@@ -2346,19 +2346,19 @@ Traits with impls: 215
 | `RawSliceTagged<T>` | `<T>` | concrete | 0 | miniextendr-api/src/raw_conversions.rs:265 |
 | `RawError` | `` | concrete | 0 | miniextendr-api/src/raw_conversions.rs:69 |
 | `RWrapperPriority` | `` | concrete | 0 | miniextendr-api/src/registry.rs:209 |
-| `ColumnType` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1295 |
-| `SchemaMode` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1361 |
+| `ColumnType` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1296 |
+| `SchemaMode` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `TypeSpec` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:818 |
 | `AsSerialize<T>` | `<T>` | concrete | 0 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1503 |
-| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1527 |
-| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1547 |
-| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:970 |
+| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1537 |
+| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:971 |
 | `TypeSpec` | `` | concrete | 0 | miniextendr-api/src/typed_list.rs:119 |
 | `VctrsBuildError` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
@@ -2397,14 +2397,14 @@ Traits with impls: 215
 | `RWrapperPriority` | `` | concrete | 0 | miniextendr-api/src/registry.rs:209 |
 | `TypeSpec` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:818 |
 | `AsSerialize<T>` | `<T>` | concrete | 0 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1503 |
-| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1527 |
-| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1547 |
-| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:970 |
+| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1537 |
+| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:971 |
 | `VctrsBuildError` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
 
@@ -2523,7 +2523,7 @@ Traits with impls: 215
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
 | `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1454 |
 | `RCustomConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:843 |
-| `NamedDataFrameListBuilder` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:1434 |
+| `NamedDataFrameListBuilder` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:1436 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1681 |
 | `RSidecar` | `` | concrete | 1 | miniextendr-api/src/externalptr/altrep_helpers.rs:173 |
 | `Missing<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:213 |
@@ -2535,14 +2535,14 @@ Traits with impls: 215
 | `NaHandling` | `` | concrete | 1 | miniextendr-api/src/optionals/serde_impl.rs:78 |
 | `SpecialFloatHandling` | `` | concrete | 1 | miniextendr-api/src/optionals/serde_impl.rs:90 |
 | `WorkerPump<T>` | `<T>` | concrete | 1 | miniextendr-api/src/pump.rs:181 |
-| `ValueExtractor` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2062 |
-| `ExtractedValue` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2067 |
-| `VariantNameExtractor` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2631 |
+| `ValueExtractor` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2063 |
+| `ExtractedValue` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2068 |
+| `VariantNameExtractor` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2632 |
 | `DispatchNames` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:943 |
 | `EnumReadConfig` | `` | concrete | 1 | miniextendr-api/src/serde/dataframe_de.rs:408 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:474 |
-| `RThreadBuilder` | `` | concrete | 1 | miniextendr-api/src/thread.rs:327 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:475 |
+| `RThreadBuilder` | `` | concrete | 1 | miniextendr-api/src/thread.rs:319 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
 
 ## `Drop` — 23 impls
@@ -2550,7 +2550,7 @@ Traits with impls: 215
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1480 |
-| `BuiltDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:917 |
+| `BuiltDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:919 |
 | `GroupedDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:169 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1798 |
 | `AbortIfUnwinding` | `` | concrete | 1 | miniextendr-api/src/externalptr.rs:1823 |
@@ -2569,8 +2569,8 @@ Traits with impls: 215
 | `ArenaGuard<'_>` | `` | concrete | 1 | miniextendr-api/src/refcount_protect.rs:569 |
 | `ThreadLocalState` | `` | concrete | 1 | miniextendr-api/src/refcount_protect.rs:632 |
 | `RngGuard` | `` | concrete | 1 | miniextendr-api/src/rng.rs:174 |
-| `RootedSentinel` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:3237 |
-| `StackCheckGuard` | `` | concrete | 1 | miniextendr-api/src/thread.rs:151 |
+| `RootedSentinel` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:3238 |
+| `StackCheckGuard` | `` | concrete | 1 | miniextendr-api/src/thread.rs:155 |
 | `RTxtProgressBar` | `` | concrete | 1 | miniextendr-api/src/txt_progress_bar.rs:157 |
 
 ## `RDisplay` — 1 impls
@@ -2586,7 +2586,7 @@ Traits with impls: 215
 | `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:489 |
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:97 |
 | `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:879 |
-| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:114 |
+| `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:115 |
 | `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:124 |
 | `TypeMismatchError` | `` | concrete | 1 | miniextendr-api/src/externalptr.rs:1549 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1695 |
@@ -2611,7 +2611,7 @@ Traits with impls: 215
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `Coerced<T, R>` | `<T, R>` | concrete | 2 | miniextendr-api/src/coerce.rs:954 |
-| `BuiltDataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:909 |
+| `BuiltDataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:911 |
 | `ExternalPtr<T>` | `<T>` | concrete | 2 | miniextendr-api/src/externalptr.rs:1621 |
 | `Factor<'_>` | `` | concrete | 2 | miniextendr-api/src/factor.rs:213 |
 | `FactorMut<'_>` | `` | concrete | 2 | miniextendr-api/src/factor.rs:309 |
@@ -2643,7 +2643,7 @@ Traits with impls: 215
 |---|---|---|---|---|
 | `CoerceError` | `` | concrete | 0 | miniextendr-api/src/coerce.rs:108 |
 | `LogicalCoerceError` | `` | concrete | 0 | miniextendr-api/src/coerce.rs:498 |
-| `DataFrameError` | `` | concrete | 0 | miniextendr-api/src/dataframe.rs:171 |
+| `DataFrameError` | `` | concrete | 0 | miniextendr-api/src/dataframe.rs:172 |
 | `TypeMismatchError` | `` | concrete | 0 | miniextendr-api/src/externalptr.rs:1565 |
 | `SexpTypeError` | `` | concrete | 0 | miniextendr-api/src/from_r.rs:201 |
 | `SexpLengthError` | `` | concrete | 0 | miniextendr-api/src/from_r.rs:222 |
@@ -2679,12 +2679,12 @@ Traits with impls: 215
 | `std::ops::Range<i32>` | `` | concrete | 6 | miniextendr-api/src/altrep_data/builtins.rs:673 |
 | `std::ops::Range<i64>` | `` | concrete | 6 | miniextendr-api/src/altrep_data/builtins.rs:770 |
 | `&[i32]` | `` | concrete | 7 | miniextendr-api/src/altrep_data/builtins.rs:956 |
-| `IterIntFromBoolData<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:226 |
-| `IterIntCoerceData<I, T>` | `<I, T> +2wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:79 |
-| `SparseIterIntData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:217 |
-| `IterIntData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/state.rs:265 |
-| `WindowedIterIntData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/windowed.rs:264 |
-| `StreamingIntData<F>` | `<F>` | concrete | 2 | miniextendr-api/src/altrep_data/stream.rs:186 |
+| `IterIntFromBoolData<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:227 |
+| `IterIntCoerceData<I, T>` | `<I, T> +2wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:80 |
+| `SparseIterIntData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:218 |
+| `IterIntData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/state.rs:266 |
+| `WindowedIterIntData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/windowed.rs:265 |
+| `StreamingIntData<F>` | `<F>` | concrete | 2 | miniextendr-api/src/altrep_data/stream.rs:187 |
 | `Int32Array` | `` | concrete | 3 | miniextendr-api/src/optionals/arrow_impl.rs:1652 |
 | `DVector<i32>` | `` | concrete | 3 | miniextendr-api/src/optionals/nalgebra_impl.rs:1639 |
 | `Array1<i32>` | `` | concrete | 3 | miniextendr-api/src/optionals/ndarray_impl.rs:3518 |
@@ -2699,11 +2699,11 @@ Traits with impls: 215
 | `Box<[f64]>` | `` | concrete | 7 | miniextendr-api/src/altrep_data/builtins.rs:585 |
 | `std::ops::Range<f64>` | `` | concrete | 6 | miniextendr-api/src/altrep_data/builtins.rs:912 |
 | `&[f64]` | `` | concrete | 7 | miniextendr-api/src/altrep_data/builtins.rs:959 |
-| `IterRealCoerceData<I, T>` | `<I, T> +2wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:160 |
-| `SparseIterRealData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:266 |
-| `IterRealData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/state.rs:315 |
-| `WindowedIterRealData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/windowed.rs:313 |
-| `StreamingRealData<F>` | `<F>` | concrete | 2 | miniextendr-api/src/altrep_data/stream.rs:89 |
+| `IterRealCoerceData<I, T>` | `<I, T> +2wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:161 |
+| `SparseIterRealData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:267 |
+| `IterRealData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/state.rs:316 |
+| `WindowedIterRealData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/windowed.rs:314 |
+| `StreamingRealData<F>` | `<F>` | concrete | 2 | miniextendr-api/src/altrep_data/stream.rs:90 |
 | `Float64Array` | `` | concrete | 3 | miniextendr-api/src/optionals/arrow_impl.rs:1627 |
 | `JiffTimestampVec` | `` | concrete | 1 | miniextendr-api/src/optionals/jiff_impl.rs:896 |
 | `JiffZonedVec` | `` | concrete | 1 | miniextendr-api/src/optionals/jiff_impl.rs:959 |
@@ -2732,9 +2732,9 @@ Traits with impls: 215
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1503 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1527 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1547 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
 
 ## `TraitView` — 12 impls
 
@@ -2796,21 +2796,21 @@ Traits with impls: 215
 | `Box<[String]>` | `` | concrete | 2 | miniextendr-api/src/altrep_data/builtins.rs:597 |
 | `&[String]` | `` | concrete | 1 | miniextendr-api/src/altrep_data/builtins.rs:969 |
 | `&[&str]` | `` | concrete | 1 | miniextendr-api/src/altrep_data/builtins.rs:977 |
-| `IterStringData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:319 |
+| `IterStringData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:320 |
 | `StringArray` | `` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:1955 |
 
 ## `Serializer` — 10 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `&'a mut SchemaDiscoverer` | `<'a>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:1644 |
-| `&mut TypeProbe` | `` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:1731 |
-| `&mut ValueExtractor` | `` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2077 |
-| `ColumnFiller<'a>` | `<'a>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2337 |
-| `&'a mut VariantNameExtractor` | `<'a>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2745 |
-| `VariantStrippingSerializer<S>` | `<S>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2937 |
-| `VariantStrippingMapForwarder<'m, M>` | `<'m, M>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:3593 |
-| `FieldSelectingForwarder<'m, M>` | `<'m, M>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:4032 |
+| `&'a mut SchemaDiscoverer` | `<'a>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:1645 |
+| `&mut TypeProbe` | `` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:1732 |
+| `&mut ValueExtractor` | `` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2078 |
+| `ColumnFiller<'a>` | `<'a>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2338 |
+| `&'a mut VariantNameExtractor` | `<'a>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2746 |
+| `VariantStrippingSerializer<S>` | `<S>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:2938 |
+| `VariantStrippingMapForwarder<'m, M>` | `<'m, M>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:3594 |
+| `FieldSelectingForwarder<'m, M>` | `<'m, M>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:4033 |
 | `ParColumnFiller<'a>` | `<'a>` | concrete | 37 | miniextendr-api/src/serde/columnar.rs:723 |
 | `RSerializer` | `` | concrete | 37 | miniextendr-api/src/serde/ser.rs:51 |
 
@@ -2864,19 +2864,19 @@ Traits with impls: 215
 | `Vec<u8>` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:504 |
 | `Box<[u8]>` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:589 |
 | `&[u8]` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:962 |
-| `SparseIterRawData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:351 |
-| `IterRawData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/state.rs:410 |
+| `SparseIterRawData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:352 |
+| `IterRawData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/state.rs:411 |
 | `UInt8Array` | `` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:1674 |
 
 ## `SerializeStruct` — 7 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `SchemaStructDiscoverer<'_>` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:1677 |
-| `ColumnFiller<'_>` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2380 |
-| `TagStructCapture<'_>` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2675 |
-| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:3764 |
-| `SelectingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:4204 |
+| `SchemaStructDiscoverer<'_>` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:1678 |
+| `ColumnFiller<'_>` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2381 |
+| `TagStructCapture<'_>` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2676 |
+| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:3765 |
+| `SelectingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:4205 |
 | `ParColumnFiller<'_>` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:766 |
 | `StructSerializer` | `` | concrete | 4 | miniextendr-api/src/serde/ser.rs:401 |
 
@@ -2884,11 +2884,11 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `SchemaMapDiscoverer<'_>` | `` | concrete | 5 | miniextendr-api/src/serde/columnar.rs:1700 |
-| `ColumnFiller<'_>` | `` | concrete | 5 | miniextendr-api/src/serde/columnar.rs:2398 |
-| `TagMapCapture<'_>` | `` | concrete | 5 | miniextendr-api/src/serde/columnar.rs:2711 |
-| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 6 | miniextendr-api/src/serde/columnar.rs:3798 |
-| `SelectingMapEmitter<'_, M>` | `<M>` | concrete | 6 | miniextendr-api/src/serde/columnar.rs:4221 |
+| `SchemaMapDiscoverer<'_>` | `` | concrete | 5 | miniextendr-api/src/serde/columnar.rs:1701 |
+| `ColumnFiller<'_>` | `` | concrete | 5 | miniextendr-api/src/serde/columnar.rs:2399 |
+| `TagMapCapture<'_>` | `` | concrete | 5 | miniextendr-api/src/serde/columnar.rs:2712 |
+| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 6 | miniextendr-api/src/serde/columnar.rs:3799 |
+| `SelectingMapEmitter<'_, M>` | `<M>` | concrete | 6 | miniextendr-api/src/serde/columnar.rs:4222 |
 | `ParColumnFiller<'_>` | `` | concrete | 5 | miniextendr-api/src/serde/columnar.rs:785 |
 | `MapSerializer` | `` | concrete | 5 | miniextendr-api/src/serde/ser.rs:359 |
 
@@ -2936,8 +2936,8 @@ Traits with impls: 215
 | `Vec<bool>` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:564 |
 | `Box<[bool]>` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:593 |
 | `&[bool]` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:965 |
-| `SparseIterLogicalData<I>` | `<I>` | concrete | 2 | miniextendr-api/src/altrep_data/iter/sparse.rs:309 |
-| `IterLogicalData<I>` | `<I>` | concrete | 2 | miniextendr-api/src/altrep_data/iter/state.rs:363 |
+| `SparseIterLogicalData<I>` | `<I>` | concrete | 2 | miniextendr-api/src/altrep_data/iter/sparse.rs:310 |
+| `IterLogicalData<I>` | `<I>` | concrete | 2 | miniextendr-api/src/altrep_data/iter/state.rs:364 |
 | `BooleanArray` | `` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:1688 |
 
 ## `IntoIterator` — 2 impls
@@ -2978,8 +2978,8 @@ Traits with impls: 215
 | `Box<[crate::Rcomplex]>` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:1103 |
 | `[crate::Rcomplex; N]` | `<N>` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:1111 |
 | `std::borrow::Cow<'static, [crate::Rcomplex]>` | `` | concrete | 3 | miniextendr-api/src/altrep_data/builtins.rs:1202 |
-| `IterComplexData<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:466 |
-| `SparseIterComplexData<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:406 |
+| `IterComplexData<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/coerce.rs:467 |
+| `SparseIterComplexData<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/altrep_data/iter/sparse.rs:407 |
 
 ## `Deserializer` — 6 impls
 
@@ -3044,11 +3044,11 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `VariantPayload<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2897 |
-| `TaggedVariantRow<'_, T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:3516 |
-| `FlattenEnumFieldsRow<'_, T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:3999 |
-| `MapEntry<'_, K, V>` | `<K, V>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4423 |
-| `CollatedResultRow<'_, T, E>` | `<T, E>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4610 |
+| `VariantPayload<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:2898 |
+| `TaggedVariantRow<'_, T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:3517 |
+| `FlattenEnumFieldsRow<'_, T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4000 |
+| `MapEntry<'_, K, V>` | `<K, V>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4424 |
+| `CollatedResultRow<'_, T, E>` | `<T, E>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4611 |
 
 ## `RPartialOrd` — 1 impls
 
@@ -3134,9 +3134,9 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `NoopTupleVariant` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2659 |
-| `VariantAsTupleStruct<S>` | `<S>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2926 |
-| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:3839 |
+| `NoopTupleVariant` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2660 |
+| `VariantAsTupleStruct<S>` | `<S>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2927 |
+| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:3840 |
 | `TupleVariantSerializer` | `` | concrete | 4 | miniextendr-api/src/serde/ser.rs:322 |
 
 ## `WidensToI32` — 4 impls
@@ -3161,9 +3161,9 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `NoopStructVariant` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2643 |
-| `VariantAsStruct<S>` | `<S>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2909 |
-| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:3781 |
+| `NoopStructVariant` | `` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2644 |
+| `VariantAsStruct<S>` | `<S>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:2910 |
+| `ForwardingMapEmitter<'_, M>` | `<M>` | concrete | 4 | miniextendr-api/src/serde/columnar.rs:3782 |
 | `StructVariantSerializer` | `` | concrete | 4 | miniextendr-api/src/serde/ser.rs:429 |
 
 ## `TryRng` — 1 impls
@@ -3235,14 +3235,14 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Vec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/dataframe.rs:1153 |
+| `Vec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/dataframe.rs:1155 |
 | `SerdeRows<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/dataframe_de.rs:342 |
 
 ## `FromDataFrame` — 2 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Vec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/dataframe.rs:1169 |
+| `Vec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/dataframe.rs:1171 |
 | `SerdeRows<T>` | `<T> +1wc` | concrete | 1 | miniextendr-api/src/serde/dataframe_de.rs:357 |
 
 ## `RNdSlice2D` — 2 impls
@@ -3330,7 +3330,7 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `RAllocator` | `` | concrete | 4 | miniextendr-api/src/allocator.rs:145 |
+| `RAllocator` | `` | concrete | 4 | miniextendr-api/src/allocator.rs:146 |
 
 ## `ROrderedFloatOps` — 1 impls
 
@@ -3534,7 +3534,7 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `IterListData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:400 |
+| `IterListData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:401 |
 
 ## `SerializeTupleStruct` — 1 impls
 
@@ -3558,7 +3558,7 @@ Traits with impls: 215
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `T` | `<T>` | concrete | 0 | miniextendr-api/src/optionals/rayon_bridge.rs:1369 |
+| `T` | `<T>` | concrete | 0 | miniextendr-api/src/optionals/rayon_bridge.rs:1378 |
 
 ## `RTimestamp` — 1 impls
 

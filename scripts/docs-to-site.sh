@@ -131,7 +131,6 @@ declare -A WEIGHTS=(
   [MINIREXTENDR]=63
   [ORPHAN_RULE_CHALLENGES]=64
   [GAPS]=65
-  [FEATURE_BACKLOG]=66
 )
 
 # Remove old generated content (but keep _index.md)

@@ -28,7 +28,7 @@ use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, Seq
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::serde_r::RDeserializer;
+/// use miniextendr_api::serde::RDeserializer;
 /// use serde::Deserialize;
 ///
 /// #[derive(Deserialize)]

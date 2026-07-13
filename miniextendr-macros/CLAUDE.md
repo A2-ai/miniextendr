@@ -3,7 +3,9 @@
 Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`ExternalPtr`, `Altrep*`, `DataFrameRow`, `MatchArg*`, `Factor`, `Vctrs`, `List`, `TypedExternal`). See root `CLAUDE.md` for project rules.
 
 ## Scope
-- All compile-time codegen except whole-crate emission (which lives in `miniextendr-engine`).
+- Compile-time item codegen lives here. Registration aggregation and the
+  host-side wrapper/wasm file writers live in `miniextendr-api::registry`;
+  `miniextendr-engine` is only for standalone R embedding.
 - Shared parser layer (formerly `miniextendr-macros-core`) is now in-crate and re-consumed by `miniextendr-lint` directly.
 
 ## Layout
@@ -38,6 +40,6 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - **S7 fast-path shortcuts** — every non-fallback S7 instance method (inherent *and* trait impl) emits a `<ClassName>_<method>(self, ...)` function that bypasses `S7::S7_dispatch()`. Opt out per-method with `#[miniextendr(s7(no_shortcut))]`. Shortcut names share a namespace with static-method functions; same-impl-block collisions are a `compile_error!` (`check_s7_shortcut_collisions` in `miniextendr_impl.rs`). Sidecar-accessor collisions (`<ClassName>_get_<field>`) are NOT detectable at macro time — see #991. The advisory roxygen prose is shared via `s7_class::shortcut_advisory_lines`.
 
 ## When changing codegen
-- Touched proc-macro output? Run `just configure && just rcmdinstall && just force-document` and commit regenerated `rpkg/R/miniextendr-wrappers.R` + `NAMESPACE` + `man/*.Rd` in the same PR. Pre-commit hook (`.githooks/pre-commit`) enforces.
+- Touched proc-macro output? Run `just configure && just rcmdinstall && just force-document`. Commit regenerated `NAMESPACE` + `man/*.Rd` in the same PR. `rpkg/R/miniextendr-wrappers.R` and `rpkg/src/rust/wasm_registry.rs` are gitignored, regenerated during installs, and shipped from disk in the tarball; CI's `wrappers-sync-check` detects tracked doc drift.
 - Added a class-system constructor path? Make sure error-check pattern `(.val <- .Call(...); condition_check_lines())` is wired through — silent object corruption otherwise.
 - Added a S3 `@export`? Use `#' @export generic_name` (explicit target) on `if (!exists(...)) generic <- ...` — roxygen2 can't introspect conditional declarations and drifts the export onto the next function.

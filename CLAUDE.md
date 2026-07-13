@@ -56,13 +56,13 @@ hand-maintained.
 - **Simple over complex**: only make changes directly requested or clearly necessary. Trust the framework — no defensive error handling for internal invariants.
 - **Fix warnings you see**: no "known issues". Every warning, lint, or test failure gets fixed, even if pre-existing and unrelated. Leave the code cleaner than you found it.
 - **Roxygen warnings are bugs to fix, not silence**: every `roxygen2` diagnostic ("Undocumented R6 active binding", "Empty section", multiline `@title`, etc.) is a real defect — `R CMD check` doesn't introspect R6/S7, so roxygen2 is the only line of defense. Don't reach for `@noRd` / `@keywords internal` / `@field name NULL` as a silencer; they have semantic meaning, change rendered output, and may not even silence the warning. Provide a real (even minimal) description. Specifically: roxygen2 8.0.0's `@field name NULL` is documented as the opt-out but `r6_resolve_fields` still warns "Undocumented R6 active binding" because `expected` is introspected from the class and isn't pruned in sync with the discard — emit `@field name (internal)` (or similar minimal description) instead.
-- **Deferred items = GitHub issues**: any scope cut, known limitation, or partial fix needs `gh issue create` referenced in the PR. No "out of scope" without a tracked issue.
+- **Deferred items = GitHub issues**: any scope cut, known limitation, or partial fix needs `gh issue create` referenced in the PR. No "out of scope" without a tracked issue. Before creating one, run `just issues-refresh`, read `ISSUES/_open-index.json` end-to-end, then search/read the relevant `ISSUES/issue-*.md` bodies and `ISSUES/_closed-index.json` for overlap.
 - **`just` is maintainer-only**: end-user packages must build via `configure.ac` / `tools/*.R` / standard R mechanisms. Never require `just` in scaffolded packages.
 - **`configure.ac` never mutates sources**: don't rewrite Cargo.toml / Cargo.lock / .rs during `./configure` — dirties VCS. Use `just vendor` to regenerate the vendored tarball.
 - **`configure.ac` must not call `minirextendr::*`**: put helpers in `tools/` and invoke via `Rscript tools/foo.R`.
 - **Always check the built tarball, not the source dir.** `R CMD check` on a source dir skips `Authors@R` → `Author/Maintainer` conversion and misses real CRAN-class failures.
 - **Edit `.in` templates, not generated files**:
-  - `rpkg/src/rust/.cargo/config.toml` ← `rpkg/src/rust/cargo-config.toml.in`
+  - `rpkg/src/rust/.cargo/config.toml` ← the `cargo-config` block in `rpkg/configure.ac`
   - `rpkg/src/Makevars` ← `rpkg/src/Makevars.in`
   - `rpkg/src/miniextendr-win.def` ← `rpkg/src/win.def.in`
   - `rpkg/configure` ← `rpkg/configure.ac` (then `autoconf`)
@@ -270,12 +270,13 @@ testthat a new export, run the loop twice:
 `rcmdinstall && force-document && rcmdinstall`. (Committing the regenerated
 `NAMESPACE` / `man` only needs the single pass.)
 
-Generated files (`rpkg/R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must
-be committed in sync with the Rust changes that produced them.
+Generated documentation (`NAMESPACE`, `man/*.Rd`) must be committed in sync
+with the Rust changes that produced it. `rpkg/R/miniextendr-wrappers.R` and
+`rpkg/src/rust/wasm_registry.rs` are gitignored and regenerated during install;
+they must be present on disk when building the tarball, not committed.
 
-Pre-commit hook (`.githooks/pre-commit`) blocks commits where `*-wrappers.R`
-is staged without matching `NAMESPACE`. Enable once per clone:
-`git config core.hooksPath .githooks`.
+The pre-commit hook (`.githooks/pre-commit`) guards the tarball-shape Cargo.lock.
+Enable once per clone: `git config core.hooksPath .githooks`.
 
 ### Adding a `#[miniextendr]` function
 
@@ -393,7 +394,9 @@ flag in the PR.
 
 ## Key concepts (runtime FFI)
 
-- **Worker thread**: Rust runs on a worker thread for panic safety.
+- **Execution model**: generated Rust runs on R's main thread inside
+  `R_UnwindProtect` by default. `#[miniextendr(worker)]` and `worker-default`
+  opt into the dedicated worker; R API work routes back through `with_r_thread`.
 - **ExternalPtr**: Box-like owned pointer over `EXTPTRSXP`. Stores `Box<Box<dyn Any>>` — thin ptr in `R_ExternalPtrAddr` → fat ptr on heap (carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic `release_any` finalizer. `cached_ptr` must have mutable provenance.
 - **TypedExternal**: R-visible type name (`TYPE_NAME_CSTR` display tag, `TYPE_ID_CSTR` errors). Not authoritative for type safety — `Any::downcast` is.
 - **ALTREP**: Single-struct pattern, no wrapper. Two paths:
@@ -403,7 +406,7 @@ flag in the PR.
   - `#[miniextendr]` on 1-field structs is **removed** — use derives.
 - **R_UnwindProtect**: runs Rust destructors on R errors.
 - **GC**: `OwnedProtect` / `ProtectScope` for RAII protect/unprotect.
-- **Dots (`...`)**: `_dots: &Dots`, or `name @ ...` for custom name. See `docs/DOTS_TYPED_LIST.md`.
+- **Dots (`...`)**: `_dots: &Dots`, or `name: ...` for a custom name. See `docs/DOTS_TYPED_LIST.md`.
 - **typed_list!**: `#[miniextendr(dots = typed_list!(...))]` validates and creates `dots_typed`.
 - **`impl Trait`**: return position only (`-> impl IntoR`). Argument position fails type inference (E0283 across `let` bindings for `TryFromSexp + Trait`).
 - **S4 helpers**: `slot()`/`slot<-()` live in `methods` — resolve via `getNamespace("methods")`, not `R_BaseEnv`.

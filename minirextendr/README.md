@@ -65,8 +65,9 @@ miniextendr_build()
 3. package install (`devtools::install()` when available)
 4. roxygen regeneration (`devtools::document()`)
 
-The generated wrapper file is written during install/build and then committed as
-part of the R package sources.
+The R wrapper and wasm registry are written during install/build, kept out of
+git, and shipped from disk in the package tarball. Roxygen2 derives the tracked
+`NAMESPACE` and `man/*.Rd` files from the generated wrapper.
 
 ## Templates
 

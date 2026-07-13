@@ -4,11 +4,12 @@
 //! loaded on-demand from a reader function in fixed-size chunks. Chunks are
 //! cached for repeated access within the same region.
 //!
-//! Like the [`iter`](crate::altrep_data::iter) adaptors, these implement only
+//! Like the iterator adaptors documented in
+//! [`altrep_data`](crate::altrep_data), these implement only
 //! the data-level traits ([`AltrepLen`] + `Alt*Data`); to expose one to R,
 //! wrap it in a concrete `#[derive(Altrep*)]` + `#[altrep(manual)]` struct
 //! that delegates the data-trait methods (see the
-//! [`iter`](crate::altrep_data::iter) module docs for the pattern).
+//! [`altrep_data`](crate::altrep_data) module docs for the pattern).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;

@@ -104,7 +104,7 @@ git restore minirextendr/inst/templates/
 ```bash
 # Edit and test in rpkg
 vim rpkg/configure.ac
-cd rpkg && autoconf && ./configure
+cd rpkg && autoconf && bash ./configure
 
 # Copy changes to templates
 vim minirextendr/inst/templates/rpkg/configure.ac
@@ -161,10 +161,13 @@ The following files in rpkg/ have corresponding template versions:
 | `src/Makevars.in` | `inst/templates/*/Makevars.in` |
 | `src/rust/build.rs` | `inst/templates/*/build.rs` |
 | `src/rust/Cargo.toml` | `inst/templates/*/Cargo.toml` |
-| `src/rust/cargo-config.toml.in` | `inst/templates/*/cargo-config.toml.in` |
 | `src/rust/lib.rs` | `inst/templates/*/lib.rs` (with `{{package_rs}}` substitution) |
 | `R/rpkg-package.R` | `inst/templates/*/package.R` |
 | `inst/include/mx_abi.h` | `inst/templates/*/inst_include/mx_abi.h` |
+
+`src/rust/.cargo/config.toml` is not copied from a template. Each
+`configure.ac` writes it directly in its `AC_CONFIG_COMMANDS([cargo-config],
+...)` block so the contents can reflect the detected install mode.
 
 ### Files That Don't Need Sync
 

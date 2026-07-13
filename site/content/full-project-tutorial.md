@@ -98,8 +98,10 @@ The files that make this a real R package build are:
 - `tests/model_project/configure.ac`
 - `tests/model_project/configure`
 - `tests/model_project/src/Makevars.in`
-- `tests/model_project/src/rust/cargo-config.toml.in`
 - `tests/model_project/src/stub.c`
+
+`configure.ac` writes `src/rust/.cargo/config.toml` directly for the detected
+install mode; there is no cargo-config `.in` file.
 
 This layer answers the questions that a toy example usually skips:
 
@@ -111,7 +113,7 @@ This layer answers the questions that a toy example usually skips:
 
 `bootstrap.R` is especially useful to study because it shows how devtools workflows force a predictable configure mode before the package build starts.
 
-**Dev mode prerequisite.** In the miniextendr monorepo, always run `bash ./configure` (via `just configure`) before any R CMD operation. Configure generates `Makevars` from `.in` templates and, in dev mode, syncs workspace crates into `src/rust/vendor/`. Skipping this step causes stale or missing build artifacts.
+**Dev mode prerequisite.** In the miniextendr monorepo, always run `bash ./configure` (via `just configure`) before any R CMD operation. Configure generates `Makevars` from its `.in` template and writes `.cargo/config.toml`; in source mode that config patches the framework's git dependencies to the local workspace crates. Skipping this step causes stale or missing build configuration.
 
 ## Step 4: wrapper generation and R-facing methods
 
@@ -142,10 +144,12 @@ The wrappers are generated from the Rust impl block and Rust doc comments. The R
 **Regenerating wrappers.** Whenever you change a `#[miniextendr]` function, add a parameter, or edit a doc comment, regenerate the wrappers:
 
 ```bash
-just configure && just rcmdinstall && just devtools-document
+just configure && just rcmdinstall && just force-document
 ```
 
-The generated file (`R/pigworld-wrappers.R`) and the documentation (`man/World.Rd`, `NAMESPACE`) must be committed together with the Rust changes that produced them.
+The wrapper and wasm registry are generated build inputs: current scaffolds
+keep them out of git but include the on-disk copies in the package tarball.
+Commit the derived `man/World.Rd` and `NAMESPACE` changes with the Rust source.
 
 **Running tests.** The package ships R tests in `tests/testthat/`. Run them with:
 

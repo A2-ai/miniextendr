@@ -11,12 +11,15 @@ To make your type work with miniextendr, you have two main options:
 
 ## Option 1: RNativeType (Recommended)
 
-If your type has the same memory layout as `i32`, `f64`, `u8`, or `Rcomplex`, implement `RNativeType` to automatically get ~150+ conversions.
+If your type has the same memory layout as `i32`, `f64`, `u8`, `RLogical`, or
+`Rcomplex`, implement `RNativeType` to participate in the blanket scalar,
+slice, vector, and collection conversions.
 
 ### Example: Newtype Wrapper
 
 ```rust
-use miniextendr_api::{RNativeType, SEXP, SEXPTYPE};
+use miniextendr_api::{RNativeType, SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::altrep_traits::NA_REAL;
 
 /// A temperature in Celsius, stored as f64
 #[repr(transparent)]
@@ -24,10 +27,15 @@ pub struct Celsius(pub f64);
 
 impl RNativeType for Celsius {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
+    const R_NA: Self = Self(NA_REAL);
 
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
         // Safe because Celsius is repr(transparent) over f64
-        miniextendr_api::sys::REAL(sexp) as *mut Self
+        unsafe { miniextendr_api::sys::REAL(sexp).cast::<Self>() }
+    }
+
+    fn elt(sexp: SEXP, i: isize) -> Self {
+        Self(sexp.real_elt(i))
     }
 }
 ```
@@ -63,9 +71,11 @@ fn maybe_temps() -> Option<Vec<Celsius>> { ... }
 
 Your type must:
 
-1. **Be `#[repr(transparent)]`** over `i32`, `f64`, `u8`, or `Rcomplex`
+1. **Be `#[repr(transparent)]`** over an R-native element representation
 2. **Implement `Copy`** (required by the trait bound)
 3. **Be `'static`** (no borrowed data)
+4. **Define `R_NA`** for missing sparse/padded slots and implement both
+   `dataptr_mut` and ALTREP-aware `elt`
 
 ### Memory Layout Correspondence
 
@@ -74,6 +84,7 @@ Your type must:
 | `i32` | integer | `INTSXP` |
 | `f64` | numeric | `REALSXP` |
 | `u8` | raw | `RAWSXP` |
+| `RLogical` | logical | `LGLSXP` |
 | `Rcomplex` | complex | `CPLXSXP` |
 
 **Cannot be RNativeType**: `i8`, `i16`, `f32`, `i64`, `String` - no matching R storage type.
@@ -104,21 +115,34 @@ impl TryFromSexp for Username {
         Ok(Username(s))
     }
 
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        // Same logic - no unchecked fast path for this type
-        Self::try_from_sexp(sexp)
-    }
 }
 
 impl IntoR for Username {
-    fn into_sexp(self) -> SEXP {
-        self.0.into_sexp()
-    }
+    type Error = std::convert::Infallible;
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        unsafe { self.0.into_sexp_unchecked() }
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.0.into_sexp())
     }
 }
+```
+
+`try_into_sexp` and the associated `Error` are the required `IntoR` surface;
+the panicking and unchecked convenience methods have defaults. Likewise, omit
+`try_from_sexp_unchecked` unless your type has a real checked-wrapper bypass.
+
+For string-parsed scalar families, the exported
+`try_from_sexp_via_str_parse!` macro generates `T`, `Option<T>`, `Vec<T>`, and
+`Vec<Option<T>>` implementations and batches every vector parse failure into
+one diagnostic:
+
+```rust
+pub struct Slug(String);
+
+miniextendr_api::try_from_sexp_via_str_parse!(Slug, "slug", |s| {
+    (!s.is_empty())
+        .then(|| Slug(s.to_owned()))
+        .ok_or("slug cannot be empty")
+});
 ```
 
 ### When to Use Direct Implementation
@@ -164,18 +188,12 @@ impl From<Celsius> for f64 {
 For complex types that shouldn't be copied to R, use `ExternalPtr`:
 
 ```rust
-use miniextendr_api::externalptr::{ExternalPtr, TypedExternal};
+use miniextendr_api::ExternalPtr;
 
+#[derive(ExternalPtr)]
 pub struct LargeDataset {
     data: Vec<f64>,
     metadata: HashMap<String, String>,
-}
-
-// Implement TypedExternal for type safety
-impl TypedExternal for LargeDataset {
-    const TYPE_NAME: &'static str = "LargeDataset";
-    const TYPE_NAME_CSTR: &'static [u8] = b"LargeDataset\0";
-    const TYPE_ID_CSTR: &'static [u8] = b"mypackage::LargeDataset\0";
 }
 
 // Now you can pass it by reference:
@@ -202,7 +220,8 @@ fn process_dataset(data: &LargeDataset) -> f64 {
 ## Complete Example: Custom Numeric Type
 
 ```rust
-use miniextendr_api::{RNativeType, SEXP, SEXPTYPE};
+use miniextendr_api::{RNativeType, SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::altrep_traits::NA_REAL;
 use miniextendr_api::markers::WidensToF64;
 
 /// Probability value in [0, 1]
@@ -227,9 +246,14 @@ impl Probability {
 // Enable automatic conversions for all containers
 impl RNativeType for Probability {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
+    const R_NA: Self = Self(NA_REAL);
 
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        miniextendr_api::sys::REAL(sexp) as *mut Self
+        unsafe { miniextendr_api::sys::REAL(sexp).cast::<Self>() }
+    }
+
+    fn elt(sexp: SEXP, i: isize) -> Self {
+        Self(sexp.real_elt(i))
     }
 }
 

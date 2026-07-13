@@ -125,9 +125,8 @@ pub fn ensure_pool() {
     });
 }
 
-/// Whether the pool size has been locked in — by [`ensure_pool`] or a
-/// successful [`set_threads`]. The global pool is fixed at that point —
-/// rayon cannot resize it.
+/// Whether the pool size has been locked in — by [`ensure_pool`] or a successful
+/// [`set_threads`]. The global pool is fixed at that point — rayon cannot resize it.
 pub fn pool_is_built() -> bool {
     POOL_READY.is_completed()
 }

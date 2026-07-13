@@ -976,7 +976,7 @@ impl MiniextendrFunctionParsed {
     ///
     /// The R wrapper is a string constant containing the R function definition that
     /// calls `.Call(C_<crate>_<name>, ...)`. It is collected via linkme distributed slices to
-    /// produce the `R/miniextendr_wrappers.R` file.
+    /// produce the `R/miniextendr-wrappers.R` file.
     pub(crate) fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(self.ident())
     }
@@ -1021,8 +1021,8 @@ impl MiniextendrFunctionParsed {
     /// Only for Rust ABI functions - extern "C-unwind" functions are passed through as-is.
     ///
     /// Preventing inlining ensures:
-    /// - The worker thread pattern works correctly (function runs in separate context)
-    /// - Panic handling and unwinding work as expected
+    /// - Worker-dispatched functions retain a distinct call frame
+    /// - Panic handling and unwinding retain the intended boundary
     /// - Stack traces show the actual function name
     pub(crate) fn add_inline_never_if_needed(&mut self) {
         let has_explicit_abi = self.item.sig.abi.is_some();

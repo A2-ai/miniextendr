@@ -1,7 +1,11 @@
-# Feature Backlog
+# Archived Feature Backlog
 
-This document lists practical feature candidates for upcoming maintenance cycles.
-Items are scoped to be incremental and compatible with the current architecture.
+Archived on 2026-07-13 after reconciling the prose guides with the generated
+Rust API reference. Completed entries remain here as implementation history.
+The two actionable follow-ups moved to GitHub issues
+[#1345](https://github.com/A2-ai/miniextendr/issues/1345) and
+[#1346](https://github.com/A2-ai/miniextendr/issues/1346); forward-looking work
+is no longer maintained in a Markdown backlog.
 
 ## Completed
 
@@ -119,24 +123,25 @@ Items are scoped to be incremental and compatible with the current architecture.
 - Added `RegisterAltrep` + `InferBase` for `Vec<Option<String>>`.
 - Test suite: 0 FAIL, 2868 PASS (previously 2 FAIL).
 
-## Active: Next Up
+## Formerly Parked
 
-## Parked: Needs Evidence
-
-These items are plausible but lack a demonstrated need or clear design.
+These were the final speculative entries when the backlog was archived.
 
 - **Pooled PROTECT scope**: `Rf_protect()` is already cheap (stack counter increment).
-  No benchmark shows this is a bottleneck. Revisit if profiling reveals protect overhead
-  in tight loops.
+  No benchmark shows this is a bottleneck, so there is no implementation issue
+  until profiling demonstrates one.
 - **ALTREP region prefetch**: R controls `get_region` invocation, not the ALTREP class.
-  Can't prefetch from the implementor side as described. Reframe as docs/examples on
-  efficient `get_region` implementation if needed.
-- **Microbenchmark gating in CI**: valuable but depends on CI infrastructure (not yet
-  set up). Revisit when CI exists.
+  The viable documentation work is tracked by
+  [#1345](https://github.com/A2-ai/miniextendr/issues/1345).
+- **Microbenchmark gating in CI**: valuable, but the CI infrastructure is not yet
+  reliable enough to gate changes. Noise-tolerant CI design is tracked by
+  [#1346](https://github.com/A2-ai/miniextendr/issues/1346).
 
 ## Dropped
 
 - **Wrapper diff mode**: `git diff` already handles this. Wrappers are mechanical
   `.Call()` functions; a dedicated diff tool adds complexity for no real gain.
 
-## Backlog: Nice to Have
+## Empty Backlog
+
+No untracked forward-looking items remain.

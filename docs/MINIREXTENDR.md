@@ -91,9 +91,10 @@ devtools::install("mypackage")    # Install the final package
 ```
 
 How it works: `devtools::document()` calls `pkgload::load_all()`, which detects
-`Config/build/bootstrap: TRUE` in DESCRIPTION and runs `bootstrap.R`. That triggers
-`./configure` → `make` → cargo build → document binary → R wrappers → roxygen2, all
-in a single invocation. No manual `./configure` or two-pass install needed.
+`Config/build/bootstrap: TRUE` in DESCRIPTION and runs `bootstrap.R`. That
+triggers `./configure` → `make` → cargo build → package shared-library link →
+registered wrapper writers → roxygen2, all in a single invocation. No manual
+`./configure` or two-pass install is needed for a scaffolded package.
 
 ### Manual: step-by-step functions
 
@@ -221,17 +222,34 @@ Each `use_*()` function:
 
 ### Feature Detection
 
-`use_feature_detection()` sets up conditional compilation via R-detected feature flags:
+`use_feature_detection()` generates runtime introspection for Cargo features
+that were selected by the build:
 
 ```r
-# Initial setup - creates detect-features.R and wires it into configure.ac
+# Initial setup - creates Rust and R helpers for has_feature()/test skips
 use_feature_detection()
 
 # After adding new features to miniextendr.yml, regenerate the detection script
 update_feature_detection()
 ```
 
-Features are detected at `./configure` time and passed as `--cfg` flags to `rustc`.
+The generated Rust code uses `cfg!(feature = "...")`; it reports Cargo features
+but does not choose them. For configure-time feature selection, use the separate
+rule system:
+
+```r
+use_configure_feature_detection()
+add_feature_rule("rayon", detect = TRUE, optional_dep = TRUE)
+add_feature_rule(
+    "vctrs",
+    detect = 'requireNamespace("vctrs", quietly = TRUE)',
+    cargo_spec = "miniextendr-api/vctrs"
+)
+```
+
+`tools/detect-features.R` returns a comma-separated feature list;
+`configure.ac` passes it to Cargo through `--features`. It does not invent
+custom `rustc --cfg` flags.
 
 ## Vendoring
 
@@ -475,7 +493,7 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | **Build workflow** | `miniextendr_autoconf`, `miniextendr_configure`, `miniextendr_build`, `miniextendr_sync` |
 | **Inline compilation** | `rust_source`, `rust_function`, `rust_source_clean` |
 | **Cargo wrappers** | `cargo_add`, `cargo_rm`, `cargo_build`, `cargo_check`, `cargo_test`, `cargo_clippy`, `cargo_fmt`, `cargo_doc`, `cargo_search`, `cargo_deps`, `cargo_update`, `cargo_init`, `cargo_new` |
-| **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s3`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_vendor_lib` |
+| **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s3`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_configure_feature_detection`, `add_feature_rule`, `remove_feature_rule`, `list_feature_rules`, `use_vendor_lib` |
 | **Native R package FFI** | `use_native_package`, `check_native_package` (see [NATIVE_R_PACKAGES.md](NATIVE_R_PACKAGES.md)) |
 | **Git hooks** | `use_miniextendr_git_hooks` (pre-commit + post-merge reminders) |
 | **Vendoring** | `vendor_miniextendr`, `vendor_crates_io`, `vendor_sync`, `miniextendr_vendor`, `miniextendr_available_versions` |

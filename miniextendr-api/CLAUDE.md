@@ -4,7 +4,9 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 
 ## Scope
 - All R API contact lives here. Macros generate code that calls into this crate.
-- No proc-macros — those are in `miniextendr-macros`. No codegen logic — that's in `miniextendr-engine`.
+- No proc-macros — those are in `miniextendr-macros`. Registry serialization
+  for R wrappers and the wasm snapshot lives in `registry.rs` here;
+  `miniextendr-engine` only embeds R for standalone Rust binaries/tests.
 
 ## Architecture pointers
 - `registry.rs` — linkme `#[distributed_slice]` declarations (`MX_CALL_DEFS`, `MX_MATCH_ARG_CHOICES`, `MX_R_WRAPPERS`, `MX_CLASS_NAMES`, …) + cdylib entry.
