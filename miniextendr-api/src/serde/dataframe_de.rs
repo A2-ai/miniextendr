@@ -60,7 +60,9 @@ use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::dataframe::DataFrame;
 use crate::from_r::charsxp_to_str;
 use crate::{OwnedProtect, SEXP, SEXPTYPE, SexpExt};
-use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
+use serde::de::{
+    self, DeserializeSeed, Deserializer, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
+};
 
 // region: public API
 
@@ -95,6 +97,17 @@ use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 ///    whose name contains `_` are interpreted as nested-struct paths; rename
 ///    the R column if you need a flat string-typed field with an underscore.
 ///    `#[serde(flatten)]` is not supported.
+/// 2. **`Option<nested struct>` vs the enum tag-column heuristic**
+///    ([#1320](https://github.com/A2-ai/miniextendr/issues/1320)). To read
+///    `Option<Enum>` `None` rows back (NA tag column), the reader treats a
+///    missing bare column plus an NA character/factor cell in the would-be
+///    tag column (`<field>_variant` by default) as `None`. If an
+///    `Option<NestedStruct>` field's flattened columns include one matching
+///    that name — i.e. the struct has a sub-field literally named `variant` —
+///    an NA in that cell makes the *whole struct* read back as `None`,
+///    silently dropping the other sub-fields. Rename the sub-field, or point
+///    the tag lookup at an unused column name via
+///    [`dataframe_to_vec_with_enum_tags`].
 pub fn dataframe_to_vec<T>(sexp: SEXP) -> Result<Vec<T>, RSerdeError>
 where
     T: for<'de> serde::Deserialize<'de>,
@@ -109,7 +122,7 @@ where
     // STRSXP and recycle the slot. See reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md.
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    deserialize_rows(&view)
+    deserialize_rows(&view, EnumReadConfig::default())
 }
 
 /// Pass a slice of deserialized rows to a scoped callback.
@@ -148,8 +161,96 @@ where
     // Root the input across deserialisation — see [`dataframe_to_vec`].
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    let rows: Vec<T> = deserialize_rows(&view)?;
+    let rows: Vec<T> = deserialize_rows(&view, EnumReadConfig::default())?;
     Ok(f(&rows))
+}
+
+/// Convert a *collated* enum data.frame (one row per enum value) into `Vec<T>`
+/// where `T` is an enum.
+///
+/// The inverse of
+/// [`vec_to_dataframe_split(rows, SplitShape::Collated { column })`](crate::serde::vec_to_dataframe_split):
+/// `tag_column` names the character column holding the variant name, and each
+/// variant's payload is read from the row's bare (un-prefixed) columns — the
+/// union schema, with other-variant fields NA on rows that don't use them.
+///
+/// # Errors
+///
+/// - `sexp` does not inherit from `"data.frame"`.
+/// - The `tag_column` is missing, NA for a required variant, or not a
+///   character/factor column.
+/// - The tag cell holds a string that is not one of `T`'s variants (serde's
+///   standard `unknown variant` error).
+/// - A payload cell's R type does not match the Rust field type.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::serde::{dataframe_to_vec_collated, vec_to_dataframe_split, SplitShape};
+///
+/// let df = vec_to_dataframe_split(&events, SplitShape::Collated { column: "kind".into() })?;
+/// let round: Vec<Event> = dataframe_to_vec_collated(df.as_sexp(), "kind")?;
+/// ```
+pub fn dataframe_to_vec_collated<T>(sexp: SEXP, tag_column: &str) -> Result<Vec<T>, RSerdeError>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    if is_empty_dataframe(sexp) {
+        return Ok(Vec::new());
+    }
+    // Root the input across deserialisation — see [`dataframe_to_vec`].
+    let _input = unsafe { OwnedProtect::new(sexp) };
+    let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
+    deserialize_rows(&view, EnumReadConfig::from_top_level_tag(tag_column))
+}
+
+/// Convert a data.frame with *flattened enum fields* into `Vec<T>`, honouring
+/// caller-chosen tag-column names.
+///
+/// The inverse of
+/// [`vec_to_dataframe_flatten_enums_with_tags`](crate::serde::vec_to_dataframe_flatten_enums_with_tags):
+/// `tags` maps each flattened field to the tag column the writer used; fields
+/// not listed fall back to the default `<field>_variant`. For the all-default
+/// case, plain [`dataframe_to_vec`] already reads flattened enum fields — this
+/// entry point is only needed when the writer used custom tag names (#1061).
+///
+/// # Errors
+///
+/// Same as [`dataframe_to_vec`], plus the enum-tag errors described on
+/// [`dataframe_to_vec_collated`].
+///
+/// # Limitations
+///
+/// Same as [`dataframe_to_vec`] — including the `Option<nested struct>`
+/// tag-column collision
+/// ([#1320](https://github.com/A2-ai/miniextendr/issues/1320)). The `tags`
+/// mapping here is also the workaround: point the affected field's tag at an
+/// unused column name so the `None` heuristic never fires for it.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::serde::{
+///     dataframe_to_vec_with_enum_tags, vec_to_dataframe_flatten_enums_with_tags,
+/// };
+///
+/// let df = vec_to_dataframe_flatten_enums_with_tags(&rows, &["state"], &[("state", "state_tag")])?;
+/// let round: Vec<Row> = dataframe_to_vec_with_enum_tags(df.as_sexp(), &[("state", "state_tag")])?;
+/// ```
+pub fn dataframe_to_vec_with_enum_tags<T>(
+    sexp: SEXP,
+    tags: &[(&str, &str)],
+) -> Result<Vec<T>, RSerdeError>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    if is_empty_dataframe(sexp) {
+        return Ok(Vec::new());
+    }
+    // Root the input across deserialisation — see [`dataframe_to_vec`].
+    let _input = unsafe { OwnedProtect::new(sexp) };
+    let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
+    deserialize_rows(&view, EnumReadConfig::from_field_tags(tags))
 }
 
 // endregion
@@ -210,7 +311,7 @@ where
         // `sexp` for the returned handle (keeps the `UNPROTECT(1)` order correct).
         let _input = unsafe { OwnedProtect::new(sexp) };
         let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-        deserialize_rows(&view)?
+        deserialize_rows(&view, EnumReadConfig::default())?
     };
     // SAFETY:
     // - Caller is on the R main thread (entry via #[miniextendr] wrapper).
@@ -289,6 +390,57 @@ fn is_empty_dataframe(sexp: SEXP) -> bool {
 
 // endregion
 
+// region: enum-read configuration (#1060 + #1061)
+
+/// Configuration for reading split/flattened enum data.frames back to `Vec<T>`.
+///
+/// Shared (via cheap `Rc` clones) across the whole row/cell deserializer tree
+/// so both the top-level (`Collated`) and nested-field enum readers can honour
+/// caller-chosen tag-column names.
+///
+/// - `top_level_tag` — set by [`dataframe_to_vec_collated`] for a Collated
+///   frame whose *whole row* is an enum; the tag column is named by the caller
+///   (symmetric with [`SplitShape::Collated { column }`](crate::serde::SplitShape)).
+/// - `field_tags` — per-field tag-column overrides for nested enum fields
+///   (`field → column`), set by [`dataframe_to_vec_with_enum_tags`]. Fields not
+///   listed use the default `<field>_variant` (symmetric with the writer's
+///   [`vec_to_dataframe_flatten_enums_with_tags`](crate::serde::vec_to_dataframe_flatten_enums_with_tags)).
+#[derive(Clone, Default)]
+struct EnumReadConfig {
+    top_level_tag: Option<std::rc::Rc<str>>,
+    field_tags: std::rc::Rc<[(String, String)]>,
+}
+
+impl EnumReadConfig {
+    /// Tag-column override for a nested enum `field`, if the caller supplied one.
+    fn field_tag(&self, field: &str) -> Option<&str> {
+        self.field_tags
+            .iter()
+            .find(|(f, _)| f == field)
+            .map(|(_, t)| t.as_str())
+    }
+
+    fn from_field_tags(tags: &[(&str, &str)]) -> Self {
+        Self {
+            top_level_tag: None,
+            field_tags: tags
+                .iter()
+                .map(|(f, t)| ((*f).to_owned(), (*t).to_owned()))
+                .collect::<Vec<_>>()
+                .into(),
+        }
+    }
+
+    fn from_top_level_tag(column: &str) -> Self {
+        Self {
+            top_level_tag: Some(std::rc::Rc::from(column)),
+            field_tags: std::rc::Rc::from(Vec::<(String, String)>::new().into_boxed_slice()),
+        }
+    }
+}
+
+// endregion
+
 // region: row + cell deserializer
 
 /// Row deserializer.
@@ -305,15 +457,17 @@ struct RowDeserializer<'sexp> {
     /// Shared across the top-level row and every nested `RowMapAccess` so
     /// derived prefix lookups stay deterministic.
     column_names: std::rc::Rc<[String]>,
+    cfg: EnumReadConfig,
 }
 
 impl<'sexp> RowDeserializer<'sexp> {
-    fn new(view: &'sexp DataFrame, row: usize) -> Self {
+    fn new(view: &'sexp DataFrame, row: usize, cfg: EnumReadConfig) -> Self {
         let column_names = ordered_column_names(view);
         Self {
             view,
             row,
             column_names,
+            cfg,
         }
     }
 }
@@ -337,6 +491,7 @@ impl<'de> Deserializer<'de> for RowDeserializer<'de> {
             self.view,
             self.row,
             self.column_names,
+            self.cfg,
             "",
         ))
     }
@@ -346,14 +501,44 @@ impl<'de> Deserializer<'de> for RowDeserializer<'de> {
             self.view,
             self.row,
             self.column_names,
+            self.cfg,
             "",
         ))
+    }
+
+    /// Top-level enum row (Collated shape, #1060).
+    ///
+    /// Only valid when [`dataframe_to_vec_collated`] configured a top-level tag
+    /// column. The variant name is read from that column; the variant payload
+    /// comes from the row's bare (un-prefixed) columns.
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        let Some(tag_col) = self.cfg.top_level_tag.clone() else {
+            return Err(RSerdeError::Message(
+                "dataframe row deserialiser: top-level enum requires a tag column — \
+                 use dataframe_to_vec_collated(sexp, column)"
+                    .into(),
+            ));
+        };
+        let variant = read_tag_variant(self.view, self.row, &tag_col)?;
+        visitor.visit_enum(DfEnumAccess {
+            view: self.view,
+            row: self.row,
+            column_names: self.column_names,
+            cfg: self.cfg,
+            variant,
+            payload_prefix: String::new(),
+        })
     }
 
     serde::forward_to_deserialize_any! {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
         byte_buf option unit unit_struct newtype_struct seq tuple
-        tuple_struct enum identifier ignored_any
+        tuple_struct identifier ignored_any
     }
 }
 
@@ -398,6 +583,7 @@ struct RowMapAccess<'sexp> {
     view: &'sexp DataFrame,
     row: usize,
     column_names: std::rc::Rc<[String]>,
+    cfg: EnumReadConfig,
     prefix: String,
     /// Distinct heads at this nesting level, in first-occurrence order.
     keys: Vec<String>,
@@ -410,6 +596,7 @@ impl<'sexp> RowMapAccess<'sexp> {
         view: &'sexp DataFrame,
         row: usize,
         column_names: std::rc::Rc<[String]>,
+        cfg: EnumReadConfig,
         prefix: &str,
     ) -> Self {
         let keys = derive_keys_at_prefix(&column_names, prefix);
@@ -417,6 +604,7 @@ impl<'sexp> RowMapAccess<'sexp> {
             view,
             row,
             column_names,
+            cfg,
             prefix: prefix.to_owned(),
             keys,
             idx: 0,
@@ -480,6 +668,7 @@ impl<'de> MapAccess<'de> for RowMapAccess<'de> {
             view: self.view,
             row: self.row,
             column_names: self.column_names.clone(),
+            cfg: self.cfg.clone(),
             bare_name: bare,
             bare_col,
             nested_prefix,
@@ -497,6 +686,7 @@ struct MaybeNestedDeserializer<'sexp> {
     view: &'sexp DataFrame,
     row: usize,
     column_names: std::rc::Rc<[String]>,
+    cfg: EnumReadConfig,
     /// Full column name (`prefix + head`) for the scalar interpretation.
     bare_name: String,
     /// SEXP for the bare column, or `None` if no such column exists.
@@ -513,6 +703,18 @@ impl<'sexp> MaybeNestedDeserializer<'sexp> {
             .bare_col
             .ok_or_else(|| RSerdeError::MissingField(self.bare_name.clone()))?;
         Ok(CellDeserializer::new(col, self.row, &self.bare_name))
+    }
+
+    /// Tag-column name for this field when read as a flattened enum.
+    ///
+    /// Uses the caller-supplied override (`field → column`, #1061) if present;
+    /// otherwise the default `<field>_variant` (`nested_prefix` already carries
+    /// the trailing `_`).
+    fn tag_column_name(&self) -> String {
+        match self.cfg.field_tag(&self.bare_name) {
+            Some(name) => name.to_owned(),
+            None => format!("{}variant", self.nested_prefix),
+        }
     }
 }
 
@@ -531,6 +733,7 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
                 self.view,
                 self.row,
                 self.column_names.clone(),
+                self.cfg.clone(),
                 &self.nested_prefix,
             ))
         }
@@ -546,6 +749,7 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
             self.view,
             self.row,
             self.column_names.clone(),
+            self.cfg.clone(),
             &self.nested_prefix,
         ))
     }
@@ -555,22 +759,63 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
             self.view,
             self.row,
             self.column_names.clone(),
+            self.cfg.clone(),
             &self.nested_prefix,
         ))
     }
 
+    /// Nested enum field (#1060): flatten a `<field>_variant` tag column plus
+    /// prefixed `<field>_<sub>` payload columns back into an enum.
+    ///
+    /// Symmetric with the writer's
+    /// [`vec_to_dataframe_flatten_enums`](crate::serde::vec_to_dataframe_flatten_enums):
+    /// the tag column supplies the variant name and the payload columns (read
+    /// under `nested_prefix`) supply the fields.
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        let tag_col_name = self.tag_column_name();
+        let variant = read_tag_variant(self.view, self.row, &tag_col_name)?;
+        visitor.visit_enum(DfEnumAccess {
+            view: self.view,
+            row: self.row,
+            column_names: self.column_names,
+            cfg: self.cfg,
+            variant,
+            payload_prefix: self.nested_prefix,
+        })
+    }
+
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        // For `Option<NestedStruct>`: if no bare column exists, treat as
-        // `Some` and recurse into the nested map. (We have no row-wise NA
-        // signal for nested struct presence — `vec_to_dataframe` doesn't
-        // emit one either; round-tripping `Option<Struct>` always produces
-        // `Some(...)`. Documented limitation.) Otherwise delegate to the
-        // cell deserialiser's NA-aware path.
+        // Bare scalar column present → delegate to the cell deserialiser's
+        // NA-aware path.
         if self.bare_col.is_some() {
-            self.cell_de()?.deserialize_option(visitor)
-        } else {
-            visitor.visit_some(self)
+            return self.cell_de()?.deserialize_option(visitor);
         }
+        // No bare column. This is either an `Option<NestedStruct>` or an
+        // `Option<Enum>` field. Only the enum case has a row-wise NA signal:
+        // its `<field>_variant` (or configured) tag column is a character
+        // column that is NA on `None` rows (writer emits nothing for those,
+        // Union-fill leaves the tag NA). If such a tag column exists and its
+        // cell is NA, the value is `None`.
+        //
+        // For `Option<NestedStruct>` there is no such signal — the writer
+        // never emits a per-row presence flag — so it stays `Some(...)`
+        // (documented limitation; see the type-level docs). Corollary (#1320):
+        // a nested struct with a sub-field literally named `variant` collides
+        // with the tag-column name and an NA cell there reads the whole struct
+        // as `None` — serde exposes no inner-type info here to disambiguate.
+        let tag_col_name = self.tag_column_name();
+        if let Some(tag_col) = self.view.column_raw(&tag_col_name)
+            && is_variant_tag_column(tag_col)
+            && variant_tag_is_na(tag_col, self.row)
+        {
+            return visitor.visit_none();
+        }
+        visitor.visit_some(self)
     }
 
     fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
@@ -628,7 +873,7 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
 
     serde::forward_to_deserialize_any! {
         bytes byte_buf unit unit_struct newtype_struct seq tuple
-        tuple_struct enum
+        tuple_struct
     }
 }
 
@@ -1036,6 +1281,234 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
 
 // endregion
 
+// region: enum access (split/flattened enum reader, #1060 + #1061)
+
+/// Read the variant name from a tag column at `row`.
+///
+/// The tag column is emitted by the writer as a character column holding the
+/// serde variant name (PascalCase by default). Errors if the column is absent
+/// (naming the expected column), NA (a required enum with no variant), or not
+/// a character/factor column.
+fn read_tag_variant(view: &DataFrame, row: usize, tag_col: &str) -> Result<String, RSerdeError> {
+    let col = view.column_raw(tag_col).ok_or_else(|| {
+        RSerdeError::Message(format!(
+            "enum reader: expected variant-tag column {:?} not found in data.frame (columns: {:?})",
+            tag_col,
+            ordered_column_names(view),
+        ))
+    })?;
+    let i = row as isize;
+    match col.type_of() {
+        SEXPTYPE::STRSXP => {
+            let charsxp = col.string_elt(i);
+            if charsxp == SEXP::na_string() {
+                return Err(RSerdeError::Message(format!(
+                    "enum reader: variant-tag column {tag_col:?} is NA at row {row} \
+                     (use Option<Enum> for absent variants)"
+                )));
+            }
+            // SAFETY: `col` is a column of the data.frame SEXP rooted by the
+            // enclosing call; the CHARSXP borrow is copied into an owned String
+            // before the borrow ends.
+            Ok(unsafe { charsxp_to_str(charsxp) }.to_owned())
+        }
+        SEXPTYPE::INTSXP if col.is_factor() => {
+            // SAFETY: as above; `col.is_factor()` established the levels attr.
+            match unsafe { factor_label(col, i, tag_col) }? {
+                Some(s) => Ok(s.to_owned()),
+                None => Err(RSerdeError::Message(format!(
+                    "enum reader: variant-tag column {tag_col:?} is NA at row {row} \
+                     (use Option<Enum> for absent variants)"
+                ))),
+            }
+        }
+        other => Err(RSerdeError::Message(format!(
+            "enum reader: variant-tag column {:?} must be character (or factor), got {}",
+            tag_col,
+            other.type_name(),
+        ))),
+    }
+}
+
+/// A column that looks like a variant tag (character or factor). Used to
+/// distinguish `Option<Enum>` (has a character tag column) from
+/// `Option<NestedStruct>` (no such signal) in `deserialize_option`.
+fn is_variant_tag_column(col: SEXP) -> bool {
+    matches!(col.type_of(), SEXPTYPE::STRSXP) || col.is_factor()
+}
+
+/// Is the variant-tag cell NA at `row`? (character NA, or `NA_INTEGER` factor
+/// code.) Caller must have established [`is_variant_tag_column`].
+fn variant_tag_is_na(col: SEXP, row: usize) -> bool {
+    let i = row as isize;
+    match col.type_of() {
+        SEXPTYPE::STRSXP => col.string_elt(i) == SEXP::na_string(),
+        SEXPTYPE::INTSXP => col.integer_elt(i) == NA_INTEGER,
+        _ => false,
+    }
+}
+
+/// `EnumAccess` over a row's variant: the variant name has already been read
+/// from the tag column; the payload lives in the (optionally prefixed) columns.
+struct DfEnumAccess<'sexp> {
+    view: &'sexp DataFrame,
+    row: usize,
+    column_names: std::rc::Rc<[String]>,
+    cfg: EnumReadConfig,
+    /// Variant name read from the tag column.
+    variant: String,
+    /// `""` for a top-level Collated row (payload = bare columns); `"<field>_"`
+    /// for a nested enum field (payload = prefixed columns).
+    payload_prefix: String,
+}
+
+impl<'de> EnumAccess<'de> for DfEnumAccess<'de> {
+    type Error = RSerdeError;
+    type Variant = DfVariantAccess<'de>;
+
+    fn variant_seed<V: DeserializeSeed<'de>>(
+        self,
+        seed: V,
+    ) -> Result<(V::Value, Self::Variant), Self::Error> {
+        // Unknown variant strings surface serde's standard `unknown variant`
+        // error via the `__Field` seed.
+        let variant = seed.deserialize(de::value::StrDeserializer::new(self.variant.as_str()))?;
+        Ok((
+            variant,
+            DfVariantAccess {
+                view: self.view,
+                row: self.row,
+                column_names: self.column_names,
+                cfg: self.cfg,
+                payload_prefix: self.payload_prefix,
+            },
+        ))
+    }
+}
+
+/// `VariantAccess` mirroring the writer's per-variant column layout: unit
+/// variants carry no payload; struct/newtype-struct variants flatten their
+/// fields under the prefix; tuple variants land as `<prefix>_0`, `<prefix>_1`.
+struct DfVariantAccess<'sexp> {
+    view: &'sexp DataFrame,
+    row: usize,
+    column_names: std::rc::Rc<[String]>,
+    cfg: EnumReadConfig,
+    payload_prefix: String,
+}
+
+impl<'sexp> DfVariantAccess<'sexp> {
+    /// A deserializer for a payload column named `col_name` (scalar cell) or,
+    /// if no such bare column exists, a nested struct at `<col_name>_`.
+    fn payload_deserializer(&self, col_name: String) -> MaybeNestedDeserializer<'sexp> {
+        let bare_col = self.view.column_raw(&col_name);
+        let nested_prefix = format!("{col_name}_");
+        MaybeNestedDeserializer {
+            view: self.view,
+            row: self.row,
+            column_names: self.column_names.clone(),
+            cfg: self.cfg.clone(),
+            bare_name: col_name,
+            bare_col,
+            nested_prefix,
+        }
+    }
+}
+
+impl<'de> VariantAccess<'de> for DfVariantAccess<'de> {
+    type Error = RSerdeError;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn newtype_variant_seed<T: DeserializeSeed<'de>>(
+        self,
+        seed: T,
+    ) -> Result<T::Value, Self::Error> {
+        // The writer only produces newtype variants wrapping a struct, whose
+        // fields flatten under the prefix. Drive the inner value through a
+        // deserializer that recurses into the prefixed columns as a struct/map;
+        // a scalar newtype (which the writer rejects) would surface a missing
+        // bare column here.
+        let de = MaybeNestedDeserializer {
+            view: self.view,
+            row: self.row,
+            column_names: self.column_names.clone(),
+            cfg: self.cfg.clone(),
+            // `bare_name` (no trailing `_`) is only used for error messages.
+            bare_name: self
+                .payload_prefix
+                .strip_suffix('_')
+                .unwrap_or(&self.payload_prefix)
+                .to_owned(),
+            bare_col: None,
+            nested_prefix: self.payload_prefix,
+        };
+        seed.deserialize(de)
+    }
+
+    fn tuple_variant<V: Visitor<'de>>(
+        self,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        visitor.visit_seq(EnumTupleSeqAccess {
+            access: self,
+            idx: 0,
+            len,
+        })
+    }
+
+    fn struct_variant<V: Visitor<'de>>(
+        self,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        // Payload fields are the columns under `payload_prefix`. The tag column
+        // (also under the prefix) shows up as an extra key and is skipped by
+        // serde's default unknown-field handling (→ `visit_unit`).
+        visitor.visit_map(RowMapAccess::new(
+            self.view,
+            self.row,
+            self.column_names,
+            self.cfg,
+            &self.payload_prefix,
+        ))
+    }
+}
+
+/// `SeqAccess` for a tuple variant: element `i` reads column
+/// `<payload_prefix>_<i>` (matching the writer's `<field>__0`, `<field>__1`).
+struct EnumTupleSeqAccess<'sexp> {
+    access: DfVariantAccess<'sexp>,
+    idx: usize,
+    len: usize,
+}
+
+impl<'de> SeqAccess<'de> for EnumTupleSeqAccess<'de> {
+    type Error = RSerdeError;
+
+    fn next_element_seed<T: DeserializeSeed<'de>>(
+        &mut self,
+        seed: T,
+    ) -> Result<Option<T::Value>, Self::Error> {
+        if self.idx >= self.len {
+            return Ok(None);
+        }
+        let col_name = format!("{}_{}", self.access.payload_prefix, self.idx);
+        self.idx += 1;
+        let de = self.access.payload_deserializer(col_name);
+        seed.deserialize(de).map(Some)
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.len - self.idx)
+    }
+}
+
+// endregion
+
 // region: per-row dispatch
 
 /// Per-row deserialisation loop shared by all three public entry points.
@@ -1044,14 +1517,17 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
 /// (`T: for<'de> Deserialize<'de>`) lets the call site pick `'de = 'sexp`
 /// internally — visitors that want `&'sexp str` see a borrow rooted in the
 /// SEXP, `DeserializeOwned` visitors copy via serde's default fallback.
-fn deserialize_rows<'sexp, T>(view: &'sexp DataFrame) -> Result<Vec<T>, RSerdeError>
+fn deserialize_rows<'sexp, T>(
+    view: &'sexp DataFrame,
+    cfg: EnumReadConfig,
+) -> Result<Vec<T>, RSerdeError>
 where
     T: for<'de> serde::Deserialize<'de>,
 {
     let nrow = view.nrow();
     let mut rows: Vec<T> = Vec::with_capacity(nrow);
     for i in 0..nrow {
-        let de = RowDeserializer::new(view, i);
+        let de = RowDeserializer::new(view, i, cfg.clone());
         rows.push(T::deserialize(de)?);
     }
     Ok(rows)
