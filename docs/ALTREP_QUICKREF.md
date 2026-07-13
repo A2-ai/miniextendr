@@ -108,7 +108,7 @@ In both cases, use `MyData { value: 42, len: 100 }.into_sexp()` to create the AL
 | **Dataptr** | `AltrepDataptr<T>` | `dataptr` | Data in contiguous memory |
 | **Serialization** | `AltrepSerialize` | `serialize` | Save/load support needed |
 | **Subsetting** | `AltrepExtractSubset::extract_subset()` | `subset` | O(1) subset possible (integer/complex only) |
-| **Mutation** | low-level `AltString`/`AltList::set_elt()` | none — `manual, no_lowlevel` + hand-written low-level traits | Mutable String/List (see [ALTREP.md § Mutable Vectors](ALTREP.md#mutable-vectors-set_elt)) |
+| **Mutation** | low-level `AltString`/`AltList::set_elt()` | none — `manual, no_lowlevel` + hand-written low-level traits | Mutable String/List (see [ALTREP.md § Mutable Vectors](ALTREP.md#mutable-vectors)) |
 | **NA hint** | `no_na()` | - | Enables optimizations |
 | **Sorted hint** | `is_sorted()` | - | Enables optimizations |
 | **Sum** | `sum()` | - | O(1) computation possible |

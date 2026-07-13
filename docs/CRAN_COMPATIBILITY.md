@@ -292,7 +292,7 @@ The current CRAN-canonical pins are:
 
 | Platform | Arch | Pin | Source |
 |---|---|---|---|
-| macOS | arm64 | `MACOSX_DEPLOYMENT_TARGET=11.0` for the **toolchain**; `14.0` for the **binary** | [R-admin §"Building binary packages"](https://github.com/r-devel/r-svn/blob/master/doc/manual/R-admin.texi#L5854) — `Xcode_26.0` |
+| macOS | arm64 | `MACOSX_DEPLOYMENT_TARGET=11.0` for the **toolchain**; `14.0` for the **binary** | [R-admin §"Building binary packages"](https://github.com/r-devel/r-svn/blob/d7049b9c6335346e4448f5e3718c979a1c3ad2d2/doc/manual/R-admin.texi) — `Xcode_26.0` |
 | macOS | x86_64 | `MACOSX_DEPLOYMENT_TARGET=11.0` | R-admin (same) — `Xcode_16.2` |
 | Windows | x86_64 | rtools45 / GCC 14, mingw runtime release `6768` | [`r-windows/rtools-base`](https://github.com/r-windows/rtools-base) |
 | Linux | x86_64 | distro-supplied glibc; no per-platform pin | n/a |

@@ -135,9 +135,9 @@ it has no negative effect on AlmaLinux or any other platform.
 ### Gotcha 5: macOS SDK and deployment target must match CRAN
 
 CRAN's macOS binary R is built against a specific Xcode SDK with a specific
-`MACOSX_DEPLOYMENT_TARGET`. The current binary targets (per `R Installation
-and Administration` §"Building binary packages", r-svn
-[`doc/manual/R-admin.texi:5854-5867`](https://github.com/r-devel/r-svn/blob/master/doc/manual/R-admin.texi#L5854))
+`MACOSX_DEPLOYMENT_TARGET`. The current binary targets (per [R Installation
+and Administration, "Building binary
+packages"](https://github.com/r-devel/r-svn/blob/d7049b9c6335346e4448f5e3718c979a1c3ad2d2/doc/manual/R-admin.texi))
 are:
 
 | Arch | macOS target | Deployment floor |
@@ -174,8 +174,8 @@ runners:
     xcrun --show-sdk-version || true
 ```
 
-The values track
-[`r-devel/actions/setup-macos-tools@ec72e88`](https://github.com/r-devel/actions/blob/ec72e88/setup-macos-tools/action.yml#L17-L28).
+The values track the "Set SDK to match CRAN" step of
+[`r-devel/actions/setup-macos-tools@ec72e88`](https://github.com/r-devel/actions/blob/ec72e88/setup-macos-tools/action.yml).
 The scaffolded template inlines (rather than `uses:`-references) those lines
 so the workflow stays hermetic if the upstream repo is ever archived or
 restructured.
@@ -228,8 +228,8 @@ built against:
 The tarball URL pins a specific release date so the workflow is reproducible
 across re-runs. Bump the URL when the upstream repo cuts a new release; the
 underlying library versions only change when CRAN itself updates them.
-Inlined from
-[`r-devel/actions/setup-macos-tools@ec72e88`](https://github.com/r-devel/actions/blob/ec72e88/setup-macos-tools/action.yml#L44-L53)
+Inlined from the "Download CRAN system libraries" step of
+[`r-devel/actions/setup-macos-tools@ec72e88`](https://github.com/r-devel/actions/blob/ec72e88/setup-macos-tools/action.yml)
 for the same hermetic reason as Gotcha 5.
 
 **What was skipped from upstream** (and why):

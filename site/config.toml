@@ -9,7 +9,7 @@ generate_feeds = false
 index_format = "elasticlunr_json"
 
 [link_checker]
-internal_level = "warn"
+internal_level = "error"
 
 [markdown]
 insert_anchor_links = "left"

@@ -209,7 +209,7 @@ assembles a `data.frame` (`VECSXP` + `names` + compact `row.names` +
 The fill is **flattened** to a single `(column, row-range)` work-list rather
 than one task per column. There are two axes of parallelism — column-granular
 (one task per column) and row-slice-granular (split one column into row ranges,
-as [`with_r_vec`](#with_r_vec) does). The builder does not choose: it splits
+as [`with_r_vec`](#chunk-based-fill) does). The builder does not choose: it splits
 each column into `chunk_size = max(1, nrow / (current_num_threads() * 4))`-row
 chunks (same heuristic as `with_r_vec`) and runs a single `par_iter` over the
 combined list, letting rayon's work-stealing balance both axes:
@@ -249,7 +249,7 @@ let df: SEXP = RDataFrameBuilder::new(1000)
 
 - `column::<T>(name, f)` adds a native-typed column (`f64`/`i32`/`RLogical`/`u8`/
   `Rcomplex`). The fill closure has the same `(chunk, offset)` shape as
-  [`with_r_vec`](#with_r_vec) and writes directly into R memory.
+  [`with_r_vec`](#chunk-based-fill) and writes directly into R memory.
 - `column_str(name, f)` adds a character (`STRSXP`) column. Because building
   `CHARSXP`s requires R allocation (forbidden on Rayon threads), the per-row
   `Option<String>` values are computed in parallel into a plain `Vec`, then the

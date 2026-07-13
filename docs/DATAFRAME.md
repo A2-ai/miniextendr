@@ -186,9 +186,9 @@ struct ComplexRow {
 
 In **struct** `DataFrameRow`s the columns land as `Vec<C>` and convert to a VECSXP list-column. In **enum** `DataFrameRow`s they land as `Vec<Option<C>>` with `None` for variants that don't carry the field — these convert to a VECSXP list-column with `NULL` for absent rows. See [`CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md#vecoptionc-for-collection-element-types) for the full set of supported `C`.
 
-`HashMap<K, V>` / `BTreeMap<K, V>` variant fields expand to two parallel list-columns (see [Map fields](#map-fields--parallel-list-column-expansion) below). Struct-typed and nested-enum variant fields are covered in [Nested enum fields](#nested-enum-fields--flatten--opt-outs) below.
+`HashMap<K, V>` / `BTreeMap<K, V>` variant fields expand to two parallel list-columns (see [Map fields](#map-fields-parallel-list-column-expansion) below). Struct-typed and nested-enum variant fields are covered in [Nested enum fields](#nested-enum-fields-flatten-and-opt-outs) below.
 
-### Map fields — parallel list-column expansion
+### Map fields: parallel list-column expansion
 
 `HashMap<K, V>` and `BTreeMap<K, V>` fields on enum variants expand to two parallel list-columns named `<field>_keys` and `<field>_values`. Each cell holds a vector of K and a vector of V respectively, in the same entry order:
 
@@ -236,7 +236,7 @@ struct Row {
 
 Multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field, or an import alias to a newtype wrapper, if a non-`DataFrameRow` stdlib type needs to be stored.
 
-### Nested enum fields — flatten + opt-outs
+### Nested enum fields: flatten and opt-outs
 
 A variant field whose type is itself a `DataFrameRow` enum flattens into prefixed columns by default. The inner enum must `#[derive(DataFrameRow)]`; the outer field's name acts as a prefix. The inner enum should use `#[dataframe(tag = "variant")]` so that its discriminant column merges cleanly as `<field>_variant`:
 

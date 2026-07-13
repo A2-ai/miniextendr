@@ -188,6 +188,34 @@ jobs:
               - '**/Cargo.lock'
               - 'README*'
               - 'docs/**'
+              - 'site/**'
+              - 'scripts/docs-to-site.sh'
+
+  # ===========================================================================
+  # Docs link check (Zola internal anchors + external URLs, see
+  # plans/2026-07-13-audit-doc-link-anchors.md). Fast, no R/Rust build —
+  # gated on doc/site changes only so it also runs on docs-only PRs that
+  # skip the rust/r filters below.
+  # ===========================================================================
+  docs-link-check:
+    name: Docs Link Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Install Zola
+        run: |
+          ZOLA_VERSION="0.22.1"
+          curl -sL "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz
+          sudo mv zola /usr/local/bin/
+
+      - name: Check doc links (internal anchors + external URLs)
+        run: just site-check
 
   # ===========================================================================
   # Sync checks (vendor, templates, lint parser)
@@ -1721,6 +1749,7 @@ jobs:
       - generated-files-check
       - version-check
       - sync-checks
+      - docs-link-check
       - rust-lint
       - rust-tests
       - changes
@@ -1743,6 +1772,7 @@ jobs:
             "${{ needs.generated-files-check.result }}"
             "${{ needs.version-check.result }}"
             "${{ needs.sync-checks.result }}"
+            "${{ needs.docs-link-check.result }}"
             "${{ needs.rust-lint.result }}"
             "${{ needs.rust-tests.result }}"
             "${{ needs.changes.result }}"
