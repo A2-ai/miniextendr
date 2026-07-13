@@ -16,7 +16,7 @@ pub struct OptionSelfLookup {
 
 /// @name rpkg_option_self_lookup
 /// @aliases OptionSelfLookup
-#[miniextendr]
+#[miniextendr(env)]
 impl OptionSelfLookup {
     /// Create a new entry directly.
     /// @param id Integer id.

@@ -94,7 +94,7 @@ pub struct ErrorInRCounter {
     value: i32,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl ErrorInRCounter {
     /// Create a new counter.
     fn new() -> Self {
@@ -213,7 +213,7 @@ pub struct FallibleImpl {
     value: i32,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl FallibleImpl {
     /// Create a new FallibleImpl.
     fn new(value: i32) -> Self {
@@ -227,7 +227,7 @@ impl FallibleImpl {
 }
 
 /// Fallible trait implementation for FallibleImpl with error_in_r on each method.
-#[miniextendr]
+#[miniextendr(env)]
 impl Fallible for FallibleImpl {
     fn get_value(&self) -> i32 {
         self.value

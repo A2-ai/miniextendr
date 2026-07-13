@@ -45,7 +45,7 @@ impl SimpleCounter {
 // Bare (default class system): #1115 is fixed — r6 trait wrappers are now
 // class-scoped (`Type$Trait$method`), so this flipping to r6 under r6-default
 // no longer collides with R6TraitCounter's explicit r6 Counter impl.
-#[miniextendr]
+#[miniextendr(env)]
 impl Counter for SimpleCounter {
     const MAX_VALUE: i32 = i32::MAX;
 
@@ -69,7 +69,7 @@ impl Counter for SimpleCounter {
 
 // region: R-exposed functions for testing (using impl block pattern)
 
-#[miniextendr]
+#[miniextendr(env)]
 impl SimpleCounter {
     /// Create a new counter with given initial value.
     fn new_counter(initial: i32) -> Self {
@@ -106,7 +106,7 @@ impl PanickyCounter {
 // Bare (default class system): #1115 is fixed — r6 trait wrappers are now
 // class-scoped (`Type$Trait$method`), so this flipping to r6 under r6-default
 // no longer collides with R6TraitCounter's explicit r6 Counter impl.
-#[miniextendr]
+#[miniextendr(env)]
 impl Counter for PanickyCounter {
     const MAX_VALUE: i32 = 1000; // PanickyCounter has a lower max
 
@@ -133,7 +133,7 @@ impl Counter for PanickyCounter {
     }
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl PanickyCounter {
     /// Create a new panicky counter.
     fn new_panicky(initial: i32) -> Self {

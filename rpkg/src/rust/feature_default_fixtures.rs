@@ -94,6 +94,7 @@ pub struct FdefaultProbe {
 }
 
 /// Class-system probe generated under the build's default class system.
+// deliberately bare: flips under r6-default/s7-default (#1113)
 #[miniextendr]
 impl FdefaultProbe {
     /// Creates a new probe holding `value`.

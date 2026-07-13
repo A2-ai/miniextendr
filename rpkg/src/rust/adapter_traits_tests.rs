@@ -424,7 +424,7 @@ impl IterableVec {
 }
 
 /// RIterator blanket trait ABI registration for IterableVecIter.
-#[miniextendr(blanket)]
+#[miniextendr(env, blanket)]
 impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
     type Item = i32;
 
@@ -456,7 +456,7 @@ impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
 }
 
 /// IterableVecIter blanket impl: collect all remaining items.
-#[miniextendr(blanket)]
+#[miniextendr(env, blanket)]
 impl IterableVecIter {
     fn collect_all(&self) -> Vec<i32> {
         let mut result = Vec::new();
@@ -482,7 +482,7 @@ impl fmt::Display for ExportControlTraitPoint {
 }
 
 /// @keywords internal
-#[miniextendr(internal)]
+#[miniextendr(env, internal)]
 impl ExportControlTraitPoint {
     fn new(x: i32) -> Self {
         ExportControlTraitPoint { x }
@@ -490,13 +490,13 @@ impl ExportControlTraitPoint {
 }
 
 /// Internal trait impl: should have @keywords internal, no @export
-#[miniextendr(internal)]
+#[miniextendr(env, internal)]
 impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint {}
 
 /// Noexport trait impl: no Rd contribution at all (no alias, no usage, no
 /// @export) — distinct from `internal` above, which stays documented under
 /// `@keywords internal`. See audit A10.
-#[miniextendr(noexport)]
+#[miniextendr(env, noexport)]
 impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint {}
 // endregion
 

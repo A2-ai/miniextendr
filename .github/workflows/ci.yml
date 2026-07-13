@@ -1173,16 +1173,20 @@ jobs:
   # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
   # features on top of the auto-detected base set and runs testthat against it.
   #
-  # The extras and worker-default legs run the full suite (their features are
-  # additive/transparent). The r6-default, s7-default, and fast-default legs
-  # flip codegen semantics for every bare #[miniextendr] impl block / coerced
-  # parameter / precondition in the package, so the pre-existing suite fails
-  # by design under them — they run only the feature-default fixture tests
-  # (tests/testthat/test-feature-defaults.R). #1113 tracks broadening them.
+  # The extras, worker-default, r6-default, and s7-default legs run the full
+  # suite. extras/worker-default features are additive/transparent; the class
+  # legs became full-suite-safe in #1113, which made every #[miniextendr] impl
+  # block in rpkg explicitly `env` — the class flip now only reaches the one
+  # deliberately bare probe (FdefaultProbe in feature_default_fixtures.rs) plus
+  # the divergence assertions in tests/testthat/test-feature-defaults.R.
+  # The strict-default, coerce-default, and fast-default legs stay filtered to
+  # the feature-default fixture tests: they flip conversion semantics /
+  # preconditions for every parameter suite-wide, so the pre-existing suite
+  # fails by design under them.
   # The fast-default leg additionally runs the two fast_default unit tests in
   # miniextendr-macros/src/tests.rs, which no other job compiles+runs.
   #
-  # Weekly-only + workflow_dispatch: five extra full rpkg builds are too heavy
+  # Weekly-only + workflow_dispatch: seven extra full rpkg builds are too heavy
   # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
   # via the job summary (same pattern as gctorture-nightly.yml).
   feature-legs:
@@ -1200,15 +1204,25 @@ jobs:
           - leg: worker-default
             features: worker-default
             filter: ""
-          # strict-default rides with r6, coerce-default with s7: under
+          # The class legs run the full suite (#1113): rpkg's impl blocks are
+          # explicitly `env`, so the class flip only reaches the deliberate
+          # probe. strict/coerce cannot ride on them — they flip conversion
+          # semantics suite-wide — so they get their own fixture-filtered
+          # rows. They must also stay separate from EACH OTHER: under
           # coerce-default, lossy-int params convert via R's integer native
           # type, which masks the strict/no_strict divergence the fixtures
-          # assert (#1112) — the two must stay on separate rows.
+          # assert (#1112).
           - leg: r6-default
-            features: r6-default,strict-default
-            filter: feature-defaults
+            features: r6-default
+            filter: ""
           - leg: s7-default
-            features: s7-default,coerce-default
+            features: s7-default
+            filter: ""
+          - leg: strict-default
+            features: strict-default
+            filter: feature-defaults
+          - leg: coerce-default
+            features: coerce-default
             filter: feature-defaults
           - leg: fast-default
             features: fast-default
@@ -1218,6 +1232,8 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
+      # gctorture coverage lives in the sharded r-stress-tests job + nightly.
+      MINIEXTENDR_SKIP_STRESS: "1"
 
     steps:
       - uses: actions/checkout@v7
