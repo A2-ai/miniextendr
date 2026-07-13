@@ -146,6 +146,9 @@ pub struct StructPreferNative(pub i32);
 /// struct_prefer_native(3L)
 pub fn struct_prefer_native(x: i32) -> StructPreferNative {
     let value = StructPreferNative(x);
+    // Read the inner field: unlike the IntoList-deriving siblings above, the
+    // RNativeType derive only emits consts and pointer casts, so without this
+    // read rustc's dead_code lint flags field `0` as never read (lib test).
     debug_assert_eq!(value.0, x);
     value
 }
