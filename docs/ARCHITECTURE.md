@@ -64,7 +64,7 @@ When R calls a miniextendr function, the path is:
 R: my_function(x, y)
   │
   ▼
-Rust: C_my_function(x_sexp, y_sexp)     [registered via linkme + miniextendr_init!]
+Rust: C_mypkg_my_function(x_sexp, y_sexp) [registered via linkme + miniextendr_init!]
   │
   ▼
 Rust: with_r_unwind_protect(|| {         [main thread, unwind-protected]

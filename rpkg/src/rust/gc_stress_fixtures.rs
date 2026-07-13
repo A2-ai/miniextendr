@@ -581,6 +581,51 @@ pub fn gc_stress_group_by() -> SEXP {
     out.build().into_sexp()
 }
 
+/// Exercise `DataFrame::group_by_multi` (composite keys) + `GroupedDataFrame::frames`
+/// SEXP handling under GC pressure.
+///
+/// Same SEXP-across-allocations paths as [`gc_stress_group_by`] — the source
+/// frame held across per-group `select_rows`, and each rooted `BuiltDataFrame`
+/// held until the builder push re-roots it — but keyed by a `GroupKey::Tuple`
+/// over two columns (character with NAs × integer), so it drives the
+/// composite-key bucketing/ordering path too. Synthesizes a 60-row frame internally.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_group_by_multi() -> SEXP {
+    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
+
+    let df = DataFrame::builder(60)
+        .column::<i32>("v", |chunk, offset| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = i32::try_from(offset + i).expect("row index exceeds i32");
+            }
+        })
+        .column_str("g", |i| match i % 4 {
+            0 => Some("a".to_string()),
+            1 => Some("b".to_string()),
+            2 => Some("c".to_string()),
+            _ => None,
+        })
+        .column::<i32>("k", |chunk, offset| {
+            for (i, slot) in chunk.iter_mut().enumerate() {
+                *slot = i32::try_from((offset + i) % 3).expect("key fits i32");
+            }
+        })
+        .build();
+
+    let grouped = df
+        .group_by_multi(&["g", "k"])
+        .expect("gc_stress_group_by_multi: group_by_multi failed");
+    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    for (key, sub) in grouped.frames() {
+        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
+        // push, which protects it in the builder's scope before `sub` drops.
+        out = out.push(key.label(), *sub);
+    }
+    out.build().into_sexp()
+}
+
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
 /// Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
 /// @param x An integer, numeric, or character vector to convert.

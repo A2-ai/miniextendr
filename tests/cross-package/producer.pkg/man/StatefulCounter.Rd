@@ -39,8 +39,6 @@ StatefulCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-StatefulCounter  Class
-
 Get current value (inherent method)
 
 Get how many history entries exist

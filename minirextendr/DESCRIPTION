@@ -19,6 +19,7 @@ Imports:
     fs,
     usethis (>= 2.0.0)
 Suggests:
+    callr,
     devtools,
     jsonlite,
     knitr,

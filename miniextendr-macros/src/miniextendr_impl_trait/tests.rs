@@ -434,7 +434,9 @@ fn test_s7_trait_impl_emits_fast_path_shortcut() {
         result
     );
     assert!(
-        result.contains(".Call(C_Foo__Bar__value, .call = match.call(), self@.ptr)"),
+        result.contains(
+            ".Call(C_miniextendr_macros_Foo__Bar__value, .call = match.call(), self@.ptr)"
+        ),
         "shortcut should .Call through self@.ptr directly, got:\n{}",
         result
     );
@@ -547,7 +549,9 @@ fn test_bug1_x_prefixed_param_not_corrupted_s4() {
     .unwrap();
 
     assert!(
-        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"),
+        result.contains(
+            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"
+        ),
         "x_factor must reach the .Call() intact, got:\n{}",
         result
     );
@@ -578,12 +582,16 @@ fn test_bug1_x_prefixed_param_not_corrupted_s7() {
     .unwrap();
 
     assert!(
-        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"),
+        result.contains(
+            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"
+        ),
         "generic body: x_factor must reach the .Call() intact, got:\n{}",
         result
     );
     assert!(
-        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), self@.ptr, x_factor)"),
+        result.contains(
+            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = match.call(), self@.ptr, x_factor)"
+        ),
         "shortcut: x_factor must reach the .Call() intact, got:\n{}",
         result
     );
@@ -612,7 +620,9 @@ fn test_bug1_x_prefixed_param_not_corrupted_r6() {
     .unwrap();
 
     assert!(
-        result.contains(".Call(C_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"),
+        result.contains(
+            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = match.call(), .ptr, x_factor)"
+        ),
         "x_factor must reach the .Call() intact, got:\n{}",
         result
     );

@@ -706,6 +706,164 @@ test_that("miniextendr_build() exports a newly added function in a single pass (
 })
 
 # -----------------------------------------------------------------------------
+# miniextendr_build() removal/rename self-heal (#1288)
+# -----------------------------------------------------------------------------
+
+# Sibling of the #898 single-pass test above, but for the opposite direction:
+# removing or renaming an exported #[miniextendr] function. That case dies at
+# Step 3 rather than lagging by one build -- the on-disk NAMESPACE is a
+# *superset* of the freshly regenerated wrappers, and R CMD INSTALL's
+# test-load aborts with "undefined exports: <old_name>" before document() gets
+# a chance to drop the stale entry. miniextendr_build() now defers that Step-3
+# failure, lets document() reconcile NAMESPACE, then forces a Step-5 retry --
+# so the rename still heals in a single miniextendr_build() pass.
+#
+# This also pins #1294 (the mid-build source-tree restore): Step 3's
+# build = TRUE install runs bootstrap.R in the SOURCE tree, sealing
+# inst/vendor.tar.xz there by design. Without the mid-build restore, Steps
+# 4/5 run latched in tarball mode, wrapper regeneration is skipped (the
+# Makevars #1022 guard), and the self-heal breaks for EVERY post-first-build
+# export change -- additive too. The `add_renamed %in% exports_after`
+# assertion below IS the additive-second-build regression pin for #1294 (a
+# new export appearing on a second build), so no separate additive e2e is
+# needed. Each build additionally asserts the latch is absent and the
+# manifest byte-identical once miniextendr_build() returns.
+#
+# Same monorepo/offline scaffold shape as #898 (local-repo `.git` keeps
+# configure in source mode; crates.io deps vendored via `cargo vendor`), but
+# this needs TWO miniextendr_build() passes: one to install the scaffold's
+# original `add`/`hello` exports, then a second (the one under test) after
+# renaming `add` -> `add_renamed` in src/rust/lib.rs.
+test_that("miniextendr_build() heals a removed/renamed export in a single pass (#1288)", {
+  skip_e2e()
+  miniextendr_path <- find_miniextendr_repo()
+
+  tmp <- tempfile("removal-rename-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  suppressMessages({
+    create_miniextendr_monorepo(tmp, package = "sprename", crate_name = "sprename-rs",
+                                local_path = miniextendr_path, open = FALSE)
+  })
+  rpkg_path <- file.path(tmp, "sprename")
+
+  # Vendor the monorepo's crates.io deps for the offline build (mirrors #898).
+  suppressWarnings({
+    withr::with_dir(rpkg_path, {
+      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "vendor"),
+              stdout = FALSE, stderr = FALSE)
+    })
+  })
+
+  # #1294 assertion helpers: after every miniextendr_build() return, the dev
+  # source tree must be restored -- no bootstrap.R-sealed latch left behind,
+  # and src/rust/Cargo.toml byte-identical to its pre-build snapshot.
+  latch_path <- file.path(rpkg_path, "inst", "vendor.tar.xz")
+  manifest_path <- file.path(rpkg_path, "src", "rust", "Cargo.toml")
+
+  # Probe the INSTALLED image in a fresh R subprocess. The building session
+  # is unsuitable for these assertions: document()'s load_all leaves a
+  # source-backed dev namespace loaded (exports = pre-roxygenize NAMESPACE
+  # intersected with loaded objects), and reloading the installed namespace
+  # in-session after build 2 reuses the session's earlier native-symbol
+  # registration from build 1's DLL at the same installed path (fresh R code
+  # + stale registration -> "object 'C_add_renamed' not found"). A clean
+  # child process sees exactly what an end user's library(sprename) sees.
+  probe_installed <- function(lib) {
+    callr::r(
+      function(lib) {
+        .libPaths(c(lib, .libPaths()))
+        exports <- getNamespaceExports("sprename")
+        value <- tryCatch(sprename::add_renamed(2, 3),
+                          error = function(e) conditionMessage(e))
+        list(exports = exports, value = value)
+      },
+      args = list(lib = lib)
+    )
+  }
+
+  # Install the throwaway package into a temp library so the dev/CI base library
+  # stays clean: miniextendr_build(install = TRUE) lands in .libPaths()[1].
+  templib <- file.path(tmp, "library")
+  dir.create(templib)
+
+  withr::with_libpaths(templib, action = "prefix", {
+    # First pass: install the scaffold as-is, establishing the baseline
+    # NAMESPACE that exports `add`.
+    manifest_snap_1 <- readLines(manifest_path, warn = FALSE)
+    suppressMessages(
+      miniextendr_build(rpkg_path, install = TRUE)
+    )
+    expect_false(file.exists(latch_path),
+                 info = "build 1 left inst/vendor.tar.xz behind (#1294 restore regression)")
+    expect_identical(readLines(manifest_path, warn = FALSE), manifest_snap_1,
+                     info = "build 1 left src/rust/Cargo.toml frozen (#1294 restore regression)")
+
+    probe_1 <- probe_installed(templib)
+    expect_true("add" %in% probe_1$exports)
+
+    # Unload the dev namespace document()'s load_all left in this session
+    # before build 2 reinstalls over the same library path (#1000 stale-.rdb
+    # hygiene; mirrors the standalone e2e's unload-before-library).
+    if ("sprename" %in% loadedNamespaces()) pkgload::unload("sprename", quiet = TRUE)
+
+    # Rename the exported `add` function. Exact-string substring rename, NOT a
+    # regex over "add" -- a regex would also corrupt unrelated identifiers
+    # (substring-rename gotcha, see project memory).
+    lib_rs <- file.path(rpkg_path, "src", "rust", "lib.rs")
+    lib_content <- readLines(lib_rs)
+    lib_content <- sub("pub fn add(", "pub fn add_renamed(", lib_content, fixed = TRUE)
+    writeLines(lib_content, lib_rs)
+
+    # The single pass under test. If #1288 regresses, Step 3's install aborts
+    # ("undefined exports: add") and propagates instead of healing, and this
+    # miniextendr_build() call errors instead of returning. Two warnings are
+    # part of the healing pass's contract: minirextendr's own deferral
+    # warning, and pkgload's setup_ns_exports() superset warning from Step
+    # 4's load_all (the "wrinkle 1" mechanism that lets document() survive
+    # the stale NAMESPACE) -- assert both are present among ALL warnings
+    # raised. capture_warnings() (not nested expect_warning()) because
+    # load_all's internal unload/reload cycle can re-emit the pkgload
+    # superset warning more than once per build; nested expect_warning()
+    # only muffles the FIRST occurrence matching each regex, so a repeat
+    # occurrence leaks past both handlers to testthat's own stray-warning
+    # watcher and inflates the run's WARN tally without failing the test.
+    # capture_warnings() unconditionally muffles every warning it sees, so
+    # nothing leaks regardless of how many times a message repeats.
+    manifest_snap_2 <- readLines(manifest_path, warn = FALSE)
+    warnings_seen <- testthat::capture_warnings(
+      suppressMessages(
+        miniextendr_build(rpkg_path, install = TRUE)
+      )
+    )
+    expect_true(any(grepl("Install failed before NAMESPACE reconciliation", warnings_seen)))
+    expect_true(any(grepl("Objects listed as exports, but not present", warnings_seen)))
+    expect_false(file.exists(latch_path),
+                 info = "build 2 left inst/vendor.tar.xz behind (#1294 restore regression)")
+    expect_identical(readLines(manifest_path, warn = FALSE), manifest_snap_2,
+                     info = "build 2 left src/rust/Cargo.toml frozen (#1294 restore regression)")
+
+    # Behavioural assertions against the installed image (fresh subprocess).
+    probe_2 <- probe_installed(templib)
+    expect_true("add_renamed" %in% probe_2$exports,
+                info = paste0(
+                  "add_renamed missing from getNamespaceExports() after a single ",
+                  "miniextendr_build() following a rename -- #1288 regression. ",
+                  "Exports: ", paste(probe_2$exports, collapse = ", ")
+                ))
+    expect_false("add" %in% probe_2$exports,
+                 info = "stale `add` export should have been dropped by document()")
+
+    # And it actually resolves + runs (the wrapper is wired, not just named).
+    expect_equal(probe_2$value, 5)
+
+    # Drop build 2's dev namespace so later tests don't see a loaded
+    # namespace pointing into this test's soon-deleted temp library.
+    if ("sprename" %in% loadedNamespaces()) pkgload::unload("sprename", quiet = TRUE)
+  })
+})
+
+# -----------------------------------------------------------------------------
 # MINIEXTENDR_FORCE_WRAPPER_GEN propagation into nested R CMD INSTALL (#911)
 # -----------------------------------------------------------------------------
 

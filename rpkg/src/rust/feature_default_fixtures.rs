@@ -1,7 +1,7 @@
 //! Runtime fixtures for the feature-controlled `#[miniextendr]` option
 //! defaults (`worker-default` / `strict-default` / `coerce-default` /
-//! `r6-default` / `s7-default`) and their `no_*` opt-outs. See
-//! docs/FEATURE_DEFAULTS.md.
+//! `fast-default` / `r6-default` / `s7-default`) and their `no_*` opt-outs.
+//! See docs/FEATURE_DEFAULTS.md.
 //!
 //! Compiled unconditionally: on a default build every pair behaves identically
 //! (the opt-out keyword cancels a default that isn't on), which
@@ -66,6 +66,24 @@ pub fn fdefault_no_coerce_flag(x: bool) -> bool {
     x
 }
 
+/// i32 identity, bare (no knob attrs): under `fast-default` the R-side
+/// `stopifnot(...)` precondition is dropped, so bad input surfaces as a
+/// `rust_error` from `TryFromSexp` instead; otherwise it raises the
+/// stopifnot-shaped error.
+/// @param x Integer-like scalar.
+#[miniextendr]
+pub fn fdefault_fast_bare_i32(x: i32) -> i32 {
+    x
+}
+
+/// Same as `fdefault_fast_bare_i32` with `no_fast`: preconditions are
+/// restored even under `fast-default`.
+/// @param x Integer-like scalar.
+#[miniextendr(no_fast)]
+pub fn fdefault_no_fast_i32(x: i32) -> i32 {
+    x
+}
+
 // region: class-system probe
 
 /// Probe whose bare `#[miniextendr] impl` picks up the build's default class
@@ -76,7 +94,7 @@ pub struct FdefaultProbe {
 }
 
 /// Class-system probe generated under the build's default class system.
-/// @param value Integer stored in the probe.
+// deliberately bare: flips under r6-default/s7-default (#1113)
 #[miniextendr]
 impl FdefaultProbe {
     /// Creates a new probe holding `value`.

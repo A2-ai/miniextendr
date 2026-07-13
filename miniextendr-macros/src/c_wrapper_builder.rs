@@ -182,7 +182,7 @@ pub enum ReturnHandling {
 pub struct CWrapperContext {
     /// Identifier of the original Rust function or method being wrapped.
     pub fn_ident: syn::Ident,
-    /// Identifier for the generated C wrapper (e.g., `C_foo` or `C_Type__method`).
+    /// Identifier for the generated C wrapper (e.g., `C_<crate>_foo` or `C_<crate>_Type__method`).
     pub c_ident: syn::Ident,
     /// Identifier of the `R_WRAPPER_*` or `R_WRAPPERS_IMPL_*` const that holds the
     /// generated R wrapper code string. Used for rustdoc cross-references.
@@ -645,6 +645,18 @@ impl CWrapperContext {
         };
 
         // Panic error handling: return tagged error value (the only mode).
+        //
+        // #1245 Gap 2 (not fixed here): this block is reused below for the
+        // OUTER `Err(payload) => #panic_error_handling` arm — the defensive
+        // case where the whole worker-dispatch closure panics directly
+        // (rather than `run_on_worker` returning `Err`, which is handled
+        // separately just above and already carries a location-folded
+        // message per #1245 Gap 1). This site stringifies via
+        // `panic_payload_to_string` (no location fold), so a panic reaching
+        // it loses its `(at file:line)` suffix. Near-no-op in practice — the
+        // panics that actually reach it are framework-internal (e.g.
+        // re-entrant `run_on_worker`), not user code. Fixing it properly
+        // would need `panic_message_with_location` made `pub`.
         let panic_error_handling = quote! {
             unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                 &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),

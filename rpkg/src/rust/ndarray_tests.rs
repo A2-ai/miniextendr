@@ -16,14 +16,13 @@ use miniextendr_api::{ExternalPtr, miniextendr};
 pub struct NdVec(Array1<f64>);
 
 /// NdVec methods: 1D numeric array operations, slicing, and conversion.
-/// @param data Numeric vector of array elements.
 /// @details `get`, `get_many`, `is_valid_index`, and `slice_1d` take 1-based
 ///   indices (R-idiomatic, matching the rest of the package). `get` errors on
 ///   an out-of-bounds or non-positive index; `get_many` returns `NA` per
 ///   out-of-bounds element instead (vectorized contract). `slice_1d` takes
 ///   1-based inclusive bounds (R's `x[start:end]` convention) and errors
 ///   unless `1 <= start <= end <= length`.
-#[miniextendr]
+#[miniextendr(env)]
 impl NdVec {
     fn new(data: Vec<f64>) -> Self {
         NdVec(Array1::from_vec(data))
@@ -152,13 +151,10 @@ impl NdVec {
 pub struct NdMatrix(Array2<f64>);
 
 /// NdMatrix methods: 2D numeric matrix operations, row/col access, and conversion.
-/// @param nrow Integer number of rows.
-/// @param ncol Integer number of columns.
-/// @param data Numeric vector of matrix elements (in row-major order).
 /// @details `get_2d`, `row`, and `col` take 1-based indices (R-idiomatic,
 ///   matching the rest of the package) and error on an out-of-bounds or
 ///   non-positive index.
-#[miniextendr]
+#[miniextendr(env)]
 impl NdMatrix {
     fn new(data: Array2<f64>) -> Self {
         NdMatrix(data)
@@ -295,8 +291,6 @@ impl NdMatrix {
 pub struct NdArrayDyn(ArrayD<f64>);
 
 /// NdArrayDyn methods: N-dimensional array operations, indexing, and reshaping.
-/// @param shape Integer vector specifying array dimensions.
-/// @param data Numeric vector of array elements.
 /// @details `get_nd`, `is_valid_nd`, `slice_nd`, and `axis_slice` take
 ///   1-based indices (R-idiomatic, matching the rest of the package).
 ///   `slice_nd` takes 1-based inclusive per-dimension bounds (R's
@@ -304,7 +298,7 @@ pub struct NdArrayDyn(ArrayD<f64>);
 ///   `MARGIN` convention (1 = first dimension). `get_nd`, `reshape`,
 ///   `slice_nd`, and `axis_slice` error on an out-of-bounds/invalid argument
 ///   instead of silently yielding no value.
-#[miniextendr]
+#[miniextendr(env)]
 impl NdArrayDyn {
     fn new(shape: Vec<i32>, data: Vec<f64>) -> Self {
         let shape_usize: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
@@ -470,12 +464,11 @@ impl NdArrayDyn {
 pub struct NdIntVec(Array1<i32>);
 
 /// NdIntVec methods: 1D integer array operations, slicing, and conversion.
-/// @param data Integer vector of array elements.
 /// @details `get` and `slice_1d` take 1-based indices (R-idiomatic, matching
 ///   the rest of the package) and error on out-of-bounds or non-positive
 ///   indices. `slice_1d` takes 1-based inclusive bounds (R's `x[start:end]`
 ///   convention) and errors unless `1 <= start <= end <= length`.
-#[miniextendr]
+#[miniextendr(env)]
 impl NdIntVec {
     fn new(data: Vec<i32>) -> Self {
         NdIntVec(Array1::from_vec(data))

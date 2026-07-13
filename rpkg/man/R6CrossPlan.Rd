@@ -15,6 +15,8 @@ R6 builder fixture for cross-class return wrapping.
     \item \href{#method-R6CrossPlan-initialize}{\code{R6CrossPlan$new()}}
     \item \href{#method-R6CrossPlan-build}{\code{R6CrossPlan$build()}}
     \item \href{#method-R6CrossPlan-build_s7}{\code{R6CrossPlan$build_s7()}}
+    \item \href{#method-R6CrossPlan-try_build}{\code{R6CrossPlan$try_build()}}
+    \item \href{#method-R6CrossPlan-checked_build}{\code{R6CrossPlan$checked_build()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -74,6 +76,52 @@ The write-time resolver keys off the \emph{returned} class, so the emitted wrapp
     \describe{
       \item{\code{width}}{Board width.}
       \item{\code{height}}{Board height.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6CrossPlan-try_build"></a>}}
+\if{latex}{\out{\hypertarget{method-R6CrossPlan-try_build}{}}}
+\subsection{\code{R6CrossPlan$try_build()}}{
+  Materialize this plan into an \code{R6CrossBoard}, or \code{None} when \code{fail} is set.
+
+Exercises the \verb{Option<Class>} cross-class return path: the C wrapper already unwraps \verb{Option<T>} and raises on \code{None} (\code{ReturnHandling::OptionIntoRUnwrap}), so on \code{Some} the successful \code{.val} is a bare pointer wrapped with \code{R6CrossBoard}'s constructor, identical to the bare-class \code{build()} above.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6CrossPlan$try_build(width, height, fail)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{width}}{Board width.}
+      \item{\code{height}}{Board height.}
+      \item{\code{fail}}{When true, returns \code{None} instead of a board.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6CrossPlan-checked_build"></a>}}
+\if{latex}{\out{\hypertarget{method-R6CrossPlan-checked_build}{}}}
+\subsection{\code{R6CrossPlan$checked_build()}}{
+  Materialize this plan into an \code{R6CrossBoard}, or an \code{Err} message when \code{fail} is set.
+
+Exercises the \verb{Result<Class, E>} cross-class return path (\code{ReturnHandling::ResultIntoR}).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6CrossPlan$checked_build(width, height, fail)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{width}}{Board width.}
+      \item{\code{height}}{Board height.}
+      \item{\code{fail}}{When true, returns an \code{Err} instead of a board.}
     }
     \if{html}{\out{</div>}}
   }

@@ -76,6 +76,18 @@ NULL
 #' @name s3_value
 NULL
 
+#' Return the constructor dots count via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name impl_dots_s3_ctor_dots
+NULL
+
+#' Add a value and the number of method dots via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name impl_dots_s3_add_with_dots
+NULL
+
 #' Get current mode (S7)
 #' @param x An object.
 #' @param ... Additional arguments.

@@ -45,7 +45,9 @@ pub enum LintCode {
     /// `into_sexp()` call inside a `vec!`/array literal — unprotected SEXP across allocations (UAF).
     MXL302,
     /// Two `#[miniextendr]` trait impls collapse to the same vtable symbol
-    /// (`__VTABLE_{TRAIT}_FOR_{TYPE}`) after the macro's case-folding.
+    /// (`__VTABLE_{CRATE}_{TRAIT}_FOR_{TYPE}`; the crate prefix is constant
+    /// within one crate, so the rule compares the crate-invariant suffix)
+    /// after the macro's case-folding.
     MXL303,
     // endregion
 }

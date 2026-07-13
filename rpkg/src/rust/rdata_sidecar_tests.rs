@@ -134,8 +134,6 @@ pub struct SidecarS3 {
 }
 
 /// S3 class registration for SidecarS3 (enables $ method dispatch for sidecar fields).
-/// @param x An object.
-/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl SidecarS3 {}
 

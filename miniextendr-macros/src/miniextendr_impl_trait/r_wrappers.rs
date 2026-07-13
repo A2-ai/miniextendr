@@ -742,10 +742,7 @@ fn generate_trait_s7_r_wrapper(
                 if pname == "self" {
                     continue;
                 }
-                let documented = method
-                    .param_tags
-                    .iter()
-                    .any(|t| t.starts_with(&format!("@param {}", pname)));
+                let documented = crate::roxygen::param_documented(&method.param_tags, pname);
                 if documented {
                     continue;
                 }

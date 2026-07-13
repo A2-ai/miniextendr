@@ -287,6 +287,51 @@ pub struct ClassNameEntry {
 // SAFETY: All fields are &'static str — immutable and valid for program lifetime.
 unsafe impl Sync for ClassNameEntry {}
 
+/// Build the `rust_type → ClassNameEntry` lookup used by every placeholder
+/// resolver in `write_r_wrappers_to_file`.
+///
+/// Multiple labeled `#[miniextendr]` impl blocks on one type each register a
+/// `ClassNameEntry` (#1242) — the class name is a property of the *type*, so
+/// identical duplicates collapse here. *Conflicting* registrations (same
+/// `rust_type`, different `r_class_name` or `class_system` — e.g. two labeled
+/// blocks with disagreeing `class = "..."` overrides) panic: silently keeping
+/// whichever entry linkme ordered last would resolve `.__MX_CLASS_REF_*__`
+/// placeholders nondeterministically.
+///
+/// Host-only like `MX_CLASS_NAMES` itself — the consumers all live in the
+/// wrapper-writing path, which never runs on wasm32.
+#[cfg(not(target_arch = "wasm32"))]
+fn build_class_name_index<'a>(
+    entries: impl IntoIterator<Item = &'a ClassNameEntry>,
+) -> std::collections::HashMap<&'a str, &'a ClassNameEntry> {
+    use std::collections::hash_map::Entry;
+    let mut index = std::collections::HashMap::new();
+    for e in entries {
+        match index.entry(e.rust_type) {
+            Entry::Vacant(slot) => {
+                slot.insert(e);
+            }
+            Entry::Occupied(slot) => {
+                let prev = *slot.get();
+                if prev.r_class_name != e.r_class_name || prev.class_system != e.class_system {
+                    panic!(
+                        "conflicting class registrations for Rust type `{}`: \
+                         `{}` ({}) vs `{}` ({}). Multiple #[miniextendr] impl blocks \
+                         on one type must agree on the class system and any \
+                         `class = \"...\"` override.",
+                        e.rust_type,
+                        prev.r_class_name,
+                        prev.class_system,
+                        e.r_class_name,
+                        e.class_system,
+                    );
+                }
+            }
+        }
+    }
+    index
+}
+
 /// Entry documenting a sidecar (`#[r_data]`) property on an S7 ExternalPtr type.
 ///
 /// Emitted by `#[derive(ExternalPtr)] #[externalptr(s7)]` for each public `#[r_data]`
@@ -1256,9 +1301,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // the content for each placeholder. We avoid pulling in a regex dependency
     // by scanning for the sentinel prefix directly.
     {
-        use std::collections::HashMap;
-        let class_index: HashMap<&'static str, &ClassNameEntry> =
-            MX_CLASS_NAMES.iter().map(|e| (e.rust_type, e)).collect();
+        let class_index = build_class_name_index(MX_CLASS_NAMES.iter());
 
         // Two placeholder forms:
         //   .__MX_CLASS_REF_<RustName>__         → loud fallback on miss
@@ -1336,9 +1379,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // false positives, and write time is where we know whether `<RustName>` is
     // registered in this package.
     {
-        use std::collections::HashMap;
-        let class_index: HashMap<&'static str, &ClassNameEntry> =
-            MX_CLASS_NAMES.iter().map(|e| (e.rust_type, e)).collect();
+        let class_index = build_class_name_index(MX_CLASS_NAMES.iter());
 
         const PREFIX: &str = ".__MX_WRAP_RETURN_";
         const ARG_OPEN: &str = "__(";
@@ -1444,9 +1485,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // MX_CLASS_NAMES so a `class = "Override"` is honoured, then scan the final
     // content. This runs after all placeholder resolution so names are final.
     {
-        use std::collections::HashMap;
-        let class_index: HashMap<&str, &ClassNameEntry> =
-            MX_CLASS_NAMES.iter().map(|e| (e.rust_type, e)).collect();
+        let class_index = build_class_name_index(MX_CLASS_NAMES.iter());
         let accessor_producers = sidecar_accessor_names(&MX_S7_SIDECAR_PROPS, &class_index);
         if let Err(msg) = detect_duplicate_wrapper_defs(&content, &accessor_producers) {
             panic!("{msg}");
@@ -1880,9 +1919,7 @@ mod tests {
     /// This mirrors the logic in `write_r_wrappers_to_file` but operates on a caller-supplied
     /// slice so it can be called from unit tests without a live distributed_slice.
     fn resolve_class_refs(content: &str, entries: &[ClassNameEntry]) -> String {
-        use std::collections::HashMap;
-        let class_index: HashMap<&str, &ClassNameEntry> =
-            entries.iter().map(|e| (e.rust_type, e)).collect();
+        let class_index = build_class_name_index(entries.iter());
 
         const OR_ANY_PREFIX: &str = ".__MX_CLASS_REF_OR_ANY_";
         const PREFIX: &str = ".__MX_CLASS_REF_";
@@ -1923,12 +1960,52 @@ mod tests {
         result
     }
 
+    /// Two labeled impl blocks on one type register identical entries (#1242);
+    /// the index collapses them instead of treating the duplicate key as an error.
+    #[test]
+    fn class_name_index_dedups_identical_entries() {
+        let entries = [
+            ClassNameEntry {
+                rust_type: "Foo",
+                r_class_name: "Foo",
+                class_system: "env",
+            },
+            ClassNameEntry {
+                rust_type: "Foo",
+                r_class_name: "Foo",
+                class_system: "env",
+            },
+        ];
+        let index = build_class_name_index(entries.iter());
+        assert_eq!(index.len(), 1);
+        assert_eq!(index["Foo"].r_class_name, "Foo");
+    }
+
+    /// Disagreeing `class = "..."` overrides across blocks must fail loudly —
+    /// placeholder resolution would otherwise pick whichever entry linkme
+    /// ordered last.
+    #[test]
+    #[should_panic(expected = "conflicting class registrations for Rust type `Foo`")]
+    fn class_name_index_panics_on_conflicting_override() {
+        let entries = [
+            ClassNameEntry {
+                rust_type: "Foo",
+                r_class_name: "Foo",
+                class_system: "env",
+            },
+            ClassNameEntry {
+                rust_type: "Foo",
+                r_class_name: "FooOverride",
+                class_system: "env",
+            },
+        ];
+        let _ = build_class_name_index(entries.iter());
+    }
+
     /// Run the cross-class return wrapper resolver over `content` using
     /// `entries` as the class registry.
     fn resolve_return_wrappers(content: &str, entries: &[ClassNameEntry]) -> String {
-        use std::collections::HashMap;
-        let class_index: HashMap<&str, &ClassNameEntry> =
-            entries.iter().map(|e| (e.rust_type, e)).collect();
+        let class_index = build_class_name_index(entries.iter());
 
         const PREFIX: &str = ".__MX_WRAP_RETURN_";
         const ARG_OPEN: &str = "__(";

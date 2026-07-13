@@ -29,14 +29,16 @@ the C symbol is registered, but no `@export` is emitted.
 ## The C Symbol Is Always Registered
 
 Every `#[miniextendr]` function — regardless of Rust visibility or export flags —
-produces a `R_CallMethodDef` entry and an R wrapper. This means `.Call(C_fn_name, ...)`
-works from any R code inside the package, even for non-exported functions.
+produces a `R_CallMethodDef` entry and an R wrapper. This means
+`.Call(C_<crate>_fn_name, ...)` works from any R code inside the package, even for
+non-exported functions. (C symbols are prefixed with the crate's name — `mypkg`
+in the examples below — for webR cross-package uniqueness, see `docs/WEBR.md`.)
 
 NAMESPACE controls importability from _outside_ the package. It has no effect on
 `.Call()` visibility within the package itself.
 
 ```rust
-// C_internal_helper is callable via .Call() from R code in the same package,
+// C_mypkg_internal_helper is callable via .Call() from R code in the same package,
 // but does not appear in NAMESPACE and cannot be imported by downstream packages.
 fn internal_helper(x: i32) -> i32 {
     x + 1
@@ -53,7 +55,7 @@ fn internal_helper(x: i32) -> i32 {
 | `internal` | Omit `@export`; add `@keywords internal`; appears in `?help` only when searched directly |
 | `export` | Force `@export` on a non-`pub` function |
 | `r_name = "..."` | Rename the R wrapper (e.g. `r_name = "is.widget"`); does not affect NAMESPACE membership |
-| `c_symbol = "..."` | Rename the C symbol used in `.Call()` and `R_CallMethodDef` |
+| `c_symbol = "..."` | Rename the C symbol used in `.Call()` and `R_CallMethodDef`. The value is used verbatim — no crate prefix is added, so **you** own its cross-package uniqueness on webR (see `docs/WEBR.md`) |
 
 ### When to use each option
 
@@ -90,7 +92,7 @@ pub fn add(x: i32, y: i32) -> i32 {
 ```r
 # Generated:
 #' @export
-add <- function(x, y) .Call(C_add, x, y)
+add <- function(x, y) .Call(C_mypkg_add, x, y)
 ```
 
 `add` appears in `NAMESPACE` and is importable by downstream packages.
@@ -106,7 +108,7 @@ pub fn validate_internal(x: i32) -> bool {
 }
 ```
 
-No `@export` is emitted. The R wrapper exists and `.Call(C_validate_internal, ...)` works
+No `@export` is emitted. The R wrapper exists and `.Call(C_mypkg_validate_internal, ...)` works
 inside the package, but `validate_internal` is not in NAMESPACE.
 
 ### internal: hide from normal help search
@@ -121,7 +123,7 @@ pub fn debug_repr(x: i32) -> String {
 ```r
 # Generated:
 #' @keywords internal
-debug_repr <- function(x) .Call(C_debug_repr, x)
+debug_repr <- function(x) .Call(C_mypkg_debug_repr, x)
 ```
 
 `@keywords internal` hides the function from `help.search()` results by default. It remains
@@ -150,7 +152,7 @@ pub fn is_widget(x: i32) -> bool {
 ```
 
 The R wrapper is named `is.widget` (valid R identifier style). The C symbol remains
-`C_is_widget`. NAMESPACE gets `export(is.widget)`.
+derived from the Rust identifier (`C_mypkg_is_widget`). NAMESPACE gets `export(is.widget)`.
 
 ---
 

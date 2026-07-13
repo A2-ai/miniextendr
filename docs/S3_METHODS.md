@@ -42,29 +42,30 @@ impl Person {
 // Registration is automatic via #[miniextendr].
 ```
 
-Generated R code:
+Generated R code (`.Call()` symbols are prefixed with your crate's name —
+`mypkg` here — for webR cross-package uniqueness, see `docs/WEBR.md`):
 
 ```r
 # Constructor
 new_person <- function(name, age) {
-  structure(.Call(C_Person__new, name, age), class = "Person")
+  structure(.Call(C_mypkg_Person__new, name, age), class = "Person")
 }
 
 # format.Person - returns the string directly
 format.Person <- function(x, ...) {
-  .Call(C_Person__fmt, x)
+  .Call(C_mypkg_Person__fmt, x)
 }
 
 # print.Person - calls Rust, then returns invisible(x)
 print.Person <- function(x, ...) {
-  .Call(C_Person__show, x)
+  .Call(C_mypkg_Person__show, x)
   invisible(x)
 }
 
 # greet generic + method
 greet <- function(x, ...) UseMethod("greet")
 greet.Person <- function(x, ...) {
-  .Call(C_Person__greet, x)
+  .Call(C_mypkg_Person__greet, x)
 }
 ```
 
@@ -114,7 +115,7 @@ The constructor is always the method returning `Self`. It generates a function n
 ```rust
 pub fn new(name: String, age: i32) -> Self { ... }
 // → new_person <- function(name, age) {
-//     structure(.Call(C_Person__new, name, age), class = "Person")
+//     structure(.Call(C_mypkg_Person__new, name, age), class = "Person")
 //   }
 ```
 
@@ -124,7 +125,7 @@ Methods without `self` become standalone functions prefixed with the lowercase c
 
 ```rust
 pub fn species() -> String { "Homo sapiens".into() }
-// → person_species <- function() { .Call(C_Person__species) }
+// → person_species <- function() { .Call(C_mypkg_Person__species) }
 ```
 
 ## Functional builders (native pipe `|>`)
@@ -215,7 +216,7 @@ This generates the `ChainableMutation` return strategy:
 
 ```r
 print.Person <- function(x, ...) {
-  .Call(C_Person__show, x)
+  .Call(C_mypkg_Person__show, x)
   invisible(x)
 }
 ```
@@ -242,7 +243,7 @@ Generates:
 
 ```r
 print.Person <- function(x, ...) {
-  .Call(C_Person__show, x)
+  .Call(C_mypkg_Person__show, x)
 }
 ```
 
@@ -268,7 +269,7 @@ Generates:
 
 ```r
 format.Person <- function(x, ...) {
-  .Call(C_Person__fmt, x)
+  .Call(C_mypkg_Person__fmt, x)
 }
 ```
 

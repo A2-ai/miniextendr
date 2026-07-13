@@ -65,14 +65,15 @@ pub(crate) fn generate_direct_altrep_registration(
     //
     // The function is `pub extern "C"` with `#[unsafe(no_mangle)]` so that a separate
     // compilation unit (the WASM snapshot codegen path) can reference it by name via
-    // an `extern { fn __mx_altrep_reg_<Ident>(); }` declaration. The entry static
+    // an `extern { fn __mx_altrep_reg_<crate>_<Ident>(); }` declaration (crate-prefixed
+    // for webR cross-package symbol uniqueness — #1273). The entry static
     // carries the symbol string for the host-time snapshot writer (so it doesn't have
     // to recover the name from a fn pointer).
     //
     // The ident is used verbatim (no `.to_lowercase()`) to avoid case-collision footguns:
     // `MyType` vs `MYType` would both produce the same symbol name if lowercased.
     let altrep_reg_entry = if generics.params.is_empty() {
-        let reg_fn_name = quote::format_ident!("__mx_altrep_reg_{}", ident);
+        let reg_fn_name = crate::naming::altrep_reg_fn_ident(ident);
         let entry_ident = quote::format_ident!("__MX_ALTREP_REG_ENTRY_{}", ident);
         quote::quote! {
             #[doc(hidden)]

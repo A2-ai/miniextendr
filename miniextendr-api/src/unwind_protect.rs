@@ -76,7 +76,7 @@ fn stop_sym() -> crate::SEXP {
 }
 
 /// Raise an R condition with `rust_*` class layering by evaluating
-/// `stop(structure(list(message = msg, call = call), class = c(...)))`.
+/// `stop(structure(list(message = msg, call = call, ...data), class = c(...)))`.
 ///
 /// This is **Approach 3** from the issue-345 plan: the `Rf_eval(stop(...))` pattern
 /// that works in any context where there is no outer R wrapper to inspect a tagged SEXP.
@@ -90,6 +90,17 @@ fn stop_sym() -> crate::SEXP {
 /// - If `class` is `Some("my_class")`, the resulting R condition has class:
 ///   `c("my_class", "rust_error", "simpleError", "error", "condition")`.
 /// - Without a custom class: `c("rust_error", "simpleError", "error", "condition")`.
+///
+/// ## Structured `data` (issue #996 path 2)
+///
+/// When `data` is `Some`, each `(name, value)` pair is spliced directly into
+/// the condition list *after* `message`/`call` — mirroring how the
+/// tagged-transport path's `.miniextendr_raise_condition` R helper
+/// (`utils::modifyList`) layers the macros' `data = ...` payload onto the base
+/// condition fields (see `crate::error_value`). `message`/`call` are kept
+/// first so `$`'s first-match semantics protect `conditionMessage()` /
+/// `conditionCall()` even if a data field happens to share one of those names.
+/// `None` produces the original 2-element `(message, call)` list.
 ///
 /// ## MXL300 compliance
 ///
@@ -105,10 +116,11 @@ pub(crate) unsafe fn raise_rust_condition_via_stop(
     message: &str,
     class: Option<&str>,
     call: Option<crate::SEXP>,
+    data: Option<crate::condition::ConditionData>,
 ) -> ! {
     use crate::sexp_types::CE_UTF8;
     use crate::sys::{R_BaseEnv, Rf_allocVector, Rf_eval, Rf_lang2, Rf_mkCharCE, Rf_protect};
-    use crate::{SEXP, SEXPTYPE, SexpExt};
+    use crate::{IntoR, SEXP, SEXPTYPE, SexpExt};
 
     unsafe {
         // Build the class vector: c([custom_class,] "rust_error", "simpleError", "error", "condition")
@@ -146,17 +158,39 @@ pub(crate) unsafe fn raise_rust_condition_via_stop(
 
         let call_sexp = call.unwrap_or(SEXP::nil());
 
-        // Build a 2-element named list: list(message = msg, call = call_sexp)
-        let err_list = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        // Build a named list: list(message = msg, call = call_sexp, ...data).
+        // `data_len` extra slots hold the spliced `data =` fields (issue #996
+        // path 2); with no data this is the original 2-element list.
+        let data_len = data.as_ref().map_or(0, |fields| fields.len());
+        let total_len = 2 + data_len;
+
+        let err_list = Rf_allocVector(SEXPTYPE::VECSXP, total_len as isize);
         Rf_protect(err_list);
         err_list.set_vector_elt(0, msg_sexp);
         err_list.set_vector_elt(1, call_sexp);
 
-        // Set names: c("message", "call")
-        let names_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        // Set names: c("message", "call", <data field names>...)
+        let names_vec = Rf_allocVector(SEXPTYPE::STRSXP, total_len as isize);
         Rf_protect(names_vec);
         names_vec.set_string_elt(0, crate::cached_class::permanent_charsxp(c"message"));
         names_vec.set_string_elt(1, crate::cached_class::permanent_charsxp(c"call"));
+
+        // PROTECT discipline: err_list and names_vec are already protected
+        // above. Each data field's materialised value is stored into the
+        // protected err_list immediately (rooting it) before the next
+        // allocation (its name CHARSXP) — same discipline as
+        // `make_rust_condition_value_with_data` in `crate::error_value`.
+        if let Some(fields) = data {
+            for (i, (name, value)) in fields.into_iter().enumerate() {
+                let idx = (2 + i) as isize;
+                let value_sexp = value.into_sexp();
+                err_list.set_vector_elt(idx, value_sexp);
+                let name_cstr = std::ffi::CString::new(name)
+                    .unwrap_or_else(|_| std::ffi::CString::new("<invalid name>").unwrap());
+                let name_charsxp = Rf_mkCharCE(name_cstr.as_ptr(), CE_UTF8);
+                names_vec.set_string_elt(idx, name_charsxp);
+            }
+        }
         err_list.set_names(names_vec);
 
         // Set the class attribute directly (no structure() call needed)
@@ -208,12 +242,25 @@ pub(crate) fn get_continuation_token() -> SEXP {
     })
 }
 
+/// Panic payload whose message is already final (location folded, or
+/// deliberately location-free): downstream folds must use it verbatim and
+/// must NOT append the current thread's recorded panic location (#1245).
+///
+/// Produced by `worker::route_to_main_thread`'s re-panic when a `with_r_thread`
+/// closure panics on the main thread: the main-thread stringify point already
+/// folded the *true* origin location into the message before it crossed back
+/// to the worker, so the worker's own re-panic (needed to unwind out of
+/// `run_on_worker`) must carry that message forward untouched rather than
+/// re-fold its own relay call site on top.
+pub(crate) struct PreLocatedPanic(pub(crate) String);
+
 /// Extract a message from a panic payload.
 ///
-/// Handles `&str`, `String`, and `&String` payloads consistently. The borrowed
-/// variants are returned as `Cow::Borrowed`, so the common `panic!("literal")`
-/// case avoids the heap allocation that a `String` return would force.
-/// Unrecognised payload types fall back to a `Cow::Borrowed` static string.
+/// Handles `&str`, `String`, `&String`, and [`PreLocatedPanic`] payloads
+/// consistently. The borrowed variants are returned as `Cow::Borrowed`, so the
+/// common `panic!("literal")` case avoids the heap allocation that a `String`
+/// return would force. Unrecognised payload types fall back to a
+/// `Cow::Borrowed` static string.
 ///
 /// Call `.into_owned()` (or `.to_string()`) at sites that need an owned
 /// `String`.
@@ -224,6 +271,8 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
         Cow::Borrowed(s.as_str())
     } else if let Some(s) = payload.downcast_ref::<&String>() {
         Cow::Borrowed(s.as_str())
+    } else if let Some(pre) = payload.downcast_ref::<PreLocatedPanic>() {
+        Cow::Borrowed(pre.0.as_str())
     } else {
         Cow::Borrowed("unknown panic")
     }
@@ -444,14 +493,27 @@ where
         Ok(result) => result,
         Err(payload) => {
             // region: RCondition recognition for the raising-variant path
-            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+            if payload.is::<crate::condition::RCondition>() {
+                // Take ownership so `data` (issue #996 path 2) can be moved into
+                // `raise_rust_condition_via_stop` without cloning — same idiom as
+                // `with_r_unwind_protect_shim`.
+                let cond = *payload
+                    .downcast::<crate::condition::RCondition>()
+                    .expect("checked is::<RCondition> above");
                 match cond {
-                    crate::condition::RCondition::Error { message, class, .. } => {
+                    crate::condition::RCondition::Error {
+                        message,
+                        class,
+                        data,
+                    } => {
                         // Approach 3 (issue-345): raise via Rf_eval(stop(structure(...)))
                         // so tryCatch(rust_error = h, ...) and tryCatch(my_class = h, ...)
-                        // both match. No R wrapper needed.
-                        crate::panic_telemetry::fire(message, source);
-                        unsafe { raise_rust_condition_via_stop(message, class.as_deref(), call) }
+                        // both match. No R wrapper needed. `data` fields are spliced in
+                        // too (issue #996 path 2) — previously silently dropped here.
+                        crate::panic_telemetry::fire(&message, source);
+                        unsafe {
+                            raise_rust_condition_via_stop(&message, class.as_deref(), call, data)
+                        }
                     }
                     crate::condition::RCondition::Warning { .. }
                     | crate::condition::RCondition::Message { .. }
@@ -462,11 +524,13 @@ where
                         // diagnostic, but route through `raise_rust_condition_via_stop` so
                         // the resulting error gets `rust_error` class layering — consistent
                         // with the generic-panic branch a few lines below (issue #366).
+                        // The data fields (if any) are dropped along with everything else
+                        // about the original kind — this branch already discards message.
                         let msg = "warning!/message!/condition! from ALTREP callback context \
                                    cannot be raised as non-fatal signals; use error!() instead. \
                                    This context has no R wrapper to handle signal restart.";
                         crate::panic_telemetry::fire(msg, source);
-                        unsafe { raise_rust_condition_via_stop(msg, None, call) }
+                        unsafe { raise_rust_condition_via_stop(msg, None, call, None) }
                     }
                 }
             } else {
@@ -477,7 +541,7 @@ where
                 // tryCatch(rust_error = h, ...) matches even for plain panics.
                 let msg = panic_message_with_location(payload.as_ref());
                 crate::panic_telemetry::fire(&msg, source);
-                unsafe { raise_rust_condition_via_stop(&msg, None, call) }
+                unsafe { raise_rust_condition_via_stop(&msg, None, call, None) }
             }
             // endregion
         }
