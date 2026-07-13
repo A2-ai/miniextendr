@@ -342,6 +342,34 @@ Reproduce all three before pushing.
 wording changes: `TRYBUILD=overwrite cargo test -p miniextendr-macros`,
 then review the diff.
 
+**Never `TRYBUILD=overwrite` under a `rust-src`-equipped toolchain when the
+diagnostics quote stdlib spans** (panic-adjacent derives do — e.g. the nested
+`derive_dataframe_enum_*` cases). The skew is a **component-set** difference, not
+a channel/version one: a toolchain with the `rust-src` component installed
+renders stdlib source snippets (e.g.
+`$crate::panicking::panic_fmt($crate::const_format_args!($($t)+));`) into
+trybuild `.stderr`; CI's `dtolnay/rust-toolchain@stable` minimal profile has no
+`rust-src` and renders bare `= note:` fallbacks. The committed baselines are the
+CI (no-`rust-src`) flavor, so overwriting under `rust-src` bakes local-only spans
+into the snapshot and breaks CI (issue #1239). **CI is authoritative.**
+
+`just test` runs the trybuild snapshots only via `just test-ui`; its
+root-workspace leg sets `MINIEXTENDR_SKIP_UI=1` so they don't also run on the
+active — possibly `rust-src` — toolchain. `just test-ui` auto-detects `rust-src`
+and, when present, reruns the UI suite under a **version-named minimal-profile
+toolchain** (a separate rustup toolchain from `stable` even at the same version,
+so it carries no `rust-src`). To reproduce CI's rendering by hand:
+
+```bash
+ver="$(rustc --version | awk '{print $2}')"   # e.g. 1.97.0
+rustup toolchain install "$ver" --profile minimal
+RUSTUP_TOOLCHAIN="$ver" cargo test -p miniextendr-macros --test ui
+```
+
+`rust-toolchain.toml` intentionally floats on `channel = "stable"` — pinning a
+version would trade one skew for a standing bump chore and still not address the
+component-set problem.
+
 ### Snapshot tests
 
 Stale `.snap.new`: diff vs `.snap`; if expected, `mv` over the old snapshot.
