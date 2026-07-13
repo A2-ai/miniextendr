@@ -2,11 +2,12 @@
 """
 Generate a single comprehensive markdown file from rustdoc JSON.
 
-Covers every public item kind in the crate: structs, enums, traits,
-module-level functions, macros (macro_rules! and proc-macros), constants,
-statics, and type aliases. Item headings are module-qualified so same-named
-items in different modules stay distinguishable, and markdown headings inside
-doc comments are demoted below the containing section's level.
+Covers every public API item kind represented by rustdoc JSON format 57.
+Container items (fields, variants, associated items, and inherent impls) are
+rendered under their parent; trait impl blocks are emitted by the companion
+``rustdoc_impl_inventory.py`` report. Item headings are module-qualified so
+same-named items in different modules stay distinguishable, and markdown
+headings inside doc comments are demoted below the containing section's level.
 
 Usage:
     python rustdoc_megadoc.py <input.json> [output.md]
@@ -19,6 +20,9 @@ from pathlib import Path
 from rustdoc_common import (
     demote_headings,
     format_function_signature,
+    format_generic_bound,
+    format_generics,
+    format_path,
     format_type,
 )
 
@@ -26,6 +30,32 @@ from rustdoc_common import (
 ITEM_LEVEL = 3
 # Heading level used for members of an item (#### `method`).
 MEMBER_LEVEL = 4
+
+# All variants of rustdoc_json_types::ItemEnum in rustdoc JSON format 57.
+# Fail on additions instead of silently dropping a new Rust item kind.
+SUPPORTED_ITEM_KINDS = {
+    "module",
+    "extern_crate",
+    "use",
+    "union",
+    "struct",
+    "struct_field",
+    "enum",
+    "variant",
+    "function",
+    "trait",
+    "trait_alias",
+    "impl",
+    "type_alias",
+    "constant",
+    "static",
+    "extern_type",
+    "macro",
+    "proc_macro",
+    "primitive",
+    "assoc_const",
+    "assoc_type",
+}
 
 
 def qualified_name(item: dict, paths: dict) -> str:
@@ -38,7 +68,25 @@ def qualified_name(item: dict, paths: dict) -> str:
     segments = entry.get("path")
     if segments and len(segments) > 1:
         return "::".join(segments[1:])
-    return item.get("name", "Unknown")
+    return item.get("name") or "Unknown"
+
+
+def item_kind(item: dict) -> str:
+    """Return the single rustdoc ``ItemEnum`` key for an item."""
+    inner = item.get("inner", {})
+    return next(iter(inner), "")
+
+
+def validate_item_kinds(index: dict, crate_id_filter: int | None) -> None:
+    """Reject rustdoc schema additions that the renderer has not audited."""
+    seen = {
+        item_kind(item)
+        for item in index.values()
+        if crate_id_filter is None or item.get("crate_id") == crate_id_filter
+    }
+    unknown = sorted(seen - SUPPORTED_ITEM_KINDS)
+    if unknown:
+        raise ValueError(f"unsupported rustdoc item kinds: {', '.join(unknown)}")
 
 
 def append_docs(lines: list, docs: str, base_level: int) -> None:
@@ -61,7 +109,9 @@ def collect_member_ids(index: dict) -> set:
     return members
 
 
-def generate_megadoc(data: dict, crate_only: bool = True) -> str:
+def generate_megadoc(
+    data: dict, crate_only: bool = True, include_reexports: bool = True
+) -> str:
     """Generate a comprehensive markdown document from rustdoc JSON."""
     index = data.get("index", {})
     paths = data.get("paths", {})
@@ -80,17 +130,25 @@ def generate_megadoc(data: dict, crate_only: bool = True) -> str:
 
     # Collect items by kind
     kinds = {
+        "modules": [],
+        "extern_crates": [],
+        "uses": [],
+        "unions": [],
         "structs": [],
         "enums": [],
         "traits": [],
+        "trait_aliases": [],
         "functions": [],
         "macros": [],
         "constants": [],
         "statics": [],
         "type_aliases": [],
+        "extern_types": [],
+        "primitives": [],
     }
     member_ids = collect_member_ids(index)
     crate_id_filter = 0 if crate_only else None
+    validate_item_kinds(index, crate_id_filter)
 
     for key, item in index.items():
         if crate_id_filter is not None and item.get("crate_id") != crate_id_filter:
@@ -99,12 +157,24 @@ def generate_megadoc(data: dict, crate_only: bool = True) -> str:
             continue
 
         inner = item.get("inner", {})
-        if "struct" in inner:
+        if "module" in inner:
+            if str(key) != str(root_id):
+                kinds["modules"].append(item)
+        elif "extern_crate" in inner:
+            kinds["extern_crates"].append(item)
+        elif "use" in inner:
+            if include_reexports:
+                kinds["uses"].append(item)
+        elif "union" in inner:
+            kinds["unions"].append(item)
+        elif "struct" in inner:
             kinds["structs"].append(item)
         elif "enum" in inner:
             kinds["enums"].append(item)
         elif "trait" in inner:
             kinds["traits"].append(item)
+        elif "trait_alias" in inner:
+            kinds["trait_aliases"].append(item)
         elif "function" in inner:
             if key not in member_ids:
                 kinds["functions"].append(item)
@@ -116,6 +186,10 @@ def generate_megadoc(data: dict, crate_only: bool = True) -> str:
             kinds["statics"].append(item)
         elif "type_alias" in inner:
             kinds["type_aliases"].append(item)
+        elif "extern_type" in inner:
+            kinds["extern_types"].append(item)
+        elif "primitive" in inner:
+            kinds["primitives"].append(item)
 
     def emit_section(title: str, items: list, document) -> None:
         if not items:
@@ -127,14 +201,21 @@ def generate_megadoc(data: dict, crate_only: bool = True) -> str:
         for item in sorted(items, key=lambda x: qualified_name(x, paths)):
             lines.extend(document(item, index, paths))
 
+    emit_section("Modules", kinds["modules"], document_module)
+    emit_section("Re-exports", kinds["uses"], document_use)
+    emit_section("Extern crates", kinds["extern_crates"], document_extern_crate)
     emit_section("Structs", kinds["structs"], document_struct)
+    emit_section("Unions", kinds["unions"], document_union)
     emit_section("Enums", kinds["enums"], document_enum)
     emit_section("Traits", kinds["traits"], document_trait)
+    emit_section("Trait aliases", kinds["trait_aliases"], document_trait_alias)
     emit_section("Functions", kinds["functions"], document_function)
     emit_section("Macros", kinds["macros"], document_macro)
     emit_section("Constants", kinds["constants"], document_constant)
     emit_section("Statics", kinds["statics"], document_static)
     emit_section("Type aliases", kinds["type_aliases"], document_type_alias)
+    emit_section("Extern types", kinds["extern_types"], document_extern_type)
+    emit_section("Primitive types", kinds["primitives"], document_primitive)
 
     return "\n".join(lines)
 
@@ -143,67 +224,179 @@ def item_heading(item: dict, paths: dict) -> list:
     return [f"{'#' * ITEM_LEVEL} `{qualified_name(item, paths)}`", ""]
 
 
-def inherent_methods(type_info: dict, index: dict) -> list:
-    """Public methods from inherent (non-trait) impl blocks."""
-    methods = []
+def declaration(kind: str, item: dict, info: dict, index: dict) -> str:
+    """Render the declaration prefix shared by named generic items."""
+    params, where_clause = format_generics(info.get("generics", {}), index)
+    return f"pub {kind} {item.get('name', '?')}{params}{where_clause}"
+
+
+def document_module(item: dict, index: dict, paths: dict) -> list:
+    lines = item_heading(item, paths)
+    lines.extend([f"`pub mod {item.get('name', '?')};`", ""])
+    append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
+    return lines
+
+
+def document_use(item: dict, index: dict, paths: dict) -> list:
+    info = item.get("inner", {}).get("use", {})
+    source = info.get("source", "?")
+    name = info.get("name")
+    if info.get("is_glob"):
+        rendered = f"pub use {source}::*;"
+    elif name and name != source.rsplit("::", 1)[-1]:
+        rendered = f"pub use {source} as {name};"
+    else:
+        rendered = f"pub use {source};"
+    lines = [f"{'#' * ITEM_LEVEL} `{rendered}`", ""]
+    append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
+    return lines
+
+
+def document_extern_crate(item: dict, index: dict, paths: dict) -> list:
+    info = item.get("inner", {}).get("extern_crate", {})
+    name = info.get("name", item.get("name", "?"))
+    rename = info.get("rename")
+    rendered = f"pub extern crate {name}"
+    if rename:
+        rendered += f" as {rename}"
+    lines = [f"{'#' * ITEM_LEVEL} `{rendered};`", ""]
+    append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
+    return lines
+
+
+def field_lines(
+    field_ids: list, index: dict, *, named: bool, public_only: bool
+) -> list[str]:
+    """Render named or tuple fields from their rustdoc item IDs."""
+    rendered = []
+    for position, fid in enumerate(field_ids):
+        if fid is None:
+            rendered.append(f"- `{position}`: *(private or hidden)*")
+            continue
+        field = index.get(str(fid), {})
+        if public_only and field.get("visibility") != "public":
+            continue
+        field_type = field.get("inner", {}).get("struct_field", {})
+        label = field.get("name", "?") if named else str(position)
+        rendered.append(f"- `{label}`: `{format_type(field_type, index)}`")
+        docs = field.get("docs", "")
+        if docs:
+            rendered.append(f"  - {docs.split(chr(10))[0]}")
+    return rendered
+
+
+def append_fields(lines: list, rendered: list[str]) -> None:
+    if rendered:
+        lines.extend(["**Fields:**", ""])
+        lines.extend(rendered)
+        lines.append("")
+
+
+def inherent_items(type_info: dict, index: dict) -> list:
+    """Public items from inherent (non-trait) impl blocks."""
+    items = []
     for impl_id in type_info.get("impls", []):
         impl_item = index.get(str(impl_id), {})
         impl_info = impl_item.get("inner", {}).get("impl", {})
         if impl_info.get("trait") is not None:
             continue
-        for method_id in impl_info.get("items", []):
-            method = index.get(str(method_id), {})
-            if method.get("visibility") != "public":
+        for member_id in impl_info.get("items", []):
+            member = index.get(str(member_id), {})
+            if member.get("visibility") != "public":
                 continue
-            if "function" in method.get("inner", {}):
-                methods.append(method)
-    return methods
+            if item_kind(member) in {"function", "assoc_const", "assoc_type"}:
+                items.append(member)
+    return items
+
+
+def assoc_item_signature(item: dict, index: dict) -> str:
+    """Render an associated const or type declaration."""
+    name = item.get("name", "?")
+    inner = item.get("inner", {})
+    if "assoc_const" in inner:
+        info = inner["assoc_const"]
+        rendered = f"const {name}: {format_type(info.get('type'), index)}"
+        if info.get("value") is not None:
+            rendered += f" = {info['value']}"
+        return rendered
+
+    info = inner.get("assoc_type", {})
+    params, where_clause = format_generics(info.get("generics", {}), index)
+    rendered = f"type {name}{params}"
+    bounds = [format_generic_bound(bound, index) for bound in info.get("bounds", [])]
+    if bounds:
+        rendered += f": {' + '.join(bounds)}"
+    if info.get("type") is not None:
+        rendered += f" = {format_type(info['type'], index)}"
+    return rendered + where_clause
+
+
+def document_assoc_item(item: dict, index: dict) -> list:
+    lines = [f"{'#' * MEMBER_LEVEL} `{item.get('name', '?')}`", ""]
+    lines.extend(["```rust", assoc_item_signature(item, index), "```", ""])
+    append_docs(lines, item.get("docs", ""), MEMBER_LEVEL)
+    return lines
+
+
+def append_inherent_items(lines: list, type_info: dict, index: dict) -> None:
+    items = inherent_items(type_info, index)
+    if not items:
+        return
+    lines.extend(["**Inherent associated items:**", ""])
+    for item in sorted(items, key=lambda value: value.get("name", "")):
+        if "function" in item.get("inner", {}):
+            lines.extend(document_method(item, index))
+        else:
+            lines.extend(document_assoc_item(item, index))
 
 
 def document_struct(struct: dict, index: dict, paths: dict) -> list:
     """Generate documentation for a struct."""
     lines = item_heading(struct, paths)
-    append_docs(lines, struct.get("docs", ""), ITEM_LEVEL)
     struct_info = struct.get("inner", {}).get("struct", {})
+    lines.extend(["```rust", declaration("struct", struct, struct_info, index), "```", ""])
+    append_docs(lines, struct.get("docs", ""), ITEM_LEVEL)
 
     # Document fields
     kind = struct_info.get("kind", {})
-    if "plain" in kind:
-        field_ids = kind["plain"].get("fields", [])
-        if field_ids:
-            field_lines = []
-            for fid in field_ids:
-                field = index.get(str(fid), {})
-                if field.get("visibility") != "public":
-                    continue
-                field_name = field.get("name", "?")
-                field_docs = field.get("docs", "")
-                field_type = field.get("inner", {}).get("struct_field", {})
-                type_str = format_type(field_type, index)
-                field_lines.append(f"- `{field_name}`: `{type_str}`")
-                if field_docs:
-                    field_lines.append(f"  - {field_docs.split(chr(10))[0]}")
-            if field_lines:
-                lines.append("**Fields:**")
-                lines.append("")
-                lines.extend(field_lines)
-                lines.append("")
+    if isinstance(kind, dict) and "plain" in kind:
+        append_fields(
+            lines,
+            field_lines(
+                kind["plain"].get("fields", []), index, named=True, public_only=True
+            ),
+        )
+    elif isinstance(kind, dict) and "tuple" in kind:
+        append_fields(
+            lines,
+            field_lines(kind["tuple"], index, named=False, public_only=True),
+        )
 
-    methods = inherent_methods(struct_info, index)
-    if methods:
-        lines.append("**Methods:**")
-        lines.append("")
-        for method in sorted(methods, key=lambda x: x.get("name", "")):
-            lines.extend(document_method(method, index))
+    append_inherent_items(lines, struct_info, index)
 
+    return lines
+
+
+def document_union(item: dict, index: dict, paths: dict) -> list:
+    """Generate documentation for a union."""
+    lines = item_heading(item, paths)
+    info = item.get("inner", {}).get("union", {})
+    lines.extend(["```rust", declaration("union", item, info, index), "```", ""])
+    append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
+    append_fields(
+        lines,
+        field_lines(info.get("fields", []), index, named=True, public_only=True),
+    )
+    append_inherent_items(lines, info, index)
     return lines
 
 
 def document_enum(enum: dict, index: dict, paths: dict) -> list:
     """Generate documentation for an enum."""
     lines = item_heading(enum, paths)
-    append_docs(lines, enum.get("docs", ""), ITEM_LEVEL)
     enum_info = enum.get("inner", {}).get("enum", {})
+    lines.extend(["```rust", declaration("enum", enum, enum_info, index), "```", ""])
+    append_docs(lines, enum.get("docs", ""), ITEM_LEVEL)
 
     # Document variants
     variant_ids = enum_info.get("variants", [])
@@ -232,18 +425,23 @@ def document_enum(enum: dict, index: dict, paths: dict) -> list:
                         fields.append(format_type(field_type, index))
                 lines.append(f"- `{variant_name}({', '.join(fields)})`")
             elif "struct" in kind:
-                lines.append(f"- `{variant_name} {{ ... }}`")
+                fields = []
+                for fid in kind["struct"].get("fields", []):
+                    field = index.get(str(fid), {})
+                    field_name = field.get("name", "?")
+                    field_type = field.get("inner", {}).get("struct_field", {})
+                    fields.append(f"{field_name}: {format_type(field_type, index)}")
+                lines.append(f"- `{variant_name} {{ {', '.join(fields)} }}`")
+
+            discriminant = variant_info.get("discriminant")
+            if discriminant:
+                lines.append(f"  - discriminant: `{discriminant.get('expr', '?')}`")
 
             if variant_docs:
                 lines.append(f"  - {variant_docs.split(chr(10))[0]}")
         lines.append("")
 
-    methods = inherent_methods(enum_info, index)
-    if methods:
-        lines.append("**Methods:**")
-        lines.append("")
-        for method in sorted(methods, key=lambda x: x.get("name", "")):
-            lines.extend(document_method(method, index))
+    append_inherent_items(lines, enum_info, index)
 
     return lines
 
@@ -252,14 +450,20 @@ def document_trait(trait: dict, index: dict, paths: dict) -> list:
     """Generate documentation for a trait: docs plus required/provided members."""
     lines = item_heading(trait, paths)
     trait_info = trait.get("inner", {}).get("trait", {})
-    qualifiers = []
+    qualifiers = ["pub"]
     if trait_info.get("is_unsafe"):
         qualifiers.append("unsafe")
     if trait_info.get("is_auto"):
         qualifiers.append("auto")
-    if qualifiers:
-        lines.append(f"*({' '.join(qualifiers)} trait)*")
-        lines.append("")
+    params, where_clause = format_generics(trait_info.get("generics", {}), index)
+    signature = f"{' '.join(qualifiers)} trait {trait.get('name', '?')}{params}"
+    bounds = [
+        format_generic_bound(bound, index) for bound in trait_info.get("bounds", [])
+    ]
+    if bounds:
+        signature += f": {' + '.join(bounds)}"
+    signature += where_clause
+    lines.extend(["```rust", signature, "```", ""])
     append_docs(lines, trait.get("docs", ""), ITEM_LEVEL)
 
     required, provided, assoc = [], [], []
@@ -275,10 +479,9 @@ def document_trait(trait: dict, index: dict, paths: dict) -> list:
             target = provided if func.get("has_body") else required
             target.append((sig, first_line))
         elif "assoc_type" in inner:
-            assoc.append(f"- associated type `{name}`")
+            assoc.append((assoc_item_signature(member, index), member.get("docs", "")))
         elif "assoc_const" in inner:
-            ty = format_type(inner["assoc_const"].get("type"), index)
-            assoc.append(f"- associated const `{name}: {ty}`")
+            assoc.append((assoc_item_signature(member, index), member.get("docs", "")))
 
     for title, group in (("Required methods", required), ("Provided methods", provided)):
         if group:
@@ -292,9 +495,27 @@ def document_trait(trait: dict, index: dict, paths: dict) -> list:
     if assoc:
         lines.append("**Associated items:**")
         lines.append("")
-        lines.extend(assoc)
+        for signature, docs in assoc:
+            lines.append(f"- `{signature}`")
+            if docs:
+                lines.append(f"  - {docs.split(chr(10))[0]}")
         lines.append("")
 
+    return lines
+
+
+def document_trait_alias(item: dict, index: dict, paths: dict) -> list:
+    """Generate documentation for an unstable trait alias."""
+    lines = item_heading(item, paths)
+    info = item.get("inner", {}).get("trait_alias", {})
+    params, where_clause = format_generics(info.get("generics", {}), index)
+    bounds = [format_generic_bound(bound, index) for bound in info.get("params", [])]
+    signature = (
+        f"pub trait {item.get('name', '?')}{params} = {' + '.join(bounds)}"
+        f"{where_clause};"
+    )
+    lines.extend(["```rust", signature, "```", ""])
+    append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
     return lines
 
 
@@ -323,6 +544,10 @@ def document_macro(macro: dict, index: dict, paths: dict) -> list:
     else:
         label = f"{name}!"
     lines = [f"{'#' * ITEM_LEVEL} `{label}`", ""]
+    if "proc_macro" in inner:
+        helpers = inner["proc_macro"].get("helpers", []) or []
+        if helpers:
+            lines.extend([f"Helper attributes: `{', '.join(helpers)}`", ""])
     append_docs(lines, macro.get("docs", ""), ITEM_LEVEL)
     return lines
 
@@ -331,7 +556,24 @@ def _value_entry(item: dict, type_key: str, paths: dict, index: dict) -> list:
     """Shared renderer for constants and statics: name, type, docs."""
     info = item.get("inner", {}).get(type_key, {})
     ty = format_type(info.get("type"), index)
-    lines = [f"{'#' * ITEM_LEVEL} `{qualified_name(item, paths)}: {ty}`", ""]
+    name = item.get("name", "?")
+    if type_key == "constant":
+        declaration_text = f"pub const {name}: {ty}"
+        value = info.get("const", {}).get("expr")
+        if value:
+            declaration_text += f" = {value}"
+    else:
+        qualifiers = ["pub"]
+        if info.get("is_unsafe"):
+            qualifiers.append("unsafe")
+        qualifiers.append("static")
+        if info.get("is_mutable"):
+            qualifiers.append("mut")
+        declaration_text = f"{' '.join(qualifiers)} {name}: {ty}"
+        if info.get("expr"):
+            declaration_text += f" = {info['expr']}"
+    lines = item_heading(item, paths)
+    lines.extend(["```rust", f"{declaration_text};", "```", ""])
     append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
     return lines
 
@@ -347,13 +589,32 @@ def document_static(item: dict, index: dict, paths: dict) -> list:
 def document_type_alias(item: dict, index: dict, paths: dict) -> list:
     info = item.get("inner", {}).get("type_alias", {})
     ty = format_type(info.get("type"), index)
+    params, where_clause = format_generics(info.get("generics", {}), index)
     lines = [
         f"{'#' * ITEM_LEVEL} `{qualified_name(item, paths)}`",
         "",
-        f"`type {item.get('name', '?')} = {ty}`",
+        "```rust",
+        f"pub type {item.get('name', '?')}{params}{where_clause} = {ty};",
+        "```",
         "",
     ]
     append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
+    return lines
+
+
+def document_extern_type(item: dict, index: dict, paths: dict) -> list:
+    lines = item_heading(item, paths)
+    lines.extend(["```rust", f"extern type {item.get('name', '?')};", "```", ""])
+    append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
+    return lines
+
+
+def document_primitive(item: dict, index: dict, paths: dict) -> list:
+    lines = item_heading(item, paths)
+    info = item.get("inner", {}).get("primitive", {})
+    lines.extend([f"Primitive type: `{info.get('name', item.get('name', '?'))}`", ""])
+    append_docs(lines, item.get("docs", ""), ITEM_LEVEL)
+    append_inherent_items(lines, info, index)
     return lines
 
 

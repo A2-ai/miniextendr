@@ -56,7 +56,7 @@ pub(crate) fn take_last_panic_location() -> Option<(String, u32)> {
 /// Register the miniextendr panic hook.
 ///
 /// If `MINIEXTENDR_BACKTRACE` is truthy (`yes`/`true`/`1`/`on`, per
-/// [`crate::env_flag::parse_bool`]), the default Rust panic hook runs (full
+/// `crate::env_flag::parse_bool`), the default Rust panic hook runs (full
 /// traceback printed to stderr); otherwise the hook swallows the panic output
 /// silently so the R error (emitted by `panic_message_to_r_error`) is what
 /// users see. Unrecognized values default to off.

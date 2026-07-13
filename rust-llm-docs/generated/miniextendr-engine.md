@@ -3,8 +3,8 @@
 miniextendr-engine: standalone R embedding for Rust binaries and tests.
 
 This crate centralizes `libR` linking (via `build.rs`), R initialization, and
-a minimal runtime handle for processing events and interrupts. It is intended
-for Rust-only executables and integration tests that embed R.
+a minimal runtime handle. It is intended for Rust-only executables and
+integration tests that embed R.
 
 **Not for R packages:** this crate uses non-API R internals
 (`Rembedded.h`, `Rinterface.h`). For R packages, depend on `miniextendr-api`
@@ -56,6 +56,10 @@ if miniextendr_engine::r_initialized_sentinel() {
 
 ### `REngine`
 
+```rust
+pub struct REngine
+```
+
 Handle to an initialized R runtime.
 
 This is a marker type indicating R has been initialized for this process.
@@ -63,44 +67,21 @@ R cleanup (via `Rf_endEmbeddedR`) is intentionally NOT called because it
 performs non-reentrant operations that can crash if called during Drop
 or concurrent with other cleanup. The OS reclaims all resources on process exit.
 
-**Methods:**
+**Inherent associated items:**
 
 #### `build`
 
 ```rust
-build() -> REngineBuilder
+fn build() -> REngineBuilder
 ```
 
 Create a new builder for configuring R initialization.
 
-#### `check_interrupt`
-
-```rust
-unsafe check_interrupt(self: &Self)
-```
-
-Check for user interrupts (Ctrl+C).
-
-##### Safety
-
-Must be called from the thread that initialized R.
-
-#### `process_events`
-
-```rust
-unsafe process_events(self: &Self)
-```
-
-Process pending R events.
-
-Call this periodically to allow R to handle events, especially
-when running a long computation.
-
-##### Safety
-
-Must be called from the thread that initialized R.
-
 ### `REngineBuilder`
+
+```rust
+pub struct REngineBuilder
+```
 
 Builder for configuring and initializing the R runtime.
 
@@ -114,12 +95,12 @@ let engine = REngine::build()
     .init()?;
 ```
 
-**Methods:**
+**Inherent associated items:**
 
 #### `init`
 
 ```rust
-unsafe init(self: Self) -> Result<REngine, REngineError>
+unsafe fn init(self: Self) -> Result<REngine, REngineError>
 ```
 
 Initialize the R runtime with the configured settings.
@@ -137,7 +118,7 @@ Returns an error if R initialization fails.
 #### `interactive`
 
 ```rust
-interactive(self: Self, interactive: bool) -> Self
+fn interactive(self: Self, interactive: bool) -> Self
 ```
 
 Set whether R should run in interactive mode.
@@ -147,36 +128,15 @@ Default is `false`.
 #### `new`
 
 ```rust
-new() -> Self
+fn new() -> Self
 ```
 
 Create a new R engine builder with default settings.
 
-#### `r_home`
-
-```rust
-r_home(self: Self, path: impl Into<PathBuf>) -> Self
-```
-
-Set the R_HOME directory explicitly.
-
-By default, R_HOME is auto-detected by running `R RHOME` or reading
-the `R_HOME` environment variable. Use this method to override that
-behavior with an explicit path.
-
-##### Example
-
-```ignore
-let engine = REngine::build()
-    .r_home("/opt/R/4.4.0/lib/R")
-    .init()
-    .expect("Failed to initialize R");
-```
-
 #### `signal_handlers`
 
 ```rust
-signal_handlers(self: Self, enable: bool) -> Self
+fn signal_handlers(self: Self, enable: bool) -> Self
 ```
 
 Set whether R should install signal handlers.
@@ -186,7 +146,7 @@ Default is `false`. Set to `true` if you want R to handle Ctrl+C etc.
 #### `with_args`
 
 ```rust
-with_args(self: Self, args: &[&str]) -> Self
+fn with_args(self: Self, args: &[&str]) -> Self
 ```
 
 Set the command-line arguments for R initialization.
@@ -199,11 +159,15 @@ Default is `["R", "--quiet", "--vanilla"]`.
 
 ### `REngineError`
 
+```rust
+pub enum REngineError
+```
+
 Errors that can occur during R engine initialization.
 
 **Variants:**
 
-- `RHomeNotFound { ... }`
+- `RHomeNotFound { stderr: Option<String> }`
   - Could not determine / set `R_HOME` for embedding.
 - `InitializationFailed`
   - R initialization failed.
@@ -217,7 +181,7 @@ Errors that can occur during R engine initialization.
 ### `r_initialized_sentinel`
 
 ```rust
-r_initialized_sentinel() -> bool
+fn r_initialized_sentinel() -> bool
 ```
 
 Check whether `Rf_initialize_R` has run by inspecting stack sentinels.

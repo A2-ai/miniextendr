@@ -256,7 +256,7 @@ pub(crate) struct PreLocatedPanic(pub(crate) String);
 
 /// Extract a message from a panic payload.
 ///
-/// Handles `&str`, `String`, `&String`, and [`PreLocatedPanic`] payloads
+/// Handles `&str`, `String`, `&String`, and `PreLocatedPanic` payloads
 /// consistently. The borrowed variants are returned as `Cow::Borrowed`, so the
 /// common `panic!("literal")` case avoids the heap allocation that a `String`
 /// return would force. Unrecognised payload types fall back to a

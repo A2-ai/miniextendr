@@ -9,9 +9,57 @@ end-user packages in the `minirextendr` R package.
 
 ---
 
+## Modules
+
+### `commands::cargo`
+
+`pub mod cargo;`
+
+### `commands::config`
+
+`pub mod config;`
+
+### `commands::feature`
+
+`pub mod feature;`
+
+### `commands::init`
+
+`pub mod init;`
+
+### `commands::lint`
+
+`pub mod lint;`
+
+### `commands::render`
+
+`pub mod render;`
+
+### `commands::rust`
+
+`pub mod rust;`
+
+### `commands::status`
+
+`pub mod status;`
+
+### `commands::vendor`
+
+`pub mod vendor;`
+
+### `commands::workflow`
+
+`pub mod workflow;`
+
+---
+
 ## Structs
 
 ### `cli::CargoBuildOpts`
+
+```rust
+pub struct CargoBuildOpts
+```
 
 Shared build options for cargo commands.
 
@@ -32,6 +80,10 @@ Shared build options for cargo commands.
 
 ### `cli::Cli`
 
+```rust
+pub struct Cli
+```
+
 **Fields:**
 
 - `path`: `String`
@@ -43,6 +95,10 @@ Shared build options for cargo commands.
 - `command`: `Command`
 
 ### `project::ProjectContext`
+
+```rust
+pub struct ProjectContext
+```
 
 Discovered project paths.
 
@@ -59,12 +115,25 @@ Discovered project paths.
 - `configure`: `Option<std::path::PathBuf>`
   - `configure` script.
 
-**Methods:**
+**Inherent associated items:**
+
+#### `description_field`
+
+```rust
+fn description_field(self: &Self, field: &str) -> Option<String>
+```
+
+Read a field's value from `DESCRIPTION`, if present.
+
+DCF (Debian Control File, the format `DESCRIPTION` uses) allows a
+field's value to continue onto following lines: a continuation line
+starts with whitespace and is joined onto the value of the field it
+extends, separated by a single space.
 
 #### `discover`
 
 ```rust
-discover(path: &Path) -> Result<Self>
+fn discover(path: &Path) -> Result<Self>
 ```
 
 Discover project structure starting from `path`.
@@ -72,15 +141,23 @@ Discover project structure starting from `path`.
 #### `has_miniextendr`
 
 ```rust
-has_miniextendr(self: &Self) -> bool
+fn has_miniextendr(self: &Self) -> bool
 ```
 
 Check if this looks like a miniextendr project.
 
+#### `package_name`
+
+```rust
+fn package_name(self: &Self) -> Option<String>
+```
+
+The `Package` field from `DESCRIPTION`, if present.
+
 #### `require_cargo_manifest`
 
 ```rust
-require_cargo_manifest(self: &Self) -> Result<&Path>
+fn require_cargo_manifest(self: &Self) -> Result<&Path>
 ```
 
 Returns the cargo manifest path, or an error with guidance.
@@ -88,7 +165,7 @@ Returns the cargo manifest path, or an error with guidance.
 #### `require_configure_ac`
 
 ```rust
-require_configure_ac(self: &Self) -> Result<&Path>
+fn require_configure_ac(self: &Self) -> Result<&Path>
 ```
 
 Returns the configure.ac path, or an error with guidance.
@@ -99,67 +176,79 @@ Returns the configure.ac path, or an error with guidance.
 
 ### `cli::CargoCmd`
 
+```rust
+pub enum CargoCmd
+```
+
 **Variants:**
 
-- `Init { ... }`
+- `Init { name: Option<String>, edition: String }`
   - Initialize Rust crate in src/rust.
-- `New { ... }`
+- `New { name: String, lib: bool, edition: String }`
   - Create a new Rust crate in the workspace.
-- `Add { ... }`
+- `Add { dep: String, features: Option<String>, no_default_features: bool, optional: bool, rename: Option<String>, crate_path: Option<String>, git: Option<String>, branch: Option<String>, tag: Option<String>, rev: Option<String>, dev: bool, build: bool, dry_run: bool }`
   - Add a Rust dependency.
-- `Rm { ... }`
+- `Rm { dep: String, dev: bool, build: bool, dry_run: bool }`
   - Remove a Rust dependency.
-- `Update { ... }`
+- `Update { dep: Option<String>, precise: Option<String>, dry_run: bool }`
   - Update Cargo.lock.
-- `Build { ... }`
+- `Build { opts: CargoBuildOpts, jobs: Option<u32> }`
   - Run cargo build.
-- `Check { ... }`
+- `Check { opts: CargoBuildOpts }`
   - Run cargo check.
-- `Test { ... }`
+- `Test { opts: CargoBuildOpts, no_run: bool, test_args: Vec<String> }`
   - Run cargo test.
-- `Clippy { ... }`
+- `Clippy { opts: CargoBuildOpts, all_targets: bool }`
   - Run cargo clippy.
-- `Fmt { ... }`
+- `Fmt { check: bool }`
   - Run cargo fmt.
-- `Doc { ... }`
+- `Doc { open: bool, no_deps: bool, opts: CargoBuildOpts }`
   - Build Rust documentation.
-- `Search { ... }`
+- `Search { query: String, limit: u32 }`
   - Search crates.io.
-- `Deps { ... }`
+- `Deps { depth: u32, duplicates: bool, invert: Option<String> }`
   - Show dependency tree.
 - `Clean`
   - Clean cargo build artifacts.
 
 ### `cli::Command`
 
+```rust
+pub enum Command
+```
+
 **Variants:**
 
-- `Init { ... }`
+- `Init { cmd: InitCmd }`
   - Create or add miniextendr to a project.
-- `Workflow { ... }`
+- `Workflow { cmd: WorkflowCmd }`
   - Build, document, check, and manage R package.
-- `Status { ... }`
+- `Status { cmd: StatusCmd }`
   - Check project status.
-- `Cargo { ... }`
+- `Cargo { cmd: CargoCmd }`
   - Run cargo commands in project context.
-- `Vendor { ... }`
+- `Vendor { cmd: VendorCmd }`
   - Manage vendored dependencies.
-- `Feature { ... }`
+- `Feature { cmd: FeatureCmd }`
   - Manage Cargo features and detection rules.
-- `Render { ... }`
+- `Render { cmd: RenderCmd }`
   - Rmarkdown/Quarto integration.
-- `Rust { ... }`
+- `Rust { cmd: RustCmd }`
   - Dynamic Rust compilation.
-- `Config { ... }`
+- `Config { cmd: ConfigCmd }`
   - Show configuration.
 - `Lint`
   - Run miniextendr-lint (checks macro/module consistency).
 - `Clean`
   - Clean build artifacts.
-- `Completions { ... }`
+- `Completions { shell: clap_complete::Shell }`
   - Generate shell completions.
 
 ### `cli::ConfigCmd`
+
+```rust
+pub enum ConfigCmd
+```
 
 **Variants:**
 
@@ -170,18 +259,26 @@ Returns the configure.ac path, or an error with guidance.
 
 ### `cli::FeatureCmd`
 
+```rust
+pub enum FeatureCmd
+```
+
 **Variants:**
 
-- `Enable { ... }`
+- `Enable { name: String }`
   - Enable a feature: r6, s4, s7, serde, vctrs, rayon, build-rs, knitr, rmarkdown, quarto, feature-detection.
 - `List`
   - List Cargo features and optional dependencies.
-- `Detect { ... }`
+- `Detect { cmd: FeatureDetectCmd }`
   - Configure-time feature detection.
-- `Rule { ... }`
+- `Rule { cmd: FeatureRuleCmd }`
   - Feature detection rules.
 
 ### `cli::FeatureDetectCmd`
+
+```rust
+pub enum FeatureDetectCmd
+```
 
 **Variants:**
 
@@ -192,27 +289,39 @@ Returns the configure.ac path, or an error with guidance.
 
 ### `cli::FeatureRuleCmd`
 
+```rust
+pub enum FeatureRuleCmd
+```
+
 **Variants:**
 
-- `Add { ... }`
+- `Add { feature: String, detect: String, cargo_spec: Option<String>, optional_dep: bool }`
   - Add a feature detection rule.
-- `Remove { ... }`
+- `Remove { feature: String }`
   - Remove a feature detection rule.
 - `List`
   - List current feature detection rules.
 
 ### `cli::InitCmd`
 
+```rust
+pub enum InitCmd
+```
+
 **Variants:**
 
-- `Package { ... }`
+- `Package { path: String }`
   - Create a new R package with miniextendr.
-- `Monorepo { ... }`
+- `Monorepo { path: String, package: Option<String>, crate_name: Option<String>, rpkg_name: Option<String>, local_path: Option<String>, miniextendr_version: String }`
   - Create a Rust workspace with embedded R package.
-- `Use { ... }`
+- `Use { template_type: String, rpkg_name: Option<String>, miniextendr_version: String, local_path: Option<String> }`
   - Add miniextendr scaffolding to an existing project.
 
 ### `cli::RenderCmd`
+
+```rust
+pub enum RenderCmd
+```
 
 **Variants:**
 
@@ -233,16 +342,24 @@ Returns the configure.ac path, or an error with guidance.
 
 ### `cli::RustCmd`
 
+```rust
+pub enum RustCmd
+```
+
 **Variants:**
 
-- `Source { ... }`
+- `Source { code: String }`
   - Source Rust code dynamically.
-- `Function { ... }`
+- `Function { code: String }`
   - Define a single Rust function.
 - `Clean`
   - Clean compiled Rust code.
 
 ### `cli::StatusCmd`
+
+```rust
+pub enum StatusCmd
+```
 
 **Variants:**
 
@@ -255,13 +372,17 @@ Returns the configure.ac path, or an error with guidance.
 
 ### `cli::VendorCmd`
 
+```rust
+pub enum VendorCmd
+```
+
 **Variants:**
 
 - `Pack`
   - Create vendor.tar.xz for CRAN submission.
 - `Versions`
   - List available miniextendr versions.
-- `Miniextendr { ... }`
+- `Miniextendr { miniextendr_version: String, dest: Option<String>, refresh: bool, local_path: Option<String> }`
   - Download/copy miniextendr crates to vendor/.
 - `CratesIo`
   - Vendor external crates.io dependencies.
@@ -273,12 +394,16 @@ Returns the configure.ac path, or an error with guidance.
   - Show diff between workspace and vendor.
 - `CacheInfo`
   - Show cache directory info and cached versions.
-- `CacheClear { ... }`
+- `CacheClear { cache_version: Option<String> }`
   - Remove cached miniextendr archives.
-- `UseLib { ... }`
+- `UseLib { crate_name: String, dev_path: Option<String> }`
   - Vendor a local path dependency for CRAN submission.
 
 ### `cli::WorkflowCmd`
+
+```rust
+pub enum WorkflowCmd
+```
 
 **Variants:**
 
@@ -288,13 +413,13 @@ Returns the configure.ac path, or an error with guidance.
   - Run ./configure to generate Makevars and build config.
 - `Document`
   - Generate R wrappers from Rust code (devtools::document).
-- `Build { ... }`
+- `Build { no_install: bool }`
   - Full two-pass build: autoconf, configure, install, document, install.
-- `Install { ... }`
+- `Install { r_cmd: bool, args: Vec<String> }`
   - Install R package (R CMD INSTALL or devtools::install).
-- `Check { ... }`
+- `Check { error_on: String, check_dir: Option<String>, args: Vec<String> }`
   - Run R CMD check or devtools::check.
-- `Test { ... }`
+- `Test { filter: Option<String> }`
   - Run R package tests (devtools::test).
 - `Doctor`
   - Comprehensive project health check.
@@ -314,7 +439,7 @@ Returns the configure.ac path, or an error with guidance.
 ### `bridge::bash`
 
 ```rust
-bash(script: &str, cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
+fn bash(script: &str, cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
 ```
 
 Run a shell command via `bash -c`.
@@ -322,7 +447,7 @@ Run a shell command via `bash -c`.
 ### `bridge::find_rscript`
 
 ```rust
-find_rscript() -> anyhow::Result<std::path::PathBuf>
+fn find_rscript() -> anyhow::Result<std::path::PathBuf>
 ```
 
 Locate the `Rscript` binary.
@@ -334,7 +459,7 @@ Search order:
 ### `bridge::has_program`
 
 ```rust
-has_program(name: &str) -> bool
+fn has_program(name: &str) -> bool
 ```
 
 Check if a program is available on PATH.
@@ -342,7 +467,7 @@ Check if a program is available on PATH.
 ### `bridge::program_version`
 
 ```rust
-program_version(name: &str) -> Option<String>
+fn program_version(name: &str) -> Option<String>
 ```
 
 Get version output from a program.
@@ -350,7 +475,7 @@ Get version output from a program.
 ### `bridge::rscript_eval`
 
 ```rust
-rscript_eval(expr: &str, cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
+fn rscript_eval(expr: &str, cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
 ```
 
 Run `Rscript -e '<expr>'` in the given directory.
@@ -361,7 +486,7 @@ Returns an error if the process exits non-zero.
 ### `bridge::run_command`
 
 ```rust
-run_command(program: &str, args: &[impl AsRef<std::ffi::OsStr>], cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
+fn run_command(program: &str, args: &[impl AsRef<std::ffi::OsStr>], cwd: &std::path::Path, quiet: bool) -> anyhow::Result<std::process::ExitStatus>
 ```
 
 Run an arbitrary command, forwarding stdio.
@@ -369,7 +494,7 @@ Run an arbitrary command, forwarding stdio.
 ### `bridge::run_command_capture`
 
 ```rust
-run_command_capture(program: &str, args: &[impl AsRef<std::ffi::OsStr>], cwd: &std::path::Path) -> anyhow::Result<String>
+fn run_command_capture(program: &str, args: &[impl AsRef<std::ffi::OsStr>], cwd: &std::path::Path) -> anyhow::Result<String>
 ```
 
 Run an arbitrary command and capture stdout.
@@ -377,37 +502,37 @@ Run an arbitrary command and capture stdout.
 ### `commands::cargo::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::CargoCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::CargoCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::config::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::ConfigCmd, ctx: &crate::project::ProjectContext, _quiet: bool, json: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::ConfigCmd, ctx: &crate::project::ProjectContext, _quiet: bool, json: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::Command, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::Command, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::feature::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::FeatureCmd, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::FeatureCmd, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::init::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::InitCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::InitCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::lint::run`
 
 ```rust
-run(ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+fn run(ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
 ```
 
 Run miniextendr-lint via cargo check on the project's Rust crate.
@@ -418,37 +543,45 @@ Lint output appears as cargo warnings.
 ### `commands::render::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::RenderCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::RenderCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::rust::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::RustCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::RustCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::status::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::StatusCmd, ctx: &crate::project::ProjectContext, _quiet: bool, json: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::StatusCmd, ctx: &crate::project::ProjectContext, _quiet: bool, json: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::vendor::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::VendorCmd, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::VendorCmd, ctx: &crate::project::ProjectContext, quiet: bool, json: bool) -> anyhow::Result<()>
 ```
 
 ### `commands::workflow::dispatch`
 
 ```rust
-dispatch(cmd: &crate::cli::WorkflowCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
+fn dispatch(cmd: &crate::cli::WorkflowCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
 ```
+
+### `output::print_json`
+
+```rust
+fn print_json<T: Serialize>(value: &T) -> anyhow::Result<()>
+```
+
+Serialize `value` as pretty JSON and print it to stdout.
 
 ### `output::print_status`
 
 ```rust
-print_status(msg: &str, json: bool)
+fn print_status(msg: &str)
 ```
 
 Print a simple status message.
@@ -456,7 +589,7 @@ Print a simple status message.
 ### `project::find_workspace_root`
 
 ```rust
-find_workspace_root(start: &std::path::Path) -> Option<std::path::PathBuf>
+fn find_workspace_root(start: &std::path::Path) -> Option<std::path::PathBuf>
 ```
 
 Find the workspace root containing `start`.
@@ -469,6 +602,10 @@ with `[workspace]`.
 
 ## Constants
 
-### `project::MINIEXTENDR_CRATES: &[&str]`
+### `project::MINIEXTENDR_CRATES`
+
+```rust
+pub const MINIEXTENDR_CRATES: &[&str] = _;
+```
 
 Miniextendr workspace crate names — the crates that get vendored/synced.

@@ -20,8 +20,8 @@
 //!
 //! # Compression levels
 //!
-//! Valid levels are [`compression_level_range()`] (currently `1..=22`);
-//! `0` selects zstd's default level ([`DEFAULT_COMPRESSION_LEVEL`], 3).
+//! Valid levels are returned by `compression_level_range()`;
+//! `0` selects zstd's `DEFAULT_COMPRESSION_LEVEL`.
 //! Out-of-range levels return an error.
 //!
 //! # Caution
@@ -38,7 +38,7 @@ pub use zstd::compression_level_range;
 /// Compress a byte buffer with zstd at the given level.
 ///
 /// `level == 0` selects zstd's default level (3). Other values must fall in
-/// [`compression_level_range()`].
+/// `compression_level_range()`.
 ///
 /// # Errors
 ///

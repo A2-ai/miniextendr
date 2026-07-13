@@ -10,143 +10,131 @@ Source: `target/doc/miniextendr_api.json`
 
 ## TryFromSexp
 
-- shape `Option<_>`: **52 hand-rolled**, 17 macro-generated  <== macro already exists for this shape
-    - `Option<&'static str>` (3 items) — miniextendr-api/src/from_r/strings.rs:121
-    - `Option<&[T]>` (3 items) — miniextendr-api/src/from_r.rs:660
-    - `Option<&mut [T]>` (3 items) — miniextendr-api/src/from_r.rs:687
+- shape `Option<_>`: **48 hand-rolled**, 22 macro-generated  <== macro already exists for this shape
+    - `Option<&'static str>` (3 items) — miniextendr-api/src/from_r/strings.rs:83
+    - `Option<&[T]>` (3 items) — miniextendr-api/src/from_r.rs:695
+    - `Option<&mut [T]>` (3 items) — miniextendr-api/src/from_r.rs:722
     - `Option<AhoCorasick>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:102
     - `Option<ArrayVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:227
-    - `Option<BigInt>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:226
-    - `Option<BigUint>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:238
     - `Option<BitVec<u8, Msb0>>` (3 items) — miniextendr-api/src/optionals/bitvec_impl.rs:172
     - `Option<Bytes>` (3 items) — miniextendr-api/src/optionals/bytes_impl.rs:430
     - `Option<BytesMut>` (3 items) — miniextendr-api/src/optionals/bytes_impl.rs:451
     - `Option<Complex<f64>>` (2 items) — miniextendr-api/src/optionals/num_complex_impl.rs:129
     - `Option<Decimal>` (2 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:179
+    - `Option<GlobSet>` (3 items) — miniextendr-api/src/optionals/globset_impl.rs:133
     - `Option<JsonValue>` (3 items) — miniextendr-api/src/optionals/serde_impl.rs:590
-    - `Option<List>` (2 items) — miniextendr-api/src/list.rs:1257
-    - `Option<ListMut>` (2 items) — miniextendr-api/src/list.rs:1269
+    - `Option<List>` (2 items) — miniextendr-api/src/list.rs:1301
+    - `Option<ListMut>` (2 items) — miniextendr-api/src/list.rs:1313
     - `Option<NamedList>` (2 items) — miniextendr-api/src/list/named.rs:175
     - `Option<OrderedFloat<f32>>` (2 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:153
     - `Option<OrderedFloat<f64>>` (2 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:144
     - `Option<RBitVec>` (3 items) — miniextendr-api/src/optionals/bitvec_impl.rs:95
     - `Option<RFlags<T>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:220
-    - `Option<Regex>` (2 items) — miniextendr-api/src/optionals/regex_impl.rs:85
     - `Option<SMatrix<T, R, C>>` (3 items) — miniextendr-api/src/optionals/nalgebra_impl.rs:312
-    - `Option<String>` (3 items) — miniextendr-api/src/from_r/strings.rs:317
+    - `Option<String>` (3 items) — miniextendr-api/src/from_r/strings.rs:207
     - `Option<T>` (3 items) — miniextendr-api/src/newtype.rs:145
     - `Option<TinyVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:178
     - `Option<TomlValue>` (3 items) — miniextendr-api/src/optionals/toml_impl.rs:167
-    - `Option<Url>` (2 items) — miniextendr-api/src/optionals/url_impl.rs:89
-    - `Option<Uuid>` (2 items) — miniextendr-api/src/optionals/uuid_impl.rs:58
-    - `Option<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:846
-    - `Option<Zoned>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:209
+    - `Option<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:881
+    - `Option<Zoned>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:206
     - `Option<bool>` (3 items) — miniextendr-api/src/from_r/logical.rs:118
     - `Option<crate::RLogical>` (3 items) — miniextendr-api/src/from_r/logical.rs:142
     - `Option<crate::Rboolean>` (3 items) — miniextendr-api/src/from_r/logical.rs:62
     - `Option<crate::Rcomplex>` (3 items) — miniextendr-api/src/from_r/logical.rs:250
-    - `Option<crate::SEXP>` (3 items) — miniextendr-api/src/from_r.rs:551
-    - `Option<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1327
-    - `Option<f32>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:445
+    - `Option<crate::SEXP>` (3 items) — miniextendr-api/src/from_r.rs:582
+    - `Option<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1578
+    - `Option<f32>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:395
     - `Option<f64>` (3 items) — miniextendr-api/src/from_r/logical.rs:196
-    - `Option<i16>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:403
+    - `Option<i16>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:353
     - `Option<i32>` (3 items) — miniextendr-api/src/from_r/logical.rs:164
-    - `Option<i64>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:603
-    - `Option<i8>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:389
-    - `Option<isize>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:788
-    - `Option<std::collections::BTreeMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:901
-    - `Option<std::collections::BTreeSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:934
-    - `Option<std::collections::HashMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:897
-    - `Option<std::collections::HashSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:930
-    - `Option<u16>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:417
-    - `Option<u32>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:431
-    - `Option<u64>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:617
+    - `Option<i64>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:479
+    - `Option<i8>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:339
+    - `Option<isize>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:549
+    - `Option<std::collections::BTreeMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:936
+    - `Option<std::collections::BTreeSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:969
+    - `Option<std::collections::HashMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:932
+    - `Option<std::collections::HashSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:965
+    - `Option<u16>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:367
+    - `Option<u32>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:381
+    - `Option<u64>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:493
     - `Option<u8>` (3 items) — miniextendr-api/src/from_r/logical.rs:228
-    - `Option<usize>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:679
-- shape `Vec<_>`: **39 hand-rolled**, 27 macro-generated  <== macro already exists for this shape
-    - `Vec<&'static str>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:197
+    - `Option<usize>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:521
+- shape `Vec<_>`: **35 hand-rolled**, 32 macro-generated  <== macro already exists for this shape
+    - `Vec<&'static str>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:154
     - `Vec<AhoCorasick>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:103
-    - `Vec<BigInt>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:250
-    - `Vec<BigUint>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:267
     - `Vec<Complex<f64>>` (2 items) — miniextendr-api/src/optionals/num_complex_impl.rs:171
     - `Vec<Decimal>` (2 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:206
+    - `Vec<GlobSet>` (3 items) — miniextendr-api/src/optionals/globset_impl.rs:134
     - `Vec<JsonValue>` (3 items) — miniextendr-api/src/optionals/serde_impl.rs:591
     - `Vec<OrderedFloat<f32>>` (2 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:182
     - `Vec<OrderedFloat<f64>>` (2 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:164
     - `Vec<RFlags<T>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:265
-    - `Vec<Regex>` (2 items) — miniextendr-api/src/optionals/regex_impl.rs:102
-    - `Vec<String>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:164
+    - `Vec<String>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:136
     - `Vec<T>` (3 items) — miniextendr-api/src/newtype.rs:120
     - `Vec<TomlValue>` (2 items) — miniextendr-api/src/optionals/toml_impl.rs:170
-    - `Vec<Url>` (2 items) — miniextendr-api/src/optionals/url_impl.rs:135
-    - `Vec<Uuid>` (2 items) — miniextendr-api/src/optionals/uuid_impl.rs:77
-    - `Vec<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:945
-    - `Vec<Zoned>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:265
-    - `Vec<bool>` (3 items) — miniextendr-api/src/from_r.rs:1166
-    - `Vec<crate::RLogical>` (2 items) — miniextendr-api/src/from_r/collections.rs:216
+    - `Vec<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:980
+    - `Vec<Zoned>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:261
+    - `Vec<bool>` (3 items) — miniextendr-api/src/from_r.rs:1381
+    - `Vec<crate::RLogical>` (2 items) — miniextendr-api/src/from_r/collections.rs:198
     - `Vec<crate::Rboolean>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:101
-    - `Vec<crate::Rcomplex>` (2 items) — miniextendr-api/src/from_r/collections.rs:217
+    - `Vec<crate::Rcomplex>` (2 items) — miniextendr-api/src/from_r/collections.rs:199
     - `Vec<crate::altrep_data::Logical>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:162
-    - `Vec<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1356
-    - `Vec<f32>` (3 items) — miniextendr-api/src/from_r.rs:1163
-    - `Vec<f64>` (2 items) — miniextendr-api/src/from_r/collections.rs:214
-    - `Vec<i16>` (3 items) — miniextendr-api/src/from_r.rs:1156
-    - `Vec<i32>` (2 items) — miniextendr-api/src/from_r/collections.rs:213
-    - `Vec<i64>` (3 items) — miniextendr-api/src/from_r.rs:1157
-    - `Vec<i8>` (3 items) — miniextendr-api/src/from_r.rs:1155
-    - `Vec<isize>` (3 items) — miniextendr-api/src/from_r.rs:1158
-    - `Vec<std::borrow::Cow<'static, str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:84
+    - `Vec<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1607
+    - `Vec<f32>` (3 items) — miniextendr-api/src/from_r.rs:1378
+    - `Vec<f64>` (2 items) — miniextendr-api/src/from_r/collections.rs:196
+    - `Vec<i16>` (3 items) — miniextendr-api/src/from_r.rs:1371
+    - `Vec<i32>` (2 items) — miniextendr-api/src/from_r/collections.rs:195
+    - `Vec<i64>` (3 items) — miniextendr-api/src/from_r.rs:1372
+    - `Vec<i8>` (3 items) — miniextendr-api/src/from_r.rs:1370
+    - `Vec<isize>` (3 items) — miniextendr-api/src/from_r.rs:1373
+    - `Vec<std::borrow::Cow<'static, str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:86
     - `Vec<std::collections::BTreeMap<String, V>>` (2 items) — miniextendr-api/src/from_r/collections.rs:148
     - `Vec<std::collections::HashMap<String, V>>` (2 items) — miniextendr-api/src/from_r/collections.rs:144
-    - `Vec<u16>` (3 items) — miniextendr-api/src/from_r.rs:1159
-    - `Vec<u32>` (3 items) — miniextendr-api/src/from_r.rs:1160
-    - `Vec<u64>` (3 items) — miniextendr-api/src/from_r.rs:1161
-    - `Vec<u8>` (2 items) — miniextendr-api/src/from_r/collections.rs:215
-    - `Vec<usize>` (3 items) — miniextendr-api/src/from_r.rs:1162
-- shape `Vec<Option<_>>`: **34 hand-rolled**, 27 macro-generated  <== macro already exists for this shape
-    - `Vec<Option<&'static str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:231
+    - `Vec<u16>` (3 items) — miniextendr-api/src/from_r.rs:1374
+    - `Vec<u32>` (3 items) — miniextendr-api/src/from_r.rs:1375
+    - `Vec<u64>` (3 items) — miniextendr-api/src/from_r.rs:1376
+    - `Vec<u8>` (2 items) — miniextendr-api/src/from_r/collections.rs:197
+    - `Vec<usize>` (3 items) — miniextendr-api/src/from_r.rs:1377
+- shape `Vec<Option<_>>`: **30 hand-rolled**, 32 macro-generated  <== macro already exists for this shape
+    - `Vec<Option<&'static str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:168
     - `Vec<Option<AhoCorasick>>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:104
-    - `Vec<Option<BigInt>>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:284
-    - `Vec<Option<BigUint>>` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:299
     - `Vec<Option<Complex<f64>>>` (2 items) — miniextendr-api/src/optionals/num_complex_impl.rs:218
     - `Vec<Option<Decimal>>` (2 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:251
+    - `Vec<Option<GlobSet>>` (3 items) — miniextendr-api/src/optionals/globset_impl.rs:135
     - `Vec<Option<JsonValue>>` (3 items) — miniextendr-api/src/optionals/serde_impl.rs:592
     - `Vec<Option<OrderedFloat<f32>>>` (2 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:212
     - `Vec<Option<OrderedFloat<f64>>>` (2 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:203
     - `Vec<Option<RFlags<T>>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:309
-    - `Vec<Option<Regex>>` (2 items) — miniextendr-api/src/optionals/regex_impl.rs:119
     - `Vec<Option<String>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:210
     - `Vec<Option<T>>` (3 items) — miniextendr-api/src/newtype.rs:165
     - `Vec<Option<TomlValue>>` (2 items) — miniextendr-api/src/optionals/toml_impl.rs:193
-    - `Vec<Option<Url>>` (2 items) — miniextendr-api/src/optionals/url_impl.rs:185
-    - `Vec<Option<Uuid>>` (2 items) — miniextendr-api/src/optionals/uuid_impl.rs:127
-    - `Vec<Option<Zoned>>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:372
+    - `Vec<Option<Zoned>>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:365
     - `Vec<Option<bool>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:66
     - `Vec<Option<crate::RLogical>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:185
     - `Vec<Option<crate::Rboolean>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:131
-    - `Vec<Option<crate::externalptr::ExternalPtr<T>>>` (3 items) — miniextendr-api/src/from_r.rs:1401
-    - `Vec<Option<f32>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:322
+    - `Vec<Option<crate::externalptr::ExternalPtr<T>>>` (3 items) — miniextendr-api/src/from_r.rs:1628
+    - `Vec<Option<f32>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:310
     - `Vec<Option<f64>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:62
-    - `Vec<Option<i16>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:315
+    - `Vec<Option<i16>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:303
     - `Vec<Option<i32>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:63
-    - `Vec<Option<i64>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:318
-    - `Vec<Option<i8>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:314
-    - `Vec<Option<isize>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:320
-    - `Vec<Option<std::borrow::Cow<'static, str>>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:116
-    - `Vec<Option<u16>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:316
-    - `Vec<Option<u32>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:317
-    - `Vec<Option<u64>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:319
-    - `Vec<Option<u8>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:241
-    - `Vec<Option<usize>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:321
+    - `Vec<Option<i64>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:306
+    - `Vec<Option<i8>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:302
+    - `Vec<Option<isize>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:308
+    - `Vec<Option<std::borrow::Cow<'static, str>>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:103
+    - `Vec<Option<u16>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:304
+    - `Vec<Option<u32>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:305
+    - `Vec<Option<u64>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:307
+    - `Vec<Option<u8>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:225
+    - `Vec<Option<usize>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:309
 
 ## IntoR
 
 - shape `Option<_>`: **45 hand-rolled**, 7 macro-generated  <== macro already exists for this shape
-    - `Option<&T>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:672
-    - `Option<&str>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:608
+    - `Option<&T>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:707
+    - `Option<&str>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:639
     - `Option<ArrayVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:251
-    - `Option<BigInt>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:316
-    - `Option<BigUint>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:319
+    - `Option<BigInt>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:198
+    - `Option<BigUint>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:201
     - `Option<BitVec<u8, Msb0>>` (4 items) — miniextendr-api/src/optionals/bitvec_impl.rs:197
     - `Option<Bytes>` (5 items) — miniextendr-api/src/optionals/bytes_impl.rs:472
     - `Option<BytesMut>` (5 items) — miniextendr-api/src/optionals/bytes_impl.rs:496
@@ -158,18 +146,18 @@ Source: `target/doc/miniextendr_api.json`
     - `Option<RBitVec>` (4 items) — miniextendr-api/src/optionals/bitvec_impl.rs:123
     - `Option<RFlags<T>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:375
     - `Option<SMatrix<T, R, C>>` (3 items) — miniextendr-api/src/optionals/nalgebra_impl.rs:335
-    - `Option<String>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:645
+    - `Option<String>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:676
     - `Option<TinyVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:202
     - `Option<TomlValue>` (4 items) — miniextendr-api/src/optionals/toml_impl.rs:236
-    - `Option<Url>` (4 items) — miniextendr-api/src/optionals/url_impl.rs:128
-    - `Option<Uuid>` (4 items) — miniextendr-api/src/optionals/uuid_impl.rs:72
-    - `Option<Vec<String>>` (5 items) — miniextendr-api/src/into_r.rs:1049
-    - `Option<Vec<T>>` (5 items) — miniextendr-api/src/into_r.rs:1022
-    - `Option<Zoned>` (4 items) — miniextendr-api/src/optionals/jiff_impl.rs:238
+    - `Option<Url>` (4 items) — miniextendr-api/src/optionals/url_impl.rs:52
+    - `Option<Uuid>` (4 items) — miniextendr-api/src/optionals/uuid_impl.rs:46
+    - `Option<Vec<String>>` (5 items) — miniextendr-api/src/into_r.rs:1076
+    - `Option<Vec<T>>` (5 items) — miniextendr-api/src/into_r.rs:1049
+    - `Option<Zoned>` (4 items) — miniextendr-api/src/optionals/jiff_impl.rs:235
     - `Option<bool>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:295
     - `Option<crate::RLogical>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:269
     - `Option<crate::Rboolean>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:242
-    - `Option<crate::Rcomplex>` (5 items) — miniextendr-api/src/into_r.rs:272
+    - `Option<crate::Rcomplex>` (5 items) — miniextendr-api/src/into_r.rs:299
     - `Option<f32>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:379
     - `Option<f64>` (5 items) — miniextendr-api/src/into_r/large_integers.rs:216
     - `Option<i16>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:376
@@ -177,196 +165,196 @@ Source: `target/doc/miniextendr_api.json`
     - `Option<i64>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:348
     - `Option<i8>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:375
     - `Option<isize>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:350
-    - `Option<std::collections::BTreeMap<String, V>>` (5 items) — miniextendr-api/src/into_r.rs:1103
-    - `Option<std::collections::BTreeSet<String>>` (5 items) — miniextendr-api/src/into_r.rs:1218
-    - `Option<std::collections::BTreeSet<T>>` (5 items) — miniextendr-api/src/into_r.rs:1157
-    - `Option<std::collections::HashMap<String, V>>` (5 items) — miniextendr-api/src/into_r.rs:1076
-    - `Option<std::collections::HashSet<String>>` (5 items) — miniextendr-api/src/into_r.rs:1214
-    - `Option<std::collections::HashSet<T>>` (5 items) — miniextendr-api/src/into_r.rs:1130
+    - `Option<std::collections::BTreeMap<String, V>>` (5 items) — miniextendr-api/src/into_r.rs:1130
+    - `Option<std::collections::BTreeSet<String>>` (5 items) — miniextendr-api/src/into_r.rs:1245
+    - `Option<std::collections::BTreeSet<T>>` (5 items) — miniextendr-api/src/into_r.rs:1184
+    - `Option<std::collections::HashMap<String, V>>` (5 items) — miniextendr-api/src/into_r.rs:1103
+    - `Option<std::collections::HashSet<String>>` (5 items) — miniextendr-api/src/into_r.rs:1241
+    - `Option<std::collections::HashSet<T>>` (5 items) — miniextendr-api/src/into_r.rs:1157
     - `Option<u16>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:377
     - `Option<u32>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:378
     - `Option<u64>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:349
     - `Option<usize>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:352
 - shape `Vec<_>`: **43 hand-rolled**, 11 macro-generated  <== macro already exists for this shape
-    - `Vec<&[String]>` (5 items) — miniextendr-api/src/into_r.rs:1549
-    - `Vec<&[T]>` (5 items) — miniextendr-api/src/into_r.rs:1509
-    - `Vec<&str>` (5 items) — miniextendr-api/src/into_r.rs:1440
-    - `Vec<BigInt>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:322
-    - `Vec<BigUint>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:327
-    - `Vec<Box<[String]>>` (4 items) — miniextendr-api/src/into_r.rs:2156
-    - `Vec<Box<[T]>>` (4 items) — miniextendr-api/src/into_r.rs:2126
+    - `Vec<&[String]>` (5 items) — miniextendr-api/src/into_r.rs:1556
+    - `Vec<&[T]>` (5 items) — miniextendr-api/src/into_r.rs:1537
+    - `Vec<&str>` (5 items) — miniextendr-api/src/into_r.rs:1436
+    - `Vec<BigInt>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:204
+    - `Vec<BigUint>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:209
+    - `Vec<Box<[String]>>` (4 items) — miniextendr-api/src/into_r.rs:2051
+    - `Vec<Box<[T]>>` (4 items) — miniextendr-api/src/into_r.rs:2034
     - `Vec<Complex<f64>>` (4 items) — miniextendr-api/src/optionals/num_complex_impl.rs:201
     - `Vec<Decimal>` (4 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:291
     - `Vec<JsonValue>` (4 items) — miniextendr-api/src/optionals/serde_impl.rs:626
-    - `Vec<List>` (4 items) — miniextendr-api/src/list.rs:1104
+    - `Vec<List>` (4 items) — miniextendr-api/src/list.rs:1146
     - `Vec<OrderedFloat<f32>>` (4 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:240
     - `Vec<OrderedFloat<f64>>` (4 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:235
     - `Vec<RFlags<T>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:390
-    - `Vec<String>` (5 items) — miniextendr-api/src/into_r.rs:1263
+    - `Vec<String>` (5 items) — miniextendr-api/src/into_r.rs:1323
     - `Vec<T>` (4 items) — miniextendr-api/src/newtype.rs:97
     - `Vec<TomlValue>` (4 items) — miniextendr-api/src/optionals/toml_impl.rs:252
-    - `Vec<Url>` (4 items) — miniextendr-api/src/optionals/url_impl.rs:176
-    - `Vec<Uuid>` (4 items) — miniextendr-api/src/optionals/uuid_impl.rs:118
-    - `Vec<Vec<String>>` (5 items) — miniextendr-api/src/into_r.rs:1587
-    - `Vec<Vec<T>>` (5 items) — miniextendr-api/src/into_r.rs:1461
-    - `Vec<Zoned>` (4 items) — miniextendr-api/src/optionals/jiff_impl.rs:316
-    - `Vec<[T; N]>` (4 items) — miniextendr-api/src/into_r.rs:2173
-    - `Vec<bool>` (5 items) — miniextendr-api/src/into_r.rs:1773
-    - `Vec<crate::RLogical>` (5 items) — miniextendr-api/src/into_r.rs:383
-    - `Vec<crate::Rboolean>` (5 items) — miniextendr-api/src/into_r.rs:1813
-    - `Vec<crate::Rcomplex>` (5 items) — miniextendr-api/src/into_r.rs:384
+    - `Vec<Url>` (4 items) — miniextendr-api/src/optionals/url_impl.rs:56
+    - `Vec<Uuid>` (4 items) — miniextendr-api/src/optionals/uuid_impl.rs:47
+    - `Vec<Vec<String>>` (5 items) — miniextendr-api/src/into_r.rs:1573
+    - `Vec<Vec<T>>` (5 items) — miniextendr-api/src/into_r.rs:1514
+    - `Vec<Zoned>` (4 items) — miniextendr-api/src/optionals/jiff_impl.rs:310
+    - `Vec<[T; N]>` (4 items) — miniextendr-api/src/into_r.rs:2057
+    - `Vec<bool>` (5 items) — miniextendr-api/src/into_r.rs:1734
+    - `Vec<crate::RLogical>` (5 items) — miniextendr-api/src/into_r.rs:410
+    - `Vec<crate::Rboolean>` (5 items) — miniextendr-api/src/into_r.rs:1774
+    - `Vec<crate::Rcomplex>` (5 items) — miniextendr-api/src/into_r.rs:411
     - `Vec<crate::externalptr::ExternalPtr<T>>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:404
-    - `Vec<f64>` (5 items) — miniextendr-api/src/into_r.rs:381
-    - `Vec<i32>` (5 items) — miniextendr-api/src/into_r.rs:380
-    - `Vec<i64>` (5 items) — miniextendr-api/src/into_r.rs:640
-    - `Vec<isize>` (5 items) — miniextendr-api/src/into_r.rs:642
-    - `Vec<std::borrow::Cow<'_, str>>` (5 items) — miniextendr-api/src/into_r.rs:1317
-    - `Vec<std::collections::BTreeMap<String, V>>` (4 items) — miniextendr-api/src/into_r.rs:2430
-    - `Vec<std::collections::BTreeSet<String>>` (4 items) — miniextendr-api/src/into_r.rs:2403
-    - `Vec<std::collections::BTreeSet<T>>` (4 items) — miniextendr-api/src/into_r.rs:2379
-    - `Vec<std::collections::HashMap<String, V>>` (4 items) — miniextendr-api/src/into_r.rs:2426
-    - `Vec<std::collections::HashSet<String>>` (4 items) — miniextendr-api/src/into_r.rs:2397
-    - `Vec<std::collections::HashSet<T>>` (4 items) — miniextendr-api/src/into_r.rs:2360
-    - `Vec<u32>` (5 items) — miniextendr-api/src/into_r.rs:647
-    - `Vec<u64>` (5 items) — miniextendr-api/src/into_r.rs:641
-    - `Vec<u8>` (5 items) — miniextendr-api/src/into_r.rs:382
-    - `Vec<usize>` (5 items) — miniextendr-api/src/into_r.rs:644
+    - `Vec<f64>` (5 items) — miniextendr-api/src/into_r.rs:408
+    - `Vec<i32>` (5 items) — miniextendr-api/src/into_r.rs:407
+    - `Vec<i64>` (5 items) — miniextendr-api/src/into_r.rs:667
+    - `Vec<isize>` (5 items) — miniextendr-api/src/into_r.rs:669
+    - `Vec<std::borrow::Cow<'_, str>>` (5 items) — miniextendr-api/src/into_r.rs:1377
+    - `Vec<std::collections::BTreeMap<String, V>>` (4 items) — miniextendr-api/src/into_r.rs:2281
+    - `Vec<std::collections::BTreeSet<String>>` (4 items) — miniextendr-api/src/into_r.rs:2254
+    - `Vec<std::collections::BTreeSet<T>>` (4 items) — miniextendr-api/src/into_r.rs:2230
+    - `Vec<std::collections::HashMap<String, V>>` (4 items) — miniextendr-api/src/into_r.rs:2277
+    - `Vec<std::collections::HashSet<String>>` (4 items) — miniextendr-api/src/into_r.rs:2248
+    - `Vec<std::collections::HashSet<T>>` (4 items) — miniextendr-api/src/into_r.rs:2211
+    - `Vec<u32>` (5 items) — miniextendr-api/src/into_r.rs:674
+    - `Vec<u64>` (5 items) — miniextendr-api/src/into_r.rs:668
+    - `Vec<u8>` (5 items) — miniextendr-api/src/into_r.rs:409
+    - `Vec<usize>` (5 items) — miniextendr-api/src/into_r.rs:671
 - shape `Vec<Option<_>>`: **42 hand-rolled**, 7 macro-generated  <== macro already exists for this shape
-    - `Vec<Option<&[String]>>` (4 items) — miniextendr-api/src/into_r.rs:2352
-    - `Vec<Option<&[T]>>` (4 items) — miniextendr-api/src/into_r.rs:2337
-    - `Vec<Option<&str>>` (5 items) — miniextendr-api/src/into_r.rs:1389
-    - `Vec<Option<BigInt>>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:332
-    - `Vec<Option<BigUint>>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:337
+    - `Vec<Option<&[String]>>` (4 items) — miniextendr-api/src/into_r.rs:2203
+    - `Vec<Option<&[T]>>` (4 items) — miniextendr-api/src/into_r.rs:2188
+    - `Vec<Option<&str>>` (5 items) — miniextendr-api/src/into_r.rs:1418
+    - `Vec<Option<BigInt>>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:214
+    - `Vec<Option<BigUint>>` (4 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:219
     - `Vec<Option<Complex<f64>>>` (4 items) — miniextendr-api/src/optionals/num_complex_impl.rs:247
     - `Vec<Option<Decimal>>` (4 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:296
     - `Vec<Option<JsonValue>>` (4 items) — miniextendr-api/src/optionals/serde_impl.rs:653
-    - `Vec<Option<List>>` (4 items) — miniextendr-api/src/list.rs:1133
+    - `Vec<Option<List>>` (4 items) — miniextendr-api/src/list.rs:1177
     - `Vec<Option<OrderedFloat<f32>>>` (4 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:250
     - `Vec<Option<OrderedFloat<f64>>>` (4 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:245
     - `Vec<Option<RFlags<T>>>` (2 items) — miniextendr-api/src/optionals/bitflags_impl.rs:406
-    - `Vec<Option<String>>` (5 items) — miniextendr-api/src/into_r.rs:1905
+    - `Vec<Option<String>>` (5 items) — miniextendr-api/src/into_r.rs:1866
     - `Vec<Option<T>>` (5 items) — miniextendr-api/src/newtype.rs:203
     - `Vec<Option<TomlValue>>` (4 items) — miniextendr-api/src/optionals/toml_impl.rs:279
-    - `Vec<Option<Url>>` (4 items) — miniextendr-api/src/optionals/url_impl.rs:224
-    - `Vec<Option<Uuid>>` (4 items) — miniextendr-api/src/optionals/uuid_impl.rs:145
-    - `Vec<Option<Vec<String>>>` (4 items) — miniextendr-api/src/into_r.rs:2258
-    - `Vec<Option<Vec<T>>>` (4 items) — miniextendr-api/src/into_r.rs:2241
-    - `Vec<Option<Zoned>>` (4 items) — miniextendr-api/src/optionals/jiff_impl.rs:422
-    - `Vec<Option<bool>>` (5 items) — miniextendr-api/src/into_r.rs:1876
-    - `Vec<Option<crate::RLogical>>` (5 items) — miniextendr-api/src/into_r.rs:1893
-    - `Vec<Option<crate::Rboolean>>` (5 items) — miniextendr-api/src/into_r.rs:1885
+    - `Vec<Option<Url>>` (4 items) — miniextendr-api/src/optionals/url_impl.rs:62
+    - `Vec<Option<Uuid>>` (4 items) — miniextendr-api/src/optionals/uuid_impl.rs:52
+    - `Vec<Option<Vec<String>>>` (4 items) — miniextendr-api/src/into_r.rs:2109
+    - `Vec<Option<Vec<T>>>` (4 items) — miniextendr-api/src/into_r.rs:2092
+    - `Vec<Option<Zoned>>` (4 items) — miniextendr-api/src/optionals/jiff_impl.rs:413
+    - `Vec<Option<bool>>` (5 items) — miniextendr-api/src/into_r.rs:1837
+    - `Vec<Option<crate::RLogical>>` (5 items) — miniextendr-api/src/into_r.rs:1854
+    - `Vec<Option<crate::Rboolean>>` (5 items) — miniextendr-api/src/into_r.rs:1846
     - `Vec<Option<crate::externalptr::ExternalPtr<T>>>` (4 items) — miniextendr-api/src/into_r/large_integers.rs:419
-    - `Vec<Option<f32>>` (4 items) — miniextendr-api/src/into_r.rs:1740
-    - `Vec<Option<f64>>` (5 items) — miniextendr-api/src/into_r.rs:1674
-    - `Vec<Option<i16>>` (4 items) — miniextendr-api/src/into_r.rs:1737
-    - `Vec<Option<i32>>` (5 items) — miniextendr-api/src/into_r.rs:1675
-    - `Vec<Option<i64>>` (4 items) — miniextendr-api/src/into_r.rs:1713
-    - `Vec<Option<i8>>` (4 items) — miniextendr-api/src/into_r.rs:1736
-    - `Vec<Option<isize>>` (4 items) — miniextendr-api/src/into_r.rs:1715
-    - `Vec<Option<std::borrow::Cow<'_, str>>>` (5 items) — miniextendr-api/src/into_r.rs:1336
-    - `Vec<Option<std::collections::BTreeMap<String, V>>>` (4 items) — miniextendr-api/src/into_r.rs:2321
-    - `Vec<Option<std::collections::BTreeSet<String>>>` (4 items) — miniextendr-api/src/into_r.rs:2302
-    - `Vec<Option<std::collections::BTreeSet<T>>>` (4 items) — miniextendr-api/src/into_r.rs:2285
-    - `Vec<Option<std::collections::HashMap<String, V>>>` (4 items) — miniextendr-api/src/into_r.rs:2307
-    - `Vec<Option<std::collections::HashSet<String>>>` (4 items) — miniextendr-api/src/into_r.rs:2280
-    - `Vec<Option<std::collections::HashSet<T>>>` (4 items) — miniextendr-api/src/into_r.rs:2263
-    - `Vec<Option<u16>>` (4 items) — miniextendr-api/src/into_r.rs:1738
-    - `Vec<Option<u32>>` (4 items) — miniextendr-api/src/into_r.rs:1739
-    - `Vec<Option<u64>>` (4 items) — miniextendr-api/src/into_r.rs:1714
-    - `Vec<Option<usize>>` (4 items) — miniextendr-api/src/into_r.rs:1717
+    - `Vec<Option<f32>>` (4 items) — miniextendr-api/src/into_r.rs:1701
+    - `Vec<Option<f64>>` (5 items) — miniextendr-api/src/into_r.rs:1635
+    - `Vec<Option<i16>>` (4 items) — miniextendr-api/src/into_r.rs:1698
+    - `Vec<Option<i32>>` (5 items) — miniextendr-api/src/into_r.rs:1636
+    - `Vec<Option<i64>>` (4 items) — miniextendr-api/src/into_r.rs:1674
+    - `Vec<Option<i8>>` (4 items) — miniextendr-api/src/into_r.rs:1697
+    - `Vec<Option<isize>>` (4 items) — miniextendr-api/src/into_r.rs:1676
+    - `Vec<Option<std::borrow::Cow<'_, str>>>` (5 items) — miniextendr-api/src/into_r.rs:1396
+    - `Vec<Option<std::collections::BTreeMap<String, V>>>` (4 items) — miniextendr-api/src/into_r.rs:2172
+    - `Vec<Option<std::collections::BTreeSet<String>>>` (4 items) — miniextendr-api/src/into_r.rs:2153
+    - `Vec<Option<std::collections::BTreeSet<T>>>` (4 items) — miniextendr-api/src/into_r.rs:2136
+    - `Vec<Option<std::collections::HashMap<String, V>>>` (4 items) — miniextendr-api/src/into_r.rs:2158
+    - `Vec<Option<std::collections::HashSet<String>>>` (4 items) — miniextendr-api/src/into_r.rs:2131
+    - `Vec<Option<std::collections::HashSet<T>>>` (4 items) — miniextendr-api/src/into_r.rs:2114
+    - `Vec<Option<u16>>` (4 items) — miniextendr-api/src/into_r.rs:1699
+    - `Vec<Option<u32>>` (4 items) — miniextendr-api/src/into_r.rs:1700
+    - `Vec<Option<u64>>` (4 items) — miniextendr-api/src/into_r.rs:1675
+    - `Vec<Option<usize>>` (4 items) — miniextendr-api/src/into_r.rs:1678
 - shape `&[_]`: **5 hand-rolled**, 4 macro-generated  <== macro already exists for this shape
-    - `&[&str]` (5 items) — miniextendr-api/src/into_r.rs:1299
-    - `&[String]` (5 items) — miniextendr-api/src/into_r.rs:1281
-    - `&[T]` (5 items) — miniextendr-api/src/into_r.rs:386
-    - `&[bool]` (5 items) — miniextendr-api/src/into_r.rs:1793
-    - `&[crate::Rboolean]` (5 items) — miniextendr-api/src/into_r.rs:1833
+    - `&[&str]` (5 items) — miniextendr-api/src/into_r.rs:1359
+    - `&[String]` (5 items) — miniextendr-api/src/into_r.rs:1341
+    - `&[T]` (5 items) — miniextendr-api/src/into_r.rs:413
+    - `&[bool]` (5 items) — miniextendr-api/src/into_r.rs:1754
+    - `&[crate::Rboolean]` (5 items) — miniextendr-api/src/into_r.rs:1794
 
 ## IntoRAs
 
 - shape `Vec<_>`: **14 hand-rolled**, 31 macro-generated  <== macro already exists for this shape
-    - `Vec<&str>` (1 items) — miniextendr-api/src/into_r_as.rs:873
-    - `Vec<String>` (1 items) — miniextendr-api/src/into_r_as.rs:859
-    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:646
-    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:792
-    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:842
-    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:924
-    - `Vec<f32>` (1 items) — miniextendr-api/src/into_r_as.rs:693
-    - `Vec<f64>` (1 items) — miniextendr-api/src/into_r_as.rs:664
-    - `Vec<f64>` (1 items) — miniextendr-api/src/into_r_as.rs:888
-    - `Vec<i32>` (1 items) — miniextendr-api/src/into_r_as.rs:619
-    - `Vec<i32>` (1 items) — miniextendr-api/src/into_r_as.rs:753
-    - `Vec<i32>` (1 items) — miniextendr-api/src/into_r_as.rs:910
-    - `Vec<i64>` (1 items) — miniextendr-api/src/into_r_as.rs:917
-    - `Vec<u8>` (1 items) — miniextendr-api/src/into_r_as.rs:813
+    - `Vec<&str>` (1 items) — miniextendr-api/src/into_r_as.rs:1011
+    - `Vec<String>` (1 items) — miniextendr-api/src/into_r_as.rs:997
+    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:1062
+    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:708
+    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:930
+    - `Vec<bool>` (1 items) — miniextendr-api/src/into_r_as.rs:980
+    - `Vec<f32>` (1 items) — miniextendr-api/src/into_r_as.rs:779
+    - `Vec<f64>` (1 items) — miniextendr-api/src/into_r_as.rs:1026
+    - `Vec<f64>` (1 items) — miniextendr-api/src/into_r_as.rs:726
+    - `Vec<i32>` (1 items) — miniextendr-api/src/into_r_as.rs:1048
+    - `Vec<i32>` (1 items) — miniextendr-api/src/into_r_as.rs:681
+    - `Vec<i32>` (1 items) — miniextendr-api/src/into_r_as.rs:865
+    - `Vec<i64>` (1 items) — miniextendr-api/src/into_r_as.rs:1055
+    - `Vec<u8>` (1 items) — miniextendr-api/src/into_r_as.rs:951
 - shape `&[_]`: **10 hand-rolled**, 31 macro-generated  <== macro already exists for this shape
-    - `&[&str]` (1 items) — miniextendr-api/src/into_r_as.rs:880
-    - `&[String]` (1 items) — miniextendr-api/src/into_r_as.rs:866
-    - `&[bool]` (1 items) — miniextendr-api/src/into_r_as.rs:653
-    - `&[bool]` (1 items) — miniextendr-api/src/into_r_as.rs:802
-    - `&[bool]` (1 items) — miniextendr-api/src/into_r_as.rs:849
-    - `&[f32]` (1 items) — miniextendr-api/src/into_r_as.rs:709
-    - `&[f64]` (1 items) — miniextendr-api/src/into_r_as.rs:678
-    - `&[i32]` (1 items) — miniextendr-api/src/into_r_as.rs:626
-    - `&[i32]` (1 items) — miniextendr-api/src/into_r_as.rs:769
-    - `&[u8]` (1 items) — miniextendr-api/src/into_r_as.rs:820
+    - `&[&str]` (1 items) — miniextendr-api/src/into_r_as.rs:1018
+    - `&[String]` (1 items) — miniextendr-api/src/into_r_as.rs:1004
+    - `&[bool]` (1 items) — miniextendr-api/src/into_r_as.rs:715
+    - `&[bool]` (1 items) — miniextendr-api/src/into_r_as.rs:940
+    - `&[bool]` (1 items) — miniextendr-api/src/into_r_as.rs:987
+    - `&[f32]` (1 items) — miniextendr-api/src/into_r_as.rs:808
+    - `&[f64]` (1 items) — miniextendr-api/src/into_r_as.rs:752
+    - `&[i32]` (1 items) — miniextendr-api/src/into_r_as.rs:688
+    - `&[i32]` (1 items) — miniextendr-api/src/into_r_as.rs:894
+    - `&[u8]` (1 items) — miniextendr-api/src/into_r_as.rs:958
 - shape `i32`: **5 hand-rolled**, 0 macro-generated
-    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:324
-    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:402
-    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:467
-    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:495
-    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:554
-- shape `f32`: **4 hand-rolled**, 0 macro-generated
-    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:345
-    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:374
-    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:474
-    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:547
-- shape `f64`: **4 hand-rolled**, 0 macro-generated
-    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:346
-    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:360
-    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:475
-    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:529
-- shape `bool`: **4 hand-rolled**, 0 macro-generated
-    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:349
-    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:446
-    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:480
-    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:568
+    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:356
+    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:434
+    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:499
+    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:527
+    - `i32` (1 items) — miniextendr-api/src/into_r_as.rs:586
 - shape `i64`: **4 hand-rolled**, 0 macro-generated
-    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:338
-    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:440
-    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:468
-    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:561
-- shape `u32`: **3 hand-rolled**, 0 macro-generated
-    - `u32` (1 items) — miniextendr-api/src/into_r_as.rs:340
-    - `u32` (1 items) — miniextendr-api/src/into_r_as.rs:432
-    - `u32` (1 items) — miniextendr-api/src/into_r_as.rs:471
-- shape `i8`: **3 hand-rolled**, 0 macro-generated
-    - `i8` (1 items) — miniextendr-api/src/into_r_as.rs:332
-    - `i8` (1 items) — miniextendr-api/src/into_r_as.rs:388
-    - `i8` (1 items) — miniextendr-api/src/into_r_as.rs:465
-- shape `u16`: **3 hand-rolled**, 0 macro-generated
-    - `u16` (1 items) — miniextendr-api/src/into_r_as.rs:335
-    - `u16` (1 items) — miniextendr-api/src/into_r_as.rs:425
-    - `u16` (1 items) — miniextendr-api/src/into_r_as.rs:470
-- shape `i16`: **3 hand-rolled**, 0 macro-generated
-    - `i16` (1 items) — miniextendr-api/src/into_r_as.rs:333
-    - `i16` (1 items) — miniextendr-api/src/into_r_as.rs:395
-    - `i16` (1 items) — miniextendr-api/src/into_r_as.rs:466
-- shape `u64`: **3 hand-rolled**, 0 macro-generated
-    - `u64` (1 items) — miniextendr-api/src/into_r_as.rs:341
-    - `u64` (1 items) — miniextendr-api/src/into_r_as.rs:441
-    - `u64` (1 items) — miniextendr-api/src/into_r_as.rs:472
-- shape `isize`: **3 hand-rolled**, 0 macro-generated
-    - `isize` (1 items) — miniextendr-api/src/into_r_as.rs:339
-    - `isize` (1 items) — miniextendr-api/src/into_r_as.rs:442
-    - `isize` (1 items) — miniextendr-api/src/into_r_as.rs:469
-- shape `u8`: **3 hand-rolled**, 0 macro-generated
-    - `u8` (1 items) — miniextendr-api/src/into_r_as.rs:334
-    - `u8` (1 items) — miniextendr-api/src/into_r_as.rs:418
-    - `u8` (1 items) — miniextendr-api/src/into_r_as.rs:457
+    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:370
+    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:472
+    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:500
+    - `i64` (1 items) — miniextendr-api/src/into_r_as.rs:593
+- shape `f32`: **4 hand-rolled**, 0 macro-generated
+    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:377
+    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:406
+    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:506
+    - `f32` (1 items) — miniextendr-api/src/into_r_as.rs:579
+- shape `f64`: **4 hand-rolled**, 0 macro-generated
+    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:378
+    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:392
+    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:507
+    - `f64` (1 items) — miniextendr-api/src/into_r_as.rs:561
+- shape `bool`: **4 hand-rolled**, 0 macro-generated
+    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:381
+    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:478
+    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:512
+    - `bool` (1 items) — miniextendr-api/src/into_r_as.rs:600
 - shape `usize`: **3 hand-rolled**, 0 macro-generated
-    - `usize` (1 items) — miniextendr-api/src/into_r_as.rs:342
-    - `usize` (1 items) — miniextendr-api/src/into_r_as.rs:443
-    - `usize` (1 items) — miniextendr-api/src/into_r_as.rs:473
+    - `usize` (1 items) — miniextendr-api/src/into_r_as.rs:374
+    - `usize` (1 items) — miniextendr-api/src/into_r_as.rs:475
+    - `usize` (1 items) — miniextendr-api/src/into_r_as.rs:505
+- shape `i8`: **3 hand-rolled**, 0 macro-generated
+    - `i8` (1 items) — miniextendr-api/src/into_r_as.rs:364
+    - `i8` (1 items) — miniextendr-api/src/into_r_as.rs:420
+    - `i8` (1 items) — miniextendr-api/src/into_r_as.rs:497
+- shape `u32`: **3 hand-rolled**, 0 macro-generated
+    - `u32` (1 items) — miniextendr-api/src/into_r_as.rs:372
+    - `u32` (1 items) — miniextendr-api/src/into_r_as.rs:464
+    - `u32` (1 items) — miniextendr-api/src/into_r_as.rs:503
+- shape `u16`: **3 hand-rolled**, 0 macro-generated
+    - `u16` (1 items) — miniextendr-api/src/into_r_as.rs:367
+    - `u16` (1 items) — miniextendr-api/src/into_r_as.rs:457
+    - `u16` (1 items) — miniextendr-api/src/into_r_as.rs:502
+- shape `i16`: **3 hand-rolled**, 0 macro-generated
+    - `i16` (1 items) — miniextendr-api/src/into_r_as.rs:365
+    - `i16` (1 items) — miniextendr-api/src/into_r_as.rs:427
+    - `i16` (1 items) — miniextendr-api/src/into_r_as.rs:498
+- shape `u64`: **3 hand-rolled**, 0 macro-generated
+    - `u64` (1 items) — miniextendr-api/src/into_r_as.rs:373
+    - `u64` (1 items) — miniextendr-api/src/into_r_as.rs:473
+    - `u64` (1 items) — miniextendr-api/src/into_r_as.rs:504
+- shape `isize`: **3 hand-rolled**, 0 macro-generated
+    - `isize` (1 items) — miniextendr-api/src/into_r_as.rs:371
+    - `isize` (1 items) — miniextendr-api/src/into_r_as.rs:474
+    - `isize` (1 items) — miniextendr-api/src/into_r_as.rs:501
+- shape `u8`: **3 hand-rolled**, 0 macro-generated
+    - `u8` (1 items) — miniextendr-api/src/into_r_as.rs:366
+    - `u8` (1 items) — miniextendr-api/src/into_r_as.rs:450
+    - `u8` (1 items) — miniextendr-api/src/into_r_as.rs:489
 
 ## Coerce
 
@@ -375,7 +363,7 @@ Source: `target/doc/miniextendr_api.json`
     - `i32` (1 items) — miniextendr-api/src/coerce.rs:214
     - `i32` (1 items) — miniextendr-api/src/coerce.rs:302
     - `i32` (1 items) — miniextendr-api/src/coerce.rs:310
-    - `i32` (1 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:25
+    - `i32` (1 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:24
     - `i32` (1 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:73
     - `i32` (1 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:58
 - shape `Option<_>`: **4 hand-rolled**, 0 macro-generated
@@ -423,37 +411,37 @@ Source: `target/doc/miniextendr_api.json`
     - `f64` (2 items) — miniextendr-api/src/coerce.rs:768
     - `f64` (2 items) — miniextendr-api/src/coerce.rs:789
     - `f64` (2 items) — miniextendr-api/src/coerce.rs:811
-    - `f64` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:57
-    - `f64` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:87
+    - `f64` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:56
+    - `f64` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:86
     - `f64` (2 items) — miniextendr-api/src/optionals/ordered_float_impl.rs:40
     - `f64` (2 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:74
 - shape `BigInt`: **3 hand-rolled**, 0 macro-generated
-    - `BigInt` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:119
-    - `BigInt` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:130
-    - `BigInt` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:163
+    - `BigInt` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:118
+    - `BigInt` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:129
+    - `BigInt` (2 items) — miniextendr-api/src/optionals/num_bigint_impl.rs:162
 - shape `Decimal`: **3 hand-rolled**, 0 macro-generated
     - `Decimal` (2 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:104
     - `Decimal` (2 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:119
     - `Decimal` (2 items) — miniextendr-api/src/optionals/rust_decimal_impl.rs:91
+- shape `u64`: **2 hand-rolled**, 5 macro-generated  <== macro already exists for this shape
+    - `u64` (2 items) — miniextendr-api/src/coerce.rs:377
+    - `u64` (2 items) — miniextendr-api/src/coerce.rs:869
 - shape `isize`: **2 hand-rolled**, 5 macro-generated  <== macro already exists for this shape
     - `isize` (2 items) — miniextendr-api/src/coerce.rs:373
     - `isize` (2 items) — miniextendr-api/src/coerce.rs:882
 - shape `i64`: **2 hand-rolled**, 5 macro-generated  <== macro already exists for this shape
     - `i64` (2 items) — miniextendr-api/src/coerce.rs:372
     - `i64` (2 items) — miniextendr-api/src/coerce.rs:852
-- shape `u64`: **2 hand-rolled**, 5 macro-generated  <== macro already exists for this shape
-    - `u64` (2 items) — miniextendr-api/src/coerce.rs:377
-    - `u64` (2 items) — miniextendr-api/src/coerce.rs:869
 - shape `usize`: **2 hand-rolled**, 5 macro-generated  <== macro already exists for this shape
     - `usize` (2 items) — miniextendr-api/src/coerce.rs:378
     - `usize` (2 items) — miniextendr-api/src/coerce.rs:890
+- shape `i8`: **1 hand-rolled**, 2 macro-generated  <== macro already exists for this shape
+    - `i8` (2 items) — miniextendr-api/src/coerce.rs:369
+- shape `u8`: **1 hand-rolled**, 1 macro-generated  <== macro already exists for this shape
+    - `u8` (2 items) — miniextendr-api/src/coerce.rs:374
 - shape `i16`: **1 hand-rolled**, 3 macro-generated  <== macro already exists for this shape
     - `i16` (2 items) — miniextendr-api/src/coerce.rs:370
 - shape `u32`: **1 hand-rolled**, 5 macro-generated  <== macro already exists for this shape
     - `u32` (2 items) — miniextendr-api/src/coerce.rs:376
 - shape `u16`: **1 hand-rolled**, 3 macro-generated  <== macro already exists for this shape
     - `u16` (2 items) — miniextendr-api/src/coerce.rs:375
-- shape `i8`: **1 hand-rolled**, 2 macro-generated  <== macro already exists for this shape
-    - `i8` (2 items) — miniextendr-api/src/coerce.rs:369
-- shape `u8`: **1 hand-rolled**, 1 macro-generated  <== macro already exists for this shape
-    - `u8` (2 items) — miniextendr-api/src/coerce.rs:374

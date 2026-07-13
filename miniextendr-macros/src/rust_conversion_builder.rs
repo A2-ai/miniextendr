@@ -180,7 +180,7 @@ impl RustConversionBuilder {
         self.build_conversion_split_inner(pat_type, sexp_ident, false)
     }
 
-    /// Inner implementation of [`build_conversion_split`].
+    /// Inner implementation of [`Self::build_conversion_split`].
     ///
     /// `zero_copy_str` controls how a `&str` argument is lowered:
     /// - `true` (main-thread, single-scope): emit a direct zero-copy `&str` borrow

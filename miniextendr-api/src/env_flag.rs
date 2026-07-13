@@ -3,7 +3,7 @@
 //! Two flags in this crate read boolean-ish env vars — `MINIEXTENDR_BACKTRACE`
 //! (`backtrace.rs`) and `_R_CHECK_LIMIT_CORES_` (`optionals/parallel.rs`) — and
 //! they used to disagree on what counts as "on" (`true`/`1` vs. anything but
-//! `false`). [`parse_bool`] is the single source of truth, deliberately aligned
+//! `false`). `parse_bool` is the single source of truth, deliberately aligned
 //! with R's own `config_val_to_logical` (`tools/R/utils.R`): a case-insensitive,
 //! whitespace-trimmed match against explicit truthy/falsy sets.
 //!

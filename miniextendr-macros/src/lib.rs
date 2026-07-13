@@ -2818,7 +2818,7 @@ pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///
 /// `r!` takes a single R expression as a token stream, `stringify!`s it into a
 /// static R source string at build time, and evaluates it via
-/// [`miniextendr_api::expression::r_eval_str`] (the same protect-safe parse + eval
+/// `miniextendr_api::expression::r_eval_str` (the same protect-safe parse + eval
 /// path as `r_str!`).
 ///
 /// # What you get today

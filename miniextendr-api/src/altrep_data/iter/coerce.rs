@@ -20,7 +20,7 @@ use crate::altrep_data::{
 /// Wraps an iterator producing values that coerce to `i32` (e.g., `u16`, `i8`, etc.)
 /// and implements the data-level traits ([`AltrepLen`] + [`AltIntegerData`]).
 /// To expose it to R, wrap it in a `#[derive(AltrepInteger)]` +
-/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
+/// `#[altrep(manual)]` struct (see the iterator module documentation).
 ///
 /// # Example
 ///
@@ -249,7 +249,7 @@ where
 /// Wraps an iterator producing `String` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltStringData`]) for backing an ALTREP character
 /// vector. To expose it to R, wrap it in a `#[derive(AltrepString)]` +
-/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
+/// `#[altrep(manual)]` struct (see the iterator module documentation).
 ///
 /// # Performance Warning
 ///
@@ -333,7 +333,7 @@ where
 /// Wraps an iterator producing R `SEXP` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltListData`]) for backing an ALTREP list. To
 /// expose it to R, wrap it in a `#[derive(AltrepList)]` + `#[altrep(manual)]`
-/// struct (see the [module docs](crate::altrep_data::iter)).
+/// struct (see the iterator module documentation).
 ///
 /// # Safety
 ///
@@ -412,7 +412,7 @@ where
 /// Wraps an iterator producing `Rcomplex` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltComplexData`]) for backing an ALTREP complex
 /// vector. To expose it to R, wrap it in a `#[derive(AltrepComplex)]` +
-/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
+/// `#[altrep(manual)]` struct (see the iterator module documentation).
 ///
 /// # Example
 ///

@@ -224,7 +224,7 @@ where
 /// Wraps an iterator producing `i32` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltIntegerData`]) for backing an ALTREP integer
 /// vector. To expose it to R, wrap it in a `#[derive(AltrepInteger)]` +
-/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
+/// `#[altrep(manual)]` struct (see the iterator module documentation).
 ///
 /// # Example
 ///
@@ -283,7 +283,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
 /// Wraps an iterator producing `f64` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltRealData`]) for backing an ALTREP real vector.
 /// To expose it to R, wrap it in a `#[derive(AltrepReal)]` +
-/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
+/// `#[altrep(manual)]` struct (see the iterator module documentation).
 pub struct IterRealData<I: Iterator<Item = f64>> {
     state: IterState<I, f64>,
 }
@@ -331,7 +331,7 @@ impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
 /// Wraps an iterator producing `bool` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltLogicalData`]) for backing an ALTREP logical
 /// vector. To expose it to R, wrap it in a `#[derive(AltrepLogical)]` +
-/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
+/// `#[altrep(manual)]` struct (see the iterator module documentation).
 pub struct IterLogicalData<I: Iterator<Item = bool>> {
     state: IterState<I, bool>,
 }
@@ -378,7 +378,7 @@ impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
 /// Wraps an iterator producing `u8` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltRawData`]) for backing an ALTREP raw vector.
 /// To expose it to R, wrap it in a `#[derive(AltrepRaw)]` +
-/// `#[altrep(manual)]` struct (see the [module docs](crate::altrep_data::iter)).
+/// `#[altrep(manual)]` struct (see the iterator module documentation).
 pub struct IterRawData<I: Iterator<Item = u8>> {
     state: IterState<I, u8>,
 }

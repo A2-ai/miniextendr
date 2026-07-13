@@ -145,7 +145,9 @@ pub struct StructPreferNative(pub i32);
 /// @examples
 /// struct_prefer_native(3L)
 pub fn struct_prefer_native(x: i32) -> StructPreferNative {
-    StructPreferNative(x)
+    let value = StructPreferNative(x);
+    debug_assert_eq!(value.0, x);
+    value
 }
 
 // Note: `#[miniextendr(prefer = "list")]` on a function returning `Option<T>` used to be

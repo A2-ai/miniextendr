@@ -8,7 +8,7 @@
 //! # Tradeoff
 //!
 //! These [`TryFromSexp`] impls reject mismatched
-//! [`SEXPTYPE`]s — there is no looser coercion path for `Cow` / `PathBuf` /
+//! [`SEXPTYPE`](crate::SEXPTYPE)s — there is no looser coercion path for `Cow` / `PathBuf` /
 //! `OsString`. The `'static` lifetime on `Cow` borrows is valid only for the
 //! duration of the enclosing `.Call`; if you need an owned value that
 //! outlives R's GC, take `String` or `Vec<T>` instead (see

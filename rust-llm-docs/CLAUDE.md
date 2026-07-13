@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **rust-llm-docs** is a Python utility for converting Rust crate documentation from the rustdoc JSON format into human-readable markdown files. It's designed to make Rust API documentation more accessible to LLMs by providing structured markdown output.
 
 The project provides two main conversion strategies:
-- **`rustdoc_megadoc.py`**: Generates a single comprehensive markdown file covering every public item kind — structs, enums, traits, module-level functions, macros (incl. proc-macros), constants, statics, type aliases — with module-qualified headings and doc-comment headings demoted below their section level
+- **`rustdoc_megadoc.py`**: Generates a single comprehensive markdown file covering every public item kind in rustdoc JSON format 57. Container items are nested under parents, trait impl headers live in the companion inventory, and unknown schema kinds fail instead of disappearing silently.
 - **`rustdoc_split.py`**: Generates split documentation with individual files for each type (better for LLM consumption with separate files for easier chunking)
 
 ## Common Commands
@@ -24,6 +24,12 @@ python rustdoc_megadoc.py <input.json> [output.md]
 ```
 - `input.json`: Path to the rustdoc JSON file
 - `output.md`: Optional output file (defaults to `<input>.md` if not specified)
+
+### Regenerate the committed miniextendr corpus
+```bash
+just llm-docs
+just llm-docs-check
+```
 
 ### Generate split markdown documentation
 ```bash
@@ -54,9 +60,9 @@ Both scripts use a shared `format_type()` function that recursively converts rus
 - `format_type()`: Core type formatter (shared logic)
 - `format_function_signature()`: Formats complete function/method signatures with generics
 - `generate_megadoc()`: Main orchestrator that collects and documents all public items
-- `document_struct()`: Generates markdown for a struct with fields and methods
-- `document_enum()`: Generates markdown for an enum with variants and methods
+- Per-kind renderers cover modules/re-exports, structs/unions/enums, traits and aliases, functions/macros, constants/statics/type aliases, extern items, and primitives
 - `document_method()`: Generates markdown for individual methods
+- `validate_item_kinds()`: Fails fast when rustdoc adds an unaudited item kind
 
 ### rustdoc_split.py Structure
 - Shared: `format_type()`, `format_function_signature()`, `document_method()`

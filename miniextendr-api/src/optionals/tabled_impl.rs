@@ -9,6 +9,7 @@
 //! ```toml
 //! [dependencies]
 //! miniextendr-api = { version = "0.1", features = ["tabled"] }
+//! tabled = { version = "0.20", features = ["derive"] }
 //! ```
 //!
 //! # Overview
@@ -221,11 +222,26 @@ impl IntoR for Table {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
 
-    #[derive(Tabled)]
     struct TestRow {
         name: String,
         value: i32,
+    }
+
+    impl Tabled for TestRow {
+        const LENGTH: usize = 2;
+
+        fn fields(&self) -> Vec<Cow<'_, str>> {
+            vec![
+                Cow::Borrowed(&self.name),
+                Cow::Owned(self.value.to_string()),
+            ]
+        }
+
+        fn headers() -> Vec<Cow<'static, str>> {
+            vec![Cow::Borrowed("name"), Cow::Borrowed("value")]
+        }
     }
 
     #[test]

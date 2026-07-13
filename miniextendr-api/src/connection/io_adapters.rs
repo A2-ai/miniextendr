@@ -1,7 +1,7 @@
 //! std::io integration — capability-aware adapters for R connections.
 //!
 //! Provides adapter types that wrap `std::io::{Read, Write, Seek}` implementations
-//! and expose them as R connections via [`RConnectionImpl`](super::RConnectionImpl).
+//! and expose them as R connections via [`RConnectionImpl`].
 
 use crate::SEXP;
 

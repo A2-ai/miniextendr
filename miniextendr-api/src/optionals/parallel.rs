@@ -27,8 +27,8 @@
 //!   whitespace is trimmed before parsing. The `RAYON_*` vars are not — they
 //!   match rayon byte-for-byte.
 //!
-//! [`ensure_pool`] builds the global rayon pool exactly once, sized by
-//! [`effective_threads`]. If a global pool already exists (built by user
+//! `ensure_pool` builds the global rayon pool exactly once, sized by
+//! `effective_threads`. If a global pool already exists (built by user
 //! code before any miniextendr call), it wins — `ensure_pool` does nothing.
 //!
 //! See `docs/RAYON.md` ("Controlling parallelism from R") for the full
@@ -39,7 +39,7 @@ use std::sync::Once;
 
 static POOL_READY: Once = Once::new();
 
-/// Resolve the thread count [`ensure_pool`] will use, per the precedence
+/// Resolve the thread count `ensure_pool` will use, per the precedence
 /// table above.
 pub fn effective_threads() -> usize {
     resolve(

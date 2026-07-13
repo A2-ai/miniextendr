@@ -8,53 +8,53 @@ Traits with impls: 20
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `Sync` | 3 | 0 |
-| `UnwindSafe` | 3 | 0 |
 | `Borrow` | 3 | 0 |
-| `TryInto` | 3 | 0 |
-| `Any` | 3 | 0 |
-| `BorrowMut` | 3 | 0 |
-| `Send` | 3 | 0 |
-| `From` | 3 | 0 |
-| `UnsafeUnpin` | 3 | 0 |
+| `Sync` | 3 | 0 |
 | `Unpin` | 3 | 0 |
+| `From` | 3 | 0 |
+| `Any` | 3 | 0 |
+| `Send` | 3 | 0 |
+| `UnsafeUnpin` | 3 | 0 |
 | `RefUnwindSafe` | 3 | 0 |
-| `TryFrom` | 3 | 0 |
 | `Into` | 3 | 0 |
+| `TryFrom` | 3 | 0 |
+| `BorrowMut` | 3 | 0 |
 | `Freeze` | 3 | 0 |
-| `Error` | 1 | 1 |
-| `Display` | 1 | 1 |
-| `Drop` | 1 | 1 |
-| `Default` | 1 | 1 |
+| `UnwindSafe` | 3 | 0 |
+| `TryInto` | 3 | 0 |
 | `ToString` | 1 | 0 |
 | `Debug` | 1 | 1 |
-
-## `Error` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineError` | `` | concrete | 0 | miniextendr-engine/src/lib.rs:383 |
-
-## `Display` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineError` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:360 |
-
-## `Drop` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngine` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:265 |
-
-## `Default` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `REngineBuilder` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:132 |
+| `Error` | 1 | 1 |
+| `Drop` | 1 | 1 |
+| `Default` | 1 | 1 |
+| `Display` | 1 | 1 |
 
 ## `Debug` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `REngineError` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:347 |
+| `REngineError` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:312 |
+
+## `Error` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `REngineError` | `` | concrete | 0 | miniextendr-engine/src/lib.rs:348 |
+
+## `Drop` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `REngine` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:255 |
+
+## `Default` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `REngineBuilder` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:127 |
+
+## `Display` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `REngineError` | `` | concrete | 1 | miniextendr-engine/src/lib.rs:325 |
