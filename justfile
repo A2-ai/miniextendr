@@ -1224,6 +1224,9 @@ wrappers-sync-check: _assert-no-vendor-leak configure
     # miniextendr-macros/src/roxygen.rs) must not reappear from an rpkg fixture.
     # Scoped to our macro's unique prefix so upstream cargo/rustc future-incompat
     # noise (e.g. proc-macro-error2) can't flake this gate.
+    # Cold-build gate: the nudge is a rustc deprecation warning emitted only when
+    # the rpkg crate recompiles — a warm cargo cache skips rustc, but introducing a
+    # tag IS a source change forcing recompile, and CI Sync Checks always starts cold.
     if grep -n 'miniextendr: @' "$install_log" >&2; then
       echo "" >&2
       echo "ERROR: impl-method roxygen-tag deprecation nudge fired during R CMD INSTALL (above)." >&2
