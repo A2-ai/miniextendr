@@ -670,7 +670,7 @@ Docker/Kubernetes. Two gaps to know about:
 |---|---|---|
 | **Rayon** (this doc) | Data-parallel, pure-Rust compute inside one `#[miniextendr]` call — CPU-bound transforms, reductions, DataFrame fills | Cheap; work-stealing within one process |
 | **R-level (future/mirai)** | Independent, coarse-grained jobs that each need their own R + Rust runtime (e.g. fan out a whole analysis per input file) | Each worker pays full R+package startup; heavier but fully isolated |
-| **Worker-thread + channel task queue** | Long-running background jobs kicked off from R that shouldn't block the R console — the job runs on its own thread, results come back over a channel | You own the queue/lifecycle; see `worker.rs`'s `run_on_worker` for the R-routing primitive it would build on |
+| **User-owned channel task queue** | Long-running pure-Rust jobs kicked off from R without blocking the console; R later polls for Rust-owned results | You own the queue/lifecycle; this is separate from blocking `run_on_worker`, and the background thread must not call R |
 
 A sketch of the task-queue shape (not a ready-made API — build this in your
 package if you need it):
@@ -793,10 +793,11 @@ fn euclidean_distance(x: &[f64], y: &[f64]) -> SEXP {
 
 ### Error: "with_r_thread called outside of run_on_worker context"
 
-**Solution:** With the `worker-thread` feature, Rayon integration only works
-inside `#[miniextendr]` functions (which use `run_on_worker`). Without the
-feature, `with_r_thread` is an inline stub that requires `miniextendr_runtime_init()`
-to have been called.
+**Solution:** Do not call `with_r_thread` from a Rayon closure or arbitrary
+spawned thread. It only routes from miniextendr's dedicated worker during an
+active `run_on_worker` call. Invoke helpers such as `with_r_vec` from R's main
+thread or an opted-in `#[miniextendr(worker)]` body; their internal allocation
+happens before the Rayon closure, whose work must remain pure Rust.
 
 ### Slow Performance
 

@@ -8,7 +8,7 @@ description = "Crate layout, call flow, and build system overview"
 
 miniextendr differs from extendr in several key design decisions:
 
-- **Main thread with unwind protection**: By default, Rust code runs inline on R's main thread inside `R_UnwindProtect`, which catches both panics and R longjmps. An optional `worker-thread` feature enables a dedicated worker thread.
+- **Main thread with unwind protection**: By default, Rust code runs inline on R's main thread inside `R_UnwindProtect`, which catches both panics and R longjmps. The `worker-thread` feature supplies dedicated-worker infrastructure; `#[miniextendr(worker)]` or `worker-default` selects it.
 - **Configure-based builds**: Uses autoconf/configure rather than build scripts, integrating with R's standard package build system.
 - **ALTREP first-class**: Proc-macro-driven ALTREP support for lazy/zero-copy vectors.
 - **Vendored for CRAN**: All dependencies are vendored for offline CRAN builds.

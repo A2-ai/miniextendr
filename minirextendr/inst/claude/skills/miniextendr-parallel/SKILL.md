@@ -108,23 +108,26 @@ unrestricted — and the conversions themselves have parallel variants
 ## Long-lived / hand-rolled threads
 
 `std::thread::spawn` from package code works for pure Rust, with one R-side
-wrinkle: R's stack-limit checking can misfire on foreign threads that call
-back into the package. Spawn through the framework instead:
+rule: the spawned closure must not touch R. Use the standard library directly;
+set a larger stack with `std::thread::Builder` if the Rust workload needs it:
 
 ```rust
-use miniextendr_api::thread::{spawn_with_r, scope_with_r, RThreadBuilder};
-
-let handle = spawn_with_r(|| heavy_pure_rust())?;   // stack checking configured
+let handle = std::thread::Builder::new()
+    .stack_size(8 * 1024 * 1024)
+    .spawn(heavy_pure_rust)?;
 ```
 
-`scope_with_r` is the scoped-threads variant; `RThreadBuilder` exposes stack
-size when you need it. Same rule as always: these threads must not touch R.
+Do not use `StackCheckGuard`, `spawn_with_r`, or `scope_with_r` to call R from
+those threads. Disabling R's process-global stack check removes only one crash
+path and does not make the API or GC thread-safe; that misleading surface is
+tracked for removal in miniextendr issue #1352.
 
 ## The `worker-thread` feature (opt-in)
 
-With `worker-thread = ["miniextendr-api/worker-thread"]`, the framework runs
-Rust work on a dedicated worker thread (panic isolation from R's stack) and
-gives you two primitives:
+`worker-thread = ["miniextendr-api/worker-thread"]` enables the dedicated
+worker infrastructure. Select it per export with `#[miniextendr(worker)]`, or
+use `worker-default` to change the crate-wide default. It gives you two
+primitives:
 
 - `run_on_worker(|| ...)` — run a `Send` closure on the worker; returns
   `Result<T, String>` (`Err` = panic message).

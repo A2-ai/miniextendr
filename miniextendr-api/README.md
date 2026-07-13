@@ -162,15 +162,19 @@ from the worker are marshalled back to the main R thread via `with_r_thread`.
 Most FFI wrappers are main-thread routed via `#[r_ffi_checked]`. Use
 `*_unchecked` variants only when you have explicitly arranged safe context.
 
-### Calling R from non-main threads (unsafe)
+### Advanced stack controls (`nonapi`)
 
-With feature `nonapi`, miniextendr can disable R's stack checking to allow
-calls from other threads. Utilities include:
+The `nonapi` feature exposes legacy utilities that alter R's process-global
+C-stack bounds:
 
 - `spawn_with_r` / `scope_with_r` / `RThreadBuilder`
 - `StackCheckGuard` or `with_stack_checking_disabled`
 
-R is still not thread-safe; you must serialize all R API access.
+These controls remove only R's stack-address check. They do **not** make R's
+global state, garbage collector, error signaling, or C API safe on a secondary
+thread. R package code must keep every R API call on the recorded main thread;
+use the worker/`with_r_thread` path instead. Removal or relocation of this
+misleading public surface is tracked in #1352.
 
 ## Rayon integration (`rayon` feature)
 

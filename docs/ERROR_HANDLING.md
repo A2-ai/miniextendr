@@ -289,13 +289,13 @@ pub fn risky_operation(x: i32) -> i32 {
 Print to R's console (not stderr):
 
 ```rust
-use miniextendr_api::error::{r_print, r_println};
+use miniextendr_api::{r_print, r_println};
 
 #[miniextendr]
 pub fn verbose_function() {
-    r_println("Starting computation...");
+    r_println!("Starting computation...");
     // ... work ...
-    r_println("Done!");
+    r_println!("Done!");
 }
 ```
 
@@ -528,13 +528,16 @@ This is a defensive measure -- in practice, hook installation should not fail.
 
 ### Main Thread Requirement
 
-R API calls must happen on R's main thread. miniextendr enforces this in debug builds:
+R API calls must happen on R's main thread. Checked FFI wrappers route calls
+from an active miniextendr worker context back to that thread and panic for
+arbitrary off-main callers in every build mode. Some lower-level SEXP accessors
+also retain debug assertions:
 
 ```rust
 #[miniextendr]
 pub fn my_function() {
-    // In debug builds, this panics if not on main thread
-    r_println("Hello from R!");
+    // Runs directly here because default exports execute on R's main thread.
+    r_println!("Hello from R!");
 }
 ```
 
@@ -547,7 +550,7 @@ use miniextendr_api::worker::is_r_main_thread;
 
 pub fn internal_function() {
     if is_r_main_thread() {
-        r_println("On main thread");
+        r_println!("On main thread");
     } else {
         eprintln!("On worker thread");
     }
@@ -812,9 +815,9 @@ Use R's console for visibility:
 ```rust
 #[miniextendr]
 pub fn debug_function(x: i32) -> i32 {
-    r_println(&format!("Input: {}", x));
+    r_println!("Input: {}", x);
     let result = complex_computation(x);
-    r_println(&format!("Result: {}", result));
+    r_println!("Result: {}", result);
     result
 }
 ```
@@ -862,13 +865,19 @@ impl Drop for MyResource {
 ```rust
 // Bad: Crashes or causes undefined behavior
 std::thread::spawn(|| {
-    r_println("Hello!");  // R API call from wrong thread
+    r_println!("Hello!");  // R API call from wrong thread
 });
 
-// Good: Use worker thread or avoid R API
+// Good: keep arbitrary spawned threads Rust-only
 std::thread::spawn(|| {
     eprintln!("Hello!");  // Rust-only output is safe
 });
+
+// For miniextendr's opt-in worker, route R work to the main thread:
+#[miniextendr(worker)]
+fn routed_output() {
+    with_r_thread(|| r_println!("Hello!"));
+}
 ```
 
 ### 3. Ignoring Result

@@ -70,7 +70,7 @@ to read the header.
 
 ## Thread Safety
 
-All R API calls are routed to the main thread automatically:
+Allocator R API calls stay on the main thread or are rejected:
 
 | Calling Thread | Behavior |
 |----------------|----------|

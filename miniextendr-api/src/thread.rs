@@ -1,23 +1,32 @@
-//! Thread safety utilities for calling R from non-main threads.
+//! Advanced controls for R's process-global C-stack bounds.
 //!
 //! R's stack checking mechanism causes segfaults when R API functions are called
-//! from threads other than the main R thread. This module provides utilities to
-//! safely disable stack checking when crossing thread boundaries.
+//! from threads other than the main R thread. This module exposes legacy tools
+//! that disable that one check, but doing so does **not** make R's API safe on a
+//! secondary thread.
+//!
+//! # R API calls remain main-thread-only
+//!
+//! R's global state, garbage collector, and error signaling are not made
+//! thread-safe by changing `R_CStackLimit`. Writing R Extensions requires
+//! package R API calls to stay on R's main thread and specifically says packages
+//! must not change these variables to call stack-checking internals on a
+//! secondary thread. Do not use this module as an off-main R bridge in package
+//! code. The misleading package-facing surface is tracked for removal or
+//! relocation in #1352.
 //!
 //! # Prefer [`crate::worker::with_r_thread`] in normal code
 //!
-//! This module is the **escape hatch** for advanced cases (rayon pools,
-//! externally-spawned threads that need to touch R briefly). The default
-//! tool for crossing back to R is [`crate::worker::with_r_thread`], which
-//! routes the closure to the recorded main thread instead of unsafely
-//! patching R's internal stack bounds.
+//! The supported bridge is [`crate::worker::with_r_thread`], which routes a
+//! closure from miniextendr's dedicated worker context to the recorded R main
+//! thread. Arbitrary Rayon or `std::thread` workers cannot call R directly and
+//! cannot use `with_r_thread` outside that active worker context.
 //!
 //! `StackCheckGuard` is gated behind the `nonapi` feature because it
 //! mutates `R_CStackStart` / `R_CStackLimit` / `R_CStackDir`, none of which
-//! are part of R's public C API. The lint **MXL301** treats this guard the
-//! same way as the other known-safe contexts — inside a `StackCheckGuard`
-//! scope you may use `*_unchecked` FFI variants because the main-thread
-//! assertion would be wrong (you're explicitly *not* on the main thread).
+//! are part of R's public C API. The lint **MXL301** currently recognizes this
+//! guard as an unchecked-FFI context, but that only reflects the existing API;
+//! it does not override R's main-thread contract.
 //!
 //! # Don't use `Rf_error` here either
 //!
@@ -45,25 +54,18 @@
 //!
 //! # Solution
 //!
-//! Setting `R_CStackLimit` to `usize::MAX` disables stack checking entirely.
-//! This is safe because:
-//! 1. The OS still enforces real stack limits
-//! 2. R will still function correctly, just without its own overflow detection
+//! Setting `R_CStackLimit` to `usize::MAX` disables R's own stack-address
+//! check. The OS still enforces its real stack limit, but all other R threading
+//! invariants remain unchanged.
 //!
 //! # Example
 //!
 //! ```ignore
 //! use miniextendr_api::thread::StackCheckGuard;
 //!
-//! std::thread::spawn(|| {
-//!     // This would segfault without the guard!
-//!     let _guard = StackCheckGuard::disable();
-//!
-//!     // Now safe to call R APIs
-//!     unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) };
-//!
-//!     // Guard restores original limit on drop
-//! });
+//! // Advanced embedded-host bookkeeping only; not package R API access.
+//! let _guard = StackCheckGuard::disable();
+//! assert!(miniextendr_api::thread::is_stack_checking_disabled());
 //! ```
 //!
 //! # Feature Gate
@@ -89,9 +91,10 @@ static STACK_GUARD_COUNT: AtomicUsize = AtomicUsize::new(0);
 #[cfg(feature = "nonapi")]
 static ORIGINAL_STACK_LIMIT: AtomicUsize = AtomicUsize::new(0);
 
-/// RAII guard that disables R's stack checking and restores it on drop.
+/// RAII guard that disables R's process-global stack check and restores it on drop.
 ///
-/// Use this when calling R APIs from a thread other than the main R thread.
+/// This does not make R API calls safe on a secondary thread. R package code
+/// must keep R API work on the main thread and should not use this guard.
 ///
 /// Multiple guards can be active concurrently. Stack checking is only restored
 /// when the last guard is dropped.
@@ -100,8 +103,8 @@ static ORIGINAL_STACK_LIMIT: AtomicUsize = AtomicUsize::new(0);
 ///
 /// ```ignore
 /// let _guard = StackCheckGuard::disable();
-/// // R API calls are now safe on this thread
-/// // Original limit restored when _guard is dropped
+/// assert!(miniextendr_api::thread::is_stack_checking_disabled());
+/// // Original process-global limit is restored when `_guard` is dropped.
 /// ```
 #[cfg(feature = "nonapi")]
 pub struct StackCheckGuard {
@@ -116,10 +119,11 @@ impl StackCheckGuard {
     /// Multiple guards can be created concurrently (even from different threads).
     /// Stack checking is only restored when the last guard is dropped.
     ///
-    /// # Safety
+    /// # Process-global contract
     ///
-    /// This is safe to call, but the caller must ensure that R has been
-    /// initialized (the R_CStackLimit variable exists).
+    /// The caller must own the relevant embedded-R lifecycle, ensure R is
+    /// initialized, and prevent conflicting access to the stack globals. This
+    /// is not a supported way for an R package to call R from another thread.
     #[must_use]
     pub fn disable() -> Self {
         // Atomically increment guard count and save original limit if we're the first
@@ -185,11 +189,14 @@ pub fn get_stack_config() -> (usize, usize, i32) {
 /// Disable stack checking permanently for the current session.
 ///
 /// Unlike [`StackCheckGuard`], this does not restore the original value.
-/// Use this at program startup if you know you'll be calling R from multiple threads.
+/// This is only for an embedding host that owns the complete R process
+/// lifecycle. It must not be used by an R package to enable secondary-thread
+/// R API calls.
 ///
-/// # Safety
+/// # Process-global contract
 ///
-/// Safe to call, but should only be called once during initialization.
+/// Call at most once during controlled embedded-R initialization, with no
+/// concurrent access to the stack globals.
 #[cfg(feature = "nonapi")]
 pub fn disable_stack_checking_permanently() {
     unsafe {
@@ -207,13 +214,7 @@ pub fn disable_stack_checking_permanently() {
 ///
 /// This is a convenience wrapper around [`StackCheckGuard`].
 ///
-/// # Example
-///
-/// ```ignore
-/// let result = with_stack_checking_disabled(|| {
-///     unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) }
-/// });
-/// ```
+/// This helper does not authorize R API calls from a secondary thread.
 #[cfg(feature = "nonapi")]
 pub fn with_stack_checking_disabled<F, R>(f: F) -> R
 where
@@ -223,27 +224,24 @@ where
     f()
 }
 
-// region: Thread spawning with R-compatible settings
+// region: Thread spawning with legacy R-sized stacks
 
-/// Default stack size for R-compatible threads (8 MiB).
+/// Default stack size for the legacy R-sized thread builder (8 MiB).
 ///
 /// R doesn't enforce a specific stack size - it uses whatever the OS provides:
 /// - **Unix**: Typically 8 MiB from `ulimit -s`
 /// - **Windows**: 64 MiB for the main thread (since R 4.2)
 ///
-/// Since we disable R's stack checking via `StackCheckGuard`, the size is about
-/// practical needs rather than R enforcement. Deep recursion in R code (especially
-/// recursive functions, `lapply` chains, or complex formulas) can use significant stack.
-///
-/// Rust's default thread stack is only 2 MiB, which may be insufficient for deep R calls.
-/// We default to 8 MiB as a reasonable balance. Increase via [`RThreadBuilder::stack_size`]
-/// if you encounter stack overflows.
+/// Rust's default thread stack is only 2 MiB. The legacy builder reserves
+/// 8 MiB to match common R-hosting configurations; this sizing choice does not
+/// make R API access from the spawned thread supported.
 pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 /// Stack size matching Windows R (64 MiB).
 ///
-/// Use this if your code involves very deep recursion or complex R operations.
-/// Windows R uses 64 MiB for its main thread since R 4.2.
+/// Use this for a deep pure-Rust workload that needs a reservation comparable
+/// to Windows R's main thread. It does not authorize R API calls on the spawned
+/// thread. Windows R uses 64 MiB for its main thread since R 4.2.
 ///
 /// # Why larger than [`DEFAULT_R_STACK_SIZE`]
 ///
@@ -254,38 +252,35 @@ pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
 ///   default, and the OS does not grow a thread stack the way `ulimit -s` allows
 ///   on typical Unix configurations — so the size we ask for up front is closer to
 ///   the size we actually get.
-/// - R's own choice of 64 MiB for its Windows main thread (since R 4.2) reflects
-///   that deep R evaluation consumes more C stack on this platform than the
-///   ~8 MiB Unix default comfortably covers.
+/// - R's own choice of 64 MiB for its Windows main thread (since R 4.2) provides
+///   a conservative reference point for stack-heavy native workloads.
 ///
-/// Matching R's main-thread reservation here keeps deep R evaluation on a spawned
-/// thread from overflowing the stack. This is a conservative reservation, not a
-/// precise measurement of any single call's stack frame.
+/// This is a conservative reservation, not a precise measurement of any single
+/// Rust call's stack frame.
 #[cfg(windows)]
 pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 
-/// Spawn a new thread configured for calling R APIs.
+/// Spawn a thread with the legacy R-oriented stack configuration.
 ///
 /// This function:
 /// 1. Sets a stack size appropriate for R (8 MiB by default)
-/// 2. Automatically disables R's stack checking via `StackCheckGuard`
+/// 2. With `nonapi`, disables R's process-global stack check via `StackCheckGuard`
 /// 3. Restores stack checking when the thread completes
+///
+/// This does **not** make R API calls safe on the spawned thread. Keep package
+/// R calls on the main thread; this misleading surface is tracked in #1352.
 ///
 /// # Example
 ///
 /// ```ignore
 /// use miniextendr_api::thread::spawn_with_r;
 ///
-/// let handle = spawn_with_r(|| {
-///     // Safe to call R APIs here!
-///     let result = unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) };
-///     result
-/// })?;
+/// let handle = spawn_with_r(|| expensive_pure_rust_computation())?;
 ///
-/// let sexp = handle.join().unwrap();
+/// let result = handle.join().unwrap();
 /// ```
 ///
-/// # Panics
+/// # Errors
 ///
 /// Returns an error if the thread cannot be spawned (e.g., resource exhaustion).
 #[cfg(feature = "nonapi")]
@@ -297,14 +292,14 @@ where
     RThreadBuilder::new().spawn(f)
 }
 
-/// Builder for spawning threads with R-appropriate stack sizes.
+/// Builder for spawning pure-Rust threads with a legacy R-sized stack.
 ///
 /// This builder is always available and configures threads with stack sizes
-/// suitable for R workloads (8 MiB default, vs Rust's 2 MiB default).
+/// suitable for stack-heavy Rust workloads (8 MiB default, vs Rust's 2 MiB default).
 ///
 /// When the `nonapi` feature is enabled, spawned threads also automatically
-/// disable R's stack checking via `StackCheckGuard`, allowing R API calls
-/// from the thread.
+/// disable R's stack checking via `StackCheckGuard`. That changes only the
+/// stack-address check and does not make R API calls from the thread safe.
 ///
 /// # Example
 ///
@@ -314,10 +309,7 @@ where
 /// let handle = RThreadBuilder::new()
 ///     .stack_size(16 * 1024 * 1024)  // 16 MiB
 ///     .name("r-worker".to_string())
-///     .spawn(|| {
-///         // With `nonapi`: R API calls safe here
-///         // Without `nonapi`: Just a thread with correct stack size
-///     })?;
+///     .spawn(expensive_pure_rust_computation)?;
 /// ```
 pub struct RThreadBuilder {
     stack_size: usize,
@@ -344,8 +336,8 @@ impl RThreadBuilder {
 
     /// Set the stack size for the thread.
     ///
-    /// R typically requires more stack space than Rust's default 2 MiB.
-    /// The default is 8 MiB to match typical R installations.
+    /// The default is 8 MiB, matching the legacy R-sized configuration rather
+    /// than Rust's typical 2 MiB spawned-thread default.
     #[must_use]
     pub fn stack_size(mut self, size: usize) -> Self {
         self.stack_size = size;
@@ -390,14 +382,12 @@ impl RThreadBuilder {
 
     /// Spawn and immediately join, returning the result.
     ///
-    /// Convenience method for synchronous R calls on a separate thread.
+    /// Convenience method for synchronously joining a configured thread.
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let result = RThreadBuilder::new()
-    ///     .spawn_join(|| unsafe { miniextendr_api::SEXP::scalar_integer_unchecked(42) })
-    ///     .unwrap();
+    /// let result = RThreadBuilder::new().spawn_join(|| 40 + 2).unwrap();
     /// ```
     pub fn spawn_join<F, T>(self, f: F) -> std::thread::Result<T>
     where
@@ -410,7 +400,7 @@ impl RThreadBuilder {
     }
 }
 
-/// Spawn a scoped thread configured for calling R APIs.
+/// Spawn a scoped thread with the legacy R-oriented stack configuration.
 ///
 /// Like [`spawn_with_r`] but uses scoped threads, allowing the closure to
 /// borrow from the enclosing scope.
@@ -426,7 +416,7 @@ impl RThreadBuilder {
 ///     scope_with_r(s, |_| {
 ///         // Can borrow `data` here!
 ///         println!("data len: {}", data.len());
-///         // R API calls also safe
+///         // Keep the scoped work Rust-only; R API calls remain main-thread-only.
 ///     });
 /// });
 /// ```

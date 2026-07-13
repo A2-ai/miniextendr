@@ -626,7 +626,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// `R_ExternalPtrAddr`) pointing to a fat pointer (carries the `Any` vtable
     /// for runtime type checking via `downcast`).
     ///
-    /// This function can be called from any thread:
+    /// This function can be called from the two supported R contexts:
     /// - If called from R's main thread, creates the ExternalPtr directly
     /// - If called from the worker thread (during `run_on_worker`), automatically
     ///   sends the R API calls to the main thread via [`with_r_thread`]

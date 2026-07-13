@@ -663,9 +663,10 @@ fn assert_main_thread() { ... }
 
 **Checked FFI routing (always active):** The checked FFI wrappers route through
 `with_r_thread`. Calls on R's main thread execute inline; calls from the managed
-worker route back to the main thread; off-thread calls without `worker-thread`
-panic rather than touching R. The `*_unchecked` variants skip this routing and
-retain a caller-enforced main-thread precondition.
+worker route back to the main thread; every other off-main call panics rather
+than touching R, regardless of whether the infrastructure feature is compiled.
+The `*_unchecked` variants skip this routing and retain a caller-enforced
+main-thread precondition.
 
 **Recommended pattern:** Use checked FFI by default and wrap a group of R calls
 in `with_r_thread` when worker code needs a single main-thread critical section.

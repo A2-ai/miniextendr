@@ -36,11 +36,11 @@
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌─────────────────────────┴─────────────────────────────────┐
-//! │               Worker Thread (run_on_worker)               │
+//! │ Entry context: R main (default) or selected worker body   │
 //! │  1. Setup: with_r_vec() allocates R vectors               │
 //! │  2. Parallel: spawn Rayon work                            │
 //! │  3. Cleanup: convert results to R                         │
-//! │  (can route R API calls to main thread via with_r_thread) │
+//! │  (worker path routes R API calls via with_r_thread)       │
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌───────────────────────────────────────────────────────────┐

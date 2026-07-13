@@ -32,7 +32,7 @@ textbook.
 | **Long-lived SEXP** | `preserve::insert` / `preserve::release` (cross-.Call) | `ProtectScope` (single .Call) | the SEXP needs to survive past your function's return |
 | **Rust data owned by R** | `ExternalPtr<MyStruct>` | sidecar fields (multi-SEXP attribute slots) | one owned struct is the natural shape. Sidecars are for cases where R-side code wants to read individual fields without crossing the Rust boundary. |
 | **Execution model** | inline on R's main thread inside `R_UnwindProtect` (default) | worker dispatch via `#[miniextendr(worker)]` or `worker-default` | your code touches R objects or benefits from the simplest call path; choose worker dispatch for Rust work that needs that isolation model |
-| **Thread re-entry** | wrap R calls in `with_r_thread` | call from any thread | worker dispatch is selected or you are otherwise off R's main thread; default `#[miniextendr]` code already runs on the main thread |
+| **Thread re-entry** | from an active miniextendr worker, wrap R calls in `with_r_thread` | call R directly only when already on its main thread | worker dispatch is selected; arbitrary spawned/Rayon threads cannot call R or use `with_r_thread` |
 
 ## Class systems (one-of-six)
 

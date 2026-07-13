@@ -210,8 +210,12 @@ impl StackCheckGuard {
 }
 ```
 
-**Invariant**: Uses atomic refcounting so multiple concurrent guards work
-correctly. Only the last guard to drop restores the original limit.
+The atomic refcount only coordinates restoration of the process-global value;
+it does not make R's global state, garbage collector, or API thread-safe.
+Writing R Extensions requires package R API calls to remain on the main thread
+and says packages must not change these stack globals for secondary-thread R
+calls. Package code must use worker/`with_r_thread` routing instead. Removal or
+relocation of these misleading helpers is tracked in #1352.
 
 ## Allocator Safety
 
@@ -251,11 +255,11 @@ Pointer-returning functions are safe to route because the underlying SEXP must
 be GC-protected by the caller, and R's GC only runs during R API calls which
 are serialized through `with_r_thread`.
 
-By default (main thread execution), all checked wrappers run inline. With the
-`worker-thread` feature, they route through `with_r_thread`.
+By default (main thread execution), all checked wrappers run inline. In an
+opted-in worker body, they route through `with_r_thread`.
 
-Without the `worker-thread` feature, calling checked wrappers from a non-main
-thread panics (there is no routing infrastructure to fall back on).
+Calling checked wrappers from any other non-main thread panics, whether or not
+the `worker-thread` infrastructure feature was compiled.
 
 ## Initialization Requirements
 
@@ -286,7 +290,7 @@ will cause all subsequent thread checks to be incorrect.
 | `AltrepSexp` | !Send + !Sync; materialization on main thread only |
 | SEXP (via `TryFromSexp`) | ALTREP auto-materialized before function body runs |
 | `R_CONTINUATION_TOKEN` | Created once, preserved for session lifetime |
-| `StackCheckGuard` | Atomic refcount; last drop restores limit |
+| `StackCheckGuard` | Legacy process-global restoration only; not package thread safety (#1352) |
 | Allocator | Main thread or worker context only |
 | Pointer APIs | Main thread only; panic otherwise |
 

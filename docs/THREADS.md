@@ -1,10 +1,19 @@
 # Thread Safety in miniextendr
 
-This document explains how to safely call R APIs from threads other than the main R thread.
+This document explains miniextendr's main-thread contract, optional worker
+dispatch, and the limits of its legacy non-API stack controls.
 
-## The Problem
+## Non-negotiable rule: R API calls stay on R's main thread
 
-R's API is designed to be called from a single thread - the main R thread. When you spawn a new thread and try to call R functions, you'll get a segfault. This happens because of R's **stack checking mechanism**.
+R's API, global state, garbage collector, and error signaling are designed for
+the main R thread. Calling the API from an arbitrary `std::thread` or Rayon
+worker can corrupt memory or segfault even when calls appear serialized.
+
+Writing R Extensions explicitly requires R API entry points to be called from
+the main thread. It also says packages must not change R's stack-check globals
+to call stack-checking internals on a secondary thread.
+
+## Stack checking is one failure mode, not a safety boundary
 
 ### How R's Stack Checking Works
 
@@ -33,130 +42,68 @@ void R_CheckStack(void) {
 }
 ```
 
-When called from a **different thread**, `&dummy` points to a completely different stack, causing:
+When called from a different thread, `&dummy` points to a completely different stack, causing:
 
 - `usage` to be a huge negative or positive number
 - False stack overflow detection
 - Segfault or abort
 
-## The Solution
+Setting `R_CStackLimit` to `(uintptr_t)-1` disables this check, but only this
+check. It does not make R's allocator, GC, global state, external libraries, or
+error longjmps thread-safe. The OS still enforces its real stack limit.
 
-Setting `R_CStackLimit` to `(uintptr_t)-1` (i.e., `usize::MAX`) **disables stack checking entirely**.
+## Supported routing
 
-From R source (`src/include/Defn.h`):
+By default, generated functions run on R's main thread inside
+`R_UnwindProtect`. No routing is needed.
 
-```c
-if(R_CStackLimit != (uintptr_t)(-1) && usage > ((intptr_t) R_CStackLimit))
+Functions that opt into `#[miniextendr(worker)]` (or a crate using
+`worker-default`) run their Rust body on miniextendr's dedicated worker. Within
+that active worker context, `with_r_thread` marshals R API work back to the
+recorded main thread:
+
+```rust
+use miniextendr_api::{miniextendr, r_println, with_r_thread};
+
+#[miniextendr(worker)]
+fn compute_and_report(x: Vec<f64>) -> Vec<f64> {
+    let result = expensive_pure_rust_computation(x);
+    with_r_thread(|| r_println!("computation complete"));
+    result
+}
 ```
 
-This is safe because:
-
-1. The OS still enforces real stack limits
-2. R functions correctly, just without its own overflow detection
-
-## Using miniextendr's Thread Utilities
-
-All thread utilities require the `nonapi` feature since they access non-API R internals.
-
-```toml
-[dependencies]
-miniextendr-api = { version = "...", features = ["nonapi"] }
-```
+`with_r_thread` is not a general cross-thread executor. From an arbitrary
+spawned thread outside an active `run_on_worker` call, it panics instead of
+silently running R on the wrong thread.
 
 ### Checked vs Unchecked R FFI
 
 Most `miniextendr_api::sys::*` functions are **checked** (via `#[r_ffi_checked]`).
-By default, they verify you're on the main thread and panic otherwise. With the
-`worker-thread` feature, if called from the worker thread, they route to the main
-thread via `with_r_thread`.
+They run directly on the main thread, route from an active miniextendr worker
+context through `with_r_thread`, and panic for arbitrary off-main callers.
 
-When you intentionally call R from a non-main thread using this module, use the `*_unchecked`
-variants if you want to bypass routing and you are certain you're on the main thread already.
+Use `*_unchecked` only when the surrounding context has already established
+that execution is on R's main thread, such as an ALTREP callback, an
+`R_UnwindProtect` body, or a `with_r_thread` closure. They are never an escape
+hatch for calling R from another thread.
 
-### Simple Spawning: `spawn_with_r`
+### Legacy non-API stack controls
 
-```rust
-use miniextendr_api::spawn_with_r;
-
-let handle = spawn_with_r(|| {
-    // Safe to call R APIs here!
-    unsafe { miniextendr_api::sys::Rf_ScalarInteger_unchecked(42) }
-})?;
-
-let result = handle.join().unwrap();
-```
-
-This function:
-
-1. Sets stack size to 8 MiB (configurable)
-2. Automatically disables R's stack checking
-3. Restores stack checking when the thread completes
-
-### Custom Configuration: `RThreadBuilder`
-
-```rust
-use miniextendr_api::{RThreadBuilder, WINDOWS_R_STACK_SIZE};
-
-let handle = RThreadBuilder::new()
-    .stack_size(WINDOWS_R_STACK_SIZE)  // 64 MiB for heavy workloads
-    .name("r-worker".to_string())
-    .spawn(|| {
-        // R API calls safe here
-    })?;
-```
-
-### Scoped Threads: `scope_with_r`
-
-For borrowing from the enclosing scope:
-
-```rust
-use miniextendr_api::scope_with_r;
-
-let data = vec![1, 2, 3];
-
-std::thread::scope(|s| {
-    scope_with_r(s, |_| {
-        // Can borrow `data` here!
-        println!("len: {}", data.len());
-        // R API calls also safe
-    });
-});
-```
-
-Note: Scoped threads use Rust's default stack size (2 MiB). For larger stacks, use `spawn_with_r`.
-
-### Manual Control: `StackCheckGuard`
-
-For existing threads or fine-grained control:
-
-```rust
-use miniextendr_api::StackCheckGuard;
-
-std::thread::spawn(|| {
-    let _guard = StackCheckGuard::disable();
-
-    // R API calls safe while guard is alive
-    unsafe { miniextendr_api::sys::Rf_ScalarInteger_unchecked(42) };
-
-    // Original limit restored when _guard drops
-});
-```
-
-### One-Time Disable: `with_stack_checking_disabled`
-
-```rust
-use miniextendr_api::with_stack_checking_disabled;
-
-let result = with_stack_checking_disabled(|| {
-    unsafe { miniextendr_api::sys::Rf_ScalarInteger_unchecked(42) }
-});
-```
+The `nonapi` feature currently exposes `StackCheckGuard`, `spawn_with_r`,
+`scope_with_r`, and `with_stack_checking_disabled`; `RThreadBuilder` is always
+available for stack sizing. These APIs can alter R's process-global stack
+check, but they do not satisfy R's other threading invariants and must not be
+used by packages for off-main R calls. Their removal or relocation to a
+narrowly contracted embedded-R surface is tracked in #1352.
 
 ## Stack Size Requirements
 
 ### Automatic Configuration
 
-When you enable the `nonapi` feature, miniextendr-api's `build.rs` automatically sets linker flags to configure an 8 MiB stack for binaries, tests, examples, and cdylib crates:
+`miniextendr-api`'s `build.rs` emits linker flags for an 8 MiB stack for its
+binaries, tests, examples, and cdylib targets. This happens independently of
+the `nonapi` feature and does not change the R API main-thread rule:
 
 | Platform | Linker Flag |
 |----------|-------------|
@@ -182,11 +129,10 @@ R doesn't enforce a specific stack size - it uses whatever the OS provides:
 | macOS | ~8 MiB | `sysctl KERN_USRSTACK` |
 | Windows | **64 MiB** | Linker flag (since R 4.2) |
 
-Rust's default thread stack is only **2 MiB**, which may be insufficient for:
-
-- Deep recursion (`lapply` chains, recursive functions)
-- Complex formulas
-- Large `tryCatch` stacks
+Rust's default spawned-thread stack is commonly **2 MiB**, which may be
+insufficient for a stack-heavy pure-Rust workload. The comparison explains the
+legacy sizing constants; it does not make R evaluation on those threads
+supported.
 
 ### Available Constants
 
@@ -200,43 +146,33 @@ pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
 pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 ```
 
-## Important Caveats
+## Main-thread invariant
 
-### R is Still Single-Threaded
+Serializing arbitrary spawned-thread calls with a mutex is not sufficient: R
+requires the calls themselves, its GC interactions, and error signaling to run
+on the main thread.
 
-Disabling stack checking allows **calling** R from other threads, but R itself is **not thread-safe**. You must ensure:
-
-1. **No concurrent R API calls** - Use mutexes or channels to serialize access
-2. **GC safety** - R's garbage collector is not thread-aware
-3. **Global state** - R has extensive global state that isn't synchronized
-
-### Recommended Pattern
-
-Use worker threads for Rust computation, marshal R calls to main thread:
+The supported pattern is pure Rust computation on an opted-in miniextendr
+worker, with explicit main-thread routing only when the body genuinely needs an
+R API:
 
 ```rust
-use std::sync::mpsc;
+use miniextendr_api::{miniextendr, r_println, with_r_thread};
 
-// Channel for R results
-let (tx, rx) = mpsc::channel();
+#[miniextendr(worker)]
+fn normalized(mut x: Vec<f64>) -> Vec<f64> {
+    normalize_in_rust(&mut x);
 
-// Worker thread does Rust computation
-spawn_with_r(move || {
-    let rust_result = expensive_rust_computation();
-
-    // Convert to R on this thread (with guard)
-    let r_result = unsafe { rust_result.into_sexp() };
-
-    tx.send(r_result).unwrap();
-});
-
-// Main thread receives R object
-let sexp = rx.recv().unwrap();
+    with_r_thread(|| r_println!("normalized"));
+    x // generated return conversion runs at the framework boundary
+}
 ```
 
 ### ALTREP Callbacks
 
-ALTREP methods are called by R on the main thread, so they don't need `StackCheckGuard`. However, if an ALTREP method spawns threads that call back into R, those threads need the guard.
+ALTREP methods are called by R on the main thread, so they do not need
+`StackCheckGuard`. If an ALTREP method spawns threads, keep those closures
+Rust-only, join them, and perform any R API work back in the original callback.
 
 ### ALTREP and Thread Safety
 
@@ -361,11 +297,12 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 
 - [SAFETY.md](SAFETY.md) -- Safety invariants and the worker thread model
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling and R error propagation
-- [FEATURES.md](FEATURES.md#nonapi) -- The `nonapi` feature flag for thread utilities
+- [FEATURES.md](FEATURES.md#nonapi) -- The `nonapi` feature flag and legacy stack controls
 - [RAYON.md](RAYON.md) -- Parallel iteration with Rayon
 
 ## References
 
+- Writing R Extensions: "OpenMP support" and "Embedding R in other applications — Threading issues"
 - R source: `src/main/errors.c` - `R_CheckStack()` implementation
 - R source: `src/unix/system.c` - Unix stack initialization
 - R source: `src/gnuwin32/system.c` - Windows stack initialization

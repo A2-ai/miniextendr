@@ -27,7 +27,7 @@ framework API references.
 |---|---|
 | `miniextendr-api.md` | Full API digest for `miniextendr-api` (broad feature set) |
 | `miniextendr-macros.md` | Proc-macro public API |
-| `miniextendr-engine.md` | Codegen engine public API |
+| `miniextendr-engine.md` | Standalone embedded-R engine public API |
 | `miniextendr-bench.md` | Benchmark harness public API |
 | `miniextendr-lint.md` | Lint rule public API |
 | `miniextendr-cli.md` | CLI helper public API |

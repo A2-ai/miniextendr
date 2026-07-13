@@ -394,7 +394,9 @@ flag in the PR.
 
 ## Key concepts (runtime FFI)
 
-- **Worker thread**: Rust runs on a worker thread for panic safety.
+- **Execution model**: generated Rust runs on R's main thread inside
+  `R_UnwindProtect` by default. `#[miniextendr(worker)]` and `worker-default`
+  opt into the dedicated worker; R API work routes back through `with_r_thread`.
 - **ExternalPtr**: Box-like owned pointer over `EXTPTRSXP`. Stores `Box<Box<dyn Any>>` — thin ptr in `R_ExternalPtrAddr` → fat ptr on heap (carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic `release_any` finalizer. `cached_ptr` must have mutable provenance.
 - **TypedExternal**: R-visible type name (`TYPE_NAME_CSTR` display tag, `TYPE_ID_CSTR` errors). Not authoritative for type safety — `Any::downcast` is.
 - **ALTREP**: Single-struct pattern, no wrapper. Two paths:

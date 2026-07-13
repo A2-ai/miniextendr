@@ -12,7 +12,8 @@ R has no native way to hold arbitrary Rust data. `EXTPTRSXP` is R's mechanism fo
   `TypedExternal` symbols are display and diagnostic metadata
 - **Automatic cleanup** via R GC finalizer that calls `Drop`
 - **Box-like API** (`Deref`, `DerefMut`, `Clone`, `into_inner`, `into_raw`, `pin`, etc.)
-- **Thread-safe construction** -- `new()` routes R API calls to the main thread when called off-thread (e.g., with the `worker-thread` feature)
+- **Context-checked construction** -- `new()` runs on R's main thread or routes
+  from an active miniextendr worker context
 
 ## When to Use ExternalPtr
 
@@ -48,7 +49,10 @@ pub fn create_data(v: f64) -> MyData {
 let ptr = ExternalPtr::new(MyData { value: 3.14 });
 ```
 
-`new()` works from any thread -- if called off the main thread (e.g., from the worker thread with the `worker-thread` feature), R API calls are automatically dispatched to the main thread via `with_r_thread`.
+`new()` works on R's main thread and from miniextendr's dedicated worker during
+an active `run_on_worker` call; the latter routes its R allocations through
+`with_r_thread`. It panics on an arbitrary spawned or Rayon thread rather than
+calling R off-main.
 
 ### Unchecked construction (ALTREP callbacks, main-thread-only code)
 
@@ -57,7 +61,8 @@ let ptr = ExternalPtr::new(MyData { value: 3.14 });
 let ptr = unsafe { ExternalPtr::new_unchecked(MyData { value: 3.14 }) };
 ```
 
-Skips thread safety assertions for performance-critical paths.
+Skips main-thread routing and checks for performance-critical paths whose
+caller has already established R's main-thread context.
 
 ### From raw pointers
 

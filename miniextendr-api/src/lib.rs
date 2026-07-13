@@ -116,8 +116,9 @@
 //! `#[r_ffi_checked]`. Use unchecked variants only when you have arranged a
 //! safe context.
 //!
-//! With the `nonapi` feature, miniextendr can disable R's stack checking to allow
-//! calls from other threads. R is still not thread-safe; serialize all R API use.
+//! The `nonapi` feature exposes legacy controls for R's process-global stack
+//! bounds. Disabling that check does **not** make R's API safe off the main
+//! thread; package code must keep R API work on the recorded main thread.
 //!
 //! ## Feature Flags
 //!
@@ -456,7 +457,7 @@ pub use worker::{Sendable, is_r_main_thread, with_r_thread};
 // Required exports for generated code and initialization
 pub use worker::miniextendr_runtime_init;
 
-// Thread safety utilities for calling R from non-main threads
+// Advanced stack-configuration utilities; not permission for off-main R API use
 pub mod thread;
 
 // Collection growth debug instrumentation (diagnostics)
@@ -644,12 +645,12 @@ pub mod progress;
 #[cfg(feature = "indicatif")]
 pub use indicatif;
 
-// Stack size constants and builder (always available)
+// Legacy R-oriented stack sizing (always available; not an off-main R bridge)
 #[cfg(windows)]
 pub use thread::WINDOWS_R_STACK_SIZE;
 pub use thread::{DEFAULT_R_STACK_SIZE, RThreadBuilder};
 
-// Stack checking control (requires nonapi feature)
+// Legacy process-global stack controls (requires nonapi; removal tracked in #1352)
 #[cfg(feature = "nonapi")]
 pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checking_disabled};
 

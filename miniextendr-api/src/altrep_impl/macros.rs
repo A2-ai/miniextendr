@@ -319,7 +319,7 @@ macro_rules! __impl_altvec_string_dataptr {
                         // so cache lookups work. This is O(n) but unavoidable.
                         //
                         // Inside ALTREP dispatch — _unchecked variants skip the
-                        // with_r_thread debug-assert (MXL301 permits).
+                        // redundant with_r_thread check/route (MXL301 permits).
                         data2 = $crate::sys::Rf_protect_unchecked(
                             $crate::sys::Rf_allocVector_unchecked($crate::SEXPTYPE::STRSXP, n),
                         );
@@ -1109,7 +1109,7 @@ macro_rules! __impl_altstring_methods {
                         // (garbage SEXP pointers). Must fill with R_NaString sentinel.
                         //
                         // Inside ALTREP dispatch — _unchecked variants skip the
-                        // with_r_thread debug-assert (MXL301 permits).
+                        // redundant with_r_thread check/route (MXL301 permits).
                         data2 = $crate::sys::Rf_protect_unchecked(
                             $crate::sys::Rf_allocVector_unchecked($crate::SEXPTYPE::STRSXP, n),
                         );

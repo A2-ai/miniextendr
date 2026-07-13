@@ -6,7 +6,7 @@ This document provides a high-level overview of miniextendr for evaluators, cont
 
 miniextendr differs from extendr in several key design decisions:
 
-- **Main thread with unwind protection**: By default, Rust code runs inline on R's main thread inside `R_UnwindProtect`, which catches both panics and R longjmps. An optional `worker-thread` feature enables a dedicated worker thread as an alternative execution model.
+- **Main thread with unwind protection**: By default, Rust code runs inline on R's main thread inside `R_UnwindProtect`, which catches both panics and R longjmps. The `worker-thread` feature supplies dedicated-worker infrastructure; `#[miniextendr(worker)]` or `worker-default` selects it.
 - **Configure-based builds**: Uses autoconf/configure rather than build scripts, integrating with R's standard package build system.
 - **ALTREP first-class**: Proc-macro-driven ALTREP support for lazy/zero-copy vectors.
 - **Vendored for CRAN**: All dependencies are vendored for offline CRAN builds.
@@ -33,7 +33,7 @@ The runtime library. Provides:
   authoritative `Any::downcast` type checks
 - **ALTREP**: Proc-macro method traits for lazy/compact vectors
 - **Thread identification**: `is_r_main_thread()`, `Sendable<T>` for thread-safe dispatch
-- **Worker thread** (opt-in via `worker-thread` feature): `run_on_worker()` for dedicated thread dispatch
+- **Worker thread** (`worker-thread` infrastructure, selected per export or by `worker-default`): `run_on_worker()` for dedicated thread dispatch
 - **GC protection**: `OwnedProtect`, `ProtectScope` for RAII-based protect/unprotect
 - **Package registry**: routine registration plus the host-only
   `miniextendr_write_wrappers` and `miniextendr_write_wasm_registry` writers

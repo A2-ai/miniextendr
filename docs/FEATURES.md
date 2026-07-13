@@ -12,7 +12,7 @@ Only `default` features are enabled automatically.
 | **Core / R Integration** | | |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
-| `worker-thread` | Dedicated worker thread for Rust code execution | (none) |
+| `worker-thread` | Infrastructure for opt-in worker dispatch | (none) |
 | `connections` | Experimental custom R connection framework | (none) |
 | `indicatif` | Progress bars via R connections / console | indicatif (implies `connections`, `nonapi`) |
 | `vctrs` | vctrs C API + `#[derive(Vctrs)]` macro | (forwarded to miniextendr-macros) |
@@ -98,10 +98,15 @@ symbols may change between R versions and will cause `R CMD check` warnings.
 **What it unlocks:**
 - `DATAPTR` -- mutable data pointer (prefer `DATAPTR_RO` when possible)
 - `R_curErrorBuf` -- current R error message buffer
-- `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- stack checking controls
-- `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` -- thread safety utilities
+- `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- process-global stack-check controls
+- `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` --
+  legacy stack-configuration utilities; they do not make off-main R API calls safe
 
 See [NONAPI.md](NONAPI.md) for the full tracking list.
+
+R's API remains main-thread-only. Package code must not change these stack
+globals or use the helpers as a substitute for `with_r_thread`; removal or
+relocation of that public surface is tracked in #1352.
 
 ### `worker-thread`
 
