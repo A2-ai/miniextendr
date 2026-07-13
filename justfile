@@ -312,11 +312,56 @@ test *args:
       if [ "$arg" = "--" ]; then sep=1; continue; fi; \
       if [ "$sep" = "0" ]; then cargo_flags="$cargo_flags $arg"; else test_args="$test_args $arg"; fi; \
     done \
-    && cargo test --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
+    && MINIEXTENDR_SKIP_UI=1 cargo test --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo test --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo test --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
     && root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --workspace --no-fail-fast $cargo_flags --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" -- --no-capture $test_args)
     @just cargo-lock-restore
+    @just test-ui
+
+# Run the trybuild UI snapshot tests deterministically across contributor toolchains.
+#
+# Toolchains with the `rust-src` component installed render stdlib source spans
+# (e.g. `$crate::panicking::panic_fmt(...)`) into trybuild `.stderr` output;
+# CI's `dtolnay/rust-toolchain@stable` minimal profile has no `rust-src` and
+# renders bare `= note:` fallbacks. The committed `.stderr` baselines are the CI
+# (no-rust-src) flavor, so a rust-src-equipped local toolchain reports false
+# snapshot mismatches (issue #1239). When rust-src is detected this recipe reruns
+# the UI suite under a version-named minimal-profile toolchain (a separate rustup
+# toolchain from `stable` even at the same version, hence no rust-src) so results
+# match CI. Never regenerate the snapshots (`TRYBUILD=overwrite`) under a rust-src
+# toolchain — CI is authoritative. See CLAUDE.md "UI test snapshots".
+[script("bash")]
+test-ui *cargo_flags:
+    set -euo pipefail
+    run_ui() {
+        # The `ui_vctrs` trybuild target is intentionally NOT run here: its
+        # committed snapshot is stale and no CI job runs it (issue #1336). Re-add
+        # `--test ui_vctrs --features vctrs` once that snapshot + a CI leg land.
+        local tc="$1"
+        env ${tc:+RUSTUP_TOOLCHAIN="$tc"} cargo test -p miniextendr-macros --test ui --locked {{cargo_flags}}
+    }
+    if rustup component list --installed 2>/dev/null | grep -q '^rust-src'; then
+        ver="$(rustc --version | awk '{print $2}')"
+        echo "test-ui: rust-src present on the active toolchain — trybuild would render stdlib spans CI's minimal stable does not (#1239)."
+        echo "test-ui: isolating the UI suite under version-named minimal-profile toolchain '${ver}'."
+        if ! rustup toolchain list 2>/dev/null | grep -q "^${ver}-"; then
+            if ! rustup toolchain install "${ver}" --profile minimal --no-self-update; then
+                echo "!! test-ui: could not install toolchain '${ver}' (offline?)."
+                echo "!! UI snapshots will NOT match CI on a rust-src toolchain; skipping the trybuild suite."
+                echo "!! To run it later: rustup toolchain install ${ver} --profile minimal && just test-ui"
+                exit 0
+            fi
+        fi
+        if rustup component list --toolchain "${ver}" --installed 2>/dev/null | grep -q '^rust-src'; then
+            echo "!! test-ui: toolchain '${ver}' unexpectedly carries rust-src; cannot isolate. Skipping (CI remains authoritative)."
+            exit 0
+        fi
+        run_ui "${ver}"
+    else
+        echo "test-ui: no rust-src on the active toolchain (matches CI); running the trybuild UI suite in place."
+        run_ui ""
+    fi
 
 # Run benchmarks (miniextendr-bench)
 alias cargo-bench := bench

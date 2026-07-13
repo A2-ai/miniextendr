@@ -398,9 +398,14 @@ plan file — see the Reviews rule above). To execute one in isolation, the rule
    install: `just rcmdinstall && just force-document && just rcmdinstall`, then a
    **targeted** `testthat::test_file(...)` (full `just devtools-test` can OOM via
    callr fan-out). Commit regenerated `NAMESPACE`/`man` in sync
-   (`git config core.hooksPath .githooks` first). Known non-issue: 7
-   `derive_dataframe_*` UI trybuild tests skew on local rustc — don't overwrite,
-   CI stable is authoritative.
+   (`git config core.hooksPath .githooks` first). Known non-issue: the
+   `derive_dataframe_*` UI trybuild `.stderr` snapshots skew when the active
+   toolchain carries the `rust-src` component (it renders stdlib spans CI's
+   minimal stable does not — issue #1239, **not** a rustc-version difference).
+   `just test`/`just test-ui` now isolate the UI suite under a version-named
+   minimal-profile toolchain automatically (the workspace leg sets
+   `MINIEXTENDR_SKIP_UI=1`). Never `TRYBUILD=overwrite` under a rust-src
+   toolchain; CI stable is authoritative. See CLAUDE.md "UI test snapshots".
 6. **Commit early** — right after the code change compiles — so a mid-run
    disconnect loses nothing; amend/extend as verification completes.
 7. **PR** — `git push -u origin <branch>` then `gh pr create --base main` with
