@@ -1208,10 +1208,28 @@ wrappers-sync-check: _assert-no-vendor-leak configure
     set -euo pipefail
     # The source-mode `R CMD INSTALL` below drifts rpkg/src/rust/Cargo.lock; restore
     # it on every exit path, incl. the exit-1 diff-failure branches. (#1052)
-    trap 'just cargo-lock-restore' EXIT
+    install_log="$(mktemp)"
+    trap 'just cargo-lock-restore; rm -f "$install_log"' EXIT
 
     # Install regenerates R/miniextendr-wrappers.R + src/rust/wasm_registry.rs on disk.
-    R CMD INSTALL rpkg >/dev/null
+    # Capture output (instead of >/dev/null) so the audit grep-gate below can scan
+    # it; print the log only if the install itself fails, to preserve diagnostics.
+    if ! R CMD INSTALL rpkg >"$install_log" 2>&1; then
+      cat "$install_log" >&2
+      exit 1
+    fi
+
+    # Regression guard (2026-07-12 audit): the impl-method roxygen-tag deprecation
+    # nudge (`miniextendr: @<tag> on impl block ...`, emitted by
+    # miniextendr-macros/src/roxygen.rs) must not reappear from an rpkg fixture.
+    # Scoped to our macro's unique prefix so upstream cargo/rustc future-incompat
+    # noise (e.g. proc-macro-error2) can't flake this gate.
+    if grep -n 'miniextendr: @' "$install_log" >&2; then
+      echo "" >&2
+      echo "ERROR: impl-method roxygen-tag deprecation nudge fired during R CMD INSTALL (above)." >&2
+      echo "Move each flagged @tag off the impl block onto its method (see rpkg/src/rust/impl_dots_tests.rs)." >&2
+      exit 1
+    fi
 
     # The generated (untracked) files must exist and be real, not stubs.
     if [ ! -s rpkg/R/miniextendr-wrappers.R ]; then
