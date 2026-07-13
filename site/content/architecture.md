@@ -13,17 +13,35 @@ miniextendr differs from extendr in several key design decisions:
 - **ALTREP first-class**: Proc-macro-driven ALTREP support for lazy/zero-copy vectors.
 - **Vendored for CRAN**: All dependencies are vendored for offline CRAN builds.
 
-## SEXP as the unit of memory
+## SEXP at the boundary
 
-Rust types in miniextendr are, wherever possible, thin wrappers around `SEXP` (R's tagged pointer) rather than independent Rust-owned allocations. The goal is that the Rust-side representation of an R object *is* the R object: same pointer, same memory, same GC root. Concretely, types like `ExternalPtr<T>`, `Altrep<T>`, owned vector views, and the class-system wrappers (`R6<T>`, `S7<T>`, etc.) are all `#[repr(transparent)]` over `SEXP`, which lets us `transmute` between a typed handle and its raw `SEXP` without a conversion step and without any copy.
+miniextendr keeps the R boundary pointer-oriented, but ownership depends on the
+type. R-backed views can hold a `SEXP` directly and avoid a copy while the
+caller or a protection handle keeps the object rooted. Ordinary conversions
+such as `Vec<i32> -> integer()` explicitly copy Rust data into R-owned memory.
 
-That alignment with the R API matters for three reasons:
+Rust-owned values use a different path. `ExternalPtr<T>` is a `#[repr(C)]`
+handle containing the R `EXTPTRSXP`, a cached Rust pointer, and protection
+state. The pointee is stored on the Rust heap as `Box<Box<dyn Any>>`; R's GC
+decides when its finalizer runs and the Rust value is dropped. ALTREP can use an
+external pointer similarly to keep a Rust backing store lazy and expose it as
+an R vector.
 
-1. **No parallel heap.** There is exactly one live copy of the data: the R heap. The Rust side doesn't duplicate it into `Vec<T>` and then write back, so the GC never sees "shadow" values that could go stale. Conversions that *do* copy (e.g. `Vec<i32>` to `integer()`) are explicit and localized to `TryFromSexp` / `IntoR`.
-2. **FFI is free.** Passing a miniextendr wrapper across the `extern "C"` boundary is just passing a pointer. There's no boxing, no adapter struct, no `into_raw` dance. The transmute-equivalence means a `fn foo() -> MyExternalPtr` compiles to the same ABI as a `fn foo() -> SEXP`.
-3. **Trait dispatch travels with the pointer.** Because the pointer carries its R class/altrep/extptr tag, type recovery is `Any::downcast` or a class-symbol check, not a lookup into a Rust-side registry that another package can't see. Cross-package dispatch works without a shared Rust type.
+Three rules follow:
 
-Implication for extenders: if you find yourself writing `struct MyThing { inner: Vec<Foo> }` and then converting back to `SEXP` on every call, prefer keeping the canonical storage on the R side and letting your Rust type be a typed view over it. ALTREP (see below) is the tool for keeping R semantics while materializing lazily on demand.
+1. **R-backed views need roots.** A bare view does not become safe merely
+   because it contains a `SEXP`; use the call frame, `ProtectScope`, or an owned
+   protection handle for the required lifetime.
+2. **Rust-owned data remains Rust-owned.** `ExternalPtr<T>` avoids copying the
+   pointee into R's heap, but it is not representation-equivalent to `SEXP`.
+3. **Type and trait checks are distinct.** Concrete external-pointer access is
+   checked with `Any::downcast`. Cross-package trait dispatch queries a stable
+   trait tag and calls through a registered C-compatible vtable; R symbols on
+   `TypedExternal` are display and diagnostic metadata.
+
+Choose an R-backed view for existing R memory, `ExternalPtr<T>` for a Rust
+value owned from R, and ALTREP when R should see vector semantics backed by
+lazy or external storage.
 
 ## Performance considerations
 
@@ -36,18 +54,13 @@ A concrete example: the `.Call()`-registered C entry point is the same mechanism
 ## Crate Architecture
 
 ```text
-miniextendr-macros        miniextendr-engine       miniextendr-lint
-(proc macros)             (wrapper codegen)        (build-time checks)
-      \                         |                        /
-       \                        |                       /
-        +-----------------------+----------------------+
-                                v
-                        miniextendr-api
-                        (runtime library)
-                                |
-                                v
-                example package / user packages
-                (R package with Rust backend)
+miniextendr-macros --re-exported by--> miniextendr-api --> R packages
+   (proc macros)                        (runtime + registry)
+
+miniextendr-lint --build-time source checks--------------> R packages
+
+miniextendr-engine
+(standalone R embedding for Rust binaries and tests; independent of package codegen)
 ```
 
 Supporting crates outside the main dependency chain:
@@ -63,10 +76,13 @@ The runtime library. Provides:
 
 - **FFI types**: `SEXP`, `Rboolean`, protect/unprotect wrappers
 - **Type conversions**: `IntoR`, `TryFromSexp`, `IntoRAs` traits
-- **ExternalPtr**: Type-safe `EXTPTRSXP` wrappers with `TypedExternal` for cross-package dispatch
+- **ExternalPtr**: Box-like `EXTPTRSXP` ownership for Rust values, with
+  authoritative `Any::downcast` type checks
 - **ALTREP**: Proc-macro method traits for lazy/compact vectors
 - **Thread identification**: `is_r_main_thread()`, `Sendable<T>` for thread-safe dispatch
 - **GC protection**: `OwnedProtect`, `ProtectScope` for RAII-based protect/unprotect
+- **Package registry**: routine registration plus the host-side wrapper and
+  wasm registry writers
 
 ### miniextendr-macros
 
@@ -79,7 +95,10 @@ Proc macros that generate the glue code:
 
 ### miniextendr-engine
 
-Code generation engine. Provides the `miniextendr_write_wrappers` function that reads linkme distributed slices and generates `miniextendr-wrappers.R`. Called via a temporary cdylib loaded into R.
+Standalone R embedding for Rust binaries, tests, and benchmarks. It finds and
+links `libR` and initializes an embedded R runtime. Normal R package builds do
+not use it; their wrapper generation lives in `miniextendr-api::registry` and
+runs from the freshly linked package shared library.
 
 ### miniextendr-lint
 
@@ -120,7 +139,7 @@ Key safety properties:
 .in templates --[autoconf]--> configure script --[./configure]--> generated files
 
 Makevars.in -------------------------------------------------> Makevars
-cargo-config.toml.in ----------------------------------------> .cargo/config.toml
+configure.ac (cargo-config command) -------------------------> .cargo/config.toml
 ```
 
 All entry points are generated in Rust via `miniextendr_init!`. A minimal `stub.c` exists solely to satisfy R's build system requirement for at least one C file.
@@ -129,12 +148,19 @@ All entry points are generated in Rust via `miniextendr_init!`. A minimal `stub.
 
 For CRAN compatibility, all dependencies must be vendored:
 
-1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint): Synced to `vendor/`
-2. **crates.io dependencies** (proc-macro2, syn, quote): Vendored by `cargo vendor`
+1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint)
+2. **crates.io and git dependencies**
+
+`cargo revendor` resolves and writes both groups into the package's `vendor/`
+tree; release preparation compresses that tree into `inst/vendor.tar.xz`.
 
 ### Cross-package dispatch
 
-ExternalPtr objects can be passed between R packages. The `TypedExternal` trait uses R symbols for type identification, enabling trait dispatch across package boundaries without shared Rust types.
+Concrete `ExternalPtr<T>` conversion uses `Any::downcast`. Cross-package trait
+dispatch is a separate ABI: the consumer queries the object's stable trait tag
+and invokes methods through its registered C-compatible vtable. `TypedExternal`
+symbols are used for display and diagnostics, not as the authoritative type
+gate.
 
 ```text
 producer.pkg:                 consumer.pkg:

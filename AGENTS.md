@@ -14,7 +14,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 - **`configure.ac` never mutates sources**: don't rewrite Cargo.toml / Cargo.lock / .rs during `./configure` — dirties VCS. Use `cargo revendor --freeze` at vendor time.
 - **`configure.ac` must not call `minirextendr::*`**: put helpers in `tools/` and invoke via `Rscript tools/foo.R`.
 - **Edit `.in` templates, not generated files**:
-  - `rpkg/src/rust/.cargo/config.toml` ← `rpkg/src/rust/cargo-config.toml.in`
+  - `rpkg/src/rust/.cargo/config.toml` ← the `cargo-config` block in `rpkg/configure.ac`
   - `rpkg/src/Makevars` ← `rpkg/src/Makevars.in`
   - `rpkg/src/miniextendr-win.def` ← `rpkg/src/win.def.in`
   - `rpkg/configure` ← `rpkg/configure.ac` (then `autoconf`)
@@ -130,9 +130,13 @@ Use `just force-document` (not `just devtools-document`) after **anything** that
 
 **A new export needs a *second* install to be runtime-callable.** `just rcmdinstall` regenerates `wrappers.R` but installs against the *existing* `NAMESPACE`; `just force-document` then writes the new export into `NAMESPACE` on disk but does **not** reinstall — so a freshly added `#[miniextendr]` fn is absent from the *installed* package until you install again. To gctorture / testthat a new export, run the loop twice: `rcmdinstall && force-document && rcmdinstall`. (Committing the regenerated `NAMESPACE` / `man` only needs the single pass.)
 
-Generated files (`rpkg/R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must be committed in sync with the Rust changes that produced them.
+Generated documentation (`NAMESPACE`, `man/*.Rd`) must be committed in sync
+with the Rust changes that produced it. `rpkg/R/miniextendr-wrappers.R` and
+`rpkg/src/rust/wasm_registry.rs` are gitignored and regenerated during install;
+they must be present on disk when building the tarball, not committed.
 
-The pre-commit hook (`.githooks/pre-commit`) blocks commits where `*-wrappers.R` is staged without matching `NAMESPACE`. Enable once per clone: `git config core.hooksPath .githooks`.
+The pre-commit hook (`.githooks/pre-commit`) guards the tarball-shape Cargo.lock.
+Enable once per clone: `git config core.hooksPath .githooks`.
 
 ### Adding a `#[miniextendr]` function
 
@@ -196,7 +200,7 @@ Gitignored — generated in CI (every R CMD check runs `just vendor` first) and 
   - `#[miniextendr]` on 1-field structs is **removed** — use derives
 - **R_UnwindProtect**: runs Rust destructors on R errors
 - **GC**: `OwnedProtect` / `ProtectScope` for RAII protect/unprotect
-- **Dots (`...`)**: `_dots: &Dots`, or `name @ ...` for custom name. See `docs/DOTS_TYPED_LIST.md`.
+- **Dots (`...`)**: `_dots: &Dots`, or `name: ...` for a custom name. See `docs/DOTS_TYPED_LIST.md`.
 - **typed_list!**: `#[miniextendr(dots = typed_list!(...))]` validates and creates `dots_typed`
 - **`impl Trait`**: return position only (`-> impl IntoR`). Argument position fails type inference (E0283 across `let` bindings for `TryFromSexp + Trait`).
 - **S4 helpers**: `slot()`/`slot<-()` live in `methods` — resolve via `getNamespace("methods")`, not `R_BaseEnv`.

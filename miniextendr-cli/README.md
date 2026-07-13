@@ -46,7 +46,7 @@ miniextendr init use                        # Add miniextendr to existing packag
 miniextendr workflow build                  # Full two-pass build
 miniextendr workflow configure              # Generate Makevars and build config
 miniextendr workflow configure --cran       # Configure for CRAN release
-miniextendr workflow document               # Generate R wrappers (devtools::document)
+miniextendr workflow document               # Derive NAMESPACE/man from generated wrappers
 miniextendr workflow test                   # Run R tests (devtools::test)
 miniextendr workflow test --filter vec      # Run filtered tests
 miniextendr workflow check                  # R CMD check (devtools::check)

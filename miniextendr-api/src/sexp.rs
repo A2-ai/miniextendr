@@ -36,7 +36,8 @@ pub struct SEXPREC(::std::os::raw::c_void);
 ///
 /// While SEXP is Send+Sync (allowing it to be passed between threads), the data
 /// it points to must only be accessed on R's main thread. The miniextendr runtime
-/// enforces this through the worker thread pattern.
+/// enforces this through checked FFI wrappers and `with_r_thread` routing when
+/// worker dispatch is selected.
 ///
 /// # Equality Semantics
 ///

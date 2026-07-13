@@ -1086,7 +1086,7 @@ fn c_wrapper_ident(self: &Self, type_ident: &syn::Ident, label: Option<&str>) ->
 
 C wrapper identifier for this method.
 
-Format: `C_{crate}_{Type}__{method}` or `C_{crate}_{Type}_{label}__{method}`
+Format: `C_{crate}_{Type}__{method}` or `C_{crate}_{Type}_{label}_{method}`
 if labeled — crate-prefixed for webR cross-package symbol uniqueness (#1273).
 
 #### `from_impl_item`
@@ -2002,7 +2002,7 @@ fn with_dots(self: Self, named_dots: Option<String>) -> Self
 Mark the last parameter as dots (`...`).
 
 If `named_dots` is `Some("name")`, the dots have a Rust-side binding
-(from `name @ ...` syntax). The name is normalized but only affects the
+(from `name: ...` syntax). The name is normalized but only affects the
 Rust side -- R formals always emit plain `...`.
 
 ### `r_wrapper_builder::RoxygenBuilder`
@@ -4160,7 +4160,7 @@ the function itself is the C symbol and the R wrapper is prefixed with
 ##### Variadics (`...`)
 
 Use `...` as the last argument. The Rust parameter becomes `_dots: &Dots`.
-Use `name @ ...` to give it a custom name (e.g., `args @ ...` → `args: &Dots`).
+Use `name: ...` to give it a custom name (e.g., `args: ...` → `args: &Dots`).
 
 ###### Typed Dots Validation
 

@@ -285,7 +285,7 @@ create_package(pkg, open = FALSE)
 proj_set(pkg, force = TRUE)
 use_miniextendr(template_type = "rpkg", local_path = root)
 
-# 1. First install: compiles Rust + generates R wrappers via document binary
+# 1. First install: compiles Rust, links the package library, generates wrappers
 system2(r_cmd,
   c("CMD", "INSTALL", "--no-multiarch", "-l", lib, pkg),
   env = character(0))

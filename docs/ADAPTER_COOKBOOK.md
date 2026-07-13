@@ -364,15 +364,16 @@ use std::collections::hash_map::DefaultHasher;
 
 #[miniextendr]
 pub trait RHashable {
-    fn hash_code(&self) -> i64;
+    fn hash_code(&self) -> String;
 }
 
 // Blanket impl for any Hash type
 impl<T: Hash> RHashable for T {
-    fn hash_code(&self) -> i64 {
+    fn hash_code(&self) -> String {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
-        hasher.finish() as i64
+        // R has no lossless u64 scalar, so preserve every bit as hex.
+        format!("{:016x}", hasher.finish())
     }
 }
 

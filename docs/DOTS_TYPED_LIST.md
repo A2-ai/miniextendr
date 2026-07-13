@@ -30,11 +30,11 @@ The underscore prefix (`_dots`) suppresses unused variable warnings if you don't
 
 ### Named Dots
 
-You can give dots a custom name using the `name @ ...` syntax (instead of the default `_dots`):
+You can give dots a custom name using the `name: ...` syntax (instead of the default `_dots`):
 
 ```rust
 #[miniextendr]
-pub fn my_func(args @ ...) -> i32 {
+pub fn my_func(args: ...) -> i32 {
     // Use `args` instead of `_dots`
     args.as_list().len() as i32
 }

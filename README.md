@@ -35,8 +35,8 @@ used to scaffold standalone packages and monorepos.
 - FFI bindings to R's C API plus safer `SEXP`-oriented helpers.
 - Rust <-> R conversions for common scalars, vectors, lists, matrices, and
   user-defined types.
-- The default worker-thread pattern that keeps panics and Drop behavior safe in
-  the presence of R longjmp.
+- Main-thread execution inside `R_UnwindProtect` by default, with an optional
+  worker-thread dispatch model for functions that opt in.
 - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
 - Env, S3, S4, S7, and R6 class generation from Rust impl blocks.
 - Type-erased cross-package trait dispatch via tags and vtables.
@@ -48,14 +48,14 @@ used to scaffold standalone packages and monorepos.
 Feature families in the runtime crate include:
 
 - Runtime/build: `nonapi`, `rayon`, `connections`, `indicatif`, `vctrs`,
-  `worker-thread`, `worker-default`, `log`
+  `worker-thread`, `worker-default`, `fast-default`, `log`
 - Serialization/data: `serde` (native R), `serde_json` (JSON), `borsh`,
   `arrow`, `datafusion`
-- Ecosystem conversions: `either`, `uuid`, `regex`, `url`, `time`,
+- Ecosystem conversions: `either`, `uuid`, `regex`, `url`, `time`, `jiff`,
   `ordered-float`, `num-bigint`, `rust_decimal`, `num-complex`, `indexmap`,
   `bitflags`, `bitvec`, `ndarray`, `nalgebra`, `tinyvec`, `bytes`,
-  `raw_conversions`, `aho-corasick`, `toml`, `tabled`, `rand`, `rand_distr`,
-  `num-traits`
+  `raw_conversions`, `aho-corasick`, `globset`, `toml`, `tabled`, `rand`,
+  `rand_distr`, `num-traits`, `sha2`, `blake3`, `md5`, `zstd`
 - Proc-macro defaults and diagnostics: `strict-default`, `coerce-default`,
   `r6-default`, `s7-default`, `doc-lint`, `growth-debug`,
   `macro-coverage`
@@ -71,18 +71,20 @@ library via cargo during `R CMD INSTALL`.
 The high-level flow is:
 
 1. `bootstrap.R` runs `configure`.
-2. `configure` generates `src/Makevars`, `src/rust/Cargo.toml`, and
-   `src/rust/.cargo/config.toml`, and picks the dev or CRAN/offline source
-   layout.
-3. `Makevars` builds the Rust static library and a temporary cdylib used to
-   write `R/miniextendr-wrappers.R`.
+2. `configure` generates `src/Makevars` and writes
+   `src/rust/.cargo/config.toml` for the detected source or tarball mode.
+   `src/rust/Cargo.toml` remains an ordinary tracked source file.
+3. `Makevars` builds the Rust static library, links the package shared library,
+   then loads that library to write `R/miniextendr-wrappers.R` and the wasm32
+   registration snapshot.
 
-Generated artifacts that must stay committed:
+Generated artifacts have two different tracking policies:
 
-- `rpkg/configure`
-- `rpkg/R/miniextendr-wrappers.R`
-- `rpkg/config.guess`
-- `rpkg/config.sub`
+- Track `rpkg/configure`, `rpkg/config.guess`, `rpkg/config.sub`,
+  `rpkg/NAMESPACE`, and `rpkg/man/*.Rd`.
+- Do not track `rpkg/R/miniextendr-wrappers.R` or
+  `rpkg/src/rust/wasm_registry.rs`; they are regenerated during development
+  installs but must be present on disk when the release tarball is built.
 
 Common workflows from the repo root:
 
@@ -138,8 +140,9 @@ just cross-test
   non-API symbol usage.
 - Vendor Rust dependencies into the package tarball and include
   `inst/vendor.tar.xz` when building offline/CRAN releases.
-- Keep `configure`, `config.guess`, `config.sub`, and the generated wrappers
-  committed.
+- Keep `configure`, `config.guess`, `config.sub`, `NAMESPACE`, and `man/*.Rd`
+  committed. Regenerate the gitignored wrapper and wasm registry before
+  building the tarball so both are shipped in it.
 - Run `R CMD check` on the release tarball before submission.
 
 ## Maintainer

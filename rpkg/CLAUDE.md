@@ -23,7 +23,7 @@ which rv's `activate.R` sets to this checkout's own `rv/library/<ver>/<arch>`.
 
 ## File-edit rules (templates → generated)
 - `src/Makevars` ← `src/Makevars.in`
-- `src/rust/.cargo/config.toml` ← `src/rust/cargo-config.toml.in`
+- `src/rust/.cargo/config.toml` ← the `cargo-config` block in `configure.ac`
 - `src/miniextendr-win.def` ← `src/win.def.in`
 - `configure` ← `configure.ac` (run `autoconf` after editing)
 - `src/stub.c` — static, no substitution. Minimal empty C so R produces a `.so`.

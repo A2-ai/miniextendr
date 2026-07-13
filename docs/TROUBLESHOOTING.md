@@ -124,7 +124,14 @@ just cross-test     # Run tests
 
 ### TypedExternal dispatch fails across packages
 
-Ensure both packages are built against the same version of miniextendr-api. The `TypedExternal` trait uses R symbols for type identification, and version mismatches can cause type lookups to fail silently.
+First distinguish concrete-pointer conversion from trait dispatch:
+
+- `ExternalPtr<T>` conversion uses `Any::downcast` as the authoritative type
+  check and reports a type mismatch; `TypedExternal`'s R symbols are only for
+  display and diagnostics.
+- Cross-package trait calls use the trait ABI's tag and vtable query. Rebuild
+  both provider and consumer against compatible trait definitions, then check
+  that the trait and its impl are both annotated with `#[miniextendr]`.
 
 ---
 
@@ -168,11 +175,11 @@ vendoring).
 
 ### Editing generated files has no effect
 
-Many files in rpkg are generated from `.in` templates. Always edit the template:
+Several files in rpkg are generated. Edit their actual source:
 
 | Generated file | Edit this instead |
 |---|---|
-| `rpkg/src/rust/.cargo/config.toml` | `rpkg/src/rust/cargo-config.toml.in` |
+| `rpkg/src/rust/.cargo/config.toml` | the `AC_CONFIG_COMMANDS([cargo-config], ...)` block in `rpkg/configure.ac` |
 | `rpkg/src/Makevars` | `rpkg/src/Makevars.in` |
 | `rpkg/configure` | `rpkg/configure.ac` (then run `autoconf`) |
 
@@ -186,7 +193,9 @@ Add `#[miniextendr]` to the function or impl block. Registration is automatic vi
 
 ### Lint passes but functions are still invisible to R
 
-Ensure the function is `pub` and has `#[miniextendr]`, then run `just rcmdinstall && just force-document` to regenerate R wrappers.
+Ensure the function is `pub` and has `#[miniextendr]`, then run
+`just rcmdinstall && just force-document` to regenerate the R wrapper followed
+by `NAMESPACE` and `man/*.Rd`.
 
 ---
 

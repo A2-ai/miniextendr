@@ -16,7 +16,7 @@
 //! }
 //! ```
 //!
-//! Use `name @ ...` syntax for a custom parameter name, or combine with
+//! Use `name: ...` syntax for a custom parameter name, or combine with
 //! [`typed_list!`](crate::typed_list!) for structure validation:
 //!
 //! ```ignore
@@ -38,7 +38,7 @@ use crate::{SEXP, SexpExt};
 /// [`try_list`](Dots::try_list) to access elements by name or position.
 ///
 /// Declare as the last parameter: `fn foo(x: i32, _dots: &Dots)`.
-/// Use `name @ ...` syntax for a custom parameter name.
+/// Use `name: ...` syntax for a custom parameter name.
 #[derive(Debug)]
 pub struct Dots {
     // Dots is always passed to us, they need no protection.

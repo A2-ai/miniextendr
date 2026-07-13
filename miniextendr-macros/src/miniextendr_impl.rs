@@ -2120,7 +2120,7 @@ impl ParsedMethod {
 
     /// C wrapper identifier for this method.
     ///
-    /// Format: `C_{crate}_{Type}__{method}` or `C_{crate}_{Type}_{label}__{method}`
+    /// Format: `C_{crate}_{Type}__{method}` or `C_{crate}_{Type}_{label}_{method}`
     /// if labeled — crate-prefixed for webR cross-package symbol uniqueness (#1273).
     pub fn c_wrapper_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
         crate::naming::impl_method_c_wrapper_ident(type_ident, label, &self.ident)

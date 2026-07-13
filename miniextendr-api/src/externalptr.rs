@@ -13,7 +13,7 @@
 //! # Core Types
 //!
 //! - [`ExternalPtr<T>`] — owned pointer wrapping EXTPTRSXP
-//! - [`TypedExternal`] — trait for type-safe identification across packages
+//! - [`TypedExternal`] — display and diagnostic metadata for stored types
 //! - [`ExternalSlice<T>`] — helper for slice data in external pointers
 //! - [`ErasedExternalPtr`] — type-erased `ExternalPtr<()>` alias
 //! - [`IntoExternalPtr`] — conversion trait for wrapping values
@@ -214,8 +214,9 @@ fn is_type_erased<T: 'static>() -> bool {
 
 /// Get the interned R symbol for a type's name.
 ///
-/// R interns symbols via `Rf_install`, so the same string always returns
-/// the same pointer. This enables fast pointer comparison for type checking.
+/// R interns symbols via `Rf_install`, so the same string always returns the
+/// same pointer. The symbol is stable display metadata; `Any::downcast` is the
+/// authoritative type check.
 ///
 /// # Safety
 ///
@@ -235,9 +236,10 @@ unsafe fn type_symbol_unchecked<T: TypedExternal>() -> SEXP {
     unsafe { Rf_install_unchecked(T::TYPE_NAME_CSTR.as_ptr().cast()) }
 }
 
-/// Get the namespaced type ID symbol for type checking.
+/// Get the namespaced type ID symbol used in diagnostics.
 ///
-/// Uses `TYPE_ID_CSTR` which includes the module path for uniqueness.
+/// Uses `TYPE_ID_CSTR`, which includes the module path to make mismatch
+/// messages unambiguous.
 ///
 /// # Safety
 ///
@@ -278,19 +280,17 @@ fn symbol_name(sym: SEXP) -> &'static str {
 
 /// Trait for types that can be stored in an ExternalPtr.
 ///
-/// This provides the type identification needed for runtime type checking.
-/// Type identification uses R's symbol interning (`Rf_install`) for fast
-/// pointer-based comparison.
+/// This provides R-visible display and diagnostic identifiers. Runtime type
+/// checking is performed by `Any::downcast` (Rust's `TypeId`), not by comparing
+/// these symbols.
 ///
 /// # Type ID vs Type Name
 ///
-/// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in `prot[0]`).
+/// - `TYPE_ID_CSTR`: Namespaced identifier used in mismatch diagnostics (stored in `prot[0]`).
 ///   Format: `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`
 ///
-///   The crate name and version ensure:
-///   - Same type from same crate+version → compatible (can share ExternalPtr)
-///   - Same type name from different crates → incompatible
-///   - Same type from different crate versions → incompatible
+///   The crate name, version, and module path distinguish otherwise similar
+///   names in error messages. They do not determine compatibility.
 ///
 /// - `TYPE_NAME_CSTR`: Short display name for the R tag (shown when printing).
 ///   Just the type identifier for readability.
@@ -301,9 +301,9 @@ pub trait TypedExternal: 'static {
     /// The type name as a null-terminated C string (for R tag display)
     const TYPE_NAME_CSTR: &'static [u8];
 
-    /// Namespaced type ID as a null-terminated C string (for type checking).
+    /// Namespaced type ID as a null-terminated C string (for diagnostics).
     ///
-    /// This should include the module path to prevent cross-package collisions.
+    /// This should include the module path to prevent ambiguous messages.
     /// Use `concat!(module_path!(), "::", stringify!(Type), "\0").as_bytes()`
     /// when implementing manually, or use `#[derive(ExternalPtr)]`.
     const TYPE_ID_CSTR: &'static [u8];
@@ -1277,7 +1277,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Attempt to wrap a SEXP as an ExternalPtr with type checking.
     ///
     /// Uses `Any::downcast_ref` for authoritative type checking (Rust `TypeId`).
-    /// Falls back to R symbol comparison for type-erased `ExternalPtr<()>`.
+    /// Type-erased `ExternalPtr<()>` deliberately skips the concrete downcast.
     ///
     /// Returns `None` if:
     /// - The internal pointer is null

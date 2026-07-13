@@ -569,7 +569,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
 struct TraitMethodAttrs {
     /// Dispatch to worker thread. Set by explicit `#[miniextendr(worker)]` or `worker-default` feature.
     worker: bool,
-    /// Force execution on R's main thread (overrides default worker thread for static methods).
+    /// Force execution on R's main thread (overrides explicit or feature-selected worker dispatch).
     unsafe_main_thread: bool,
     /// Enable `Rf_coerceVector` for all parameters.
     coerce: bool,

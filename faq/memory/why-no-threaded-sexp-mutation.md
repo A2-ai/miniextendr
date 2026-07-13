@@ -177,8 +177,9 @@ is designed around the invariant that exactly one thread touches it at any time.
 - Pure Rust/C computation on non-R data.
 - Sending results back to the main thread for SEXP construction.
 
-This is why miniextendr uses the worker thread pattern: Rust runs on its own thread, and
-any SEXP access is marshaled back to the R main thread via `with_r_thread()`.
+This is why miniextendr's optional worker-dispatch model marshals every SEXP
+access back to R's main thread via `with_r_thread()`. Default exported calls
+already execute on R's main thread inside `R_UnwindProtect`.
 
 ---
 

@@ -11,7 +11,7 @@ At a glance:
 - Conversions between Rust and R types (`IntoR`, `TryFromSexp`, `Coerce`).
 - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
 - Wrapper generation from Rust signatures (`#[miniextendr]`, automatic registration via linkme).
-- Worker-thread pattern for panic isolation and `Drop` safety (`worker`).
+- Main-thread unwind protection plus optional worker dispatch (`worker`).
 - Class system support (S3, S4, S7, R6, env-style impl blocks).
 - Cross-package trait ABI for type-erased dispatch (`trait_abi`).
 
@@ -33,8 +33,10 @@ That's it — `#[miniextendr]` handles everything. Items self-register
 at link time; `miniextendr_init!` generates the `R_init_*` function
 that calls `package_init()` to register all routines with R.
 Wrapper R code is produced from Rust doc comments (roxygen tags are
-extracted) by the cdylib-based wrapper generator and committed into
-`R/miniextendr_wrappers.R` so CRAN builds do not require codegen.
+extracted) by loading the freshly linked package library and calling the
+registry writer. `R/miniextendr-wrappers.R` is regenerated during
+development installs, kept out of git, and shipped from disk in release
+tarballs; roxygen2 derives the tracked `NAMESPACE` and `man/*.Rd` files.
 
 ## Choosing the right API
 
@@ -108,11 +110,13 @@ These are safe to dereference because R guarantees valid SEXPs in ALTREP callbac
 
 ## Threading and safety
 
-R uses `longjmp` for errors, which can bypass Rust destructors. The default
-pattern is to run Rust logic on a worker thread and marshal R API calls back
-to the main R thread via `with_r_thread`. Most FFI wrappers are
-main-thread routed via `#[r_ffi_checked]`. Use unchecked variants only when
-you have arranged a safe context.
+R uses `longjmp` for errors, which can bypass Rust destructors. Generated
+wrappers run inline on R's main thread inside `R_UnwindProtect` by default.
+Opt-in `#[miniextendr(worker)]` functions (or crates using
+`worker-default`) run Rust logic on the worker and marshal R API calls back
+through `with_r_thread`. Most FFI wrappers are main-thread routed via
+`#[r_ffi_checked]`. Use unchecked variants only when you have arranged a
+safe context.
 
 With the `nonapi` feature, miniextendr can disable R's stack checking to allow
 calls from other threads. R is still not thread-safe; serialize all R API use.
@@ -128,7 +132,7 @@ calls from other threads. R is still not thread-safe; serialize all R API use.
 | `connections` | Experimental R connection framework. **Unstable R API.** |
 | `indicatif` | Progress bars routed through R connections. Requires `nonapi` + `connections`. |
 | `vctrs` | vctrs class construction (`new_vctr`, `new_rcrd`, `new_list_of`) and `#[derive(Vctrs)]`. |
-| `worker-thread` | Worker thread for panic isolation and `Drop` safety. Without it, stubs run inline. |
+| `worker-thread` | Worker dispatch infrastructure. It does not change proc-macro defaults by itself; without it, worker APIs are inline stubs. |
 
 ### Type Conversions (Scalars & Vectors)
 
@@ -139,6 +143,7 @@ calls from other threads. R is still not thread-safe; serialize all R API use.
 | `regex` | `Regex` | `character(1)` | Compiles pattern from R |
 | `url` | `Url`, `Vec<Url>` | `character` | Validated URLs |
 | `time` | `OffsetDateTime`, `Date` | `POSIXct`, `Date` | Date/time conversions |
+| `jiff` | `Timestamp`, `Zoned`, civil types | R date/time classes | IANA timezone-aware conversions |
 | `ordered-float` | `OrderedFloat<f64>` | `numeric` | NaN-orderable floats |
 | `num-bigint` | `BigInt`, `BigUint` | `character` | Arbitrary precision via strings |
 | `rust_decimal` | `Decimal` | `character` | Fixed-point decimals |
@@ -1250,7 +1255,7 @@ pub fn greet(prefix: &str, dots: ...) {
 }
 ```
 
-Use `name @ ...` syntax for a custom parameter name, or combine with
+Use `name: ...` syntax for a custom parameter name, or combine with
 [`typed_list!`](crate::typed_list!) for structure validation:
 
 ```ignore
@@ -1511,7 +1516,7 @@ that cleanup is deferred to R's garbage collector via finalizers.
 #### Core Types
 
 - [`ExternalPtr<T>`] — owned pointer wrapping EXTPTRSXP
-- [`TypedExternal`] — trait for type-safe identification across packages
+- [`TypedExternal`] — display and diagnostic metadata for stored types
 - [`ExternalSlice<T>`] — helper for slice data in external pointers
 - [`ErasedExternalPtr`] — type-erased `ExternalPtr<()>` alias
 - [`IntoExternalPtr`] — conversion trait for wrapping values
@@ -13349,7 +13354,7 @@ so `Dots` holds a list SEXP. Use [`as_list`](Dots::as_list) or
 [`try_list`](Dots::try_list) to access elements by name or position.
 
 Declare as the last parameter: `fn foo(x: i32, _dots: &Dots)`.
-Use `name @ ...` syntax for a custom parameter name.
+Use `name: ...` syntax for a custom parameter name.
 
 **Fields:**
 
@@ -14409,7 +14414,7 @@ unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self>
 Attempt to wrap a SEXP as an ExternalPtr with type checking.
 
 Uses `Any::downcast_ref` for authoritative type checking (Rust `TypeId`).
-Falls back to R symbol comparison for type-erased `ExternalPtr<()>`.
+Type-erased `ExternalPtr<()>` deliberately skips the concrete downcast.
 
 Returns `None` if:
 - The internal pointer is null
@@ -20860,7 +20865,8 @@ garbage collector and should only be accessed on R's main thread.
 
 While SEXP is Send+Sync (allowing it to be passed between threads), the data
 it points to must only be accessed on R's main thread. The miniextendr runtime
-enforces this through the worker thread pattern.
+enforces this through checked FFI wrappers and `with_r_thread` routing when
+worker dispatch is selected.
 
 #### Equality Semantics
 
@@ -26319,19 +26325,17 @@ pub trait TypedExternal: 'static
 
 Trait for types that can be stored in an ExternalPtr.
 
-This provides the type identification needed for runtime type checking.
-Type identification uses R's symbol interning (`Rf_install`) for fast
-pointer-based comparison.
+This provides R-visible display and diagnostic identifiers. Runtime type
+checking is performed by `Any::downcast` (Rust's `TypeId`), not by comparing
+these symbols.
 
 #### Type ID vs Type Name
 
-- `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in `prot[0]`).
+- `TYPE_ID_CSTR`: Namespaced identifier used in mismatch diagnostics (stored in `prot[0]`).
   Format: `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`
 
-  The crate name and version ensure:
-  - Same type from same crate+version → compatible (can share ExternalPtr)
-  - Same type name from different crates → incompatible
-  - Same type from different crate versions → incompatible
+  The crate name, version, and module path distinguish otherwise similar
+  names in error messages. They do not determine compatibility.
 
 - `TYPE_NAME_CSTR`: Short display name for the R tag (shown when printing).
   Just the type identifier for readability.
@@ -26343,7 +26347,7 @@ pointer-based comparison.
 - `const TYPE_NAME_CSTR: &'static [u8]`
   - The type name as a null-terminated C string (for R tag display)
 - `const TYPE_ID_CSTR: &'static [u8]`
-  - Namespaced type ID as a null-terminated C string (for type checking).
+  - Namespaced type ID as a null-terminated C string (for diagnostics).
 
 ### `factor::RFactor`
 

@@ -499,7 +499,7 @@ fn build_match_arg_helpers(
 /// ## Variadics (`...`)
 ///
 /// Use `...` as the last argument. The Rust parameter becomes `_dots: &Dots`.
-/// Use `name @ ...` to give it a custom name (e.g., `args @ ...` → `args: &Dots`).
+/// Use `name: ...` to give it a custom name (e.g., `args: ...` → `args: &Dots`).
 ///
 /// ### Typed Dots Validation
 ///

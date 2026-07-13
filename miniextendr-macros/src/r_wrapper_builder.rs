@@ -90,7 +90,7 @@ pub struct RArgumentBuilder<'a> {
     inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
     /// If true, last parameter is treated as dots (`...`).
     has_dots: bool,
-    /// Optional named binding for dots (e.g., `args @ ...` in Rust becomes a named dots param).
+    /// Optional named binding for dots (e.g., `args: ...` in Rust becomes a named dots param).
     /// The name is normalized (leading underscores stripped) but only used on the Rust side;
     /// R formals always emit plain `...`.
     named_dots: Option<String>,
@@ -129,7 +129,7 @@ impl<'a> RArgumentBuilder<'a> {
     /// Mark the last parameter as dots (`...`).
     ///
     /// If `named_dots` is `Some("name")`, the dots have a Rust-side binding
-    /// (from `name @ ...` syntax). The name is normalized but only affects the
+    /// (from `name: ...` syntax). The name is normalized but only affects the
     /// Rust side -- R formals always emit plain `...`.
     pub fn with_dots(mut self, named_dots: Option<String>) -> Self {
         self.has_dots = true;

@@ -786,8 +786,8 @@ Traits with impls: 215
 | `RValue` | `` | concrete | 1 | miniextendr-api/src/rvalue.rs:311 |
 | `CollatedResultRow<'a, T, E>` | `<'a, T, E>` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:4596 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:255 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:481 |
-| `*mut SEXPREC` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:488 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:482 |
+| `*mut SEXPREC` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:489 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:202 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:330 |
 | `bool` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:339 |
@@ -1200,7 +1200,7 @@ Traits with impls: 215
 | `SidecarPropEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:351 |
 | `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:371 |
 | `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:388 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:71 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:72 |
 | `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1155 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:198 |
 
@@ -1215,7 +1215,7 @@ Traits with impls: 215
 | `RTerm` | `` | concrete | 0 | miniextendr-api/src/progress.rs:129 |
 | `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:372 |
 | `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:389 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:70 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:71 |
 | `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1156 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:197 |
 
@@ -1675,7 +1675,7 @@ Traits with impls: 215
 | `RSerdeError` | `` | concrete | 1 | miniextendr-api/src/serde/error.rs:12 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
 | `SEXPREC` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:25 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
@@ -1787,7 +1787,7 @@ Traits with impls: 215
 | `EnumReadConfig` | `` | concrete | 1 | miniextendr-api/src/serde/dataframe_de.rs:408 |
 | `RSerdeError` | `` | concrete | 1 | miniextendr-api/src/serde/error.rs:12 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
@@ -2037,7 +2037,7 @@ Traits with impls: 215
 | `ColumnType` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1296 |
 | `SchemaMode` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `AsSerialize<T>` | `<T>` | concrete | 0 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
@@ -2302,7 +2302,7 @@ Traits with impls: 215
 | `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:818 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
@@ -2350,7 +2350,7 @@ Traits with impls: 215
 | `SchemaMode` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:1362 |
 | `TypeSpec` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:818 |
 | `AsSerialize<T>` | `<T>` | concrete | 0 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rcomplex` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
@@ -2397,7 +2397,7 @@ Traits with impls: 215
 | `RWrapperPriority` | `` | concrete | 0 | miniextendr-api/src/registry.rs:209 |
 | `TypeSpec` | `` | concrete | 0 | miniextendr-api/src/serde/columnar.rs:818 |
 | `AsSerialize<T>` | `<T>` | concrete | 0 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:64 |
+| `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:65 |
 | `RLogical` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:35 |
@@ -2541,7 +2541,7 @@ Traits with impls: 215
 | `DispatchNames` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:943 |
 | `EnumReadConfig` | `` | concrete | 1 | miniextendr-api/src/serde/dataframe_de.rs:408 |
 | `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:474 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:475 |
 | `RThreadBuilder` | `` | concrete | 1 | miniextendr-api/src/thread.rs:327 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
 

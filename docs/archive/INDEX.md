@@ -55,7 +55,7 @@ for the maintained index.
 - [ENVIRONMENT_VARIABLES.md](../ENVIRONMENT_VARIABLES.md) -- All env vars affecting build/configure/lint
 - [LINKING.md](../LINKING.md) -- Linking strategy for shared libraries
 - [ENTRYPOINT.md](../ENTRYPOINT.md) -- R package entry point (`R_init_*`)
-- [ENGINE.md](../ENGINE.md) -- miniextendr-engine: code generation engine
+- [ENGINE.md](../ENGINE.md) -- miniextendr-engine: standalone R embedding
 
 ## Adapter Traits
 

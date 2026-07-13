@@ -6,13 +6,15 @@ How R builds packages with compiled code, and how miniextendr integrates with it
 
 When `R CMD INSTALL` encounters a package with a `src/` directory, it:
 
-1. Runs `src/configure` (if present) to generate `Makevars` from `Makevars.in`
+1. Runs the package's top-level `configure` script (if present), which can
+   generate `src/Makevars` from `src/Makevars.in`
 2. Compiles C/C++/Fortran sources into `.o` object files
 3. Links those objects into a shared library (`.so` on Unix, `.dll` on Windows)
 4. Installs the shared library into `libs/`
 
 miniextendr adds a Rust step: Cargo builds a static library (`.a`) which R's
-linker folds into the final shared library alongside the C entry points.
+linker folds into the final shared library alongside a minimal C anchor.
+`R_init_*` and all registered entry points are defined in Rust.
 
 ## Makefile Include Chain
 
@@ -41,7 +43,7 @@ R invokes make with all of these as `-f` arguments:
 
 ```bash
 make -f Makevars -f Makeconf -f Makevars.site -f shlib.mk -f ~/.R/Makevars \
-     SHLIB='miniextendr.so' OBJECTS='entrypoint.o mx_abi.o'
+     SHLIB='miniextendr.so' OBJECTS='stub.o'
 ```
 
 ## Variable Flow
@@ -70,7 +72,7 @@ We can set these `PKG_*` variables:
 
 | Variable | Purpose | Our value |
 |----------|---------|-----------|
-| `PKG_LIBS` | Extra libraries to link | `-L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)` |
+| `PKG_LIBS` | Extra libraries to link | `$(CARGO_AR)` (the full static-library path) |
 | `PKG_CPPFLAGS` | C preprocessor flags | (not used) |
 | `PKG_CFLAGS` | Extra C compiler flags | (not used) |
 
@@ -113,8 +115,8 @@ When everything expands, R links our package like this:
 
 ```bash
 gcc -shared -o miniextendr.so \
-    entrypoint.o mx_abi.o \
-    -L/path/to/rust-target/release -lrpkg \    # ← our PKG_LIBS
+    stub.o \
+    /path/to/rust-target/release/librpkg.a \    # ← our PKG_LIBS
     $(SHLIB_LIBADD) $(SAN_LIBS) -lR $(LIBINTL)  # ← R's system libs
 ```
 
@@ -123,8 +125,8 @@ gcc -shared -o miniextendr.so \
 ```bash
 gcc -shared -o miniextendr.dll \
     miniextendr-win.def \                        # ← auto-generated exports
-    entrypoint.o mx_abi.o \
-    -L/path/to/rust-target/release -lrpkg \      # ← our PKG_LIBS
+    stub.o \
+    /path/to/rust-target/release/librpkg.a \      # ← our PKG_LIBS
     -lws2_32 -lntdll -luserenv -lbcrypt \        # ← Windows system libs
     -ladvapi32 -lsecur32 \
     $(SHLIB_LIBADD) $(SAN_LIBS) -lR $(LIBINTL)
@@ -135,15 +137,20 @@ gcc -shared -o miniextendr.dll \
 ### Our Makevars.in (Unix)
 
 ```makefile
-# PKG_LIBS tells R to link our Rust static library
-PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
+# Use the full path so linkers cannot select a same-named import library.
+PKG_LIBS = $(CARGO_AR)
 
 # Add Cargo build as a dependency of the shared library
-$(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
+$(SHLIB): $(OBJECTS) $(CARGO_AR)
 
 # Build the Rust static library via Cargo
-$(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK)
+$(CARGO_AR): FORCE_CARGO $(OBJECTS)
     $(CARGO) build --lib --profile $(CARGO_PROFILE) ...
+
+# Link first, then generate wrappers from that same shared library.
+all: $(SHLIB) $(WRAPPERS_R)
+$(WRAPPERS_R): $(SHLIB)
+    Rscript -e "dyn.load(...); .Call('miniextendr_write_wrappers', ...)"
 ```
 
 Key design decisions:
@@ -154,8 +161,9 @@ Key design decisions:
 2. **FORCE_CARGO phony target**: ensures Cargo is always invoked, letting Cargo's
    own incremental build system decide what to rebuild.
 
-3. **`all: $(SHLIB)` with post-build recipe**: runs after R links the shared lib
-   to handle dev-mode touches and CRAN cleanup.
+3. **`all: $(SHLIB) $(WRAPPERS_R)` ordering**: links the package library first,
+   then loads that same library to generate the R wrapper and wasm registry.
+   The final `all` recipe handles development touches and tarball cleanup.
 
 ### Our Makevars.win (Windows)
 
@@ -195,7 +203,7 @@ This means:
 
 ```text
 configure.ac → configure → Makevars (from Makevars.in)
-                         → .cargo/config.toml (from cargo-config.toml.in)
+                         → .cargo/config.toml (written by AC_CONFIG_COMMANDS)
 
 R CMD INSTALL:
   1. Run configure (generates Makevars, etc.)
@@ -203,12 +211,16 @@ R CMD INSTALL:
      a. Compile stub.c → stub.o (R's CC)
      b. cargo build → librpkg.a (Rust staticlib, includes R_init_*)
      c. $(SHLIB_LINK) -o miniextendr.so stub.o librpkg.a (R's linker)
+     d. In development/fallback mode, load miniextendr.so and write
+        R/miniextendr-wrappers.R + src/rust/wasm_registry.rs
   3. Install miniextendr.so to libs/
   4. Install R/ files, man/, etc.
 ```
 
-Note: R wrapper generation (`miniextendr-wrappers.R`) happens separately via
-[`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile), not during R CMD INSTALL.
+The wrapper and wasm registry writers are registered routines in
+`miniextendr-api`. Roxygen2 runs separately (`just force-document` after
+macro/wrapper changes) and derives the tracked `NAMESPACE` and `man/*.Rd` files
+from the generated R wrapper.
 
 ## Build Contexts
 

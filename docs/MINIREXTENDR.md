@@ -91,9 +91,10 @@ devtools::install("mypackage")    # Install the final package
 ```
 
 How it works: `devtools::document()` calls `pkgload::load_all()`, which detects
-`Config/build/bootstrap: TRUE` in DESCRIPTION and runs `bootstrap.R`. That triggers
-`./configure` → `make` → cargo build → document binary → R wrappers → roxygen2, all
-in a single invocation. No manual `./configure` or two-pass install needed.
+`Config/build/bootstrap: TRUE` in DESCRIPTION and runs `bootstrap.R`. That
+triggers `./configure` → `make` → cargo build → package shared-library link →
+registered wrapper writers → roxygen2, all in a single invocation. No manual
+`./configure` or two-pass install is needed for a scaffolded package.
 
 ### Manual: step-by-step functions
 

@@ -8,7 +8,8 @@
 
 R has no native way to hold arbitrary Rust data. `EXTPTRSXP` is R's mechanism for storing opaque C pointers, but it provides no type safety, no RAII cleanup, and no protection against use-after-free. `ExternalPtr<T>` wraps `EXTPTRSXP` with:
 
-- **Type-safe access** via `TypedExternal` trait and R symbol comparison
+- **Type-safe access** via authoritative `Any::downcast` checks; the
+  `TypedExternal` symbols are display and diagnostic metadata
 - **Automatic cleanup** via R GC finalizer that calls `Drop`
 - **Box-like API** (`Deref`, `DerefMut`, `Clone`, `into_inner`, `into_raw`, `pin`, etc.)
 - **Thread-safe construction** -- `new()` routes R API calls to the main thread when called off-thread (e.g., with the `worker-thread` feature)
@@ -212,14 +213,16 @@ Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`.
 Consuming receivers (`self: ExternalPtr<Self>`) are not supported. R owns
 the pointer.
 
-## Type Identification with TypedExternal
+## Display and Diagnostic Metadata with TypedExternal
 
 Every `ExternalPtr<T>` requires `T: TypedExternal`. This trait provides two identifiers stored in the SEXP:
 
 - **`TYPE_NAME_CSTR`** -- Short display name, stored in the `tag` slot (visible when printing in R)
-- **`TYPE_ID_CSTR`** -- Namespaced identifier (`crate@version::module::Type`), stored in `prot[0]` for type checking
+- **`TYPE_ID_CSTR`** -- Namespaced identifier (`crate@version::module::Type`), stored in `prot[0]` for mismatch diagnostics
 
-Type checking uses R's interned symbols (`Rf_install`), which enables fast pointer comparison rather than string comparison.
+R interns both strings with `Rf_install`, but concrete type checking uses the
+stored `Any` value's Rust `TypeId`. The symbols make R-facing names and errors
+readable; they are not a substitute for the downcast.
 
 ### Implementing TypedExternal
 
@@ -274,9 +277,15 @@ The following standard library types have built-in `TypedExternal` impls, so the
 | **Arrays** | `[T; N]` (const generic, any size) |
 | **Static slices** | `&'static [T]`, `&'static mut [T]` |
 
-**Note on generic types**: For generic types like `Vec<T>`, the type name does not include the type parameter (e.g., `Vec<i32>` and `Vec<String>` both have type name `"Vec"`). R-level type checking won't distinguish between different instantiations. For stricter type safety, create a newtype wrapper and derive `ExternalPtr`.
+**Note on generic types**: For generic types like `Vec<T>`, the display symbol
+does not include the type parameter (for example, `Vec<i32>` and `Vec<String>`
+both display as `"Vec"`). `Any::downcast` still distinguishes the full concrete
+types. Use a derived newtype when distinct R-facing names and clearer mismatch
+diagnostics matter.
 
-**Note on `ManuallyDrop<T>`**: Shares `T`'s type symbols, allowing `ExternalPtr<ManuallyDrop<T>>` to interoperate with `ExternalPtr<T>`. This is safe because `ManuallyDrop<T>` is `#[repr(transparent)]`.
+**Note on `ManuallyDrop<T>`**: It shares `T`'s display and diagnostic symbols,
+but remains a distinct concrete type to `Any::downcast`. Matching symbols do
+not make `ExternalPtr<ManuallyDrop<T>>` interchangeable with `ExternalPtr<T>`.
 
 **Note on static slices**: `&'static [T]` and `&'static mut [T]` are fat pointers (ptr + len) that satisfy `'static + Sized`, so they can be stored directly in `ExternalPtr`. Use cases include const arrays (`&DATA`), leaked data (`Box::leak`), and memory-mapped files.
 
@@ -284,17 +293,16 @@ The following standard library types have built-in `TypedExternal` impls, so the
 
 The `IntoExternalPtr` marker trait triggers a blanket `IntoR` implementation that wraps the value in `ExternalPtr<T>` when returning from `#[miniextendr]` functions. `#[derive(ExternalPtr)]` implements both `TypedExternal` and `IntoExternalPtr`.
 
-## Cross-Package Safety
+## Concrete Type Safety and Cross-Package Dispatch
 
-The `TYPE_ID_CSTR` format (`crate@version::module::Type`) ensures:
+`ExternalPtr<T>` stores `Box<Box<dyn Any>>`. `wrap_sexp()` asks that `Any`
+value for `T` with `downcast_mut`; `wrap_sexp_with_error()` reports the stored
+diagnostic name on failure. `TYPE_ID_CSTR` (`crate@version::module::Type`) makes
+that message unambiguous, but does not decide whether the downcast succeeds.
 
-- Same type from same crate+version: **compatible** (can share ExternalPtr)
-- Same type name from different crates: **incompatible** (different crate prefix)
-- Same type from different crate versions: **incompatible** (different version)
-
-When wrapping a SEXP, `wrap_sexp()` compares the stored symbol pointer against the expected symbol pointer. A mismatch returns `None` (or `TypeMismatchError` from `wrap_sexp_with_error`).
-
-For cross-package trait dispatch, see [Trait ABI](TRAIT_ABI.md).
+Do not use matching R symbols as a cross-package concrete-type contract. For
+cross-package behavior without a shared concrete Rust type, export a trait and
+use the stable tag/vtable protocol described in [Trait ABI](TRAIT_ABI.md).
 
 ## Type-Erased Pointers (ErasedExternalPtr)
 
@@ -302,10 +310,14 @@ For cross-package trait dispatch, see [Trait ABI](TRAIT_ABI.md).
 pub type ErasedExternalPtr = ExternalPtr<()>;
 ```
 
-`ErasedExternalPtr` wraps any `EXTPTRSXP` without checking the stored type. Useful for:
+`ErasedExternalPtr` opens a miniextendr-created `EXTPTRSXP` without selecting a
+concrete pointee type first. Its address must still contain miniextendr's
+`Box<Box<dyn Any>>` representation; it is not a wrapper for arbitrary foreign
+external pointers. It is useful for:
 
 - Inspecting the stored type name before downcasting
-- Working with external pointers from unknown sources
+- Inspecting miniextendr external pointers when the concrete Rust type is not
+  known statically
 
 ```rust
 let erased = unsafe { ErasedExternalPtr::from_sexp(some_sexp) };
@@ -409,7 +421,7 @@ EXTPTRSXP
             └→ Box<T> (the actual Rust value)
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
   prot  → VECSXP[2]
-            [0] → SYMSXP (TYPE_ID_CSTR, for type checking)
+            [0] → SYMSXP (TYPE_ID_CSTR, for mismatch diagnostics)
             [1] → user-protected SEXP (set via set_protected)
 ```
 

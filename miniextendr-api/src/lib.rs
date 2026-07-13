@@ -9,7 +9,7 @@
 //! - Conversions between Rust and R types (`IntoR`, `TryFromSexp`, `Coerce`).
 //! - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
 //! - Wrapper generation from Rust signatures (`#[miniextendr]`, automatic registration via linkme).
-//! - Worker-thread pattern for panic isolation and `Drop` safety (`worker`).
+//! - Main-thread unwind protection plus optional worker dispatch (`worker`).
 //! - Class system support (S3, S4, S7, R6, env-style impl blocks).
 //! - Cross-package trait ABI for type-erased dispatch (`trait_abi`).
 //!
@@ -31,8 +31,10 @@
 //! at link time; `miniextendr_init!` generates the `R_init_*` function
 //! that calls `package_init()` to register all routines with R.
 //! Wrapper R code is produced from Rust doc comments (roxygen tags are
-//! extracted) by the cdylib-based wrapper generator and committed into
-//! `R/miniextendr_wrappers.R` so CRAN builds do not require codegen.
+//! extracted) by loading the freshly linked package library and calling the
+//! registry writer. `R/miniextendr-wrappers.R` is regenerated during
+//! development installs, kept out of git, and shipped from disk in release
+//! tarballs; roxygen2 derives the tracked `NAMESPACE` and `man/*.Rd` files.
 //!
 //! ## Choosing the right API
 //!
@@ -106,11 +108,13 @@
 //!
 //! ## Threading and safety
 //!
-//! R uses `longjmp` for errors, which can bypass Rust destructors. The default
-//! pattern is to run Rust logic on a worker thread and marshal R API calls back
-//! to the main R thread via `with_r_thread`. Most FFI wrappers are
-//! main-thread routed via `#[r_ffi_checked]`. Use unchecked variants only when
-//! you have arranged a safe context.
+//! R uses `longjmp` for errors, which can bypass Rust destructors. Generated
+//! wrappers run inline on R's main thread inside `R_UnwindProtect` by default.
+//! Opt-in `#[miniextendr(worker)]` functions (or crates using
+//! `worker-default`) run Rust logic on the worker and marshal R API calls back
+//! through `with_r_thread`. Most FFI wrappers are main-thread routed via
+//! `#[r_ffi_checked]`. Use unchecked variants only when you have arranged a
+//! safe context.
 //!
 //! With the `nonapi` feature, miniextendr can disable R's stack checking to allow
 //! calls from other threads. R is still not thread-safe; serialize all R API use.
@@ -126,7 +130,7 @@
 //! | `connections` | Experimental R connection framework. **Unstable R API.** |
 //! | `indicatif` | Progress bars routed through R connections. Requires `nonapi` + `connections`. |
 //! | `vctrs` | vctrs class construction (`new_vctr`, `new_rcrd`, `new_list_of`) and `#[derive(Vctrs)]`. |
-//! | `worker-thread` | Worker thread for panic isolation and `Drop` safety. Without it, stubs run inline. |
+//! | `worker-thread` | Worker dispatch infrastructure. It does not change proc-macro defaults by itself; without it, worker APIs are inline stubs. |
 //!
 //! ### Type Conversions (Scalars & Vectors)
 //!
@@ -137,6 +141,7 @@
 //! | `regex` | `Regex` | `character(1)` | Compiles pattern from R |
 //! | `url` | `Url`, `Vec<Url>` | `character` | Validated URLs |
 //! | `time` | `OffsetDateTime`, `Date` | `POSIXct`, `Date` | Date/time conversions |
+//! | `jiff` | `Timestamp`, `Zoned`, civil types | R date/time classes | IANA timezone-aware conversions |
 //! | `ordered-float` | `OrderedFloat<f64>` | `numeric` | NaN-orderable floats |
 //! | `num-bigint` | `BigInt`, `BigUint` | `character` | Arbitrary precision via strings |
 //! | `rust_decimal` | `Decimal` | `character` | Fixed-point decimals |
