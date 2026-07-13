@@ -510,7 +510,7 @@ use_miniextendr <- function(path = ".",
     ))
   }
   cli::cli_alert_info(
-    "Note: plain {.code R CMD INSTALL .} skips wrapper generation; use {.code miniextendr_build()} or {.code devtools::document()} so {.code library(...)} sees your functions."
+    "Note: plain {.code R CMD INSTALL .} / {.code devtools::install()} / {.code devtools::document()} can flip the package into offline tarball mode on a fresh build and skip wrapper generation; use {.code miniextendr_build()} so {.code library(...)} sees your functions."
   )
 
   invisible(TRUE)
