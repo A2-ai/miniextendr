@@ -1009,16 +1009,26 @@ fn resolve_struct_field(
 /// - `impl IntoDataFrame for MeasurementDataFrame`
 /// - `impl From<Vec<Measurement>> for MeasurementDataFrame`
 /// - `impl IntoIterator for MeasurementDataFrame`
-/// - Associated methods on `Measurement`:
-///   - `to_dataframe(Vec<Self>) -> MeasurementDataFrame`
-///   - `from_dataframe(MeasurementDataFrame) -> Vec<Self>`
 ///
 /// For an enum:
 /// - Companion struct with `Vec<Option<T>>` columns (field-name union)
 /// - Optional tag column for variant discrimination
 /// - `impl From<Vec<Enum>> for EnumDataFrame`
 /// - `impl IntoDataFrame for EnumDataFrame`
-/// - Associated `to_dataframe` method
+///
+/// # Public surface (which verbs to call)
+///
+/// The user-facing API is the trait surface — write `rows.into_dataframe()?`
+/// (or `.wrap_data_frame()` / `.into_dataframe_par()?`, from `IntoDataFrame` /
+/// `AsDataFrameExt`) and read `Vec::<Row>::from_dataframe(&df)?` (from
+/// `FromDataFrame`). All of these are re-exported from `miniextendr_api::prelude`.
+/// For enums, `Row::to_dataframe_split(rows)` (one `data.frame` per variant) is
+/// the one inherent verb with no trait home yet.
+///
+/// The inherent `to_dataframe` / `from_dataframe` / `from_rows[_par]` /
+/// `try_from_dataframe[_par]` methods and the `DATAFRAME_TYPE_NAME` const emitted
+/// onto the row / companion types are `#[doc(hidden)]` delegating plumbing that the
+/// trait verbs route through — not the intended call surface.
 ///
 /// # Attributes
 ///
@@ -1026,10 +1036,10 @@ fn resolve_struct_field(
 /// - `#[dataframe(align)]` — Enum alignment mode (accepted but implicit)
 /// - `#[dataframe(tag = "col")]` — Add variant discriminator column
 ///
-/// Both struct and enum companion types get `from_rows()` (sequential) and
-/// `from_rows_par()` (parallel, gated on miniextendr-api's `rayon` feature via
+/// Both struct and enum companion types also get hidden `from_rows()` (sequential)
+/// and `from_rows_par()` (parallel, gated on miniextendr-api's `rayon` feature via
 /// `__dataframe_row_when_rayon!` — never a raw `#[cfg]` in the consumer crate,
-/// see #1117) methods automatically.
+/// see #1117) delegates.
 pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let row_name = &input.ident;
 
@@ -2113,6 +2123,7 @@ fn derive_struct_dataframe(
                 ///
                 /// Always uses rayon — no threshold check. Use `from_rows` for the
                 /// sequential path.
+                #[doc(hidden)]
                 #[allow(clippy::uninit_vec)]
                 pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self
                 #par_where_clause
@@ -2231,6 +2242,7 @@ fn derive_struct_dataframe(
             /// Convert a DataFrame back into a vector of rows.
             ///
             /// This transposes column-oriented data back into row-oriented format.
+            #[doc(hidden)]
             pub fn from_dataframe(df: #df_name #ty_generics) -> Vec<Self> {
                 df.into_iter().collect()
             }
@@ -2672,6 +2684,7 @@ fn derive_struct_dataframe(
             /// Column-expansion fields are regrouped and nested-struct fields are
             /// read from their `<field>_`-prefixed sub-frame. Returns `Err` with a
             /// descriptive message if a column is missing, mis-typed, or ragged.
+            #[doc(hidden)]
             pub fn try_from_dataframe(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
@@ -2696,6 +2709,7 @@ fn derive_struct_dataframe(
                 /// materialisation, nested sub-frame reads) happens up front on the
                 /// R/worker thread; the `into_par_iter()` region touches only
                 /// pre-extracted owned data and makes no R API calls.
+                #[doc(hidden)]
                 pub fn try_from_dataframe_par(
                     sexp: ::miniextendr_api::SEXP,
                 ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
@@ -2712,6 +2726,7 @@ fn derive_struct_dataframe(
     let df_methods = quote! {
         impl #impl_generics #df_name #ty_generics #where_clause {
             /// Sequential row→column transposition.
+            #[doc(hidden)]
             pub fn from_rows(rows: Vec<#row_name #ty_generics>) -> Self {
                 rows.into()
             }
@@ -2723,11 +2738,13 @@ fn derive_struct_dataframe(
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             /// Name of the generated DataFrame companion type.
+            #[doc(hidden)]
             pub const DATAFRAME_TYPE_NAME: &'static str = stringify!(#df_name);
 
             /// Convert a vector of rows into the companion DataFrame type.
             ///
             /// This transposes row-oriented data into column-oriented format.
+            #[doc(hidden)]
             pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
             }

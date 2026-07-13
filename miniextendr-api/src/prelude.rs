@@ -89,6 +89,22 @@ pub use crate::{
 };
 // endregion
 
+// region: Extension-trait `.wrap_*()` verbs
+//
+// The `As*Ext` family is blanket-impl'd over the `Into*` traits and provides the
+// method-style return verbs (`value.wrap_data_frame()`, `.wrap_list()`,
+// `.wrap_external_ptr()`, …) that a `#[derive(DataFrameRow)]` / `#[derive(List)]`
+// / … type gets for free. They were already re-exported at the crate root but
+// not from the prelude, leaving `IntoDataFrame` / `FromDataFrame` (above) exposed
+// while their `.wrap_*()` companions were not — this closes that gap so the
+// canonical surface is fully discoverable via `use miniextendr_api::prelude::*`.
+#[cfg(feature = "vctrs")]
+pub use crate::AsVctrsExt;
+pub use crate::{
+    AsDataFrameExt, AsExternalPtrExt, AsListExt, AsNamedListExt, AsNamedVectorExt, AsRNativeExt,
+};
+// endregion
+
 // region: Worker thread
 pub use crate::{Sendable, with_r_thread};
 // endregion

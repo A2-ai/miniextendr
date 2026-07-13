@@ -28,8 +28,14 @@ use std::collections::HashMap;
 /// - Optional `_tag: Vec<String>` column for variant discrimination
 /// - `impl IntoDataFrame` (converts companion struct to R data.frame)
 /// - `impl From<Vec<Enum>>` (sequential row->column transposition)
-/// - `from_rows()` / `from_rows_par()` methods on the companion struct
-/// - `to_dataframe()` / `DATAFRAME_TYPE_NAME` associated items on the enum
+/// - `to_dataframe_split()` on the enum — the split (one-`data.frame`-per-variant)
+///   representation, the one inherent verb with no trait home yet
+///
+/// The canonical write/read verbs are the trait surface — `rows.into_dataframe()?`
+/// (`IntoDataFrame` / `AsDataFrameExt`) and `Vec::<Row>::from_dataframe(&df)?`
+/// (`FromDataFrame`). The `from_rows[_par]()` / `to_dataframe()` /
+/// `DATAFRAME_TYPE_NAME` / `try_from_dataframe[_par]()` inherent items are
+/// `#[doc(hidden)]` delegating plumbing.
 ///
 /// # Variant support
 ///
@@ -1605,6 +1611,7 @@ pub(super) fn derive_enum_dataframe(
                 ///
                 /// Always uses rayon — no threshold check. Use `from_rows` for the
                 /// sequential path.
+                #[doc(hidden)]
                 #[allow(clippy::uninit_vec)]
                 pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
                     use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
@@ -1632,6 +1639,7 @@ pub(super) fn derive_enum_dataframe(
     let df_methods = quote! {
         impl #impl_generics #df_name #ty_generics #where_clause {
             /// Sequential row→column transposition.
+            #[doc(hidden)]
             pub fn from_rows(rows: Vec<#row_name #ty_generics>) -> Self {
                 rows.into()
             }
@@ -1661,11 +1669,13 @@ pub(super) fn derive_enum_dataframe(
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             /// Name of the generated DataFrame companion type.
+            #[doc(hidden)]
             pub const DATAFRAME_TYPE_NAME: &'static str = stringify!(#df_name);
 
             /// Convert a vector of enum rows into the companion DataFrame type.
             ///
             /// Fields present in a variant get `Some(value)`, absent fields get `None` (→ NA in R).
+            #[doc(hidden)]
             pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
             }
@@ -3332,6 +3342,7 @@ fn build_enum_reader(
         /// field assemblers. Each schema column is pre-extracted (NA-aware, ALTREP-
         /// materialising). Returns `Err` with a descriptive message if a column is
         /// missing, mis-typed, or if an unknown tag value is encountered.
+        #[doc(hidden)]
         pub fn try_from_dataframe(
             sexp: ::miniextendr_api::SEXP,
         ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
@@ -3346,6 +3357,7 @@ fn build_enum_reader(
             /// rayon. All SEXP access happens up front on the R/worker thread; the
             /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
             /// struct-flatten/nested-enum fields delegate to the sequential reader instead.
+            #[doc(hidden)]
             pub fn try_from_dataframe_par(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
