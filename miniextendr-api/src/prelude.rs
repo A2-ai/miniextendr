@@ -85,7 +85,24 @@ pub use crate::{
 // items (`GroupedDataFrame`, `GroupKey`, `group_rows`) stay at the crate root
 // — `df.group_by(..)` returns them without the caller naming the types.
 pub use crate::{
-    BuiltDataFrame, DataFrame, DataFrameError, DataFrameRow, FromDataFrame, IntoDataFrame,
+    BuiltDataFrame, ColumnarFrame, DataFrame, DataFrameError, DataFrameRow, FromDataFrame,
+    IntoDataFrame,
+};
+// endregion
+
+// region: Extension-trait `.wrap_*()` verbs
+//
+// The `As*Ext` family is blanket-impl'd over the `Into*` traits and provides the
+// method-style return verbs (`value.wrap_data_frame()`, `.wrap_list()`,
+// `.wrap_external_ptr()`, …) that a `#[derive(DataFrameRow)]` / `#[derive(List)]`
+// / … type gets for free. They were already re-exported at the crate root but
+// not from the prelude, leaving `IntoDataFrame` / `FromDataFrame` (above) exposed
+// while their `.wrap_*()` companions were not — this closes that gap so the
+// canonical surface is fully discoverable via `use miniextendr_api::prelude::*`.
+#[cfg(feature = "vctrs")]
+pub use crate::AsVctrsExt;
+pub use crate::{
+    AsDataFrameExt, AsExternalPtrExt, AsListExt, AsNamedListExt, AsNamedVectorExt, AsRNativeExt,
 };
 // endregion
 

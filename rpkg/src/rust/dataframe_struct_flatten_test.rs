@@ -618,6 +618,8 @@ pub fn flat_nested_par() -> BuiltDataFrame {
 mod par_tests {
     #[cfg(feature = "rayon")]
     use super::*;
+    #[cfg(feature = "rayon")]
+    use miniextendr_api::dataframe::ColumnarFrame;
 
     #[cfg(feature = "rayon")]
     #[test]
