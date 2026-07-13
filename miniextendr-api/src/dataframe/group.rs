@@ -387,6 +387,152 @@ impl DataFrame {
 
         Ok(GroupedDataFrame::new(*self, non_na))
     }
+
+    /// Ingest a dplyr `grouped_df`'s existing grouping from its `groups`
+    /// attribute — **honoring the caller's grouping without recomputing it**.
+    ///
+    /// dplyr stores a `grouped_df`'s grouping in `attr(df, "groups")`: a
+    /// `data.frame` whose leading columns are the group-key columns (one row
+    /// per group, in dplyr's group order) and whose trailing `.rows`
+    /// list-column holds, per group, the 1-based row indices into `df`. This
+    /// method reads that metadata verbatim into a [`GroupedDataFrame`] — the
+    /// same type [`group_by`](Self::group_by) / [`group_by_multi`](Self::group_by_multi)
+    /// produce — so a `#[miniextendr]` function handed a dplyr-grouped frame can
+    /// respect the caller's grouping, including multi-column groupings.
+    ///
+    /// Unlike [`group_by`](Self::group_by), this does **no** recomputation: a
+    /// plain (non-grouped) `data.frame` is an error ([`NotGroupedDataFrame`]).
+    /// Callers who want the framework to compute grouping should use
+    /// [`group_by`](Self::group_by) / [`group_by_multi`](Self::group_by_multi).
+    ///
+    /// # Keys
+    ///
+    /// A single key column yields scalar [`GroupKey`]s; multiple key columns
+    /// yield [`GroupKey::Tuple`]s (labels `.`-joined), consistent with
+    /// [`group_by_multi`](Self::group_by_multi). Supported key-column types are
+    /// the same as [`group_by`](Self::group_by) (factor, character, integer,
+    /// logical); a double / list key column is an error.
+    ///
+    /// # Order & empty groups
+    ///
+    /// The `groups`-frame row order is preserved verbatim — dplyr's order is
+    /// authoritative, with no re-sorting and no NA reordering. `.drop = FALSE`
+    /// empty groups (zero-length `.rows`) are **kept** as groups with empty
+    /// index vectors, mirroring the empty-factor-level convention of
+    /// [`group_by`](Self::group_by).
+    ///
+    /// # Errors
+    ///
+    /// [`NotGroupedDataFrame`] (no `groups` attribute / not a `data.frame`),
+    /// [`MissingGroupRows`] (no `.rows` column), [`BadGroupRows`] (a `.rows`
+    /// element is not an integer/integerish vector), or [`GroupIndexOutOfRange`]
+    /// (a `.rows` index is `< 1` or `> nrow`). Every `.rows` index is converted
+    /// from R's 1-based to 0-based.
+    ///
+    /// [`NotGroupedDataFrame`]: DataFrameError::NotGroupedDataFrame
+    /// [`MissingGroupRows`]: DataFrameError::MissingGroupRows
+    /// [`BadGroupRows`]: DataFrameError::BadGroupRows
+    /// [`GroupIndexOutOfRange`]: DataFrameError::GroupIndexOutOfRange
+    ///
+    /// # GC
+    ///
+    /// The `groups` attribute frame (and its columns) is only read here, during
+    /// construction; it stays reachable via `self`'s attribute pairlist — which
+    /// R protects as a `.Call` argument frame for the duration of the call — so
+    /// it needs no separate root. Only the returned [`GroupedDataFrame`] roots
+    /// the **source** frame for its own lifetime (see its GC-rooting docs).
+    pub fn group_by_metadata(&self) -> Result<GroupedDataFrame, DataFrameError> {
+        // Read attr(self, "groups") — dplyr's grouping metadata frame.
+        let groups_sym = unsafe { crate::sys::Rf_install(c"groups".as_ptr()) };
+        let groups_attr = self.as_sexp().get_attr(groups_sym);
+        if groups_attr.is_nil() || !groups_attr.is_data_frame() {
+            return Err(DataFrameError::NotGroupedDataFrame);
+        }
+        let groups_frame = DataFrame::from_sexp(groups_attr)?;
+
+        // Locate the `.rows` list-column; the remaining columns (in order) are
+        // the group-key columns.
+        let rows_col = groups_frame
+            .column_raw(".rows")
+            .ok_or(DataFrameError::MissingGroupRows)?;
+        let key_names: Vec<String> = groups_frame
+            .names()
+            .into_iter()
+            .filter(|n| n != ".rows")
+            .collect();
+
+        // Per-key-column keys: one Vec<GroupKey> of length n_groups per key
+        // column (column_keys yields one scalar key per row of the groups frame).
+        let mut per_col_keys: Vec<Vec<GroupKey>> = Vec::with_capacity(key_names.len());
+        for name in &key_names {
+            let column = groups_frame
+                .column_raw(name)
+                .expect("name came from groups_frame.names()");
+            per_col_keys.push(column_keys(column, name)?);
+        }
+
+        let n_groups = rows_col.len();
+        let nrow = self.nrow();
+        let single_key = key_names.len() == 1;
+
+        let mut groups: Vec<(GroupKey, Vec<usize>)> = Vec::with_capacity(n_groups);
+        for g in 0..n_groups {
+            // Build this group's key: scalar for a single key column, otherwise
+            // a Tuple in column order (`.`-joined labels, like group_by_multi).
+            let key = if single_key {
+                per_col_keys[0][g].clone()
+            } else {
+                GroupKey::Tuple(per_col_keys.iter().map(|col| col[g].clone()).collect())
+            };
+            // Convert `.rows[[g]]` (1-based indices) to a validated 0-based Vec.
+            let elt = rows_col.vector_elt(g as isize);
+            let indices = group_rows_indices(elt, g, nrow)?;
+            groups.push((key, indices));
+        }
+
+        Ok(GroupedDataFrame::new(*self, groups))
+    }
+}
+
+/// Validate and convert one `.rows` list element — an integer / integerish
+/// vector of 1-based row indices — into a 0-based `Vec<usize>`. Rejects
+/// non-integer element types and any index outside `1..=nrow`.
+fn group_rows_indices(elt: SEXP, group: usize, nrow: usize) -> Result<Vec<usize>, DataFrameError> {
+    let nrow_i = nrow as i64;
+    let check = |value: i64| -> Result<usize, DataFrameError> {
+        if value < 1 || value > nrow_i {
+            Err(DataFrameError::GroupIndexOutOfRange { group, value, nrow })
+        } else {
+            Ok((value - 1) as usize)
+        }
+    };
+    match elt.type_of() {
+        SEXPTYPE::INTSXP => {
+            // SAFETY: element is INTSXP; as_slice handles empty vectors.
+            let values: &[i32] = unsafe { elt.as_slice() };
+            values.iter().map(|&v| check(v as i64)).collect()
+        }
+        SEXPTYPE::REALSXP => {
+            // SAFETY: element is REALSXP; as_slice handles empty vectors.
+            let values: &[f64] = unsafe { elt.as_slice() };
+            values
+                .iter()
+                .map(|&v| {
+                    if !v.is_finite() || v.fract() != 0.0 {
+                        return Err(DataFrameError::BadGroupRows {
+                            group,
+                            type_of: "non-integer double".to_string(),
+                        });
+                    }
+                    check(v as i64)
+                })
+                .collect()
+        }
+        other => Err(DataFrameError::BadGroupRows {
+            group,
+            type_of: format!("{:?}", other),
+        }),
+    }
 }
 
 /// Per-row group key for one supported key column, in row order. NA cells — and

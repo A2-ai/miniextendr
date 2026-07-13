@@ -83,6 +83,29 @@ pub enum DataFrameError {
         /// Its SEXPTYPE, rendered for the message.
         type_of: String,
     },
+    /// [`DataFrame::group_by_metadata`] was called on a frame carrying no
+    /// dplyr `groups` metadata (missing attribute, or its value is not a
+    /// `data.frame`) — i.e. not a `grouped_df`.
+    NotGroupedDataFrame,
+    /// The dplyr `groups` frame has no `.rows` list-column.
+    MissingGroupRows,
+    /// A `.rows` list element was not an integer / integerish index vector.
+    BadGroupRows {
+        /// The 0-based group (row of the `groups` frame) that carried it.
+        group: usize,
+        /// The offending element's SEXPTYPE (or `"non-integer double"`),
+        /// rendered for the message.
+        type_of: String,
+    },
+    /// A `.rows` index was `< 1` or `> nrow` of the source frame.
+    GroupIndexOutOfRange {
+        /// The 0-based group whose `.rows` carried the bad index.
+        group: usize,
+        /// The offending 1-based index value.
+        value: i64,
+        /// The source frame's row count (valid indices are `1..=nrow`).
+        nrow: usize,
+    },
     /// A serde-driven schema/serialize/deserialize failure (the bridged
     /// `RSerdeError` text) or another conversion failure carried as a message.
     Conversion(String),
@@ -120,6 +143,25 @@ impl std::fmt::Display for DataFrameError {
                 "cannot group by column {:?} ({}): supported key types are factor, \
                  character, integer, and logical — cut() or factor() the column first",
                 column, type_of
+            ),
+            DataFrameError::NotGroupedDataFrame => write!(
+                f,
+                "not a grouped_df: no `groups` metadata attribute (use group_by/group_by_multi \
+                 to compute grouping instead)"
+            ),
+            DataFrameError::MissingGroupRows => {
+                write!(f, "grouped_df `groups` frame has no `.rows` list-column")
+            }
+            DataFrameError::BadGroupRows { group, type_of } => write!(
+                f,
+                "grouped_df `.rows` element for group {} is not an integer index vector ({})",
+                group, type_of
+            ),
+            DataFrameError::GroupIndexOutOfRange { group, value, nrow } => write!(
+                f,
+                "grouped_df `.rows` index {} for group {} is out of range (source frame has \
+                 {} rows; valid indices are 1..={})",
+                value, group, nrow, nrow
             ),
             DataFrameError::Conversion(msg) => write!(f, "{}", msg),
         }
