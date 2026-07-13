@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 2982
+assertion_line: 3030
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Child R6 Class
@@ -22,19 +22,22 @@ Child <- R6::R6Class("Child", inherit = .__MX_CLASS_REF_ParentClass__,
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
-    },
-    # Child::greet (1:1)
-    #' @description Method `greet`.
-    greet = function() {
-      .val <- .Call(C_miniextendr_macros_Child__greet, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      .val
     }
   ),
   private = list(
     .ptr = NULL
   ),
   lock_objects = TRUE,
-  lock_class = TRUE,
+  lock_class = FALSE,
   cloneable = TRUE
 )
+
+# Child::greet (1:1)
+#' @description Method `greet`.
+Child$set("public", "greet", function() {
+  .val <- .Call(C_miniextendr_macros_Child__greet, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
+
+Child$lock()

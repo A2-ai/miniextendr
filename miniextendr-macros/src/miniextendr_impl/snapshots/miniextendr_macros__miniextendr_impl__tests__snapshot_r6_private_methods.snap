@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3022
+assertion_line: 3065
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Secure R6 Class
@@ -22,13 +22,6 @@ Secure <- R6::R6Class("Secure",
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
-    },
-    # Secure::public_api (1:1)
-    #' @description Method `public_api`.
-    public_api = function() {
-      .val <- .Call(C_miniextendr_macros_Secure__public_api, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      .val
     }
   ),
   private = list(
@@ -44,3 +37,11 @@ Secure <- R6::R6Class("Secure",
   lock_class = FALSE,
   cloneable = FALSE
 )
+
+# Secure::public_api (1:1)
+#' @description Method `public_api`.
+Secure$set("public", "public_api", function() {
+  .val <- .Call(C_miniextendr_macros_Secure__public_api, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})

@@ -106,7 +106,7 @@ fn r6_dots_constructor_and_method_emit_variadic_r_wrappers() {
     let wrapper = generate_r6_r_wrapper(&parsed);
 
     assert!(wrapper.contains("initialize = function(..., .ptr = NULL)"));
-    assert!(wrapper.contains("collect = function(...)"));
+    assert!(wrapper.contains("R6DotsThing$set(\"public\", \"collect\", function(...)"));
     assert!(
         wrapper.contains(
             ".Call(C_miniextendr_macros_R6DotsThing__new, .call = match.call(), list(...))"
@@ -479,9 +479,9 @@ fn r6_wrapper_full_snapshot() {
     assert!(wrapper.contains(".val <- .Call(C_miniextendr_macros_Counter__new"));
     assert!(wrapper.contains("private$.ptr <- .val"));
 
-    // Verify public instance methods
-    assert!(wrapper.contains("get = function()"));
-    assert!(wrapper.contains("increment = function()"));
+    // Verify public instance methods migrate to top-level `$set("public", ...)` blocks (#369)
+    assert!(wrapper.contains("Counter$set(\"public\", \"get\", function()"));
+    assert!(wrapper.contains("Counter$set(\"public\", \"increment\", function()"));
     assert!(
         wrapper.contains(
             ".Call(C_miniextendr_macros_Counter__get, .call = match.call(), private$.ptr)"
@@ -521,10 +521,10 @@ fn r6_wrapper_private_methods() {
     let parsed = parse_impl(ClassSystem::R6, item_impl);
     let wrapper = generate_r6_r_wrapper(&parsed);
 
-    // Public method in public list
-    assert!(wrapper.contains("get = function()"));
+    // Public method migrates to a top-level `$set("public", ...)` block (#369)
+    assert!(wrapper.contains("Counter$set(\"public\", \"get\", function()"));
 
-    // Private method should be in private list
+    // Private method stays inline in the private list
     assert!(wrapper.contains("internal_compute = function()"));
 }
 
@@ -580,7 +580,10 @@ fn r6_wrapper_cloneable_and_locks() {
 
     assert!(wrapper.contains("cloneable = TRUE"));
     assert!(wrapper.contains("lock_objects = FALSE,"));
-    assert!(wrapper.contains("lock_class = TRUE,"));
+    // The class is created unlocked so `$set()` can add methods; `lock_class = TRUE`
+    // is re-applied via a trailing `MyClass$lock()` (#369).
+    assert!(wrapper.contains("lock_class = FALSE,"));
+    assert!(wrapper.contains("MyClass$lock()"));
 }
 
 #[test]
@@ -733,21 +736,22 @@ fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
     // formal (not the Rust parameter name `temp`).
     assert!(
         wrapper.contains(
-            "      } else {\n\
-             \x20       stopifnot(\n\
-             \x20         \"'value' must be numeric, logical, or raw\" = is.numeric(value) || is.logical(value) || is.raw(value),\n\
-             \x20         \"'value' must have length 1\" = length(value) == 1L\n\
-             \x20       )"
+            "  } else {\n\
+             \x20   stopifnot(\n\
+             \x20     \"'value' must be numeric, logical, or raw\" = is.numeric(value) || is.logical(value) || is.raw(value),\n\
+             \x20     \"'value' must have length 1\" = length(value) == 1L\n\
+             \x20   )"
         ),
         "active-binding setter branch must emit the standalone setter's stopifnot block, renamed to 'value'\n{}",
         wrapper
     );
     // The standalone `set_celsius` method keeps its own `temp` formal; only
-    // the active-binding section must not reference the Rust parameter name.
+    // the active-binding `$set("active", ...)` block must not reference the Rust
+    // parameter name.
     let active_section = wrapper
-        .split("  active = list(")
+        .split("$set(\"active\"")
         .nth(1)
-        .expect("wrapper must contain an active bindings list");
+        .expect("wrapper must contain an active binding $set call");
     assert!(
         !active_section.contains("temp"),
         "active-binding preconditions must not reference the Rust parameter name 'temp'\n{}",
@@ -755,17 +759,18 @@ fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
     );
 
     // Setter branch: `.Call()` result must be captured and guarded so a
-    // transported Rust condition re-raises instead of being discarded.
+    // transported Rust condition re-raises instead of being discarded. In the
+    // `$set("active", ...)` block the setter branch body sits at 4-space indent.
     assert!(
-        wrapper.contains("        .val <- .Call(C_miniextendr_macros_Temperature__set_celsius"),
+        wrapper.contains("    .val <- .Call(C_miniextendr_macros_Temperature__set_celsius"),
         "setter branch must capture the .Call result in .val\n{}",
         wrapper
     );
 
     // Getter branch of the combined binding gets the same guard as the
-    // getter-only active-binding path.
+    // getter-only active-binding path (4-space indent inside the `$set` block).
     assert!(
-        wrapper.contains("        .val <- .Call(C_miniextendr_macros_Temperature__celsius"),
+        wrapper.contains("    .val <- .Call(C_miniextendr_macros_Temperature__celsius"),
         "getter branch must capture the .Call result in .val\n{}",
         wrapper
     );
@@ -1198,8 +1203,8 @@ fn parameter_defaults_r6() {
     let parsed = parse_impl(ClassSystem::R6, item_impl);
     let wrapper = generate_r6_r_wrapper(&parsed);
 
-    // R6 method should include default
-    assert!(wrapper.contains("add = function(n = 10L)"));
+    // R6 method should include default (now emitted as a `$set("public", ...)` block, #369)
+    assert!(wrapper.contains("Counter$set(\"public\", \"add\", function(n = 10L)"));
 }
 // endregion
 
@@ -1553,10 +1558,10 @@ fn r6_other_class_return_emits_write_time_marker() {
     let parsed = parse_impl(ClassSystem::R6, item_impl);
     let wrapper = generate_r6_r_wrapper(&parsed);
     let body = wrapper
-        .split("build = function(")
+        .split("$set(\"public\", \"build\", function(")
         .nth(1)
         .expect("build R6 method")
-        .split("\n    }")
+        .split("\n})")
         .next()
         .expect("build method body");
 
@@ -1615,7 +1620,7 @@ fn returns_unit_method_in_r6() {
     let wrapper = generate_r6_r_wrapper(&parsed);
 
     // reset returns unit, should have invisible(self) for chaining
-    assert!(wrapper.contains("reset = function()"));
+    assert!(wrapper.contains("Counter$set(\"public\", \"reset\", function()"));
 }
 
 /// Self-ref builders (`&mut self -> &mut Self`) on R6 must chain via
@@ -1655,12 +1660,12 @@ fn method_return_builder_r6_self_ref_chains_invisible_self() {
 
     let wrapper = generate_r6_r_wrapper(&parsed);
 
-    // Isolate the body of the `set_width` R6 method.
+    // Isolate the body of the `set_width` R6 method (now a `$set("public", ...)` block, #369).
     let body = wrapper
-        .split("set_width = function(")
+        .split("$set(\"public\", \"set_width\", function(")
         .nth(1)
         .expect("set_width R6 method")
-        .split("\n    }")
+        .split("\n})")
         .next()
         .expect("set_width method body");
 
