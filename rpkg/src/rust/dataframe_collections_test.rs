@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+use miniextendr_api::dataframe::ColumnarFrame;
 use miniextendr_api::{DataFrameRow, IntoList};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -369,8 +370,8 @@ mod tests {
         assert_eq!(df.ids.len(), 2);
         assert_eq!(df.names.len(), 2);
 
-        // Test round-trip
-        let back: Vec<WithVec> = WithVec::from_dataframe(df);
+        // Test round-trip (companion → rows via `ColumnarFrame::into_rows`)
+        let back: Vec<WithVec> = df.into_rows();
         assert_eq!(back.len(), 2);
     }
 

@@ -26,16 +26,18 @@ use std::collections::HashMap;
 ///
 /// - Companion struct `{Name}DataFrame` with `Vec<Option<T>>` columns (field-name union)
 /// - Optional `_tag: Vec<String>` column for variant discrimination
-/// - `impl IntoDataFrame` (converts companion struct to R data.frame)
+/// - `impl IntoDataFrame` (companion → R data.frame) and `impl ColumnarFrame`
+///   (rows ↔ the pure-Rust companion: `from_rows` / `from_rows_par`)
 /// - `impl From<Vec<Enum>>` (sequential row->column transposition)
 /// - `to_dataframe_split()` on the enum — the split (one-`data.frame`-per-variant)
-///   representation, the one inherent verb with no trait home yet
+///   representation, the one verb with no trait home yet
 ///
-/// The canonical write/read verbs are the trait surface — `rows.into_dataframe()?`
-/// (`IntoDataFrame` / `AsDataFrameExt`) and `Vec::<Row>::from_dataframe(&df)?`
-/// (`FromDataFrame`). The `from_rows[_par]()` / `to_dataframe()` /
-/// `DATAFRAME_TYPE_NAME` / `try_from_dataframe[_par]()` inherent items are
-/// `#[doc(hidden)]` delegating plumbing.
+/// The write/read verbs are the trait surface — `rows.into_dataframe()?`
+/// (`IntoDataFrame` / `AsDataFrameExt`), `Vec::<Row>::from_dataframe(&df)?`
+/// (`FromDataFrame`) or the one-call `Row::try_from_dataframe(sexp)` reader, and the
+/// pure-Rust `ColumnarFrame` companion verbs. The row type keeps a `#[doc(hidden)]`
+/// `to_dataframe(rows) -> companion` helper only for the nested-companion write path
+/// (`Inner::to_dataframe(..)` without naming the inner companion type).
 ///
 /// # Variant support
 ///
@@ -1607,13 +1609,9 @@ pub(super) fn derive_enum_dataframe(
             // api-side rayon gate (#1117): the cfg lives on miniextendr-api's
             // macro, not stamped into the consumer crate.
             ::miniextendr_api::__dataframe_row_when_rayon! {
-                /// Parallel row→column transposition using rayon scatter-write.
-                ///
-                /// Always uses rayon — no threshold check. Use `from_rows` for the
-                /// sequential path.
-                #[doc(hidden)]
+                // Parallel override of `ColumnarFrame::from_rows_par` (rayon scatter-write).
                 #[allow(clippy::uninit_vec)]
-                pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
+                fn from_rows_par(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
                     use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
                     ::miniextendr_api::optionals::parallel::ensure_pool();
                     let len = rows.len();
@@ -1635,12 +1633,17 @@ pub(super) fn derive_enum_dataframe(
     };
     // endregion
 
-    // region: Generate DataFrame type methods (from_rows, from_rows_par)
+    // region: ColumnarFrame impl on the enum companion (from_rows / from_rows_par)
+    //
+    // The pure-Rust columnar verbs live on the `ColumnarFrame` trait. `into_rows` (the
+    // provided, `IntoIterator`-bounded default) is not callable on enum companions — they
+    // have no `IntoIterator` and are read back across the R boundary via `FromDataFrame` /
+    // the one-call `try_from_dataframe`.
     let df_methods = quote! {
-        impl #impl_generics #df_name #ty_generics #where_clause {
-            /// Sequential row→column transposition.
-            #[doc(hidden)]
-            pub fn from_rows(rows: Vec<#row_name #ty_generics>) -> Self {
+        impl #impl_generics ::miniextendr_api::dataframe::ColumnarFrame<#row_name #ty_generics>
+            for #df_name #ty_generics #where_clause
+        {
+            fn from_rows(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
                 rows.into()
             }
 
@@ -1666,15 +1669,12 @@ pub(super) fn derive_enum_dataframe(
 
     // region: Generate associated methods
     let enum_reader_methods = enum_reader_early.clone().unwrap_or_default();
+    // The documented rows→companion verb is `ColumnarFrame::from_rows` / `Vec<Row>: Into`.
+    // `to_dataframe` is retained `#[doc(hidden)]` because the struct-flatten / nested-enum
+    // write paths build a nested companion via `Inner::to_dataframe(..)` without naming the
+    // inner companion type. The enum readers ride here too (when reader-capable).
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
-            /// Name of the generated DataFrame companion type.
-            #[doc(hidden)]
-            pub const DATAFRAME_TYPE_NAME: &'static str = stringify!(#df_name);
-
-            /// Convert a vector of enum rows into the companion DataFrame type.
-            ///
-            /// Fields present in a variant get `Some(value)`, absent fields get `None` (→ NA in R).
             #[doc(hidden)]
             pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
@@ -1900,7 +1900,9 @@ pub(super) fn derive_enum_dataframe(
     let rows_into_dataframe_par_body = if has_par_builder {
         quote! {
             ::miniextendr_api::convert::ColumnSource::into_dataframe(
-                <#df_name #ty_generics>::from_rows_par(rows),
+                <#df_name #ty_generics as ::miniextendr_api::dataframe::ColumnarFrame<
+                    #row_name #ty_generics,
+                >>::from_rows_par(rows),
             )
         }
     } else {
@@ -3342,7 +3344,12 @@ fn build_enum_reader(
         /// field assemblers. Each schema column is pre-extracted (NA-aware, ALTREP-
         /// materialising). Returns `Err` with a descriptive message if a column is
         /// missing, mis-typed, or if an unknown tag value is encountered.
-        #[doc(hidden)]
+        ///
+        /// This is the one-call `SEXP → Vec<Self>` reader; the same conversion is also
+        /// reachable via the boundary-crossing [`FromDataFrame`] trait as
+        /// `Vec::<Self>::from_dataframe(&df)`.
+        ///
+        /// [`FromDataFrame`]: ::miniextendr_api::dataframe::FromDataFrame
         pub fn try_from_dataframe(
             sexp: ::miniextendr_api::SEXP,
         ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
@@ -3357,7 +3364,6 @@ fn build_enum_reader(
             /// rayon. All SEXP access happens up front on the R/worker thread; the
             /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
             /// struct-flatten/nested-enum fields delegate to the sequential reader instead.
-            #[doc(hidden)]
             pub fn try_from_dataframe_par(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {

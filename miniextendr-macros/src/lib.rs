@@ -2412,25 +2412,27 @@ pub fn derive_prefer_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///
 /// # Public surface (which verbs to call)
 ///
-/// Use the trait-based conversion surface — not the `#[doc(hidden)]` inherent
-/// methods the derive also emits onto your type as delegating plumbing:
+/// Every capability the derive provides has a documented, trait-based (or `std`)
+/// verb — reach for these, not any incidental inherent plumbing:
 ///
 /// - **Rows → R `data.frame`**: `rows.into_dataframe()?` (owned, GC-rooted
 ///   `BuiltDataFrame`) or `rows.wrap_data_frame()` (deferred `IntoR` wrapper);
-///   parallel variant `rows.into_dataframe_par()?`. These come from the
-///   `IntoDataFrame` / `AsDataFrameExt` traits (both re-exported from
-///   `miniextendr_api::prelude`).
+///   parallel variant `rows.into_dataframe_par()?`. From the `IntoDataFrame` /
+///   `AsDataFrameExt` traits (both re-exported from `miniextendr_api::prelude`).
 /// - **R `data.frame` → rows**: `Vec::<Row>::from_dataframe(&df)?` (parallel:
-///   `Vec::<Row>::from_dataframe_par(&df)?`). From the `FromDataFrame` trait
-///   (also in the prelude).
+///   `Vec::<Row>::from_dataframe_par(&df)?`), from the `FromDataFrame` trait — or
+///   the one-call `Row::try_from_dataframe(sexp)` reader on the row type.
+/// - **Rows ↔ the pure-Rust columnar companion** (`<Row>DataFrame`, `Vec`-columns,
+///   no R involved): the `ColumnarFrame` trait (in the prelude) —
+///   `<Row>DataFrame::from_rows(rows)` / `from_rows_par(rows)` (parallel build of
+///   the *companion*, which `into_dataframe_par` does not give you) and, for
+///   row-iterable companions, `companion.into_rows()`. `Vec<Row>: Into<companion>`
+///   and the companion's `IntoIterator` are the equivalent `std` verbs.
 /// - **Enum split representation**: `Row::to_dataframe_split(rows)` returns one
-///   `data.frame` per variant as an R list — the one inherent verb with no trait
-///   home yet.
+///   `data.frame` per variant as an R list — the one verb with no trait home yet.
 ///
 /// The generated `<Row>DataFrame` / `<Row>DataFrameIter` types are intermediate
-/// column-oriented companions; you rarely name them directly. The inherent
-/// `to_dataframe` / `from_dataframe` / `from_rows[_par]` / `try_from_dataframe[_par]`
-/// methods are `#[doc(hidden)]` plumbing that the trait verbs above delegate through.
+/// column-oriented companions; you rarely name them directly.
 #[proc_macro_derive(DataFrameRow, attributes(dataframe))]
 pub fn derive_dataframe_row(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);

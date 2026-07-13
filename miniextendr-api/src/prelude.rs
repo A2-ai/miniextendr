@@ -85,7 +85,8 @@ pub use crate::{
 // items (`GroupedDataFrame`, `GroupKey`, `group_rows`) stay at the crate root
 // — `df.group_by(..)` returns them without the caller naming the types.
 pub use crate::{
-    BuiltDataFrame, DataFrame, DataFrameError, DataFrameRow, FromDataFrame, IntoDataFrame,
+    BuiltDataFrame, ColumnarFrame, DataFrame, DataFrameError, DataFrameRow, FromDataFrame,
+    IntoDataFrame,
 };
 // endregion
 

@@ -21,6 +21,7 @@
 //! is non-empty, which requires a non-unit variant — this is documented
 //! in the `phantom_field` comment in `enum_expansion.rs`.
 
+use miniextendr_api::ColumnarFrame;
 use miniextendr_macros::DataFrameRow;
 
 /// Three-variant const-generic unit-only enum — the same shape as the
