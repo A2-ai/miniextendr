@@ -1223,6 +1223,23 @@ test_that("nalgebra_reshape changes matrix dimensions", {
   expect_equal(as.vector(result), as.vector(m))
 })
 
+test_that("nalgebra_rotate_point_2d rotates a point via a rotation matrix", {
+  skip_if_missing_feature("nalgebra")
+  # Rotating (1, 0) by 90 degrees -> (0, 1)
+  result <- nalgebra_rotate_point_2d(pi / 2, 1.0, 0.0)
+  expect_equal(result, c(0.0, 1.0), tolerance = 1e-10)
+
+  # Rotating by 0 radians is the identity
+  result0 <- nalgebra_rotate_point_2d(0.0, 3.0, 4.0)
+  expect_equal(result0, c(3.0, 4.0), tolerance = 1e-10)
+})
+
+test_that("nalgebra_scale_matrix builds a diagonal scaling matrix", {
+  skip_if_missing_feature("nalgebra")
+  result <- nalgebra_scale_matrix(2.5)
+  expect_equal(result, diag(c(2.5, 2.5)), tolerance = 1e-10)
+})
+
 # =============================================================================
 # Either feature tests
 # =============================================================================
