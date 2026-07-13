@@ -325,6 +325,39 @@ boundary, you have many objects or high insert/release churn, and you need
 any-order release. Use the Preserve List when you have a small number of
 long-lived objects that are rarely released (e.g., cached lookup tables).
 
+## Preserve List
+
+R's own cross-`.Call` rooting primitive: call `R_PreserveObject` directly to
+add a SEXP to R's internal preserved list, and `R_ReleaseObject` to remove it.
+There is no `ProtectScope`/`ProtectPool`/`OwnedProtect`-style Rust wrapper for
+this — miniextendr code that needs a single long-lived root calls the two FFI
+functions directly and pairs them with a `Drop` impl. `BuiltDataFrame`
+(`miniextendr-api/src/dataframe.rs`) is the canonical example: it calls
+`R_PreserveObject` in its constructor and `R_ReleaseObject` in `Drop`, rooting
+exactly one frame for the handle's lifetime. `TxtProgressBar` and the
+`ExternalPtr` type-tag table (`mx_abi.rs`) follow the same pattern.
+
+```rust
+unsafe fn root_for_later(sexp: SEXP) {
+    R_PreserveObject(sexp); // adds one CONSXP to R's preserved list
+    // ... sexp survives GC across `.Call` boundaries until released ...
+    R_ReleaseObject(sexp); // O(n) scan of the preserved list
+}
+```
+
+Cost is the ~28.9 ns/op figure in the [Performance](#performance) comparison
+above: each insert allocates one CONSXP, and `R_ReleaseObject` scans R's
+preserved list linearly, so releasing many objects — or releasing out of
+insertion order — degrades as the list grows. `ProtectPool` exists precisely
+to avoid this: it wraps a *single* `R_PreserveObject` call around a whole
+VECSXP and manages slots itself, giving O(1) any-order release regardless of
+object count.
+
+Reach for the Preserve List directly only for a small number of long-lived,
+rarely-released objects (a singleton cache, or one owned handle like
+`BuiltDataFrame`). For anything with higher churn or object count, prefer
+`ProtectPool`.
+
 ## When to Use What
 
 | Scenario | Use |

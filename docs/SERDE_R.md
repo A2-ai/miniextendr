@@ -65,7 +65,7 @@ miniextendr-api = { version = "0.1", features = ["serde_full"] }
 | named `list` | struct / `HashMap` | Field matching |
 | unnamed `list` | `Vec<T>` / tuple | Positional |
 | `NULL` | `()` / `Option::None` | |
-| `NA` (any of the four above) or `NULL` | `Option<T>::None` | See [NA/NULL Handling](#nanull-handling) below |
+| `NA` (any of the four above) or `NULL` | `Option<T>::None` | See [NA and NULL handling](#na-and-null-handling) below |
 
 **Input-side contract (audit A5):** a typed scalar `NA` reaching a *bare*
 (non-`Option`) field is a genuine missingness error and is rejected — it is
@@ -156,7 +156,7 @@ let points = vec![Point { x: 1.0, y: 2.0 }];
 // Serializes to: list(list(x = 1.0, y = 2.0))
 ```
 
-## NA/NULL Handling
+## NA and NULL handling
 
 ### Option<T> for NA Support
 

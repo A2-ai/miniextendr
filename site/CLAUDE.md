@@ -38,14 +38,35 @@ Anchor fragments (`GAPS.md#41-r-...`) are preserved.
 Verify links after editing:
 
 ```bash
-bash scripts/docs-to-site.sh
-cd site && zola check
+just site-check   # = bash scripts/docs-to-site.sh + cd site && zola check
 ```
 
 `zola check` validates both internal links (anchors, page paths) and
 external URLs. Internal breakage means a cross-reference in `docs/`
 points at a file that no longer exists; fix in `docs/`, not the
-generated page.
+generated page. `site/config.toml` sets `[link_checker] internal_level =
+"error"`, so a broken internal anchor fails the check, not just warns.
+External URLs are `external_level = "warn"` — warn-only, NOT enforced in
+CI, because external hosts bot-block CI runners (e.g. lib.rs returns 403)
+and would make unrelated docs PRs flaky. External liveness is reviewed in
+the quarterly skill-freshness/docs audit instead.
+
+CI gates this on every PR that touches `docs/**`, `site/**`, or
+`scripts/docs-to-site.sh` (the `Docs Link Check` job in `ci.yml` — separate
+from the Pages deploy workflow, so a broken link fails the PR instead of
+only being caught after merging to main).
+
+**Cross-renderer anchor gotcha**: GitHub's heading slugifier and Zola's
+disagree on several characters — most importantly, Zola always folds
+underscores to hyphens (`Set_elt` → `set-elt`) while GitHub preserves them,
+and the two disagree on em-dashes, slashes, and parentheses too. A heading
+whose text is punctuation-free words joined by a colon or a bare hyphen
+(`## NA and NULL handling`, `## Chunk-Based Fill`) slugifies identically on
+both; anything with an underscore in the heading text cannot be made to
+match on both renderers by rewording alone — retarget the link to a nearby
+plain-word heading, or drop the link, rather than inventing a fake spelling
+of the identifier. See `plans/2026-07-13-audit-doc-link-anchors.md` for the
+full investigation.
 
 Other files under `site/` (`templates/`, `sass/`, `static/`,
 `config.toml`, landing pages like `content/_index.md` and

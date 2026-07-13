@@ -1403,6 +1403,15 @@ site-build:
 site-serve:
     cd site && zola serve
 
+# Regenerate the manual and verify Zola's link checker is clean. Gates CI
+# (the Docs Link Check job) — run this after any docs/*.md heading or link
+# edit. `site/config.toml` sets `internal_level = "error"` (a broken internal
+# anchor fails the build) and `external_level = "warn"` (external URLs are
+# warn-only — CI runners get bot-blocked by some hosts, so external liveness
+# is a quarterly-audit concern, not enforced here).
+site-check: site-docs
+    cd site && zola check
+
 # Bump version across all Cargo.toml and DESCRIPTION files.
 bump-version version:
     bash scripts/bump-version.sh {{version}}

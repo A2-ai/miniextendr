@@ -590,7 +590,7 @@ framework guarantees unique, so the collision is always in your own code.
 
 ---
 
-## Mutable Vectors (Set_elt)
+## Mutable Vectors
 
 String and List vectors can be made mutable by implementing `set_elt` on the
 **low-level** `AltString`/`AltList` traits. This allows R code to modify
@@ -1054,7 +1054,7 @@ macros yourself in the normal flow.
 The macros are still there as the escape hatch for `#[altrep(no_lowlevel)]`
 (when you write the low-level `Altrep`/`AltVec`/`Alt*` traits by hand and only
 want the macro for a specific family, or you're calling it from outside a
-derive entirely — see [Mutable Vectors](#mutable-vectors-set_elt) for a case
+derive entirely — see [Mutable Vectors](#mutable-vectors) for a case
 where you skip the macro altogether and hand-write the low-level traits). They
 accept the same options as the derive keys:
 

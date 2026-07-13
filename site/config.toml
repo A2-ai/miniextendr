@@ -9,7 +9,11 @@ generate_feeds = false
 index_format = "elasticlunr_json"
 
 [link_checker]
-internal_level = "warn"
+internal_level = "error"
+# External URLs are warn-only: CI runners get bot-blocked (403) by hosts like
+# lib.rs, so gating them makes unrelated docs PRs flaky. External liveness is
+# a quarterly-audit concern, not a CI gate.
+external_level = "warn"
 
 [markdown]
 insert_anchor_links = "left"
