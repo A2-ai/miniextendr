@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3009
+assertion_line: 3052
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Temperature R6 Class
@@ -29,48 +29,49 @@ Temperature <- R6::R6Class("Temperature",
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
-    },
-    # Temperature::set_celsius (1:1)
-    #' @description Set the temperature in Celsius.
-    #' @param value (no documentation available)
-    set_celsius = function(value) {
-      stopifnot(
-        "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
-        "'value' must have length 1" = length(value) == 1L
-      )
-      .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      invisible(self)
     }
   ),
   private = list(
     .ptr = NULL
   ),
-  active = list(
-    #' @field celsius Temperature in Celsius.
-    celsius = function(value) {
-      if (missing(value)) {
-        .val <- .Call(C_miniextendr_macros_Temperature__celsius, .call = match.call(), private$.ptr)
-        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-        .val
-      } else {
-        stopifnot(
-          "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
-          "'value' must have length 1" = length(value) == 1L
-        )
-        .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
-        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-        invisible(self)
-      }
-    },
-    #' @field fahrenheit Temperature in Fahrenheit (read-only).
-    fahrenheit = function() {
-      .val <- .Call(C_miniextendr_macros_Temperature__fahrenheit, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      .val
-    }
-  ),
   lock_objects = TRUE,
   lock_class = FALSE,
   cloneable = FALSE
 )
+
+# Temperature::set_celsius (1:1)
+#' @description Set the temperature in Celsius.
+#' @param value (no documentation available)
+Temperature$set("public", "set_celsius", function(value) {
+  stopifnot(
+    "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+    "'value' must have length 1" = length(value) == 1L
+  )
+  .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(self)
+})
+
+#' @field celsius Temperature in Celsius.
+Temperature$set("active", "celsius", function(value) {
+  if (missing(value)) {
+    .val <- .Call(C_miniextendr_macros_Temperature__celsius, .call = match.call(), private$.ptr)
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+    .val
+  } else {
+    stopifnot(
+      "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+      "'value' must have length 1" = length(value) == 1L
+    )
+    .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+    invisible(self)
+  }
+})
+
+#' @field fahrenheit Temperature in Fahrenheit (read-only).
+Temperature$set("active", "fahrenheit", function() {
+  .val <- .Call(C_miniextendr_macros_Temperature__fahrenheit, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})

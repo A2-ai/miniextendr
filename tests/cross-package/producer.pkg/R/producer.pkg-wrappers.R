@@ -78,42 +78,6 @@ R6Point <- R6::R6Class("R6Point",
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
-    },
-    # R6Point::x (124:12)
-    #' @description Get x coordinate
-    x = function() {
-      .val <- .Call(C_producer_pkg_R6Point__x, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      .val
-    },
-    # R6Point::y (129:12)
-    #' @description Get y coordinate
-    y = function() {
-      .val <- .Call(C_producer_pkg_R6Point__y, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      .val
-    },
-    # R6Point::distance_from_origin (134:12)
-    #' @description Calculate distance from origin
-    distance_from_origin = function() {
-      .val <- .Call(C_producer_pkg_R6Point__distance_from_origin, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      .val
-    },
-    # R6Point::add (141:12)
-    #' @description Add to coordinates
-    #' @param dx Amount to add to x.
-    #' @param dy Amount to add to y.
-    add = function(dx, dy) {
-      stopifnot(
-        "'dx' must be numeric, logical, or raw" = is.numeric(dx) || is.logical(dx) || is.raw(dx),
-        "'dx' must have length 1" = length(dx) == 1L,
-        "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
-        "'dy' must have length 1" = length(dy) == 1L
-      )
-      .val <- .Call(C_producer_pkg_R6Point__add, .call = match.call(), private$.ptr, dx, dy)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      invisible(self)
     }
   ),
   private = list(
@@ -123,6 +87,46 @@ R6Point <- R6::R6Class("R6Point",
   lock_class = FALSE,
   cloneable = FALSE
 )
+
+# R6Point::x (124:12)
+#' @description Get x coordinate
+R6Point$set("public", "x", function() {
+  .val <- .Call(C_producer_pkg_R6Point__x, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
+
+# R6Point::y (129:12)
+#' @description Get y coordinate
+R6Point$set("public", "y", function() {
+  .val <- .Call(C_producer_pkg_R6Point__y, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
+
+# R6Point::distance_from_origin (134:12)
+#' @description Calculate distance from origin
+R6Point$set("public", "distance_from_origin", function() {
+  .val <- .Call(C_producer_pkg_R6Point__distance_from_origin, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
+
+# R6Point::add (141:12)
+#' @description Add to coordinates
+#' @param dx Amount to add to x.
+#' @param dy Amount to add to y.
+R6Point$set("public", "add", function(dx, dy) {
+  stopifnot(
+    "'dx' must be numeric, logical, or raw" = is.numeric(dx) || is.logical(dx) || is.raw(dx),
+    "'dx' must have length 1" = length(dx) == 1L,
+    "'dy' must be numeric, logical, or raw" = is.numeric(dy) || is.logical(dy) || is.raw(dy),
+    "'dy' must have length 1" = length(dy) == 1L
+  )
+  .val <- .Call(C_producer_pkg_R6Point__add, .call = match.call(), private$.ptr, dx, dy)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(self)
+})
 
 # Generated from Rust impl `S3Point` (lib.rs:162:6)
 # S3Point::new (164:12)

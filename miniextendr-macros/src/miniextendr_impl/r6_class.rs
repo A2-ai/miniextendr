@@ -7,6 +7,42 @@
 //! (`finalize`, `deep_clone`), and inheritance via `r6(inherit = ...)`.
 //! Slower than env (R6 dispatch chain) and requires the R6 package; no value
 //! semantics — for value-semantics formal OOP, use S7.
+//!
+//! ## Emission shape (`$set()` form, #369)
+//!
+//! roxygen2 8.0.0 documents R6 methods added *after* class creation via
+//! `Class$set("public"/"active", "name", function(...) {...})` from the roxygen
+//! block directly preceding the `$set` call. We emit a minimal `R6Class` core
+//! (only `initialize` inline in `public`, plus the private list) followed by one
+//! `$set` block per public method and per active binding, each carrying its own
+//! `#'` roxygen block:
+//!
+//! ```r
+//! ClassName <- R6::R6Class("ClassName",
+//!   public = list(initialize = function(...) { ... }),
+//!   private = list(.ptr = NULL),
+//!   lock_objects = TRUE, lock_class = FALSE, cloneable = FALSE
+//! )
+//!
+//! #' @description <method doc>
+//! #' @param x <param doc>
+//! ClassName$set("public", "method_name", function(x) { ... })
+//!
+//! #' @field binding_name <binding doc>
+//! ClassName$set("active", "binding_name", function(value) { ... })
+//! ```
+//!
+//! `initialize` stays inline (R6Class needs a well-formed core; its `$new` doc
+//! stays on the class page). Private methods, `finalize`, `deep_clone`, and the
+//! `.ptr` field stay inline in the `private` list. The `$set` calls are part of
+//! the same wrapper fragment string as the class definition, so their ordering
+//! after the class is inherent.
+//!
+//! Because R6's `$set()` refuses to modify a locked class, the generator always
+//! creates the class with `lock_class = FALSE` and, when the user asked for
+//! `lock_class = TRUE`, re-locks it with `ClassName$lock()` after every `$set`
+//! (including sidecar accessors) has run. The observable semantics are identical
+//! to a class born locked — the unlocked window is confined to package load.
 
 use super::{ParsedImpl, ParsedMethod};
 use crate::r_class_formatter::class_ref_or_verbatim;
@@ -64,15 +100,18 @@ pub(crate) const MX_INHERITED_PARAM_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
 
 /// Generates the complete R wrapper string for an R6-style class.
 ///
-/// Produces an `R6::R6Class(...)` definition that includes:
-/// - `initialize` method: calls the Rust `new` constructor, or accepts a pre-made `.ptr`
-///   when static methods return `Self` (factory pattern)
-/// - Public methods: one R function per `&self`/`&mut self` instance method
-/// - Private methods: methods marked with `#[miniextendr(private)]`
-/// - Active bindings: getter/setter properties via `#[miniextendr(r6(prop = "..."))]`
+/// Produces an `R6::R6Class(...)` core definition followed by per-method
+/// `$set()` blocks (see the module docs for the full `$set`-form shape, #369):
+/// - `initialize` method (inline in `public`): calls the Rust `new` constructor,
+///   or accepts a pre-made `.ptr` when static methods return `Self` (factory pattern)
+/// - Public methods: one `ClassName$set("public", "name", function(...) {...})`
+///   block per `&self`/`&mut self` instance method, each with its own roxygen
+/// - Private methods (inline in `private`): methods marked with `#[miniextendr(private)]`
+/// - Active bindings: one `ClassName$set("active", "name", function(...) {...})`
+///   block per getter/setter property (`#[miniextendr(r6(prop = "..."))]`)
 /// - Private `.ptr` field: holds the `ExternalPtr` to the Rust struct
-/// - Finalizer: optional destructor called when the R6 object is garbage-collected
-/// - Deep clone: optional custom clone logic via `#[miniextendr(r6(deep_clone))]`
+/// - Finalizer (inline in `private`): optional destructor called when the R6 object is garbage-collected
+/// - Deep clone (inline in `private`): optional custom clone logic via `#[miniextendr(r6(deep_clone))]`
 /// - Static methods: emitted as `ClassName$method_name <- function(...)` outside the class
 /// - Class options: `lock_objects`, `lock_class`, `cloneable`, `portable`, `inherit`
 ///
@@ -143,10 +182,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // method loops skip emitting `(no documentation available)` for covered names.
     let class_param_names = &parsed_impl.class_param_names;
 
-    // Public instance methods (collect first to know if we need trailing comma on initialize)
-    let public_method_contexts: Vec<_> = parsed_impl.public_instance_method_contexts().collect();
-    let has_public_methods = !public_method_contexts.is_empty();
-
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr.
     // If there's no explicit `new()`, generate a minimal initialize(.ptr) so
     // other class methods can call $new(.ptr = val).
@@ -201,9 +236,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
         }
 
-        // Only add trailing comma if there are public methods after initialize
-        let comma = if has_public_methods { "," } else { "" };
-
         // Precondition checks for constructor parameters
         let ctor_preconditions = ctx.precondition_checks();
 
@@ -238,11 +270,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
         lines.push("        private$.ptr <- .val".to_string());
         lines.push("      }".to_string());
-        lines.push(format!("    }}{}", comma));
+        // initialize is the sole `public = list(...)` member — every other public
+        // method migrated to a `$set("public", ...)` block below — so no trailing comma.
+        lines.push("    }".to_string());
     } else {
         // No explicit new() constructor, but cross-class returns need
         // $new(.ptr = val). Generate a minimal initialize that only accepts .ptr.
-        let comma = if has_public_methods { "," } else { "" };
         lines.push(format!(
             "    #' @description Create a new `{}`.",
             class_name
@@ -251,89 +284,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("      if (!is.null(.ptr)) {".to_string());
         lines.push("        private$.ptr <- .ptr".to_string());
         lines.push("      }".to_string());
-        lines.push(format!("    }}{}", comma));
-    }
-
-    // Public instance methods
-    for (i, ctx) in public_method_contexts.iter().enumerate() {
-        let comma = if i < public_method_contexts.len() - 1 {
-            ","
-        } else {
-            ""
-        };
-
-        lines.push(format!("    {}", ctx.source_comment(type_ident)));
-        // Add inline roxygen documentation for this method
-        // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
-        let r_name = ctx.method.r_method_name();
-        let has_description = ctx
-            .method
-            .doc_tags
-            .iter()
-            .any(|t| t.starts_with("@description ") || t.starts_with("@title "));
-        if !has_description {
-            lines.push(format!("    #' @description Method `{}`.", r_name));
-        }
-        for tag in &ctx.method.doc_tags {
-            for line in tag.lines() {
-                let line = if line.starts_with("@title ") {
-                    line.replacen("@title ", "@description ", 1)
-                } else {
-                    line.to_string()
-                };
-                lines.push(format!("    #' {}", line));
-            }
-        }
-        // Document method params that aren't already documented.
-        // Class-level @param tags are inherited by roxygen2 8.0.0 — skip covered params.
-        // For subclass methods (r6_inherit set) and params not covered at class level,
-        // emit a write-time marker so the registry can detect in-package parent docs
-        // and suppress the placeholder (letting roxygen2 pull from the parent method).
-        let method_mx_doc = ctx.match_arg_doc_placeholders();
-        let r_method_name = ctx.method.r_method_name();
-        for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
-            let param_name = param.split('=').next().unwrap_or(param).trim();
-            let already_documented =
-                crate::roxygen::param_documented(&ctx.method.doc_tags, param_name);
-            if !already_documented {
-                // Param covered by class-level @param → roxygen2 inherits; emit nothing.
-                if class_param_names.contains(param_name) {
-                    continue;
-                }
-                let body = method_mx_doc
-                    .get(param_name)
-                    .map(String::as_str)
-                    .unwrap_or("(no documentation available)");
-                // For subclass methods: if there is an in-package parent, emit a
-                // write-time marker. The registry pass will resolve it to nothing
-                // (parent documented → roxygen2 inherits) or to the fallback text.
-                if let Some(ref parent) = parsed_impl.r6_inherit
-                    && body == "(no documentation available)"
-                {
-                    lines.push(format!(
-                        "    #' {}class=\"{}\", parent=\"{}\", method=\"{}\", param=\"{}\")",
-                        MX_INHERITED_PARAM_PREFIX, class_name, parent, r_method_name, param_name,
-                    ));
-                } else {
-                    lines.push(format!("    #' @param {} {}", param_name, body));
-                }
-            }
-        }
-        lines.push(format!("    {} = function({}) {{", r_name, ctx.params));
-
-        let what = format!("{}${}", class_name, r_name);
-        ctx.emit_method_prelude(&mut lines, "      ", &what);
-
-        let call = ctx.instance_call("private$.ptr");
-        let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
-            .with_strategy(strategy)
-            .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method)
-            .with_indent(6); // R6 methods have 6-space indent
-        lines.extend(return_builder.build_r6_body());
-
-        lines.push(format!("    }}{}", comma));
+        lines.push("    }".to_string());
     }
 
     lines.push("  ),".to_string());
@@ -419,136 +370,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    .ptr = NULL".to_string());
     lines.push("  ),".to_string());
 
-    // Active bindings list (for property-like access)
-    let active_method_contexts: Vec<_> = parsed_impl.active_instance_method_contexts().collect();
-    if !active_method_contexts.is_empty() {
-        lines.push("  active = list(".to_string());
-
-        for (i, ctx) in active_method_contexts.iter().enumerate() {
-            let comma = if i < active_method_contexts.len() - 1 {
-                ","
-            } else {
-                ""
-            };
-
-            // Add inline @field documentation for active bindings
-            // roxygen2 requires @field tags (not @description) for active bindings
-            let method_name = ctx.method.r_method_name();
-            let method_noexport =
-                ctx.method.method_attrs.noexport || ctx.method.method_attrs.internal;
-            if method_noexport {
-                // `@field name NULL` is documented as the roxygen2 8.0.0 opt-out, but
-                // `r6_resolve_fields` still emits "Undocumented R6 active binding"
-                // because `expected` is introspected from the class definition and
-                // is not pruned in sync with the NULL-description discard. Emit a
-                // minimal `(internal)` description: it satisfies the warning, keeps
-                // the binding clearly marked as internal in the rendered docs, and
-                // is short enough not to clutter the help page.
-                lines.push(format!("    #' @field {} (internal)", method_name));
-            } else if ctx.method.doc_tags.is_empty() {
-                lines.push(format!("    #' @field {} Active binding.", method_name));
-            } else {
-                for tag in &ctx.method.doc_tags {
-                    for (line_idx, line) in tag.lines().enumerate() {
-                        // Convert @description/@title to @field on first line only
-                        let line = if line_idx == 0 {
-                            if let Some(desc) = line.strip_prefix("@description ") {
-                                format!("@field {} {}", method_name, desc)
-                            } else if let Some(desc) = line.strip_prefix("@title ") {
-                                format!("@field {} {}", method_name, desc)
-                            } else if !line.starts_with('@') {
-                                // Plain doc comment - treat as field description
-                                format!("@field {} {}", method_name, line)
-                            } else {
-                                line.to_string()
-                            }
-                        } else {
-                            // Continuation lines stay as-is
-                            line.to_string()
-                        };
-                        lines.push(format!("    #' {}", line));
-                    }
-                }
-            }
-
-            // Determine the property name (from r6_prop or method name)
-            let prop_name = ctx
-                .method
-                .method_attrs
-                .r6
-                .prop
-                .clone()
-                .unwrap_or_else(|| ctx.method.r_method_name());
-
-            // Check if there's a matching setter for this property
-            let setter = parsed_impl.find_setter_for_prop(&prop_name);
-
-            if let Some(setter_method) = setter {
-                // Combined getter/setter active binding
-                // Format: name = function(value) { if (missing(value)) getter else setter }
-                lines.push(format!("    {} = function(value) {{", prop_name));
-                lines.push("      if (missing(value)) {".to_string());
-
-                // Getter call — same condition re-raise guard as the
-                // getter-only active binding path below.
-                let getter_call = ctx.instance_call("private$.ptr");
-                let getter_strategy = crate::ReturnStrategy::for_method(ctx.method);
-                let getter_builder = crate::MethodReturnBuilder::new(getter_call)
-                    .with_strategy(getter_strategy)
-                    .with_class_name(class_name.clone())
-                    .with_return_class_from_method(ctx.method)
-                    .with_indent(8);
-                lines.extend(getter_builder.build_r6_body());
-
-                lines.push("      } else {".to_string());
-
-                // Same `stopifnot` precondition block the standalone `set_*`
-                // method gets (audit 2026-07-06 finding 4): without it,
-                // `obj$prop <- <bad value>` skipped the R-level type check.
-                for check in active_setter_precondition_checks(setter_method) {
-                    lines.push(format!("        {}", check));
-                }
-
-                // Setter call — construct directly, then re-raise any
-                // transported Rust condition (the bare `.Call()` used to
-                // discard the tagged condition value, silently dropping the
-                // assignment error).
-                let setter_c_ident = setter_method
-                    .c_wrapper_ident(type_ident, parsed_impl.label.as_deref())
-                    .to_string();
-                let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(&setter_c_ident)
-                    .with_self("private$.ptr")
-                    .with_args(&["value"])
-                    .build();
-                lines.push(format!("        .val <- {}", setter_call));
-                lines.extend(crate::method_return_builder::condition_check_lines(
-                    "        ",
-                ));
-                lines.push("        invisible(self)".to_string());
-
-                lines.push("      }".to_string());
-                lines.push(format!("    }}{}", comma));
-            } else {
-                // Getter-only active binding (no parameters besides self)
-                // Format: name = function() { ... }
-                lines.push(format!("    {} = function() {{", prop_name));
-
-                let call = ctx.instance_call("private$.ptr");
-                let strategy = crate::ReturnStrategy::for_method(ctx.method);
-                let return_builder = crate::MethodReturnBuilder::new(call)
-                    .with_strategy(strategy)
-                    .with_class_name(class_name.clone())
-                    .with_return_class_from_method(ctx.method)
-                    .with_indent(6); // R6 active bindings have 6-space indent
-                lines.extend(return_builder.build_r6_body());
-
-                lines.push(format!("    }}{}", comma));
-            }
-        }
-
-        lines.push("  ),".to_string());
-    }
-
     // Class options
     let lock_objects = parsed_impl.r6_lock_objects.unwrap_or(true);
     let lock_class = parsed_impl.r6_lock_class.unwrap_or(false);
@@ -557,15 +378,228 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         "  lock_objects = {},",
         if lock_objects { "TRUE" } else { "FALSE" }
     ));
-    lines.push(format!(
-        "  lock_class = {},",
-        if lock_class { "TRUE" } else { "FALSE" }
-    ));
+    // The class is always CREATED unlocked so the `$set()` blocks below (public
+    // methods, active bindings, and any `#[derive(ExternalPtr)]` sidecar
+    // accessors) can add to it — R6's `$set` refuses to touch a locked class
+    // ("Can't modify a locked R6 class"). When the user requested
+    // `lock_class = TRUE` we re-apply the lock via `ClassName$lock()` after every
+    // `$set` has run (see the end of this function); the net effect is identical
+    // to a class born locked, since the unlocked window is entirely within
+    // package-load evaluation.
+    lines.push("  lock_class = FALSE,".to_string());
     lines.push(format!(
         "  cloneable = {}",
         if cloneable { "TRUE" } else { "FALSE" }
     ));
     lines.push(")".to_string());
+
+    // Public instance methods — one `$set("public", ...)` block each, so roxygen2
+    // 8.0.0 documents every method from the block directly above its `$set` call
+    // (#369). No `overwrite = TRUE`: these are the class's own methods, and the
+    // default `overwrite = FALSE` catches accidental name collisions loudly.
+    let public_method_contexts: Vec<_> = parsed_impl.public_instance_method_contexts().collect();
+    for ctx in &public_method_contexts {
+        lines.push(String::new());
+        lines.push(ctx.source_comment(type_ident));
+        // Add roxygen documentation for this method.
+        // Note: @title is replaced with @description for R6 method docs (roxygen requirement)
+        let r_name = ctx.method.r_method_name();
+        let has_description = ctx
+            .method
+            .doc_tags
+            .iter()
+            .any(|t| t.starts_with("@description ") || t.starts_with("@title "));
+        if !has_description {
+            lines.push(format!("#' @description Method `{}`.", r_name));
+        }
+        for tag in &ctx.method.doc_tags {
+            for line in tag.lines() {
+                let line = if line.starts_with("@title ") {
+                    line.replacen("@title ", "@description ", 1)
+                } else {
+                    line.to_string()
+                };
+                lines.push(format!("#' {}", line));
+            }
+        }
+        // Document method params that aren't already documented.
+        // Class-level @param tags are inherited by roxygen2 8.0.0 — skip covered params.
+        // For subclass methods (r6_inherit set) and params not covered at class level,
+        // emit a write-time marker so the registry can detect in-package parent docs
+        // and suppress the placeholder (letting roxygen2 pull from the parent method).
+        let method_mx_doc = ctx.match_arg_doc_placeholders();
+        let r_method_name = ctx.method.r_method_name();
+        for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
+            let param_name = param.split('=').next().unwrap_or(param).trim();
+            let already_documented =
+                crate::roxygen::param_documented(&ctx.method.doc_tags, param_name);
+            if !already_documented {
+                // Param covered by class-level @param → roxygen2 inherits; emit nothing.
+                if class_param_names.contains(param_name) {
+                    continue;
+                }
+                let body = method_mx_doc
+                    .get(param_name)
+                    .map(String::as_str)
+                    .unwrap_or("(no documentation available)");
+                // For subclass methods: if there is an in-package parent, emit a
+                // write-time marker. The registry pass will resolve it to nothing
+                // (parent documented → roxygen2 inherits) or to the fallback text.
+                if let Some(ref parent) = parsed_impl.r6_inherit
+                    && body == "(no documentation available)"
+                {
+                    lines.push(format!(
+                        "#' {}class=\"{}\", parent=\"{}\", method=\"{}\", param=\"{}\")",
+                        MX_INHERITED_PARAM_PREFIX, class_name, parent, r_method_name, param_name,
+                    ));
+                } else {
+                    lines.push(format!("#' @param {} {}", param_name, body));
+                }
+            }
+        }
+        lines.push(format!(
+            "{}$set(\"public\", \"{}\", function({}) {{",
+            class_name, r_name, ctx.params
+        ));
+
+        let what = format!("{}${}", class_name, r_name);
+        ctx.emit_method_prelude(&mut lines, "  ", &what);
+
+        let call = ctx.instance_call("private$.ptr");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(call)
+            .with_strategy(strategy)
+            .with_class_name(class_name.clone())
+            .with_return_class_from_method(ctx.method)
+            .with_indent(2); // top-level `$set` closure body indents 2 spaces
+        lines.extend(return_builder.build_r6_body());
+
+        lines.push("})".to_string());
+    }
+
+    // Active bindings — one `$set("active", ...)` block each so roxygen2 8.0.0
+    // documents each field from its own preceding block (#369).
+    let active_method_contexts: Vec<_> = parsed_impl.active_instance_method_contexts().collect();
+    for ctx in &active_method_contexts {
+        lines.push(String::new());
+
+        // Add @field documentation for active bindings.
+        // roxygen2 requires @field tags (not @description) for active bindings.
+        let method_name = ctx.method.r_method_name();
+        let method_noexport = ctx.method.method_attrs.noexport || ctx.method.method_attrs.internal;
+        if method_noexport {
+            // `@field name NULL` is documented as the roxygen2 8.0.0 opt-out, but
+            // `r6_resolve_fields` still emits "Undocumented R6 active binding"
+            // because `expected` is introspected from the class definition and
+            // is not pruned in sync with the NULL-description discard. Emit a
+            // minimal `(internal)` description: it satisfies the warning, keeps
+            // the binding clearly marked as internal in the rendered docs, and
+            // is short enough not to clutter the help page.
+            lines.push(format!("#' @field {} (internal)", method_name));
+        } else if ctx.method.doc_tags.is_empty() {
+            lines.push(format!("#' @field {} Active binding.", method_name));
+        } else {
+            for tag in &ctx.method.doc_tags {
+                for (line_idx, line) in tag.lines().enumerate() {
+                    // Convert @description/@title to @field on first line only
+                    let line = if line_idx == 0 {
+                        if let Some(desc) = line.strip_prefix("@description ") {
+                            format!("@field {} {}", method_name, desc)
+                        } else if let Some(desc) = line.strip_prefix("@title ") {
+                            format!("@field {} {}", method_name, desc)
+                        } else if !line.starts_with('@') {
+                            // Plain doc comment - treat as field description
+                            format!("@field {} {}", method_name, line)
+                        } else {
+                            line.to_string()
+                        }
+                    } else {
+                        // Continuation lines stay as-is
+                        line.to_string()
+                    };
+                    lines.push(format!("#' {}", line));
+                }
+            }
+        }
+
+        // Determine the property name (from r6_prop or method name)
+        let prop_name = ctx
+            .method
+            .method_attrs
+            .r6
+            .prop
+            .clone()
+            .unwrap_or_else(|| ctx.method.r_method_name());
+
+        // Check if there's a matching setter for this property
+        let setter = parsed_impl.find_setter_for_prop(&prop_name);
+
+        if let Some(setter_method) = setter {
+            // Combined getter/setter active binding
+            // Format: name = function(value) { if (missing(value)) getter else setter }
+            lines.push(format!(
+                "{}$set(\"active\", \"{}\", function(value) {{",
+                class_name, prop_name
+            ));
+            lines.push("  if (missing(value)) {".to_string());
+
+            // Getter call — same condition re-raise guard as the
+            // getter-only active binding path below.
+            let getter_call = ctx.instance_call("private$.ptr");
+            let getter_strategy = crate::ReturnStrategy::for_method(ctx.method);
+            let getter_builder = crate::MethodReturnBuilder::new(getter_call)
+                .with_strategy(getter_strategy)
+                .with_class_name(class_name.clone())
+                .with_return_class_from_method(ctx.method)
+                .with_indent(4);
+            lines.extend(getter_builder.build_r6_body());
+
+            lines.push("  } else {".to_string());
+
+            // Same `stopifnot` precondition block the standalone `set_*`
+            // method gets (audit 2026-07-06 finding 4): without it,
+            // `obj$prop <- <bad value>` skipped the R-level type check.
+            for check in active_setter_precondition_checks(setter_method) {
+                lines.push(format!("    {}", check));
+            }
+
+            // Setter call — construct directly, then re-raise any
+            // transported Rust condition (the bare `.Call()` used to
+            // discard the tagged condition value, silently dropping the
+            // assignment error).
+            let setter_c_ident = setter_method
+                .c_wrapper_ident(type_ident, parsed_impl.label.as_deref())
+                .to_string();
+            let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(&setter_c_ident)
+                .with_self("private$.ptr")
+                .with_args(&["value"])
+                .build();
+            lines.push(format!("    .val <- {}", setter_call));
+            lines.extend(crate::method_return_builder::condition_check_lines("    "));
+            lines.push("    invisible(self)".to_string());
+
+            lines.push("  }".to_string());
+            lines.push("})".to_string());
+        } else {
+            // Getter-only active binding (no parameters besides self)
+            // Format: name = function() { ... }
+            lines.push(format!(
+                "{}$set(\"active\", \"{}\", function() {{",
+                class_name, prop_name
+            ));
+
+            let call = ctx.instance_call("private$.ptr");
+            let strategy = crate::ReturnStrategy::for_method(ctx.method);
+            let return_builder = crate::MethodReturnBuilder::new(call)
+                .with_strategy(strategy)
+                .with_class_name(class_name.clone())
+                .with_return_class_from_method(ctx.method)
+                .with_indent(2); // top-level `$set` closure body indents 2 spaces
+            lines.extend(return_builder.build_r6_body());
+
+            lines.push("})".to_string());
+        }
+    }
 
     // If r_data_accessors is set, apply sidecar active bindings from #[derive(ExternalPtr)]
     if parsed_impl.r_data_accessors {
@@ -611,6 +645,16 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.extend(return_builder.build_r6_body());
 
         lines.push("}".to_string());
+    }
+
+    // Re-apply the requested `lock_class = TRUE` now that every `$set()` block —
+    // public methods, active bindings, and (above) any sidecar accessors — has
+    // run. The class was created with `lock_class = FALSE` (see the class-options
+    // block) precisely so those `$set` calls would succeed; `$lock()` restores
+    // the locked semantics. Emitted last so nothing further can `$set` it.
+    if lock_class {
+        lines.push(String::new());
+        lines.push(format!("{}$lock()", class_name));
     }
 
     lines.join("\n")

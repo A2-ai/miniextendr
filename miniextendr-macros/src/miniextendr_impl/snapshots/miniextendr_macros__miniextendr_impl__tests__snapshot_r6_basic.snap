@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 2966
+assertion_line: 3009
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Counter R6 Class
@@ -29,20 +29,6 @@ Counter <- R6::R6Class("Counter",
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
-    },
-    # Counter::get (1:1)
-    #' @description Get the current value
-    get = function() {
-      .val <- .Call(C_miniextendr_macros_Counter__get, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      .val
-    },
-    # Counter::increment (1:1)
-    #' @description Increment by one
-    increment = function() {
-      .val <- .Call(C_miniextendr_macros_Counter__increment, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-      invisible(self)
     }
   ),
   private = list(
@@ -52,6 +38,22 @@ Counter <- R6::R6Class("Counter",
   lock_class = FALSE,
   cloneable = FALSE
 )
+
+# Counter::get (1:1)
+#' @description Get the current value
+Counter$set("public", "get", function() {
+  .val <- .Call(C_miniextendr_macros_Counter__get, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
+
+# Counter::increment (1:1)
+#' @description Increment by one
+Counter$set("public", "increment", function() {
+  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = match.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  invisible(self)
+})
 
 # Counter::from_value (1:1)
 #' @description Create from value (static factory)
