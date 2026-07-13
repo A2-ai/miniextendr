@@ -14,6 +14,19 @@ follow-ups. Context: #1219 (Self-return re-wrapping, closed #1141) and #1232
 (cross-class auto-wrap, extended by #1251) already solved design 2's original
 motivation without markers — this plan does not touch that machinery.
 
+Gating decisions (maintainer, 2026-07-13, post-draft review):
+1. **Setter exemption CONFIRMED** — sidecar/active-binding setters (inventory
+   item 4) stay invisible this wave; follow-up filed as **#1343** (reference it
+   in the PR body).
+2. **Unit-NULL carve-out KEPT** — bare fns whose R value is `NULL` (no return
+   arrow, `-> ()`, `Option<()>`, `Result<(), ()>`, `Result<(), E>` Ok-path)
+   keep automatic `invisible(.val)`. "Marker-required" governs
+   **receiver-returning tails** (R6 chainable, self-ref builders, trait void
+   methods) — where the other five class systems are already visible — not
+   NULL returns, where auto-print is pure REPL noise. Markers/attr still
+   override in both directions (`Visible<()>` / `#[miniextendr(visible)]`
+   force a visible NULL, as `force_visible_unit` already pins).
+
 ## What already exists (do not rebuild)
 
 - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` **already exist for
@@ -35,11 +48,13 @@ motivation without markers — this plan does not touch that machinery.
 
 ## Implicit-invisibility inventory (every emission site, verified)
 
-1. **Bare fns, shape-derived**: `analyze_return_type`
+1. **Bare fns, shape-derived — RETAINED (unit-NULL carve-out, gating
+   decision 2)**: `analyze_return_type`
    (`miniextendr-macros/src/return_type_analysis.rs`) sets
    `is_invisible = true` for: no return arrow (`:93`), `-> ()` (`:99`),
    `Option<()>` (`:170`), `Result<(), ()>` (`:232`), `Result<(), E>` (`:261`).
-   Emitted as `invisible(.val)` at `lib.rs:1116-1118`.
+   Emitted as `invisible(.val)` at `lib.rs:1116-1118`. These five sites STAY;
+   only a marker or attr overrides them.
 2. **Inherent R6 chainable tail**: `ReturnStrategy::for_method`
    (`method_return_builder.rs:117-131`) classifies `&mut self -> ()` and
    self-ref builders as `ChainableMutation`; only the R6 tail wraps —
@@ -57,8 +72,8 @@ motivation without markers — this plan does not touch that machinery.
    `miniextendr_impl/r6_class.rs:527`. These are derive-/property-generated
    accessors with **no marker surface** (no user-written return type), and R
    replacement/assignment semantics make `x$f <- v` invisible regardless.
-   Keep them invisible this wave; file a `gh issue create` ("visibility
-   markers for derive-generated accessors") and reference it in the PR body.
+   Keep them invisible this wave; follow-up already filed as **#1343** —
+   reference it in the PR body.
 5. **EXEMPT — condition transport**: the two `invisible(NULL)` in the shared
    `.miniextendr_raise_condition` helper (emitted from
    `miniextendr-api/src/registry.rs`) are warning/message propagation, not
@@ -66,8 +81,11 @@ motivation without markers — this plan does not touch that machinery.
 
 Scale, measured on main's regenerated `rpkg/R/miniextendr-wrappers.R`:
 `invisible(self)` ×17, `invisible(x)` ×49, `invisible(.val)` ×113,
-`invisible(NULL)` ×2 (exempt) — **181 emitted sites, ~179 governed by this
-change**. Regenerate and re-grep for the authoritative list during the sweep.
+`invisible(NULL)` ×2 (exempt). With the unit-NULL carve-out (gating
+decision 2) the 113 `invisible(.val)` bare-fn sites are RETAINED — **the
+governed sweep is the ~66 receiver-returning sites** (17 `invisible(self)` +
+49 `invisible(x)`). Regenerate and re-grep for the authoritative list during
+the sweep.
 
 ## Design
 
@@ -95,9 +113,12 @@ change**. Regenerate and re-grep for the authoritative list during the sweep.
 3. **Bare fns**: at the top of `analyze_return_type`
    (`return_type_analysis.rs:76`), peel the marker; analyze the inner type
    exactly as today (so `Invisible<Option<i64>>` keeps Option semantics);
-   delete every shape-derived `is_invisible = true` (the five sites in
-   inventory item 1 — all become `false`). Visibility resolution:
-   marker > `force_invisible` attr if both present and they disagree →
+   KEEP the five shape-derived `is_invisible = true` sites (inventory item 1
+   — the unit-NULL carve-out, gating decision 2). Bare fns are therefore
+   purely additive: value returns are already visible, unit-NULL returns stay
+   invisible, and markers become the explicit override in both directions.
+   Visibility resolution: marker > `force_invisible` attr > shape default;
+   marker and attr present and disagreeing →
    `compile_error!` (agreeing duplicates are fine); attr alone keeps working.
    The C-wrapper conversion works on the peeled inner type; the generated
    call-glue unwraps the newtype (`.0`) before conversion —
@@ -135,8 +156,8 @@ change**. Regenerate and re-grep for the authoritative list during the sweep.
 
 | Signature (unmarked) | Today | After |
 |---|---|---|
-| bare fn `-> ()` / no arrow | `invisible(NULL)` | visible `NULL` (prints at REPL) |
-| bare fn `-> Option<()>` / `Result<(), E>` | invisible on success | visible `NULL` on success |
+| bare fn `-> ()` / no arrow | `invisible(NULL)` | **unchanged (unit-NULL carve-out)** |
+| bare fn `-> Option<()>` / `Result<(), E>` | invisible on success | **unchanged (unit-NULL carve-out)** |
 | R6 `&mut self -> ()` | `invisible(self)` | visible `self` (still chainable) |
 | R6/Env `&self -> Self` self-ref builder | `invisible(self)` | visible `self` |
 | Env/S3/S7/S4 `&mut self -> ()` | bare receiver (already visible) | unchanged |
@@ -152,8 +173,9 @@ of `visibility.rs`, not per call site.
 
 ## Fixture sweep (the bulk of the PR)
 
-7. `rpkg/src/rust/`: ~47 `&mut self` void methods across fixture files plus
-   the 113 unit-returning bare fns currently emitting `invisible(.val)`.
+7. `rpkg/src/rust/`: ~47 `&mut self` void methods across fixture files (the
+   113 unit-returning bare fns are UNCHANGED under the carve-out — no fixture
+   churn there).
    Policy: fixtures accept the new visible default EXCEPT (a) fixtures whose
    testthat assertions pin invisibility, and (b) a representative set that
    must exercise every explicit spelling. Extend
@@ -165,9 +187,9 @@ of `visibility.rs`, not per call site.
 8. testthat: update the 7 `withVisible`/`expect_invisible` pins —
    `test-visibility-more.R` (:2, :8), `test-coerce.R` (:108),
    `test-sidecar.R` (:321, :332, :343 — these pin EXEMPT setter sites and
-   must keep asserting invisible). Add new pins: unmarked unit fn is now
-   visible-NULL; unmarked R6 void method returns visible receiver; each new
-   marker fixture is invisible.
+   must keep asserting invisible). Add new pins: unmarked unit bare fn STAYS
+   invisible-NULL (carve-out pin); unmarked R6 void method returns visible
+   receiver; each new marker fixture is invisible.
 9. Macro unit tests + snapshots: `miniextendr_impl/tests.rs:1617-1670` and
    `miniextendr_impl_trait/tests.rs:486-514` assert `invisible(self)`/
    `invisible(x)` — rewrite to the new default + add marker-driven
@@ -180,7 +202,8 @@ of `visibility.rs`, not per call site.
     disagreement. `TRYBUILD=overwrite cargo test -p miniextendr-macros`, review
     the diff (CI is authoritative if rust-src spans differ — #1239).
 11. Docs/skills sweep: `lib.rs:129` return-type table row (`()` →
-    `invisible(NULL)`) and the attr docs at `lib.rs:527`; 22 `invisible`
+    `invisible(NULL)`) stays CORRECT under the carve-out — verify, don't
+    change; update the attr docs at `lib.rs:527`; 22 `invisible`
     mentions across 8 `docs/*.md` (notably `docs/CLASS_SYSTEMS.md`,
     `docs/MINIEXTENDR_ATTRIBUTE.md`, `docs/TROUBLESHOOTING.md`); 3 skills
     (`.claude/skills/miniextendr-{class-systems,connections,macros}/SKILL.md`).
@@ -206,7 +229,7 @@ just configure && just rcmdinstall && just force-document && just rcmdinstall
 just test 2>&1 > /tmp/1213-rust.log
 just devtools-test 2>&1 > /tmp/1213-devtools.log
 grep -E '\[ FAIL [0-9]+' /tmp/1213-devtools.log  # devtools::test always exits 0
-grep -c 'invisible(' rpkg/R/miniextendr-wrappers.R   # expect ONLY marked + exempt sites
+grep -c 'invisible(' rpkg/R/miniextendr-wrappers.R   # expect marked + exempt + unit-NULL bare-fn sites (~115 + marked)
 cargo clippy --workspace --all-targets --locked -- -D warnings  # + clippy_all/_s7 per ci.yml
 cargo fmt --all
 ```
@@ -228,12 +251,14 @@ Commit regenerated `NAMESPACE` + `man/*.Rd` in sync (pre-commit hook enforces;
 
 ## Done criteria
 
-- No shape-derived invisibility anywhere: unmarked returns are visible in all
-  six class systems, bare fns, and trait impls; markers + attributes (both
-  spellings, fn/method/trait) produce `invisible(...)`; exempt sites
-  unchanged; behavior table pinned by testthat; suites + three clippy legs +
-  fmt green; regenerated artifacts committed; `Fixes #1213` with the
-  follow-up issues (accessor markers; 2b; 2c if not already filed) linked.
+- No implicit receiver-returning invisibility: unmarked receiver returns are
+  visible in all six class systems and trait impls; unit-NULL bare-fn returns
+  keep automatic invisibility (carve-out, pinned by testthat); markers +
+  attributes (both spellings, fn/method/trait) produce `invisible(...)`;
+  exempt sites unchanged; behavior table pinned by testthat; suites + three
+  clippy legs + fmt green; regenerated artifacts committed; `Fixes #1213`
+  with the follow-up issues (#1343 accessor markers; 2b; 2c if not already
+  filed) linked.
 
 ## Escalation rule
 
