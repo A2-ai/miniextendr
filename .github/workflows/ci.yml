@@ -298,11 +298,15 @@ jobs:
       - name: Check docs index coverage
         shell: bash
         run: |
+          set -euo pipefail
           missing=0
           for doc in docs/*.md; do
             name=${doc##*/}
             [ "$name" = README.md ] && continue
-            if ! grep -Fq "$name" docs/README.md; then
+            # Match a real Markdown link target — `](name)` or `](name#anchor)` —
+            # so a filename that is merely a substring of another doc's link
+            # (e.g. COERCE.md inside R_COERCE.md) does not count as an entry.
+            if ! grep -Fq "]($name)" docs/README.md && ! grep -Fq "]($name#" docs/README.md; then
               echo "::error file=docs/README.md::missing index entry for $name"
               missing=1
             fi

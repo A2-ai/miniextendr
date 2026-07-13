@@ -37,6 +37,8 @@ framework.
   choice, with one-line guidance and links to deep-dives
 - **[Architecture](ARCHITECTURE.md)** -- Crate structure, call flow, how Rust
   talks to R
+- **[Package Map](PACKAGES.md)** -- Every package-like component in the repo:
+  core crates, support tools, R packages, and cross-package fixtures
 - **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp` / `IntoR`
   system, `NamedList`, `RValue`
 - **[Conditions](CONDITIONS.md)** -- Structured `error!`, `warning!`,

@@ -3,18 +3,31 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CACHE_DIR="${1:-$ROOT/ISSUES}"
+LIMIT=1000
 
 mkdir -p "$CACHE_DIR"
 cd "$ROOT"
 
 open_json="$(gh issue list \
   --state open \
-  --limit 1000 \
+  --limit "$LIMIT" \
   --json number,title,state,author,createdAt,updatedAt,labels,body,url)"
 closed_json="$(gh issue list \
   --state closed \
-  --limit 1000 \
+  --limit "$LIMIT" \
   --json number,title,closedAt)"
+
+open_count="$(jq 'length' <<<"$open_json")"
+closed_count="$(jq 'length' <<<"$closed_json")"
+
+# gh caps a single page at --limit; hitting it means the index is truncated.
+# Surface that instead of silently caching a partial ledger.
+if (( open_count >= LIMIT )); then
+  echo "WARNING: open-issue fetch hit the ${LIMIT}-issue cap; _open-index.json may be truncated. Raise LIMIT." >&2
+fi
+if (( closed_count >= LIMIT )); then
+  echo "WARNING: closed-issue fetch hit the ${LIMIT}-issue cap; _closed-index.json may be truncated. Raise LIMIT." >&2
+fi
 
 jq '
   sort_by(.number)
@@ -66,6 +79,4 @@ if (( ${#stale_issue_files[@]} > 0 )); then
   trash "${stale_issue_files[@]}"
 fi
 
-open_count="$(jq 'length' <<<"$open_json")"
-closed_count="$(jq 'length' <<<"$closed_json")"
 echo "Updated $CACHE_DIR ($open_count open issue bodies, $closed_count closed issue summaries, ${#stale_issue_files[@]} stale bodies trashed)."
