@@ -17,7 +17,7 @@ pub struct TypeB {
     pub val: String,
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl TypeA {
     pub fn new(val: i32) -> Self {
         TypeA { val }
@@ -27,7 +27,7 @@ impl TypeA {
     }
 }
 
-#[miniextendr]
+#[miniextendr(env)]
 impl TypeB {
     pub fn new(val: String) -> Self {
         TypeB { val }

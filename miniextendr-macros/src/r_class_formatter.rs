@@ -945,10 +945,8 @@ impl<'a> MethodDocBuilder<'a> {
                 if param_name == ".ptr" || param_name == "..." || param_name == "self" {
                     continue;
                 }
-                let already_documented = self
-                    .doc_tags
-                    .iter()
-                    .any(|t| t.starts_with(&format!("@param {}", param_name)));
+                let already_documented =
+                    crate::roxygen::param_documented(self.doc_tags, param_name);
                 if !already_documented {
                     // match_arg'd params get a placeholder the cdylib write-pass
                     // replaces with the rendered choice description (#210).

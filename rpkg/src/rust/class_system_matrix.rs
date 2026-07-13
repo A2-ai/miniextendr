@@ -117,7 +117,6 @@ impl CounterTraitS4 {
 
 /// @rdname CounterTraitS4
 /// @aliases s4_trait_MatrixCounter_custom_get,CounterTraitS4-method s4_trait_MatrixCounter_custom_add,CounterTraitS4-method
-/// @param x A CounterTraitS4 object.
 #[miniextendr(s4, internal)]
 impl MatrixCounter for CounterTraitS4 {
     fn custom_get(&self) -> i32 {

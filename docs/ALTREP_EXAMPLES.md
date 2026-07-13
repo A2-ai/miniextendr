@@ -20,8 +20,8 @@ Real-world examples of ALTREP usage patterns in miniextendr.
 use miniextendr_api::prelude::*;
 use std::cell::RefCell;
 
-#[derive(Altrep)]
-#[altrep(class = "DatabaseResultSet")]
+#[derive(AltrepList)]
+#[altrep(manual, class = "DatabaseResultSet")]
 pub struct DatabaseResultSet {
     connection_id: usize,
     query: String,
@@ -52,9 +52,10 @@ impl AltListData for DatabaseResultSet {
         row
     }
 }
-
-miniextendr_api::impl_altlist_from_data!(DatabaseResultSet);
 ```
+
+No explicit `impl_altlist_from_data!` call needed — `#[altrep(manual)]` on
+the `AltrepList` derive auto-emits the low-level bridge.
 
 **Benefits**:
 - Only fetches rows when accessed
@@ -81,8 +82,8 @@ use miniextendr_api::altrep_data::AltrepDataptr;
 use memmap2::Mmap;
 use std::fs::File;
 
-#[derive(Altrep)]
-#[altrep(class = "MappedFile")]
+#[derive(AltrepRaw)]
+#[altrep(manual, dataptr, class = "MappedFile")]
 pub struct MappedFile {
     _file: File,
     mmap: Mmap,
@@ -110,9 +111,11 @@ impl AltrepDataptr<u8> for MappedFile {
         Some(self.mmap.as_ptr())
     }
 }
-
-miniextendr_api::impl_altraw_from_data!(MappedFile, dataptr);
 ```
+
+No explicit `impl_altraw_from_data!` call — `#[altrep(manual, dataptr, ...)]`
+on the `AltrepRaw` derive auto-emits the low-level bridge wired to the
+`AltrepDataptr<u8>` impl above.
 
 **Benefits**:
 - Zero-copy file access
@@ -136,8 +139,8 @@ checksum <- sum(as.integer(file))  # Process entire file
 ```rust
 use miniextendr_api::prelude::*;
 
-#[derive(Altrep)]
-#[altrep(class = "SinewaveTimeSeries")]
+#[derive(AltrepReal)]
+#[altrep(manual, class = "SinewaveTimeSeries")]
 pub struct SinewaveTimeSeries {
     frequency: f64,
     amplitude: f64,
@@ -162,9 +165,10 @@ impl AltRealData for SinewaveTimeSeries {
         Some(true)  // Mathematical function, no NAs
     }
 }
-
-miniextendr_api::impl_altreal_from_data!(SinewaveTimeSeries);
 ```
+
+No explicit `impl_altreal_from_data!` call needed — `#[altrep(manual)]` on
+the `AltrepReal` derive auto-emits the low-level bridge.
 
 **Benefits**:
 - O(1) memory regardless of length
@@ -189,8 +193,8 @@ max(wave)           # Find peak (should be ~1.0)
 use miniextendr_api::prelude::*;
 use std::collections::HashMap;
 
-#[derive(Altrep)]
-#[altrep(class = "SparseVector")]
+#[derive(AltrepInteger)]
+#[altrep(manual, class = "SparseVector")]
 pub struct SparseVector {
     length: usize,
     default_value: i32,
@@ -224,9 +228,10 @@ impl AltIntegerData for SparseVector {
         Some(stored_sum + (self.default_value as i64) * n_default)
     }
 }
-
-miniextendr_api::impl_altinteger_from_data!(SparseVector);
 ```
+
+No explicit `impl_altinteger_from_data!` call needed — `#[altrep(manual)]` on
+the `AltrepInteger` derive auto-emits the low-level bridge.
 
 **Benefits**:
 - Memory proportional to non-default values
@@ -256,8 +261,8 @@ use miniextendr_api::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-#[derive(Altrep)]
-#[altrep(class = "ApiStringCache")]
+#[derive(AltrepString)]
+#[altrep(manual, class = "ApiStringCache")]
 pub struct ApiStringCache {
     api_endpoint: String,
     item_ids: Vec<String>,
@@ -297,9 +302,10 @@ impl AltStringData for ApiStringCache {
         Some(false)  // API might return NAs
     }
 }
-
-miniextendr_api::impl_altstring_from_data!(ApiStringCache);
 ```
+
+No explicit `impl_altstring_from_data!` call needed — `#[altrep(manual)]` on
+the `AltrepString` derive auto-emits the low-level bridge.
 
 **Benefits**:
 - Lazy loading from API

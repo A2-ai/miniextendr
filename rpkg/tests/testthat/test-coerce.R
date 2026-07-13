@@ -81,6 +81,22 @@ test_that("coerce attribute works for Vec<u16>", {
   expect_error(miniextendr:::test_coerce_attr_vec_u16(c(1.5, 2.5, 3.5)), "must be an integer vector", fixed = TRUE)
 })
 
+test_that("coerced Vec<u16> batches every failing element (issue #1217 item 1)", {
+  # Regression for the macro-generated `CoercionMapping::Vec` path: it used to
+  # short-circuit at the first element that failed to coerce, hiding later
+  # failures. Two out-of-range elements (indices 0 and 2; index 1 is valid) must
+  # BOTH surface in one batched diagnostic, matching the #1192 grammar
+  # ("<container> conversion failed: invalid value at index <i>: <err>; ...").
+  err <- expect_error(
+    miniextendr:::test_coerce_attr_vec_u16(c(-1L, 5L, 70000L))
+  )
+  msg <- conditionMessage(err)
+  expect_match(msg, "failed to coerce parameter 'x'", fixed = TRUE)
+  expect_match(msg, "Vec<u16> conversion failed", fixed = TRUE)
+  expect_match(msg, "invalid value at index 0", fixed = TRUE)
+  expect_match(msg, "invalid value at index 2", fixed = TRUE)
+})
+
 test_that("coerce attribute works for f32", {
   expect_equal(miniextendr:::test_coerce_attr_f32(3.14), 3.14, tolerance = 1e-6)
   expect_equal(miniextendr:::test_coerce_attr_f32(-100.5), -100.5, tolerance = 1e-6)

@@ -31,9 +31,27 @@
 //! third path with value-based runtime checks.
 
 use crate::coerce::TryCoerce;
-use crate::from_r::TryFromSexp;
+use crate::from_r::{BatchedErrors, SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::{SEXP, SEXPTYPE, SexpExt};
+
+/// Fold a batched strict-vec [`BatchedErrors`] into the single panic every
+/// `checked_vec_*_into_sexp` raises, under `container` (e.g. `"Vec<i64>"`).
+///
+/// Reuses [`BatchedErrors::into_error`]'s `"<container> conversion failed:
+/// invalid value at index <i>: ...; and N more"` grammar (#1192/#1097), but
+/// extracts the inner message directly rather than going through
+/// `SexpError`'s `Display` impl — that impl wraps every variant as `"invalid
+/// value: {msg}"`, which would read as a doubled "invalid value: Vec<i64>
+/// conversion failed: invalid value at index 0: ..." in a panic message.
+fn panic_strict_vec_batched(container: &str, errors: BatchedErrors) -> ! {
+    let SexpError::InvalidValue(msg) = errors.into_error(container) else {
+        unreachable!("BatchedErrors::into_error always returns SexpError::InvalidValue")
+    };
+    panic!(
+        "strict conversion failed: {msg}; use a non-strict function to allow lossy f64 widening"
+    );
+}
 
 /// Convert `i64` to R integer, panicking if outside i32 range.
 ///
@@ -82,43 +100,54 @@ pub fn checked_into_sexp_usize(val: usize) -> SEXP {
 }
 
 /// Convert `Vec<i64>` to R integer vector, panicking if any element is outside i32 range.
+///
+/// Walks the whole vector, batching every out-of-range element into one
+/// panic instead of aborting at the first — see [`panic_strict_vec_batched`].
 pub fn checked_vec_i64_into_sexp(val: Vec<i64>) -> SEXP {
-    let coerced: Vec<i32> = val
-        .into_iter()
-        .map(|x| {
-            if x > i32::MIN as i64 && x <= i32::MAX as i64 {
-                x as i32
-            } else {
-                panic!(
-                    "strict conversion failed: i64 value {} is outside R integer range \
-                     ({}..={}); use a non-strict function to allow lossy f64 widening",
-                    x,
+    let mut coerced: Vec<i32> = Vec::with_capacity(val.len());
+    let mut errors = BatchedErrors::default();
+    for (i, x) in val.into_iter().enumerate() {
+        if x > i32::MIN as i64 && x <= i32::MAX as i64 {
+            coerced.push(x as i32);
+        } else {
+            errors.push(|| {
+                format!(
+                    "invalid value at index {i}: i64 value {x} is outside R integer range \
+                     ({}..={})",
                     i32::MIN as i64 + 1,
                     i32::MAX
-                );
-            }
-        })
-        .collect();
+                )
+            });
+        }
+    }
+    if !errors.is_empty() {
+        panic_strict_vec_batched("Vec<i64>", errors);
+    }
     coerced.into_sexp()
 }
 
 /// Convert `Vec<u64>` to R integer vector, panicking if any element > i32::MAX.
+///
+/// Walks the whole vector, batching every out-of-range element into one
+/// panic instead of aborting at the first — see [`panic_strict_vec_batched`].
 pub fn checked_vec_u64_into_sexp(val: Vec<u64>) -> SEXP {
-    let coerced: Vec<i32> = val
-        .into_iter()
-        .map(|x| {
-            if x <= i32::MAX as u64 {
-                x as i32
-            } else {
-                panic!(
-                    "strict conversion failed: u64 value {} exceeds R integer max ({}); \
-                     use a non-strict function to allow lossy f64 widening",
-                    x,
+    let mut coerced: Vec<i32> = Vec::with_capacity(val.len());
+    let mut errors = BatchedErrors::default();
+    for (i, x) in val.into_iter().enumerate() {
+        if x <= i32::MAX as u64 {
+            coerced.push(x as i32);
+        } else {
+            errors.push(|| {
+                format!(
+                    "invalid value at index {i}: u64 value {x} exceeds R integer max ({})",
                     i32::MAX
-                );
-            }
-        })
-        .collect();
+                )
+            });
+        }
+    }
+    if !errors.is_empty() {
+        panic_strict_vec_batched("Vec<u64>", errors);
+    }
     coerced.into_sexp()
 }
 
@@ -133,50 +162,66 @@ pub fn checked_vec_usize_into_sexp(val: Vec<usize>) -> SEXP {
 }
 
 /// Convert `Vec<Option<i64>>` to R integer vector in strict mode.
-/// Panics if any `Some(x)` value is outside i32 range. `None` becomes `NA_INTEGER`.
+///
+/// Panics if any `Some(x)` value is outside i32 range. `None` becomes
+/// `NA_INTEGER`. Walks the whole vector, batching every out-of-range `Some`
+/// into one panic instead of aborting at the first — see
+/// [`panic_strict_vec_batched`].
 pub fn checked_vec_option_i64_into_sexp(val: Vec<Option<i64>>) -> SEXP {
-    let coerced: Vec<Option<i32>> = val
-        .into_iter()
-        .map(|opt| match opt {
+    let mut coerced: Vec<Option<i32>> = Vec::with_capacity(val.len());
+    let mut errors = BatchedErrors::default();
+    for (i, opt) in val.into_iter().enumerate() {
+        match opt {
             Some(x) => {
                 if x > i32::MIN as i64 && x <= i32::MAX as i64 {
-                    Some(x as i32)
+                    coerced.push(Some(x as i32));
                 } else {
-                    panic!(
-                        "strict conversion failed: i64 value {} is outside R integer range \
-                         ({}..={}); use a non-strict function to allow lossy f64 widening",
-                        x,
-                        i32::MIN as i64 + 1,
-                        i32::MAX
-                    );
+                    errors.push(|| {
+                        format!(
+                            "invalid value at index {i}: i64 value {x} is outside R integer range \
+                             ({}..={})",
+                            i32::MIN as i64 + 1,
+                            i32::MAX
+                        )
+                    });
                 }
             }
-            None => None,
-        })
-        .collect();
+            None => coerced.push(None),
+        }
+    }
+    if !errors.is_empty() {
+        panic_strict_vec_batched("Vec<Option<i64>>", errors);
+    }
     coerced.into_sexp()
 }
 
 /// Convert `Vec<Option<u64>>` to R integer vector in strict mode.
+///
+/// Walks the whole vector, batching every out-of-range `Some` into one
+/// panic instead of aborting at the first — see [`panic_strict_vec_batched`].
 pub fn checked_vec_option_u64_into_sexp(val: Vec<Option<u64>>) -> SEXP {
-    let coerced: Vec<Option<i32>> = val
-        .into_iter()
-        .map(|opt| match opt {
+    let mut coerced: Vec<Option<i32>> = Vec::with_capacity(val.len());
+    let mut errors = BatchedErrors::default();
+    for (i, opt) in val.into_iter().enumerate() {
+        match opt {
             Some(x) => {
                 if x <= i32::MAX as u64 {
-                    Some(x as i32)
+                    coerced.push(Some(x as i32));
                 } else {
-                    panic!(
-                        "strict conversion failed: u64 value {} exceeds R integer max ({}); \
-                         use a non-strict function to allow lossy f64 widening",
-                        x,
-                        i32::MAX
-                    );
+                    errors.push(|| {
+                        format!(
+                            "invalid value at index {i}: u64 value {x} exceeds R integer max ({})",
+                            i32::MAX
+                        )
+                    });
                 }
             }
-            None => None,
-        })
-        .collect();
+            None => coerced.push(None),
+        }
+    }
+    if !errors.is_empty() {
+        panic_strict_vec_batched("Vec<Option<u64>>", errors);
+    }
     coerced.into_sexp()
 }
 
@@ -539,6 +584,85 @@ mod tests {
     fn u64_out_of_range_panics() {
         let result = std::panic::catch_unwind(|| checked_into_sexp_u64(i32::MAX as u64 + 1));
         assert!(result.is_err());
+    }
+
+    /// Downcast a `panic!` payload (produced via format args, so always a
+    /// `String`) into an owned `String` for message assertions.
+    fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+        *payload
+            .downcast::<String>()
+            .expect("panic payload should be a String")
+    }
+
+    #[test]
+    fn vec_i64_batches_multiple_out_of_range_indices() {
+        let result =
+            std::panic::catch_unwind(|| checked_vec_i64_into_sexp(vec![1, i64::MAX, 2, i64::MIN]));
+        let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
+        assert!(
+            msg.starts_with("strict conversion failed: Vec<i64> conversion failed:"),
+            "{msg}"
+        );
+        assert!(msg.contains("invalid value at index 1: i64 value"), "{msg}");
+        assert!(msg.contains("invalid value at index 3: i64 value"), "{msg}");
+        assert!(
+            !msg.contains("and "),
+            "should not summarize under the cap: {msg}"
+        );
+        assert!(
+            msg.ends_with("use a non-strict function to allow lossy f64 widening"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn vec_i64_batches_caps_and_summarizes_remainder() {
+        let vals: Vec<i64> = std::iter::repeat_n(i64::MAX, 15).collect();
+        let result = std::panic::catch_unwind(|| checked_vec_i64_into_sexp(vals));
+        let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
+        assert!(msg.contains("and 5 more"), "{msg}");
+    }
+
+    #[test]
+    fn vec_u64_batches_multiple_out_of_range_indices() {
+        let bad = i32::MAX as u64 + 1;
+        let result = std::panic::catch_unwind(|| checked_vec_u64_into_sexp(vec![0, bad, 1, bad]));
+        let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
+        assert!(
+            msg.starts_with("strict conversion failed: Vec<u64> conversion failed:"),
+            "{msg}"
+        );
+        assert!(msg.contains("invalid value at index 1: u64 value"), "{msg}");
+        assert!(msg.contains("invalid value at index 3: u64 value"), "{msg}");
+    }
+
+    #[test]
+    fn vec_option_i64_batches_multiple_out_of_range_indices() {
+        let result = std::panic::catch_unwind(|| {
+            checked_vec_option_i64_into_sexp(vec![Some(1), Some(i64::MAX), None, Some(i64::MIN)])
+        });
+        let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
+        assert!(
+            msg.starts_with("strict conversion failed: Vec<Option<i64>> conversion failed:"),
+            "{msg}"
+        );
+        assert!(msg.contains("invalid value at index 1: i64 value"), "{msg}");
+        assert!(msg.contains("invalid value at index 3: i64 value"), "{msg}");
+    }
+
+    #[test]
+    fn vec_option_u64_batches_multiple_out_of_range_indices() {
+        let bad = i32::MAX as u64 + 1;
+        let result = std::panic::catch_unwind(|| {
+            checked_vec_option_u64_into_sexp(vec![Some(0), Some(bad), None, Some(bad)])
+        });
+        let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
+        assert!(
+            msg.starts_with("strict conversion failed: Vec<Option<u64>> conversion failed:"),
+            "{msg}"
+        );
+        assert!(msg.contains("invalid value at index 1: u64 value"), "{msg}");
+        assert!(msg.contains("invalid value at index 3: u64 value"), "{msg}");
     }
 }
 // endregion

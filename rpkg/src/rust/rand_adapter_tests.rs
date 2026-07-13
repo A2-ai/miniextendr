@@ -64,7 +64,7 @@ pub fn rand_rdistributions_sample() -> Vec<f64> {
 pub struct SeededRng(RefCell<StdRng>);
 
 /// SeededRng inherent methods: constructor.
-#[miniextendr]
+#[miniextendr(env)]
 impl SeededRng {
     /// @param seed Integer seed (absolute value is used).
     fn new(seed: i32) -> Self {
@@ -75,7 +75,7 @@ impl SeededRng {
 }
 
 /// RRngOps trait implementation for SeededRng (interior-mutable StdRng).
-#[miniextendr]
+#[miniextendr(env)]
 impl miniextendr_api::rand_impl::RRngOps for SeededRng {
     fn random_f64(&self) -> f64 {
         self.0.borrow_mut().random()
@@ -166,7 +166,7 @@ pub struct SeededNormal {
 
 /// SeededNormal inherent methods: constructor.
 #[cfg(feature = "rand_distr")]
-#[miniextendr]
+#[miniextendr(env)]
 impl SeededNormal {
     /// @param mean Mean of the normal distribution.
     /// @param sd Standard deviation (must be finite).
@@ -182,7 +182,7 @@ impl SeededNormal {
 
 /// RDistributionOps trait implementation for SeededNormal.
 #[cfg(feature = "rand_distr")]
-#[miniextendr]
+#[miniextendr(env)]
 impl miniextendr_api::rand_impl::RDistributionOps<f64> for SeededNormal {
     fn sample(&self) -> f64 {
         use miniextendr_api::rand_distr::Distribution;

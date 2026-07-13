@@ -963,7 +963,7 @@ impl MiniextendrFunctionParsed {
 
     // region: Codegen helpers
 
-    /// Returns `true` if this function needs an internal C wrapper (`C_<name>` function).
+    /// Returns `true` if this function needs an internal C wrapper (`C_<crate>_<name>` function).
     ///
     /// Rust-ABI functions (no explicit `extern`) need a generated `extern "C-unwind"` wrapper
     /// that handles SEXP conversion and error propagation. Functions already declared as
@@ -975,7 +975,7 @@ impl MiniextendrFunctionParsed {
     /// Returns the identifier for the generated `const &str` holding the R wrapper code.
     ///
     /// The R wrapper is a string constant containing the R function definition that
-    /// calls `.Call(C_<name>, ...)`. It is collected via linkme distributed slices to
+    /// calls `.Call(C_<crate>_<name>, ...)`. It is collected via linkme distributed slices to
     /// produce the `R/miniextendr_wrappers.R` file.
     pub(crate) fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(self.ident())
@@ -983,12 +983,14 @@ impl MiniextendrFunctionParsed {
 
     /// Returns the identifier for the C-callable entry point.
     ///
-    /// - **Rust ABI functions**: Returns `C_<name>` (the generated wrapper function).
+    /// - **Rust ABI functions**: Returns `C_<crate>_<name>` (the generated wrapper
+    ///   function, crate-prefixed for webR cross-package symbol uniqueness — #1273).
     /// - **`extern "C-unwind"` functions**: Returns the function's own name, or the
-    ///   value from `#[export_name = "..."]` if present.
+    ///   value from `#[export_name = "..."]` if present. The user owns these symbols,
+    ///   including their cross-package uniqueness under webR.
     pub(crate) fn c_wrapper_ident(&self) -> syn::Ident {
         if self.uses_internal_c_wrapper() {
-            quote::format_ident!("C_{}", self.ident())
+            crate::naming::bare_fn_c_wrapper_ident(self.ident())
         } else {
             // For extern functions, check for #[export_name = "..."]
             self.export_name_ident()
@@ -1183,7 +1185,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) doc: Option<String>,
     /// Custom C symbol name for the generated wrapper.
     ///
-    /// Overrides the default `C_<fn_name>` naming convention.
+    /// Overrides the default `C_<crate>_<fn_name>` naming convention. The value is used
+    /// verbatim (no crate prefix) — the author owns cross-package uniqueness on webR (#1273).
     /// Must be a valid C identifier (alphanumeric + underscore, starting with letter or underscore).
     pub(crate) c_symbol: Option<String>,
     /// Override R wrapper function name.

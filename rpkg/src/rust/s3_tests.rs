@@ -10,8 +10,6 @@ pub struct S3Counter {
 }
 
 /// S3 counter class with constructor, accessor, and mutation methods.
-/// @param x An object.
-/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl S3Counter {
     /// Creates a new counter with the given initial value.
@@ -67,7 +65,6 @@ pub struct S3NonGenericCollision {
 }
 
 /// S3 class exercising the #1248 base-name-collision fix.
-/// @param values Numeric vector held by the gauge.
 #[miniextendr(s3)]
 impl S3NonGenericCollision {
     /// @param values Numeric vector held by the gauge.
@@ -96,7 +93,6 @@ pub struct S3NonGenericCollisionSecond {
 
 /// Second S3 class sharing the shadowed `var` generic with
 /// [`S3NonGenericCollision`].
-/// @param values Numeric vector held by the gauge.
 #[miniextendr(s3)]
 impl S3NonGenericCollisionSecond {
     /// @param values Numeric vector held by the gauge.

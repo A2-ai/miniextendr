@@ -49,3 +49,16 @@ test_that("Option<Enum> None row NA-fills tag and payload", {
   expect_equal(df$action_file, c(5.0, NA))
   expect_equal(df$action_weight, c(1.0, NA))
 })
+
+test_that("flattened enum data.frame round-trips back through the reader (#1060)", {
+  # Writer produces the flattened frame; the Rust reader deserializes it back
+  # into Vec<AuditRow> and re-serializes it. A symmetric reader returns an
+  # identical frame.
+  df <- flatten_enum_field_fixture()
+  round <- flatten_enum_field_roundtrip(df)
+  expect_s3_class(round, "data.frame")
+  # Same columns (order-independent) and same values after the round trip.
+  expect_setequal(names(round), names(df))
+  round <- round[names(df)]
+  expect_equal(round, df)
+})

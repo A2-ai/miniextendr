@@ -34,4 +34,12 @@ SharedData
 }
 \description{
 A point with label using Env-style class system.
+
+Get the x coordinate
+
+Get the y coordinate
+
+Get the label
+
+Create a new SharedData
 }

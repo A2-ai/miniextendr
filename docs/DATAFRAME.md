@@ -483,7 +483,7 @@ for (key, rows) in grouped.iter() { /* key: &GroupKey, rows: &[usize] */ }
 // per-group sub-frames — root each one as you go (push protects it)
 let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
 for (key, sub) in grouped.frames() {
-    out = out.push(key.label(), sub);
+    out = out.push(key.label(), *sub);
 }
 let named_list_of_frames = out.build();
 
@@ -499,6 +499,73 @@ columns error** — grouping on floating point is a footgun; `cut()` or
 
 **NA keys form one group, ordered last.** This deliberately deviates from R's
 `split()`, which silently drops NA-keyed rows.
+
+### Composite keys: `DataFrame::group_by_multi`
+
+`group_by_multi(&["a", "b"])` groups on several columns at once, keying each
+group by a `GroupKey::Tuple` of the per-column scalar keys (same supported types
+and errors as `group_by`):
+
+```rust
+let grouped = df.group_by_multi(&["site", "day"])?;
+for (key, sub) in grouped.frames() {
+    out = out.push(key.label(), *sub); // label(): "site.day", "." separator
+}
+```
+
+Non-NA groups match `split(df, interaction(a, b, …, drop = TRUE))` — the first
+column varies fastest (R `interaction()`'s default, `lex.order = FALSE`), each
+column ordered as `group_by` would order it alone. For character keys the match
+is exact for keys whose byte order coincides with the session's collation —
+always true in the C locale; single-case ASCII in practice (`en_US.UTF-8`
+collates `a A b B` where byte order gives `A B a b`). This is inherited from
+`group_by`'s byte-order sort for character keys (see above). Labels join
+element labels with `.` (interaction's default separator).
+
+**NA extends the single-column convention.** `interaction()` maps any row with
+an NA in *any* component to NA and `split()` drops it; `group_by_multi` instead
+keeps such rows, forming one trailing group per distinct NA-containing tuple, in
+first-encounter row order. An **empty** column slice is an error; a
+**single-column** slice delegates to `group_by` and yields scalar keys (never
+1-tuples), so downstream matches on `GroupKey` never have to special-case them.
+
+### Honoring a dplyr `grouped_df`: `DataFrame::group_by_metadata`
+
+`group_by` / `group_by_multi` **compute** grouping from your chosen columns.
+When a `#[miniextendr]` function receives a frame that dplyr has **already**
+grouped (a `grouped_df`), `group_by_metadata()` reads that existing grouping —
+**respecting the caller's grouping instead of recomputing it**:
+
+```rust
+// df arrived as dplyr::group_by(data, site, day)
+let grouped = df.group_by_metadata()?;
+for (key, sub) in grouped.frames() {
+    out = out.push(key.label(), *sub); // one entry per dplyr group, in dplyr order
+}
+```
+
+dplyr stores the grouping in `attr(df, "groups")`: a data frame whose leading
+columns are the group-key columns (one row per group, in dplyr's order) and
+whose trailing `.rows` list-column holds each group's **1-based** row indices.
+`group_by_metadata` ingests that verbatim into the same `GroupedDataFrame` the
+compute verbs return — single key column → scalar `GroupKey`, multiple → a
+`.`-joined `GroupKey::Tuple` (same supported key types as `group_by`). It
+preserves the `groups`-frame order exactly (no re-sorting, no NA reordering),
+converts every `.rows` index from 1-based to 0-based, and **keeps** `.drop =
+FALSE` empty groups as groups with empty index vectors (mirroring `group_by`'s
+retention of empty factor levels).
+
+Unlike `group_by`, this does **no** recomputation: a plain (non-grouped) frame
+is a `NotGroupedDataFrame` error — callers who want the framework to compute
+grouping use `group_by` / `group_by_multi`. Other errors: `MissingGroupRows`
+(the `groups` frame lacks a `.rows` column), `BadGroupRows` (a `.rows` element
+is not an integer/integerish vector), and `GroupIndexOutOfRange` (a `.rows`
+index is `< 1` or `> nrow`).
+
+Degenerate edge: a `groups` frame with **zero** key columns (e.g. a dplyr
+`rowwise_df`, whose `groups` frame is just `.rows`) yields empty-`Tuple` keys
+with empty labels — that shape is outside the documented `grouped_df` scope, so
+don't pass rowwise frames here.
 
 ## Parallel fast paths (`feature = "rayon"`)
 
@@ -606,6 +673,13 @@ A single error type covers every failure mode of both verbs:
 | `BadRowNames(msg)` | Could not extract `nrow` from the `row.names` attribute. |
 | `UnequalLengths { expected, column, actual }` | Columns have unequal lengths. |
 | `UnnamedColumns` | A row could not be turned into named columns. |
+| `NoSuchColumn(name)` | `group_by` referenced a column name that does not exist. |
+| `EmptyGroupColumns` | `group_by_multi` was called with an empty column slice. |
+| `UnsupportedGroupColumn { column, type_of }` | A key column has no grouping semantics (double, list-column, …). |
+| `NotGroupedDataFrame` | `group_by_metadata` on a frame with no dplyr `groups` metadata. |
+| `MissingGroupRows` | The `groups` frame has no `.rows` list-column. |
+| `BadGroupRows { group, type_of }` | A `.rows` element is not an integer/integerish index vector. |
+| `GroupIndexOutOfRange { group, value, nrow }` | A `.rows` index is `< 1` or `> nrow`. |
 | `Conversion(msg)` | A serde or other conversion failure, carried as a message (also covers "this shape has no reader"). |
 
 It implements `std::error::Error` and `From<RSerdeError>`, so `?` works in functions that mix serde and data-frame conversions.

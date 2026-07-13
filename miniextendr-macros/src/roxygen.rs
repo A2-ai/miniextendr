@@ -721,18 +721,23 @@ pub(crate) fn strip_method_tags(
             type_name,
             tag.trim()
         );
-        let ident = quote::format_ident!(
-            "_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}_{}_{}",
+        let suffix = format!(
+            "{}_{}_{}",
             type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
             block_id,
             warning_id
         );
+        let ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}", suffix);
+        let use_ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_USE_{}", suffix);
         warning_id += 1;
         warnings.extend(quote_spanned! { span =>
             #[deprecated(note = #msg)]
             #[doc(hidden)]
-            #[allow(dead_code)]
+            #[allow(dead_code, non_upper_case_globals)]
             const #ident: () = ();
+            #[doc(hidden)]
+            #[allow(dead_code, non_upper_case_globals)]
+            const #use_ident: () = #ident;
         });
     }
 
@@ -741,23 +746,70 @@ pub(crate) fn strip_method_tags(
 
 /// Extract the set of parameter names declared via `@param` in a list of roxygen tags.
 ///
-/// For each `@param <name> <desc>` tag in `tags`, extracts `<name>` and inserts it
-/// into the returned `HashSet`. Used by R6 class generators to build the set of
-/// class-level params so method param loops can suppress `(no documentation available)`
-/// for names already covered at class level (roxygen2 8.0.0 inherits class-level
-/// `@param` tags into all methods automatically).
+/// For each `@param <names> <desc>` tag in `tags`, extracts `<names>` and inserts
+/// each comma-separated name into the returned `HashSet`. roxygen2 supports
+/// documenting several params in one tag (`@param a,b,c desc` documents `a`,
+/// `b`, and `c`) — the name token is split on `,` (and each piece trimmed
+/// defensively, though roxygen2's own syntax has no spaces around the commas)
+/// so multi-name tags don't collapse to a single name. Used by R6 class
+/// generators to build the set of class-level params so method param loops
+/// can suppress `(no documentation available)` for names already covered at
+/// class level (roxygen2 8.0.0 inherits class-level `@param` tags into all
+/// methods automatically).
 pub(crate) fn extract_param_names(tags: &[String]) -> HashSet<String> {
     let mut names = HashSet::new();
     for tag in tags {
-        let trimmed = tag.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("@param ") {
-            let name = rest.split_whitespace().next().unwrap_or("").to_string();
+        let Some(names_token) = param_names_token(tag) else {
+            continue;
+        };
+        for name in names_token.split(',') {
+            let name = name.trim();
             if !name.is_empty() {
-                names.insert(name);
+                names.insert(name.to_string());
             }
         }
     }
     names
+}
+
+/// Returns `true` if `name` is documented by any `@param` tag in `tags`.
+///
+/// A tag documents `name` if `name` is exactly one of the comma-separated
+/// names in its `@param <names> <desc>` name token (see
+/// [`extract_param_names`]). This is an **exact-membership** check, not a
+/// prefix match — `starts_with(&format!("@param {name}"))` was the previous
+/// (buggy) approach: it misses every name after the first in a comma-list
+/// tag (`@param a,b,c desc` "documents" only `a`, so `b`/`c` get a spurious
+/// `(no documentation available)` filler that roxygen2 then merges into a
+/// duplicate `\item{b}` and `\item{c}` in the rendered Rd — an
+/// `R CMD check` `checking Rd \usage sections` WARNING), and it also
+/// false-positives on names that are prefixes of other names (`@param x2
+/// desc` looks like it documents `x` too).
+pub(crate) fn param_documented(tags: &[String], name: &str) -> bool {
+    tags.iter().any(|tag| tag_documents_param(tag, name))
+}
+
+/// Like [`param_documented`] but returns the matching tag itself rather than
+/// a bool, for callers that reuse the tag's rendered text verbatim (S7
+/// constructor param doc forwarding pushes the found tag as-is).
+pub(crate) fn find_param_tag<'a>(tags: &'a [String], name: &str) -> Option<&'a String> {
+    tags.iter().find(|tag| tag_documents_param(tag, name))
+}
+
+/// Shared predicate: does this single `@param` tag document `name`?
+fn tag_documents_param(tag: &str, name: &str) -> bool {
+    let Some(names_token) = param_names_token(tag) else {
+        return false;
+    };
+    names_token.split(',').any(|n| n.trim() == name)
+}
+
+/// Returns the `@param` name token (e.g. `a,b,c` in `@param a,b,c desc`) of a
+/// single tag, or `None` if `tag` isn't an `@param` tag.
+fn param_names_token(tag: &str) -> Option<&str> {
+    let trimmed = tag.trim_start();
+    let rest = trimmed.strip_prefix("@param ")?;
+    rest.split_whitespace().next()
 }
 
 /// Split an R formals/argument string on **top-level** commas only.
@@ -846,18 +898,23 @@ pub(crate) fn strip_method_tags_r6(
             type_name,
             tag.trim()
         );
-        let ident = quote::format_ident!(
-            "_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}_{}_{}",
+        let suffix = format!(
+            "{}_{}_{}",
             type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
             block_id,
             warning_id
         );
+        let ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}", suffix);
+        let use_ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_USE_{}", suffix);
         warning_id += 1;
         warnings.extend(quote_spanned! { span =>
             #[deprecated(note = #msg)]
             #[doc(hidden)]
-            #[allow(dead_code)]
+            #[allow(dead_code, non_upper_case_globals)]
             const #ident: () = ();
+            #[doc(hidden)]
+            #[allow(dead_code, non_upper_case_globals)]
+            const #use_ident: () = #ident;
         });
     }
 
