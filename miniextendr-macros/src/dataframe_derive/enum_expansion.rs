@@ -29,15 +29,18 @@ use std::collections::HashMap;
 /// - `impl IntoDataFrame` (companion → R data.frame) and `impl ColumnarFrame`
 ///   (rows ↔ the pure-Rust companion: `from_rows` / `from_rows_par`)
 /// - `impl From<Vec<Enum>>` (sequential row->column transposition)
-/// - `to_dataframe_split()` on the enum — the split (one-`data.frame`-per-variant)
-///   representation, the one verb with no trait home yet
+/// - `impl DataFrameRowSplit` on the enum — the split
+///   (one-`data.frame`-per-variant) representation, surfaced as
+///   `rows.into_dataframe_split()` via `IntoDataFrameSplit`'s blanket impl
 ///
 /// The write/read verbs are the trait surface — `rows.into_dataframe()?`
-/// (`IntoDataFrame` / `AsDataFrameExt`), `Vec::<Row>::from_dataframe(&df)?`
+/// (`IntoDataFrame` / `AsDataFrameExt`), `rows.into_dataframe_split()`
+/// (`IntoDataFrameSplit`), `Vec::<Row>::from_dataframe(&df)?`
 /// (`FromDataFrame`) or the one-call `Row::try_from_dataframe(sexp)` reader, and the
-/// pure-Rust `ColumnarFrame` companion verbs. The row type keeps a `#[doc(hidden)]`
-/// `to_dataframe(rows) -> companion` helper only for the nested-companion write path
-/// (`Inner::to_dataframe(..)` without naming the inner companion type).
+/// pure-Rust `ColumnarFrame` companion verbs. The row type keeps two `#[doc(hidden)]`
+/// helpers: `to_dataframe(rows) -> companion` for the nested-companion write path
+/// (`Inner::to_dataframe(..)` without naming the inner companion type) and
+/// `to_dataframe_split(rows)`, the body holder behind the `DataFrameRowSplit` bridge.
 ///
 /// # Variant support
 ///
@@ -1687,7 +1690,7 @@ pub(super) fn derive_enum_dataframe(
     // No IntoList assertion for align enums — they go through the companion struct path,
     // not the `DataFrame<T>` path, so IntoList is not required.
 
-    // region: Generate to_dataframe_split
+    // region: Generate the split representation (hidden to_dataframe_split + DataFrameRowSplit)
     let split_method = generate_split_method(
         row_name,
         &variant_infos,
@@ -1999,7 +2002,10 @@ pub(super) fn derive_enum_dataframe(
 
 // region: generate_split_method
 
-/// Generate the `to_dataframe_split` associated method for an enum `DataFrameRow`.
+/// Generate the split representation for an enum `DataFrameRow`: the hidden
+/// `to_dataframe_split` associated method (body holder) plus the
+/// `DataFrameRowSplit` bridge impl that surfaces the public
+/// `rows.into_dataframe_split()` verb (`IntoDataFrameSplit`).
 ///
 /// For a single-variant enum, returns the data.frame directly.
 /// For multi-variant enums, returns a named R list of data.frames (one per variant,
@@ -2619,14 +2625,26 @@ fn generate_split_method(
 
     quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
-            /// Partition rows by variant and return one data.frame per variant.
-            ///
-            /// For single-variant enums, returns the data.frame directly.
-            /// For multi-variant enums, returns a named R list of data.frames where
-            /// each name is the variant name in snake_case. Each data.frame has only
-            /// that variant's columns (non-optional types — no NA fill).
+            // The documented split verb is `IntoDataFrameSplit::into_dataframe_split`
+            // (via the `DataFrameRowSplit` bridge below); this inherent holds the
+            // body and stays `pub` off the documented surface, mirroring the hidden
+            // `to_dataframe(rows)` companion helper.
+            #[doc(hidden)]
             pub fn to_dataframe_split(rows: Vec<Self>) -> ::miniextendr_api::list::List {
                 #body
+            }
+        }
+
+        // Orphan-rule bridge: `impl IntoDataFrameSplit for Vec<Row>` is illegal here
+        // (`Row` is covered by `Vec<_>`), so implement the local-type bridge trait and
+        // let `miniextendr_api`'s blanket impl surface `rows.into_dataframe_split()`.
+        impl #impl_generics ::miniextendr_api::dataframe::DataFrameRowSplit
+            for #row_name #ty_generics #where_clause
+        {
+            fn rows_into_dataframe_split(
+                rows: ::std::vec::Vec<Self>,
+            ) -> ::miniextendr_api::list::List {
+                Self::to_dataframe_split(rows)
             }
         }
     }

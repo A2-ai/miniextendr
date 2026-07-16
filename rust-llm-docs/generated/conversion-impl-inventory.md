@@ -1071,11 +1071,11 @@ Traits with impls: 9
 | `i32` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:500 |
 | `crate::Rboolean` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:515 |
 | `crate::RLogical` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:524 |
+| `u32` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:536 |
 | `u64` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:536 |
 | `usize` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:536 |
 | `i64` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:536 |
 | `isize` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:536 |
-| `u32` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:536 |
 | `i8` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:541 |
 | `i16` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:541 |
 | `i32` | `` | concrete | 2 | miniextendr-api/src/coerce.rs:541 |
@@ -1145,7 +1145,7 @@ Traits with impls: 9
 - **miniextendr-api/src/coerce.rs:561** (9 impls): `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `usize`, `isize`
 - **miniextendr-api/src/coerce.rs:551** (8 impls): `i8`, `i16`, `i32`, `i64`, `u32`, `u64`, `usize`, `isize`
 - **miniextendr-api/src/coerce.rs:556** (7 impls): `i32`, `i64`, `u16`, `u32`, `u64`, `usize`, `isize`
-- **miniextendr-api/src/coerce.rs:536** (5 impls): `u64`, `usize`, `i64`, `isize`, `u32`
+- **miniextendr-api/src/coerce.rs:536** (5 impls): `u32`, `u64`, `usize`, `i64`, `isize`
 
 ## `Coerce` — 53 impls
 

@@ -149,9 +149,9 @@ test_that("DataFrameRow enum with array expansion in variants", {
   expect_equal(df$reading, c(NA, 42.0, NA))
 })
 
-# ── to_dataframe_split tests ──────────────────────────────────────────────────
+# ── into_dataframe_split tests ────────────────────────────────────────────────
 
-test_that("to_dataframe_split returns named list of data.frames for multi-variant enum", {
+test_that("into_dataframe_split returns named list of data.frames for multi-variant enum", {
   result <- create_events_split()
 
   # outer result is a plain list, not a data.frame
@@ -186,7 +186,7 @@ test_that("to_dataframe_split returns named list of data.frames for multi-varian
   expect_equal(result$error$message, "not found")
 })
 
-test_that("to_dataframe_split single variant returns data.frame directly", {
+test_that("into_dataframe_split single variant returns data.frame directly", {
   result <- create_single_event_split()
 
   # single variant -> data.frame, not a named list of data.frames
@@ -197,7 +197,7 @@ test_that("to_dataframe_split single variant returns data.frame directly", {
   expect_equal(result$y, c(2.0, 4.0))
 })
 
-test_that("to_dataframe_split shared field appears in both partitions non-optionally", {
+test_that("into_dataframe_split shared field appears in both partitions non-optionally", {
   result <- create_shapes_split()
 
   expect_type(result, "list")
@@ -225,7 +225,7 @@ test_that("to_dataframe_split shared field appears in both partitions non-option
   expect_equal(result$rect$area,   12.0)
 })
 
-test_that("to_dataframe_split tuple variants → positional columns _0, _1, ...", {
+test_that("into_dataframe_split tuple variants → positional columns _0, _1, ...", {
   result <- create_tuple_sig_split()
 
   expect_type(result, "list")
@@ -248,7 +248,7 @@ test_that("to_dataframe_split tuple variants → positional columns _0, _1, ..."
   expect_equal(result$triple[["_2"]], 30L)
 })
 
-test_that("to_dataframe_split unit variant → 0-column data.frame with row count", {
+test_that("into_dataframe_split unit variant → 0-column data.frame with row count", {
   result <- create_unit_status_split()
 
   expect_type(result, "list")

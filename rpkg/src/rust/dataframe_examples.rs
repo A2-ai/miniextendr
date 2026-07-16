@@ -1,6 +1,6 @@
 //! Examples and tests for data frame conversion features.
 
-use miniextendr_api::{BuiltDataFrame, IntoDataFrame};
+use miniextendr_api::{BuiltDataFrame, IntoDataFrame, IntoDataFrameSplit};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // Test with homogeneous types first
@@ -150,7 +150,7 @@ pub fn create_shapes_df() -> BuiltDataFrame {
 }
 // endregion
 
-// region: to_dataframe_split examples
+// region: into_dataframe_split examples
 
 /// Single-variant enum — split returns a data.frame directly, not a list.
 #[derive(Clone, Debug, DataFrameRow)]
@@ -184,7 +184,7 @@ pub fn create_events_split() -> List {
             y: 4.0,
         },
     ];
-    EventRow::to_dataframe_split(rows)
+    rows.into_dataframe_split()
 }
 
 /// Unzip single-variant enum — returns a data.frame directly.
@@ -196,7 +196,7 @@ pub fn create_single_event_split() -> List {
         SingleEvent::Click { x: 1.0, y: 2.0 },
         SingleEvent::Click { x: 3.0, y: 4.0 },
     ];
-    SingleEvent::to_dataframe_split(rows)
+    rows.into_dataframe_split()
 }
 
 /// Unzip shapes to a named list of data.frames (2 variants, shared field).
@@ -219,7 +219,7 @@ pub fn create_shapes_split() -> List {
             area: std::f64::consts::PI,
         },
     ];
-    ShapeRow::to_dataframe_split(rows)
+    rows.into_dataframe_split()
 }
 
 /// Tuple variants split: positional fields → columns named `_0`, `_1`, …
@@ -240,7 +240,7 @@ pub fn create_tuple_sig_split() -> List {
         TupleSig::Triple(10, 20, 30),
         TupleSig::Pair(100, 200),
     ];
-    TupleSig::to_dataframe_split(rows)
+    rows.into_dataframe_split()
 }
 
 /// Mixed unit + non-unit variants: unit partitions become 0-column data.frames.
@@ -262,7 +262,7 @@ pub fn create_unit_status_split() -> List {
         UnitStatus::Active,
         UnitStatus::Active,
     ];
-    UnitStatus::to_dataframe_split(rows)
+    rows.into_dataframe_split()
 }
 // endregion
 

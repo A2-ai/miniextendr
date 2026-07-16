@@ -1,8 +1,8 @@
 //! Cardinality × payload-shape matrix for enum-derived data frames.
 //!
 //! For each currently-supported payload shape, exercise four cardinality cells
-//! against both `to_dataframe` (align/NA-fill) and `to_dataframe_split` (per-variant
-//! partition):
+//! against both `to_dataframe` (align/NA-fill) and `into_dataframe_split`
+//! (per-variant partition, from the `IntoDataFrameSplit` trait):
 //!   - 1v1r: one variant, one row  → split returns a 1-row data.frame in that
 //!     variant's slot, and a 0-row data.frame in every other slot
 //!   - 1vNr: one variant, many rows
@@ -10,7 +10,7 @@
 //!   - NvNr: many variants, many rows each
 //!
 //! A single-variant enum is also exposed for 1v1r / 1vNr to verify the
-//! bare-data.frame return path of `to_dataframe_split`.
+//! bare-data.frame return path of `into_dataframe_split`.
 //!
 //! `HashMap`/`BTreeMap` enum payloads are exercised in the map-fields section (issue #457).
 //! Nested-enum payloads and struct-in-variant payloads are tracked by GH issues #458 / #459.
@@ -21,7 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use miniextendr_api::dataframe::ColumnarFrame;
-use miniextendr_api::{BuiltDataFrame, IntoDataFrame};
+use miniextendr_api::{BuiltDataFrame, IntoDataFrame, IntoDataFrameSplit};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // region: 0a. Vec<i32> opaque (no expand/width → list-column)
@@ -41,24 +41,26 @@ fn vec_opaque_payload(label: &str, items: Vec<i32>) -> VecOpaqueEvent {
 
 #[miniextendr]
 pub fn vec_opaque_split_1v1r() -> List {
-    VecOpaqueEvent::to_dataframe_split(vec![vec_opaque_payload("a", vec![1, 2, 3])])
+    vec![vec_opaque_payload("a", vec![1, 2, 3])].into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_opaque_split_1vnr() -> List {
-    VecOpaqueEvent::to_dataframe_split(vec![
+    vec![
         vec_opaque_payload("a", vec![1, 2, 3]),
         vec_opaque_payload("b", vec![4, 5]),
         vec_opaque_payload("c", vec![]),
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_opaque_split_nv1r() -> List {
-    VecOpaqueEvent::to_dataframe_split(vec![
+    vec![
         vec_opaque_payload("a", vec![1, 2, 3]),
         VecOpaqueEvent::NoItems { label: "b".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
@@ -75,12 +77,13 @@ pub fn vec_opaque_align_nvnr() -> BuiltDataFrame {
 
 #[miniextendr]
 pub fn vec_opaque_split_nvnr() -> List {
-    VecOpaqueEvent::to_dataframe_split(vec![
+    vec![
         vec_opaque_payload("a", vec![1, 2, 3]),
         VecOpaqueEvent::NoItems { label: "b".into() },
         vec_opaque_payload("c", vec![4, 5]),
         VecOpaqueEvent::NoItems { label: "d".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 // endregion
@@ -102,24 +105,26 @@ fn hashset_payload(id: i32, tags: &[&str]) -> HashSetEvent {
 
 #[miniextendr]
 pub fn hashset_split_1v1r() -> List {
-    HashSetEvent::to_dataframe_split(vec![hashset_payload(1, &["a", "b"])])
+    vec![hashset_payload(1, &["a", "b"])].into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn hashset_split_1vnr() -> List {
-    HashSetEvent::to_dataframe_split(vec![
+    vec![
         hashset_payload(1, &["a", "b"]),
         hashset_payload(2, &["c"]),
         hashset_payload(3, &[]),
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn hashset_split_nv1r() -> List {
-    HashSetEvent::to_dataframe_split(vec![
+    vec![
         hashset_payload(1, &["a", "b"]),
         HashSetEvent::Untagged { id: 2 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
@@ -136,12 +141,13 @@ pub fn hashset_align_nvnr() -> BuiltDataFrame {
 
 #[miniextendr]
 pub fn hashset_split_nvnr() -> List {
-    HashSetEvent::to_dataframe_split(vec![
+    vec![
         hashset_payload(1, &["a", "b"]),
         HashSetEvent::Untagged { id: 2 },
         hashset_payload(3, &["c"]),
         HashSetEvent::Untagged { id: 4 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 // endregion
@@ -163,24 +169,26 @@ fn btreeset_payload(label: &str, cats: &[i32]) -> BTreeSetEvent {
 
 #[miniextendr]
 pub fn btreeset_split_1v1r() -> List {
-    BTreeSetEvent::to_dataframe_split(vec![btreeset_payload("a", &[3, 1, 2])])
+    vec![btreeset_payload("a", &[3, 1, 2])].into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn btreeset_split_1vnr() -> List {
-    BTreeSetEvent::to_dataframe_split(vec![
+    vec![
         btreeset_payload("a", &[3, 1, 2]),
         btreeset_payload("b", &[5, 4]),
         btreeset_payload("c", &[]),
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn btreeset_split_nv1r() -> List {
-    BTreeSetEvent::to_dataframe_split(vec![
+    vec![
         btreeset_payload("a", &[3, 1, 2]),
         BTreeSetEvent::NoCats { label: "b".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
@@ -197,12 +205,13 @@ pub fn btreeset_align_nvnr() -> BuiltDataFrame {
 
 #[miniextendr]
 pub fn btreeset_split_nvnr() -> List {
-    BTreeSetEvent::to_dataframe_split(vec![
+    vec![
         btreeset_payload("a", &[3, 1, 2]),
         BTreeSetEvent::NoCats { label: "b".into() },
         btreeset_payload("c", &[5, 4]),
         BTreeSetEvent::NoCats { label: "d".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 // endregion
@@ -230,34 +239,37 @@ fn vec_width_payload(label: &str, scores: Vec<f64>) -> VecWidthEvent {
 
 #[miniextendr]
 pub fn vec_width_split_1v1r() -> List {
-    VecWidthEvent::to_dataframe_split(vec![vec_width_payload("a", vec![1.0, 2.0, 3.0])])
+    vec![vec_width_payload("a", vec![1.0, 2.0, 3.0])].into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_width_split_1vnr() -> List {
-    VecWidthEvent::to_dataframe_split(vec![
+    vec![
         vec_width_payload("a", vec![1.0, 2.0, 3.0]),
         vec_width_payload("b", vec![4.0]),
         vec_width_payload("c", vec![]),
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_width_split_nv1r() -> List {
-    VecWidthEvent::to_dataframe_split(vec![
+    vec![
         vec_width_payload("a", vec![1.0, 2.0, 3.0]),
         VecWidthEvent::NoScore { label: "b".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_width_split_nvnr() -> List {
-    VecWidthEvent::to_dataframe_split(vec![
+    vec![
         vec_width_payload("a", vec![1.0, 2.0, 3.0]),
         VecWidthEvent::NoScore { label: "b".into() },
         vec_width_payload("c", vec![4.0]),
         VecWidthEvent::NoScore { label: "d".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
@@ -296,34 +308,37 @@ fn vec_expand_payload(label: &str, vals: Vec<f64>) -> VecExpandEvent {
 
 #[miniextendr]
 pub fn vec_expand_split_1v1r() -> List {
-    VecExpandEvent::to_dataframe_split(vec![vec_expand_payload("a", vec![1.0, 2.0])])
+    vec![vec_expand_payload("a", vec![1.0, 2.0])].into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_expand_split_1vnr() -> List {
-    VecExpandEvent::to_dataframe_split(vec![
+    vec![
         vec_expand_payload("a", vec![1.0, 2.0]),
         vec_expand_payload("b", vec![3.0]),
         vec_expand_payload("c", vec![]),
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_expand_split_nv1r() -> List {
-    VecExpandEvent::to_dataframe_split(vec![
+    vec![
         vec_expand_payload("a", vec![1.0, 2.0]),
         VecExpandEvent::NoVals { label: "b".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn vec_expand_split_nvnr() -> List {
-    VecExpandEvent::to_dataframe_split(vec![
+    vec![
         vec_expand_payload("a", vec![1.0, 2.0]),
         VecExpandEvent::NoVals { label: "b".into() },
         vec_expand_payload("c", vec![3.0]),
         VecExpandEvent::NoVals { label: "d".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
@@ -353,33 +368,36 @@ fn array_payload(id: i32, coords: [f64; 2]) -> ArrayEvent {
 
 #[miniextendr]
 pub fn array_split_1v1r() -> List {
-    ArrayEvent::to_dataframe_split(vec![array_payload(1, [10.0, 20.0])])
+    vec![array_payload(1, [10.0, 20.0])].into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn array_split_1vnr() -> List {
-    ArrayEvent::to_dataframe_split(vec![
+    vec![
         array_payload(1, [10.0, 20.0]),
         array_payload(2, [30.0, 40.0]),
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn array_split_nv1r() -> List {
-    ArrayEvent::to_dataframe_split(vec![
+    vec![
         array_payload(1, [10.0, 20.0]),
         ArrayEvent::NoCoords { id: 2 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn array_split_nvnr() -> List {
-    ArrayEvent::to_dataframe_split(vec![
+    vec![
         array_payload(1, [10.0, 20.0]),
         ArrayEvent::NoCoords { id: 2 },
         array_payload(3, [30.0, 40.0]),
         ArrayEvent::NoCoords { id: 4 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
@@ -418,34 +436,37 @@ fn boxed_slice_payload(name: &str, data: &[f64]) -> BoxedSliceEvent {
 
 #[miniextendr]
 pub fn boxed_slice_split_1v1r() -> List {
-    BoxedSliceEvent::to_dataframe_split(vec![boxed_slice_payload("a", &[1.0, 2.0, 3.0])])
+    vec![boxed_slice_payload("a", &[1.0, 2.0, 3.0])].into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn boxed_slice_split_1vnr() -> List {
-    BoxedSliceEvent::to_dataframe_split(vec![
+    vec![
         boxed_slice_payload("a", &[1.0, 2.0, 3.0]),
         boxed_slice_payload("b", &[4.0]),
         boxed_slice_payload("c", &[]),
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn boxed_slice_split_nv1r() -> List {
-    BoxedSliceEvent::to_dataframe_split(vec![
+    vec![
         boxed_slice_payload("a", &[1.0, 2.0, 3.0]),
         BoxedSliceEvent::NoBuffer { name: "b".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn boxed_slice_split_nvnr() -> List {
-    BoxedSliceEvent::to_dataframe_split(vec![
+    vec![
         boxed_slice_payload("a", &[1.0, 2.0, 3.0]),
         BoxedSliceEvent::NoBuffer { name: "b".into() },
         boxed_slice_payload("c", &[4.0]),
         BoxedSliceEvent::NoBuffer { name: "d".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
@@ -469,15 +490,16 @@ pub enum SingletonRow {
 
 #[miniextendr]
 pub fn singleton_split_1v1r() -> List {
-    SingletonRow::to_dataframe_split(vec![SingletonRow::Only {
+    vec![SingletonRow::Only {
         id: 1,
         label: "alpha".into(),
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 #[miniextendr]
 pub fn singleton_split_1vnr() -> List {
-    SingletonRow::to_dataframe_split(vec![
+    vec![
         SingletonRow::Only {
             id: 1,
             label: "alpha".into(),
@@ -490,7 +512,8 @@ pub fn singleton_split_1vnr() -> List {
             id: 3,
             label: "gamma".into(),
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 // endregion
@@ -509,7 +532,7 @@ pub fn borrowed_str_split_1v1r() -> List {
         id: 1,
         name: "alice",
     }];
-    BorrowedStrEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 #[miniextendr]
@@ -525,7 +548,7 @@ pub fn borrowed_str_split_1vnr() -> List {
             name: "carol",
         },
     ];
-    BorrowedStrEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 #[miniextendr]
@@ -537,7 +560,7 @@ pub fn borrowed_str_split_nv1r() -> List {
         },
         BorrowedStrEvent::Bare { id: 2 },
     ];
-    BorrowedStrEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 #[miniextendr]
@@ -572,7 +595,7 @@ pub fn borrowed_str_split_nvnr() -> List {
         },
         BorrowedStrEvent::Bare { id: 4 },
     ];
-    BorrowedStrEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 // endregion
@@ -591,7 +614,7 @@ pub fn borrowed_slice_split_1v1r() -> List {
         label: "a".into(),
         data: &[1.0, 2.0, 3.0],
     }];
-    BorrowedSliceEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 #[miniextendr]
@@ -610,7 +633,7 @@ pub fn borrowed_slice_split_1vnr() -> List {
             data: &[],
         },
     ];
-    BorrowedSliceEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 #[miniextendr]
@@ -622,7 +645,7 @@ pub fn borrowed_slice_split_nv1r() -> List {
         },
         BorrowedSliceEvent::NoBuffer { label: "b".into() },
     ];
-    BorrowedSliceEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 #[miniextendr]
@@ -657,7 +680,7 @@ pub fn borrowed_slice_split_nvnr() -> List {
         },
         BorrowedSliceEvent::NoBuffer { label: "d".into() },
     ];
-    BorrowedSliceEvent::to_dataframe_split(data)
+    data.into_dataframe_split()
 }
 
 // endregion
@@ -698,16 +721,17 @@ pub enum BTreeMapEvent {
 /// 1v1r: one variant (Tally), one row.
 #[miniextendr]
 pub fn hashmap_split_1v1r() -> List {
-    HashMapEvent::to_dataframe_split(vec![HashMapEvent::Tally {
+    vec![HashMapEvent::Tally {
         label: "a".into(),
         tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 /// 1vNr: one variant (Tally), multiple rows.
 #[miniextendr]
 pub fn hashmap_split_1vnr() -> List {
-    HashMapEvent::to_dataframe_split(vec![
+    vec![
         HashMapEvent::Tally {
             label: "x".into(),
             tally: HashMap::from([("x".to_string(), 5i32)]),
@@ -720,19 +744,21 @@ pub fn hashmap_split_1vnr() -> List {
             label: "z".into(),
             tally: HashMap::from([("p".to_string(), 10i32), ("q".to_string(), 20i32)]),
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// Nv1r: both variants, one row each.
 #[miniextendr]
 pub fn hashmap_split_nv1r() -> List {
-    HashMapEvent::to_dataframe_split(vec![
+    vec![
         HashMapEvent::Tally {
             label: "a".into(),
             tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
         },
         HashMapEvent::Empty { label: "b".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// 1v1r align: one variant (Tally), one row.
@@ -803,7 +829,7 @@ pub fn hashmap_align_nvnr() -> BuiltDataFrame {
 /// NvNr split: both variants, multiple rows each.
 #[miniextendr]
 pub fn hashmap_split_nvnr() -> List {
-    HashMapEvent::to_dataframe_split(vec![
+    vec![
         HashMapEvent::Tally {
             label: "a".into(),
             tally: HashMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
@@ -814,7 +840,8 @@ pub fn hashmap_split_nvnr() -> List {
             tally: HashMap::from([("x".to_string(), 5i32)]),
         },
         HashMapEvent::Empty { label: "d".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 // endregion: HashMap fixtures
@@ -824,16 +851,17 @@ pub fn hashmap_split_nvnr() -> List {
 /// 1v1r: one variant (Tally), one row.
 #[miniextendr]
 pub fn btreemap_split_1v1r() -> List {
-    BTreeMapEvent::to_dataframe_split(vec![BTreeMapEvent::Tally {
+    vec![BTreeMapEvent::Tally {
         label: "a".into(),
         tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 /// 1vNr: one variant (Tally), multiple rows.
 #[miniextendr]
 pub fn btreemap_split_1vnr() -> List {
-    BTreeMapEvent::to_dataframe_split(vec![
+    vec![
         BTreeMapEvent::Tally {
             label: "x".into(),
             tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
@@ -846,19 +874,21 @@ pub fn btreemap_split_1vnr() -> List {
             label: "w".into(),
             tally: BTreeMap::from([("m".to_string(), 7i32)]),
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// Nv1r: both variants, one row each.
 #[miniextendr]
 pub fn btreemap_split_nv1r() -> List {
-    BTreeMapEvent::to_dataframe_split(vec![
+    vec![
         BTreeMapEvent::Tally {
             label: "a".into(),
             tally: BTreeMap::from([("a".to_string(), 1i32), ("b".to_string(), 2i32)]),
         },
         BTreeMapEvent::Empty { label: "b".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// 1v1r align: one variant (Tally), one row.
@@ -929,7 +959,7 @@ pub fn btreemap_align_nvnr() -> BuiltDataFrame {
 /// NvNr split: both variants, multiple rows each.
 #[miniextendr]
 pub fn btreemap_split_nvnr() -> List {
-    BTreeMapEvent::to_dataframe_split(vec![
+    vec![
         BTreeMapEvent::Tally {
             label: "a".into(),
             tally: BTreeMap::from([("z".to_string(), 3i32), ("a".to_string(), 1i32)]),
@@ -940,7 +970,8 @@ pub fn btreemap_split_nvnr() -> List {
             tally: BTreeMap::from([("m".to_string(), 7i32)]),
         },
         BTreeMapEvent::Empty { label: "d".into() },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 // endregion: BTreeMap fixtures
@@ -1150,16 +1181,17 @@ pub enum StructListEvent {
 /// 1v1r split: single Located row.
 #[miniextendr]
 pub fn struct_flatten_split_1v1r() -> List {
-    StructFlattenEvent::to_dataframe_split(vec![StructFlattenEvent::Located {
+    vec![StructFlattenEvent::Located {
         id: 1,
         origin: Point { x: 1.0, y: 2.0 },
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 /// 1vNr split: multiple Located rows, all same variant.
 #[miniextendr]
 pub fn struct_flatten_split_1vnr() -> List {
-    StructFlattenEvent::to_dataframe_split(vec![
+    vec![
         StructFlattenEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
@@ -1172,25 +1204,27 @@ pub fn struct_flatten_split_1vnr() -> List {
             id: 3,
             origin: Point { x: 5.0, y: 6.0 },
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// Nv1r split: one Located and one Other row.
 #[miniextendr]
 pub fn struct_flatten_split_nv1r() -> List {
-    StructFlattenEvent::to_dataframe_split(vec![
+    vec![
         StructFlattenEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
         },
         StructFlattenEvent::Other { id: 2 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// NvNr split: multiple rows across both variants.
 #[miniextendr]
 pub fn struct_flatten_split_nvnr() -> List {
-    StructFlattenEvent::to_dataframe_split(vec![
+    vec![
         StructFlattenEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
@@ -1201,7 +1235,8 @@ pub fn struct_flatten_split_nvnr() -> List {
         },
         StructFlattenEvent::Other { id: 3 },
         StructFlattenEvent::Other { id: 4 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// NvNr align: aligned data frame with NA-fill for absent variant.
@@ -1230,16 +1265,17 @@ pub fn struct_flatten_align_nvnr() -> BuiltDataFrame {
 /// 1v1r split (as_list): single Located row, origin as list-column.
 #[miniextendr]
 pub fn struct_list_split_1v1r() -> List {
-    StructListEvent::to_dataframe_split(vec![StructListEvent::Located {
+    vec![StructListEvent::Located {
         id: 1,
         origin: Point { x: 1.0, y: 2.0 },
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 /// 1vNr split (as_list): multiple Located rows.
 #[miniextendr]
 pub fn struct_list_split_1vnr() -> List {
-    StructListEvent::to_dataframe_split(vec![
+    vec![
         StructListEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
@@ -1252,25 +1288,27 @@ pub fn struct_list_split_1vnr() -> List {
             id: 3,
             origin: Point { x: 5.0, y: 6.0 },
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// Nv1r split (as_list): one Located and one Other row.
 #[miniextendr]
 pub fn struct_list_split_nv1r() -> List {
-    StructListEvent::to_dataframe_split(vec![
+    vec![
         StructListEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
         },
         StructListEvent::Other { id: 2 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// NvNr split (as_list): multiple rows across both variants.
 #[miniextendr]
 pub fn struct_list_split_nvnr() -> List {
-    StructListEvent::to_dataframe_split(vec![
+    vec![
         StructListEvent::Located {
             id: 1,
             origin: Point { x: 1.0, y: 2.0 },
@@ -1281,7 +1319,8 @@ pub fn struct_list_split_nvnr() -> List {
         },
         StructListEvent::Other { id: 3 },
         StructListEvent::Other { id: 4 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// NvNr align (as_list): aligned data frame, origin as list-column.
@@ -1331,12 +1370,12 @@ mod struct_field_tests {
         assert!(df.origin[1].is_none());
     }
 
-    // This test calls to_dataframe_split which calls into_data_frame → R API.
+    // This test calls into_dataframe_split which calls into_data_frame → R API.
     // It's exercised by the R-level tests in test-dataframe-enum-payload-matrix.R.
     #[test]
     #[ignore = "requires R runtime (calls into_data_frame)"]
     fn test_struct_flatten_split_located_has_correct_count() {
-        let split = StructFlattenEvent::to_dataframe_split(vec![
+        let split = vec![
             StructFlattenEvent::Located {
                 id: 1,
                 origin: Point { x: 1.0, y: 2.0 },
@@ -1346,7 +1385,8 @@ mod struct_field_tests {
                 origin: Point { x: 3.0, y: 4.0 },
             },
             StructFlattenEvent::Other { id: 3 },
-        ]);
+        ]
+        .into_dataframe_split();
         // split returns a list of per-variant data frames
         // We can't easily inspect column names from Rust, but we can check row counts
         let _ = split; // compiled and not panicked ⇒ success
@@ -1458,16 +1498,17 @@ pub enum NestedListEvent {
 /// 1v1r split (flatten): single Tracked/Ok row.
 #[miniextendr]
 pub fn nested_flatten_split_1v1r() -> List {
-    NestedFlattenEvent::to_dataframe_split(vec![NestedFlattenEvent::Tracked {
+    vec![NestedFlattenEvent::Tracked {
         id: 1,
         status: Status::Ok,
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 /// 1vNr split (flatten): multiple Tracked rows (mix of Ok and Err).
 #[miniextendr]
 pub fn nested_flatten_split_1vnr() -> List {
-    NestedFlattenEvent::to_dataframe_split(vec![
+    vec![
         NestedFlattenEvent::Tracked {
             id: 1,
             status: Status::Ok,
@@ -1480,25 +1521,27 @@ pub fn nested_flatten_split_1vnr() -> List {
             id: 3,
             status: Status::Err { code: 500 },
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// Nv1r split (flatten): one Tracked and one Other row.
 #[miniextendr]
 pub fn nested_flatten_split_nv1r() -> List {
-    NestedFlattenEvent::to_dataframe_split(vec![
+    vec![
         NestedFlattenEvent::Tracked {
             id: 1,
             status: Status::Ok,
         },
         NestedFlattenEvent::Other { id: 2 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// NvNr split (flatten): multiple rows across both variants.
 #[miniextendr]
 pub fn nested_flatten_split_nvnr() -> List {
-    NestedFlattenEvent::to_dataframe_split(vec![
+    vec![
         NestedFlattenEvent::Tracked {
             id: 1,
             status: Status::Ok,
@@ -1509,7 +1552,8 @@ pub fn nested_flatten_split_nvnr() -> List {
         },
         NestedFlattenEvent::Other { id: 3 },
         NestedFlattenEvent::Other { id: 4 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// 1v1r align (flatten): single Tracked row, aligned data frame.
@@ -1584,16 +1628,17 @@ pub fn nested_flatten_align_nvnr() -> BuiltDataFrame {
 /// 1v1r split (as_factor): single Move row, dir as factor column.
 #[miniextendr]
 pub fn nested_factor_split_1v1r() -> List {
-    NestedFactorEvent::to_dataframe_split(vec![NestedFactorEvent::Move {
+    vec![NestedFactorEvent::Move {
         id: 1,
         dir: Direction::North,
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 /// 1vNr split (as_factor): multiple Move rows.
 #[miniextendr]
 pub fn nested_factor_split_1vnr() -> List {
-    NestedFactorEvent::to_dataframe_split(vec![
+    vec![
         NestedFactorEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1606,25 +1651,27 @@ pub fn nested_factor_split_1vnr() -> List {
             id: 3,
             dir: Direction::East,
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// Nv1r split (as_factor): one Move and one Stop row.
 #[miniextendr]
 pub fn nested_factor_split_nv1r() -> List {
-    NestedFactorEvent::to_dataframe_split(vec![
+    vec![
         NestedFactorEvent::Move {
             id: 1,
             dir: Direction::West,
         },
         NestedFactorEvent::Stop { id: 2 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// NvNr split (as_factor): multiple rows across both variants.
 #[miniextendr]
 pub fn nested_factor_split_nvnr() -> List {
-    NestedFactorEvent::to_dataframe_split(vec![
+    vec![
         NestedFactorEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1635,7 +1682,8 @@ pub fn nested_factor_split_nvnr() -> List {
         },
         NestedFactorEvent::Stop { id: 3 },
         NestedFactorEvent::Stop { id: 4 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// 1v1r align (as_factor): single Move row.
@@ -1710,16 +1758,17 @@ pub fn nested_factor_align_nvnr() -> BuiltDataFrame {
 /// 1v1r split (as_list): single Move row, dir as list column.
 #[miniextendr]
 pub fn nested_list_split_1v1r() -> List {
-    NestedListEvent::to_dataframe_split(vec![NestedListEvent::Move {
+    vec![NestedListEvent::Move {
         id: 1,
         dir: Direction::North,
-    }])
+    }]
+    .into_dataframe_split()
 }
 
 /// 1vNr split (as_list): multiple Move rows.
 #[miniextendr]
 pub fn nested_list_split_1vnr() -> List {
-    NestedListEvent::to_dataframe_split(vec![
+    vec![
         NestedListEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1732,25 +1781,27 @@ pub fn nested_list_split_1vnr() -> List {
             id: 3,
             dir: Direction::East,
         },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// Nv1r split (as_list): one Move and one Stop row.
 #[miniextendr]
 pub fn nested_list_split_nv1r() -> List {
-    NestedListEvent::to_dataframe_split(vec![
+    vec![
         NestedListEvent::Move {
             id: 1,
             dir: Direction::West,
         },
         NestedListEvent::Stop { id: 2 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// NvNr split (as_list): multiple rows across both variants.
 #[miniextendr]
 pub fn nested_list_split_nvnr() -> List {
-    NestedListEvent::to_dataframe_split(vec![
+    vec![
         NestedListEvent::Move {
             id: 1,
             dir: Direction::North,
@@ -1761,7 +1812,8 @@ pub fn nested_list_split_nvnr() -> List {
         },
         NestedListEvent::Stop { id: 3 },
         NestedListEvent::Stop { id: 4 },
-    ])
+    ]
+    .into_dataframe_split()
 }
 
 /// 1v1r align (as_list): single Move row.

@@ -2853,30 +2853,44 @@ For enums: all variants must have named fields.
 
 For a struct `Measurement { time: f64, value: f64 }`:
 - Struct `MeasurementDataFrame { time: Vec<f64>, value: Vec<f64> }`
-- `impl IntoDataFrame for MeasurementDataFrame`
+- `impl IntoDataFrame for MeasurementDataFrame` (rows → R `data.frame`)
+- `impl ColumnarFrame for MeasurementDataFrame` (rows ↔ the pure-Rust companion)
 - `impl From<Vec<Measurement>> for MeasurementDataFrame`
 - `impl IntoIterator for MeasurementDataFrame`
-- Associated methods on `Measurement`:
-  - `to_dataframe(Vec<Self>) -> MeasurementDataFrame`
-  - `from_dataframe(MeasurementDataFrame) -> Vec<Self>`
 
 For an enum:
 - Companion struct with `Vec<Option<T>>` columns (field-name union)
 - Optional tag column for variant discrimination
 - `impl From<Vec<Enum>> for EnumDataFrame`
 - `impl IntoDataFrame for EnumDataFrame`
-- Associated `to_dataframe` method
+- `impl ColumnarFrame for EnumDataFrame`
+- `impl DataFrameRowSplit for Enum` (the split representation behind
+  `IntoDataFrameSplit`)
+
+#### Public surface (which verbs to call)
+
+- Rows → R `data.frame`: `rows.into_dataframe()?` (`/_par`) or
+  `rows.wrap_data_frame()`, from `IntoDataFrame` / `AsDataFrameExt`.
+- R `data.frame` → rows: `Vec::<Row>::from_dataframe(&df)?` (`/_par`) from
+  `FromDataFrame`, or the one-call `Row::try_from_dataframe(sexp)` reader.
+- Rows ↔ the pure-Rust columnar companion: the `ColumnarFrame` trait
+  (`<Row>DataFrame::from_rows` / `from_rows_par` / `into_rows`), or the `std`
+  `Vec<Row>: Into<companion>` / companion `IntoIterator`.
+- Enums: `rows.into_dataframe_split()` (one `data.frame` per variant) from
+  `IntoDataFrameSplit`, implemented via the hidden `DataFrameRowSplit` bridge
+  on the enum type.
+
+All the traits above are re-exported from `miniextendr_api::prelude`. The row
+type also carries two `#[doc(hidden)]` helpers: `to_dataframe(rows) -> companion`,
+retained only because the struct-flatten / nested-enum write paths build a
+nested companion via `Inner::to_dataframe(..)` without naming its type, and
+`to_dataframe_split(rows)`, the body holder behind the `DataFrameRowSplit` bridge.
 
 #### Attributes
 
 - `#[dataframe(name = "CustomName")]` — Custom companion type name
 - `#[dataframe(align)]` — Enum alignment mode (accepted but implicit)
 - `#[dataframe(tag = "col")]` — Add variant discriminator column
-
-Both struct and enum companion types get `from_rows()` (sequential) and
-`from_rows_par()` (parallel, gated on miniextendr-api's `rayon` feature via
-`__dataframe_row_when_rayon!` — never a raw `#[cfg]` in the consumer crate,
-see #1117) methods automatically.
 
 ### `externalptr_derive::derive_external_ptr`
 
@@ -3290,15 +3304,18 @@ fn generate_r6_r_wrapper(parsed_impl: &super::ParsedImpl) -> String
 
 Generates the complete R wrapper string for an R6-style class.
 
-Produces an `R6::R6Class(...)` definition that includes:
-- `initialize` method: calls the Rust `new` constructor, or accepts a pre-made `.ptr`
-  when static methods return `Self` (factory pattern)
-- Public methods: one R function per `&self`/`&mut self` instance method
-- Private methods: methods marked with `#[miniextendr(private)]`
-- Active bindings: getter/setter properties via `#[miniextendr(r6(prop = "..."))]`
+Produces an `R6::R6Class(...)` core definition followed by per-method
+`$set()` blocks (see the module docs for the full `$set`-form shape, #369):
+- `initialize` method (inline in `public`): calls the Rust `new` constructor,
+  or accepts a pre-made `.ptr` when static methods return `Self` (factory pattern)
+- Public methods: one `ClassName$set("public", "name", function(...) {...})`
+  block per `&self`/`&mut self` instance method, each with its own roxygen
+- Private methods (inline in `private`): methods marked with `#[miniextendr(private)]`
+- Active bindings: one `ClassName$set("active", "name", function(...) {...})`
+  block per getter/setter property (`#[miniextendr(r6(prop = "..."))]`)
 - Private `.ptr` field: holds the `ExternalPtr` to the Rust struct
-- Finalizer: optional destructor called when the R6 object is garbage-collected
-- Deep clone: optional custom clone logic via `#[miniextendr(r6(deep_clone))]`
+- Finalizer (inline in `private`): optional destructor called when the R6 object is garbage-collected
+- Deep clone (inline in `private`): optional custom clone logic via `#[miniextendr(r6(deep_clone))]`
 - Static methods: emitted as `ClassName$method_name <- function(...)` outside the class
 - Class options: `lock_objects`, `lock_class`, `cloneable`, `portable`, `inherit`
 
@@ -3780,6 +3797,32 @@ struct Measurement {
 - `#[dataframe(as_list)]` — keep collection as single list column (no expansion)
 - `#[dataframe(expand)]` / `#[dataframe(unnest)]` — expand collection into suffixed columns
 - `#[dataframe(width = N)]` — pin expansion width (shorter rows get NA)
+
+#### Public surface (which verbs to call)
+
+Every capability the derive provides has a documented, trait-based (or `std`)
+verb — reach for these, not any incidental inherent plumbing:
+
+- **Rows → R `data.frame`**: `rows.into_dataframe()?` (owned, GC-rooted
+  `BuiltDataFrame`) or `rows.wrap_data_frame()` (deferred `IntoR` wrapper);
+  parallel variant `rows.into_dataframe_par()?`. From the `IntoDataFrame` /
+  `AsDataFrameExt` traits (both re-exported from `miniextendr_api::prelude`).
+- **R `data.frame` → rows**: `Vec::<Row>::from_dataframe(&df)?` (parallel:
+  `Vec::<Row>::from_dataframe_par(&df)?`), from the `FromDataFrame` trait — or
+  the one-call `Row::try_from_dataframe(sexp)` reader on the row type.
+- **Rows ↔ the pure-Rust columnar companion** (`<Row>DataFrame`, `Vec`-columns,
+  no R involved): the `ColumnarFrame` trait (in the prelude) —
+  `<Row>DataFrame::from_rows(rows)` / `from_rows_par(rows)` (parallel build of
+  the *companion*, which `into_dataframe_par` does not give you) and, for
+  row-iterable companions, `companion.into_rows()`. `Vec<Row>: Into<companion>`
+  and the companion's `IntoIterator` are the equivalent `std` verbs.
+- **Enum split representation**: `rows.into_dataframe_split()` returns one
+  `data.frame` per variant as an R list (only that variant's columns — no NA
+  fill), from the `IntoDataFrameSplit` trait (in the prelude). Enum rows
+  only; struct derives don't partition.
+
+The generated `<Row>DataFrame` / `<Row>DataFrameIter` types are intermediate
+column-oriented companions; you rarely name them directly.
 
 ### `#[derive(ExternalPtr)]`
 
