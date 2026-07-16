@@ -2,37 +2,42 @@
 
 Source: `target/doc/miniextendr.json`
 
-Traits with impls: 26
+Traits with impls: 31
 
 ## Summary (impl count per trait)
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `UnwindSafe` | 17 | 0 |
-| `Sync` | 17 | 0 |
-| `UnsafeUnpin` | 17 | 0 |
-| `Any` | 17 | 0 |
-| `BorrowMut` | 17 | 0 |
-| `RefUnwindSafe` | 17 | 0 |
-| `Send` | 17 | 0 |
-| `From` | 17 | 0 |
-| `Freeze` | 17 | 0 |
-| `TryInto` | 17 | 0 |
-| `Unpin` | 17 | 0 |
-| `Into` | 17 | 0 |
-| `Borrow` | 17 | 0 |
-| `TryFrom` | 17 | 0 |
+| `UnwindSafe` | 21 | 0 |
+| `Sync` | 21 | 0 |
+| `UnsafeUnpin` | 21 | 0 |
+| `Any` | 21 | 0 |
+| `BorrowMut` | 21 | 0 |
+| `RefUnwindSafe` | 21 | 0 |
+| `Send` | 21 | 0 |
+| `Freeze` | 21 | 0 |
+| `Borrow` | 21 | 0 |
+| `Into` | 21 | 0 |
+| `TryInto` | 21 | 0 |
+| `Unpin` | 21 | 0 |
+| `TryFrom` | 21 | 0 |
+| `From` | 21 | 0 |
 | `FromArgMatches` | 14 | 14 |
 | `Subcommand` | 12 | 12 |
-| `ToOwned` | 3 | 0 |
-| `CloneToUninit` | 3 | 0 |
-| `Clone` | 3 | 3 |
+| `ToOwned` | 6 | 0 |
+| `CloneToUninit` | 6 | 0 |
+| `Clone` | 6 | 6 |
+| `Debug` | 5 | 5 |
+| `Copy` | 3 | 3 |
 | `Serialize` | 2 | 2 |
+| `Equivalent` | 2 | 0 |
 | `Display` | 2 | 2 |
 | `ToString` | 2 | 0 |
-| `Debug` | 2 | 2 |
 | `Args` | 2 | 2 |
 | `CommandFactory` | 1 | 1 |
+| `StructuralPartialEq` | 1 | 1 |
+| `Eq` | 1 | 1 |
+| `PartialEq` | 1 | 1 |
 | `Parser` | 1 | 1 |
 
 ## `FromArgMatches` — 14 impls
@@ -40,44 +45,65 @@ Traits with impls: 26
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `InitCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:117 |
-| `WorkflowCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:164 |
-| `StatusCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:222 |
-| `CargoBuildOpts` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:236 |
-| `CargoCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:258 |
+| `WorkflowCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:169 |
+| `StatusCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:227 |
+| `CargoBuildOpts` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:241 |
+| `CargoCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:263 |
 | `Command` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:28 |
 | `Cli` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:4 |
-| `VendorCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:422 |
-| `FeatureCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:472 |
-| `FeatureDetectCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:493 |
-| `FeatureRuleCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:501 |
-| `RenderCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:528 |
-| `RustCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:549 |
-| `ConfigCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:568 |
+| `VendorCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:427 |
+| `FeatureCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:477 |
+| `FeatureDetectCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:498 |
+| `FeatureRuleCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:506 |
+| `RenderCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:533 |
+| `RustCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:554 |
+| `ConfigCmd` | `` | concrete | 4 | miniextendr-cli/src/cli.rs:573 |
 
 ## `Subcommand` — 12 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `InitCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:117 |
-| `WorkflowCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:164 |
-| `StatusCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:222 |
-| `CargoCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:258 |
+| `WorkflowCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:169 |
+| `StatusCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:227 |
+| `CargoCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:263 |
 | `Command` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:28 |
-| `VendorCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:422 |
-| `FeatureCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:472 |
-| `FeatureDetectCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:493 |
-| `FeatureRuleCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:501 |
-| `RenderCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:528 |
-| `RustCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:549 |
-| `ConfigCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:568 |
+| `VendorCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:427 |
+| `FeatureCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:477 |
+| `FeatureDetectCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:498 |
+| `FeatureRuleCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:506 |
+| `RenderCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:533 |
+| `RustCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:554 |
+| `ConfigCmd` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:573 |
 
-## `Clone` — 3 impls
+## `Clone` — 6 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `CargoBuildOpts` | `` | concrete | 1 | miniextendr-cli/src/cli.rs:236 |
+| `CargoBuildOpts` | `` | concrete | 1 | miniextendr-cli/src/cli.rs:241 |
 | `Config` | `` | concrete | 1 | miniextendr-cli/src/commands/config.rs:11 |
 | `ProjectContext` | `` | concrete | 1 | miniextendr-cli/src/project.rs:62 |
+| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:221 |
+| `Dest` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:325 |
+| `PlanEntry` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:336 |
+
+## `Debug` — 5 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `CargoBuildOpts` | `` | concrete | 1 | miniextendr-cli/src/cli.rs:241 |
+| `ProjectContext` | `` | concrete | 1 | miniextendr-cli/src/project.rs:62 |
+| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:221 |
+| `Dest` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:325 |
+| `PlanEntry` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:336 |
+
+## `Copy` — 3 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:221 |
+| `Dest` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:325 |
+| `PlanEntry` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:336 |
 
 ## `Serialize` — 2 impls
 
@@ -93,18 +119,11 @@ Traits with impls: 26
 | `Config` | `` | concrete | 1 | miniextendr-cli/src/commands/config.rs:21 |
 | `HasResult` | `` | concrete | 1 | miniextendr-cli/src/commands/status.rs:18 |
 
-## `Debug` — 2 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `CargoBuildOpts` | `` | concrete | 1 | miniextendr-cli/src/cli.rs:236 |
-| `ProjectContext` | `` | concrete | 1 | miniextendr-cli/src/project.rs:62 |
-
 ## `Args` — 2 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `CargoBuildOpts` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:236 |
+| `CargoBuildOpts` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:241 |
 | `Cli` | `` | concrete | 3 | miniextendr-cli/src/cli.rs:4 |
 
 ## `CommandFactory` — 1 impls
@@ -112,6 +131,24 @@ Traits with impls: 26
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `Cli` | `` | concrete | 2 | miniextendr-cli/src/cli.rs:4 |
+
+## `StructuralPartialEq` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:221 |
+
+## `Eq` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:221 |
+
+## `PartialEq` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:221 |
 
 ## `Parser` — 1 impls
 

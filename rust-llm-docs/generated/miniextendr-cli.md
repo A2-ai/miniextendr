@@ -27,6 +27,17 @@ end-user packages in the `minirextendr` R package.
 
 `pub mod init;`
 
+`miniextendr init` — scaffold packages from the canonical minirextendr
+templates.
+
+Every file comes from the embedded copy of `minirextendr/inst/templates/`
+(see [`crate::scaffold`]), so a CLI-generated package uses exactly the
+same build system as `minirextendr::create_miniextendr_package()` /
+`create_miniextendr_monorepo()` / `use_miniextendr()`: the two-mode
+install latch keyed on `inst/vendor.tar.xz` presence, configure-written
+`.cargo/config.toml`, wrapper + wasm-registry generation, and no `just`
+requirement (#1351).
+
 ### `commands::lint`
 
 `pub mod lint;`
@@ -170,6 +181,65 @@ fn require_configure_ac(self: &Self) -> Result<&Path>
 
 Returns the configure.ac path, or an error with guidance.
 
+### `scaffold::PlanEntry`
+
+```rust
+pub struct PlanEntry
+```
+
+One template → destination mapping.
+
+**Fields:**
+
+- `template`: `&'static str`
+  - Template path relative to the template-type directory (the `prefix`
+- `dest`: `Dest`
+- `render`: `Render`
+- `exec`: `bool`
+  - Whether the destination gets mode 755 (R build hooks must be
+
+### `scaffold::TemplateData`
+
+```rust
+pub struct TemplateData
+```
+
+Substitution variables for template rendering. Mirrors `template_data()`
+in `minirextendr/R/utils.R`: `package`, `package_rs`, `Package`,
+`features_var`, `year`, plus optional `crate_name`/`crate_name_rs` and
+`rpkg_name` for the monorepo template.
+
+**Fields:**
+
+- `package`: `String`
+- `crate_name`: `Option<String>`
+
+**Inherent associated items:**
+
+#### `new`
+
+```rust
+fn new(package: &str) -> Self
+```
+
+#### `pairs`
+
+```rust
+fn pairs(self: &Self) -> &[(&'static str, String)]
+```
+
+#### `with_crate`
+
+```rust
+fn with_crate(self: Self, crate_name: &str) -> Self
+```
+
+#### `with_rpkg`
+
+```rust
+fn with_rpkg(self: Self, rpkg_name: &str) -> Self
+```
+
 ---
 
 ## Enums
@@ -310,9 +380,9 @@ pub enum InitCmd
 
 **Variants:**
 
-- `Package { path: String }`
+- `Package { dest: String }`
   - Create a new R package with miniextendr.
-- `Monorepo { path: String, package: Option<String>, crate_name: Option<String>, rpkg_name: Option<String>, local_path: Option<String>, miniextendr_version: String }`
+- `Monorepo { dest: String, package: Option<String>, crate_name: Option<String>, rpkg_name: Option<String>, local_path: Option<String>, miniextendr_version: String }`
   - Create a Rust workspace with embedded R package.
 - `Use { template_type: String, rpkg_name: Option<String>, miniextendr_version: String, local_path: Option<String> }`
   - Add miniextendr scaffolding to an existing project.
@@ -431,6 +501,42 @@ pub enum WorkflowCmd
   - Sync project: autoconf + configure + document.
 - `DevLink`
   - Link package for development (devtools::load_all).
+
+### `scaffold::Dest`
+
+```rust
+pub enum Dest
+```
+
+Destination of a scaffolded file, relative to the scaffold root.
+
+**Variants:**
+
+- `Path(&'static str)`
+  - Fixed relative path.
+- `PackageDoc`
+  - `R/<package>-package.R`.
+- `CratePath(&'static str)`
+  - `<crate_name>/<path>` (monorepo core crate).
+
+### `scaffold::Render`
+
+```rust
+pub enum Render
+```
+
+How a template file's content is transformed before writing.
+
+**Variants:**
+
+- `Mustache`
+  - `{{{key}}}` then `{{key}}` substitution; unresolved `{{identifier}}`
+- `TripleOnly`
+  - Literal `{{{key}}}` substitution only; `{{...}}` preserved.
+- `Verbatim`
+  - Byte-for-byte copy.
+- `IgnoreFilter`
+  - Ignore-file prep: drop blank lines and `#` comments.
 
 ---
 
@@ -598,6 +704,131 @@ Tries `git rev-parse --show-toplevel` first (fast, accurate when in a git repo),
 then falls back to walking up to 3 parent directories looking for a `Cargo.toml`
 with `[workspace]`.
 
+### `project::parse_description_field`
+
+```rust
+fn parse_description_field(content: &str, field: &str) -> Option<String>
+```
+
+Parse a single field's value out of DCF-formatted `content` (the format
+used by `DESCRIPTION` files), joining continuation lines onto the field
+they extend.
+
+### `scaffold::apply_plan`
+
+```rust
+fn apply_plan(root: &std::path::Path, prefix: &str, plan: &[PlanEntry], data: &TemplateData, fresh: bool) -> anyhow::Result<()>
+```
+
+Apply a scaffold plan rooted at `root`, reading templates from
+`prefix` (e.g. `"templates/rpkg"` or `"templates/monorepo/rpkg"`).
+
+`fresh` selects ignore-file semantics: a fresh scaffold writes the
+filtered patterns outright (byte-identical to the R fresh-file path, see
+minirextendr #1151); over an existing package (`init use`) the patterns
+are appended with dedupe, mirroring `usethis::use_build_ignore()` /
+`use_git_ignore()`. Every other file is overwritten — the template is the
+source of truth, matching `use_template()`'s delete-first behavior.
+
+### `scaffold::desc_set_field`
+
+```rust
+fn desc_set_field(content: &str, field: &str, value: &str) -> String
+```
+
+Set a single-line field in DCF `content`, replacing an existing field (and
+its continuation lines) or appending (~ `mx_desc_set()`).
+
+### `scaffold::description_content`
+
+```rust
+fn description_content(package: &str) -> String
+```
+
+Canonical fresh DESCRIPTION (~ the hand-written literal in
+`create_rpkg_subdirectory()`, `minirextendr/R/create.R`).
+
+### `scaffold::dest_rel`
+
+```rust
+fn dest_rel(entry: &PlanEntry, data: &TemplateData) -> anyhow::Result<std::path::PathBuf>
+```
+
+Resolve a plan entry's destination relative to the scaffold root.
+
+### `scaffold::embedded`
+
+```rust
+fn embedded(rel: &str) -> &'static str
+```
+
+Look up an embedded file by its path relative to `minirextendr/inst/`.
+
+Panics on a miss: the manifest is a compile-time constant, so a missing
+key is a programming error, not a runtime condition.
+
+### `scaffold::ignore_patterns`
+
+```rust
+fn ignore_patterns(content: &str) -> Vec<&str>
+```
+
+Ignore-file patterns: non-blank, non-comment lines
+(~ `mx_ignore_patterns()` in `minirextendr/R/utils.R`).
+
+### `scaffold::license_content`
+
+```rust
+fn license_content(package: &str) -> String
+```
+
+Minimal LICENSE body for `License: MIT + file LICENSE`
+(~ `mx_license_content()`).
+
+### `scaffold::minimal_namespace`
+
+```rust
+fn minimal_namespace(package: &str) -> String
+```
+
+Minimal roxygen2-managed NAMESPACE (~ `mx_minimal_namespace()`): carries
+the roxygen2 header so a later `devtools::document()` overwrites it
+cleanly, plus `useDynLib()` so the fresh shared library loads.
+
+### `scaffold::render`
+
+```rust
+fn render(template_rel: &str, content: &str, render: Render, data: &TemplateData) -> anyhow::Result<String>
+```
+
+Render `content` according to `render`, substituting from `data`.
+
+### `scaffold::to_rust_name`
+
+```rust
+fn to_rust_name(name: &str) -> String
+```
+
+Convert an R package name to a Rust-safe identifier (dots and hyphens
+become underscores). Mirrors `to_rust_name()` in `minirextendr/R/utils.R`.
+
+### `scaffold::write_config_scripts`
+
+```rust
+fn write_config_scripts(root: &std::path::Path) -> anyhow::Result<()>
+```
+
+Copy the bundled `config.guess` / `config.sub` scripts into `tools/`.
+
+### `scaffold::write_file`
+
+```rust
+fn write_file(path: &std::path::Path, content: &str, exec: bool) -> anyhow::Result<()>
+```
+
+Write `content` to `path`, creating parent directories; set mode 755 when
+`exec` (unix).
+
 ---
 
 ## Constants
@@ -609,3 +840,64 @@ pub const MINIEXTENDR_CRATES: &[&str] = _;
 ```
 
 Miniextendr workspace crate names — the crates that get vendored/synced.
+
+### `scaffold::CONFIG_BUILD_FIELDS`
+
+```rust
+pub const CONFIG_BUILD_FIELDS: &[(&str, &str)] = _;
+```
+
+`Config/build/*` DESCRIPTION fields required by miniextendr packages
+(~ `MX_CONFIG_BUILD_FIELDS` in `minirextendr/R/utils.R`).
+
+### `scaffold::CONFIG_SCRIPTS`
+
+```rust
+pub const CONFIG_SCRIPTS: &[(&str, &str)] = _;
+```
+
+Bundled autoconf helper scripts (`AC_CONFIG_AUX_DIR([tools])`), copied
+755 into `tools/` (~ `copy_config_scripts()`).
+
+### `scaffold::EMBEDDED`
+
+```rust
+pub const EMBEDDED: &[(&str, &str)] = _;
+```
+
+Every file under `minirextendr/inst/templates/` plus the bundled autoconf
+helper scripts under `minirextendr/inst/scripts/`, embedded verbatim at
+compile time. Keys are paths relative to `minirextendr/inst/`.
+
+### `scaffold::MONOREPO_ROOT_PLAN`
+
+```rust
+pub const MONOREPO_ROOT_PLAN: &[PlanEntry] = _;
+```
+
+The monorepo workspace-root surface, mirroring
+`create_miniextendr_monorepo()`. Note the root `.gitignore` is a full
+mustache render (it substitutes `{{rpkg_name}}`), unlike the rpkg ignore
+files, and `tools/bump-version.R` uses `copy_template()` semantics.
+
+### `scaffold::RPKG_PLAN`
+
+```rust
+pub const RPKG_PLAN: &[PlanEntry] = _;
+```
+
+The R-package scaffold surface, mirroring `use_miniextendr()`'s standalone
+path and `create_rpkg_subdirectory()`'s monorepo path (which write the
+same files from `templates/rpkg/` and `templates/monorepo/rpkg/`
+respectively). Render modes match the R helpers: `use_template()` entries
+are [`Render::Mustache`], `fs::file_copy()` entries are
+[`Render::Verbatim`], ignore files are [`Render::IgnoreFilter`].
+
+### `scaffold::RUST_SYSTEM_REQUIREMENT`
+
+```rust
+pub const RUST_SYSTEM_REQUIREMENT: &str = "Rust (>= 1.85)";
+```
+
+`SystemRequirements` entry for the Rust toolchain (shared between the
+fresh DESCRIPTION and the `init use` merge path).
