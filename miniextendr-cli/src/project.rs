@@ -150,7 +150,7 @@ impl ProjectContext {
 /// Parse a single field's value out of DCF-formatted `content` (the format
 /// used by `DESCRIPTION` files), joining continuation lines onto the field
 /// they extend.
-fn parse_description_field(content: &str, field: &str) -> Option<String> {
+pub fn parse_description_field(content: &str, field: &str) -> Option<String> {
     let prefix = format!("{field}:");
     let mut lines = content.lines().peekable();
     while let Some(line) = lines.next() {

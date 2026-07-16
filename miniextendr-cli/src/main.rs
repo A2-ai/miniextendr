@@ -10,6 +10,7 @@ mod cli;
 mod commands;
 mod output;
 mod project;
+mod scaffold;
 
 use std::path::Path;
 use std::process::ExitCode;
