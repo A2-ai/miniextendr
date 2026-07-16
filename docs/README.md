@@ -85,7 +85,7 @@ framework.
 
 | Feature | Guide | What it does |
 |---|---|---|
-| ALTREP | [ALTREP](ALTREP.md), [Receiving ALTREP](ALTREP_SEXP.md), [Native SEXP-backed ALTREP](NATIVE_SEXP_ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md), [Guards](ALTREP_GUARDS.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
+| ALTREP | [ALTREP](ALTREP.md), [Receiving ALTREP](ALTREP_SEXP.md), [Native SEXP-backed ALTREP](NATIVE_SEXP_ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md), [Guards](ALTREP_GUARDS.md), [get_region](ALTREP_GET_REGION.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
 | Arrow | [Arrow](ARROW.md) | Arrow arrays, R-backed buffers, and zero-copy recovery |
 | Jiff | [Jiff](JIFF.md) | Date/time conversion, adapters, ALTREP, and vctrs records |
 | OpenMP | [OpenMP](OPENMP.md) | Native dependency and R package build integration |
