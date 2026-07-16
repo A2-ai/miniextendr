@@ -104,7 +104,7 @@ In both cases, use `MyData { value: 42, len: 100 }.into_sexp()` to create the AL
 
 | Feature | Trait Method | Derive Key | When to Use |
 |---------|--------------|--------------|-------------|
-| **Bulk access** | `get_region()` | - | Faster than looping `elt()` |
+| **Bulk access** | `get_region()` | - | Faster than looping `elt()` (see [ALTREP_GET_REGION.md](ALTREP_GET_REGION.md)) |
 | **Dataptr** | `AltrepDataptr<T>` | `dataptr` | Data in contiguous memory |
 | **Serialization** | `AltrepSerialize` | `serialize` | Save/load support needed |
 | **Subsetting** | `AltrepExtractSubset::extract_subset()` | `subset` | O(1) subset possible (integer/complex only) |
@@ -266,6 +266,7 @@ Do you have data in memory?
 - [ ] Provide `is_sorted()` if sorted → Faster unique/sort
 - [ ] Provide `sum()/min()/max()` if O(1) possible → Much faster
 - [ ] Provide `get_region()` if faster than looping → Faster bulk access
+      ([contract + patterns](ALTREP_GET_REGION.md))
 - [ ] Provide `extract_subset()` if O(1) subset → Faster subsetting
 - [ ] Skip `dataptr()` if lazy → Save memory
 - [ ] Implement `dataptr()` if in-memory → Faster operations
@@ -312,5 +313,6 @@ Full guide: [Receiving ALTREP from R](ALTREP_SEXP.md)
 - **Complete guide**: [ALTREP.md](ALTREP.md)
 - **Receiving ALTREP**: [ALTREP_SEXP.md](ALTREP_SEXP.md)
 - **Practical examples**: [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md)
+- **Efficient `get_region`**: [ALTREP_GET_REGION.md](ALTREP_GET_REGION.md)
 - **Test suite**: [../rpkg/tests/testthat/test-altrep*.R](../rpkg/tests/testthat/)
 - **Reference**: [R's current `Altrep.h`](https://svn.r-project.org/R/trunk/src/include/R_ext/Altrep.h)

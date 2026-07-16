@@ -131,8 +131,9 @@ These were the final speculative entries when the backlog was archived.
   No benchmark shows this is a bottleneck, so there is no implementation issue
   until profiling demonstrates one.
 - **ALTREP region prefetch**: R controls `get_region` invocation, not the ALTREP class.
-  The viable documentation work is tracked by
-  [#1345](https://github.com/A2-ai/miniextendr/issues/1345).
+  The viable documentation work was tracked by
+  [#1345](https://github.com/A2-ai/miniextendr/issues/1345) and now lives in
+  [`docs/ALTREP_GET_REGION.md`](../ALTREP_GET_REGION.md).
 - **Microbenchmark gating in CI**: valuable, but the CI infrastructure is not yet
   reliable enough to gate changes. Noise-tolerant CI design is tracked by
   [#1346](https://github.com/A2-ai/miniextendr/issues/1346).

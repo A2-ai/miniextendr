@@ -293,8 +293,15 @@ impl AltIntegerData for MyData {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        // Optional: bulk element access (can be more efficient)
-        // Default uses elt() in a loop
+        // Optional: bulk element access. The default fills from elt() in a
+        // loop (shown here); override when a block can be filled cheaper
+        // than n independent elt() calls. Clamp, fill, and return the count
+        // written — see ALTREP_GET_REGION.md for the contract and patterns.
+        let n = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for (k, slot) in buf[..n].iter_mut().enumerate() {
+            *slot = self.elt(start + k);
+        }
+        n
     }
 }
 ```
@@ -1251,7 +1258,9 @@ sentinel applies: return `SEXP::null()` to fall back.
 1. **Implement `sum`/`min`/`max`** when you can compute them in O(1)
 2. **Use `no_na()` hint** when you know there are no NAs
 3. **Use `is_sorted()` hint** for sorted data
-4. **Implement `get_region()`** for efficient bulk access
+4. **Implement `get_region()`** for efficient bulk access — see
+   [ALTREP_GET_REGION.md](ALTREP_GET_REGION.md) for when R calls it and
+   cache-friendly filling patterns
 5. **Delay materialization** - prefer `elt()` over `dataptr()`
 6. **Return `None` from `dataptr_or_null()`** until actually materialized
 

@@ -27,6 +27,14 @@ impl AltIntegerData for StreamingIntRangeData {
     fn elt(&self, i: usize) -> i32 {
         self.inner.elt(i)
     }
+
+    // Forward the bulk path: StreamingIntData::get_region drives the reader
+    // straight into R's buffer, bypassing the per-chunk cache. Without this
+    // forward the default elt-loop re-walks the chunk cache per element.
+    // See docs/ALTREP_GET_REGION.md.
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        self.inner.get_region(start, len, buf)
+    }
 }
 
 /// Create a streaming integer ALTREP `1..=n`.
@@ -71,6 +79,11 @@ impl AltrepLen for StreamingRealSquaresData {
 impl AltRealData for StreamingRealSquaresData {
     fn elt(&self, i: usize) -> f64 {
         self.inner.elt(i)
+    }
+
+    // Forward the bulk path (see the integer wrapper above).
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        self.inner.get_region(start, len, buf)
     }
 }
 
