@@ -78,6 +78,12 @@ All types share the same behavior:
 - `get_region()` fills a buffer element-by-element via `elt()`
 - `len()` returns the declared length
 
+Delegation wrappers (Step 2 below) must forward `get_region()` to the inner
+type — a wrapper that implements only `elt()` silently reverts bulk scans to
+the default per-element loop. See
+[ALTREP_GET_REGION.md](ALTREP_GET_REGION.md) for when R calls `get_region`
+and how to fill regions efficiently.
+
 ---
 
 ## Complete Example: Sparse Integer Iterator
