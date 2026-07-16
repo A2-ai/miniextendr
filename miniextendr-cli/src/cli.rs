@@ -119,12 +119,17 @@ pub enum InitCmd {
     /// Create a new R package with miniextendr.
     Package {
         /// Destination path for the new package.
-        path: String,
+        //
+        // Named `dest`, not `path`: the global `--path` arg propagates into
+        // subcommands under the clap id "path", and a positional with the
+        // same id captures into BOTH — `ProjectContext::discover` then ran on
+        // the not-yet-created destination and errored before dispatch.
+        dest: String,
     },
     /// Create a Rust workspace with embedded R package.
     Monorepo {
         /// Destination path for the monorepo.
-        path: String,
+        dest: String,
         /// Package name.
         #[arg(long)]
         package: Option<String>,

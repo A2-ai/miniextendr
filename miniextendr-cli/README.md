@@ -35,17 +35,31 @@ End-user commands for building R packages with Rust. No knowledge of miniextendr
 ### `init` — Create or add miniextendr to a project
 
 ```bash
-miniextendr init package mypackage          # New R package with Rust
-miniextendr init monorepo myproject         # Rust workspace + embedded R package
+miniextendr init package my.package         # New R package with Rust
+miniextendr init monorepo my.project        # Rust workspace + embedded R package
 miniextendr init use                        # Add miniextendr to existing package
 ```
+
+`init` renders the canonical `minirextendr` templates (embedded at compile
+time from `minirextendr/inst/templates/`), so a CLI-generated package is
+identical to one scaffolded by `minirextendr::create_miniextendr_package()` /
+`create_miniextendr_monorepo()` / `use_miniextendr()`: same two install modes
+(source vs. offline tarball, keyed on `inst/vendor.tar.xz` presence), same
+configure-written `.cargo/config.toml`, same wrapper and wasm-registry
+generation — and no `just` required to build the result.
+
+`init use` auto-detects the layout: run it inside an R package (has
+`DESCRIPTION`) to add Rust scaffolding in place, or inside a Rust workspace
+(has `Cargo.toml`) to embed an R package subdirectory
+(`--template-type rpkg|monorepo` overrides detection).
 
 ### `workflow` — Build, document, check, and manage R package
 
 ```bash
 miniextendr workflow build                  # Full two-pass build
 miniextendr workflow configure              # Generate Makevars and build config
-miniextendr workflow configure --cran       # Configure for CRAN release
+                                            # (install mode auto-detected from
+                                            #  inst/vendor.tar.xz presence)
 miniextendr workflow document               # Derive NAMESPACE/man from generated wrappers
 miniextendr workflow test                   # Run R tests (devtools::test)
 miniextendr workflow test --filter vec      # Run filtered tests
