@@ -618,7 +618,7 @@ fn echo_reading(x: SEXP) -> Result<AsSerialize<satellite::Reading>, String> {
 | `enum` → tagged list / per-variant `data.frame` | `vec_to_dataframe_split`, `result_to_dataframe` |
 | nested `enum` field → `<field>_variant` tag + `<field>_<sub>` columns | `vec_to_dataframe_flatten_enums`, `…_with_tags` (custom tag name) |
 | `HashMap`/`BTreeMap` → named list / `data.frame` | `map_to_dataframe`, `hashmap_to_dataframe` |
-| `data.frame` → `Vec<struct>` | `dataframe_to_vec` / `SerdeRows` |
+| `data.frame` → `Vec<struct>` | `dataframe_to_vec` / `SerdeRows` (`dataframe_to_vec_with_struct_fields` for the #1320 tag-collision opt-out) |
 | collated / flattened enum `data.frame` → `Vec<enum>` (collated and flattened shapes) | `dataframe_to_vec_collated` (top-level), `dataframe_to_vec` / `dataframe_to_vec_with_enum_tags` (nested fields) |
 
 The **collated and flattened** enum shapes are bidirectional: nested enum
@@ -637,11 +637,38 @@ The other enum writer shapes remain **write-only**: `PerVariantList` /
 per-variant frame *lists* no reader consumes, and internally-tagged flattened
 fields (`<field>_<tagfield>`, no `_variant` column) are not covered by the
 reader path — see [#1321](https://github.com/A2-ai/miniextendr/issues/1321).
-One reader caveat: an `Option<nested struct>` field whose flattened columns
-include one matching the tag-column name (a sub-field literally named
-`variant`) reads back as `None` when that cell is NA — silent loss; see
-[#1320](https://github.com/A2-ai/miniextendr/issues/1320) for the mechanism
-and workarounds.
+
+### Reader caveat: the `_variant` tag-column collision (#1320)
+
+The reader has no type information when it meets an `Option<T>` field with no
+bare column — it cannot tell `Option<NestedStruct>` from `Option<Enum>`. To
+read `Option<Enum>` `None` rows back, it probes the would-be variant-tag
+column — `<field>_variant` by default, or the configured
+`dataframe_to_vec_with_enum_tags` override — and an NA character/factor cell
+there means `None`. The `_variant` suffix (or whatever tag name the reader is
+configured with) is therefore effectively **reserved** under
+`Option<nested struct>` fields.
+
+**Silent loss** occurs when all of these hold:
+
+1. the field is `Option<NestedStruct>` (flattened columns, no bare column);
+2. the nested struct has a sub-field whose flattened column name equals the
+   would-be tag column (a sub-field literally named `variant` under the
+   default, e.g. `meta.variant` → `meta_variant`);
+3. that column is character or factor, and NA at the row.
+
+The whole struct then reads back as `None` — the other sub-fields'
+values on that row are dropped without an error. Fixes:
+
+| Approach | How | Trade-off |
+|---|---|---|
+| Struct opt-out (**preferred**) | `dataframe_to_vec_with_struct_fields(sexp, &["meta"])` | The heuristic never fires for `meta`; it is always read as a struct. An actual `None` struct row errors (non-`Option` sub-field) or reads as all-`None` `Some` — the writer emits no presence signal to recover it. |
+| Rename the colliding sub-field | `#[serde(rename = "kind")] variant: Option<String>` on the inner struct field | Changes the emitted column name (`meta_kind`) on both write and read. |
+| Per-field tag override | `dataframe_to_vec_with_enum_tags(sexp, &[("meta", "<unused column>")])` | Points the tag probe at a non-existent column so it never fires — works today, but expresses the intent poorly; prefer the opt-out. |
+
+`Option<Enum>` fields are unaffected by the opt-out unless listed: fields not
+named in `dataframe_to_vec_with_struct_fields` keep the tag heuristic, so
+`None` enum rows still round-trip.
 
 ### What serde alone cannot give you
 

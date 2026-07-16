@@ -249,7 +249,8 @@ pub use columnar::{
 pub use columnar::{par_iter_to_dataframe, par_iter_to_dataframe_growing};
 pub use dataframe_de::{
     BorrowedRows, SerdeRows, dataframe_to_vec, dataframe_to_vec_borrowed,
-    dataframe_to_vec_collated, dataframe_to_vec_with_enum_tags, with_dataframe_rows,
+    dataframe_to_vec_collated, dataframe_to_vec_with_enum_tags,
+    dataframe_to_vec_with_struct_fields, with_dataframe_rows,
 };
 pub use de::RDeserializer;
 pub use error::RSerdeError;
