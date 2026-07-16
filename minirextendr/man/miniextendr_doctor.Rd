@@ -37,6 +37,20 @@ check is skipped silently when git is unavailable or there is no
 enclosing git repository (e.g. an extracted source tarball or CRAN's
 build farm).
 
+The NAMESPACE section also flags stale-export drift: explicit \code{export()}
+directives with no backing definition in the union of top-level objects
+defined in \verb{R/} sources (including the generated \verb{R/<pkg>-wrappers.R})
+and \code{importFrom()} names (re-exports). After a \verb{#[miniextendr]} function
+is removed or renamed, \code{pkgload::load_all()} and \code{testthat} merely warn
+on the superset NAMESPACE and proceed, so the drift stays invisible in
+the dev loop until \verb{R CMD check} or \code{library()} fails far from the cause;
+\code{\link[=miniextendr_build]{miniextendr_build()}} reconciles it. The comparison is fully static (no
+package code is loaded or executed). \code{exportPattern()} name-sets are not
+expanded, \code{S3method()} / \code{exportMethods()} / \code{exportClasses()} directives
+are out of scope, and the check skips when the wrappers file has not been
+generated yet or when a whole-package \code{import()} directive makes exports
+statically unattributable.
+
 For more targeted checks, see \code{\link[=miniextendr_status]{miniextendr_status()}} (file presence)
 and \code{\link[=miniextendr_validate]{miniextendr_validate()}} (configuration correctness).
 }
