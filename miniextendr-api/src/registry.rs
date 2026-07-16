@@ -1156,6 +1156,152 @@ fn resolve_inherited_param_markers(content: String) -> String {
 
 // endregion
 
+// region: cross-class return wrapper resolvers
+
+/// Scan `content` for `<prefix><RustName>__(<expr>)` markers and replace each
+/// with whatever `emit` pushes for the resolved class entry (or `None` when
+/// `RustName` is not registered).
+///
+/// Shared scan loop behind [`resolve_scalar_return_wrappers`] and
+/// [`resolve_list_return_wrappers`]. The two marker families use
+/// non-overlapping prefixes (`.__MX_WRAP_RETURN_` vs `.__MX_WRAP_LIST_RETURN_`)
+/// so each resolver only ever consumes its own markers — the scalar resolver
+/// rewrites *unrecognized* names of its own prefix to the bare expression, so
+/// a shared prefix would destroy list markers before the list pass ran (#1284).
+///
+/// Malformed markers (missing `__(` or the closing `)`) are emitted as-is and
+/// scanning stops, matching the other placeholder resolvers in this file.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_wrap_return_markers(
+    content: &str,
+    prefix: &str,
+    class_index: &std::collections::HashMap<&str, &ClassNameEntry>,
+    emit: impl Fn(&mut String, Option<&ClassNameEntry>, &str),
+) -> String {
+    const ARG_OPEN: &str = "__(";
+    const ARG_CLOSE: char = ')';
+
+    let mut result = String::with_capacity(content.len());
+    let mut remaining = content;
+    while let Some(start) = remaining.find(prefix) {
+        result.push_str(&remaining[..start]);
+        let rest_from_prefix = &remaining[start..];
+        let marker_body = &rest_from_prefix[prefix.len()..];
+        let Some(name_end) = marker_body.find(ARG_OPEN) else {
+            // Malformed placeholder (no opening `__(`) — emit as-is and stop scanning.
+            result.push_str(prefix);
+            remaining = marker_body;
+            break;
+        };
+        let rust_name = &marker_body[..name_end];
+        let after_open = &marker_body[name_end + ARG_OPEN.len()..];
+        let Some(expr_end) = after_open.find(ARG_CLOSE) else {
+            // Malformed placeholder (no closing `)`) — emit as-is and stop scanning.
+            result.push_str(prefix);
+            remaining = marker_body;
+            break;
+        };
+        let expr = &after_open[..expr_end];
+        remaining = &after_open[expr_end + ARG_CLOSE.len_utf8()..];
+        emit(&mut result, class_index.get(rust_name).copied(), expr);
+    }
+    result.push_str(remaining);
+    result
+}
+
+/// Resolve scalar `.__MX_WRAP_RETURN_<RustName>__(<expr>)` placeholders
+/// emitted by class-method wrappers whose Rust return type may name a
+/// different ExternalPtr-backed class.
+///
+/// Unlike `CLASS_REF`, an unresolved return wrapper is a quiet no-op (the bare
+/// `<expr>`): the syntactic macro-time heuristic intentionally allows false
+/// positives, and write time is where we know whether `<RustName>` is
+/// registered in this package.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_scalar_return_wrappers(
+    content: &str,
+    class_index: &std::collections::HashMap<&str, &ClassNameEntry>,
+) -> String {
+    resolve_wrap_return_markers(
+        content,
+        ".__MX_WRAP_RETURN_",
+        class_index,
+        |result, entry, expr| match entry {
+            Some(entry) => match entry.class_system {
+                "r6" => {
+                    result.push_str(&format!("{}$new(.ptr = {})", entry.r_class_name, expr));
+                }
+                "s7" => {
+                    result.push_str(&format!("{}(.ptr = {})", entry.r_class_name, expr));
+                }
+                "s4" => {
+                    result.push_str(&format!(
+                        "methods::new(\"{}\", ptr = {})",
+                        entry.r_class_name, expr
+                    ));
+                }
+                _ => {
+                    result.push_str(&format!(
+                        "structure({}, class = \"{}\")",
+                        expr, entry.r_class_name
+                    ));
+                }
+            },
+            None => result.push_str(expr),
+        },
+    )
+}
+
+/// Resolve list-shaped `.__MX_WRAP_LIST_RETURN_<RustName>__(<expr>)`
+/// placeholders emitted for `Vec<Class>`-returning class methods (#1284).
+///
+/// `<expr>` is a bare R list of external pointers (the `IntoRVecElement`
+/// conversion emitted by `#[derive(ExternalPtr)]`); each element gets the same
+/// per-element wrap the scalar resolver applies, via `lapply`. Unregistered
+/// element types fall back to the bare list, mirroring the scalar fallback.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_list_return_wrappers(
+    content: &str,
+    class_index: &std::collections::HashMap<&str, &ClassNameEntry>,
+) -> String {
+    resolve_wrap_return_markers(
+        content,
+        ".__MX_WRAP_LIST_RETURN_",
+        class_index,
+        |result, entry, expr| match entry {
+            Some(entry) => match entry.class_system {
+                "r6" => {
+                    result.push_str(&format!(
+                        "lapply({}, function(.el) {}$new(.ptr = .el))",
+                        expr, entry.r_class_name
+                    ));
+                }
+                "s7" => {
+                    result.push_str(&format!(
+                        "lapply({}, function(.el) {}(.ptr = .el))",
+                        expr, entry.r_class_name
+                    ));
+                }
+                "s4" => {
+                    result.push_str(&format!(
+                        "lapply({}, function(.el) methods::new(\"{}\", ptr = .el))",
+                        expr, entry.r_class_name
+                    ));
+                }
+                _ => {
+                    result.push_str(&format!(
+                        "lapply({}, function(.el) structure(.el, class = \"{}\"))",
+                        expr, entry.r_class_name
+                    ));
+                }
+            },
+            None => result.push_str(expr),
+        },
+    )
+}
+
+// endregion
+
 /// Write all R wrapper entries to a file.
 ///
 /// Called from [`miniextendr_write_wrappers`] (via `dyn.load`/`.Call` of the
@@ -1372,73 +1518,15 @@ pub fn write_r_wrappers_to_file(path: &str) {
         content = result;
     }
 
-    // Resolve .__MX_WRAP_RETURN_<RustName>__(<expr>) placeholders emitted by
-    // class-method wrappers whose Rust return type may name a different
-    // ExternalPtr-backed class. Unlike CLASS_REF, an unresolved return wrapper
-    // is a quiet no-op: the syntactic macro-time heuristic intentionally allows
-    // false positives, and write time is where we know whether `<RustName>` is
-    // registered in this package.
+    // Resolve the cross-class return wrapper placeholders: the scalar
+    // `.__MX_WRAP_RETURN_<RustName>__(<expr>)` family and the list-shaped
+    // `.__MX_WRAP_LIST_RETURN_<RustName>__(<expr>)` family (#1284). The
+    // prefixes are non-overlapping, so pass order does not matter — each
+    // resolver only consumes its own markers.
     {
         let class_index = build_class_name_index(MX_CLASS_NAMES.iter());
-
-        const PREFIX: &str = ".__MX_WRAP_RETURN_";
-        const ARG_OPEN: &str = "__(";
-        const ARG_CLOSE: char = ')';
-
-        let mut result = String::with_capacity(content.len());
-        let mut remaining = content.as_str();
-        while let Some(start) = remaining.find(PREFIX) {
-            result.push_str(&remaining[..start]);
-            let rest_from_prefix = &remaining[start..];
-            let marker_body = &rest_from_prefix[PREFIX.len()..];
-            if let Some(name_end) = marker_body.find(ARG_OPEN) {
-                let rust_name = &marker_body[..name_end];
-                let after_open = &marker_body[name_end + ARG_OPEN.len()..];
-                if let Some(expr_end) = after_open.find(ARG_CLOSE) {
-                    let expr = &after_open[..expr_end];
-                    remaining = &after_open[expr_end + ARG_CLOSE.len_utf8()..];
-                    match class_index.get(rust_name) {
-                        Some(entry) => match entry.class_system {
-                            "r6" => {
-                                result.push_str(&format!(
-                                    "{}$new(.ptr = {})",
-                                    entry.r_class_name, expr
-                                ));
-                            }
-                            "s7" => {
-                                result
-                                    .push_str(&format!("{}(.ptr = {})", entry.r_class_name, expr));
-                            }
-                            "s4" => {
-                                result.push_str(&format!(
-                                    "methods::new(\"{}\", ptr = {})",
-                                    entry.r_class_name, expr
-                                ));
-                            }
-                            _ => {
-                                result.push_str(&format!(
-                                    "structure({}, class = \"{}\")",
-                                    expr, entry.r_class_name
-                                ));
-                            }
-                        },
-                        None => result.push_str(expr),
-                    }
-                } else {
-                    // Malformed placeholder (no closing `)`) — emit as-is and stop scanning.
-                    result.push_str(PREFIX);
-                    remaining = marker_body;
-                    break;
-                }
-            } else {
-                // Malformed placeholder (no opening `__(`) — emit as-is and stop scanning.
-                result.push_str(PREFIX);
-                remaining = marker_body;
-                break;
-            }
-        }
-        result.push_str(remaining);
-        content = result;
+        content = resolve_scalar_return_wrappers(&content, &class_index);
+        content = resolve_list_return_wrappers(&content, &class_index);
     }
 
     // Resolve .__MX_GENERIC_DOC__(...) markers into standalone Rd pages.
@@ -2002,62 +2090,18 @@ mod tests {
         let _ = build_class_name_index(entries.iter());
     }
 
-    /// Run the cross-class return wrapper resolver over `content` using
-    /// `entries` as the class registry.
+    /// Run the production scalar cross-class return wrapper resolver over
+    /// `content` using `entries` as the class registry.
     fn resolve_return_wrappers(content: &str, entries: &[ClassNameEntry]) -> String {
         let class_index = build_class_name_index(entries.iter());
+        resolve_scalar_return_wrappers(content, &class_index)
+    }
 
-        const PREFIX: &str = ".__MX_WRAP_RETURN_";
-        const ARG_OPEN: &str = "__(";
-
-        let mut result = String::with_capacity(content.len());
-        let mut remaining = content;
-        while let Some(start) = remaining.find(PREFIX) {
-            result.push_str(&remaining[..start]);
-            let rest_from_prefix = &remaining[start..];
-            let marker_body = &rest_from_prefix[PREFIX.len()..];
-            if let Some(name_end) = marker_body.find(ARG_OPEN) {
-                let rust_name = &marker_body[..name_end];
-                let after_open = &marker_body[name_end + ARG_OPEN.len()..];
-                if let Some(expr_end) = after_open.find(')') {
-                    let expr = &after_open[..expr_end];
-                    remaining = &after_open[expr_end + 1..];
-                    match class_index.get(rust_name) {
-                        Some(entry) => match entry.class_system {
-                            "r6" => result
-                                .push_str(&format!("{}$new(.ptr = {})", entry.r_class_name, expr)),
-                            "s7" => {
-                                result
-                                    .push_str(&format!("{}(.ptr = {})", entry.r_class_name, expr));
-                            }
-                            "s4" => {
-                                result.push_str(&format!(
-                                    "methods::new(\"{}\", ptr = {})",
-                                    entry.r_class_name, expr
-                                ));
-                            }
-                            _ => {
-                                result.push_str(&format!(
-                                    "structure({}, class = \"{}\")",
-                                    expr, entry.r_class_name
-                                ));
-                            }
-                        },
-                        None => result.push_str(expr),
-                    }
-                } else {
-                    result.push_str(PREFIX);
-                    remaining = marker_body;
-                    break;
-                }
-            } else {
-                result.push_str(PREFIX);
-                remaining = marker_body;
-                break;
-            }
-        }
-        result.push_str(remaining);
-        result
+    /// Run the production list cross-class return wrapper resolver (#1284)
+    /// over `content` using `entries` as the class registry.
+    fn resolve_list_wrappers(content: &str, entries: &[ClassNameEntry]) -> String {
+        let class_index = build_class_name_index(entries.iter());
+        resolve_list_return_wrappers(content, &class_index)
     }
 
     #[test]
@@ -2271,6 +2315,133 @@ mod tests {
         let entries: [ClassNameEntry; 0] = [];
         let input = ".__MX_WRAP_RETURN_JsonValue__(.val)";
         let output = resolve_return_wrappers(input, &entries);
+        assert_eq!(output, ".val");
+    }
+
+    // #1284 — list-shaped cross-class return markers (`Vec<Class>` returns).
+
+    /// CRITICAL non-overlap pin: the scalar resolver rewrites *unrecognized*
+    /// names of its own prefix to the bare expression, so if the list marker
+    /// shared the `.__MX_WRAP_RETURN_` prefix the scalar pass would consume
+    /// and destroy it before the list pass ran. The `LIST_` infix keeps the
+    /// families disjoint — the scalar resolver must leave list markers
+    /// completely untouched (and vice versa).
+    #[test]
+    fn scalar_resolver_leaves_list_markers_untouched() {
+        let entries = [ClassNameEntry {
+            rust_type: "R6Board",
+            r_class_name: "R6Board",
+            class_system: "r6",
+        }];
+        let input = "a <- .__MX_WRAP_LIST_RETURN_R6Board__(.val)";
+        let output = resolve_return_wrappers(input, &entries);
+        assert_eq!(output, input, "scalar pass must not consume list markers");
+    }
+
+    #[test]
+    fn list_resolver_leaves_scalar_markers_untouched() {
+        let entries = [ClassNameEntry {
+            rust_type: "R6Board",
+            r_class_name: "R6Board",
+            class_system: "r6",
+        }];
+        let input = "a <- .__MX_WRAP_RETURN_R6Board__(.val)";
+        let output = resolve_list_wrappers(input, &entries);
+        assert_eq!(output, input, "list pass must not consume scalar markers");
+    }
+
+    /// Both passes over content mixing the two families resolve each marker
+    /// with its own resolver, in either pass order.
+    #[test]
+    fn scalar_and_list_markers_resolve_independently() {
+        let entries = [ClassNameEntry {
+            rust_type: "R6Board",
+            r_class_name: "R6Board",
+            class_system: "r6",
+        }];
+        let input =
+            "a <- .__MX_WRAP_RETURN_R6Board__(.val)\nb <- .__MX_WRAP_LIST_RETURN_R6Board__(.val)";
+        let expected = "a <- R6Board$new(.ptr = .val)\nb <- lapply(.val, function(.el) R6Board$new(.ptr = .el))";
+
+        let scalar_first =
+            resolve_list_wrappers(&resolve_return_wrappers(input, &entries), &entries);
+        let list_first = resolve_return_wrappers(&resolve_list_wrappers(input, &entries), &entries);
+        assert_eq!(scalar_first, expected);
+        assert_eq!(list_first, expected);
+    }
+
+    #[test]
+    fn list_return_wrapper_resolves_r6_lapply() {
+        let entries = [ClassNameEntry {
+            rust_type: "R6Board",
+            r_class_name: "R6Board",
+            class_system: "r6",
+        }];
+        let input = "return(.__MX_WRAP_LIST_RETURN_R6Board__(.val))";
+        let output = resolve_list_wrappers(input, &entries);
+        assert_eq!(
+            output,
+            "return(lapply(.val, function(.el) R6Board$new(.ptr = .el)))"
+        );
+    }
+
+    #[test]
+    fn list_return_wrapper_resolves_s7_override_lapply() {
+        let entries = [ClassNameEntry {
+            rust_type: "S7Board",
+            r_class_name: "PrettyBoard",
+            class_system: "s7",
+        }];
+        let input = ".__MX_WRAP_LIST_RETURN_S7Board__(.val)";
+        let output = resolve_list_wrappers(input, &entries);
+        assert_eq!(
+            output,
+            "lapply(.val, function(.el) PrettyBoard(.ptr = .el))"
+        );
+    }
+
+    #[test]
+    fn list_return_wrapper_resolves_s4_lapply() {
+        let entries = [ClassNameEntry {
+            rust_type: "S4Board",
+            r_class_name: "S4Board",
+            class_system: "s4",
+        }];
+        let input = ".__MX_WRAP_LIST_RETURN_S4Board__(.val)";
+        let output = resolve_list_wrappers(input, &entries);
+        assert_eq!(
+            output,
+            "lapply(.val, function(.el) methods::new(\"S4Board\", ptr = .el))"
+        );
+    }
+
+    #[test]
+    fn list_return_wrapper_resolves_attribute_classes_lapply() {
+        let entries = [
+            ClassNameEntry {
+                rust_type: "S3Board",
+                r_class_name: "S3Board",
+                class_system: "s3",
+            },
+            ClassNameEntry {
+                rust_type: "EnvBoard",
+                r_class_name: "EnvBoard",
+                class_system: "env",
+            },
+        ];
+        let input = "a <- .__MX_WRAP_LIST_RETURN_S3Board__(.val)\nb <- .__MX_WRAP_LIST_RETURN_EnvBoard__(.ptr)";
+        let output = resolve_list_wrappers(input, &entries);
+        assert_eq!(
+            output,
+            "a <- lapply(.val, function(.el) structure(.el, class = \"S3Board\"))\nb <- lapply(.ptr, function(.el) structure(.el, class = \"EnvBoard\"))"
+        );
+    }
+
+    #[test]
+    fn list_return_wrapper_unregistered_type_falls_back_to_bare_list() {
+        let entries: [ClassNameEntry; 0] = [];
+        let input = ".__MX_WRAP_LIST_RETURN_JsonValue__(.val)";
+        let output = resolve_list_wrappers(input, &entries);
         assert_eq!(output, ".val");
     }
 

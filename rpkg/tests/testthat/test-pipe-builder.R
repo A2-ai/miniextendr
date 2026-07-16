@@ -216,6 +216,106 @@ test_that("S7 method returning an Option<R6 class> raises a rust_error on None",
   )
 })
 
+test_that("R6 builder build_many() wraps every element of a Vec<Class> return", {
+  # #1284: Vec<Class> returns arrive as a list of wrapped class instances,
+  # not bare external pointers.
+  plan <- R6CrossPlan$new(7L)
+
+  boards <- plan$build_many(4L, 5L, 3L)
+  expect_type(boards, "list")
+  expect_length(boards, 3L)
+  for (b in boards) {
+    expect_s3_class(b, "R6CrossBoard")
+    expect_equal(b$cells(), 20L)
+  }
+  # Elements are distinct objects (seeds seed, seed + 1, ...).
+  expect_equal(
+    vapply(boards, function(b) b$signature(), character(1)),
+    c("4x5@7", "4x5@8", "4x5@9")
+  )
+})
+
+test_that("R6 builder build_many() returns an empty list for count = 0", {
+  plan <- R6CrossPlan$new(7L)
+
+  boards <- plan$build_many(4L, 5L, 0L)
+  expect_identical(boards, list())
+})
+
+test_that("R6 method returning Vec<S7 class> wraps elements with the S7 constructor", {
+  # Mixed-system list return: source method lives on an R6 class, elements
+  # are S7. The write-time lapply resolver keys off the element class.
+  plan <- R6CrossPlan$new(3L)
+
+  boards <- plan$build_many_s7(4L, 5L, 2L)
+  expect_length(boards, 2L)
+  for (b in boards) {
+    expect_true(S7::S7_inherits(b, S7CrossBoard))
+  }
+  expect_equal(
+    vapply(boards, function(b) s7_cross_cells(b), integer(1)),
+    c(23L, 24L)
+  )
+})
+
+test_that("S7 method returning Vec<R6 class> wraps elements with the R6 constructor", {
+  # Mixed-system list return in the other direction: S7 source, R6 elements.
+  plan <- S7CrossPlan(7L)
+
+  boards <- s7_build_many_r6(plan, 4L, 5L, 2L)
+  expect_length(boards, 2L)
+  for (b in boards) {
+    expect_s3_class(b, "R6CrossBoard")
+    expect_equal(b$cells(), 20L)
+  }
+  expect_equal(
+    vapply(boards, function(b) b$signature(), character(1)),
+    c("4x5@7", "4x5@8")
+  )
+})
+
+test_that("R6 builder try_build_many() wraps a usable classed list on Some", {
+  plan <- R6CrossPlan$new(7L)
+
+  boards <- plan$try_build_many(4L, 5L, 2L, FALSE)
+  expect_length(boards, 2L)
+  for (b in boards) {
+    expect_s3_class(b, "R6CrossBoard")
+  }
+  expect_equal(boards[[1L]]$signature(), "4x5@7")
+})
+
+test_that("R6 builder try_build_many() raises a rust_error on None", {
+  plan <- R6CrossPlan$new(7L)
+
+  expect_error(
+    plan$try_build_many(4L, 5L, 2L, TRUE),
+    class = "rust_error"
+  )
+})
+
+test_that("R6 builder checked_build_many() wraps a usable classed list on Ok", {
+  plan <- R6CrossPlan$new(3L)
+
+  boards <- plan$checked_build_many(2L, 3L, 2L, FALSE)
+  expect_length(boards, 2L)
+  for (b in boards) {
+    expect_s3_class(b, "R6CrossBoard")
+    expect_equal(b$cells(), 6L)
+  }
+})
+
+test_that("R6 builder checked_build_many() raises with the fixture's message on Err", {
+  plan <- R6CrossPlan$new(3L)
+
+  expect_error(
+    plan$checked_build_many(2L, 3L, 2L, TRUE),
+    "checked_build_many failed for seed 3",
+    fixed = TRUE,
+    class = "rust_error"
+  )
+})
+
 test_that("EnvPipeBuilder chains via $ and preserves identity", {
   b <- EnvPipeBuilder$new()
   expect_equal(b$add(1L)$add(2L)$total(), 3L)

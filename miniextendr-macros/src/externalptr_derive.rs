@@ -1193,17 +1193,46 @@ fn generate_into_external_ptr(input: &DeriveInput) -> TokenStream {
     }
 }
 
+/// Generate the concrete `IntoRVecElement` impl (issue #1284).
+///
+/// Lights up the single `impl<T: IntoRVecElement> IntoR for Vec<T>` blanket in
+/// miniextendr-api, so `-> Vec<MyType>` returns compile and produce a `VECSXP`
+/// of external pointers. The impl must be concrete (not a blanket over
+/// `IntoExternalPtr`) because the `MatchArg` bridge already occupies a blanket
+/// on `IntoRVecElement` and two blankets would collide (E0119) — the same
+/// funnel design `#[derive(IntoR)]` newtypes use (see
+/// `miniextendr_api::newtype` module docs).
+///
+/// GC discipline: `ExternalPtr::collect_into_r_list` allocates each
+/// `EXTPTRSXP` directly into the already-protected destination list, so no
+/// element is ever live-but-unrooted across a later allocation.
+fn generate_into_r_vec_element(input: &DeriveInput) -> TokenStream {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    quote::quote! {
+        impl #impl_generics ::miniextendr_api::IntoRVecElement for #name #ty_generics #where_clause {
+            #[inline]
+            fn elements_into_sexp(values: ::std::vec::Vec<Self>) -> ::miniextendr_api::SEXP {
+                ::miniextendr_api::externalptr::ExternalPtr::<Self>::collect_into_r_list(values)
+            }
+        }
+    }
+}
+
 /// Main entry point for `#[derive(ExternalPtr)]`.
 ///
 /// Orchestrates the full derive expansion:
 /// 1. Parses `#[externalptr(...)]` attributes for class system selection.
 /// 2. Analyzes struct fields for `#[r_data]` sidecar slots.
 /// 3. Generates `TypedExternal` impl (type identity for `ExternalPtr<T>`).
-/// 4. Generates `IntoExternalPtr` marker impl (enables `IntoR` blanket impl) —
-///    suppressed when `emit_into_r_marker` is `false`, which the struct-level
-///    `#[miniextendr(prefer = "native")]` path uses so its concrete `AsRNative`
-///    `IntoR` does not collide with the blanket `IntoExternalPtr` `IntoR`
-///    (E0119, #1283).
+/// 4. Generates `IntoExternalPtr` marker impl (enables `IntoR` blanket impl)
+///    and a concrete `IntoRVecElement` impl (enables the `IntoR for Vec<T>`
+///    blanket, so `-> Vec<MyType>` returns a `VECSXP` of external pointers —
+///    #1284). Both are suppressed when `emit_into_r_marker` is `false`, which
+///    the struct-level `#[miniextendr(prefer = "native")]` path uses so its
+///    concrete `AsRNative` `IntoR` does not collide with the blanket
+///    `IntoExternalPtr` `IntoR` (E0119, #1283).
 /// 5. Generates sidecar accessor FFI functions, registration constants, and R wrappers.
 ///
 /// Returns the combined token stream of all generated items.
@@ -1218,10 +1247,16 @@ pub fn derive_external_ptr(
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
     let typed_external = generate_typed_external(&input);
-    let into_external_ptr = if emit_into_r_marker {
-        generate_into_external_ptr(&input)
+    let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
+        (
+            generate_into_external_ptr(&input),
+            generate_into_r_vec_element(&input),
+        )
     } else {
-        proc_macro2::TokenStream::new()
+        (
+            proc_macro2::TokenStream::new(),
+            proc_macro2::TokenStream::new(),
+        )
     };
     let sidecar_accessors = generate_sidecar_accessors(&input, &sidecar_info)?;
     let erased_wrapper = generate_erased_wrapper(&input);
@@ -1229,6 +1264,7 @@ pub fn derive_external_ptr(
     Ok(quote::quote! {
         #typed_external
         #into_external_ptr
+        #into_r_vec_element
         #sidecar_accessors
         #erased_wrapper
     })

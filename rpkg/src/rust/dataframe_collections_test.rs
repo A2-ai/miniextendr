@@ -2,7 +2,6 @@
 
 #![allow(dead_code)]
 
-use miniextendr_api::dataframe::ColumnarFrame;
 use miniextendr_api::{DataFrameRow, IntoList};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -352,6 +351,7 @@ impl IntoList for WithOptMapAsList {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use miniextendr_api::dataframe::ColumnarFrame;
 
     #[test]
     fn test_vec_dataframe() {

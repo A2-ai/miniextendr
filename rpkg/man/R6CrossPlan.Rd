@@ -17,6 +17,10 @@ R6 builder fixture for cross-class return wrapping.
     \item \href{#method-R6CrossPlan-build_s7}{\code{R6CrossPlan$build_s7()}}
     \item \href{#method-R6CrossPlan-try_build}{\code{R6CrossPlan$try_build()}}
     \item \href{#method-R6CrossPlan-checked_build}{\code{R6CrossPlan$checked_build()}}
+    \item \href{#method-R6CrossPlan-build_many}{\code{R6CrossPlan$build_many()}}
+    \item \href{#method-R6CrossPlan-build_many_s7}{\code{R6CrossPlan$build_many_s7()}}
+    \item \href{#method-R6CrossPlan-try_build_many}{\code{R6CrossPlan$try_build_many()}}
+    \item \href{#method-R6CrossPlan-checked_build_many}{\code{R6CrossPlan$checked_build_many()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -122,6 +126,100 @@ Exercises the \verb{Result<Class, E>} cross-class return path (\code{ReturnHandl
       \item{\code{width}}{Board width.}
       \item{\code{height}}{Board height.}
       \item{\code{fail}}{When true, returns an \code{Err} instead of a board.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6CrossPlan-build_many"></a>}}
+\if{latex}{\out{\hypertarget{method-R6CrossPlan-build_many}{}}}
+\subsection{\code{R6CrossPlan$build_many()}}{
+  Materialize this plan into \code{count} boards (seeds \code{seed}, \code{seed + 1}, …).
+
+Exercises the \verb{Vec<Class>} cross-class return path (#1284): the C wrapper converts via the \code{IntoRVecElement} impl emitted by \verb{#[derive(ExternalPtr)]} into a bare list of external pointers, and the write-time list resolver wraps each element with \code{R6CrossBoard$new(.ptr = .el)} via \code{lapply}. \code{count = 0} returns \code{list()}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6CrossPlan$build_many(width, height, count)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{width}}{Board width.}
+      \item{\code{height}}{Board height.}
+      \item{\code{count}}{Number of boards to build.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6CrossPlan-build_many_s7"></a>}}
+\if{latex}{\out{\hypertarget{method-R6CrossPlan-build_many_s7}{}}}
+\subsection{\code{R6CrossPlan$build_many_s7()}}{
+  Materialize this plan into \code{count} \code{S7CrossBoard}s (R6 source, S7 element target).
+
+Mixed-system list return: the write-time resolver keys off the \emph{element} class, so the emitted \code{lapply} wrap uses S7's \code{S7CrossBoard(.ptr = .el)} constructor even though the enclosing method lives on an R6 class.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6CrossPlan$build_many_s7(width, height, count)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{width}}{Board width.}
+      \item{\code{height}}{Board height.}
+      \item{\code{count}}{Number of boards to build.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6CrossPlan-try_build_many"></a>}}
+\if{latex}{\out{\hypertarget{method-R6CrossPlan-try_build_many}{}}}
+\subsection{\code{R6CrossPlan$try_build_many()}}{
+  Materialize this plan into \code{count} boards, or \code{None} when \code{fail} is set.
+
+Exercises the \verb{Option<Vec<Class>>} cross-class return path: the C wrapper unwraps and raises on \code{None} (\code{ReturnHandling::OptionIntoRUnwrap}), so on \code{Some} the successful \code{.val} is the same bare list \code{build_many} produces, wrapped by the same \code{lapply} resolver.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6CrossPlan$try_build_many(width, height, count, fail)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{width}}{Board width.}
+      \item{\code{height}}{Board height.}
+      \item{\code{count}}{Number of boards to build.}
+      \item{\code{fail}}{When true, returns \code{None} instead of boards.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6CrossPlan-checked_build_many"></a>}}
+\if{latex}{\out{\hypertarget{method-R6CrossPlan-checked_build_many}{}}}
+\subsection{\code{R6CrossPlan$checked_build_many()}}{
+  Materialize this plan into \code{count} boards, or an \code{Err} message when \code{fail} is set.
+
+Exercises the \verb{Result<Vec<Class>, E>} cross-class return path (\code{ReturnHandling::ResultIntoR}).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6CrossPlan$checked_build_many(width, height, count, fail)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{width}}{Board width.}
+      \item{\code{height}}{Board height.}
+      \item{\code{count}}{Number of boards to build.}
+      \item{\code{fail}}{When true, returns an \code{Err} instead of boards.}
     }
     \if{html}{\out{</div>}}
   }

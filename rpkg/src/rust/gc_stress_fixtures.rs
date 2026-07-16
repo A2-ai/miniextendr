@@ -147,6 +147,49 @@ pub fn gc_stress_externalptr_collect_list() {
     }
 }
 
+/// Convert a `Vec<SharedData>` to an R `list()` of external pointers through
+/// the production `-> Vec<Class>` return path under GC pressure (#1284).
+///
+/// Drives the `IntoR for Vec<T>` blanket via the `IntoRVecElement` impl that
+/// `#[derive(ExternalPtr)]` emits — the exact conversion a
+/// `#[miniextendr] fn ... -> Vec<SharedData>` return performs. Internally this
+/// funnels into `ExternalPtr::collect_into_r_list`, which allocates each
+/// `EXTPTRSXP` directly into the already-protected destination list; under
+/// `gctorture(TRUE)` every per-element allocation forces a full GC, so a
+/// missing root on the list (or an element stored before rooting) would leave
+/// earlier elements collected and the readback would see a null
+/// `R_ExternalPtrAddr`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_vec_class_return() {
+    use miniextendr_api::externalptr::ExternalPtr;
+
+    let n: usize = 24;
+
+    let values: Vec<SharedData> = (0..n)
+        .map(|i| SharedData {
+            x: i as f64,
+            y: (i * 2) as f64,
+            label: format!("vec-{i}"),
+        })
+        .collect();
+
+    // The production `-> Vec<Class>` conversion: IntoR for Vec<SharedData>.
+    let list = values.into_sexp();
+
+    // Honest, allocation-free readback: a collected element has a null
+    // `R_ExternalPtrAddr`, so `wrap_sexp` returns `None`.
+    assert_eq!(list.len(), n, "Vec<Class> IntoR produced wrong length");
+    for i in 0..n {
+        let elt = list.vector_elt(i as isize);
+        let reread = unsafe { ExternalPtr::<SharedData>::wrap_sexp(elt) }
+            .expect("Vec<Class> list element was collected (R_ExternalPtrAddr is null)");
+        assert_eq!(reread.get_x(), i as f64);
+        assert_eq!(reread.get_label(), format!("vec-{i}"));
+    }
+}
+
 /// Exercise `Vec<Option<collection>>` conversions under GC pressure.
 ///
 /// Allocates `Vec<Option<Vec<i32>>>`, `Vec<Option<HashSet<String>>>`, and
