@@ -20,7 +20,6 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use miniextendr_api::dataframe::ColumnarFrame;
 use miniextendr_api::{BuiltDataFrame, IntoDataFrame, IntoDataFrameSplit};
 use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
@@ -981,6 +980,7 @@ pub fn btreemap_split_nvnr() -> List {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use miniextendr_api::dataframe::ColumnarFrame;
 
     #[test]
     fn vec_width_align_pinned_columns() {
