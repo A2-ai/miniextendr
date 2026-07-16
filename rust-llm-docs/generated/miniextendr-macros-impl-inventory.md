@@ -77,7 +77,7 @@ Traits with impls: 28
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
 | `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:95 |
-| `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3037 |
+| `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3055 |
 | `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
@@ -139,7 +139,7 @@ Traits with impls: 28
 |---|---|---|---|---|
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3037 |
+| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3055 |
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:79 |
@@ -154,7 +154,7 @@ Traits with impls: 28
 |---|---|---|---|---|
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3037 |
+| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3055 |
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:79 |
@@ -168,7 +168,7 @@ Traits with impls: 28
 |---|---|---|---|---|
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3037 |
+| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3055 |
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:79 |
@@ -182,7 +182,7 @@ Traits with impls: 28
 |---|---|---|---|---|
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3037 |
+| `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3055 |
 | `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 1 | miniextendr-macros/src/method_return_builder.rs:79 |

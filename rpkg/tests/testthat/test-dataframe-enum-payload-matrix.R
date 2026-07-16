@@ -1,7 +1,7 @@
 # Cardinality x payload-shape matrix for enum-derived data frames.
 # Mirrors rpkg/src/rust/dataframe_enum_payload_matrix.rs.
 #
-# Per shape, four cardinality cells via to_dataframe_split:
+# Per shape, four cardinality cells via into_dataframe_split:
 #   1v1r  - one variant, one row
 #   1vNr  - one variant, many rows
 #   Nv1r  - many variants, one row each

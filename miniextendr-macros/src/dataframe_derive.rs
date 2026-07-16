@@ -1017,6 +1017,8 @@ fn resolve_struct_field(
 /// - `impl From<Vec<Enum>> for EnumDataFrame`
 /// - `impl IntoDataFrame for EnumDataFrame`
 /// - `impl ColumnarFrame for EnumDataFrame`
+/// - `impl DataFrameRowSplit for Enum` (the split representation behind
+///   `IntoDataFrameSplit`)
 ///
 /// # Public surface (which verbs to call)
 ///
@@ -1027,13 +1029,15 @@ fn resolve_struct_field(
 /// - Rows ↔ the pure-Rust columnar companion: the `ColumnarFrame` trait
 ///   (`<Row>DataFrame::from_rows` / `from_rows_par` / `into_rows`), or the `std`
 ///   `Vec<Row>: Into<companion>` / companion `IntoIterator`.
-/// - Enums: `Row::to_dataframe_split(rows)` (one `data.frame` per variant) is the
-///   one verb with no trait home yet.
+/// - Enums: `rows.into_dataframe_split()` (one `data.frame` per variant) from
+///   `IntoDataFrameSplit`, implemented via the hidden `DataFrameRowSplit` bridge
+///   on the enum type.
 ///
 /// All the traits above are re-exported from `miniextendr_api::prelude`. The row
-/// type also carries a `#[doc(hidden)]` `to_dataframe(rows) -> companion` helper,
+/// type also carries two `#[doc(hidden)]` helpers: `to_dataframe(rows) -> companion`,
 /// retained only because the struct-flatten / nested-enum write paths build a
-/// nested companion via `Inner::to_dataframe(..)` without naming its type.
+/// nested companion via `Inner::to_dataframe(..)` without naming its type, and
+/// `to_dataframe_split(rows)`, the body holder behind the `DataFrameRowSplit` bridge.
 ///
 /// # Attributes
 ///

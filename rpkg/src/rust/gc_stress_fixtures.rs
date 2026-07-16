@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use miniextendr_api::SEXPTYPE;
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::prelude::{OwnedProtect, SEXP, SexpExt};
-use miniextendr_api::{IntoRAltrep, miniextendr};
+use miniextendr_api::{IntoDataFrameSplit, IntoRAltrep, miniextendr};
 #[cfg(feature = "jiff")]
 use miniextendr_api::{JiffZonedVec, Timestamp};
 
@@ -209,7 +209,7 @@ pub fn gc_stress_vec_option_borrowed() {
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
 ///
 /// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both
-/// `to_dataframe` (align) and `to_dataframe_split` (per-variant partition) paths.
+/// `to_dataframe` (align) and `into_dataframe_split` (per-variant partition) paths.
 /// Verifies that the `ProtectScope::protect_raw` calls in the generated map-column
 /// code keep each inner `Vec<K>` / `Vec<V>` SEXP live across the subsequent
 /// `into_sexp()` call for the parallel column.
@@ -237,7 +237,7 @@ pub fn gc_stress_dataframe_map() {
         HashMapEvent::Empty { label: "e".into() },
     ];
     let _ = HashMapEvent::to_dataframe(hm_rows.clone());
-    let _ = HashMapEvent::to_dataframe_split(hm_rows);
+    let _ = hm_rows.into_dataframe_split();
 
     // BTreeMap align path — same shape, sorted key order exercised.
     let bt_rows = vec![
@@ -261,13 +261,13 @@ pub fn gc_stress_dataframe_map() {
         BTreeMapEvent::Empty { label: "e".into() },
     ];
     let _ = BTreeMapEvent::to_dataframe(bt_rows.clone());
-    let _ = BTreeMapEvent::to_dataframe_split(bt_rows);
+    let _ = bt_rows.into_dataframe_split();
 }
 
 /// Exercise struct-field DataFrameRow flatten + as_list paths under GC pressure.
 ///
 /// Allocates `StructFlattenEvent` and `StructListEvent` rows, calls both
-/// `to_dataframe` (align) and `to_dataframe_split`, and converts to SEXP,
+/// `to_dataframe` (align) and `into_dataframe_split`, and converts to SEXP,
 /// verifying that `ProtectScope` keeps inner column SEXPs live across scatter
 /// allocations.  No arguments required — suitable for the fast gctorture sweep.
 #[miniextendr(noexport)]
@@ -288,7 +288,7 @@ pub fn gc_stress_dataframe_struct() {
         StructFlattenEvent::Other { id: 4 },
     ];
     let _ = StructFlattenEvent::to_dataframe(flatten_rows.clone()).into_sexp();
-    let _ = StructFlattenEvent::to_dataframe_split(flatten_rows).into_sexp();
+    let _ = flatten_rows.into_dataframe_split().into_sexp();
 
     // as_list path: struct-typed field kept as opaque list-column.
     let list_rows = vec![
@@ -304,13 +304,13 @@ pub fn gc_stress_dataframe_struct() {
         StructListEvent::Other { id: 4 },
     ];
     let _ = StructListEvent::to_dataframe(list_rows.clone()).into_sexp();
-    let _ = StructListEvent::to_dataframe_split(list_rows).into_sexp();
+    let _ = list_rows.into_dataframe_split().into_sexp();
 }
 
 /// Exercise nested-enum field DataFrameRow flatten + as_factor + as_list paths
 /// under GC pressure.
 ///
-/// Drives both `to_dataframe` (align) and `to_dataframe_split` paths for all
+/// Drives both `to_dataframe` (align) and `into_dataframe_split` paths for all
 /// three nested-enum field modes. No arguments — suitable for the fast gctorture
 /// sweep.
 #[miniextendr(noexport)]
@@ -332,7 +332,7 @@ pub fn gc_stress_dataframe_nested_enum() {
         NestedFlattenEvent::Other { id: 4 },
     ];
     let _ = NestedFlattenEvent::to_dataframe(flatten_rows.clone()).into_sexp();
-    let _ = NestedFlattenEvent::to_dataframe_split(flatten_rows).into_sexp();
+    let _ = flatten_rows.into_dataframe_split().into_sexp();
 
     // as_factor path: unit-only enum field stored as factor column.
     let factor_rows = vec![
@@ -348,7 +348,7 @@ pub fn gc_stress_dataframe_nested_enum() {
         NestedFactorEvent::Stop { id: 4 },
     ];
     let _ = NestedFactorEvent::to_dataframe(factor_rows.clone()).into_sexp();
-    let _ = NestedFactorEvent::to_dataframe_split(factor_rows).into_sexp();
+    let _ = factor_rows.into_dataframe_split().into_sexp();
 
     // as_list path: enum field kept as opaque list-column.
     let list_rows = vec![
@@ -364,7 +364,7 @@ pub fn gc_stress_dataframe_nested_enum() {
         NestedListEvent::Stop { id: 4 },
     ];
     let _ = NestedListEvent::to_dataframe(list_rows.clone()).into_sexp();
-    let _ = NestedListEvent::to_dataframe_split(list_rows).into_sexp();
+    let _ = list_rows.into_dataframe_split().into_sexp();
 
     // Status is already exercised via NestedFlattenEvent above.
 }

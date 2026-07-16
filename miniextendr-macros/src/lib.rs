@@ -2428,8 +2428,10 @@ pub fn derive_prefer_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///   the *companion*, which `into_dataframe_par` does not give you) and, for
 ///   row-iterable companions, `companion.into_rows()`. `Vec<Row>: Into<companion>`
 ///   and the companion's `IntoIterator` are the equivalent `std` verbs.
-/// - **Enum split representation**: `Row::to_dataframe_split(rows)` returns one
-///   `data.frame` per variant as an R list — the one verb with no trait home yet.
+/// - **Enum split representation**: `rows.into_dataframe_split()` returns one
+///   `data.frame` per variant as an R list (only that variant's columns — no NA
+///   fill), from the `IntoDataFrameSplit` trait (in the prelude). Enum rows
+///   only; struct derives don't partition.
 ///
 /// The generated `<Row>DataFrame` / `<Row>DataFrameIter` types are intermediate
 /// column-oriented companions; you rarely name them directly.

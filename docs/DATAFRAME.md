@@ -399,9 +399,9 @@ enum Observation {
 }
 ```
 
-### Enum split mode (`to_dataframe_split`)
+### Enum split mode (`into_dataframe_split`)
 
-Alongside the aligned form (`into_dataframe()`, which produces a single data frame with `NA`/`NULL` fill for variants that don't carry a field), enums also expose `to_dataframe_split`, which partitions the rows by variant. Each partition is a data frame with **only that variant's own columns** — no `NA`-filled columns from sibling variants. It returns an `miniextendr_api::List` (a bare `data.frame` for a single-variant enum, a named list otherwise), so a `#[miniextendr]` function returns `List`:
+Alongside the aligned form (`into_dataframe()`, which produces a single data frame with `NA`/`NULL` fill for variants that don't carry a field), enums also get `rows.into_dataframe_split()` — the `IntoDataFrameSplit` trait, re-exported from `miniextendr_api::prelude` next to `IntoDataFrame`/`FromDataFrame` — which partitions the rows by variant. Each partition is a data frame with **only that variant's own columns** — no `NA`-filled columns from sibling variants. Struct rows have no variants to partition, so the trait is implemented only for enum-derived `Vec<Row>`. It returns an `miniextendr_api::List` (a bare `data.frame` for a single-variant enum, a named list otherwise), so a `#[miniextendr]` function returns `List`:
 
 | Variants × rows in input | R return |
 |--------------------------|----------|
@@ -409,7 +409,7 @@ Alongside the aligned form (`into_dataframe()`, which produces a single data fra
 | **Multi-variant enum**, mixed rows | named `list` of data frames, one per variant in `snake_case` |
 
 ```rust
-use miniextendr_api::List;
+use miniextendr_api::{IntoDataFrameSplit, List};
 
 #[miniextendr]
 fn split_events() -> List {
@@ -418,7 +418,7 @@ fn split_events() -> List {
         Event::Impression { id: 2, slot: "top_banner".into() },
         Event::Error { id: 3, code: 404, message: "not found".into() },
     ];
-    Event::to_dataframe_split(rows)
+    rows.into_dataframe_split()
     // In R: list(click = <1-row df with id, x, y>,
     //            impression = <1-row df with id, slot>,
     //            error = <1-row df with id, code, message>)
