@@ -980,8 +980,10 @@ fn scan_vec_into_sexp_calls(lines: &[&str], data: &mut FileData) {
         while i < bytes.len() {
             // Detect a `vec![` / `&[` literal open (look-behind).
             if bytes[i] == b'[' {
+                // Byte-slice matching: `i` walks bytes, so `&str` slicing would
+                // panic mid-codepoint on non-ASCII source (e.g. a `"α"` literal).
                 let opens_literal =
-                    code_part[..i].ends_with("vec!") || (i > 0 && bytes[i - 1] == b'&');
+                    bytes[..i].ends_with(b"vec!") || (i > 0 && bytes[i - 1] == b'&');
                 if opens_literal || literal_depth > 0 {
                     // Either a fresh literal open, or a nested `[` while already inside one.
                     literal_depth += 1;
@@ -1006,15 +1008,15 @@ fn scan_vec_into_sexp_calls(lines: &[&str], data: &mut FileData) {
                 }
                 // A `protect_raw(` / `protect(` call before `into_sexp(` in this element
                 // means the value is rooted as it is built — the protected builder path.
-                if code_part[i..].starts_with("protect_raw(")
-                    || code_part[i..].starts_with("protect(")
-                    || code_part[i..].starts_with("protect_with_index(")
+                if bytes[i..].starts_with(b"protect_raw(")
+                    || bytes[i..].starts_with(b"protect(")
+                    || bytes[i..].starts_with(b"protect_with_index(")
                 {
                     element_protected = true;
                 }
                 // Flag a raw `into_sexp(` element call (not wrapped in a protect call).
                 for pattern in INTO_SEXP_CALLS {
-                    if code_part[i..].starts_with(pattern)
+                    if bytes[i..].starts_with(pattern.as_bytes())
                         && !element_protected
                         && !is_suppressed(lines, line_idx, "MXL302")
                     {

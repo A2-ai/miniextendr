@@ -1230,4 +1230,36 @@ fn mxl302_suppressed_by_allow_comment() {
     );
 }
 
+#[test]
+fn mxl302_scanner_survives_multibyte_source() {
+    // Regression: the raw-text scanner walked byte indices but sliced &str,
+    // panicking mid-codepoint on non-ASCII source ("start byte index N is
+    // not a char boundary"). Non-ASCII string literals inside a vec! literal
+    // must scan cleanly and still flag the unprotected into_sexp element.
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        pub fn build() {
+            let labels = vec![Some("α".to_string()), Some("β-日本語".to_string())];
+            let _ = List::from_raw_pairs(vec![("α", a.into_sexp()), ("β", b.into_sexp())]);
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint must not panic on multibyte source");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL302"),
+        "expected MXL302 for into_sexp() inside a multibyte vec! literal, got: {:?}",
+        report.diagnostics
+    );
+}
+
 // endregion
