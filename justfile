@@ -342,11 +342,12 @@ test *args:
 test-ui *cargo_flags:
     set -euo pipefail
     run_ui() {
-        # The `ui_vctrs` trybuild target is intentionally NOT run here: its
-        # committed snapshot is stale and no CI job runs it (issue #1336). Re-add
-        # `--test ui_vctrs --features vctrs` once that snapshot + a CI leg land.
         local tc="$1"
         env ${tc:+RUSTUP_TOOLCHAIN="$tc"} cargo test -p miniextendr-macros --test ui --locked {{cargo_flags}}
+        # `ui_vctrs` is behind the non-default `vctrs` feature, so it needs its
+        # own invocation (#1336). Kept separate from `--test ui` so the vctrs
+        # feature never leaks into the feature-less `ui` snapshot rendering.
+        env ${tc:+RUSTUP_TOOLCHAIN="$tc"} cargo test -p miniextendr-macros --test ui_vctrs --features vctrs --locked {{cargo_flags}}
     }
     if rustup component list --installed 2>/dev/null | grep -q '^rust-src'; then
         ver="$(rustc --version | awk '{print $2}')"

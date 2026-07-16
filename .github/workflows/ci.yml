@@ -540,6 +540,14 @@ jobs:
       - name: Tests (root workspace)
         run: cargo test --workspace --locked --no-fail-fast
 
+      # The ui_vctrs trybuild suite is `#[cfg(feature = "vctrs")]` and `vctrs`
+      # is not a default feature, so the feature-less --workspace run above
+      # compiles it to an empty test binary and its `.stderr` snapshots drift
+      # undetected (#1336). Run it explicitly; kept separate from the workspace
+      # step so the vctrs feature never leaks into other suites' rendering.
+      - name: Tests (ui_vctrs trybuild, vctrs feature)
+        run: cargo test -p miniextendr-macros --test ui_vctrs --features vctrs --locked --no-fail-fast
+
       # cargo-revendor is a standalone workspace excluded from the root
       # workspace, so the `--workspace` step above never reaches it (#778).
       - name: Tests (cargo-revendor)
