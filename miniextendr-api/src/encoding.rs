@@ -49,8 +49,18 @@ pub fn encoding_info() -> Option<&'static REncodingInfo> {
 /// are valid UTF-8.
 ///
 /// Uses `l10n_info()[["UTF-8"]]` which is public R API.
+///
+/// ABI: must be `extern "C-unwind"`, not `extern "C"` — the failure branch
+/// raises via `Rf_error`, and under webR (Emscripten builds R with
+/// `-sSUPPORT_LONGJMP=wasm`) that longjmp is a real wasm exception that
+/// unwinds through this frame. A non-unwind `extern "C"` ABI makes rustc
+/// insert an abort guard at the boundary, which turns the load-gate error
+/// into an `unreachable` trap that kills the whole wasm runtime (observed
+/// in the tier-3 testthat pass via `assert_utf8_locale_now()`). On native
+/// targets `longjmp` never touches landing pads, which is why this only
+/// bit on wasm32.
 #[unsafe(no_mangle)]
-pub extern "C" fn miniextendr_assert_utf8_locale() {
+pub extern "C-unwind" fn miniextendr_assert_utf8_locale() {
     debug_assert!(
         crate::worker::is_r_main_thread(),
         "must be called from R main thread"

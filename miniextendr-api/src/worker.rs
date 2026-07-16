@@ -213,9 +213,33 @@ where
     // *enabled* on wasm so worker-gated routines still compile and the
     // pre-generated `wasm_registry.rs` (built with the feature) has no dangling
     // entries. See `worker_active` reasoning at the top of the worker functions.
+    //
+    // The inline path must uphold the same panic contract as the worker path:
+    // a panicking closure yields `Err(message)`, never an unwind out of
+    // `run_on_worker` (on the worker path the channel boundary guarantees
+    // this). Without the catch, a panic here unwinds out of raw
+    // `extern "C-unwind"` `.Call` entry points that rely on the Err contract —
+    // under webR's wasm-exception unwinding that escapes R entirely and
+    // reaches the JS host as an uncaught `WebAssembly.Exception`, killing the
+    // session (observed in tier-3 via `unsafe_C_test_worker_panic_simple`).
+    // The message rules mirror `worker_channel::fold_panic_message`:
+    // `RCondition` payloads stringify verbatim, generic panics fold in the
+    // recorded `(at file:line)` location — same thread, so the take-once
+    // location slot is valid here too.
     #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     {
-        Ok(f())
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+            Ok(val) => Ok(val),
+            Err(payload) => {
+                let msg = if payload.is::<crate::condition::RCondition>() {
+                    crate::unwind_protect::panic_payload_to_string(payload.as_ref()).into_owned()
+                } else {
+                    crate::unwind_protect::panic_message_with_location(payload.as_ref())
+                };
+                crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Worker);
+                Err(msg)
+            }
+        }
     }
 
     #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
