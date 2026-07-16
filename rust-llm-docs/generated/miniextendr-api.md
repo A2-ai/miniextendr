@@ -3416,7 +3416,10 @@ This module provides conversions between R arrays and ndarray types:
 | array (3D) | `Array3<T>` | 3D array |
 | array (N-D) | `ArrayD<T>` | Dynamic dimension array |
 
-Supported element types: `i32`, `f64`, `u8` (raw), `RLogical`, `Rcomplex`.
+Supported element types: `i32`, `f64`, `u8` (raw), `RLogical`, `Rcomplex`
+(contiguous R-native storage), plus `String` / `Option<String>` for R
+character arrays (explicit element-wise impls over STRSXP;
+`Option<String>::None` maps to `NA_character_`).
 
 #### Features
 

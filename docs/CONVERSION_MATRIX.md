@@ -366,6 +366,25 @@ Enabled with `features = ["raw_conversions"]`. Uses R's `RAWSXP` for binary POD 
 
 ---
 
+## ndarray Conversions (Feature-Gated)
+
+Enabled with `features = ["ndarray"]`. Shape maps to R's `dim` attribute with
+column-major (Fortran) element order in both directions, independent of the
+array's memory layout. `Array1` converts to/from a plain vector (no `dim`);
+`Array2` additionally accepts a plain vector as an n x 1 column.
+
+| Rust Element Type | R Type | NA Handling | Notes |
+|-------------------|--------|-------------|-------|
+| `i32`, `f64`, `u8`, `RLogical`, `Rcomplex` | Typed array/matrix | Passes through as the sentinel value | Contiguous copy via `RNativeType` blanket impls |
+| `i8`, `i16`, `i64`, `u16`, `u32`, `u64`, `isize`, `usize`, `f32`, `bool` | Typed array/matrix (input only) | Error on unrepresentable values | Element-wise `TryCoerce` from the R native type |
+| `String` | Character array/matrix (STRSXP) | Inbound NA becomes `""` (lossy, mirrors `Vec<String>`); never produces NA outbound | Explicit element-wise impls (STRSXP is not contiguous) |
+| `Option<String>` | Character array/matrix (STRSXP) | `None` <-> `NA_character_` | Explicit element-wise impls; preferred for NA-carrying data |
+
+Owned arrays (`Array0`..`Array6`, `ArrayD`) convert in both directions;
+views (`ArrayView*`) convert Rust-to-R only (numeric element types).
+
+---
+
 ## Special Values Quick Reference
 
 | R Value | Rust Representation | Notes |
