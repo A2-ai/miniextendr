@@ -2,7 +2,7 @@ Package: consumer.pkg
 Type: Package
 Title: Cross-Package Trait Dispatch Consumer Example
 Version: 0.1.0
-Depends: R (>= 4.4)
+Depends: R (>= 4.5)
 Authors@R: c(
     person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = c("aut", "cre")),
     person("A2-AI", role = c("cph", "fnd"))
