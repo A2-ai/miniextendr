@@ -21,6 +21,20 @@
 #' enclosing git repository (e.g. an extracted source tarball or CRAN's
 #' build farm).
 #'
+#' The NAMESPACE section also flags stale-export drift: explicit `export()`
+#' directives with no backing definition in the union of top-level objects
+#' defined in `R/` sources (including the generated `R/<pkg>-wrappers.R`)
+#' and `importFrom()` names (re-exports). After a `#[miniextendr]` function
+#' is removed or renamed, `pkgload::load_all()` and `testthat` merely warn
+#' on the superset NAMESPACE and proceed, so the drift stays invisible in
+#' the dev loop until `R CMD check` or `library()` fails far from the cause;
+#' [miniextendr_build()] reconciles it. The comparison is fully static (no
+#' package code is loaded or executed). `exportPattern()` name-sets are not
+#' expanded, `S3method()` / `exportMethods()` / `exportClasses()` directives
+#' are out of scope, and the check skips when the wrappers file has not been
+#' generated yet or when a whole-package `import()` directive makes exports
+#' statically unattributable.
+#'
 #' For more targeted checks, see [miniextendr_status()] (file presence)
 #' and [miniextendr_validate()] (configuration correctness).
 #'
@@ -301,6 +315,78 @@ tarball-mode cleanup in Makevars. Fix: \\
     } else {
       cli::cli_alert_danger("NAMESPACE missing useDynLib directive")
       results$fail <- c(results$fail, "NAMESPACE missing useDynLib")
+    }
+
+    # -- Stale-export drift (#1304/#1305) --
+    # miniextendr_build() self-heals a NAMESPACE that still lists an export
+    # whose backing #[miniextendr] function was removed or renamed (#1288),
+    # but pkgload::load_all() / testthat only *warn* on a superset NAMESPACE
+    # ("Objects listed as exports, but not present in namespace") and
+    # proceed -- a dev loop that never runs a full build carries the drift
+    # green all the way to R CMD check / library(), which hard-fail far from
+    # the cause. Compare explicit export() directives against the union of
+    # top-level definitions in R/ (which includes the generated
+    # R/<pkg>-wrappers.R) and importFrom() names (re-exports). Fully static:
+    # doctor never loads or executes package code. Warn, not fail: dynamic
+    # definitions (computed assign() names, makeActiveBinding()) are
+    # invisible to a static scan.
+    drift <- stale_namespace_exports(usethis::proj_get())
+    if (identical(drift$status, "skip")) {
+      if (identical(drift$reason, "no-wrappers-file")) {
+        cli::cli_alert_info(
+          "Stale-export check skipped: no generated {.path R/<pkg>-wrappers.R} \\
+on disk yet (fresh clone or scaffold). Run {.code miniextendr_build()} to \\
+generate the wrappers."
+        )
+      } else if (identical(drift$reason, "whole-package-import")) {
+        cli::cli_alert_info(
+          "Stale-export check skipped: {.code import({drift$detail})} imports a \\
+whole namespace, so exports cannot be attributed statically."
+        )
+      } else if (identical(drift$reason, "parse-error")) {
+        cli::cli_alert_info(
+          "Stale-export check skipped: {.path {drift$detail}} could not be parsed."
+        )
+      }
+    } else {
+      if (isTRUE(drift$has_export_patterns)) {
+        cli::cli_alert_info(
+          "{.code exportPattern()} directives present: pattern-derived exports \\
+are not validated (only explicit {.code export()} names are checked)."
+        )
+      }
+      if (length(drift$stale) == 0L) {
+        cli::cli_alert_success(
+          "All {.code export()} directives have a backing definition"
+        )
+        results$pass <- c(results$pass, "no stale NAMESPACE exports")
+      } else {
+        cli::cli_alert_warning(
+          "{length(drift$stale)} NAMESPACE export{?s} {?has/have} no backing \\
+definition in {.path R/} or the generated wrappers (stale-export drift):"
+        )
+        for (stale_export in drift$stale) {
+          cli::cli_bullets(c("x" = "{.code export({stale_export})}"))
+        }
+        cli::cli_bullets(c(
+          "i" = paste0(
+            "This typically means a {.code #[miniextendr]} function was ",
+            "removed or renamed after the last {.code devtools::document()}: ",
+            "{.code pkgload::load_all()} / {.code testthat} only warn on the ",
+            "superset NAMESPACE and proceed, but {.code R CMD check} and ",
+            "{.code library()} fail."
+          ),
+          "i" = paste0(
+            "Fix: run {.code miniextendr_build()} (reconciles NAMESPACE and ",
+            "reinstalls), or {.code devtools::document()} followed by a ",
+            "reinstall."
+          )
+        ))
+        results$warn <- c(
+          results$warn,
+          paste0("stale NAMESPACE export: ", drift$stale)
+        )
+      }
     }
   }
 
@@ -595,4 +681,170 @@ tracked_generated_files <- function(proj_dir = usethis::proj_get()) {
     return(NULL)
   }
   tracked[nzchar(tracked)]
+}
+
+#' Stale NAMESPACE exports (#1304/#1305)
+#'
+#' Compares the package's explicit `export()` directives against the union of
+#' (a) top-level objects defined in `R/` sources -- which includes the
+#' generated `R/<pkg>-wrappers.R`, since it lives in `R/` -- and (b) names
+#' brought in by `importFrom()` directives (roxygen re-exports are
+#' `importFrom()` + `export()` pairs, so imported names are legitimate
+#' backing). Everything is derived statically (`parse()` +
+#' `parseNamespaceFile()`); the package is never loaded or executed, so the
+#' check is side-effect-free and safe to run on a broken tree.
+#'
+#' Directive semantics (deliberate):
+#' - Only plain `export()` names are checked. Each must resolve to an object
+#'   in the namespace at `loadNamespace()` time, so a name with no backing
+#'   definition is a guaranteed `library()` / `R CMD check` failure.
+#' - `exportPattern()` patterns are not expanded: they only *add* exports
+#'   (whatever happens to match at load time), so they cannot rescue a
+#'   missing explicit export, and expanding them statically would guess.
+#'   Their presence is surfaced via `has_export_patterns` so the doctor can
+#'   note that pattern-derived exports go unvalidated.
+#' - `S3method()` registers methods rather than exporting objects, and
+#'   `exportMethods()` / `exportClasses()` (S4) are backed by `setMethod()` /
+#'   `setClass()` side effects, not top-level assignments -- a static
+#'   assignment scan would false-positive them, so they are out of scope.
+#' - A whole-package `import(pkg)` makes every export statically
+#'   unattributable (any name might come from `pkg`), so the check skips
+#'   rather than enumerate a dependency's exports (which would require
+#'   loading its namespace).
+#'
+#' The generated wrappers file is gitignored in the scaffold: a fresh clone
+#' legitimately has NAMESPACE exports for every Rust wrapper but no
+#' `R/<pkg>-wrappers.R` on disk until the first build regenerates it. Running
+#' the comparison there would flag every Rust-backed export, so the check
+#' skips until the wrappers file exists.
+#'
+#' @param pkg_dir Package directory to inspect.
+#' @return `list(status = "ok", stale = <chr>, has_export_patterns = <flag>)`
+#'   when the check ran (`stale` empty = clean). `list(status = "skip",
+#'   reason = <chr>, detail = <chr or NULL>)` when it cannot run without
+#'   guessing; `reason` is one of `"no-namespace"`, `"no-wrappers-file"`,
+#'   `"whole-package-import"` (`detail` = the imported package), or
+#'   `"parse-error"` (`detail` = the unparseable file, relative to
+#'   `pkg_dir`).
+#' @noRd
+stale_namespace_exports <- function(pkg_dir = usethis::proj_get()) {
+  skip <- function(reason, detail = NULL) {
+    list(status = "skip", reason = reason, detail = detail)
+  }
+
+  if (!file.exists(file.path(pkg_dir, "NAMESPACE"))) {
+    return(skip("no-namespace"))
+  }
+  if (!wrappers_file_exists(pkg_dir)) {
+    return(skip("no-wrappers-file"))
+  }
+
+  ns <- tryCatch(
+    parseNamespaceFile(basename(pkg_dir), dirname(pkg_dir)),
+    error = function(e) NULL
+  )
+  if (is.null(ns)) {
+    return(skip("parse-error", detail = "NAMESPACE"))
+  }
+
+  has_export_patterns <- length(ns$exportPatterns) > 0L
+
+  imported <- character()
+  for (entry in ns$imports) {
+    # parseNamespaceFile() shapes (see also webr_import_findings()):
+    # bare character = import(pkg); list with an `except` element =
+    # import(pkg, except = ...); otherwise list(pkg, names) = importFrom().
+    if (is.character(entry) || "except" %in% names(entry)) {
+      return(skip("whole-package-import", detail = entry[[1L]]))
+    }
+    imported <- c(imported, as.character(entry[[2L]]))
+  }
+
+  r_dir <- file.path(pkg_dir, "R")
+  r_files <- if (dir.exists(r_dir)) {
+    # .R/.r/.S/.s/.q are the code extensions R CMD INSTALL collates (WRE 1.1.5).
+    list.files(r_dir, pattern = "\\.[RrSsq]$", full.names = TRUE)
+  } else {
+    character()
+  }
+  scan <- r_top_level_definitions(r_files)
+  if (length(scan$failed) > 0L) {
+    return(skip(
+      "parse-error",
+      detail = file.path("R", basename(scan$failed[[1L]]))
+    ))
+  }
+
+  list(
+    status = "ok",
+    stale = setdiff(unique(as.character(ns$exports)), c(scan$names, imported)),
+    has_export_patterns = has_export_patterns
+  )
+}
+
+#' Top-level object definitions in R source files
+#'
+#' Statically collects the names a set of R source files define at top level,
+#' without evaluating any code: `<-` / `=` / `<<-` assignments to a symbol or
+#' string literal (functions, operators, replacement functions, plain
+#' objects), literal-name `assign()` / `delayedAssign()` calls, and
+#' `setGeneric("name", ...)` (which creates an object of that name).
+#' Top-level `if` branches and `{` blocks are descended into --
+#' `loadNamespace()` evaluates whichever branch applies at load time, and
+#' taking the optimistic union of all branches avoids false positives.
+#' Dynamic definitions (computed names, `makeActiveBinding()`) are invisible
+#' to this scan -- one reason the doctor reports stale exports as warnings,
+#' not failures.
+#'
+#' @param r_files Character vector of file paths to parse.
+#' @return `list(names = <chr>, failed = <chr>)`: the unique defined names,
+#'   and any files that could not be parsed (syntax errors).
+#' @noRd
+r_top_level_definitions <- function(r_files) {
+  defined <- character()
+  failed <- character()
+
+  add_name <- function(x) {
+    if (is.name(x)) {
+      defined[[length(defined) + 1L]] <<- as.character(x)
+    } else if (is.character(x) && length(x) == 1L && !is.na(x)) {
+      defined[[length(defined) + 1L]] <<- x
+    }
+  }
+
+  walk <- function(e) {
+    if (!is.call(e) || !is.name(e[[1L]])) {
+      return(invisible(NULL))
+    }
+    op <- as.character(e[[1L]])
+    if (op %in% c("<-", "=", "<<-") && length(e) == 3L) {
+      # `x -> y` parses as `y <- x`, so right-assign is covered too.
+      add_name(e[[2L]])
+    } else if (op %in% c("assign", "delayedAssign", "setGeneric") &&
+      length(e) >= 2L) {
+      # Positional literal first argument only; a computed name is a dynamic
+      # definition this scan deliberately cannot see.
+      add_name(e[[2L]])
+    } else if (op == "if") {
+      if (length(e) >= 3L) walk(e[[3L]])
+      if (length(e) >= 4L) walk(e[[4L]])
+    } else if (op == "{") {
+      for (i in seq_len(length(e) - 1L)) walk(e[[i + 1L]])
+    }
+    invisible(NULL)
+  }
+
+  for (f in r_files) {
+    exprs <- tryCatch(
+      parse(f, keep.source = FALSE, encoding = "UTF-8"),
+      error = function(e) NULL
+    )
+    if (is.null(exprs)) {
+      failed <- c(failed, f)
+      next
+    }
+    for (e in exprs) walk(e)
+  }
+
+  list(names = unique(defined), failed = failed)
 }
