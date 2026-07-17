@@ -1046,7 +1046,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method)
+            .with_return_class_from_method(ctx.method, &type_ident.to_string())
             .with_chain_var(receiver.to_string())
             .build_s7_body();
 
@@ -1137,7 +1137,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_strategy(strategy)
                 .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
-                .with_return_class_from_method(ctx.method)
+                .with_return_class_from_method(ctx.method, &type_ident.to_string())
                 .with_chain_var("self".to_string())
                 .build_s7_body();
 
@@ -1188,7 +1188,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method)
+            .with_return_class_from_method(ctx.method, &type_ident.to_string())
             .build_s7_inline();
         lines.push(format!("  {}", return_expr));
 
@@ -1268,7 +1268,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_strategy(strategy)
                 .with_invisible(method.is_invisible())
                 .with_class_name(class_name.clone())
-                .with_return_class_from_method(method)
+                .with_return_class_from_method(method, &type_ident.to_string())
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package.
@@ -1335,7 +1335,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_strategy(crate::ReturnStrategy::ReturnSelf)
                 .with_class_name(to_type_ref.clone())
                 .with_invisible(method.is_invisible())
-                .with_return_class_from_method(method)
+                .with_return_class_from_method(method, &type_ident.to_string())
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package.
