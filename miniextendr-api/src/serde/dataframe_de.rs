@@ -1,11 +1,18 @@
 //! Deserializer for converting an R `data.frame` SEXP into `Vec<T>`.
 //!
-//! Provides two public entry points:
+//! Public entry points:
 //!
 //! - [`dataframe_to_vec`] — owned; `T: DeserializeOwned`; always materialises
 //!   `String` for character cells.
 //! - [`with_dataframe_rows`] — scoped callback; `T: for<'a> Deserialize<'a>`;
 //!   supports zero-copy borrows (`name: &'a str`).
+//! - [`dataframe_to_vec_borrowed`] — RAII handle keeping the source SEXP
+//!   rooted while the caller holds the rows.
+//! - [`dataframe_to_vec_collated`] — top-level enum rows (Collated shape).
+//! - [`dataframe_to_vec_with_enum_tags`] — caller-chosen variant-tag column
+//!   names for nested enum fields.
+//! - [`dataframe_to_vec_with_struct_fields`] — per-field opt-out from the
+//!   `Option<Enum>` tag-column heuristic (#1320).
 //!
 //! # Design (unified row/cell deserializer)
 //!
@@ -105,9 +112,11 @@ use serde::de::{
 ///    `Option<NestedStruct>` field's flattened columns include one matching
 ///    that name — i.e. the struct has a sub-field literally named `variant` —
 ///    an NA in that cell makes the *whole struct* read back as `None`,
-///    silently dropping the other sub-fields. Rename the sub-field, or point
-///    the tag lookup at an unused column name via
-///    [`dataframe_to_vec_with_enum_tags`].
+///    silently dropping the other sub-fields. Fixes, in order of preference:
+///    list the field in [`dataframe_to_vec_with_struct_fields`] (the
+///    heuristic never fires for it), rename the sub-field with
+///    `#[serde(rename = "...")]`, or point the tag lookup at an unused column
+///    name via [`dataframe_to_vec_with_enum_tags`].
 pub fn dataframe_to_vec<T>(sexp: SEXP) -> Result<Vec<T>, RSerdeError>
 where
     T: for<'de> serde::Deserialize<'de>,
@@ -224,8 +233,9 @@ where
 /// Same as [`dataframe_to_vec`] — including the `Option<nested struct>`
 /// tag-column collision
 /// ([#1320](https://github.com/A2-ai/miniextendr/issues/1320)). The `tags`
-/// mapping here is also the workaround: point the affected field's tag at an
-/// unused column name so the `None` heuristic never fires for it.
+/// mapping can paper over it (point the affected field's tag at an unused
+/// column name so the `None` heuristic never fires for it), but the
+/// dedicated opt-out is [`dataframe_to_vec_with_struct_fields`].
 ///
 /// # Example
 ///
@@ -251,6 +261,83 @@ where
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
     deserialize_rows(&view, EnumReadConfig::from_field_tags(tags))
+}
+
+/// Convert a data.frame into `Vec<T>`, declaring `fields` that must always be
+/// read as **nested structs** — the `Option<Enum>` tag-column heuristic never
+/// fires for them.
+///
+/// # Why this exists (the `_variant` collision, #1320)
+///
+/// An `Option<T>` field with no bare column is either an `Option<NestedStruct>`
+/// or an `Option<Enum>`, and serde gives the reader no type information to tell
+/// them apart at that point. To read `Option<Enum>` `None` rows back, the
+/// reader probes the would-be variant-tag column (`<field>_variant` by
+/// default, or the [`dataframe_to_vec_with_enum_tags`] override): a
+/// character/factor column that is NA at the row means `None`. If a nested
+/// *struct* has a sub-field literally named `variant`, its flattened column
+/// collides with that name — an NA cell there silently reads the **whole
+/// struct** as `None`, dropping the other sub-fields
+/// ([#1320](https://github.com/A2-ai/miniextendr/issues/1320)).
+///
+/// Listing the field here disables the probe: the field is always read as a
+/// nested struct from its prefixed columns. Fields *not* listed keep the
+/// heuristic, so `Option<Enum>` fields in the same row type continue to
+/// round-trip their `None` rows.
+///
+/// # Field naming
+///
+/// Entries use the **flattened field path** — the same key space as
+/// [`dataframe_to_vec_with_enum_tags`]: `"meta"` for a top-level field `meta`,
+/// `"outer_meta"` for a field `meta` inside a nested struct field `outer`.
+///
+/// # `None` structs stay unreadable
+///
+/// The writer emits no per-row presence signal for `Option<NestedStruct>`: a
+/// `None` struct and a `Some` struct whose fields are all `None` produce
+/// identical (all-NA) columns. Opting a field out therefore commits to reading
+/// it as `Some(...)` on every row — a row written from `None` yields an
+/// `UnexpectedNa` error if the struct has any non-`Option` field, or
+/// `Some(struct with all-`None` fields)` if every field is `Option`.
+///
+/// # Errors
+///
+/// Same as [`dataframe_to_vec`].
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::serde::{dataframe_to_vec_with_struct_fields, vec_to_dataframe};
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct Meta {
+///     variant: Option<String>, // collides with the `meta_variant` tag name
+///     size: f64,
+/// }
+/// #[derive(Serialize, Deserialize)]
+/// struct Row {
+///     id: i32,
+///     meta: Option<Meta>,
+/// }
+///
+/// let df = vec_to_dataframe(&rows)?; // columns: id, meta_variant, meta_size
+/// let round: Vec<Row> = dataframe_to_vec_with_struct_fields(df.as_sexp(), &["meta"])?;
+/// // `Meta { variant: None, size: 4.0 }` rows survive — no tag-column probe.
+/// ```
+pub fn dataframe_to_vec_with_struct_fields<T>(
+    sexp: SEXP,
+    fields: &[&str],
+) -> Result<Vec<T>, RSerdeError>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    if is_empty_dataframe(sexp) {
+        return Ok(Vec::new());
+    }
+    // Root the input across deserialisation — see [`dataframe_to_vec`].
+    let _input = unsafe { OwnedProtect::new(sexp) };
+    let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
+    deserialize_rows(&view, EnumReadConfig::from_struct_fields(fields))
 }
 
 // endregion
@@ -405,10 +492,14 @@ fn is_empty_dataframe(sexp: SEXP) -> bool {
 ///   (`field → column`), set by [`dataframe_to_vec_with_enum_tags`]. Fields not
 ///   listed use the default `<field>_variant` (symmetric with the writer's
 ///   [`vec_to_dataframe_flatten_enums_with_tags`](crate::serde::vec_to_dataframe_flatten_enums_with_tags)).
+/// - `struct_fields` — per-field opt-out from the `Option<Enum>` tag-column
+///   heuristic (#1320), set by [`dataframe_to_vec_with_struct_fields`]. Listed
+///   fields are always read as nested structs in `deserialize_option`.
 #[derive(Clone, Default)]
 struct EnumReadConfig {
     top_level_tag: Option<std::rc::Rc<str>>,
     field_tags: std::rc::Rc<[(String, String)]>,
+    struct_fields: std::rc::Rc<[String]>,
 }
 
 impl EnumReadConfig {
@@ -420,21 +511,38 @@ impl EnumReadConfig {
             .map(|(_, t)| t.as_str())
     }
 
+    /// Did the caller declare `field` (flattened path) a nested struct, opting
+    /// it out of the `Option<Enum>` tag-column heuristic (#1320)?
+    fn is_struct_field(&self, field: &str) -> bool {
+        self.struct_fields.iter().any(|f| f == field)
+    }
+
     fn from_field_tags(tags: &[(&str, &str)]) -> Self {
         Self {
-            top_level_tag: None,
             field_tags: tags
                 .iter()
                 .map(|(f, t)| ((*f).to_owned(), (*t).to_owned()))
                 .collect::<Vec<_>>()
                 .into(),
+            ..Self::default()
         }
     }
 
     fn from_top_level_tag(column: &str) -> Self {
         Self {
             top_level_tag: Some(std::rc::Rc::from(column)),
-            field_tags: std::rc::Rc::from(Vec::<(String, String)>::new().into_boxed_slice()),
+            ..Self::default()
+        }
+    }
+
+    fn from_struct_fields(fields: &[&str]) -> Self {
+        Self {
+            struct_fields: fields
+                .iter()
+                .map(|f| (*f).to_owned())
+                .collect::<Vec<_>>()
+                .into(),
+            ..Self::default()
         }
     }
 }
@@ -808,6 +916,14 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
         // a nested struct with a sub-field literally named `variant` collides
         // with the tag-column name and an NA cell there reads the whole struct
         // as `None` — serde exposes no inner-type info here to disambiguate.
+        // The per-field opt-out below is the caller-side fix.
+        //
+        // Per-field opt-out (#1320): the caller declared this field a nested
+        // struct via [`dataframe_to_vec_with_struct_fields`] — never consult
+        // the tag-column heuristic, always read the payload.
+        if self.cfg.is_struct_field(&self.bare_name) {
+            return visitor.visit_some(self);
+        }
         let tag_col_name = self.tag_column_name();
         if let Some(tag_col) = self.view.column_raw(&tag_col_name)
             && is_variant_tag_column(tag_col)

@@ -1379,8 +1379,10 @@ enum SchemaMode {
 ///
 /// - **Compound-vs-Compound recursive union**: when two rows produce different Compound
 ///   shapes for the same key (e.g., enum variants with different nested structs), the
-///   first Compound wins and the second is silently discarded. Recursive union is tracked
-///   as a separate follow-up.
+///   first Compound wins and the second is silently discarded. Corollary: a nested
+///   sub-field probed as `None` on the first row stays `Generic` (list column) even
+///   when a later row types it. Recursive union is tracked as
+///   [#1370](https://github.com/A2-ai/miniextendr/issues/1370).
 struct SchemaAccumulator {
     candidates: HashMap<String, Vec<Candidate>>,
     key_order: Vec<String>,

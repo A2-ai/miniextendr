@@ -12,8 +12,9 @@ use miniextendr_api::into_r::IntoR as _;
 use miniextendr_api::prelude::SexpExt as _;
 use miniextendr_api::serde::{
     DataFrameShape, RSerdeError, ResultShape, SplitResults, SplitShape, dataframe_to_vec,
-    dataframe_to_vec_collated, dataframe_to_vec_with_enum_tags, hashmap_to_dataframe,
-    map_to_dataframe, result_to_dataframe, vec_to_dataframe, vec_to_dataframe_flatten_enums,
+    dataframe_to_vec_collated, dataframe_to_vec_with_enum_tags,
+    dataframe_to_vec_with_struct_fields, hashmap_to_dataframe, map_to_dataframe,
+    result_to_dataframe, vec_to_dataframe, vec_to_dataframe_flatten_enums,
     vec_to_dataframe_flatten_enums_with_tags, vec_to_dataframe_split,
 };
 use serde::{Deserialize, Serialize};
@@ -945,6 +946,144 @@ fn flatten_enum_reader_option_enum_none_roundtrip() {
         ];
         let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
         let round: Vec<Row> = dataframe_to_vec(df.as_sexp()).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// #1320 repro, default behaviour pinned: an `Option<NestedStruct>` whose
+/// sub-field is literally named `variant` collides with the enum tag-column
+/// name (`meta_variant`) — an NA in that cell reads the *whole struct* back as
+/// `None`, dropping the other sub-fields. This is the documented lossy
+/// default; [`option_nested_struct_with_struct_fields_roundtrips`] is the fix.
+#[test]
+fn option_nested_struct_tag_collision_default_is_lossy() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Meta {
+        variant: Option<String>,
+        size: f64,
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        meta: Option<Meta>,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                meta: Some(Meta {
+                    variant: Some("a".into()),
+                    size: 1.0,
+                }),
+            },
+            Row {
+                id: 2,
+                meta: Some(Meta {
+                    variant: None,
+                    size: 4.0,
+                }),
+            },
+        ];
+        // Columns: id, meta_variant, meta_size — `meta_variant` is NA at row 2.
+        let df = vec_to_dataframe(&rows).unwrap();
+        let round: Vec<Row> = dataframe_to_vec(df.as_sexp()).unwrap();
+        // Row 1 survives (tag cell not NA → nested-struct read).
+        assert_eq!(round[0], rows[0]);
+        // Row 2's struct is silently dropped by the heuristic. If this
+        // assertion starts failing, the lossy default documented in #1320
+        // changed — update the docs alongside.
+        assert_eq!(round[1], Row { id: 2, meta: None });
+    });
+}
+
+/// #1320 fix: listing the field in `dataframe_to_vec_with_struct_fields`
+/// disables the tag-column heuristic for it — the
+/// `Meta { variant: None, size: 4.0 }` row round-trips losslessly.
+#[test]
+fn option_nested_struct_with_struct_fields_roundtrips() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Meta {
+        variant: Option<String>,
+        size: f64,
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        meta: Option<Meta>,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                meta: Some(Meta {
+                    variant: Some("a".into()),
+                    size: 1.0,
+                }),
+            },
+            Row {
+                id: 2,
+                meta: Some(Meta {
+                    variant: None,
+                    size: 4.0,
+                }),
+            },
+        ];
+        let df = vec_to_dataframe(&rows).unwrap();
+        let round: Vec<Row> = dataframe_to_vec_with_struct_fields(df.as_sexp(), &["meta"]).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// The struct-field opt-out is per-field: `Option<Enum>` `None` rows keep
+/// round-tripping through `dataframe_to_vec_with_struct_fields` for fields
+/// *not* listed — the tag-column heuristic still fires for them.
+#[test]
+fn struct_fields_optout_keeps_option_enum_none_for_other_fields() {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    enum Action {
+        Go { steps: f64 },
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Meta {
+        variant: Option<String>,
+        size: f64,
+    }
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        meta: Option<Meta>,
+        action: Option<Action>,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        // Row 1 keeps `meta.variant = Some(...)`: a nested sub-field probed as
+        // `None` on the *first* row locks its column to Generic (list) via the
+        // writer's Compound-vs-Compound first-seen lattice (#1370) — a separate
+        // writer limitation, not the #1320 heuristic under test here.
+        let rows = vec![
+            Row {
+                id: 1,
+                meta: Some(Meta {
+                    variant: Some("x".into()),
+                    size: 5.0,
+                }),
+                action: Some(Action::Go { steps: 3.0 }),
+            },
+            Row {
+                id: 2,
+                meta: Some(Meta {
+                    variant: None,
+                    size: 4.0,
+                }),
+                action: None,
+            },
+        ];
+        let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
+        // `meta` is opted out (always a struct); `action` keeps the default
+        // `action_variant` tag heuristic, so its `None` row still reads back.
+        let round: Vec<Row> = dataframe_to_vec_with_struct_fields(df.as_sexp(), &["meta"]).unwrap();
         assert_eq!(round, rows);
     });
 }
