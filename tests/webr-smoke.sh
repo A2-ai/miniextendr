@@ -416,6 +416,18 @@ RSCRIPT
         # otherwise; the container default locale is C.
         export LANG=C.UTF-8 LC_ALL=C.UTF-8
         ( cd "$SCAFFOLD_PKG_DIR" && bash ./configure )
+        # use_local_miniextendr guard (#1309, parity with the CI legs):
+        # configure must have emitted the local-checkout [patch] block into
+        # the generated cargo config. If a marker regression made
+        # use_local_miniextendr silently no-op, this leg would build the
+        # *published* git sources instead of /work — and stay green while
+        # validating the wrong code.
+        cfg="$SCAFFOLD_PKG_DIR/src/rust/.cargo/config.toml"
+        if ! grep -qF "[patch.\"https://github.com/A2-ai/miniextendr\"]" "$cfg"; then
+            echo "FAIL: use_local_miniextendr [patch] block missing from $cfg — the scaffold would build the published miniextendr git sources, not /work." >&2
+            cat "$cfg" >&2 || true
+            exit 1
+        fi
         mkdir -p "$SCAFFOLD_NATIVE_LIB"
         "$R_NATIVE_EXE" CMD INSTALL --no-test-load --library="$SCAFFOLD_NATIVE_LIB" "$SCAFFOLD_PKG_DIR"
         ch="$(grep "content-hash:" "$SCAFFOLD_PKG_DIR/src/rust/wasm_registry.rs")"
@@ -496,6 +508,14 @@ RSCRIPT
         # wasm_registry.rs, NAMESPACE). LANG/LC_ALL=C.UTF-8 are still
         # exported from the mxsmoke leg above.
         ( cd "$MONO_PKG_DIR" && bash ./configure )
+        # use_local_miniextendr guard (#1309): same assert as the mxsmoke
+        # leg above, for the monorepo template configure.
+        cfg="$MONO_PKG_DIR/src/rust/.cargo/config.toml"
+        if ! grep -qF "[patch.\"https://github.com/A2-ai/miniextendr\"]" "$cfg"; then
+            echo "FAIL: use_local_miniextendr [patch] block missing from $cfg — the scaffold would build the published miniextendr git sources, not /work." >&2
+            cat "$cfg" >&2 || true
+            exit 1
+        fi
         mkdir -p "$MONO_NATIVE_LIB"
         "$R_NATIVE_EXE" CMD INSTALL --no-test-load --library="$MONO_NATIVE_LIB" "$MONO_PKG_DIR"
         ch="$(grep "content-hash:" "$MONO_PKG_DIR/src/rust/wasm_registry.rs")"
