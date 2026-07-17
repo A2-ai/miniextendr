@@ -26,6 +26,8 @@ Adds the required Config/* fields to DESCRIPTION for miniextendr:
 \item Config/build/extra-sources: src/rust/Cargo.lock
 }
 
-Also adds SystemRequirements for Rust.
+Also adds SystemRequirements for Rust, and ensures \code{Depends} declares the
+R version floor the miniextendr runtime requires (merged into any existing
+\code{Depends}: a lower declared floor is raised, a higher one is kept).
 }
 \keyword{internal}

@@ -74,7 +74,9 @@ use_miniextendr_namespace <- function(path = ".") {
 #' - Config/build/never-clean: true
 #' - Config/build/extra-sources: src/rust/Cargo.lock
 #'
-#' Also adds SystemRequirements for Rust.
+#' Also adds SystemRequirements for Rust, and ensures `Depends` declares the
+#' R version floor the miniextendr runtime requires (merged into any existing
+#' `Depends`: a lower declared floor is raised, a higher one is kept).
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
@@ -100,6 +102,11 @@ use_miniextendr_description <- function(path = ".") {
   # Set Config fields (shared with create_rpkg_subdirectory()'s hand-written
   # DESCRIPTION literal via MX_CONFIG_BUILD_FIELDS)
   do.call(mx_desc_set, c(list(desc_path), as.list(MX_CONFIG_BUILD_FIELDS)))
+
+  # Declare the R version floor every miniextendr-backed package inherits
+  # (R_getVarEx needs R >= 4.5, #1366). This path also runs against
+  # pre-existing DESCRIPTIONs, so merge — never overwrite a higher floor.
+  mx_desc_ensure_r_floor(desc_path)
 
   # Set License if not already set to something meaningful. A freshly created
   # DESCRIPTION (from usethis::use_description()) carries a placeholder License

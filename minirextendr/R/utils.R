@@ -172,6 +172,27 @@ MX_CONFIG_BUILD_FIELDS <- c(
   "Config/build/extra-sources" = "src/rust/Cargo.lock"
 )
 
+#' Minimum R version required by miniextendr-backed packages
+#'
+#' Any package linking miniextendr-api inherits this floor at load time: the
+#' runtime calls `R_getVarEx` (the `Rf_findVarInFrame` replacement), which
+#' only exists on R >= 4.5.0 (#1300). Every scaffold path writes it into the
+#' generated DESCRIPTION as `Depends: R (>= 4.5)`. Keep in lock-step with
+#' `rpkg/DESCRIPTION` and the CLI mirror (`R_VERSION_FLOOR` in
+#' `miniextendr-cli/src/scaffold.rs`, whose `r_floor_matches_minirextendr_and_rpkg`
+#' test asserts all three agree).
+#'
+#' @noRd
+MX_R_FLOOR <- "4.5"
+
+#' `Depends` entry carrying the `MX_R_FLOOR` R version floor
+#'
+#' @return Character string, e.g. `"R (>= 4.5)"`.
+#' @noRd
+mx_r_depends_entry <- function() {
+  sprintf("R (>= %s)", MX_R_FLOOR)
+}
+
 #' Minimal roxygen2-managed NAMESPACE content
 #'
 #' Carries the roxygen2 header so a later `devtools::document()` treats the
@@ -430,6 +451,53 @@ mx_desc_set <- function(file, ...) {
   }
 
   writeLines(lines, file)
+}
+
+#' Ensure DESCRIPTION declares at least the miniextendr R version floor
+#'
+#' Merges `R (>= MX_R_FLOOR)` into the `Depends` field rather than
+#' overwriting it: no `Depends` field adds one carrying the floor; an
+#' existing `Depends` without an `R` entry gains the floor (prepended, other
+#' entries untouched); an `R` entry with a provably lower `>=`/`>` floor —
+#' or no version constraint at all — is raised; a floor already at or above
+#' `MX_R_FLOOR`, or a constraint using another operator, is left untouched.
+#' Mirrored by `desc_ensure_r_floor()` in `miniextendr-cli/src/scaffold.rs`.
+#'
+#' @param file Path to DESCRIPTION
+#' @return Invisibly, `TRUE` if the file was modified
+#' @noRd
+mx_desc_ensure_r_floor <- function(file) {
+  floor_entry <- mx_r_depends_entry()
+  depends <- mx_desc_get_field("Depends", file = file, default = "")
+  if (!nzchar(depends)) {
+    mx_desc_set(file, "Depends" = floor_entry)
+    return(invisible(TRUE))
+  }
+
+  entries <- trimws(strsplit(depends, ",")[[1]])
+  entries <- entries[nzchar(entries)]
+  entry_names <- trimws(sub("\\(.*$", "", entries))
+  r_idx <- which(entry_names == "R")[1]
+
+  if (is.na(r_idx)) {
+    entries <- c(floor_entry, entries)
+  } else {
+    entry <- entries[r_idx]
+    m <- regmatches(entry, regexec("\\(\\s*(>=?)\\s*([0-9.]+)\\s*\\)", entry))[[1]]
+    if (length(m) == 3 && utils::compareVersion(m[3], MX_R_FLOOR) >= 0) {
+      # Existing floor already satisfies ours.
+      return(invisible(FALSE))
+    }
+    if (length(m) == 0 && grepl("(", entry, fixed = TRUE)) {
+      # A constraint we can't compare (e.g. `R (== 4.4)`): leave it alone.
+      return(invisible(FALSE))
+    }
+    # Bare `R` or a provably lower `>=`/`>` floor: raise to ours.
+    entries[r_idx] <- floor_entry
+  }
+
+  mx_desc_set(file, "Depends" = paste(entries, collapse = ", "))
+  invisible(TRUE)
 }
 
 #' Get dependencies from DESCRIPTION

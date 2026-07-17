@@ -107,6 +107,16 @@ fn init_package_scaffolds_canonical_build_system() {
         "retired cargo-config.toml.in scaffolded"
     );
 
+    // The generated DESCRIPTION declares the miniextendr R version floor
+    // (#1366). Literal on purpose — this is a binary-only crate, so the
+    // integration test cannot import scaffold::R_VERSION_FLOOR; the
+    // r_floor_matches_minirextendr_and_rpkg unit test pins the value.
+    let desc = read("DESCRIPTION");
+    assert!(
+        desc.contains("Depends: R (>= 4.5)\n"),
+        "scaffolded DESCRIPTION missing the R version floor: {desc}"
+    );
+
     // Build-system surface present.
     for rel in [
         "DESCRIPTION",

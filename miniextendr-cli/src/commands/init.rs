@@ -348,6 +348,11 @@ fn update_description(root: &Path) -> Result<()> {
         content = scaffold::desc_set_field(&content, field, value);
     }
 
+    // Depends: merge the miniextendr R version floor (raise a lower declared
+    // floor, keep a higher one) — this path runs against pre-existing
+    // DESCRIPTIONs (~ mx_desc_ensure_r_floor()).
+    content = scaffold::desc_ensure_r_floor(&content);
+
     // License: fill in when unset or still a usethis placeholder
     // ("`use_mit_license()`, `use_gpl3_license()` or friends ...").
     let license = parse_description_field(&content, "License").unwrap_or_default();
@@ -650,6 +655,10 @@ mod tests {
             );
         }
         assert!(desc.contains(&format!("SystemRequirements: {RUST_SYSTEM_REQUIREMENT}")));
+        assert!(
+            desc.contains(&format!("Depends: {}\n", scaffold::r_depends_entry())),
+            "fresh DESCRIPTION missing the R version floor: {desc}"
+        );
         assert!(read(&root, "NAMESPACE").contains("useDynLib(my.pkg, .registration = TRUE)"));
         assert!(root.join("vendor").is_dir());
     }
@@ -785,6 +794,10 @@ mod tests {
             )),
             "Rust appended to existing SystemRequirements: {desc}"
         );
+        assert!(
+            desc.contains(&format!("Depends: {}\n", scaffold::r_depends_entry())),
+            "R version floor added to a DESCRIPTION without Depends: {desc}"
+        );
 
         // Existing NAMESPACE untouched; ignore file merged with dedupe.
         assert_eq!(read(&root, "NAMESPACE"), "export(existing_fn)\n");
@@ -804,6 +817,30 @@ mod tests {
         assert!(root.join("src/rust/lib.rs").is_file());
         assert!(root.join("tools/lock-shape-check.R").is_file());
         assert!(root.join("miniextendr.yml").is_file());
+    }
+
+    /// `init use` must never lower an existing R floor — merge semantics are
+    /// unit-tested on `desc_ensure_r_floor`; this checks the wiring end to end.
+    #[test]
+    fn init_use_keeps_higher_r_floor() {
+        let scratch = Scratch::new("use-higher-floor");
+        let root = scratch.path().to_path_buf();
+        std::fs::write(
+            root.join("DESCRIPTION"),
+            "Package: floor.pkg\n\
+             Version: 1.0.0\n\
+             Depends: R (>= 4.6), methods\n\
+             License: MIT + file LICENSE\n",
+        )
+        .unwrap();
+
+        init_use_rpkg(&root, true).unwrap();
+
+        let desc = read(&root, "DESCRIPTION");
+        assert!(
+            desc.contains("Depends: R (>= 4.6), methods\n"),
+            "existing higher floor must survive init use: {desc}"
+        );
     }
 
     #[test]

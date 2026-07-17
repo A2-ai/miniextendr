@@ -624,6 +624,19 @@ pub const CONFIG_BUILD_FIELDS: &[(&str, &str)] = &[
 /// fresh DESCRIPTION and the `init use` merge path).
 pub const RUST_SYSTEM_REQUIREMENT: &str = "Rust (>= 1.85)";
 
+/// Minimum R version required by miniextendr-backed packages — the runtime
+/// calls `R_getVarEx` (the `Rf_findVarInFrame` replacement), which only
+/// exists on R >= 4.5.0 (#1300), so any package linking miniextendr-api
+/// inherits this floor (~ `MX_R_FLOOR` in `minirextendr/R/utils.R`; the
+/// `r_floor_matches_minirextendr_and_rpkg` test asserts both mirrors and
+/// `rpkg/DESCRIPTION` agree).
+pub const R_VERSION_FLOOR: &str = "4.5";
+
+/// `Depends` entry carrying [`R_VERSION_FLOOR`] (~ `mx_r_depends_entry()`).
+pub fn r_depends_entry() -> String {
+    format!("R (>= {R_VERSION_FLOOR})")
+}
+
 /// Canonical fresh DESCRIPTION (~ the hand-written literal in
 /// `create_rpkg_subdirectory()`, `minirextendr/R/create.R`).
 pub fn description_content(package: &str) -> String {
@@ -632,10 +645,12 @@ pub fn description_content(package: &str) -> String {
         .map(|(name, value)| format!("{name}: {value}"))
         .collect::<Vec<_>>()
         .join("\n");
+    let r_depends = r_depends_entry();
     format!(
         "Package: {package}\n\
          Title: What the Package Does (One Line, Title Case)\n\
          Version: 0.0.0.9000\n\
+         Depends: {r_depends}\n\
          Authors@R:\n    \
          person(\"First\", \"Last\", , \"first.last@example.com\", role = c(\"aut\", \"cre\"))\n\
          Description: What the package does (one paragraph).\n\
@@ -697,6 +712,69 @@ pub fn desc_set_field(content: &str, field: &str, value: &str) -> String {
         out.push(new_line);
     }
     out.join("\n") + "\n"
+}
+
+/// Ensure `Depends` declares at least the [`R_VERSION_FLOOR`] R version
+/// floor (~ `mx_desc_ensure_r_floor()` in `minirextendr/R/utils.R`). Merges
+/// rather than overwrites: no `Depends` field adds one carrying the floor;
+/// an existing `Depends` without an `R` entry gains the floor (prepended,
+/// other entries untouched); an `R` entry with a provably lower `>=`/`>`
+/// floor — or no version constraint at all — is raised; a floor already at
+/// or above ours, or a constraint using another operator, is left untouched.
+pub fn desc_ensure_r_floor(content: &str) -> String {
+    let floor_entry = r_depends_entry();
+    let Some(depends) = crate::project::parse_description_field(content, "Depends") else {
+        return desc_set_field(content, "Depends", &floor_entry);
+    };
+    let mut entries: Vec<String> = depends
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_string)
+        .collect();
+    let r_idx = entries
+        .iter()
+        .position(|entry| entry.split('(').next().unwrap_or("").trim() == "R");
+    match r_idx {
+        None => entries.insert(0, floor_entry),
+        Some(i) => {
+            let entry = &entries[i];
+            match entry.find('(') {
+                // Bare `R`: no floor at all — raise to ours.
+                None => entries[i] = floor_entry,
+                Some(open) => {
+                    let constraint = entry[open + 1..].trim_end_matches(')').trim();
+                    let version = constraint
+                        .strip_prefix(">=")
+                        .or_else(|| constraint.strip_prefix('>'))
+                        .map(str::trim);
+                    match version {
+                        Some(v) if version_less_than(v, R_VERSION_FLOOR) => {
+                            entries[i] = floor_entry;
+                        }
+                        // Already at or above the floor, or a constraint we
+                        // can't compare (e.g. `R (== 4.4)`): leave untouched.
+                        _ => return content.to_string(),
+                    }
+                }
+            }
+        }
+    }
+    desc_set_field(content, "Depends", &entries.join(", "))
+}
+
+/// `a < b` over dotted version strings, matching R's
+/// `utils::compareVersion()` closely enough for R release versions: numeric
+/// component-wise comparison where a missing component sorts lower
+/// (`4.5 < 4.5.0`). Non-numeric components compare as 0.
+fn version_less_than(a: &str, b: &str) -> bool {
+    fn parts(version: &str) -> Vec<u64> {
+        version
+            .split(['.', '-'])
+            .map(|part| part.parse::<u64>().unwrap_or(0))
+            .collect()
+    }
+    parts(a) < parts(b)
 }
 
 // endregion
@@ -835,6 +913,85 @@ mod tests {
     fn merge_ignore_appends_missing_only() {
         let merged = merge_ignore_lines("existing\npattern1\n", &["pattern1", "pattern2"]);
         assert_eq!(merged, "existing\npattern1\npattern2\n");
+    }
+
+    /// Cross-language drift guard for the R version floor (#1366): the Rust
+    /// mirror, the R-side `MX_R_FLOOR` constant, and `rpkg/DESCRIPTION`'s
+    /// `Depends` line (the exemplar the floor is derived from) must all agree.
+    #[test]
+    fn r_floor_matches_minirextendr_and_rpkg() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        let utils_r = std::fs::read_to_string(repo_root.join("minirextendr/R/utils.R"))
+            .expect("readable minirextendr/R/utils.R");
+        let r_line = utils_r
+            .lines()
+            .find(|line| line.starts_with("MX_R_FLOOR"))
+            .expect("MX_R_FLOOR defined in minirextendr/R/utils.R");
+        assert_eq!(
+            r_line.trim(),
+            format!("MX_R_FLOOR <- \"{R_VERSION_FLOOR}\""),
+            "R_VERSION_FLOOR drifted from minirextendr's MX_R_FLOOR"
+        );
+
+        let rpkg_desc = std::fs::read_to_string(repo_root.join("rpkg/DESCRIPTION"))
+            .expect("readable rpkg/DESCRIPTION");
+        assert!(
+            rpkg_desc
+                .lines()
+                .any(|line| line.trim() == format!("Depends: {}", r_depends_entry())),
+            "rpkg/DESCRIPTION's Depends floor drifted from R_VERSION_FLOOR"
+        );
+    }
+
+    #[test]
+    fn desc_ensure_r_floor_adds_depends_when_absent() {
+        let content = "Package: p\nVersion: 1.0.0\n";
+        let out = desc_ensure_r_floor(content);
+        assert!(
+            out.contains(&format!("Depends: {}\n", r_depends_entry())),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn desc_ensure_r_floor_prepends_to_foreign_depends() {
+        let content = "Package: p\nDepends: methods, utils\n";
+        let out = desc_ensure_r_floor(content);
+        assert!(
+            out.contains(&format!("Depends: {}, methods, utils\n", r_depends_entry())),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn desc_ensure_r_floor_raises_lower_floor() {
+        for lower in ["R (>= 4.4)", "R (>=4.4)", "R (> 4.4)", "R"] {
+            let content = format!("Package: p\nDepends: {lower}, methods\n");
+            let out = desc_ensure_r_floor(&content);
+            assert!(
+                out.contains(&format!("Depends: {}, methods\n", r_depends_entry())),
+                "{lower}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn desc_ensure_r_floor_keeps_equal_or_higher_floor() {
+        for kept in ["R (>= 4.5)", "R (>= 4.5.0)", "R (>= 4.6)", "R (== 4.4)"] {
+            let content = format!("Package: p\nDepends: {kept}, methods\n");
+            assert_eq!(desc_ensure_r_floor(&content), content, "{kept}");
+        }
+    }
+
+    #[test]
+    fn version_less_than_matches_compare_version() {
+        assert!(version_less_than("4.4", "4.5"));
+        assert!(version_less_than("4.4.9", "4.5"));
+        assert!(version_less_than("4.5", "4.5.0"));
+        assert!(!version_less_than("4.5", "4.5"));
+        assert!(!version_less_than("4.10", "4.5"));
+        assert!(!version_less_than("4.5.1", "4.5"));
     }
 
     #[test]
