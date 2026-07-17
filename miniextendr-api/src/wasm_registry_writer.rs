@@ -24,9 +24,12 @@ use crate::registry::{
 use std::ffi::CStr;
 use std::fmt::Write as _;
 
-// Bumped whenever the generated-file shape changes (struct fields, import
-// paths, macro names). The receiving `build.rs` (step 5) refuses to compile
-// a `wasm_registry.rs` whose header doesn't match.
+// Bumped whenever the generated-file shape changes in a way the receiving
+// `build.rs` version check must reject (e.g. registry struct fields renamed
+// so an old file no longer compiles). Cosmetic changes — import lines,
+// qualified paths, formatting — are NOT part of the checked contract and
+// don't warrant a bump (#1307). The receiving `build.rs` (step 5) refuses
+// to compile a `wasm_registry.rs` whose header doesn't match.
 const GENERATOR_VERSION: u32 = 1;
 
 /// Pre-extracted, cdylib-side view of one `R_CallMethodDef`.
@@ -103,7 +106,10 @@ fn format_body(
 ) -> String {
     let mut out = String::new();
 
-    writeln!(&mut out, "use ::miniextendr_api::abi::mx_tag;").unwrap();
+    // `mx_tag` and `c_void` are referenced only by trait-dispatch entries and
+    // deliberately NOT imported here: a minimal package with an empty dispatch
+    // table would get `unused_imports` warnings on wasm32 (#1307). The
+    // dispatch entries spell both fully qualified instead.
     writeln!(&mut out, "use ::miniextendr_api::SEXP;").unwrap();
     writeln!(&mut out, "use ::miniextendr_api::sys::R_CallMethodDef;").unwrap();
     writeln!(
@@ -111,7 +117,6 @@ fn format_body(
         "use ::miniextendr_api::registry::{{AltrepRegistration, TraitDispatchEntry}};"
     )
     .unwrap();
-    writeln!(&mut out, "use ::core::ffi::c_void;").unwrap();
     writeln!(&mut out).unwrap();
 
     format_extern_unwind_block(&mut out, call_defs);
@@ -204,21 +209,23 @@ fn format_trait_dispatch_slice(out: &mut String, trait_dispatches: &[TraitDispat
     .unwrap();
     for row in trait_dispatches {
         writeln!(out, "    TraitDispatchEntry {{").unwrap();
+        // `mx_tag` / `c_void` are fully qualified (no header import) so
+        // dispatch-free files carry no unused imports — see format_body.
         writeln!(
             out,
-            "        concrete_tag: mx_tag::new(0x{:016x}, 0x{:016x}),",
+            "        concrete_tag: ::miniextendr_api::abi::mx_tag::new(0x{:016x}, 0x{:016x}),",
             row.concrete_tag.lo, row.concrete_tag.hi
         )
         .unwrap();
         writeln!(
             out,
-            "        trait_tag: mx_tag::new(0x{:016x}, 0x{:016x}),",
+            "        trait_tag: ::miniextendr_api::abi::mx_tag::new(0x{:016x}, 0x{:016x}),",
             row.trait_tag.lo, row.trait_tag.hi
         )
         .unwrap();
         writeln!(
             out,
-            "        vtable: unsafe {{ ::core::ptr::from_ref(&{}).cast::<c_void>() }},",
+            "        vtable: unsafe {{ ::core::ptr::from_ref(&{}).cast::<::core::ffi::c_void>() }},",
             row.vtable_symbol
         )
         .unwrap();
@@ -426,12 +433,90 @@ mod tests {
         let (a, b, c) = sample_inputs();
         let out = format_wasm_registry(&a, &b, &c);
         assert!(
-            out.contains("mx_tag::new(0xdeadbeefdeadbeef, 0x1234567812345678)"),
-            "expected concrete_tag literal; got:\n{out}"
+            out.contains(
+                "::miniextendr_api::abi::mx_tag::new(0xdeadbeefdeadbeef, 0x1234567812345678)"
+            ),
+            "expected fully-qualified concrete_tag literal; got:\n{out}"
         );
         assert!(
-            out.contains("mx_tag::new(0xcafebabecafebabe, 0xfeedfacefeedface)"),
-            "expected trait_tag literal; got:\n{out}"
+            out.contains(
+                "::miniextendr_api::abi::mx_tag::new(0xcafebabecafebabe, 0xfeedfacefeedface)"
+            ),
+            "expected fully-qualified trait_tag literal; got:\n{out}"
+        );
+    }
+
+    /// #1307: a minimal package (call defs only — no trait impls, no ALTREP)
+    /// produces an empty dispatch table; the generated file must not carry
+    /// imports that only dispatch entries would use, or wasm32 `cargo check`
+    /// reports `unused_imports` on every build.
+    #[test]
+    fn dispatch_free_output_has_no_dispatch_only_imports() {
+        let (call_defs, _, _) = sample_inputs();
+        let out = format_wasm_registry(&call_defs, &[], &[]);
+        assert!(
+            !out.contains("mx_tag"),
+            "dispatch-free output must not mention mx_tag; got:\n{out}"
+        );
+        assert!(
+            !out.contains("c_void"),
+            "dispatch-free output must not mention c_void; got:\n{out}"
+        );
+    }
+
+    /// Every emitted `use` line must be referenced in the body that follows —
+    /// the generalized no-unused-imports property for the minimal-package
+    /// shape (#1307). Imports are single-segment or `{A, B}` groups; each
+    /// imported ident must reappear after the import block.
+    #[test]
+    fn every_import_is_used_in_dispatch_free_output() {
+        let (call_defs, _, _) = sample_inputs();
+        let out = format_wasm_registry(&call_defs, &[], &[]);
+        let (imports, rest): (Vec<&str>, Vec<&str>) =
+            out.lines().partition(|l| l.starts_with("use "));
+        assert!(!imports.is_empty(), "output has imports; got:\n{out}");
+        let body = rest.join("\n");
+        for line in imports {
+            let idents = line
+                .trim_start_matches("use ")
+                .trim_end_matches(';')
+                .rsplit("::")
+                .next()
+                .unwrap()
+                .trim_matches(['{', '}'])
+                .split(',')
+                .map(str::trim);
+            for ident in idents {
+                assert!(
+                    body.contains(ident),
+                    "import `{ident}` from `{line}` is unused; got:\n{out}"
+                );
+            }
+        }
+    }
+
+    /// With dispatch entries present, the emitted entries must reference
+    /// `mx_tag` / `c_void` fully qualified (no header import exists to
+    /// resolve bare names — #1307 dropped them).
+    #[test]
+    fn dispatch_entries_reference_items_fully_qualified() {
+        let (a, b, c) = sample_inputs();
+        let out = format_wasm_registry(&a, &b, &c);
+        assert!(
+            !out.contains("use ::miniextendr_api::abi::mx_tag;"),
+            "mx_tag header import must not be emitted; got:\n{out}"
+        );
+        assert!(
+            !out.contains("use ::core::ffi::c_void;"),
+            "c_void header import must not be emitted; got:\n{out}"
+        );
+        assert!(
+            out.contains("::miniextendr_api::abi::mx_tag::new("),
+            "dispatch tags must be fully qualified; got:\n{out}"
+        );
+        assert!(
+            out.contains(".cast::<::core::ffi::c_void>()"),
+            "vtable cast must be fully qualified; got:\n{out}"
         );
     }
 
