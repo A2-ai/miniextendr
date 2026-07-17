@@ -98,7 +98,7 @@ pub fn json_array_len(value: JsonValue) -> i32 {
 pub fn json_from_key_values(keys: Vec<String>, values: Vec<i32>) -> String {
     use miniextendr_api::serde_impl::serde_json;
     let mut map = serde_json::Map::new();
-    for (k, v) in keys.into_iter().zip(values.into_iter()) {
+    for (k, v) in keys.into_iter().zip(values) {
         map.insert(k, serde_json::Value::Number(v.into()));
     }
     serde_json::Value::Object(map).to_string()
