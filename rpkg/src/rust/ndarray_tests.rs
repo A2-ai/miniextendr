@@ -600,3 +600,122 @@ pub fn ndarray_roundtrip_int_matrix(data: Array2<i32>) -> Array2<i32> {
     data
 }
 // endregion
+
+// region: String array conversions (#1348)
+
+/// Test roundtripping a character vector through R and back (NA-safe).
+/// @param data A character vector to roundtrip (may contain NA).
+#[miniextendr]
+pub fn ndarray_roundtrip_string_vec(data: Array1<Option<String>>) -> Array1<Option<String>> {
+    data
+}
+
+/// Test roundtripping a character matrix through R and back (NA-safe).
+/// @param data A character matrix to roundtrip (may contain NA).
+#[miniextendr]
+pub fn ndarray_roundtrip_string_matrix(data: Array2<Option<String>>) -> Array2<Option<String>> {
+    data
+}
+
+/// Test roundtripping an N-dimensional character array through R and back (NA-safe).
+/// @param data An N-dimensional character array to roundtrip (may contain NA).
+#[miniextendr]
+pub fn ndarray_roundtrip_string_array(data: ArrayD<Option<String>>) -> ArrayD<Option<String>> {
+    data
+}
+
+/// Test roundtripping a character matrix through `Array2<String>`.
+/// This path is lossy for missing values: `NA_character_` becomes `""`.
+/// @param data A character matrix to roundtrip.
+#[miniextendr]
+pub fn ndarray_roundtrip_string_matrix_lossy(data: Array2<String>) -> Array2<String> {
+    data
+}
+
+/// Build a known 2x3 character matrix in Rust (standard/row-major layout)
+/// and return it, exercising the column-major write path.
+#[miniextendr]
+pub fn ndarray_string_matrix_fixture() -> Array2<Option<String>> {
+    // Row-major construction; rows are ("α", NA, "c") and ("β", "δ", "").
+    Array2::from_shape_vec(
+        (2, 3),
+        vec![
+            Some("α".to_string()),
+            None,
+            Some("c".to_string()),
+            Some("β".to_string()),
+            Some("δ".to_string()),
+            Some(String::new()),
+        ],
+    )
+    .expect("static shape matches static data")
+}
+
+/// Transpose a character matrix in Rust.
+/// `reversed_axes` swaps the strides without moving data, so the returned
+/// array is in non-standard layout — exercising the layout-independent
+/// column-major write path.
+/// @param data A character matrix to transpose.
+#[miniextendr]
+pub fn ndarray_string_matrix_transpose(data: Array2<Option<String>>) -> Array2<Option<String>> {
+    data.reversed_axes()
+}
+
+/// GC-stress fixture for the string ndarray conversion paths (#1348).
+///
+/// Filling a STRSXP stores the parent SEXP across per-element CHARSXP
+/// allocations, so this path needs a no-arg `gctorture(TRUE)` fixture
+/// (see #430). Inputs are synthesized internally with per-iteration unique
+/// strings (R interns CHARSXPs globally, so repeated literals would be
+/// cache hits instead of fresh allocations) and driven through the
+/// production `IntoR` / `TryFromSexp` impls in both directions.
+#[miniextendr(noexport)]
+pub fn gc_stress_ndarray_string() -> Array2<Option<String>> {
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::OwnedProtect;
+
+    let mut last = None;
+    for iter in 0..8 {
+        let mat = Array2::from_shape_vec(
+            (4, 3),
+            (0..12)
+                .map(|i| {
+                    if i % 4 == 3 {
+                        None
+                    } else {
+                        Some(format!("gc-ñ-{iter}-{i}"))
+                    }
+                })
+                .collect(),
+        )
+        .expect("static shape matches generated data");
+
+        // Rust -> R: allocates the STRSXP, one CHARSXP per element, and the
+        // dim vector. Root the result before walking it back — the reverse
+        // walk can allocate during encoding translation.
+        let sexp = mat.clone().into_sexp();
+        let guard = unsafe { OwnedProtect::new(sexp) };
+        let back: Array2<Option<String>> =
+            TryFromSexp::try_from_sexp(guard.get()).expect("string matrix round-trip parse");
+        assert_eq!(back, mat, "string matrix corrupted under GC pressure");
+
+        // Higher-dimensional leg (2x3x2).
+        let cube = ArrayD::from_shape_vec(
+            IxDyn(&[2, 3, 2]),
+            (0..12)
+                .map(|i| Some(format!("gc-cube-{iter}-{i}")))
+                .collect(),
+        )
+        .expect("static shape matches generated data");
+        let cube_sexp = cube.clone().into_sexp();
+        let cube_guard = unsafe { OwnedProtect::new(cube_sexp) };
+        let cube_back: ArrayD<Option<String>> =
+            TryFromSexp::try_from_sexp(cube_guard.get()).expect("string array round-trip parse");
+        assert_eq!(cube_back, cube, "string array corrupted under GC pressure");
+
+        last = Some(back);
+    }
+    last.expect("loop ran at least once")
+}
+// endregion

@@ -548,6 +548,14 @@ jobs:
       - name: Tests (ui_vctrs trybuild, vctrs feature)
         run: cargo test -p miniextendr-macros --test ui_vctrs --features vctrs --locked --no-fail-fast
 
+      # The ndarray integration tests are feature-gated (`#[cfg(feature =
+      # "ndarray")]`) and invisible to the default-features workspace run
+      # above — without an explicit feature leg they never execute in CI
+      # (the silent feature-gate mismatch; surfaced by #1348). Scoped to the
+      # ndarray test binaries to keep the step cheap.
+      - name: Tests (miniextendr-api, ndarray feature)
+        run: cargo test -p miniextendr-api --locked --no-fail-fast --features ndarray --test ndarray_generic --test ndarray_all_types --test ndarray_string
+
       # cargo-revendor is a standalone workspace excluded from the root
       # workspace, so the `--workspace` step above never reaches it (#778).
       - name: Tests (cargo-revendor)

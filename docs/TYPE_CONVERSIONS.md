@@ -501,6 +501,24 @@ pub fn matrix_sum(x: Array2<f64>) -> f64 {
 }
 ```
 
+Character matrices/arrays are supported through explicit element-wise
+impls (R's STRSXP is a vector of CHARSXP pointers, not contiguous memory, so
+the contiguous-copy path used for numeric arrays does not apply). Shape is
+preserved as R's `dim` attribute with the same column-major contract as the
+numeric conversions, and `Option<String>::None` maps to `NA_character_`:
+
+```rust
+use ndarray::Array2;
+
+#[miniextendr]
+pub fn label_grid(x: Array2<Option<String>>) -> Array2<Option<String>> {
+    x // NA-safe round-trip: None <-> NA_character_
+}
+```
+
+`Array<String, D>` (without `Option`) mirrors `Vec<String>`: reading maps
+`NA_character_` to `""` (lossy); writing never produces NA.
+
 ---
 
 ## Error Cases
@@ -699,7 +717,6 @@ pub fn add_one_in_place(x: &mut [i32]) {
 
 ## Known Limitations
 
-- **String matrices** (`ndarray::Array<String, Ix2>`) are not directly convertible because R's STRSXP is not contiguous memory. Use `Vec<Vec<String>>` as an intermediary.
 - **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds.

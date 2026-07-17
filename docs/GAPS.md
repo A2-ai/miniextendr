@@ -176,22 +176,25 @@ See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) for slice lifetime details and [S
 
 ### 2.2 String Matrix/Array Support
 
-**Status:** Not implemented
+**Status:** Complete (`ndarray` feature)
 **Impact:** Low
-**Location:** `miniextendr-api/src/into_r.rs`
-**Tracking:** [#1348](https://github.com/A2-ai/miniextendr/issues/1348)
+**Location:** `miniextendr-api/src/optionals/ndarray_impl.rs`
+**Tracking:** [#1348](https://github.com/A2-ai/miniextendr/issues/1348) (implemented)
 
-`ndarray::Array<String, Ix2>` and similar string arrays are not directly convertible.
+All owned ndarray dimensionalities (`Array0`..`Array6`, `ArrayD`) of `String`
+and `Option<String>` convert directly to and from R character arrays:
 
-**Workaround:**
-```rust
-// Convert manually via nested vectors
-let string_matrix: Vec<Vec<String>> = array.outer_iter()
-    .map(|row| row.iter().cloned().collect())
-    .collect();
-```
-
-**Why:** R's STRSXP is a vector of CHARSXP pointers, not contiguous memory. Direct ndarray integration would require special handling because ndarray assumes a contiguous backing buffer.
+- `Option<String>::None` maps to `NA_character_` in both directions; the
+  `Array<String, D>` path mirrors `Vec<String>` (reading maps NA to `""`,
+  lossy — prefer `Option<String>` elements for NA-carrying data).
+- Shape is preserved as R's `dim` attribute with the same column-major
+  contract as the numeric ndarray conversions, independent of the array's
+  memory layout (standard or Fortran order).
+- R's STRSXP is a vector of CHARSXP pointers, not contiguous memory, so these
+  are explicit element-wise impls (each CHARSXP is created and installed on
+  the R thread while the parent STRSXP stays protected), not `RNativeType`
+  blanket impls. Consequently views (`ArrayView*`) of string elements are not
+  convertible — convert an owned array instead.
 
 See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) for supported matrix types and [FEATURES.md](FEATURES.md#ndarray) for the `ndarray` feature flag.
 

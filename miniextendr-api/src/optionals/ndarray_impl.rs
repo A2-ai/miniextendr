@@ -9,7 +9,10 @@
 //! | array (3D) | `Array3<T>` | 3D array |
 //! | array (N-D) | `ArrayD<T>` | Dynamic dimension array |
 //!
-//! Supported element types: `i32`, `f64`, `u8` (raw), `RLogical`, `Rcomplex`.
+//! Supported element types: `i32`, `f64`, `u8` (raw), `RLogical`, `Rcomplex`
+//! (contiguous R-native storage), plus `String` / `Option<String>` for R
+//! character arrays (explicit element-wise impls over STRSXP;
+//! `Option<String>::None` maps to `NA_character_`).
 //!
 //! # Features
 //!
@@ -680,6 +683,190 @@ impl_all_arrays_try_from_sexp_coerce!(f64 => f32);
 impl_all_arrays_try_from_sexp_coerce!(crate::RLogical => bool);
 // endregion
 
+// region: String array conversions from R (STRSXP -> Array<String> / Array<Option<String>>)
+//
+// `String` is not an `RNativeType` (R's STRSXP is a vector of CHARSXP
+// pointers, not contiguous memory), so the blanket impls above do not apply.
+// These explicit impls delegate the STRSXP walk to the matching `Vec<…>`
+// conversion — which yields elements in R's column-major storage order — and
+// reassemble with a Fortran-order shape, mirroring the numeric blanket impls'
+// dimension handling exactly (`Array1` ignores `dim`, `Array2` treats a plain
+// vector as an n x 1 column, `Array3`..`Array6` require an exact-length `dim`,
+// `ArrayD` falls back to 1-D).
+//
+// NA policy mirrors the flat-vector conversions:
+// - `Array<String, D>`: `NA_character_` becomes `""` (lossy, like
+//   `Vec<String>`). Use `Array<Option<String>, D>` to preserve NA.
+// - `Array<Option<String>, D>`: `NA_character_` becomes `None` (like
+//   `Vec<Option<String>>`).
+
+/// Implement `TryFromSexp` for every owned array dimensionality of a
+/// string-like element type (`String` or `Option<String>`).
+macro_rules! impl_string_arrays_try_from_sexp {
+    ($elem:ty) => {
+        /// Convert a length-1 R character vector to a 0-dimensional array.
+        impl TryFromSexp for Array0<$elem> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let mut data: Vec<$elem> = <Vec<$elem> as TryFromSexp>::try_from_sexp(sexp)?;
+                if data.len() != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: data.len(),
+                    }
+                    .into());
+                }
+                Ok(Array0::from_elem(
+                    (),
+                    data.pop().expect("length checked above"),
+                ))
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+
+        /// Convert an R character vector to a 1-dimensional string array.
+        ///
+        /// Any `dim` attribute is ignored (same contract as the numeric
+        /// `Array1` conversion).
+        impl TryFromSexp for Array1<$elem> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let data: Vec<$elem> = <Vec<$elem> as TryFromSexp>::try_from_sexp(sexp)?;
+                Ok(Array1::from_vec(data))
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+
+        /// Convert an R character matrix to a 2-dimensional string array.
+        ///
+        /// A plain character vector (no `dim`) is treated as an n x 1 column
+        /// matrix (same contract as the numeric `Array2` conversion).
+        impl TryFromSexp for Array2<$elem> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let (nrow, ncol) = get_matrix_dims(sexp)?;
+                let data: Vec<$elem> = <Vec<$elem> as TryFromSexp>::try_from_sexp(sexp)?;
+                let actual = data.len();
+                Array2::from_shape_vec((nrow, ncol).f(), data).map_err(|_| {
+                    SexpLengthError {
+                        expected: nrow * ncol,
+                        actual,
+                    }
+                    .into()
+                })
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+
+        /// Convert an R 3-dimensional character array to `Array3`.
+        impl TryFromSexp for Array3<$elem> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let (d0, d1, d2) = get_array3_dims(sexp)?;
+                let data: Vec<$elem> = <Vec<$elem> as TryFromSexp>::try_from_sexp(sexp)?;
+                let actual = data.len();
+                Array3::from_shape_vec((d0, d1, d2).f(), data).map_err(|_| {
+                    SexpLengthError {
+                        expected: d0 * d1 * d2,
+                        actual,
+                    }
+                    .into()
+                })
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+
+        impl_string_array_try_from_sexp_fixed!($elem, Array4, 4, (0, 1, 2, 3));
+        impl_string_array_try_from_sexp_fixed!($elem, Array5, 5, (0, 1, 2, 3, 4));
+        impl_string_array_try_from_sexp_fixed!($elem, Array6, 6, (0, 1, 2, 3, 4, 5));
+
+        /// Convert an R N-dimensional character array to `ArrayD`.
+        ///
+        /// A plain character vector (no `dim`) becomes a 1-D array (same
+        /// contract as the numeric `ArrayD` conversion).
+        impl TryFromSexp for ArrayD<$elem> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let dims = get_array_dims(sexp).unwrap_or_else(|| vec![sexp.len()]);
+                let data: Vec<$elem> = <Vec<$elem> as TryFromSexp>::try_from_sexp(sexp)?;
+                let actual = data.len();
+                let shape = IxDyn(&dims);
+                ArrayD::from_shape_vec(shape.f(), data).map_err(|_| {
+                    SexpLengthError {
+                        expected: dims.iter().product(),
+                        actual,
+                    }
+                    .into()
+                })
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+    };
+}
+
+/// Helper for [`impl_string_arrays_try_from_sexp`]: the `Array4`..`Array6`
+/// impls differ only in the expected `dim` length and the index tuple.
+macro_rules! impl_string_array_try_from_sexp_fixed {
+    ($elem:ty, $array:ident, $ndim:literal, ($($idx:tt),+)) => {
+        /// Convert an R character array with a `dim` attribute of matching
+        /// length to a fixed-dimensional string array.
+        impl TryFromSexp for $array<$elem> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let dims = get_array_dims(sexp).ok_or(SexpLengthError {
+                    expected: $ndim,
+                    actual: 1,
+                })?;
+                if dims.len() != $ndim {
+                    return Err(SexpLengthError {
+                        expected: $ndim,
+                        actual: dims.len(),
+                    }
+                    .into());
+                }
+                let data: Vec<$elem> = <Vec<$elem> as TryFromSexp>::try_from_sexp(sexp)?;
+                let actual = data.len();
+                $array::from_shape_vec(($(dims[$idx]),+).f(), data).map_err(|_| {
+                    SexpLengthError {
+                        expected: dims.iter().product(),
+                        actual,
+                    }
+                    .into()
+                })
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+    };
+}
+
+impl_string_arrays_try_from_sexp!(String);
+impl_string_arrays_try_from_sexp!(Option<String>);
+// endregion
+
 // region: Array2 conversions
 
 /// Convert `Array2<T>` to R matrix.
@@ -984,6 +1171,104 @@ fn fortran_order_iter<F: FnMut(Vec<usize>)>(shape: &[usize], mut f: F) {
         }
     }
 }
+// endregion
+
+// region: String array conversions to R (Array<String> / Array<Option<String>> -> STRSXP)
+
+/// Build an R character array from a Fortran-order (column-major) string
+/// iterator, attaching a `dim` attribute when `shape` has two or more axes.
+///
+/// # Allocation / protection discipline
+///
+/// STRSXP elements are CHARSXPs, which must be created and installed on the
+/// R thread. This helper routes through
+/// [`opt_str_iter_to_strsxp`](crate::into_r::opt_str_iter_to_strsxp), which
+/// allocates the STRSXP inside a [`ProtectScope`] and keeps it protected
+/// while each element CHARSXP is allocated and installed via
+/// `SET_STRING_ELT`. The filled vector is then re-protected here across the
+/// `dim` vector allocation. `None` elements become `NA_character_`.
+fn str_array_to_sexp<'a>(
+    iter: impl ExactSizeIterator<Item = Option<&'a str>>,
+    shape: &[usize],
+) -> SEXP {
+    unsafe {
+        let scope = ProtectScope::new();
+        let arr = crate::into_r::opt_str_iter_to_strsxp(iter);
+        scope.protect_raw(arr);
+
+        // Set dim attribute if ndim > 1 (a 0-D or 1-D array is a plain
+        // character vector, matching the numeric conversions).
+        if shape.len() > 1 {
+            let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(shape.len());
+            scope.protect_raw(dim);
+            for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
+                *slot = i32::try_from(d).expect("dimension exceeds i32");
+            }
+            arr.set_dim(dim);
+        }
+
+        arr
+    } // scope drops here, calling UNPROTECT automatically
+}
+
+/// Implement `IntoR` for every owned array dimensionality of `String` and
+/// `Option<String>` elements.
+///
+/// Elements are visited via `self.t().iter()`: `t()` reverses the axes, and
+/// ndarray's `iter()` walks a view in *logical* (row-major) order regardless
+/// of the underlying memory layout, so the reversed-axes walk yields the
+/// original array's elements in column-major (Fortran) order — R's storage
+/// order — for standard-layout and non-standard-layout arrays alike. This is
+/// the same layout contract as the numeric array conversions.
+macro_rules! impl_string_arrays_into_r {
+    ($array:ident) => {
+        /// Convert an owned string array to an R character array.
+        ///
+        /// Elements are written in column-major (R) order regardless of the
+        /// array's internal layout, and the shape becomes R's `dim`
+        /// attribute for two or more axes. Empty strings stay `""`; this
+        /// direction never produces `NA_character_` (use
+        /// `Option<String>` elements for NA).
+        impl IntoR for $array<String> {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+                let shape = self.shape().to_vec();
+                Ok(str_array_to_sexp(
+                    self.t().iter().map(|s| Some(s.as_str())),
+                    &shape,
+                ))
+            }
+        }
+
+        /// Convert an owned optional-string array to an R character array
+        /// with NA support.
+        ///
+        /// `None` elements become `NA_character_`. Elements are written in
+        /// column-major (R) order regardless of the array's internal layout,
+        /// and the shape becomes R's `dim` attribute for two or more axes.
+        impl IntoR for $array<Option<String>> {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+                let shape = self.shape().to_vec();
+                Ok(str_array_to_sexp(
+                    self.t().iter().map(|opt| opt.as_deref()),
+                    &shape,
+                ))
+            }
+        }
+    };
+}
+
+impl_string_arrays_into_r!(Array0);
+impl_string_arrays_into_r!(Array1);
+impl_string_arrays_into_r!(Array2);
+impl_string_arrays_into_r!(Array3);
+impl_string_arrays_into_r!(Array4);
+impl_string_arrays_into_r!(Array5);
+impl_string_arrays_into_r!(Array6);
+impl_string_arrays_into_r!(ArrayD);
 // endregion
 
 // region: ArcArray conversions (shared ownership)

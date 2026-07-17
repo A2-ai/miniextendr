@@ -570,3 +570,105 @@ test_that("NdIntVec variance and std work", {
   expect_equal(v$var(), 4)
   expect_equal(v$std(), 2)
 })
+
+# =============================================================================
+# String array conversions (#1348)
+# =============================================================================
+
+test_that("character matrix round-trips with values, dim, and NA preserved", {
+  skip_if_ndarray_disabled()
+  m <- matrix(c("a", "b", NA, "d", "", "f"), nrow = 2, ncol = 3)
+
+  out <- ndarray_roundtrip_string_matrix(m)
+  expect_identical(out, m)
+
+  # Higher-dimensional shape
+  arr <- array(as.character(1:24), dim = c(2, 3, 4))
+  arr[1, 2, 3] <- NA_character_
+  expect_identical(ndarray_roundtrip_string_array(arr), arr)
+})
+
+test_that("character vector round-trips (plain vector, no dim)", {
+  skip_if_ndarray_disabled()
+  v <- c("x", NA, "z", "")
+  out <- ndarray_roundtrip_string_vec(v)
+  expect_identical(out, v)
+  expect_null(dim(out))
+})
+
+test_that("UTF-8 (non-ASCII) strings survive the round-trip", {
+  skip_if_ndarray_disabled()
+  m <- matrix(c("héllø", "日本語", "ærøskøbing", "ñandú"), nrow = 2)
+  out <- ndarray_roundtrip_string_matrix(m)
+  expect_identical(out, m)
+  expect_identical(Encoding(out[2, 2]), "UTF-8")
+})
+
+test_that("empty dimensions survive the round-trip", {
+  skip_if_ndarray_disabled()
+  m0 <- matrix(character(0), nrow = 0, ncol = 3)
+  out <- ndarray_roundtrip_string_matrix(m0)
+  expect_identical(dim(out), c(0L, 3L))
+
+  m1 <- matrix(character(0), nrow = 3, ncol = 0)
+  expect_identical(dim(ndarray_roundtrip_string_matrix(m1)), c(3L, 0L))
+
+  expect_identical(ndarray_roundtrip_string_vec(character(0)), character(0))
+})
+
+test_that("Array2<String> path is lossy for NA (documented contract)", {
+  skip_if_ndarray_disabled()
+  m <- matrix(c("a", NA, "c", "d"), nrow = 2)
+  out <- ndarray_roundtrip_string_matrix_lossy(m)
+  expect_identical(out[1, 1], "a")
+  expect_identical(out[2, 1], "") # NA -> "" through Array2<String>
+  expect_identical(dim(out), dim(m))
+})
+
+test_that("Rust-built character matrix arrives column-major with dim", {
+  skip_if_ndarray_disabled()
+  # Rust builds rows ("α", NA, "c") / ("β", "δ", "") in row-major layout;
+  # R must see the same logical matrix (column-major storage).
+  expected <- matrix(c("α", "β", NA, "δ", "c", ""), nrow = 2, ncol = 3)
+  expect_identical(ndarray_string_matrix_fixture(), expected)
+})
+
+test_that("transposed (non-standard layout) matrix converts correctly", {
+  skip_if_ndarray_disabled()
+  m <- matrix(c("a", "b", NA, "d", "e", "f"), nrow = 2, ncol = 3)
+  expect_identical(ndarray_string_matrix_transpose(m), t(m))
+})
+
+test_that("gc_stress_ndarray_string survives gctorture", {
+  skip_if_ndarray_disabled()
+  skip_gc_stress_if_disabled()
+  # Load the package first, then enable gctorture — see docs/GCTORTURE_TESTING.md.
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  ok <- 0L
+  fail <- character(0L)
+  for (i in seq_len(5L)) {
+    res <- tryCatch(
+      {
+        miniextendr:::gc_stress_ndarray_string()
+        "ok"
+      },
+      error = function(e) conditionMessage(e)
+    )
+    if (identical(res, "ok")) {
+      ok <- ok + 1L
+    } else {
+      fail <- c(fail, sprintf("iteration %d: %s", i, res))
+    }
+  }
+  expect_equal(ok, 5L, info = paste("failures:", paste(fail, collapse = "; ")))
+})
+
+test_that("gc_stress_ndarray_string returns the expected matrix shape", {
+  skip_if_ndarray_disabled()
+  out <- miniextendr:::gc_stress_ndarray_string()
+  expect_identical(dim(out), c(4L, 3L))
+  expect_true(anyNA(out))
+  expect_type(out, "character")
+})
