@@ -281,6 +281,10 @@ impl DerivedCurrency {
     /// @param symbol Character currency symbol (informational; not stored in the vector).
     /// @param amounts Numeric vector of currency amounts.
     /// @return A `DerivedCurrency` vctrs vector.
+    // Canonical vctrs constructor pattern: must be named `new` (constructor
+    // inference keys on the ident) and must return the vector payload, not
+    // `Self` — `vctrs::new_vctr(.data, ...)` rejects an ExternalPtr as `.data`.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(_symbol: String, amounts: Vec<f64>) -> Vec<f64> {
         amounts
     }
