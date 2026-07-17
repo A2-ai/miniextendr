@@ -86,6 +86,17 @@ pub enum ReturnStrategy {
     /// ExternalPtr-backed class. The final decision is deferred to
     /// `write_r_wrappers_to_file`, where the complete class registry is known.
     ReturnOtherClass,
+    /// The method returns a *list* of values (`Vec<Class>`, plus the
+    /// `Option<Vec<Class>>` / `Result<Vec<Class>, E>` wrappers the C wrapper
+    /// already unwraps) whose element type may be another registered
+    /// ExternalPtr-backed class (#1284). Deferred to `write_r_wrappers_to_file`
+    /// like [`ReturnOtherClass`](Self::ReturnOtherClass), but through a
+    /// distinct `.__MX_WRAP_LIST_RETURN_*` marker that resolves to a per-element
+    /// `lapply(...)` wrap. The marker prefix must never overlap the scalar
+    /// `.__MX_WRAP_RETURN_` family: the scalar resolver rewrites unrecognized
+    /// markers of its own prefix to the bare expression, so a shared prefix
+    /// would consume list markers before the list resolver ran.
+    ReturnOtherClassList,
     /// The method is a `&mut self` method returning `()`. The wrapper calls the
     /// `.Call()` for its side effect and returns the receiver (`self`/`x`) for
     /// method chaining (e.g., `invisible(self)` for R6).
@@ -113,6 +124,10 @@ impl ReturnStrategy {
     /// - Bare capitalized return types that are not known primitives/containers
     ///   use `ReturnOtherClass`; write-time registry lookup wraps registered
     ///   classes and leaves false positives unchanged.
+    /// - `Vec<Class>` (and the `Option`/`Result` wrappers of it the C wrapper
+    ///   unwraps) use `ReturnOtherClassList`; write-time registry lookup wraps
+    ///   registered element classes via `lapply` and leaves false positives
+    ///   unchanged (#1284).
     /// - All other methods use `Direct`.
     pub fn for_method(method: &ParsedMethod) -> Self {
         // In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
@@ -125,6 +140,8 @@ impl ReturnStrategy {
             ReturnStrategy::ChainableMutation
         } else if method.returns_other_class().is_some() {
             ReturnStrategy::ReturnOtherClass
+        } else if method.returns_other_class_list().is_some() {
+            ReturnStrategy::ReturnOtherClassList
         } else {
             ReturnStrategy::Direct
         }
@@ -139,8 +156,9 @@ impl ReturnStrategy {
 /// references `.val` directly.
 ///
 /// `class_name` is `""` for [`ReturnStrategy::ChainableMutation`],
-/// [`ReturnStrategy::ReturnOtherClass`], and [`ReturnStrategy::Direct`] — those
-/// tails should not use it.
+/// [`ReturnStrategy::ReturnOtherClass`],
+/// [`ReturnStrategy::ReturnOtherClassList`], and [`ReturnStrategy::Direct`] —
+/// those tails should not use it.
 #[allow(clippy::type_complexity)]
 struct ReturnTails<'a> {
     /// Tail for [`ReturnStrategy::ReturnSelf`].
@@ -171,9 +189,10 @@ pub struct MethodReturnBuilder {
     /// R class name, required when `strategy` is `ReturnSelf` to construct
     /// the class wrapper (e.g., `"Counter"` for `Counter$new(.ptr = result)`).
     class_name: Option<String>,
-    /// Rust return type name, required when `strategy` is `ReturnOtherClass`.
-    /// The write-time resolver maps this Rust name to the registered target
-    /// class and constructor syntax, or falls back to the bare value on miss.
+    /// Rust return type name, required when `strategy` is `ReturnOtherClass`
+    /// or `ReturnOtherClassList` (the element type in the list case). The
+    /// write-time resolver maps this Rust name to the registered target class
+    /// and constructor syntax, or falls back to the bare value on miss.
     return_class: Option<String>,
     /// Variable name to return for `ChainableMutation` strategy (e.g., `"self"` for R6,
     /// `"x"` for S3). Defaults to `"self"` if not set.
@@ -214,13 +233,23 @@ impl MethodReturnBuilder {
     }
 
     /// Attach the method's cross-class return name when this builder uses
-    /// [`ReturnStrategy::ReturnOtherClass`].
+    /// [`ReturnStrategy::ReturnOtherClass`] or
+    /// [`ReturnStrategy::ReturnOtherClassList`].
     pub fn with_return_class_from_method(mut self, method: &ParsedMethod) -> Self {
-        if self.strategy == ReturnStrategy::ReturnOtherClass {
-            let return_class = method
-                .returns_other_class()
-                .expect("return_class required for ReturnOtherClass strategy");
-            self = self.with_return_class(return_class.to_string());
+        match self.strategy {
+            ReturnStrategy::ReturnOtherClass => {
+                let return_class = method
+                    .returns_other_class()
+                    .expect("return_class required for ReturnOtherClass strategy");
+                self = self.with_return_class(return_class.to_string());
+            }
+            ReturnStrategy::ReturnOtherClassList => {
+                let return_class = method
+                    .returns_other_class_list()
+                    .expect("return_class required for ReturnOtherClassList strategy");
+                self = self.with_return_class(return_class.to_string());
+            }
+            _ => {}
         }
         self
     }
@@ -243,6 +272,21 @@ impl MethodReturnBuilder {
             .as_ref()
             .expect("return_class required for ReturnOtherClass strategy");
         format!(".__MX_WRAP_RETURN_{return_class}__(.val)")
+    }
+
+    /// List-shaped sibling of
+    /// [`return_other_class_expr`](Self::return_other_class_expr) (#1284).
+    ///
+    /// The `LIST_` infix keeps the marker family disjoint from the scalar
+    /// `.__MX_WRAP_RETURN_` prefix: the scalar resolver rewrites unrecognized
+    /// markers of its own prefix to the bare expression, so a shared prefix
+    /// would destroy list markers before the list resolver saw them.
+    fn return_other_class_list_expr(&self) -> String {
+        let return_class = self
+            .return_class
+            .as_ref()
+            .expect("return_class required for ReturnOtherClassList strategy");
+        format!(".__MX_WRAP_LIST_RETURN_{return_class}__(.val)")
     }
 
     // region: Core shared build path
@@ -272,6 +316,9 @@ impl MethodReturnBuilder {
             }
             ReturnStrategy::ReturnOtherClass => {
                 lines.push(format!("{}{}", indent, self.return_other_class_expr()));
+            }
+            ReturnStrategy::ReturnOtherClassList => {
+                lines.push(format!("{}{}", indent, self.return_other_class_list_expr()));
             }
             ReturnStrategy::Direct => {
                 lines.extend((tails.direct_tail)(&indent));
@@ -401,6 +448,7 @@ impl MethodReturnBuilder {
             }
             ReturnStrategy::ChainableMutation => "x".to_string(),
             ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
+            ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
             ReturnStrategy::Direct => ".val".to_string(),
         };
         condition_check_inline_block(&self.call_expr, &inner, "    ")
@@ -421,6 +469,7 @@ impl MethodReturnBuilder {
             }
             ReturnStrategy::ChainableMutation => "x".to_string(),
             ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
+            ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
             ReturnStrategy::Direct => ".val".to_string(),
         };
         condition_check_inline_block(&self.call_expr, &inner, "    ")

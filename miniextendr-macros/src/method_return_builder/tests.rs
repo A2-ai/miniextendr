@@ -55,3 +55,31 @@ fn test_s7_style() {
     assert!(inline.contains("inherits(.val, \"rust_condition_value\")"));
     assert!(inline.contains("Counter(.ptr = .val)"));
 }
+
+/// The list-shaped cross-class strategy (#1284) emits the distinct
+/// `.__MX_WRAP_LIST_RETURN_` marker — never the scalar `.__MX_WRAP_RETURN_`
+/// prefix, which the scalar write-time resolver would consume and rewrite to
+/// the bare expression before the list resolver ran.
+#[test]
+fn test_return_other_class_list_marker() {
+    let builder = MethodReturnBuilder::new(".Call(C_Plan__build_many, self)".to_string())
+        .with_strategy(ReturnStrategy::ReturnOtherClassList)
+        .with_return_class("Board".to_string());
+
+    let lines = builder.build();
+    // .val <- <call>; if (...) return(...); .__MX_WRAP_LIST_RETURN_Board__(.val)
+    assert_eq!(lines.len(), 3);
+    assert!(lines[0].contains(".val <- .Call(C_Plan__build_many, self)"));
+    assert!(lines[1].contains("inherits(.val, \"rust_condition_value\")"));
+    assert_eq!(lines[2], "  .__MX_WRAP_LIST_RETURN_Board__(.val)");
+    assert!(
+        !lines[2].contains(".__MX_WRAP_RETURN_Board__"),
+        "list strategy must not reuse the scalar marker prefix"
+    );
+
+    // Inline (S7/S4) variants carry the same marker.
+    let s7 = builder.build_s7_inline();
+    assert!(s7.contains(".__MX_WRAP_LIST_RETURN_Board__(.val)"));
+    let s4 = builder.build_s4_inline();
+    assert!(s4.contains(".__MX_WRAP_LIST_RETURN_Board__(.val)"));
+}

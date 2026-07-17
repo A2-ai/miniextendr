@@ -1473,13 +1473,22 @@ fn other_class_return_strategy_detects_bare_capitalized_type_only() {
         let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
         assert!(
             method.returns_other_class().is_none(),
-            "{name} should not be treated as a cross-class return"
+            "{name} should not be treated as a scalar cross-class return"
         );
+    }
+    for name in ["label", "count"] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
         assert_eq!(
             crate::ReturnStrategy::for_method(method),
             crate::ReturnStrategy::Direct
         );
     }
+    // `Vec<Board>` takes the list-shaped strategy (#1284), not the scalar one.
+    let many = parsed.methods.iter().find(|m| m.ident == "many").unwrap();
+    assert_eq!(
+        crate::ReturnStrategy::for_method(many),
+        crate::ReturnStrategy::ReturnOtherClassList
+    );
 }
 
 #[test]
@@ -1521,7 +1530,7 @@ fn other_class_return_strategy_detects_option_and_result_containers() {
         let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
         assert!(
             method.returns_other_class().is_none(),
-            "{name} should not be treated as a cross-class return"
+            "{name} should not be treated as a scalar cross-class return"
         );
     }
 
@@ -1537,13 +1546,109 @@ fn other_class_return_strategy_detects_option_and_result_containers() {
         crate::ReturnStrategy::ReturnSelf
     );
 
-    for name in ["null_on_err", "maybe_scalar", "many", "maybe_many"] {
+    for name in ["null_on_err", "maybe_scalar"] {
         let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
         assert_eq!(
             crate::ReturnStrategy::for_method(method),
             crate::ReturnStrategy::Direct
         );
     }
+
+    // `Vec<Board>` / `Option<Vec<Board>>` take the list-shaped strategy (#1284).
+    for name in ["many", "maybe_many"] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+        assert_eq!(
+            crate::ReturnStrategy::for_method(method),
+            crate::ReturnStrategy::ReturnOtherClassList
+        );
+    }
+}
+
+#[test]
+fn list_return_strategy_detects_vec_of_class_shapes() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn many(&self) -> Vec<Board> { unimplemented!() }
+            pub fn maybe_many(&self) -> Option<Vec<Board>> { unimplemented!() }
+            pub fn checked_many(&self) -> Result<Vec<Board>, String> { unimplemented!() }
+            pub fn null_on_err_many(&self) -> Result<Vec<Board>, ()> { unimplemented!() }
+            pub fn many_selves(&self) -> Vec<Self> { unimplemented!() }
+            pub fn many_scalars(&self) -> Vec<i32> { unimplemented!() }
+            pub fn many_strings(&self) -> Vec<String> { unimplemented!() }
+            pub fn maybe_many_scalars(&self) -> Option<Vec<i32>> { unimplemented!() }
+            pub fn many_options(&self) -> Vec<Option<Board>> { unimplemented!() }
+            pub fn many_handles(&self) -> Vec<ExternalPtr<Board>> { unimplemented!() }
+            pub fn nested_many(&self) -> Vec<Vec<Board>> { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+
+    for name in ["many", "maybe_many", "checked_many"] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+        assert_eq!(
+            method.returns_other_class_list().unwrap().to_string(),
+            "Board",
+            "{name} should resolve the Vec element type as the cross-class target"
+        );
+        assert_eq!(
+            crate::ReturnStrategy::for_method(method),
+            crate::ReturnStrategy::ReturnOtherClassList
+        );
+        // The two families never overlap on one method.
+        assert!(method.returns_other_class().is_none());
+    }
+
+    for name in [
+        "null_on_err_many",
+        "many_selves",
+        "many_scalars",
+        "many_strings",
+        "maybe_many_scalars",
+        "many_options",
+        "many_handles",
+        "nested_many",
+    ] {
+        let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+        assert!(
+            method.returns_other_class_list().is_none(),
+            "{name} should not be treated as a list cross-class return"
+        );
+        assert_eq!(
+            crate::ReturnStrategy::for_method(method),
+            crate::ReturnStrategy::Direct
+        );
+    }
+}
+
+#[test]
+fn r6_list_return_emits_write_time_list_marker() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn build_many(&self, n: i32) -> Vec<Board> { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    let body = wrapper
+        .split("$set(\"public\", \"build_many\", function(")
+        .nth(1)
+        .expect("build_many R6 method")
+        .split("\n})")
+        .next()
+        .expect("build_many method body");
+
+    assert!(
+        body.contains(".__MX_WRAP_LIST_RETURN_Board__(.val)"),
+        "R6 Vec<Class> return should emit the write-time list marker, got:\n{body}"
+    );
+    assert!(
+        !body.contains(".__MX_WRAP_RETURN_Board__"),
+        "list returns must not emit the scalar marker (the scalar resolver \
+         would consume it), got:\n{body}"
+    );
 }
 
 #[test]

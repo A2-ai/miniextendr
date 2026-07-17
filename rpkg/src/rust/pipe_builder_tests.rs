@@ -353,6 +353,90 @@ impl R6CrossPlan {
             seed: self.seed,
         })
     }
+
+    /// Materialize this plan into `count` boards (seeds `seed`, `seed + 1`, …).
+    ///
+    /// Exercises the `Vec<Class>` cross-class return path (#1284): the C
+    /// wrapper converts via the `IntoRVecElement` impl emitted by
+    /// `#[derive(ExternalPtr)]` into a bare list of external pointers, and the
+    /// write-time list resolver wraps each element with
+    /// `R6CrossBoard$new(.ptr = .el)` via `lapply`. `count = 0` returns
+    /// `list()`.
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param count Number of boards to build.
+    pub fn build_many(&self, width: i32, height: i32, count: i32) -> Vec<R6CrossBoard> {
+        (0..count)
+            .map(|i| R6CrossBoard {
+                width,
+                height,
+                seed: self.seed + i,
+            })
+            .collect()
+    }
+
+    /// Materialize this plan into `count` `S7CrossBoard`s (R6 source, S7
+    /// element target).
+    ///
+    /// Mixed-system list return: the write-time resolver keys off the
+    /// *element* class, so the emitted `lapply` wrap uses S7's
+    /// `S7CrossBoard(.ptr = .el)` constructor even though the enclosing
+    /// method lives on an R6 class.
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param count Number of boards to build.
+    pub fn build_many_s7(&self, width: i32, height: i32, count: i32) -> Vec<S7CrossBoard> {
+        (0..count)
+            .map(|i| S7CrossBoard {
+                cells: self.seed + i + (width * height),
+            })
+            .collect()
+    }
+
+    /// Materialize this plan into `count` boards, or `None` when `fail` is set.
+    ///
+    /// Exercises the `Option<Vec<Class>>` cross-class return path: the C
+    /// wrapper unwraps and raises on `None` (`ReturnHandling::OptionIntoRUnwrap`),
+    /// so on `Some` the successful `.val` is the same bare list `build_many`
+    /// produces, wrapped by the same `lapply` resolver.
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param count Number of boards to build.
+    /// @param fail When true, returns `None` instead of boards.
+    pub fn try_build_many(
+        &self,
+        width: i32,
+        height: i32,
+        count: i32,
+        fail: bool,
+    ) -> Option<Vec<R6CrossBoard>> {
+        if fail {
+            return None;
+        }
+        Some(self.build_many(width, height, count))
+    }
+
+    /// Materialize this plan into `count` boards, or an `Err` message when
+    /// `fail` is set.
+    ///
+    /// Exercises the `Result<Vec<Class>, E>` cross-class return path
+    /// (`ReturnHandling::ResultIntoR`).
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param count Number of boards to build.
+    /// @param fail When true, returns an `Err` instead of boards.
+    pub fn checked_build_many(
+        &self,
+        width: i32,
+        height: i32,
+        count: i32,
+        fail: bool,
+    ) -> Result<Vec<R6CrossBoard>, String> {
+        if fail {
+            return Err(format!("checked_build_many failed for seed {}", self.seed));
+        }
+        Ok(self.build_many(width, height, count))
+    }
 }
 
 /// Board materialized by `S7CrossPlan::s7_cross_build`.
@@ -434,6 +518,26 @@ impl S7CrossPlan {
             height,
             seed: self.seed,
         })
+    }
+
+    /// Materialize this plan into `count` `R6CrossBoard`s (S7 source, R6
+    /// element target).
+    ///
+    /// Mixed-system list return (#1284): mirror of
+    /// [`R6CrossPlan::build_many_s7`] — the element class drives the `lapply`
+    /// wrap, so this S7 method's wrapper builds R6 targets via
+    /// `R6CrossBoard$new(.ptr = .el)`.
+    /// @param width Board width.
+    /// @param height Board height.
+    /// @param count Number of boards to build.
+    pub fn s7_build_many_r6(&self, width: i32, height: i32, count: i32) -> Vec<R6CrossBoard> {
+        (0..count)
+            .map(|i| R6CrossBoard {
+                width,
+                height,
+                seed: self.seed + i,
+            })
+            .collect()
     }
 }
 // endregion

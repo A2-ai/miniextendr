@@ -2228,8 +2228,11 @@ impl ParsedMethod {
     /// ident is `Self`) — `ReturnStrategy::for_method` checks
     /// `returns_result_self()` / `returns_option_self()` before this method,
     /// so those already take the `ReturnSelf` path regardless.
-    /// Nested containers (`Vec<T>`, `Option<Vec<T>>`, …) are not recognized:
-    /// the inner type must be a bare path with no path arguments of its own.
+    /// List-shaped returns (`Vec<Class>` and its `Option`/`Result` wrappers)
+    /// are handled separately by
+    /// [`returns_other_class_list`](Self::returns_other_class_list); any other
+    /// nested container is not recognized: the inner type must be a bare path
+    /// with no path arguments of its own.
     pub fn returns_other_class(&self) -> Option<syn::Ident> {
         let syn::ReturnType::Type(_, ty) = &self.sig.output else {
             return None;
@@ -2257,6 +2260,83 @@ impl ParsedMethod {
             }
             _ => None,
         }
+    }
+
+    /// Returns the bare element type name when this method returns a *list* of
+    /// values that may be a different registered ExternalPtr-backed class.
+    ///
+    /// The list-shaped sibling of
+    /// [`returns_other_class`](Self::returns_other_class) (#1284). Like the
+    /// scalar detector it is deliberately syntactic: the write-time resolver
+    /// checks the complete class registry, and an unregistered element type
+    /// falls back to the bare list of external pointers.
+    ///
+    /// Three shapes are recognized (the element type must pass the same bare
+    /// capitalized-path filter as the scalar case):
+    /// - `Vec<Class>` — the C wrapper converts via `IntoR` into a `VECSXP` of
+    ///   external pointers (the `IntoRVecElement` impl emitted by
+    ///   `#[derive(ExternalPtr)]`), so `.val` is a bare list.
+    /// - `Option<Vec<Class>>` — the C wrapper already unwraps and raises on
+    ///   `None` (`ReturnHandling::OptionIntoRUnwrap`), so the successful
+    ///   `.val` is the same bare list.
+    /// - `Result<Vec<Class>, E>` where `E` is not `()` — the C wrapper raises
+    ///   on `Err` (`ReturnHandling::ResultIntoR`); same bare list on `Ok`.
+    ///   `Result<Vec<Class>, ()>` is excluded: the unit-error sentinel maps to
+    ///   `ReturnHandling::ResultNullOnErr`, where `.val` can be `NULL`, and
+    ///   `lapply(NULL, ...)` would silently turn that `NULL` into `list()`.
+    ///
+    /// Not recognized (deliberately):
+    /// - `Vec<Self>` — the receiver type ident is not visible here; spell the
+    ///   concrete type name (`-> Vec<Board>` inside `impl Board`) to get the
+    ///   wrapped list.
+    /// - `Vec<Option<Class>>` — has no `IntoR` impl (the `Vec<Option<T>>`
+    ///   blanket slot is occupied by the newtype funnel) and would need a
+    ///   NULL-tolerant per-element wrap; tracked as a follow-up.
+    /// - `Vec<ExternalPtr<Class>>` — kept unwrapped for symmetry with the
+    ///   scalar `ExternalPtr<Class>` return, which `returns_other_class` also
+    ///   leaves unwrapped.
+    pub fn returns_other_class_list(&self) -> Option<syn::Ident> {
+        let syn::ReturnType::Type(_, ty) = &self.sig.output else {
+            return None;
+        };
+        let syn::Type::Path(p) = ty.as_ref() else {
+            return None;
+        };
+        let seg = p.path.segments.last()?;
+
+        match &seg.arguments {
+            syn::PathArguments::AngleBracketed(_) if seg.ident == "Vec" => {
+                Self::vec_inner_class_ident(ty)
+            }
+            syn::PathArguments::AngleBracketed(_) if seg.ident == "Option" => {
+                Self::vec_inner_class_ident(crate::first_type_argument(seg)?)
+            }
+            syn::PathArguments::AngleBracketed(_) if seg.ident == "Result" => {
+                // `Result<T, ()>` maps to `ResultNullOnErr` — `.val` may be
+                // `NULL`, which `lapply` would silently coerce to `list()`.
+                let err_is_unit = crate::second_type_argument(seg)
+                    .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+                if err_is_unit {
+                    return None;
+                }
+                Self::vec_inner_class_ident(crate::first_type_argument(seg)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// Applies [`class_ident_from_ident`](Self::class_ident_from_ident) to the
+    /// element type of a `Vec<T>`: `ty` must be a `Vec` path whose single type
+    /// argument is a bare `syn::Type::Path` with no path arguments of its own.
+    fn vec_inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
+        let syn::Type::Path(p) = ty else {
+            return None;
+        };
+        let seg = p.path.segments.last()?;
+        if seg.ident != "Vec" {
+            return None;
+        }
+        Self::inner_class_ident(crate::first_type_argument(seg)?)
     }
 
     /// Shared name filter for [`returns_other_class`](Self::returns_other_class):
