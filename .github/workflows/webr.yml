@@ -223,6 +223,17 @@ jobs:
         run: |
           set -euo pipefail
           ( cd /tmp/mono-check/monorepo/mxmono && bash ./configure )
+          # use_local_miniextendr() guard (#1309): configure must have emitted
+          # the local-checkout [patch] block into the generated cargo config.
+          # If a marker regression made use_local_miniextendr() silently
+          # no-op, this leg would build the *published* git sources instead
+          # of this checkout — and stay green while validating the wrong code.
+          cfg=/tmp/mono-check/monorepo/mxmono/src/rust/.cargo/config.toml
+          if ! grep -qF '[patch."https://github.com/A2-ai/miniextendr"]' "$cfg"; then
+            echo "::error::use_local_miniextendr() [patch] block missing from $cfg — the scaffold would build the published miniextendr git sources, not this checkout."
+            cat "$cfg" || true
+            exit 1
+          fi
           mkdir -p /tmp/mono-check-native-lib
           R CMD INSTALL --no-test-load --library=/tmp/mono-check-native-lib \
               /tmp/mono-check/monorepo/mxmono
@@ -486,6 +497,17 @@ jobs:
           # UTF-8 locale. noble ships C.UTF-8 without locale-gen.
           export LANG=C.UTF-8 LC_ALL=C.UTF-8
           ( cd /tmp/scaffold/mxsmoke && bash ./configure )
+          # use_local_miniextendr() guard (#1309): configure must have emitted
+          # the local-checkout [patch] block into the generated cargo config.
+          # If a marker regression made use_local_miniextendr() silently
+          # no-op, this leg would build the *published* git sources instead
+          # of this checkout — and stay green while validating the wrong code.
+          cfg=/tmp/scaffold/mxsmoke/src/rust/.cargo/config.toml
+          if ! grep -qF '[patch."https://github.com/A2-ai/miniextendr"]' "$cfg"; then
+            echo "::error::use_local_miniextendr() [patch] block missing from $cfg — the scaffold would build the published miniextendr git sources, not this checkout."
+            cat "$cfg" || true
+            exit 1
+          fi
           mkdir -p /tmp/scaffold-native-lib
           # Install #1: the Makevars wrapper-gen pass writes
           # R/mxsmoke-wrappers.R and src/rust/wasm_registry.rs (the wasm build
@@ -585,6 +607,17 @@ jobs:
           set -euo pipefail
           export LANG=C.UTF-8 LC_ALL=C.UTF-8
           ( cd /tmp/scaffold-mono/monorepo/mxmono && bash ./configure )
+          # use_local_miniextendr() guard (#1309): configure must have emitted
+          # the local-checkout [patch] block into the generated cargo config.
+          # If a marker regression made use_local_miniextendr() silently
+          # no-op, this leg would build the *published* git sources instead
+          # of this checkout — and stay green while validating the wrong code.
+          cfg=/tmp/scaffold-mono/monorepo/mxmono/src/rust/.cargo/config.toml
+          if ! grep -qF '[patch."https://github.com/A2-ai/miniextendr"]' "$cfg"; then
+            echo "::error::use_local_miniextendr() [patch] block missing from $cfg — the scaffold would build the published miniextendr git sources, not this checkout."
+            cat "$cfg" || true
+            exit 1
+          fi
           mkdir -p /tmp/scaffold-mono-native-lib
           /opt/R/current/bin/R CMD INSTALL --no-test-load --library=/tmp/scaffold-mono-native-lib /tmp/scaffold-mono/monorepo/mxmono
           ch=$(grep 'content-hash:' /tmp/scaffold-mono/monorepo/mxmono/src/rust/wasm_registry.rs | awk '{print $NF}')
