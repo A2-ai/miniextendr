@@ -53,6 +53,7 @@
 //! - `rayon_tests`: Parallel iteration tests (feature: `rayon`)
 //! - `serde_error_tests`: serde-classed Result errors + `serde_error(..)` options (feature: `serde`)
 //! - `serde_r_tests`: Serde R serialization tests (feature: `serde`)
+//! - `serde_hostile_probe_tests`: unserializable / lossy serde struct probes (feature: `serde`)
 //! - `ndarray_tests`: N-dimensional array tests (feature: `ndarray`)
 //! - `vctrs_tests`: vctrs compatibility tests (feature: `vctrs`)
 //! - `vctrs_class_example`: vctrs class implementation example (feature: `vctrs`)
@@ -288,6 +289,8 @@ mod s7_tests;
 mod scatter_complex_raw_test;
 #[cfg(feature = "serde")]
 mod serde_error_tests;
+#[cfg(feature = "serde")]
+mod serde_hostile_probe_tests;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]
