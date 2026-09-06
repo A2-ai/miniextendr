@@ -265,6 +265,10 @@ pub use miniextendr_macros::{
     PreferList, PreferRNativeType, RConditionError, RFactor, TryFromList, TryFromSexp,
 };
 
+// These dev-dependencies are used by integration tests, not unit tests.
+#[cfg(test)]
+use {miniextendr_engine as _, proptest as _};
+
 pub mod altrep;
 pub mod altrep_bridge;
 pub mod altrep_data;
