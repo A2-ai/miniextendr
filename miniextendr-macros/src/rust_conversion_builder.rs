@@ -19,6 +19,9 @@ use syn::spanned::Spanned;
 /// - Coercion → multi-source numeric conversion (incl. widened native `i32`/`f64`) or logical/integer bool conversion
 /// - Default → TryFromSexp
 pub struct RustConversionBuilder {
+    /// Wrapper parameter holding the R call, with the declaration's syntax context.
+    /// Interpolate it into spanned conversions instead of inheriting user-type hygiene.
+    call_context_ident: syn::Ident,
     /// Enable coercion for all parameters
     coerce_all: bool,
     /// Parameter names that should use coercion
@@ -37,10 +40,12 @@ pub struct RustConversionBuilder {
 }
 
 impl RustConversionBuilder {
-    /// Create a new conversion builder, carrying the crate-level
-    /// `conversion_error_class` from the manifest (empty when unset).
-    pub fn new() -> Self {
+    /// Create a conversion builder using the wrapper's call-context parameter,
+    /// carrying the crate-level `conversion_error_class` from the manifest
+    /// (empty when unset).
+    pub fn new(call_context_ident: syn::Ident) -> Self {
         Self {
+            call_context_ident,
             coerce_all: false,
             coerce_params: Vec::new(),
             strict: false,
@@ -126,7 +131,12 @@ impl RustConversionBuilder {
         ty: &syn::Type,
         span: proc_macro2::Span,
     ) -> TokenStream {
-        let err_arm = conversion_err_arm(ctx, &self.conversion_error_class, span);
+        let err_arm = conversion_err_arm(
+            ctx,
+            &self.conversion_error_class,
+            &self.call_context_ident,
+            span,
+        );
         quote_spanned! {span=>
             let #ident: #ty = match #try_expr {
                 Ok(v) => v,
@@ -229,6 +239,7 @@ impl RustConversionBuilder {
         // method took it, where the wrapper's own call is the only attribution.
         if crate::type_inspect::call_marker(ty).is_some() {
             let span = ty.span();
+            let call_context_ident = &self.call_context_ident;
             // The binding keeps the method's own use of the parameter from adding
             // a follow-on "cannot find value" to the diagnostic; the wrapper's call
             // slot is in scope in every C wrapper, so it also type-checks.
@@ -237,7 +248,7 @@ impl RustConversionBuilder {
                     "`Call` / `CallerCall` parameters are supported on standalone `#[miniextendr]` \
                      functions only; class and trait methods attribute conditions to the wrapper's own call"
                 );
-                let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
+                let #ident: #ty = <#ty>::from_sexp(#call_context_ident);
             };
             return (vec![stmt], vec![]);
         }
@@ -287,7 +298,12 @@ impl RustConversionBuilder {
                     // For &mut [T] the storage binding needs `mut`.
                     let owned_stmt = if is_mut {
                         // Need `let mut storage_ident: vec_ty = ...`; inline the mut variant.
-                        let err_arm = conversion_err_arm(&ctx, &self.conversion_error_class, span);
+                        let err_arm = conversion_err_arm(
+                            &ctx,
+                            &self.conversion_error_class,
+                            &self.call_context_ident,
+                            span,
+                        );
                         quote_spanned! {span=>
                             let mut #storage_ident: #vec_ty = match #try_expr {
                                 Ok(v) => v,
@@ -447,8 +463,12 @@ impl RustConversionBuilder {
                                 expected_known: true,
                                 ..ctx.clone()
                             };
-                            let len_arm =
-                                conversion_err_arm(&len_ctx, &self.conversion_error_class, span);
+                            let len_arm = conversion_err_arm(
+                                &len_ctx,
+                                &self.conversion_error_class,
+                                &self.call_context_ident,
+                                span,
+                            );
                             let arr_stmt = quote_spanned! {span=>
                                 let #ident: #ty = match <[#inner_ty; #n]>::try_from(#vec_ident)
                                     .map_err(|v| ::std::format!("got length {}", v.len()))
@@ -544,12 +564,6 @@ impl RustConversionBuilder {
         }
 
         all_statements
-    }
-}
-
-impl Default for RustConversionBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -782,6 +796,7 @@ impl ArgContext {
 fn conversion_err_arm(
     ctx: &ArgContext,
     crate_class: &[String],
+    call_context_ident: &syn::Ident,
     span: proc_macro2::Span,
 ) -> TokenStream {
     let ArgContext {
@@ -800,7 +815,7 @@ fn conversion_err_arm(
             rust_type,
         },
         crate_class,
-        &quote! { Some(__miniextendr_call) },
+        &quote! { Some(#call_context_ident) },
         span,
     );
     // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
