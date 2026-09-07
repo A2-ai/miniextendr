@@ -127,12 +127,8 @@ pub enum ReturnHandling {
     /// `Option<&T>`, `Option<Vec<T>>`, `Option<i32>`). `None` maps to whatever the `IntoR`
     /// impl returns (typically NULL or NA).
     ///
-    /// Use this variant explicitly via [`CWrapperContextBuilder::return_handling`] when
-    /// the type has a direct `IntoR` impl for the whole `Option`. The auto-detector
-    /// `detect_return_handling` conservatively returns `OptionIntoRUnwrap` instead
-    /// since it cannot resolve trait impls at macro expansion time.
-    #[allow(dead_code)]
-    // Used via explicit return_handling() call; auto-detect uses OptionIntoRUnwrap
+    /// Selected automatically for known scalar types whose `Option<T>: IntoR`
+    /// implementation maps `None` to a typed R `NA`, and for standalone functions.
     OptionIntoR,
     /// Returns `Option<T>` where `T: IntoR` -- unwraps the option first, then converts the
     /// inner value via `IntoR::into_sexp`. Raises an error on `None`. Suitable when `T: IntoR`
@@ -1821,7 +1817,7 @@ pub fn detect_return_handling(output: &syn::ReturnType) -> ReturnHandling {
 /// Identical to [`detect_return_handling`] except that general `Option<T>` maps to
 /// [`ReturnHandling::OptionIntoR`] (call `into_sexp` on the whole Option, matching the
 /// historical `analyze_return_type` behavior) rather than [`ReturnHandling::OptionIntoRUnwrap`]
-/// (the default that preserves impl-method behavior). Use this when building a
+/// (the fallback for unrecognized impl-method return types). Use this when building a
 /// [`CWrapperContext`] for a standalone function.
 pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnHandling {
     let handling = detect_return_handling(output);
@@ -1832,6 +1828,45 @@ pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnH
     }
 }
 
+/// Scalar types with a direct `Option<T>: IntoR` implementation that emits typed NA.
+/// Keep this list aligned with `into_r.rs` and `into_r/large_integers.rs` in the API.
+/// In particular, `u8` is absent because R raw vectors have no NA representation.
+fn is_scalar_option_inner(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(path) if path.qself.is_none() => {
+            path.path.segments.last().is_some_and(|segment| {
+                matches!(segment.arguments, syn::PathArguments::None)
+                    && matches!(
+                        segment.ident.to_string().as_str(),
+                        "i32"
+                            | "f64"
+                            | "bool"
+                            | "String"
+                            | "Rboolean"
+                            | "RLogical"
+                            | "Rcomplex"
+                            | "i8"
+                            | "i16"
+                            | "u16"
+                            | "u32"
+                            | "f32"
+                            | "i64"
+                            | "u64"
+                            | "isize"
+                            | "usize"
+                            | "PathBuf"
+                            | "OsString"
+                    )
+            })
+        }
+        syn::Type::Reference(reference) if reference.mutability.is_none() => {
+            matches!(reference.elem.as_ref(), syn::Type::Path(path)
+                if path.qself.is_none() && path.path.is_ident("str"))
+        }
+        _ => false,
+    }
+}
+
 /// Determines the [`ReturnHandling`] variant for a concrete `syn::Type`.
 ///
 /// Recognition rules:
@@ -1839,15 +1874,14 @@ pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnH
 /// - `Self` -> [`ExternalPtr`](ReturnHandling::ExternalPtr)
 /// - `SEXP` -> [`RawSexp`](ReturnHandling::RawSexp)
 /// - `Option<T>` -> recurses into `T` for `OptionUnit`, `OptionSexp`, `OptionExternalPtr`
-///   (`T = Self`), or `OptionIntoRUnwrap`
+///   (`T = Self`), `OptionIntoR` (known scalar types), or `OptionIntoRUnwrap`
 /// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, `ResultExternalPtr`
 ///   (`T = Self`), or `ResultIntoR`
 /// - Anything else -> [`IntoR`](ReturnHandling::IntoR)
 ///
-/// Note: The default for `Option<T>` (non-unit, non-SEXP) is `OptionIntoRUnwrap` (unwrap
-/// first, error on `None`), which preserves the historical behavior for impl methods.
-/// Use [`ReturnHandling::OptionIntoR`] explicitly when the type has a direct
-/// `impl IntoR for Option<T>` (e.g., `Option<&T>`, `Option<Vec<T>>`, `Option<i32>`).
+/// Known scalar `Option<T>` types use their whole-option `IntoR` implementation.
+/// Unrecognized types retain `OptionIntoRUnwrap`: the macro cannot resolve arbitrary
+/// trait implementations, and a custom `T: IntoR` need not implement `Option<T>: IntoR`.
 fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
     match ty {
         // Unit tuple ()
@@ -1910,6 +1944,7 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
                     {
                         ReturnHandling::OptionExternalPtr
                     }
+                    ty if is_scalar_option_inner(ty) => ReturnHandling::OptionIntoR,
                     _ => ReturnHandling::OptionIntoRUnwrap,
                 }
             } else {

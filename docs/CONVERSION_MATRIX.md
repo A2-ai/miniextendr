@@ -207,8 +207,15 @@ diagnostic. R code written as `is.na(x)` against the old contract will error
 | `Option<&str>` | `NA_character_` | `is.na(x)` | **Exception** to the `Option<&T>` row below: `str` is unsized, so it cannot use the generic `Copy`-bounded blanket impl. It has a hand-written impl instead that deliberately mirrors `Option<String>`. |
 | `Option<&T>` where `T: Copy` (e.g. `Option<&i32>`, `Option<&f64>`, `Option<&bool>`) | `NULL` | `is.null(x)` | A borrowed reference has nothing to copy on `None` — there is no NA representation for "no reference" |
 | `Option<Vec<T>>` / `Option<Vec<String>>` / `Option<HashMap<String, V>>` / `Option<BTreeMap<String, V>>` / `Option<HashSet<T>>` / `Option<BTreeSet<T>>` | `NULL` | `is.null(x)` | No container type has a native R NA sentinel |
-| `Option<SEXP>` | `NULL` (`R_NilValue`) | `is.null(x)` | Handled directly by the `#[miniextendr]` macro (`return_type_analysis.rs`), not by an `IntoR` impl |
+| `Option<SEXP>` | **Error** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro handles this as a fallible raw-SEXP return, not through an `IntoR` impl |
 | `Option<()>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases `Option<()>` as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
+
+The scalar NA rows apply equally to standalone functions, all six class systems,
+and trait-implementation methods. Qualified scalar paths (such as
+`Option<std::string::String>`) and `Option<&str>` are recognized too. For other
+method return types, the macro cannot infer arbitrary `Option<T>: IntoR` impls:
+unrecognized types retain the unwrap-or-error fallback, and `Option<Self>` keeps
+its fallible-constructor behavior.
 
 See also [COLUMNAR_OPTION_NONE.md](COLUMNAR_OPTION_NONE.md) for how an
 all-`None` `Option<T>` **column** in a `DataFrameRow`/columnar context (as
