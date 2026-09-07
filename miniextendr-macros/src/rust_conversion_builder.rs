@@ -231,13 +231,16 @@ impl RustConversionBuilder {
             let span = ty.span();
             // The binding keeps the method's own use of the parameter from adding
             // a follow-on "cannot find value" to the diagnostic; the wrapper's call
-            // slot is in scope in every C wrapper, so it also type-checks.
+            // slot is in scope in every C wrapper, so it also type-checks. The slot
+            // is built with plain `quote!` so it keeps the declaration's call-site
+            // hygiene when the method comes from a `macro_rules!` expansion (#1489).
+            let call_slot = quote! { __miniextendr_call };
             let stmt = quote_spanned! {span=>
                 ::core::compile_error!(
                     "`Call` / `CallerCall` parameters are supported on standalone `#[miniextendr]` \
                      functions only; class and trait methods attribute conditions to the wrapper's own call"
                 );
-                let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
+                let #ident: #ty = <#ty>::from_sexp(#call_slot);
             };
             return (vec![stmt], vec![]);
         }
