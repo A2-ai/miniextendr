@@ -17,7 +17,7 @@ scalar_option_fixture <- function(system) {
       r6 = do.call("$", list(object, name))(present),
       s3 = ns[[name]](object, present),
       s4 = ns[[paste0("s4_", name)]](object, present),
-      s7 = ns[[paste0("s7_", name)]](object, present),
+      s7 = ns[[name]](object, present),
       vctrs = ns[[paste0("scalaroptionvctrs_", name)]](object, present)
     )
   }
@@ -25,7 +25,9 @@ scalar_option_fixture <- function(system) {
 
 for (system in c("env", "r6", "s3", "s4", "s7", "vctrs")) {
   test_that(paste(system, "scalar Option methods preserve Some values and typed NA"), {
-    if (system == "vctrs") skip_if_vctrs_disabled()
+    if (system == "vctrs") {
+      skip_if_not("vctrs" %in% miniextendr_enabled_features(), "vctrs feature is disabled")
+    }
     call <- scalar_option_fixture(system)
     values <- list(integer = 42L, real = 2.5, logical = TRUE,
                    string = "owned", str = "borrowed")
