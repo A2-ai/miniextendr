@@ -50,6 +50,26 @@
   invisible(NULL)
 }
 
+# Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
+# Base R keeps only the elements that match as long as one of them does, so a
+# misspelled entry silently shortens the selection and the per-element check on
+# the Rust side never sees it (#1472). Here every element has to match a choice
+# (exactly or as a unique prefix), the first that does not is reported with its
+# position, and `NULL` selects every choice, like an omitted argument does. The
+# error is attributed to the wrapper's own call, not to this helper.
+.miniextendr_match_arg_several <- function(arg, choices, arg_name) {
+  if (is.null(arg)) return(choices)
+  .call <- sys.call(-1L)
+  if (!is.character(arg)) stop(simpleError(sprintf("'%s' must be NULL or a character vector", arg_name), .call))
+  if (length(arg) == 0L) stop(simpleError(sprintf("'%s' must be of length >= 1", arg_name), .call))
+  i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
+  bad <- which(is.na(i) | i == 0L)
+  if (length(bad)) {
+    stop(simpleError(sprintf("'%s' element %d (\"%s\") should be one of %s", arg_name, bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = ", ")), .call))
+  }
+  choices[i]
+}
+
 # Generated from Rust impl `DoubleCounter` (lib.rs:84:6)
 #' @title DoubleCounter  Class
 #' @name DoubleCounter
