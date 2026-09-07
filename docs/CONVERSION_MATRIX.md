@@ -255,6 +255,13 @@ the moment it sees `NULL` instead.
 | `Option<SEXP>` | `NULL` (`R_NilValue`) | `is.null(x)` | Handled directly by the `#[miniextendr]` macro (`return_type_analysis.rs`), not by an `IntoR` impl |
 | `Option<()>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases `Option<()>` as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
 
+The scalar NA rows apply equally to standalone functions, all six class systems,
+and trait-implementation methods. Qualified scalar paths (such as
+`Option<std::string::String>`) and `Option<&str>` are recognized too. For other
+method return types, the macro cannot infer arbitrary `Option<T>: IntoR` impls:
+unrecognized types retain the unwrap-or-error fallback, and `Option<Self>` keeps
+its fallible-constructor behavior.
+
 See also [COLUMNAR_OPTION_NONE.md](COLUMNAR_OPTION_NONE.md) for how an
 all-`None` `Option<T>` **column** in a `DataFrameRow`/columnar context (as
 opposed to a bare scalar return covered above) is downgraded to a typed NA
