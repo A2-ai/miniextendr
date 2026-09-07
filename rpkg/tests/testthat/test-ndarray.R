@@ -88,10 +88,10 @@ test_that("NdVec RNdSlice - first and last", {
   expect_equal(v$first(), 1)
   expect_equal(v$last(), 3)
 
-  # Empty vector - no value becomes an error
+  # Empty scalar lookups use the same NA contract as standalone functions.
   empty <- NdVec$new(numeric(0))
-  expect_error(empty$first(), "returned no value")
-  expect_error(empty$last(), "returned no value")
+  expect_identical(empty$first(), NA_real_)
+  expect_identical(empty$last(), NA_real_)
 })
 
 test_that("NdVec RNdSlice - slice_1d", {

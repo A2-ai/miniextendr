@@ -136,9 +136,7 @@ test_that("renamed adapter methods keep their std names in R", {
   }
 })
 
-# =============================================================================
-# MyFloat - RPartialOrd tests
-# =============================================================================
+# region: MyFloat - RPartialOrd tests
 
 test_that("MyFloat - basic operations work", {
   f1 <- MyFloat$new(1.5)
@@ -167,19 +165,15 @@ test_that("MyFloat - RPartialOrd handles NaN correctly", {
   nan <- MyFloat$nan()
 
   # NaN is not comparable to anything (including itself)
-  # Option<T> returning None throws error in miniextendr
-  expect_error(
-    nan$RPartialOrd$partial_cmp(f1),
-    "`partial_cmp()` returned no value",
-    fixed = TRUE
-  )
-  expect_error(f1$RPartialOrd$partial_cmp(nan), "returned no value")
-  expect_error(nan$RPartialOrd$partial_cmp(nan), "returned no value")
+  # Scalar Option returns preserve NA through the trait-method wrapper.
+  expect_identical(nan$RPartialOrd$partial_cmp(f1), NA_integer_)
+  expect_identical(f1$RPartialOrd$partial_cmp(nan), NA_integer_)
+  expect_identical(nan$RPartialOrd$partial_cmp(nan), NA_integer_)
 })
 
-# =============================================================================
-# ChainedError - RError tests
-# =============================================================================
+# endregion
+
+# region: ChainedError - RError tests
 
 test_that("ChainedError - basic creation works", {
   err <- ChainedError$new("outer error", "inner cause")
@@ -211,9 +205,9 @@ test_that("ChainedError - RError error_chain_length works", {
   expect_equal(err_no_source$error_chain_length(), 1L)
 })
 
-# =============================================================================
-# IntVecIter - RIterator tests
-# =============================================================================
+# endregion
+
+# region: IntVecIter - RIterator tests
 
 test_that("IntVecIter - basic iteration works", {
   it <- IntVecIter$new(c(1L, 2L, 3L))
@@ -282,9 +276,9 @@ test_that("IntVecIter - nth works", {
   expect_error(it$RIterator$nth(10L), "returned no value")
 })
 
-# =============================================================================
-# GrowableVec - RExtend tests
-# =============================================================================
+# endregion
+
+# region: GrowableVec - RExtend tests
 
 test_that("GrowableVec - basic operations work", {
   v <- GrowableVec$new()
@@ -324,9 +318,9 @@ test_that("GrowableVec - clear works", {
   expect_true(v$RExtend$is_empty())
 })
 
-# =============================================================================
-# IntSet - RFromIter and RToVec tests
-# =============================================================================
+# endregion
+
+# region: IntSet - RFromIter and RToVec tests
 
 test_that("IntSet - RFromIter from_vec works with deduplication", {
   # HashSet automatically deduplicates
@@ -366,9 +360,9 @@ test_that("IntSet - empty set works", {
   expect_equal(s$RToVec$to_vec(), integer(0))
 })
 
-# =============================================================================
-# IterableVec and IterableVecIter - RMakeIter tests
-# =============================================================================
+# endregion
+
+# region: IterableVec and IterableVecIter - RMakeIter tests
 
 test_that("IterableVec - basic operations work", {
   v <- IterableVec$new(c(1L, 2L, 3L))
@@ -409,9 +403,9 @@ test_that("IterableVecIter - collect via RIterator works", {
   expect_equal(result, c(100L, 200L, 300L))
 })
 
-# =============================================================================
-# Renamed adapter methods under S3, S4, S7 and R6 (#2020)
-# =============================================================================
+# endregion
+
+# region: Renamed adapter methods under S3, S4, S7 and R6 (#2020)
 #
 # `hash()`, `clone()`, `default()` and `from_str()` are `r_hash`, `r_clone`,
 # `r_default` and `r_from_str` in Rust. Each class system reaches them under
@@ -527,3 +521,4 @@ test_that("RIterator size_hint is exposed as a positional list", {
   class(borrowed) <- "IterableVecIter"
   expect_identical(borrowed$RIterator$size_hint(), list(2L, 2L))
 })
+# endregion
