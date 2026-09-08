@@ -16,7 +16,7 @@ use syn::spanned::Spanned;
 /// - Slices `&[T]` → TryFromSexp
 /// - `&str` → String + Borrow (for worker thread compatibility)
 /// - Scalar references → DATAPTR_RO_unchecked
-/// - Coercion → extract R native type + TryCoerce
+/// - Coercion → multi-source numeric conversion or logical/integer bool conversion
 /// - Default → TryFromSexp
 pub struct RustConversionBuilder {
     /// Enable coercion for all parameters
@@ -515,101 +515,20 @@ impl RustConversionBuilder {
 
                 let span = ty.span();
                 let stmt = match coercion_mapping {
-                    Some(CoercionMapping::Scalar { r_native, target }) => {
-                        let error_msg_convert = format!(
-                            "failed to convert parameter '{}' from R: wrong type",
-                            param_name
-                        );
-                        let error_msg_coerce = format!(
-                            "failed to coerce parameter '{}' to {}: overflow, NaN, or precision loss",
-                            param_name,
-                            quote!(#target)
-                        );
-                        quote_spanned! {span=>
-                            let #ident: #target = {
-                                let __r_val: #r_native = match ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) {
-                                    Ok(v) => v,
-                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
-                                    Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                                        &format!("{}: {e}", #error_msg_convert),
-                                        ::miniextendr_api::error_value::kind::CONVERSION,
-                                        ::core::option::Option::None,
-                                        Some(__miniextendr_call),
-                                    ) },
-                                };
-                                match ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val) {
-                                    Ok(v) => v,
-                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
-                                    Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                                        &format!("{}: {e}", #error_msg_coerce),
-                                        ::miniextendr_api::error_value::kind::CONVERSION,
-                                        ::core::option::Option::None,
-                                        Some(__miniextendr_call),
-                                    ) },
-                                }
-                            };
-                        }
-                    }
-                    Some(CoercionMapping::Vec {
-                        r_native_elem,
-                        target_elem,
-                    }) => {
-                        let error_msg_convert = format!(
-                            "failed to convert parameter '{}' to vector: wrong type",
-                            param_name
-                        );
-                        // Project principle "collect all errors in vectorized ops":
-                        // walk the whole slice and batch every failing element
-                        // (indexed) into one diagnostic via the #1192 accumulator
-                        // (`BatchedErrors`), rather than short-circuiting at the first.
-                        // Baked #1217-PR-A decision: the outer prefix carries only the
-                        // parameter name; the container label (`Vec<u32>`) is supplied to
-                        // `into_error`, and the trailing "overflow, NaN, or precision
-                        // loss" hint is dropped (each per-index `{e}` already says why).
-                        let error_msg_coerce =
-                            format!("failed to coerce parameter '{}'", param_name);
-                        let container_label = format!("Vec<{}>", quote!(#target_elem));
-                        quote_spanned! {span=>
-                            let #ident: Vec<#target_elem> = {
-                                let __r_slice: &[#r_native_elem] = match ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) {
-                                    Ok(v) => v,
-                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
-                                    Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                                        &format!("{}: {e}", #error_msg_convert),
-                                        ::miniextendr_api::error_value::kind::CONVERSION,
-                                        ::core::option::Option::None,
-                                        Some(__miniextendr_call),
-                                    ) },
-                                };
-                                let mut __coerced: Vec<#target_elem> = Vec::with_capacity(__r_slice.len());
-                                let mut __errors = ::miniextendr_api::from_r::BatchedErrors::default();
-                                for (__i, __elem) in __r_slice.iter().copied().enumerate() {
-                                    match ::miniextendr_api::TryCoerce::<#target_elem>::try_coerce(__elem) {
-                                        Ok(__v) => __coerced.push(__v),
-                                        Err(__e) => __errors.push(|| format!("invalid value at index {__i}: {__e}")),
-                                    }
-                                }
-                                if __errors.is_empty() {
-                                    __coerced
-                                } else {
-                                    // `into_error` always yields `SexpError::InvalidValue`; take its
-                                    // inner message directly so the outer format doesn't double the
-                                    // "invalid value: " prefix that `SexpError`'s Display would add
-                                    // (mirrors `collect_coerced`'s per-element unwrap in from_r.rs).
-                                    let __batched = match __errors.into_error(#container_label) {
-                                        ::miniextendr_api::from_r::SexpError::InvalidValue(__m) => __m,
-                                        __other => ::std::string::ToString::to_string(&__other),
-                                    };
-                                    // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
-                                    return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                                        &format!("{}: {__batched}", #error_msg_coerce),
-                                        ::miniextendr_api::error_value::kind::CONVERSION,
-                                        ::core::option::Option::None,
-                                        Some(__miniextendr_call),
-                                    ) };
-                                }
-                            };
-                        }
+                    Some(mapping) => {
+                        let error_msg = format!("failed to coerce parameter '{}'", param_name);
+                        let try_expr = match mapping {
+                            CoercionMapping::Numeric => quote_spanned! {span=>
+                                ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                            },
+                            CoercionMapping::Bool => quote_spanned! {span=>
+                                ::miniextendr_api::from_r::try_from_sexp_coerced_bool(#sexp_ident)
+                            },
+                            CoercionMapping::BoolVec => quote_spanned! {span=>
+                                ::miniextendr_api::from_r::try_from_sexp_coerced_bool_vec(#sexp_ident)
+                            },
+                        };
+                        self.conversion_stmt(try_expr, &error_msg, ident, ty, span)
                     }
                     None => {
                         let error_msg = format!(

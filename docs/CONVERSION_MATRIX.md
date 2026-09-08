@@ -1,6 +1,6 @@
 # Conversion Behavior Matrix
 
-This document describes how miniextendr converts between R types and Rust types. Conversions are governed by three modes (**normal**, **coerce**, **strict**) and apply to both directions: R-to-Rust (`TryFromSexp`) and Rust-to-R (`IntoR`).
+This document describes R-to-Rust (`TryFromSexp`) and Rust-to-R (`IntoR`) conversions. The `coerce` option extends input conversion; `strict` adds input and output checks for lossy integer types.
 
 **See also**: `miniextendr-api/src/from_r.rs`, `miniextendr-api/src/into_r.rs`, `miniextendr-api/src/strict.rs`, `miniextendr-api/src/coerce.rs`
 
@@ -10,11 +10,13 @@ This document describes how miniextendr converts between R types and Rust types.
 
 ### Normal Mode (default)
 
-Each Rust type accepts exactly one R type. For example, `i32` only accepts `INTSXP`, `f64` only accepts `REALSXP`. A type mismatch produces an error.
+Native Rust types use their corresponding R storage: `i32` accepts `INTSXP`, `f64` accepts `REALSXP`, and `bool` accepts `LGLSXP`. Non-native numeric types (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`) and their `Vec<T>` forms already accept integer, double, logical, and raw inputs through checked conversion. No attribute is needed.
 
-### Coerce Mode
+### Coerce Mode (`#[miniextendr(coerce)]`)
 
-Coerced types (like `i64`, `u64`, `isize`, `usize`, and sub-integer types `i8`, `i16`, `u16`, `u32`, `f32`) accept multiple R types: `INTSXP`, `REALSXP`, `RAWSXP`, and `LGLSXP`. The value is extracted as the R native type, then converted to the target Rust type via `TryCoerce`. This is the default for these types -- no attribute is needed.
+Coercion preserves every input type accepted in normal mode. Numeric scalars and vectors use the same checked multi-source converters. `bool` and `Vec<bool>` additionally accept integer `0` and `1`, while retaining logical inputs; NA and other integers are errors. Vector conversion reports all failing indices in one diagnostic.
+
+The option can apply to a function, one parameter, or every function through `coerce-default`. `no_coerce` opts out of the feature default. Unmapped types, including `Option<bool>`, keep their ordinary conversion. When `strict` and `coerce` are both enabled, strict conversion takes precedence for the types it checks.
 
 ### Strict Mode (`#[miniextendr(strict)]`)
 

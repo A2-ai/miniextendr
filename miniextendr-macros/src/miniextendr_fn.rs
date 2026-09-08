@@ -11,104 +11,45 @@ use crate::r_wrapper_const_ident_for;
 
 // region: Coercion analysis
 
-/// Result of coercion analysis for a type.
-/// Contains the R native type to extract from SEXP and the target type to coerce to.
+/// Conversion selected by `coerce`, shared by Rust conversion and R checks.
 pub(crate) enum CoercionMapping {
-    /// Scalar coercion: extract R native type, coerce to target.
-    Scalar {
-        /// The R-native scalar type to extract from the SEXP (e.g., `i32` for R integers,
-        /// `f64` for R reals). This is the type that R stores internally.
-        r_native: proc_macro2::TokenStream,
-        /// The Rust target type to coerce into (e.g., `u16`, `bool`, `f32`).
-        target: proc_macro2::TokenStream,
-    },
-    /// Vec coercion: extract R native slice, coerce element-wise to `Vec<target>`.
-    Vec {
-        /// The R-native element type of the source slice (e.g., `i32` for integer vectors,
-        /// `f64` for real vectors).
-        r_native_elem: proc_macro2::TokenStream,
-        /// The Rust target element type for the resulting `Vec` (e.g., `u16`, `bool`, `f32`).
-        target_elem: proc_macro2::TokenStream,
-    },
+    /// Numeric scalars and vectors already have checked, multi-source converters.
+    Numeric,
+    /// Keep logical scalars and additionally accept integer zero or one.
+    Bool,
+    /// Keep logical vectors and additionally accept integer zeros and ones.
+    BoolVec,
 }
 
 impl CoercionMapping {
-    /// Determines the coercion mapping for a Rust type, if it needs coercion from
-    /// an R-native type.
+    /// Recognize the scalar and vector types supported by `coerce`.
     ///
-    /// Returns `None` if the type is already R-native (`i32`, `f64`, `String`, etc.)
-    /// or is not a recognized coercible type.
-    ///
-    /// # Recognized coercions
-    ///
-    /// - **Scalar integer-like** (`u16`, `i16`, `i8`, `u32`, `u64`, `i64`, `isize`, `usize`):
-    ///   coerced from `i32` (R's native integer type).
-    /// - **Scalar `bool`**: coerced from `i32` (R's logical vectors use `i32` internally).
-    /// - **Scalar `f32`**: coerced from `f64` (R's native real type).
-    /// - **`Vec<T>`** variants: element-wise coercion from the corresponding R-native slice type.
+    /// Numeric conversion preserves all sources accepted by `TryFromSexp`:
+    /// integer, double, logical, and raw. Booleans extend their logical-only
+    /// converter with integer zero/one input. Other types keep `TryFromSexp`.
     pub(crate) fn from_type(ty: &syn::Type) -> Option<Self> {
-        match ty {
-            syn::Type::Path(type_path) => {
-                let seg = type_path.path.segments.last()?;
-                let type_name = seg.ident.to_string();
-
-                // Check for Vec<T> types
-                if type_name == "Vec" {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-                        && let Some(syn::GenericArgument::Type(syn::Type::Path(inner_path))) =
-                            args.args.first()
-                    {
-                        let inner_name = inner_path.path.segments.last()?.ident.to_string();
-                        return match inner_name.as_str() {
-                            // Vec<integer-like> from &[i32]
-                            "u16" | "i16" | "i8" | "u32" | "u64" | "i64" | "isize" | "usize" => {
-                                let target_elem: proc_macro2::TokenStream =
-                                    inner_name.parse().ok()?;
-                                Some(Self::Vec {
-                                    r_native_elem: quote::quote!(i32),
-                                    target_elem,
-                                })
-                            }
-                            // Vec<bool> from &[i32] (R logical vectors use i32)
-                            "bool" => Some(Self::Vec {
-                                r_native_elem: quote::quote!(i32),
-                                target_elem: quote::quote!(bool),
-                            }),
-                            // Vec<f32> from &[f64]
-                            "f32" => Some(Self::Vec {
-                                r_native_elem: quote::quote!(f64),
-                                target_elem: quote::quote!(f32),
-                            }),
-                            _ => None,
-                        };
-                    }
-                    return None;
-                }
-
-                // Check for scalar types
-                match type_name.as_str() {
-                    // Integer-like types from i32
-                    "u16" | "i16" | "i8" | "u32" | "u64" | "i64" | "isize" | "usize" => {
-                        let target: proc_macro2::TokenStream = type_name.parse().ok()?;
-                        Some(Self::Scalar {
-                            r_native: quote::quote!(i32),
-                            target,
-                        })
-                    }
-                    // bool from i32 (R logical vectors use i32 internally)
-                    "bool" => Some(Self::Scalar {
-                        r_native: quote::quote!(i32),
-                        target: quote::quote!(bool),
-                    }),
-                    // f32 from f64
-                    "f32" => Some(Self::Scalar {
-                        r_native: quote::quote!(f64),
-                        target: quote::quote!(f32),
-                    }),
-                    // R-native types or unknown - no coercion
-                    _ => None,
-                }
+        let syn::Type::Path(type_path) = ty else {
+            return None;
+        };
+        let seg = type_path.path.segments.last()?;
+        let is_vec = seg.ident == "Vec";
+        let ident = if is_vec {
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                return None;
+            };
+            let syn::GenericArgument::Type(syn::Type::Path(inner)) = args.args.first()? else {
+                return None;
+            };
+            &inner.path.segments.last()?.ident
+        } else {
+            &seg.ident
+        };
+        match ident.to_string().as_str() {
+            "i8" | "i16" | "u16" | "u32" | "i64" | "u64" | "isize" | "usize" | "f32" => {
+                Some(Self::Numeric)
             }
+            "bool" if is_vec => Some(Self::BoolVec),
+            "bool" => Some(Self::Bool),
             _ => None,
         }
     }

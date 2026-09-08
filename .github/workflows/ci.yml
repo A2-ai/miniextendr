@@ -1242,7 +1242,7 @@ jobs:
   # deliberately bare probe (FdefaultProbe in feature_default_fixtures.rs) plus
   # the divergence assertions in tests/testthat/test-feature-defaults.R.
   # The strict-default, coerce-default, and fast-default legs stay filtered to
-  # the feature-default fixture tests: they flip conversion semantics /
+  # targeted fixture tests (including coercion regressions): they flip conversion semantics /
   # preconditions for every parameter suite-wide, so the pre-existing suite
   # fails by design under them.
   # The fast-default leg additionally runs the two fast_default unit tests in
@@ -1270,10 +1270,8 @@ jobs:
           # explicitly `env`, so the class flip only reaches the deliberate
           # probe. strict/coerce cannot ride on them — they flip conversion
           # semantics suite-wide — so they get their own fixture-filtered
-          # rows. They must also stay separate from EACH OTHER: under
-          # coerce-default, lossy-int params convert via R's integer native
-          # type, which masks the strict/no_strict divergence the fixtures
-          # assert (#1112).
+          # rows. Coercion retains multi-source numeric inputs; the coercion
+          # regression suite also verifies that explicit strict takes precedence.
           - leg: r6-default
             features: r6-default
             filter: ""
@@ -1285,7 +1283,7 @@ jobs:
             filter: feature-defaults
           - leg: coerce-default
             features: coerce-default
-            filter: feature-defaults
+            filter: "feature-defaults|coerce"
           - leg: fast-default
             features: fast-default
             filter: feature-defaults
