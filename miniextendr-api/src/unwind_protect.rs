@@ -243,12 +243,12 @@ pub(crate) fn get_continuation_token() -> SEXP {
 /// deliberately location-free): downstream folds must use it verbatim and
 /// must NOT append the current thread's recorded panic location (#1245).
 ///
-/// Produced by `worker::route_to_main_thread`'s re-panic when a `with_r_thread`
+/// Produced when `worker::route_to_main_thread` resumes an unwind after a `with_r_thread`
 /// closure panics on the main thread: the main-thread stringify point already
 /// folded the *true* origin location into the message before it crossed back
-/// to the worker, so the worker's own re-panic (needed to unwind out of
-/// `run_on_worker`) must carry that message forward untouched rather than
-/// re-fold its own relay call site on top.
+/// to the worker, so resuming the unwind (needed to exit
+/// `run_on_worker`) must carry that message forward untouched without firing
+/// a new panic hook at the relay site.
 pub(crate) struct PreLocatedPanic(pub(crate) String);
 
 /// Extract a message from a panic payload.

@@ -116,12 +116,12 @@ calling thread (no thread dispatch).
 
 **With the feature enabled:**
 - `miniextendr_runtime_init()` spawns a dedicated worker thread with bidirectional channels
-- `run_on_worker(f)` dispatches `f` to the worker thread, returns `Result<T, String>`
+- `run_on_worker(f)` dispatches `f` to the worker thread, returns `Result<T, WorkerError>` (generic panic or structured condition)
 - `with_r_thread(f)` routes `f` back to R's main thread from the worker
 
 **Without the feature (the default):**
 - `miniextendr_runtime_init()` only records the main thread ID
-- `run_on_worker(f)` → `Ok(f())` (inline)
+- `run_on_worker(f)` catches panics inline, returning the same `Result<T, WorkerError>`
 - `with_r_thread(f)` → `f()` (inline, panics if not on main thread)
 
 The `worker-default` feature implies `worker-thread`.
