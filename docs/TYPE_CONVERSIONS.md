@@ -685,22 +685,29 @@ pub fn add_one_in_place(x: &mut [i32]) {
 }
 ```
 
-Generated wrappers check for aliased slice arguments **before conversion**, in
-both debug and release builds (#1104, #1252). Passing the same non-empty R
-vector to two borrowed slice parameters raises an error whenever either borrow
-is mutable. For example, both `f(v, v)` with direct slices and `f(list(v), v)`
-with `Vec<&mut [T]>` plus a direct slice are rejected. The check also covers
-list/list pairs, nested `Vec` layers, optional containers/elements, and duplicate
-leaves within a mutable list. Every conflicting parameter pair appears in one
-diagnostic, and rejection happens before the function can mutate an input.
+Generated wrappers check native scalar and slice borrows **before conversion**,
+in both debug and release builds (#1104, #1252, #1502). Passing the same R
+vector to two borrowed parameters raises an error whenever either borrow is
+mutable. This includes `&T` / `&mut T` for `i32`, `f64`, `u8`, `RLogical`, and
+`Rcomplex`, and scalar/slice combinations. Scalar leaves require length one;
+slice leaves require a non-empty vector.
 
-Shared/shared aliases are allowed. `NULL` optional values and empty vectors do
-not create overlapping elements and are skipped. Invalid input types reach the
-normal conversion diagnostics. Native-element containers such as `Vec<i32>` /
-`Box<[i32]>` and the independent storage used by `match_arg` with `several_ok`
-do not borrow the input buffer. Boxed containers of borrowed elements are
-tracked alongside scalar-reference aliases in
-[#1502](https://github.com/A2-ai/miniextendr/issues/1502).
+The check follows the actual `TryFromSexp::NATIVE_BORROW` metadata, so type
+aliases retain the same checks. `Vec` and boxed-slice containers, nested lists,
+optional values, forwarding newtypes, `Result<T, ()>`, `Missing<T>`, maps, and
+borrowed `Cow` / `RCow` views forward the relevant metadata. Duplicate mutable
+leaves within one argument are rejected too. Every conflicting parameter pair
+appears in one diagnostic before any reference conversion or user mutation.
+
+Shared/shared aliases are allowed. Optional `NULL`s and empty slice buffers do
+not overlap elements. NA scalar values still borrow their length-one buffer.
+Wrong native types and wrong scalar lengths retain normal conversion errors.
+Owned native containers such as `Vec<i32>` / `Box<[i32]>` and the independent
+storage used by `match_arg` with `several_ok` do not retain input borrows.
+Custom conversions default to no native borrow metadata; a converter retaining
+a native reference must describe it, and forwarding converters must preserve
+the delegated conversion's metadata. Branch-dependent `Either<L, R>` conversions
+need separate handling, tracked in [#1504](https://github.com/A2-ai/miniextendr/issues/1504).
 
 The guard compares R object identities. Code using `TryFromSexp` directly must
 ensure its mutable and shared views satisfy Rust's borrowing rules. Accept

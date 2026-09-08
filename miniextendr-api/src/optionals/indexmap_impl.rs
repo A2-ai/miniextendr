@@ -63,6 +63,9 @@ impl<T> TryFromSexp for IndexMap<String, T>
 where
     T: TryFromSexp<Error = SexpError>,
 {
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+        crate::from_r::NativeBorrow::in_list(T::NATIVE_BORROW);
+
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

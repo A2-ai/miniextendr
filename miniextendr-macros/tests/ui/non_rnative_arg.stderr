@@ -10,12 +10,12 @@ help: the trait `TryFromSexp` is not implemented for `NotRNative`
 5 | struct NotRNative;
   | ^^^^^^^^^^^^^^^^^
   = help: the following other types implement trait `TryFromSexp`:
-            &'static RLogical
-            &'static Rcomplex
-            &'static f64
-            &'static i32
-            &'static mut RLogical
-            &'static mut Rcomplex
-            &'static mut f64
-            &'static mut i32
+            &'a RLogical
+            &'a Rcomplex
+            &'a f64
+            &'a i32
+            &'a mut RLogical
+            &'a mut Rcomplex
+            &'a mut f64
+            &'a mut i32
           and $N others

@@ -37,6 +37,8 @@ impl<T> TryFromSexp for Cow<'static, [T]>
 where
     T: crate::RNativeType + Copy + Clone,
 {
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = <&[T] as TryFromSexp>::NATIVE_BORROW;
+
     type Error = SexpTypeError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

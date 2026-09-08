@@ -318,6 +318,9 @@ impl From<SexpNaError> for SexpError {
     }
 }
 
+pub mod borrow;
+pub use borrow::NativeBorrow;
+
 /// TryFrom-style trait for converting SEXP to Rust types.
 ///
 /// Inbound counterpart of [`crate::into_r::IntoR`]. Strict by construction
@@ -336,6 +339,14 @@ impl From<SexpNaError> for SexpError {
 /// }
 /// ```
 pub trait TryFromSexp: Sized {
+    /// Native vector storage retained by this conversion, if any.
+    ///
+    /// Generated wrappers use this before conversion to reject aliased mutable
+    /// borrows. Owned and custom object conversions default to no native borrow.
+    /// Conversions that retain native references must describe their leaf and
+    /// forward this metadata through their containers.
+    const NATIVE_BORROW: Option<NativeBorrow> = None;
+
     /// The error type returned when conversion fails.
     type Error;
 
@@ -369,6 +380,8 @@ impl<T> TryFromSexp for Box<[T]>
 where
     Vec<T>: TryFromSexp,
 {
+    const NATIVE_BORROW: Option<NativeBorrow> = <Vec<T> as TryFromSexp>::NATIVE_BORROW;
+
     type Error = <Vec<T> as TryFromSexp>::Error;
 
     #[inline]
@@ -618,6 +631,8 @@ impl<T> TryFromSexp for &[T]
 where
     T: crate::RNativeType + Copy,
 {
+    const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::slice(T::SEXP_TYPE, false));
+
     type Error = SexpTypeError;
 
     #[inline]
@@ -654,13 +669,15 @@ where
 /// undefined behavior whenever at least one borrow is mutable — two `&mut [T]`,
 /// or a `&mut [T]` paired with a shared `&[T]` (which borrows the same buffer).
 /// Generated wrappers reject repeated non-empty R vector identities before
-/// conversion in every build, including borrowed slices inside optional/nested
-/// lists (#1104, #1252). Direct callers of this conversion must ensure the
+/// conversion in every build, including scalar/slice pairs and borrowed leaves
+/// inside optional, nested, and boxed containers (#1104, #1252, #1502). Direct callers of this conversion must ensure the
 /// resulting borrow does not overlap another live mutable or shared borrow.
 impl<T> TryFromSexp for &mut [T]
 where
     T: crate::RNativeType + Copy,
 {
+    const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::slice(T::SEXP_TYPE, true));
+
     type Error = SexpTypeError;
 
     #[inline]
@@ -697,6 +714,8 @@ impl<T> TryFromSexp for Option<&[T]>
 where
     T: crate::RNativeType + Copy,
 {
+    const NATIVE_BORROW: Option<NativeBorrow> = <&[T] as TryFromSexp>::NATIVE_BORROW;
+
     type Error = SexpError;
 
     #[inline]
@@ -724,6 +743,8 @@ impl<T> TryFromSexp for Option<&mut [T]>
 where
     T: crate::RNativeType + Copy,
 {
+    const NATIVE_BORROW: Option<NativeBorrow> = <&mut [T] as TryFromSexp>::NATIVE_BORROW;
+
     type Error = SexpError;
 
     #[inline]
@@ -756,6 +777,8 @@ where
     T: TryFromSexp,
     T::Error: Into<SexpError>,
 {
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = T::NATIVE_BORROW;
+
     type Error = SexpError;
 
     #[inline]
@@ -884,6 +907,8 @@ where
     Vec<T>: TryFromSexp,
     <Vec<T> as TryFromSexp>::Error: Into<SexpError>,
 {
+    const NATIVE_BORROW: Option<NativeBorrow> = <Vec<T> as TryFromSexp>::NATIVE_BORROW;
+
     type Error = SexpError;
 
     #[inline]
@@ -916,6 +941,9 @@ macro_rules! impl_option_map_try_from_sexp {
         where
             V::Error: Into<SexpError>,
         {
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                <$map_ty<String, V> as TryFromSexp>::NATIVE_BORROW;
+
             type Error = SexpError;
 
             #[inline]
@@ -983,6 +1011,9 @@ where
     Vec<T>: TryFromSexp,
     <Vec<T> as TryFromSexp>::Error: Into<SexpError>,
 {
+    const NATIVE_BORROW: Option<NativeBorrow> =
+        NativeBorrow::in_list(<Vec<T> as TryFromSexp>::NATIVE_BORROW);
+
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -1837,6 +1868,9 @@ mod txt_progress_bar_from_r {
 macro_rules! impl_option_try_from_sexp {
     ($t:ty) => {
         impl $crate::from_r::TryFromSexp for Option<$t> {
+            const NATIVE_BORROW: Option<$crate::from_r::NativeBorrow> =
+                <$t as $crate::from_r::TryFromSexp>::NATIVE_BORROW;
+
             type Error = $crate::from_r::SexpError;
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
@@ -1867,6 +1901,11 @@ macro_rules! impl_option_try_from_sexp {
 macro_rules! impl_vec_try_from_sexp_list {
     ($t:ty) => {
         impl $crate::from_r::TryFromSexp for Vec<$t> {
+            const NATIVE_BORROW: Option<$crate::from_r::NativeBorrow> =
+                $crate::from_r::NativeBorrow::in_list(
+                    <$t as $crate::from_r::TryFromSexp>::NATIVE_BORROW,
+                );
+
             type Error = $crate::from_r::SexpError;
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
@@ -1925,6 +1964,11 @@ macro_rules! impl_vec_try_from_sexp_list {
 macro_rules! impl_vec_option_try_from_sexp_list {
     ($t:ty) => {
         impl $crate::from_r::TryFromSexp for Vec<Option<$t>> {
+            const NATIVE_BORROW: Option<$crate::from_r::NativeBorrow> =
+                $crate::from_r::NativeBorrow::in_list(
+                    <$t as $crate::from_r::TryFromSexp>::NATIVE_BORROW,
+                );
+
             type Error = $crate::from_r::SexpError;
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {

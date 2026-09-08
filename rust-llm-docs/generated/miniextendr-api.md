@@ -1824,6 +1824,12 @@ Use `try_from_sexp_unchecked` when you're certain you're on the main thread:
 - Inside standalone `#[miniextendr]` functions (they run on the main thread)
 - Inside `extern "C-unwind"` functions called directly by R
 
+### `from_r::borrow`
+
+`pub mod borrow;`
+
+Native vector borrow metadata and pre-conversion alias checks.
+
 ### `gc_protect`
 
 `pub mod gc_protect;`
@@ -6940,6 +6946,8 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use blake3_impl::blake3_hex;`
 
 ### `pub use blake3_impl::blake3_str;`
+
+### `pub use borrow::NativeBorrow;`
 
 ### `pub use borsh;`
 
@@ -15074,6 +15082,43 @@ Error describing an unexpected R `SEXPTYPE`.
   - Expected R type.
 - `actual`: `crate::SEXPTYPE`
   - Actual R type encountered.
+
+### `from_r::borrow::NativeBorrow`
+
+```rust
+pub struct NativeBorrow
+```
+
+The native vector storage borrowed by a conversion.
+
+Containers preserve the leaf type and add one list level when their
+conversion visits VECSXP elements. Optional NULLs require no extra level.
+
+**Inherent associated items:**
+
+#### `in_list`
+
+```rust
+const fn in_list(borrow: Option<Self>) -> Option<Self>
+```
+
+Forward an element conversion through one R list level.
+
+#### `scalar`
+
+```rust
+const fn scalar(sexptype: SEXPTYPE, mutable: bool) -> Self
+```
+
+A reference to the only element of a native R vector.
+
+#### `slice`
+
+```rust
+const fn slice(sexptype: SEXPTYPE, mutable: bool) -> Self
+```
+
+A slice over a native R vector, with empty vectors excluded from conflicts.
 
 ### `gc_protect::OwnedProtect`
 
@@ -26931,6 +26976,8 @@ fn example(sexp: SEXP) {
 
 **Associated items:**
 
+- `const NATIVE_BORROW: Option<NativeBorrow> = None`
+  - Native vector storage retained by this conversion, if any.
 - `type Error`
   - The error type returned when conversion fails.
 
