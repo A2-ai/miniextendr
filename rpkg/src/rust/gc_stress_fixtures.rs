@@ -3296,3 +3296,60 @@ pub fn gc_stress_rvalue_roundtrip() {
 }
 
 // endregion
+
+// region: borrowed list alias preflight (#1252)
+
+/// Check nested-list alias rejection while R allocations run under gctorture.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_slice_alias_guard() {
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::{IntoR, SexpExt};
+
+    unsafe {
+        let scope = ProtectScope::new();
+        let vector = scope.protect(vec![1_i32, 2, 3].into_sexp()).get();
+        let inner = scope.alloc_vecsxp(1).get();
+        inner.set_vector_elt(0, vector);
+        let outer = scope.alloc_vecsxp(1).get();
+        outer.set_vector_elt(0, inner);
+        let other = scope.alloc_vecsxp(1).get();
+        other.set_vector_elt(0, vector);
+        let result = scope
+            .protect(super::alias_fixtures::C_miniextendr_alias_nested_lists(
+                SEXP::nil(),
+                outer,
+                other,
+            ))
+            .get();
+        assert!(
+            result
+                .vector_elt(0)
+                .string_elt_str(0)
+                .unwrap()
+                .contains("aliasing")
+        );
+        assert_eq!(vector.integer_elt(0), 1);
+
+        // Each ALTREP list access allocates a fresh vector. Exercise the
+        // self-pair walk, then reject the first owned input before constructing
+        // any borrowed slices from these temporary elements.
+        let allocating = scope.protect(super::integer_sequence_list(3)).get();
+        let invalid = scope.protect("invalid".into_sexp()).get();
+        let result = scope
+            .protect(super::alias_fixtures::C_miniextendr_alias_owned_and_list(
+                SEXP::nil(),
+                invalid,
+                allocating,
+            ))
+            .get();
+        assert!(
+            result
+                .vector_elt(0)
+                .string_elt_str(0)
+                .unwrap()
+                .contains("convert parameter")
+        );
+    }
+}
+
+// endregion

@@ -746,7 +746,13 @@ impl CWrapperContext {
                             Some(__miniextendr_call),
                         )
                     }));
-                    // PutRNGstate runs after catch_unwind, before error handling
+                    // PutRNGstate can allocate when .Random.seed is shared.
+                    let __miniextendr_rng_scope = unsafe {
+                        ::miniextendr_api::gc_protect::ProtectScope::new()
+                    };
+                    if let Ok(sexp) = &__result {
+                        unsafe { __miniextendr_rng_scope.protect(*sexp); }
+                    }
                     unsafe { ::miniextendr_api::sys::PutRNGstate(); }
                     match __result {
                         Ok(sexp) => sexp,
@@ -795,6 +801,25 @@ impl CWrapperContext {
         let (c_params, _, sexp_idents) = self.build_c_params();
         let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
+        let alias_guard = if alias_guard.is_empty() {
+            alias_guard
+        } else {
+            quote! {
+                // ALTREP traversal can allocate or raise an R error. Protect the
+                // preflight before worker dispatch as well as its Rust panics.
+                let __miniextendr_alias_result =
+                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        || {
+                            #alias_guard
+                            ::miniextendr_api::SEXP::nil()
+                        },
+                        Some(__miniextendr_call),
+                    );
+                if __miniextendr_alias_result != ::miniextendr_api::SEXP::nil() {
+                    return __miniextendr_alias_result;
+                }
+            }
+        };
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
@@ -828,7 +853,16 @@ impl CWrapperContext {
         let (rng_get, rng_put) = if self.rng {
             (
                 quote! { unsafe { ::miniextendr_api::sys::GetRNGstate(); } },
-                quote! { unsafe { ::miniextendr_api::sys::PutRNGstate(); } },
+                quote! {
+                    // Keep values and tagged conditions alive through RNG cleanup.
+                    let __miniextendr_rng_scope = unsafe {
+                        ::miniextendr_api::gc_protect::ProtectScope::new()
+                    };
+                    if let Ok(sexp) = &__miniextendr_panic_result {
+                        unsafe { __miniextendr_rng_scope.protect(*sexp); }
+                    }
+                    unsafe { ::miniextendr_api::sys::PutRNGstate(); }
+                },
             )
         } else {
             (TokenStream::new(), TokenStream::new())

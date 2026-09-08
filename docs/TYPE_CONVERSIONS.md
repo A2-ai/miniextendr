@@ -685,33 +685,26 @@ pub fn add_one_in_place(x: &mut [i32]) {
 }
 ```
 
-> **Aliasing foot-gun (#1104).** Because `&mut [T]` borrows R's buffer without
-> copying, binding the *same* R vector to two slice parameters — e.g. `f(x, x)`
-> from R — hands out two views over one buffer. That is **undefined behavior** in
-> Rust whenever at least one of the two borrows is mutable: two `&mut [T]`, or a
-> `&mut [T]` paired with a `&[T]` (a `&[T]` is *also* a zero-copy view over R's
-> buffer, so a shared borrow aliasing a mutable one is UB too). When a
-> `#[miniextendr]` function has two or more slice-family parameters and a pair of
-> them could alias with one being mutable, the generated wrapper emits a
-> `debug_assert!` that compares the underlying SEXP identities before conversion
-> and raises an error naming both parameters if they share one object. (Two
-> shared `&[T]` reads over one vector are sound and are *not* flagged. SEXP
-> identity, not the raw data pointer, is compared, so two *distinct* empty
-> vectors — which share R's `0x1` sentinel data pointer — are not a false
-> positive.) This check is **debug-build only** (zero cost in release), so in a
-> release build the aliasing call is *not* rejected — don't rely on the guard as
-> a correctness boundary; pass distinct vectors. If two arguments might reference
-> the same vector and either mutates it, take `Vec<T>` (copy-in/copy-out) for at
-> least one of them.
->
-> The wrapper-level identity check compares only top-level parameter SEXPs. It
-> does not catch a vector reached through a list element aliasing a direct slice
-> parameter, such as `f(list(v), v)` when the first parameter is
-> `Vec<&mut [T]>`. The list conversion separately rejects duplicates within the
-> list, but there is no cross-site registry between nested and direct borrows.
-> Treat those arguments as potentially aliasing and copy at least one side;
-> [#1252](https://github.com/A2-ai/miniextendr/issues/1252) tracks the residual
-> risk.
+Generated wrappers check for aliased slice arguments **before conversion**, in
+both debug and release builds (#1104, #1252). Passing the same non-empty R
+vector to two borrowed slice parameters raises an error whenever either borrow
+is mutable. For example, both `f(v, v)` with direct slices and `f(list(v), v)`
+with `Vec<&mut [T]>` plus a direct slice are rejected. The check also covers
+list/list pairs, nested `Vec` layers, optional containers/elements, and duplicate
+leaves within a mutable list. Every conflicting parameter pair appears in one
+diagnostic, and rejection happens before the function can mutate an input.
+
+Shared/shared aliases are allowed. `NULL` optional values and empty vectors do
+not create overlapping elements and are skipped. Invalid input types reach the
+normal conversion diagnostics. Native-element containers such as `Vec<i32>` /
+`Box<[i32]>` and the independent storage used by `match_arg` with `several_ok`
+do not borrow the input buffer. Boxed containers of borrowed elements are
+tracked alongside scalar-reference aliases in
+[#1502](https://github.com/A2-ai/miniextendr/issues/1502).
+
+The guard compares R object identities. Code using `TryFromSexp` directly must
+ensure its mutable and shared views satisfy Rust's borrowing rules. Accept
+`Vec<T>` for copy-in/copy-out semantics when an input's ownership is uncertain.
 
 ---
 
