@@ -12,120 +12,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-/// How a `#[miniextendr]` parameter type borrows R's data pointer, if it does.
-///
-/// `&[T]` / `&mut [T]` (and their `Option<_>` wrappers) are the `TryFromSexp`
-/// impls in `miniextendr-api/src/from_r.rs` that return a *view* over R's
-/// `DATAPTR` without copying (`r_slice` / `r_slice_mut`). Two such parameters
-/// bound to the same SEXP alias one buffer; that is undefined behavior whenever
-/// at least one of the two borrows is mutable (#1104).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum SliceBorrow {
-    /// `&mut [T]` / `Option<&mut [T]>` — exclusive borrow via `r_slice_mut`.
-    Mut,
-    /// `&[T]` / `Option<&[T]>` — shared borrow via `r_slice`.
-    Shared,
-}
-
-/// A borrowed slice leaf, optionally reached through nested R lists.
-#[derive(Clone, Copy)]
-struct SliceBorrowShape<'a> {
-    kind: SliceBorrow,
-    list_depth: usize,
-    element_type: &'a syn::Type,
-}
-
-/// Classify borrowed slices, peeling `Option` and counting `Vec` layers.
-/// Owned `Vec<T>` / `Box<[T]>` have no borrowed slice leaf and are excluded.
-/// `match_arg` + `several_ok` slices have owned storage; the caller excludes them.
-fn slice_borrow_kind(ty: &syn::Type) -> Option<SliceBorrowShape<'_>> {
-    match ty {
-        syn::Type::Reference(r) => {
-            let syn::Type::Slice(slice) = r.elem.as_ref() else {
-                return None;
-            };
-            Some(SliceBorrowShape {
-                kind: if r.mutability.is_some() {
-                    SliceBorrow::Mut
-                } else {
-                    SliceBorrow::Shared
-                },
-                list_depth: 0,
-                element_type: &slice.elem,
-            })
-        }
-        syn::Type::Path(tp) => {
-            let seg = tp.path.segments.last()?;
-            if seg.ident != "Option" && seg.ident != "Vec" {
-                return None;
-            }
-            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
-                return None;
-            };
-            let inner = args.args.iter().find_map(|arg| match arg {
-                syn::GenericArgument::Type(inner) => Some(inner),
-                _ => None,
-            })?;
-            let mut borrow = slice_borrow_kind(inner)?;
-            if seg.ident == "Vec" {
-                borrow.list_depth += 1;
-            }
-            Some(borrow)
-        }
-        _ => None,
-    }
-}
-
-/// Visit valid, non-empty vector leaves without constructing Rust references.
-/// Each current list element stays rooted while another list/ALTREP is visited;
-/// protection depth follows the type's nesting, not the number of list elements.
-fn visit_slice_borrows(
-    sexp: &syn::Ident,
-    depth: usize,
-    element_type: &syn::Type,
-    prefix: &str,
-    indices: &[syn::Ident],
-    visit: &impl Fn(&syn::Ident, &[syn::Ident]) -> TokenStream,
-) -> TokenStream {
-    if depth == 0 {
-        let body = visit(sexp, indices);
-        return quote! {
-            if #sexp.type_of() == <#element_type as ::miniextendr_api::RNativeType>::SEXP_TYPE
-                && !#sexp.is_empty()
-            {
-                #body
-            }
-        };
-    }
-
-    let index = format_ident!("__miniextendr_alias_{prefix}_{depth}_index");
-    let child = format_ident!("__miniextendr_alias_{prefix}_{depth}_child");
-    let mut child_indices = indices.to_vec();
-    child_indices.push(index.clone());
-    let body = visit_slice_borrows(
-        &child,
-        depth - 1,
-        element_type,
-        prefix,
-        &child_indices,
-        visit,
-    );
-    quote! {
-        if #sexp.type_of() == ::miniextendr_api::SEXPTYPE::VECSXP {
-            for #index in 0..#sexp.xlength() {
-                // SAFETY: alias preflight runs on R's main thread before conversion.
-                let __miniextendr_alias_scope = unsafe {
-                    ::miniextendr_api::gc_protect::ProtectScope::new()
-                };
-                let #child = unsafe {
-                    __miniextendr_alias_scope.protect(#sexp.vector_elt(#index)).get()
-                };
-                #body
-            }
-        }
-    }
-}
-
 /// Thread execution strategy for C wrappers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadStrategy {
@@ -527,22 +413,7 @@ impl CWrapperContext {
     ///
     /// Used by the main-thread wrapper where all conversions happen inline.
     fn build_conversion_stmts(&self, sexp_idents: &[syn::Ident]) -> Vec<TokenStream> {
-        let mut builder = crate::RustConversionBuilder::new();
-        if self.strict {
-            builder = builder.with_strict();
-        }
-        if self.coerce_all {
-            builder = builder.with_coerce_all();
-        }
-        for param in &self.coerce_params {
-            builder = builder.with_coerce_param(param.clone());
-        }
-        for param in &self.match_arg_several_ok_params {
-            builder = builder.with_match_arg_several_ok(param.clone());
-        }
-        for param in &self.match_arg_optional_params {
-            builder = builder.with_match_arg_optional(param.clone());
-        }
+        let builder = self.conversion_builder();
         builder.build_conversions(&self.inputs, sexp_idents)
     }
 
@@ -555,22 +426,7 @@ impl CWrapperContext {
         &self,
         sexp_idents: &[syn::Ident],
     ) -> (Vec<TokenStream>, Vec<TokenStream>) {
-        let mut builder = crate::RustConversionBuilder::new();
-        if self.strict {
-            builder = builder.with_strict();
-        }
-        if self.coerce_all {
-            builder = builder.with_coerce_all();
-        }
-        for param in &self.coerce_params {
-            builder = builder.with_coerce_param(param.clone());
-        }
-        for param in &self.match_arg_several_ok_params {
-            builder = builder.with_match_arg_several_ok(param.clone());
-        }
-        for param in &self.match_arg_optional_params {
-            builder = builder.with_match_arg_optional(param.clone());
-        }
+        let builder = self.conversion_builder();
 
         let mut all_pre = Vec::new();
         let mut all_in = Vec::new();
@@ -586,101 +442,74 @@ impl CWrapperContext {
         (all_pre, all_in)
     }
 
-    /// Reject aliased mutable/shared slice borrows before conversion (#1104, #1252).
-    ///
-    /// Compare vector leaves across direct slices, optional values, and nested
-    /// lists; also reject duplicate leaves within each mutable list argument.
-    /// Shared/shared borrows do not conflict. NULL, empty vectors, and wrong-type
-    /// leaves do not create overlapping references; conversion diagnoses bad types.
-    /// Checks run in every build and collect all conflicting parameter pairs.
+    /// Configure argument conversion once for both metadata and value conversion.
+    fn conversion_builder(&self) -> crate::RustConversionBuilder {
+        let mut builder = crate::RustConversionBuilder::new();
+        if self.strict {
+            builder = builder.with_strict();
+        }
+        if self.coerce_all {
+            builder = builder.with_coerce_all();
+        }
+        for param in &self.coerce_params {
+            builder = builder.with_coerce_param(param.clone());
+        }
+        for param in &self.match_arg_several_ok_params {
+            builder = builder.with_match_arg_several_ok(param.clone());
+        }
+        for param in &self.match_arg_optional_params {
+            builder = builder.with_match_arg_optional(param.clone());
+        }
+        builder
+    }
+
+    /// Check the actual converters' native borrows before creating references.
+    /// Metadata handles scalar/slice leaves, aliases, and supported containers.
     fn build_alias_guard(&self, sexp_idents: &[syn::Ident]) -> TokenStream {
-        let mut slice_params = Vec::new();
-        for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents.iter()) {
+        let builder = self.conversion_builder();
+        let mut metadata = Vec::new();
+        let mut args = Vec::new();
+        for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents) {
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+                && let Some(borrow) = builder.native_borrow_metadata(pt, sexp_ident)
             {
-                let param_name = crate::naming::ident_name(&pat_ident.ident);
-                if self.match_arg_several_ok_params.contains(&param_name) {
-                    continue;
-                }
-                if let Some(borrow) = slice_borrow_kind(pt.ty.as_ref()) {
-                    slice_params.push((sexp_ident, param_name, borrow));
-                }
+                let name = crate::naming::ident_name(&pat_ident.ident);
+                metadata.push(borrow);
+                args.push(quote! { (#sexp_ident, #name) });
             }
         }
-
-        let mut checks = Vec::new();
-        for i in 0..slice_params.len() {
-            for j in i..slice_params.len() {
-                let (id_a, name_a, borrow_a) = &slice_params[i];
-                let (id_b, name_b, borrow_b) = &slice_params[j];
-                if borrow_a.kind != SliceBorrow::Mut && borrow_b.kind != SliceBorrow::Mut {
-                    continue;
-                }
-                let same_param = i == j;
-                if same_param && borrow_a.list_depth == 0 {
-                    continue;
-                }
-                let msg = if same_param {
-                    format!(
-                        "parameter `{name_a}` contains duplicate elements that borrow the same non-empty R vector mutably"
-                    )
-                } else {
-                    format!(
-                        "parameters `{name_a}` and `{name_b}` borrow the same non-empty R object, and at least one borrows it mutably; pass distinct vectors"
-                    )
-                };
-                let walk = visit_slice_borrows(
-                    id_a,
-                    borrow_a.list_depth,
-                    borrow_a.element_type,
-                    "a",
-                    &[],
-                    &|leaf_a, indices_a| {
-                        visit_slice_borrows(
-                            id_b,
-                            borrow_b.list_depth,
-                            borrow_b.element_type,
-                            "b",
-                            &[],
-                            &|leaf_b, indices_b| {
-                                // Within one list, compare distinct leaf positions only.
-                                let distinct = if same_param {
-                                    quote! { [#(#indices_a),*] < [#(#indices_b),*] }
-                                } else {
-                                    quote! { true }
-                                };
-                                quote! {
-                                    if #distinct && #leaf_a == #leaf_b {
-                                        break '__miniextendr_alias_pair true;
-                                    }
-                                }
-                            },
-                        )
-                    },
-                );
-                checks.push(quote! {
-                    if '__miniextendr_alias_pair: {
-                        #walk
-                        false
-                    } {
-                        __miniextendr_alias_errors.push(#msg);
-                    }
-                });
-            }
-        }
-
-        if checks.is_empty() {
+        if args.is_empty() {
             return TokenStream::new();
         }
+        let check = quote! {
+            // SAFETY: wrapper arguments are rooted on R's main thread, and
+            // every allocating traversal runs inside R unwind protection.
+            unsafe {
+                ::miniextendr_api::from_r::borrow::assert_no_aliases(
+                    [#(#args),*], __miniextendr_native_borrows,
+                );
+            }
+        };
+        let check = if self.thread_strategy == ThreadStrategy::WorkerThread {
+            quote! {
+                let __miniextendr_alias_result =
+                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        || { #check; ::miniextendr_api::SEXP::nil() },
+                        Some(__miniextendr_call),
+                    );
+                if __miniextendr_alias_result != ::miniextendr_api::SEXP::nil() {
+                    return __miniextendr_alias_result;
+                }
+            }
+        } else {
+            check
+        };
         quote! {{
-            use ::miniextendr_api::SexpExt as _;
-            let mut __miniextendr_alias_errors = ::std::vec::Vec::<&str>::new();
-            #(#checks)*
-            ::core::assert!(
-                __miniextendr_alias_errors.is_empty(),
-                "aliasing slice arguments: {}", __miniextendr_alias_errors.join("; "),
-            );
+            let __miniextendr_native_borrows = [#(#metadata),*];
+            if ::miniextendr_api::from_r::borrow::needs_check(&__miniextendr_native_borrows) {
+                #check
+            }
         }}
     }
 
@@ -801,25 +630,6 @@ impl CWrapperContext {
         let (c_params, _, sexp_idents) = self.build_c_params();
         let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
-        let alias_guard = if alias_guard.is_empty() {
-            alias_guard
-        } else {
-            quote! {
-                // ALTREP traversal can allocate or raise an R error. Protect the
-                // preflight before worker dispatch as well as its Rust panics.
-                let __miniextendr_alias_result =
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || {
-                            #alias_guard
-                            ::miniextendr_api::SEXP::nil()
-                        },
-                        Some(__miniextendr_call),
-                    );
-                if __miniextendr_alias_result != ::miniextendr_api::SEXP::nil() {
-                    return __miniextendr_alias_result;
-                }
-            }
-        };
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 

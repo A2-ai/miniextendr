@@ -255,6 +255,8 @@ where
     T: TryFromSexp,
     <T as TryFromSexp>::Error: Into<SexpError>,
 {
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = T::NATIVE_BORROW;
+
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

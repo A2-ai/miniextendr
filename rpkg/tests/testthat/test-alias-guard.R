@@ -132,3 +132,84 @@ test_that("RNG cleanup keeps alias conditions alive with a shared seed", {
     expect_identical(.Random.seed, saved_seed)
   }
 })
+
+
+test_that("native scalar aliases report every pair before mutation", {
+  inputs <- list(integer = 2L, real = 2.5, raw = as.raw(2L),
+                 logical = TRUE, complex = 2 + 3i)
+  prefixes <- "alias_scalar_"
+  if (miniextendr_has_feature("worker-thread") ||
+      miniextendr_has_feature("worker-default")) {
+    prefixes <- c(prefixes, "alias_worker_scalar_")
+  }
+  for (prefix in prefixes) {
+    for (type in names(inputs)) {
+      fn <- get(paste0(prefix, type))
+      x <- inputs[[type]]
+      saved <- serialize(x, NULL)
+      err <- tryCatch(fn(x, x, x), error = identity)
+      expect_s3_class(err, "error")
+      for (pair in c("parameters `a` and `b`", "parameters `a` and `c`",
+                     "parameters `b` and `c`")) {
+        expect_match(conditionMessage(err), pair, fixed = TRUE)
+      }
+      expect_identical(serialize(x, NULL), saved)
+      # Serialized copies are distinct R vectors with identical values.
+      expect_identical(fn(unserialize(saved), unserialize(saved), x), 1L)
+    }
+  }
+})
+
+test_that("scalar, slice, list, boxed, and wrapped borrows share one guard", {
+  x <- 7L
+  for (fn in c("alias_scalar_slice", "alias_slice_scalar", "alias_wrapped_scalars")) {
+    expect_error(get(fn)(x, x), "aliasing", info = fn)
+  }
+  expect_error(alias_scalar_lists(list(x), list(x)), "aliasing")
+  expect_error(alias_scalar_lists(list(x, x), list()), "duplicate elements")
+  expect_error(alias_boxed_scalars(list(NULL, x), list(x)), "aliasing")
+  expect_error(alias_boxed_scalars(list(x, NULL, x), list()), "duplicate elements")
+  expect_error(alias_boxed_slices(list(x), x), "aliasing")
+  expect_error(alias_boxed_slices(list(x, x), 9L), "duplicate elements")
+  expect_error(alias_nested_scalars(list(list(x)), x), "aliasing")
+  expect_error(alias_nested_scalars(list(list(x), list(x)), 9L), "duplicate elements")
+  expect_error(alias_newtype_scalars(list(x), x), "aliasing")
+  expect_error(alias_newtype_scalars(list(x, NULL, x), 9L), "duplicate elements")
+  expect_identical(x, 7L)
+  expect_identical(alias_scalar_shared(x, x), 14L)
+  expect_identical(alias_nested_scalars(NULL, x), 7L)
+  expect_identical(alias_boxed_scalars(list(NULL, NULL), list(NULL)), 0L)
+  expect_identical(alias_boxed_slices(list(integer(), integer()), x), 7L)
+  a <- 3L
+  b <- c(4L, 5L)
+  expect_identical(alias_boxed_scalars(list(a), list(b)), 9L)
+  expect_identical(a, 9L)
+  if (miniextendr_has_feature("worker-thread") ||
+      miniextendr_has_feature("worker-default")) {
+    expect_error(alias_worker_boxed_scalars(list(x), list(x)), "aliasing")
+    expect_error(alias_worker_boxed_scalars(list(x, NULL, x), list()), "duplicate elements")
+    expect_identical(alias_worker_boxed_scalars(list(NULL), list(NULL)), 0L)
+    expect_identical(x, 7L)
+  }
+})
+
+test_that("scalar preflight requires length one but treats NA as borrowed storage", {
+  for (x in list(integer(), c(1L, 2L), "wrong", NULL)) {
+    result <- .Call(miniextendr:::C_miniextendr_alias_scalar_integer, NULL, x, x, x)
+    expect_identical(result$kind, "conversion")
+    expect_false(grepl("aliasing", result$error, fixed = TRUE))
+    result <- .Call(miniextendr:::C_miniextendr_alias_boxed_scalars,
+                    NULL, list(x), list(x))
+    if (is.null(x)) {
+      expect_identical(result, 0L)
+    } else {
+      expect_identical(result$kind, "conversion")
+    }
+  }
+  for (case in list(list(fn = alias_scalar_integer, x = NA_integer_),
+                    list(fn = alias_scalar_real, x = NA_real_),
+                    list(fn = alias_scalar_logical, x = NA),
+                    list(fn = alias_scalar_complex, x = NA_complex_))) {
+    expect_error(case$fn(case$x, case$x, case$x), "aliasing")
+  }
+})

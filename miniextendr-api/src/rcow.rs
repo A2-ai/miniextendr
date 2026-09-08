@@ -172,6 +172,8 @@ impl<T> From<Vec<T>> for RCow<'_, T> {
 /// duration). Storing it past the call return — in an `ExternalPtr`, a global,
 /// or another thread — is a compile error, not an honor-system hazard.
 impl<'a, T: RNativeType> TryFromSexp for RCow<'a, T> {
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = <&[T] as TryFromSexp>::NATIVE_BORROW;
+
     type Error = SexpTypeError;
 
     #[inline]
