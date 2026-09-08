@@ -36,9 +36,10 @@ use std::sync::mpsc;
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
 
+use miniextendr_api::condition::RCondition;
 use miniextendr_api::unwind_protect::panic_payload_to_string;
-use miniextendr_api::with_r_thread;
-use miniextendr_api::worker::{is_r_main_thread, run_on_worker};
+use miniextendr_api::worker::{WorkerError, is_r_main_thread, run_on_worker};
+use miniextendr_api::{RValue, with_r_thread};
 
 /// Deadline for every cross-thread `recv` in this file. Long enough to
 /// absorb slow-CI jitter, short enough that a real deadlock surfaces
@@ -65,6 +66,7 @@ fn worker_channel_stress_suite() {
         case_main_thread_keeps_working_after_descendant_panics();
         case_rust_panic_in_main_closure();
         case_rust_panic_in_worker_body();
+        case_structured_conditions_preserve_data_and_worker_reuse();
         case_with_r_thread_outside_run_on_worker_context();
     });
 }
@@ -128,7 +130,11 @@ fn case_many_round_trips_one_job() {
     });
 
     let expected: i64 = (0..N).sum();
-    assert_eq!(result, Ok(expected), "round-trip sum mismatch");
+    assert_eq!(
+        result.expect("round-trip job should succeed"),
+        expected,
+        "round-trip sum mismatch"
+    );
 }
 
 // endregion
@@ -186,8 +192,8 @@ fn case_descendant_thread_storm() {
     });
 
     assert_eq!(
-        r,
-        Ok(Ok(M)),
+        r.expect("descendant storm worker job should succeed"),
+        Ok(M),
         "descendant thread storm did not behave as documented"
     );
 }
@@ -230,8 +236,8 @@ fn case_main_thread_keeps_working_after_descendant_panics() {
 
     let expected: i64 = (0..32).sum();
     assert_eq!(
-        r,
-        Ok(expected),
+        r.expect("worker job should survive descendant panics"),
+        expected,
         "routing channel poisoned by descendant panics"
     );
 }
@@ -245,7 +251,10 @@ fn case_main_thread_keeps_working_after_descendant_panics() {
 /// `Done(Err)` → `run_on_worker` returns Err with the panic message.
 fn case_rust_panic_in_main_closure() {
     let r = run_on_worker(|| with_r_thread(|| panic!("worker-channel-stress: boom-on-main")));
-    let msg = r.expect_err("panic in `with_r_thread` must become Err");
+    let error = r.expect_err("panic in `with_r_thread` must become Err");
+    let WorkerError::Panic(msg) = error else {
+        panic!("expected a generic panic from the main closure, got {error:?}");
+    };
     assert!(
         msg.contains("boom-on-main"),
         "panic message did not survive: {msg}"
@@ -258,11 +267,69 @@ fn case_rust_panic_in_worker_body() {
     let r = run_on_worker::<_, ()>(|| {
         panic!("worker-channel-stress: panic in worker body");
     });
-    let msg = r.expect_err("panic in worker body must become Err");
+    let error = r.expect_err("panic in worker body must become Err");
+    let WorkerError::Panic(msg) = error else {
+        panic!("expected a generic panic from the worker body, got {error:?}");
+    };
     assert!(
         msg.contains("panic in worker body"),
         "worker-body panic message did not survive: {msg}"
     );
+}
+
+/// Typed conditions must survive both the worker result channel and the
+/// main-callback response channel without becoming generic panic messages.
+/// Each condition is followed by a fresh job to check routing-context cleanup.
+fn case_structured_conditions_preserve_data_and_worker_reuse() {
+    for via_main in [false, true] {
+        let result = run_on_worker::<_, ()>(move || {
+            assert!(!is_r_main_thread());
+            let signal = move || {
+                assert_eq!(is_r_main_thread(), via_main);
+                std::panic::panic_any(RCondition::Warning {
+                    message: "worker-channel-stress: structured warning".to_owned(),
+                    class: vec!["channel_warning".to_owned(), "custom_warning".to_owned()],
+                    data: Some(vec![(
+                        "rows".to_owned(),
+                        RValue::Integer(vec![Some(2), None, Some(7)]),
+                    )]),
+                });
+            };
+            if via_main {
+                with_r_thread(signal);
+            } else {
+                signal();
+            }
+        });
+
+        let error = result.expect_err("typed warning must become an owned condition");
+        let WorkerError::Condition(RCondition::Warning {
+            message,
+            class,
+            data,
+        }) = error
+        else {
+            panic!("expected a structured warning (via_main={via_main}), got {error:?}");
+        };
+        assert_eq!(message, "worker-channel-stress: structured warning");
+        assert_eq!(class, ["channel_warning", "custom_warning"]);
+        let mut data = data.expect("warning data must survive transport");
+        assert_eq!(
+            data.len(),
+            1,
+            "warning data fields changed during transport"
+        );
+        let (name, value) = data.pop().expect("one field checked above");
+        assert_eq!(name, "rows");
+        let RValue::Integer(rows) = value else {
+            panic!("warning vector changed type during transport: {value:?}");
+        };
+        assert_eq!(rows, [Some(2), None, Some(7)]);
+
+        let recovered = run_on_worker(|| with_r_thread(|| 42i32))
+            .expect("worker must remain usable after a structured condition");
+        assert_eq!(recovered, 42);
+    }
 }
 
 // endregion

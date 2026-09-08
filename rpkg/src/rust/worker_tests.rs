@@ -16,7 +16,7 @@ where
 {
     match run_on_worker(f) {
         Ok(val) => val,
-        Err(msg) => panic_message_to_r_error(msg, None),
+        Err(error) => panic_message_to_r_error(error.to_string(), None),
     }
 }
 
@@ -559,4 +559,62 @@ pub extern "C-unwind" fn C_test_deep_with_r_thread_sequence() -> SEXP {
 
     miniextendr_api::SEXP::scalar_integer(sum)
 }
+// endregion
+
+// region: Structured conditions across both worker channel directions (#1425)
+
+/// Raise a structured condition on the worker or inside a main-thread callback.
+///
+/// @param kind One of error, warning, message, or condition.
+/// @param via_main Raise inside with_r_thread when true.
+/// @export
+#[miniextendr(worker)]
+pub fn test_worker_condition(kind: String, via_main: bool) {
+    use miniextendr_api::RValue;
+    use miniextendr_api::condition::RCondition;
+
+    let raise = move || {
+        let message = format!("worker {kind}");
+        let class = vec!["worker_custom".to_string(), "worker_secondary".to_string()];
+        let data = Some(vec![
+            (
+                "values".to_string(),
+                RValue::from(vec![Some(1_i32), None, Some(3)]),
+            ),
+            (
+                "details".to_string(),
+                RValue::List(vec![
+                    (Some("label".to_string()), RValue::from("nested")),
+                    (Some("ready".to_string()), RValue::from(true)),
+                ]),
+            ),
+        ]);
+        let condition = match kind.as_str() {
+            "error" => RCondition::Error {
+                message,
+                class,
+                data,
+            },
+            "warning" => RCondition::Warning {
+                message,
+                class,
+                data,
+            },
+            "message" => RCondition::Message { message, data },
+            "condition" => RCondition::Condition {
+                message,
+                class,
+                data,
+            },
+            _ => unreachable!("unknown condition fixture kind"),
+        };
+        std::panic::panic_any(condition)
+    };
+    if via_main {
+        with_r_thread(raise)
+    } else {
+        raise()
+    }
+}
+
 // endregion
