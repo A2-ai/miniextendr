@@ -12,8 +12,8 @@ Source: `target/doc/miniextendr_api.json`
 
 - shape `Option<_>`: **48 hand-rolled**, 22 macro-generated  <== macro already exists for this shape
     - `Option<&'static str>` (3 items) — miniextendr-api/src/from_r/strings.rs:83
-    - `Option<&[T]>` (3 items) — miniextendr-api/src/from_r.rs:695
-    - `Option<&mut [T]>` (3 items) — miniextendr-api/src/from_r.rs:722
+    - `Option<&[T]>` (3 items) — miniextendr-api/src/from_r.rs:696
+    - `Option<&mut [T]>` (3 items) — miniextendr-api/src/from_r.rs:723
     - `Option<AhoCorasick>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:102
     - `Option<ArrayVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:227
     - `Option<BitVec<u8, Msb0>>` (3 items) — miniextendr-api/src/optionals/bitvec_impl.rs:172
@@ -35,14 +35,14 @@ Source: `target/doc/miniextendr_api.json`
     - `Option<T>` (3 items) — miniextendr-api/src/newtype.rs:145
     - `Option<TinyVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:178
     - `Option<TomlValue>` (3 items) — miniextendr-api/src/optionals/toml_impl.rs:167
-    - `Option<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:881
+    - `Option<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:882
     - `Option<Zoned>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:206
     - `Option<bool>` (3 items) — miniextendr-api/src/from_r/logical.rs:118
     - `Option<crate::RLogical>` (3 items) — miniextendr-api/src/from_r/logical.rs:142
     - `Option<crate::Rboolean>` (3 items) — miniextendr-api/src/from_r/logical.rs:62
     - `Option<crate::Rcomplex>` (3 items) — miniextendr-api/src/from_r/logical.rs:250
     - `Option<crate::SEXP>` (3 items) — miniextendr-api/src/from_r.rs:582
-    - `Option<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1579
+    - `Option<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1580
     - `Option<f32>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:395
     - `Option<f64>` (3 items) — miniextendr-api/src/from_r/logical.rs:196
     - `Option<i16>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:353
@@ -50,10 +50,10 @@ Source: `target/doc/miniextendr_api.json`
     - `Option<i64>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:479
     - `Option<i8>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:339
     - `Option<isize>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:549
-    - `Option<std::collections::BTreeMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:936
-    - `Option<std::collections::BTreeSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:969
-    - `Option<std::collections::HashMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:932
-    - `Option<std::collections::HashSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:965
+    - `Option<std::collections::BTreeMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:937
+    - `Option<std::collections::BTreeSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:970
+    - `Option<std::collections::HashMap<String, V>>` (2 items) — miniextendr-api/src/from_r.rs:933
+    - `Option<std::collections::HashSet<T>>` (2 items) — miniextendr-api/src/from_r.rs:966
     - `Option<u16>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:367
     - `Option<u32>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:381
     - `Option<u64>` (3 items) — miniextendr-api/src/from_r/coerced_scalars.rs:493
@@ -72,29 +72,29 @@ Source: `target/doc/miniextendr_api.json`
     - `Vec<String>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:136
     - `Vec<T>` (3 items) — miniextendr-api/src/newtype.rs:120
     - `Vec<TomlValue>` (2 items) — miniextendr-api/src/optionals/toml_impl.rs:170
-    - `Vec<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:980
+    - `Vec<Vec<T>>` (3 items) — miniextendr-api/src/from_r.rs:981
     - `Vec<Zoned>` (2 items) — miniextendr-api/src/optionals/jiff_impl.rs:261
-    - `Vec<bool>` (3 items) — miniextendr-api/src/from_r.rs:1381
+    - `Vec<bool>` (3 items) — miniextendr-api/src/from_r.rs:1382
     - `Vec<crate::RLogical>` (2 items) — miniextendr-api/src/from_r/collections.rs:198
     - `Vec<crate::Rboolean>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:101
     - `Vec<crate::Rcomplex>` (2 items) — miniextendr-api/src/from_r/collections.rs:199
     - `Vec<crate::altrep_data::Logical>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:162
-    - `Vec<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1608
-    - `Vec<f32>` (3 items) — miniextendr-api/src/from_r.rs:1378
+    - `Vec<crate::externalptr::ExternalPtr<T>>` (3 items) — miniextendr-api/src/from_r.rs:1609
+    - `Vec<f32>` (3 items) — miniextendr-api/src/from_r.rs:1379
     - `Vec<f64>` (2 items) — miniextendr-api/src/from_r/collections.rs:196
-    - `Vec<i16>` (3 items) — miniextendr-api/src/from_r.rs:1371
+    - `Vec<i16>` (3 items) — miniextendr-api/src/from_r.rs:1372
     - `Vec<i32>` (2 items) — miniextendr-api/src/from_r/collections.rs:195
-    - `Vec<i64>` (3 items) — miniextendr-api/src/from_r.rs:1372
-    - `Vec<i8>` (3 items) — miniextendr-api/src/from_r.rs:1370
-    - `Vec<isize>` (3 items) — miniextendr-api/src/from_r.rs:1373
+    - `Vec<i64>` (3 items) — miniextendr-api/src/from_r.rs:1373
+    - `Vec<i8>` (3 items) — miniextendr-api/src/from_r.rs:1371
+    - `Vec<isize>` (3 items) — miniextendr-api/src/from_r.rs:1374
     - `Vec<std::borrow::Cow<'static, str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:86
     - `Vec<std::collections::BTreeMap<String, V>>` (2 items) — miniextendr-api/src/from_r/collections.rs:148
     - `Vec<std::collections::HashMap<String, V>>` (2 items) — miniextendr-api/src/from_r/collections.rs:144
-    - `Vec<u16>` (3 items) — miniextendr-api/src/from_r.rs:1374
-    - `Vec<u32>` (3 items) — miniextendr-api/src/from_r.rs:1375
-    - `Vec<u64>` (3 items) — miniextendr-api/src/from_r.rs:1376
+    - `Vec<u16>` (3 items) — miniextendr-api/src/from_r.rs:1375
+    - `Vec<u32>` (3 items) — miniextendr-api/src/from_r.rs:1376
+    - `Vec<u64>` (3 items) — miniextendr-api/src/from_r.rs:1377
     - `Vec<u8>` (2 items) — miniextendr-api/src/from_r/collections.rs:197
-    - `Vec<usize>` (3 items) — miniextendr-api/src/from_r.rs:1377
+    - `Vec<usize>` (3 items) — miniextendr-api/src/from_r.rs:1378
 - shape `Vec<Option<_>>`: **30 hand-rolled**, 32 macro-generated  <== macro already exists for this shape
     - `Vec<Option<&'static str>>` (2 items) — miniextendr-api/src/from_r/cow_and_paths.rs:168
     - `Vec<Option<AhoCorasick>>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:104
@@ -112,7 +112,7 @@ Source: `target/doc/miniextendr_api.json`
     - `Vec<Option<bool>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:66
     - `Vec<Option<crate::RLogical>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:185
     - `Vec<Option<crate::Rboolean>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:131
-    - `Vec<Option<crate::externalptr::ExternalPtr<T>>>` (3 items) — miniextendr-api/src/from_r.rs:1629
+    - `Vec<Option<crate::externalptr::ExternalPtr<T>>>` (3 items) — miniextendr-api/src/from_r.rs:1630
     - `Vec<Option<f32>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:310
     - `Vec<Option<f64>>` (2 items) — miniextendr-api/src/from_r/na_vectors.rs:62
     - `Vec<Option<i16>>` (3 items) — miniextendr-api/src/from_r/na_vectors.rs:303

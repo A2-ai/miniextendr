@@ -1273,13 +1273,13 @@ Test \verb{Vec<&[i32]>} argument: returns the total length across all slices.
 
 Test \verb{Vec<&mut [i32]>} argument: increments all elements and returns total length.
 
-Aliasing probe for the debug-only \verb{&mut [T]} guard (#1104).
+Aliasing probe for the pre-conversion mutable-slice guard (#1104, #1252).
 
-Takes two mutable integer slices and increments each. When the caller binds the \emph{same} R vector to both parameters (\code{alias_probe(x, x)}), the macro-generated wrapper emits a \verb{debug_assert!} that panics \emph{before} conversion, because the two \verb{&mut [i32]} slices would alias one buffer (undefined behavior). The assert is compiled out in release builds, so use \code{debug_assertions_enabled} to decide whether to expect the error.
+Takes two mutable integer slices and increments each. Passing the same non-empty R vector to both parameters raises an error before conversion in both debug and release builds.
 
 Whether this build of the package compiled with \code{debug_assertions} enabled.
 
-The aliasing guard emitted for multiple \verb{&mut [T]} parameters (#1104) is a \verb{debug_assert!}, so it only fires in debug builds. Tests query this to skip the \code{alias_probe(x, x)} error assertion when asserts are compiled out.
+Runtime tests use this to verify which compiler profile is installed.
 
 Test \verb{Vec<i32>} argument: returns the length of the vector.
 
