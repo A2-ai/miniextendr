@@ -48,3 +48,11 @@ The full `just check` and `just test` recipes passed, including both UI suites.
 `just lint`, formatting, template/AGENTS checks, and LLM documentation sync also
 passed. The installed package has no undocumented R exports and its R API symbols
 pass the installed R 4.6.1 non-API and registration checks.
+
+Linux release CI exposed a finalizer guard bug after the first push: an allocating
+conversion destructor could trigger GC while the private input error was already
+unwinding. An unrelated ExternalPtr finalizer completed successfully, but its guard
+saw `thread::panicking()` from the original error and aborted the process. A pure
+Rust regression reproduced the exact SIGABRT without relying on GC timing. The
+guard is now disarmed after normal destructor return; a subprocess regression
+also verifies that a destructor which actually panics still aborts.

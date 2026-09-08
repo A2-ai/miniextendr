@@ -2581,8 +2581,8 @@ Traits with impls: 219
 | `BuiltDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:919 |
 | `GroupedDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:169 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1984 |
-| `AbortIfUnwinding` | `` | concrete | 1 | miniextendr-api/src/externalptr.rs:2009 |
-| `ExternalSlice<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:2153 |
+| `AbortIfUnwinding` | `` | concrete | 1 | miniextendr-api/src/externalptr.rs:2010 |
+| `ExternalSlice<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:2158 |
 | `ProtectScope` | `` | concrete | 1 | miniextendr-api/src/gc_protect.rs:1015 |
 | `OwnedProtect` | `` | concrete | 1 | miniextendr-api/src/gc_protect.rs:1142 |
 | `WorkerUnprotectGuard` | `` | concrete | 1 | miniextendr-api/src/gc_protect.rs:1598 |

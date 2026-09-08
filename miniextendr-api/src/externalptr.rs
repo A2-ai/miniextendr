@@ -1993,9 +1993,10 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
 /// Guard that aborts the process if dropped while a panic is in progress.
 ///
 /// Used by [`drop_catching_panic`] to implement panic-safe destructor calls
-/// without `catch_unwind`. When `f()` completes normally, the guard is
-/// dropped with `std::thread::panicking() == false` and becomes a no-op.
-/// If `f()` panics, the guard's destructor runs during stack unwinding
+/// without `catch_unwind`. When `f()` completes normally, the resource-free
+/// guard is forgotten: a successful finalizer can run during an existing Rust
+/// unwind when another destructor allocates in R and triggers collection.
+/// If `f()` panics, the armed guard's destructor runs during stack unwinding
 /// (when `std::thread::panicking() == true`) and calls `process::abort()`.
 ///
 /// This approach avoids `catch_unwind`, which registers LLVM unwind landing
@@ -2035,15 +2036,19 @@ impl Drop for AbortIfUnwinding {
 /// GC finalizer re-enters the GC and triggers the fatal "recursive gc
 /// invocation" crash. Instead, this function uses a drop-guard whose `Drop`
 /// impl calls `std::thread::panicking()` — a cheap, allocation-free TLS read.
+/// The guard is disarmed on normal return, even if the caller was already
+/// unwinding before R invoked this finalizer.
 ///
 /// This helper is `#[doc(hidden)]` because it is called from macro-generated
 /// code and is not part of the public API.
 #[doc(hidden)]
 #[inline]
 pub fn drop_catching_panic<F: FnOnce()>(f: F) {
-    let _guard = AbortIfUnwinding;
+    let guard = AbortIfUnwinding;
     f();
-    // guard dropped here with panicking() == false → no-op
+    // Only an unwind escaping f should run the guard, not one already active
+    // when a destructor's R allocation triggers an unrelated GC finalizer.
+    std::mem::forget(guard);
 }
 
 /// Non-generic C finalizer called by R's garbage collector.
@@ -2074,7 +2079,7 @@ extern "C-unwind" fn release_any(sexp: SEXP) {
     // uses the vtable to drop the concrete T value.
     //
     // A panicking Drop impl must not unwind across the C-ABI boundary into R.
-    // `drop_catching_panic` catches any panic and aborts instead.
+    // `drop_catching_panic` aborts if the destructor unwinds.
     drop_catching_panic(|| drop(unsafe { Box::from_raw(any_raw) }));
 }
 // endregion
@@ -2167,19 +2172,7 @@ mod tests {
     use super::drop_catching_panic;
 
     #[test]
-    fn drop_catching_panic_does_not_propagate_panic() {
-        // Verify that drop_catching_panic catches a panicking closure and does
-        // NOT propagate the panic to the caller.
-        //
-        // Note: we cannot test the abort path from inside a test process, so
-        // we document it with a comment instead:
-        //   If the closure panics, `drop_catching_panic` calls `eprintln!` then
-        //   `std::process::abort()`. That path is exercised only by the process
-        //   dying, which is observable from an external test harness (not done
-        //   here to keep CI simple).
-        //
-        // What we CAN test: the happy path (no panic) completes normally, and
-        // the function compiles and links correctly with a `FnOnce()` generic.
+    fn drop_catching_panic_runs_closure() {
         let mut ran = false;
         drop_catching_panic(|| {
             ran = true;
@@ -2210,6 +2203,56 @@ mod tests {
         assert!(
             dropped.load(Ordering::SeqCst),
             "inner value should have been dropped"
+        );
+    }
+
+    #[test]
+    fn drop_catching_panic_allows_success_during_existing_unwind() {
+        use std::cell::Cell;
+        use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+
+        struct FinalizeOnDrop<'a>(&'a Cell<bool>);
+        impl Drop for FinalizeOnDrop<'_> {
+            fn drop(&mut self) {
+                assert!(std::thread::panicking());
+                drop_catching_panic(|| self.0.set(true));
+            }
+        }
+
+        let finalized = Cell::new(false);
+        let error = catch_unwind(AssertUnwindSafe(|| {
+            let _cleanup = FinalizeOnDrop(&finalized);
+            resume_unwind(Box::new("original conversion error"));
+        }))
+        .unwrap_err();
+        assert!(finalized.get());
+        assert_eq!(
+            error.downcast_ref::<&str>(),
+            Some(&"original conversion error")
+        );
+    }
+
+    #[test]
+    fn drop_catching_panic_aborts_on_destructor_panic() {
+        const CHILD: &str = "MINIEXTENDR_TEST_FINALIZER_PANIC";
+        if std::env::var_os(CHILD).is_some() {
+            drop_catching_panic(|| panic!("finalizer destructor panic"));
+            unreachable!("panicking destructor must abort");
+        }
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "externalptr::tests::drop_catching_panic_aborts_on_destructor_panic",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("destructor panicked during R finalization; aborting")
         );
     }
 }
