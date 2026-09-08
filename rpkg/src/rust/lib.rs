@@ -121,6 +121,7 @@ mod native_cli_test;
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
+mod alias_fixtures;
 mod altrep_condition_tests;
 mod altrep_manual_fixture;
 mod altrep_no_lowlevel_fixture;
