@@ -3353,3 +3353,27 @@ pub fn gc_stress_slice_alias_guard() {
 }
 
 // endregion
+
+/// Check fresh-value protection inside worker input R-call fences under GC stress.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_worker_input_protect() {
+    let result = std::panic::catch_unwind(|| {
+        // Mirror the generated pre-dispatch scope, before constructing resources.
+        let _input = unsafe { miniextendr_api::unwind_protect::InputConversionScope::new() };
+        for _ in 0..8 {
+            unsafe {
+                use miniextendr_api::sys;
+                let value = sys::Rf_allocVector(SEXPTYPE::INTSXP, 3);
+                // No R allocation may intervene here, including fence setup.
+                sys::Rf_protect(value);
+                sys::R_gc();
+                assert_eq!(sys::Rf_xlength(value), 3);
+                sys::Rf_unprotect(1);
+            }
+        }
+    });
+    if let Err(payload) = result {
+        let payload = unsafe { miniextendr_api::unwind_protect::resume_input_error(payload) };
+        std::panic::resume_unwind(payload);
+    }
+}

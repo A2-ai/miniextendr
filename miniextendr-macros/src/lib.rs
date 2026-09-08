@@ -1959,7 +1959,9 @@ pub fn r_ffi_checked(
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
                                 ::miniextendr_api::worker::with_r_thread(move || unsafe {
-                                    #unchecked_name(#(#arg_names),*)
+                                    ::miniextendr_api::unwind_protect::with_input_conversion_call(
+                                        move || #unchecked_name(#(#arg_names),*)
+                                    )
                                 })
                             }
                         }
@@ -1975,7 +1977,9 @@ pub fn r_ffi_checked(
                             #vis unsafe fn #fn_name(#inputs) #output {
                                 let result = ::miniextendr_api::worker::with_r_thread(move || {
                                     ::miniextendr_api::worker::Sendable(unsafe {
-                                        #unchecked_name(#(#arg_names),*)
+                                        ::miniextendr_api::unwind_protect::with_input_conversion_call(
+                                            move || #unchecked_name(#(#arg_names),*)
+                                        )
                                     })
                                 });
                                 result.0

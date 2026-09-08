@@ -1,17 +1,20 @@
 //! Safe API for R's `R_UnwindProtect`
 //!
-//! This module provides [`with_r_unwind_protect`] for handling R errors with Rust cleanup.
-//! It automatically runs Rust destructors when R errors occur.
+//! This module provides [`with_r_unwind_protect`] for handling Rust panics and
+//! continuing R errors across the FFI boundary.
 //!
-//! **Important**: R uses `longjmp` for error handling, which normally bypasses Rust destructors.
-//! Use this API to ensure cleanup happens even when R errors occur.
+//! **Cleanup limitation**: R's `longjmp` skips Rust locals inside the protected
+//! closure before the cleanup callback runs. This outer guard alone cannot run
+//! those destructors. Generated worker input conversions use narrower checked
+//! R-call fences so converter locals and completed arguments unwind in Rust.
+//! Broader main-thread and callback cleanup is tracked in issue #1507.
 //!
 //! ## When to reach for this
 //!
 //! - **Calling R APIs that can error from a body you wrote yourself**
 //!   (custom ALTREP, custom connection trampoline, hand-rolled FFI shim).
-//!   Wrap the R-calling section in [`with_r_unwind_protect`] so Rust
-//!   destructors run if R longjmps.
+//!   Use [`with_r_unwind_protect`] for panic transport and R continuation handling;
+//!   account separately for resources an R longjmp can skip inside the closure.
 //! - **Inside a [`with_r_unwind_protect`] body it is safe to use `*_unchecked`
 //!   variants of the R FFI** — see the [`crate::sys`] module doc. The lint
 //!   **MXL301** recognises this as one of the three contexts where bypassing
@@ -26,7 +29,7 @@
 //! [`crate::error!`] / [`crate::warning!`] / [`crate::message!`] is the
 //! idiomatic path. Direct [`with_r_unwind_protect`] use inside that body is
 //! almost always wrong — you'd be nesting an `R_UnwindProtect` inside another
-//! `R_UnwindProtect`, paying the longjmp-leak cost twice (see "Leaks" below).
+//! `R_UnwindProtect`, without fixing skipped local cleanup (see "Leaks" below).
 //!
 //! ## Don't use `Rf_error`
 //!
@@ -37,12 +40,11 @@
 //!
 //! ## Leaks
 //!
-//! On the R longjmp path (when R unwinds out of the protected body),
-//! `with_r_unwind_protect` leaks ~8 bytes (an `RErrorMarker` + `Box` header)
-//! because the cleanup handler can't reclaim them via
-//! `Box::from_raw`. Regular Rust panics from inside the body don't leak.
-//! This is the cost MXL300 is buying off: every direct `Rf_error()` would
-//! incur the same leak with no observability.
+//! An R longjmp across Rust can leak every owned resource in the skipped frames,
+//! including closure captures and converter temporaries. The leak is not bounded
+//! by the size of the cleanup marker. Ordinary Rust panics unwind those resources.
+//! The worker input fences avoid this by catching each checked R call below the
+//! Rust conversion frames; unchecked calls still require their own cleanup design.
 //!
 //! ## Log drain
 //!
@@ -66,6 +68,10 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     sync::OnceLock,
 };
+
+mod input_conversion;
+#[doc(hidden)]
+pub use input_conversion::{InputConversionScope, resume_input_error, with_input_conversion_call};
 
 // region: raise_rust_condition_via_stop — Approach 3 for ALTREP RUnwind path
 
@@ -360,7 +366,8 @@ where
 
     unsafe extern "C-unwind" fn cleanup_handler(_data: *mut c_void, jump: Rboolean) {
         if jump != Rboolean::FALSE {
-            // R is about to longjmp - trigger a Rust panic so we can unwind properly
+            // R has already jumped past the body; leave the now-closed R context. Only
+            // Rust frames above R_UnwindProtect can still be unwound here.
             std::panic::panic_any(RErrorMarker);
         }
     }
@@ -391,6 +398,7 @@ where
                 // Check if trampoline caught a panic
                 if let Some(payload) = data.panic_payload.take() {
                     drop(data);
+                    let payload = input_conversion::propagate_input_error(payload);
                     // Drain worker-thread log records before returning the panic
                     // payload to the caller (which will convert it to an R error).
                     drain_log_queue_if_available();
@@ -410,6 +418,7 @@ where
             Err(payload) => {
                 // Drop data first to run destructors
                 drop(data);
+                let payload = input_conversion::propagate_input_error(payload);
                 // Check if this was an R error or a Rust panic
                 if payload.downcast_ref::<RErrorMarker>().is_some() {
                     // R error - drain log records before re-raising so worker
@@ -431,8 +440,9 @@ where
 /// error via `Rf_eval(stop(structure(...)))`.
 ///
 /// If the closure panics, the panic is caught and converted to an R error
-/// (longjmp) with `rust_*` class layering. If R raises an error (longjmp), all
-/// Rust RAII resources are properly dropped before R continues unwinding.
+/// (longjmp) with `rust_*` class layering. R errors resume their continuation;
+/// locals skipped by an R longjmp inside the closure are not dropped by this
+/// outer guard. See the module's cleanup limitation.
 ///
 /// **This is NOT the user-facing path for `#[miniextendr]` functions.** That
 /// path is [`with_r_unwind_protect`], which returns a tagged SEXP instead of
