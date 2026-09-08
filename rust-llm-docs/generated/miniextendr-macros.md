@@ -1889,19 +1889,10 @@ pub struct PreconditionOptions
 
 Per-function knobs that influence precondition codegen.
 
-Currently only the `coerce` knob matters: `#[miniextendr(coerce)]` (or a
-per-param `#[miniextendr(coerce)]`) changes the inbound conversion for an
-integer-element vector to read via the native `&[i32]` slice and then
-`TryCoerce` element-wise (see `rust_conversion_builder.rs` `CoercionMapping::Vec`).
-That `&[i32]` read is INTSXP-only, so a coerced integer vector that would
-otherwise accept whole-number `REALSXP` ([`RTypeCheck::VectorIntegerWide`])
-must instead get the strict `is.integer` gate ([`RTypeCheck::VectorIntegerStrict`])
-— otherwise a `double` passes the R precondition only to fail the Rust read
-with "expected INTSXP, got REALSXP" (issue #616).
-
-`strict` is intentionally not represented: inbound conversion is identical in
-strict and default mode (`TryFromSexp`), so the R-side integer gate doesn't
-change. The precise strict checking happens on the Rust *outbound* side.
+Coercion preserves numeric input types and extends `bool` / `Vec<bool>`
+checks to accept integers as well as logicals. Other types keep their checks.
+Strict input conversion remains enforced in Rust, where range and precision
+failures can carry contextual diagnostics.
 
 **Fields:**
 
@@ -2229,7 +2220,7 @@ Handles:
 - Slices `&[T]` → TryFromSexp
 - `&str` → String + Borrow (for worker thread compatibility)
 - Scalar references → DATAPTR_RO_unchecked
-- Coercion → extract R native type + TryCoerce
+- Coercion → multi-source numeric conversion or logical/integer bool conversion
 - Default → TryFromSexp
 
 **Inherent associated items:**

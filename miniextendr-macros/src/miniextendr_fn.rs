@@ -13,7 +13,7 @@ use crate::r_wrapper_const_ident_for;
 
 /// Conversion selected by `coerce`, shared by Rust conversion and R checks.
 pub(crate) enum CoercionMapping {
-    /// Numeric scalars and vectors already have lossless, multi-source converters.
+    /// Numeric scalars and vectors already have checked, multi-source converters.
     Numeric,
     /// Keep logical scalars and additionally accept integer zero or one.
     Bool,

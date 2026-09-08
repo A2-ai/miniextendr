@@ -56,7 +56,7 @@ i64 identity under the build's default conversion mode: rejects logical and raw 
 
 Same as \code{fdefault_strict_i64} with \code{no_strict}: stays lenient even under \code{strict-default}.
 
-Logical identity under the build's default conversion mode: under \code{coerce-default} the parameter converts from R's native integer type (\code{0L}/\code{1L}; a logical is then rejected), otherwise it requires a logical.
+Logical identity under the build's default conversion mode: under \code{coerce-default} also accepts integer \code{0L}/\code{1L}, preserving logical inputs.
 
 Same as \code{fdefault_coerce_flag} with \code{no_coerce}: requires a logical even under \code{coerce-default}.
 
