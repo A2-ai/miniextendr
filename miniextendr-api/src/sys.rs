@@ -126,24 +126,14 @@ unsafe extern "C-unwind" {
     pub fn REprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
 }
 
-// Error message access (non-API, declared in Rinternals.h but flagged by R CMD check)
-#[cfg(feature = "nonapi")]
+// Error buffer access is documented in Writing R Extensions (condition handling)
+// as experimental API, and is accepted by R 4.6's tools::check_so_symbols().
 unsafe extern "C-unwind" {
-    /// Get the current R error message buffer.
-    ///
-    /// Returns a pointer to R's internal error message buffer.
-    /// Used by Rserve and other embedding applications.
+    /// Borrow R's current error message until the next R error.
     ///
     /// # Safety
-    ///
-    /// - The returned pointer is only valid until the next R error
-    /// - Must not be modified
-    /// - Should be copied if needed beyond the immediate scope
-    ///
-    /// # Feature Gate
-    ///
-    /// This is a non-API function and requires the `nonapi` feature.
-    #[allow(non_snake_case, dead_code)] // used by worker.rs under worker-thread feature
+    /// Read only on R's main thread; copy before calling R again. Never modify
+    /// the returned buffer. This experimental API is declared in Rinternals.h.
     pub(crate) fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
 }
 
@@ -176,7 +166,9 @@ pub unsafe fn Rf_error(
     if !crate::worker::is_r_main_thread() {
         panic!("Rf_error called from non-main thread");
     }
-    unsafe { Rf_error_unchecked(fmt, arg1) }
+    unsafe {
+        crate::unwind_protect::with_input_conversion_call(move || Rf_error_unchecked(fmt, arg1))
+    }
 }
 
 /// Checked wrapper for `Rf_errorcall` - panics if called from non-main thread.
@@ -196,7 +188,11 @@ pub unsafe fn Rf_errorcall(
     if !crate::worker::is_r_main_thread() {
         panic!("Rf_errorcall called from non-main thread");
     }
-    unsafe { Rf_errorcall_unchecked(call, fmt, arg1) }
+    unsafe {
+        crate::unwind_protect::with_input_conversion_call(move || {
+            Rf_errorcall_unchecked(call, fmt, arg1)
+        })
+    }
 }
 
 /// Checked wrapper for `Rf_warning` - panics if called from non-main thread.
@@ -211,7 +207,9 @@ pub unsafe fn Rf_warning(fmt: *const ::std::os::raw::c_char, arg1: *const ::std:
     if !crate::worker::is_r_main_thread() {
         panic!("Rf_warning called from non-main thread");
     }
-    unsafe { Rf_warning_unchecked(fmt, arg1) }
+    unsafe {
+        crate::unwind_protect::with_input_conversion_call(move || Rf_warning_unchecked(fmt, arg1))
+    }
 }
 
 /// Checked wrapper for `Rprintf` - panics if called from non-main thread.
@@ -226,7 +224,9 @@ pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os
     if !crate::worker::is_r_main_thread() {
         panic!("Rprintf called from non-main thread");
     }
-    unsafe { Rprintf_unchecked(fmt, arg1) }
+    unsafe {
+        crate::unwind_protect::with_input_conversion_call(move || Rprintf_unchecked(fmt, arg1))
+    }
 }
 
 /// Print to R's stderr (via R_ShowMessage or error console).
@@ -241,7 +241,9 @@ pub unsafe fn REprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::o
     if !crate::worker::is_r_main_thread() {
         panic!("REprintf called from non-main thread");
     }
-    unsafe { REprintf_unchecked(fmt, arg1) }
+    unsafe {
+        crate::unwind_protect::with_input_conversion_call(move || REprintf_unchecked(fmt, arg1))
+    }
 }
 
 // Imported R symbols and functions with runtime thread checks enabled.
@@ -333,6 +335,12 @@ unsafe extern "C-unwind" {
     pub fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
     // Issue #112 cat. 3: kept pub(crate) — only called from unwind_protect.rs; users go through with_r_unwind_protect
+    pub(crate) fn R_tryCatchError(
+        body: Option<unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP>,
+        body_data: *mut ::std::os::raw::c_void,
+        handler: Option<unsafe extern "C-unwind" fn(SEXP, *mut ::std::os::raw::c_void) -> SEXP>,
+        handler_data: *mut ::std::os::raw::c_void,
+    ) -> SEXP;
     pub(crate) fn R_MakeUnwindCont() -> SEXP;
     pub(crate) fn R_ContinueUnwind(cont: SEXP) -> !;
     pub(crate) fn R_UnwindProtect(
