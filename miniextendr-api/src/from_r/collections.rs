@@ -26,7 +26,9 @@ macro_rules! impl_map_try_from_sexp {
         where
             V::Error: Into<SexpError>,
         {
-            type Error = SexpError;
+            const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = crate::from_r::NativeBorrow::in_list(V::NATIVE_BORROW);
+
+    type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 named_list_to_map(sexp, $create)
@@ -132,7 +134,9 @@ macro_rules! impl_vec_map_try_from_sexp {
         where
             V::Error: Into<SexpError>,
         {
-            type Error = SexpError;
+            const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = crate::from_r::NativeBorrow::in_list(<$map_ty<String, V> as TryFromSexp>::NATIVE_BORROW);
+
+    type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 list_to_vec_of_maps::<$map_ty<String, V>>(sexp)

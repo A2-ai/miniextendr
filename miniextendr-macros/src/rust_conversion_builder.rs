@@ -91,6 +91,69 @@ impl RustConversionBuilder {
         self.coerce_all || self.coerce_params.contains(&param_name.to_string())
     }
 
+    /// Describe only the conversion actually used for this argument.
+    ///
+    /// Special paths can have no TryFromSexp impl for the declared type. Omit
+    /// their metadata queries at codegen time; a runtime branch still typechecks.
+    pub(crate) fn native_borrow_metadata(
+        &self,
+        pat_type: &syn::PatType,
+        sexp_ident: &syn::Ident,
+    ) -> Option<TokenStream> {
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return None;
+        };
+        let ty = pat_type.ty.as_ref();
+        let param_name = crate::naming::ident_name(&pat_ident.ident);
+        match ty {
+            syn::Type::ImplTrait(_) => return None,
+            syn::Type::Tuple(t) if t.elems.is_empty() => return None,
+            syn::Type::Reference(r) => {
+                if let syn::Type::Path(tp) = r.elem.as_ref()
+                    && (tp.path.is_ident("str")
+                        || tp
+                            .path
+                            .segments
+                            .last()
+                            .is_some_and(|seg| seg.ident == "Dots"))
+                {
+                    return None;
+                }
+                if self.match_arg_several_ok_params.contains(&param_name)
+                    && crate::classify_several_ok_container(ty).is_some()
+                {
+                    return None;
+                }
+            }
+            _ => {
+                if self.strict
+                    && crate::return_type_analysis::strict_input_conversion_for_type(
+                        ty,
+                        sexp_ident,
+                        &param_name,
+                    )
+                    .is_some()
+                {
+                    return None;
+                }
+                if self.match_arg_optional_params.contains(&param_name)
+                    && crate::option_inner_type(ty).is_some()
+                {
+                    return None;
+                }
+                if self.match_arg_several_ok_params.contains(&param_name)
+                    && crate::classify_several_ok_container(ty).is_some()
+                {
+                    return None;
+                }
+                if self.should_coerce(&param_name) && CoercionMapping::from_type(ty).is_some() {
+                    return None;
+                }
+            }
+        }
+        Some(quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW })
+    }
+
     /// Generate a conversion expression that returns a tagged condition SEXP on failure.
     ///
     /// The R wrapper inspects `.val` and raises a structured `rust_*` condition; the
