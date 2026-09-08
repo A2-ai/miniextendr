@@ -33,7 +33,8 @@ Suggests:
     scales,
     testthat (>= 3.0.0),
     tibble,
-    tidyr
+    tidyr,
+    withr
 Config/testthat/edition: 3
 Config/build/bootstrap: TRUE
 Config/build/never-clean: true

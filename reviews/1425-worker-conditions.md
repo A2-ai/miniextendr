@@ -42,3 +42,9 @@ worker-default, with zero failures or warnings in both. The unavailable
 growth-debug feature accounts for one explicit skip in each run. Full Rust
 workspace/cross-package/UI tests, the worker-enabled channel and shutdown
 integration binaries, and 520 macro unit tests passed.
+
+CI follow-up: Linux package checking caught an undeclared withr test dependency.
+The new telemetry regressions use withr::defer to restore the process-wide hook.
+Declare withr in rpkg/Suggests; it was already present in rproject.toml/rv.lock.
+DESCRIPTION is not a templates-sources entry, so this test-only dependency has
+no scaffold-template delta. R's test-dependency scanner verifies the fix.
