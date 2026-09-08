@@ -188,3 +188,36 @@ fn alias_guard_emission() {
     let guard = ctx.build_alias_guard(&three_idents).to_string();
     assert_eq!(guard.matches("debug_assert").count(), 3, "guard = {guard}");
 }
+
+#[test]
+fn worker_inputs_unwind_before_dispatch_and_rng_cleanup_precedes_r_resume() {
+    let sig: syn::ItemFn = syn::parse_quote!(
+        fn probe(input: OwnedInput) {}
+    );
+    let ctx = CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_probe))
+        .r_wrapper_const(syn::parse_quote!(R_WRAPPER_probe))
+        .call_expr(quote::quote!(probe(input)))
+        .inputs(sig.sig.inputs)
+        .thread_strategy(ThreadStrategy::WorkerThread)
+        .check_interrupt()
+        .rng()
+        .build();
+    let wrapper = ctx.generate_worker_thread_wrapper().to_string();
+    let ordered = [
+        "catch_unwind",
+        "InputConversionScope :: new",
+        "R_CheckUserInterrupt",
+        "try_from_sexp",
+        "drop (__miniextendr_input_scope)",
+        "run_on_worker",
+        "PutRNGstate",
+        "resume_input_error",
+    ];
+    let mut offset = 0;
+    for needle in ordered {
+        offset += wrapper[offset..]
+            .find(needle)
+            .unwrap_or_else(|| panic!("missing or misplaced {needle}: {wrapper}"))
+            + needle.len();
+    }
+}

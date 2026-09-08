@@ -754,6 +754,9 @@ impl CWrapperContext {
         // Pre-call and dispatch failures use the same typed transport as
         // caught worker failures, including their original panic location.
         let panic_error_handling = quote! {
+            let payload = unsafe {
+                ::miniextendr_api::unwind_protect::resume_input_error(payload)
+            };
             ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                 || ::std::panic::resume_unwind(payload),
                 Some(__miniextendr_call),
@@ -772,10 +775,14 @@ impl CWrapperContext {
                 let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
                 #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    let __miniextendr_input_scope = unsafe {
+                        ::miniextendr_api::unwind_protect::InputConversionScope::new()
+                    };
                     #alias_guard
                     #pre_call_checks
                     #(#pre_call)*
                     #(#pre_closure_stmts)*
+                    drop(__miniextendr_input_scope);
 
                     match ::miniextendr_api::worker::run_on_worker(move || {
                         #(#in_closure_stmts)*
@@ -789,7 +796,7 @@ impl CWrapperContext {
                         }
                     }
                 }));
-                #rng_put
+                { #rng_put }
                 let __miniextendr_value = match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
                     Err(payload) => {
