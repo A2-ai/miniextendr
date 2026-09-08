@@ -42,14 +42,7 @@ use crate::{SEXP, SEXPTYPE, SexpExt};
 static FACTOR_CLASS: OnceLock<SEXP> = OnceLock::new();
 
 pub(crate) fn factor_class_sexp() -> SEXP {
-    *FACTOR_CLASS.get_or_init(|| unsafe {
-        let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        crate::sys::R_PreserveObject(class_sexp);
-        // Use symbol PRINTNAME for permanent CHARSXP
-        let sym = Rf_install(c"factor".as_ptr());
-        class_sexp.set_string_elt(0, sym.printname());
-        class_sexp
-    })
+    *FACTOR_CLASS.get_or_init(|| build_levels_sexp_cached(&["factor"]))
 }
 // endregion
 
@@ -74,13 +67,20 @@ pub trait RFactor: crate::match_arg::MatchArg + Copy + 'static {
 ///
 /// The returned STRSXP is NOT protected - caller must protect or preserve it.
 pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
+    build_levels_sexp_protected(levels).get()
+}
+
+/// Keep the container rooted while installing previously unseen symbols.
+fn build_levels_sexp_protected(levels: &[&str]) -> OwnedProtect {
+    let len = levels.len().try_into().expect("too many factor levels");
     unsafe {
-        let sexp = Rf_allocVector(SEXPTYPE::STRSXP, levels.len() as isize);
-        for (i, level) in levels.iter().enumerate() {
-            // Install as symbol - symbols and their PRINTNAMEs are never GC'd
+        let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, len));
+        for (i, level) in (0..len).zip(levels) {
+            // Symbols and their PRINTNAMEs are permanent, but installation can
+            // allocate before the new symbol enters R's symbol table.
             let c_str = CString::new(*level).expect("level name contains null byte");
             let sym = Rf_install(c_str.as_ptr());
-            sexp.set_string_elt(i as isize, sym.printname());
+            sexp.set_string_elt(i, sym.printname());
         }
         sexp
     }
@@ -89,27 +89,32 @@ pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
 /// Build a levels STRSXP and preserve it permanently (for caching).
 pub fn build_levels_sexp_cached(levels: &[&str]) -> SEXP {
     unsafe {
-        let sexp = build_levels_sexp(levels);
-        crate::sys::R_PreserveObject(sexp);
-        sexp
+        let sexp = build_levels_sexp_protected(levels);
+        crate::sys::R_PreserveObject(sexp.get());
+        sexp.get()
     }
 }
 
 /// Build a factor SEXP from indices and a levels STRSXP.
+///
+/// The caller must keep `levels` rooted across this call. The factor is rooted
+/// during construction; the returned SEXP must be protected or returned to R.
 pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
     unsafe {
         let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(indices.len());
+        // Attribute assignment and the cold class-cache initializer allocate.
+        let sexp = OwnedProtect::new(sexp);
         dst.copy_from_slice(indices);
         sexp.set_levels(levels);
         sexp.set_class(factor_class_sexp());
-        sexp
+        sexp.get()
     }
 }
 
 /// Build a factor SEXP from indices and level names in a single call.
 ///
-/// Builds the levels STRSXP via [`build_levels_sexp`] and protects it
-/// across the [`build_factor`] allocation, so callers don't need to manage
+/// Keeps the levels STRSXP rooted from allocation through [`build_factor`],
+/// so callers don't need to manage
 /// the levels protection themselves. The returned factor SEXP is **not**
 /// protected — caller must protect or return it.
 ///
@@ -118,15 +123,11 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
 /// [`build_levels_sexp_cached`] (no protection needed because the cached
 /// SEXP is on R's precious list).
 ///
-/// See CLAUDE.md "PROTECT discipline against R-devel GC" for why this
-/// matters even though `build_levels_sexp` uses symbol PRINTNAMEs for the
-/// per-element CHARSXPs — the container STRSXP itself is freshly allocated
-/// and unprotected.
+/// Symbol PRINTNAMEs keep individual level strings alive, but the fresh
+/// levels container and factor payload also need roots while being built.
 pub fn build_factor_with_levels(indices: &[i32], level_names: &[&str]) -> SEXP {
-    unsafe {
-        let levels = OwnedProtect::new(build_levels_sexp(level_names));
-        build_factor(indices, levels.get())
-    }
+    let levels = build_levels_sexp_protected(level_names);
+    build_factor(indices, levels.get())
 }
 // endregion
 
