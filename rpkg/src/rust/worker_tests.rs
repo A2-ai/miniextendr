@@ -361,8 +361,8 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 
 // region: Test 8: Main thread functions (via attribute)
 
-/// Test calling R API directly from a main_thread-attributed function.
-#[miniextendr(noexport)]
+/// Test calling R API directly from a no_worker-attributed function.
+#[miniextendr(noexport, no_worker)]
 pub fn test_main_thread_r_api() -> i32 {
     // This runs on main thread, can call R API directly
     let sexp = miniextendr_api::SEXP::scalar_integer(42);
@@ -370,7 +370,7 @@ pub fn test_main_thread_r_api() -> i32 {
 }
 
 /// Test that Rf_error from a main_thread function propagates as an R error.
-#[miniextendr(noexport)]
+#[miniextendr(noexport, no_worker)]
 pub fn test_main_thread_r_error() -> i32 {
     unsafe {
         miniextendr_api::sys::Rf_error(c"%s".as_ptr(), c"R error from main_thread fn".as_ptr()) // mxl::allow(MXL300)
@@ -378,7 +378,7 @@ pub fn test_main_thread_r_error() -> i32 {
 }
 
 /// Test that RAII destructors run when Rf_error occurs in a main_thread function.
-#[miniextendr(noexport)]
+#[miniextendr(noexport, no_worker)]
 pub fn test_main_thread_r_error_with_drops() -> i32 {
     let _resource = SimpleDropMsg("main_thread_r_error: resource");
     unsafe {
@@ -615,6 +615,38 @@ pub fn test_worker_condition(kind: String, via_main: bool) {
     } else {
         raise()
     }
+}
+
+// endregion
+
+// region: Failures before worker dispatch (#1425)
+
+pub struct WorkerPreDispatchInput;
+
+impl miniextendr_api::TryFromSexp for WorkerPreDispatchInput {
+    type Error = miniextendr_api::from_r::SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let mode = <String as miniextendr_api::TryFromSexp>::try_from_sexp(sexp)?;
+        match mode.as_str() {
+            "panic" => panic!("panic before worker dispatch"),
+            "warning" => miniextendr_api::warning!(
+                class = "worker_input_warning",
+                data = ("stage", "input"),
+                "warning before worker dispatch"
+            ),
+            _ => Ok(Self),
+        }
+    }
+}
+
+/// Exercise a custom input conversion before entering the worker.
+///
+/// @param input Use panic, warning, or ok to select the conversion behavior.
+/// @export
+#[miniextendr(worker)]
+pub fn test_worker_input_condition(_input: WorkerPreDispatchInput) -> i32 {
+    42
 }
 
 // endregion

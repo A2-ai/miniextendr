@@ -207,8 +207,7 @@ impl std::fmt::Display for WorkerError {
 
 impl WorkerError {
     /// Capture a caught payload on its originating thread, before transport.
-    #[doc(hidden)]
-    pub fn from_panic(payload: Box<dyn std::any::Any + Send>) -> Self {
+    fn from_panic(payload: Box<dyn std::any::Any + Send>) -> Self {
         let payload = match payload.downcast::<crate::condition::RCondition>() {
             Ok(condition) => {
                 let _ = crate::backtrace::take_last_panic_location();

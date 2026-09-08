@@ -5,7 +5,7 @@ test_that("worker conditions preserve kind, classes, data, and call across both 
     error = c("rust_error", "simpleError", "error", "condition"),
     warning = c("rust_warning", "simpleWarning", "warning", "condition"),
     message = c("rust_message", "simpleMessage", "message", "condition"),
-    condition = c("rust_condition", "condition")
+    condition = c("rust_condition", "simpleCondition", "condition")
   )
   for (via_main in c(FALSE, TRUE)) {
     for (kind in names(layers)) {
@@ -26,8 +26,10 @@ test_that("worker conditions preserve kind, classes, data, and call across both 
       }
       expect_identical(class(captured), expected_class, info = deparse(call))
       expect_identical(captured$kind, kind)
-      expect_identical(conditionMessage(captured), paste("worker", kind))
-      expect_identical(conditionCall(captured), call)
+      # Match the shared R helper: messages use base R's newline and NULL call.
+      expected_message <- paste0("worker ", kind, if (kind == "message") "\n" else "")
+      expect_identical(conditionMessage(captured), expected_message)
+      expect_identical(conditionCall(captured), if (kind == "message") NULL else call)
       expect_identical(captured$values, c(1L, NA_integer_, 3L))
       expect_identical(captured$details, list(label = "nested", ready = TRUE))
       expect_null(result)
@@ -50,4 +52,31 @@ test_that("worker panic relays retain the origin and emit telemetry once", {
                              gregexpr("(at ", conditionMessage(err), fixed = TRUE))[[1]], 1L)
     expect_identical(telemetry_get_count(), before + 1L)
   }
+})
+
+test_that("pre-dispatch failures use typed conditions and report generic panics once", {
+  telemetry_install_counter()
+  withr::defer(telemetry_clear_hook())
+  err <- tryCatch(test_worker_input_condition("panic"), error = identity)
+  expect_identical(err$kind, "panic")
+  expect_match(conditionMessage(err), "panic before worker dispatch", fixed = TRUE)
+  expect_match(conditionMessage(err), "worker_tests\\.rs:[0-9]+")
+  expect_identical(telemetry_get_count(), 1L)
+
+  warning <- NULL
+  result <- withCallingHandlers(
+    test_worker_input_condition(input = "warning"),
+    warning = function(w) { warning <<- w; invokeRestart("muffleWarning") }
+  )
+  expect_identical(class(warning),
+                   c("worker_input_warning", "rust_warning", "simpleWarning",
+                     "warning", "condition"))
+  expect_identical(warning$kind, "warning")
+  expect_identical(conditionMessage(warning), "warning before worker dispatch")
+  expect_identical(warning$stage, "input")
+  expect_identical(conditionCall(warning),
+                   quote(test_worker_input_condition(input = "warning")))
+  expect_null(result)
+  expect_identical(telemetry_get_count(), 1L)
+  expect_identical(test_worker_input_condition("ok"), 42L)
 })
