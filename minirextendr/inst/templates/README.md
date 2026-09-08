@@ -129,3 +129,15 @@ For offline/CRAN builds, vendored crates are compressed into
 
 During install, `configure` / `Makevars` use the tarball when `vendor/` is not
 present, so end users do not need network access during build.
+
+## Generated-file merges
+
+Both layouts ship `.gitattributes` rules for `NAMESPACE`, `R/*-wrappers.R`,
+`configure`, and `man/*.Rd`. The monorepo root rules also match nested package
+paths. Git's built-in `-merge` attribute leaves generated files without textual
+conflict markers when both branches change them. Regenerate those files from
+the merged sources, then `git add` the results to resolve the conflict.
+
+The R scaffolder and CLI preserve existing attribute rules and append missing
+ones. Run `minirextendr::upgrade_miniextendr_package()` to add the rules to an
+existing R package, including one inside a monorepo.

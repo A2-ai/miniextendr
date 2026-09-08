@@ -1,0 +1,8 @@
+# Generated R package artifacts: never merge their text.
+# -merge leaves the current version unmodified when both sides change a file.
+# The conflict still needs resolution: regenerate from the merged sources,
+# then git add the result. No conflict markers are available for git rerere.
+**/NAMESPACE -merge
+**/R/*-wrappers.R -merge
+**/configure -merge
+**/man/*.Rd -merge
