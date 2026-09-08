@@ -118,6 +118,8 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
         #[automatically_derived]
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #from_where {
             type Error = <#inner as ::miniextendr_api::TryFromSexp>::Error;
+            const NATIVE_BORROW: ::core::option::Option<::miniextendr_api::from_r::NativeBorrow> =
+                <#inner as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW;
             #[inline]
             fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
                 <#inner as ::miniextendr_api::TryFromSexp>::try_from_sexp(sexp).map(|val| #wrap_val)

@@ -1,7 +1,7 @@
 //! Reference conversions (borrowed views into R vectors).
 //!
-//! Provides zero-copy access to R vector data via `'static` references.
-//! The lifetime is technically a lie — the data lives as long as R doesn't GC it.
+//! Provides zero-copy access to R vector data through references.
+//! Callers must keep the source SEXP rooted for the entire reference lifetime.
 //!
 //! Covers: `&T`, `&mut T`, `Option<&T>`, `Vec<&T>`, `Vec<&[T]>`, and
 //! mutable variants for all `RNativeType` types.
@@ -20,12 +20,16 @@
 //! Outbound: borrowed slices have no `IntoR` impl (R owns return-value
 //! storage); see [`crate::into_r`] for the owned equivalents.
 
-use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_with};
+use crate::from_r::{
+    NativeBorrow, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_with,
+};
 use crate::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_ref_conversions_for {
     ($t:ty) => {
-        impl TryFromSexp for &'static $t {
+        impl<'a> TryFromSexp for &'a $t {
+            const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::scalar(<$t as RNativeType>::SEXP_TYPE, false));
+
             type Error = SexpError;
 
             #[inline]
@@ -79,8 +83,11 @@ macro_rules! impl_ref_conversions_for {
         ///
         /// This impl can produce aliased `&mut` references if the same R object
         /// is passed to multiple mutable parameters. The caller (generated wrapper)
-        /// is responsible for ensuring no two `&mut` borrows alias the same SEXP.
-        impl TryFromSexp for &'static mut $t {
+        /// rejects overlapping native mutable/shared borrows before conversion.
+        /// Direct conversion callers must enforce this borrowing contract themselves.
+        impl<'a> TryFromSexp for &'a mut $t {
+            const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::scalar(<$t as RNativeType>::SEXP_TYPE, true));
+
             type Error = SexpError;
 
             #[inline]
@@ -128,7 +135,9 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Option<&'static $t> {
+        impl<'a> TryFromSexp for Option<&'a $t> {
+            const NATIVE_BORROW: Option<NativeBorrow> = <&'a $t as TryFromSexp>::NATIVE_BORROW;
+
             type Error = SexpError;
 
             #[inline]
@@ -136,7 +145,7 @@ macro_rules! impl_ref_conversions_for {
                 if sexp.type_of() == SEXPTYPE::NILSXP {
                     return Ok(None);
                 }
-                let value: &'static $t = TryFromSexp::try_from_sexp(sexp)?;
+                let value: &'a $t = TryFromSexp::try_from_sexp(sexp)?;
                 Ok(Some(value))
             }
 
@@ -145,12 +154,14 @@ macro_rules! impl_ref_conversions_for {
                 if sexp.type_of() == SEXPTYPE::NILSXP {
                     return Ok(None);
                 }
-                let value: &'static $t = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                let value: &'a $t = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
                 Ok(Some(value))
             }
         }
 
-        impl TryFromSexp for Option<&'static mut $t> {
+        impl<'a> TryFromSexp for Option<&'a mut $t> {
+            const NATIVE_BORROW: Option<NativeBorrow> = <&'a mut $t as TryFromSexp>::NATIVE_BORROW;
+
             type Error = SexpError;
 
             #[inline]
@@ -158,7 +169,7 @@ macro_rules! impl_ref_conversions_for {
                 if sexp.type_of() == SEXPTYPE::NILSXP {
                     return Ok(None);
                 }
-                let value: &'static mut $t = TryFromSexp::try_from_sexp(sexp)?;
+                let value: &'a mut $t = TryFromSexp::try_from_sexp(sexp)?;
                 Ok(Some(value))
             }
 
@@ -167,7 +178,7 @@ macro_rules! impl_ref_conversions_for {
                 if sexp.type_of() == SEXPTYPE::NILSXP {
                     return Ok(None);
                 }
-                let value: &'static mut $t =
+                let value: &'a mut $t =
                     unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
                 Ok(Some(value))
             }
@@ -175,7 +186,9 @@ macro_rules! impl_ref_conversions_for {
 
         // Option<&[T]> and Option<&mut [T]> impls removed - now use blanket impls
 
-        impl TryFromSexp for Vec<&'static $t> {
+        impl<'a> TryFromSexp for Vec<&'a $t> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a $t as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -183,7 +196,9 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Vec<Option<&'static $t>> {
+        impl<'a> TryFromSexp for Vec<Option<&'a $t>> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a $t> as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -191,20 +206,22 @@ macro_rules! impl_ref_conversions_for {
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         Ok(None)
                     } else {
-                        let value: &'static $t = TryFromSexp::try_from_sexp(elem)?;
+                        let value: &'a $t = TryFromSexp::try_from_sexp(elem)?;
                         Ok(Some(value))
                     }
                 })
             }
         }
 
-        impl TryFromSexp for Vec<&'static mut $t> {
+        impl<'a> TryFromSexp for Vec<&'a mut $t> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a mut $t as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
                 map_vecsxp_with(sexp, |_i, elem| {
-                    let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
+                    let value: &'a mut $t = TryFromSexp::try_from_sexp(elem)?;
                     let ptr = std::ptr::from_mut(value);
                     if ptrs.iter().any(|&p| p == ptr) {
                         return Err(SexpError::InvalidValue(
@@ -218,7 +235,9 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Vec<Option<&'static mut $t>> {
+        impl<'a> TryFromSexp for Vec<Option<&'a mut $t>> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a mut $t> as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -227,7 +246,7 @@ macro_rules! impl_ref_conversions_for {
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         return Ok(None);
                     }
-                    let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
+                    let value: &'a mut $t = TryFromSexp::try_from_sexp(elem)?;
                     let ptr = std::ptr::from_mut(value);
                     if ptrs.iter().any(|&p| p == ptr) {
                         return Err(SexpError::InvalidValue(
@@ -241,7 +260,9 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Vec<&'static [$t]> {
+        impl<'a> TryFromSexp for Vec<&'a [$t]> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a [$t] as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -251,7 +272,9 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Vec<Option<&'static [$t]>> {
+        impl<'a> TryFromSexp for Vec<Option<&'a [$t]>> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a [$t]> as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -259,7 +282,7 @@ macro_rules! impl_ref_conversions_for {
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         Ok(None)
                     } else {
-                        let slice: &'static [$t] =
+                        let slice: &'a [$t] =
                             TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                         Ok(Some(slice))
                     }
@@ -267,13 +290,15 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Vec<&'static mut [$t]> {
+        impl<'a> TryFromSexp for Vec<&'a mut [$t]> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a mut [$t] as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
                 map_vecsxp_with(sexp, |_i, elem| {
-                    let slice: &'static mut [$t] =
+                    let slice: &'a mut [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                     if !slice.is_empty() {
                         let ptr = slice.as_mut_ptr();
@@ -290,7 +315,9 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Vec<Option<&'static mut [$t]>> {
+        impl<'a> TryFromSexp for Vec<Option<&'a mut [$t]>> {
+            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a mut [$t]> as TryFromSexp>::NATIVE_BORROW);
+
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -299,7 +326,7 @@ macro_rules! impl_ref_conversions_for {
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         return Ok(None);
                     }
-                    let slice: &'static mut [$t] =
+                    let slice: &'a mut [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                     if !slice.is_empty() {
                         let ptr = slice.as_mut_ptr();

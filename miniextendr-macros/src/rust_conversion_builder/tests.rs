@@ -399,3 +399,56 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
     );
     assert!(s.contains("__mx_conversion_err_parts ! (e , true)"), "{s}");
 }
+
+#[test]
+fn native_metadata_matches_selected_conversion_paths() {
+    let arg = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
+    for (ty, specialized) in [
+        ("()", true),
+        ("&Dots", true),
+        ("&str", true),
+        ("i64", true),
+        ("u16", true),
+        ("Vec<Mode>", true),
+        ("Box<[Mode]>", true),
+        ("[Mode; 2]", true),
+        ("&[Mode]", true),
+        ("&mut i32", false),
+        ("HiddenBorrow", false),
+    ] {
+        let builder = RustConversionBuilder::new()
+            .with_strict()
+            .with_coerce_all()
+            .with_match_arg_several_ok("x".into());
+        let syn::FnArg::Typed(param) = parse_param(&format!("x: {ty}")) else {
+            unreachable!()
+        };
+        assert_eq!(
+            builder.native_borrow_metadata(&param, &arg).is_none(),
+            specialized,
+            "{ty}"
+        );
+    }
+    // A layered choice parameter (#1551) decodes through `match_arg_*` helpers.
+    let builder = RustConversionBuilder::new().with_layered_choice("x".into(), ChoiceLeaf::MatchArg);
+    let syn::FnArg::Typed(param) = parse_param("x: Option<Mode>") else {
+        unreachable!()
+    };
+    assert!(builder.native_borrow_metadata(&param, &arg).is_none());
+    // Coercion flags do not change borrowed / optional / boxed fallback conversions.
+    for ty in [
+        "&mut i32",
+        "Option<&mut i32>",
+        "Box<[&mut i32]>",
+        "HiddenBorrow",
+    ] {
+        let builder = RustConversionBuilder::new().with_coerce_all();
+        let syn::FnArg::Typed(param) = parse_param(&format!("x: {ty}")) else {
+            unreachable!()
+        };
+        assert!(
+            builder.native_borrow_metadata(&param, &arg).is_some(),
+            "{ty}"
+        );
+    }
+}
