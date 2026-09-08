@@ -94,33 +94,45 @@ fn return_handling_detection() {
 fn slice_borrow_kind_classification() {
     // &mut [T] -> Mut
     let ty: syn::Type = syn::parse_quote!(&mut [i32]);
-    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Mut));
+    assert_eq!(
+        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
+        Some(SliceBorrow::Mut)
+    );
 
     // Option<&mut [T]> -> Mut
     let ty: syn::Type = syn::parse_quote!(Option<&mut [f64]>);
-    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Mut));
+    assert_eq!(
+        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
+        Some(SliceBorrow::Mut)
+    );
 
     // &[T] (shared) -> Shared
     let ty: syn::Type = syn::parse_quote!(&[i32]);
-    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Shared));
+    assert_eq!(
+        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
+        Some(SliceBorrow::Shared)
+    );
 
     // Option<&[T]> (shared) -> Shared
     let ty: syn::Type = syn::parse_quote!(Option<&[i32]>);
-    assert_eq!(slice_borrow_kind(&ty), Some(SliceBorrow::Shared));
+    assert_eq!(
+        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
+        Some(SliceBorrow::Shared)
+    );
 
     // &mut T (scalar reference) -> not a slice borrow
     let ty: syn::Type = syn::parse_quote!(&mut i32);
-    assert_eq!(slice_borrow_kind(&ty), None);
+    assert!(slice_borrow_kind(&ty).is_none());
 
     // Vec<T> / Box<[T]> copy -> not a borrow
     let ty: syn::Type = syn::parse_quote!(Vec<i32>);
-    assert_eq!(slice_borrow_kind(&ty), None);
+    assert!(slice_borrow_kind(&ty).is_none());
     let ty: syn::Type = syn::parse_quote!(Box<[i32]>);
-    assert_eq!(slice_borrow_kind(&ty), None);
+    assert!(slice_borrow_kind(&ty).is_none());
 
     // Option<i32> -> not a borrow
     let ty: syn::Type = syn::parse_quote!(Option<i32>);
-    assert_eq!(slice_borrow_kind(&ty), None);
+    assert!(slice_borrow_kind(&ty).is_none());
 }
 
 #[test]
@@ -137,12 +149,13 @@ fn alias_guard_emission() {
 
     let sexp_idents: Vec<syn::Ident> = vec![syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)];
 
-    // Two &mut [T] params -> a pairwise debug_assert is emitted.
+    // Two &mut [T] params -> an unconditional pre-conversion guard is emitted.
     let ctx = ctx_for(syn::parse_quote!(
         fn alias_probe(a: &mut [i32], b: &mut [i32]) {}
     ));
     let guard = ctx.build_alias_guard(&sexp_idents).to_string();
-    assert!(guard.contains("debug_assert"), "guard = {guard}");
+    assert!(guard.contains("assert"), "guard = {guard}");
+    assert!(!guard.contains("debug_assert"), "guard = {guard}");
     assert!(guard.contains("arg_0"), "guard = {guard}");
     assert!(guard.contains("arg_1"), "guard = {guard}");
 
@@ -186,5 +199,57 @@ fn alias_guard_emission() {
         syn::parse_quote!(arg_2),
     ];
     let guard = ctx.build_alias_guard(&three_idents).to_string();
-    assert_eq!(guard.matches("debug_assert").count(), 3, "guard = {guard}");
+    assert_eq!(guard.matches("parameters `").count(), 3, "guard = {guard}");
+}
+
+#[test]
+fn alias_guard_covers_borrowed_lists() {
+    for sig in [
+        syn::parse_quote!(
+            fn probe(a: Vec<&mut [i32]>, b: &[i32]) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: Vec<&[i32]>, b: &mut [i32]) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: Vec<&mut [i32]>, b: Vec<&[i32]>) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: Option<Vec<Option<&mut [i32]>>>, b: &[i32]) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: Vec<Vec<&mut [i32]>>, b: &[i32]) {}
+        ),
+    ] {
+        let sig: syn::ItemFn = sig;
+        let ctx = CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_probe))
+            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_probe))
+            .call_expr(quote::quote!(probe()))
+            .inputs(sig.sig.inputs)
+            .build();
+        assert!(
+            !ctx.build_alias_guard(&[syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)])
+                .is_empty(),
+            "borrowed list elements must participate in the pre-conversion alias guard"
+        );
+    }
+}
+
+#[test]
+fn alias_guard_also_rejects_conflicts_in_release() {
+    let sig: syn::ItemFn = syn::parse_quote!(
+        fn probe(a: &mut [i32], b: &[i32]) {}
+    );
+    let ctx = CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_probe))
+        .r_wrapper_const(syn::parse_quote!(R_WRAPPER_probe))
+        .call_expr(quote::quote!(probe()))
+        .inputs(sig.sig.inputs)
+        .build();
+    let guard = ctx
+        .build_alias_guard(&[syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)])
+        .to_string();
+    assert!(
+        !guard.contains("debug_assert"),
+        "release wrappers must reject aliasing too"
+    );
 }
