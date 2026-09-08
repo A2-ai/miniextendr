@@ -736,8 +736,10 @@ impl CWrapperContext {
         // Pre-call and dispatch failures use the same typed transport as
         // caught worker failures, including their original panic location.
         let panic_error_handling = quote! {
-            ::miniextendr_api::worker::WorkerError::from_panic(payload)
-                .into_r_value(Some(__miniextendr_call))
+            ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                || ::std::panic::resume_unwind(payload),
+                Some(__miniextendr_call),
+            )
         };
 
         // run_on_worker returns Result; Err → tagged error value.
