@@ -26,3 +26,25 @@ The broader skipped-local problem in main-thread bodies, worker callbacks, and
 unchecked calls is tracked in [#1507](https://github.com/A2-ai/miniextendr/issues/1507).
 The regression keeps a main-thread control, but the worker fix does not claim that
 an outer guard now makes arbitrary unchecked R calls safe.
+
+Validation on R 4.6.1 passed 1,198 assertions across nine targeted R suites and a
+GC protection fixture, with no failures, warnings, or skips. The new suite accounts
+for 336 assertions covering real binding/promise/missing-argument errors, checked
+warnings promoted to errors, nested guards, allocating destructors, original
+messages and condition data, on.exit reentry, RNG cleanup, and GC pressure. The
+worker stress regression also completed 2,000 error/reuse cycles.
+
+The first temporary R runner accidentally muffled warnings in its outer observer,
+preventing `warn = 2` from producing an error. Leaving those warnings untouched
+restored R's normal behavior; the package code and regression test needed no
+changes. A standalone C/R probe also verified exact error-buffer restoration for
+nine message cases, including Unicode, percent signs, and R's 8,190-byte payload
+limit, without notifying outer or global calling handlers. Compiler MIR verified
+that consuming the boxed private payload through a normal Rust return frees its
+allocation before the final R longjmp.
+
+The full `just check` and `just test` recipes passed, including both UI suites.
+`just clippy -- -D warnings`, all three exact CI clippy feature configurations,
+`just lint`, formatting, template/AGENTS checks, and LLM documentation sync also
+passed. The installed package has no undocumented R exports and its R API symbols
+pass the installed R 4.6.1 non-API and registration checks.

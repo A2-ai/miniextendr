@@ -127,7 +127,7 @@ unsafe extern "C-unwind" {
 }
 
 // Error buffer access is documented in Writing R Extensions (condition handling)
-// as experimental API, and is accepted by R 4.6's tools::check_so_symbols().
+// as experimental API, and is accepted by R 4.6's tools:::check_so_symbols().
 unsafe extern "C-unwind" {
     /// Borrow R's current error message until the next R error.
     ///
