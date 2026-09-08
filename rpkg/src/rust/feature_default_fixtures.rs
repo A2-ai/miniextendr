@@ -50,9 +50,8 @@ pub fn fdefault_no_strict_i64(x: i64) -> i64 {
 }
 
 /// Logical identity under the build's default conversion mode: under
-/// `coerce-default` the parameter converts from R's native integer type
-/// (`0L`/`1L`; a logical is then rejected), otherwise it requires a logical.
-/// @param x Logical scalar (integer `0L`/`1L` under `coerce-default`).
+/// `coerce-default` also accepts integer `0L`/`1L`, preserving logical inputs.
+/// @param x Logical scalar (also integer `0L`/`1L` under `coerce-default`).
 #[miniextendr]
 pub fn fdefault_coerce_flag(x: bool) -> bool {
     x

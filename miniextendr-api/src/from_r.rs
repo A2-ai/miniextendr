@@ -1046,6 +1046,29 @@ where
 }
 // endregion
 
+/// Convert a `coerce` boolean parameter from a logical or integer zero/one.
+/// Numeric parameters already have multi-source `TryFromSexp` implementations;
+/// bool needs this extension while its ordinary conversion stays logical-only.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_bool(sexp: SEXP) -> Result<bool, SexpError> {
+    if sexp.type_of() == SEXPTYPE::INTSXP {
+        Coerced::<bool, i32>::try_from_sexp(sexp).map(Coerced::into_inner)
+    } else {
+        bool::try_from_sexp(sexp)
+    }
+}
+
+/// Convert a `coerce` boolean vector, retaining indexed, batched diagnostics.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_bool_vec(sexp: SEXP) -> Result<Vec<bool>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::INTSXP {
+        let slice: &[i32] = TryFromSexp::try_from_sexp(sexp)?;
+        coerce_slice_to_vec(slice, "Vec<bool>")
+    } else {
+        Vec::<bool>::try_from_sexp(sexp)
+    }
+}
+
 // region: Direct Vec coercion conversions
 //
 // These provide direct `TryFromSexp for Vec<T>` where T is not an R native type

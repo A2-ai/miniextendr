@@ -19,7 +19,6 @@ test_that("worker-default routes bare functions to the worker thread", {
 
 test_that("strict-default rejects logical/raw inputs to i64 params", {
   strict_on <- miniextendr_has_feature("strict-default")
-  coerce_on <- miniextendr_has_feature("coerce-default")
   # INTSXP is accepted in every mode.
   expect_equal(as.numeric(fdefault_strict_i64(1L)), 1)
   expect_equal(as.numeric(fdefault_no_strict_i64(1L)), 1)
@@ -27,16 +26,10 @@ test_that("strict-default rejects logical/raw inputs to i64 params", {
     expect_error(fdefault_strict_i64(TRUE))
     expect_error(fdefault_strict_i64(as.raw(1)))
   }
-  # Under coerce-default an i64 param converts via R's *integer* native type
-  # (#1112), which also rejects logical/raw — so no_strict leniency is only
-  # observable when coerce-default is off. The CI feature legs keep
-  # strict-default and coerce-default on separate matrix rows for this reason.
-  if (strict_on && !coerce_on) {
-    # no_strict opts back out to the lenient multi-source conversion.
-    expect_equal(as.numeric(fdefault_no_strict_i64(TRUE)), 1)
-    expect_equal(as.numeric(fdefault_no_strict_i64(as.raw(1))), 1)
-  }
-  if (!strict_on && !coerce_on) {
+  # no_strict restores multi-source conversion even with coerce-default enabled.
+  expect_equal(as.numeric(fdefault_no_strict_i64(TRUE)), 1)
+  expect_equal(as.numeric(fdefault_no_strict_i64(as.raw(1))), 1)
+  if (!strict_on) {
     expect_equal(as.numeric(fdefault_strict_i64(TRUE)), 1)
     expect_equal(as.numeric(fdefault_strict_i64(as.raw(1))), 1)
   }
@@ -48,10 +41,8 @@ test_that("coerce-default converts bool params from R integers", {
     expect_false(fdefault_coerce_flag(0L))
     # Only 0/1 coerce to bool.
     expect_error(fdefault_coerce_flag(2L))
-    # Under coerce the parameter converts via R's *integer* native type, so a
-    # logical input is rejected — coerce narrows the accepted SEXP types
-    # rather than widening them (#1112 tracks whether that stays the design).
-    expect_error(fdefault_coerce_flag(TRUE))
+    # Logical inputs remain accepted when integer coercion is enabled.
+    expect_true(fdefault_coerce_flag(TRUE))
     # no_coerce opts back out: logical works, integer does not.
     expect_true(fdefault_no_coerce_flag(TRUE))
     expect_error(fdefault_no_coerce_flag(1L))

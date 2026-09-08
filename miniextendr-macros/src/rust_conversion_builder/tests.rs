@@ -83,7 +83,7 @@ fn test_coercion() {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
         let stmts = builder.build_conversion(&pat_type, &sexp_ident);
         assert_eq!(stmts.len(), 1);
-        assert!(stmts[0].to_string().contains("TryCoerce"));
+        assert!(stmts[0].to_string().contains("TryFromSexp"));
         assert!(stmts[0].to_string().contains("u16"));
     }
 }

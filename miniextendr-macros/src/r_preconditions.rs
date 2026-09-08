@@ -67,19 +67,10 @@ impl RAssertion {
 
 /// Per-function knobs that influence precondition codegen.
 ///
-/// Currently only the `coerce` knob matters: `#[miniextendr(coerce)]` (or a
-/// per-param `#[miniextendr(coerce)]`) changes the inbound conversion for an
-/// integer-element vector to read via the native `&[i32]` slice and then
-/// `TryCoerce` element-wise (see `rust_conversion_builder.rs` `CoercionMapping::Vec`).
-/// That `&[i32]` read is INTSXP-only, so a coerced integer vector that would
-/// otherwise accept whole-number `REALSXP` ([`RTypeCheck::VectorIntegerWide`])
-/// must instead get the strict `is.integer` gate ([`RTypeCheck::VectorIntegerStrict`])
-/// — otherwise a `double` passes the R precondition only to fail the Rust read
-/// with "expected INTSXP, got REALSXP" (issue #616).
-///
-/// `strict` is intentionally not represented: inbound conversion is identical in
-/// strict and default mode (`TryFromSexp`), so the R-side integer gate doesn't
-/// change. The precise strict checking happens on the Rust *outbound* side.
+/// Coercion preserves numeric input types and extends `bool` / `Vec<bool>`
+/// checks to accept integers as well as logicals. Other types keep their checks.
+/// Strict input conversion remains enforced in Rust, where range and precision
+/// failures can carry contextual diagnostics.
 #[derive(Clone, Default)]
 pub struct PreconditionOptions {
     /// `coerce` knob is active for all parameters (`coerce_all`).
@@ -107,6 +98,10 @@ enum RTypeCheck {
     /// Numeric scalar: type check + length-1 check (2 assertions).
     /// Used for `i32`, `f64`, `f32`, `i8`, `i16`, `i64`, `isize`.
     ScalarNumeric,
+    /// Coerced bool: logical or integer, with length one.
+    ScalarLogicalOrInteger,
+    /// Coerced bool vector: logical or integer.
+    VectorLogicalOrInteger,
     /// Non-negative numeric scalar: type + length-1 + `>= 0` (3 assertions).
     /// Used for `u16`, `u32`, `u64`, `usize`.
     ScalarNonNeg,
@@ -194,6 +189,20 @@ impl RTypeCheck {
                     format!("length({}) == 1L", param),
                 ),
             ],
+            RTypeCheck::ScalarLogicalOrInteger => vec![
+                RAssertion::new(
+                    format!("'{}' must be logical or integer", param),
+                    format!("is.logical({p}) || is.integer({p})", p = param),
+                ),
+                RAssertion::new(
+                    format!("'{}' must have length 1", param),
+                    format!("length({}) == 1L", param),
+                ),
+            ],
+            RTypeCheck::VectorLogicalOrInteger => vec![RAssertion::new(
+                format!("'{}' must be logical or integer", param),
+                format!("is.logical({p}) || is.integer({p})", p = param),
+            )],
             RTypeCheck::ScalarNonNeg => vec![
                 RAssertion::new(
                     format!("'{}' must be numeric, logical, or raw", param),
@@ -247,67 +256,16 @@ impl RTypeCheck {
             )],
         }
     }
-
-    /// Tighten the check for a coerced parameter.
-    ///
-    /// `#[miniextendr(coerce)]` on an integer-element vector reads via the native
-    /// `&[i32]` slice (INTSXP-only), so a [`RTypeCheck::VectorIntegerWide`] that
-    /// would otherwise accept whole-number `REALSXP` must become a strict
-    /// `is.integer` gate (issue #616). Recurses through [`RTypeCheck::Nullable`].
-    /// All other checks are unaffected. Type-sensitive tightening (e.g. `bool`,
-    /// whose logical gate must become an integer gate) lives in
-    /// [`coerce_tightened`], which needs the declared Rust type.
-    fn coerced(self) -> Self {
-        match self {
-            RTypeCheck::VectorIntegerWide => RTypeCheck::VectorIntegerStrict,
-            RTypeCheck::Nullable(inner) => RTypeCheck::Nullable(Box::new(inner.coerced())),
-            other => other,
-        }
-    }
 }
 
-/// Tighten the check for a coerced parameter, given the declared Rust type.
-///
-/// Under `coerce` (per-param, function-wide, or `coerce-default`), `bool`
-/// converts from R's native integer type (`CoercionMapping::from_type`:
-/// `bool` ← `i32`, INTSXP-only), so its R gate must be `is.integer` — keeping
-/// the `is.logical` gate makes the parameter unusable: R rejects the integers
-/// Rust accepts, and passes the logicals Rust rejects (same boundary-mismatch
-/// class as #616; surfaced by the feature-legs coerce-default run).
-/// `Rbool`/`Rboolean` have no coercion mapping and keep the logical gate.
-/// Everything else defers to [`RTypeCheck::coerced`].
-fn coerce_tightened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
-    let syn::Type::Path(tp) = ty else {
-        return check.coerced();
-    };
-    let Some(seg) = tp.path.segments.last() else {
-        return check.coerced();
-    };
-    match seg.ident.to_string().as_str() {
-        "bool" => match check {
-            RTypeCheck::Scalar(_) => RTypeCheck::Scalar("integer"),
-            other => other.coerced(),
-        },
-        // Vec<bool> reads via &[i32] under coerce — INTSXP-only.
-        "Vec" => match extract_single_generic_arg(seg) {
-            Some(syn::Type::Path(inner))
-                if inner
-                    .path
-                    .segments
-                    .last()
-                    .is_some_and(|s| s.ident == "bool") =>
-            {
-                RTypeCheck::VectorIntegerStrict
-            }
-            _ => check.coerced(),
-        },
-        "Option" => match (check, extract_single_generic_arg(seg)) {
-            (RTypeCheck::Nullable(inner_check), Some(inner_ty)) => {
-                RTypeCheck::Nullable(Box::new(coerce_tightened(*inner_check, inner_ty)))
-            }
-            (other, _) => other.coerced(),
-        },
-        _ => check.coerced(),
+/// Keep the R gate in sync with the conversion actually selected for this type.
+/// In particular, `Option<bool>` has no coercion mapping and stays nullable logical.
+fn coerce_widened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
+    use crate::miniextendr_fn::CoercionMapping;
+    match CoercionMapping::from_type(ty) {
+        Some(CoercionMapping::Bool) => RTypeCheck::ScalarLogicalOrInteger,
+        Some(CoercionMapping::BoolVec) => RTypeCheck::VectorLogicalOrInteger,
+        _ => check,
     }
 }
 
@@ -572,12 +530,10 @@ pub fn build_precondition_checks(
             continue;
         }
 
-        // Map the Rust type to R assertions (known types). A coerced parameter
-        // reads via its R-native type (`&[i32]`/`i32`/`f64`), so tighten its
-        // check to match (#616; bool → integer gate).
+        // Preserve the ordinary input domain and include any coercion extensions.
         if let Some(mut check) = r_check_for_type(pt.ty.as_ref()) {
             if opts.is_coerced(&r_name) {
-                check = coerce_tightened(check, pt.ty.as_ref());
+                check = coerce_widened(check, pt.ty.as_ref());
             }
             for assertion in check.assertions(&r_name) {
                 args.push(assertion.to_stopifnot_arg());
@@ -781,30 +737,30 @@ mod tests {
     }
 
     #[test]
-    fn coerced_wide_integer_vec_tightens_to_strict() {
-        // A coerced `Vec<u16>` reads via `&[i32]` (INTSXP-only), so its Wide gate
-        // must tighten to `is.integer` (#616).
-        let check = r_check_for_type(&parse_type("Vec<u16>")).unwrap();
-        let coerced = check.coerced();
-        let asserts = coerced.assertions("x");
-        assert_eq!(asserts.len(), 1);
-        assert_eq!(asserts[0].condition, "is.integer(x)");
+    fn coerced_numeric_and_optional_checks_are_preserved() {
+        for name in ["Vec<u16>", "Vec<i32>", "Vec<f64>", "Option<bool>"] {
+            let ty = parse_type(name);
+            let expected = r_check_for_type(&ty).unwrap().assertions("x");
+            let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+            assert_eq!(actual.len(), expected.len());
+            for (actual, expected) in actual.iter().zip(&expected) {
+                assert_eq!(actual.condition, expected.condition);
+            }
+        }
     }
 
     #[test]
-    fn coerced_does_not_change_float_or_i32() {
-        // i32 is already strict; floats are unaffected by coerce.
-        let i32_coerced = r_check_for_type(&parse_type("Vec<i32>")).unwrap().coerced();
-        assert_eq!(i32_coerced.assertions("x")[0].condition, "is.integer(x)");
-        let f64_coerced = r_check_for_type(&parse_type("Vec<f64>")).unwrap().coerced();
-        assert_eq!(
-            f64_coerced.assertions("x")[0].condition,
-            "is.numeric(x) || is.logical(x) || is.raw(x)"
-        );
+    fn coerced_bool_checks_accept_logical_and_integer() {
+        for name in ["bool", "Vec<bool>"] {
+            let ty = parse_type(name);
+            let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+            assert_eq!(actual[0].condition, "is.logical(x) || is.integer(x)");
+            assert_eq!(actual.len(), if name == "bool" { 2 } else { 1 });
+        }
     }
 
     #[test]
-    fn build_checks_coerced_param_uses_is_integer() {
+    fn build_checks_coerced_param_preserves_whole_number_check() {
         let sig: syn::Signature = syn::parse_str("fn f(x: Vec<u16>)").unwrap();
         let mut coerce_params = HashSet::new();
         coerce_params.insert("x".to_string());
@@ -815,7 +771,7 @@ mod tests {
         let output = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts);
         let joined = output.static_checks.join("\n");
         assert!(joined.contains("is.integer(x)"));
-        assert!(!joined.contains("trunc(x)"));
+        assert!(joined.contains("trunc(x)"));
     }
 
     #[test]

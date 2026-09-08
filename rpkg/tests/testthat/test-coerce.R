@@ -72,17 +72,13 @@ test_that("coerce attribute works for Vec<u16>", {
   # Negative values should error
   expect_error(miniextendr:::test_coerce_attr_vec_u16(c(1L, -1L, 3L)))
 
-  # `#[miniextendr(coerce)]` on a `Vec<u16>` reads via the native `&[i32]` slice
-  # (INTSXP-only) then coerces element-wise, so the framework precondition is
-  # `is.integer(x)` (issue #616). A double vector — whole or fractional — is
-  # rejected at the R boundary with a clean message instead of the cryptic
-  # "expected INTSXP, got REALSXP" it would otherwise produce.
-  expect_error(miniextendr:::test_coerce_attr_vec_u16(c(1, 2, 3)), "must be an integer vector", fixed = TRUE)
-  expect_error(miniextendr:::test_coerce_attr_vec_u16(c(1.5, 2.5, 3.5)), "must be an integer vector", fixed = TRUE)
+  # Coercion preserves whole-number doubles; fractional values remain lossy.
+  expect_equal(miniextendr:::test_coerce_attr_vec_u16(c(1, 2, 3)), 6L)
+  expect_error(miniextendr:::test_coerce_attr_vec_u16(c(1.5, 2.5, 3.5)), "must be integer or whole-number numeric", fixed = TRUE)
 })
 
 test_that("coerced Vec<u16> batches every failing element (issue #1217 item 1)", {
-  # Regression for the macro-generated `CoercionMapping::Vec` path: it used to
+  # Regression for coerced vector parameters: it used to
   # short-circuit at the first element that failed to coerce, hiding later
   # failures. Two out-of-range elements (indices 0 and 2; index 1 is valid) must
   # BOTH surface in one batched diagnostic, matching the #1192 grammar
