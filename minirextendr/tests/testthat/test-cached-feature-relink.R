@@ -1,5 +1,5 @@
 # Real Cargo cache switches must reach both the installed library and wrappers.
-# The probe has two tiny feature variants and reuses one target directory.
+# The probe has two tiny feature variants and reuses cached Cargo outputs.
 test_that("cached feature switches relink libraries and regenerate wrappers", {
   skip_on_cran()
   skip_on_os("windows")
@@ -12,8 +12,7 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
   target <- file.path(root, "cargo-target")
   library <- file.path(root, "library")
   dir.create(library)
-  old_project <- usethis::proj_get()
-  withr::defer(usethis::proj_set(old_project))
+  usethis::local_project(root, force = TRUE, setwd = FALSE, quiet = TRUE)
   withr::local_envvar(c(
     R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
     CARGO_TARGET_DIR = target, CARGO_PROFILE = "dev", CARGO_FEATURES = "",
