@@ -44,3 +44,11 @@ Final built-tarball validation: `just minirextendr-check` completes with
 0 errors, 0 warnings, and 0 notes, including the real Cargo/R regression.
 The main-package configure/install/force-document loop also passes with no
 tracked documentation drift.
+
+Linux CI exposed a separate constructor invariant: creating a nested package
+while its parent is active left usethis on the parent, so Rust scaffolding was
+written outside the new package. Force-select the requested child in
+create_miniextendr_package(). Canonicalize the regression root so macOS also
+exercises this case instead of bypassing it through /var versus /private/var
+aliases. The canonical-path regression reproduced CI's missing src directory
+and two warnings before this correction.

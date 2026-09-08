@@ -8,7 +8,9 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
     skip_if_not(nzchar(Sys.which(command)), paste(command, "not available"))
   }
   repo <- find_miniextendr_repo()
-  root <- withr::local_tempdir()
+  # Canonical paths also exercise nested-project selection on macOS, where
+  # /var and /private/var aliases otherwise hide the active-parent case.
+  root <- normalizePath(withr::local_tempdir(), winslash = "/")
   target <- file.path(root, "cargo-target")
   library <- file.path(root, "library")
   dir.create(library)
