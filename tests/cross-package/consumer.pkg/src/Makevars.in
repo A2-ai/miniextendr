@@ -18,6 +18,7 @@ TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
+CARGO_LINK_CONFIG = $(ABS_TOP_SRCDIR)/rust-target/.miniextendr-link-config
 # codegen-units = 1 in Cargo.toml forces the user crate into a single .o (NATIVE path).
 # On wasm32-*, registration goes via wasm_registry.rs (ordinary symbol refs), not linkme,
 # so the setting is inert there.
@@ -60,7 +61,17 @@ all: $(SHLIB) $(WRAPPERS_R)
 # Phony target to force Cargo invocation (no recipe - just triggers dependents)
 FORCE_CARGO:
 
-$(SHLIB): $(OBJECTS) $(CARGO_AR)
+# Cargo can restore an older cached archive when features/profile/target change.
+# Remember the last configured build at one package-local path, independent of
+# Cargo's target directory. Configure rewrites Makevars on every install, so
+# compare contents to keep no-op installs from relinking (#1498).
+$(SHLIB): $(OBJECTS) $(CARGO_AR) $(CARGO_LINK_CONFIG)
+
+$(CARGO_LINK_CONFIG): FORCE_CARGO $(CARGO_AR)
+	@mkdir -p "$(ABS_TOP_SRCDIR)/rust-target"
+	@if ! cmp -s "$(ABS_RPKG_SRCDIR)/Makevars" "$(CARGO_LINK_CONFIG)"; then \
+	  cp "$(ABS_RPKG_SRCDIR)/Makevars" "$(CARGO_LINK_CONFIG)"; \
+	fi
 
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
