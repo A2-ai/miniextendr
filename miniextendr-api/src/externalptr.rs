@@ -345,9 +345,12 @@ impl TypedExternal for () {
 /// binding in it. Active bindings are forced transparently by R, same as any
 /// other variable read. Note: `R_getVarEx` longjmps (raises an R error) if
 /// the binding turns out to be `R_MissingArg` — pathological for the
-/// `.ptr`/`.__enclos_env__`/`private` handle lookups this function serves,
-/// and acceptable here since callers run under the framework's unwind
-/// protection.
+/// `.ptr`/`.__enclos_env__`/`private` handle lookups this function serves.
+/// In a worker wrapper's input conversion that raise is fenced per checked R
+/// call, so the converter's Rust frames unwind before the R error resumes
+/// (#1302). On the main-thread path the error still reaches R through
+/// `with_r_unwind_protect`, but locals in the enclosing closure are skipped
+/// (#1507).
 ///
 /// # Safety
 ///

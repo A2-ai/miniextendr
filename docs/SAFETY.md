@@ -51,8 +51,12 @@ R's longjmp-based error handling bypasses Rust destructors. miniextendr uses
 `R_UnwindProtect` on the main thread to catch both:
 
 1. `catch_unwind` catches Rust panics, allowing destructors to run
-2. `R_UnwindProtect` catches R longjmps (e.g., `Rf_error`), runs cleanup
-3. Errors are converted to R errors after Rust cleanup completes
+2. `R_UnwindProtect` catches R longjmps (e.g., `Rf_error`) at the guard
+   boundary; the cleanup callback runs after R has jumped past the closure's
+   Rust frames, so their destructors do not run (#1507). Worker input
+   conversions fence each checked R call instead (#1302).
+3. Errors are converted to R errors after the Rust frames above the guard have
+   unwound
 
 With the `worker-thread` feature, the same safety is achieved via bidirectional
 channels: user code runs on the worker, `catch_unwind` catches panics, and
@@ -140,7 +144,9 @@ a SEXP, finalizer registration, and returning to R) on the main thread.
 ## R_UnwindProtect
 
 R errors use `longjmp`, which bypasses Rust destructors. `R_UnwindProtect`
-provides a cleanup callback that runs before the longjmp:
+provides a cleanup callback that runs once the longjmp has returned to
+`R_UnwindProtect`'s own frame, so it can resume the error but cannot drop locals
+inside the protected body (#1507):
 
 ```rust
 // unwind_protect.rs
