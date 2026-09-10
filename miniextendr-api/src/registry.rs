@@ -570,17 +570,20 @@ fn sort_wrapper_entries(entries: &mut [&RWrapperEntry]) {
 
 #[cfg(not(target_arch = "wasm32"))]
 /// Check if an R wrapper fragment already assigns itself to a documentation
-/// page: `@rdname <topic>` or `@describeIn <topic> <desc>`.
+/// page: `@rdname <topic>`, `@describeIn <topic> <desc>`, or `@name <topic>`.
 ///
 /// roxygen2 rejects `@describeIn` next to `@rdname`, so the default
 /// `@rdname <file stem>` must not be injected into a fragment carrying it
-/// (#1476). `@name` deliberately does not count: it names the topic, not the
-/// file, and the rpkg fixtures pair `@name rpkg_x` with the injected file-stem
-/// `@rdname` to keep one page per source file under a custom topic name.
+/// (#1476). `@name <topic>` counts too: in roxygen2 a block that names its
+/// topic documents `topic.Rd`, and injecting the file-stem `@rdname` on top of
+/// it silently overrode that choice. Blocks that only want a custom topic
+/// name on the shared file page spell out `@rdname <file stem>` themselves.
 fn has_page_assignment_tag(content: &str) -> bool {
     content.lines().any(|line| {
         let trimmed = line.trim();
-        trimmed.starts_with("#' @rdname ") || trimmed.starts_with("#' @describeIn ")
+        trimmed.starts_with("#' @rdname ")
+            || trimmed.starts_with("#' @describeIn ")
+            || trimmed.starts_with("#' @name ")
     })
 }
 
@@ -2783,18 +2786,18 @@ mod tests {
     }
 
     #[test]
-    fn has_page_assignment_tag_recognises_rdname_and_describein_only() {
+    fn has_page_assignment_tag_recognises_rdname_describein_and_name() {
         assert!(has_page_assignment_tag(
             "#' @rdname topic\nf <- function() 1"
         ));
         assert!(has_page_assignment_tag(
             "#' @describeIn topic Short text\n#' wrapped\nf <- function() 1"
         ));
-        // `@name` names the topic but keeps the file-stem page (rpkg pairs
-        // `@name rpkg_x` with the injected `@rdname`).
-        assert!(!has_page_assignment_tag(
-            "#' @name topic\nf <- function() 1"
-        ));
+        // `@name topic` documents `topic.Rd` in roxygen2; the file-stem
+        // `@rdname` must not be injected over it.
+        assert!(has_page_assignment_tag("#' @name topic\nf <- function() 1"));
+        // A `@name` with no topic is malformed and does not count.
+        assert!(!has_page_assignment_tag("#' @name\nf <- function() 1"));
         assert!(!has_page_assignment_tag(
             "#' @title T\n#' @export\nf <- function() 1"
         ));

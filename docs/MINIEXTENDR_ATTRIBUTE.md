@@ -32,8 +32,9 @@ Generates:
 - `pub` functions get `@export`; non-pub get `@noRd`
 - Each function's roxygen gets an auto-generated `@rdname <file-stem>`
   derived from `file!()`. Functions defined in `zero_copy_tests.rs`
-  share the `zero_copy_tests.Rd` page. Explicit `@rdname` wins; `@noRd`
-  suppresses the injection; `lib.rs` / `mod.rs` stems are skipped.
+  share the `zero_copy_tests.Rd` page. Explicit `@rdname`, `@describeIn` or
+  `@name` wins (a `@name topic` block documents `topic.Rd`, as in roxygen2);
+  `@noRd` suppresses the injection; `lib.rs` / `mod.rs` stems are skipped.
 
 ### Function Attributes
 
