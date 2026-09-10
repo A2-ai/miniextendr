@@ -140,12 +140,20 @@ gcc -shared -o miniextendr.dll \
 # Use the full path so linkers cannot select a same-named import library.
 PKG_LIBS = $(CARGO_AR)
 
-# Add Cargo build as a dependency of the shared library
-$(SHLIB): $(OBJECTS) $(CARGO_AR)
+# Add Cargo build and the configuration snapshot as dependencies of the
+# shared library
+$(SHLIB): $(OBJECTS) $(CARGO_AR) $(CARGO_LINK_CONFIG)
 
 # Build the Rust static library via Cargo
 $(CARGO_AR): FORCE_CARGO $(OBJECTS)
     $(CARGO) build --lib --profile $(CARGO_PROFILE) ...
+
+# Snapshot the configured Makevars; copy only when the contents changed so a
+# no-op install keeps the old mtime and skips the link (#1498).
+$(CARGO_LINK_CONFIG): FORCE_CARGO $(CARGO_AR)
+    @if ! cmp -s "$(ABS_RPKG_SRCDIR)/Makevars" "$(CARGO_LINK_CONFIG)"; then \
+      cp "$(ABS_RPKG_SRCDIR)/Makevars" "$(CARGO_LINK_CONFIG)"; \
+    fi
 
 # Link first, then generate wrappers from that same shared library.
 all: $(SHLIB) $(WRAPPERS_R)
@@ -164,6 +172,15 @@ Key design decisions:
 3. **`all: $(SHLIB) $(WRAPPERS_R)` ordering**: links the package library first,
    then loads that same library to generate the R wrapper and wasm registry.
    The final `all` recipe handles development touches and tarball cleanup.
+
+4. **`$(CARGO_LINK_CONFIG)` prerequisite**: Cargo keeps a cached archive's old
+   mtime when a feature, profile, or target-directory switch selects it again,
+   so a `.so` linked from a *different* configuration can be newer than the
+   archive and make would skip the link (#1498). The link therefore also
+   depends on `rust-target/.miniextendr-link-config`, a copy of the configured
+   `src/Makevars` that is refreshed only when its contents change. Any
+   configuration change relinks and regenerates the wrappers; a no-op install
+   leaves the `.so` untouched.
 
 ### Our Makevars.win (Windows)
 
