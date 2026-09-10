@@ -344,6 +344,10 @@ impl TypedExternal for () {
 /// can hold a class handle). Promises and active bindings are evaluated once;
 /// their errors propagate under the caller's unwind protection. Evaluating
 /// `get0` keeps this path on R's public API on R 4.4 as well as newer R.
+/// In a worker wrapper's input conversion, each checked R call is fenced,
+/// so converter Rust frames unwind before an R error resumes (#1302). On
+/// the main-thread path the error reaches R through `with_r_unwind_protect`,
+/// but locals in the enclosing closure are skipped (#1507).
 ///
 /// # Safety
 ///
