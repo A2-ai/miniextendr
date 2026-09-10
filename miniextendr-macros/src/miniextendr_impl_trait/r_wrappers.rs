@@ -412,8 +412,12 @@ fn generate_trait_s3_r_wrapper(
         lines.push(format!(
             "if (inherits(get0(\"{generic_name}\", mode = \"function\"), \"S7_generic\")) {{"
         ));
+        // Both sides of the registration are R symbols: quote operator names
+        // such as `[` so the emitted line parses (#1475).
+        let generic_symbol = crate::naming::r_def_name(&generic_name);
+        let method_symbol = crate::naming::r_def_name(&s3_method_name);
         lines.push(format!(
-            "  S7::method({generic_name}, S7::new_S3_class(\"{type_str}\")) <- {s3_method_name}"
+            "  S7::method({generic_symbol}, S7::new_S3_class(\"{type_str}\")) <- {method_symbol}"
         ));
         lines.push("}".to_string());
         lines.push(String::new());
