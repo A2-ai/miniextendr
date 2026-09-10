@@ -152,6 +152,7 @@ The following files in rpkg/ have corresponding template versions:
 | rpkg/ | Template Location |
 |-------|-------------------|
 | `.Rbuildignore` | `inst/templates/*/Rbuildignore` |
+| `.gitattributes` | `inst/templates/rpkg/gitattributes`, `inst/templates/monorepo/rpkg/gitattributes`; `inst/templates/monorepo/gitattributes` is the workspace-root variant with `**/` patterns |
 | `bootstrap.R` | `inst/templates/*/bootstrap.R` |
 | `build.rs` | `inst/templates/*/build.rs` |
 | `cleanup`, `cleanup.win`, `cleanup.ucrt` | `inst/templates/*/cleanup*` |
