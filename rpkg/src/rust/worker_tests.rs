@@ -650,3 +650,210 @@ pub fn test_worker_input_condition(_input: WorkerPreDispatchInput) -> i32 {
 }
 
 // endregion
+
+// region: R errors during worker input conversion (#1302)
+
+static CONVERSION_CREATED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static CONVERSION_DROPPED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static CONVERSION_DISPATCHED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+pub struct WorkerConversionResource;
+
+impl WorkerConversionResource {
+    fn new() -> Self {
+        CONVERSION_CREATED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for WorkerConversionResource {
+    fn drop(&mut self) {
+        CONVERSION_DROPPED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if miniextendr_api::worker::is_r_main_thread() {
+            // Exercise successful R calls while an earlier R error owns a
+            // continuation. In particular, protecting a fresh result must not
+            // allocate a continuation token before that result is rooted.
+            unsafe {
+                use miniextendr_api::sys;
+                let value = sys::Rf_allocVector(miniextendr_api::SEXPTYPE::INTSXP, 1);
+                sys::Rf_protect(value);
+                sys::R_PreserveObject(value);
+                assert_eq!(sys::Rf_xlength(value), 1);
+                sys::R_ReleaseObject(value);
+                sys::Rf_unprotect(1);
+                // A caught cleanup-side R error can overwrite R's global error
+                // buffer even though this evaluation returns successfully.
+                miniextendr_api::expression::r_eval_str_global(
+                    "tryCatch(stop('cleanup-side error'), error = identity)",
+                )
+                .unwrap();
+            }
+        }
+    }
+}
+
+impl miniextendr_api::TryFromSexp for WorkerConversionResource {
+    type Error = miniextendr_api::from_r::SexpError;
+    fn try_from_sexp(_: SEXP) -> Result<Self, Self::Error> {
+        Ok(Self::new())
+    }
+}
+
+pub struct WorkerBindingInput;
+
+impl miniextendr_api::TryFromSexp for WorkerBindingInput {
+    type Error = miniextendr_api::from_r::SexpError;
+    fn try_from_sexp(env: SEXP) -> Result<Self, Self::Error> {
+        let _local = WorkerConversionResource::new();
+        unsafe {
+            let symbol = miniextendr_api::sys::Rf_install(c"input".as_ptr());
+            miniextendr_api::sys::R_getVarEx(
+                symbol,
+                env,
+                miniextendr_api::Rboolean::FALSE,
+                miniextendr_api::sys::R_UnboundValue,
+            );
+        }
+        Ok(Self)
+    }
+}
+
+/// Reset input-conversion cleanup counters.
+#[miniextendr(no_worker)]
+pub fn worker_conversion_reset() {
+    use std::sync::atomic::Ordering::SeqCst;
+    CONVERSION_CREATED.store(0, SeqCst);
+    CONVERSION_DROPPED.store(0, SeqCst);
+    CONVERSION_DISPATCHED.store(0, SeqCst);
+}
+
+/// Read counts of created resources, dropped resources, and dispatched calls.
+#[miniextendr(no_worker)]
+pub fn worker_conversion_counts() -> Vec<i32> {
+    use std::sync::atomic::Ordering::SeqCst;
+    [
+        &CONVERSION_CREATED,
+        &CONVERSION_DROPPED,
+        &CONVERSION_DISPATCHED,
+    ]
+    .map(|counter| i32::try_from(counter.load(SeqCst)).unwrap())
+    .to_vec()
+}
+
+/// Exercise cleanup when an R binding throws during worker input conversion.
+/// @param before Ignored value that creates an owned resource.
+/// @param input Environment containing an input binding to read.
+#[miniextendr(worker)]
+pub fn worker_conversion_binding(
+    _before: WorkerConversionResource,
+    _input: WorkerBindingInput,
+) -> i32 {
+    CONVERSION_DISPATCHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    42
+}
+
+pub struct WorkerWarningInput;
+
+impl miniextendr_api::TryFromSexp for WorkerWarningInput {
+    type Error = miniextendr_api::from_r::SexpError;
+    fn try_from_sexp(_: SEXP) -> Result<Self, Self::Error> {
+        let _local = WorkerConversionResource::new();
+        unsafe {
+            miniextendr_api::sys::Rf_warning(c"%s".as_ptr(), c"conversion warning".as_ptr());
+        }
+        Ok(Self)
+    }
+}
+
+/// Exercise the checked variadic warning API when R converts warnings to errors.
+/// @param before Ignored value that creates an owned resource.
+/// @param input Ignored value whose conversion issues an R warning.
+#[miniextendr(worker)]
+pub fn worker_conversion_warning(
+    _before: WorkerConversionResource,
+    _input: WorkerWarningInput,
+) -> i32 {
+    CONVERSION_DISPATCHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    42
+}
+
+pub struct WorkerNestedBindingInput;
+
+impl miniextendr_api::TryFromSexp for WorkerNestedBindingInput {
+    type Error = miniextendr_api::from_r::SexpError;
+    fn try_from_sexp(env: SEXP) -> Result<Self, Self::Error> {
+        miniextendr_api::unwind_protect::with_r_unwind_protect(
+            || {
+                <WorkerBindingInput as miniextendr_api::TryFromSexp>::try_from_sexp(env).unwrap();
+                SEXP::nil()
+            },
+            None,
+        );
+        Ok(Self)
+    }
+}
+
+/// Exercise a conversion that uses the existing R unwind helper itself.
+/// @param before Ignored value that creates an owned resource.
+/// @param input Environment containing an input binding to read.
+#[miniextendr(worker)]
+pub fn worker_conversion_binding_nested(
+    _before: WorkerConversionResource,
+    _input: WorkerNestedBindingInput,
+) -> i32 {
+    CONVERSION_DISPATCHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    42
+}
+
+pub struct WorkerRngBindingInput;
+
+impl miniextendr_api::TryFromSexp for WorkerRngBindingInput {
+    type Error = miniextendr_api::from_r::SexpError;
+    fn try_from_sexp(env: SEXP) -> Result<Self, Self::Error> {
+        // The enclosing rng wrapper has already loaded R's RNG state.
+        unsafe {
+            miniextendr_api::sys::unif_rand();
+        }
+        <WorkerBindingInput as miniextendr_api::TryFromSexp>::try_from_sexp(env)?;
+        Ok(Self)
+    }
+}
+
+/// Exercise RNG cleanup after an R error during worker input conversion.
+/// @param before Ignored value that creates an owned resource.
+/// @param input Environment containing an input binding to read.
+#[miniextendr(worker, rng)]
+pub fn worker_conversion_binding_rng(
+    _before: WorkerConversionResource,
+    _input: WorkerRngBindingInput,
+) -> i32 {
+    CONVERSION_DISPATCHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    42
+}
+
+/// Exercise an R class handle binding before worker dispatch.
+/// @param before Ignored value that creates an owned resource.
+/// @param input Counter class handle, including an environment with a .ptr binding.
+#[miniextendr(worker)]
+pub fn worker_conversion_class(
+    _before: WorkerConversionResource,
+    _input: miniextendr_api::ExternalPtr<Counter>,
+) -> i32 {
+    CONVERSION_DISPATCHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    42
+}
+
+/// Main-thread control for the input-conversion cleanup probe.
+/// @param before Ignored value that creates an owned resource.
+/// @param input Environment containing an input binding to read.
+#[miniextendr(no_worker)]
+pub fn main_conversion_binding(
+    _before: WorkerConversionResource,
+    _input: WorkerBindingInput,
+) -> i32 {
+    CONVERSION_DISPATCHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    42
+}
+
+// endregion

@@ -491,20 +491,6 @@ impl CWrapperContext {
                 );
             }
         };
-        let check = if self.thread_strategy == ThreadStrategy::WorkerThread {
-            quote! {
-                let __miniextendr_alias_result =
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || { #check; ::miniextendr_api::SEXP::nil() },
-                        Some(__miniextendr_call),
-                    );
-                if __miniextendr_alias_result != ::miniextendr_api::SEXP::nil() {
-                    return __miniextendr_alias_result;
-                }
-            }
-        } else {
-            check
-        };
         quote! {{
             let __miniextendr_native_borrows = [#(#metadata),*];
             if ::miniextendr_api::from_r::borrow::needs_check(&__miniextendr_native_borrows) {
@@ -681,6 +667,9 @@ impl CWrapperContext {
         // Pre-call and dispatch failures use the same typed transport as
         // caught worker failures, including their original panic location.
         let panic_error_handling = quote! {
+            let payload = unsafe {
+                ::miniextendr_api::unwind_protect::resume_input_error(payload)
+            };
             ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                 || ::std::panic::resume_unwind(payload),
                 Some(__miniextendr_call),
@@ -698,10 +687,14 @@ impl CWrapperContext {
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                 #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    let __miniextendr_input_scope = unsafe {
+                        ::miniextendr_api::unwind_protect::InputConversionScope::new()
+                    };
                     #alias_guard
                     #pre_call_checks
                     #(#pre_call)*
                     #(#pre_closure_stmts)*
+                    drop(__miniextendr_input_scope);
 
                     match ::miniextendr_api::worker::run_on_worker(move || {
                         #(#in_closure_stmts)*
@@ -715,7 +708,7 @@ impl CWrapperContext {
                         }
                     }
                 }));
-                #rng_put
+                { #rng_put }
                 match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
                     Err(payload) => {

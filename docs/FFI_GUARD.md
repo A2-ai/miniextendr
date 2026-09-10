@@ -57,8 +57,12 @@ let result = guarded_ffi_call(
 
 ### RUnwind
 
-Uses `R_UnwindProtect` to catch **both** Rust panics and R longjmps. Ensures
-Rust destructors run even when R errors occur inside the closure.
+Uses `R_UnwindProtect` to catch **both** Rust panics and R longjmps at the guard
+boundary. A Rust panic unwinds the closure normally; an R longjmp does **not**
+run the destructors of locals inside the closure (R has already jumped past
+those frames when the cleanup callback runs, #1507). Keep owned resources
+outside the closure, or fence the individual R call as the worker input
+conversions do (#1302).
 
 Use when the closure calls R APIs (e.g., `Rf_allocVector`, `Rf_eval`).
 
