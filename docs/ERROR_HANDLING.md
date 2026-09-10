@@ -263,18 +263,22 @@ To suppress a false positive on a single line (e.g., inside the framework itself
 unsafe { Rf_error(...) }
 ```
 
-### The ~8-byte leak on R_ContinueUnwind
+### What an R longjmp skips
 
-There is one documented, accepted cost in the unwind path: when an R error propagates
-through `with_r_unwind_protect`, the `R_ContinueUnwind` call that hands
-control back to R's evaluator leaks approximately 8 bytes (the `RErrorMarker` struct
-plus its `Box` header). This is not a bug -- it is a deliberate trade-off to keep the
-unwind path free of further R API calls that could themselves error.
+When an R error propagates through `with_r_unwind_protect`, R has already jumped
+past every Rust frame inside the protected closure by the time the cleanup
+callback runs, so the owned resources in those frames are never dropped
+(#1507). The `RErrorMarker` allocation that `R_ContinueUnwind` cannot reclaim
+is the smallest part of that; the leak is not bounded by a fixed byte count.
+Keep owned resources outside the closure, or fence the individual R call. Worker
+wrappers do the latter for input conversion: each checked R call runs in its own
+`R_UnwindProtect`, the R jump becomes a Rust panic that unwinds the converter
+and the already-converted arguments, and the original error is resumed after
+RNG cleanup (#1302). The broader main-thread and callback case is tracked in
+#1507.
 
-This cost does **not** apply to the normal Rust panic path, which returns to R via a
-tagged SEXP value without any `longjmp`. If you see this leak in valgrind, it is
-expected and bounded: one allocation per R error that crosses a `with_r_unwind_protect`
-boundary, not per call.
+None of this applies to the normal Rust panic path, which returns to R via a
+tagged SEXP value without any `longjmp`.
 
 ### Warnings
 
