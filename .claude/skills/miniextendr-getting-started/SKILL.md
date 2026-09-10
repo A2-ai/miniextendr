@@ -87,9 +87,9 @@ Run this from your new package's root directory (which should already have a
 `DESCRIPTION` file — create it first with `usethis::create_package("mypkg")`
 if needed).
 
-Before running `./configure`, initialize git with `usethis::use_git()` or
-`git init`. Without a `.git` ancestor, configure assumes a CRAN-style/offline
-build context, auto-vendors, and latches into tarball mode.
+Initialize git with `usethis::use_git()` or `git init` early. Configure never
+vendors, so a missing `.git` ancestor no longer changes the install mode, but
+the leaked-tarball guard (#1029) only protects git-tracked source trees.
 
 `use_miniextendr()` writes the following into your package:
 
@@ -173,13 +173,12 @@ always `bash ./configure`, not `./configure`: the script uses `#!/bin/sh` as
 its shebang, and `AC_CONFIG_COMMANDS` passthrough produces spurious errors
 under that shell.
 
-**Pitfall — configure before `git init`**: if you scaffold a package and run
-`configure`/`miniextendr_build()` before ever running `git init`, the
-"no `.git` ancestor" auto-vendor self-repair fires and silently flips the
-package into CRAN-style offline tarball mode (you'll see `configure: install
-mode = tarball install (offline, vendored)` with no further explanation).
-This is otherwise harmless, but avoid the confusion by running `git init`
-right after `use_miniextendr()`, before the first `configure`/build.
+**Note on `git init`**: configure never vendors on its own, so running
+`configure`/`miniextendr_build()` before `git init` stays in source mode. A
+`.git` ancestor still matters because the leaked-tarball guard (#1029) fires
+only in git-tracked trees; run `git init` right after `use_miniextendr()` so a
+leaked `inst/vendor.tar.xz` fails loudly instead of silently selecting
+`configure: install mode = tarball install (offline, vendored)`.
 
 ### Step 4: Call from R and iterate
 
