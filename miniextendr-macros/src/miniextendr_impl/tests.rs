@@ -3602,6 +3602,240 @@ fn consuming_builder_impl() -> syn::ItemImpl {
     }
 }
 
+/// `#[miniextendr(postfix = "_impl")]` on a method appends to the Rust name
+/// for the R-facing method (#1451); `r_name` still wins when both paths are
+/// compared, and unannotated methods keep the Rust name.
+#[test]
+fn method_postfix_renames_the_r_method() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Widget {
+                pub fn new(n: i32) -> Self { unimplemented!() }
+                #[miniextendr(postfix = "_impl")]
+                pub fn bump(&self, by: i32) -> i32 { unimplemented!() }
+                #[miniextendr(r_name = "peek_at")]
+                pub fn peek(&self) -> i32 { unimplemented!() }
+                pub fn plain(&self) -> i32 { unimplemented!() }
+            }
+        },
+    );
+    let name = |n: &str| {
+        parsed
+            .methods
+            .iter()
+            .find(|m| m.ident == n)
+            .unwrap()
+            .r_method_name()
+    };
+    assert_eq!(name("bump"), "bump_impl");
+    assert_eq!(name("peek"), "peek_at");
+    assert_eq!(name("plain"), "plain");
+
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("bump_impl.Widget <- function(x, by, ...)"),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains("bump.Widget <- function"), "{wrapper}");
+    // `r_name` on an S3 instance method also names the generic (previously
+    // the Rust ident leaked through `generic_name()`).
+    assert!(
+        wrapper.contains("peek_at.Widget <- function(x, ...)"),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains("peek.Widget <- function"), "{wrapper}");
+    // The C symbol keeps the Rust name.
+    let tokens = c_wrapper_tokens(&parsed, "bump");
+    assert!(tokens.contains("Widget__bump"), "{tokens}");
+    assert!(!tokens.contains("bump_impl"), "{tokens}");
+}
+
+/// `postfix` cannot combine with another naming source on a method.
+#[test]
+fn method_postfix_validation() {
+    let err = ParsedImpl::parse(
+        default_impl_attrs(ClassSystem::S3),
+        syn::parse_quote! {
+            impl Widget {
+                #[miniextendr(postfix = "_impl", r_name = "bump2")]
+                pub fn bump(&self, by: i32) -> i32 { unimplemented!() }
+            }
+        },
+    )
+    .expect_err("postfix + r_name must fail");
+    assert!(
+        err.to_string().contains("both set the R method name"),
+        "{err}"
+    );
+
+    let err = ParsedImpl::parse(
+        default_impl_attrs(ClassSystem::S3),
+        syn::parse_quote! {
+            impl Widget {
+                #[miniextendr(s3(generic = "format"), postfix = "_impl")]
+                pub fn bump(&self, by: i32) -> i32 { unimplemented!() }
+            }
+        },
+    )
+    .expect_err("postfix + generic must fail");
+    assert!(err.to_string().contains("`postfix` and `generic`"), "{err}");
+
+    let err = ParsedImpl::parse(
+        default_impl_attrs(ClassSystem::S3),
+        syn::parse_quote! {
+            impl Widget {
+                #[miniextendr(postfix = "")]
+                pub fn bump(&self, by: i32) -> i32 { unimplemented!() }
+            }
+        },
+    )
+    .expect_err("empty postfix must fail");
+    assert!(err.to_string().contains("must not be empty"), "{err}");
+}
+
+/// `call = caller` is a standalone-fn option; on a method it is rejected with a
+/// message that names the alternative rather than the generic unknown-option list.
+#[test]
+fn method_call_caller_is_rejected_clearly() {
+    for code in [
+        quote::quote! {
+            impl Widget {
+                #[miniextendr(noexport, call = caller)]
+                pub fn bump(&self, by: i32) -> i32 { unimplemented!() }
+            }
+        },
+        quote::quote! {
+            impl Widget {
+                #[miniextendr(s3(call = caller))]
+                pub fn bump(&self, by: i32) -> i32 { unimplemented!() }
+            }
+        },
+    ] {
+        let err = ParsedImpl::parse(
+            default_impl_attrs(ClassSystem::S3),
+            syn::parse2(code).unwrap(),
+        )
+        .expect_err("call = caller on a method must fail");
+        assert!(
+            err.to_string().contains("only supported on standalone"),
+            "{err}"
+        );
+    }
+}
+
+/// `#[miniextendr(serde_error(..))]` on a method swaps the `Err` arm from the
+/// runtime probe to a direct `serde_err_parts` call carrying the options
+/// (#1449, #1457); methods without it keep the probe, whose serde arm is
+/// automatic under the `serde` feature.
+#[test]
+fn method_serde_error_selects_serde_err_parts() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Checker {
+                pub fn new(max: f64) -> Self { unimplemented!() }
+                #[miniextendr(serde_error(prefix = "engine"))]
+                pub fn check(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
+                #[miniextendr(serde_error(tag = "type", prefix = "engine"))]
+                pub fn check_unit(&self, v: f64) -> Result<(), EngineError> { unimplemented!() }
+                #[miniextendr(serde_error(skip("message"), rename(source = "cause")))]
+                pub fn parse(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
+                pub fn plain(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
+                pub fn probe(&self, v: f64) -> Result<f64, String> { unimplemented!() }
+            }
+        },
+    );
+    let tokens = c_wrapper_tokens(&parsed, "check");
+    assert!(tokens.contains("serde_err_parts"), "{tokens}");
+    assert!(!tokens.contains("__mx_result_err_parts"), "{tokens}");
+    assert!(tokens.contains("\"kind\""), "default tag: {tokens}");
+
+    let tokens = c_wrapper_tokens(&parsed, "check_unit");
+    assert!(tokens.contains("serde_err_parts"), "{tokens}");
+    assert!(tokens.contains("\"type\""), "{tokens}");
+    assert!(tokens.contains("\"engine\""), "{tokens}");
+    let flat: String = tokens.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(flat.contains("&[],&[],"), "no skip, no rename: {tokens}");
+
+    // skip / rename land as the two slice arguments (#1457).
+    let tokens = c_wrapper_tokens(&parsed, "parse");
+    let flat: String = tokens.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(flat.contains("&[\"message\"],"), "{tokens}");
+    assert!(flat.contains("&[(\"source\",\"cause\")],"), "{tokens}");
+
+    // No attribute: the probe, with the crate prefix for its serde arm.
+    for name in ["plain", "probe"] {
+        let tokens = c_wrapper_tokens(&parsed, name);
+        assert!(tokens.contains("__mx_result_err_parts"), "{name}: {tokens}");
+        assert!(
+            tokens.contains("_error\""),
+            "{name}: prefix literal: {tokens}"
+        );
+        assert!(!tokens.contains("serde_err_parts"), "{name}: {tokens}");
+    }
+}
+
+/// `serde_error(..)` needs an `Err` arm to act on, contradicts `unwrap_in_r`,
+/// and is not a switch: the bare flag and the boolean forms are rejected.
+#[test]
+fn method_serde_error_validation() {
+    for attr in [
+        quote::quote!(serde_error),
+        quote::quote!(serde_error = true),
+        quote::quote!(serde_error = false),
+    ] {
+        let attrs = default_impl_attrs(ClassSystem::S3);
+        let text = attr.to_string();
+        let err = ParsedImpl::parse(
+            attrs,
+            syn::parse_quote! {
+                impl Checker {
+                    #[miniextendr(#attr)]
+                    pub fn check(&self, v: f64) -> Result<f64, String> { unimplemented!() }
+                }
+            },
+        )
+        .err()
+        .unwrap_or_else(|| panic!("`{text}` must fail"));
+        assert!(err.to_string().contains("is not a switch"), "{text}: {err}");
+    }
+
+    let attrs = default_impl_attrs(ClassSystem::S3);
+    let err = ParsedImpl::parse(
+        attrs,
+        syn::parse_quote! {
+            impl Checker {
+                #[miniextendr(serde_error(prefix = "p"))]
+                pub fn check(&self, v: f64) -> f64 { unimplemented!() }
+            }
+        },
+    )
+    .expect_err("non-Result output must fail");
+    assert!(
+        err.to_string()
+            .contains("requires a `Result<T, E>` return type"),
+        "{err}"
+    );
+
+    let attrs = default_impl_attrs(ClassSystem::S3);
+    let err = ParsedImpl::parse(
+        attrs,
+        syn::parse_quote! {
+            impl Checker {
+                #[miniextendr(serde_error(prefix = "p"), unwrap_in_r)]
+                pub fn check(&self, v: f64) -> Result<f64, String> { unimplemented!() }
+            }
+        },
+    )
+    .expect_err("serde_error + unwrap_in_r must fail");
+    assert!(
+        err.to_string()
+            .contains("cannot be used with `unwrap_in_r`"),
+        "{err}"
+    );
+}
+
 fn c_wrapper_tokens(parsed: &ParsedImpl, name: &str) -> String {
     let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
     let r_wrappers_const = syn::parse_quote! { R_WRAPPERS_TEST };
@@ -3683,7 +3917,10 @@ fn consuming_self_fallible_clones_and_overwrites_on_success() {
     let parsed = parse_impl(ClassSystem::R6, consuming_builder_impl());
     let tokens = c_wrapper_tokens(&parsed, "try_step");
     assert!(tokens.contains("clone_for_consuming"), "{tokens}");
-    assert!(tokens.contains("RESULT_ERR"), "Err must raise: {tokens}");
+    assert!(
+        tokens.contains("__mx_result_err_parts"),
+        "Err must raise through the classed result_err path: {tokens}"
+    );
     assert!(
         !tokens.contains("take_for_consuming"),
         "fallible step must not empty the slot: {tokens}"
@@ -3751,7 +3988,7 @@ fn fallible_self_ref_builders_use_self_handle() {
         );
     }
     let tokens = c_wrapper_tokens(&parsed, "checked_bump");
-    assert!(tokens.contains("RESULT_ERR"), "{tokens}");
+    assert!(tokens.contains("__mx_result_err_parts"), "{tokens}");
     let tokens = c_wrapper_tokens(&parsed, "maybe_bump");
     assert!(tokens.contains("NONE_ERR"), "{tokens}");
 }
@@ -3806,6 +4043,247 @@ fn typed_self_value_receiver_is_consuming() {
         .unwrap();
     assert_eq!(m.env, ReceiverKind::Value);
     assert!(c_wrapper_tokens(&parsed, "with_step").contains("restore_after_consuming"));
+}
+
+// endregion
+
+// region: per-method @rdname override (#1438)
+
+/// A method-level `/// @rdname other` must win over the class default on every
+/// class system, and must be emitted exactly once per wrapper block. The class
+/// doc block still targets the class page; the S3 generic guard block is named
+/// after the method (`generic.Class`), so it follows the method onto the split
+/// page rather than leaving that alias on two pages.
+#[test]
+fn method_level_rdname_overrides_class_default_all_systems() {
+    type Gen = fn(&ParsedImpl) -> String;
+    let cases: &[(ClassSystem, Gen)] = &[
+        (ClassSystem::Env, generate_env_r_wrapper as Gen),
+        (ClassSystem::R6, generate_r6_r_wrapper as Gen),
+        (ClassSystem::S3, generate_s3_r_wrapper as Gen),
+        (ClassSystem::S4, generate_s4_r_wrapper as Gen),
+        (ClassSystem::S7, generate_s7_r_wrapper as Gen),
+    ];
+    for (class_system, generator) in cases {
+        let item_impl: syn::ItemImpl = syn::parse_quote! {
+            impl Counter {
+                pub fn new(value: i32) -> Self { unimplemented!() }
+                /// Read the value.
+                /// @rdname counter_get
+                pub fn get(&self) -> i32 { unimplemented!() }
+                /// Static helper.
+                /// @rdname counter_zero
+                pub fn zero() -> i32 { unimplemented!() }
+            }
+        };
+        let parsed = parse_impl(*class_system, item_impl);
+        let wrapper = generator(&parsed);
+
+        // R6 instance methods are `Class$set(...)` blocks that roxygen2 folds
+        // into the class block, so their `@rdname` is dropped (they always
+        // document on the class page). S3 emits two blocks per instance method
+        // (the generic guard, named `get.Counter`, and the method itself) and
+        // both move to the split page. Every other system emits one block.
+        let expected_get = match class_system {
+            ClassSystem::R6 => 0,
+            ClassSystem::S3 => 2,
+            _ => 1,
+        };
+        assert_eq!(
+            wrapper.matches("#' @rdname counter_get").count(),
+            expected_get,
+            "{class_system:?}: instance method @rdname override, got:\n{wrapper}"
+        );
+        assert_eq!(
+            wrapper.matches("#' @rdname counter_zero").count(),
+            1,
+            "{class_system:?}: static method @rdname override must appear exactly once, got:\n{wrapper}"
+        );
+        // A split page needs its own @title (method prose is demoted to
+        // @description and the class page no longer supplies one); the
+        // generator injects the structural R name on the method block.
+        // At least: class block + each split method block. (The S3 generic
+        // guard drops its filler title on a split page so the method's wins.)
+        let split_method_blocks = if matches!(class_system, ClassSystem::R6) {
+            0
+        } else {
+            1
+        };
+        let min_titles = 1 + split_method_blocks + 1;
+        assert!(
+            wrapper.matches("#' @title ").count() >= min_titles,
+            "{class_system:?}: split pages must carry a structural @title, got:\n{wrapper}"
+        );
+        assert!(
+            wrapper.contains("#' @rdname Counter"),
+            "{class_system:?}: class doc block must keep the class page, got:\n{wrapper}"
+        );
+    }
+}
+
+/// The `@rdname` value of the first `#' @rdname` line after `needle`.
+fn rdname_after<'a>(wrapper: &'a str, needle: &str) -> &'a str {
+    let start = wrapper
+        .find(needle)
+        .unwrap_or_else(|| panic!("missing `{needle}` in:\n{wrapper}"));
+    wrapper[start..]
+        .lines()
+        .find_map(|l| l.strip_prefix("#' @rdname "))
+        .unwrap_or_else(|| panic!("no @rdname after `{needle}` in:\n{wrapper}"))
+}
+
+/// The S3 generic guard is documented under the method's own name
+/// (`get.Counter`, class-qualified so classes sharing a generic don't collide
+/// on `\alias{get}`), which is exactly the alias the method block produces. A
+/// method that splits onto its own page must take the guard block with it:
+/// leaving the guard on the class page puts `\alias{get.Counter}` on two Rd
+/// files, which `R CMD check` reports as "Rd files with duplicated alias".
+/// Methods without an `@rdname` keep the class-page shape unchanged.
+#[test]
+fn s3_generic_guard_follows_split_method_page() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            /// Read the value.
+            /// @rdname counter_get
+            pub fn get(&self) -> i32 { unimplemented!() }
+            /// Bump the value.
+            pub fn increment(&mut self) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+
+    // Split method: guard block and method block both target the split page.
+    assert_eq!(
+        rdname_after(&wrapper, "#' @name get.Counter"),
+        "counter_get",
+        "generic guard for a split method must follow it, got:\n{wrapper}"
+    );
+    assert_eq!(
+        wrapper.matches("#' @rdname counter_get").count(),
+        2,
+        "guard block + method block on the split page, got:\n{wrapper}"
+    );
+    // The guard's filler title is dropped there so the method's structural
+    // title (`get.Counter`) is the page title; the generic is still exported.
+    assert!(
+        !wrapper.contains("#' @title S3 generic for `get`"),
+        "split guard block must not carry the filler title, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @title get.Counter"),
+        "split page keeps the method's structural title, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @export get\n"),
+        "generic export is unaffected by the split, got:\n{wrapper}"
+    );
+
+    // Non-split method: unchanged class-page shape.
+    assert_eq!(
+        rdname_after(&wrapper, "#' @name increment.Counter"),
+        "Counter",
+        "generic guard without a method @rdname stays on the class page, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @title S3 generic for `increment`"),
+        "class-page guard block keeps its title, got:\n{wrapper}"
+    );
+}
+
+/// `#[miniextendr(as = "...")]` coercion methods push the method's own doc
+/// tags verbatim and then inject the class defaults; a user `@rdname` (or
+/// `@name`) must not be duplicated by that injection.
+#[test]
+fn as_coercion_method_rdname_honoured_once() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            /// Coerce to a list.
+            /// @rdname counter_as_list
+            #[miniextendr(as = "list")]
+            pub fn to_list(&self) -> Result<List, RCoerceError> { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_as_coercion_methods(&parsed);
+
+    assert_eq!(
+        wrapper.matches("#' @rdname").count(),
+        1,
+        "exactly one @rdname on the coercion block, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @rdname counter_as_list"),
+        "user @rdname must win over the class default, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @name as.list.Counter"),
+        "default @name still injected when the user supplied none, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @title as.list.Counter"),
+        "split coercion page gets a structural @title, got:\n{wrapper}"
+    );
+}
+
+/// Without a user tag the coercion block still lands on the class page.
+#[test]
+fn as_coercion_method_rdname_defaults_to_class() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            #[miniextendr(as = "list")]
+            pub fn to_list(&self) -> Result<List, RCoerceError> { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_as_coercion_methods(&parsed);
+    assert_eq!(
+        wrapper.matches("#' @rdname Counter").count(),
+        1,
+        "got:\n{wrapper}"
+    );
+}
+
+/// S7 `convert_from` / `convert_to` blocks emit scaffolding only, but a
+/// method-level `@rdname` still decides their page.
+#[test]
+fn s7_convert_methods_honour_method_rdname() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Point3D {
+            pub fn new(x: f64, y: f64, z: f64) -> Self { Self { x, y, z } }
+
+            /// @rdname point_conversions
+            #[miniextendr(s7(convert_from = "Point2D"))]
+            pub fn from_2d(p: Point2D) -> Self { unimplemented!() }
+
+            /// @rdname point_conversions
+            #[miniextendr(s7(convert_to = "Point2D"))]
+            pub fn to_2d(&self) -> Point2D { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // The convert methods are also emitted as ordinary static / instance
+    // methods (whose S7 generic legitimately stays on the class page), so only
+    // the convert blocks themselves are inspected here.
+    for name in ["convert-Point2D-to-Point3D", "convert-Point3D-to-Point2D"] {
+        let start = wrapper
+            .find(&format!("#' @name {name}"))
+            .unwrap_or_else(|| panic!("missing @name {name} in:\n{wrapper}"));
+        let block = &wrapper[start..(start + 200).min(wrapper.len())];
+        assert!(
+            block.contains("#' @rdname point_conversions"),
+            "convert block {name} must use the user page, got:\n{block}"
+        );
+        assert!(
+            block.contains(&format!("#' @title {name}")),
+            "split convert block {name} gets a structural @title, got:\n{block}"
+        );
+    }
 }
 
 // endregion

@@ -217,6 +217,77 @@ The R handle stores the value itself, so a method can take `self`,
 `self: Box<Self>`, `Rc<Self>`, `Arc<Self>` and friends cannot be handed over;
 unwrap to `self` or take `&self`.
 
+### "`postfix` and `r_name` both set the R wrapper name"
+
+`postfix = "_impl"` derives the R name from the Rust identifier; `r_name = "..."`
+replaces it. Giving both is contradictory, so it is rejected rather than letting
+one silently win. Keep `postfix` when the name should follow the Rust name,
+`r_name` when it should not. The method-level variant says "R method name" and
+also rejects `postfix` together with `generic = "..."`. See
+[VISIBILITY.md](VISIBILITY.md#postfix-state-the-internal-entry-point-convention-once).
+
+### "`postfix` cannot be used with `s3(generic = ..., class = ...)`"
+
+Standalone S3 methods are always named `generic.class`, so there is nothing for
+a postfix to append to. Rename through `generic` instead.
+
+### "`call = caller` attributes conditions to the wrapper's caller, which is only meaningful for a package-internal entry point"
+
+`#[miniextendr(call = caller)]` makes the generated wrapper report its caller's
+call in conditions. That is right for a `noexport` / `internal` entry point
+wrapped by a hand-written R function, and wrong for an exported function whose
+caller is arbitrary user code. Add `noexport` or `internal`, or drop the option.
+See [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#internal-entry-points-caller-attribution).
+
+### "`call = caller` cannot be combined with `no_call_attribution` / `fast`"
+
+Those options emit `.call = NULL` (no call captured at all), so there is no slot
+for `call = caller` to redirect. Keep one: `call = caller` for attributed errors
+from an internal entry point, `fast` for the no-attribution fast path.
+
+### "`serde_error` is not a switch"
+
+Under the API crate's `serde` feature every `Result<T, E>` whose
+`E: serde::Serialize + Display` (and without an `RConditionError` impl) is
+already classed from its serde shape, so the bare `#[miniextendr(serde_error)]`
+flag, `serde_error = true`, `serde_error = false` and an empty `serde_error()`
+would switch nothing on or off. The attribute only carries options: write
+`serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))`, or drop
+it. See
+[CONDITIONS.md](CONDITIONS.md#deriving-the-classes-from-a-serde-error-type).
+
+### "`serde_error` cannot be used with `unwrap_in_r`"
+
+`#[miniextendr(serde_error(..))]` classes the condition raised from a
+`Result`'s `Err` arm. `unwrap_in_r` hands the whole `Result` to R as a value
+and never raises, so there is nothing to class. Drop `unwrap_in_r` to raise a
+classed error, or drop the options to return the `Result`. See
+[CONDITIONS.md](CONDITIONS.md#deriving-the-classes-from-a-serde-error-type).
+
+### "`#[miniextendr(serde_error(..))]` requires a `Result<T, E>` return type"
+
+The options only change the generated `Err` arm. A function or method that
+does not return `Result` has no `Err` arm, so the attribute would be a silent
+no-op; it is rejected instead. Return `Result<T, E>` with
+`E: serde::Serialize + Display`.
+
+### "unknown serde_error option; expected `tag`, `prefix`, `skip(...)` or `rename(...)`"
+
+`serde_error(...)` takes `tag = "..."` and `prefix = "..."` as name-value
+pairs and `skip("a", "b")` / `rename(a = "b")` as nested lists. The two list
+options are the payload-field controls; `skip = "a"` and `rename = "b"` are
+rejected with a message pointing at the list form. See
+[CONDITIONS.md](CONDITIONS.md#payload-fields-named-message).
+
+### "serde_error rename target `message` is reserved"
+
+`rename(from = "to")` may not target `message`, `call` or `kind`: those are
+the condition's own slots, and the rename would recreate the collision the
+option exists to avoid. Pick another name. The same family covers
+`serde_error skip names `a` twice`, `serde_error rename names `a` twice`, and
+`serde_error names `a` in both skip and rename`: each field appears in at most
+one place.
+
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors

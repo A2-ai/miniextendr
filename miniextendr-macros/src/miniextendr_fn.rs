@@ -310,6 +310,9 @@ pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> sy
 /// - `coerce` + `match_arg` on the same parameter
 /// - `coerce` + `choices(...)` on the same parameter
 /// - `choices(...)` + explicit `default` on the same parameter
+/// - `match_arg` + `choices(...)` on the same parameter (two sources for one
+///   choice list; the `match_arg` placeholder would shadow the literal list
+///   and, with no `MatchArg` entry to resolve it, dangle in the R formals)
 /// - `default` on a `&Dots` parameter
 pub(crate) fn validate_per_param_attr_conflicts(
     attr: &PerParamMiniextendrAttr,
@@ -348,6 +351,17 @@ pub(crate) fn validate_per_param_attr_conflicts(
             ),
         ));
     }
+    if attr.has_match_arg && attr.choices.is_some() {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "cannot combine match_arg and choices() on parameter `{}`; \
+                 match_arg takes the choice list from the parameter type's `MatchArg` impl, \
+                 choices() supplies a literal list for a string parameter; use one of them",
+                param_name
+            ),
+        ));
+    }
     if attr.has_several_ok && attr.choices.is_none() && !attr.has_match_arg {
         return Err(syn::Error::new(
             span,
@@ -372,6 +386,22 @@ pub(crate) fn validate_per_param_attr_conflicts(
                      Use `Vec<T>`, `Box<[T]>`, `&[T]`, or `[T; N]` instead of a scalar type",
                     param_name
                 ),
+            ));
+        }
+    }
+    if (attr.has_match_arg || attr.choices.is_some())
+        && !attr.has_several_ok
+        && let Some(ty) = ty
+    {
+        // Scalar choice params: `Option<T>` is the optional form (#1473) and
+        // takes no default; `Missing<T>` cannot carry the choice-vector formal.
+        if is_missing_type(ty) {
+            return Err(syn::Error::new(span, missing_scalar_choice_msg(param_name)));
+        }
+        if crate::is_option_type(ty) && attr.default_value.is_some() {
+            return Err(syn::Error::new(
+                span,
+                optional_choice_default_msg(param_name),
             ));
         }
     }
@@ -593,6 +623,71 @@ pub(crate) struct ParamAttrs {
     pub several_ok: bool,
     pub choices: Option<Vec<String>>,
     pub default: Option<String>,
+    /// `Option<T>`-typed scalar `match_arg` / `choices` parameter (#1473). The
+    /// R formal defaults to `NULL` (no choice) instead of the choice vector,
+    /// the prelude names the choices explicitly and skips `match.arg()` for
+    /// `NULL`, and the `@param` line says so. Set from the parameter type once
+    /// the signature is known; never `true` together with `several_ok`.
+    pub optional: bool,
+}
+
+/// Fill in [`ParamAttrs::optional`] for an impl or trait method and reject the
+/// scalar `match_arg` / `choices` shapes that cannot work, now that the
+/// signature is known. The standalone-fn path does the same inline while
+/// parsing (`validate_per_param_attr_conflicts` plus the `Parse` impl); this is
+/// the twin for method-level attributes, whose parameter names arrive before
+/// the types.
+pub(crate) fn finalize_method_param_attrs(
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    defaults: &std::collections::HashMap<String, String>,
+) -> syn::Result<()> {
+    use syn::spanned::Spanned;
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let name = crate::naming::ident_name(&pat_ident.ident);
+        let Some(attrs) = per_param.get_mut(&name) else {
+            continue;
+        };
+        if !(attrs.match_arg || attrs.choices.is_some()) || attrs.several_ok {
+            continue;
+        }
+        let ty = pt.ty.as_ref();
+        if is_missing_type(ty) {
+            return Err(syn::Error::new(ty.span(), missing_scalar_choice_msg(&name)));
+        }
+        if crate::is_option_type(ty) {
+            if attrs.default.is_some() || defaults.contains_key(&name) {
+                return Err(syn::Error::new(
+                    ty.span(),
+                    optional_choice_default_msg(&name),
+                ));
+            }
+            attrs.optional = true;
+        }
+    }
+    Ok(())
+}
+
+fn missing_scalar_choice_msg(param_name: &str) -> String {
+    format!(
+        "`Missing<T>` parameter `{param_name}` cannot be a scalar match_arg/choices parameter; \
+         the choice list lives in the R formal default, which `Missing<T>` forbids. \
+         Use `Option<T>` (NULL means no choice) or a plain `T` (the first choice is the default)"
+    )
+}
+
+fn optional_choice_default_msg(param_name: &str) -> String {
+    format!(
+        "`Option<T>` parameter `{param_name}` with match_arg/choices cannot have a default; \
+         its R formal defaults to NULL, which means no choice. Drop the `Option` to make a \
+         choice the default, or drop the default"
+    )
 }
 
 /// Parses a Rust `fn` item from a token stream, performing all normalizations
@@ -680,7 +775,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             // Resolve the Rust parameter name — either the user's identifier,
             // or a synthesized one for wildcard / destructuring patterns.
             let param_name: String = match pat_type.pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
+                syn::Pat::Ident(pat_ident) => crate::naming::ident_name(&pat_ident.ident),
                 syn::Pat::Wild(_) => {
                     let synthetic_name = format!("__unused{}", unused_counter);
                     unused_counter += 1;
@@ -742,6 +837,10 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     entry.default = Some(default);
                     per_param_default_spans.insert(param_name, span);
                 }
+                // `Option<T>` scalar choice param: the optional form (#1473).
+                entry.optional = (had_match_arg_attr || had_choices.is_some())
+                    && !had_several_ok
+                    && crate::is_option_type(pat_type.ty.as_ref());
             }
 
             // Validate per-parameter attribute conflicts (coerce+match_arg, coerce+choices, etc.)
@@ -780,7 +879,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 if let syn::FnArg::Typed(pat_type) = input
                     && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
                 {
-                    Some(pat_ident.ident.to_string())
+                    Some(crate::naming::ident_name(&pat_ident.ident))
                 } else {
                     None
                 }
@@ -895,6 +994,12 @@ impl MiniextendrFunctionParsed {
     /// Check if a parameter has `several_ok` (multi-value match.arg).
     pub(crate) fn has_several_ok(&self, param_name: &str) -> bool {
         self.per_param.get(param_name).is_some_and(|a| a.several_ok)
+    }
+
+    /// Check if a `match_arg` / `choices` parameter is the optional
+    /// `Option<T>` form (R formal `NULL`, `NULL` means no choice; #1473).
+    pub(crate) fn is_optional_choice(&self, param_name: &str) -> bool {
+        self.per_param.get(param_name).is_some_and(|a| a.optional)
     }
 
     /// Returns all parameter defaults as an owned map from parameter name to
@@ -1045,6 +1150,25 @@ impl MiniextendrFunctionParsed {
 ///
 /// Returns a compile error spanning the offending token when the RHS is not a
 /// `&str` literal. `field` is used in the diagnostic (e.g. `"c_symbol"`).
+/// `postfix = "..."` must be a non-empty R identifier fragment: it is appended
+/// verbatim to the Rust name, so anything outside letters, digits, `_` and `.`
+/// would produce an R name that needs backticks.
+pub(crate) fn validate_postfix(val: &str, span: &dyn quote::ToTokens) -> syn::Result<()> {
+    if val.is_empty() {
+        return Err(syn::Error::new_spanned(span, "postfix must not be empty"));
+    }
+    if !val
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+    {
+        return Err(syn::Error::new_spanned(
+            span,
+            "postfix must be a valid R identifier fragment (letters, digits, `_`, `.`)",
+        ));
+    }
+    Ok(())
+}
+
 fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
     match &nv.value {
         syn::Expr::Lit(syn::ExprLit {
@@ -1068,12 +1192,13 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// NameValue bool, parenthesized bool) all read from the same list and can't
 /// drift.
 const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
-     rng, unwrap_in_r, strict, no_strict, \
+     rng, unwrap_in_r, serde_error, strict, no_strict, \
      no_preconditions, no_call_attribution, fast, no_fast, \
      internal, noexport, export";
 
 /// Comma-separated list of fn-level nested options, for error messages.
-const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...)`";
+const FN_NESTED_OPTIONS_HELP: &str =
+    "`s3(...)`, `lifecycle(...)`, `defaults(...)`, `r_on_exit(...)`, `serde_error(...)`";
 
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
@@ -1124,6 +1249,9 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     pub(crate) unwrap_in_r: bool,
+    /// Build the `Err` arm's condition from the error's serde output
+    /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
+    pub(crate) serde_error: Option<SerdeErrorSpec>,
     /// Skip emission of the R-side `stopifnot(...)` precondition block.
     ///
     /// `TryFromSexp` already raises a typed Rust error on mismatched input,
@@ -1195,6 +1323,19 @@ pub(crate) struct MiniextendrFnAttrs {
     /// than the Rust function. The C symbol is still derived from the Rust name.
     /// Cannot be combined with `s3(generic/class)` — use `generic`/`class` for S3 naming.
     pub(crate) r_name: Option<String>,
+    /// Append a fixed suffix to the Rust name for the R wrapper
+    /// (`#[miniextendr(noexport, postfix = "_impl")]` on `fn f` yields `f_impl`).
+    /// States the "hand-written `f()` delegates to generated `f_impl()`"
+    /// convention without repeating the name in `r_name`. Exclusive with
+    /// `r_name` and `s3(...)`; the C symbol is unchanged.
+    pub(crate) postfix: Option<String>,
+    /// `call = caller`: attribute conditions to the wrapper's caller instead of
+    /// the wrapper's own call (the body binds `.mx_call` from the parent frame
+    /// and passes `.call = .mx_call`; see
+    /// `crate::r_wrapper_builder::CallAttribution::Caller`). For `noexport` /
+    /// `internal` entry points behind a hand-written R function, so errors name
+    /// the public function, not the bridge.
+    pub(crate) call_caller: bool,
     /// R code to inject at the very top of the wrapper body (before all built-in checks).
     ///
     /// Use `#[miniextendr(r_entry = "x <- as.integer(x)")]` to run R code before
@@ -1248,6 +1389,289 @@ impl ROnExit {
     }
 }
 
+/// `#[miniextendr(serde_error)]`: derive the `Err` arm's condition class and
+/// data from the error type's `serde::Serialize` output instead of the
+/// `RConditionError`/`Debug` probe.
+///
+/// The enum variant (external tagging, or the `tag` field of an internally
+/// tagged enum) becomes the member class `<prefix>_<variant>`; the payload
+/// fields become the condition's data. Defaults: `tag = "kind"`,
+/// `prefix = "<crate>_error"` (from `CARGO_CRATE_NAME` at expansion time).
+///
+/// Field control (#1457): `skip("a", "b")` drops payload fields by name,
+/// `rename(a = "b")` splices field `a` as `b`. Both name the field as it
+/// serializes; a variant that lacks the field is unaffected. The macro cannot
+/// see the error type's fields, so only the option grammar is checked here;
+/// a `rename` target may not be one of the reserved condition slots.
+///
+/// The serde path itself needs no attribute: under the `serde` feature every
+/// `Result<T, E>` with `E: Serialize + Display` takes it through the runtime
+/// probe. A spec only exists to carry options, so the bare flag and the
+/// boolean forms are rejected with [`SERDE_ERROR_BARE_HELP`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SerdeErrorSpec {
+    /// Internally-tagged discriminator field name (`#[serde(tag = "...")]`).
+    pub tag: Option<String>,
+    /// Condition class prefix (family class).
+    pub prefix: Option<String>,
+    /// Payload fields dropped from the condition data.
+    pub skip: Vec<String>,
+    /// Payload fields spliced under another name: `(from, to)`.
+    pub rename: Vec<(String, String)>,
+}
+
+/// The condition's own slots, mirrored from
+/// `miniextendr_api::condition::RESERVED_CONDITION_FIELDS` (the macros crate
+/// cannot depend on the API crate). The runtime check remains the backstop.
+const RESERVED_CONDITION_FIELDS: &[&str] = &["message", "call", "kind"];
+
+const SERDE_ERROR_OPTIONS_HELP: &str =
+    "unknown serde_error option; expected `tag`, `prefix`, `skip(...)` or `rename(...)`";
+
+/// The bare flag / boolean forms: the serde path is not something to switch
+/// on per function.
+pub(crate) const SERDE_ERROR_BARE_HELP: &str = "`serde_error` is not a switch: with the `serde` \
+    feature every `Result<T, E>` whose `E: Serialize + Display` is already classed from its \
+    serde shape. The attribute only carries options; write \
+    `serde_error(tag = \"..\", prefix = \"..\", skip(..), rename(a = \"..\"))` or drop it";
+
+impl SerdeErrorSpec {
+    /// The discriminator field consumed as the variant name.
+    pub fn tag(&self) -> &str {
+        self.tag.as_deref().unwrap_or("kind")
+    }
+
+    /// The family class; `<crate>_error` unless overridden.
+    pub fn prefix(&self) -> String {
+        self.prefix
+            .clone()
+            .unwrap_or_else(default_serde_error_prefix)
+    }
+
+    /// Parse `serde_error(...)` contents: a comma-separated list of options.
+    fn from_metas<'a>(
+        metas: impl IntoIterator<Item = &'a syn::Meta>,
+        span: proc_macro2::Span,
+    ) -> syn::Result<Self> {
+        let mut spec = SerdeErrorSpec::default();
+        let mut any = false;
+        for meta in metas {
+            any = true;
+            spec.apply(meta)?;
+        }
+        if !any {
+            return Err(syn::Error::new(span, SERDE_ERROR_BARE_HELP));
+        }
+        spec.finish()?;
+        Ok(spec)
+    }
+
+    fn apply(&mut self, meta: &syn::Meta) -> syn::Result<()> {
+        match meta {
+            syn::Meta::NameValue(nv) if nv.path.is_ident("tag") => {
+                self.tag = Some(non_empty_lit_str(nv, "tag")?);
+            }
+            syn::Meta::NameValue(nv) if nv.path.is_ident("prefix") => {
+                self.prefix = Some(non_empty_lit_str(nv, "prefix")?);
+            }
+            syn::Meta::List(list) if list.path.is_ident("skip") => {
+                let names = list.parse_args_with(
+                    syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated,
+                )?;
+                if names.is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        list,
+                        "serde_error skip needs at least one field name: `skip(\"message\")`",
+                    ));
+                }
+                for lit in &names {
+                    let name = lit.value();
+                    if name.is_empty() {
+                        return Err(syn::Error::new_spanned(
+                            lit,
+                            "serde_error skip field name must not be empty",
+                        ));
+                    }
+                    if self.skip.contains(&name) {
+                        return Err(syn::Error::new_spanned(
+                            lit,
+                            format!("serde_error skip names `{name}` twice"),
+                        ));
+                    }
+                    self.skip.push(name);
+                }
+            }
+            syn::Meta::List(list) if list.path.is_ident("rename") => {
+                let pairs = list.parse_args_with(
+                    syn::punctuated::Punctuated::<RenamePair, syn::Token![,]>::parse_terminated,
+                )?;
+                if pairs.is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        list,
+                        "serde_error rename needs at least one pair: `rename(message = \"detail\")`",
+                    ));
+                }
+                for pair in pairs {
+                    let RenamePair { from, to, span } = pair;
+                    if from.is_empty() || to.is_empty() {
+                        return Err(syn::Error::new(
+                            span,
+                            "serde_error rename names must not be empty",
+                        ));
+                    }
+                    if RESERVED_CONDITION_FIELDS.contains(&to.as_str()) {
+                        return Err(syn::Error::new(
+                            span,
+                            format!(
+                                "serde_error rename target `{to}` is reserved: `message`, `call` \
+                                 and `kind` are the condition's own slots"
+                            ),
+                        ));
+                    }
+                    if self.rename.iter().any(|(f, _)| *f == from) {
+                        return Err(syn::Error::new(
+                            span,
+                            format!("serde_error rename names `{from}` twice"),
+                        ));
+                    }
+                    if self.rename.iter().any(|(_, t)| *t == to) {
+                        return Err(syn::Error::new(
+                            span,
+                            format!(
+                                "serde_error rename targets `{to}` twice; the condition would \
+                                 carry two `{to}` fields and R would read only the first"
+                            ),
+                        ));
+                    }
+                    self.rename.push((from, to));
+                }
+            }
+            syn::Meta::NameValue(nv) if nv.path.is_ident("skip") => {
+                return Err(syn::Error::new_spanned(
+                    nv,
+                    "serde_error skip takes a list of field names: `skip(\"message\")`",
+                ));
+            }
+            syn::Meta::NameValue(nv) if nv.path.is_ident("rename") => {
+                return Err(syn::Error::new_spanned(
+                    nv,
+                    "serde_error rename takes `from = \"to\"` pairs: `rename(message = \"detail\")`",
+                ));
+            }
+            other => {
+                return Err(syn::Error::new_spanned(
+                    other.path(),
+                    SERDE_ERROR_OPTIONS_HELP,
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Cross-option validation once every option is in.
+    fn finish(&self) -> syn::Result<()> {
+        if let Some((from, _)) = self
+            .rename
+            .iter()
+            .find(|(from, _)| self.skip.contains(from))
+        {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                format!(
+                    "serde_error names `{from}` in both skip and rename; a skipped field has no \
+                     name to rename"
+                ),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// A `tag = "..."` / `prefix = "..."` value: a non-empty string literal.
+fn non_empty_lit_str(nv: &syn::MetaNameValue, key: &str) -> syn::Result<String> {
+    let val = parse_lit_str(nv, key)?;
+    if val.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &nv.value,
+            format!("serde_error {key} must not be empty"),
+        ));
+    }
+    Ok(val)
+}
+
+/// One `from = "to"` entry of `rename(...)`. `from` is an identifier or, for a
+/// serde-renamed field whose name is not one, a string literal.
+struct RenamePair {
+    from: String,
+    to: String,
+    span: proc_macro2::Span,
+}
+
+impl syn::parse::Parse for RenamePair {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use syn::ext::IdentExt;
+        let lookahead = input.lookahead1();
+        let (from, span) = if lookahead.peek(syn::LitStr) {
+            let lit: syn::LitStr = input.parse()?;
+            (lit.value(), lit.span())
+        } else if lookahead.peek(syn::Ident::peek_any) {
+            let ident = input.call(syn::Ident::parse_any)?;
+            (ident.to_string(), ident.span())
+        } else {
+            return Err(lookahead.error());
+        };
+        let _: syn::Token![=] = input.parse()?;
+        let to: syn::LitStr = input.parse()?;
+        Ok(RenamePair {
+            from,
+            to: to.value(),
+            span,
+        })
+    }
+}
+
+/// Default family class for `serde_error`: `<crate>_error`, from the crate being
+/// compiled (cargo sets `CARGO_CRATE_NAME` for the rustc invocation that runs
+/// this proc macro).
+pub(crate) fn default_serde_error_prefix() -> String {
+    let krate = std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| "rust".to_string());
+    format!("{krate}_error")
+}
+
+/// Parse `serde_error(tag = "...", prefix = "...", skip(...), rename(...))`
+/// given as a `Meta::List`.
+pub(crate) fn parse_serde_error_list(list: &syn::MetaList) -> syn::Result<SerdeErrorSpec> {
+    use syn::spanned::Spanned;
+    let metas = list.parse_args_with(
+        syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+    )?;
+    SerdeErrorSpec::from_metas(&metas, list.span())
+}
+
+/// Parse the tail of a `serde_error` option inside `parse_nested_meta`. Only
+/// the option list `(tag = "...", prefix = "...", skip(...), rename(...))` is
+/// accepted; the bare flag and `= true/false` are rejected with
+/// [`SERDE_ERROR_BARE_HELP`], since the serde path is on for every eligible
+/// error type under the `serde` feature.
+pub(crate) fn parse_serde_error_nested(
+    meta: &syn::meta::ParseNestedMeta,
+) -> syn::Result<SerdeErrorSpec> {
+    use syn::spanned::Spanned;
+    let input = meta.input;
+    if input.peek(syn::token::Paren) {
+        let content;
+        syn::parenthesized!(content in input);
+        let metas =
+            content.parse_terminated(<syn::Meta as syn::parse::Parse>::parse, syn::Token![,])?;
+        return SerdeErrorSpec::from_metas(&metas, meta.path.span());
+    }
+    if input.peek(syn::Token![=]) {
+        let _: syn::Token![=] = input.parse()?;
+        let _: syn::LitBool = input.parse()?;
+    }
+    Err(meta.error(SERDE_ERROR_BARE_HELP))
+}
+
 #[derive(Clone, Copy, Default)]
 /// Preferred return-conversion path for `IntoR`.
 pub(crate) enum ReturnPref {
@@ -1294,6 +1718,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut coerce_all: Option<bool> = None;
         let mut rng = false;
         let mut unwrap_in_r = false;
+        let mut serde_error: Option<SerdeErrorSpec> = None;
         let mut no_preconditions: Option<bool> = None;
         let mut no_call_attribution: Option<bool> = None;
         let mut return_pref = ReturnPref::Auto;
@@ -1310,6 +1735,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut doc = None;
         let mut c_symbol = None;
         let mut r_name = None;
+        let mut postfix = None;
+        let mut call_caller = false;
         let mut r_entry = None;
         let mut r_post_checks = None;
         let mut r_on_exit = None;
@@ -1342,6 +1769,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             rng = true;
                         } else if ident == "unwrap_in_r" {
                             unwrap_in_r = true;
+                        } else if ident == "serde_error" {
+                            return Err(syn::Error::new_spanned(&path, SERDE_ERROR_BARE_HELP));
                         } else if ident == "worker" {
                             force_worker = Some(true);
                         } else if ident == "no_worker" {
@@ -1407,6 +1836,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 rng = val;
                             } else if ident == "unwrap_in_r" {
                                 unwrap_in_r = val;
+                            } else if ident == "serde_error" {
+                                return Err(syn::Error::new_spanned(&nv, SERDE_ERROR_BARE_HELP));
                             } else if ident == "strict" {
                                 strict = Some(val);
                             } else if ident == "no_strict" {
@@ -1511,6 +1942,28 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             ));
                         }
                         r_name = Some(val);
+                    } else if nv.path.is_ident("postfix") {
+                        let val = parse_lit_str(&nv, "postfix")?;
+                        validate_postfix(&val, &nv.value)?;
+                        postfix = Some(val);
+                    } else if nv.path.is_ident("call") {
+                        let is_caller = match &nv.value {
+                            syn::Expr::Path(p) => p.path.is_ident("caller"),
+                            syn::Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Str(s),
+                                ..
+                            }) => s.value() == "caller",
+                            _ => false,
+                        };
+                        if !is_caller {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "`call = ...` accepts only `caller` (attribute conditions to the \
+                                 wrapper's caller); the default already attributes them to the \
+                                 wrapper's own call",
+                            ));
+                        }
+                        call_caller = true;
                     } else if nv.path.is_ident("r_entry") {
                         r_entry = Some(parse_lit_str(&nv, "r_entry")?);
                     } else if nv.path.is_ident("r_post_checks") {
@@ -1534,7 +1987,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
                                  `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
-                                 `r_name = \"...\"`, `r_entry = \"...\"`, `r_post_checks = \"...\"`, \
+                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = caller`, `r_entry = \"...\"`, \
+                                 `r_post_checks = \"...\"`, \
                                  `r_on_exit = \"...\"`",
                                 key_name,
                             ),
@@ -1610,6 +2064,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             )
                         })?;
                         r_on_exit = Some(ROnExit { expr, add, after });
+                    } else if list.path.is_ident("serde_error") {
+                        serde_error = Some(parse_serde_error_list(&list)?);
                     } else if let Some(ident) = list.path.get_ident() {
                         // Bool-flag parenthesized form (e.g. `strict(true)`) is not
                         // supported — write `strict` alone or `strict = true` instead.
@@ -1659,11 +2115,55 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         }
 
         // Validate: `r_name` is incompatible with S3 naming (`s3(generic/class)`)
+        // Validate: `postfix` derives the wrapper name from the Rust name; it
+        // cannot combine with another naming source.
+        if postfix.is_some() && r_name.is_some() {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`postfix` and `r_name` both set the R wrapper name; use one of them.",
+            ));
+        }
+        if postfix.is_some() && (s3_generic.is_some() || s3_class.is_some()) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`postfix` cannot be used with `s3(generic = ..., class = ...)`. \
+                 S3 method names are always `generic.class`.",
+            ));
+        }
+
+        // Validate: `call = caller` is for internal entry points only, and
+        // needs a call slot to point somewhere.
+        if call_caller && !(noexport || internal) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`call = caller` attributes conditions to the wrapper's caller, which is only \
+                 meaningful for a package-internal entry point; add `noexport` or `internal`.",
+            ));
+        }
+        if call_caller && no_call_attribution == Some(true) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`call = caller` cannot be combined with `no_call_attribution` / `fast`: those \
+                 emit `.call = NULL`, so there is no call slot to point at the caller.",
+            ));
+        }
+
         if r_name.is_some() && (s3_generic.is_some() || s3_class.is_some()) {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
                 "`r_name` cannot be used with `s3(generic = ..., class = ...)`. \
                  S3 method names are always `generic.class`. Use `generic` and `class` instead.",
+            ));
+        }
+
+        // Validate: `serde_error` classes the raised condition; `unwrap_in_r`
+        // never raises (the Result is returned as a value), so combining them
+        // is a contradiction.
+        if serde_error.is_some() && unwrap_in_r {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`serde_error` cannot be used with `unwrap_in_r`: `unwrap_in_r` returns the \
+                 `Result` to R as a value, so there is no raised condition to class.",
             ));
         }
 
@@ -1674,8 +2174,15 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             coerce_all: coerce_all.unwrap_or(cfg!(feature = "coerce-default")),
             rng,
             unwrap_in_r,
+            serde_error,
             no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
-            no_call_attribution: no_call_attribution.unwrap_or(cfg!(feature = "fast-default")),
+            // An explicit `call = caller` overrides the `fast-default` feature's
+            // `.call = NULL`: the user asked for attribution.
+            no_call_attribution: if call_caller {
+                false
+            } else {
+                no_call_attribution.unwrap_or(cfg!(feature = "fast-default"))
+            },
             return_pref,
             return_pref_span,
             s3_generic,
@@ -1690,6 +2197,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             doc,
             c_symbol,
             r_name,
+            postfix,
+            call_caller,
             r_entry,
             r_post_checks,
             r_on_exit,
