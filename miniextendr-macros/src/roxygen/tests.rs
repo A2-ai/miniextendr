@@ -617,6 +617,30 @@ fn test_title_continuation_joined_onto_one_line() {
 }
 
 #[test]
+fn test_bare_name_takes_next_line_as_topic() {
+    // roxygen2 accepts the topic on the line after a bare `@name` / `@rdname`;
+    // the registry routes pages from the joined `#' @name <topic>` line, so
+    // the topic must not be dropped.
+    for tag in ["@name", "@rdname"] {
+        let attrs: Vec<syn::Attribute> = vec![
+            syn::parse_quote!(#[doc = #tag]),
+            syn::parse_quote!(#[doc = "  shared_topic"]),
+            syn::parse_quote!(#[doc = "not part of the topic"]),
+            syn::parse_quote!(#[doc = "@param x A value."]),
+        ];
+        let tags = roxygen_tags_from_attrs(&attrs);
+        assert_eq!(
+            tags,
+            vec![
+                format!("{tag} shared_topic"),
+                "@param x A value.".to_string()
+            ],
+            "{tag}"
+        );
+    }
+}
+
+#[test]
 fn test_rdname_stays_single_line() {
     // `@rdname` takes a bare topic name; a following prose line is not part of it.
     let attrs: Vec<syn::Attribute> = vec![
