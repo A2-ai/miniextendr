@@ -455,20 +455,27 @@ pub fn tbl_sum_my_tbl(x: SEXP, _dots: ...) -> Vec<String> { ... }
 
 Standalone functions without an explicit page assignment are grouped onto one
 `.Rd` page per Rust source file (the macro injects `@rdname <file stem>` at
-wrapper-generation time). Two tags override that:
+wrapper-generation time). Three tags override that, and the file-stem default
+is not injected when any of them is present:
 
 - `/// @rdname topic` puts the function on `topic`'s page.
+- `/// @name topic` documents the function on its own `topic.Rd`, exactly as in
+  plain roxygen2. A block that wants a custom topic name *on the shared file
+  page* spells out `/// @rdname <file stem>` as well.
 - `/// @describeIn topic Short description.` puts it on `topic`'s page *and*
   lists it in that page's "Functions" section with the description. The
   description may wrap onto following `///` lines; they stay attached (#1476).
-  roxygen2 rejects `@describeIn` next to `@rdname`, so the file-stem default is
-  not injected when either tag is present. `@name topic` alone only renames
-  the topic; the function stays on the file-stem page.
+  roxygen2 rejects `@describeIn` next to `@rdname`, which is one reason the
+  default is not injected here.
   roxygen2 resolves `topic` to the destination *object's own* page
   (`topic.Rd`), not to wherever that object's block was sent with `@rdname`.
   So the destination must be documented under its own name: give it
-  `/// @rdname topic` explicitly, otherwise it lands on the file-stem page and
-  the `@describeIn` block ends up alone on `topic.Rd`.
+  `/// @name topic` or `/// @rdname topic` explicitly, otherwise it lands on
+  the file-stem page and the `@describeIn` block ends up alone on `topic.Rd`.
+
+A `@title` wrapped onto the next `///` line is folded back onto one line, and
+a bare `@name` / `@rdname` takes the next `///` line as its topic, as roxygen2
+itself would read it.
 
 Functions are emitted in source order within a file (priority group first,
 then file, then line), so the `@description` paragraphs and `\usage` entries
