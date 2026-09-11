@@ -23,6 +23,8 @@
 ^bootstrap\.R$
 ^\.gitignore$
 ^\.DS_Store$
+^CLAUDE\.md$
+^AGENTS\.md$
 
 # R CMD check output
 \.Rcheck$

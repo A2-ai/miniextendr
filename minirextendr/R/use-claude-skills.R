@@ -15,8 +15,8 @@
 #' yourself under `.claude/skills/` are left untouched.
 #'
 #' When the project root is an R package (a `DESCRIPTION` is present),
-#' `^\.claude$` is added to `.Rbuildignore` so the skills never ship in the
-#' tarball. An `AGENTS.md` stub pointing non-Claude agents at the skill set is
+#' `.claude/` and `AGENTS.md` are added to `.Rbuildignore` so agent guidance
+#' never ships in the tarball. An `AGENTS.md` stub pointing non-Claude agents at the skill set is
 #' written only if the file does not already exist -- it is user-owned content.
 #'
 #' @param path Path to the project root, or `"."` to use the current directory.
@@ -47,7 +47,7 @@ use_claude_skills <- function(path = ".") {
   # root is itself the R package; in a monorepo the R package lives in a
   # subdirectory and never sees the workspace-root .claude/.
   if (fs::file_exists(usethis::proj_path("DESCRIPTION"))) {
-    usethis::use_build_ignore("^\\.claude$", escape = FALSE)
+    usethis::use_build_ignore(c("^\\.claude$", "^AGENTS\\.md$"), escape = FALSE)
   }
 
   write_agents_md_stub()
